@@ -22,18 +22,7 @@ struct AccessibleNodeSummary {
 
 pub fn log_accessibility_tree(windows: Vec<ManagedWindowAccessibilityInfo>) {
     std::thread::spawn(move || {
-        let runtime = match tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-        {
-            Ok(runtime) => runtime,
-            Err(error) => {
-                eprintln!("failed to create AT-SPI runtime: {error}");
-                return;
-            }
-        };
-
-        if let Err(error) = runtime.block_on(log_accessibility_tree_async(windows)) {
+        if let Err(error) = async_io::block_on(log_accessibility_tree_async(windows)) {
             eprintln!("failed to log AT-SPI accessibility tree: {error}");
         }
     });

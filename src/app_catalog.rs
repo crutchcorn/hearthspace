@@ -20,6 +20,7 @@ pub struct DesktopApp {
     pub path: PathBuf,
     pub categories: Vec<String>,
     pub terminal_arg_exec: Option<String>,
+    pub snap_instance_name: Option<String>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -185,6 +186,7 @@ impl DesktopApp {
                 .or_else(|| fields.get("X-TerminalArgExec"))
                 .or_else(|| fields.get("X-ExecArg"))
                 .cloned(),
+            snap_instance_name: fields.get("X-SnapInstanceName").cloned(),
         })
     }
 
@@ -543,12 +545,19 @@ fn xdg_config_dirs() -> Vec<PathBuf> {
 }
 
 pub fn spawn_argv(argv: &[String]) -> Result<(), String> {
+    spawn_argv_with_wayland_display(argv, crate::config::WAYLAND_DISPLAY_NAME)
+}
+
+pub fn spawn_argv_with_wayland_display(
+    argv: &[String],
+    wayland_display: &str,
+) -> Result<(), String> {
     let Some((program, args)) = argv.split_first() else {
         return Err("cannot spawn an empty command".to_string());
     };
     Command::new(program)
         .args(args)
-        .env("WAYLAND_DISPLAY", crate::config::WAYLAND_DISPLAY_NAME)
+        .env("WAYLAND_DISPLAY", wayland_display)
         .spawn()
         .map(|_| ())
         .map_err(|error| format!("failed to spawn {program}: {error}"))

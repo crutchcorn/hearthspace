@@ -476,7 +476,6 @@ dependencies = [
  "atspi-common",
  "atspi-connection",
  "atspi-proxies",
- "zbus",
 ]
 
 [[package]]
@@ -2729,11 +2728,11 @@ checksum = "ed5909b6e89a2db4456e54cd5f673791d7eca6732202bbf2a9cc504fe2f9b84a"
 name = "hearthspace"
 version = "0.1.0"
 dependencies = [
+ "async-io",
  "atspi",
  "gpui",
  "gtk4",
  "smithay",
- "tokio",
  "tracing-subscriber",
  "wayland-protocols 0.32.13",
  "wayland-server",
@@ -6110,9 +6109,7 @@ dependencies = [
  "libc",
  "mio",
  "pin-project-lite",
- "signal-hook-registry",
  "socket2",
- "tracing",
  "windows-sys 0.61.2",
 ]
 
@@ -7602,7 +7599,6 @@ dependencies = [
  "rustix 1.1.4",
  "serde",
  "serde_repr",
- "tokio",
  "tracing",
  "uds_windows",
  "uuid",

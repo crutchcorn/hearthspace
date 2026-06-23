@@ -1,16 +1,21 @@
 use std::{
     env, fs,
-    io::{ErrorKind, Read},
-    os::unix::{io::OwnedFd, net::UnixListener as CommandListener},
+    io::{self, ErrorKind, Read},
+    os::unix::{
+        fs::FileTypeExt,
+        io::OwnedFd,
+        net::{UnixListener, UnixListener as CommandListener, UnixStream},
+    },
     path::PathBuf,
     process::Command,
     sync::Arc,
+    thread,
     time::Instant,
 };
 
 use crate::{
     a11y::ManagedWindowAccessibilityInfo,
-    app_catalog::{spawn_argv, AppCatalog},
+    app_catalog::{spawn_argv_with_wayland_display, AppCatalog},
     config::*,
     geometry::{
         canvas_to_screen as transform_canvas_to_screen, ease_out_cubic, interpolate_canvas_point,
@@ -583,6 +588,78 @@ fn runtime_path(name: &str) -> PathBuf {
         .join(name)
 }
 
+fn ensure_snap_wayland_proxy(instance_name: &str) -> std::io::Result<PathBuf> {
+    if !instance_name
+        .chars()
+        .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_' | '.'))
+    {
+        return Err(io::Error::new(
+            ErrorKind::InvalidInput,
+            format!("invalid snap instance name {instance_name:?}"),
+        ));
+    }
+
+    let target_socket_path = runtime_path(WAYLAND_DISPLAY_NAME);
+    let proxy_dir = runtime_path(&format!("snap.{instance_name}"));
+    fs::create_dir_all(&proxy_dir)?;
+    let proxy_socket_path = proxy_dir.join(WAYLAND_DISPLAY_NAME);
+
+    match fs::symlink_metadata(&proxy_socket_path) {
+        Ok(metadata) if metadata.file_type().is_socket() => {
+            if UnixStream::connect(&proxy_socket_path).is_ok() {
+                return Ok(proxy_socket_path);
+            }
+            fs::remove_file(&proxy_socket_path)?;
+        }
+        Ok(_) => fs::remove_file(&proxy_socket_path)?,
+        Err(error) if error.kind() == ErrorKind::NotFound => {}
+        Err(error) => return Err(error),
+    }
+
+    let listener = UnixListener::bind(&proxy_socket_path)?;
+    thread::spawn(move || {
+        for connection in listener.incoming() {
+            let target_socket_path = target_socket_path.clone();
+            match connection {
+                Ok(client) => {
+                    thread::spawn(move || proxy_wayland_connection(client, target_socket_path));
+                }
+                Err(error) => {
+                    eprintln!("Snap Wayland proxy accept failed: {error}");
+                    break;
+                }
+            }
+        }
+    });
+
+    Ok(proxy_socket_path)
+}
+
+fn proxy_wayland_connection(client: UnixStream, target_socket_path: PathBuf) {
+    let Ok(server) = UnixStream::connect(&target_socket_path) else {
+        eprintln!(
+            "Snap Wayland proxy failed to connect to {}",
+            target_socket_path.display()
+        );
+        return;
+    };
+
+    let Ok(mut client_reader) = client.try_clone() else {
+        return;
+    };
+    let Ok(mut server_writer) = server.try_clone() else {
+        return;
+    };
+    let upload = thread::spawn(move || {
+        let _ = io::copy(&mut client_reader, &mut server_writer);
+    });
+
+    let mut server_reader = server;
+    let mut client_writer = client;
+    let _ = io::copy(&mut server_reader, &mut client_writer);
+    let _ = upload.join();
+}
+
 fn remove_stale_socket(path: &PathBuf) -> std::io::Result<()> {
     match fs::remove_file(path) {
         Ok(()) => Ok(()),
@@ -1131,8 +1208,20 @@ impl App {
             app_command
         };
 
+        let wayland_display = if let Some(instance_name) = &app.snap_instance_name {
+            match ensure_snap_wayland_proxy(instance_name) {
+                Ok(proxy_socket_path) => proxy_socket_path.to_string_lossy().into_owned(),
+                Err(error) => {
+                    eprintln!("Failed to prepare Snap Wayland proxy for {app_id}: {error}");
+                    return;
+                }
+            }
+        } else {
+            WAYLAND_DISPLAY_NAME.to_string()
+        };
+
         self.prepare_spawn_position();
-        if let Err(error) = spawn_argv(&command) {
+        if let Err(error) = spawn_argv_with_wayland_display(&command, &wayland_display) {
             eprintln!("Failed to launch {app_id}: {error}");
         }
     }

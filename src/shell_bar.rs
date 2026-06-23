@@ -80,7 +80,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
                     cx,
                 ))),
                 titlebar: None,
-                focus: false,
+                focus: true,
                 is_movable: false,
                 is_resizable: false,
                 is_minimizable: false,
@@ -141,7 +141,6 @@ impl ShellBar {
             .child(text)
             .on_click(cx.listener(|bar, _, window, cx| {
                 window.focus(&bar.focus_handle(cx));
-                cx.activate(true);
                 cx.notify();
             }))
     }
