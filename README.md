@@ -78,7 +78,7 @@ Dirty/event-driven render loop that skips GPU redraws when the scene is unchange
 Synthetic wl_output and xdg-output advertisement
 xdg-decoration advertisement with server-side decoration requests
 GPUI shell-client control bar
-Compositor-owned draggable title bars for server-side-decorated windows
+Compositor-owned draggable title bars only for explicitly server-side-decorated windows
 Spawn button for the built-in GTK accessibility test app
 Canvas viewport offset
 Half-screen pan targets

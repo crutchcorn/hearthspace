@@ -235,7 +235,7 @@ impl XdgShellHandler for App {
 
 impl XdgDecorationHandler for App {
     fn new_decoration(&mut self, toplevel: ToplevelSurface) {
-        self.set_window_decoration(&toplevel, WindowDecoration::ServerSide);
+        self.set_window_decoration(&toplevel, WindowDecoration::ClientSide);
         self.request_redraw();
     }
 
@@ -250,7 +250,7 @@ impl XdgDecorationHandler for App {
     }
 
     fn unset_mode(&mut self, toplevel: ToplevelSurface) {
-        self.set_window_decoration(&toplevel, WindowDecoration::ServerSide);
+        self.set_window_decoration(&toplevel, WindowDecoration::ClientSide);
         self.request_redraw();
     }
 }
@@ -600,7 +600,7 @@ fn position_for_new_window(kind: ManagedWindowKind, fallback: CanvasPoint) -> Ca
 
 fn decoration_for_new_window(kind: ManagedWindowKind) -> WindowDecoration {
     match kind {
-        ManagedWindowKind::Normal => WindowDecoration::ServerSide,
+        ManagedWindowKind::Normal => WindowDecoration::ClientSide,
         ManagedWindowKind::ShellBar => WindowDecoration::ClientSide,
     }
 }

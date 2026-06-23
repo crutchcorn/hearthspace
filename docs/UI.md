@@ -69,7 +69,7 @@ Keep these responsibilities in the compositor core:
 - Canvas viewport offset and scale.
 - Screen-space versus canvas-space placement policy.
 - Window decorations and primitive shell chrome.
-- Decoration policy, including respecting client-side decoration requests through xdg-decoration.
+- Decoration policy, defaulting normal windows to client-side chrome and enabling compositor chrome only for server-side decoration negotiation.
 - Input hit testing and forwarding.
 - Compositor-owned animation state.
 
