@@ -3,6 +3,9 @@ use std::time::Duration;
 pub const WAYLAND_DISPLAY_NAME: &str = "wayland-hearthspace-0";
 pub const DEFAULT_APP: &str = "foot";
 
+pub const KEYBOARD_REPEAT_DELAY_MS: i32 = 600;
+pub const KEYBOARD_REPEAT_RATE: i32 = 25;
+
 pub const CONTROL_BAR_HEIGHT: i32 = 48;
 pub const TITLE_BAR_HEIGHT: i32 = 30;
 pub const MIN_WINDOW_WIDTH: i32 = 260;

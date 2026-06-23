@@ -15,7 +15,8 @@ use crate::{
 use smithay::{
     backend::{
         input::{
-            AbsolutePositionEvent, ButtonState, InputEvent, KeyboardKeyEvent, PointerButtonEvent,
+            AbsolutePositionEvent, ButtonState, Event, InputEvent, KeyboardKeyEvent,
+            PointerButtonEvent,
         },
         renderer::{
             element::{
@@ -252,7 +253,11 @@ pub fn run_winit() -> Result<(), Box<dyn std::error::Error>> {
     let shm_state = ShmState::new::<App>(&dh, vec![]);
     let mut seat_state = SeatState::new();
     let mut seat = seat_state.new_wl_seat(&dh, "hearthspace");
-    let keyboard = seat.add_keyboard(Default::default(), 200, 200)?;
+    let keyboard = seat.add_keyboard(
+        Default::default(),
+        KEYBOARD_REPEAT_DELAY_MS,
+        KEYBOARD_REPEAT_RATE,
+    )?;
     let pointer = seat.add_pointer();
 
     let (mut backend, mut winit) = winit::init::<GlesRenderer>()?;
@@ -420,9 +425,9 @@ fn update_output_mode(output: &Output, size: Size<i32, Physical>) {
 }
 
 fn handle_input_event(state: &mut App, event: InputEvent<smithay::backend::winit::WinitInput>) {
-    let time = 0;
     match event {
         InputEvent::Keyboard { event } => {
+            let time = event.time_msec();
             let keyboard = state.keyboard.clone();
             keyboard.input::<(), _>(
                 state,
@@ -434,6 +439,7 @@ fn handle_input_event(state: &mut App, event: InputEvent<smithay::backend::winit
             );
         }
         InputEvent::PointerMotionAbsolute { event } => {
+            let time = event.time_msec();
             let location = event.position_transformed(state.output_size.to_logical(1));
             state.pointer_location = location;
 
@@ -470,6 +476,7 @@ fn handle_input_event(state: &mut App, event: InputEvent<smithay::backend::winit
             pointer.frame(state);
         }
         InputEvent::PointerButton { event } => {
+            let time = event.time_msec();
             let is_left_button = event.button() == Some(smithay::backend::input::MouseButton::Left);
 
             if is_left_button && event.state() == ButtonState::Released && state.drag.is_some() {
