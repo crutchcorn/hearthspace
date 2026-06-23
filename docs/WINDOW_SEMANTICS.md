@@ -32,6 +32,15 @@ The daemon tracks input events and surface damage. It introduces a dedicated met
 * **The `N-Minute` Threshold:** When a `Cached` window reaches `N` minutes of inactivity, the daemon triggers the Tiered Fallback Pipeline in the background, updating the vector store with the new window state.
 * **Separation of Concerns:** This metadata update occurs entirely independently of—and typically well before—any `Y-Minute` threshold designed to trigger aggressive process suspension (`SIGSTOP`).
 
+Current implementation status:
+* Hearthspace has a standalone timer-based per-window idle daemon in `src/idle.rs`.
+* Normal app windows are tracked individually by Hearthspace window ID; shell UI is excluded.
+* Idle levels are configured by `WINDOW_IDLE_THRESHOLDS` in `src/config.rs`.
+* Each level is measured from the previous level transition, not from original window creation.
+* Client input and client surface commits reset app-window idle state.
+* Compositor chrome interactions, such as title-bar drags and close-button clicks, do not count as app activity.
+* The daemon emits transition hooks; today they are logged, and later they should trigger the Tiered Fallback Pipeline for cached windows.
+
 ---
 
 ## 4. The Tiered Fallback Pipeline

@@ -82,6 +82,7 @@ Wayland client socket
 xdg-shell client acceptance
 GLES rendering path
 Dirty/event-driven render loop that skips GPU redraws when the scene is unchanged
+Timer-based per-window idle-state daemon with configurable idle levels
 Synthetic wl_output and xdg-output advertisement
 xdg-decoration advertisement with server-side decoration requests
 GPUI shell-client control bar

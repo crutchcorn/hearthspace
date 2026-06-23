@@ -28,5 +28,10 @@ pub const ZOOM_STEP: f64 = 1.25;
 pub const SCROLL_ZOOM_SENSITIVITY: f64 = 0.005;
 pub const WHEEL_SCROLL_PIXEL_EQUIVALENT: f64 = 40.0;
 pub const VIEWPORT_ANIMATION_DURATION: Duration = Duration::from_millis(180);
+pub const WINDOW_IDLE_THRESHOLDS: [Duration; 3] = [
+    Duration::from_secs(5 * 60),
+    Duration::from_secs(10 * 60),
+    Duration::from_secs(30 * 60),
+];
 
 pub const IDLE_SLEEP: Duration = Duration::from_millis(1);

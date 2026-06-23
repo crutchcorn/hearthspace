@@ -16,6 +16,7 @@ use crate::{
         interpolate_f64, rect_contains, screen_to_canvas as transform_screen_to_canvas,
         zoom_around_screen_point, CanvasPoint,
     },
+    idle::{ActivityReason, IdleTransition, WindowIdleDaemon},
     shell::{ShellCommand, SpawnTarget},
     RunOptions,
 };
@@ -151,6 +152,8 @@ struct App {
     viewport_animation: Option<ViewportAnimation>,
     windows: Vec<ManagedWindow>,
     next_window_id: u64,
+    idle_daemon: WindowIdleDaemon,
+    focused_normal_window_id: Option<u64>,
     drag: Option<DragState>,
     next_spawn_position: CanvasPoint,
     spawn_offset: i32,
@@ -181,6 +184,9 @@ impl XdgShellHandler for App {
             kind,
             decoration: decoration_for_new_window(kind),
         });
+        if kind == ManagedWindowKind::Normal {
+            self.idle_daemon.register_window(id);
+        }
         self.output.enter(surface.wl_surface());
         self.request_redraw();
 
@@ -204,8 +210,7 @@ impl XdgShellHandler for App {
 
         let window_index = self.raise_window(window_index);
         let surface = self.windows[window_index].surface.wl_surface().clone();
-        let keyboard = self.keyboard.clone();
-        keyboard.set_focus(self, Some(surface), Serial::from(0));
+        self.set_keyboard_focus_to_window(window_index, surface);
         self.drag = Some(DragState {
             window_index,
             pointer_start: self.pointer_location,
@@ -225,6 +230,12 @@ impl XdgShellHandler for App {
     }
 
     fn toplevel_destroyed(&mut self, surface: ToplevelSurface) {
+        if let Some(window) = self.windows.iter().find(|window| window.surface == surface) {
+            self.idle_daemon.unregister_window(window.id);
+            if self.focused_normal_window_id == Some(window.id) {
+                self.focused_normal_window_id = None;
+            }
+        }
         self.windows.retain(|window| window.surface != surface);
         self.drag = None;
         self.request_redraw();
@@ -238,10 +249,19 @@ impl XdgShellHandler for App {
             .position(|window| window.surface == surface)
         {
             let mut window = self.windows.remove(window_index);
+            let old_kind = window.kind;
             window.kind = kind;
             window.position = position_for_new_window(kind, window.position);
             if kind == ManagedWindowKind::ShellBar {
                 window.decoration = WindowDecoration::ClientSide;
+            }
+            if old_kind == ManagedWindowKind::Normal && kind != ManagedWindowKind::Normal {
+                self.idle_daemon.unregister_window(window.id);
+                if self.focused_normal_window_id == Some(window.id) {
+                    self.focused_normal_window_id = None;
+                }
+            } else if old_kind != ManagedWindowKind::Normal && kind == ManagedWindowKind::Normal {
+                self.idle_daemon.register_window(window.id);
             }
             let insert_index = match kind {
                 ManagedWindowKind::Normal => self.normal_insert_index(),
@@ -306,6 +326,10 @@ impl CompositorHandler for App {
 
     fn commit(&mut self, surface: &WlSurface) {
         on_commit_buffer_handler::<Self>(surface);
+        if let Some(window_id) = self.managed_normal_window_id_for_surface(surface) {
+            self.idle_daemon
+                .record_activity(window_id, ActivityReason::SurfaceCommit);
+        }
         self.request_redraw();
     }
 }
@@ -377,6 +401,8 @@ pub fn run_winit(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> 
         viewport_animation: None,
         windows: Vec::new(),
         next_window_id: 1,
+        idle_daemon: WindowIdleDaemon::new(WINDOW_IDLE_THRESHOLDS),
+        focused_normal_window_id: None,
         drag: None,
         next_spawn_position: CanvasPoint { x: 80, y: 96 },
         spawn_offset: 0,
@@ -434,6 +460,7 @@ pub fn run_winit(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> 
         process_shell_commands(&mut state, &command_listener)?;
 
         display.dispatch_clients(&mut state)?;
+        state.handle_idle_transitions();
         display.flush_clients()?;
         state.output.cleanup();
         state.advance_viewport_animation();
@@ -671,6 +698,7 @@ fn handle_input_event(state: &mut App, event: InputEvent<smithay::backend::winit
     match event {
         InputEvent::Keyboard { event } => {
             let time = event.time_msec();
+            state.record_focused_client_activity(ActivityReason::ClientInput);
             let keyboard = state.keyboard.clone();
             keyboard.input::<(), _>(
                 state,
@@ -700,10 +728,16 @@ fn handle_input_event(state: &mut App, event: InputEvent<smithay::backend::winit
 
             let focus = match state.hit_test(location) {
                 Some(HitTarget::Client {
+                    window_index,
                     surface,
                     surface_location,
-                    ..
-                }) => Some((surface, surface_location)),
+                }) => {
+                    state.record_client_activity_for_window_index(
+                        window_index,
+                        ActivityReason::ClientInput,
+                    );
+                    Some((surface, surface_location))
+                }
                 _ => None,
             };
             let pointer = state.pointer.clone();
@@ -737,8 +771,7 @@ fn handle_input_event(state: &mut App, event: InputEvent<smithay::backend::winit
                     Some(HitTarget::TitleBar { window_index }) => {
                         let window_index = state.raise_window(window_index);
                         let surface = state.windows[window_index].surface.wl_surface().clone();
-                        let keyboard = state.keyboard.clone();
-                        keyboard.set_focus(state, Some(surface), Serial::from(0));
+                        state.set_keyboard_focus_to_window(window_index, surface);
                         state.drag = Some(DragState {
                             window_index,
                             pointer_start: state.pointer_location,
@@ -750,12 +783,10 @@ fn handle_input_event(state: &mut App, event: InputEvent<smithay::backend::winit
                     Some(HitTarget::Client { window_index, .. }) => {
                         let window_index = state.raise_window(window_index);
                         let surface = state.windows[window_index].surface.wl_surface().clone();
-                        let keyboard = state.keyboard.clone();
-                        keyboard.set_focus(state, Some(surface), Serial::from(0));
+                        state.set_keyboard_focus_to_window(window_index, surface);
                     }
                     None => {
-                        let keyboard = state.keyboard.clone();
-                        keyboard.set_focus(state, Option::<WlSurface>::None, Serial::from(0));
+                        state.clear_keyboard_focus();
                     }
                 }
             } else if is_left_button
@@ -770,17 +801,24 @@ fn handle_input_event(state: &mut App, event: InputEvent<smithay::backend::winit
 
             let focus = match state.hit_test(state.pointer_location) {
                 Some(HitTarget::Client {
+                    window_index,
                     surface,
                     surface_location,
-                    ..
-                }) => Some((surface, surface_location)),
+                }) => {
+                    state.record_client_activity_for_window_index(
+                        window_index,
+                        ActivityReason::ClientInput,
+                    );
+                    Some((surface, surface_location))
+                }
                 _ => None,
             };
 
             if let Some((surface, _)) = focus.clone() {
                 if event.state() == ButtonState::Pressed {
-                    let keyboard = state.keyboard.clone();
-                    keyboard.set_focus(state, Some(surface), Serial::from(0));
+                    if let Some(window_index) = state.window_index_for_surface(&surface) {
+                        state.set_keyboard_focus_to_window(window_index, surface);
+                    }
                 }
             } else if is_left_button && event.state() == ButtonState::Pressed {
                 return;
@@ -801,6 +839,15 @@ fn handle_input_event(state: &mut App, event: InputEvent<smithay::backend::winit
         InputEvent::PointerAxis { event } => {
             if state.scroll_zoom_active() && state.zoom_from_scroll(&event) {
                 return;
+            }
+
+            if let Some(HitTarget::Client { window_index, .. }) =
+                state.hit_test(state.pointer_location)
+            {
+                state.record_client_activity_for_window_index(
+                    window_index,
+                    ActivityReason::ClientInput,
+                );
             }
 
             let time = event.time_msec();
@@ -942,6 +989,55 @@ impl App {
             }
         }
         self.request_redraw();
+    }
+
+    fn set_keyboard_focus_to_window(&mut self, window_index: usize, surface: WlSurface) {
+        self.focused_normal_window_id = (self.windows[window_index].kind
+            == ManagedWindowKind::Normal)
+            .then_some(self.windows[window_index].id);
+        let keyboard = self.keyboard.clone();
+        keyboard.set_focus(self, Some(surface), Serial::from(0));
+    }
+
+    fn clear_keyboard_focus(&mut self) {
+        self.focused_normal_window_id = None;
+        let keyboard = self.keyboard.clone();
+        keyboard.set_focus(self, Option::<WlSurface>::None, Serial::from(0));
+    }
+
+    fn record_client_activity_for_window_index(&self, window_index: usize, reason: ActivityReason) {
+        let Some(window) = self.windows.get(window_index) else {
+            return;
+        };
+        if window.kind == ManagedWindowKind::Normal {
+            self.idle_daemon.record_activity(window.id, reason);
+        }
+    }
+
+    fn record_focused_client_activity(&self, reason: ActivityReason) {
+        if let Some(window_id) = self.focused_normal_window_id {
+            self.idle_daemon.record_activity(window_id, reason);
+        }
+    }
+
+    fn window_index_for_surface(&self, surface: &WlSurface) -> Option<usize> {
+        self.windows
+            .iter()
+            .position(|window| surface_tree_contains(window.surface.wl_surface(), surface))
+    }
+
+    fn managed_normal_window_id_for_surface(&self, surface: &WlSurface) -> Option<u64> {
+        self.windows.iter().find_map(|window| {
+            (window.kind == ManagedWindowKind::Normal
+                && surface_tree_contains(window.surface.wl_surface(), surface))
+            .then_some(window.id)
+        })
+    }
+
+    fn handle_idle_transitions(&self) {
+        for transition in self.idle_daemon.drain_transitions() {
+            log_idle_transition(transition);
+        }
     }
 
     fn accessibility_window_snapshot(&self) -> Vec<ManagedWindowAccessibilityInfo> {
@@ -1396,6 +1492,32 @@ fn send_frames_surface_tree(surface: &wl_surface::WlSurface, time: u32) {
             }
         },
         |_, _, &()| true,
+    );
+}
+
+fn surface_tree_contains(root: &wl_surface::WlSurface, target: &wl_surface::WlSurface) -> bool {
+    let mut contains = false;
+    with_surface_tree_downward(
+        root,
+        (),
+        |surface, _, &()| {
+            if surface == target {
+                contains = true;
+                TraversalAction::Break
+            } else {
+                TraversalAction::DoChildren(())
+            }
+        },
+        |_, _, &()| {},
+        |_, _, &()| true,
+    );
+    contains
+}
+
+fn log_idle_transition(transition: IdleTransition) {
+    println!(
+        "Window {} idle transition: {:?} -> {:?} ({:?})",
+        transition.window_id, transition.from, transition.to, transition.reason
     );
 }
 
