@@ -96,7 +96,7 @@ Still intentionally rough:
 ```text
 No window resizing yet
 Zoom supports shell buttons and Super-modified scroll, but there is no pinch gesture zoom yet
-AT-SPI logging is scoped by matching Hearthspace-managed window app IDs/titles against the session accessibility tree; this is a heuristic until windows have direct AT-SPI object references
+AT-SPI logging is scoped by matching Hearthspace-managed window app IDs/titles against AT-SPI application roots; this is a heuristic until windows have direct AT-SPI object references
 Several optional desktop protocols are not implemented yet, so clients may print warnings
 ```
 

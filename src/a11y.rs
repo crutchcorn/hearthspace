@@ -78,19 +78,13 @@ async fn log_accessibility_tree_async(
             window.id, window.app_id, window.title
         );
 
-        let mut matches = Vec::new();
-        for application in &application_summaries {
-            if accessible_matches_window(application, &window)
-                || accessible_tree_contains_window_match(
-                    &connection,
-                    application.object.clone(),
-                    &window,
-                )
-                .await
-            {
-                matches.push(application);
-            }
-        }
+        let matches = application_summaries
+            .iter()
+            .filter(|application| {
+                !is_desktop_shell_root(application)
+                    && accessible_matches_window(application, &window)
+            })
+            .collect::<Vec<_>>();
 
         if matches.is_empty() {
             println!("  no matching AT-SPI application root found");
@@ -134,37 +128,6 @@ async fn summarize_accessible(
     }
 }
 
-async fn accessible_tree_contains_window_match(
-    connection: &AccessibilityConnection,
-    object: ObjectRefOwned,
-    window: &ManagedWindowAccessibilityInfo,
-) -> bool {
-    let mut stack = vec![object];
-    let mut visited = 0;
-
-    while let Some(object) = stack.pop() {
-        if visited >= MAX_A11Y_NODES {
-            break;
-        }
-        visited += 1;
-
-        let Ok(proxy) = connection.object_as_accessible(&object).await else {
-            continue;
-        };
-
-        let summary = summarize_accessible(&proxy, object).await;
-        if accessible_matches_window(&summary, window) {
-            return true;
-        }
-
-        if let Ok(children) = proxy.get_children().await {
-            stack.extend(children);
-        }
-    }
-
-    false
-}
-
 fn accessible_matches_window(
     accessible: &AccessibleNodeSummary,
     window: &ManagedWindowAccessibilityInfo,
@@ -177,6 +140,10 @@ fn accessible_matches_window(
             .title
             .as_deref()
             .is_some_and(|title| accessible_matches_term(accessible, title))
+}
+
+fn is_desktop_shell_root(accessible: &AccessibleNodeSummary) -> bool {
+    matches!(accessible.name.as_str(), "gnome-shell" | "plasmashell")
 }
 
 fn accessible_matches_term(accessible: &AccessibleNodeSummary, term: &str) -> bool {
