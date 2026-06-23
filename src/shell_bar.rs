@@ -7,15 +7,16 @@ use gpui::{
 
 use crate::{
     config::{CONTROL_BAR_HEIGHT, SHELL_BAR_APP_ID, SHELL_COMMAND_SOCKET_ENV},
-    shell::ShellCommand,
+    shell::{ShellCommand, SpawnTarget},
 };
 
 struct ShellBar {
     command_socket: PathBuf,
+    spawn_menu_open: bool,
 }
 
 impl Render for ShellBar {
-    fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let mut row = div()
             .flex()
             .items_center()
@@ -25,11 +26,29 @@ impl Render for ShellBar {
             .bg(rgb(0x191e29))
             .text_color(rgb(0xeaf2ff));
 
-        for command in ShellCommand::ALL {
+        row = row.child(spawn_dropdown(
+            self.command_socket.clone(),
+            self.spawn_menu_open,
+            cx,
+        ));
+
+        for command in [
+            ShellCommand::PanLeft,
+            ShellCommand::PanRight,
+            ShellCommand::PanUp,
+            ShellCommand::PanDown,
+            ShellCommand::ZoomIn,
+            ShellCommand::ZoomOut,
+            ShellCommand::LogAccessibilityTree,
+        ] {
             let command_socket = self.command_socket.clone();
-            row = row.child(shell_button(command, move || {
-                send_command(&command_socket, command);
-            }));
+            row = row.child(shell_button(
+                command.wire_name(),
+                command.label(),
+                move || {
+                    send_command(&command_socket, command);
+                },
+            ));
         }
 
         row
@@ -61,6 +80,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             |_, cx| {
                 cx.new(|_| ShellBar {
                     command_socket: command_socket.clone(),
+                    spawn_menu_open: false,
                 })
             },
         )
@@ -70,9 +90,55 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-fn shell_button(command: ShellCommand, on_click: impl Fn() + 'static) -> impl IntoElement {
+fn spawn_dropdown(
+    command_socket: PathBuf,
+    is_open: bool,
+    cx: &mut Context<ShellBar>,
+) -> impl IntoElement {
+    let mut group = div().flex().items_center().gap_1().flex_none();
+
+    group = group.child(
+        div()
+            .id("spawn-dropdown")
+            .flex_none()
+            .px_3()
+            .py_1()
+            .rounded_sm()
+            .bg(rgb(0x43506d))
+            .hover(|this| this.bg(rgb(0x506080)))
+            .active(|this| this.opacity(0.82))
+            .cursor_pointer()
+            .child(if is_open { "SPAWN ^" } else { "SPAWN v" })
+            .on_click(cx.listener(|bar, _, _, cx| {
+                bar.spawn_menu_open = !bar.spawn_menu_open;
+                cx.notify();
+            })),
+    );
+
+    if is_open {
+        for target in SpawnTarget::ALL {
+            let command = ShellCommand::Spawn(target);
+            let command_socket = command_socket.clone();
+            group = group.child(shell_button(
+                target.wire_name(),
+                target.label(),
+                move || {
+                    send_command(&command_socket, command);
+                },
+            ));
+        }
+    }
+
+    group
+}
+
+fn shell_button(
+    id: &'static str,
+    label: &'static str,
+    on_click: impl Fn() + 'static,
+) -> impl IntoElement {
     div()
-        .id(command.wire_name())
+        .id(id)
         .flex_none()
         .px_3()
         .py_1()
@@ -81,7 +147,7 @@ fn shell_button(command: ShellCommand, on_click: impl Fn() + 'static) -> impl In
         .hover(|this| this.bg(rgb(0x3a4660)))
         .active(|this| this.opacity(0.82))
         .cursor_pointer()
-        .child(command.label())
+        .child(label)
         .on_click(move |_, _, _| on_click())
 }
 

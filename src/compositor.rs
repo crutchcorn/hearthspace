@@ -16,7 +16,7 @@ use crate::{
         interpolate_f64, rect_contains, screen_to_canvas as transform_screen_to_canvas,
         zoom_around_screen_point, CanvasPoint,
     },
-    shell::ShellCommand,
+    shell::{ShellCommand, SpawnTarget},
     RunOptions,
 };
 
@@ -867,7 +867,8 @@ impl App {
         self.advance_viewport_animation();
 
         match action {
-            ShellCommand::SpawnApp => self.spawn_app(),
+            ShellCommand::Spawn(SpawnTarget::A11yTest) => self.spawn_a11y_test(),
+            ShellCommand::Spawn(SpawnTarget::Foot) => self.spawn_foot(),
             ShellCommand::PanLeft => self.pan_viewport_by(-self.horizontal_pan_step(), 0),
             ShellCommand::PanRight => self.pan_viewport_by(self.horizontal_pan_step(), 0),
             ShellCommand::PanUp => self.pan_viewport_by(0, -self.vertical_pan_step()),
@@ -893,7 +894,7 @@ impl App {
             .collect()
     }
 
-    fn spawn_app(&mut self) {
+    fn prepare_spawn_position(&mut self) {
         self.next_spawn_position = CanvasPoint {
             x: self.viewport_offset.x
                 + (f64::from(self.output_size.w) / 2.0 / self.viewport_scale).round() as i32
@@ -905,6 +906,10 @@ impl App {
                 + self.spawn_offset,
         };
         self.spawn_offset = (self.spawn_offset + SPAWN_OFFSET_STEP) % SPAWN_OFFSET_WRAP;
+    }
+
+    fn spawn_a11y_test(&mut self) {
+        self.prepare_spawn_position();
 
         let current_exe = match env::current_exe() {
             Ok(path) => path,
@@ -922,6 +927,18 @@ impl App {
         {
             Ok(_) => {}
             Err(error) => eprintln!("Failed to spawn GTK test app: {error}"),
+        }
+    }
+
+    fn spawn_foot(&mut self) {
+        self.prepare_spawn_position();
+
+        match Command::new("foot")
+            .env("WAYLAND_DISPLAY", WAYLAND_DISPLAY_NAME)
+            .spawn()
+        {
+            Ok(_) => {}
+            Err(error) => eprintln!("Failed to spawn foot: {error}"),
         }
     }
 

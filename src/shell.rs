@@ -1,6 +1,38 @@
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SpawnTarget {
+    A11yTest,
+    Foot,
+}
+
+impl SpawnTarget {
+    pub const ALL: [Self; 2] = [Self::A11yTest, Self::Foot];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::A11yTest => "A11yTest",
+            Self::Foot => "Foot",
+        }
+    }
+
+    pub fn wire_name(self) -> &'static str {
+        match self {
+            Self::A11yTest => "a11y-test",
+            Self::Foot => "foot",
+        }
+    }
+
+    pub fn parse(input: &str) -> Option<Self> {
+        Some(match input {
+            "a11y-test" => Self::A11yTest,
+            "foot" => Self::Foot,
+            _ => return None,
+        })
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ShellCommand {
-    SpawnApp,
+    Spawn(SpawnTarget),
     PanLeft,
     PanRight,
     PanUp,
@@ -11,8 +43,9 @@ pub enum ShellCommand {
 }
 
 impl ShellCommand {
-    pub const ALL: [Self; 8] = [
-        Self::SpawnApp,
+    pub const ALL: [Self; 9] = [
+        Self::Spawn(SpawnTarget::A11yTest),
+        Self::Spawn(SpawnTarget::Foot),
         Self::PanLeft,
         Self::PanRight,
         Self::PanUp,
@@ -24,7 +57,7 @@ impl ShellCommand {
 
     pub fn label(self) -> &'static str {
         match self {
-            Self::SpawnApp => "SPAWN",
+            Self::Spawn(target) => target.label(),
             Self::PanLeft => "LEFT",
             Self::PanRight => "RIGHT",
             Self::PanUp => "UP",
@@ -37,7 +70,8 @@ impl ShellCommand {
 
     pub fn wire_name(self) -> &'static str {
         match self {
-            Self::SpawnApp => "spawn",
+            Self::Spawn(SpawnTarget::A11yTest) => "spawn a11y-test",
+            Self::Spawn(SpawnTarget::Foot) => "spawn foot",
             Self::PanLeft => "pan-left",
             Self::PanRight => "pan-right",
             Self::PanUp => "pan-up",
@@ -49,8 +83,11 @@ impl ShellCommand {
     }
 
     pub fn parse(input: &str) -> Option<Self> {
-        Some(match input.trim() {
-            "spawn" => Self::SpawnApp,
+        let mut parts = input.split_whitespace();
+        let command = parts.next()?;
+
+        Some(match command {
+            "spawn" => Self::Spawn(SpawnTarget::parse(parts.next()?)?),
             "pan-left" => Self::PanLeft,
             "pan-right" => Self::PanRight,
             "pan-up" => Self::PanUp,

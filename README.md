@@ -28,16 +28,17 @@ Spawned child applications receive this `WAYLAND_DISPLAY` and connect back to He
 
 ## Test The PoC
 
-The top control bar is a GPUI shell client with eight labeled buttons:
+The top control bar is a GPUI shell client with a spawn dropdown plus global controls:
 
 ```text
-SPAWN | LEFT | RIGHT | UP | DOWN | ZOOM+ | ZOOM- | LOG
+SPAWN v | LEFT | RIGHT | UP | DOWN | ZOOM+ | ZOOM- | LOG
 ```
 
 Use them to:
 
 ```text
-SPAWN: spawn the built-in GTK accessibility test app inside Hearthspace
+SPAWN > A11yTest: spawn the built-in GTK accessibility test app inside Hearthspace
+SPAWN > Foot: spawn a Foot terminal inside Hearthspace
 left/right/up/down: pan the canvas by half the compositor window size
 ZOOM+/ZOOM-: zoom the canvas in and out around the viewport center
 LOG: print AT-SPI accessibility trees for Hearthspace-managed windows to the compositor log
@@ -79,7 +80,7 @@ Synthetic wl_output and xdg-output advertisement
 xdg-decoration advertisement with server-side decoration requests
 GPUI shell-client control bar
 Compositor-owned draggable title bars only for explicitly server-side-decorated windows
-Spawn button for the built-in GTK accessibility test app
+Spawn dropdown for the built-in GTK accessibility test app and Foot
 Canvas viewport offset
 Half-screen pan targets
 Animated pan buttons
