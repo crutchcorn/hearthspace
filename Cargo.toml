@@ -1,0 +1,11 @@
+[package]
+name = "hearthspace"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.80.1"
+
+[dependencies]
+smithay = { version = "0.7.0", default-features = false, features = ["backend_winit", "renderer_gl", "wayland_frontend"] }
+tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
+wayland-protocols = { version = "0.32.8", features = ["server"] }
+wayland-server = "0.31.9"
