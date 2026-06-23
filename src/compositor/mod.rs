@@ -35,8 +35,10 @@ use smithay::{
     input::{Seat, SeatHandler, SeatState, keyboard::KeyboardHandle, pointer::PointerHandle},
     output::{Mode, Output, PhysicalProperties, Scale, Subpixel},
     reexports::{
+        calloop::{
+            EventLoop, Interest, Mode as CalloopMode, PostAction, generic::Generic,
+        },
         wayland_server::{Display, protocol::wl_seat},
-        winit::platform::pump_events::PumpStatus,
     },
     utils::{Logical, Physical, Point, Rectangle, Serial, Size, Transform},
     wayland::{
@@ -54,12 +56,13 @@ use smithay::{
             decoration::{XdgDecorationHandler, XdgDecorationState},
         },
         shm::{ShmHandler, ShmState},
+        socket::ListeningSocketSource,
     },
 };
 use wayland_protocols::xdg::decoration::zv1::server::zxdg_toplevel_decoration_v1::Mode as DecorationMode;
 use wayland_protocols::xdg::shell::server::xdg_toplevel;
 use wayland_server::{
-    Client, DisplayHandle, ListeningSocket,
+    Client, DisplayHandle,
     backend::{ClientData, ClientId, DisconnectReason},
     protocol::{wl_buffer, wl_surface::WlSurface},
 };
@@ -347,11 +350,11 @@ pub fn run_winit(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> 
     )?;
     let pointer = seat.add_pointer();
 
-    let (mut backend, mut winit) = winit::init::<GlesRenderer>()?;
+    let (backend, winit) = winit::init::<GlesRenderer>()?;
     let output_size = backend.window_size();
     let output = create_output(&dh, output_size);
 
-    let mut state = App {
+    let state = App {
         compositor_state,
         xdg_shell_state: XdgShellState::new_with_capabilities::<App>(
             &dh,
@@ -383,112 +386,178 @@ pub fn run_winit(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> 
         needs_redraw: true,
     };
 
-    let listener = ListeningSocket::bind(WAYLAND_DISPLAY_NAME)?;
     let command_socket_path = command_socket_path();
     remove_stale_socket(&command_socket_path)?;
     let command_listener = CommandListener::bind(&command_socket_path)?;
     command_listener.set_nonblocking(true)?;
-    spawn_shell_bar(&command_socket_path);
 
-    let mut clients = Vec::new();
-    let start_time = std::time::Instant::now();
+    let mut event_loop: EventLoop<CalloopData> = EventLoop::try_new()?;
+    let handle = event_loop.handle();
+
+    // Accept new Wayland clients (epoll-driven instead of polled).
+    let socket_source = ListeningSocketSource::with_name(WAYLAND_DISPLAY_NAME)?;
+    handle.insert_source(socket_source, |stream, _, data| {
+        if let Err(error) = data
+            .display
+            .handle()
+            .insert_client(stream, Arc::new(ClientState::default()))
+        {
+            eprintln!("Failed to insert Wayland client: {error}");
+        }
+        data.state.request_redraw();
+    })?;
+
+    // Dispatch client requests when the Wayland display fd becomes readable.
+    let display_fd = display.backend().poll_fd().try_clone_to_owned()?;
+    handle.insert_source(
+        Generic::new(display_fd, Interest::READ, CalloopMode::Level),
+        |_, _, data| {
+            let CalloopData { state, display, .. } = data;
+            display.dispatch_clients(state)?;
+            Ok(PostAction::Continue)
+        },
+    )?;
+
+    // Process shell commands when the command socket becomes readable.
+    handle.insert_source(
+        Generic::new(command_listener, Interest::READ, CalloopMode::Level),
+        |_, listener, data| {
+            process_shell_commands(&mut data.state, listener)?;
+            Ok(PostAction::Continue)
+        },
+    )?;
+
+    // Winit drives input and resize events; it is itself a calloop event source.
+    handle.insert_source(winit, |event, _, data| match event {
+        WinitEvent::Resized { size, .. } => {
+            if size != data.state.output_size {
+                data.state.output_size = size;
+                update_output_mode(&data.state.output, size);
+                data.state.configure_shell_bars();
+                data.state.request_redraw();
+            }
+        }
+        WinitEvent::Input(event) => handle_input_event(&mut data.state, event),
+        WinitEvent::Redraw => data.state.request_redraw(),
+        WinitEvent::CloseRequested => data.running = false,
+        WinitEvent::Focus(_) => {}
+    })?;
+
+    spawn_shell_bar(&command_socket_path);
 
     println!("Hearthspace running on WAYLAND_DISPLAY={WAYLAND_DISPLAY_NAME}");
     if state.scroll_zooms_without_super {
         println!("Scroll zoom testing mode enabled: vertical scroll zooms without Super");
     }
 
-    loop {
-        let status = winit.dispatch_new_events(|event| match event {
-            WinitEvent::Resized { .. } => state.request_redraw(),
-            WinitEvent::Input(event) => handle_input_event(&mut state, event),
-            _ => (),
-        });
+    let mut data = CalloopData {
+        state,
+        display,
+        backend: Backend::Winit(backend),
+        start_time: std::time::Instant::now(),
+        running: true,
+    };
 
-        match status {
-            PumpStatus::Continue => (),
-            PumpStatus::Exit(_) => return Ok(()),
-        };
+    data.render()?;
 
-        let output_size = backend.window_size();
-        if output_size != state.output_size {
-            state.output_size = output_size;
-            update_output_mode(&state.output, output_size);
-            state.configure_shell_bars();
-            state.request_redraw();
+    while data.running {
+        // Block until an event arrives; while animating, wake every frame.
+        let timeout = data
+            .state
+            .viewport_animation
+            .is_some()
+            .then_some(ANIMATION_FRAME_INTERVAL);
+        event_loop.dispatch(timeout, &mut data)?;
+
+        if !data.running {
+            break;
         }
 
-        while let Some(stream) = listener.accept()? {
-            println!("Got a client: {stream:?}");
-            let client = display
-                .handle()
-                .insert_client(stream, Arc::new(ClientState::default()))?;
-            clients.push(client);
-            state.request_redraw();
+        data.state.handle_idle_transitions();
+        data.state.advance_viewport_animation();
+
+        if data.state.needs_redraw {
+            data.render()?;
+            data.state.needs_redraw = false;
         }
 
-        process_shell_commands(&mut state, &command_listener)?;
+        data.display.flush_clients()?;
+        data.state.output.cleanup();
+    }
 
-        display.dispatch_clients(&mut state)?;
-        state.handle_idle_transitions();
-        display.flush_clients()?;
-        state.output.cleanup();
-        state.advance_viewport_animation();
+    Ok(())
+}
 
-        if state.needs_redraw {
-            let damage = Rectangle::from_size(state.output_size);
+enum Backend {
+    Winit(smithay::backend::winit::WinitGraphicsBackend<GlesRenderer>),
+}
+
+struct CalloopData {
+    state: App,
+    display: Display<App>,
+    backend: Backend,
+    start_time: std::time::Instant,
+    running: bool,
+}
+
+impl CalloopData {
+    fn render(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        let CalloopData {
+            state,
+            display,
+            backend,
+            start_time,
+            ..
+        } = self;
+        let Backend::Winit(backend) = backend;
+
+        let damage = Rectangle::from_size(state.output_size);
+        {
+            let (renderer, mut framebuffer) = backend.bind()?;
+            let window_elements = (0..state.windows.len())
+                .map(|index| {
+                    (
+                        state.window_render_elements(renderer, index),
+                        state.window_render_scale(index),
+                    )
+                })
+                .collect::<Vec<_>>();
+            let title_bar_elements = (0..state.windows.len())
+                .map(|index| state.title_bar_elements(index))
+                .collect::<Vec<_>>();
+
+            let mut frame =
+                renderer.render(&mut framebuffer, state.output_size, Transform::Flipped180)?;
+            frame.clear(Color32F::new(0.04, 0.05, 0.07, 1.0), &[damage])?;
+            for ((window_elements, window_scale), title_bar_elements) in
+                window_elements.iter().zip(&title_bar_elements)
             {
-                let (renderer, mut framebuffer) = backend.bind()?;
-                let window_elements = (0..state.windows.len())
-                    .map(|index| {
-                        (
-                            state.window_render_elements(renderer, index),
-                            state.window_render_scale(index),
-                        )
-                    })
-                    .collect::<Vec<_>>();
-                let title_bar_elements = (0..state.windows.len())
-                    .map(|index| state.title_bar_elements(index))
-                    .collect::<Vec<_>>();
-
-                let mut frame =
-                    renderer.render(&mut framebuffer, state.output_size, Transform::Flipped180)?;
-                frame.clear(Color32F::new(0.04, 0.05, 0.07, 1.0), &[damage])?;
-                for ((window_elements, window_scale), title_bar_elements) in
-                    window_elements.iter().zip(&title_bar_elements)
-                {
-                    draw_render_elements::<GlesRenderer, _, _>(
-                        &mut frame,
-                        *window_scale,
-                        window_elements,
-                        &[damage],
-                    )?;
-                    draw_render_elements::<GlesRenderer, _, _>(
-                        &mut frame,
-                        1.0,
-                        title_bar_elements,
-                        &[damage],
-                    )?;
-                }
-                let _ = frame.finish()?;
+                draw_render_elements::<GlesRenderer, _, _>(
+                    &mut frame,
+                    *window_scale,
+                    window_elements,
+                    &[damage],
+                )?;
+                draw_render_elements::<GlesRenderer, _, _>(
+                    &mut frame,
+                    1.0,
+                    title_bar_elements,
+                    &[damage],
+                )?;
             }
-
-            for window in &state.windows {
-                send_frames_surface_tree(
-                    window.surface.wl_surface(),
-                    start_time.elapsed().as_millis() as u32,
-                );
-            }
-
-            display.flush_clients()?;
-            backend.submit(Some(&[damage]))?;
-            state.needs_redraw = false;
-            if state.viewport_animation.is_some() {
-                state.request_redraw();
-            }
-        } else {
-            std::thread::sleep(IDLE_SLEEP);
+            let _ = frame.finish()?;
         }
+
+        for window in &state.windows {
+            send_frames_surface_tree(
+                window.surface.wl_surface(),
+                start_time.elapsed().as_millis() as u32,
+            );
+        }
+
+        display.flush_clients()?;
+        backend.submit(Some(&[damage]))?;
+        Ok(())
     }
 }
 

@@ -34,4 +34,4 @@ pub const WINDOW_IDLE_THRESHOLDS: [Duration; 3] = [
     Duration::from_secs(30 * 60),
 ];
 
-pub const IDLE_SLEEP: Duration = Duration::from_millis(1);
+pub const ANIMATION_FRAME_INTERVAL: Duration = Duration::from_millis(16);
