@@ -27,11 +27,20 @@ The top control bar has five labeled buttons:
 Use them to:
 
 ```text
-+: spawn a foot terminal inside Hearthspace
+SPAWN: spawn a foot terminal inside Hearthspace
 left/right/up/down: pan the canvas by half the compositor window size
 ```
 
 Spawned app windows are rendered in canvas coordinates. Panning changes the viewport offset, moving all client windows together relative to the visible compositor window.
+
+Window interaction:
+
+```text
+Left click app content: focus and interact with the app
+Left click title bar: focus and raise the window
+Left drag title bar: move the window on the canvas
+SPAWN: place the new window near the current viewport center
+```
 
 ## Current Scope
 
@@ -43,11 +52,14 @@ Wayland client socket
 xdg-shell client acceptance
 GLES rendering path
 Synthetic wl_output and xdg-output advertisement
+xdg-decoration advertisement with server-side decoration requests
 Compositor-owned control bar
+Compositor-owned draggable title bars
 Spawn button for foot
 Canvas viewport offset
 Half-screen pan buttons
-Basic keyboard/pointer forwarding to client surfaces
+Window focus, raise, and title-bar dragging
+Input-region-aware pointer forwarding to client surfaces
 ```
 
 Still intentionally rough:
@@ -55,8 +67,7 @@ Still intentionally rough:
 ```text
 Button labels use a tiny compositor-drawn block font instead of real text rendering
 Closed windows are not cleaned out of the simple position list yet
-Surface hit testing is minimal
-No window dragging/resizing yet
+No window resizing yet
 No DRM/KMS full desktop session yet
 Several optional desktop protocols are not implemented yet, so clients may print warnings
 ```

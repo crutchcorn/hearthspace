@@ -18,7 +18,11 @@ use smithay::{
         winit::{self, WinitEvent},
     },
     delegate_compositor, delegate_data_device, delegate_output, delegate_seat, delegate_shm,
-    delegate_xdg_shell,
+    delegate_xdg_decoration, delegate_xdg_shell,
+    desktop::{
+        utils::{bbox_from_surface_tree, under_from_surface_tree},
+        WindowSurfaceType,
+    },
     input::{
         keyboard::{FilterResult, KeyboardHandle},
         pointer::{ButtonEvent, MotionEvent, PointerHandle},
@@ -44,11 +48,13 @@ use smithay::{
             SelectionHandler,
         },
         shell::xdg::{
+            decoration::{XdgDecorationHandler, XdgDecorationState},
             PopupSurface, PositionerState, ToplevelSurface, XdgShellHandler, XdgShellState,
         },
         shm::{ShmHandler, ShmState},
     },
 };
+use wayland_protocols::xdg::decoration::zv1::server::zxdg_toplevel_decoration_v1::Mode as DecorationMode;
 use wayland_protocols::xdg::shell::server::xdg_toplevel;
 use wayland_server::{
     backend::{ClientData, ClientId, DisconnectReason},
@@ -62,6 +68,10 @@ use wayland_server::{
 const WAYLAND_DISPLAY_NAME: &str = "wayland-hearthspace-0";
 const DEFAULT_APP: &str = "foot";
 const CONTROL_BAR_HEIGHT: i32 = 48;
+const TITLE_BAR_HEIGHT: i32 = 30;
+const MIN_WINDOW_WIDTH: i32 = 260;
+const SPAWN_OFFSET_STEP: i32 = 36;
+const SPAWN_OFFSET_WRAP: i32 = 180;
 const BUTTON_Y: i32 = 8;
 const BUTTON_HEIGHT: i32 = 32;
 const BUTTON_GAP: i32 = 8;
@@ -87,9 +97,32 @@ struct ControlButton {
     rect: Rectangle<i32, Logical>,
 }
 
+struct ManagedWindow {
+    surface: ToplevelSurface,
+    position: CanvasPoint,
+}
+
+struct DragState {
+    window_index: usize,
+    pointer_start: Point<f64, Logical>,
+    window_start: CanvasPoint,
+}
+
+enum HitTarget {
+    TitleBar {
+        window_index: usize,
+    },
+    Client {
+        window_index: usize,
+        surface: WlSurface,
+        surface_location: Point<f64, Logical>,
+    },
+}
+
 struct App {
     compositor_state: CompositorState,
     xdg_shell_state: XdgShellState,
+    _xdg_decoration_state: XdgDecorationState,
     _output_manager_state: OutputManagerState,
     shm_state: ShmState,
     seat_state: SeatState<Self>,
@@ -98,8 +131,10 @@ struct App {
     pointer: PointerHandle<Self>,
     keyboard: KeyboardHandle<Self>,
     viewport_offset: CanvasPoint,
-    window_positions: Vec<CanvasPoint>,
+    windows: Vec<ManagedWindow>,
+    drag: Option<DragState>,
     next_spawn_position: CanvasPoint,
+    spawn_offset: i32,
     pointer_location: Point<f64, Logical>,
     output_size: Size<i32, Physical>,
     output: Output,
@@ -115,9 +150,10 @@ impl XdgShellHandler for App {
     }
 
     fn new_toplevel(&mut self, surface: ToplevelSurface) {
-        self.window_positions.push(self.next_spawn_position);
-        self.next_spawn_position.x += 48;
-        self.next_spawn_position.y += 48;
+        self.windows.push(ManagedWindow {
+            surface: surface.clone(),
+            position: self.next_spawn_position,
+        });
         self.output.enter(surface.wl_surface());
 
         surface.with_pending_state(|state| {
@@ -136,6 +172,20 @@ impl XdgShellHandler for App {
         _positioner: PositionerState,
         _token: u32,
     ) {
+    }
+}
+
+impl XdgDecorationHandler for App {
+    fn new_decoration(&mut self, toplevel: ToplevelSurface) {
+        configure_server_side_decoration(&toplevel);
+    }
+
+    fn request_mode(&mut self, toplevel: ToplevelSurface, _mode: DecorationMode) {
+        configure_server_side_decoration(&toplevel);
+    }
+
+    fn unset_mode(&mut self, toplevel: ToplevelSurface) {
+        configure_server_side_decoration(&toplevel);
     }
 }
 
@@ -210,6 +260,7 @@ fn run_winit() -> Result<(), Box<dyn std::error::Error>> {
     let dh = display.handle();
 
     let compositor_state = CompositorState::new::<App>(&dh);
+    let xdg_decoration_state = XdgDecorationState::new::<App>(&dh);
     let output_manager_state = OutputManagerState::new_with_xdg_output::<App>(&dh);
     let shm_state = ShmState::new::<App>(&dh, vec![]);
     let mut seat_state = SeatState::new();
@@ -224,6 +275,7 @@ fn run_winit() -> Result<(), Box<dyn std::error::Error>> {
     let mut state = App {
         compositor_state,
         xdg_shell_state: XdgShellState::new::<App>(&dh),
+        _xdg_decoration_state: xdg_decoration_state,
         _output_manager_state: output_manager_state,
         shm_state,
         seat_state,
@@ -232,8 +284,10 @@ fn run_winit() -> Result<(), Box<dyn std::error::Error>> {
         pointer,
         keyboard,
         viewport_offset: CanvasPoint { x: 0, y: 0 },
-        window_positions: Vec::new(),
+        windows: Vec::new(),
+        drag: None,
         next_spawn_position: CanvasPoint { x: 80, y: 96 },
+        spawn_offset: 0,
         pointer_location: (0.0, 0.0).into(),
         output_size,
         output,
@@ -266,6 +320,7 @@ fn run_winit() -> Result<(), Box<dyn std::error::Error>> {
         {
             let (renderer, mut framebuffer) = backend.bind()?;
             let window_elements = state.window_render_elements(renderer);
+            let title_bar_elements = state.title_bar_elements();
             let control_elements = state.control_bar_elements();
 
             let mut frame =
@@ -280,14 +335,20 @@ fn run_winit() -> Result<(), Box<dyn std::error::Error>> {
             draw_render_elements::<GlesRenderer, _, _>(
                 &mut frame,
                 1.0,
+                &title_bar_elements,
+                &[damage],
+            )?;
+            draw_render_elements::<GlesRenderer, _, _>(
+                &mut frame,
+                1.0,
                 &control_elements,
                 &[damage],
             )?;
             let _ = frame.finish()?;
 
-            for surface in state.xdg_shell_state.toplevel_surfaces() {
+            for window in &state.windows {
                 send_frames_surface_tree(
-                    surface.wl_surface(),
+                    window.surface.wl_surface(),
                     start_time.elapsed().as_millis() as u32,
                 );
             }
@@ -307,6 +368,13 @@ fn run_winit() -> Result<(), Box<dyn std::error::Error>> {
 
         backend.submit(Some(&[damage]))?;
     }
+}
+
+fn configure_server_side_decoration(toplevel: &ToplevelSurface) {
+    toplevel.with_pending_state(|state| {
+        state.decoration_mode = Some(DecorationMode::ServerSide);
+    });
+    toplevel.send_configure();
 }
 
 fn create_output(dh: &DisplayHandle, size: Size<i32, Physical>) -> Output {
@@ -355,7 +423,26 @@ fn handle_input_event(state: &mut App, event: InputEvent<smithay::backend::winit
         InputEvent::PointerMotionAbsolute { event } => {
             let location = event.position_transformed(state.output_size.to_logical(1));
             state.pointer_location = location;
-            let focus = state.surface_under(location);
+
+            if let Some(drag) = state.drag.as_ref() {
+                let delta = location - drag.pointer_start;
+                if let Some(window) = state.windows.get_mut(drag.window_index) {
+                    window.position = CanvasPoint {
+                        x: drag.window_start.x + delta.x.round() as i32,
+                        y: drag.window_start.y + delta.y.round() as i32,
+                    };
+                }
+                return;
+            }
+
+            let focus = match state.hit_test(location) {
+                Some(HitTarget::Client {
+                    surface,
+                    surface_location,
+                    ..
+                }) => Some((surface, surface_location)),
+                _ => None,
+            };
             let pointer = state.pointer.clone();
             pointer.motion(
                 state,
@@ -369,19 +456,62 @@ fn handle_input_event(state: &mut App, event: InputEvent<smithay::backend::winit
             pointer.frame(state);
         }
         InputEvent::PointerButton { event } => {
-            if event.state() == ButtonState::Pressed {
+            let is_left_button = event.button() == Some(smithay::backend::input::MouseButton::Left);
+
+            if is_left_button && event.state() == ButtonState::Released && state.drag.is_some() {
+                state.drag = None;
+                return;
+            }
+
+            if is_left_button && event.state() == ButtonState::Pressed {
                 if let Some(action) = state.control_action_at(state.pointer_location) {
+                    state.drag = None;
                     state.run_control_action(action);
                     return;
                 }
+
+                match state.hit_test(state.pointer_location) {
+                    Some(HitTarget::TitleBar { window_index }) => {
+                        let window_index = state.raise_window(window_index);
+                        let surface = state.windows[window_index].surface.wl_surface().clone();
+                        let keyboard = state.keyboard.clone();
+                        keyboard.set_focus(state, Some(surface), Serial::from(0));
+                        state.drag = Some(DragState {
+                            window_index,
+                            pointer_start: state.pointer_location,
+                            window_start: state.windows[window_index].position,
+                        });
+                        return;
+                    }
+                    Some(HitTarget::Client { window_index, .. }) => {
+                        let window_index = state.raise_window(window_index);
+                        let surface = state.windows[window_index].surface.wl_surface().clone();
+                        let keyboard = state.keyboard.clone();
+                        keyboard.set_focus(state, Some(surface), Serial::from(0));
+                    }
+                    None => {
+                        let keyboard = state.keyboard.clone();
+                        keyboard.set_focus(state, Option::<WlSurface>::None, Serial::from(0));
+                    }
+                }
             }
 
-            let focus = state.surface_under(state.pointer_location);
-            if event.state() == ButtonState::Pressed {
-                if let Some((surface, _)) = focus.clone() {
+            let focus = match state.hit_test(state.pointer_location) {
+                Some(HitTarget::Client {
+                    surface,
+                    surface_location,
+                    ..
+                }) => Some((surface, surface_location)),
+                _ => None,
+            };
+
+            if let Some((surface, _)) = focus.clone() {
+                if event.state() == ButtonState::Pressed {
                     let keyboard = state.keyboard.clone();
                     keyboard.set_focus(state, Some(surface), Serial::from(0));
                 }
+            } else if is_left_button && event.state() == ButtonState::Pressed {
+                return;
             }
 
             let pointer = state.pointer.clone();
@@ -405,19 +535,18 @@ impl App {
         &self,
         renderer: &mut GlesRenderer,
     ) -> Vec<WaylandSurfaceRenderElement<GlesRenderer>> {
-        self.xdg_shell_state
-            .toplevel_surfaces()
+        self.windows
             .iter()
             .enumerate()
-            .flat_map(|(index, surface)| {
-                let position = self.window_canvas_position(index);
+            .flat_map(|(_index, window)| {
+                let position = window.position;
                 let screen_position = (
                     position.x - self.viewport_offset.x,
-                    position.y - self.viewport_offset.y,
+                    position.y - self.viewport_offset.y + TITLE_BAR_HEIGHT,
                 );
                 render_elements_from_surface_tree(
                     renderer,
-                    surface.wl_surface(),
+                    window.surface.wl_surface(),
                     screen_position,
                     1.0,
                     1.0,
@@ -425,6 +554,37 @@ impl App {
                 )
             })
             .collect()
+    }
+
+    fn title_bar_elements(&self) -> Vec<SolidColorRenderElement> {
+        let mut elements = Vec::new();
+
+        for (index, _window) in self.windows.iter().enumerate().rev() {
+            let rect = self.title_bar_rect(index);
+            let focused_color = Color32F::new(0.19, 0.32, 0.55, 1.0);
+            let unfocused_color = Color32F::new(0.15, 0.18, 0.24, 1.0);
+            elements.push(solid_element(
+                rect,
+                if index == self.windows.len().saturating_sub(1) {
+                    focused_color
+                } else {
+                    unfocused_color
+                },
+            ));
+
+            let grip_color = Color32F::new(0.74, 0.82, 0.95, 1.0);
+            for grip_index in 0..3 {
+                elements.push(solid_element(
+                    Rectangle::new(
+                        (rect.loc.x + 12, rect.loc.y + 8 + grip_index * 6).into(),
+                        (rect.size.w - 24, 2).into(),
+                    ),
+                    grip_color,
+                ));
+            }
+        }
+
+        elements
     }
 
     fn control_bar_elements(&self) -> Vec<SolidColorRenderElement> {
@@ -497,6 +657,13 @@ impl App {
     }
 
     fn spawn_app(&mut self) {
+        self.next_spawn_position = CanvasPoint {
+            x: self.viewport_offset.x + self.output_size.w / 2 - MIN_WINDOW_WIDTH / 2
+                + self.spawn_offset,
+            y: self.viewport_offset.y + self.output_size.h / 2 - 180 + self.spawn_offset,
+        };
+        self.spawn_offset = (self.spawn_offset + SPAWN_OFFSET_STEP) % SPAWN_OFFSET_WRAP;
+
         match Command::new(DEFAULT_APP)
             .env("WAYLAND_DISPLAY", WAYLAND_DISPLAY_NAME)
             .spawn()
@@ -506,35 +673,66 @@ impl App {
         }
     }
 
-    fn surface_under(
-        &self,
-        location: Point<f64, Logical>,
-    ) -> Option<(WlSurface, Point<f64, Logical>)> {
+    fn hit_test(&self, location: Point<f64, Logical>) -> Option<HitTarget> {
         if location.y < f64::from(CONTROL_BAR_HEIGHT) {
             return None;
         }
 
-        self.xdg_shell_state
-            .toplevel_surfaces()
-            .iter()
-            .enumerate()
-            .rev()
-            .find_map(|(index, surface)| {
-                let position = self.window_canvas_position(index);
-                let origin = Point::<i32, Logical>::from((
-                    position.x - self.viewport_offset.x,
-                    position.y - self.viewport_offset.y,
-                ))
-                .to_f64();
-                Some((surface.wl_surface().clone(), origin))
-            })
+        for (window_index, window) in self.windows.iter().enumerate().rev() {
+            if rect_contains(self.title_bar_rect(window_index), location) {
+                return Some(HitTarget::TitleBar { window_index });
+            }
+
+            let content_origin = self.content_origin(window_index);
+            if let Some((surface, surface_location)) = under_from_surface_tree(
+                window.surface.wl_surface(),
+                location,
+                content_origin,
+                WindowSurfaceType::ALL,
+            ) {
+                return Some(HitTarget::Client {
+                    window_index,
+                    surface,
+                    surface_location: surface_location.to_f64(),
+                });
+            }
+        }
+
+        None
     }
 
-    fn window_canvas_position(&self, index: usize) -> CanvasPoint {
-        self.window_positions
-            .get(index)
-            .copied()
-            .unwrap_or(CanvasPoint { x: 80, y: 96 })
+    fn raise_window(&mut self, window_index: usize) -> usize {
+        if window_index + 1 == self.windows.len() {
+            return window_index;
+        }
+
+        let window = self.windows.remove(window_index);
+        self.windows.push(window);
+        self.windows.len() - 1
+    }
+
+    fn title_bar_rect(&self, window_index: usize) -> Rectangle<i32, Logical> {
+        let window = &self.windows[window_index];
+        let origin = Point::<i32, Logical>::from((
+            window.position.x - self.viewport_offset.x,
+            window.position.y - self.viewport_offset.y,
+        ));
+        let content_bbox = bbox_from_surface_tree(
+            window.surface.wl_surface(),
+            self.content_origin(window_index),
+        );
+        Rectangle::new(
+            origin,
+            (content_bbox.size.w.max(MIN_WINDOW_WIDTH), TITLE_BAR_HEIGHT).into(),
+        )
+    }
+
+    fn content_origin(&self, window_index: usize) -> Point<i32, Logical> {
+        let window = &self.windows[window_index];
+        Point::<i32, Logical>::from((
+            window.position.x - self.viewport_offset.x,
+            window.position.y - self.viewport_offset.y + TITLE_BAR_HEIGHT,
+        ))
     }
 }
 
@@ -694,3 +892,4 @@ delegate_shm!(App);
 delegate_seat!(App);
 delegate_data_device!(App);
 delegate_output!(App);
+delegate_xdg_decoration!(App);
