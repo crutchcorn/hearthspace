@@ -16,6 +16,7 @@ use crate::{
         zoom_around_screen_point, CanvasPoint,
     },
     shell::ShellCommand,
+    RunOptions,
 };
 
 use smithay::{
@@ -144,6 +145,7 @@ struct App {
     next_spawn_position: CanvasPoint,
     spawn_offset: i32,
     pointer_location: Point<f64, Logical>,
+    scroll_zooms_without_super: bool,
     output_size: Size<i32, Physical>,
     output: Output,
     needs_redraw: bool,
@@ -284,7 +286,7 @@ impl SeatHandler for App {
     }
 }
 
-pub fn run_winit() -> Result<(), Box<dyn std::error::Error>> {
+pub fn run_winit(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> {
     let mut display: Display<App> = Display::new()?;
     let dh = display.handle();
 
@@ -324,6 +326,7 @@ pub fn run_winit() -> Result<(), Box<dyn std::error::Error>> {
         next_spawn_position: CanvasPoint { x: 80, y: 96 },
         spawn_offset: 0,
         pointer_location: (0.0, 0.0).into(),
+        scroll_zooms_without_super: options.scroll_zooms_without_super,
         output_size,
         output,
         needs_redraw: true,
@@ -340,6 +343,9 @@ pub fn run_winit() -> Result<(), Box<dyn std::error::Error>> {
     let start_time = std::time::Instant::now();
 
     println!("Hearthspace running on WAYLAND_DISPLAY={WAYLAND_DISPLAY_NAME}");
+    if state.scroll_zooms_without_super {
+        println!("Scroll zoom testing mode enabled: vertical scroll zooms without Super");
+    }
 
     loop {
         let status = winit.dispatch_new_events(|event| match event {
@@ -681,7 +687,7 @@ fn handle_input_event(state: &mut App, event: InputEvent<smithay::backend::winit
             pointer.frame(state);
         }
         InputEvent::PointerAxis { event } => {
-            if state.super_modifier_active() && state.zoom_from_scroll(&event) {
+            if state.scroll_zoom_active() && state.zoom_from_scroll(&event) {
                 return;
             }
 
@@ -945,6 +951,10 @@ impl App {
                     .iter()
                     .any(|key| is_super_keysym(key.modified_sym().raw()))
             })
+    }
+
+    fn scroll_zoom_active(&self) -> bool {
+        self.scroll_zooms_without_super || self.super_modifier_active()
     }
 
     fn zoom_from_scroll(&mut self, event: &impl PointerAxisEvent<WinitInput>) -> bool {

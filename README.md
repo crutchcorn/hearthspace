@@ -10,6 +10,14 @@ The current implementation is a nested proof-of-concept compositor built with Ru
 cargo run
 ```
 
+For temporary scroll-zoom testing in environments where the host intercepts `Super` + scroll, run:
+
+```sh
+cargo run -- --scroll-zooms
+```
+
+In this mode, vertical scroll zooms the canvas without requiring `Super`, so scroll will not be forwarded to application windows.
+
 This opens a nested compositor window and creates its own Wayland socket:
 
 ```text
@@ -53,6 +61,8 @@ Super + two-finger scroll up/down: smoothly zoom the canvas in/out
 ```
 
 Note: this shortcut is expected to work on a native Ubuntu/GNOME session. In the current Parallels VM test environment, `Super` is detected by Hearthspace, but scroll events may not be delivered to the nested compositor until after `Super` is released.
+
+Use `--scroll-zooms` as a temporary testing override in that environment.
 
 ## Current Scope
 

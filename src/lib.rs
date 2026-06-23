@@ -4,6 +4,15 @@ pub mod geometry;
 pub mod shell;
 pub mod shell_bar;
 
+#[derive(Debug, Clone, Copy, Default)]
+pub struct RunOptions {
+    pub scroll_zooms_without_super: bool,
+}
+
 pub fn run() -> Result<(), Box<dyn std::error::Error>> {
-    compositor::run_winit()
+    run_with_options(RunOptions::default())
+}
+
+pub fn run_with_options(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> {
+    compositor::run_winit(options)
 }

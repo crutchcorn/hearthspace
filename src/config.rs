@@ -5,6 +5,7 @@ pub const DEFAULT_APP: &str = "foot";
 pub const SHELL_BAR_APP_ID: &str = "dev.hearthspace.shell-bar";
 pub const SHELL_COMMAND_SOCKET_NAME: &str = "hearthspace-shell.sock";
 pub const SHELL_COMMAND_SOCKET_ENV: &str = "HEARTHSPACE_COMMAND_SOCKET";
+pub const SCROLL_ZOOMS_FLAG: &str = "--scroll-zooms";
 
 pub const KEYBOARD_REPEAT_DELAY_MS: i32 = 600;
 pub const KEYBOARD_REPEAT_RATE: i32 = 25;

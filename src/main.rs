@@ -5,9 +5,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         tracing_subscriber::fmt().init();
     }
 
-    if std::env::args().any(|arg| arg == "--shell-bar") {
+    let args = std::env::args().collect::<Vec<_>>();
+
+    if args.iter().any(|arg| arg == "--shell-bar") {
         hearthspace::shell_bar::run()
     } else {
-        hearthspace::run()
+        hearthspace::run_with_options(hearthspace::RunOptions {
+            scroll_zooms_without_super: args
+                .iter()
+                .any(|arg| arg == hearthspace::config::SCROLL_ZOOMS_FLAG),
+        })
     }
 }
