@@ -9,17 +9,17 @@ use std::{
 };
 
 use crate::{
+    RunOptions,
     a11y::ManagedWindowAccessibilityInfo,
-    app_catalog::{spawn_argv_with_env, AppCatalog, DesktopApp},
+    app_catalog::{AppCatalog, DesktopApp, spawn_argv_with_env},
     config::*,
     geometry::{
-        canvas_to_screen as transform_canvas_to_screen, ease_out_cubic, interpolate_canvas_point,
-        interpolate_f64, rect_contains, screen_to_canvas as transform_screen_to_canvas,
-        zoom_around_screen_point, CanvasPoint,
+        CanvasPoint, canvas_to_screen as transform_canvas_to_screen, ease_out_cubic,
+        interpolate_canvas_point, interpolate_f64, rect_contains,
+        screen_to_canvas as transform_screen_to_canvas, zoom_around_screen_point,
     },
     idle::{ActivityReason, IdleTransition, WindowIdleDaemon},
     shell::{ShellCommand, SpawnTarget},
-    RunOptions,
 };
 
 use smithay::{
@@ -29,51 +29,51 @@ use smithay::{
             PointerAxisEvent, PointerButtonEvent,
         },
         renderer::{
+            Color32F, Frame, Renderer,
             element::{
-                solid::{SolidColorBuffer, SolidColorRenderElement},
-                surface::{render_elements_from_surface_tree, WaylandSurfaceRenderElement},
                 Kind,
+                solid::{SolidColorBuffer, SolidColorRenderElement},
+                surface::{WaylandSurfaceRenderElement, render_elements_from_surface_tree},
             },
             gles::GlesRenderer,
             utils::{draw_render_elements, on_commit_buffer_handler},
-            Color32F, Frame, Renderer,
         },
         winit::{self, WinitEvent, WinitInput},
     },
     delegate_compositor, delegate_data_device, delegate_output, delegate_seat, delegate_shm,
     delegate_xdg_decoration, delegate_xdg_shell,
     desktop::{
-        utils::{bbox_from_surface_tree, under_from_surface_tree},
         WindowSurfaceType,
+        utils::{bbox_from_surface_tree, under_from_surface_tree},
     },
     input::{
-        keyboard::{keysyms, FilterResult, KeyboardHandle},
-        pointer::{AxisFrame, ButtonEvent, MotionEvent, PointerHandle},
         Seat, SeatHandler, SeatState,
+        keyboard::{FilterResult, KeyboardHandle, keysyms},
+        pointer::{AxisFrame, ButtonEvent, MotionEvent, PointerHandle},
     },
     output::{Mode, Output, PhysicalProperties, Scale, Subpixel},
     reexports::{
-        wayland_server::{protocol::wl_seat, Display},
+        wayland_server::{Display, protocol::wl_seat},
         winit::platform::pump_events::PumpStatus,
     },
     utils::{Logical, Physical, Point, Rectangle, Serial, Size, Transform},
     wayland::{
         buffer::BufferHandler,
         compositor::{
-            with_states, with_surface_tree_downward, CompositorClientState, CompositorHandler,
-            CompositorState, SurfaceAttributes, TraversalAction,
+            CompositorClientState, CompositorHandler, CompositorState, SurfaceAttributes,
+            TraversalAction, with_states, with_surface_tree_downward,
         },
         output::{OutputHandler, OutputManagerState},
         selection::{
+            SelectionHandler,
             data_device::{
                 ClientDndGrabHandler, DataDeviceHandler, DataDeviceState, ServerDndGrabHandler,
             },
-            SelectionHandler,
         },
         shell::xdg::{
-            decoration::{XdgDecorationHandler, XdgDecorationState},
             PopupSurface, PositionerState, ToplevelSurface, XdgShellHandler, XdgShellState,
             XdgToplevelSurfaceData,
+            decoration::{XdgDecorationHandler, XdgDecorationState},
         },
         shm::{ShmHandler, ShmState},
     },
@@ -81,12 +81,12 @@ use smithay::{
 use wayland_protocols::xdg::decoration::zv1::server::zxdg_toplevel_decoration_v1::Mode as DecorationMode;
 use wayland_protocols::xdg::shell::server::xdg_toplevel;
 use wayland_server::{
+    Client, DisplayHandle, ListeningSocket,
     backend::{ClientData, ClientId, DisconnectReason},
     protocol::{
         wl_buffer,
         wl_surface::{self, WlSurface},
     },
-    Client, DisplayHandle, ListeningSocket,
 };
 
 struct ManagedWindow {
@@ -897,14 +897,18 @@ fn handle_input_event(state: &mut App, event: InputEvent<smithay::backend::winit
                 _ => None,
             };
 
-            if let Some((surface, _)) = focus.clone() {
-                if event.state() == ButtonState::Pressed {
-                    if let Some(window_index) = state.window_index_for_surface(&surface) {
-                        state.set_keyboard_focus_to_window(window_index, surface);
+            match focus.clone() {
+                Some((surface, _)) => {
+                    if event.state() == ButtonState::Pressed {
+                        if let Some(window_index) = state.window_index_for_surface(&surface) {
+                            state.set_keyboard_focus_to_window(window_index, surface);
+                        }
                     }
                 }
-            } else if is_left_button && event.state() == ButtonState::Pressed {
-                return;
+                _ if is_left_button && event.state() == ButtonState::Pressed => {
+                    return;
+                }
+                _ => {}
             }
 
             let pointer = state.pointer.clone();

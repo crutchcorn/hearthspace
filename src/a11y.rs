@@ -1,5 +1,5 @@
 use atspi::{
-    connection::P2P, proxy::accessible::AccessibleProxy, AccessibilityConnection, ObjectRefOwned,
+    AccessibilityConnection, ObjectRefOwned, connection::P2P, proxy::accessible::AccessibleProxy,
 };
 
 const MAX_A11Y_NODES: usize = 2_000;

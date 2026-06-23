@@ -1,6 +1,6 @@
 use gtk::{
-    prelude::*, Align, Application, ApplicationWindow, Button, CheckButton, Entry, Label, ListBox,
-    ListBoxRow, Orientation,
+    Align, Application, ApplicationWindow, Button, CheckButton, Entry, Label, ListBox, ListBoxRow,
+    Orientation, prelude::*,
 };
 
 use crate::config::{GTK_TEST_APP_ID, GTK_TEST_APP_TITLE};

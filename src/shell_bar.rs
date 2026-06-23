@@ -1,9 +1,9 @@
 use std::{env, io::Write, os::unix::net::UnixStream, path::PathBuf};
 
 use gpui::{
-    div, prelude::*, px, rgb, size, App, Application, Bounds, Context, FocusHandle, Focusable,
-    IntoElement, KeyDownEvent, SharedString, Window, WindowBounds, WindowDecorations,
-    WindowOptions,
+    App, Application, Bounds, Context, FocusHandle, Focusable, IntoElement, KeyDownEvent,
+    SharedString, Window, WindowBounds, WindowDecorations, WindowOptions, div, prelude::*, px, rgb,
+    size,
 };
 
 use crate::{
@@ -105,7 +105,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 impl ShellBar {
-    fn search_box(&self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn search_box(&self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement + use<> {
         let is_focused = self.focus_handle(cx).is_focused(window);
         let text = if self.query.is_empty() {
             "Search apps...".to_string()
@@ -227,7 +227,7 @@ fn app_result_button(
     command_socket: PathBuf,
     app: DesktopApp,
     cx: &mut Context<ShellBar>,
-) -> impl IntoElement {
+) -> impl IntoElement + use<> {
     let app_id = app.id.clone();
     let element_id = format!("app-result-{app_id}");
     div()

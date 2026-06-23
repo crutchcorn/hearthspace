@@ -583,28 +583,34 @@ mod tests {
 
     #[test]
     fn hidden_and_no_display_apps_are_filtered() {
-        assert!(DesktopApp::from_desktop_entry(
-            "hidden.desktop".to_string(),
-            PathBuf::from("hidden.desktop"),
-            "[Desktop Entry]\nType=Application\nName=Hidden\nExec=hidden\nHidden=true\n"
-        )
-        .is_none());
-        assert!(DesktopApp::from_desktop_entry(
-            "nodisplay.desktop".to_string(),
-            PathBuf::from("nodisplay.desktop"),
-            "[Desktop Entry]\nType=Application\nName=Hidden\nExec=hidden\nNoDisplay=true\n"
-        )
-        .is_none());
+        assert!(
+            DesktopApp::from_desktop_entry(
+                "hidden.desktop".to_string(),
+                PathBuf::from("hidden.desktop"),
+                "[Desktop Entry]\nType=Application\nName=Hidden\nExec=hidden\nHidden=true\n"
+            )
+            .is_none()
+        );
+        assert!(
+            DesktopApp::from_desktop_entry(
+                "nodisplay.desktop".to_string(),
+                PathBuf::from("nodisplay.desktop"),
+                "[Desktop Entry]\nType=Application\nName=Hidden\nExec=hidden\nNoDisplay=true\n"
+            )
+            .is_none()
+        );
     }
 
     #[test]
     fn only_show_in_must_include_hearthspace() {
-        assert!(DesktopApp::from_desktop_entry(
-            "gnome.desktop".to_string(),
-            PathBuf::from("gnome.desktop"),
-            "[Desktop Entry]\nType=Application\nName=GNOME\nExec=gnome\nOnlyShowIn=GNOME;\n"
-        )
-        .is_none());
+        assert!(
+            DesktopApp::from_desktop_entry(
+                "gnome.desktop".to_string(),
+                PathBuf::from("gnome.desktop"),
+                "[Desktop Entry]\nType=Application\nName=GNOME\nExec=gnome\nOnlyShowIn=GNOME;\n"
+            )
+            .is_none()
+        );
         assert!(DesktopApp::from_desktop_entry(
             "hearthspace.desktop".to_string(),
             PathBuf::from("hearthspace.desktop"),
