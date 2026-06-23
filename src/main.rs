@@ -326,25 +326,33 @@ fn run_winit() -> Result<(), Box<dyn std::error::Error>> {
         let damage = Rectangle::from_size(state.output_size);
         {
             let (renderer, mut framebuffer) = backend.bind()?;
-            let window_elements = state.window_render_elements(renderer);
-            let title_bar_elements = state.title_bar_elements();
+            let window_elements = (0..state.windows.len())
+                .map(|index| state.window_render_elements(renderer, index))
+                .collect::<Vec<_>>();
+            let title_bar_elements = (0..state.windows.len())
+                .map(|index| state.title_bar_elements(index))
+                .collect::<Vec<_>>();
             let control_elements = state.control_bar_elements();
 
             let mut frame =
                 renderer.render(&mut framebuffer, state.output_size, Transform::Flipped180)?;
             frame.clear(Color32F::new(0.04, 0.05, 0.07, 1.0), &[damage])?;
-            draw_render_elements::<GlesRenderer, _, _>(
-                &mut frame,
-                state.viewport_scale,
-                &window_elements,
-                &[damage],
-            )?;
-            draw_render_elements::<GlesRenderer, _, _>(
-                &mut frame,
-                1.0,
-                &title_bar_elements,
-                &[damage],
-            )?;
+            for (window_elements, title_bar_elements) in
+                window_elements.iter().zip(&title_bar_elements)
+            {
+                draw_render_elements::<GlesRenderer, _, _>(
+                    &mut frame,
+                    state.viewport_scale,
+                    window_elements,
+                    &[damage],
+                )?;
+                draw_render_elements::<GlesRenderer, _, _>(
+                    &mut frame,
+                    1.0,
+                    title_bar_elements,
+                    &[damage],
+                )?;
+            }
             draw_render_elements::<GlesRenderer, _, _>(
                 &mut frame,
                 1.0,
@@ -541,59 +549,51 @@ impl App {
     fn window_render_elements(
         &self,
         renderer: &mut GlesRenderer,
+        window_index: usize,
     ) -> Vec<WaylandSurfaceRenderElement<GlesRenderer>> {
-        self.windows
-            .iter()
-            .enumerate()
-            .rev()
-            .flat_map(|(index, window)| {
-                let screen_position = self.content_screen_origin(index);
-                render_elements_from_surface_tree(
-                    renderer,
-                    window.surface.wl_surface(),
-                    screen_position,
-                    self.viewport_scale,
-                    1.0,
-                    Kind::Unspecified,
-                )
-            })
-            .collect()
+        let window = &self.windows[window_index];
+        render_elements_from_surface_tree(
+            renderer,
+            window.surface.wl_surface(),
+            self.content_screen_origin(window_index),
+            self.viewport_scale,
+            1.0,
+            Kind::Unspecified,
+        )
     }
 
-    fn title_bar_elements(&self) -> Vec<SolidColorRenderElement> {
+    fn title_bar_elements(&self, window_index: usize) -> Vec<SolidColorRenderElement> {
         let mut elements = Vec::new();
 
-        for (index, _window) in self.windows.iter().enumerate().rev() {
-            let rect = self.title_bar_rect(index);
-            let focused_color = Color32F::new(0.19, 0.32, 0.55, 1.0);
-            let unfocused_color = Color32F::new(0.15, 0.18, 0.24, 1.0);
-            elements.push(solid_element(
-                rect,
-                if index == self.windows.len().saturating_sub(1) {
-                    focused_color
-                } else {
-                    unfocused_color
-                },
-            ));
+        let rect = self.title_bar_rect(window_index);
+        let focused_color = Color32F::new(0.19, 0.32, 0.55, 1.0);
+        let unfocused_color = Color32F::new(0.15, 0.18, 0.24, 1.0);
+        elements.push(solid_element(
+            rect,
+            if window_index == self.windows.len().saturating_sub(1) {
+                focused_color
+            } else {
+                unfocused_color
+            },
+        ));
 
-            let grip_color = Color32F::new(0.74, 0.82, 0.95, 1.0);
-            let grip_margin = (12.0 * self.viewport_scale).round().max(4.0) as i32;
-            let grip_height = (2.0 * self.viewport_scale).round().max(1.0) as i32;
-            let grip_top = (8.0 * self.viewport_scale).round().max(3.0) as i32;
-            let grip_gap = (6.0 * self.viewport_scale).round().max(3.0) as i32;
-            for grip_index in 0..3 {
-                elements.push(solid_element(
-                    Rectangle::new(
-                        (
-                            rect.loc.x + grip_margin,
-                            rect.loc.y + grip_top + grip_index * grip_gap,
-                        )
-                            .into(),
-                        ((rect.size.w - grip_margin * 2).max(1), grip_height).into(),
-                    ),
-                    grip_color,
-                ));
-            }
+        let grip_color = Color32F::new(0.74, 0.82, 0.95, 1.0);
+        let grip_margin = (12.0 * self.viewport_scale).round().max(4.0) as i32;
+        let grip_height = (2.0 * self.viewport_scale).round().max(1.0) as i32;
+        let grip_top = (8.0 * self.viewport_scale).round().max(3.0) as i32;
+        let grip_gap = (6.0 * self.viewport_scale).round().max(3.0) as i32;
+        for grip_index in 0..3 {
+            elements.push(solid_element(
+                Rectangle::new(
+                    (
+                        rect.loc.x + grip_margin,
+                        rect.loc.y + grip_top + grip_index * grip_gap,
+                    )
+                        .into(),
+                    ((rect.size.w - grip_margin * 2).max(1), grip_height).into(),
+                ),
+                grip_color,
+            ));
         }
 
         elements
