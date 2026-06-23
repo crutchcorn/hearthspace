@@ -21,6 +21,8 @@ pub const SPAWN_OFFSET_WRAP: i32 = 180;
 pub const MIN_ZOOM: f64 = 0.5;
 pub const MAX_ZOOM: f64 = 2.0;
 pub const ZOOM_STEP: f64 = 1.25;
+pub const SCROLL_ZOOM_SENSITIVITY: f64 = 0.005;
+pub const WHEEL_SCROLL_PIXEL_EQUIVALENT: f64 = 40.0;
 pub const VIEWPORT_ANIMATION_DURATION: Duration = Duration::from_millis(180);
 
 pub const IDLE_SLEEP: Duration = Duration::from_millis(1);

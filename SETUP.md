@@ -36,6 +36,30 @@ foot: 1.25.0
 
 Note: the pkg-config module for xkbcommon is `xkbcommon`, not `libxkbcommon`.
 
+## GNOME Host Session Tweaks
+
+The development VM's GNOME session was configured to stop intercepting `Super`-modified scroll gestures while testing Hearthspace's nested compositor:
+
+```sh
+gsettings set org.gnome.mutter dynamic-workspaces false
+gsettings set org.gnome.desktop.wm.preferences num-workspaces 1
+gsettings set org.gnome.mutter overlay-key ''
+gsettings set org.gnome.shell.extensions.dash-to-dock scroll-action 'do-nothing'
+gsettings set org.gnome.shell.extensions.dash-to-dock scroll-switch-workspace false
+```
+
+To restore GNOME defaults:
+
+```sh
+gsettings reset org.gnome.mutter dynamic-workspaces
+gsettings reset org.gnome.desktop.wm.preferences num-workspaces
+gsettings reset org.gnome.mutter overlay-key
+gsettings reset org.gnome.shell.extensions.dash-to-dock scroll-action
+gsettings reset org.gnome.shell.extensions.dash-to-dock scroll-switch-workspace
+```
+
+In the current Parallels VM test environment, Hearthspace receives `Super` key events but may not receive touchpad scroll events until after `Super` has been released. Treat this as a host/VM input limitation when testing `Super` + two-finger scroll zoom; the compositor code is kept aligned with the behavior expected on a native Ubuntu/GNOME session.
+
 ## Smithay Probe
 
 Smithay 0.7.0 is current on crates.io and requires Rust 1.80.1 or newer.

@@ -21,8 +21,8 @@ use crate::{
 use smithay::{
     backend::{
         input::{
-            AbsolutePositionEvent, ButtonState, Event, InputEvent, KeyboardKeyEvent,
-            PointerButtonEvent,
+            AbsolutePositionEvent, Axis, ButtonState, Event, InputEvent, KeyboardKeyEvent,
+            PointerAxisEvent, PointerButtonEvent,
         },
         renderer::{
             element::{
@@ -34,7 +34,7 @@ use smithay::{
             utils::{draw_render_elements, on_commit_buffer_handler},
             Color32F, Frame, Renderer,
         },
-        winit::{self, WinitEvent},
+        winit::{self, WinitEvent, WinitInput},
     },
     delegate_compositor, delegate_data_device, delegate_output, delegate_seat, delegate_shm,
     delegate_xdg_decoration, delegate_xdg_shell,
@@ -43,8 +43,8 @@ use smithay::{
         WindowSurfaceType,
     },
     input::{
-        keyboard::{FilterResult, KeyboardHandle},
-        pointer::{ButtonEvent, MotionEvent, PointerHandle},
+        keyboard::{keysyms, FilterResult, KeyboardHandle},
+        pointer::{AxisFrame, ButtonEvent, MotionEvent, PointerHandle},
         Seat, SeatHandler, SeatState,
     },
     output::{Mode, Output, PhysicalProperties, Scale, Subpixel},
@@ -680,8 +680,68 @@ fn handle_input_event(state: &mut App, event: InputEvent<smithay::backend::winit
             );
             pointer.frame(state);
         }
+        InputEvent::PointerAxis { event } => {
+            if state.super_modifier_active() && state.zoom_from_scroll(&event) {
+                return;
+            }
+
+            let time = event.time_msec();
+            let pointer = state.pointer.clone();
+            pointer.axis(state, axis_frame_from_event(&event, time));
+            pointer.frame(state);
+        }
         _ => {}
     }
+}
+
+fn axis_frame_from_event(event: &impl PointerAxisEvent<WinitInput>, time: u32) -> AxisFrame {
+    let mut frame = AxisFrame::new(time)
+        .source(event.source())
+        .relative_direction(Axis::Horizontal, event.relative_direction(Axis::Horizontal))
+        .relative_direction(Axis::Vertical, event.relative_direction(Axis::Vertical));
+
+    frame = add_axis_to_frame(frame, event, Axis::Horizontal);
+    add_axis_to_frame(frame, event, Axis::Vertical)
+}
+
+fn add_axis_to_frame(
+    mut frame: AxisFrame,
+    event: &impl PointerAxisEvent<WinitInput>,
+    axis: Axis,
+) -> AxisFrame {
+    if let Some(amount) = scroll_amount_for_axis(event, axis) {
+        if amount == 0.0 {
+            frame = frame.stop(axis);
+        } else {
+            frame = frame.value(axis, amount);
+        }
+    }
+
+    if let Some(v120) = event.amount_v120(axis) {
+        frame = frame.v120(axis, v120.round() as i32);
+    }
+
+    frame
+}
+
+fn scroll_amount_for_axis(event: &impl PointerAxisEvent<WinitInput>, axis: Axis) -> Option<f64> {
+    event.amount(axis).or_else(|| {
+        event
+            .amount_v120(axis)
+            .map(|amount| amount / 120.0 * WHEEL_SCROLL_PIXEL_EQUIVALENT)
+    })
+}
+
+fn is_super_keysym(keysym: u32) -> bool {
+    matches!(
+        keysym,
+        keysyms::KEY_Super_L
+            | keysyms::KEY_Super_R
+            | keysyms::KEY_Meta_L
+            | keysyms::KEY_Meta_R
+            | keysyms::KEY_Hyper_L
+            | keysyms::KEY_Hyper_R
+    )
 }
 
 impl App {
@@ -876,6 +936,28 @@ impl App {
 
     fn request_redraw(&mut self) {
         self.needs_redraw = true;
+    }
+
+    fn super_modifier_active(&self) -> bool {
+        self.keyboard.modifier_state().logo
+            || self.keyboard.with_pressed_keysyms(|pressed| {
+                pressed
+                    .iter()
+                    .any(|key| is_super_keysym(key.modified_sym().raw()))
+            })
+    }
+
+    fn zoom_from_scroll(&mut self, event: &impl PointerAxisEvent<WinitInput>) -> bool {
+        let Some(scroll_amount) = scroll_amount_for_axis(event, Axis::Vertical) else {
+            return false;
+        };
+        if scroll_amount == 0.0 {
+            return true;
+        }
+
+        self.advance_viewport_animation();
+        self.animate_zoom_around_viewport_center((-scroll_amount * SCROLL_ZOOM_SENSITIVITY).exp());
+        true
     }
 
     fn start_viewport_animation(&mut self, to_offset: CanvasPoint, to_scale: f64) {

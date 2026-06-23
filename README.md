@@ -49,7 +49,10 @@ Left click app content: focus and interact with the app
 Left click title bar: focus and raise the window
 Left drag title bar: move the window on the canvas
 SPAWN: place the new window near the current viewport center
+Super + two-finger scroll up/down: smoothly zoom the canvas in/out
 ```
+
+Note: this shortcut is expected to work on a native Ubuntu/GNOME session. In the current Parallels VM test environment, `Super` is detected by Hearthspace, but scroll events may not be delivered to the nested compositor until after `Super` is released.
 
 ## Current Scope
 
@@ -70,6 +73,7 @@ Canvas viewport offset
 Half-screen pan targets
 Animated pan buttons
 Animated zoom buttons
+Super-modified touchpad or mouse-wheel zoom
 Window focus, raise, and title-bar dragging
 Input-region-aware pointer forwarding to client surfaces
 ```
@@ -78,7 +82,7 @@ Still intentionally rough:
 
 ```text
 No window resizing yet
-Zoom is button-driven only; there is no wheel or gesture zoom yet
+Zoom supports shell buttons and Super-modified scroll, but there is no pinch gesture zoom yet
 Several optional desktop protocols are not implemented yet, so clients may print warnings
 ```
 
