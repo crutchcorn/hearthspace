@@ -8,6 +8,8 @@ pub const KEYBOARD_REPEAT_RATE: i32 = 25;
 
 pub const CONTROL_BAR_HEIGHT: i32 = 48;
 pub const TITLE_BAR_HEIGHT: i32 = 30;
+pub const CLOSE_BUTTON_SIZE: i32 = 18;
+pub const CLOSE_BUTTON_MARGIN: i32 = 6;
 pub const MIN_WINDOW_WIDTH: i32 = 260;
 
 pub const SPAWN_OFFSET_STEP: i32 = 36;

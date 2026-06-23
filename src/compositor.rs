@@ -98,6 +98,9 @@ struct ViewportAnimation {
 }
 
 enum HitTarget {
+    CloseButton {
+        window_index: usize,
+    },
     TitleBar {
         window_index: usize,
     },
@@ -166,6 +169,12 @@ impl XdgShellHandler for App {
         _positioner: PositionerState,
         _token: u32,
     ) {
+    }
+
+    fn toplevel_destroyed(&mut self, surface: ToplevelSurface) {
+        self.windows.retain(|window| window.surface != surface);
+        self.drag = None;
+        self.request_redraw();
     }
 }
 
@@ -492,6 +501,11 @@ fn handle_input_event(state: &mut App, event: InputEvent<smithay::backend::winit
                 }
 
                 match state.hit_test(state.pointer_location) {
+                    Some(HitTarget::CloseButton { window_index }) => {
+                        state.windows[window_index].surface.send_close();
+                        state.drag = None;
+                        return;
+                    }
                     Some(HitTarget::TitleBar { window_index }) => {
                         let window_index = state.raise_window(window_index);
                         let surface = state.windows[window_index].surface.wl_surface().clone();
@@ -516,6 +530,14 @@ fn handle_input_event(state: &mut App, event: InputEvent<smithay::backend::winit
                         keyboard.set_focus(state, Option::<WlSurface>::None, Serial::from(0));
                     }
                 }
+            } else if is_left_button
+                && event.state() == ButtonState::Released
+                && matches!(
+                    state.hit_test(state.pointer_location),
+                    Some(HitTarget::CloseButton { .. })
+                )
+            {
+                return;
             }
 
             let focus = match state.hit_test(state.pointer_location) {
@@ -573,8 +595,20 @@ impl App {
         let mut elements = Vec::new();
 
         let rect = self.title_bar_rect(window_index);
+        let close_rect = self.close_button_rect(window_index);
+
+        for x_rect in close_button_x_rects(close_rect) {
+            elements.push(solid_element(x_rect, Color32F::new(1.0, 0.95, 0.95, 1.0)));
+        }
+
+        elements.push(solid_element(
+            close_rect,
+            Color32F::new(0.72, 0.10, 0.12, 1.0),
+        ));
+
         let focused_color = Color32F::new(0.19, 0.32, 0.55, 1.0);
         let unfocused_color = Color32F::new(0.15, 0.18, 0.24, 1.0);
+
         elements.push(solid_element(
             rect,
             if window_index == self.windows.len().saturating_sub(1) {
@@ -583,25 +617,6 @@ impl App {
                 unfocused_color
             },
         ));
-
-        let grip_color = Color32F::new(0.74, 0.82, 0.95, 1.0);
-        let grip_margin = (12.0 * self.viewport_scale).round().max(4.0) as i32;
-        let grip_height = (2.0 * self.viewport_scale).round().max(1.0) as i32;
-        let grip_top = (8.0 * self.viewport_scale).round().max(3.0) as i32;
-        let grip_gap = (6.0 * self.viewport_scale).round().max(3.0) as i32;
-        for grip_index in 0..3 {
-            elements.push(solid_element(
-                Rectangle::new(
-                    (
-                        rect.loc.x + grip_margin,
-                        rect.loc.y + grip_top + grip_index * grip_gap,
-                    )
-                        .into(),
-                    ((rect.size.w - grip_margin * 2).max(1), grip_height).into(),
-                ),
-                grip_color,
-            ));
-        }
 
         elements
     }
@@ -694,6 +709,10 @@ impl App {
         let canvas_location = self.screen_to_canvas(location);
 
         for (window_index, window) in self.windows.iter().enumerate().rev() {
+            if rect_contains(self.close_button_canvas_rect(window_index), canvas_location) {
+                return Some(HitTarget::CloseButton { window_index });
+            }
+
             if rect_contains(self.title_bar_canvas_rect(window_index), canvas_location) {
                 return Some(HitTarget::TitleBar { window_index });
             }
@@ -807,6 +826,25 @@ impl App {
         )
     }
 
+    fn close_button_rect(&self, window_index: usize) -> Rectangle<i32, Logical> {
+        let canvas_rect = self.close_button_canvas_rect(window_index);
+        let origin = self
+            .canvas_to_screen(canvas_rect.loc.to_f64())
+            .to_i32_round();
+        Rectangle::new(
+            origin,
+            (
+                (f64::from(canvas_rect.size.w) * self.viewport_scale)
+                    .round()
+                    .max(1.0) as i32,
+                (f64::from(canvas_rect.size.h) * self.viewport_scale)
+                    .round()
+                    .max(1.0) as i32,
+            )
+                .into(),
+        )
+    }
+
     fn title_bar_canvas_rect(&self, window_index: usize) -> Rectangle<i32, Logical> {
         let window = &self.windows[window_index];
         let content_bbox = bbox_from_surface_tree(
@@ -816,6 +854,18 @@ impl App {
         Rectangle::new(
             (window.position.x, window.position.y).into(),
             (content_bbox.size.w.max(MIN_WINDOW_WIDTH), TITLE_BAR_HEIGHT).into(),
+        )
+    }
+
+    fn close_button_canvas_rect(&self, window_index: usize) -> Rectangle<i32, Logical> {
+        let title_bar = self.title_bar_canvas_rect(window_index);
+        Rectangle::new(
+            (
+                title_bar.loc.x + title_bar.size.w - CLOSE_BUTTON_MARGIN - CLOSE_BUTTON_SIZE,
+                title_bar.loc.y + (title_bar.size.h - CLOSE_BUTTON_SIZE) / 2,
+            )
+                .into(),
+            (CLOSE_BUTTON_SIZE, CLOSE_BUTTON_SIZE).into(),
         )
     }
 
@@ -862,6 +912,29 @@ fn solid_element(rect: Rectangle<i32, Logical>, color: Color32F) -> SolidColorRe
         1.0,
         Kind::Unspecified,
     )
+}
+
+fn close_button_x_rects(rect: Rectangle<i32, Logical>) -> Vec<Rectangle<i32, Logical>> {
+    let cell = (rect.size.w / 5).max(1);
+    let mark_size = cell.min(rect.size.h / 5).max(1);
+    let mut rects = Vec::new();
+
+    for row in 1..4 {
+        for col in 1..4 {
+            if row == col || row + col == 4 {
+                rects.push(Rectangle::new(
+                    (
+                        rect.loc.x + col * cell + (cell - mark_size) / 2,
+                        rect.loc.y + row * cell + (cell - mark_size) / 2,
+                    )
+                        .into(),
+                    (mark_size, mark_size).into(),
+                ));
+            }
+        }
+    }
+
+    rects
 }
 
 fn send_frames_surface_tree(surface: &wl_surface::WlSurface, time: u32) {
