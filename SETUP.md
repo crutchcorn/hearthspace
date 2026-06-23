@@ -8,10 +8,12 @@ The following packages were installed on the development VM:
 
 ```sh
 sudo apt-get update
-sudo apt-get install -y build-essential cargo rustc rustfmt pkg-config clang libclang-dev libwayland-dev wayland-protocols wayland-utils libinput-dev libxkbcommon-dev libxkbcommon-x11-dev libudev-dev libseat-dev libgbm-dev libegl1-mesa-dev libgles2-mesa-dev libdrm-dev libsystemd-dev foot
+sudo apt-get install -y build-essential cargo rustc rustfmt pkg-config clang libclang-dev libwayland-dev wayland-protocols wayland-utils libinput-dev libxkbcommon-dev libxkbcommon-x11-dev libudev-dev libseat-dev libgbm-dev libegl1-mesa-dev libgles2-mesa-dev libdrm-dev libsystemd-dev libgtk-4-dev foot
 ```
 
 `foot` is installed as a small Wayland-native terminal for early spawn testing.
+
+`libgtk-4-dev` is required for the built-in GTK accessibility test app used by the default `SPAWN` action.
 
 `libxkbcommon-x11-dev` is required by the published `gpui` crate's Linux stack, even when Hearthspace uses GPUI as a Wayland shell client.
 
@@ -31,6 +33,7 @@ libinput: 1.31.1
 xkbcommon: 1.13.1
 libseat: 0.9.2
 gbm: 26.0.3-1ubuntu1
+gtk4: 4.22.4
 foot: 1.25.0
 ```
 

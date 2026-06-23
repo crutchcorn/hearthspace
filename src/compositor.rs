@@ -876,12 +876,22 @@ impl App {
         };
         self.spawn_offset = (self.spawn_offset + SPAWN_OFFSET_STEP) % SPAWN_OFFSET_WRAP;
 
-        match Command::new(DEFAULT_APP)
+        let current_exe = match env::current_exe() {
+            Ok(path) => path,
+            Err(error) => {
+                eprintln!("Failed to locate current executable for GTK test app: {error}");
+                return;
+            }
+        };
+
+        match Command::new(current_exe)
+            .arg(GTK_TEST_APP_FLAG)
             .env("WAYLAND_DISPLAY", WAYLAND_DISPLAY_NAME)
+            .env("GDK_BACKEND", "wayland")
             .spawn()
         {
             Ok(_) => {}
-            Err(error) => eprintln!("Failed to spawn {DEFAULT_APP}: {error}"),
+            Err(error) => eprintln!("Failed to spawn GTK test app: {error}"),
         }
     }
 

@@ -7,7 +7,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let args = std::env::args().collect::<Vec<_>>();
 
-    if args.iter().any(|arg| arg == "--shell-bar") {
+    if args
+        .iter()
+        .any(|arg| arg == hearthspace::config::GTK_TEST_APP_FLAG)
+    {
+        hearthspace::gtk_test_app::run()
+    } else if args.iter().any(|arg| arg == "--shell-bar") {
         hearthspace::shell_bar::run()
     } else {
         hearthspace::run_with_options(hearthspace::RunOptions {

@@ -7,6 +7,7 @@ rust-version = "1.80.1"
 [dependencies]
 atspi = { version = "0.30.0", features = ["tokio"] }
 gpui = { version = "0.2.2", default-features = false, features = ["wayland"] }
+gtk = { package = "gtk4", version = "0.9.7" }
 smithay = { version = "0.7.0", default-features = false, features = ["backend_winit", "desktop", "renderer_gl", "wayland_frontend"] }
 tokio = { version = "1.38.2", features = ["rt"] }
 tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }

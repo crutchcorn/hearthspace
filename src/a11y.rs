@@ -78,16 +78,27 @@ async fn log_accessibility_tree_async(
             window.id, window.app_id, window.title
         );
 
-        let matches = application_summaries
-            .iter()
-            .filter(|application| {
-                !is_desktop_shell_root(application)
-                    && accessible_matches_window(application, &window)
-            })
-            .collect::<Vec<_>>();
+        let mut matches = Vec::new();
+        for application in &application_summaries {
+            if is_desktop_shell_root(application) {
+                continue;
+            }
+
+            if accessible_matches_window(application, &window)
+                || accessible_tree_contains_window_match(
+                    &connection,
+                    application.object.clone(),
+                    &window,
+                )
+                .await
+            {
+                matches.push(application);
+            }
+        }
 
         if matches.is_empty() {
             println!("  no matching AT-SPI application root found");
+            log_available_application_roots(&application_summaries, 1);
             continue;
         }
 
@@ -113,6 +124,52 @@ async fn log_accessibility_tree_async(
 
     println!("=== end Hearthspace AT-SPI accessibility tree ===");
     Ok(())
+}
+
+fn log_available_application_roots(applications: &[AccessibleNodeSummary], depth: usize) {
+    println!("{}available AT-SPI application roots:", indent(depth));
+
+    for application in applications {
+        println!(
+            "{}role={:?} name={:?} description={:?} children={}",
+            indent(depth + 1),
+            application.role,
+            application.name,
+            application.description,
+            application.child_count
+        );
+    }
+}
+
+async fn accessible_tree_contains_window_match(
+    connection: &AccessibilityConnection,
+    object: ObjectRefOwned,
+    window: &ManagedWindowAccessibilityInfo,
+) -> bool {
+    let mut stack = vec![object];
+    let mut visited = 0;
+
+    while let Some(object) = stack.pop() {
+        if visited >= MAX_A11Y_NODES {
+            break;
+        }
+        visited += 1;
+
+        let Ok(proxy) = connection.object_as_accessible(&object).await else {
+            continue;
+        };
+
+        let summary = summarize_accessible(&proxy, object).await;
+        if accessible_matches_window(&summary, window) {
+            return true;
+        }
+
+        if let Ok(children) = proxy.get_children().await {
+            stack.extend(children);
+        }
+    }
+
+    false
 }
 
 async fn summarize_accessible(

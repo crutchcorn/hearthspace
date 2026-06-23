@@ -2,6 +2,7 @@ pub mod a11y;
 pub mod compositor;
 pub mod config;
 pub mod geometry;
+pub mod gtk_test_app;
 pub mod shell;
 pub mod shell_bar;
 

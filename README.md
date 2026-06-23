@@ -37,7 +37,7 @@ SPAWN | LEFT | RIGHT | UP | DOWN | ZOOM+ | ZOOM- | LOG
 Use them to:
 
 ```text
-SPAWN: spawn a foot terminal inside Hearthspace
+SPAWN: spawn the built-in GTK accessibility test app inside Hearthspace
 left/right/up/down: pan the canvas by half the compositor window size
 ZOOM+/ZOOM-: zoom the canvas in and out around the viewport center
 LOG: print AT-SPI accessibility trees for Hearthspace-managed windows to the compositor log
@@ -79,7 +79,7 @@ Synthetic wl_output and xdg-output advertisement
 xdg-decoration advertisement with server-side decoration requests
 GPUI shell-client control bar
 Compositor-owned draggable title bars
-Spawn button for foot
+Spawn button for the built-in GTK accessibility test app
 Canvas viewport offset
 Half-screen pan targets
 Animated pan buttons
@@ -96,7 +96,8 @@ Still intentionally rough:
 ```text
 No window resizing yet
 Zoom supports shell buttons and Super-modified scroll, but there is no pinch gesture zoom yet
-AT-SPI logging is scoped by matching Hearthspace-managed window app IDs/titles against AT-SPI application roots; this is a heuristic until windows have direct AT-SPI object references
+AT-SPI logging is scoped by matching Hearthspace-managed window app IDs/titles against AT-SPI application roots and non-shell descendants; this is a heuristic until windows have direct AT-SPI object references
+Apps must publish AT-SPI data to appear in semantic logs; the built-in GTK test app exists to provide deterministic semantic content
 Several optional desktop protocols are not implemented yet, so clients may print warnings
 ```
 
