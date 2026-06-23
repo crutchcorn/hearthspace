@@ -1,23 +1,36 @@
 use smithay::{
     backend::renderer::{
-        Color32F, Frame, Renderer, RendererSuper,
+        Color32F, RendererSuper,
+        damage::OutputDamageTracker,
         element::{
-            Kind,
+            Kind, render_elements,
             solid::{SolidColorBuffer, SolidColorRenderElement},
             surface::{WaylandSurfaceRenderElement, render_elements_from_surface_tree},
+            utils::RescaleRenderElement,
         },
         gles::GlesRenderer,
-        utils::draw_render_elements,
     },
-    utils::{Logical, Physical, Rectangle, Size, Transform},
+    utils::{Logical, Physical, Rectangle},
     wayland::compositor::{SurfaceAttributes, TraversalAction, with_surface_tree_downward},
 };
 use wayland_server::protocol::wl_surface;
 
 use super::{App, ManagedWindowKind};
 
+render_elements! {
+    pub(super) HearthspaceRenderElement<=GlesRenderer>;
+    Surface = RescaleRenderElement<WaylandSurfaceRenderElement<GlesRenderer>>,
+    Solid = SolidColorRenderElement,
+}
+
 impl App {
-    /// Draw the full scene into `framebuffer` using `renderer`.
+    /// Render the current scene through an [`OutputDamageTracker`].
+    ///
+    /// The damage tracker compares this frame's elements against the previous
+    /// frame and only clears and redraws the regions that actually changed,
+    /// rather than repainting the whole output every frame. The returned value
+    /// is the damaged region (in output coordinates) to hand to the backend's
+    /// buffer swap, or `None` when nothing changed and the frame can be skipped.
     ///
     /// This is backend-agnostic: it only depends on a [`GlesRenderer`] and the
     /// shared [`App`] state, so both the winit and (future) DRM backends share
@@ -27,42 +40,45 @@ impl App {
         &self,
         renderer: &mut GlesRenderer,
         framebuffer: &mut <GlesRenderer as RendererSuper>::Framebuffer<'_>,
-        output_size: Size<i32, Physical>,
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        let damage = Rectangle::from_size(output_size);
+        damage_tracker: &mut OutputDamageTracker,
+        age: usize,
+    ) -> Result<Option<Vec<Rectangle<i32, Physical>>>, Box<dyn std::error::Error>> {
+        let elements = self.collect_render_elements(renderer);
+        let result = damage_tracker.render_output(
+            renderer,
+            framebuffer,
+            age,
+            &elements,
+            Color32F::new(0.04, 0.05, 0.07, 1.0),
+        )?;
+        Ok(result.damage.cloned())
+    }
 
-        let window_elements = (0..self.windows.len())
-            .map(|index| {
-                (
-                    self.window_render_elements(renderer, index),
-                    self.window_render_scale(index),
-                )
-            })
-            .collect::<Vec<_>>();
-        let title_bar_elements = (0..self.windows.len())
-            .map(|index| self.title_bar_elements(index))
-            .collect::<Vec<_>>();
+    /// Collect every render element for the current frame in front-to-back
+    /// (topmost-first) order, as expected by [`OutputDamageTracker`].
+    ///
+    /// Window surfaces are built at native scale and wrapped in a
+    /// [`RescaleRenderElement`] so the viewport zoom is applied uniformly while
+    /// the damage tracker still works in a single output coordinate space.
+    fn collect_render_elements(
+        &self,
+        renderer: &mut GlesRenderer,
+    ) -> Vec<HearthspaceRenderElement> {
+        let mut elements = Vec::new();
+        for index in (0..self.windows.len()).rev() {
+            for solid in self.title_bar_elements(index) {
+                elements.push(HearthspaceRenderElement::from(solid));
+            }
 
-        let mut frame = renderer.render(framebuffer, output_size, Transform::Flipped180)?;
-        frame.clear(Color32F::new(0.04, 0.05, 0.07, 1.0), &[damage])?;
-        for ((window_elements, window_scale), title_bar_elements) in
-            window_elements.iter().zip(&title_bar_elements)
-        {
-            draw_render_elements::<GlesRenderer, _, _>(
-                &mut frame,
-                *window_scale,
-                window_elements,
-                &[damage],
-            )?;
-            draw_render_elements::<GlesRenderer, _, _>(
-                &mut frame,
-                1.0,
-                title_bar_elements,
-                &[damage],
-            )?;
+            let origin = self.surface_screen_origin(index);
+            let scale = self.window_render_scale(index);
+            for surface in self.window_render_elements(renderer, index) {
+                elements.push(HearthspaceRenderElement::from(
+                    RescaleRenderElement::from_element(surface, origin, scale),
+                ));
+            }
         }
-        let _ = frame.finish()?;
-        Ok(())
+        elements
     }
 
     pub(super) fn window_render_elements(
@@ -75,7 +91,9 @@ impl App {
             renderer,
             window.surface.wl_surface(),
             self.surface_screen_origin(window_index),
-            self.window_render_scale(window_index),
+            // Built at native scale; the viewport zoom is applied by wrapping
+            // these elements in a `RescaleRenderElement` in the caller.
+            1.0,
             1.0,
             Kind::Unspecified,
         )

@@ -24,6 +24,7 @@ use windows::{decoration_for_new_window, position_for_new_window, window_kind_fo
 use smithay::{
     backend::{
         renderer::{
+            damage::OutputDamageTracker,
             gles::GlesRenderer,
             utils::on_commit_buffer_handler,
         },
@@ -39,7 +40,7 @@ use smithay::{
         },
         wayland_server::{Display, protocol::wl_seat},
     },
-    utils::{Logical, Physical, Point, Rectangle, Serial, Size, Transform},
+    utils::{Logical, Physical, Point, Serial, Size, Transform},
     wayland::{
         buffer::BufferHandler,
         compositor::{CompositorClientState, CompositorHandler, CompositorState},
@@ -435,6 +436,8 @@ pub fn run_winit(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> 
             if size != data.state.output_size {
                 data.state.output_size = size;
                 update_output_mode(&data.state.output, size);
+                data.damage_tracker =
+                    OutputDamageTracker::new(size, 1.0, Transform::Flipped180);
                 data.state.configure_shell_bars();
                 data.state.request_redraw();
             }
@@ -456,6 +459,7 @@ pub fn run_winit(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> 
         state,
         display,
         backend: Backend::Winit(backend),
+        damage_tracker: OutputDamageTracker::new(output_size, 1.0, Transform::Flipped180),
         start_time: std::time::Instant::now(),
         running: true,
     };
@@ -498,6 +502,7 @@ struct CalloopData {
     state: App,
     display: Display<App>,
     backend: Backend,
+    damage_tracker: OutputDamageTracker,
     start_time: std::time::Instant,
     running: bool,
 }
@@ -508,16 +513,24 @@ impl CalloopData {
             state,
             display,
             backend,
+            damage_tracker,
             start_time,
             ..
         } = self;
         let Backend::Winit(backend) = backend;
 
-        let damage = Rectangle::from_size(state.output_size);
-        {
+        // Bind first so the winit EGL surface is the current draw surface, then
+        // query its back buffer age. The age query (`eglQuerySurface` with
+        // `EGL_BUFFER_AGE_EXT`) only succeeds for the currently bound surface;
+        // a previous frame's client buffer import (e.g. Firefox) leaves another
+        // surface current, so querying before binding fails with
+        // `EGL_BAD_SURFACE` and forces a full redraw every frame.
+        backend.bind()?;
+        let age = backend.buffer_age().unwrap_or(0);
+        let damage = {
             let (renderer, mut framebuffer) = backend.bind()?;
-            state.render_frame(renderer, &mut framebuffer, state.output_size)?;
-        }
+            state.render_frame(renderer, &mut framebuffer, damage_tracker, age)?
+        };
 
         for window in &state.windows {
             send_frames_surface_tree(
@@ -527,7 +540,12 @@ impl CalloopData {
         }
 
         display.flush_clients()?;
-        backend.submit(Some(&[damage]))?;
+
+        // No damage means the scene is identical to the on-screen buffer, so
+        // there is nothing to swap.
+        if let Some(damage) = damage {
+            backend.submit(Some(&damage))?;
+        }
         Ok(())
     }
 }
