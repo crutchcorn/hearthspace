@@ -28,10 +28,10 @@ Spawned child applications receive this `WAYLAND_DISPLAY` and connect back to He
 
 ## Test The PoC
 
-The top control bar is a GPUI shell client with seven labeled buttons:
+The top control bar is a GPUI shell client with eight labeled buttons:
 
 ```text
-SPAWN | LEFT | RIGHT | UP | DOWN | ZOOM+ | ZOOM-
+SPAWN | LEFT | RIGHT | UP | DOWN | ZOOM+ | ZOOM- | LOG
 ```
 
 Use them to:
@@ -40,6 +40,7 @@ Use them to:
 SPAWN: spawn a foot terminal inside Hearthspace
 left/right/up/down: pan the canvas by half the compositor window size
 ZOOM+/ZOOM-: zoom the canvas in and out around the viewport center
+LOG: print the current AT-SPI accessibility tree to the compositor log
 ```
 
 Spawned app windows are rendered in canvas coordinates. Panning animates the viewport offset, moving all client windows together relative to the visible compositor window. Zooming animates the viewport scale while keeping the GPUI toolbar fixed in screen-space.
@@ -84,6 +85,7 @@ Half-screen pan targets
 Animated pan buttons
 Animated zoom buttons
 Super-modified touchpad or mouse-wheel zoom
+AT-SPI accessibility tree logging from the GPUI shell bar
 Window focus, raise, and title-bar dragging
 Input-region-aware pointer forwarding to client surfaces
 ```
@@ -93,6 +95,7 @@ Still intentionally rough:
 ```text
 No window resizing yet
 Zoom supports shell buttons and Super-modified scroll, but there is no pinch gesture zoom yet
+AT-SPI logging currently queries the session accessibility bus directly; it is not yet scoped to Hearthspace-managed windows only
 Several optional desktop protocols are not implemented yet, so clients may print warnings
 ```
 

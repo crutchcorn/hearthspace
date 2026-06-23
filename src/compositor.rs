@@ -824,6 +824,7 @@ impl App {
             ShellCommand::PanDown => self.pan_viewport_by(0, self.vertical_pan_step()),
             ShellCommand::ZoomIn => self.animate_zoom_around_viewport_center(ZOOM_STEP),
             ShellCommand::ZoomOut => self.animate_zoom_around_viewport_center(1.0 / ZOOM_STEP),
+            ShellCommand::LogAccessibilityTree => crate::a11y::log_accessibility_tree(),
         }
         self.request_redraw();
     }

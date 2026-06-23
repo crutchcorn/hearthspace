@@ -1,3 +1,4 @@
+pub mod a11y;
 pub mod compositor;
 pub mod config;
 pub mod geometry;

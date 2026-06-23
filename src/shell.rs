@@ -7,10 +7,11 @@ pub enum ShellCommand {
     PanDown,
     ZoomIn,
     ZoomOut,
+    LogAccessibilityTree,
 }
 
 impl ShellCommand {
-    pub const ALL: [Self; 7] = [
+    pub const ALL: [Self; 8] = [
         Self::SpawnApp,
         Self::PanLeft,
         Self::PanRight,
@@ -18,6 +19,7 @@ impl ShellCommand {
         Self::PanDown,
         Self::ZoomIn,
         Self::ZoomOut,
+        Self::LogAccessibilityTree,
     ];
 
     pub fn label(self) -> &'static str {
@@ -29,6 +31,7 @@ impl ShellCommand {
             Self::PanDown => "DOWN",
             Self::ZoomIn => "ZOOM+",
             Self::ZoomOut => "ZOOM-",
+            Self::LogAccessibilityTree => "LOG",
         }
     }
 
@@ -41,6 +44,7 @@ impl ShellCommand {
             Self::PanDown => "pan-down",
             Self::ZoomIn => "zoom-in",
             Self::ZoomOut => "zoom-out",
+            Self::LogAccessibilityTree => "log-a11y-tree",
         }
     }
 
@@ -53,6 +57,7 @@ impl ShellCommand {
             "pan-down" => Self::PanDown,
             "zoom-in" => Self::ZoomIn,
             "zoom-out" => Self::ZoomOut,
+            "log-a11y-tree" => Self::LogAccessibilityTree,
             _ => return None,
         })
     }
