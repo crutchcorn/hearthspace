@@ -1,15 +1,22 @@
-use std::{os::unix::io::OwnedFd, process::Command, sync::Arc, time::Instant};
+use std::{
+    env, fs,
+    io::{ErrorKind, Read},
+    os::unix::{io::OwnedFd, net::UnixListener as CommandListener},
+    path::PathBuf,
+    process::Command,
+    sync::Arc,
+    time::Instant,
+};
 
 use crate::{
     config::*,
-    controls::{
-        control_buttons as default_control_buttons, label_rects, ControlAction, ControlButton,
-    },
+    controls::ControlAction,
     geometry::{
         canvas_to_screen as transform_canvas_to_screen, ease_out_cubic, interpolate_canvas_point,
         interpolate_f64, rect_contains, screen_to_canvas as transform_screen_to_canvas,
         zoom_around_screen_point, CanvasPoint,
     },
+    shell::ShellCommand,
 };
 
 use smithay::{
@@ -50,8 +57,8 @@ use smithay::{
     wayland::{
         buffer::BufferHandler,
         compositor::{
-            with_surface_tree_downward, CompositorClientState, CompositorHandler, CompositorState,
-            SurfaceAttributes, TraversalAction,
+            with_states, with_surface_tree_downward, CompositorClientState, CompositorHandler,
+            CompositorState, SurfaceAttributes, TraversalAction,
         },
         output::{OutputHandler, OutputManagerState},
         selection::{
@@ -63,6 +70,7 @@ use smithay::{
         shell::xdg::{
             decoration::{XdgDecorationHandler, XdgDecorationState},
             PopupSurface, PositionerState, ToplevelSurface, XdgShellHandler, XdgShellState,
+            XdgToplevelSurfaceData,
         },
         shm::{ShmHandler, ShmState},
     },
@@ -81,6 +89,13 @@ use wayland_server::{
 struct ManagedWindow {
     surface: ToplevelSurface,
     position: CanvasPoint,
+    kind: ManagedWindowKind,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ManagedWindowKind {
+    Normal,
+    ShellBar,
 }
 
 struct DragState {
@@ -132,7 +147,6 @@ struct App {
     pointer_location: Point<f64, Logical>,
     output_size: Size<i32, Physical>,
     output: Output,
-    control_bar_elements: Vec<SolidColorRenderElement>,
     needs_redraw: bool,
 }
 
@@ -146,17 +160,16 @@ impl XdgShellHandler for App {
     }
 
     fn new_toplevel(&mut self, surface: ToplevelSurface) {
+        let kind = window_kind_for_toplevel(&surface);
         self.windows.push(ManagedWindow {
             surface: surface.clone(),
-            position: self.next_spawn_position,
+            position: position_for_new_window(kind, self.next_spawn_position),
+            kind,
         });
         self.output.enter(surface.wl_surface());
         self.request_redraw();
 
-        surface.with_pending_state(|state| {
-            state.states.set(xdg_toplevel::State::Activated);
-        });
-        surface.send_configure();
+        self.configure_toplevel(&surface, kind);
     }
 
     fn new_popup(&mut self, _surface: PopupSurface, _positioner: PositionerState) {}
@@ -175,6 +188,20 @@ impl XdgShellHandler for App {
         self.windows.retain(|window| window.surface != surface);
         self.drag = None;
         self.request_redraw();
+    }
+
+    fn app_id_changed(&mut self, surface: ToplevelSurface) {
+        let kind = window_kind_for_toplevel(&surface);
+        if let Some(window) = self
+            .windows
+            .iter_mut()
+            .find(|window| window.surface == surface)
+        {
+            window.kind = kind;
+            window.position = position_for_new_window(kind, window.position);
+            self.configure_toplevel(&surface, kind);
+            self.request_redraw();
+        }
     }
 }
 
@@ -294,12 +321,16 @@ pub fn run_winit() -> Result<(), Box<dyn std::error::Error>> {
         pointer_location: (0.0, 0.0).into(),
         output_size,
         output,
-        control_bar_elements: Vec::new(),
         needs_redraw: true,
     };
-    state.rebuild_control_bar_elements();
 
     let listener = ListeningSocket::bind(WAYLAND_DISPLAY_NAME)?;
+    let command_socket_path = command_socket_path();
+    remove_stale_socket(&command_socket_path)?;
+    let command_listener = CommandListener::bind(&command_socket_path)?;
+    command_listener.set_nonblocking(true)?;
+    spawn_shell_bar(&command_socket_path);
+
     let mut clients = Vec::new();
     let start_time = std::time::Instant::now();
 
@@ -321,7 +352,7 @@ pub fn run_winit() -> Result<(), Box<dyn std::error::Error>> {
         if output_size != state.output_size {
             state.output_size = output_size;
             update_output_mode(&state.output, output_size);
-            state.rebuild_control_bar_elements();
+            state.configure_shell_bars();
             state.request_redraw();
         }
 
@@ -334,6 +365,8 @@ pub fn run_winit() -> Result<(), Box<dyn std::error::Error>> {
             state.request_redraw();
         }
 
+        process_shell_commands(&mut state, &command_listener)?;
+
         display.dispatch_clients(&mut state)?;
         display.flush_clients()?;
         state.output.cleanup();
@@ -344,7 +377,12 @@ pub fn run_winit() -> Result<(), Box<dyn std::error::Error>> {
             {
                 let (renderer, mut framebuffer) = backend.bind()?;
                 let window_elements = (0..state.windows.len())
-                    .map(|index| state.window_render_elements(renderer, index))
+                    .map(|index| {
+                        (
+                            state.window_render_elements(renderer, index),
+                            state.window_render_scale(index),
+                        )
+                    })
                     .collect::<Vec<_>>();
                 let title_bar_elements = (0..state.windows.len())
                     .map(|index| state.title_bar_elements(index))
@@ -353,12 +391,12 @@ pub fn run_winit() -> Result<(), Box<dyn std::error::Error>> {
                 let mut frame =
                     renderer.render(&mut framebuffer, state.output_size, Transform::Flipped180)?;
                 frame.clear(Color32F::new(0.04, 0.05, 0.07, 1.0), &[damage])?;
-                for (window_elements, title_bar_elements) in
+                for ((window_elements, window_scale), title_bar_elements) in
                     window_elements.iter().zip(&title_bar_elements)
                 {
                     draw_render_elements::<GlesRenderer, _, _>(
                         &mut frame,
-                        state.viewport_scale,
+                        *window_scale,
                         window_elements,
                         &[damage],
                     )?;
@@ -369,12 +407,6 @@ pub fn run_winit() -> Result<(), Box<dyn std::error::Error>> {
                         &[damage],
                     )?;
                 }
-                draw_render_elements::<GlesRenderer, _, _>(
-                    &mut frame,
-                    1.0,
-                    &state.control_bar_elements,
-                    &[damage],
-                )?;
                 let _ = frame.finish()?;
             }
 
@@ -398,6 +430,10 @@ pub fn run_winit() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 fn configure_server_side_decoration(toplevel: &ToplevelSurface) {
+    if window_kind_for_toplevel(toplevel) == ManagedWindowKind::ShellBar {
+        return;
+    }
+
     toplevel.with_pending_state(|state| {
         state.decoration_mode = Some(DecorationMode::ServerSide);
     });
@@ -431,6 +467,81 @@ fn update_output_mode(output: &Output, size: Size<i32, Physical>) {
         Some(Scale::Integer(1)),
         Some((0, 0).into()),
     );
+}
+
+fn command_socket_path() -> PathBuf {
+    env::var_os("XDG_RUNTIME_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(env::temp_dir)
+        .join(SHELL_COMMAND_SOCKET_NAME)
+}
+
+fn remove_stale_socket(path: &PathBuf) -> std::io::Result<()> {
+    match fs::remove_file(path) {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(error),
+    }
+}
+
+fn spawn_shell_bar(command_socket_path: &PathBuf) {
+    let current_exe = match env::current_exe() {
+        Ok(path) => path,
+        Err(error) => {
+            eprintln!("Failed to locate current executable for shell bar: {error}");
+            return;
+        }
+    };
+
+    if let Err(error) = Command::new(current_exe)
+        .arg("--shell-bar")
+        .env("WAYLAND_DISPLAY", WAYLAND_DISPLAY_NAME)
+        .env(SHELL_COMMAND_SOCKET_ENV, command_socket_path)
+        .spawn()
+    {
+        eprintln!("Failed to spawn shell bar: {error}");
+    }
+}
+
+fn process_shell_commands(state: &mut App, listener: &CommandListener) -> std::io::Result<()> {
+    loop {
+        match listener.accept() {
+            Ok((mut stream, _)) => {
+                let mut buffer = String::new();
+                stream.read_to_string(&mut buffer)?;
+                for line in buffer.lines() {
+                    if let Some(command) = ShellCommand::parse(line) {
+                        state.run_control_action(command.into());
+                    }
+                }
+            }
+            Err(error) if error.kind() == ErrorKind::WouldBlock => return Ok(()),
+            Err(error) => return Err(error),
+        }
+    }
+}
+
+fn window_kind_for_toplevel(surface: &ToplevelSurface) -> ManagedWindowKind {
+    match toplevel_app_id(surface).as_deref() {
+        Some(SHELL_BAR_APP_ID) => ManagedWindowKind::ShellBar,
+        _ => ManagedWindowKind::Normal,
+    }
+}
+
+fn toplevel_app_id(surface: &ToplevelSurface) -> Option<String> {
+    with_states(surface.wl_surface(), |states| {
+        states
+            .data_map
+            .get::<XdgToplevelSurfaceData>()
+            .and_then(|data| data.lock().ok()?.app_id.clone())
+    })
+}
+
+fn position_for_new_window(kind: ManagedWindowKind, fallback: CanvasPoint) -> CanvasPoint {
+    match kind {
+        ManagedWindowKind::Normal => fallback,
+        ManagedWindowKind::ShellBar => CanvasPoint { x: 0, y: 0 },
+    }
 }
 
 fn handle_input_event(state: &mut App, event: InputEvent<smithay::backend::winit::WinitInput>) {
@@ -494,12 +605,6 @@ fn handle_input_event(state: &mut App, event: InputEvent<smithay::backend::winit
             }
 
             if is_left_button && event.state() == ButtonState::Pressed {
-                if let Some(action) = state.control_action_at(state.pointer_location) {
-                    state.drag = None;
-                    state.run_control_action(action);
-                    return;
-                }
-
                 match state.hit_test(state.pointer_location) {
                     Some(HitTarget::CloseButton { window_index }) => {
                         state.windows[window_index].surface.send_close();
@@ -584,14 +689,25 @@ impl App {
         render_elements_from_surface_tree(
             renderer,
             window.surface.wl_surface(),
-            self.content_screen_origin(window_index),
-            self.viewport_scale,
+            self.surface_screen_origin(window_index),
+            self.window_render_scale(window_index),
             1.0,
             Kind::Unspecified,
         )
     }
 
+    fn window_render_scale(&self, window_index: usize) -> f64 {
+        match self.windows[window_index].kind {
+            ManagedWindowKind::Normal => self.viewport_scale,
+            ManagedWindowKind::ShellBar => 1.0,
+        }
+    }
+
     fn title_bar_elements(&self, window_index: usize) -> Vec<SolidColorRenderElement> {
+        if self.windows[window_index].kind != ManagedWindowKind::Normal {
+            return Vec::new();
+        }
+
         let mut elements = Vec::new();
 
         let rect = self.title_bar_rect(window_index);
@@ -611,7 +727,12 @@ impl App {
 
         elements.push(solid_element(
             rect,
-            if window_index == self.windows.len().saturating_sub(1) {
+            if Some(window_index)
+                == self
+                    .windows
+                    .iter()
+                    .rposition(|window| window.kind == ManagedWindowKind::Normal)
+            {
                 focused_color
             } else {
                 unfocused_color
@@ -619,49 +740,6 @@ impl App {
         ));
 
         elements
-    }
-
-    fn rebuild_control_bar_elements(&mut self) {
-        let buttons = self.control_buttons();
-        let mut elements = Vec::new();
-
-        // draw_render_elements expects top-to-bottom ordering for occlusion.
-        for button in &buttons {
-            for label_rect in label_rects(*button) {
-                elements.push(solid_element(
-                    label_rect,
-                    Color32F::new(0.92, 0.96, 1.0, 1.0),
-                ));
-            }
-        }
-
-        for button in buttons {
-            elements.push(solid_element(
-                button.rect,
-                Color32F::new(0.22, 0.28, 0.38, 1.0),
-            ));
-        }
-
-        elements.push(solid_element(
-            Rectangle::new(
-                (0, 0).into(),
-                (self.output_size.w, CONTROL_BAR_HEIGHT).into(),
-            ),
-            Color32F::new(0.10, 0.12, 0.16, 0.96),
-        ));
-
-        self.control_bar_elements = elements;
-    }
-
-    fn control_buttons(&self) -> Vec<ControlButton> {
-        default_control_buttons()
-    }
-
-    fn control_action_at(&self, point: Point<f64, Logical>) -> Option<ControlAction> {
-        self.control_buttons()
-            .into_iter()
-            .find(|button| rect_contains(button.rect, point))
-            .map(|button| button.action)
     }
 
     fn run_control_action(&mut self, action: ControlAction) {
@@ -702,6 +780,16 @@ impl App {
     }
 
     fn hit_test(&self, location: Point<f64, Logical>) -> Option<HitTarget> {
+        for (window_index, window) in self.windows.iter().enumerate().rev() {
+            if window.kind != ManagedWindowKind::ShellBar {
+                continue;
+            }
+
+            if let Some(target) = self.hit_test_shell_bar(window_index, location) {
+                return Some(target);
+            }
+        }
+
         if location.y < f64::from(CONTROL_BAR_HEIGHT) {
             return None;
         }
@@ -709,6 +797,10 @@ impl App {
         let canvas_location = self.screen_to_canvas(location);
 
         for (window_index, window) in self.windows.iter().enumerate().rev() {
+            if window.kind != ManagedWindowKind::Normal {
+                continue;
+            }
+
             if rect_contains(self.close_button_canvas_rect(window_index), canvas_location) {
                 return Some(HitTarget::CloseButton { window_index });
             }
@@ -738,14 +830,40 @@ impl App {
     }
 
     fn raise_window(&mut self, window_index: usize) -> usize {
-        if window_index + 1 == self.windows.len() {
+        if self.windows[window_index].kind != ManagedWindowKind::Normal {
             return window_index;
         }
 
         let window = self.windows.remove(window_index);
-        self.windows.push(window);
+        let shell_start = self
+            .windows
+            .iter()
+            .position(|window| window.kind == ManagedWindowKind::ShellBar)
+            .unwrap_or(self.windows.len());
+        self.windows.insert(shell_start, window);
         self.request_redraw();
-        self.windows.len() - 1
+        shell_start
+    }
+
+    fn configure_toplevel(&self, surface: &ToplevelSurface, kind: ManagedWindowKind) {
+        surface.with_pending_state(|state| {
+            if kind == ManagedWindowKind::ShellBar {
+                state.size = Some((self.output_size.w, CONTROL_BAR_HEIGHT).into());
+                state.bounds = Some((self.output_size.w, CONTROL_BAR_HEIGHT).into());
+                state.decoration_mode = Some(DecorationMode::ClientSide);
+            } else {
+                state.states.set(xdg_toplevel::State::Activated);
+            }
+        });
+        surface.send_configure();
+    }
+
+    fn configure_shell_bars(&self) {
+        for window in &self.windows {
+            if window.kind == ManagedWindowKind::ShellBar {
+                self.configure_toplevel(&window.surface, window.kind);
+            }
+        }
     }
 
     fn request_redraw(&mut self) {
@@ -878,6 +996,38 @@ impl App {
         self.canvas_to_screen(self.content_canvas_origin(window_index).to_f64())
             .to_i32_round()
             .to_physical(1)
+    }
+
+    fn shell_bar_screen_origin(&self) -> Point<i32, Physical> {
+        Point::<i32, Logical>::from((0, 0)).to_physical(1)
+    }
+
+    fn surface_screen_origin(&self, window_index: usize) -> Point<i32, Physical> {
+        match self.windows[window_index].kind {
+            ManagedWindowKind::Normal => self.content_screen_origin(window_index),
+            ManagedWindowKind::ShellBar => self.shell_bar_screen_origin(),
+        }
+    }
+
+    fn hit_test_shell_bar(
+        &self,
+        window_index: usize,
+        location: Point<f64, Logical>,
+    ) -> Option<HitTarget> {
+        let window = &self.windows[window_index];
+        let (surface, surface_location) = under_from_surface_tree(
+            window.surface.wl_surface(),
+            location,
+            Point::<i32, Logical>::from((0, 0)),
+            WindowSurfaceType::ALL,
+        )?;
+        let relative_surface_location = location - surface_location.to_f64();
+        let pointer_focus_origin = location - relative_surface_location;
+        Some(HitTarget::Client {
+            window_index,
+            surface,
+            surface_location: pointer_focus_origin,
+        })
     }
 
     fn canvas_to_screen(&self, point: Point<f64, Logical>) -> Point<f64, Logical> {

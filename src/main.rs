@@ -5,5 +5,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         tracing_subscriber::fmt().init();
     }
 
-    hearthspace::run()
+    if std::env::args().any(|arg| arg == "--shell-bar") {
+        hearthspace::shell_bar::run()
+    } else {
+        hearthspace::run()
+    }
 }

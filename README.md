@@ -18,7 +18,7 @@ WAYLAND_DISPLAY=wayland-hearthspace-0
 
 ## Test The PoC
 
-The top control bar has seven labeled buttons:
+The top control bar is a GPUI shell client with seven labeled buttons:
 
 ```text
 SPAWN | LEFT | RIGHT | UP | DOWN | ZOOM+ | ZOOM-
@@ -32,7 +32,7 @@ left/right/up/down: pan the canvas by half the compositor window size
 ZOOM+/ZOOM-: zoom the canvas in and out around the viewport center
 ```
 
-Spawned app windows are rendered in canvas coordinates. Panning animates the viewport offset, moving all client windows together relative to the visible compositor window. Zooming animates the viewport scale while keeping the toolbar fixed.
+Spawned app windows are rendered in canvas coordinates. Panning animates the viewport offset, moving all client windows together relative to the visible compositor window. Zooming animates the viewport scale while keeping the GPUI toolbar fixed in screen-space.
 
 Window interaction:
 
@@ -55,7 +55,7 @@ GLES rendering path
 Dirty/event-driven render loop that skips GPU redraws when the scene is unchanged
 Synthetic wl_output and xdg-output advertisement
 xdg-decoration advertisement with server-side decoration requests
-Compositor-owned control bar
+GPUI shell-client control bar
 Compositor-owned draggable title bars
 Spawn button for foot
 Canvas viewport offset

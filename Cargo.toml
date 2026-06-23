@@ -5,6 +5,7 @@ edition = "2021"
 rust-version = "1.80.1"
 
 [dependencies]
+gpui = { version = "0.2.2", default-features = false, features = ["wayland"] }
 smithay = { version = "0.7.0", default-features = false, features = ["backend_winit", "desktop", "renderer_gl", "wayland_frontend"] }
 tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
 wayland-protocols = { version = "0.32.8", features = ["server"] }
