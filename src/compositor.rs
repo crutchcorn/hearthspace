@@ -9,6 +9,7 @@ use std::{
 };
 
 use crate::{
+    a11y::ManagedWindowAccessibilityInfo,
     config::*,
     geometry::{
         canvas_to_screen as transform_canvas_to_screen, ease_out_cubic, interpolate_canvas_point,
@@ -87,6 +88,7 @@ use wayland_server::{
 };
 
 struct ManagedWindow {
+    id: u64,
     surface: ToplevelSurface,
     position: CanvasPoint,
     kind: ManagedWindowKind,
@@ -141,6 +143,7 @@ struct App {
     viewport_scale: f64,
     viewport_animation: Option<ViewportAnimation>,
     windows: Vec<ManagedWindow>,
+    next_window_id: u64,
     drag: Option<DragState>,
     next_spawn_position: CanvasPoint,
     spawn_offset: i32,
@@ -162,7 +165,10 @@ impl XdgShellHandler for App {
 
     fn new_toplevel(&mut self, surface: ToplevelSurface) {
         let kind = window_kind_for_toplevel(&surface);
+        let id = self.next_window_id;
+        self.next_window_id += 1;
         self.windows.push(ManagedWindow {
+            id,
             surface: surface.clone(),
             position: position_for_new_window(kind, self.next_spawn_position),
             kind,
@@ -209,6 +215,10 @@ impl XdgShellHandler for App {
             self.configure_toplevel(&surface, kind);
             self.request_redraw();
         }
+    }
+
+    fn title_changed(&mut self, _surface: ToplevelSurface) {
+        self.request_redraw();
     }
 }
 
@@ -322,6 +332,7 @@ pub fn run_winit(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> 
         viewport_scale: 1.0,
         viewport_animation: None,
         windows: Vec::new(),
+        next_window_id: 1,
         drag: None,
         next_spawn_position: CanvasPoint { x: 80, y: 96 },
         spawn_offset: 0,
@@ -545,6 +556,15 @@ fn toplevel_app_id(surface: &ToplevelSurface) -> Option<String> {
             .data_map
             .get::<XdgToplevelSurfaceData>()
             .and_then(|data| data.lock().ok()?.app_id.clone())
+    })
+}
+
+fn toplevel_title(surface: &ToplevelSurface) -> Option<String> {
+    with_states(surface.wl_surface(), |states| {
+        states
+            .data_map
+            .get::<XdgToplevelSurfaceData>()
+            .and_then(|data| data.lock().ok()?.title.clone())
     })
 }
 
@@ -824,9 +844,23 @@ impl App {
             ShellCommand::PanDown => self.pan_viewport_by(0, self.vertical_pan_step()),
             ShellCommand::ZoomIn => self.animate_zoom_around_viewport_center(ZOOM_STEP),
             ShellCommand::ZoomOut => self.animate_zoom_around_viewport_center(1.0 / ZOOM_STEP),
-            ShellCommand::LogAccessibilityTree => crate::a11y::log_accessibility_tree(),
+            ShellCommand::LogAccessibilityTree => {
+                crate::a11y::log_accessibility_tree(self.accessibility_window_snapshot())
+            }
         }
         self.request_redraw();
+    }
+
+    fn accessibility_window_snapshot(&self) -> Vec<ManagedWindowAccessibilityInfo> {
+        self.windows
+            .iter()
+            .filter(|window| window.kind == ManagedWindowKind::Normal)
+            .map(|window| ManagedWindowAccessibilityInfo {
+                id: window.id,
+                app_id: toplevel_app_id(&window.surface),
+                title: toplevel_title(&window.surface),
+            })
+            .collect()
     }
 
     fn spawn_app(&mut self) {

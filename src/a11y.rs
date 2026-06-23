@@ -4,8 +4,24 @@ use atspi::{
 
 const MAX_A11Y_NODES: usize = 2_000;
 
-pub fn log_accessibility_tree() {
-    std::thread::spawn(|| {
+#[derive(Debug, Clone)]
+pub struct ManagedWindowAccessibilityInfo {
+    pub id: u64,
+    pub app_id: Option<String>,
+    pub title: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+struct AccessibleNodeSummary {
+    object: ObjectRefOwned,
+    role: String,
+    name: String,
+    description: String,
+    child_count: i32,
+}
+
+pub fn log_accessibility_tree(windows: Vec<ManagedWindowAccessibilityInfo>) {
+    std::thread::spawn(move || {
         let runtime = match tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()
@@ -17,32 +33,161 @@ pub fn log_accessibility_tree() {
             }
         };
 
-        if let Err(error) = runtime.block_on(log_accessibility_tree_async()) {
+        if let Err(error) = runtime.block_on(log_accessibility_tree_async(windows)) {
             eprintln!("failed to log AT-SPI accessibility tree: {error}");
         }
     });
 }
 
-async fn log_accessibility_tree_async() -> Result<(), Box<dyn std::error::Error>> {
-    println!("=== AT-SPI accessibility tree ===");
+async fn log_accessibility_tree_async(
+    windows: Vec<ManagedWindowAccessibilityInfo>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    println!("=== Hearthspace AT-SPI accessibility tree ===");
+
+    if windows.is_empty() {
+        println!("No Hearthspace-managed normal windows are open.");
+        println!("=== end Hearthspace AT-SPI accessibility tree ===");
+        return Ok(());
+    }
+
+    println!("managed_windows: {}", windows.len());
+    for window in &windows {
+        println!(
+            "window id={} app_id={:?} title={:?}",
+            window.id, window.app_id, window.title
+        );
+    }
 
     let connection = AccessibilityConnection::new().await?;
     let root = connection.root_accessible_on_registry().await?;
     let applications = root.get_children().await?;
 
-    println!("applications: {}", applications.len());
+    println!("session_accessible_applications: {}", applications.len());
+
+    let mut application_summaries = Vec::new();
+    for application in applications {
+        if let Ok(proxy) = connection.object_as_accessible(&application).await {
+            application_summaries.push(summarize_accessible(&proxy, application).await);
+        }
+    }
 
     let mut visited = 0;
-    for application in applications {
-        log_accessible_ref(&connection, application, 0, &mut visited).await?;
+    for window in windows {
+        println!(
+            "--- hearthspace window id={} app_id={:?} title={:?} ---",
+            window.id, window.app_id, window.title
+        );
+
+        let mut matches = Vec::new();
+        for application in &application_summaries {
+            if accessible_matches_window(application, &window)
+                || accessible_tree_contains_window_match(
+                    &connection,
+                    application.object.clone(),
+                    &window,
+                )
+                .await
+            {
+                matches.push(application);
+            }
+        }
+
+        if matches.is_empty() {
+            println!("  no matching AT-SPI application root found");
+            continue;
+        }
+
+        for application in matches {
+            println!(
+                "  matched application role={:?} name={:?} description={:?} children={}",
+                application.role,
+                application.name,
+                application.description,
+                application.child_count
+            );
+            log_accessible_ref(&connection, application.object.clone(), 1, &mut visited).await?;
+            if visited >= MAX_A11Y_NODES {
+                println!("... stopped after {MAX_A11Y_NODES} accessible nodes");
+                break;
+            }
+        }
+
         if visited >= MAX_A11Y_NODES {
-            println!("... stopped after {MAX_A11Y_NODES} accessible nodes");
             break;
         }
     }
 
-    println!("=== end AT-SPI accessibility tree ===");
+    println!("=== end Hearthspace AT-SPI accessibility tree ===");
     Ok(())
+}
+
+async fn summarize_accessible(
+    proxy: &AccessibleProxy<'_>,
+    object: ObjectRefOwned,
+) -> AccessibleNodeSummary {
+    AccessibleNodeSummary {
+        object,
+        role: proxy.get_role_name().await.unwrap_or_default(),
+        name: proxy.name().await.unwrap_or_default(),
+        description: proxy.description().await.unwrap_or_default(),
+        child_count: proxy.child_count().await.unwrap_or(-1),
+    }
+}
+
+async fn accessible_tree_contains_window_match(
+    connection: &AccessibilityConnection,
+    object: ObjectRefOwned,
+    window: &ManagedWindowAccessibilityInfo,
+) -> bool {
+    let mut stack = vec![object];
+    let mut visited = 0;
+
+    while let Some(object) = stack.pop() {
+        if visited >= MAX_A11Y_NODES {
+            break;
+        }
+        visited += 1;
+
+        let Ok(proxy) = connection.object_as_accessible(&object).await else {
+            continue;
+        };
+
+        let summary = summarize_accessible(&proxy, object).await;
+        if accessible_matches_window(&summary, window) {
+            return true;
+        }
+
+        if let Ok(children) = proxy.get_children().await {
+            stack.extend(children);
+        }
+    }
+
+    false
+}
+
+fn accessible_matches_window(
+    accessible: &AccessibleNodeSummary,
+    window: &ManagedWindowAccessibilityInfo,
+) -> bool {
+    window
+        .app_id
+        .as_deref()
+        .is_some_and(|app_id| accessible_matches_term(accessible, app_id))
+        || window
+            .title
+            .as_deref()
+            .is_some_and(|title| accessible_matches_term(accessible, title))
+}
+
+fn accessible_matches_term(accessible: &AccessibleNodeSummary, term: &str) -> bool {
+    let term = term.trim();
+    if term.is_empty() {
+        return false;
+    }
+
+    let term = term.to_lowercase();
+    accessible.name.to_lowercase().contains(&term)
+        || accessible.description.to_lowercase().contains(&term)
 }
 
 async fn log_accessible_ref(
