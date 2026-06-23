@@ -24,9 +24,8 @@ use windows::{decoration_for_new_window, position_for_new_window, window_kind_fo
 use smithay::{
     backend::{
         renderer::{
-            Color32F, Frame, Renderer,
             gles::GlesRenderer,
-            utils::{draw_render_elements, on_commit_buffer_handler},
+            utils::on_commit_buffer_handler,
         },
         winit::{self, WinitEvent},
     },
@@ -514,38 +513,7 @@ impl CalloopData {
         let damage = Rectangle::from_size(state.output_size);
         {
             let (renderer, mut framebuffer) = backend.bind()?;
-            let window_elements = (0..state.windows.len())
-                .map(|index| {
-                    (
-                        state.window_render_elements(renderer, index),
-                        state.window_render_scale(index),
-                    )
-                })
-                .collect::<Vec<_>>();
-            let title_bar_elements = (0..state.windows.len())
-                .map(|index| state.title_bar_elements(index))
-                .collect::<Vec<_>>();
-
-            let mut frame =
-                renderer.render(&mut framebuffer, state.output_size, Transform::Flipped180)?;
-            frame.clear(Color32F::new(0.04, 0.05, 0.07, 1.0), &[damage])?;
-            for ((window_elements, window_scale), title_bar_elements) in
-                window_elements.iter().zip(&title_bar_elements)
-            {
-                draw_render_elements::<GlesRenderer, _, _>(
-                    &mut frame,
-                    *window_scale,
-                    window_elements,
-                    &[damage],
-                )?;
-                draw_render_elements::<GlesRenderer, _, _>(
-                    &mut frame,
-                    1.0,
-                    title_bar_elements,
-                    &[damage],
-                )?;
-            }
-            let _ = frame.finish()?;
+            state.render_frame(renderer, &mut framebuffer, state.output_size)?;
         }
 
         for window in &state.windows {

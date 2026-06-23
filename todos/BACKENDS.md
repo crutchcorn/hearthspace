@@ -7,48 +7,47 @@ Plan for supporting both a nested **winit** backend (development) and a native
 The order below keeps every step shippable and shapes the code so the DRM
 backend drops in later without reworking shared state.
 
-## Step 1 — calloop event loop + `Backend` seam (winit only)
+## Step 1 — calloop event loop + `Backend` seam (winit only) ✅ done
 
 **Goal:** kill the 1 ms busy-poll and make client I/O event-driven, while
 introducing the structure DRM will plug into.
 
-- [ ] Replace the hand-written loop in `compositor/mod.rs` with a
+- [x] Replace the hand-written loop in `compositor/mod.rs` with a
       `smithay::reexports::calloop` `EventLoop`.
-- [ ] Introduce shared loop data:
+- [x] Introduce shared loop data:
       ```rust
-      struct CalloopData { state: App, display: Display<App> }
+      struct CalloopData { state: App, display: Display<App>, backend: Backend, .. }
       ```
-- [ ] Insert event sources:
-  - [ ] Wayland clients: `ListeningSocketSource::with_name(WAYLAND_DISPLAY_NAME)`
+- [x] Insert event sources:
+  - [x] Wayland clients: `ListeningSocketSource::with_name(WAYLAND_DISPLAY_NAME)`
         and `insert_client` in its callback.
-  - [ ] Wayland dispatch: a `Generic` source over
+  - [x] Wayland dispatch: a `Generic` source over
         `display.backend().poll_fd()` that calls `dispatch_clients` +
         `flush_clients`.
-  - [ ] Command socket: a `Generic` source over the `UnixListener` replacing the
-        non-blocking accept loop in `compositor/shell_integration.rs`
-        (also fixes the main-loop-blocking `read_to_string`).
-  - [ ] Winit: insert the `WinitEventLoop` directly (it implements calloop
+  - [x] Command socket: a `Generic` source over the `UnixListener` replacing the
+        non-blocking accept loop in `compositor/shell_integration.rs`.
+        (The main-loop-blocking `read_to_string` hardening remains a separate
+        `IMPROVEMENTS.md` item.)
+  - [x] Winit: insert the `WinitEventLoop` directly (it implements calloop
         `EventSource` in Smithay 0.7 — no timer needed).
-- [ ] Introduce the backend seam so winit-specific bits are isolated:
+- [x] Introduce the backend seam so winit-specific bits are isolated:
       ```rust
-      enum Backend { Winit(WinitData) /*, Udev(UdevData) later */ }
+      enum Backend { Winit(WinitGraphicsBackend<GlesRenderer>) /*, Udev later */ }
       ```
-      `WinitData` owns the `WinitGraphicsBackend`; the seam exposes
-      "schedule/submit a frame" + "acquire renderer".
-- [ ] Drive redraw from `App::needs_redraw` via a calloop signal/idle instead of
-      the per-iteration `sleep`. Keep viewport-animation re-arming.
+- [x] Drive redraw from `App::needs_redraw` after each dispatch instead of the
+      per-iteration `sleep`; block in epoll when idle and wake every
+      `ANIMATION_FRAME_INTERVAL` while animating.
 
 **Done when:** `cargo run` behaves identically but the process is idle (no CPU
 spin) when nothing changes, and client/command I/O is epoll-driven.
 
-## Step 2 — make rendering renderer-generic
+## Step 2 — make rendering renderer-generic ✅ done
 
 **Goal:** decouple the draw path from the winit backend.
 
-- [ ] Extract `render_frame(state: &App, renderer: &mut GlesRenderer, ...)` from
-      the winit-specific bind/submit code in `compositor/rendering.rs` /
-      `compositor/mod.rs`.
-- [ ] Both backends call the same `render_frame`; only bind/submit and damage
+- [x] Extract `App::render_frame(renderer: &mut GlesRenderer, framebuffer, output_size)`
+      from the winit-specific bind/submit code, now in `compositor/rendering.rs`.
+- [x] Both backends call the same `render_frame`; only bind/submit and damage
       handling stay backend-specific.
 
 **Done when:** the winit backend calls `render_frame` and nothing in

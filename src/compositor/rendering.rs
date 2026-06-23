@@ -1,14 +1,15 @@
 use smithay::{
     backend::renderer::{
-        Color32F,
+        Color32F, Frame, Renderer, RendererSuper,
         element::{
             Kind,
             solid::{SolidColorBuffer, SolidColorRenderElement},
             surface::{WaylandSurfaceRenderElement, render_elements_from_surface_tree},
         },
         gles::GlesRenderer,
+        utils::draw_render_elements,
     },
-    utils::{Logical, Rectangle},
+    utils::{Logical, Physical, Rectangle, Size, Transform},
     wayland::compositor::{SurfaceAttributes, TraversalAction, with_surface_tree_downward},
 };
 use wayland_server::protocol::wl_surface;
@@ -16,6 +17,54 @@ use wayland_server::protocol::wl_surface;
 use super::{App, ManagedWindowKind};
 
 impl App {
+    /// Draw the full scene into `framebuffer` using `renderer`.
+    ///
+    /// This is backend-agnostic: it only depends on a [`GlesRenderer`] and the
+    /// shared [`App`] state, so both the winit and (future) DRM backends share
+    /// it. Backend-specific buffer binding, frame submission, and client frame
+    /// callbacks live in the backend's own render path.
+    pub(super) fn render_frame(
+        &self,
+        renderer: &mut GlesRenderer,
+        framebuffer: &mut <GlesRenderer as RendererSuper>::Framebuffer<'_>,
+        output_size: Size<i32, Physical>,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let damage = Rectangle::from_size(output_size);
+
+        let window_elements = (0..self.windows.len())
+            .map(|index| {
+                (
+                    self.window_render_elements(renderer, index),
+                    self.window_render_scale(index),
+                )
+            })
+            .collect::<Vec<_>>();
+        let title_bar_elements = (0..self.windows.len())
+            .map(|index| self.title_bar_elements(index))
+            .collect::<Vec<_>>();
+
+        let mut frame = renderer.render(framebuffer, output_size, Transform::Flipped180)?;
+        frame.clear(Color32F::new(0.04, 0.05, 0.07, 1.0), &[damage])?;
+        for ((window_elements, window_scale), title_bar_elements) in
+            window_elements.iter().zip(&title_bar_elements)
+        {
+            draw_render_elements::<GlesRenderer, _, _>(
+                &mut frame,
+                *window_scale,
+                window_elements,
+                &[damage],
+            )?;
+            draw_render_elements::<GlesRenderer, _, _>(
+                &mut frame,
+                1.0,
+                title_bar_elements,
+                &[damage],
+            )?;
+        }
+        let _ = frame.finish()?;
+        Ok(())
+    }
+
     pub(super) fn window_render_elements(
         &self,
         renderer: &mut GlesRenderer,
