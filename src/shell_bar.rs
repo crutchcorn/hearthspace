@@ -1,22 +1,33 @@
 use std::{env, io::Write, os::unix::net::UnixStream, path::PathBuf};
 
 use gpui::{
-    div, prelude::*, px, rgb, size, App, Application, Bounds, Context, IntoElement, Window,
-    WindowBounds, WindowDecorations, WindowOptions,
+    div, prelude::*, px, rgb, size, App, Application, Bounds, Context, FocusHandle, Focusable,
+    IntoElement, KeyDownEvent, SharedString, Window, WindowBounds, WindowDecorations,
+    WindowOptions,
 };
 
 use crate::{
+    app_catalog::{AppCatalog, DesktopApp},
     config::{CONTROL_BAR_HEIGHT, SHELL_BAR_APP_ID, SHELL_COMMAND_SOCKET_ENV},
-    shell::{ShellCommand, SpawnTarget},
+    shell::ShellCommand,
 };
 
 struct ShellBar {
     command_socket: PathBuf,
-    spawn_menu_open: bool,
+    catalog: AppCatalog,
+    query: String,
+    selected_result: usize,
+    focus_handle: FocusHandle,
+}
+
+impl Focusable for ShellBar {
+    fn focus_handle(&self, _: &App) -> FocusHandle {
+        self.focus_handle.clone()
+    }
 }
 
 impl Render for ShellBar {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let mut row = div()
             .flex()
             .items_center()
@@ -24,13 +35,15 @@ impl Render for ShellBar {
             .size_full()
             .px_2()
             .bg(rgb(0x191e29))
-            .text_color(rgb(0xeaf2ff));
+            .text_color(rgb(0xeaf2ff))
+            .track_focus(&self.focus_handle(cx))
+            .on_key_down(cx.listener(Self::on_key_down));
 
-        row = row.child(spawn_dropdown(
-            self.command_socket.clone(),
-            self.spawn_menu_open,
-            cx,
-        ));
+        row = row.child(self.search_box(window, cx));
+
+        for app in self.search_results() {
+            row = row.child(app_result_button(self.command_socket.clone(), app, cx));
+        }
 
         for command in [
             ShellCommand::PanLeft,
@@ -42,13 +55,11 @@ impl Render for ShellBar {
             ShellCommand::LogAccessibilityTree,
         ] {
             let command_socket = self.command_socket.clone();
-            row = row.child(shell_button(
-                command.wire_name(),
-                command.label(),
-                move || {
-                    send_command(&command_socket, command);
-                },
-            ));
+            let id = command.wire_name();
+            let label = command.label();
+            row = row.child(shell_button(id, label, move || {
+                send_command(&command_socket, &command.wire_name());
+            }));
         }
 
         row
@@ -78,9 +89,12 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
                 ..Default::default()
             },
             |_, cx| {
-                cx.new(|_| ShellBar {
+                cx.new(|cx| ShellBar {
                     command_socket: command_socket.clone(),
-                    spawn_menu_open: false,
+                    catalog: AppCatalog::load(),
+                    query: String::new(),
+                    selected_result: 0,
+                    focus_handle: cx.focus_handle(),
                 })
             },
         )
@@ -90,55 +104,114 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-fn spawn_dropdown(
-    command_socket: PathBuf,
-    is_open: bool,
-    cx: &mut Context<ShellBar>,
-) -> impl IntoElement {
-    let mut group = div().flex().items_center().gap_1().flex_none();
+impl ShellBar {
+    fn search_box(&self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let is_focused = self.focus_handle(cx).is_focused(window);
+        let text = if self.query.is_empty() {
+            "Search apps...".to_string()
+        } else {
+            self.query.clone()
+        };
 
-    group = group.child(
         div()
-            .id("spawn-dropdown")
-            .flex_none()
+            .id("app-search")
+            .flex()
+            .items_center()
+            .h(px(32.0))
+            .w(px(240.0))
             .px_3()
-            .py_1()
             .rounded_sm()
-            .bg(rgb(0x43506d))
-            .hover(|this| this.bg(rgb(0x506080)))
-            .active(|this| this.opacity(0.82))
+            .border_1()
+            .border_color(if is_focused {
+                rgb(0x8fb4ff)
+            } else {
+                rgb(0x30394d)
+            })
+            .bg(if is_focused {
+                rgb(0x24304a)
+            } else {
+                rgb(0x202636)
+            })
+            .text_color(if self.query.is_empty() {
+                rgb(0x8f9ab1)
+            } else {
+                rgb(0xeaf2ff)
+            })
             .cursor_pointer()
-            .child(if is_open { "SPAWN ^" } else { "SPAWN v" })
-            .on_click(cx.listener(|bar, _, _, cx| {
-                bar.spawn_menu_open = !bar.spawn_menu_open;
+            .child(text)
+            .on_click(cx.listener(|bar, _, window, cx| {
+                window.focus(&bar.focus_handle(cx));
+                cx.activate(true);
                 cx.notify();
-            })),
-    );
-
-    if is_open {
-        for target in SpawnTarget::ALL {
-            let command = ShellCommand::Spawn(target);
-            let command_socket = command_socket.clone();
-            group = group.child(shell_button(
-                target.wire_name(),
-                target.label(),
-                move || {
-                    send_command(&command_socket, command);
-                },
-            ));
-        }
+            }))
     }
 
-    group
+    fn search_results(&self) -> Vec<DesktopApp> {
+        if self.query.trim().is_empty() {
+            return Vec::new();
+        }
+
+        self.catalog.search(&self.query, 4)
+    }
+
+    fn on_key_down(&mut self, event: &KeyDownEvent, _window: &mut Window, cx: &mut Context<Self>) {
+        let key = event.keystroke.key.as_str();
+        match key {
+            "backspace" => {
+                self.query.pop();
+                self.selected_result = 0;
+                cx.notify();
+            }
+            "escape" => {
+                self.query.clear();
+                self.selected_result = 0;
+                cx.notify();
+            }
+            "enter" => {
+                if let Some(app) = self.search_results().get(self.selected_result) {
+                    send_launch_command(&self.command_socket, &app.id);
+                    self.query.clear();
+                    self.selected_result = 0;
+                    cx.notify();
+                }
+            }
+            "down" => {
+                let result_count = self.search_results().len();
+                if result_count > 0 {
+                    self.selected_result = (self.selected_result + 1).min(result_count - 1);
+                    cx.notify();
+                }
+            }
+            "up" => {
+                self.selected_result = self.selected_result.saturating_sub(1);
+                cx.notify();
+            }
+            _ => {
+                if event.keystroke.modifiers.control
+                    || event.keystroke.modifiers.alt
+                    || event.keystroke.modifiers.platform
+                {
+                    return;
+                }
+                if let Some(key_char) = &event.keystroke.key_char {
+                    if !key_char.chars().all(char::is_control) {
+                        self.query.push_str(key_char);
+                        self.selected_result = 0;
+                        cx.notify();
+                    }
+                }
+            }
+        }
+    }
 }
 
 fn shell_button(
-    id: &'static str,
+    id: String,
     label: &'static str,
     on_click: impl Fn() + 'static,
 ) -> impl IntoElement {
     div()
-        .id(id)
+        .id(SharedString::from(id))
         .flex_none()
         .px_3()
         .py_1()
@@ -151,12 +224,46 @@ fn shell_button(
         .on_click(move |_, _, _| on_click())
 }
 
-fn send_command(command_socket: &PathBuf, command: ShellCommand) {
+fn app_result_button(
+    command_socket: PathBuf,
+    app: DesktopApp,
+    cx: &mut Context<ShellBar>,
+) -> impl IntoElement {
+    let app_id = app.id.clone();
+    let element_id = format!("app-result-{app_id}");
+    div()
+        .id(SharedString::from(element_id))
+        .flex_none()
+        .max_w(px(180.0))
+        .px_3()
+        .py_1()
+        .rounded_sm()
+        .bg(rgb(0x273553))
+        .hover(|this| this.bg(rgb(0x34476f)))
+        .active(|this| this.opacity(0.82))
+        .cursor_pointer()
+        .child(app.name)
+        .on_click(cx.listener(move |bar, _, _, cx| {
+            send_launch_command(&command_socket, &app_id);
+            bar.query.clear();
+            bar.selected_result = 0;
+            cx.notify();
+        }))
+}
+
+fn send_launch_command(command_socket: &PathBuf, app_id: &str) {
+    send_command(
+        command_socket,
+        &ShellCommand::LaunchApp(app_id.to_string()).wire_name(),
+    );
+}
+
+fn send_command(command_socket: &PathBuf, command: &str) {
     match UnixStream::connect(command_socket).and_then(|mut stream| {
-        stream.write_all(command.wire_name().as_bytes())?;
+        stream.write_all(command.as_bytes())?;
         stream.write_all(b"\n")
     }) {
         Ok(()) => {}
-        Err(error) => eprintln!("failed to send shell command {:?}: {error}", command),
+        Err(error) => eprintln!("failed to send shell command {command:?}: {error}"),
     }
 }

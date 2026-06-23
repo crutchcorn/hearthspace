@@ -10,6 +10,7 @@ use std::{
 
 use crate::{
     a11y::ManagedWindowAccessibilityInfo,
+    app_catalog::{spawn_argv, AppCatalog},
     config::*,
     geometry::{
         canvas_to_screen as transform_canvas_to_screen, ease_out_cubic, interpolate_canvas_point,
@@ -161,6 +162,7 @@ struct App {
     scroll_zooms_without_super: bool,
     output_size: Size<i32, Physical>,
     output: Output,
+    app_catalog: AppCatalog,
     needs_redraw: bool,
 }
 
@@ -410,6 +412,7 @@ pub fn run_winit(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> 
         scroll_zooms_without_super: options.scroll_zooms_without_super,
         output_size,
         output,
+        app_catalog: AppCatalog::load(),
         needs_redraw: true,
     };
 
@@ -978,6 +981,7 @@ impl App {
         match action {
             ShellCommand::Spawn(SpawnTarget::A11yTest) => self.spawn_a11y_test(),
             ShellCommand::Spawn(SpawnTarget::Foot) => self.spawn_foot(),
+            ShellCommand::LaunchApp(app_id) => self.launch_app(&app_id),
             ShellCommand::PanLeft => self.pan_viewport_by(-self.horizontal_pan_step(), 0),
             ShellCommand::PanRight => self.pan_viewport_by(self.horizontal_pan_step(), 0),
             ShellCommand::PanUp => self.pan_viewport_by(0, -self.vertical_pan_step()),
@@ -1099,6 +1103,37 @@ impl App {
         {
             Ok(_) => {}
             Err(error) => eprintln!("Failed to spawn foot: {error}"),
+        }
+    }
+
+    fn launch_app(&mut self, app_id: &str) {
+        let Some(app) = self.app_catalog.app_by_id(app_id) else {
+            eprintln!("No launchable desktop app found for {app_id}");
+            return;
+        };
+
+        let app_command = match app.launch_argv() {
+            Ok(command) => command,
+            Err(error) => {
+                eprintln!("Failed to build command for {app_id}: {error}");
+                return;
+            }
+        };
+        let command = if app.terminal {
+            match self.app_catalog.terminal_command_for(app_command) {
+                Ok(command) => command,
+                Err(error) => {
+                    eprintln!("Failed to find terminal for {app_id}: {error}");
+                    return;
+                }
+            }
+        } else {
+            app_command
+        };
+
+        self.prepare_spawn_position();
+        if let Err(error) = spawn_argv(&command) {
+            eprintln!("Failed to launch {app_id}: {error}");
         }
     }
 

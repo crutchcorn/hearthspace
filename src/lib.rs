@@ -1,4 +1,5 @@
 pub mod a11y;
+pub mod app_catalog;
 pub mod compositor;
 pub mod config;
 pub mod geometry;
