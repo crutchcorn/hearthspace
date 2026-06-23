@@ -83,6 +83,22 @@ pub(super) fn handle_input_event(state: &mut App, event: InputEvent<WinitInput>)
 
             if is_left_button && event.state() == ButtonState::Released && state.drag.is_some() {
                 state.drag = None;
+                // Forward the release to the pointer so the implicit grab
+                // established by the originating press (e.g. a client-initiated
+                // `move_request`) is released. Swallowing it here would leave the
+                // grab stuck on the dragged window, misrouting all later pointer
+                // input to it.
+                let pointer = state.pointer.clone();
+                pointer.button(
+                    state,
+                    &ButtonEvent {
+                        serial: Serial::from(0),
+                        time,
+                        button: event.button_code(),
+                        state: event.state(),
+                    },
+                );
+                pointer.frame(state);
                 return;
             }
 
