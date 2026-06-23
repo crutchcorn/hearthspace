@@ -192,13 +192,19 @@ impl XdgShellHandler for App {
 
     fn app_id_changed(&mut self, surface: ToplevelSurface) {
         let kind = window_kind_for_toplevel(&surface);
-        if let Some(window) = self
+        if let Some(window_index) = self
             .windows
-            .iter_mut()
-            .find(|window| window.surface == surface)
+            .iter()
+            .position(|window| window.surface == surface)
         {
+            let mut window = self.windows.remove(window_index);
             window.kind = kind;
             window.position = position_for_new_window(kind, window.position);
+            let insert_index = match kind {
+                ManagedWindowKind::Normal => self.normal_insert_index(),
+                ManagedWindowKind::ShellBar => self.windows.len(),
+            };
+            self.windows.insert(insert_index, window);
             self.configure_toplevel(&surface, kind);
             self.request_redraw();
         }
@@ -835,14 +841,17 @@ impl App {
         }
 
         let window = self.windows.remove(window_index);
-        let shell_start = self
-            .windows
-            .iter()
-            .position(|window| window.kind == ManagedWindowKind::ShellBar)
-            .unwrap_or(self.windows.len());
-        self.windows.insert(shell_start, window);
+        let insert_index = self.normal_insert_index();
+        self.windows.insert(insert_index, window);
         self.request_redraw();
-        shell_start
+        insert_index
+    }
+
+    fn normal_insert_index(&self) -> usize {
+        self.windows
+            .iter()
+            .rposition(|window| window.kind == ManagedWindowKind::Normal)
+            .map_or(0, |index| index + 1)
     }
 
     fn configure_toplevel(&self, surface: &ToplevelSurface, kind: ManagedWindowKind) {
