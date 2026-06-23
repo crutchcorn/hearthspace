@@ -1,9 +1,9 @@
 use std::{
     env, fs,
-    io::{self, BufRead, BufReader, ErrorKind, Read},
+    io::{self, ErrorKind, Read},
     os::unix::{fs::symlink, io::OwnedFd, net::UnixListener as CommandListener},
     path::PathBuf,
-    process::{Child, Command, Stdio},
+    process::Command,
     sync::Arc,
     time::Instant,
 };
@@ -163,20 +163,7 @@ struct App {
     output_size: Size<i32, Physical>,
     output: Output,
     app_catalog: AppCatalog,
-    app_dbus_session: Option<AppDbusSession>,
     needs_redraw: bool,
-}
-
-struct AppDbusSession {
-    address: String,
-    child: Child,
-}
-
-impl Drop for AppDbusSession {
-    fn drop(&mut self) {
-        let _ = self.child.kill();
-        let _ = self.child.wait();
-    }
 }
 
 impl BufferHandler for App {
@@ -426,7 +413,6 @@ pub fn run_winit(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> 
         output_size,
         output,
         app_catalog: AppCatalog::load(),
-        app_dbus_session: start_app_dbus_session(),
         needs_redraw: true,
     };
 
@@ -625,56 +611,18 @@ fn ensure_snap_wayland_socket(instance_name: &str) -> std::io::Result<String> {
     Ok(WAYLAND_DISPLAY_NAME.to_string())
 }
 
-fn start_app_dbus_session() -> Option<AppDbusSession> {
-    let mut child = match Command::new("dbus-daemon")
-        .args(["--session", "--nofork", "--print-address=1"])
-        .stdout(Stdio::piped())
-        .spawn()
-    {
-        Ok(child) => child,
-        Err(error) => {
-            eprintln!("Failed to start Hearthspace app D-Bus session: {error}");
-            return None;
-        }
-    };
-
-    let Some(stdout) = child.stdout.take() else {
-        let _ = child.kill();
-        return None;
-    };
-
-    let mut address = String::new();
-    if let Err(error) = BufReader::new(stdout).read_line(&mut address) {
-        eprintln!("Failed to read Hearthspace app D-Bus address: {error}");
-        let _ = child.kill();
-        return None;
-    }
-
-    let address = address.trim().to_string();
-    if address.is_empty() {
-        let _ = child.kill();
-        return None;
-    }
-
-    Some(AppDbusSession { address, child })
-}
-
-fn launch_environment_for_app(
-    app: &DesktopApp,
-    dbus_session: Option<&AppDbusSession>,
-) -> std::io::Result<Vec<(String, String)>> {
+fn launch_environment_for_app(app: &DesktopApp) -> std::io::Result<Vec<(String, String)>> {
     let base = app_state_base_dir().join(sanitized_path_component(&app.id));
     let config = base.join("config");
     let cache = base.join("cache");
     let data = base.join("data");
     let state = base.join("state");
-    let home = base.join("home");
 
-    for dir in [&config, &cache, &data, &state, &home] {
+    for dir in [&config, &cache, &data, &state] {
         fs::create_dir_all(dir)?;
     }
 
-    let mut envs = vec![
+    Ok(vec![
         (
             "XDG_CONFIG_HOME".to_string(),
             config.to_string_lossy().into_owned(),
@@ -691,22 +639,7 @@ fn launch_environment_for_app(
             "XDG_STATE_HOME".to_string(),
             state.to_string_lossy().into_owned(),
         ),
-    ];
-
-    if app.snap_instance_name.is_none() {
-        if let Some(dbus_session) = dbus_session {
-            envs.push((
-                "DBUS_SESSION_BUS_ADDRESS".to_string(),
-                dbus_session.address.clone(),
-            ));
-        }
-    }
-
-    if app.snap_instance_name.is_none() {
-        envs.push(("HOME".to_string(), home.to_string_lossy().into_owned()));
-    }
-
-    Ok(envs)
+    ])
 }
 
 fn app_state_base_dir() -> PathBuf {
@@ -1290,7 +1223,7 @@ impl App {
             WAYLAND_DISPLAY_NAME.to_string()
         };
 
-        let launch_env = match launch_environment_for_app(app, self.app_dbus_session.as_ref()) {
+        let launch_env = match launch_environment_for_app(app) {
             Ok(env) => env,
             Err(error) => {
                 eprintln!("Failed to prepare app environment for {app_id}: {error}");
