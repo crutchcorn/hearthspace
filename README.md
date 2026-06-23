@@ -16,6 +16,8 @@ This opens a nested compositor window and creates its own Wayland socket:
 WAYLAND_DISPLAY=wayland-hearthspace-0
 ```
 
+Spawned child applications receive this `WAYLAND_DISPLAY` and connect back to Hearthspace instead of the host desktop compositor.
+
 ## Test The PoC
 
 The top control bar is a GPUI shell client with seven labeled buttons:
@@ -33,6 +35,12 @@ ZOOM+/ZOOM-: zoom the canvas in and out around the viewport center
 ```
 
 Spawned app windows are rendered in canvas coordinates. Panning animates the viewport offset, moving all client windows together relative to the visible compositor window. Zooming animates the viewport scale while keeping the GPUI toolbar fixed in screen-space.
+
+The basic transform is:
+
+```text
+screen_position = canvas_position - viewport_offset
+```
 
 Window interaction:
 
@@ -69,10 +77,20 @@ Input-region-aware pointer forwarding to client surfaces
 Still intentionally rough:
 
 ```text
-Button labels use a tiny compositor-drawn block font instead of real text rendering
-Closed windows are not cleaned out of the simple position list yet
 No window resizing yet
 Zoom is button-driven only; there is no wheel or gesture zoom yet
-No DRM/KMS full desktop session yet
 Several optional desktop protocols are not implemented yet, so clients may print warnings
+```
+
+Deferred:
+
+```text
+Full login-session desktop environment integration
+DRM/KMS backend and libinput device management
+X11/Xwayland support is intentionally out of scope unless a concrete need appears
+Minimization, task bars, workspaces, panels, or richer launchers
+Persistence of window positions
+Multi-monitor support
+Accessibility integration
+Theming beyond the current proof-of-concept shell UI
 ```
