@@ -1,5 +1,5 @@
 use std::{
-    os::unix::{io::OwnedFd, net::UnixListener as CommandListener},
+    os::unix::{fs::MetadataExt, io::OwnedFd, net::UnixListener as CommandListener},
     sync::Arc,
 };
 
@@ -23,15 +23,18 @@ use windows::{decoration_for_new_window, position_for_new_window, window_kind_fo
 
 use smithay::{
     backend::{
+        allocator::dmabuf::Dmabuf,
+        egl::EGLDevice,
         renderer::{
+            ImportDma,
             damage::OutputDamageTracker,
             gles::GlesRenderer,
             utils::on_commit_buffer_handler,
         },
         winit::{self, WinitEvent},
     },
-    delegate_compositor, delegate_data_device, delegate_output, delegate_seat, delegate_shm,
-    delegate_xdg_decoration, delegate_xdg_shell,
+    delegate_compositor, delegate_data_device, delegate_dmabuf, delegate_output, delegate_seat,
+    delegate_shm, delegate_xdg_decoration, delegate_xdg_shell,
     input::{Seat, SeatHandler, SeatState, keyboard::KeyboardHandle, pointer::PointerHandle},
     output::{Mode, Output, PhysicalProperties, Scale, Subpixel},
     reexports::{
@@ -44,6 +47,9 @@ use smithay::{
     wayland::{
         buffer::BufferHandler,
         compositor::{CompositorClientState, CompositorHandler, CompositorState},
+        dmabuf::{
+            DmabufFeedbackBuilder, DmabufGlobal, DmabufHandler, DmabufState, ImportNotifier,
+        },
         output::{OutputHandler, OutputManagerState},
         selection::{
             SelectionHandler,
@@ -135,6 +141,9 @@ struct App {
     output: Output,
     app_catalog: AppCatalog,
     needs_redraw: bool,
+    dmabuf_state: DmabufState,
+    _dmabuf_global: DmabufGlobal,
+    pending_dmabuf_imports: Vec<(Dmabuf, ImportNotifier)>,
 }
 
 impl BufferHandler for App {
@@ -274,6 +283,24 @@ impl XdgDecorationHandler for App {
     }
 }
 
+impl DmabufHandler for App {
+    fn dmabuf_state(&mut self) -> &mut DmabufState {
+        &mut self.dmabuf_state
+    }
+
+    fn dmabuf_imported(
+        &mut self,
+        _global: &DmabufGlobal,
+        dmabuf: Dmabuf,
+        notifier: ImportNotifier,
+    ) {
+        // The renderer lives on the winit backend (not in `App`), so the import
+        // is deferred to the event loop where the renderer is reachable.
+        self.pending_dmabuf_imports.push((dmabuf, notifier));
+        self.request_redraw();
+    }
+}
+
 impl SelectionHandler for App {
     type SelectionUserData = ();
 }
@@ -352,9 +379,33 @@ pub fn run_winit(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> 
     )?;
     let pointer = seat.add_pointer();
 
-    let (backend, winit) = winit::init::<GlesRenderer>()?;
+    let (mut backend, winit) = winit::init::<GlesRenderer>()?;
     let output_size = backend.window_size();
     let output = create_output(&dh, output_size);
+
+    // Advertise linux-dmabuf so GPU-accelerated clients (e.g. GTK4's GL
+    // renderer) can hand us hardware buffers instead of failing EGL setup. The
+    // feedback's main device is the render node backing our own GLES renderer,
+    // which tells the client's Mesa which GPU to allocate against.
+    let dmabuf_formats = backend
+        .renderer()
+        .dmabuf_formats()
+        .into_iter()
+        .collect::<Vec<_>>();
+    let render_node_dev = EGLDevice::device_for_display(backend.renderer().egl_context().display())
+        .ok()
+        .and_then(|device| device.render_device_path().ok())
+        .and_then(|path| std::fs::metadata(path).ok())
+        .map(|metadata| metadata.rdev());
+    let mut dmabuf_state = DmabufState::new();
+    let dmabuf_global = match render_node_dev {
+        Some(dev) => {
+            let feedback =
+                DmabufFeedbackBuilder::new(dev, dmabuf_formats.iter().copied()).build()?;
+            dmabuf_state.create_global_with_default_feedback::<App>(&dh, &feedback)
+        }
+        None => dmabuf_state.create_global::<App>(&dh, dmabuf_formats.iter().copied()),
+    };
 
     let state = App {
         compositor_state,
@@ -386,6 +437,9 @@ pub fn run_winit(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> 
         output,
         app_catalog: AppCatalog::load(),
         needs_redraw: true,
+        dmabuf_state,
+        _dmabuf_global: dmabuf_global,
+        pending_dmabuf_imports: Vec::new(),
     };
 
     let command_socket_path = command_socket_path();
@@ -440,6 +494,7 @@ pub fn run_winit(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> 
                 update_output_mode(&data.state.output, size);
                 data.damage_tracker =
                     OutputDamageTracker::new(size, 1.0, Transform::Flipped180);
+                data.full_redraw = 1;
                 data.state.configure_shell_bars();
                 data.state.request_redraw();
             }
@@ -464,6 +519,7 @@ pub fn run_winit(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> 
         damage_tracker: OutputDamageTracker::new(output_size, 1.0, Transform::Flipped180),
         start_time: std::time::Instant::now(),
         running: true,
+        full_redraw: 1,
     };
 
     data.render()?;
@@ -481,6 +537,7 @@ pub fn run_winit(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> 
             break;
         }
 
+        data.process_pending_dmabuf_imports();
         data.state.handle_idle_transitions();
         data.state.advance_viewport_animation();
 
@@ -507,9 +564,36 @@ struct CalloopData {
     damage_tracker: OutputDamageTracker,
     start_time: std::time::Instant,
     running: bool,
+    // Number of upcoming frames that must be fully redrawn instead of querying
+    // the back buffer age. Importing a client dmabuf (or the first frame) can
+    // leave the renderer's EGL context surfaceless, which makes `buffer_age`
+    // (an `eglQuerySurface` that requires the window surface be current) fail.
+    full_redraw: u8,
 }
 
 impl CalloopData {
+    fn process_pending_dmabuf_imports(&mut self) {
+        if self.state.pending_dmabuf_imports.is_empty() {
+            return;
+        }
+        let CalloopData { state, backend, .. } = self;
+        let Backend::Winit(backend) = backend;
+        for (dmabuf, notifier) in state.pending_dmabuf_imports.drain(..) {
+            match backend.renderer().import_dmabuf(&dmabuf, None) {
+                Ok(_texture) => {
+                    let _ = notifier.successful::<App>();
+                }
+                Err(error) => {
+                    eprintln!("Failed to import client dmabuf: {error}");
+                    notifier.failed();
+                }
+            }
+        }
+        // Importing made the renderer's EGL context surfaceless, so skip the
+        // next frame's back-buffer-age query and redraw it fully instead.
+        self.full_redraw = self.full_redraw.max(1);
+    }
+
     fn render(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         let CalloopData {
             state,
@@ -517,18 +601,21 @@ impl CalloopData {
             backend,
             damage_tracker,
             start_time,
+            full_redraw,
             ..
         } = self;
         let Backend::Winit(backend) = backend;
 
-        // Bind first so the winit EGL surface is the current draw surface, then
-        // query its back buffer age. The age query (`eglQuerySurface` with
-        // `EGL_BUFFER_AGE_EXT`) only succeeds for the currently bound surface;
-        // a previous frame's client buffer import (e.g. Firefox) leaves another
-        // surface current, so querying before binding fails with
-        // `EGL_BAD_SURFACE` and forces a full redraw every frame.
-        backend.bind()?;
-        let age = backend.buffer_age().unwrap_or(0);
+        // `buffer_age` is an `eglQuerySurface` that only succeeds while the
+        // window surface is the current EGL draw surface. After a dmabuf import
+        // (or on the first frame) that is not guaranteed, so those frames are
+        // forced to a full redraw (age 0) instead of querying a stale surface.
+        let age = if *full_redraw > 0 {
+            *full_redraw = full_redraw.saturating_sub(1);
+            0
+        } else {
+            backend.buffer_age().unwrap_or(0)
+        };
         let damage = {
             let (renderer, mut framebuffer) = backend.bind()?;
             state.render_frame(renderer, &mut framebuffer, damage_tracker, age)?
@@ -610,3 +697,4 @@ delegate_seat!(App);
 delegate_data_device!(App);
 delegate_output!(App);
 delegate_xdg_decoration!(App);
+delegate_dmabuf!(App);

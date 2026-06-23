@@ -4,6 +4,22 @@ A running list of improvements identified during a technical review of `src`.
 
 ## Correctness / Robustness
 
+- **✅ Done — Advertise `zwp_linux_dmabuf_v1` so GPU-accelerated clients work.**
+  The compositor previously advertised no dmabuf global, so GL clients (GTK4's
+  zink renderer, Firefox, etc.) got `fd -1` and crash-looped (`MESA: error:
+  ZINK: failed to choose pdev`). It now creates a `DmabufState` global from the
+  renderer's `dmabuf_formats()`, building v4 default feedback from the render
+  node's `dev_t` (resolved via `EGLDevice::device_for_display` +
+  `render_device_path` + `metadata().rdev()`, avoiding the heavy `backend_drm`
+  feature) and falling back to a v3 global when no render node is found. Because
+  the renderer lives on `CalloopData` (sibling to the `App` handler), imports are
+  deferred: `dmabuf_imported` queues `(Dmabuf, ImportNotifier)` on the `App`,
+  and the event loop drains them via `process_pending_dmabuf_imports` where the
+  renderer is reachable. Importing leaves the EGL context surfaceless, which made
+  the subsequent `buffer_age` (`eglQuerySurface` on a non-current surface) fail
+  with `EGL_BAD_SURFACE`; a `full_redraw: u8` counter on `CalloopData` (anvil's
+  pattern) skips the age query and forces a full redraw for the next frame after
+  any import, the first frame, and resizes.
 - **✅ Done — Stop persisting `Vec` indices as window identity.**
   `DragState` previously stored a `window_index` that survived across pointer
   events, so a window closing mid-drag could move the wrong window or panic on an
