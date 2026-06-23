@@ -18,10 +18,10 @@ A running list of improvements identified during a technical review of `src`.
   surfaces are built at native scale and wrapped in a `RescaleRenderElement` so
   the viewport zoom is applied in a single output coordinate space.
 
-  Follow-up: the title-bar/close-button `SolidColorRenderElement`s are rebuilt
-  each frame, so they get fresh element ids and are always considered damaged on
-  any redraw. Persisting their `SolidColorBuffer`s in `App` would let the
-  tracker skip them when unchanged.
+  The title-bar/close-button `SolidColorBuffer`s are persisted per window
+  (`WindowDecorationBuffers` on `ManagedWindow`) and only `update`d when their
+  size or color changes, so their render-element ids stay stable and the tracker
+  skips them while the title bar is unchanged.
 - **✅ Done — Avoid blocking the main loop on the command socket.**
   Each accepted connection is now registered as its own non-blocking `calloop`
   source (`accept_command_connections` in

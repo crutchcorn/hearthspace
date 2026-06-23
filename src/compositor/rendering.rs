@@ -10,7 +10,7 @@ use smithay::{
         },
         gles::GlesRenderer,
     },
-    utils::{Logical, Physical, Rectangle},
+    utils::{Logical, Physical, Point, Rectangle},
     wayland::compositor::{SurfaceAttributes, TraversalAction, with_surface_tree_downward},
 };
 use wayland_server::protocol::wl_surface;
@@ -21,6 +21,29 @@ render_elements! {
     pub(super) HearthspaceRenderElement<=GlesRenderer>;
     Surface = RescaleRenderElement<WaylandSurfaceRenderElement<GlesRenderer>>,
     Solid = SolidColorRenderElement,
+}
+
+/// Persistent solid-color buffers backing a window's server-side decorations.
+///
+/// Reusing the same [`SolidColorBuffer`]s across frames keeps the resulting
+/// render elements' ids stable, so the damage tracker can skip them when the
+/// title bar has not moved or changed color instead of repainting every frame.
+/// The X-mark count is fixed by [`close_button_x_rects`].
+#[derive(Debug)]
+pub(super) struct WindowDecorationBuffers {
+    title_bar: SolidColorBuffer,
+    close_button: SolidColorBuffer,
+    close_marks: [SolidColorBuffer; 5],
+}
+
+impl Default for WindowDecorationBuffers {
+    fn default() -> Self {
+        Self {
+            title_bar: SolidColorBuffer::default(),
+            close_button: SolidColorBuffer::default(),
+            close_marks: std::array::from_fn(|_| SolidColorBuffer::default()),
+        }
+    }
 }
 
 impl App {
@@ -37,7 +60,7 @@ impl App {
     /// it. Backend-specific buffer binding, frame submission, and client frame
     /// callbacks live in the backend's own render path.
     pub(super) fn render_frame(
-        &self,
+        &mut self,
         renderer: &mut GlesRenderer,
         framebuffer: &mut <GlesRenderer as RendererSuper>::Framebuffer<'_>,
         damage_tracker: &mut OutputDamageTracker,
@@ -61,7 +84,7 @@ impl App {
     /// [`RescaleRenderElement`] so the viewport zoom is applied uniformly while
     /// the damage tracker still works in a single output coordinate space.
     fn collect_render_elements(
-        &self,
+        &mut self,
         renderer: &mut GlesRenderer,
     ) -> Vec<HearthspaceRenderElement> {
         let mut elements = Vec::new();
@@ -106,51 +129,58 @@ impl App {
         }
     }
 
-    pub(super) fn title_bar_elements(&self, window_index: usize) -> Vec<SolidColorRenderElement> {
+    pub(super) fn title_bar_elements(
+        &mut self,
+        window_index: usize,
+    ) -> Vec<SolidColorRenderElement> {
         if !self.has_compositor_chrome(window_index) {
             return Vec::new();
         }
 
-        let mut elements = Vec::new();
-
-        let rect = self.title_bar_rect(window_index);
+        let title_rect = self.title_bar_rect(window_index);
         let close_rect = self.close_button_rect(window_index);
+        let mark_rects = close_button_x_rects(close_rect);
+        let title_color = if Some(window_index)
+            == self
+                .windows
+                .iter()
+                .rposition(|window| window.kind == ManagedWindowKind::Normal)
+        {
+            Color32F::new(0.19, 0.32, 0.55, 1.0)
+        } else {
+            Color32F::new(0.15, 0.18, 0.24, 1.0)
+        };
 
-        for x_rect in close_button_x_rects(close_rect) {
-            elements.push(solid_element(x_rect, Color32F::new(1.0, 0.95, 0.95, 1.0)));
+        // Update and reuse the persisted buffers so their element ids stay
+        // stable across frames; the damage tracker then skips them whenever the
+        // title bar has not moved or changed color.
+        let decorations = &mut self.windows[window_index].decoration_buffers;
+        let mut elements = Vec::with_capacity(mark_rects.len() + 2);
+
+        for (buffer, rect) in decorations.close_marks.iter_mut().zip(&mark_rects) {
+            buffer.update(rect.size, Color32F::new(1.0, 0.95, 0.95, 1.0));
+            elements.push(solid_element(buffer, rect.loc));
         }
 
-        elements.push(solid_element(
-            close_rect,
-            Color32F::new(0.72, 0.10, 0.12, 1.0),
-        ));
+        decorations
+            .close_button
+            .update(close_rect.size, Color32F::new(0.72, 0.10, 0.12, 1.0));
+        elements.push(solid_element(&decorations.close_button, close_rect.loc));
 
-        let focused_color = Color32F::new(0.19, 0.32, 0.55, 1.0);
-        let unfocused_color = Color32F::new(0.15, 0.18, 0.24, 1.0);
-
-        elements.push(solid_element(
-            rect,
-            if Some(window_index)
-                == self
-                    .windows
-                    .iter()
-                    .rposition(|window| window.kind == ManagedWindowKind::Normal)
-            {
-                focused_color
-            } else {
-                unfocused_color
-            },
-        ));
+        decorations.title_bar.update(title_rect.size, title_color);
+        elements.push(solid_element(&decorations.title_bar, title_rect.loc));
 
         elements
     }
 }
 
-fn solid_element(rect: Rectangle<i32, Logical>, color: Color32F) -> SolidColorRenderElement {
-    let buffer = SolidColorBuffer::new(rect.size, color);
+fn solid_element(
+    buffer: &SolidColorBuffer,
+    location: Point<i32, Logical>,
+) -> SolidColorRenderElement {
     SolidColorRenderElement::from_buffer(
-        &buffer,
-        rect.loc.to_physical(1),
+        buffer,
+        location.to_physical(1),
         1.0,
         1.0,
         Kind::Unspecified,

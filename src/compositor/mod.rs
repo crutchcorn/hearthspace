@@ -14,7 +14,7 @@ mod windows;
 
 use idle::{ActivityReason, IdleTransition, WindowIdleDaemon};
 use input::handle_input_event;
-use rendering::send_frames_surface_tree;
+use rendering::{WindowDecorationBuffers, send_frames_surface_tree};
 use shell_integration::{
     accept_command_connections, command_socket_path, remove_stale_socket, spawn_shell_bar,
 };
@@ -73,6 +73,7 @@ struct ManagedWindow {
     position: CanvasPoint,
     kind: ManagedWindowKind,
     decoration: WindowDecoration,
+    decoration_buffers: WindowDecorationBuffers,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -155,6 +156,7 @@ impl XdgShellHandler for App {
             position: position_for_new_window(kind, self.next_spawn_position),
             kind,
             decoration: decoration_for_new_window(kind),
+            decoration_buffers: WindowDecorationBuffers::default(),
         });
         if kind == ManagedWindowKind::Normal {
             self.idle_daemon.register_window(id);
