@@ -16,7 +16,7 @@ use idle::{ActivityReason, IdleTransition, WindowIdleDaemon};
 use input::handle_input_event;
 use rendering::send_frames_surface_tree;
 use shell_integration::{
-    command_socket_path, process_shell_commands, remove_stale_socket, spawn_shell_bar,
+    accept_command_connections, command_socket_path, remove_stale_socket, spawn_shell_bar,
 };
 use viewport::ViewportAnimation;
 use windows::{decoration_for_new_window, position_for_new_window, window_kind_for_toplevel};
@@ -417,11 +417,14 @@ pub fn run_winit(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> 
         },
     )?;
 
-    // Process shell commands when the command socket becomes readable.
+    // Accept shell command connections. Each connection is then read
+    // incrementally on its own non-blocking source, so a slow or stuck client
+    // can never stall the compositor's event loop.
+    let command_loop_handle = handle.clone();
     handle.insert_source(
         Generic::new(command_listener, Interest::READ, CalloopMode::Level),
-        |_, listener, data| {
-            process_shell_commands(&mut data.state, listener)?;
+        move |_, listener, _| {
+            accept_command_connections(listener, &command_loop_handle)?;
             Ok(PostAction::Continue)
         },
     )?;

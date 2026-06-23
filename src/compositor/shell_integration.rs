@@ -1,10 +1,15 @@
 use std::{
     env, fs,
     io::{self, ErrorKind, Read},
-    os::unix::{fs::symlink, net::UnixListener as CommandListener},
+    os::unix::{
+        fs::symlink,
+        net::{UnixListener as CommandListener, UnixStream},
+    },
     path::PathBuf,
     process::Command,
 };
+
+use smithay::reexports::calloop::{Interest, LoopHandle, Mode, PostAction, generic::Generic};
 
 use crate::{
     config::*,
@@ -15,7 +20,7 @@ use crate::{
     },
 };
 
-use super::App;
+use super::{App, CalloopData};
 
 pub(super) fn command_socket_path() -> PathBuf {
     runtime_path(SHELL_COMMAND_SOCKET_NAME)
@@ -165,24 +170,90 @@ fn apply_gtk_client_environment(command: &mut Command) {
     }
 }
 
-pub(super) fn process_shell_commands(
-    state: &mut App,
+/// Largest amount of unparsed command data we will buffer for a single
+/// connection before giving up. Commands are short single lines, so this only
+/// guards against a misbehaving client streaming data without a newline.
+const MAX_COMMAND_BUFFER_BYTES: usize = 4096;
+
+/// Accept every pending command connection and register each one as its own
+/// non-blocking calloop source. Reading is incremental, so a client that
+/// connects but never finishes sending cannot block the event loop.
+pub(super) fn accept_command_connections<'l>(
     listener: &CommandListener,
-) -> std::io::Result<()> {
+    handle: &LoopHandle<'l, CalloopData>,
+) -> io::Result<()> {
     loop {
         match listener.accept() {
-            Ok((mut stream, _)) => {
-                let mut buffer = String::new();
-                stream.read_to_string(&mut buffer)?;
-                for line in buffer.lines() {
-                    if let Some(command) = ShellCommand::parse(line) {
-                        state.run_control_action(command);
-                    }
-                }
+            Ok((stream, _)) => {
+                stream.set_nonblocking(true)?;
+                register_command_connection(handle, stream);
             }
             Err(error) if error.kind() == ErrorKind::WouldBlock => return Ok(()),
             Err(error) => return Err(error),
         }
+    }
+}
+
+fn register_command_connection<'l>(handle: &LoopHandle<'l, CalloopData>, stream: UnixStream) {
+    let mut buffer: Vec<u8> = Vec::new();
+    let source = Generic::new(stream, Interest::READ, Mode::Level);
+    if let Err(error) = handle.insert_source(source, move |_, stream, data| {
+        Ok(read_command_connection(stream, &mut buffer, &mut data.state))
+    }) {
+        eprintln!("Failed to register shell command connection: {error}");
+    }
+}
+
+fn read_command_connection(
+    stream: &UnixStream,
+    buffer: &mut Vec<u8>,
+    state: &mut App,
+) -> PostAction {
+    // `Read` is implemented for `&UnixStream`, so read through a shared ref.
+    let mut reader = stream;
+    let mut chunk = [0u8; 1024];
+    loop {
+        match reader.read(&mut chunk) {
+            Ok(0) => {
+                // Client closed: run any trailing line that lacked a newline.
+                if !buffer.is_empty() {
+                    run_command_line(buffer, state);
+                }
+                return PostAction::Remove;
+            }
+            Ok(read) => {
+                buffer.extend_from_slice(&chunk[..read]);
+                drain_complete_commands(buffer, state);
+                if buffer.len() > MAX_COMMAND_BUFFER_BYTES {
+                    eprintln!(
+                        "Shell command exceeded {MAX_COMMAND_BUFFER_BYTES} bytes without a newline; dropping connection"
+                    );
+                    return PostAction::Remove;
+                }
+            }
+            Err(error) if error.kind() == ErrorKind::Interrupted => continue,
+            Err(error) if error.kind() == ErrorKind::WouldBlock => return PostAction::Continue,
+            Err(error) => {
+                eprintln!("Failed to read shell command: {error}");
+                return PostAction::Remove;
+            }
+        }
+    }
+}
+
+fn drain_complete_commands(buffer: &mut Vec<u8>, state: &mut App) {
+    while let Some(newline) = buffer.iter().position(|&byte| byte == b'\n') {
+        let line: Vec<u8> = buffer.drain(..=newline).collect();
+        run_command_line(&line, state);
+    }
+}
+
+fn run_command_line(bytes: &[u8], state: &mut App) {
+    let Ok(text) = std::str::from_utf8(bytes) else {
+        return;
+    };
+    if let Some(command) = ShellCommand::parse(text.trim()) {
+        state.run_control_action(command);
     }
 }
 
