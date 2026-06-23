@@ -40,10 +40,11 @@ pub enum ShellCommand {
     ZoomIn,
     ZoomOut,
     LogAccessibilityTree,
+    OcrFocusedWindow,
 }
 
 impl ShellCommand {
-    pub const ALL: [Self; 9] = [
+    pub const ALL: [Self; 10] = [
         Self::Spawn(SpawnTarget::A11yTest),
         Self::Spawn(SpawnTarget::Foot),
         Self::PanLeft,
@@ -53,6 +54,7 @@ impl ShellCommand {
         Self::ZoomIn,
         Self::ZoomOut,
         Self::LogAccessibilityTree,
+        Self::OcrFocusedWindow,
     ];
 
     pub fn label(self) -> &'static str {
@@ -65,6 +67,7 @@ impl ShellCommand {
             Self::ZoomIn => "ZOOM+",
             Self::ZoomOut => "ZOOM-",
             Self::LogAccessibilityTree => "LOG",
+            Self::OcrFocusedWindow => "OCR",
         }
     }
 
@@ -79,6 +82,7 @@ impl ShellCommand {
             Self::ZoomIn => "zoom-in",
             Self::ZoomOut => "zoom-out",
             Self::LogAccessibilityTree => "log-a11y-tree",
+            Self::OcrFocusedWindow => "ocr-focused-window",
         }
     }
 
@@ -95,6 +99,7 @@ impl ShellCommand {
             "zoom-in" => Self::ZoomIn,
             "zoom-out" => Self::ZoomOut,
             "log-a11y-tree" => Self::LogAccessibilityTree,
+            "ocr-focused-window" => Self::OcrFocusedWindow,
             _ => return None,
         })
     }

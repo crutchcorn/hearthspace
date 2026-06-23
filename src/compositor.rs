@@ -17,12 +17,14 @@ use crate::{
         zoom_around_screen_point, CanvasPoint,
     },
     idle::{ActivityReason, IdleTransition, WindowIdleDaemon},
+    ocr::OcrImage,
     shell::{ShellCommand, SpawnTarget},
     RunOptions,
 };
 
 use smithay::{
     backend::{
+        allocator::Fourcc,
         input::{
             AbsolutePositionEvent, Axis, ButtonState, Event, InputEvent, KeyboardKeyEvent,
             PointerAxisEvent, PointerButtonEvent,
@@ -33,9 +35,9 @@ use smithay::{
                 surface::{render_elements_from_surface_tree, WaylandSurfaceRenderElement},
                 Kind,
             },
-            gles::GlesRenderer,
+            gles::{GlesRenderbuffer, GlesRenderer},
             utils::{draw_render_elements, on_commit_buffer_handler},
-            Color32F, Frame, Renderer,
+            Bind, Color32F, ExportMem, Frame, Offscreen, Renderer,
         },
         winit::{self, WinitEvent, WinitInput},
     },
@@ -55,7 +57,7 @@ use smithay::{
         wayland_server::{protocol::wl_seat, Display},
         winit::platform::pump_events::PumpStatus,
     },
-    utils::{Logical, Physical, Point, Rectangle, Serial, Size, Transform},
+    utils::{Buffer as BufferCoord, Logical, Physical, Point, Rectangle, Serial, Size, Transform},
     wayland::{
         buffer::BufferHandler,
         compositor::{
@@ -154,6 +156,8 @@ struct App {
     next_window_id: u64,
     idle_daemon: WindowIdleDaemon,
     focused_normal_window_id: Option<u64>,
+    active_normal_window_id: Option<u64>,
+    pending_ocr_window_id: Option<u64>,
     drag: Option<DragState>,
     next_spawn_position: CanvasPoint,
     spawn_offset: i32,
@@ -235,6 +239,9 @@ impl XdgShellHandler for App {
             if self.focused_normal_window_id == Some(window.id) {
                 self.focused_normal_window_id = None;
             }
+            if self.active_normal_window_id == Some(window.id) {
+                self.active_normal_window_id = None;
+            }
         }
         self.windows.retain(|window| window.surface != surface);
         self.drag = None;
@@ -259,6 +266,9 @@ impl XdgShellHandler for App {
                 self.idle_daemon.unregister_window(window.id);
                 if self.focused_normal_window_id == Some(window.id) {
                     self.focused_normal_window_id = None;
+                }
+                if self.active_normal_window_id == Some(window.id) {
+                    self.active_normal_window_id = None;
                 }
             } else if old_kind != ManagedWindowKind::Normal && kind == ManagedWindowKind::Normal {
                 self.idle_daemon.register_window(window.id);
@@ -403,6 +413,8 @@ pub fn run_winit(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> 
         next_window_id: 1,
         idle_daemon: WindowIdleDaemon::new(WINDOW_IDLE_THRESHOLDS),
         focused_normal_window_id: None,
+        active_normal_window_id: None,
+        pending_ocr_window_id: None,
         drag: None,
         next_spawn_position: CanvasPoint { x: 80, y: 96 },
         spawn_offset: 0,
@@ -512,6 +524,14 @@ pub fn run_winit(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> 
 
             display.flush_clients()?;
             backend.submit(Some(&[damage]))?;
+            if let Some((window_id, title, window_index)) = state.take_pending_ocr_window() {
+                match state.ocr_image_for_window(backend.renderer(), window_index) {
+                    Ok(image) => crate::ocr::run_tesseract_for_window(window_id, title, image),
+                    Err(error) => {
+                        eprintln!("Failed to capture OCR image for window {window_id}: {error}")
+                    }
+                }
+            }
             state.needs_redraw = false;
             if state.viewport_animation.is_some() {
                 state.request_redraw();
@@ -987,14 +1007,122 @@ impl App {
             ShellCommand::LogAccessibilityTree => {
                 crate::a11y::log_accessibility_tree(self.accessibility_window_snapshot())
             }
+            ShellCommand::OcrFocusedWindow => self.request_focused_window_ocr(),
         }
         self.request_redraw();
     }
 
+    fn request_focused_window_ocr(&mut self) {
+        let Some(window_id) = self.active_normal_window_id else {
+            println!("OCR requested, but no normal app window is focused.");
+            return;
+        };
+
+        if self
+            .windows
+            .iter()
+            .any(|window| window.id == window_id && window.kind == ManagedWindowKind::Normal)
+        {
+            self.pending_ocr_window_id = Some(window_id);
+            println!("OCR requested for window {window_id}");
+        } else {
+            println!("OCR requested, but focused window {window_id} is no longer available.");
+            if self.focused_normal_window_id == Some(window_id) {
+                self.focused_normal_window_id = None;
+            }
+            self.active_normal_window_id = None;
+        }
+    }
+
+    fn take_pending_ocr_window(&mut self) -> Option<(u64, Option<String>, usize)> {
+        let window_id = self.pending_ocr_window_id.take()?;
+        let window_index =
+            match self.windows.iter().position(|window| {
+                window.id == window_id && window.kind == ManagedWindowKind::Normal
+            }) {
+                Some(window_index) => window_index,
+                None => {
+                    println!("OCR requested, but window {window_id} is no longer available.");
+                    return None;
+                }
+            };
+
+        Some((
+            window_id,
+            toplevel_title(&self.windows[window_index].surface),
+            window_index,
+        ))
+    }
+
+    fn ocr_image_for_window(
+        &self,
+        renderer: &mut GlesRenderer,
+        window_index: usize,
+    ) -> Result<OcrImage, Box<dyn std::error::Error>> {
+        let window = &self.windows[window_index];
+        let content_bbox = bbox_from_surface_tree(
+            window.surface.wl_surface(),
+            Point::<i32, Logical>::from((0, 0)),
+        );
+        if content_bbox.size.w <= 0 || content_bbox.size.h <= 0 {
+            return Err("focused window has no rendered content".into());
+        }
+
+        let width = (f64::from(content_bbox.size.w) * self.viewport_scale)
+            .round()
+            .max(1.0) as i32;
+        let height = (f64::from(content_bbox.size.h) * self.viewport_scale)
+            .round()
+            .max(1.0) as i32;
+        let output_size = Size::<i32, Physical>::from((width, height));
+        let buffer_size = Size::<i32, BufferCoord>::from((width, height));
+        let damage = Rectangle::from_size(output_size);
+        let location =
+            Point::<i32, Logical>::from((-content_bbox.loc.x, -content_bbox.loc.y)).to_physical(1);
+
+        let elements: Vec<WaylandSurfaceRenderElement<GlesRenderer>> =
+            render_elements_from_surface_tree(
+                renderer,
+                window.surface.wl_surface(),
+                location,
+                self.viewport_scale,
+                1.0,
+                Kind::Unspecified,
+            );
+        let mut renderbuffer = <GlesRenderer as Offscreen<GlesRenderbuffer>>::create_buffer(
+            renderer,
+            Fourcc::Abgr8888,
+            buffer_size,
+        )?;
+        let mut target = renderer.bind(&mut renderbuffer)?;
+        let mut frame = renderer.render(&mut target, output_size, Transform::Normal)?;
+        frame.clear(Color32F::new(1.0, 1.0, 1.0, 1.0), &[damage])?;
+        draw_render_elements::<GlesRenderer, _, _>(
+            &mut frame,
+            self.viewport_scale,
+            &elements,
+            &[damage],
+        )?;
+        let _ = frame.finish()?;
+
+        let region = Rectangle::<i32, BufferCoord>::from_size(buffer_size);
+        let mapping = renderer.copy_framebuffer(&target, region, Fourcc::Abgr8888)?;
+        let bytes = renderer.map_texture(&mapping)?;
+
+        Ok(OcrImage {
+            width,
+            height,
+            rgba_bottom_up: bytes.to_vec(),
+        })
+    }
+
     fn set_keyboard_focus_to_window(&mut self, window_index: usize, surface: WlSurface) {
-        self.focused_normal_window_id = (self.windows[window_index].kind
-            == ManagedWindowKind::Normal)
+        let normal_window_id = (self.windows[window_index].kind == ManagedWindowKind::Normal)
             .then_some(self.windows[window_index].id);
+        self.focused_normal_window_id = normal_window_id;
+        if let Some(window_id) = normal_window_id {
+            self.active_normal_window_id = Some(window_id);
+        }
         let keyboard = self.keyboard.clone();
         keyboard.set_focus(self, Some(surface), Serial::from(0));
     }

@@ -60,6 +60,7 @@ When a window falls into **Path B** (or fails an expected AT-SPI query), the dae
 * **Tier 3: Lightweight Background OCR (Cached)**
   * **Mechanism:** The compositor silently grabs a framebuffer screenshot of the window and pipes it through a fast, local OCR engine (e.g., Tesseract).
   * **Expected Data:** An unformatted raw text blob of visually rendered words.
+  * **Current stepping stone:** Hearthspace has a manual `OCR` shell action that captures the focused app window's visible content area from the compositor framebuffer and prints Tesseract output. It is not yet wired into automatic idle-triggered cache updates.
 
 * **Tier 4: Process Descriptor Inspection (Cached)**
   * **Mechanism:** Scan the kernel's `/proc/[pid]/fd` for the window's underlying process.

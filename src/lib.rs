@@ -4,6 +4,7 @@ pub mod config;
 pub mod geometry;
 pub mod gtk_test_app;
 pub mod idle;
+pub mod ocr;
 pub mod shell;
 pub mod shell_bar;
 
