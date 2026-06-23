@@ -1,6 +1,5 @@
 pub mod compositor;
 pub mod config;
-pub mod controls;
 pub mod geometry;
 pub mod shell;
 pub mod shell_bar;

@@ -1,5 +1,3 @@
-use crate::controls::ControlAction;
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ShellCommand {
     SpawnApp,
@@ -57,20 +55,6 @@ impl ShellCommand {
             "zoom-out" => Self::ZoomOut,
             _ => return None,
         })
-    }
-}
-
-impl From<ShellCommand> for ControlAction {
-    fn from(command: ShellCommand) -> Self {
-        match command {
-            ShellCommand::SpawnApp => Self::SpawnApp,
-            ShellCommand::PanLeft => Self::PanLeft,
-            ShellCommand::PanRight => Self::PanRight,
-            ShellCommand::PanUp => Self::PanUp,
-            ShellCommand::PanDown => Self::PanDown,
-            ShellCommand::ZoomIn => Self::ZoomIn,
-            ShellCommand::ZoomOut => Self::ZoomOut,
-        }
     }
 }
 

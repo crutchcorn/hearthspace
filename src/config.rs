@@ -24,7 +24,3 @@ pub const ZOOM_STEP: f64 = 1.25;
 pub const VIEWPORT_ANIMATION_DURATION: Duration = Duration::from_millis(180);
 
 pub const IDLE_SLEEP: Duration = Duration::from_millis(1);
-
-pub const BUTTON_Y: i32 = 8;
-pub const BUTTON_HEIGHT: i32 = 32;
-pub const BUTTON_GAP: i32 = 8;

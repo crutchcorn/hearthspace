@@ -10,7 +10,6 @@ use std::{
 
 use crate::{
     config::*,
-    controls::ControlAction,
     geometry::{
         canvas_to_screen as transform_canvas_to_screen, ease_out_cubic, interpolate_canvas_point,
         interpolate_f64, rect_contains, screen_to_canvas as transform_screen_to_canvas,
@@ -517,7 +516,7 @@ fn process_shell_commands(state: &mut App, listener: &CommandListener) -> std::i
                 stream.read_to_string(&mut buffer)?;
                 for line in buffer.lines() {
                     if let Some(command) = ShellCommand::parse(line) {
-                        state.run_control_action(command.into());
+                        state.run_control_action(command);
                     }
                 }
             }
@@ -748,17 +747,17 @@ impl App {
         elements
     }
 
-    fn run_control_action(&mut self, action: ControlAction) {
+    fn run_control_action(&mut self, action: ShellCommand) {
         self.advance_viewport_animation();
 
         match action {
-            ControlAction::SpawnApp => self.spawn_app(),
-            ControlAction::PanLeft => self.pan_viewport_by(-self.horizontal_pan_step(), 0),
-            ControlAction::PanRight => self.pan_viewport_by(self.horizontal_pan_step(), 0),
-            ControlAction::PanUp => self.pan_viewport_by(0, -self.vertical_pan_step()),
-            ControlAction::PanDown => self.pan_viewport_by(0, self.vertical_pan_step()),
-            ControlAction::ZoomIn => self.animate_zoom_around_viewport_center(ZOOM_STEP),
-            ControlAction::ZoomOut => self.animate_zoom_around_viewport_center(1.0 / ZOOM_STEP),
+            ShellCommand::SpawnApp => self.spawn_app(),
+            ShellCommand::PanLeft => self.pan_viewport_by(-self.horizontal_pan_step(), 0),
+            ShellCommand::PanRight => self.pan_viewport_by(self.horizontal_pan_step(), 0),
+            ShellCommand::PanUp => self.pan_viewport_by(0, -self.vertical_pan_step()),
+            ShellCommand::PanDown => self.pan_viewport_by(0, self.vertical_pan_step()),
+            ShellCommand::ZoomIn => self.animate_zoom_around_viewport_center(ZOOM_STEP),
+            ShellCommand::ZoomOut => self.animate_zoom_around_viewport_center(1.0 / ZOOM_STEP),
         }
         self.request_redraw();
     }
