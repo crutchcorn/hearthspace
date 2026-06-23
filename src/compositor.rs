@@ -1,21 +1,16 @@
 use std::{
     env, fs,
-    io::{self, ErrorKind, Read},
-    os::unix::{
-        fs::FileTypeExt,
-        io::OwnedFd,
-        net::{UnixListener, UnixListener as CommandListener, UnixStream},
-    },
+    io::{self, BufRead, BufReader, ErrorKind, Read},
+    os::unix::{fs::symlink, io::OwnedFd, net::UnixListener as CommandListener},
     path::PathBuf,
-    process::Command,
+    process::{Child, Command, Stdio},
     sync::Arc,
-    thread,
     time::Instant,
 };
 
 use crate::{
     a11y::ManagedWindowAccessibilityInfo,
-    app_catalog::{spawn_argv_with_wayland_display, AppCatalog},
+    app_catalog::{spawn_argv_with_env, AppCatalog, DesktopApp},
     config::*,
     geometry::{
         canvas_to_screen as transform_canvas_to_screen, ease_out_cubic, interpolate_canvas_point,
@@ -168,7 +163,20 @@ struct App {
     output_size: Size<i32, Physical>,
     output: Output,
     app_catalog: AppCatalog,
+    app_dbus_session: Option<AppDbusSession>,
     needs_redraw: bool,
+}
+
+struct AppDbusSession {
+    address: String,
+    child: Child,
+}
+
+impl Drop for AppDbusSession {
+    fn drop(&mut self) {
+        let _ = self.child.kill();
+        let _ = self.child.wait();
+    }
 }
 
 impl BufferHandler for App {
@@ -418,6 +426,7 @@ pub fn run_winit(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> 
         output_size,
         output,
         app_catalog: AppCatalog::load(),
+        app_dbus_session: start_app_dbus_session(),
         needs_redraw: true,
     };
 
@@ -588,7 +597,7 @@ fn runtime_path(name: &str) -> PathBuf {
         .join(name)
 }
 
-fn ensure_snap_wayland_proxy(instance_name: &str) -> std::io::Result<PathBuf> {
+fn ensure_snap_wayland_socket(instance_name: &str) -> std::io::Result<String> {
     if !instance_name
         .chars()
         .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_' | '.'))
@@ -599,65 +608,126 @@ fn ensure_snap_wayland_proxy(instance_name: &str) -> std::io::Result<PathBuf> {
         ));
     }
 
-    let target_socket_path = runtime_path(WAYLAND_DISPLAY_NAME);
-    let proxy_dir = runtime_path(&format!("snap.{instance_name}"));
-    fs::create_dir_all(&proxy_dir)?;
-    let proxy_socket_path = proxy_dir.join(WAYLAND_DISPLAY_NAME);
+    let snap_runtime_dir = runtime_path(&format!("snap.{instance_name}"));
+    fs::create_dir_all(&snap_runtime_dir)?;
+    let snap_socket_path = snap_runtime_dir.join(WAYLAND_DISPLAY_NAME);
 
-    match fs::symlink_metadata(&proxy_socket_path) {
-        Ok(metadata) if metadata.file_type().is_socket() => {
-            if UnixStream::connect(&proxy_socket_path).is_ok() {
-                return Ok(proxy_socket_path);
-            }
-            fs::remove_file(&proxy_socket_path)?;
-        }
-        Ok(_) => fs::remove_file(&proxy_socket_path)?,
+    match fs::remove_file(&snap_socket_path) {
+        Ok(()) => {}
         Err(error) if error.kind() == ErrorKind::NotFound => {}
         Err(error) => return Err(error),
     }
 
-    let listener = UnixListener::bind(&proxy_socket_path)?;
-    thread::spawn(move || {
-        for connection in listener.incoming() {
-            let target_socket_path = target_socket_path.clone();
-            match connection {
-                Ok(client) => {
-                    thread::spawn(move || proxy_wayland_connection(client, target_socket_path));
-                }
-                Err(error) => {
-                    eprintln!("Snap Wayland proxy accept failed: {error}");
-                    break;
-                }
-            }
-        }
-    });
-
-    Ok(proxy_socket_path)
+    symlink(
+        PathBuf::from("..").join(WAYLAND_DISPLAY_NAME),
+        &snap_socket_path,
+    )?;
+    Ok(WAYLAND_DISPLAY_NAME.to_string())
 }
 
-fn proxy_wayland_connection(client: UnixStream, target_socket_path: PathBuf) {
-    let Ok(server) = UnixStream::connect(&target_socket_path) else {
-        eprintln!(
-            "Snap Wayland proxy failed to connect to {}",
-            target_socket_path.display()
-        );
-        return;
+fn start_app_dbus_session() -> Option<AppDbusSession> {
+    let mut child = match Command::new("dbus-daemon")
+        .args(["--session", "--nofork", "--print-address=1"])
+        .stdout(Stdio::piped())
+        .spawn()
+    {
+        Ok(child) => child,
+        Err(error) => {
+            eprintln!("Failed to start Hearthspace app D-Bus session: {error}");
+            return None;
+        }
     };
 
-    let Ok(mut client_reader) = client.try_clone() else {
-        return;
+    let Some(stdout) = child.stdout.take() else {
+        let _ = child.kill();
+        return None;
     };
-    let Ok(mut server_writer) = server.try_clone() else {
-        return;
-    };
-    let upload = thread::spawn(move || {
-        let _ = io::copy(&mut client_reader, &mut server_writer);
-    });
 
-    let mut server_reader = server;
-    let mut client_writer = client;
-    let _ = io::copy(&mut server_reader, &mut client_writer);
-    let _ = upload.join();
+    let mut address = String::new();
+    if let Err(error) = BufReader::new(stdout).read_line(&mut address) {
+        eprintln!("Failed to read Hearthspace app D-Bus address: {error}");
+        let _ = child.kill();
+        return None;
+    }
+
+    let address = address.trim().to_string();
+    if address.is_empty() {
+        let _ = child.kill();
+        return None;
+    }
+
+    Some(AppDbusSession { address, child })
+}
+
+fn launch_environment_for_app(
+    app: &DesktopApp,
+    dbus_session: Option<&AppDbusSession>,
+) -> std::io::Result<Vec<(String, String)>> {
+    let base = app_state_base_dir().join(sanitized_path_component(&app.id));
+    let config = base.join("config");
+    let cache = base.join("cache");
+    let data = base.join("data");
+    let state = base.join("state");
+    let home = base.join("home");
+
+    for dir in [&config, &cache, &data, &state, &home] {
+        fs::create_dir_all(dir)?;
+    }
+
+    let mut envs = vec![
+        (
+            "XDG_CONFIG_HOME".to_string(),
+            config.to_string_lossy().into_owned(),
+        ),
+        (
+            "XDG_CACHE_HOME".to_string(),
+            cache.to_string_lossy().into_owned(),
+        ),
+        (
+            "XDG_DATA_HOME".to_string(),
+            data.to_string_lossy().into_owned(),
+        ),
+        (
+            "XDG_STATE_HOME".to_string(),
+            state.to_string_lossy().into_owned(),
+        ),
+    ];
+
+    if app.snap_instance_name.is_none() {
+        if let Some(dbus_session) = dbus_session {
+            envs.push((
+                "DBUS_SESSION_BUS_ADDRESS".to_string(),
+                dbus_session.address.clone(),
+            ));
+        }
+    }
+
+    if app.snap_instance_name.is_none() {
+        envs.push(("HOME".to_string(), home.to_string_lossy().into_owned()));
+    }
+
+    Ok(envs)
+}
+
+fn app_state_base_dir() -> PathBuf {
+    env::var_os("XDG_STATE_HOME")
+        .map(PathBuf::from)
+        .or_else(|| env::var_os("HOME").map(|home| PathBuf::from(home).join(".local/state")))
+        .unwrap_or_else(env::temp_dir)
+        .join("hearthspace/apps")
+}
+
+fn sanitized_path_component(input: &str) -> String {
+    input
+        .chars()
+        .map(|ch| {
+            if ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_' | '.') {
+                ch
+            } else {
+                '_'
+            }
+        })
+        .collect()
 }
 
 fn remove_stale_socket(path: &PathBuf) -> std::io::Result<()> {
@@ -1209,10 +1279,10 @@ impl App {
         };
 
         let wayland_display = if let Some(instance_name) = &app.snap_instance_name {
-            match ensure_snap_wayland_proxy(instance_name) {
-                Ok(proxy_socket_path) => proxy_socket_path.to_string_lossy().into_owned(),
+            match ensure_snap_wayland_socket(instance_name) {
+                Ok(display_name) => display_name,
                 Err(error) => {
-                    eprintln!("Failed to prepare Snap Wayland proxy for {app_id}: {error}");
+                    eprintln!("Failed to prepare Snap Wayland socket for {app_id}: {error}");
                     return;
                 }
             }
@@ -1220,8 +1290,20 @@ impl App {
             WAYLAND_DISPLAY_NAME.to_string()
         };
 
+        let launch_env = match launch_environment_for_app(app, self.app_dbus_session.as_ref()) {
+            Ok(env) => env,
+            Err(error) => {
+                eprintln!("Failed to prepare app environment for {app_id}: {error}");
+                return;
+            }
+        };
+        let launch_env_refs = launch_env
+            .iter()
+            .map(|(key, value)| (key.as_str(), value.as_str()))
+            .collect::<Vec<_>>();
+
         self.prepare_spawn_position();
-        if let Err(error) = spawn_argv_with_wayland_display(&command, &wayland_display) {
+        if let Err(error) = spawn_argv_with_env(&command, &wayland_display, &launch_env_refs) {
             eprintln!("Failed to launch {app_id}: {error}");
         }
     }

@@ -552,12 +552,26 @@ pub fn spawn_argv_with_wayland_display(
     argv: &[String],
     wayland_display: &str,
 ) -> Result<(), String> {
+    spawn_argv_with_env(argv, wayland_display, &[])
+}
+
+pub fn spawn_argv_with_env(
+    argv: &[String],
+    wayland_display: &str,
+    envs: &[(&str, &str)],
+) -> Result<(), String> {
     let Some((program, args)) = argv.split_first() else {
         return Err("cannot spawn an empty command".to_string());
     };
-    Command::new(program)
+    let mut command = Command::new(program);
+    command
         .args(args)
         .env("WAYLAND_DISPLAY", wayland_display)
+        .env_remove("DISPLAY");
+    for (key, value) in envs {
+        command.env(key, value);
+    }
+    command
         .spawn()
         .map(|_| ())
         .map_err(|error| format!("failed to spawn {program}: {error}"))

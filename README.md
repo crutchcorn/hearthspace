@@ -21,7 +21,7 @@ In this mode, vertical scroll zooms the canvas without requiring `Super`, so scr
 This opens a nested compositor window and creates its own Wayland socket:
 
 ```text
-WAYLAND_DISPLAY=wayland-hearthspace-0
+WAYLAND_DISPLAY=wayland-99
 ```
 
 Spawned child applications receive this `WAYLAND_DISPLAY` and connect back to Hearthspace instead of the host desktop compositor.

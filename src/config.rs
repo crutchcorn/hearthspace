@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-pub const WAYLAND_DISPLAY_NAME: &str = "wayland-hearthspace-0";
+pub const WAYLAND_DISPLAY_NAME: &str = "wayland-99";
 pub const GTK_TEST_APP_FLAG: &str = "--gtk-test-app";
 pub const GTK_TEST_APP_ID: &str = "dev.hearthspace.A11yTest";
 pub const GTK_TEST_APP_TITLE: &str = "Hearthspace Research Demo";

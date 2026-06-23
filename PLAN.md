@@ -99,7 +99,7 @@ unknown field codes -> invalidate the launch
 Every launched app should receive:
 
 ```text
-WAYLAND_DISPLAY=wayland-hearthspace-0
+WAYLAND_DISPLAY=wayland-99
 ```
 
 GTK apps launched by Hearthspace should continue to receive Hearthspace's private GTK/GSettings decoration config where applicable.
