@@ -42,6 +42,7 @@ Nested Wayland compositor window
 Wayland client socket
 xdg-shell client acceptance
 GLES rendering path
+Synthetic wl_output and xdg-output advertisement
 Compositor-owned control bar
 Spawn button for foot
 Canvas viewport offset
@@ -57,4 +58,5 @@ Closed windows are not cleaned out of the simple position list yet
 Surface hit testing is minimal
 No window dragging/resizing yet
 No DRM/KMS full desktop session yet
+Several optional desktop protocols are not implemented yet, so clients may print warnings
 ```

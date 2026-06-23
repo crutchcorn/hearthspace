@@ -17,12 +17,14 @@ use smithay::{
         },
         winit::{self, WinitEvent},
     },
-    delegate_compositor, delegate_data_device, delegate_seat, delegate_shm, delegate_xdg_shell,
+    delegate_compositor, delegate_data_device, delegate_output, delegate_seat, delegate_shm,
+    delegate_xdg_shell,
     input::{
         keyboard::{FilterResult, KeyboardHandle},
         pointer::{ButtonEvent, MotionEvent, PointerHandle},
         Seat, SeatHandler, SeatState,
     },
+    output::{Mode, Output, PhysicalProperties, Scale, Subpixel},
     reexports::{
         wayland_server::{protocol::wl_seat, Display},
         winit::platform::pump_events::PumpStatus,
@@ -34,6 +36,7 @@ use smithay::{
             with_surface_tree_downward, CompositorClientState, CompositorHandler, CompositorState,
             SurfaceAttributes, TraversalAction,
         },
+        output::{OutputHandler, OutputManagerState},
         selection::{
             data_device::{
                 ClientDndGrabHandler, DataDeviceHandler, DataDeviceState, ServerDndGrabHandler,
@@ -53,7 +56,7 @@ use wayland_server::{
         wl_buffer,
         wl_surface::{self, WlSurface},
     },
-    Client, ListeningSocket,
+    Client, DisplayHandle, ListeningSocket,
 };
 
 const WAYLAND_DISPLAY_NAME: &str = "wayland-hearthspace-0";
@@ -87,6 +90,7 @@ struct ControlButton {
 struct App {
     compositor_state: CompositorState,
     xdg_shell_state: XdgShellState,
+    _output_manager_state: OutputManagerState,
     shm_state: ShmState,
     seat_state: SeatState<Self>,
     data_device_state: DataDeviceState,
@@ -98,6 +102,7 @@ struct App {
     next_spawn_position: CanvasPoint,
     pointer_location: Point<f64, Logical>,
     output_size: Size<i32, Physical>,
+    output: Output,
 }
 
 impl BufferHandler for App {
@@ -113,6 +118,7 @@ impl XdgShellHandler for App {
         self.window_positions.push(self.next_spawn_position);
         self.next_spawn_position.x += 48;
         self.next_spawn_position.y += 48;
+        self.output.enter(surface.wl_surface());
 
         surface.with_pending_state(|state| {
             state.states.set(xdg_toplevel::State::Activated);
@@ -168,6 +174,8 @@ impl ShmHandler for App {
     }
 }
 
+impl OutputHandler for App {}
+
 impl SeatHandler for App {
     type KeyboardFocus = WlSurface;
     type PointerFocus = WlSurface;
@@ -202,15 +210,21 @@ fn run_winit() -> Result<(), Box<dyn std::error::Error>> {
     let dh = display.handle();
 
     let compositor_state = CompositorState::new::<App>(&dh);
+    let output_manager_state = OutputManagerState::new_with_xdg_output::<App>(&dh);
     let shm_state = ShmState::new::<App>(&dh, vec![]);
     let mut seat_state = SeatState::new();
     let mut seat = seat_state.new_wl_seat(&dh, "hearthspace");
     let keyboard = seat.add_keyboard(Default::default(), 200, 200)?;
     let pointer = seat.add_pointer();
 
+    let (mut backend, mut winit) = winit::init::<GlesRenderer>()?;
+    let output_size = backend.window_size();
+    let output = create_output(&dh, output_size);
+
     let mut state = App {
         compositor_state,
         xdg_shell_state: XdgShellState::new::<App>(&dh),
+        _output_manager_state: output_manager_state,
         shm_state,
         seat_state,
         data_device_state: DataDeviceState::new::<App>(&dh),
@@ -221,12 +235,12 @@ fn run_winit() -> Result<(), Box<dyn std::error::Error>> {
         window_positions: Vec::new(),
         next_spawn_position: CanvasPoint { x: 80, y: 96 },
         pointer_location: (0.0, 0.0).into(),
-        output_size: (1, 1).into(),
+        output_size,
+        output,
     };
 
     let listener = ListeningSocket::bind(WAYLAND_DISPLAY_NAME)?;
     let mut clients = Vec::new();
-    let (mut backend, mut winit) = winit::init::<GlesRenderer>()?;
     let start_time = std::time::Instant::now();
 
     println!("Hearthspace running on WAYLAND_DISPLAY={WAYLAND_DISPLAY_NAME}");
@@ -243,7 +257,11 @@ fn run_winit() -> Result<(), Box<dyn std::error::Error>> {
             PumpStatus::Exit(_) => return Ok(()),
         };
 
-        state.output_size = backend.window_size();
+        let output_size = backend.window_size();
+        if output_size != state.output_size {
+            state.output_size = output_size;
+            update_output_mode(&state.output, output_size);
+        }
         let damage = Rectangle::from_size(state.output_size);
         {
             let (renderer, mut framebuffer) = backend.bind()?;
@@ -284,10 +302,40 @@ fn run_winit() -> Result<(), Box<dyn std::error::Error>> {
 
             display.dispatch_clients(&mut state)?;
             display.flush_clients()?;
+            state.output.cleanup();
         }
 
         backend.submit(Some(&[damage]))?;
     }
+}
+
+fn create_output(dh: &DisplayHandle, size: Size<i32, Physical>) -> Output {
+    let output = Output::new(
+        "hearthspace-0".into(),
+        PhysicalProperties {
+            size: (340, 190).into(),
+            subpixel: Subpixel::Unknown,
+            make: "Hearthspace".into(),
+            model: "Nested Canvas".into(),
+        },
+    );
+    output.create_global::<App>(dh);
+    update_output_mode(&output, size);
+    output
+}
+
+fn update_output_mode(output: &Output, size: Size<i32, Physical>) {
+    let mode = Mode {
+        size,
+        refresh: 60_000,
+    };
+    output.set_preferred(mode);
+    output.change_current_state(
+        Some(mode),
+        Some(Transform::Normal),
+        Some(Scale::Integer(1)),
+        Some((0, 0).into()),
+    );
 }
 
 fn handle_input_event(state: &mut App, event: InputEvent<smithay::backend::winit::WinitInput>) {
@@ -588,3 +636,4 @@ delegate_compositor!(App);
 delegate_shm!(App);
 delegate_seat!(App);
 delegate_data_device!(App);
+delegate_output!(App);

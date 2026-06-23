@@ -8,7 +8,7 @@ The following packages were installed on the development VM:
 
 ```sh
 sudo apt-get update
-sudo apt-get install -y build-essential cargo rustc rustfmt pkg-config clang libclang-dev libwayland-dev wayland-protocols libinput-dev libxkbcommon-dev libudev-dev libseat-dev libgbm-dev libegl1-mesa-dev libgles2-mesa-dev libdrm-dev libsystemd-dev foot
+sudo apt-get install -y build-essential cargo rustc rustfmt pkg-config clang libclang-dev libwayland-dev wayland-protocols wayland-utils libinput-dev libxkbcommon-dev libudev-dev libseat-dev libgbm-dev libegl1-mesa-dev libgles2-mesa-dev libdrm-dev libsystemd-dev foot
 ```
 
 `foot` is installed as a small Wayland-native terminal for early spawn testing.
@@ -24,6 +24,7 @@ rustfmt: 1.8.0
 clang: 21.1.8
 wayland-server: 1.24.0
 wayland-protocols: 1.47
+wayland-info: 1.3.0
 libinput: 1.31.1
 xkbcommon: 1.13.1
 libseat: 0.9.2
