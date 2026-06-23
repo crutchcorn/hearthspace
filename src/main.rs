@@ -1,4 +1,4 @@
-use std::{os::unix::io::OwnedFd, process::Command, sync::Arc};
+use std::{os::unix::io::OwnedFd, process::Command, sync::Arc, time::Duration};
 
 use smithay::{
     backend::{
@@ -75,6 +75,7 @@ const SPAWN_OFFSET_WRAP: i32 = 180;
 const MIN_ZOOM: f64 = 0.5;
 const MAX_ZOOM: f64 = 2.0;
 const ZOOM_STEP: f64 = 1.25;
+const IDLE_SLEEP: Duration = Duration::from_millis(1);
 const BUTTON_Y: i32 = 8;
 const BUTTON_HEIGHT: i32 = 32;
 const BUTTON_GAP: i32 = 8;
@@ -144,6 +145,8 @@ struct App {
     pointer_location: Point<f64, Logical>,
     output_size: Size<i32, Physical>,
     output: Output,
+    control_bar_elements: Vec<SolidColorRenderElement>,
+    needs_redraw: bool,
 }
 
 impl BufferHandler for App {
@@ -161,6 +164,7 @@ impl XdgShellHandler for App {
             position: self.next_spawn_position,
         });
         self.output.enter(surface.wl_surface());
+        self.request_redraw();
 
         surface.with_pending_state(|state| {
             state.states.set(xdg_toplevel::State::Activated);
@@ -184,14 +188,17 @@ impl XdgShellHandler for App {
 impl XdgDecorationHandler for App {
     fn new_decoration(&mut self, toplevel: ToplevelSurface) {
         configure_server_side_decoration(&toplevel);
+        self.request_redraw();
     }
 
     fn request_mode(&mut self, toplevel: ToplevelSurface, _mode: DecorationMode) {
         configure_server_side_decoration(&toplevel);
+        self.request_redraw();
     }
 
     fn unset_mode(&mut self, toplevel: ToplevelSurface) {
         configure_server_side_decoration(&toplevel);
+        self.request_redraw();
     }
 }
 
@@ -221,6 +228,7 @@ impl CompositorHandler for App {
 
     fn commit(&mut self, surface: &WlSurface) {
         on_commit_buffer_handler::<Self>(surface);
+        self.request_redraw();
     }
 }
 
@@ -298,7 +306,10 @@ fn run_winit() -> Result<(), Box<dyn std::error::Error>> {
         pointer_location: (0.0, 0.0).into(),
         output_size,
         output,
+        control_bar_elements: Vec::new(),
+        needs_redraw: true,
     };
+    state.rebuild_control_bar_elements();
 
     let listener = ListeningSocket::bind(WAYLAND_DISPLAY_NAME)?;
     let mut clients = Vec::new();
@@ -308,7 +319,7 @@ fn run_winit() -> Result<(), Box<dyn std::error::Error>> {
 
     loop {
         let status = winit.dispatch_new_events(|event| match event {
-            WinitEvent::Resized { .. } => {}
+            WinitEvent::Resized { .. } => state.request_redraw(),
             WinitEvent::Input(event) => handle_input_event(&mut state, event),
             _ => (),
         });
@@ -322,44 +333,61 @@ fn run_winit() -> Result<(), Box<dyn std::error::Error>> {
         if output_size != state.output_size {
             state.output_size = output_size;
             update_output_mode(&state.output, output_size);
+            state.rebuild_control_bar_elements();
+            state.request_redraw();
         }
-        let damage = Rectangle::from_size(state.output_size);
-        {
-            let (renderer, mut framebuffer) = backend.bind()?;
-            let window_elements = (0..state.windows.len())
-                .map(|index| state.window_render_elements(renderer, index))
-                .collect::<Vec<_>>();
-            let title_bar_elements = (0..state.windows.len())
-                .map(|index| state.title_bar_elements(index))
-                .collect::<Vec<_>>();
-            let control_elements = state.control_bar_elements();
 
-            let mut frame =
-                renderer.render(&mut framebuffer, state.output_size, Transform::Flipped180)?;
-            frame.clear(Color32F::new(0.04, 0.05, 0.07, 1.0), &[damage])?;
-            for (window_elements, title_bar_elements) in
-                window_elements.iter().zip(&title_bar_elements)
+        while let Some(stream) = listener.accept()? {
+            println!("Got a client: {stream:?}");
+            let client = display
+                .handle()
+                .insert_client(stream, Arc::new(ClientState::default()))?;
+            clients.push(client);
+            state.request_redraw();
+        }
+
+        display.dispatch_clients(&mut state)?;
+        display.flush_clients()?;
+        state.output.cleanup();
+
+        if state.needs_redraw {
+            let damage = Rectangle::from_size(state.output_size);
             {
-                draw_render_elements::<GlesRenderer, _, _>(
-                    &mut frame,
-                    state.viewport_scale,
-                    window_elements,
-                    &[damage],
-                )?;
+                let (renderer, mut framebuffer) = backend.bind()?;
+                let window_elements = (0..state.windows.len())
+                    .map(|index| state.window_render_elements(renderer, index))
+                    .collect::<Vec<_>>();
+                let title_bar_elements = (0..state.windows.len())
+                    .map(|index| state.title_bar_elements(index))
+                    .collect::<Vec<_>>();
+
+                let mut frame =
+                    renderer.render(&mut framebuffer, state.output_size, Transform::Flipped180)?;
+                frame.clear(Color32F::new(0.04, 0.05, 0.07, 1.0), &[damage])?;
+                for (window_elements, title_bar_elements) in
+                    window_elements.iter().zip(&title_bar_elements)
+                {
+                    draw_render_elements::<GlesRenderer, _, _>(
+                        &mut frame,
+                        state.viewport_scale,
+                        window_elements,
+                        &[damage],
+                    )?;
+                    draw_render_elements::<GlesRenderer, _, _>(
+                        &mut frame,
+                        1.0,
+                        title_bar_elements,
+                        &[damage],
+                    )?;
+                }
                 draw_render_elements::<GlesRenderer, _, _>(
                     &mut frame,
                     1.0,
-                    title_bar_elements,
+                    &state.control_bar_elements,
                     &[damage],
                 )?;
+                let _ = frame.finish()?;
             }
-            draw_render_elements::<GlesRenderer, _, _>(
-                &mut frame,
-                1.0,
-                &control_elements,
-                &[damage],
-            )?;
-            let _ = frame.finish()?;
 
             for window in &state.windows {
                 send_frames_surface_tree(
@@ -368,20 +396,12 @@ fn run_winit() -> Result<(), Box<dyn std::error::Error>> {
                 );
             }
 
-            if let Some(stream) = listener.accept()? {
-                println!("Got a client: {stream:?}");
-                let client = display
-                    .handle()
-                    .insert_client(stream, Arc::new(ClientState::default()))?;
-                clients.push(client);
-            }
-
-            display.dispatch_clients(&mut state)?;
             display.flush_clients()?;
-            state.output.cleanup();
+            backend.submit(Some(&[damage]))?;
+            state.needs_redraw = false;
+        } else {
+            std::thread::sleep(IDLE_SLEEP);
         }
-
-        backend.submit(Some(&[damage]))?;
     }
 }
 
@@ -446,6 +466,7 @@ fn handle_input_event(state: &mut App, event: InputEvent<smithay::backend::winit
                         x: drag.window_start.x + (delta.x / state.viewport_scale).round() as i32,
                         y: drag.window_start.y + (delta.y / state.viewport_scale).round() as i32,
                     };
+                    state.request_redraw();
                 }
                 return;
             }
@@ -496,6 +517,7 @@ fn handle_input_event(state: &mut App, event: InputEvent<smithay::backend::winit
                             pointer_start: state.pointer_location,
                             window_start: state.windows[window_index].position,
                         });
+                        state.request_redraw();
                         return;
                     }
                     Some(HitTarget::Client { window_index, .. }) => {
@@ -599,7 +621,7 @@ impl App {
         elements
     }
 
-    fn control_bar_elements(&self) -> Vec<SolidColorRenderElement> {
+    fn rebuild_control_bar_elements(&mut self) {
         let buttons = self.control_buttons();
         let mut elements = Vec::new();
 
@@ -628,7 +650,7 @@ impl App {
             Color32F::new(0.10, 0.12, 0.16, 0.96),
         ));
 
-        elements
+        self.control_bar_elements = elements;
     }
 
     fn control_buttons(&self) -> Vec<ControlButton> {
@@ -682,6 +704,7 @@ impl App {
             ControlAction::ZoomIn => self.zoom_around_viewport_center(ZOOM_STEP),
             ControlAction::ZoomOut => self.zoom_around_viewport_center(1.0 / ZOOM_STEP),
         }
+        self.request_redraw();
     }
 
     fn spawn_app(&mut self) {
@@ -745,7 +768,12 @@ impl App {
 
         let window = self.windows.remove(window_index);
         self.windows.push(window);
+        self.request_redraw();
         self.windows.len() - 1
+    }
+
+    fn request_redraw(&mut self) {
+        self.needs_redraw = true;
     }
 
     fn title_bar_rect(&self, window_index: usize) -> Rectangle<i32, Logical> {

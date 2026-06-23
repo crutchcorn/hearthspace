@@ -52,6 +52,7 @@ Nested Wayland compositor window
 Wayland client socket
 xdg-shell client acceptance
 GLES rendering path
+Dirty/event-driven render loop that skips GPU redraws when the scene is unchanged
 Synthetic wl_output and xdg-output advertisement
 xdg-decoration advertisement with server-side decoration requests
 Compositor-owned control bar
