@@ -335,7 +335,7 @@ fn run_winit() -> Result<(), Box<dyn std::error::Error>> {
             frame.clear(Color32F::new(0.04, 0.05, 0.07, 1.0), &[damage])?;
             draw_render_elements::<GlesRenderer, _, _>(
                 &mut frame,
-                1.0,
+                state.viewport_scale,
                 &window_elements,
                 &[damage],
             )?;
