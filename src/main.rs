@@ -14,9 +14,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .iter()
         .any(|arg| arg == hearthspace::config::GTK_TEST_APP_FLAG)
     {
-        hearthspace::gtk_test_app::run()
+        hearthspace::test_apps::gtk::run()
     } else if args.iter().any(|arg| arg == "--shell-bar") {
-        hearthspace::shell_bar::run()
+        hearthspace::shell::bar::run()
     } else {
         hearthspace::run_with_options(hearthspace::RunOptions {
             scroll_zooms_without_super: args

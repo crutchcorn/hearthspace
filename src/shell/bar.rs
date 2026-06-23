@@ -7,9 +7,11 @@ use gpui::{
 };
 
 use crate::{
-    app_catalog::{AppCatalog, DesktopApp},
     config::{CONTROL_BAR_HEIGHT, SHELL_BAR_APP_ID, SHELL_COMMAND_SOCKET_ENV},
-    shell::ShellCommand,
+    shell::{
+        ShellCommand,
+        app_catalog::{AppCatalog, DesktopApp},
+    },
 };
 
 struct ShellBar {

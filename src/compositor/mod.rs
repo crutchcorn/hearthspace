@@ -10,17 +10,22 @@ use std::{
 
 use crate::{
     RunOptions,
-    a11y::ManagedWindowAccessibilityInfo,
-    app_catalog::{AppCatalog, DesktopApp, spawn_argv_with_env},
+    accessibility::ManagedWindowAccessibilityInfo,
     config::*,
     geometry::{
         CanvasPoint, canvas_to_screen as transform_canvas_to_screen, ease_out_cubic,
         interpolate_canvas_point, interpolate_f64, rect_contains,
         screen_to_canvas as transform_screen_to_canvas, zoom_around_screen_point,
     },
-    idle::{ActivityReason, IdleTransition, WindowIdleDaemon},
-    shell::{ShellCommand, SpawnTarget},
+    shell::{
+        ShellCommand, SpawnTarget,
+        app_catalog::{AppCatalog, DesktopApp, spawn_argv_with_env},
+    },
 };
+
+mod idle;
+
+use idle::{ActivityReason, IdleTransition, WindowIdleDaemon};
 
 use smithay::{
     backend::{
@@ -1073,7 +1078,7 @@ impl App {
             ShellCommand::ZoomIn => self.animate_zoom_around_viewport_center(ZOOM_STEP),
             ShellCommand::ZoomOut => self.animate_zoom_around_viewport_center(1.0 / ZOOM_STEP),
             ShellCommand::LogAccessibilityTree => {
-                crate::a11y::log_accessibility_tree(self.accessibility_window_snapshot())
+                crate::accessibility::log_accessibility_tree(self.accessibility_window_snapshot())
             }
         }
         self.request_redraw();
