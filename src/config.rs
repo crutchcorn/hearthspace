@@ -7,6 +7,7 @@ pub const GTK_TEST_APP_TITLE: &str = "Hearthspace Research Demo";
 pub const SHELL_BAR_APP_ID: &str = "dev.hearthspace.shell-bar";
 pub const SHELL_COMMAND_SOCKET_NAME: &str = "hearthspace-shell.sock";
 pub const SHELL_COMMAND_SOCKET_ENV: &str = "HEARTHSPACE_COMMAND_SOCKET";
+pub const GTK_CLIENT_CONFIG_DIR_NAME: &str = "hearthspace-gtk-client-config";
 pub const SCROLL_ZOOMS_FLAG: &str = "--scroll-zooms";
 
 pub const KEYBOARD_REPEAT_DELAY_MS: i32 = 600;

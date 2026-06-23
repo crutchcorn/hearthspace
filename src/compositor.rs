@@ -360,7 +360,10 @@ pub fn run_winit(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> 
 
     let mut state = App {
         compositor_state,
-        xdg_shell_state: XdgShellState::new::<App>(&dh),
+        xdg_shell_state: XdgShellState::new_with_capabilities::<App>(
+            &dh,
+            std::iter::empty::<xdg_toplevel::WmCapabilities>(),
+        ),
         _xdg_decoration_state: xdg_decoration_state,
         _output_manager_state: output_manager_state,
         shm_state,
@@ -540,10 +543,14 @@ fn update_output_mode(output: &Output, size: Size<i32, Physical>) {
 }
 
 fn command_socket_path() -> PathBuf {
+    runtime_path(SHELL_COMMAND_SOCKET_NAME)
+}
+
+fn runtime_path(name: &str) -> PathBuf {
     env::var_os("XDG_RUNTIME_DIR")
         .map(PathBuf::from)
         .unwrap_or_else(env::temp_dir)
-        .join(SHELL_COMMAND_SOCKET_NAME)
+        .join(name)
 }
 
 fn remove_stale_socket(path: &PathBuf) -> std::io::Result<()> {
@@ -570,6 +577,36 @@ fn spawn_shell_bar(command_socket_path: &PathBuf) {
         .spawn()
     {
         eprintln!("Failed to spawn shell bar: {error}");
+    }
+}
+
+fn ensure_gtk_client_settings() -> std::io::Result<PathBuf> {
+    let config_dir = runtime_path(GTK_CLIENT_CONFIG_DIR_NAME);
+    let settings = "[Settings]\ngtk-decoration-layout=:close\n";
+
+    for gtk_version_dir in ["gtk-3.0", "gtk-4.0"] {
+        let dir = config_dir.join(gtk_version_dir);
+        fs::create_dir_all(&dir)?;
+        fs::write(dir.join("settings.ini"), settings)?;
+    }
+
+    let gsettings_dir = config_dir.join("glib-2.0/settings");
+    fs::create_dir_all(&gsettings_dir)?;
+    fs::write(
+        gsettings_dir.join("keyfile"),
+        "[org/gnome/desktop/wm/preferences]\nbutton-layout=':close'\n",
+    )?;
+
+    Ok(config_dir)
+}
+
+fn apply_gtk_client_environment(command: &mut Command) {
+    match ensure_gtk_client_settings() {
+        Ok(config_dir) => {
+            command.env("XDG_CONFIG_HOME", config_dir);
+            command.env("GSETTINGS_BACKEND", "keyfile");
+        }
+        Err(error) => eprintln!("Failed to prepare GTK client settings: {error}"),
     }
 }
 
@@ -944,12 +981,14 @@ impl App {
             }
         };
 
-        match Command::new(current_exe)
+        let mut command = Command::new(current_exe);
+        command
             .arg(GTK_TEST_APP_FLAG)
             .env("WAYLAND_DISPLAY", WAYLAND_DISPLAY_NAME)
-            .env("GDK_BACKEND", "wayland")
-            .spawn()
-        {
+            .env("GDK_BACKEND", "wayland");
+        apply_gtk_client_environment(&mut command);
+
+        match command.spawn() {
             Ok(_) => {}
             Err(error) => eprintln!("Failed to spawn GTK test app: {error}"),
         }
@@ -1040,6 +1079,9 @@ impl App {
 
     fn configure_toplevel(&self, surface: &ToplevelSurface, kind: ManagedWindowKind) {
         surface.with_pending_state(|state| {
+            state
+                .capabilities
+                .replace(std::iter::empty::<xdg_toplevel::WmCapabilities>());
             if kind == ManagedWindowKind::ShellBar {
                 state.size = Some((self.output_size.w, CONTROL_BAR_HEIGHT).into());
                 state.bounds = Some((self.output_size.w, CONTROL_BAR_HEIGHT).into());

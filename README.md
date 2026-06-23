@@ -63,6 +63,11 @@ SPAWN: place the new window near the current viewport center
 Super + two-finger scroll up/down: smoothly zoom the canvas in/out
 ```
 
+Hearthspace advertises no xdg-shell minimize/maximize/fullscreen capabilities.
+GTK clients spawned by Hearthspace also use private runtime GTK/GSettings config
+with `gtk-decoration-layout=:close` and `button-layout=':close'`, so their
+header bars show only a close button without changing the host GNOME session.
+
 Note: this shortcut is expected to work on a native Ubuntu/GNOME session. In the current Parallels VM test environment, `Super` is detected by Hearthspace, but scroll events may not be delivered to the nested compositor until after `Super` is released.
 
 Use `--scroll-zooms` as a temporary testing override in that environment.
