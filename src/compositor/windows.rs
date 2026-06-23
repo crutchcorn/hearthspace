@@ -1,0 +1,405 @@
+use smithay::{
+    desktop::{
+        WindowSurfaceType,
+        utils::{bbox_from_surface_tree, under_from_surface_tree},
+    },
+    utils::{Logical, Physical, Point, Rectangle, Serial},
+    wayland::{
+        compositor::{TraversalAction, with_states, with_surface_tree_downward},
+        shell::xdg::{ToplevelSurface, XdgToplevelSurfaceData},
+    },
+};
+use wayland_protocols::xdg::{
+    decoration::zv1::server::zxdg_toplevel_decoration_v1::Mode as DecorationMode,
+    shell::server::xdg_toplevel,
+};
+use wayland_server::protocol::wl_surface::{self, WlSurface};
+
+use crate::{
+    accessibility::ManagedWindowAccessibilityInfo,
+    config::*,
+    geometry::{CanvasPoint, rect_contains},
+};
+
+use super::{App, HitTarget, ManagedWindowKind, WindowDecoration, idle::ActivityReason};
+
+fn configure_server_side_decoration(toplevel: &ToplevelSurface) {
+    if window_kind_for_toplevel(toplevel) == ManagedWindowKind::ShellBar {
+        return;
+    }
+
+    toplevel.with_pending_state(|state| {
+        state.decoration_mode = Some(DecorationMode::ServerSide);
+    });
+    toplevel.send_configure();
+}
+
+fn configure_client_side_decoration(toplevel: &ToplevelSurface) {
+    toplevel.with_pending_state(|state| {
+        state.decoration_mode = Some(DecorationMode::ClientSide);
+    });
+    toplevel.send_configure();
+}
+
+pub(super) fn window_kind_for_toplevel(surface: &ToplevelSurface) -> ManagedWindowKind {
+    match toplevel_app_id(surface).as_deref() {
+        Some(SHELL_BAR_APP_ID) => ManagedWindowKind::ShellBar,
+        _ => ManagedWindowKind::Normal,
+    }
+}
+
+fn toplevel_app_id(surface: &ToplevelSurface) -> Option<String> {
+    with_states(surface.wl_surface(), |states| {
+        states
+            .data_map
+            .get::<XdgToplevelSurfaceData>()
+            .and_then(|data| data.lock().ok()?.app_id.clone())
+    })
+}
+
+fn toplevel_title(surface: &ToplevelSurface) -> Option<String> {
+    with_states(surface.wl_surface(), |states| {
+        states
+            .data_map
+            .get::<XdgToplevelSurfaceData>()
+            .and_then(|data| data.lock().ok()?.title.clone())
+    })
+}
+
+pub(super) fn position_for_new_window(
+    kind: ManagedWindowKind,
+    fallback: CanvasPoint,
+) -> CanvasPoint {
+    match kind {
+        ManagedWindowKind::Normal => fallback,
+        ManagedWindowKind::ShellBar => CanvasPoint { x: 0, y: 0 },
+    }
+}
+
+pub(super) fn decoration_for_new_window(kind: ManagedWindowKind) -> WindowDecoration {
+    match kind {
+        ManagedWindowKind::Normal => WindowDecoration::ClientSide,
+        ManagedWindowKind::ShellBar => WindowDecoration::ClientSide,
+    }
+}
+
+impl App {
+    pub(super) fn set_keyboard_focus_to_window(&mut self, window_index: usize, surface: WlSurface) {
+        self.focused_normal_window_id = (self.windows[window_index].kind
+            == ManagedWindowKind::Normal)
+            .then_some(self.windows[window_index].id);
+        let keyboard = self.keyboard.clone();
+        keyboard.set_focus(self, Some(surface), Serial::from(0));
+    }
+
+    pub(super) fn clear_keyboard_focus(&mut self) {
+        self.focused_normal_window_id = None;
+        let keyboard = self.keyboard.clone();
+        keyboard.set_focus(self, Option::<WlSurface>::None, Serial::from(0));
+    }
+
+    pub(super) fn record_client_activity_for_window_index(
+        &self,
+        window_index: usize,
+        reason: ActivityReason,
+    ) {
+        let Some(window) = self.windows.get(window_index) else {
+            return;
+        };
+        if window.kind == ManagedWindowKind::Normal {
+            self.idle_daemon.record_activity(window.id, reason);
+        }
+    }
+
+    pub(super) fn record_focused_client_activity(&self, reason: ActivityReason) {
+        if let Some(window_id) = self.focused_normal_window_id {
+            self.idle_daemon.record_activity(window_id, reason);
+        }
+    }
+
+    pub(super) fn window_index_for_surface(&self, surface: &WlSurface) -> Option<usize> {
+        self.windows
+            .iter()
+            .position(|window| surface_tree_contains(window.surface.wl_surface(), surface))
+    }
+
+    pub(super) fn managed_normal_window_id_for_surface(&self, surface: &WlSurface) -> Option<u64> {
+        self.windows.iter().find_map(|window| {
+            (window.kind == ManagedWindowKind::Normal
+                && surface_tree_contains(window.surface.wl_surface(), surface))
+            .then_some(window.id)
+        })
+    }
+
+    pub(super) fn handle_idle_transitions(&self) {
+        for transition in self.idle_daemon.drain_transitions() {
+            super::log_idle_transition(transition);
+        }
+    }
+
+    pub(super) fn accessibility_window_snapshot(&self) -> Vec<ManagedWindowAccessibilityInfo> {
+        self.windows
+            .iter()
+            .filter(|window| window.kind == ManagedWindowKind::Normal)
+            .map(|window| ManagedWindowAccessibilityInfo {
+                id: window.id,
+                app_id: toplevel_app_id(&window.surface),
+                title: toplevel_title(&window.surface),
+            })
+            .collect()
+    }
+
+    pub(super) fn hit_test(&self, location: Point<f64, Logical>) -> Option<HitTarget> {
+        for (window_index, window) in self.windows.iter().enumerate().rev() {
+            if window.kind != ManagedWindowKind::ShellBar {
+                continue;
+            }
+
+            if let Some(target) = self.hit_test_shell_bar(window_index, location) {
+                return Some(target);
+            }
+        }
+
+        if location.y < f64::from(CONTROL_BAR_HEIGHT) {
+            return None;
+        }
+
+        let canvas_location = self.screen_to_canvas(location);
+
+        for (window_index, window) in self.windows.iter().enumerate().rev() {
+            if window.kind != ManagedWindowKind::Normal {
+                continue;
+            }
+
+            if self.has_compositor_chrome(window_index) {
+                if rect_contains(self.close_button_canvas_rect(window_index), canvas_location) {
+                    return Some(HitTarget::CloseButton { window_index });
+                }
+
+                if rect_contains(self.title_bar_canvas_rect(window_index), canvas_location) {
+                    return Some(HitTarget::TitleBar { window_index });
+                }
+            }
+
+            let content_origin = self.content_canvas_origin(window_index);
+            if let Some((surface, surface_location)) = under_from_surface_tree(
+                window.surface.wl_surface(),
+                canvas_location,
+                content_origin,
+                WindowSurfaceType::ALL,
+            ) {
+                let relative_surface_location = canvas_location - surface_location.to_f64();
+                let pointer_focus_origin = location - relative_surface_location;
+                return Some(HitTarget::Client {
+                    window_index,
+                    surface,
+                    surface_location: pointer_focus_origin,
+                });
+            }
+        }
+
+        None
+    }
+
+    pub(super) fn raise_window(&mut self, window_index: usize) -> usize {
+        if self.windows[window_index].kind != ManagedWindowKind::Normal {
+            return window_index;
+        }
+
+        let window = self.windows.remove(window_index);
+        let insert_index = self.normal_insert_index();
+        self.windows.insert(insert_index, window);
+        self.request_redraw();
+        insert_index
+    }
+
+    pub(super) fn normal_insert_index(&self) -> usize {
+        self.windows
+            .iter()
+            .rposition(|window| window.kind == ManagedWindowKind::Normal)
+            .map_or(0, |index| index + 1)
+    }
+
+    pub(super) fn configure_toplevel(&self, surface: &ToplevelSurface, kind: ManagedWindowKind) {
+        surface.with_pending_state(|state| {
+            state
+                .capabilities
+                .replace(std::iter::empty::<xdg_toplevel::WmCapabilities>());
+            if kind == ManagedWindowKind::ShellBar {
+                state.size = Some((self.output_size.w, CONTROL_BAR_HEIGHT).into());
+                state.bounds = Some((self.output_size.w, CONTROL_BAR_HEIGHT).into());
+                state.decoration_mode = Some(DecorationMode::ClientSide);
+            } else {
+                state.states.set(xdg_toplevel::State::Activated);
+            }
+        });
+        surface.send_configure();
+    }
+
+    pub(super) fn configure_shell_bars(&self) {
+        for window in &self.windows {
+            if window.kind == ManagedWindowKind::ShellBar {
+                self.configure_toplevel(&window.surface, window.kind);
+            }
+        }
+    }
+
+    pub(super) fn request_redraw(&mut self) {
+        self.needs_redraw = true;
+    }
+
+    pub(super) fn set_window_decoration(
+        &mut self,
+        toplevel: &ToplevelSurface,
+        decoration: WindowDecoration,
+    ) {
+        if window_kind_for_toplevel(toplevel) == ManagedWindowKind::ShellBar {
+            configure_client_side_decoration(toplevel);
+            return;
+        }
+
+        if let Some(window) = self
+            .windows
+            .iter_mut()
+            .find(|window| window.surface == *toplevel)
+        {
+            window.decoration = decoration;
+        }
+
+        match decoration {
+            WindowDecoration::ServerSide => configure_server_side_decoration(toplevel),
+            WindowDecoration::ClientSide => configure_client_side_decoration(toplevel),
+        }
+    }
+
+    pub(super) fn title_bar_rect(&self, window_index: usize) -> Rectangle<i32, Logical> {
+        let canvas_rect = self.title_bar_canvas_rect(window_index);
+        let origin = self
+            .canvas_to_screen(canvas_rect.loc.to_f64())
+            .to_i32_round();
+        Rectangle::new(
+            origin,
+            (
+                (f64::from(canvas_rect.size.w) * self.viewport_scale).round() as i32,
+                (f64::from(canvas_rect.size.h) * self.viewport_scale).round() as i32,
+            )
+                .into(),
+        )
+    }
+
+    pub(super) fn close_button_rect(&self, window_index: usize) -> Rectangle<i32, Logical> {
+        let canvas_rect = self.close_button_canvas_rect(window_index);
+        let origin = self
+            .canvas_to_screen(canvas_rect.loc.to_f64())
+            .to_i32_round();
+        Rectangle::new(
+            origin,
+            (
+                (f64::from(canvas_rect.size.w) * self.viewport_scale)
+                    .round()
+                    .max(1.0) as i32,
+                (f64::from(canvas_rect.size.h) * self.viewport_scale)
+                    .round()
+                    .max(1.0) as i32,
+            )
+                .into(),
+        )
+    }
+
+    fn title_bar_canvas_rect(&self, window_index: usize) -> Rectangle<i32, Logical> {
+        let window = &self.windows[window_index];
+        let content_bbox = bbox_from_surface_tree(
+            window.surface.wl_surface(),
+            self.content_canvas_origin(window_index),
+        );
+        Rectangle::new(
+            (window.position.x, window.position.y).into(),
+            (content_bbox.size.w.max(MIN_WINDOW_WIDTH), TITLE_BAR_HEIGHT).into(),
+        )
+    }
+
+    fn close_button_canvas_rect(&self, window_index: usize) -> Rectangle<i32, Logical> {
+        let title_bar = self.title_bar_canvas_rect(window_index);
+        Rectangle::new(
+            (
+                title_bar.loc.x + title_bar.size.w - CLOSE_BUTTON_MARGIN - CLOSE_BUTTON_SIZE,
+                title_bar.loc.y + (title_bar.size.h - CLOSE_BUTTON_SIZE) / 2,
+            )
+                .into(),
+            (CLOSE_BUTTON_SIZE, CLOSE_BUTTON_SIZE).into(),
+        )
+    }
+
+    fn content_canvas_origin(&self, window_index: usize) -> Point<i32, Logical> {
+        let window = &self.windows[window_index];
+        let title_bar_height = if self.has_compositor_chrome(window_index) {
+            TITLE_BAR_HEIGHT
+        } else {
+            0
+        };
+        Point::<i32, Logical>::from((window.position.x, window.position.y + title_bar_height))
+    }
+
+    pub(super) fn has_compositor_chrome(&self, window_index: usize) -> bool {
+        let window = &self.windows[window_index];
+        window.kind == ManagedWindowKind::Normal
+            && window.decoration == WindowDecoration::ServerSide
+    }
+
+    fn content_screen_origin(&self, window_index: usize) -> Point<i32, Physical> {
+        self.canvas_to_screen(self.content_canvas_origin(window_index).to_f64())
+            .to_i32_round()
+            .to_physical(1)
+    }
+
+    fn shell_bar_screen_origin(&self) -> Point<i32, Physical> {
+        Point::<i32, Logical>::from((0, 0)).to_physical(1)
+    }
+
+    pub(super) fn surface_screen_origin(&self, window_index: usize) -> Point<i32, Physical> {
+        match self.windows[window_index].kind {
+            ManagedWindowKind::Normal => self.content_screen_origin(window_index),
+            ManagedWindowKind::ShellBar => self.shell_bar_screen_origin(),
+        }
+    }
+
+    fn hit_test_shell_bar(
+        &self,
+        window_index: usize,
+        location: Point<f64, Logical>,
+    ) -> Option<HitTarget> {
+        let window = &self.windows[window_index];
+        let (surface, surface_location) = under_from_surface_tree(
+            window.surface.wl_surface(),
+            location,
+            Point::<i32, Logical>::from((0, 0)),
+            WindowSurfaceType::ALL,
+        )?;
+        let relative_surface_location = location - surface_location.to_f64();
+        let pointer_focus_origin = location - relative_surface_location;
+        Some(HitTarget::Client {
+            window_index,
+            surface,
+            surface_location: pointer_focus_origin,
+        })
+    }
+}
+
+fn surface_tree_contains(root: &wl_surface::WlSurface, target: &wl_surface::WlSurface) -> bool {
+    let mut contains = false;
+    with_surface_tree_downward(
+        root,
+        (),
+        |surface, _, &()| {
+            if surface == target {
+                contains = true;
+                TraversalAction::Break
+            } else {
+                TraversalAction::DoChildren(())
+            }
+        },
+        |_, _, &()| {},
+        |_, _, &()| true,
+    );
+    contains
+}
