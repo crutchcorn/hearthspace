@@ -18,7 +18,7 @@ WAYLAND_DISPLAY=wayland-hearthspace-0
 
 ## Test The PoC
 
-The top control bar has five icon buttons:
+The top control bar has five labeled buttons:
 
 ```text
 + | left | right | up | down
@@ -53,7 +53,7 @@ Basic keyboard/pointer forwarding to client surfaces
 Still intentionally rough:
 
 ```text
-Buttons use simple icons instead of text rendering
+Button labels use a tiny compositor-drawn block font instead of real text rendering
 Closed windows are not cleaned out of the simple position list yet
 Surface hit testing is minimal
 No window dragging/resizing yet

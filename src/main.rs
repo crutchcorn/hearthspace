@@ -428,27 +428,33 @@ impl App {
     }
 
     fn control_bar_elements(&self) -> Vec<SolidColorRenderElement> {
-        let mut elements = vec![solid_element(
+        let buttons = self.control_buttons();
+        let mut elements = Vec::new();
+
+        // draw_render_elements expects top-to-bottom ordering for occlusion.
+        for button in &buttons {
+            for label_rect in label_rects(*button) {
+                elements.push(solid_element(
+                    label_rect,
+                    Color32F::new(0.92, 0.96, 1.0, 1.0),
+                ));
+            }
+        }
+
+        for button in buttons {
+            elements.push(solid_element(
+                button.rect,
+                Color32F::new(0.22, 0.28, 0.38, 1.0),
+            ));
+        }
+
+        elements.push(solid_element(
             Rectangle::new(
                 (0, 0).into(),
                 (self.output_size.w, CONTROL_BAR_HEIGHT).into(),
             ),
             Color32F::new(0.10, 0.12, 0.16, 0.96),
-        )];
-
-        for button in self.control_buttons() {
-            elements.push(solid_element(
-                button.rect,
-                Color32F::new(0.22, 0.28, 0.38, 1.0),
-            ));
-
-            for icon_rect in icon_rects(button) {
-                elements.push(solid_element(
-                    icon_rect,
-                    Color32F::new(0.84, 0.90, 1.0, 1.0),
-                ));
-            }
-        }
+        ));
 
         elements
     }
@@ -552,46 +558,97 @@ fn solid_element(rect: Rectangle<i32, Logical>, color: Color32F) -> SolidColorRe
     )
 }
 
-fn icon_rects(button: ControlButton) -> Vec<Rectangle<i32, Logical>> {
-    let center_x = button.rect.loc.x + button.rect.size.w / 2;
-    let center_y = button.rect.loc.y + button.rect.size.h / 2;
+fn label_rects(button: ControlButton) -> Vec<Rectangle<i32, Logical>> {
+    const SCALE: i32 = 2;
+    const GLYPH_WIDTH: i32 = 5;
+    const GLYPH_HEIGHT: i32 = 7;
+    const LETTER_GAP: i32 = 1;
 
-    match button.action {
-        ControlAction::SpawnApp => vec![
-            Rectangle::new((center_x - 10, center_y - 2).into(), (20, 4).into()),
-            Rectangle::new((center_x - 2, center_y - 10).into(), (4, 20).into()),
+    let label = match button.action {
+        ControlAction::SpawnApp => "SPAWN",
+        ControlAction::PanLeft => "LEFT",
+        ControlAction::PanRight => "RIGHT",
+        ControlAction::PanUp => "UP",
+        ControlAction::PanDown => "DOWN",
+    };
+
+    let char_count = label.chars().count() as i32;
+    let label_width = (char_count * GLYPH_WIDTH + (char_count - 1) * LETTER_GAP) * SCALE;
+    let label_height = GLYPH_HEIGHT * SCALE;
+    let start_x = button.rect.loc.x + (button.rect.size.w - label_width) / 2;
+    let start_y = button.rect.loc.y + (button.rect.size.h - label_height) / 2;
+    let mut rects = Vec::new();
+
+    for (char_index, ch) in label.chars().enumerate() {
+        let glyph_x = start_x + char_index as i32 * (GLYPH_WIDTH + LETTER_GAP) * SCALE;
+
+        for (row, pattern) in glyph_pattern(ch).iter().enumerate() {
+            for (col, pixel) in pattern.bytes().enumerate() {
+                if pixel == b'#' {
+                    rects.push(Rectangle::new(
+                        (glyph_x + col as i32 * SCALE, start_y + row as i32 * SCALE).into(),
+                        (SCALE, SCALE).into(),
+                    ));
+                }
+            }
+        }
+    }
+
+    rects
+}
+
+fn glyph_pattern(ch: char) -> [&'static str; 7] {
+    match ch {
+        'A' => [
+            ".###.", "#...#", "#...#", "#####", "#...#", "#...#", "#...#",
         ],
-        ControlAction::PanLeft => vec![
-            Rectangle::new((center_x - 4, center_y - 2).into(), (18, 4).into()),
-            Rectangle::new((center_x - 12, center_y - 2).into(), (8, 4).into()),
-            Rectangle::new((center_x - 8, center_y - 6).into(), (4, 4).into()),
-            Rectangle::new((center_x - 4, center_y - 10).into(), (4, 4).into()),
-            Rectangle::new((center_x - 8, center_y + 2).into(), (4, 4).into()),
-            Rectangle::new((center_x - 4, center_y + 6).into(), (4, 4).into()),
+        'D' => [
+            "####.", "#...#", "#...#", "#...#", "#...#", "#...#", "####.",
         ],
-        ControlAction::PanRight => vec![
-            Rectangle::new((center_x - 14, center_y - 2).into(), (18, 4).into()),
-            Rectangle::new((center_x + 4, center_y - 2).into(), (8, 4).into()),
-            Rectangle::new((center_x + 4, center_y - 6).into(), (4, 4).into()),
-            Rectangle::new((center_x, center_y - 10).into(), (4, 4).into()),
-            Rectangle::new((center_x + 4, center_y + 2).into(), (4, 4).into()),
-            Rectangle::new((center_x, center_y + 6).into(), (4, 4).into()),
+        'E' => [
+            "#####", "#....", "#....", "####.", "#....", "#....", "#####",
         ],
-        ControlAction::PanUp => vec![
-            Rectangle::new((center_x - 2, center_y - 4).into(), (4, 18).into()),
-            Rectangle::new((center_x - 2, center_y - 12).into(), (4, 8).into()),
-            Rectangle::new((center_x - 6, center_y - 8).into(), (4, 4).into()),
-            Rectangle::new((center_x - 10, center_y - 4).into(), (4, 4).into()),
-            Rectangle::new((center_x + 2, center_y - 8).into(), (4, 4).into()),
-            Rectangle::new((center_x + 6, center_y - 4).into(), (4, 4).into()),
+        'F' => [
+            "#####", "#....", "#....", "####.", "#....", "#....", "#....",
         ],
-        ControlAction::PanDown => vec![
-            Rectangle::new((center_x - 2, center_y - 14).into(), (4, 18).into()),
-            Rectangle::new((center_x - 2, center_y + 4).into(), (4, 8).into()),
-            Rectangle::new((center_x - 6, center_y + 4).into(), (4, 4).into()),
-            Rectangle::new((center_x - 10, center_y).into(), (4, 4).into()),
-            Rectangle::new((center_x + 2, center_y + 4).into(), (4, 4).into()),
-            Rectangle::new((center_x + 6, center_y).into(), (4, 4).into()),
+        'G' => [
+            ".###.", "#...#", "#....", "#.###", "#...#", "#...#", ".###.",
+        ],
+        'H' => [
+            "#...#", "#...#", "#...#", "#####", "#...#", "#...#", "#...#",
+        ],
+        'I' => [
+            "#####", "..#..", "..#..", "..#..", "..#..", "..#..", "#####",
+        ],
+        'L' => [
+            "#....", "#....", "#....", "#....", "#....", "#....", "#####",
+        ],
+        'N' => [
+            "#...#", "##..#", "#.#.#", "#..##", "#...#", "#...#", "#...#",
+        ],
+        'O' => [
+            ".###.", "#...#", "#...#", "#...#", "#...#", "#...#", ".###.",
+        ],
+        'P' => [
+            "####.", "#...#", "#...#", "####.", "#....", "#....", "#....",
+        ],
+        'R' => [
+            "####.", "#...#", "#...#", "####.", "#.#..", "#..#.", "#...#",
+        ],
+        'S' => [
+            ".####", "#....", "#....", ".###.", "....#", "....#", "####.",
+        ],
+        'T' => [
+            "#####", "..#..", "..#..", "..#..", "..#..", "..#..", "..#..",
+        ],
+        'U' => [
+            "#...#", "#...#", "#...#", "#...#", "#...#", "#...#", ".###.",
+        ],
+        'W' => [
+            "#...#", "#...#", "#...#", "#.#.#", "#.#.#", "##.##", "#...#",
+        ],
+        _ => [
+            ".....", ".....", ".....", ".....", ".....", ".....", ".....",
         ],
     }
 }
