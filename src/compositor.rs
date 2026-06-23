@@ -92,12 +92,19 @@ struct ManagedWindow {
     surface: ToplevelSurface,
     position: CanvasPoint,
     kind: ManagedWindowKind,
+    decoration: WindowDecoration,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ManagedWindowKind {
     Normal,
     ShellBar,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum WindowDecoration {
+    ServerSide,
+    ClientSide,
 }
 
 struct DragState {
@@ -172,6 +179,7 @@ impl XdgShellHandler for App {
             surface: surface.clone(),
             position: position_for_new_window(kind, self.next_spawn_position),
             kind,
+            decoration: decoration_for_new_window(kind),
         });
         self.output.enter(surface.wl_surface());
         self.request_redraw();
@@ -207,6 +215,9 @@ impl XdgShellHandler for App {
             let mut window = self.windows.remove(window_index);
             window.kind = kind;
             window.position = position_for_new_window(kind, window.position);
+            if kind == ManagedWindowKind::ShellBar {
+                window.decoration = WindowDecoration::ClientSide;
+            }
             let insert_index = match kind {
                 ManagedWindowKind::Normal => self.normal_insert_index(),
                 ManagedWindowKind::ShellBar => self.windows.len(),
@@ -224,17 +235,22 @@ impl XdgShellHandler for App {
 
 impl XdgDecorationHandler for App {
     fn new_decoration(&mut self, toplevel: ToplevelSurface) {
-        configure_server_side_decoration(&toplevel);
+        self.set_window_decoration(&toplevel, WindowDecoration::ServerSide);
         self.request_redraw();
     }
 
-    fn request_mode(&mut self, toplevel: ToplevelSurface, _mode: DecorationMode) {
-        configure_server_side_decoration(&toplevel);
+    fn request_mode(&mut self, toplevel: ToplevelSurface, mode: DecorationMode) {
+        let decoration = match mode {
+            DecorationMode::ClientSide => WindowDecoration::ClientSide,
+            DecorationMode::ServerSide => WindowDecoration::ServerSide,
+            _ => WindowDecoration::ServerSide,
+        };
+        self.set_window_decoration(&toplevel, decoration);
         self.request_redraw();
     }
 
     fn unset_mode(&mut self, toplevel: ToplevelSurface) {
-        configure_server_side_decoration(&toplevel);
+        self.set_window_decoration(&toplevel, WindowDecoration::ServerSide);
         self.request_redraw();
     }
 }
@@ -462,6 +478,13 @@ fn configure_server_side_decoration(toplevel: &ToplevelSurface) {
     toplevel.send_configure();
 }
 
+fn configure_client_side_decoration(toplevel: &ToplevelSurface) {
+    toplevel.with_pending_state(|state| {
+        state.decoration_mode = Some(DecorationMode::ClientSide);
+    });
+    toplevel.send_configure();
+}
+
 fn create_output(dh: &DisplayHandle, size: Size<i32, Physical>) -> Output {
     let output = Output::new(
         "hearthspace-0".into(),
@@ -572,6 +595,13 @@ fn position_for_new_window(kind: ManagedWindowKind, fallback: CanvasPoint) -> Ca
     match kind {
         ManagedWindowKind::Normal => fallback,
         ManagedWindowKind::ShellBar => CanvasPoint { x: 0, y: 0 },
+    }
+}
+
+fn decoration_for_new_window(kind: ManagedWindowKind) -> WindowDecoration {
+    match kind {
+        ManagedWindowKind::Normal => WindowDecoration::ServerSide,
+        ManagedWindowKind::ShellBar => WindowDecoration::ClientSide,
     }
 }
 
@@ -795,7 +825,7 @@ impl App {
     }
 
     fn title_bar_elements(&self, window_index: usize) -> Vec<SolidColorRenderElement> {
-        if self.windows[window_index].kind != ManagedWindowKind::Normal {
+        if !self.has_compositor_chrome(window_index) {
             return Vec::new();
         }
 
@@ -917,12 +947,14 @@ impl App {
                 continue;
             }
 
-            if rect_contains(self.close_button_canvas_rect(window_index), canvas_location) {
-                return Some(HitTarget::CloseButton { window_index });
-            }
+            if self.has_compositor_chrome(window_index) {
+                if rect_contains(self.close_button_canvas_rect(window_index), canvas_location) {
+                    return Some(HitTarget::CloseButton { window_index });
+                }
 
-            if rect_contains(self.title_bar_canvas_rect(window_index), canvas_location) {
-                return Some(HitTarget::TitleBar { window_index });
+                if rect_contains(self.title_bar_canvas_rect(window_index), canvas_location) {
+                    return Some(HitTarget::TitleBar { window_index });
+                }
             }
 
             let content_origin = self.content_canvas_origin(window_index);
@@ -987,6 +1019,26 @@ impl App {
 
     fn request_redraw(&mut self) {
         self.needs_redraw = true;
+    }
+
+    fn set_window_decoration(&mut self, toplevel: &ToplevelSurface, decoration: WindowDecoration) {
+        if window_kind_for_toplevel(toplevel) == ManagedWindowKind::ShellBar {
+            configure_client_side_decoration(toplevel);
+            return;
+        }
+
+        if let Some(window) = self
+            .windows
+            .iter_mut()
+            .find(|window| window.surface == *toplevel)
+        {
+            window.decoration = decoration;
+        }
+
+        match decoration {
+            WindowDecoration::ServerSide => configure_server_side_decoration(toplevel),
+            WindowDecoration::ClientSide => configure_client_side_decoration(toplevel),
+        }
     }
 
     fn super_modifier_active(&self) -> bool {
@@ -1134,7 +1186,18 @@ impl App {
 
     fn content_canvas_origin(&self, window_index: usize) -> Point<i32, Logical> {
         let window = &self.windows[window_index];
-        Point::<i32, Logical>::from((window.position.x, window.position.y + TITLE_BAR_HEIGHT))
+        let title_bar_height = if self.has_compositor_chrome(window_index) {
+            TITLE_BAR_HEIGHT
+        } else {
+            0
+        };
+        Point::<i32, Logical>::from((window.position.x, window.position.y + title_bar_height))
+    }
+
+    fn has_compositor_chrome(&self, window_index: usize) -> bool {
+        let window = &self.windows[window_index];
+        window.kind == ManagedWindowKind::Normal
+            && window.decoration == WindowDecoration::ServerSide
     }
 
     fn content_screen_origin(&self, window_index: usize) -> Point<i32, Physical> {
