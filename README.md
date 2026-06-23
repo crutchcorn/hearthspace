@@ -32,7 +32,7 @@ left/right/up/down: pan the canvas by half the compositor window size
 ZOOM+/ZOOM-: zoom the canvas in and out around the viewport center
 ```
 
-Spawned app windows are rendered in canvas coordinates. Panning changes the viewport offset, moving all client windows together relative to the visible compositor window. Zooming changes the viewport scale while keeping the toolbar fixed.
+Spawned app windows are rendered in canvas coordinates. Panning animates the viewport offset, moving all client windows together relative to the visible compositor window. Zooming animates the viewport scale while keeping the toolbar fixed.
 
 Window interaction:
 
@@ -59,8 +59,9 @@ Compositor-owned control bar
 Compositor-owned draggable title bars
 Spawn button for foot
 Canvas viewport offset
-Half-screen pan buttons
-Manual zoom buttons
+Half-screen pan targets
+Animated pan buttons
+Animated zoom buttons
 Window focus, raise, and title-bar dragging
 Input-region-aware pointer forwarding to client surfaces
 ```

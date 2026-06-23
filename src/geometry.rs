@@ -62,6 +62,27 @@ pub fn zoom_around_screen_point(
     )
 }
 
+pub fn ease_out_cubic(progress: f64) -> f64 {
+    let progress = progress.clamp(0.0, 1.0);
+    1.0 - (1.0 - progress).powi(3)
+}
+
+pub fn interpolate_canvas_point(from: CanvasPoint, to: CanvasPoint, progress: f64) -> CanvasPoint {
+    let progress = progress.clamp(0.0, 1.0);
+    CanvasPoint {
+        x: interpolate_i32(from.x, to.x, progress),
+        y: interpolate_i32(from.y, to.y, progress),
+    }
+}
+
+pub fn interpolate_f64(from: f64, to: f64, progress: f64) -> f64 {
+    from + (to - from) * progress.clamp(0.0, 1.0)
+}
+
+fn interpolate_i32(from: i32, to: i32, progress: f64) -> i32 {
+    (f64::from(from) + f64::from(to - from) * progress).round() as i32
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -112,5 +133,28 @@ mod tests {
             zoom_around_screen_point(offset, 1.0, center, 0.01).1,
             MIN_ZOOM
         );
+    }
+
+    #[test]
+    fn ease_out_cubic_starts_and_finishes_at_bounds() {
+        assert_eq!(ease_out_cubic(-1.0), 0.0);
+        assert_eq!(ease_out_cubic(0.0), 0.0);
+        assert_eq!(ease_out_cubic(1.0), 1.0);
+        assert_eq!(ease_out_cubic(2.0), 1.0);
+        assert!(ease_out_cubic(0.5) > 0.5);
+    }
+
+    #[test]
+    fn interpolation_clamps_progress() {
+        let from = CanvasPoint { x: 0, y: 100 };
+        let to = CanvasPoint { x: 100, y: -100 };
+
+        assert_eq!(interpolate_canvas_point(from, to, -1.0), from);
+        assert_eq!(interpolate_canvas_point(from, to, 1.0), to);
+        assert_eq!(
+            interpolate_canvas_point(from, to, 0.5),
+            CanvasPoint { x: 50, y: 0 }
+        );
+        assert_eq!(interpolate_f64(1.0, 2.0, 0.5), 1.5);
     }
 }

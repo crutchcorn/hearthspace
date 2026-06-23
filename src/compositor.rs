@@ -1,4 +1,4 @@
-use std::{os::unix::io::OwnedFd, process::Command, sync::Arc};
+use std::{os::unix::io::OwnedFd, process::Command, sync::Arc, time::Instant};
 
 use crate::{
     config::*,
@@ -6,8 +6,9 @@ use crate::{
         control_buttons as default_control_buttons, label_rects, ControlAction, ControlButton,
     },
     geometry::{
-        canvas_to_screen as transform_canvas_to_screen, rect_contains,
-        screen_to_canvas as transform_screen_to_canvas, zoom_around_screen_point, CanvasPoint,
+        canvas_to_screen as transform_canvas_to_screen, ease_out_cubic, interpolate_canvas_point,
+        interpolate_f64, rect_contains, screen_to_canvas as transform_screen_to_canvas,
+        zoom_around_screen_point, CanvasPoint,
     },
 };
 
@@ -87,6 +88,14 @@ struct DragState {
     window_start: CanvasPoint,
 }
 
+struct ViewportAnimation {
+    from_offset: CanvasPoint,
+    from_scale: f64,
+    to_offset: CanvasPoint,
+    to_scale: f64,
+    started_at: Instant,
+}
+
 enum HitTarget {
     TitleBar {
         window_index: usize,
@@ -111,6 +120,7 @@ struct App {
     keyboard: KeyboardHandle<Self>,
     viewport_offset: CanvasPoint,
     viewport_scale: f64,
+    viewport_animation: Option<ViewportAnimation>,
     windows: Vec<ManagedWindow>,
     drag: Option<DragState>,
     next_spawn_position: CanvasPoint,
@@ -262,6 +272,7 @@ pub fn run_winit() -> Result<(), Box<dyn std::error::Error>> {
         keyboard,
         viewport_offset: CanvasPoint { x: 0, y: 0 },
         viewport_scale: 1.0,
+        viewport_animation: None,
         windows: Vec::new(),
         drag: None,
         next_spawn_position: CanvasPoint { x: 80, y: 96 },
@@ -312,6 +323,7 @@ pub fn run_winit() -> Result<(), Box<dyn std::error::Error>> {
         display.dispatch_clients(&mut state)?;
         display.flush_clients()?;
         state.output.cleanup();
+        state.advance_viewport_animation();
 
         if state.needs_redraw {
             let damage = Rectangle::from_size(state.output_size);
@@ -362,6 +374,9 @@ pub fn run_winit() -> Result<(), Box<dyn std::error::Error>> {
             display.flush_clients()?;
             backend.submit(Some(&[damage]))?;
             state.needs_redraw = false;
+            if state.viewport_animation.is_some() {
+                state.request_redraw();
+            }
         } else {
             std::thread::sleep(IDLE_SLEEP);
         }
@@ -628,26 +643,16 @@ impl App {
     }
 
     fn run_control_action(&mut self, action: ControlAction) {
+        self.advance_viewport_animation();
+
         match action {
             ControlAction::SpawnApp => self.spawn_app(),
-            ControlAction::PanLeft => {
-                self.viewport_offset.x -=
-                    (f64::from(self.output_size.w) / 2.0 / self.viewport_scale).round() as i32
-            }
-            ControlAction::PanRight => {
-                self.viewport_offset.x +=
-                    (f64::from(self.output_size.w) / 2.0 / self.viewport_scale).round() as i32
-            }
-            ControlAction::PanUp => {
-                self.viewport_offset.y -=
-                    (f64::from(self.output_size.h) / 2.0 / self.viewport_scale).round() as i32
-            }
-            ControlAction::PanDown => {
-                self.viewport_offset.y +=
-                    (f64::from(self.output_size.h) / 2.0 / self.viewport_scale).round() as i32
-            }
-            ControlAction::ZoomIn => self.zoom_around_viewport_center(ZOOM_STEP),
-            ControlAction::ZoomOut => self.zoom_around_viewport_center(1.0 / ZOOM_STEP),
+            ControlAction::PanLeft => self.pan_viewport_by(-self.horizontal_pan_step(), 0),
+            ControlAction::PanRight => self.pan_viewport_by(self.horizontal_pan_step(), 0),
+            ControlAction::PanUp => self.pan_viewport_by(0, -self.vertical_pan_step()),
+            ControlAction::PanDown => self.pan_viewport_by(0, self.vertical_pan_step()),
+            ControlAction::ZoomIn => self.animate_zoom_around_viewport_center(ZOOM_STEP),
+            ControlAction::ZoomOut => self.animate_zoom_around_viewport_center(1.0 / ZOOM_STEP),
         }
         self.request_redraw();
     }
@@ -721,6 +726,65 @@ impl App {
         self.needs_redraw = true;
     }
 
+    fn start_viewport_animation(&mut self, to_offset: CanvasPoint, to_scale: f64) {
+        if self.viewport_offset == to_offset
+            && (self.viewport_scale - to_scale).abs() < f64::EPSILON
+        {
+            self.viewport_animation = None;
+            return;
+        }
+
+        self.viewport_animation = Some(ViewportAnimation {
+            from_offset: self.viewport_offset,
+            from_scale: self.viewport_scale,
+            to_offset,
+            to_scale,
+            started_at: Instant::now(),
+        });
+        self.request_redraw();
+    }
+
+    fn advance_viewport_animation(&mut self) {
+        let Some(animation) = &self.viewport_animation else {
+            return;
+        };
+
+        let progress = (animation.started_at.elapsed().as_secs_f64()
+            / VIEWPORT_ANIMATION_DURATION.as_secs_f64())
+        .clamp(0.0, 1.0);
+        let eased = ease_out_cubic(progress);
+
+        self.viewport_offset =
+            interpolate_canvas_point(animation.from_offset, animation.to_offset, eased);
+        self.viewport_scale = interpolate_f64(animation.from_scale, animation.to_scale, eased);
+
+        if progress >= 1.0 {
+            let animation = self.viewport_animation.take().unwrap();
+            self.viewport_offset = animation.to_offset;
+            self.viewport_scale = animation.to_scale;
+        } else {
+            self.request_redraw();
+        }
+    }
+
+    fn pan_viewport_by(&mut self, x: i32, y: i32) {
+        self.start_viewport_animation(
+            CanvasPoint {
+                x: self.viewport_offset.x + x,
+                y: self.viewport_offset.y + y,
+            },
+            self.viewport_scale,
+        );
+    }
+
+    fn horizontal_pan_step(&self) -> i32 {
+        (f64::from(self.output_size.w) / 2.0 / self.viewport_scale).round() as i32
+    }
+
+    fn vertical_pan_step(&self) -> i32 {
+        (f64::from(self.output_size.h) / 2.0 / self.viewport_scale).round() as i32
+    }
+
     fn title_bar_rect(&self, window_index: usize) -> Rectangle<i32, Logical> {
         let canvas_rect = self.title_bar_canvas_rect(window_index);
         let origin = self
@@ -767,7 +831,7 @@ impl App {
         transform_screen_to_canvas(point, self.viewport_offset, self.viewport_scale)
     }
 
-    fn zoom_around_viewport_center(&mut self, multiplier: f64) {
+    fn animate_zoom_around_viewport_center(&mut self, multiplier: f64) {
         let center_screen = Point::<f64, Logical>::from((
             f64::from(self.output_size.w) / 2.0,
             f64::from(self.output_size.h) / 2.0,
@@ -778,8 +842,7 @@ impl App {
             center_screen,
             multiplier,
         );
-        self.viewport_offset = viewport_offset;
-        self.viewport_scale = viewport_scale;
+        self.start_viewport_animation(viewport_offset, viewport_scale);
     }
 }
 
