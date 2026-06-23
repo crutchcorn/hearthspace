@@ -36,11 +36,14 @@ A running list of improvements identified during a technical review of `src`.
 
 ## Performance
 
-- **Cache per-commit bounding boxes.** `title_bar_canvas_rect` calls
-  `bbox_from_surface_tree` (a surface-tree walk) multiple times per window per
-  frame (rendering, close-button rects, hit-testing). `hit_test` runs full
-  surface-tree traversals up to three times per button event in
-  [src/compositor/input.rs](src/compositor/input.rs). Cache the bbox per commit.
+- **✅ Done — Cache per-commit bounding boxes.** `title_bar_canvas_rect`
+  previously called `bbox_from_surface_tree` (a surface-tree walk) multiple
+  times per window per frame (rendering, close-button rects, hit-testing).
+  `ManagedWindow` now caches `content_bbox_size`, recomputed once per commit via
+  `refresh_window_content_bbox` in the `commit` handler, and the rect helpers
+  read the cached size instead of re-walking the tree. The bbox size is
+  translation-invariant, so the cache is computed at a zero origin and reused
+  regardless of window position.
 
 ## Observability
 

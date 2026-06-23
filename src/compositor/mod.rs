@@ -80,6 +80,9 @@ struct ManagedWindow {
     kind: ManagedWindowKind,
     decoration: WindowDecoration,
     decoration_buffers: WindowDecorationBuffers,
+    /// Bounding-box size of the window's surface tree, cached on commit so the
+    /// per-frame rendering and hit-testing paths don't re-walk the tree.
+    content_bbox_size: Size<i32, Logical>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -166,6 +169,7 @@ impl XdgShellHandler for App {
             kind,
             decoration: decoration_for_new_window(kind),
             decoration_buffers: WindowDecorationBuffers::default(),
+            content_bbox_size: Size::default(),
         });
         if kind == ManagedWindowKind::Normal {
             self.idle_daemon.register_window(id);
@@ -327,6 +331,7 @@ impl CompositorHandler for App {
 
     fn commit(&mut self, surface: &WlSurface) {
         on_commit_buffer_handler::<Self>(surface);
+        self.refresh_window_content_bbox(surface);
         if let Some(window_id) = self.managed_normal_window_id_for_surface(surface) {
             self.idle_daemon
                 .record_activity(window_id, ActivityReason::SurfaceCommit);

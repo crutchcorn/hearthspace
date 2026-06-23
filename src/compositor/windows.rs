@@ -137,6 +137,21 @@ impl App {
         })
     }
 
+    /// Recompute and cache the surface-tree bounding box for the window owning
+    /// `surface`. Called once per commit so the per-frame rendering and
+    /// hit-testing paths can read `content_bbox_size` instead of re-walking the
+    /// tree multiple times.
+    pub(super) fn refresh_window_content_bbox(&mut self, surface: &WlSurface) {
+        let Some(window_index) = self.window_index_for_surface(surface) else {
+            return;
+        };
+        let bbox = bbox_from_surface_tree(
+            self.windows[window_index].surface.wl_surface(),
+            Point::<i32, Logical>::from((0, 0)),
+        );
+        self.windows[window_index].content_bbox_size = bbox.size;
+    }
+
     pub(super) fn handle_idle_transitions(&self) {
         for transition in self.idle_daemon.drain_transitions() {
             super::log_idle_transition(transition);
@@ -314,13 +329,13 @@ impl App {
 
     fn title_bar_canvas_rect(&self, window_index: usize) -> Rectangle<i32, Logical> {
         let window = &self.windows[window_index];
-        let content_bbox = bbox_from_surface_tree(
-            window.surface.wl_surface(),
-            self.content_canvas_origin(window_index),
-        );
         Rectangle::new(
             (window.position.x, window.position.y).into(),
-            (content_bbox.size.w.max(MIN_WINDOW_WIDTH), TITLE_BAR_HEIGHT).into(),
+            (
+                window.content_bbox_size.w.max(MIN_WINDOW_WIDTH),
+                TITLE_BAR_HEIGHT,
+            )
+                .into(),
         )
     }
 
