@@ -89,7 +89,7 @@ enum WindowDecoration {
 }
 
 struct DragState {
-    window_index: usize,
+    window_id: u64,
     pointer_start: Point<f64, Logical>,
     window_start: CanvasPoint,
 }
@@ -186,7 +186,7 @@ impl XdgShellHandler for App {
         let surface = self.windows[window_index].surface.wl_surface().clone();
         self.set_keyboard_focus_to_window(window_index, surface);
         self.drag = Some(DragState {
-            window_index,
+            window_id: self.windows[window_index].id,
             pointer_start: self.pointer_location,
             window_start: self.windows[window_index].position,
         });

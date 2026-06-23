@@ -21,7 +21,7 @@ use crate::{
     geometry::{CanvasPoint, rect_contains},
 };
 
-use super::{App, HitTarget, ManagedWindowKind, WindowDecoration, idle::ActivityReason};
+use super::{App, HitTarget, ManagedWindow, ManagedWindowKind, WindowDecoration, idle::ActivityReason};
 
 fn configure_server_side_decoration(toplevel: &ToplevelSurface) {
     if window_kind_for_toplevel(toplevel) == ManagedWindowKind::ShellBar {
@@ -121,6 +121,12 @@ impl App {
         self.windows
             .iter()
             .position(|window| surface_tree_contains(window.surface.wl_surface(), surface))
+    }
+
+    pub(super) fn window_mut_by_id(&mut self, window_id: u64) -> Option<&mut ManagedWindow> {
+        self.windows
+            .iter_mut()
+            .find(|window| window.id == window_id)
     }
 
     pub(super) fn managed_normal_window_id_for_surface(&self, surface: &WlSurface) -> Option<u64> {

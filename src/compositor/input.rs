@@ -39,11 +39,13 @@ pub(super) fn handle_input_event(state: &mut App, event: InputEvent<WinitInput>)
 
             if let Some(drag) = state.drag.as_ref() {
                 let delta = location - drag.pointer_start;
-                if let Some(window) = state.windows.get_mut(drag.window_index) {
-                    window.position = super::CanvasPoint {
-                        x: drag.window_start.x + (delta.x / state.viewport_scale).round() as i32,
-                        y: drag.window_start.y + (delta.y / state.viewport_scale).round() as i32,
-                    };
+                let new_position = super::CanvasPoint {
+                    x: drag.window_start.x + (delta.x / state.viewport_scale).round() as i32,
+                    y: drag.window_start.y + (delta.y / state.viewport_scale).round() as i32,
+                };
+                let window_id = drag.window_id;
+                if let Some(window) = state.window_mut_by_id(window_id) {
+                    window.position = new_position;
                     state.request_redraw();
                 }
                 return;
@@ -96,7 +98,7 @@ pub(super) fn handle_input_event(state: &mut App, event: InputEvent<WinitInput>)
                         let surface = state.windows[window_index].surface.wl_surface().clone();
                         state.set_keyboard_focus_to_window(window_index, surface);
                         state.drag = Some(DragState {
-                            window_index,
+                            window_id: state.windows[window_index].id,
                             pointer_start: state.pointer_location,
                             window_start: state.windows[window_index].position,
                         });
