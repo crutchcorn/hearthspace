@@ -60,7 +60,6 @@ Left click title bar: focus and raise the window
 Left drag title bar: move the window on the canvas
 Drag client-side app header bars: move the window when the app requests xdg_toplevel.move
 SPAWN: place the new window near the current viewport center
-OCR: run Tesseract over the currently focused app window's visible content area
 Super + two-finger scroll up/down: smoothly zoom the canvas in/out
 ```
 
@@ -84,7 +83,6 @@ xdg-shell client acceptance
 GLES rendering path
 Dirty/event-driven render loop that skips GPU redraws when the scene is unchanged
 Timer-based per-window idle-state daemon with configurable idle levels
-Manual per-window Tesseract OCR for the focused app window
 Synthetic wl_output and xdg-output advertisement
 xdg-decoration advertisement with server-side decoration requests
 GPUI shell-client control bar

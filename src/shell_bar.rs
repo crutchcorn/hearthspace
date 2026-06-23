@@ -40,7 +40,6 @@ impl Render for ShellBar {
             ShellCommand::ZoomIn,
             ShellCommand::ZoomOut,
             ShellCommand::LogAccessibilityTree,
-            ShellCommand::OcrFocusedWindow,
         ] {
             let command_socket = self.command_socket.clone();
             row = row.child(shell_button(

@@ -8,7 +8,7 @@ The following packages were installed on the development VM:
 
 ```sh
 sudo apt-get update
-sudo apt-get install -y build-essential cargo rustc rustfmt pkg-config clang libclang-dev libwayland-dev wayland-protocols wayland-utils libinput-dev libxkbcommon-dev libxkbcommon-x11-dev libudev-dev libseat-dev libgbm-dev libegl1-mesa-dev libgles2-mesa-dev libdrm-dev libsystemd-dev libgtk-4-dev foot tesseract-ocr imagemagick
+sudo apt-get install -y build-essential cargo rustc rustfmt pkg-config clang libclang-dev libwayland-dev wayland-protocols wayland-utils libinput-dev libxkbcommon-dev libxkbcommon-x11-dev libudev-dev libseat-dev libgbm-dev libegl1-mesa-dev libgles2-mesa-dev libdrm-dev libsystemd-dev libgtk-4-dev foot
 ```
 
 `foot` is installed as a small Wayland-native terminal for early spawn testing.
@@ -16,8 +16,6 @@ sudo apt-get install -y build-essential cargo rustc rustfmt pkg-config clang lib
 `libgtk-4-dev` is required for the built-in GTK accessibility test app used by the default `SPAWN` action.
 
 `libxkbcommon-x11-dev` is required by the published `gpui` crate's Linux stack, even when Hearthspace uses GPUI as a Wayland shell client.
-
-`tesseract-ocr` is used by the manual per-window OCR command. `imagemagick` was installed as an image-inspection/conversion utility while developing OCR capture, though Hearthspace currently writes PPM images directly for Tesseract.
 
 ## Verified Versions
 
@@ -37,8 +35,6 @@ libseat: 0.9.2
 gbm: 26.0.3-1ubuntu1
 gtk4: 4.22.4
 foot: 1.25.0
-tesseract: 5.5.0
-ImageMagick: 7.1.2-18
 ```
 
 Note: the pkg-config module for xkbcommon is `xkbcommon`, not `libxkbcommon`.
