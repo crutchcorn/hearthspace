@@ -72,6 +72,9 @@ const TITLE_BAR_HEIGHT: i32 = 30;
 const MIN_WINDOW_WIDTH: i32 = 260;
 const SPAWN_OFFSET_STEP: i32 = 36;
 const SPAWN_OFFSET_WRAP: i32 = 180;
+const MIN_ZOOM: f64 = 0.5;
+const MAX_ZOOM: f64 = 2.0;
+const ZOOM_STEP: f64 = 1.25;
 const BUTTON_Y: i32 = 8;
 const BUTTON_HEIGHT: i32 = 32;
 const BUTTON_GAP: i32 = 8;
@@ -89,6 +92,8 @@ enum ControlAction {
     PanRight,
     PanUp,
     PanDown,
+    ZoomIn,
+    ZoomOut,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -131,6 +136,7 @@ struct App {
     pointer: PointerHandle<Self>,
     keyboard: KeyboardHandle<Self>,
     viewport_offset: CanvasPoint,
+    viewport_scale: f64,
     windows: Vec<ManagedWindow>,
     drag: Option<DragState>,
     next_spawn_position: CanvasPoint,
@@ -284,6 +290,7 @@ fn run_winit() -> Result<(), Box<dyn std::error::Error>> {
         pointer,
         keyboard,
         viewport_offset: CanvasPoint { x: 0, y: 0 },
+        viewport_scale: 1.0,
         windows: Vec::new(),
         drag: None,
         next_spawn_position: CanvasPoint { x: 80, y: 96 },
@@ -428,8 +435,8 @@ fn handle_input_event(state: &mut App, event: InputEvent<smithay::backend::winit
                 let delta = location - drag.pointer_start;
                 if let Some(window) = state.windows.get_mut(drag.window_index) {
                     window.position = CanvasPoint {
-                        x: drag.window_start.x + delta.x.round() as i32,
-                        y: drag.window_start.y + delta.y.round() as i32,
+                        x: drag.window_start.x + (delta.x / state.viewport_scale).round() as i32,
+                        y: drag.window_start.y + (delta.y / state.viewport_scale).round() as i32,
                     };
                 }
                 return;
@@ -538,17 +545,14 @@ impl App {
         self.windows
             .iter()
             .enumerate()
-            .flat_map(|(_index, window)| {
-                let position = window.position;
-                let screen_position = (
-                    position.x - self.viewport_offset.x,
-                    position.y - self.viewport_offset.y + TITLE_BAR_HEIGHT,
-                );
+            .rev()
+            .flat_map(|(index, window)| {
+                let screen_position = self.content_screen_origin(index);
                 render_elements_from_surface_tree(
                     renderer,
                     window.surface.wl_surface(),
                     screen_position,
-                    1.0,
+                    self.viewport_scale,
                     1.0,
                     Kind::Unspecified,
                 )
@@ -573,11 +577,19 @@ impl App {
             ));
 
             let grip_color = Color32F::new(0.74, 0.82, 0.95, 1.0);
+            let grip_margin = (12.0 * self.viewport_scale).round().max(4.0) as i32;
+            let grip_height = (2.0 * self.viewport_scale).round().max(1.0) as i32;
+            let grip_top = (8.0 * self.viewport_scale).round().max(3.0) as i32;
+            let grip_gap = (6.0 * self.viewport_scale).round().max(3.0) as i32;
             for grip_index in 0..3 {
                 elements.push(solid_element(
                     Rectangle::new(
-                        (rect.loc.x + 12, rect.loc.y + 8 + grip_index * 6).into(),
-                        (rect.size.w - 24, 2).into(),
+                        (
+                            rect.loc.x + grip_margin,
+                            rect.loc.y + grip_top + grip_index * grip_gap,
+                        )
+                            .into(),
+                        ((rect.size.w - grip_margin * 2).max(1), grip_height).into(),
                     ),
                     grip_color,
                 ));
@@ -626,6 +638,8 @@ impl App {
             (ControlAction::PanRight, 64),
             (ControlAction::PanUp, 64),
             (ControlAction::PanDown, 64),
+            (ControlAction::ZoomIn, 88),
+            (ControlAction::ZoomOut, 88),
         ];
         let mut x = BUTTON_GAP;
 
@@ -649,18 +663,37 @@ impl App {
     fn run_control_action(&mut self, action: ControlAction) {
         match action {
             ControlAction::SpawnApp => self.spawn_app(),
-            ControlAction::PanLeft => self.viewport_offset.x -= self.output_size.w / 2,
-            ControlAction::PanRight => self.viewport_offset.x += self.output_size.w / 2,
-            ControlAction::PanUp => self.viewport_offset.y -= self.output_size.h / 2,
-            ControlAction::PanDown => self.viewport_offset.y += self.output_size.h / 2,
+            ControlAction::PanLeft => {
+                self.viewport_offset.x -=
+                    (f64::from(self.output_size.w) / 2.0 / self.viewport_scale).round() as i32
+            }
+            ControlAction::PanRight => {
+                self.viewport_offset.x +=
+                    (f64::from(self.output_size.w) / 2.0 / self.viewport_scale).round() as i32
+            }
+            ControlAction::PanUp => {
+                self.viewport_offset.y -=
+                    (f64::from(self.output_size.h) / 2.0 / self.viewport_scale).round() as i32
+            }
+            ControlAction::PanDown => {
+                self.viewport_offset.y +=
+                    (f64::from(self.output_size.h) / 2.0 / self.viewport_scale).round() as i32
+            }
+            ControlAction::ZoomIn => self.zoom_around_viewport_center(ZOOM_STEP),
+            ControlAction::ZoomOut => self.zoom_around_viewport_center(1.0 / ZOOM_STEP),
         }
     }
 
     fn spawn_app(&mut self) {
         self.next_spawn_position = CanvasPoint {
-            x: self.viewport_offset.x + self.output_size.w / 2 - MIN_WINDOW_WIDTH / 2
+            x: self.viewport_offset.x
+                + (f64::from(self.output_size.w) / 2.0 / self.viewport_scale).round() as i32
+                - MIN_WINDOW_WIDTH / 2
                 + self.spawn_offset,
-            y: self.viewport_offset.y + self.output_size.h / 2 - 180 + self.spawn_offset,
+            y: self.viewport_offset.y
+                + (f64::from(self.output_size.h) / 2.0 / self.viewport_scale).round() as i32
+                - 180
+                + self.spawn_offset,
         };
         self.spawn_offset = (self.spawn_offset + SPAWN_OFFSET_STEP) % SPAWN_OFFSET_WRAP;
 
@@ -678,22 +711,26 @@ impl App {
             return None;
         }
 
+        let canvas_location = self.screen_to_canvas(location);
+
         for (window_index, window) in self.windows.iter().enumerate().rev() {
-            if rect_contains(self.title_bar_rect(window_index), location) {
+            if rect_contains(self.title_bar_canvas_rect(window_index), canvas_location) {
                 return Some(HitTarget::TitleBar { window_index });
             }
 
-            let content_origin = self.content_origin(window_index);
+            let content_origin = self.content_canvas_origin(window_index);
             if let Some((surface, surface_location)) = under_from_surface_tree(
                 window.surface.wl_surface(),
-                location,
+                canvas_location,
                 content_origin,
                 WindowSurfaceType::ALL,
             ) {
+                let relative_surface_location = canvas_location - surface_location.to_f64();
+                let pointer_focus_origin = location - relative_surface_location;
                 return Some(HitTarget::Client {
                     window_index,
                     surface,
-                    surface_location: surface_location.to_f64(),
+                    surface_location: pointer_focus_origin,
                 });
             }
         }
@@ -712,27 +749,76 @@ impl App {
     }
 
     fn title_bar_rect(&self, window_index: usize) -> Rectangle<i32, Logical> {
-        let window = &self.windows[window_index];
-        let origin = Point::<i32, Logical>::from((
-            window.position.x - self.viewport_offset.x,
-            window.position.y - self.viewport_offset.y,
-        ));
-        let content_bbox = bbox_from_surface_tree(
-            window.surface.wl_surface(),
-            self.content_origin(window_index),
-        );
+        let canvas_rect = self.title_bar_canvas_rect(window_index);
+        let origin = self
+            .canvas_to_screen(canvas_rect.loc.to_f64())
+            .to_i32_round();
         Rectangle::new(
             origin,
+            (
+                (f64::from(canvas_rect.size.w) * self.viewport_scale).round() as i32,
+                (f64::from(canvas_rect.size.h) * self.viewport_scale).round() as i32,
+            )
+                .into(),
+        )
+    }
+
+    fn title_bar_canvas_rect(&self, window_index: usize) -> Rectangle<i32, Logical> {
+        let window = &self.windows[window_index];
+        let content_bbox = bbox_from_surface_tree(
+            window.surface.wl_surface(),
+            self.content_canvas_origin(window_index),
+        );
+        Rectangle::new(
+            (window.position.x, window.position.y).into(),
             (content_bbox.size.w.max(MIN_WINDOW_WIDTH), TITLE_BAR_HEIGHT).into(),
         )
     }
 
-    fn content_origin(&self, window_index: usize) -> Point<i32, Logical> {
+    fn content_canvas_origin(&self, window_index: usize) -> Point<i32, Logical> {
         let window = &self.windows[window_index];
-        Point::<i32, Logical>::from((
-            window.position.x - self.viewport_offset.x,
-            window.position.y - self.viewport_offset.y + TITLE_BAR_HEIGHT,
-        ))
+        Point::<i32, Logical>::from((window.position.x, window.position.y + TITLE_BAR_HEIGHT))
+    }
+
+    fn content_screen_origin(&self, window_index: usize) -> Point<i32, Physical> {
+        self.canvas_to_screen(self.content_canvas_origin(window_index).to_f64())
+            .to_i32_round()
+            .to_physical(1)
+    }
+
+    fn canvas_to_screen(&self, point: Point<f64, Logical>) -> Point<f64, Logical> {
+        (
+            (point.x - f64::from(self.viewport_offset.x)) * self.viewport_scale,
+            (point.y - f64::from(self.viewport_offset.y)) * self.viewport_scale,
+        )
+            .into()
+    }
+
+    fn screen_to_canvas(&self, point: Point<f64, Logical>) -> Point<f64, Logical> {
+        (
+            point.x / self.viewport_scale + f64::from(self.viewport_offset.x),
+            point.y / self.viewport_scale + f64::from(self.viewport_offset.y),
+        )
+            .into()
+    }
+
+    fn zoom_around_viewport_center(&mut self, multiplier: f64) {
+        let old_scale = self.viewport_scale;
+        let new_scale = (self.viewport_scale * multiplier).clamp(MIN_ZOOM, MAX_ZOOM);
+        if (new_scale - old_scale).abs() < f64::EPSILON {
+            return;
+        }
+
+        let center_screen = Point::<f64, Logical>::from((
+            f64::from(self.output_size.w) / 2.0,
+            f64::from(self.output_size.h) / 2.0,
+        ));
+        let center_canvas = self.screen_to_canvas(center_screen);
+        self.viewport_scale = new_scale;
+        self.viewport_offset = CanvasPoint {
+            x: (center_canvas.x - center_screen.x / new_scale).round() as i32,
+            y: (center_canvas.y - center_screen.y / new_scale).round() as i32,
+        };
     }
 }
 
@@ -768,6 +854,8 @@ fn label_rects(button: ControlButton) -> Vec<Rectangle<i32, Logical>> {
         ControlAction::PanRight => "RIGHT",
         ControlAction::PanUp => "UP",
         ControlAction::PanDown => "DOWN",
+        ControlAction::ZoomIn => "ZOOM+",
+        ControlAction::ZoomOut => "ZOOM-",
     };
 
     let char_count = label.chars().count() as i32;
@@ -844,6 +932,18 @@ fn glyph_pattern(ch: char) -> [&'static str; 7] {
         ],
         'W' => [
             "#...#", "#...#", "#...#", "#.#.#", "#.#.#", "##.##", "#...#",
+        ],
+        'Z' => [
+            "#####", "....#", "...#.", "..#..", ".#...", "#....", "#####",
+        ],
+        'M' => [
+            "#...#", "##.##", "#.#.#", "#...#", "#...#", "#...#", "#...#",
+        ],
+        '+' => [
+            ".....", "..#..", "..#..", "#####", "..#..", "..#..", ".....",
+        ],
+        '-' => [
+            ".....", ".....", ".....", "#####", ".....", ".....", ".....",
         ],
         _ => [
             ".....", ".....", ".....", ".....", ".....", ".....", ".....",
