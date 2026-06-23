@@ -189,6 +189,31 @@ impl XdgShellHandler for App {
 
     fn new_popup(&mut self, _surface: PopupSurface, _positioner: PositionerState) {}
 
+    fn move_request(&mut self, surface: ToplevelSurface, _seat: wl_seat::WlSeat, _serial: Serial) {
+        let Some(window_index) = self
+            .windows
+            .iter()
+            .position(|window| window.surface == surface)
+        else {
+            return;
+        };
+
+        if self.windows[window_index].kind != ManagedWindowKind::Normal {
+            return;
+        }
+
+        let window_index = self.raise_window(window_index);
+        let surface = self.windows[window_index].surface.wl_surface().clone();
+        let keyboard = self.keyboard.clone();
+        keyboard.set_focus(self, Some(surface), Serial::from(0));
+        self.drag = Some(DragState {
+            window_index,
+            pointer_start: self.pointer_location,
+            window_start: self.windows[window_index].position,
+        });
+        self.request_redraw();
+    }
+
     fn grab(&mut self, _surface: PopupSurface, _seat: wl_seat::WlSeat, _serial: Serial) {}
 
     fn reposition_request(

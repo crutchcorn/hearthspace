@@ -58,6 +58,7 @@ Window interaction:
 Left click app content: focus and interact with the app
 Left click title bar: focus and raise the window
 Left drag title bar: move the window on the canvas
+Drag client-side app header bars: move the window when the app requests xdg_toplevel.move
 SPAWN: place the new window near the current viewport center
 Super + two-finger scroll up/down: smoothly zoom the canvas in/out
 ```
