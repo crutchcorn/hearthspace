@@ -98,7 +98,11 @@ impl App {
     pub(super) fn clear_keyboard_focus(&mut self) {
         self.focused_normal_window_id = None;
         let keyboard = self.keyboard.clone();
-        keyboard.set_focus(self, Option::<WlSurface>::None, SERIAL_COUNTER.next_serial());
+        keyboard.set_focus(
+            self,
+            Option::<WlSurface>::None,
+            SERIAL_COUNTER.next_serial(),
+        );
     }
 
     pub(super) fn record_client_activity_for_window_index(

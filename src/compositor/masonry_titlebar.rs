@@ -21,9 +21,7 @@ use masonry::{
     widgets::Label,
 };
 use smithay::{
-    backend::{
-        allocator::Fourcc, renderer::element::memory::MemoryRenderBuffer,
-    },
+    backend::{allocator::Fourcc, renderer::element::memory::MemoryRenderBuffer},
     utils::Transform,
 };
 

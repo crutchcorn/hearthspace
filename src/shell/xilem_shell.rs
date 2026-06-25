@@ -36,9 +36,12 @@ struct ShellState {
 }
 
 fn app_logic(state: &mut ShellState) -> impl WidgetView<ShellState> + use<> {
-    let search = text_input(state.query.clone(), |state: &mut ShellState, value: String| {
-        state.query = value;
-    })
+    let search = text_input(
+        state.query.clone(),
+        |state: &mut ShellState, value: String| {
+            state.query = value;
+        },
+    )
     .placeholder("Search apps...")
     .on_enter(|state: &mut ShellState, value: String| {
         if let Some(app) = state.catalog.search(value.trim(), 1).into_iter().next() {
