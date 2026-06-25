@@ -198,17 +198,16 @@ impl XdgShellHandler for App {
     }
 
     fn new_popup(&mut self, surface: PopupSurface, positioner: PositionerState) {
-        // Compute the popup's geometry from the client's positioner and send the
-        // initial configure. Without this the client (e.g. GTK4's menus) blocks
-        // forever waiting to be told where its popup goes, freezing the app.
+        // Record the popup's geometry from the client's positioner. The initial
+        // configure is sent on the popup's first commit (see `commit`), not here:
+        // sending it at role-creation time races the client's first commit so the
+        // configured geometry never lands in the surface's current state, leaving
+        // the popup mispositioned the first time it opens.
         surface.with_pending_state(|state| {
             state.geometry = positioner.get_geometry();
         });
-        if let Err(err) = self.popups.track_popup(PopupKind::Xdg(surface.clone())) {
+        if let Err(err) = self.popups.track_popup(PopupKind::Xdg(surface)) {
             eprintln!("Failed to track popup: {err}");
-        }
-        if let Err(err) = surface.send_configure() {
-            eprintln!("Failed to send initial popup configure: {err}");
         }
     }
 
@@ -246,8 +245,9 @@ impl XdgShellHandler for App {
         let Ok(root) = find_popup_root_surface(&kind) else {
             return;
         };
-        let Ok(mut grab) = self.popups.grab_popup(root, kind, &seat, serial) else {
-            return;
+        let mut grab = match self.popups.grab_popup(root, kind, &seat, serial) {
+            Ok(grab) => grab,
+            Err(_) => return,
         };
 
         if let Some(keyboard) = seat.get_keyboard() {
@@ -448,6 +448,17 @@ impl CompositorHandler for App {
     fn commit(&mut self, surface: &WlSurface) {
         on_commit_buffer_handler::<Self>(surface);
         self.popups.commit(surface);
+        // Send the popup's initial configure on its first commit. xdg requires
+        // the client to commit once (without a buffer) to request a configure;
+        // doing it here (rather than in `new_popup`) ensures the configured
+        // geometry is applied to the surface's current state.
+        if let Some(PopupKind::Xdg(popup)) = self.popups.find_popup(surface)
+            && !popup.is_initial_configure_sent()
+        {
+            if let Err(err) = popup.send_configure() {
+                eprintln!("Failed to send initial popup configure: {err}");
+            }
+        }
         self.refresh_window_content_bbox(surface);
         if let Some(window_id) = self.managed_normal_window_id_for_surface(surface) {
             self.idle_daemon
@@ -750,6 +761,17 @@ impl CalloopData {
                 window.surface.wl_surface(),
                 start_time.elapsed().as_millis() as u32,
             );
+            // Popups (e.g. client menus) are tracked separately from the window
+            // surface tree, so they need their own frame callbacks. Without
+            // these the client (e.g. GTK4) throttles and never repaints the
+            // popup after its first frame, so keyboard navigation highlights
+            // never appear.
+            for (popup, _) in PopupManager::popups_for_surface(window.surface.wl_surface()) {
+                send_frames_surface_tree(
+                    popup.wl_surface(),
+                    start_time.elapsed().as_millis() as u32,
+                );
+            }
         }
 
         display.flush_clients()?;

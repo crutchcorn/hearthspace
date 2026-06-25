@@ -206,12 +206,13 @@ impl App {
             {
                 let popup_origin =
                     content_origin + geometry_loc + popup_offset - popup.geometry().loc;
-                if let Some((surface, surface_location)) = under_from_surface_tree(
+                let hit = under_from_surface_tree(
                     popup.wl_surface(),
                     canvas_location,
                     popup_origin,
                     WindowSurfaceType::ALL,
-                ) {
+                );
+                if let Some((surface, surface_location)) = hit {
                     let relative_surface_location = canvas_location - surface_location.to_f64();
                     let pointer_focus_origin = location - relative_surface_location;
                     return Some(HitTarget::Client {
