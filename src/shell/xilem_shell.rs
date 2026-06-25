@@ -18,10 +18,23 @@
 use std::{env, io::Write, os::unix::net::UnixStream, path::PathBuf};
 
 use xilem::{
-    AnyWidgetView, AppState, EventLoop, WidgetView, WindowId, WindowOptionsExtLinux, WindowView,
-    Xilem,
+    AnyWidgetView, AppState, Color, EventLoop, TextAlign, WidgetView, WindowId,
+    WindowOptionsExtLinux, WindowView, Xilem,
     dpi::LogicalSize,
-    view::{FlexExt, flex_col, flex_row, text_button, text_input},
+    masonry::{
+        core::{DefaultProperties, PropertyStack, Selector},
+        layout::AsUnit,
+        properties::{
+            Background, BorderColor, BorderWidth, CaretColor, ContentColor, CornerRadius, Gap,
+            Padding, PlaceholderColor,
+        },
+        theme::default_property_set,
+        widgets::{Button, Label, TextArea, TextInput},
+    },
+    style::Style,
+    view::{
+        CrossAxisAlignment, button, flex_col, flex_row, label, sized_box, text_button, text_input,
+    },
     window,
 };
 
@@ -43,6 +56,87 @@ const LAUNCHER_WIDTH: i32 = 360;
 const LAUNCHER_ROW_HEIGHT: f64 = 40.0;
 /// Vertical padding added around the launcher result list.
 const LAUNCHER_PADDING: f64 = 12.0;
+
+/// Horizontal padding inside each launcher result button.
+const LAUNCHER_ITEM_H_PAD: f64 = 14.0;
+/// Width of a launcher result label. Sized so each row spans the dropdown width
+/// once the button adds [`LAUNCHER_ITEM_H_PAD`] of padding on each side, which
+/// keeps the (left-justified) label flush with the rest of the palette.
+const LAUNCHER_ITEM_WIDTH: f64 = LAUNCHER_WIDTH as f64 - 2.0 * LAUNCHER_ITEM_H_PAD;
+
+/// Maximum width of the search field. The control bar is stretched to the full
+/// screen width by the compositor, so the input is capped to a comfortable size
+/// instead of sprawling across the whole bar.
+const SEARCH_BOX_WIDTH: f64 = 420.0;
+
+// Light theme palette for the shell surfaces.
+/// Window background for the bar and launcher palette.
+const SHELL_BG: Color = Color::from_rgb8(0xf4, 0xf4, 0xf5);
+/// Primary text color (used for labels and the search field contents).
+const SHELL_TEXT: Color = Color::from_rgb8(0x1f, 0x1f, 0x23);
+/// Muted color for the search field placeholder.
+const SHELL_PLACEHOLDER: Color = Color::from_rgb8(0x8a, 0x8a, 0x93);
+/// Background revealed under a button while it is hovered.
+const BUTTON_HOVER_BG: Color = Color::from_rgb8(0xe4, 0xe4, 0xe7);
+/// Slightly darker background while a button is pressed.
+const BUTTON_ACTIVE_BG: Color = Color::from_rgb8(0xd4, 0xd4, 0xd8);
+/// Search field fill color.
+const INPUT_BG: Color = Color::from_rgb8(0xff, 0xff, 0xff);
+/// Search field border color while unfocused.
+const INPUT_BORDER: Color = Color::from_rgb8(0xd4, 0xd4, 0xd8);
+/// Search field border color while focused.
+const INPUT_FOCUS_BORDER: Color = Color::from_rgb8(0x3b, 0x7e, 0xe4);
+
+/// Light theme overrides applied to every shell widget.
+///
+/// Starts from Masonry's stock (dark) defaults and recolors the few widgets the
+/// shell actually uses, plus restyles buttons so they read as flat list rows:
+/// no fill or border until hovered, then a soft grey highlight.
+fn shell_properties() -> DefaultProperties {
+    let mut properties = default_property_set();
+
+    // Buttons: flat until hovered, then a soft highlight. No border at any time.
+    properties.insert::<Button, _>(Background::Color(Color::TRANSPARENT));
+    properties.insert::<Button, _>(BorderWidth { width: 0.0.px() });
+    properties.insert::<Button, _>(CornerRadius { radius: 6.0.px() });
+    properties.insert::<Button, _>(ContentColor::new(SHELL_TEXT));
+    properties.insert::<Button, _>(Padding::from_vh(8.0.px(), LAUNCHER_ITEM_H_PAD.px()));
+    {
+        let mut stack = PropertyStack::new();
+        stack.push(
+            Selector::new().with_hovered(true),
+            Background::Color(BUTTON_HOVER_BG),
+        );
+        stack.push(
+            Selector::new().with_active(true),
+            Background::Color(BUTTON_ACTIVE_BG),
+        );
+        properties.insert_stack::<Button>(stack);
+    }
+
+    // Dark text on the light shell.
+    properties.insert::<Label, _>(ContentColor::new(SHELL_TEXT));
+    properties.insert::<TextArea<true>, _>(ContentColor::new(SHELL_TEXT));
+    properties.insert::<TextArea<false>, _>(ContentColor::new(SHELL_TEXT));
+
+    // Search field: white input with a subtle border that accents on focus.
+    properties.insert::<TextInput, _>(Background::Color(INPUT_BG));
+    properties.insert::<TextInput, _>(BorderColor { color: INPUT_BORDER });
+    properties.insert::<TextInput, _>(CaretColor { color: SHELL_TEXT });
+    properties.insert::<TextInput, _>(PlaceholderColor::new(SHELL_PLACEHOLDER));
+    {
+        let mut stack = PropertyStack::new();
+        stack.push(
+            Selector::new().with_focused(true),
+            BorderColor {
+                color: INPUT_FOCUS_BORDER,
+            },
+        );
+        properties.insert_stack::<TextInput>(stack);
+    }
+
+    properties
+}
 
 /// Inner size of the launcher dropdown for a given number of results. The
 /// dropdown is sized to its contents so it reads as a snug menu.
@@ -119,11 +213,14 @@ fn bar_view(state: &ShellState) -> impl WidgetView<ShellState> + use<> {
     })
     .collect();
 
-    // The compositor forces the bar to a single full-width, short row, so the
-    // search field is given a flex factor to claim all leftover horizontal space
-    // (the command buttons keep their natural width). Without this the row splits
-    // space evenly and the input collapses to an untypeable sliver.
-    flex_row((search.flex(1.0), command_buttons))
+    // The control bar is stretched to the full screen width by the compositor.
+    // The search field is capped to a fixed, comfortable width (rather than
+    // flexing to fill the bar) so it reads as a search box; the command buttons
+    // keep their natural width and pack in beside it.
+    flex_row((
+        sized_box(search).fixed_width(SEARCH_BOX_WIDTH.px()),
+        command_buttons,
+    ))
 }
 
 /// The launcher palette: a vertical list of result buttons. Selecting one
@@ -133,15 +230,26 @@ fn launcher_view(results: Vec<DesktopApp>) -> impl WidgetView<ShellState> + use<
         .into_iter()
         .map(|app| {
             let app_id = app.id;
-            text_button(app.name, move |state: &mut ShellState| {
-                launch_app(&state.command_socket, &app_id);
-                state.query.clear();
-            })
+            // A left-justified label fixed to the row's content width so the
+            // button's (centered) child fills the row and the text sits flush
+            // left. Buttons are flat until hovered (see `shell_properties`).
+            button(
+                sized_box(label(app.name).text_alignment(TextAlign::Start))
+                    .fixed_width(LAUNCHER_ITEM_WIDTH.px()),
+                move |state: &mut ShellState| {
+                    launch_app(&state.command_socket, &app_id);
+                    state.query.clear();
+                },
+            )
             .boxed()
         })
         .collect();
 
+    // Stretch each row to the full palette width (so the hover highlight spans
+    // the row) and remove the inter-row gap so the list reads as a solid menu.
     flex_col(buttons)
+        .cross_axis_alignment(CrossAxisAlignment::Stretch)
+        .gap(Gap::ZERO)
 }
 
 fn app_logic(state: &mut ShellState) -> impl Iterator<Item = WindowView<ShellState>> + use<> {
@@ -195,7 +303,9 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
         launcher_window_id: WindowId::next(),
     };
 
-    let app = Xilem::new(state, app_logic);
+    let app = Xilem::new(state, app_logic)
+        .with_default_properties(shell_properties())
+        .with_default_base_color(SHELL_BG);
     app.run_in(EventLoop::with_user_event())?;
     Ok(())
 }
