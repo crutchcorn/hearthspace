@@ -127,46 +127,25 @@ pub(super) fn remove_stale_socket(path: &PathBuf) -> std::io::Result<()> {
     }
 }
 
-pub(super) fn spawn_shell_bar(command_socket_path: &PathBuf) {
+/// Spawn the Xilem-rendered shell (app launcher + compositor controls) as its
+/// own Wayland client. The shell tags its surface with [`SHELL_BAR_APP_ID`] so
+/// the compositor renders it chrome-less in the bar position.
+pub(super) fn spawn_shell(command_socket_path: &PathBuf) {
     let current_exe = match env::current_exe() {
         Ok(path) => path,
         Err(error) => {
-            eprintln!("Failed to locate current executable for shell bar: {error}");
+            eprintln!("Failed to locate current executable for shell: {error}");
             return;
         }
     };
 
     if let Err(error) = Command::new(current_exe)
-        .arg("--shell-bar")
+        .arg(SHELL_FLAG)
         .env("WAYLAND_DISPLAY", WAYLAND_DISPLAY_NAME)
         .env(SHELL_COMMAND_SOCKET_ENV, command_socket_path)
         .spawn()
     {
-        eprintln!("Failed to spawn shell bar: {error}");
-    }
-}
-
-/// Spawn the Xilem-rendered shell control as its own Wayland client.
-///
-/// This is the first stage of the Xilem/Masonry integration spike: it runs
-/// alongside the GPUI shell bar and hosts a control (Zoom In) that the bar no
-/// longer draws, proving Xilem can act as a shell client inside Hearthspace.
-pub(super) fn spawn_shell_xilem_button(command_socket_path: &PathBuf) {
-    let current_exe = match env::current_exe() {
-        Ok(path) => path,
-        Err(error) => {
-            eprintln!("Failed to locate current executable for Xilem shell control: {error}");
-            return;
-        }
-    };
-
-    if let Err(error) = Command::new(current_exe)
-        .arg(SHELL_XILEM_BUTTON_FLAG)
-        .env("WAYLAND_DISPLAY", WAYLAND_DISPLAY_NAME)
-        .env(SHELL_COMMAND_SOCKET_ENV, command_socket_path)
-        .spawn()
-    {
-        eprintln!("Failed to spawn Xilem shell control: {error}");
+        eprintln!("Failed to spawn shell: {error}");
     }
 }
 

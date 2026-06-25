@@ -17,8 +17,7 @@ use idle::{ActivityReason, IdleTransition, WindowIdleDaemon};
 use input::handle_input_event;
 use rendering::{WindowDecorationBuffers, send_frames_surface_tree};
 use shell_integration::{
-    accept_command_connections, command_socket_path, remove_stale_socket, spawn_shell_bar,
-    spawn_shell_xilem_button,
+    accept_command_connections, command_socket_path, remove_stale_socket, spawn_shell,
 };
 use viewport::ViewportAnimation;
 use windows::{decoration_for_new_window, position_for_new_window, window_kind_for_toplevel};
@@ -564,8 +563,7 @@ pub fn run_winit(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> 
         WinitEvent::Focus(_) => {}
     })?;
 
-    spawn_shell_bar(&command_socket_path);
-    spawn_shell_xilem_button(&command_socket_path);
+    spawn_shell(&command_socket_path);
 
     println!("Hearthspace running on WAYLAND_DISPLAY={WAYLAND_DISPLAY_NAME}");
     if state.scroll_zooms_without_super {

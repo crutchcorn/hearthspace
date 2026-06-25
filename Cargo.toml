@@ -7,22 +7,24 @@ rust-version = "1.93.1"
 [dependencies]
 async-io = "2.3.3"
 atspi = "0.30.0"
-gpui = { version = "0.2.2", default-features = false, features = ["wayland"] }
 gtk = { package = "gtk4", version = "0.11" }
-# Xilem (app shell) and Masonry (compositor-side imaging) are pulled from the
-# latest `main` commit because the published 0.4 release is ~200 commits behind
-# the APIs we integrate against. Pinned to a rev for reproducible builds.
-masonry = { git = "https://github.com/linebender/xilem", rev = "5d72ad41eb660fa620110e045d332fd95684ebae", features = ["testing"] }
-xilem = { git = "https://github.com/linebender/xilem", rev = "5d72ad41eb660fa620110e045d332fd95684ebae" }
+# Xilem (app shell) and Masonry (compositor-side imaging) are pulled from a local
+# checkout of our linebender/xilem fork (branch `hearthspace/wayland-app-id`,
+# based on upstream rev 5d72ad41eb660fa620110e045d332fd95684ebae). The fork adds
+# `WindowOptionsExtLinux::with_name` so a Xilem window can advertise a Wayland
+# `app_id`; this is intended to be contributed upstream. Using a path keeps the
+# whole xilem workspace resolving from one consistent source while we iterate.
+# See SETUP.md for the clone location and how to refresh it.
+masonry = { path = "../../linebender/xilem/masonry", features = ["testing"] }
+xilem = { path = "../../linebender/xilem/xilem" }
 # naga 28 (pulled in transitively via wgpu/vello) only compiles its WGSL
 # error-emit path when the `termcolor` feature is enabled, but the crates that
 # depend on it (wgpu-core, vello_shaders) enable `wgsl-in` without it. We add a
 # direct dependency purely to union `termcolor` into the shared naga build.
 naga = { version = "28.0.0", default-features = false, features = ["termcolor"] }
-# gpui's font stack (zed-font-kit) enables `dlopen` on yeslogic-fontconfig-sys,
-# which feature-unification then forces on for parley's fontique too. fontique
-# only compiles against a dlopen'd sys crate when its own `fontconfig-dlopen`
-# code path is enabled, so we union that feature in here.
+# Parley's fontique discovers system fonts via fontconfig. Enabling its
+# `fontconfig-dlopen` code path makes it load libfontconfig at runtime instead
+# of link-time, which avoids needing fontconfig dev headers at build time.
 fontique = { version = "0.8.0", features = ["fontconfig-dlopen"] }
 # Masonry's CPU render harness returns an `image::RgbaImage`; name the type
 # directly so the title-text raster path is testable. Pulled in transitively

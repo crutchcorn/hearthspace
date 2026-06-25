@@ -15,7 +15,30 @@ sudo apt-get install -y build-essential cargo rustc rustfmt pkg-config clang lib
 
 `libgtk-4-dev` is required for the built-in GTK accessibility test app used by the default `SPAWN` action.
 
-`libxkbcommon-x11-dev` is required by the published `gpui` crate's Linux stack, even when Hearthspace uses GPUI as a Wayland shell client.
+## Xilem Fork (local path dependency)
+
+The shell UI is built with [Xilem](https://github.com/linebender/xilem). Stock
+Xilem cannot set a Wayland `app_id` on its windows, which Hearthspace needs so
+the compositor can recognize the shell surface and render it without window
+chrome. We therefore depend on a local fork:
+
+```sh
+git clone https://github.com/linebender/xilem ~/git/linebender/xilem
+cd ~/git/linebender/xilem
+git checkout -b hearthspace/wayland-app-id   # based on upstream main @ 5d72ad41
+```
+
+The fork adds `xilem::WindowOptionsExtLinux::with_name(general, instance)`, which
+forwards to winit's `WindowAttributesExtWayland::with_name` (Wayland `app_id`)
+and `WindowAttributesExtX11::with_name` (X11 `WM_CLASS`). This is intended to be
+contributed upstream.
+
+`Cargo.toml` references this clone via path dependencies
+(`../../linebender/xilem/{masonry,xilem}`), so the clone must live at
+`~/git/linebender/xilem`. To refresh against upstream, rebase the
+`hearthspace/wayland-app-id` branch onto a newer upstream commit and re-apply the
+`with_name` patch in `xilem/src/window_options.rs` / `xilem/src/lib.rs` if it
+conflicts.
 
 ## Linting
 
