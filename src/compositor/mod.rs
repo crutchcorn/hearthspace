@@ -105,6 +105,18 @@ struct ManagedWindow {
 enum ManagedWindowKind {
     Normal,
     ShellBar,
+    /// The launcher palette: a transient shell surface the shell opens below the
+    /// bar to show app-search results as a dropdown.
+    Launcher,
+}
+
+impl ManagedWindowKind {
+    /// Whether this kind is shell chrome (the bar or the launcher palette),
+    /// which is rendered in screen space without server-side decorations rather
+    /// than as a normal canvas window.
+    fn is_shell_chrome(self) -> bool {
+        matches!(self, Self::ShellBar | Self::Launcher)
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -358,7 +370,7 @@ impl XdgShellHandler for App {
             let old_kind = window.kind;
             window.kind = kind;
             window.position = position_for_new_window(kind, window.position);
-            if kind == ManagedWindowKind::ShellBar {
+            if kind.is_shell_chrome() {
                 window.decoration = WindowDecoration::ClientSide;
             }
             if old_kind == ManagedWindowKind::Normal && kind != ManagedWindowKind::Normal {
@@ -371,7 +383,7 @@ impl XdgShellHandler for App {
             }
             let insert_index = match kind {
                 ManagedWindowKind::Normal => self.normal_insert_index(),
-                ManagedWindowKind::ShellBar => self.windows.len(),
+                ManagedWindowKind::ShellBar | ManagedWindowKind::Launcher => self.windows.len(),
             };
             self.windows.insert(insert_index, window);
             self.configure_toplevel(&surface, kind);

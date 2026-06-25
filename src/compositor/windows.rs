@@ -24,9 +24,9 @@ use crate::{
 
 use super::{
     App, HitTarget, ManagedWindow, ManagedWindowKind, ResizeState, WindowDecoration,
-    idle::ActivityReason, rendering::toplevel_geometry_loc,
+    idle::ActivityReason,
+    rendering::{toplevel_geometry_loc, toplevel_geometry_size},
 };
-
 /// Which edges of a window are being dragged during an interactive resize.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub(super) struct ResizeEdges {
@@ -88,7 +88,7 @@ impl From<xdg_toplevel::ResizeEdge> for ResizeEdges {
 }
 
 fn configure_server_side_decoration(toplevel: &ToplevelSurface) {
-    if window_kind_for_toplevel(toplevel) == ManagedWindowKind::ShellBar {
+    if window_kind_for_toplevel(toplevel).is_shell_chrome() {
         return;
     }
 
@@ -108,6 +108,7 @@ fn configure_client_side_decoration(toplevel: &ToplevelSurface) {
 pub(super) fn window_kind_for_toplevel(surface: &ToplevelSurface) -> ManagedWindowKind {
     match toplevel_app_id(surface).as_deref() {
         Some(SHELL_BAR_APP_ID) => ManagedWindowKind::ShellBar,
+        Some(LAUNCHER_APP_ID) => ManagedWindowKind::Launcher,
         _ => ManagedWindowKind::Normal,
     }
 }
@@ -137,13 +138,18 @@ pub(super) fn position_for_new_window(
     match kind {
         ManagedWindowKind::Normal => fallback,
         ManagedWindowKind::ShellBar => CanvasPoint { x: 0, y: 0 },
+        ManagedWindowKind::Launcher => CanvasPoint {
+            x: 0,
+            y: CONTROL_BAR_HEIGHT,
+        },
     }
 }
 
 pub(super) fn decoration_for_new_window(kind: ManagedWindowKind) -> WindowDecoration {
     match kind {
-        ManagedWindowKind::Normal => WindowDecoration::ClientSide,
-        ManagedWindowKind::ShellBar => WindowDecoration::ClientSide,
+        ManagedWindowKind::Normal | ManagedWindowKind::ShellBar | ManagedWindowKind::Launcher => {
+            WindowDecoration::ClientSide
+        }
     }
 }
 
@@ -239,12 +245,17 @@ impl App {
     }
 
     pub(super) fn hit_test(&self, location: Point<f64, Logical>) -> Option<HitTarget> {
+        // Shell chrome (the bar and the launcher palette) is drawn in screen
+        // space above the canvas, so it is hit-tested first using each surface's
+        // own screen-space origin.
         for (window_index, window) in self.windows.iter().enumerate().rev() {
-            if window.kind != ManagedWindowKind::ShellBar {
-                continue;
-            }
+            let origin = match window.kind {
+                ManagedWindowKind::ShellBar => Point::from((0, 0)),
+                ManagedWindowKind::Launcher => self.launcher_screen_logical_origin(),
+                ManagedWindowKind::Normal => continue,
+            };
 
-            if let Some(target) = self.hit_test_shell_bar(window_index, location) {
+            if let Some(target) = self.hit_test_shell_surface(window_index, location, origin) {
                 return Some(target);
             }
         }
@@ -296,22 +307,24 @@ impl App {
                 if rect_contains(self.title_bar_canvas_rect(window_index), canvas_location) {
                     return Some(HitTarget::TitleBar { window_index });
                 }
+            }
 
-                // The interactive resize handle is a band centered on each
-                // window edge, checked before the client surface tree so the
-                // visible edge is grabbable for resizing.
-                let window_rect = self.window_canvas_rect(window_index);
-                if let Some(edges) = resize_edges_at(
-                    window_rect,
-                    canvas_location,
-                    RESIZE_HANDLE_OUTSET,
-                    RESIZE_HANDLE_INSET,
-                ) {
-                    return Some(HitTarget::ResizeBorder {
-                        window_index,
-                        edges,
-                    });
-                }
+            // The interactive resize handle is a band centered on each window
+            // edge, checked before the client surface tree so the visible edge
+            // is grabbable for resizing. This applies to both server- and
+            // client-side-decorated windows; for the latter `window_canvas_rect`
+            // tracks the visible geometry so the band sits on the real edge.
+            let window_rect = self.window_canvas_rect(window_index);
+            if let Some(edges) = resize_edges_at(
+                window_rect,
+                canvas_location,
+                RESIZE_HANDLE_OUTSET,
+                RESIZE_HANDLE_INSET,
+            ) {
+                return Some(HitTarget::ResizeBorder {
+                    window_index,
+                    edges,
+                });
             }
 
             if let Some((surface, surface_location)) = under_from_surface_tree(
@@ -354,12 +367,21 @@ impl App {
             state
                 .capabilities
                 .replace(std::iter::empty::<xdg_toplevel::WmCapabilities>());
-            if kind == ManagedWindowKind::ShellBar {
-                state.size = Some((self.output_size.w, CONTROL_BAR_HEIGHT).into());
-                state.bounds = Some((self.output_size.w, CONTROL_BAR_HEIGHT).into());
-                state.decoration_mode = Some(DecorationMode::ClientSide);
-            } else {
-                state.states.set(xdg_toplevel::State::Activated);
+            match kind {
+                ManagedWindowKind::ShellBar => {
+                    state.size = Some((self.output_size.w, CONTROL_BAR_HEIGHT).into());
+                    state.bounds = Some((self.output_size.w, CONTROL_BAR_HEIGHT).into());
+                    state.decoration_mode = Some(DecorationMode::ClientSide);
+                }
+                ManagedWindowKind::Launcher => {
+                    // The launcher sizes itself to its result list, so the
+                    // compositor leaves the size unset (client-driven) and only
+                    // enforces client-side decorations.
+                    state.decoration_mode = Some(DecorationMode::ClientSide);
+                }
+                ManagedWindowKind::Normal => {
+                    state.states.set(xdg_toplevel::State::Activated);
+                }
             }
         });
         surface.send_configure();
@@ -382,7 +404,7 @@ impl App {
         toplevel: &ToplevelSurface,
         decoration: WindowDecoration,
     ) {
-        if window_kind_for_toplevel(toplevel) == ManagedWindowKind::ShellBar {
+        if window_kind_for_toplevel(toplevel).is_shell_chrome() {
             configure_client_side_decoration(toplevel);
             return;
         }
@@ -438,27 +460,45 @@ impl App {
             && window.decoration == WindowDecoration::ServerSide
     }
 
-    /// Full canvas-space bounds of a window, including its server-side title bar
-    /// (when present) and client content. Used for interactive-resize hit-testing.
+    /// The window's interactive size: the xdg window geometry size when the
+    /// client has set one (client-side-decorated apps inset their visible window
+    /// from the surface bounds with shadow margins), falling back to the
+    /// surface-tree bounding box otherwise.
+    fn window_geometry_size(&self, window_index: usize) -> Size<i32, Logical> {
+        let window = &self.windows[window_index];
+        toplevel_geometry_size(window.surface.wl_surface())
+            .filter(|size| size.w > 0 && size.h > 0)
+            .unwrap_or(window.content_bbox_size)
+    }
+
+    /// Full canvas-space bounds of a window's interactive area, including its
+    /// server-side title bar when present. For client-side-decorated windows the
+    /// rect tracks the *visible* window geometry (excluding shadow margins) so
+    /// resize handles land on the visible edge rather than out in the shadow.
     fn window_canvas_rect(&self, window_index: usize) -> Rectangle<i32, Logical> {
         let window = &self.windows[window_index];
-        window_canvas_rect_for(
-            window.position,
-            window.content_bbox_size,
-            self.has_compositor_chrome(window_index),
+        if self.has_compositor_chrome(window_index) {
+            return window_canvas_rect_for(window.position, window.content_bbox_size, true);
+        }
+        let surface_origin = self.content_canvas_origin(window_index);
+        let geometry_loc = toplevel_geometry_loc(window.surface.wl_surface());
+        Rectangle::new(
+            surface_origin + geometry_loc,
+            self.window_geometry_size(window_index),
         )
     }
 
     /// Begin an interactive resize of `window_index` along `edges`, capturing the
     /// window's starting geometry so motion deltas can be resolved against it.
     pub(super) fn start_resize(&mut self, window_index: usize, edges: ResizeEdges) {
+        let initial_content_size = self.window_geometry_size(window_index);
         let window = &self.windows[window_index];
         self.resize = Some(ResizeState {
             window_id: window.id,
             edges,
             pointer_start: self.pointer_location,
             initial_position: window.position,
-            initial_content_size: window.content_bbox_size,
+            initial_content_size,
         });
         self.request_redraw();
     }
@@ -532,7 +572,7 @@ impl App {
             resize.edges,
             resize.initial_position,
             resize.initial_content_size,
-            self.windows[window_index].content_bbox_size,
+            self.window_geometry_size(window_index),
         );
         self.windows[window_index].position = new_position;
     }
@@ -546,23 +586,31 @@ impl App {
         Point::<i32, Logical>::from((0, 0)).to_physical(1)
     }
 
+    /// Logical screen-space origin of the launcher palette: pinned to the left
+    /// edge, directly below the bar.
+    fn launcher_screen_logical_origin(&self) -> Point<i32, Logical> {
+        Point::from((0, CONTROL_BAR_HEIGHT))
+    }
+
     pub(super) fn surface_screen_origin(&self, window_index: usize) -> Point<i32, Physical> {
         match self.windows[window_index].kind {
             ManagedWindowKind::Normal => self.content_screen_origin(window_index),
             ManagedWindowKind::ShellBar => self.shell_bar_screen_origin(),
+            ManagedWindowKind::Launcher => self.launcher_screen_logical_origin().to_physical(1),
         }
     }
 
-    fn hit_test_shell_bar(
+    fn hit_test_shell_surface(
         &self,
         window_index: usize,
         location: Point<f64, Logical>,
+        origin: Point<i32, Logical>,
     ) -> Option<HitTarget> {
         let window = &self.windows[window_index];
         let (surface, surface_location) = under_from_surface_tree(
             window.surface.wl_surface(),
             location,
-            Point::<i32, Logical>::from((0, 0)),
+            origin,
             WindowSurfaceType::ALL,
         )?;
         let relative_surface_location = location - surface_location.to_f64();

@@ -12,7 +12,7 @@ use smithay::{
         gles::GlesRenderer,
     },
     desktop::PopupManager,
-    utils::{Logical, Physical, Point, Rectangle},
+    utils::{Logical, Physical, Point, Rectangle, Size},
     wayland::{
         compositor::{SurfaceAttributes, TraversalAction, with_states, with_surface_tree_downward},
         shell::xdg::SurfaceCachedState,
@@ -165,7 +165,7 @@ impl App {
     pub(super) fn window_render_scale(&self, window_index: usize) -> f64 {
         match self.windows[window_index].kind {
             ManagedWindowKind::Normal => self.viewport_scale,
-            ManagedWindowKind::ShellBar => 1.0,
+            ManagedWindowKind::ShellBar | ManagedWindowKind::Launcher => 1.0,
         }
     }
 
@@ -251,6 +251,23 @@ pub(super) fn toplevel_geometry_loc(surface: &wl_surface::WlSurface) -> Point<i3
             .geometry
             .map(|geometry| geometry.loc)
             .unwrap_or_default()
+    })
+}
+
+/// The size of a toplevel's window geometry (the visible window excluding any
+/// client-side decoration shadow margins). `None` when the client has not set
+/// an explicit window geometry, in which case the caller falls back to the
+/// surface-tree bounding box.
+pub(super) fn toplevel_geometry_size(
+    surface: &wl_surface::WlSurface,
+) -> Option<Size<i32, Logical>> {
+    with_states(surface, |states| {
+        states
+            .cached_state
+            .get::<SurfaceCachedState>()
+            .current()
+            .geometry
+            .map(|geometry| geometry.size)
     })
 }
 
