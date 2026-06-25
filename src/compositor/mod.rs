@@ -39,16 +39,20 @@ use smithay::{
     output::{Mode, Output, PhysicalProperties, Scale, Subpixel},
     reexports::{
         calloop::{
-            EventLoop, Interest, Mode as CalloopMode, PostAction, generic::Generic,
+            EventLoop, Interest, LoopHandle, Mode as CalloopMode, PostAction, generic::Generic,
         },
         wayland_server::{Display, protocol::wl_seat},
     },
     utils::{Logical, Physical, Point, Serial, Size, Transform},
     wayland::{
         buffer::BufferHandler,
-        compositor::{CompositorClientState, CompositorHandler, CompositorState},
+        compositor::{
+            BufferAssignment, CompositorClientState, CompositorHandler, CompositorState,
+            SurfaceAttributes, add_blocker, add_pre_commit_hook, with_states,
+        },
         dmabuf::{
             DmabufFeedbackBuilder, DmabufGlobal, DmabufHandler, DmabufState, ImportNotifier,
+            get_dmabuf,
         },
         output::{OutputHandler, OutputManagerState},
         selection::{
@@ -68,7 +72,7 @@ use smithay::{
 use wayland_protocols::xdg::decoration::zv1::server::zxdg_toplevel_decoration_v1::Mode as DecorationMode;
 use wayland_protocols::xdg::shell::server::xdg_toplevel;
 use wayland_server::{
-    Client, DisplayHandle,
+    Client, DisplayHandle, Resource,
     backend::{ClientData, ClientId, DisconnectReason},
     protocol::{wl_buffer, wl_surface::WlSurface},
 };
@@ -147,6 +151,7 @@ struct App {
     dmabuf_state: DmabufState,
     _dmabuf_global: DmabufGlobal,
     pending_dmabuf_imports: Vec<(Dmabuf, ImportNotifier)>,
+    loop_handle: LoopHandle<'static, CalloopData>,
 }
 
 impl BufferHandler for App {
@@ -329,6 +334,51 @@ impl CompositorHandler for App {
         &client.get_data::<ClientState>().unwrap().compositor_state
     }
 
+    fn new_surface(&mut self, surface: &WlSurface) {
+        // Defer applying a commit until the client's buffer is actually ready.
+        //
+        // GPU clients attach a dmabuf together with an implicit-sync fence that
+        // only signals once their rendering has finished. Compositing before the
+        // fence signals risks sampling a half-drawn buffer (tearing/corruption);
+        // on real hardware the right behaviour is to wait for the fence on the
+        // GPU timeline rather than spin on the CPU.
+        //
+        // We follow the standard Smithay/anvil approach, which mirrors how
+        // Mutter/KWin handle this: attach a blocker on commit that holds the
+        // transaction until a calloop source polling the fence fires, so the
+        // wait happens asynchronously instead of blocking the event loop.
+        add_pre_commit_hook::<Self, _>(surface, |state, _dh, surface| {
+            let maybe_dmabuf = with_states(surface, |states| {
+                let mut guard = states.cached_state.get::<SurfaceAttributes>();
+                match guard.pending().buffer.as_ref() {
+                    Some(BufferAssignment::NewBuffer(buffer)) => get_dmabuf(buffer).ok().cloned(),
+                    _ => None,
+                }
+            });
+            let Some(dmabuf) = maybe_dmabuf else {
+                return;
+            };
+            // `Err(AlreadyReady)` means the fence is already signalled, so the
+            // commit can proceed immediately with no blocker (the common case).
+            let Ok((blocker, source)) = dmabuf.generate_blocker(Interest::READ) else {
+                return;
+            };
+            let Some(client) = surface.client() else {
+                return;
+            };
+            let inserted = state.loop_handle.insert_source(source, move |_, _, data| {
+                let dh = data.display.handle();
+                data.state
+                    .client_compositor_state(&client)
+                    .blocker_cleared(&mut data.state, &dh);
+                Ok(())
+            });
+            if inserted.is_ok() {
+                add_blocker(surface, blocker);
+            }
+        });
+    }
+
     fn commit(&mut self, surface: &WlSurface) {
         on_commit_buffer_handler::<Self>(surface);
         self.refresh_window_content_bbox(surface);
@@ -412,6 +462,9 @@ pub fn run_winit(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> 
         None => dmabuf_state.create_global::<App>(&dh, dmabuf_formats.iter().copied()),
     };
 
+    let mut event_loop: EventLoop<CalloopData> = EventLoop::try_new()?;
+    let handle = event_loop.handle();
+
     let state = App {
         compositor_state,
         xdg_shell_state: XdgShellState::new_with_capabilities::<App>(
@@ -445,15 +498,13 @@ pub fn run_winit(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> 
         dmabuf_state,
         _dmabuf_global: dmabuf_global,
         pending_dmabuf_imports: Vec::new(),
+        loop_handle: handle.clone(),
     };
 
     let command_socket_path = command_socket_path();
     remove_stale_socket(&command_socket_path)?;
     let command_listener = CommandListener::bind(&command_socket_path)?;
     command_listener.set_nonblocking(true)?;
-
-    let mut event_loop: EventLoop<CalloopData> = EventLoop::try_new()?;
-    let handle = event_loop.handle();
 
     // Accept new Wayland clients (epoll-driven instead of polled).
     let socket_source = ListeningSocketSource::with_name(WAYLAND_DISPLAY_NAME)?;
