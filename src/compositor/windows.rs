@@ -1,6 +1,6 @@
 use smithay::{
     desktop::{
-        WindowSurfaceType,
+        PopupManager, WindowSurfaceType,
         utils::{bbox_from_surface_tree, under_from_surface_tree},
     },
     utils::{Logical, Physical, Point, Rectangle, Serial},
@@ -23,6 +23,7 @@ use crate::{
 
 use super::{
     App, HitTarget, ManagedWindow, ManagedWindowKind, WindowDecoration, idle::ActivityReason,
+    rendering::toplevel_geometry_loc,
 };
 
 fn configure_server_side_decoration(toplevel: &ToplevelSurface) {
@@ -194,6 +195,33 @@ impl App {
                 continue;
             }
 
+            let content_origin = self.content_canvas_origin(window_index);
+
+            // Popups (menus) sit above this window's content and chrome, so
+            // they are hit-tested first. Their location comes from the popup's
+            // configured offset relative to the parent surface origin.
+            let geometry_loc = toplevel_geometry_loc(window.surface.wl_surface());
+            for (popup, popup_offset) in
+                PopupManager::popups_for_surface(window.surface.wl_surface())
+            {
+                let popup_origin =
+                    content_origin + geometry_loc + popup_offset - popup.geometry().loc;
+                if let Some((surface, surface_location)) = under_from_surface_tree(
+                    popup.wl_surface(),
+                    canvas_location,
+                    popup_origin,
+                    WindowSurfaceType::ALL,
+                ) {
+                    let relative_surface_location = canvas_location - surface_location.to_f64();
+                    let pointer_focus_origin = location - relative_surface_location;
+                    return Some(HitTarget::Client {
+                        window_index,
+                        surface,
+                        surface_location: pointer_focus_origin,
+                    });
+                }
+            }
+
             if self.has_compositor_chrome(window_index) {
                 if rect_contains(self.close_button_canvas_rect(window_index), canvas_location) {
                     return Some(HitTarget::CloseButton { window_index });
@@ -204,7 +232,6 @@ impl App {
                 }
             }
 
-            let content_origin = self.content_canvas_origin(window_index);
             if let Some((surface, surface_location)) = under_from_surface_tree(
                 window.surface.wl_surface(),
                 canvas_location,

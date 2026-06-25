@@ -4,16 +4,21 @@ use smithay::{
         Color32F, RendererSuper,
         damage::OutputDamageTracker,
         element::{
-            Kind, render_elements,
+            Kind,
             memory::MemoryRenderBufferRenderElement,
+            render_elements,
             solid::{SolidColorBuffer, SolidColorRenderElement},
             surface::{WaylandSurfaceRenderElement, render_elements_from_surface_tree},
             utils::RescaleRenderElement,
         },
         gles::GlesRenderer,
     },
+    desktop::PopupManager,
     utils::{Logical, Physical, Point, Rectangle, Size},
-    wayland::compositor::{SurfaceAttributes, TraversalAction, with_surface_tree_downward},
+    wayland::{
+        compositor::{SurfaceAttributes, TraversalAction, with_states, with_surface_tree_downward},
+        shell::xdg::SurfaceCachedState,
+    },
 };
 use wayland_server::protocol::wl_surface;
 
@@ -100,6 +105,11 @@ impl App {
     ) -> Vec<HearthspaceRenderElement> {
         let mut elements = Vec::new();
         for index in (0..self.windows.len()).rev() {
+            // Popups (e.g. menus) render above their window's content and chrome.
+            for popup in self.popup_render_elements(renderer, index) {
+                elements.push(popup);
+            }
+
             // Masonry-rendered title text sits on top of the solid title bar.
             if let Some(title_text) = self.title_text_element(renderer, index) {
                 elements.push(title_text);
@@ -113,6 +123,53 @@ impl App {
             for surface in self.window_render_elements(renderer, index) {
                 elements.push(HearthspaceRenderElement::from(
                     RescaleRenderElement::from_element(surface, origin, scale),
+                ));
+            }
+        }
+        elements
+    }
+
+    /// Collect render elements for every popup anchored to the given window.
+    ///
+    /// Popups (xdg_popup surfaces such as menus) are not part of the toplevel's
+    /// surface tree, so they are gathered separately and positioned relative to
+    /// the parent surface using the popup's configured location, mirroring the
+    /// math in Smithay's own `Window` rendering. They share the window's render
+    /// scale so the viewport zoom applies uniformly.
+    fn popup_render_elements(
+        &self,
+        renderer: &mut GlesRenderer,
+        window_index: usize,
+    ) -> Vec<HearthspaceRenderElement> {
+        let window = &self.windows[window_index];
+        let parent = window.surface.wl_surface();
+        let base = self.surface_screen_origin(window_index);
+        let scale = self.window_render_scale(window_index);
+        let geometry_loc = toplevel_geometry_loc(parent);
+
+        let mut elements = Vec::new();
+        for (popup, popup_offset) in PopupManager::popups_for_surface(parent) {
+            // Offset of the popup surface origin from the parent surface origin,
+            // in the parent's native (unscaled) logical coordinates.
+            let offset = geometry_loc + popup_offset - popup.geometry().loc;
+            let offset_physical = Point::<i32, Physical>::from((
+                (f64::from(offset.x) * scale).round() as i32,
+                (f64::from(offset.y) * scale).round() as i32,
+            ));
+            let popup_origin = base + offset_physical;
+
+            for surface in
+                render_elements_from_surface_tree::<_, WaylandSurfaceRenderElement<GlesRenderer>>(
+                    renderer,
+                    popup.wl_surface(),
+                    popup_origin,
+                    1.0,
+                    1.0,
+                    Kind::Unspecified,
+                )
+            {
+                elements.push(HearthspaceRenderElement::from(
+                    RescaleRenderElement::from_element(surface, popup_origin, scale),
                 ));
             }
         }
@@ -288,6 +345,21 @@ fn solid_element(
         1.0,
         Kind::Unspecified,
     )
+}
+
+/// The offset of a toplevel's window geometry within its surface, used to place
+/// popups relative to the parent surface origin. Defaults to `(0, 0)` when the
+/// client has not set an explicit window geometry.
+pub(super) fn toplevel_geometry_loc(surface: &wl_surface::WlSurface) -> Point<i32, Logical> {
+    with_states(surface, |states| {
+        states
+            .cached_state
+            .get::<SurfaceCachedState>()
+            .current()
+            .geometry
+            .map(|geometry| geometry.loc)
+            .unwrap_or_default()
+    })
 }
 
 fn close_button_x_rects(rect: Rectangle<i32, Logical>) -> Vec<Rectangle<i32, Logical>> {

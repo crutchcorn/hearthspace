@@ -34,7 +34,15 @@ use smithay::{
     },
     delegate_compositor, delegate_data_device, delegate_dmabuf, delegate_output, delegate_seat,
     delegate_shm, delegate_xdg_decoration, delegate_xdg_shell,
-    input::{Seat, SeatHandler, SeatState, keyboard::KeyboardHandle, pointer::PointerHandle},
+    desktop::{
+        PopupKeyboardGrab, PopupKind, PopupManager, PopupPointerGrab, PopupUngrabStrategy,
+        find_popup_root_surface,
+    },
+    input::{
+        Seat, SeatHandler, SeatState,
+        keyboard::KeyboardHandle,
+        pointer::{Focus, PointerHandle},
+    },
     output::{Mode, Output, PhysicalProperties, Scale, Subpixel},
     reexports::{
         calloop::{
@@ -154,6 +162,7 @@ struct App {
     _dmabuf_global: DmabufGlobal,
     pending_dmabuf_imports: Vec<(Dmabuf, ImportNotifier)>,
     loop_handle: LoopHandle<'static, CalloopData>,
+    popups: PopupManager,
 }
 
 impl BufferHandler for App {
@@ -188,7 +197,20 @@ impl XdgShellHandler for App {
         self.configure_toplevel(&surface, kind);
     }
 
-    fn new_popup(&mut self, _surface: PopupSurface, _positioner: PositionerState) {}
+    fn new_popup(&mut self, surface: PopupSurface, positioner: PositionerState) {
+        // Compute the popup's geometry from the client's positioner and send the
+        // initial configure. Without this the client (e.g. GTK4's menus) blocks
+        // forever waiting to be told where its popup goes, freezing the app.
+        surface.with_pending_state(|state| {
+            state.geometry = positioner.get_geometry();
+        });
+        if let Err(err) = self.popups.track_popup(PopupKind::Xdg(surface.clone())) {
+            eprintln!("Failed to track popup: {err}");
+        }
+        if let Err(err) = surface.send_configure() {
+            eprintln!("Failed to send initial popup configure: {err}");
+        }
+    }
 
     fn move_request(&mut self, surface: ToplevelSurface, _seat: wl_seat::WlSeat, _serial: Serial) {
         let Some(window_index) = self
@@ -214,14 +236,55 @@ impl XdgShellHandler for App {
         self.request_redraw();
     }
 
-    fn grab(&mut self, _surface: PopupSurface, _seat: wl_seat::WlSeat, _serial: Serial) {}
+    fn grab(&mut self, surface: PopupSurface, seat: wl_seat::WlSeat, serial: Serial) {
+        // Set up a popup grab so the menu behaves modally: keyboard and pointer
+        // input route to the popup, and clicking elsewhere dismisses it.
+        let Some(seat) = Seat::<Self>::from_resource(&seat) else {
+            return;
+        };
+        let kind = PopupKind::Xdg(surface);
+        let Ok(root) = find_popup_root_surface(&kind) else {
+            return;
+        };
+        let Ok(mut grab) = self.popups.grab_popup(root, kind, &seat, serial) else {
+            return;
+        };
+
+        if let Some(keyboard) = seat.get_keyboard() {
+            if keyboard.is_grabbed()
+                && !(keyboard.has_grab(serial)
+                    || keyboard.has_grab(grab.previous_serial().unwrap_or(serial)))
+            {
+                grab.ungrab(PopupUngrabStrategy::All);
+                return;
+            }
+            keyboard.set_focus(self, grab.current_grab(), serial);
+            keyboard.set_grab(self, PopupKeyboardGrab::new(&grab), serial);
+        }
+
+        if let Some(pointer) = seat.get_pointer() {
+            if pointer.is_grabbed()
+                && !(pointer.has_grab(serial)
+                    || pointer.has_grab(grab.previous_serial().unwrap_or_else(|| grab.serial())))
+            {
+                grab.ungrab(PopupUngrabStrategy::All);
+                return;
+            }
+            pointer.set_grab(self, PopupPointerGrab::new(&grab), serial, Focus::Keep);
+        }
+    }
 
     fn reposition_request(
         &mut self,
-        _surface: PopupSurface,
-        _positioner: PositionerState,
-        _token: u32,
+        surface: PopupSurface,
+        positioner: PositionerState,
+        token: u32,
     ) {
+        surface.with_pending_state(|state| {
+            state.geometry = positioner.get_geometry();
+            state.positioner = positioner;
+        });
+        surface.send_repositioned(token);
     }
 
     fn toplevel_destroyed(&mut self, surface: ToplevelSurface) {
@@ -384,6 +447,7 @@ impl CompositorHandler for App {
 
     fn commit(&mut self, surface: &WlSurface) {
         on_commit_buffer_handler::<Self>(surface);
+        self.popups.commit(surface);
         self.refresh_window_content_bbox(surface);
         if let Some(window_id) = self.managed_normal_window_id_for_surface(surface) {
             self.idle_daemon
@@ -502,6 +566,7 @@ pub fn run_winit(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> 
         _dmabuf_global: dmabuf_global,
         pending_dmabuf_imports: Vec::new(),
         loop_handle: handle.clone(),
+        popups: PopupManager::default(),
     };
 
     let command_socket_path = command_socket_path();
@@ -605,6 +670,7 @@ pub fn run_winit(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> 
         }
 
         data.display.flush_clients()?;
+        data.state.popups.cleanup();
         data.state.output.cleanup();
     }
 
