@@ -59,7 +59,7 @@ fn toplevel_app_id(surface: &ToplevelSurface) -> Option<String> {
     })
 }
 
-fn toplevel_title(surface: &ToplevelSurface) -> Option<String> {
+pub(super) fn toplevel_title(surface: &ToplevelSurface) -> Option<String> {
     with_states(surface.wl_surface(), |states| {
         states
             .data_map

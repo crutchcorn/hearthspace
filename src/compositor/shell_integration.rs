@@ -146,6 +146,30 @@ pub(super) fn spawn_shell_bar(command_socket_path: &PathBuf) {
     }
 }
 
+/// Spawn the Xilem-rendered shell control as its own Wayland client.
+///
+/// This is the first stage of the Xilem/Masonry integration spike: it runs
+/// alongside the GPUI shell bar and hosts a control (Zoom In) that the bar no
+/// longer draws, proving Xilem can act as a shell client inside Hearthspace.
+pub(super) fn spawn_shell_xilem_button(command_socket_path: &PathBuf) {
+    let current_exe = match env::current_exe() {
+        Ok(path) => path,
+        Err(error) => {
+            eprintln!("Failed to locate current executable for Xilem shell control: {error}");
+            return;
+        }
+    };
+
+    if let Err(error) = Command::new(current_exe)
+        .arg(SHELL_XILEM_BUTTON_FLAG)
+        .env("WAYLAND_DISPLAY", WAYLAND_DISPLAY_NAME)
+        .env(SHELL_COMMAND_SOCKET_ENV, command_socket_path)
+        .spawn()
+    {
+        eprintln!("Failed to spawn Xilem shell control: {error}");
+    }
+}
+
 fn ensure_gtk_client_settings() -> std::io::Result<PathBuf> {
     let config_dir = runtime_path(GTK_CLIENT_CONFIG_DIR_NAME);
     let settings = "[Settings]\ngtk-decoration-layout=:close\n";

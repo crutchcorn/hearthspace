@@ -7,6 +7,7 @@ use crate::{RunOptions, config::*, geometry::CanvasPoint, shell::app_catalog::Ap
 
 mod idle;
 mod input;
+mod masonry_titlebar;
 mod rendering;
 mod shell_integration;
 mod viewport;
@@ -17,6 +18,7 @@ use input::handle_input_event;
 use rendering::{WindowDecorationBuffers, send_frames_surface_tree};
 use shell_integration::{
     accept_command_connections, command_socket_path, remove_stale_socket, spawn_shell_bar,
+    spawn_shell_xilem_button,
 };
 use viewport::ViewportAnimation;
 use windows::{decoration_for_new_window, position_for_new_window, window_kind_for_toplevel};
@@ -82,6 +84,9 @@ struct ManagedWindow {
     kind: ManagedWindowKind,
     decoration: WindowDecoration,
     decoration_buffers: WindowDecorationBuffers,
+    /// Masonry-rasterized title-text image, lazily built and cached. See
+    /// [`masonry_titlebar`] for the second stage of the Xilem/Masonry spike.
+    title_text: Option<masonry_titlebar::TitleTextBuffer>,
     /// Bounding-box size of the window's surface tree, cached on commit so the
     /// per-frame rendering and hit-testing paths don't re-walk the tree.
     content_bbox_size: Size<i32, Logical>,
@@ -172,6 +177,7 @@ impl XdgShellHandler for App {
             kind,
             decoration: decoration_for_new_window(kind),
             decoration_buffers: WindowDecorationBuffers::default(),
+            title_text: None,
             content_bbox_size: Size::default(),
         });
         if kind == ManagedWindowKind::Normal {
@@ -559,6 +565,7 @@ pub fn run_winit(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> 
     })?;
 
     spawn_shell_bar(&command_socket_path);
+    spawn_shell_xilem_button(&command_socket_path);
 
     println!("Hearthspace running on WAYLAND_DISPLAY={WAYLAND_DISPLAY_NAME}");
     if state.scroll_zooms_without_super {

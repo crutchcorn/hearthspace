@@ -9,6 +9,25 @@ async-io = "2.3.3"
 atspi = "0.30.0"
 gpui = { version = "0.2.2", default-features = false, features = ["wayland"] }
 gtk = { package = "gtk4", version = "0.11" }
+# Xilem (app shell) and Masonry (compositor-side imaging) are pulled from the
+# latest `main` commit because the published 0.4 release is ~200 commits behind
+# the APIs we integrate against. Pinned to a rev for reproducible builds.
+masonry = { git = "https://github.com/linebender/xilem", rev = "5d72ad41eb660fa620110e045d332fd95684ebae", features = ["testing"] }
+xilem = { git = "https://github.com/linebender/xilem", rev = "5d72ad41eb660fa620110e045d332fd95684ebae" }
+# naga 28 (pulled in transitively via wgpu/vello) only compiles its WGSL
+# error-emit path when the `termcolor` feature is enabled, but the crates that
+# depend on it (wgpu-core, vello_shaders) enable `wgsl-in` without it. We add a
+# direct dependency purely to union `termcolor` into the shared naga build.
+naga = { version = "28.0.0", default-features = false, features = ["termcolor"] }
+# gpui's font stack (zed-font-kit) enables `dlopen` on yeslogic-fontconfig-sys,
+# which feature-unification then forces on for parley's fontique too. fontique
+# only compiles against a dlopen'd sys crate when its own `fontconfig-dlopen`
+# code path is enabled, so we union that feature in here.
+fontique = { version = "0.8.0", features = ["fontconfig-dlopen"] }
+# Masonry's CPU render harness returns an `image::RgbaImage`; name the type
+# directly so the title-text raster path is testable. Pulled in transitively
+# already, so this only fixes the version we link against.
+image = { version = "0.25", default-features = false }
 smithay = { version = "0.7.0", default-features = false, features = ["backend_winit", "desktop", "renderer_gl", "wayland_frontend"] }
 tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
 wayland-protocols = { version = "0.32.8", features = ["server"] }
@@ -18,6 +37,15 @@ wayland-server = "0.31.9"
 proptest = "1"
 rstest = "0.26"
 tempfile = "3"
+
+# Workaround for an upstream incompatibility pulled in via Xilem/Masonry:
+# `vello_shaders` 0.8's build script depends on `naga` 28 with the `wgsl-in`
+# feature but without `termcolor`, yet naga 28's WGSL error-emit path only
+# compiles when `termcolor` is enabled. Declaring naga in our own build graph
+# with `termcolor` makes Cargo unify that feature in, so the vello shader build
+# script compiles. The empty `build.rs` exists solely to activate this entry.
+[build-dependencies]
+naga = { version = "28.0.0", default-features = false, features = ["wgsl-in", "termcolor"] }
 
 # Centralized lint policy so local `cargo clippy`/`cargo build` enforce the same
 # discipline as CI (which also passes `-D warnings` to escalate rustc warnings).

@@ -1,26 +1,33 @@
+use masonry::peniko::Color;
 use smithay::{
     backend::renderer::{
         Color32F, RendererSuper,
         damage::OutputDamageTracker,
         element::{
             Kind, render_elements,
+            memory::MemoryRenderBufferRenderElement,
             solid::{SolidColorBuffer, SolidColorRenderElement},
             surface::{WaylandSurfaceRenderElement, render_elements_from_surface_tree},
             utils::RescaleRenderElement,
         },
         gles::GlesRenderer,
     },
-    utils::{Logical, Physical, Point, Rectangle},
+    utils::{Logical, Physical, Point, Rectangle, Size},
     wayland::compositor::{SurfaceAttributes, TraversalAction, with_surface_tree_downward},
 };
 use wayland_server::protocol::wl_surface;
 
-use super::{App, ManagedWindowKind};
+use super::{
+    App, ManagedWindowKind,
+    masonry_titlebar::{self, TITLE_TEXT_HEIGHT, TITLE_TEXT_WIDTH},
+    windows::toplevel_title,
+};
 
 render_elements! {
     pub(super) HearthspaceRenderElement<=GlesRenderer>;
     Surface = RescaleRenderElement<WaylandSurfaceRenderElement<GlesRenderer>>,
     Solid = SolidColorRenderElement,
+    Memory = MemoryRenderBufferRenderElement<GlesRenderer>,
 }
 
 /// Result of rendering one frame: the damaged output regions to submit, or
@@ -93,6 +100,10 @@ impl App {
     ) -> Vec<HearthspaceRenderElement> {
         let mut elements = Vec::new();
         for index in (0..self.windows.len()).rev() {
+            // Masonry-rendered title text sits on top of the solid title bar.
+            if let Some(title_text) = self.title_text_element(renderer, index) {
+                elements.push(title_text);
+            }
             for solid in self.title_bar_elements(index) {
                 elements.push(HearthspaceRenderElement::from(solid));
             }
@@ -131,6 +142,94 @@ impl App {
             ManagedWindowKind::Normal => self.viewport_scale,
             ManagedWindowKind::ShellBar => 1.0,
         }
+    }
+
+    /// Build the Masonry-rendered title-text render element for a window, or
+    /// `None` when the window has no compositor chrome or the title bar is too
+    /// narrow to show any text.
+    ///
+    /// The rasterized image is cached on the window and only rebuilt when the
+    /// title text or active state changes (see [`masonry_titlebar`]).
+    pub(super) fn title_text_element(
+        &mut self,
+        renderer: &mut GlesRenderer,
+        window_index: usize,
+    ) -> Option<HearthspaceRenderElement> {
+        if !self.has_compositor_chrome(window_index) {
+            return None;
+        }
+
+        let title_rect = self.title_bar_rect(window_index);
+        let close_rect = self.close_button_rect(window_index);
+        let scale = self.window_render_scale(window_index);
+
+        let title = toplevel_title(&self.windows[window_index].surface)
+            .filter(|title| !title.trim().is_empty())
+            .unwrap_or_else(|| "Hearthspace".to_string());
+        let active = Some(window_index)
+            == self
+                .windows
+                .iter()
+                .rposition(|window| window.kind == ManagedWindowKind::Normal);
+
+        // Re-run Masonry's layout/raster only when the cache key changes.
+        let needs_rebuild = self.windows[window_index]
+            .title_text
+            .as_ref()
+            .map(|cached| cached.title != title || cached.active != active)
+            .unwrap_or(true);
+        if needs_rebuild {
+            let background = if active {
+                Color::from_rgb8(48, 82, 140)
+            } else {
+                Color::from_rgb8(38, 46, 61)
+            };
+            let buffer = masonry_titlebar::render_title_text(
+                &title,
+                background,
+                Color::from_rgb8(234, 242, 255),
+            );
+            self.windows[window_index].title_text = Some(masonry_titlebar::TitleTextBuffer {
+                title,
+                active,
+                buffer,
+            });
+        }
+
+        // Place the cached image vertically centered, inset from the left, and
+        // cropped so it never overdraws the close button.
+        let inset = (6.0 * scale).round() as i32;
+        let display_h = (f64::from(TITLE_TEXT_HEIGHT) * scale).round().max(1.0) as i32;
+        let available_w = close_rect.loc.x - title_rect.loc.x - inset * 2;
+        if available_w <= 0 {
+            return None;
+        }
+        let display_w = ((f64::from(TITLE_TEXT_WIDTH) * scale).round() as i32).min(available_w);
+        if display_w <= 0 {
+            return None;
+        }
+        let origin_x = title_rect.loc.x + inset;
+        let origin_y = title_rect.loc.y + ((title_rect.size.h - display_h) / 2).max(0);
+
+        // Crop (rather than squash) the source so the text keeps a uniform scale.
+        let src_w = (f64::from(display_w) / scale).min(f64::from(TITLE_TEXT_WIDTH));
+        let src =
+            Rectangle::<f64, Logical>::from_size(Size::from((src_w, f64::from(TITLE_TEXT_HEIGHT))));
+
+        let buffer = &self.windows[window_index].title_text.as_ref()?.buffer;
+        let element = MemoryRenderBufferRenderElement::from_buffer(
+            renderer,
+            Point::<i32, Logical>::from((origin_x, origin_y))
+                .to_physical(1)
+                .to_f64(),
+            buffer,
+            None,
+            Some(src),
+            Some(Size::<i32, Logical>::from((display_w, display_h))),
+            Kind::Unspecified,
+        )
+        .ok()?;
+        Some(HearthspaceRenderElement::from(element))
     }
 
     pub(super) fn title_bar_elements(

@@ -17,6 +17,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         hearthspace::test_apps::gtk::run()
     } else if args.iter().any(|arg| arg == "--shell-bar") {
         hearthspace::shell::bar::run()
+    } else if args
+        .iter()
+        .any(|arg| arg == hearthspace::config::SHELL_XILEM_BUTTON_FLAG)
+    {
+        hearthspace::shell::xilem_button::run()
     } else {
         hearthspace::run_with_options(hearthspace::RunOptions {
             scroll_zooms_without_super: args

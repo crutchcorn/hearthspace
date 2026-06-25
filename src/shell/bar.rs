@@ -52,7 +52,9 @@ impl Render for ShellBar {
             ShellCommand::PanRight,
             ShellCommand::PanUp,
             ShellCommand::PanDown,
-            ShellCommand::ZoomIn,
+            // ShellCommand::ZoomIn is intentionally omitted here: it is now
+            // rendered by the Xilem shell control (see shell::xilem_button) as
+            // the first stage of the Xilem/Masonry integration spike.
             ShellCommand::ZoomOut,
             ShellCommand::LogAccessibilityTree,
         ] {
