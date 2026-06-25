@@ -157,10 +157,10 @@ pub(super) fn handle_input_event(state: &mut App, event: InputEvent<WinitInput>)
 
             match focus.clone() {
                 Some((surface, _)) => {
-                    if event.state() == ButtonState::Pressed {
-                        if let Some(window_index) = state.window_index_for_surface(&surface) {
-                            state.set_keyboard_focus_to_window(window_index, surface);
-                        }
+                    if event.state() == ButtonState::Pressed
+                        && let Some(window_index) = state.window_index_for_surface(&surface)
+                    {
+                        state.set_keyboard_focus_to_window(window_index, surface);
                     }
                 }
                 _ if is_left_button && event.state() == ButtonState::Pressed => {

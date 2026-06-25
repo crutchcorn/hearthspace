@@ -2,13 +2,13 @@
 name = "hearthspace"
 version = "0.1.0"
 edition = "2024"
-rust-version = "1.85.0"
+rust-version = "1.93.1"
 
 [dependencies]
 async-io = "2.3.3"
 atspi = "0.30.0"
 gpui = { version = "0.2.2", default-features = false, features = ["wayland"] }
-gtk = { package = "gtk4", version = "0.9.7" }
+gtk = { package = "gtk4", version = "0.11" }
 smithay = { version = "0.7.0", default-features = false, features = ["backend_winit", "desktop", "renderer_gl", "wayland_frontend"] }
 tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
 wayland-protocols = { version = "0.32.8", features = ["server"] }
@@ -16,5 +16,5 @@ wayland-server = "0.31.9"
 
 [dev-dependencies]
 proptest = "1"
-rstest = "0.23"
+rstest = "0.26"
 tempfile = "3"

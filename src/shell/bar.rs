@@ -194,12 +194,12 @@ impl ShellBar {
                 {
                     return;
                 }
-                if let Some(key_char) = &event.keystroke.key_char {
-                    if !key_char.chars().all(char::is_control) {
-                        self.query.push_str(key_char);
-                        self.selected_result = 0;
-                        cx.notify();
-                    }
+                if let Some(key_char) = &event.keystroke.key_char
+                    && !key_char.chars().all(char::is_control)
+                {
+                    self.query.push_str(key_char);
+                    self.selected_result = 0;
+                    cx.notify();
                 }
             }
         }
