@@ -269,7 +269,8 @@ impl App {
         // Native (unscaled) bar size the Masonry image is rasterized at; the
         // memory element scales it to `screen_rect` so the viewport zoom is
         // applied uniformly with the rest of the window.
-        let native_w = self.title_bar_canvas_rect(window_index).size.w.max(1);
+        let native_size = self.title_bar_canvas_rect(window_index).size;
+        let native_w = native_size.w.max(1);
 
         let title = toplevel_title(&self.windows[window_index].surface)
             .filter(|title| !title.trim().is_empty())
@@ -299,12 +300,22 @@ impl App {
         }
 
         let buffer = &self.windows[window_index].titlebar.as_ref()?.buffer;
+        // Source the full native-sized Masonry image and let the memory element
+        // stretch it to the (zoom-scaled) `screen_rect`. Passing the native
+        // `src` is what makes the bar scale with the window: with `src = None`
+        // the element would instead sample a screen-sized region out of the
+        // native buffer, leaving the chrome at native size (so the close button
+        // drifts off the right edge as the window grows under zoom).
+        let native_src = Rectangle::from_size(Size::<f64, Logical>::from((
+            f64::from(native_w),
+            f64::from(native_size.h),
+        )));
         let element = MemoryRenderBufferRenderElement::from_buffer(
             renderer,
             screen_rect.loc.to_physical(1).to_f64(),
             buffer,
             None,
-            None,
+            Some(native_src),
             Some(screen_rect.size),
             Kind::Unspecified,
         )
