@@ -3,6 +3,7 @@ use smithay::{
         PopupManager, WindowSurfaceType,
         utils::{bbox_from_surface_tree, under_from_surface_tree},
     },
+    reexports::winit::window::CursorIcon,
     utils::{Logical, Physical, Point, Rectangle, SERIAL_COUNTER, Size},
     wayland::{
         compositor::{TraversalAction, with_states, with_surface_tree_downward},
@@ -496,7 +497,11 @@ impl App {
         let Some(resize) = self.resize.take() else {
             return;
         };
-        if let Some(window) = self.windows.iter().find(|window| window.id == resize.window_id) {
+        if let Some(window) = self
+            .windows
+            .iter()
+            .find(|window| window.id == resize.window_id)
+        {
             window.surface.with_pending_state(|state| {
                 state.states.unset(xdg_toplevel::State::Resizing);
             });
@@ -656,7 +661,11 @@ fn resize_edges_at(
 ) -> Option<ResizeEdges> {
     let outer = Rectangle::new(
         (window_rect.loc.x - border, window_rect.loc.y - border).into(),
-        (window_rect.size.w + border * 2, window_rect.size.h + border * 2).into(),
+        (
+            window_rect.size.w + border * 2,
+            window_rect.size.h + border * 2,
+        )
+            .into(),
     );
     if !rect_contains(outer, point) || rect_contains(window_rect, point) {
         return None;
@@ -712,6 +721,24 @@ fn resize_anchored_position(
         position.y = anchor.y + initial.h - actual.h;
     }
     position
+}
+
+/// The cursor that communicates which resize a window edge or corner performs.
+/// Edges map to the bidirectional CSS-style resize cursors; corners map to the
+/// matching diagonal cursor.
+pub(super) fn resize_cursor_icon(edges: ResizeEdges) -> CursorIcon {
+    match (edges.top || edges.bottom, edges.left || edges.right) {
+        (true, true) => {
+            if (edges.top && edges.left) || (edges.bottom && edges.right) {
+                CursorIcon::NwseResize
+            } else {
+                CursorIcon::NeswResize
+            }
+        }
+        (true, false) => CursorIcon::NsResize,
+        (false, true) => CursorIcon::EwResize,
+        (false, false) => CursorIcon::Default,
+    }
 }
 
 #[cfg(test)]
@@ -875,12 +902,18 @@ mod tests {
     #[test]
     fn resize_target_shrinks_with_left_drag_and_clamps() {
         // Dragging the left edge right shrinks the width.
-        let result =
-            resize_target_content_size(edges(true, false, false, false), size(400, 300), (30, 0).into());
+        let result = resize_target_content_size(
+            edges(true, false, false, false),
+            size(400, 300),
+            (30, 0).into(),
+        );
         assert_eq!(result, size(370, 300));
         // Clamped to the minimum width regardless of how far the drag goes.
-        let clamped =
-            resize_target_content_size(edges(true, false, false, false), size(400, 300), (10_000, 0).into());
+        let clamped = resize_target_content_size(
+            edges(true, false, false, false),
+            size(400, 300),
+            (10_000, 0).into(),
+        );
         assert_eq!(clamped.w, MIN_WINDOW_WIDTH);
     }
 
@@ -906,5 +939,45 @@ mod tests {
             size(450, 320),
         );
         assert_eq!(position, point(100, 100));
+    }
+
+    #[test]
+    fn resize_cursor_matches_edges_and_corners() {
+        assert_eq!(
+            resize_cursor_icon(edges(false, false, true, false)),
+            CursorIcon::NsResize
+        );
+        assert_eq!(
+            resize_cursor_icon(edges(false, false, false, true)),
+            CursorIcon::NsResize
+        );
+        assert_eq!(
+            resize_cursor_icon(edges(true, false, false, false)),
+            CursorIcon::EwResize
+        );
+        assert_eq!(
+            resize_cursor_icon(edges(true, false, true, false)),
+            CursorIcon::NwseResize,
+            "top-left corner"
+        );
+        assert_eq!(
+            resize_cursor_icon(edges(false, true, false, true)),
+            CursorIcon::NwseResize,
+            "bottom-right corner"
+        );
+        assert_eq!(
+            resize_cursor_icon(edges(false, true, true, false)),
+            CursorIcon::NeswResize,
+            "top-right corner"
+        );
+        assert_eq!(
+            resize_cursor_icon(edges(true, false, false, true)),
+            CursorIcon::NeswResize,
+            "bottom-left corner"
+        );
+        assert_eq!(
+            resize_cursor_icon(ResizeEdges::default()),
+            CursorIcon::Default
+        );
     }
 }

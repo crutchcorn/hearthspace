@@ -10,12 +10,13 @@ use smithay::{
         keyboard::{FilterResult, keysyms},
         pointer::{AxisFrame, ButtonEvent, MotionEvent},
     },
+    reexports::winit::window::CursorIcon,
     utils::SERIAL_COUNTER,
 };
 
 use crate::config::{SCROLL_ZOOM_SENSITIVITY, WHEEL_SCROLL_PIXEL_EQUIVALENT};
 
-use super::{App, DragState, HitTarget, idle::ActivityReason};
+use super::{App, DragState, HitTarget, idle::ActivityReason, windows::resize_cursor_icon};
 
 pub(super) fn handle_input_event(state: &mut App, event: InputEvent<WinitInput>) {
     match event {
@@ -51,12 +52,19 @@ pub(super) fn handle_input_event(state: &mut App, event: InputEvent<WinitInput>)
                 return;
             }
 
-            if state.resize.is_some() {
+            if let Some(resize) = state.resize.as_ref() {
+                let edges = resize.edges;
+                state.cursor_icon = resize_cursor_icon(edges);
                 state.update_resize(location);
                 return;
             }
 
-            let focus = match state.hit_test(location) {
+            let hit = state.hit_test(location);
+            state.cursor_icon = match &hit {
+                Some(HitTarget::ResizeBorder { edges, .. }) => resize_cursor_icon(*edges),
+                _ => CursorIcon::Default,
+            };
+            let focus = match hit {
                 Some(HitTarget::Client {
                     window_index,
                     surface,

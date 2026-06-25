@@ -24,6 +24,7 @@ use windows::{
     ResizeEdges, decoration_for_new_window, position_for_new_window, window_kind_for_toplevel,
 };
 
+use smithay::reexports::winit::window::CursorIcon;
 use smithay::{
     backend::{
         allocator::dmabuf::Dmabuf,
@@ -164,6 +165,10 @@ struct App {
     focused_normal_window_id: Option<u64>,
     drag: Option<DragState>,
     resize: Option<ResizeState>,
+    /// Cursor the compositor wants the host winit window to show. Updated from
+    /// pointer-motion hit-testing and applied to the backend by the event loop
+    /// (which owns the winit window, a sibling of this handler state).
+    cursor_icon: CursorIcon,
     next_spawn_position: CanvasPoint,
     spawn_offset: i32,
     pointer_location: Point<f64, Logical>,
@@ -609,6 +614,7 @@ pub fn run_winit(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> 
         focused_normal_window_id: None,
         drag: None,
         resize: None,
+        cursor_icon: CursorIcon::Default,
         next_spawn_position: CanvasPoint { x: 80, y: 96 },
         spawn_offset: 0,
         pointer_location: (0.0, 0.0).into(),
@@ -698,6 +704,7 @@ pub fn run_winit(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> 
         start_time: std::time::Instant::now(),
         running: true,
         full_redraw: 1,
+        applied_cursor: CursorIcon::Default,
     };
 
     data.render()?;
@@ -718,6 +725,7 @@ pub fn run_winit(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> 
         data.process_pending_dmabuf_imports();
         data.state.handle_idle_transitions();
         data.state.advance_viewport_animation();
+        data.apply_cursor_icon();
 
         if data.state.needs_redraw {
             data.render()?;
@@ -748,9 +756,23 @@ struct CalloopData {
     // leave the renderer's EGL context surfaceless, which makes `buffer_age`
     // (an `eglQuerySurface` that requires the window surface be current) fail.
     full_redraw: u8,
+    // Cursor icon currently applied to the winit window, so the desired cursor
+    // (`state.cursor_icon`) is only pushed to the backend when it changes.
+    applied_cursor: CursorIcon,
 }
 
 impl CalloopData {
+    /// Push the compositor's desired cursor to the host winit window, but only
+    /// when it differs from the cursor currently shown.
+    fn apply_cursor_icon(&mut self) {
+        if self.applied_cursor == self.state.cursor_icon {
+            return;
+        }
+        self.applied_cursor = self.state.cursor_icon;
+        let Backend::Winit(backend) = &self.backend;
+        backend.window().set_cursor(self.applied_cursor);
+    }
+
     fn process_pending_dmabuf_imports(&mut self) {
         if self.state.pending_dmabuf_imports.is_empty() {
             return;

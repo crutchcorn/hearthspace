@@ -20,11 +20,7 @@ use smithay::{
 };
 use wayland_server::protocol::wl_surface;
 
-use super::{
-    App, ManagedWindowKind,
-    masonry_titlebar,
-    windows::toplevel_title,
-};
+use super::{App, ManagedWindowKind, masonry_titlebar, windows::toplevel_title};
 
 render_elements! {
     pub(super) HearthspaceRenderElement<=GlesRenderer>;
@@ -214,7 +210,9 @@ impl App {
         let needs_rebuild = self.windows[window_index]
             .titlebar
             .as_ref()
-            .map(|cached| cached.width != native_w || cached.title != title || cached.active != active)
+            .map(|cached| {
+                cached.width != native_w || cached.title != title || cached.active != active
+            })
             .unwrap_or(true);
         if needs_rebuild {
             let buffer = masonry_titlebar::render_titlebar(native_w, &title, active);
