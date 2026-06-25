@@ -12,7 +12,7 @@ Wayland clients deliver frames as either:
   drawing by the time it commits, so the buffer is immediately ready and cheap
   for us to upload/sample.
 - **dmabuf buffers:** GPU-side buffers (e.g. GTK4's GL renderer, Firefox, the
-  GPUI shell bar). These come with an *implicit-sync fence* that only signals
+  Xilem shell). These come with an *implicit-sync fence* that only signals
   once the client's GPU work has actually finished. We advertise
   `zwp_linux_dmabuf_v1` so these clients can hand us hardware buffers instead of
   failing EGL setup. See `run_winit` in `src/compositor/mod.rs`.
@@ -50,7 +50,7 @@ apply the commit immediately.
 
 ### Symptom
 
-Launching a GPU/dmabuf client (GNOME Calculator, Firefox, the GPUI shell bar)
+Launching a GPU/dmabuf client (GNOME Calculator, Firefox, the Xilem shell)
 freezes the whole shell for ~1.5 seconds **once per client**. Input typed during
 the freeze is buffered and applied late (e.g. typing "firefox" shows up as
 `fffffffffffffffffi`). SHM clients (e.g. `foot`) do **not** trigger it.

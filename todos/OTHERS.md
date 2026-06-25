@@ -7,5 +7,5 @@
       is a heuristic until windows have direct AT-SPI object references.
 - [ ] Full accessibility integration.
 - [ ] Add MCP (https://github.com/modelcontextprotocol/rust-sdk) to interface with AT-SPI
-- [ ] Add Ollama chat interface to GPUI shell
+- [ ] Add Ollama chat interface to the Xilem shell
     - Use macOS host Ollama network instance

@@ -56,9 +56,9 @@ The preferred model is:
 UI framework app -> Wayland buffer -> Hearthspace composites it
 ```
 
-For example, a GPUI-based launcher, settings app, inspector, command palette, or note editor could run as a Wayland client. Hearthspace can recognize it as shell UI and place it in screen-space or canvas-space depending on the surface's role.
+For example, a Xilem-based launcher, settings app, inspector, command palette, or note editor could run as a Wayland client. Hearthspace can recognize it as shell UI and place it in screen-space or canvas-space depending on the surface's role.
 
-Embedding a UI framework directly into the compositor render loop is a different tradeoff. It requires the framework to render into a texture, image, or scene that the compositor can consume directly, while the compositor keeps ownership of the event loop, renderer, Wayland protocols, and input routing. GPUI currently expects to own an application/window/platform flow, so it is not a good fit for direct embedding yet.
+Embedding a UI framework directly into the compositor render loop is a different tradeoff. It requires the framework to render into a texture, image, or scene that the compositor can consume directly, while the compositor keeps ownership of the event loop, renderer, Wayland protocols, and input routing. Xilem's app driver expects to own the winit application/window/event-loop flow, so the full framework is not a good fit for direct embedding — but its widget layer, Masonry, can rasterize into a buffer the compositor consumes directly, which Hearthspace already does for window title-text (`compositor/masonry_titlebar.rs`).
 
 ## Recommended Boundary
 

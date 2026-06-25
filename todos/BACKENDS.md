@@ -76,6 +76,6 @@ a VT with working input and output, sharing all state with the winit path.
 ## Notes
 
 - All Wayland handlers, window management, idle daemon, geometry, shell, and the
-  GPUI bar are already backend-neutral and need no changes.
+  Xilem shell are already backend-neutral and need no changes.
 - Step 1 is the event-loop fix from `IMPROVEMENTS.md`; Steps 2–3 are the
   multi-backend payoff.

@@ -42,7 +42,7 @@ outside. Hearthspace owns its compositor, so most of that plumbing evaporates:
 | AT-SPI | already works (host bus) | **already works** — Hearthspace already integrates AT-SPI (`accessibility.rs`) and ships an a11y test app |
 | Control IPC | invented per backend | **already exists** — the shell command socket (`compositor/shell_integration.rs`) |
 
-## The AT-SPI question: pro for clients, gap only for GPUI chrome
+## The AT-SPI question: a pro for both clients and shell chrome
 
 Testing through AT-SPI is a genuine **pro**, not a con, for the common case:
 
@@ -53,21 +53,21 @@ Testing through AT-SPI is a genuine **pro**, not a con, for the common case:
   (`accessibility.rs` walks exactly this tree). This is real-world a11y coverage
   for free.
 
-The one **gap** is narrow and specific: Hearthspace's *own* shell chrome drawn
-by **GPUI** (the bar, command palette) exposes **no** AT-SPI tree. GPUI does not
-depend on AccessKit (verified: no `accesskit` crate in `Cargo.lock`, and the
-vendored `gpui` has no accessibility deps), so its widgets are invisible to
-XPath locators. Note the bar (`shell/bar.rs`) is *already* a standalone GPUI
-Wayland client, not embedded in the render loop — but client-ness alone doesn't
-grant a11y without AccessKit.
+Hearthspace's *own* shell chrome is drawn by **Xilem**, whose widget layer
+**Masonry** integrates **AccessKit** (`accesskit` is now in `Cargo.lock` via
+`masonry_winit`). On Linux AccessKit is bridged to AT-SPI, so the shell's
+widgets are expected to expose an AT-SPI tree and be reachable by XPath
+locators — unlike the previous shell implementation, which shipped no
+AccessKit. The shell
+(`shell/xilem_shell.rs`) is a standalone Wayland client, so its a11y tree is
+bridged the same way as any other client.
 
 Implications for what we can assert on:
 
 - **Client apps under Hearthspace** — full AT-SPI locator coverage. ✅
-- **Hearthspace's GPUI chrome** — drive it via the existing command socket
-  (already how the bar talks to the compositor) and assert via **screenshots**;
-  or, longer term, adopt AccessKit in GPUI / the shell so chrome exposes a11y
-  too. Out of scope for the first cut.
+- **Hearthspace's shell chrome** — expected AT-SPI coverage via Masonry/AccessKit
+  (to be confirmed at runtime); it can also be driven via the existing command
+  socket and asserted via **screenshots**.
 
 ## Architecture
 
@@ -157,7 +157,7 @@ Three pieces of work, in rough effort order:
 ### Phase 4 — optional follow-ups ⬜
 
 - [ ] Video recording (PipeWire) if needed for CI artifacts.
-- [ ] AccessKit in the GPUI shell so chrome is XPath-locatable.
+- [ ] Confirm the Xilem shell's Masonry/AccessKit AT-SPI tree is XPath-locatable at runtime.
 
 ## Decisions to make
 

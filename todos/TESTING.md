@@ -20,7 +20,7 @@ the infrastructure work required to make harder areas testable.
 - `proptest` and `rstest` are in use (parameterised cases + invariant
   properties), alongside `tempfile` for filesystem-backed tests.
 - The live runtime surface — the compositor event loop, GPU `render_frame`,
-  Smithay input handling, viewport animation, the GPUI bar, and the AT-SPI tree
+  Smithay input handling, viewport animation, the Xilem shell, and the AT-SPI tree
   walk — still has **no** automated coverage; these need an integration/headless
   harness.
 
@@ -52,7 +52,7 @@ the infrastructure work required to make harder areas testable.
 | `compositor/shell_integration.rs` | Good (parsing) | Parsing pure; spawning is FS/process I/O | Med | Spawn path / snap symlinks / GTK config via tempdir + injected spawn |
 | `compositor/mod.rs` | None | Very hard (protocol + winit + GL) | Low | Headless integration harness only — see WAYDRIVER.md |
 | `accessibility.rs` | Partial | Matchers pure; tree walk is async D-Bus | Med | Tree walk needs a mock connection or live AT-SPI peer |
-| `shell/bar.rs` | None | GPUI runtime | Low | Extract result/selection logic; test if decoupled |
+| `shell/xilem_shell.rs` | None | Xilem runtime | Low | Extract result/selection logic; test if decoupled |
 | `test_apps/gtk.rs` | None | GTK runtime | Low | Fixture app — not worth testing |
 | `config.rs` / `main.rs` / `lib.rs` | None | Trivial / arg dispatch | Low | Optional arg-dispatch test if dispatch is extracted |
 
@@ -98,9 +98,11 @@ E2E harness in [WAYDRIVER.md](./WAYDRIVER.md).
 - **`input.rs::handle_input_event`** — depends on Smithay pointer/keyboard
   handles and `WinitInput` events; needs a seat abstraction or event-replay
   integration test. A headless backend could inject synthetic seat events.
-- **`bar.rs` / `test_apps/gtk.rs`** — require GPUI / GTK runtimes; suited to
-  end-to-end UI testing. Note GPUI ships no AccessKit, so the bar exposes no
-  AT-SPI tree (see WAYDRIVER.md) — drive it via the command socket + screenshots.
+- **`xilem_shell.rs` / `test_apps/gtk.rs`** — require Xilem / GTK runtimes; suited to
+  end-to-end UI testing. Masonry (Xilem's widget layer) integrates AccessKit,
+  which is bridged to AT-SPI on Linux, so the shell is expected to expose an
+  a11y tree (see WAYDRIVER.md) — it can also be driven via the command socket +
+  screenshots.
 - **`accessibility.rs` tree walk** — requires a live AT-SPI D-Bus registry;
   needs a mock connection trait or an integration test against a known peer. A
   headless harness running a real client gives this for free.

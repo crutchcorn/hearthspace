@@ -10,8 +10,8 @@ Hearthspace can run two ways:
 
 - **Nested (winit backend):** Hearthspace is itself a Wayland/X11 client that
   gets a window inside an existing desktop session. This is the default for
-  development — it coexists with the host desktop, snapshots, the GPUI shell
-  bar, and the GTK test app.
+  development — it coexists with the host desktop, snapshots, the Xilem shell,
+  and the GTK test app.
 - **Native (DRM/KMS backend):** Hearthspace runs directly on the GPU and a TTY
   with no host compositor beneath it. This is "real-world" usage.
 
@@ -88,7 +88,7 @@ The udev module sits behind `#[cfg(feature = "udev")]`.
 
 Almost everything. All Wayland protocol handlers, window management
 (`compositor/windows.rs`), hit-testing, the idle daemon (`compositor/idle.rs`),
-viewport/geometry, the shell + command socket, and the GPUI bar are
+viewport/geometry, the shell + command socket, and the Xilem shell are
 backend-neutral. Only output creation, frame scheduling, renderer acquisition,
 and the input source differ — these are the parts isolated behind the `Backend`
 seam.

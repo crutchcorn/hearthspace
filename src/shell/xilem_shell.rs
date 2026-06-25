@@ -1,8 +1,8 @@
 //! The Hearthspace shell, rendered with Xilem.
 //!
-//! This is the Xilem replacement for the former GPUI shell bar. It runs as its
-//! own Wayland client and hosts the app launcher (a search field plus result
-//! buttons) and the compositor control buttons (pan/zoom/log).
+//! The shell runs as its own Wayland client and hosts the app launcher (a
+//! search field plus result buttons) and the compositor control buttons
+//! (pan/zoom/log).
 //!
 //! The window advertises [`SHELL_BAR_APP_ID`] as its Wayland `app_id` via
 //! [`xilem::WindowOptionsExtLinux::with_name`] (a setter we added to our Xilem
