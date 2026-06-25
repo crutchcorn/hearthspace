@@ -1,124 +1,72 @@
 # Hearthspace
 
-Hearthspace is an experimental Wayland-only Linux desktop environment. The core idea is to manage application windows on an infinite 2D canvas, similar to using a design canvas for windows.
+Hearthspace is an experimental Linux desktop environment built around an infinite canvas for applications, local-first AI, and a more persistent relationship with your workspace.
 
-The current implementation is a nested proof-of-concept compositor built with Rust and Smithay. It runs inside an existing Wayland desktop session.
+Instead of treating windows as temporary rectangles that pile up until you clean them away, Hearthspace explores a different model: applications live in a large spatial canvas, can be organized by context, and will eventually become easier to search, suspend, restore, and reason about.
 
-## Run
+Today, Hearthspace is early. The current project contains a rough foundation for an infinite-canvas Wayland compositor and desktop shell. It is not ready to replace your daily desktop yet, but the core direction is already taking shape.
 
-```sh
-cargo run
-```
+## Goals
 
-For temporary scroll-zoom testing in environments where the host intercepts `Super` + scroll, run:
+Hearthspace is an experiment in rethinking the desktop around context.
 
-```sh
-cargo run -- --scroll-zooms
-```
+Not just windows. Not just apps. Not just a chatbot bolted onto the side.
 
-In this mode, vertical scroll zooms the canvas without requiring `Super`, so scroll will not be forwarded to application windows.
+The long-term goal is a Linux-based environment where your workspace is spatial, persistent, local-first, and intelligent by design. This means:
 
-This opens a nested compositor window and creates its own Wayland socket:
+* Applications live in a persistent spatial workspace
+* Windows and groups can be searched, restored, and organized by context
+* Local AI understands real desktop objects instead of acting like a separate chatbot
+* Inactive applications can eventually be quieted down without forcing users to manually manage everything
+* The system stays grounded in Linux, Wayland, and native desktop technologies
 
-```text
-WAYLAND_DISPLAY=wayland-99
-```
+## Current status
 
-Spawned child applications receive this `WAYLAND_DISPLAY` and connect back to Hearthspace instead of the host desktop compositor.
+Hearthspace is currently a prototype.
 
-## Test The PoC
+The focus right now is:
 
-The top control bar is a GPUI shell client with a spawn dropdown plus global controls:
+* Building a usable Wayland compositor foundation
+* Exploring infinite-canvas window management
+* Creating a minimal shell UI for dogfooding
+* Establishing the architecture for persistent workspace state
 
-```text
-SPAWN v | LEFT | RIGHT | UP | DOWN | ZOOM+ | ZOOM- | LOG
-```
+Expect bugs, missing features, breaking changes, and unfinished UX.
 
-Use them to:
+## Technology
 
-```text
-SPAWN > A11yTest: spawn the built-in GTK accessibility test app inside Hearthspace
-SPAWN > Foot: spawn a Foot terminal inside Hearthspace
-left/right/up/down: pan the canvas by half the compositor window size
-ZOOM+/ZOOM-: zoom the canvas in and out around the viewport center
-LOG: print AT-SPI accessibility trees for Hearthspace-managed windows to the compositor log
-```
+Hearthspace is written in Rust.
 
-Spawned app windows are rendered in canvas coordinates. Panning animates the viewport offset, moving all client windows together relative to the visible compositor window. Zooming animates the viewport scale while keeping the GPUI toolbar fixed in screen-space.
+The compositor is built with [`smithay`](https://github.com/Smithay/smithay), a Rust library for building Wayland compositors.
 
-The basic transform is:
+The shell UI is built with [`xilem`](https://github.com/linebender/xilem), an experimental Rust UI framework from the Linebender project.
 
-```text
-screen_position = canvas_position - viewport_offset
-```
+## Roadmap
 
-Window interaction:
+The rough direction is:
 
-```text
-Left click app content: focus and interact with the app
-Left click title bar: focus and raise the window
-Left drag title bar: move the window on the canvas
-Drag client-side app header bars: move the window when the app requests xdg_toplevel.move
-SPAWN: place the new window near the current viewport center
-Super + two-finger scroll up/down: smoothly zoom the canvas in/out
-```
+1. Build a stable compositor foundation
+2. Add enough shell UI to use Hearthspace directly
+3. Make the canvas useful for real workflows
+4. Persist windows, groups, applications, and workspace state
+5. Explore smarter application lifecycle management
+6. Add local AI as a layer over the workspace model
 
-Hearthspace advertises no xdg-shell minimize/maximize/fullscreen capabilities.
-GTK clients spawned by Hearthspace also use private runtime GTK/GSettings config
-with `gtk-decoration-layout=:close` and `button-layout=':close'`, so their
-header bars show only a close button without changing the host GNOME session.
+The first milestone is not to build the full vision. It is to make Hearthspace usable enough to dogfood, learn from, and iterate on.
 
-Note: this shortcut is expected to work on a native Ubuntu/GNOME session. In the current Parallels VM test environment, `Super` is detected by Hearthspace, but scroll events may not be delivered to the nested compositor until after `Super` is released.
+Planned and deferred work is tracked under [todos/](./todos/).
 
-Use `--scroll-zooms` as a temporary testing override in that environment.
+## Contributing
 
-## Current Scope
+Hearthspace is early, and the architecture is still changing quickly.
 
-Implemented:
+Contributions and design discussions are welcome, especially around:
 
-```text
-Nested Wayland compositor window
-Wayland client socket
-xdg-shell client acceptance
-GLES rendering path
-Dirty/event-driven render loop that skips GPU redraws when the scene is unchanged
-Timer-based per-window idle-state daemon with configurable idle levels
-Synthetic wl_output and xdg-output advertisement
-xdg-decoration advertisement with server-side decoration requests
-GPUI shell-client control bar
-Compositor-owned draggable title bars only for explicitly server-side-decorated windows
-Spawn dropdown for the built-in GTK accessibility test app and Foot
-Canvas viewport offset
-Half-screen pan targets
-Animated pan buttons
-Animated zoom buttons
-Super-modified touchpad or mouse-wheel zoom
-AT-SPI accessibility tree logging from the GPUI shell bar
-Stable Hearthspace window IDs in accessibility logs
-Window focus, raise, and title-bar dragging
-xdg-decoration-aware client-side versus server-side window chrome
-Input-region-aware pointer forwarding to client surfaces
-```
+* Wayland compositor development
+* Rust desktop infrastructure
+* Shell UI architecture
+* Infinite-canvas interaction design
+* Workspace persistence
+* Local-first AI systems
 
-Still intentionally rough:
-
-```text
-No window resizing yet
-Zoom supports shell buttons and Super-modified scroll, but there is no pinch gesture zoom yet
-AT-SPI logging is scoped by matching Hearthspace-managed window app IDs/titles against AT-SPI application roots and non-shell descendants; this is a heuristic until windows have direct AT-SPI object references
-Apps must publish AT-SPI data to appear in semantic logs; the built-in GTK test app exists to provide deterministic semantic content
-Several optional desktop protocols are not implemented yet, so clients may print warnings
-```
-
-Deferred:
-
-```text
-Full login-session desktop environment integration
-DRM/KMS backend and libinput device management
-X11/Xwayland support is intentionally out of scope unless a concrete need appears
-Minimization, task bars, workspaces, panels, or richer launchers
-Persistence of window positions
-Multi-monitor support
-Accessibility integration
-Theming beyond the current proof-of-concept shell UI
-```
+For larger changes, opening an issue or discussion first is recommended.
