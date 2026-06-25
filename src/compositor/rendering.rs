@@ -3,13 +3,15 @@ use smithay::{
         Color32F, RendererSuper,
         damage::OutputDamageTracker,
         element::{
-            Kind,
+            Id, Kind,
             memory::MemoryRenderBufferRenderElement,
             render_elements,
+            solid::SolidColorRenderElement,
             surface::{WaylandSurfaceRenderElement, render_elements_from_surface_tree},
             utils::RescaleRenderElement,
         },
         gles::GlesRenderer,
+        utils::CommitCounter,
     },
     desktop::PopupManager,
     utils::{Logical, Physical, Point, Rectangle, Size},
@@ -21,11 +23,13 @@ use smithay::{
 use wayland_server::protocol::wl_surface;
 
 use super::{App, ManagedWindowKind, masonry_titlebar, windows::toplevel_title};
+use crate::config::{BACKGROUND_DOT_SIZE, BACKGROUND_DOT_SPACING};
 
 render_elements! {
     pub(super) HearthspaceRenderElement<=GlesRenderer>;
     Surface = RescaleRenderElement<WaylandSurfaceRenderElement<GlesRenderer>>,
     Memory = MemoryRenderBufferRenderElement<GlesRenderer>,
+    Solid = SolidColorRenderElement,
 }
 
 /// Result of rendering one frame: the damaged output regions to submit, or
@@ -58,7 +62,8 @@ impl App {
             framebuffer,
             age,
             &elements,
-            Color32F::new(0.04, 0.05, 0.07, 1.0),
+            // White canvas; the gray dot grid is drawn on top of it.
+            Color32F::new(1.0, 1.0, 1.0, 1.0),
         )?;
         Ok(result.damage.cloned())
     }
@@ -93,6 +98,12 @@ impl App {
                     RescaleRenderElement::from_element(surface, origin, scale),
                 ));
             }
+        }
+
+        // The dot grid sits behind every window, directly on top of the white
+        // clear color, so it is appended last in this front-to-back ordering.
+        for dot in self.background_dot_elements() {
+            elements.push(HearthspaceRenderElement::from(dot));
         }
         elements
     }
@@ -142,6 +153,69 @@ impl App {
             }
         }
         elements
+    }
+
+    /// Build the background dot-grid render elements for the current viewport.
+    ///
+    /// The dots are laid out on a fixed grid in *canvas* space, so they pan and
+    /// zoom together with the viewport and frame canvas movement even when no
+    /// windows are open. Only the dots that fall inside the visible region are
+    /// emitted. Each visible slot reuses a stable [`Id`] across frames so the
+    /// damage tracker can tell when a dot actually moves.
+    fn background_dot_elements(&mut self) -> Vec<SolidColorRenderElement> {
+        let spacing = f64::from(BACKGROUND_DOT_SPACING);
+        if spacing <= 0.0 {
+            return Vec::new();
+        }
+
+        // Visible canvas region (the screen rectangle mapped back into canvas
+        // space). Grid bounds are expanded by one cell so dots partially inside
+        // the edges are not clipped away.
+        let top_left = self.screen_to_canvas(Point::from((0.0, 0.0)));
+        let bottom_right = self.screen_to_canvas(Point::from((
+            f64::from(self.output_size.w),
+            f64::from(self.output_size.h),
+        )));
+        let first_x = (top_left.x / spacing).floor() as i64;
+        let last_x = (bottom_right.x / spacing).ceil() as i64;
+        let first_y = (top_left.y / spacing).floor() as i64;
+        let last_y = (bottom_right.y / spacing).ceil() as i64;
+
+        let dot_px = (f64::from(BACKGROUND_DOT_SIZE) * self.viewport_scale).round() as i32;
+        let dot_px = dot_px.max(1);
+        let half = dot_px / 2;
+        // Light gray, matching the shell's neutral palette.
+        let color = Color32F::new(0.78, 0.78, 0.80, 1.0);
+
+        let mut positions = Vec::new();
+        for gy in first_y..=last_y {
+            for gx in first_x..=last_x {
+                let canvas = Point::from((gx as f64 * spacing, gy as f64 * spacing));
+                let screen = self.canvas_to_screen(canvas);
+                positions.push(Point::<i32, Physical>::from((
+                    screen.x.round() as i32 - half,
+                    screen.y.round() as i32 - half,
+                )));
+            }
+        }
+
+        while self.background_dot_ids.len() < positions.len() {
+            self.background_dot_ids.push(Id::new());
+        }
+
+        positions
+            .into_iter()
+            .enumerate()
+            .map(|(slot, location)| {
+                SolidColorRenderElement::new(
+                    self.background_dot_ids[slot].clone(),
+                    Rectangle::new(location, Size::from((dot_px, dot_px))),
+                    CommitCounter::default(),
+                    color,
+                    Kind::Unspecified,
+                )
+            })
+            .collect()
     }
 
     pub(super) fn window_render_elements(

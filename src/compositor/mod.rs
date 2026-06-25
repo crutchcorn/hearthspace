@@ -30,7 +30,7 @@ use smithay::{
         allocator::dmabuf::Dmabuf,
         egl::EGLDevice,
         renderer::{
-            ImportDma, damage::OutputDamageTracker, gles::GlesRenderer,
+            ImportDma, damage::OutputDamageTracker, element::Id, gles::GlesRenderer,
             utils::on_commit_buffer_handler,
         },
         winit::{self, WinitEvent},
@@ -194,6 +194,10 @@ struct App {
     pending_dmabuf_imports: Vec<(Dmabuf, ImportNotifier)>,
     loop_handle: LoopHandle<'static, CalloopData>,
     popups: PopupManager,
+    /// Stable render-element ids for the background dot grid, grown as the
+    /// number of visible dots requires. Reusing ids across frames keeps the
+    /// damage tracker from treating every dot as new on each redraw.
+    background_dot_ids: Vec<Id>,
 }
 
 impl BufferHandler for App {
@@ -640,6 +644,7 @@ pub fn run_winit(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> 
         pending_dmabuf_imports: Vec::new(),
         loop_handle: handle.clone(),
         popups: PopupManager::default(),
+        background_dot_ids: Vec::new(),
     };
 
     let command_socket_path = command_socket_path();
