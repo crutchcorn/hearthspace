@@ -83,17 +83,20 @@ pub(super) fn render_titlebar(width: i32, title: &str, active: bool) -> MemoryRe
 /// RGBA image. Split out from [`render_titlebar`] so the Masonry path can be
 /// validated without depending on the GLES renderer.
 fn rasterize_titlebar(width: i32, title: &str, active: bool) -> image::RgbaImage {
+    // A subtle, neutral grey gradient that runs top-to-bottom (lighter at the
+    // top, slightly darker at the bottom), echoing the brushed title bars of
+    // older macOS/GNOME rather than a saturated colour.
     let (bar_top, bar_bottom, text_color) = if active {
         (
-            Color::from_rgb8(60, 96, 156),
-            Color::from_rgb8(40, 70, 120),
-            Color::from_rgb8(236, 244, 255),
+            Color::from_rgb8(92, 94, 98),
+            Color::from_rgb8(74, 76, 80),
+            Color::from_rgb8(236, 240, 245),
         )
     } else {
         (
-            Color::from_rgb8(52, 60, 74),
-            Color::from_rgb8(38, 45, 58),
-            Color::from_rgb8(196, 205, 220),
+            Color::from_rgb8(60, 62, 66),
+            Color::from_rgb8(48, 50, 54),
+            Color::from_rgb8(188, 194, 202),
         )
     };
 
@@ -113,7 +116,9 @@ fn rasterize_titlebar(width: i32, title: &str, active: bool) -> image::RgbaImage
 
     let mut bar_props = PropertySet::new();
     bar_props.insert(Background::Gradient(
-        Gradient::new_linear(std::f64::consts::FRAC_PI_2).with_stops([bar_top, bar_bottom]),
+        // Angle π (180°) puts the first stop at the top and runs straight down,
+        // per Masonry's CSS-style gradient convention.
+        Gradient::new_linear(std::f64::consts::PI).with_stops([bar_top, bar_bottom]),
     ));
 
     let bar = SizedBox::new(row)
