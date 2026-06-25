@@ -6,21 +6,22 @@
 //! the resulting pixels to the GLES renderer as a memory render element (see
 //! [`super::rendering`]).
 //!
-//! Rendering the chrome as a real widget tree — a gradient-filled bar, a padded
-//! title [`Label`], and a rounded close button with a crisp ✕ glyph — replaces
-//! the earlier hand-drawn solid rectangles and blocky X marks. `vello_cpu` is
-//! pure CPU, so the only cost is a rasterization that we cache per window in
-//! [`TitlebarBuffer`] and only repeat when the bar width, title, or active
-//! state changes.
+//! Rendering the chrome as a real widget tree — a gradient-filled bar and a
+//! padded title [`Label`] — replaces the earlier hand-drawn solid rectangles,
+//! while the close affordance is a crisp anti-aliased X stroked directly onto
+//! the rasterized bar (so it never depends on a font shipping a “✕” glyph).
+//! `vello_cpu` is pure CPU, so the only cost is a rasterization that we cache
+//! per window in [`TitlebarBuffer`] and only repeat when the bar width, title,
+//! or active state changes.
 
 use masonry::{
-    core::{NewWidget, PropertySet, Widget},
+    core::{PropertySet, Widget},
     layout::AsUnit,
     parley::StyleProperty,
     peniko::Color,
     properties::{
-        Background, ContentColor, CornerRadius,
-        types::{CrossAxisAlignment, Gradient, MainAxisAlignment},
+        Background, ContentColor,
+        types::{CrossAxisAlignment, Gradient},
     },
     testing::{TestHarness, TestHarnessParams},
     theme::default_property_set,
@@ -34,10 +35,9 @@ use smithay::{
 use crate::config::{CLOSE_BUTTON_MARGIN, CLOSE_BUTTON_SIZE, TITLE_BAR_HEIGHT};
 
 const TITLE_FONT_SIZE: f32 = 14.0;
-const CLOSE_GLYPH_FONT_SIZE: f32 = 12.0;
 /// Inset before the title text, in native (unscaled) pixels.
 const TITLE_LEFT_PAD: i32 = 10;
-/// Gap between the title text and the close button, in native pixels.
+/// Gap between the title text and the close X, in native pixels.
 const TITLE_RIGHT_GAP: i32 = 8;
 
 /// A Masonry-rendered title-bar image cached on a window.
@@ -56,8 +56,8 @@ pub(super) struct TitlebarBuffer {
 /// wrap the pixels in a [`MemoryRenderBuffer`].
 ///
 /// The bar is opaque — the gradient background fills the whole area and the
-/// close button's rounded corners reveal that same background — so it composites
-/// with no premultiplied-alpha concerns.
+/// close X is stroked on top of it — so it composites with no premultiplied-
+/// alpha concerns.
 pub(super) fn render_titlebar(width: i32, title: &str, active: bool) -> MemoryRenderBuffer {
     let image = rasterize_titlebar(width, title, active);
     let img_w = image.width() as i32;
@@ -104,7 +104,7 @@ fn rasterize_titlebar(width: i32, title: &str, active: bool) -> image::RgbaImage
         .with_fixed_spacer(TITLE_LEFT_PAD.px())
         .with(title_label, 1.0)
         .with_fixed_spacer(TITLE_RIGHT_GAP.px())
-        .with_fixed(close_button_widget())
+        .with_fixed_spacer(CLOSE_BUTTON_SIZE.px())
         .with_fixed_spacer(CLOSE_BUTTON_MARGIN.px())
         .prepare();
 
@@ -124,31 +124,75 @@ fn rasterize_titlebar(width: i32, title: &str, active: bool) -> image::RgbaImage
         .with_background(bar_bottom);
     let mut harness = TestHarness::create_with(default_property_set(), bar, params);
 
-    harness.render()
+    let mut image = harness.render();
+    draw_close_x(&mut image, width, text_color);
+    image
 }
 
-/// Build the rounded red close button hosting a centered ✕ glyph.
-fn close_button_widget() -> NewWidget<SizedBox> {
-    let glyph = Label::new("\u{2715}".to_string())
-        .with_style(StyleProperty::FontSize(CLOSE_GLYPH_FONT_SIZE))
-        .prepare()
-        .with_props(PropertySet::new().with(ContentColor::new(Color::from_rgb8(255, 240, 240))));
+/// Draw the close affordance as a crisp anti-aliased X stroked directly onto the
+/// rasterized bar, occupying the same rect the compositor hit-tests for closing
+/// the window (right-aligned, inset by [`CLOSE_BUTTON_MARGIN`], vertically
+/// centered, [`CLOSE_BUTTON_SIZE`] square).
+///
+/// Stroking the X as vector lines instead of a font glyph keeps it sharp at any
+/// scale and avoids depending on a particular font shipping a “✕” glyph.
+fn draw_close_x(image: &mut image::RgbaImage, width: i32, color: Color) {
+    let rect_x = (width - CLOSE_BUTTON_MARGIN - CLOSE_BUTTON_SIZE).max(0);
+    let rect_y = ((TITLE_BAR_HEIGHT - CLOSE_BUTTON_SIZE) / 2).max(0);
+    let size = CLOSE_BUTTON_SIZE as f32;
 
-    let centered = Flex::row()
-        .main_axis_alignment(MainAxisAlignment::Center)
-        .cross_axis_alignment(CrossAxisAlignment::Center)
-        .with_fixed(glyph)
-        .prepare();
+    // Inset the X arms from the hit-rect edges and scale the stroke width with
+    // the button so the mark stays balanced.
+    let inset = size * 0.3;
+    let half_thickness = (size * 0.08).max(0.9);
 
-    let mut close_props = PropertySet::new();
-    close_props.insert(Background::Color(Color::from_rgb8(202, 62, 66)));
-    close_props.insert(CornerRadius::all((CLOSE_BUTTON_SIZE / 2).px()));
+    let x0 = rect_x as f32 + inset;
+    let y0 = rect_y as f32 + inset;
+    let x1 = (rect_x + CLOSE_BUTTON_SIZE) as f32 - inset;
+    let y1 = (rect_y + CLOSE_BUTTON_SIZE) as f32 - inset;
 
-    SizedBox::new(centered)
-        .width(CLOSE_BUTTON_SIZE.px())
-        .height(CLOSE_BUTTON_SIZE.px())
-        .prepare()
-        .with_props(close_props)
+    let [cr, cg, cb, _] = color.to_rgba8().to_u8_array();
+
+    let max_x = (rect_x + CLOSE_BUTTON_SIZE).min(width);
+    let max_y = (rect_y + CLOSE_BUTTON_SIZE).min(TITLE_BAR_HEIGHT);
+    for py in rect_y..max_y {
+        for px in rect_x..max_x {
+            let fx = px as f32 + 0.5;
+            let fy = py as f32 + 0.5;
+            let dist = distance_to_segment(fx, fy, x0, y0, x1, y1)
+                .min(distance_to_segment(fx, fy, x0, y1, x1, y0));
+            let coverage = (half_thickness + 0.5 - dist).clamp(0.0, 1.0);
+            if coverage <= 0.0 {
+                continue;
+            }
+            let pixel = image.get_pixel_mut(px as u32, py as u32);
+            pixel.0[0] = blend_channel(pixel.0[0], cr, coverage);
+            pixel.0[1] = blend_channel(pixel.0[1], cg, coverage);
+            pixel.0[2] = blend_channel(pixel.0[2], cb, coverage);
+            pixel.0[3] = 255;
+        }
+    }
+}
+
+/// Alpha-blend a single 8-bit channel of `foreground` over `background`.
+fn blend_channel(background: u8, foreground: u8, coverage: f32) -> u8 {
+    let blended = f32::from(background) * (1.0 - coverage) + f32::from(foreground) * coverage;
+    blended.round().clamp(0.0, 255.0) as u8
+}
+
+/// Euclidean distance from point `(px, py)` to the segment `(ax, ay)-(bx, by)`.
+fn distance_to_segment(px: f32, py: f32, ax: f32, ay: f32, bx: f32, by: f32) -> f32 {
+    let dx = bx - ax;
+    let dy = by - ay;
+    let len_sq = dx * dx + dy * dy;
+    let t = if len_sq <= f32::EPSILON {
+        0.0
+    } else {
+        (((px - ax) * dx + (py - ay) * dy) / len_sq).clamp(0.0, 1.0)
+    };
+    let cx = ax + t * dx;
+    let cy = ay + t * dy;
+    ((px - cx).powi(2) + (py - cy).powi(2)).sqrt()
 }
 
 #[cfg(test)]
@@ -156,23 +200,33 @@ mod tests {
     use super::*;
 
     #[test]
-    fn masonry_renders_titlebar_with_close_button() {
+    fn masonry_strokes_a_close_x_onto_the_bar() {
         let width = 200;
         let image = rasterize_titlebar(width, "Hello", true);
 
         assert_eq!(image.width() as i32, width);
         assert_eq!(image.height() as i32, TITLE_BAR_HEIGHT);
 
-        // The close button is a saturated red while the bar gradient is
-        // blue/grey, so a run of strongly-red pixels proves the button (and
-        // therefore the wider widget tree) rasterized.
-        let red_pixels = image
-            .pixels()
-            .filter(|px| px.0[0] > 150 && px.0[1] < 120 && px.0[2] < 120)
-            .count();
+        // The close X is stroked in the light title color over the darker bar
+        // gradient, within the right-aligned hit rect. Counting near-white
+        // pixels there proves the X (and the wider widget tree) rasterized.
+        let x_start = (width - CLOSE_BUTTON_MARGIN - CLOSE_BUTTON_SIZE) as u32;
+        let x_end = (width - CLOSE_BUTTON_MARGIN) as u32;
+        let y_start = ((TITLE_BAR_HEIGHT - CLOSE_BUTTON_SIZE) / 2) as u32;
+        let y_end = y_start + CLOSE_BUTTON_SIZE as u32;
+
+        let mut bright = 0;
+        for y in y_start..y_end {
+            for x in x_start..x_end {
+                let px = image.get_pixel(x, y);
+                if px.0[0] > 200 && px.0[1] > 200 && px.0[2] > 200 {
+                    bright += 1;
+                }
+            }
+        }
         assert!(
-            red_pixels > 40,
-            "expected a red close button, found {red_pixels} red pixels"
+            bright > 8,
+            "expected a stroked close X, found {bright} bright pixels"
         );
     }
 }
