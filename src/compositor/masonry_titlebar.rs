@@ -8,11 +8,11 @@
 //!
 //! Rendering the chrome as a real widget tree — a gradient-filled bar and a
 //! padded title [`Label`] — replaces the earlier hand-drawn solid rectangles,
-//! while the close affordance is a crisp anti-aliased X stroked directly onto
-//! the rasterized bar (so it never depends on a font shipping a “✕” glyph).
-//! `vello_cpu` is pure CPU, so the only cost is a rasterization that we cache
-//! per window in [`TitlebarBuffer`] and only repeat when the bar width, title,
-//! or active state changes.
+//! while the close button (a red circle with a white X) is drawn directly onto
+//! the rasterized bar so the circle and X stay concentric and crisp without
+//! depending on a font shipping a “✕” glyph. `vello_cpu` is pure CPU, so the
+//! only cost is a rasterization that we cache per window in [`TitlebarBuffer`]
+//! and only repeat when the bar width, title, or active state changes.
 
 use masonry::{
     core::{PropertySet, Widget},
@@ -56,8 +56,8 @@ pub(super) struct TitlebarBuffer {
 /// wrap the pixels in a [`MemoryRenderBuffer`].
 ///
 /// The bar is opaque — the gradient background fills the whole area and the
-/// close X is stroked on top of it — so it composites with no premultiplied-
-/// alpha concerns.
+/// close button (circle + X) is drawn over it — so it composites with no
+/// premultiplied-alpha concerns.
 pub(super) fn render_titlebar(width: i32, title: &str, active: bool) -> MemoryRenderBuffer {
     let image = rasterize_titlebar(width, title, active);
     let img_w = image.width() as i32;
@@ -125,36 +125,51 @@ fn rasterize_titlebar(width: i32, title: &str, active: bool) -> image::RgbaImage
     let mut harness = TestHarness::create_with(default_property_set(), bar, params);
 
     let mut image = harness.render();
-    draw_close_x(&mut image, width, text_color);
+    draw_close_button(&mut image, width);
     image
 }
 
-/// Draw the close affordance as a crisp anti-aliased X stroked directly onto the
-/// rasterized bar, occupying the same rect the compositor hit-tests for closing
-/// the window (right-aligned, inset by [`CLOSE_BUTTON_MARGIN`], vertically
-/// centered, [`CLOSE_BUTTON_SIZE`] square).
+/// Draw the round red close button and its white X directly onto the rasterized
+/// bar, occupying the same rect the compositor hit-tests for closing the window
+/// (right-aligned, inset by [`CLOSE_BUTTON_MARGIN`], vertically centered,
+/// [`CLOSE_BUTTON_SIZE`] square).
 ///
-/// Stroking the X as vector lines instead of a font glyph keeps it sharp at any
-/// scale and avoids depending on a particular font shipping a “✕” glyph.
-fn draw_close_x(image: &mut image::RgbaImage, width: i32, color: Color) {
+/// Both the filled circle and the X are drawn here (rather than as Masonry
+/// widgets) so they stay perfectly concentric and the X stays crisp without
+/// depending on a particular font shipping a “✕” glyph.
+fn draw_close_button(image: &mut image::RgbaImage, width: i32) {
     let rect_x = (width - CLOSE_BUTTON_MARGIN - CLOSE_BUTTON_SIZE).max(0);
     let rect_y = ((TITLE_BAR_HEIGHT - CLOSE_BUTTON_SIZE) / 2).max(0);
     let size = CLOSE_BUTTON_SIZE as f32;
 
-    // Inset the X arms from the hit-rect edges and scale the stroke width with
-    // the button so the mark stays balanced.
-    let inset = size * 0.3;
-    let half_thickness = (size * 0.08).max(0.9);
+    let max_x = (rect_x + CLOSE_BUTTON_SIZE).min(width);
+    let max_y = (rect_y + CLOSE_BUTTON_SIZE).min(TITLE_BAR_HEIGHT);
 
+    // Filled red circle inscribed in the hit rect.
+    let center_x = rect_x as f32 + size / 2.0;
+    let center_y = rect_y as f32 + size / 2.0;
+    let radius = size / 2.0;
+    let [br, bg, bb, _] = Color::from_rgb8(202, 62, 66).to_rgba8().to_u8_array();
+    for py in rect_y..max_y {
+        for px in rect_x..max_x {
+            let fx = px as f32 + 0.5;
+            let fy = py as f32 + 0.5;
+            let dist = ((fx - center_x).powi(2) + (fy - center_y).powi(2)).sqrt();
+            let coverage = (radius + 0.5 - dist).clamp(0.0, 1.0);
+            if coverage > 0.0 {
+                blend_pixel(image, px, py, br, bg, bb, coverage);
+            }
+        }
+    }
+
+    // White X stroked on top, inset from the circle edge so it stays contained.
+    let inset = size * 0.36;
+    let half_thickness = (size * 0.08).max(0.9);
     let x0 = rect_x as f32 + inset;
     let y0 = rect_y as f32 + inset;
     let x1 = (rect_x + CLOSE_BUTTON_SIZE) as f32 - inset;
     let y1 = (rect_y + CLOSE_BUTTON_SIZE) as f32 - inset;
-
-    let [cr, cg, cb, _] = color.to_rgba8().to_u8_array();
-
-    let max_x = (rect_x + CLOSE_BUTTON_SIZE).min(width);
-    let max_y = (rect_y + CLOSE_BUTTON_SIZE).min(TITLE_BAR_HEIGHT);
+    let [xr, xg, xb, _] = Color::from_rgb8(255, 240, 240).to_rgba8().to_u8_array();
     for py in rect_y..max_y {
         for px in rect_x..max_x {
             let fx = px as f32 + 0.5;
@@ -162,16 +177,20 @@ fn draw_close_x(image: &mut image::RgbaImage, width: i32, color: Color) {
             let dist = distance_to_segment(fx, fy, x0, y0, x1, y1)
                 .min(distance_to_segment(fx, fy, x0, y1, x1, y0));
             let coverage = (half_thickness + 0.5 - dist).clamp(0.0, 1.0);
-            if coverage <= 0.0 {
-                continue;
+            if coverage > 0.0 {
+                blend_pixel(image, px, py, xr, xg, xb, coverage);
             }
-            let pixel = image.get_pixel_mut(px as u32, py as u32);
-            pixel.0[0] = blend_channel(pixel.0[0], cr, coverage);
-            pixel.0[1] = blend_channel(pixel.0[1], cg, coverage);
-            pixel.0[2] = blend_channel(pixel.0[2], cb, coverage);
-            pixel.0[3] = 255;
         }
     }
+}
+
+/// Alpha-blend an opaque `(r, g, b)` color into one image pixel by `coverage`.
+fn blend_pixel(image: &mut image::RgbaImage, px: i32, py: i32, r: u8, g: u8, b: u8, coverage: f32) {
+    let pixel = image.get_pixel_mut(px as u32, py as u32);
+    pixel.0[0] = blend_channel(pixel.0[0], r, coverage);
+    pixel.0[1] = blend_channel(pixel.0[1], g, coverage);
+    pixel.0[2] = blend_channel(pixel.0[2], b, coverage);
+    pixel.0[3] = 255;
 }
 
 /// Alpha-blend a single 8-bit channel of `foreground` over `background`.
@@ -198,6 +217,18 @@ fn distance_to_segment(px: f32, py: f32, ax: f32, ay: f32, bx: f32, by: f32) -> 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn dump_titlebar_ppm() {
+        use std::io::Write;
+        let img = rasterize_titlebar(360, "Files \u{2014} Documents", true);
+        let (w, h) = (img.width(), img.height());
+        let mut out = std::fs::File::create("/tmp/titlebar_active.ppm").unwrap();
+        write!(out, "P6\n{w} {h}\n255\n").unwrap();
+        for px in img.pixels() {
+            out.write_all(&[px.0[0], px.0[1], px.0[2]]).unwrap();
+        }
+    }
 
     #[test]
     fn masonry_strokes_a_close_x_onto_the_bar() {
