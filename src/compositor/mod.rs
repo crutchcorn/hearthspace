@@ -454,10 +454,9 @@ impl CompositorHandler for App {
         // geometry is applied to the surface's current state.
         if let Some(PopupKind::Xdg(popup)) = self.popups.find_popup(surface)
             && !popup.is_initial_configure_sent()
+            && let Err(err) = popup.send_configure()
         {
-            if let Err(err) = popup.send_configure() {
-                eprintln!("Failed to send initial popup configure: {err}");
-            }
+            eprintln!("Failed to send initial popup configure: {err}");
         }
         self.refresh_window_content_bbox(surface);
         if let Some(window_id) = self.managed_normal_window_id_for_surface(surface) {
