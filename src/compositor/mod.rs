@@ -15,7 +15,7 @@ mod windows;
 
 use idle::{ActivityReason, IdleTransition, WindowIdleDaemon};
 use input::handle_input_event;
-use rendering::{WindowDecorationBuffers, send_frames_surface_tree};
+use rendering::send_frames_surface_tree;
 use shell_integration::{
     accept_command_connections, command_socket_path, remove_stale_socket, spawn_shell,
 };
@@ -92,10 +92,9 @@ struct ManagedWindow {
     position: CanvasPoint,
     kind: ManagedWindowKind,
     decoration: WindowDecoration,
-    decoration_buffers: WindowDecorationBuffers,
-    /// Masonry-rasterized title-text image, lazily built and cached. See
-    /// [`masonry_titlebar`] for the second stage of the Xilem/Masonry spike.
-    title_text: Option<masonry_titlebar::TitleTextBuffer>,
+    /// Masonry-rasterized title-bar image (background, title, close button),
+    /// lazily built and cached. See [`masonry_titlebar`].
+    titlebar: Option<masonry_titlebar::TitlebarBuffer>,
     /// Bounding-box size of the window's surface tree, cached on commit so the
     /// per-frame rendering and hit-testing paths don't re-walk the tree.
     content_bbox_size: Size<i32, Logical>,
@@ -199,8 +198,7 @@ impl XdgShellHandler for App {
             position: position_for_new_window(kind, self.next_spawn_position),
             kind,
             decoration: decoration_for_new_window(kind),
-            decoration_buffers: WindowDecorationBuffers::default(),
-            title_text: None,
+            titlebar: None,
             content_bbox_size: Size::default(),
         });
         if kind == ManagedWindowKind::Normal {

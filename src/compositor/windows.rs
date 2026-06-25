@@ -412,26 +412,7 @@ impl App {
         )
     }
 
-    pub(super) fn close_button_rect(&self, window_index: usize) -> Rectangle<i32, Logical> {
-        let canvas_rect = self.close_button_canvas_rect(window_index);
-        let origin = self
-            .canvas_to_screen(canvas_rect.loc.to_f64())
-            .to_i32_round();
-        Rectangle::new(
-            origin,
-            (
-                (f64::from(canvas_rect.size.w) * self.viewport_scale)
-                    .round()
-                    .max(1.0) as i32,
-                (f64::from(canvas_rect.size.h) * self.viewport_scale)
-                    .round()
-                    .max(1.0) as i32,
-            )
-                .into(),
-        )
-    }
-
-    fn title_bar_canvas_rect(&self, window_index: usize) -> Rectangle<i32, Logical> {
+    pub(super) fn title_bar_canvas_rect(&self, window_index: usize) -> Rectangle<i32, Logical> {
         let window = &self.windows[window_index];
         title_bar_canvas_rect_for(window.position, window.content_bbox_size.w)
     }
