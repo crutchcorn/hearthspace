@@ -580,6 +580,16 @@ pub fn spawn_argv_with_env(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rstest::rstest;
+
+    fn app_with(name: &str, contents: &str) -> DesktopApp {
+        DesktopApp::from_desktop_entry(
+            format!("{name}.desktop"),
+            PathBuf::from(format!("{name}.desktop")),
+            contents,
+        )
+        .unwrap()
+    }
 
     #[test]
     fn hidden_and_no_display_apps_are_filtered() {
@@ -650,6 +660,132 @@ mod tests {
                 "/usr/share/applications/code.desktop".to_string(),
                 "%".to_string(),
             ]
+        );
+    }
+
+    #[rstest]
+    #[case("foo bar", &["foo", "bar"])]
+    #[case("  spaced   out  ", &["spaced", "out"])]
+    #[case("\"foo bar\" baz", &["foo bar", "baz"])]
+    #[case("foo\\ bar", &["foo bar"])]
+    #[case("", &[])]
+    fn split_exec_handles_quotes_and_escapes(#[case] input: &str, #[case] expected: &[&str]) {
+        assert_eq!(split_exec(input).unwrap(), expected);
+    }
+
+    #[test]
+    fn split_exec_rejects_unterminated_quotes() {
+        assert!(split_exec("\"never closed").is_err());
+    }
+
+    #[rstest]
+    #[case("a\\sb", "a b")]
+    #[case("line\\nbreak", "line\nbreak")]
+    #[case("tab\\there", "tab\there")]
+    #[case("back\\\\slash", "back\\slash")]
+    #[case("trailing\\", "trailing\\")]
+    #[case("plain", "plain")]
+    fn unescape_desktop_value_expands_known_escapes(#[case] input: &str, #[case] expected: &str) {
+        assert_eq!(unescape_desktop_value(input), expected);
+    }
+
+    #[test]
+    fn parse_semicolon_list_drops_empty_entries() {
+        assert_eq!(
+            parse_semicolon_list("a;b;;c;"),
+            vec!["a".to_string(), "b".to_string(), "c".to_string()]
+        );
+        assert!(parse_semicolon_list("").is_empty());
+    }
+
+    #[test]
+    fn desktop_entry_id_joins_nested_components() {
+        let base = Path::new("/apps");
+        assert_eq!(
+            desktop_entry_id(base, Path::new("/apps/org/gnome/Foo.desktop")).as_deref(),
+            Some("org-gnome-Foo.desktop")
+        );
+        assert_eq!(
+            desktop_entry_id(base, Path::new("/apps/Foo.desktop")).as_deref(),
+            Some("Foo.desktop")
+        );
+        assert_eq!(
+            desktop_entry_id(base, Path::new("/other/Foo.desktop")),
+            None
+        );
+    }
+
+    #[test]
+    fn token_score_ranks_more_specific_matches_higher() {
+        let app = app_with(
+            "calc",
+            "[Desktop Entry]\nType=Application\nName=Calculator\nExec=gnome-calculator\nKeywords=arithmetic;\nComment=Do sums\n",
+        );
+
+        // Exact name beats prefix beats keyword beats substring.
+        assert_eq!(token_score(&app, "calculator"), Some(1000));
+        assert_eq!(token_score(&app, "calc"), Some(900));
+        assert_eq!(token_score(&app, "arith"), Some(700));
+        assert_eq!(token_score(&app, "lcul"), Some(600));
+        assert_eq!(token_score(&app, "sums"), Some(500));
+        assert_eq!(token_score(&app, "missing"), None);
+    }
+
+    #[test]
+    fn token_score_matches_prefix_of_a_later_word() {
+        let app = app_with(
+            "files",
+            "[Desktop Entry]\nType=Application\nName=GNOME Files\nExec=nautilus\n",
+        );
+        assert_eq!(token_score(&app, "fil"), Some(800));
+    }
+
+    #[test]
+    fn load_from_data_dirs_filters_and_dedups() {
+        let first = tempfile::tempdir().unwrap();
+        let second = tempfile::tempdir().unwrap();
+
+        let write = |dir: &Path, name: &str, contents: &str| {
+            let apps_dir = dir.join("applications");
+            fs::create_dir_all(&apps_dir).unwrap();
+            fs::write(apps_dir.join(name), contents).unwrap();
+        };
+
+        write(
+            first.path(),
+            "editor.desktop",
+            "[Desktop Entry]\nType=Application\nName=Editor (first)\nExec=editor\n",
+        );
+        write(
+            first.path(),
+            "hidden.desktop",
+            "[Desktop Entry]\nType=Application\nName=Hidden\nExec=hidden\nNoDisplay=true\n",
+        );
+        // Same id in a lower-priority dir must not override the first one.
+        write(
+            second.path(),
+            "editor.desktop",
+            "[Desktop Entry]\nType=Application\nName=Editor (second)\nExec=editor\n",
+        );
+        write(
+            second.path(),
+            "viewer.desktop",
+            "[Desktop Entry]\nType=Application\nName=Viewer\nExec=viewer\n",
+        );
+
+        let catalog = AppCatalog::load_from_data_dirs(vec![
+            first.path().to_path_buf(),
+            second.path().to_path_buf(),
+        ]);
+
+        let names: Vec<&str> = catalog.apps().iter().map(|app| app.name.as_str()).collect();
+        assert_eq!(names, vec!["Editor (first)", "Viewer"]);
+        assert!(catalog.app_by_id("hidden.desktop").is_none());
+        assert_eq!(
+            catalog
+                .app_by_id("editor.desktop")
+                .map(|app| app.name.as_str()),
+            Some("Editor (first)")
         );
     }
 }

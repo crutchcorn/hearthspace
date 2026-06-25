@@ -26,9 +26,7 @@ use smithay::{
         allocator::dmabuf::Dmabuf,
         egl::EGLDevice,
         renderer::{
-            ImportDma,
-            damage::OutputDamageTracker,
-            gles::GlesRenderer,
+            ImportDma, damage::OutputDamageTracker, gles::GlesRenderer,
             utils::on_commit_buffer_handler,
         },
         winit::{self, WinitEvent},
@@ -548,8 +546,7 @@ pub fn run_winit(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> 
             if size != data.state.output_size {
                 data.state.output_size = size;
                 update_output_mode(&data.state.output, size);
-                data.damage_tracker =
-                    OutputDamageTracker::new(size, 1.0, Transform::Flipped180);
+                data.damage_tracker = OutputDamageTracker::new(size, 1.0, Transform::Flipped180);
                 data.full_redraw = 1;
                 data.state.configure_shell_bars();
                 data.state.request_redraw();

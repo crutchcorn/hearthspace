@@ -23,6 +23,10 @@ render_elements! {
     Solid = SolidColorRenderElement,
 }
 
+/// Result of rendering one frame: the damaged output regions to submit, or
+/// `None` when nothing changed and the frame can be skipped.
+type RenderFrameResult = Result<Option<Vec<Rectangle<i32, Physical>>>, Box<dyn std::error::Error>>;
+
 /// Persistent solid-color buffers backing a window's server-side decorations.
 ///
 /// Reusing the same [`SolidColorBuffer`]s across frames keeps the resulting
@@ -65,7 +69,7 @@ impl App {
         framebuffer: &mut <GlesRenderer as RendererSuper>::Framebuffer<'_>,
         damage_tracker: &mut OutputDamageTracker,
         age: usize,
-    ) -> Result<Option<Vec<Rectangle<i32, Physical>>>, Box<dyn std::error::Error>> {
+    ) -> RenderFrameResult {
         let elements = self.collect_render_elements(renderer);
         let result = damage_tracker.render_output(
             renderer,
@@ -228,4 +232,66 @@ pub(super) fn send_frames_surface_tree(surface: &wl_surface::WlSurface, time: u3
         },
         |_, _, &()| true,
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::CLOSE_BUTTON_SIZE;
+    use proptest::prelude::*;
+
+    fn rect(x: i32, y: i32, w: i32, h: i32) -> Rectangle<i32, Logical> {
+        Rectangle::new((x, y).into(), (w, h).into())
+    }
+
+    #[test]
+    fn x_mark_has_five_cells_for_a_normal_button() {
+        // The decoration buffers reserve exactly five marks; the layout must
+        // never produce more than that or the buffers would be undersized.
+        let marks = close_button_x_rects(rect(0, 0, CLOSE_BUTTON_SIZE, CLOSE_BUTTON_SIZE));
+        assert_eq!(marks.len(), 5);
+    }
+
+    #[test]
+    fn x_mark_is_centered_and_symmetric() {
+        let button = rect(10, 20, 20, 20);
+        let marks = close_button_x_rects(button);
+        // The center cell (row == col == 2) is shared by both diagonals.
+        let cell = button.size.w / 5;
+        let center = marks
+            .iter()
+            .find(|mark| {
+                mark.loc.x == button.loc.x + 2 * cell && mark.loc.y == button.loc.y + 2 * cell
+            })
+            .expect("center mark present");
+        assert!(center.size.w >= 1 && center.size.h >= 1);
+    }
+
+    proptest! {
+        #[test]
+        fn x_marks_stay_within_the_button_and_are_non_degenerate(
+            x in -1000i32..1000,
+            y in -1000i32..1000,
+            // Below ~5px the fixed 5x5 grid spacing can overflow the button;
+            // real close buttons are CLOSE_BUTTON_SIZE (18px), so test the
+            // realistic range where the marks are expected to stay contained.
+            size in 5i32..200,
+        ) {
+            let button = rect(x, y, size, size);
+            for mark in close_button_x_rects(button) {
+                prop_assert!(mark.size.w >= 1);
+                prop_assert!(mark.size.h >= 1);
+                prop_assert!(mark.loc.x >= button.loc.x);
+                prop_assert!(mark.loc.y >= button.loc.y);
+                prop_assert!(mark.loc.x + mark.size.w <= button.loc.x + button.size.w);
+                prop_assert!(mark.loc.y + mark.size.h <= button.loc.y + button.size.h);
+            }
+        }
+
+        #[test]
+        fn x_mark_count_never_exceeds_buffer_capacity(size in 1i32..500) {
+            let marks = close_button_x_rects(rect(0, 0, size, size));
+            prop_assert!(marks.len() <= 5);
+        }
+    }
 }

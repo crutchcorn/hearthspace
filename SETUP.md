@@ -17,6 +17,14 @@ sudo apt-get install -y build-essential cargo rustc rustfmt pkg-config clang lib
 
 `libxkbcommon-x11-dev` is required by the published `gpui` crate's Linux stack, even when Hearthspace uses GPUI as a Wayland shell client.
 
+## Linting
+
+`cargo clippy` is run as part of CI (`.github/workflows/ci.yml`) and locally. On the development VM, clippy is provided by the apt package rather than `rustup`:
+
+```sh
+sudo apt-get install -y rust-clippy
+```
+
 ## Verified Versions
 
 The development VM currently has:

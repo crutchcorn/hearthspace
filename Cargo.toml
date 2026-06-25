@@ -13,3 +13,8 @@ smithay = { version = "0.7.0", default-features = false, features = ["backend_wi
 tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
 wayland-protocols = { version = "0.32.8", features = ["server"] }
 wayland-server = "0.31.9"
+
+[dev-dependencies]
+proptest = "1"
+rstest = "0.23"
+tempfile = "3"

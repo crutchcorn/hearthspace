@@ -21,7 +21,9 @@ use crate::{
     geometry::{CanvasPoint, rect_contains},
 };
 
-use super::{App, HitTarget, ManagedWindow, ManagedWindowKind, WindowDecoration, idle::ActivityReason};
+use super::{
+    App, HitTarget, ManagedWindow, ManagedWindowKind, WindowDecoration, idle::ActivityReason,
+};
 
 fn configure_server_side_decoration(toplevel: &ToplevelSurface) {
     if window_kind_for_toplevel(toplevel) == ManagedWindowKind::ShellBar {
@@ -235,10 +237,7 @@ impl App {
     }
 
     pub(super) fn normal_insert_index(&self) -> usize {
-        self.windows
-            .iter()
-            .rposition(|window| window.kind == ManagedWindowKind::Normal)
-            .map_or(0, |index| index + 1)
+        normal_insert_index_for_kinds(self.windows.iter().map(|window| window.kind))
     }
 
     pub(super) fn configure_toplevel(&self, surface: &ToplevelSurface, kind: ManagedWindowKind) {
@@ -329,36 +328,18 @@ impl App {
 
     fn title_bar_canvas_rect(&self, window_index: usize) -> Rectangle<i32, Logical> {
         let window = &self.windows[window_index];
-        Rectangle::new(
-            (window.position.x, window.position.y).into(),
-            (
-                window.content_bbox_size.w.max(MIN_WINDOW_WIDTH),
-                TITLE_BAR_HEIGHT,
-            )
-                .into(),
-        )
+        title_bar_canvas_rect_for(window.position, window.content_bbox_size.w)
     }
 
     fn close_button_canvas_rect(&self, window_index: usize) -> Rectangle<i32, Logical> {
-        let title_bar = self.title_bar_canvas_rect(window_index);
-        Rectangle::new(
-            (
-                title_bar.loc.x + title_bar.size.w - CLOSE_BUTTON_MARGIN - CLOSE_BUTTON_SIZE,
-                title_bar.loc.y + (title_bar.size.h - CLOSE_BUTTON_SIZE) / 2,
-            )
-                .into(),
-            (CLOSE_BUTTON_SIZE, CLOSE_BUTTON_SIZE).into(),
-        )
+        close_button_canvas_rect_for(self.title_bar_canvas_rect(window_index))
     }
 
     fn content_canvas_origin(&self, window_index: usize) -> Point<i32, Logical> {
-        let window = &self.windows[window_index];
-        let title_bar_height = if self.has_compositor_chrome(window_index) {
-            TITLE_BAR_HEIGHT
-        } else {
-            0
-        };
-        Point::<i32, Logical>::from((window.position.x, window.position.y + title_bar_height))
+        content_canvas_origin_for(
+            self.windows[window_index].position,
+            self.has_compositor_chrome(window_index),
+        )
     }
 
     pub(super) fn has_compositor_chrome(&self, window_index: usize) -> bool {
@@ -423,4 +404,117 @@ fn surface_tree_contains(root: &wl_surface::WlSurface, target: &wl_surface::WlSu
         |_, _, &()| true,
     );
     contains
+}
+
+/// Index at which a newly raised normal window should be inserted so it sits on
+/// top of every other normal window while staying below the shell bars (which
+/// are kept at the end of the list).
+fn normal_insert_index_for_kinds(kinds: impl Iterator<Item = ManagedWindowKind>) -> usize {
+    kinds
+        .enumerate()
+        .filter_map(|(index, kind)| (kind == ManagedWindowKind::Normal).then_some(index + 1))
+        .last()
+        .unwrap_or(0)
+}
+
+/// Canvas-space rectangle of a window's server-side title bar, given the
+/// window's canvas position and the width of its content surface tree.
+fn title_bar_canvas_rect_for(position: CanvasPoint, content_width: i32) -> Rectangle<i32, Logical> {
+    Rectangle::new(
+        (position.x, position.y).into(),
+        (content_width.max(MIN_WINDOW_WIDTH), TITLE_BAR_HEIGHT).into(),
+    )
+}
+
+/// Canvas-space rectangle of the close button, positioned at the right edge of
+/// the given title bar and vertically centered within it.
+fn close_button_canvas_rect_for(title_bar: Rectangle<i32, Logical>) -> Rectangle<i32, Logical> {
+    Rectangle::new(
+        (
+            title_bar.loc.x + title_bar.size.w - CLOSE_BUTTON_MARGIN - CLOSE_BUTTON_SIZE,
+            title_bar.loc.y + (title_bar.size.h - CLOSE_BUTTON_SIZE) / 2,
+        )
+            .into(),
+        (CLOSE_BUTTON_SIZE, CLOSE_BUTTON_SIZE).into(),
+    )
+}
+
+/// Canvas-space origin of a window's client content, offset below the title bar
+/// only when the compositor is drawing server-side chrome for it.
+fn content_canvas_origin_for(position: CanvasPoint, has_chrome: bool) -> Point<i32, Logical> {
+    let title_bar_height = if has_chrome { TITLE_BAR_HEIGHT } else { 0 };
+    Point::<i32, Logical>::from((position.x, position.y + title_bar_height))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn point(x: i32, y: i32) -> CanvasPoint {
+        CanvasPoint { x, y }
+    }
+
+    #[test]
+    fn title_bar_uses_content_width_when_wider_than_minimum() {
+        let rect = title_bar_canvas_rect_for(point(40, 50), MIN_WINDOW_WIDTH + 120);
+        assert_eq!(rect.loc.x, 40);
+        assert_eq!(rect.loc.y, 50);
+        assert_eq!(rect.size.w, MIN_WINDOW_WIDTH + 120);
+        assert_eq!(rect.size.h, TITLE_BAR_HEIGHT);
+    }
+
+    #[test]
+    fn title_bar_clamps_to_minimum_window_width() {
+        let rect = title_bar_canvas_rect_for(point(0, 0), 10);
+        assert_eq!(rect.size.w, MIN_WINDOW_WIDTH);
+    }
+
+    #[test]
+    fn close_button_sits_inside_the_title_bar_right_edge() {
+        let title_bar = title_bar_canvas_rect_for(point(100, 200), 400);
+        let close = close_button_canvas_rect_for(title_bar);
+
+        assert_eq!(close.size.w, CLOSE_BUTTON_SIZE);
+        assert_eq!(close.size.h, CLOSE_BUTTON_SIZE);
+        // Right edge respects the margin.
+        assert_eq!(
+            close.loc.x + close.size.w,
+            title_bar.loc.x + title_bar.size.w - CLOSE_BUTTON_MARGIN
+        );
+        // Fully contained within the title bar vertically.
+        assert!(close.loc.y >= title_bar.loc.y);
+        assert!(close.loc.y + close.size.h <= title_bar.loc.y + title_bar.size.h);
+    }
+
+    #[test]
+    fn content_origin_drops_below_title_bar_only_with_chrome() {
+        assert_eq!(
+            content_canvas_origin_for(point(10, 20), true),
+            Point::<i32, Logical>::from((10, 20 + TITLE_BAR_HEIGHT))
+        );
+        assert_eq!(
+            content_canvas_origin_for(point(10, 20), false),
+            Point::<i32, Logical>::from((10, 20))
+        );
+    }
+
+    #[test]
+    fn insert_index_is_after_the_last_normal_window() {
+        use ManagedWindowKind::{Normal, ShellBar};
+        assert_eq!(normal_insert_index_for_kinds([].into_iter()), 0);
+        assert_eq!(
+            normal_insert_index_for_kinds([ShellBar].into_iter()),
+            0,
+            "with only shell bars, normals go to the front"
+        );
+        assert_eq!(
+            normal_insert_index_for_kinds([Normal, Normal, ShellBar].into_iter()),
+            2,
+            "insert above the topmost normal but below the shell bar"
+        );
+        assert_eq!(
+            normal_insert_index_for_kinds([Normal, ShellBar, Normal].into_iter()),
+            3
+        );
+    }
 }

@@ -33,11 +33,17 @@ fn runtime_path(name: &str) -> PathBuf {
         .join(name)
 }
 
-fn ensure_snap_wayland_socket(instance_name: &str) -> std::io::Result<String> {
-    if !instance_name
+/// Snap instance names are embedded into a runtime directory path, so reject any
+/// value containing path separators or other characters that could escape the
+/// intended `snap.<name>` directory.
+fn is_valid_snap_instance_name(instance_name: &str) -> bool {
+    instance_name
         .chars()
         .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_' | '.'))
-    {
+}
+
+fn ensure_snap_wayland_socket(instance_name: &str) -> std::io::Result<String> {
+    if !is_valid_snap_instance_name(instance_name) {
         return Err(io::Error::new(
             ErrorKind::InvalidInput,
             format!("invalid snap instance name {instance_name:?}"),
@@ -198,7 +204,11 @@ fn register_command_connection<'l>(handle: &LoopHandle<'l, CalloopData>, stream:
     let mut buffer: Vec<u8> = Vec::new();
     let source = Generic::new(stream, Interest::READ, Mode::Level);
     if let Err(error) = handle.insert_source(source, move |_, stream, data| {
-        Ok(read_command_connection(stream, &mut buffer, &mut data.state))
+        Ok(read_command_connection(
+            stream,
+            &mut buffer,
+            &mut data.state,
+        ))
     }) {
         eprintln!("Failed to register shell command connection: {error}");
     }
@@ -242,19 +252,34 @@ fn read_command_connection(
 }
 
 fn drain_complete_commands(buffer: &mut Vec<u8>, state: &mut App) {
-    while let Some(newline) = buffer.iter().position(|&byte| byte == b'\n') {
-        let line: Vec<u8> = buffer.drain(..=newline).collect();
-        run_command_line(&line, state);
+    for command in take_complete_commands(buffer) {
+        state.run_control_action(command);
     }
 }
 
+/// Split every complete newline-terminated command off the front of `buffer`,
+/// returning the parsed commands in order. Unterminated trailing bytes are left
+/// in `buffer` for the next read. Lines that fail to parse are silently skipped.
+fn take_complete_commands(buffer: &mut Vec<u8>) -> Vec<ShellCommand> {
+    let mut commands = Vec::new();
+    while let Some(newline) = buffer.iter().position(|&byte| byte == b'\n') {
+        let line: Vec<u8> = buffer.drain(..=newline).collect();
+        if let Some(command) = parse_command_line(&line) {
+            commands.push(command);
+        }
+    }
+    commands
+}
+
 fn run_command_line(bytes: &[u8], state: &mut App) {
-    let Ok(text) = std::str::from_utf8(bytes) else {
-        return;
-    };
-    if let Some(command) = ShellCommand::parse(text.trim()) {
+    if let Some(command) = parse_command_line(bytes) {
         state.run_control_action(command);
     }
+}
+
+fn parse_command_line(bytes: &[u8]) -> Option<ShellCommand> {
+    let text = std::str::from_utf8(bytes).ok()?;
+    ShellCommand::parse(text.trim())
 }
 
 impl App {
@@ -381,5 +406,70 @@ impl App {
         if let Err(error) = spawn_argv_with_env(&command, &wayland_display, &launch_env_refs) {
             eprintln!("Failed to launch {app_id}: {error}");
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::shell::SpawnTarget;
+
+    #[test]
+    fn drains_only_complete_newline_terminated_commands() {
+        let mut buffer = b"zoom-in\npan-left\n".to_vec();
+        let commands = take_complete_commands(&mut buffer);
+        assert_eq!(commands, vec![ShellCommand::ZoomIn, ShellCommand::PanLeft]);
+        assert!(buffer.is_empty());
+    }
+
+    #[test]
+    fn keeps_an_unterminated_trailing_command_buffered() {
+        let mut buffer = b"zoom-in\npan-le".to_vec();
+        let commands = take_complete_commands(&mut buffer);
+        assert_eq!(commands, vec![ShellCommand::ZoomIn]);
+        assert_eq!(buffer, b"pan-le");
+
+        // The remainder completes once the newline arrives.
+        buffer.extend_from_slice(b"ft\n");
+        let commands = take_complete_commands(&mut buffer);
+        assert_eq!(commands, vec![ShellCommand::PanLeft]);
+        assert!(buffer.is_empty());
+    }
+
+    #[test]
+    fn skips_unparseable_lines_while_draining() {
+        let mut buffer = b"not-a-command\nspawn foot\n".to_vec();
+        let commands = take_complete_commands(&mut buffer);
+        assert_eq!(commands, vec![ShellCommand::Spawn(SpawnTarget::Foot)]);
+    }
+
+    #[test]
+    fn parse_command_line_trims_and_rejects_invalid_utf8() {
+        assert_eq!(
+            parse_command_line(b"  zoom-out \n"),
+            Some(ShellCommand::ZoomOut)
+        );
+        assert_eq!(parse_command_line(&[0xff, 0xfe]), None);
+        assert_eq!(parse_command_line(b"\n"), None);
+    }
+
+    #[test]
+    fn sanitized_path_component_replaces_unsafe_characters() {
+        assert_eq!(
+            sanitized_path_component("org.gnome.Calculator"),
+            "org.gnome.Calculator"
+        );
+        // Path separators become underscores; dots are preserved.
+        assert_eq!(sanitized_path_component("a/../b"), "a_.._b");
+        assert_eq!(sanitized_path_component("weird name!"), "weird_name_");
+    }
+
+    #[test]
+    fn snap_instance_names_reject_path_separators() {
+        assert!(is_valid_snap_instance_name("firefox"));
+        assert!(is_valid_snap_instance_name("foo_bar-1.2"));
+        assert!(!is_valid_snap_instance_name("../escape"));
+        assert!(!is_valid_snap_instance_name("with/slash"));
+        assert!(!is_valid_snap_instance_name("space here"));
     }
 }

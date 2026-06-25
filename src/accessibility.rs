@@ -271,3 +271,79 @@ async fn log_accessible_node(proxy: &AccessibleProxy<'_>, depth: usize) {
 fn indent(depth: usize) -> String {
     "  ".repeat(depth)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn node(name: &str, description: &str) -> AccessibleNodeSummary {
+        AccessibleNodeSummary {
+            object: ObjectRefOwned::default(),
+            role: "frame".to_string(),
+            name: name.to_string(),
+            description: description.to_string(),
+            child_count: 0,
+        }
+    }
+
+    fn window(app_id: Option<&str>, title: Option<&str>) -> ManagedWindowAccessibilityInfo {
+        ManagedWindowAccessibilityInfo {
+            id: 1,
+            app_id: app_id.map(str::to_string),
+            title: title.map(str::to_string),
+        }
+    }
+
+    #[test]
+    fn term_match_is_case_insensitive_and_substring() {
+        let accessible = node("Firefox Web Browser", "");
+        assert!(accessible_matches_term(&accessible, "firefox"));
+        assert!(accessible_matches_term(&accessible, "WEB"));
+        assert!(!accessible_matches_term(&accessible, "chrome"));
+    }
+
+    #[test]
+    fn term_match_also_checks_the_description() {
+        let accessible = node("", "The GNOME calculator");
+        assert!(accessible_matches_term(&accessible, "calculator"));
+    }
+
+    #[test]
+    fn blank_terms_never_match() {
+        let accessible = node("Anything", "Anything");
+        assert!(!accessible_matches_term(&accessible, ""));
+        assert!(!accessible_matches_term(&accessible, "   "));
+    }
+
+    #[test]
+    fn window_matches_on_either_app_id_or_title() {
+        let accessible = node("org.gnome.Calculator", "");
+        assert!(accessible_matches_window(
+            &accessible,
+            &window(Some("org.gnome.Calculator"), None)
+        ));
+        assert!(accessible_matches_window(
+            &node("My Notes", ""),
+            &window(Some("unrelated"), Some("notes"))
+        ));
+        assert!(!accessible_matches_window(
+            &accessible,
+            &window(Some("com.other.App"), Some("Other"))
+        ));
+        // No identifying info at all means no match.
+        assert!(!accessible_matches_window(&accessible, &window(None, None)));
+    }
+
+    #[test]
+    fn desktop_shell_roots_are_recognized() {
+        assert!(is_desktop_shell_root(&node("gnome-shell", "")));
+        assert!(is_desktop_shell_root(&node("plasmashell", "")));
+        assert!(!is_desktop_shell_root(&node("firefox", "")));
+    }
+
+    #[test]
+    fn indent_scales_with_depth() {
+        assert_eq!(indent(0), "");
+        assert_eq!(indent(2), "    ");
+    }
+}
