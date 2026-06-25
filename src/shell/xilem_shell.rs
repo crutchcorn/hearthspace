@@ -33,7 +33,8 @@ use xilem::{
     },
     style::Style,
     view::{
-        CrossAxisAlignment, button, flex_col, flex_row, label, sized_box, text_button, text_input,
+        CrossAxisAlignment, FlexSpacer, button, flex_col, flex_row, label, sized_box, text_button,
+        text_input,
     },
     window,
 };
@@ -75,6 +76,12 @@ const SEARCH_BOX_WIDTH: f64 = 420.0;
 /// Pinning the box to a single-line height (matching the command buttons) keeps
 /// the text vertically centered within the bar.
 const SEARCH_BOX_HEIGHT: f64 = 34.0;
+
+/// Horizontal inset between the bar's contents and the screen edges, so the
+/// search field does not sit flush against the left side. The control bar is
+/// stretched full-width by the compositor, so this is applied as fixed spacers
+/// at either end of the row.
+const SHELL_BAR_H_PAD: f64 = 16.0;
 
 // Light theme palette for the shell surfaces.
 /// Window background for the bar and launcher palette.
@@ -223,12 +230,15 @@ fn bar_view(state: &ShellState) -> impl WidgetView<ShellState> + use<> {
     // The control bar is stretched to the full screen width by the compositor.
     // The search field is capped to a fixed, comfortable width (rather than
     // flexing to fill the bar) so it reads as a search box; the command buttons
-    // keep their natural width and pack in beside it.
+    // keep their natural width and pack in beside it. Fixed spacers at either
+    // end inset the contents from the screen edges.
     flex_row((
+        FlexSpacer::Fixed(SHELL_BAR_H_PAD.px()),
         sized_box(search)
             .fixed_width(SEARCH_BOX_WIDTH.px())
             .fixed_height(SEARCH_BOX_HEIGHT.px()),
         command_buttons,
+        FlexSpacer::Fixed(SHELL_BAR_H_PAD.px()),
     ))
 }
 
