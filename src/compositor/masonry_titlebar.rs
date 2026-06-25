@@ -39,6 +39,8 @@ const TITLE_FONT_SIZE: f32 = 14.0;
 const TITLE_LEFT_PAD: i32 = 10;
 /// Gap between the title text and the close X, in native pixels.
 const TITLE_RIGHT_GAP: i32 = 8;
+/// Radius of the rounded top corners of the title bar, in native pixels.
+const TITLE_BAR_CORNER_RADIUS: f32 = 9.0;
 
 /// A Masonry-rendered title-bar image cached on a window.
 ///
@@ -55,9 +57,10 @@ pub(super) struct TitlebarBuffer {
 /// Rasterize the full title bar (`width` × [`TITLE_BAR_HEIGHT`]) with Masonry and
 /// wrap the pixels in a [`MemoryRenderBuffer`].
 ///
-/// The bar is opaque — the gradient background fills the whole area and the
-/// close button (circle + X) is drawn over it — so it composites with no
-/// premultiplied-alpha concerns.
+/// The bar is opaque apart from its rounded top corners, which are masked to
+/// transparent with premultiplied edges so the gradient bar and the close
+/// button (circle + X) composite correctly against whatever sits behind the
+/// window chrome.
 pub(super) fn render_titlebar(width: i32, title: &str, active: bool) -> MemoryRenderBuffer {
     let image = rasterize_titlebar(width, title, active);
     let img_w = image.width() as i32;
@@ -126,6 +129,7 @@ fn rasterize_titlebar(width: i32, title: &str, active: bool) -> image::RgbaImage
 
     let mut image = harness.render();
     draw_close_button(&mut image, width);
+    round_top_corners(&mut image, width);
     image
 }
 
@@ -199,6 +203,49 @@ fn blend_channel(background: u8, foreground: u8, coverage: f32) -> u8 {
     blended.round().clamp(0.0, 255.0) as u8
 }
 
+/// Round off the top-left and top-right corners of the rasterized bar with an
+/// anti-aliased quarter-circle mask of radius [`TITLE_BAR_CORNER_RADIUS`].
+///
+/// Corner pixels outside the rounded shape become fully transparent; edge pixels
+/// are premultiplied (color × coverage, alpha = coverage) so the bar blends
+/// cleanly over whatever is behind the window chrome. Only the top corners are
+/// rounded; the bottom edge stays square where it meets the window body.
+fn round_top_corners(image: &mut image::RgbaImage, width: i32) {
+    let radius = TITLE_BAR_CORNER_RADIUS;
+    if radius <= 0.0 {
+        return;
+    }
+    let span = (radius.ceil() as i32).min(TITLE_BAR_HEIGHT).min(width);
+
+    // (arc center x, first column) for the top-left and top-right corner boxes.
+    // Every pixel in each box lies in that corner's outer quadrant, so it is
+    // enough to fade by distance from the arc center at height `radius`.
+    let corners = [(radius, 0), (width as f32 - radius, width - span)];
+    for (center_x, start_x) in corners {
+        for py in 0..span {
+            for px in start_x..(start_x + span).min(width) {
+                let fx = px as f32 + 0.5;
+                let fy = py as f32 + 0.5;
+                let dist = ((fx - center_x).powi(2) + (fy - radius).powi(2)).sqrt();
+                let coverage = (radius + 0.5 - dist).clamp(0.0, 1.0);
+                if coverage < 1.0 {
+                    premultiply_pixel(image, px, py, coverage);
+                }
+            }
+        }
+    }
+}
+
+/// Premultiply one image pixel by `coverage` and set its alpha to match, used to
+/// fade out the rounded corner edges.
+fn premultiply_pixel(image: &mut image::RgbaImage, px: i32, py: i32, coverage: f32) {
+    let pixel = image.get_pixel_mut(px as u32, py as u32);
+    pixel.0[0] = (f32::from(pixel.0[0]) * coverage).round() as u8;
+    pixel.0[1] = (f32::from(pixel.0[1]) * coverage).round() as u8;
+    pixel.0[2] = (f32::from(pixel.0[2]) * coverage).round() as u8;
+    pixel.0[3] = (255.0 * coverage).round() as u8;
+}
+
 /// Euclidean distance from point `(px, py)` to the segment `(ax, ay)-(bx, by)`.
 fn distance_to_segment(px: f32, py: f32, ax: f32, ay: f32, bx: f32, by: f32) -> f32 {
     let dx = bx - ax;
@@ -217,18 +264,6 @@ fn distance_to_segment(px: f32, py: f32, ax: f32, ay: f32, bx: f32, by: f32) -> 
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn dump_titlebar_ppm() {
-        use std::io::Write;
-        let img = rasterize_titlebar(360, "Files \u{2014} Documents", true);
-        let (w, h) = (img.width(), img.height());
-        let mut out = std::fs::File::create("/tmp/titlebar_active.ppm").unwrap();
-        write!(out, "P6\n{w} {h}\n255\n").unwrap();
-        for px in img.pixels() {
-            out.write_all(&[px.0[0], px.0[1], px.0[2]]).unwrap();
-        }
-    }
 
     #[test]
     fn masonry_strokes_a_close_x_onto_the_bar() {
@@ -258,6 +293,32 @@ mod tests {
         assert!(
             bright > 8,
             "expected a stroked close X, found {bright} bright pixels"
+        );
+    }
+
+    #[test]
+    fn masonry_rounds_the_top_corners() {
+        let width = 200;
+        let image = rasterize_titlebar(width, "Hello", true);
+
+        // The extreme top corners fall outside the rounded shape and must be
+        // fully transparent, while the bar's interior stays opaque.
+        assert_eq!(image.get_pixel(0, 0).0[3], 0, "top-left corner not cut");
+        assert_eq!(
+            image.get_pixel(width as u32 - 1, 0).0[3],
+            0,
+            "top-right corner not cut"
+        );
+        assert_eq!(
+            image.get_pixel(width as u32 / 2, TITLE_BAR_HEIGHT as u32 / 2).0[3],
+            255,
+            "bar interior should be opaque"
+        );
+        // The bottom corners stay square (the bar meets the window body there).
+        assert_eq!(
+            image.get_pixel(0, TITLE_BAR_HEIGHT as u32 - 1).0[3],
+            255,
+            "bottom-left corner should be square"
         );
     }
 }
