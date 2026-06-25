@@ -28,6 +28,7 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@67ef31d5b988238dd797d409d6f9574278e20537
         with:
+          toolchain: "1.93.1"
           components: rustfmt, clippy
 
       - name: Cache cargo registry and build
@@ -41,3 +42,24 @@ jobs:
 
       - name: Test
         run: cargo test --all-targets
+
+  deny:
+    name: Dependency advisories and bans
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      # No deny.toml is committed yet, so cargo-deny runs with its built-in
+      # defaults. The license check is intentionally omitted because it needs an
+      # explicit allow-list to be meaningful; advisories/bans/sources are useful
+      # out of the box. `unmaintained` is downgraded to a warning because the
+      # only hits are transitive crates pulled in through gpui
+      # (proc-macro-error2, rustls-pemfile) with no safe upgrade available;
+      # genuine vulnerabilities/unsound advisories still fail the job.
+      - name: cargo-deny
+        uses: EmbarkStudios/cargo-deny-action@bb137d7af7e4fb67e5f82a49c4fce4fad40782fe # v2.0.20
+        with:
+          rust-version: 1.93.1
+          command: check advisories bans sources
+          command-arguments: "--warn unmaintained"
+

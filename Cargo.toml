@@ -18,3 +18,11 @@ wayland-server = "0.31.9"
 proptest = "1"
 rstest = "0.26"
 tempfile = "3"
+
+# Centralized lint policy so local `cargo clippy`/`cargo build` enforce the same
+# discipline as CI (which also passes `-D warnings` to escalate rustc warnings).
+[lints.rust]
+unsafe_op_in_unsafe_fn = "deny"
+
+[lints.clippy]
+all = { level = "deny", priority = -1 }
