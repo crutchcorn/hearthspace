@@ -20,7 +20,9 @@ use shell_integration::{
     accept_command_connections, command_socket_path, remove_stale_socket, spawn_shell,
 };
 use viewport::ViewportAnimation;
-use windows::{decoration_for_new_window, position_for_new_window, window_kind_for_toplevel};
+use windows::{
+    ResizeEdges, decoration_for_new_window, position_for_new_window, window_kind_for_toplevel,
+};
 
 use smithay::{
     backend::{
@@ -117,12 +119,24 @@ struct DragState {
     window_start: CanvasPoint,
 }
 
+struct ResizeState {
+    window_id: u64,
+    edges: ResizeEdges,
+    pointer_start: Point<f64, Logical>,
+    initial_position: CanvasPoint,
+    initial_content_size: Size<i32, Logical>,
+}
+
 enum HitTarget {
     CloseButton {
         window_index: usize,
     },
     TitleBar {
         window_index: usize,
+    },
+    ResizeBorder {
+        window_index: usize,
+        edges: ResizeEdges,
     },
     Client {
         window_index: usize,
@@ -150,6 +164,7 @@ struct App {
     idle_daemon: WindowIdleDaemon,
     focused_normal_window_id: Option<u64>,
     drag: Option<DragState>,
+    resize: Option<ResizeState>,
     next_spawn_position: CanvasPoint,
     spawn_offset: i32,
     pointer_location: Point<f64, Logical>,
@@ -235,6 +250,35 @@ impl XdgShellHandler for App {
         self.request_redraw();
     }
 
+    fn resize_request(
+        &mut self,
+        surface: ToplevelSurface,
+        _seat: wl_seat::WlSeat,
+        _serial: Serial,
+        edges: xdg_toplevel::ResizeEdge,
+    ) {
+        let edges = ResizeEdges::from(edges);
+        if edges.is_empty() {
+            return;
+        }
+        let Some(window_index) = self
+            .windows
+            .iter()
+            .position(|window| window.surface == surface)
+        else {
+            return;
+        };
+
+        if self.windows[window_index].kind != ManagedWindowKind::Normal {
+            return;
+        }
+
+        let window_index = self.raise_window(window_index);
+        let surface = self.windows[window_index].surface.wl_surface().clone();
+        self.set_keyboard_focus_to_window(window_index, surface);
+        self.start_resize(window_index, edges);
+    }
+
     fn grab(&mut self, surface: PopupSurface, seat: wl_seat::WlSeat, serial: Serial) {
         // Set up a popup grab so the menu behaves modally: keyboard and pointer
         // input route to the popup, and clicking elsewhere dismisses it.
@@ -296,6 +340,7 @@ impl XdgShellHandler for App {
         }
         self.windows.retain(|window| window.surface != surface);
         self.drag = None;
+        self.resize = None;
         self.request_redraw();
     }
 
@@ -459,6 +504,7 @@ impl CompositorHandler for App {
             eprintln!("Failed to send initial popup configure: {err}");
         }
         self.refresh_window_content_bbox(surface);
+        self.reanchor_resize(surface);
         if let Some(window_id) = self.managed_normal_window_id_for_surface(surface) {
             self.idle_daemon
                 .record_activity(window_id, ActivityReason::SurfaceCommit);
@@ -564,6 +610,7 @@ pub fn run_winit(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> 
         idle_daemon: WindowIdleDaemon::new(WINDOW_IDLE_THRESHOLDS),
         focused_normal_window_id: None,
         drag: None,
+        resize: None,
         next_spawn_position: CanvasPoint { x: 80, y: 96 },
         spawn_offset: 0,
         pointer_location: (0.0, 0.0).into(),

@@ -51,6 +51,11 @@ pub(super) fn handle_input_event(state: &mut App, event: InputEvent<WinitInput>)
                 return;
             }
 
+            if state.resize.is_some() {
+                state.update_resize(location);
+                return;
+            }
+
             let focus = match state.hit_test(location) {
                 Some(HitTarget::Client {
                     window_index,
@@ -81,8 +86,12 @@ pub(super) fn handle_input_event(state: &mut App, event: InputEvent<WinitInput>)
             let time = event.time_msec();
             let is_left_button = event.button() == Some(smithay::backend::input::MouseButton::Left);
 
-            if is_left_button && event.state() == ButtonState::Released && state.drag.is_some() {
+            if is_left_button
+                && event.state() == ButtonState::Released
+                && (state.drag.is_some() || state.resize.is_some())
+            {
                 state.drag = None;
+                state.finish_resize();
                 // Forward the release to the pointer so the implicit grab
                 // established by the originating press (e.g. a client-initiated
                 // `move_request`) is released. Swallowing it here would leave the
@@ -119,6 +128,16 @@ pub(super) fn handle_input_event(state: &mut App, event: InputEvent<WinitInput>)
                             window_start: state.windows[window_index].position,
                         });
                         state.request_redraw();
+                        return;
+                    }
+                    Some(HitTarget::ResizeBorder {
+                        window_index,
+                        edges,
+                    }) => {
+                        let window_index = state.raise_window(window_index);
+                        let surface = state.windows[window_index].surface.wl_surface().clone();
+                        state.set_keyboard_focus_to_window(window_index, surface);
+                        state.start_resize(window_index, edges);
                         return;
                     }
                     Some(HitTarget::Client { window_index, .. }) => {
