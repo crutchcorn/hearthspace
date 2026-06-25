@@ -297,13 +297,16 @@ impl App {
                     return Some(HitTarget::TitleBar { window_index });
                 }
 
-                // The interactive resize border sits in a frame just outside the
-                // window's chrome and content, so it is checked before the
-                // client surface tree (which only covers the interior).
+                // The interactive resize handle is a band centered on each
+                // window edge, checked before the client surface tree so the
+                // visible edge is grabbable for resizing.
                 let window_rect = self.window_canvas_rect(window_index);
-                if let Some(edges) =
-                    resize_edges_at(window_rect, canvas_location, RESIZE_BORDER_THICKNESS)
-                {
+                if let Some(edges) = resize_edges_at(
+                    window_rect,
+                    canvas_location,
+                    RESIZE_HANDLE_OUTSET,
+                    RESIZE_HANDLE_INSET,
+                ) {
                     return Some(HitTarget::ResizeBorder {
                         window_index,
                         edges,
@@ -651,30 +654,34 @@ fn window_canvas_rect_for(
     )
 }
 
-/// Determine which resize edges, if any, the pointer is over. The interactive
-/// resize region is a frame of `border` pixels just outside `window_rect`;
-/// points inside the window (its chrome/content) are not resize targets.
+/// Determine which resize edges, if any, the pointer is over. The resize handle
+/// is a band centered on each window edge: it reaches `outset` pixels outside
+/// the edge and `inset` pixels inside it, so the visible edge is grabbable while
+/// the deep interior is not. Title bar and close-button hit-testing run first,
+/// so they keep priority over the top resize band.
 fn resize_edges_at(
     window_rect: Rectangle<i32, Logical>,
     point: Point<f64, Logical>,
-    border: i32,
+    outset: i32,
+    inset: i32,
 ) -> Option<ResizeEdges> {
     let outer = Rectangle::new(
-        (window_rect.loc.x - border, window_rect.loc.y - border).into(),
+        (window_rect.loc.x - outset, window_rect.loc.y - outset).into(),
         (
-            window_rect.size.w + border * 2,
-            window_rect.size.h + border * 2,
+            window_rect.size.w + outset * 2,
+            window_rect.size.h + outset * 2,
         )
             .into(),
     );
-    if !rect_contains(outer, point) || rect_contains(window_rect, point) {
+    if !rect_contains(outer, point) {
         return None;
     }
+    let inset = f64::from(inset);
     let edges = ResizeEdges {
-        left: point.x < f64::from(window_rect.loc.x),
-        right: point.x >= f64::from(window_rect.loc.x + window_rect.size.w),
-        top: point.y < f64::from(window_rect.loc.y),
-        bottom: point.y >= f64::from(window_rect.loc.y + window_rect.size.h),
+        left: point.x < f64::from(window_rect.loc.x) + inset,
+        right: point.x >= f64::from(window_rect.loc.x + window_rect.size.w) - inset,
+        top: point.y < f64::from(window_rect.loc.y) + inset,
+        bottom: point.y >= f64::from(window_rect.loc.y + window_rect.size.h) - inset,
     };
     (!edges.is_empty()).then_some(edges)
 }
@@ -870,12 +877,12 @@ mod tests {
         let rect = Rectangle::new((100, 100).into(), (200, 150).into());
         // Just outside the top-left corner.
         assert_eq!(
-            resize_edges_at(rect, fpoint(96.0, 96.0), 8),
+            resize_edges_at(rect, fpoint(96.0, 96.0), 8, 8),
             Some(edges(true, false, true, false))
         );
         // Along the right edge only.
         assert_eq!(
-            resize_edges_at(rect, fpoint(303.0, 175.0), 8),
+            resize_edges_at(rect, fpoint(303.0, 175.0), 8, 8),
             Some(edges(false, true, false, false))
         );
     }
@@ -884,9 +891,32 @@ mod tests {
     fn resize_edges_at_ignores_interior_and_far_points() {
         let rect = Rectangle::new((100, 100).into(), (200, 150).into());
         // Inside the window content.
-        assert_eq!(resize_edges_at(rect, fpoint(150.0, 150.0), 8), None);
-        // Beyond the border frame.
-        assert_eq!(resize_edges_at(rect, fpoint(50.0, 50.0), 8), None);
+        assert_eq!(resize_edges_at(rect, fpoint(150.0, 150.0), 8, 8), None);
+        // Beyond the outset frame.
+        assert_eq!(resize_edges_at(rect, fpoint(50.0, 50.0), 8, 8), None);
+    }
+
+    #[test]
+    fn resize_edges_at_handle_is_centered_on_the_edge() {
+        let rect = Rectangle::new((100, 100).into(), (200, 150).into());
+        // The left edge is at x = 100; with an 8px inset the handle reaches to
+        // x = 108 inside the window, so a point a few pixels inside resizes.
+        assert_eq!(
+            resize_edges_at(rect, fpoint(104.0, 175.0), 8, 8),
+            Some(edges(true, false, false, false))
+        );
+        // With an 8px outset it also reaches to x = 92 outside the window.
+        assert_eq!(
+            resize_edges_at(rect, fpoint(95.0, 175.0), 8, 8),
+            Some(edges(true, false, false, false))
+        );
+        // Just past the inset (x = 109) is interior content, not a resize target.
+        assert_eq!(resize_edges_at(rect, fpoint(109.0, 175.0), 8, 8), None);
+        // Just inside the bottom edge resizes too (250 is the bottom; 246 is within 8).
+        assert_eq!(
+            resize_edges_at(rect, fpoint(200.0, 246.0), 8, 8),
+            Some(edges(false, false, false, true))
+        );
     }
 
     #[test]

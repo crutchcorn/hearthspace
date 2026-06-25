@@ -310,7 +310,9 @@ mod tests {
             "top-right corner not cut"
         );
         assert_eq!(
-            image.get_pixel(width as u32 / 2, TITLE_BAR_HEIGHT as u32 / 2).0[3],
+            image
+                .get_pixel(width as u32 / 2, TITLE_BAR_HEIGHT as u32 / 2)
+                .0[3],
             255,
             "bar interior should be opaque"
         );
