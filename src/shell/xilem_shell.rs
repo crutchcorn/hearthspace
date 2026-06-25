@@ -69,6 +69,13 @@ const LAUNCHER_ITEM_WIDTH: f64 = LAUNCHER_WIDTH as f64 - 2.0 * LAUNCHER_ITEM_H_P
 /// instead of sprawling across the whole bar.
 const SEARCH_BOX_WIDTH: f64 = 420.0;
 
+/// Fixed height of the search field. A `TextInput` greedily fills whatever
+/// block (cross-axis) space the flex row offers it and top-anchors its text, so
+/// left unbounded it expands to the full bar height and the text sits too high.
+/// Pinning the box to a single-line height (matching the command buttons) keeps
+/// the text vertically centered within the bar.
+const SEARCH_BOX_HEIGHT: f64 = 34.0;
+
 // Light theme palette for the shell surfaces.
 /// Window background for the bar and launcher palette.
 const SHELL_BG: Color = Color::from_rgb8(0xf4, 0xf4, 0xf5);
@@ -218,7 +225,9 @@ fn bar_view(state: &ShellState) -> impl WidgetView<ShellState> + use<> {
     // flexing to fill the bar) so it reads as a search box; the command buttons
     // keep their natural width and pack in beside it.
     flex_row((
-        sized_box(search).fixed_width(SEARCH_BOX_WIDTH.px()),
+        sized_box(search)
+            .fixed_width(SEARCH_BOX_WIDTH.px())
+            .fixed_height(SEARCH_BOX_HEIGHT.px()),
         command_buttons,
     ))
 }
