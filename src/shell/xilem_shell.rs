@@ -17,7 +17,7 @@ use std::{env, io::Write, os::unix::net::UnixStream, path::PathBuf};
 use xilem::{
     AnyWidgetView, EventLoop, WidgetView, WindowOptions, WindowOptionsExtLinux, Xilem,
     dpi::LogicalSize,
-    view::{flex_row, text_button, text_input},
+    view::{FlexExt, flex_row, text_button, text_input},
 };
 
 use crate::{
@@ -79,7 +79,11 @@ fn app_logic(state: &mut ShellState) -> impl WidgetView<ShellState> + use<> {
     })
     .collect();
 
-    flex_row((search, result_buttons, command_buttons))
+    // The compositor forces the shell to a single full-width, short row, so the
+    // search field is given a flex factor to claim all leftover horizontal space
+    // (the result/command buttons keep their natural width). Without this the
+    // row splits space evenly and the input collapses to an untypeable sliver.
+    flex_row((search.flex(1.0), result_buttons, command_buttons))
 }
 
 pub fn run() -> Result<(), Box<dyn std::error::Error>> {
