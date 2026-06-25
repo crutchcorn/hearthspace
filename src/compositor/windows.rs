@@ -3,7 +3,7 @@ use smithay::{
         PopupManager, WindowSurfaceType,
         utils::{bbox_from_surface_tree, under_from_surface_tree},
     },
-    utils::{Logical, Physical, Point, Rectangle, Serial},
+    utils::{Logical, Physical, Point, Rectangle, SERIAL_COUNTER},
     wayland::{
         compositor::{TraversalAction, with_states, with_surface_tree_downward},
         shell::xdg::{ToplevelSurface, XdgToplevelSurfaceData},
@@ -92,13 +92,13 @@ impl App {
             == ManagedWindowKind::Normal)
             .then_some(self.windows[window_index].id);
         let keyboard = self.keyboard.clone();
-        keyboard.set_focus(self, Some(surface), Serial::from(0));
+        keyboard.set_focus(self, Some(surface), SERIAL_COUNTER.next_serial());
     }
 
     pub(super) fn clear_keyboard_focus(&mut self) {
         self.focused_normal_window_id = None;
         let keyboard = self.keyboard.clone();
-        keyboard.set_focus(self, Option::<WlSurface>::None, Serial::from(0));
+        keyboard.set_focus(self, Option::<WlSurface>::None, SERIAL_COUNTER.next_serial());
     }
 
     pub(super) fn record_client_activity_for_window_index(

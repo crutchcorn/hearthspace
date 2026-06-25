@@ -10,7 +10,7 @@ use smithay::{
         keyboard::{FilterResult, keysyms},
         pointer::{AxisFrame, ButtonEvent, MotionEvent},
     },
-    utils::Serial,
+    utils::SERIAL_COUNTER,
 };
 
 use crate::config::{SCROLL_ZOOM_SENSITIVITY, WHEEL_SCROLL_PIXEL_EQUIVALENT};
@@ -27,7 +27,7 @@ pub(super) fn handle_input_event(state: &mut App, event: InputEvent<WinitInput>)
                 state,
                 event.key_code(),
                 event.state(),
-                Serial::from(0),
+                SERIAL_COUNTER.next_serial(),
                 time,
                 |_, _, _| FilterResult::Forward,
             );
@@ -71,7 +71,7 @@ pub(super) fn handle_input_event(state: &mut App, event: InputEvent<WinitInput>)
                 focus,
                 &MotionEvent {
                     location,
-                    serial: Serial::from(0),
+                    serial: SERIAL_COUNTER.next_serial(),
                     time,
                 },
             );
@@ -92,7 +92,7 @@ pub(super) fn handle_input_event(state: &mut App, event: InputEvent<WinitInput>)
                 pointer.button(
                     state,
                     &ButtonEvent {
-                        serial: Serial::from(0),
+                        serial: SERIAL_COUNTER.next_serial(),
                         time,
                         button: event.button_code(),
                         state: event.state(),
@@ -173,7 +173,7 @@ pub(super) fn handle_input_event(state: &mut App, event: InputEvent<WinitInput>)
             pointer.button(
                 state,
                 &ButtonEvent {
-                    serial: Serial::from(0),
+                    serial: SERIAL_COUNTER.next_serial(),
                     time,
                     button: event.button_code(),
                     state: event.state(),
