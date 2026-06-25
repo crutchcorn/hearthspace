@@ -8,15 +8,13 @@ rust-version = "1.93.1"
 async-io = "2.3.3"
 atspi = "0.30.0"
 gtk = { package = "gtk4", version = "0.11" }
-# Xilem (app shell) and Masonry (compositor-side imaging) are pulled from a local
-# checkout of our linebender/xilem fork (branch `hearthspace/wayland-app-id`,
-# based on upstream rev 5d72ad41eb660fa620110e045d332fd95684ebae). The fork adds
+# Xilem (app shell) and Masonry (compositor-side imaging) are pulled from our
+# linebender/xilem fork branch backing PR linebender/xilem#1830, which adds
 # `WindowOptionsExtLinux::with_name` so a Xilem window can advertise a Wayland
-# `app_id`; this is intended to be contributed upstream. Using a path keeps the
-# whole xilem workspace resolving from one consistent source while we iterate.
-# See SETUP.md for the clone location and how to refresh it.
-masonry = { path = "../../linebender/xilem/masonry", features = ["testing"] }
-xilem = { path = "../../linebender/xilem/xilem" }
+# `app_id` (and X11 `WM_CLASS`). Repoint to upstream once the PR lands.
+# See SETUP.md for details.
+masonry = { git = "https://github.com/crutchcorn/xilem", branch = "wayland-app-id", features = ["testing"] }
+xilem = { git = "https://github.com/crutchcorn/xilem", branch = "wayland-app-id" }
 # naga 28 (pulled in transitively via wgpu/vello) only compiles its WGSL
 # error-emit path when the `termcolor` feature is enabled, but the crates that
 # depend on it (wgpu-core, vello_shaders) enable `wgsl-in` without it. We add a

@@ -15,30 +15,25 @@ sudo apt-get install -y build-essential cargo rustc rustfmt pkg-config clang lib
 
 `libgtk-4-dev` is required for the built-in GTK accessibility test app used by the default `SPAWN` action.
 
-## Xilem Fork (local path dependency)
+## Xilem Fork (git dependency)
 
 The shell UI is built with [Xilem](https://github.com/linebender/xilem). Stock
 Xilem cannot set a Wayland `app_id` on its windows, which Hearthspace needs so
 the compositor can recognize the shell surface and render it without window
-chrome. We therefore depend on a local fork:
+chrome. We therefore depend on a fork branch via git in `Cargo.toml`:
 
-```sh
-git clone https://github.com/linebender/xilem ~/git/linebender/xilem
-cd ~/git/linebender/xilem
-git checkout -b hearthspace/wayland-app-id   # based on upstream main @ 5d72ad41
+```toml
+masonry = { git = "https://github.com/crutchcorn/xilem", branch = "wayland-app-id", features = ["testing"] }
+xilem = { git = "https://github.com/crutchcorn/xilem", branch = "wayland-app-id" }
 ```
 
-The fork adds `xilem::WindowOptionsExtLinux::with_name(general, instance)`, which
-forwards to winit's `WindowAttributesExtWayland::with_name` (Wayland `app_id`)
-and `WindowAttributesExtX11::with_name` (X11 `WM_CLASS`). This is intended to be
-contributed upstream.
-
-`Cargo.toml` references this clone via path dependencies
-(`../../linebender/xilem/{masonry,xilem}`), so the clone must live at
-`~/git/linebender/xilem`. To refresh against upstream, rebase the
-`hearthspace/wayland-app-id` branch onto a newer upstream commit and re-apply the
-`with_name` patch in `xilem/src/window_options.rs` / `xilem/src/lib.rs` if it
-conflicts.
+The branch backs upstream PR
+[linebender/xilem#1830](https://github.com/linebender/xilem/pull/1830), which
+adds `xilem::WindowOptionsExtLinux::with_name(general, instance)` — forwarding to
+winit's `WindowAttributesExtWayland::with_name` (Wayland `app_id`) and
+`WindowAttributesExtX11::with_name` (X11 `WM_CLASS`). Once the PR merges, repoint
+these dependencies to an upstream `linebender/xilem` release/rev. No local clone
+is required; Cargo fetches the branch automatically.
 
 ## Linting
 
