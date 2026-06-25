@@ -4,46 +4,8 @@ A running list of improvements identified during a technical review of `src`.
 
 ## Correctness / Robustness
 
-- **✅ Done — Advertise `zwp_linux_dmabuf_v1` so GPU-accelerated clients work.**
-  The compositor previously advertised no dmabuf global, so GL clients (GTK4's
-  zink renderer, Firefox, etc.) got `fd -1` and crash-looped (`MESA: error:
-  ZINK: failed to choose pdev`). It now creates a `DmabufState` global from the
-  renderer's `dmabuf_formats()`, building v4 default feedback from the render
-  node's `dev_t` (resolved via `EGLDevice::device_for_display` +
-  `render_device_path` + `metadata().rdev()`, avoiding the heavy `backend_drm`
-  feature) and falling back to a v3 global when no render node is found. Because
-  the renderer lives on `CalloopData` (sibling to the `App` handler), imports are
-  deferred: `dmabuf_imported` queues `(Dmabuf, ImportNotifier)` on the `App`,
-  and the event loop drains them via `process_pending_dmabuf_imports` where the
-  renderer is reachable. Importing leaves the EGL context surfaceless, which made
-  the subsequent `buffer_age` (`eglQuerySurface` on a non-current surface) fail
-  with `EGL_BAD_SURFACE`; a `full_redraw: u8` counter on `CalloopData` (anvil's
-  pattern) skips the age query and forces a full redraw for the next frame after
-  any import, the first frame, and resizes.
-- **✅ Done — Stop persisting `Vec` indices as window identity.**
-  `DragState` previously stored a `window_index` that survived across pointer
-  events, so a window closing mid-drag could move the wrong window or panic on an
-  out-of-bounds index. It now stores the stable `window_id`, and the drag-motion
-  handler resolves it each event via `window_mut_by_id`, gracefully no-opping if
-  the window is gone. The remaining index usages (`HitTarget`, render/hit-test
-  loops) are derived and consumed within a single event without mutating
-  `windows`, so they stay safe — `raise_window` already re-derives the index
-  after it reorders the vector.
 - **Tighten `request_mode` mode handling.** The wildcard arm silently coerces
   unknown decoration modes to server-side.
-- **Add tests for compositor window-management / hit-testing logic.** Currently
-  untested (understandable given Smithay's types), but it's where bugs will hide.
-
-## Performance
-
-- **✅ Done — Cache per-commit bounding boxes.** `title_bar_canvas_rect`
-  previously called `bbox_from_surface_tree` (a surface-tree walk) multiple
-  times per window per frame (rendering, close-button rects, hit-testing).
-  `ManagedWindow` now caches `content_bbox_size`, recomputed once per commit via
-  `refresh_window_content_bbox` in the `commit` handler, and the rect helpers
-  read the cached size instead of re-walking the tree. The bbox size is
-  translation-invariant, so the cache is computed at a zero origin and reused
-  regardless of window position.
 
 ## Observability
 
