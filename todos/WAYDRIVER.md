@@ -125,8 +125,8 @@ Three pieces of work, in rough effort order:
   and `todos/TESTING.md`, not `docs/BACKENDS.md` / `docs/TESTING.md`.
 - `--headless` now starts a real Smithay surfaceless EGL/GLES backend backed by
   an offscreen renderbuffer. The virtual output defaults to 1280x720 and can be
-  overridden with `--headless-size WIDTHxHEIGHT`; scale CLI args are still
-  pending.
+  overridden with `--headless-size WIDTHxHEIGHT`. The advertised Wayland output
+  scale defaults to 1 and can be overridden with `--headless-scale INTEGER`.
 - The command socket now has a minimal line-based response path: parsed commands
   write `ok\n`; unsupported commands that parse but cannot complete write
   `err <message>\n`. This is intentionally smaller than the preferred future

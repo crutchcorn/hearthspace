@@ -582,7 +582,7 @@ pub fn run_winit(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> 
 
     let (mut backend, winit) = winit::init::<GlesRenderer>()?;
     let output_size = backend.window_size();
-    let output = create_output(&dh, output_size);
+    let output = create_output(&dh, output_size, 1);
 
     // Advertise linux-dmabuf so GPU-accelerated clients (e.g. GTK4's GL
     // renderer) can hand us hardware buffers instead of failing EGL setup. The
@@ -697,7 +697,7 @@ pub fn run_winit(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> 
         WinitEvent::Resized { size, .. } => {
             if size != data.state.output_size {
                 data.state.output_size = size;
-                update_output_mode(&data.state.output, size);
+                update_output_mode(&data.state.output, size, 1);
                 data.damage_tracker = OutputDamageTracker::new(size, 1.0, Transform::Flipped180);
                 data.full_redraw = 1;
                 data.state.configure_shell_bars();
@@ -787,9 +787,10 @@ pub fn run_headless(options: RunOptions) -> Result<(), Box<dyn std::error::Error
         .headless_output_size
         .unwrap_or((HEADLESS_OUTPUT_WIDTH, HEADLESS_OUTPUT_HEIGHT));
     let output_size = Size::<i32, Physical>::from((width, height));
+    let output_scale = options.headless_output_scale.unwrap_or(1);
     let buffer_size = Size::<i32, BufferCoord>::from((output_size.w, output_size.h));
     let buffer = renderer.create_buffer(Fourcc::Abgr8888, buffer_size)?;
-    let output = create_output(&dh, output_size);
+    let output = create_output(&dh, output_size, output_scale);
 
     let dmabuf_formats = renderer.dmabuf_formats().into_iter().collect::<Vec<_>>();
     let render_node_dev = EGLDevice::device_for_display(renderer.egl_context().display())
@@ -1136,7 +1137,7 @@ fn encode_png_rgba(
     Ok(png_bytes)
 }
 
-fn create_output(dh: &DisplayHandle, size: Size<i32, Physical>) -> Output {
+fn create_output(dh: &DisplayHandle, size: Size<i32, Physical>, scale: i32) -> Output {
     let output = Output::new(
         "hearthspace-0".into(),
         PhysicalProperties {
@@ -1147,11 +1148,11 @@ fn create_output(dh: &DisplayHandle, size: Size<i32, Physical>) -> Output {
         },
     );
     output.create_global::<App>(dh);
-    update_output_mode(&output, size);
+    update_output_mode(&output, size, scale);
     output
 }
 
-fn update_output_mode(output: &Output, size: Size<i32, Physical>) {
+fn update_output_mode(output: &Output, size: Size<i32, Physical>, scale: i32) {
     let mode = Mode {
         size,
         refresh: 60_000,
@@ -1160,7 +1161,7 @@ fn update_output_mode(output: &Output, size: Size<i32, Physical>) {
     output.change_current_state(
         Some(mode),
         Some(Transform::Normal),
-        Some(Scale::Integer(1)),
+        Some(Scale::Integer(scale)),
         Some((0, 0).into()),
     );
 }

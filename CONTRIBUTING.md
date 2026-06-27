@@ -66,6 +66,7 @@ Common compositor flags:
 cargo run -- --scroll-zooms
 cargo run -- --headless
 cargo run -- --headless --headless-size 1280x720
+cargo run -- --headless --headless-scale 2
 cargo run -- --headless --no-shell
 ```
 
@@ -81,6 +82,10 @@ shell as a normal Wayland client.
 `--headless-size WIDTHxHEIGHT` overrides the headless virtual output size. The
 default is `1280x720`; both `--headless-size 800x600` and
 `--headless-size=800x600` are accepted.
+
+`--headless-scale INTEGER` overrides the Wayland output scale advertised by the
+headless backend. The default is `1`; both `--headless-scale 2` and
+`--headless-scale=2` are accepted.
 
 `--no-shell` skips spawning the Xilem shell client. This is useful for headless
 harnesses that want to launch only the client under test.

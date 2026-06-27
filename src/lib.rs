@@ -11,6 +11,7 @@ pub struct RunOptions {
     pub scroll_zooms_without_super: bool,
     pub headless: bool,
     pub headless_output_size: Option<(i32, i32)>,
+    pub headless_output_scale: Option<i32>,
     pub start_shell: bool,
 }
 
@@ -20,6 +21,7 @@ impl Default for RunOptions {
             scroll_zooms_without_super: false,
             headless: false,
             headless_output_size: None,
+            headless_output_scale: None,
             start_shell: true,
         }
     }
