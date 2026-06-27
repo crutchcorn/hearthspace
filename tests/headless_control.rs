@@ -1,0 +1,155 @@
+use std::{
+    io::{Read, Write},
+    os::unix::net::UnixStream,
+    path::PathBuf,
+    process::{Child, Command, Stdio},
+    thread,
+    time::{Duration, Instant},
+};
+
+const WIDTH: u32 = 320;
+const HEIGHT: u32 = 240;
+
+struct HeadlessCompositor {
+    child: Child,
+}
+
+impl HeadlessCompositor {
+    fn spawn() -> Self {
+        let child = Command::new(env!("CARGO_BIN_EXE_hearthspace"))
+            .args(["--headless", "--no-shell", "--headless-size", "320x240"])
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("spawn headless Hearthspace");
+
+        Self { child }
+    }
+
+    fn wait_for_socket(&mut self) -> UnixStream {
+        let deadline = Instant::now() + Duration::from_secs(10);
+        let path = command_socket_path();
+        let mut last_error = None;
+
+        while Instant::now() < deadline {
+            if let Some(status) = self.child.try_wait().expect("poll compositor") {
+                panic!("headless Hearthspace exited before accepting commands: {status}");
+            }
+
+            match UnixStream::connect(&path) {
+                Ok(stream) => return stream,
+                Err(error) => last_error = Some(error),
+            }
+
+            thread::sleep(Duration::from_millis(50));
+        }
+
+        panic!(
+            "timed out connecting to {}: {:?}",
+            path.display(),
+            last_error
+        );
+    }
+}
+
+impl Drop for HeadlessCompositor {
+    fn drop(&mut self) {
+        if matches!(self.child.try_wait(), Ok(None)) {
+            let _ = self.child.kill();
+            let _ = self.child.wait();
+        }
+    }
+}
+
+#[test]
+#[ignore = "requires surfaceless EGL and the headless compositor socket"]
+fn headless_control_socket_drives_input_screenshot_and_quit() {
+    let mut compositor = HeadlessCompositor::spawn();
+    let first_stream = compositor.wait_for_socket();
+    drop(first_stream);
+
+    for command in [
+        "pointer-motion-abs 10 10",
+        "pointer-motion-rel 5 5",
+        "pointer-button-down 272",
+        "pointer-button-up 272",
+        "axis 0 -120",
+        "key-down 30",
+        "key-up 30",
+    ] {
+        assert_eq!(send_text_command(command), "ok\n", "command {command:?}");
+    }
+
+    let screenshot = take_screenshot();
+    assert!(screenshot.starts_with(b"\x89PNG\r\n\x1a\n"));
+    assert_eq!(png_dimensions(&screenshot), (WIDTH, HEIGHT));
+
+    assert_eq!(send_text_command("quit"), "ok\n");
+    wait_for_exit(&mut compositor.child);
+}
+
+fn command_socket_path() -> PathBuf {
+    std::env::var_os("XDG_RUNTIME_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(std::env::temp_dir)
+        .join("hearthspace-shell.sock")
+}
+
+fn send_text_command(command: &str) -> String {
+    let mut stream = UnixStream::connect(command_socket_path()).expect("connect command socket");
+    stream
+        .write_all(format!("{command}\n").as_bytes())
+        .expect("write command");
+    read_line(&mut stream)
+}
+
+fn take_screenshot() -> Vec<u8> {
+    let mut stream = UnixStream::connect(command_socket_path()).expect("connect command socket");
+    stream.write_all(b"screenshot\n").expect("write screenshot");
+
+    let header = read_line(&mut stream);
+    let mut parts = header.split_whitespace();
+    assert_eq!(parts.next(), Some("ok"));
+    let len = parts
+        .next()
+        .expect("screenshot byte length")
+        .parse::<usize>()
+        .expect("valid screenshot byte length");
+    assert_eq!(parts.next(), None);
+
+    let mut payload = vec![0; len];
+    stream.read_exact(&mut payload).expect("read PNG payload");
+    payload
+}
+
+fn read_line(stream: &mut UnixStream) -> String {
+    let mut bytes = Vec::new();
+    loop {
+        let mut byte = [0];
+        stream.read_exact(&mut byte).expect("read reply byte");
+        bytes.push(byte[0]);
+        if byte[0] == b'\n' {
+            break;
+        }
+    }
+    String::from_utf8(bytes).expect("utf-8 reply")
+}
+
+fn png_dimensions(png: &[u8]) -> (u32, u32) {
+    assert!(png.len() >= 24);
+    let width = u32::from_be_bytes(png[16..20].try_into().expect("PNG width bytes"));
+    let height = u32::from_be_bytes(png[20..24].try_into().expect("PNG height bytes"));
+    (width, height)
+}
+
+fn wait_for_exit(child: &mut Child) {
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while Instant::now() < deadline {
+        if child.try_wait().expect("poll compositor").is_some() {
+            return;
+        }
+        thread::sleep(Duration::from_millis(50));
+    }
+    panic!("headless Hearthspace did not exit after quit command");
+}

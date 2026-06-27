@@ -146,6 +146,10 @@ in place:
   not need to rely on process termination for normal teardown.
 - `--no-shell` skips spawning the shell client, which keeps headless WayDriver
   runs focused on the app under test.
+- `tests/headless_control.rs` is an ignored integration smoke test for the
+  compositor-side protocol. Run it with
+  `cargo test --test headless_control -- --ignored` on machines with surfaceless
+  EGL support.
 
 ### Phase 0 — design + spike ✅
 
@@ -170,6 +174,8 @@ in place:
       channel.
 - [x] Synthesize input into the Smithay seat; implement framebuffer→PNG readback.
 - [x] Add a control-socket `quit` command for graceful harness teardown.
+- [x] Add an ignored integration smoke test that drives input commands,
+      captures a screenshot, and quits over the socket.
 - [ ] **Done when:** a script can drive a headless client end-to-end (move
       pointer, click, type, screenshot) over the socket.
 
