@@ -147,9 +147,11 @@ in place:
 - `--no-shell` skips spawning the shell client, which keeps headless WayDriver
   runs focused on the app under test.
 - `tests/headless_control.rs` is an ignored integration smoke test for the
-  compositor-side protocol. Run it with
-  `cargo test --test headless_control -- --ignored` on machines with surfaceless
-  EGL support.
+  compositor-side protocol. It also has a `test-apps` feature-gated variant that
+  spawns and drives the in-repo GTK a11y client. Run it with
+  `cargo test --test headless_control -- --ignored` or
+  `cargo test --features test-apps --test headless_control -- --ignored` on
+  machines with surfaceless EGL support.
 
 ### Phase 0 — design + spike ✅
 
@@ -176,7 +178,9 @@ in place:
 - [x] Add a control-socket `quit` command for graceful harness teardown.
 - [x] Add an ignored integration smoke test that drives input commands,
       captures a screenshot, and quits over the socket.
-- [ ] **Done when:** a script can drive a headless client end-to-end (move
+- [x] Add an ignored, `test-apps`-gated smoke test that spawns the GTK a11y
+      client and drives pointer/key/screenshot commands against it.
+- [x] **Done when:** a script can drive a headless client end-to-end (move
       pointer, click, type, screenshot) over the socket.
 
 ### Phase 3 — WayDriver backend crates ⬜

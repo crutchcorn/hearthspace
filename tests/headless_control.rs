@@ -3,12 +3,19 @@ use std::{
     os::unix::net::UnixStream,
     path::PathBuf,
     process::{Child, Command, Stdio},
+    sync::Mutex,
     thread,
     time::{Duration, Instant},
 };
 
 const WIDTH: u32 = 320;
 const HEIGHT: u32 = 240;
+#[cfg(feature = "test-apps")]
+const CLIENT_WIDTH: u32 = 800;
+#[cfg(feature = "test-apps")]
+const CLIENT_HEIGHT: u32 = 600;
+
+static HEADLESS_TEST_LOCK: Mutex<()> = Mutex::new(());
 
 struct HeadlessCompositor {
     child: Child,
@@ -16,8 +23,12 @@ struct HeadlessCompositor {
 
 impl HeadlessCompositor {
     fn spawn() -> Self {
+        Self::spawn_with_size("320x240")
+    }
+
+    fn spawn_with_size(size: &str) -> Self {
         let child = Command::new(env!("CARGO_BIN_EXE_hearthspace"))
-            .args(["--headless", "--no-shell", "--headless-size", "320x240"])
+            .args(["--headless", "--no-shell", "--headless-size", size])
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::null())
@@ -65,6 +76,7 @@ impl Drop for HeadlessCompositor {
 #[test]
 #[ignore = "requires surfaceless EGL and the headless compositor socket"]
 fn headless_control_socket_drives_input_screenshot_and_quit() {
+    let _guard = HEADLESS_TEST_LOCK.lock().expect("headless test lock");
     let mut compositor = HeadlessCompositor::spawn();
     let first_stream = compositor.wait_for_socket();
     drop(first_stream);
@@ -84,6 +96,44 @@ fn headless_control_socket_drives_input_screenshot_and_quit() {
     let screenshot = take_screenshot();
     assert!(screenshot.starts_with(b"\x89PNG\r\n\x1a\n"));
     assert_eq!(png_dimensions(&screenshot), (WIDTH, HEIGHT));
+
+    assert_eq!(send_text_command("quit"), "ok\n");
+    wait_for_exit(&mut compositor.child);
+}
+
+#[cfg(feature = "test-apps")]
+#[test]
+#[ignore = "requires surfaceless EGL, GTK, and the headless compositor socket"]
+fn headless_control_socket_spawns_and_drives_real_gtk_client() {
+    let _guard = HEADLESS_TEST_LOCK.lock().expect("headless test lock");
+    let mut compositor = HeadlessCompositor::spawn_with_size("800x600");
+    let first_stream = compositor.wait_for_socket();
+    drop(first_stream);
+
+    let empty = take_screenshot();
+    assert_eq!(png_dimensions(&empty), (CLIENT_WIDTH, CLIENT_HEIGHT));
+
+    assert_eq!(send_text_command("spawn a11y-test"), "ok\n");
+    let with_client = wait_for_screenshot_change(&empty);
+    assert_eq!(png_dimensions(&with_client), (CLIENT_WIDTH, CLIENT_HEIGHT));
+
+    for command in [
+        "pointer-motion-abs 420 260",
+        "pointer-button-down 272",
+        "pointer-button-up 272",
+        "key-down 30",
+        "key-up 30",
+        "screenshot",
+    ] {
+        if command == "screenshot" {
+            assert_eq!(
+                png_dimensions(&take_screenshot()),
+                (CLIENT_WIDTH, CLIENT_HEIGHT)
+            );
+        } else {
+            assert_eq!(send_text_command(command), "ok\n", "command {command:?}");
+        }
+    }
 
     assert_eq!(send_text_command("quit"), "ok\n");
     wait_for_exit(&mut compositor.child);
@@ -121,6 +171,19 @@ fn take_screenshot() -> Vec<u8> {
     let mut payload = vec![0; len];
     stream.read_exact(&mut payload).expect("read PNG payload");
     payload
+}
+
+#[cfg(feature = "test-apps")]
+fn wait_for_screenshot_change(previous: &[u8]) -> Vec<u8> {
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while Instant::now() < deadline {
+        let screenshot = take_screenshot();
+        if screenshot != previous {
+            return screenshot;
+        }
+        thread::sleep(Duration::from_millis(100));
+    }
+    panic!("screenshot did not change after spawning GTK test client");
 }
 
 fn read_line(stream: &mut UnixStream) -> String {
