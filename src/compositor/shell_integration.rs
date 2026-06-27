@@ -1,6 +1,6 @@
 use std::{
     env, fs,
-    io::{self, ErrorKind, Read},
+    io::{self, ErrorKind, Read, Write},
     os::unix::{
         fs::symlink,
         net::{UnixListener as CommandListener, UnixStream},
@@ -10,6 +10,10 @@ use std::{
 };
 
 use smithay::reexports::calloop::{Interest, LoopHandle, Mode, PostAction, generic::Generic};
+use smithay::{
+    backend::input::{ButtonState, KeyState},
+    utils::Point,
+};
 
 use crate::{
     config::*,
@@ -238,7 +242,9 @@ fn read_command_connection(
             }
             Ok(read) => {
                 buffer.extend_from_slice(&chunk[..read]);
-                drain_complete_commands(buffer, state);
+                if !drain_complete_commands(buffer, state, stream) {
+                    return PostAction::Remove;
+                }
                 if buffer.len() > MAX_COMMAND_BUFFER_BYTES {
                     eprintln!(
                         "Shell command exceeded {MAX_COMMAND_BUFFER_BYTES} bytes without a newline; dropping connection"
@@ -256,10 +262,13 @@ fn read_command_connection(
     }
 }
 
-fn drain_complete_commands(buffer: &mut Vec<u8>, state: &mut App) {
+fn drain_complete_commands(buffer: &mut Vec<u8>, state: &mut App, stream: &UnixStream) -> bool {
     for command in take_complete_commands(buffer) {
-        state.run_control_action(command);
+        if !write_control_reply(stream, state.run_control_action(command)) {
+            return false;
+        }
     }
+    true
 }
 
 /// Split every complete newline-terminated command off the front of `buffer`,
@@ -287,8 +296,34 @@ fn parse_command_line(bytes: &[u8]) -> Option<ShellCommand> {
     ShellCommand::parse(text.trim())
 }
 
+enum ControlReply {
+    Ok,
+    Err(String),
+}
+
+impl ControlReply {
+    fn bytes(&self) -> Vec<u8> {
+        match self {
+            Self::Ok => b"ok\n".to_vec(),
+            Self::Err(message) => format!("err {message}\n").into_bytes(),
+        }
+    }
+}
+
+fn write_control_reply(stream: &UnixStream, reply: ControlReply) -> bool {
+    let mut writer = stream;
+    match writer.write_all(&reply.bytes()) {
+        Ok(()) => true,
+        Err(error) if matches!(error.kind(), ErrorKind::BrokenPipe | ErrorKind::WouldBlock) => true,
+        Err(error) => {
+            eprintln!("Failed to write shell command reply: {error}");
+            false
+        }
+    }
+}
+
 impl App {
-    fn run_control_action(&mut self, action: ShellCommand) {
+    fn run_control_action(&mut self, action: ShellCommand) -> ControlReply {
         self.advance_viewport_animation();
 
         match action {
@@ -304,8 +339,32 @@ impl App {
             ShellCommand::LogAccessibilityTree => {
                 crate::accessibility::log_accessibility_tree(self.accessibility_window_snapshot())
             }
+            ShellCommand::KeyDown(keycode) => self.synthesize_key(keycode, KeyState::Pressed),
+            ShellCommand::KeyUp(keycode) => self.synthesize_key(keycode, KeyState::Released),
+            ShellCommand::PointerMotionAbs { x, y } => {
+                self.synthesize_pointer_motion_abs(Point::from((x, y)))
+            }
+            ShellCommand::PointerMotionRel { dx, dy } => {
+                self.synthesize_pointer_motion_rel(Point::from((dx, dy)))
+            }
+            ShellCommand::PointerButtonDown(button) => {
+                self.synthesize_pointer_button(button, ButtonState::Pressed)
+            }
+            ShellCommand::PointerButtonUp(button) => {
+                self.synthesize_pointer_button(button, ButtonState::Released)
+            }
+            ShellCommand::Axis {
+                horizontal,
+                vertical,
+            } => self.synthesize_axis(horizontal, vertical),
+            ShellCommand::Screenshot => {
+                return ControlReply::Err(
+                    "screenshot requires the future headless framebuffer readback path".to_string(),
+                );
+            }
         }
         self.request_redraw();
+        ControlReply::Ok
     }
 
     fn prepare_spawn_position(&mut self) {

@@ -9,6 +9,7 @@ pub mod test_apps;
 #[derive(Debug, Clone, Copy, Default)]
 pub struct RunOptions {
     pub scroll_zooms_without_super: bool,
+    pub headless: bool,
 }
 
 pub fn run() -> Result<(), Box<dyn std::error::Error>> {
@@ -16,5 +17,12 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 pub fn run_with_options(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> {
+    if options.headless {
+        return Err(
+            "--headless is recognized but the Smithay offscreen backend is not implemented yet"
+                .into(),
+        );
+    }
+
     compositor::run_winit(options)
 }

@@ -3,6 +3,7 @@ use std::time::Duration;
 pub const WAYLAND_DISPLAY_NAME: &str = "wayland-99";
 pub const GTK_TEST_APP_FLAG: &str = "--gtk-test-app";
 pub const SHELL_FLAG: &str = "--shell";
+pub const HEADLESS_FLAG: &str = "--headless";
 pub const GTK_TEST_APP_ID: &str = "dev.hearthspace.A11yTest";
 pub const GTK_TEST_APP_TITLE: &str = "Hearthspace Research Demo";
 pub const SHELL_BAR_APP_ID: &str = "dev.hearthspace.shell-bar";

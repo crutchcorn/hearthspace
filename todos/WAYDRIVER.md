@@ -119,6 +119,28 @@ Three pieces of work, in rough effort order:
 
 ## Incremental plan
 
+## Implementation notes from autonomous spike
+
+- The repository paths for the referenced planning docs are `todos/BACKENDS.md`
+  and `todos/TESTING.md`, not `docs/BACKENDS.md` / `docs/TESTING.md`.
+- `--headless` is now recognized by the CLI, but deliberately returns an error
+  instead of silently starting the winit backend. The real Smithay offscreen
+  renderer is still the blocking Phase 1 item.
+- The command socket now has a minimal line-based response path: parsed commands
+  write `ok\n`; unsupported commands that parse but cannot complete write
+  `err <message>\n`. This is intentionally smaller than the preferred future
+  length-prefixed binary framing, but gives WayDriver backend code a synchronous
+  reply mechanism for input commands.
+- Implemented input command names are `key-down`, `key-up`,
+  `pointer-motion-abs`, `pointer-motion-rel`, `pointer-button-down`,
+  `pointer-button-up`, and `axis`. For now `key-down/up` accepts Linux evdev key
+  codes (the values from `input-event-codes.h`) rather than XKB keysyms; the
+  compositor adds Smithay's expected XKB offset internally. A future WayDriver
+  backend can either send evdev codes or add a keysym-to-evdev mapping layer.
+- `screenshot` is parsed and replies with an `err` explaining that framebuffer
+  readback needs the future headless backend. No placeholder image bytes are
+  returned.
+
 ### Phase 0 — design + spike ⬜
 
 - [ ] Validate Smithay headless offscreen rendering (GLES + synthetic `Output`)

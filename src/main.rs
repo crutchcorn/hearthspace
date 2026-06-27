@@ -25,6 +25,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             scroll_zooms_without_super: args
                 .iter()
                 .any(|arg| arg == hearthspace::config::SCROLL_ZOOMS_FLAG),
+            headless: args
+                .iter()
+                .any(|arg| arg == hearthspace::config::HEADLESS_FLAG),
         })
     }
 }
