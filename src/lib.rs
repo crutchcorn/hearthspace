@@ -10,6 +10,7 @@ pub mod test_apps;
 pub struct RunOptions {
     pub scroll_zooms_without_super: bool,
     pub headless: bool,
+    pub headless_output_size: Option<(i32, i32)>,
 }
 
 pub fn run() -> Result<(), Box<dyn std::error::Error>> {

@@ -781,7 +781,10 @@ pub fn run_headless(options: RunOptions) -> Result<(), Box<dyn std::error::Error
     let egl_display = unsafe { EGLDisplay::new(EGLSurfacelessDisplay)? };
     let context = EGLContext::new(&egl_display)?;
     let mut renderer = unsafe { GlesRenderer::new(context)? };
-    let output_size = Size::<i32, Physical>::from((HEADLESS_OUTPUT_WIDTH, HEADLESS_OUTPUT_HEIGHT));
+    let (width, height) = options
+        .headless_output_size
+        .unwrap_or((HEADLESS_OUTPUT_WIDTH, HEADLESS_OUTPUT_HEIGHT));
+    let output_size = Size::<i32, Physical>::from((width, height));
     let buffer_size = Size::<i32, BufferCoord>::from((output_size.w, output_size.h));
     let buffer = renderer.create_buffer(Fourcc::Abgr8888, buffer_size)?;
     let output = create_output(&dh, output_size);
