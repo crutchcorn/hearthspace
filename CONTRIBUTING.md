@@ -34,12 +34,29 @@ As such, while my CPU, GPU, and RAM are all quite spec'd up, the VM is not a per
 I develop Hearthspace on Ubuntu 26.04 LTS, and the following packages are required to build and run the compositor and shell:
 
 ```sh
-sudo apt-get install -y build-essential cargo rustc rustfmt pkg-config clang libclang-dev libwayland-dev wayland-protocols wayland-utils libinput-dev libxkbcommon-dev libxkbcommon-x11-dev libudev-dev libseat-dev libgbm-dev libegl1-mesa-dev libgles2-mesa-dev libdrm-dev libsystemd-dev libgtk-4-dev foot
+sudo apt-get install -y build-essential cargo rustc rustfmt pkg-config clang libclang-dev libwayland-dev wayland-protocols wayland-utils libinput-dev libxkbcommon-dev libxkbcommon-x11-dev libudev-dev libseat-dev libgbm-dev libegl1-mesa-dev libgles2-mesa-dev libdrm-dev libsystemd-dev foot
 ```
 
 `foot` is installed as a small Wayland-native terminal for server-side decoration testing.
 
-`libgtk-4-dev` is required for the built-in GTK accessibility test app used by the default `SPAWN` action.
+### Optional Test Apps
+
+Built-in test apps are gated behind the Cargo feature `test-apps` so normal compositor and shell builds do not require their dependencies.
+
+The GTK accessibility test app requires GTK 4 development headers:
+
+```sh
+sudo apt-get install -y libgtk-4-dev
+```
+
+Build or run with the feature when you need the GTK test app or the shell's `A11yTest` spawn action:
+
+```sh
+cargo run --features test-apps -- --gtk-test-app
+cargo test --features test-apps
+```
+
+Without `test-apps`, `--gtk-test-app` and the shell `A11yTest` action report that the binary must be rebuilt with `--features test-apps`.
 
 ### Xilem Fork (git dependency)
 

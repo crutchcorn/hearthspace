@@ -149,6 +149,7 @@ pub(super) fn spawn_shell(command_socket_path: &PathBuf) {
     }
 }
 
+#[cfg(feature = "test-apps")]
 fn ensure_gtk_client_settings() -> std::io::Result<PathBuf> {
     let config_dir = runtime_path(GTK_CLIENT_CONFIG_DIR_NAME);
     let settings = "[Settings]\ngtk-decoration-layout=:close\n";
@@ -169,6 +170,7 @@ fn ensure_gtk_client_settings() -> std::io::Result<PathBuf> {
     Ok(config_dir)
 }
 
+#[cfg(feature = "test-apps")]
 fn apply_gtk_client_environment(command: &mut Command) {
     match ensure_gtk_client_settings() {
         Ok(config_dir) => {
@@ -321,27 +323,33 @@ impl App {
     }
 
     fn spawn_a11y_test(&mut self) {
-        self.prepare_spawn_position();
+        #[cfg(feature = "test-apps")]
+        {
+            self.prepare_spawn_position();
 
-        let current_exe = match env::current_exe() {
-            Ok(path) => path,
-            Err(error) => {
-                eprintln!("Failed to locate current executable for GTK test app: {error}");
-                return;
+            let current_exe = match env::current_exe() {
+                Ok(path) => path,
+                Err(error) => {
+                    eprintln!("Failed to locate current executable for GTK test app: {error}");
+                    return;
+                }
+            };
+
+            let mut command = Command::new(current_exe);
+            command
+                .arg(GTK_TEST_APP_FLAG)
+                .env("WAYLAND_DISPLAY", WAYLAND_DISPLAY_NAME)
+                .env("GDK_BACKEND", "wayland");
+            apply_gtk_client_environment(&mut command);
+
+            match command.spawn() {
+                Ok(_) => {}
+                Err(error) => eprintln!("Failed to spawn GTK test app: {error}"),
             }
-        };
-
-        let mut command = Command::new(current_exe);
-        command
-            .arg(GTK_TEST_APP_FLAG)
-            .env("WAYLAND_DISPLAY", WAYLAND_DISPLAY_NAME)
-            .env("GDK_BACKEND", "wayland");
-        apply_gtk_client_environment(&mut command);
-
-        match command.spawn() {
-            Ok(_) => {}
-            Err(error) => eprintln!("Failed to spawn GTK test app: {error}"),
         }
+
+        #[cfg(not(feature = "test-apps"))]
+        eprintln!("GTK test app support is not enabled; rebuild with `--features test-apps`");
     }
 
     fn spawn_foot(&mut self) {

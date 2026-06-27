@@ -14,7 +14,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .iter()
         .any(|arg| arg == hearthspace::config::GTK_TEST_APP_FLAG)
     {
-        hearthspace::test_apps::gtk::run()
+        run_gtk_test_app()
     } else if args
         .iter()
         .any(|arg| arg == hearthspace::config::SHELL_FLAG)
@@ -27,4 +27,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .any(|arg| arg == hearthspace::config::SCROLL_ZOOMS_FLAG),
         })
     }
+}
+
+#[cfg(feature = "test-apps")]
+fn run_gtk_test_app() -> Result<(), Box<dyn std::error::Error>> {
+    hearthspace::test_apps::gtk::run()
+}
+
+#[cfg(not(feature = "test-apps"))]
+fn run_gtk_test_app() -> Result<(), Box<dyn std::error::Error>> {
+    Err("GTK test app support is not enabled; rebuild with `--features test-apps`".into())
 }

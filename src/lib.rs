@@ -3,6 +3,7 @@ pub mod compositor;
 pub mod config;
 pub mod geometry;
 pub mod shell;
+#[cfg(feature = "test-apps")]
 pub mod test_apps;
 
 #[derive(Debug, Clone, Copy, Default)]
