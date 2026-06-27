@@ -135,7 +135,9 @@ fn shell_properties() -> DefaultProperties {
 
     // Search field: white input with a subtle border that accents on focus.
     properties.insert::<TextInput, _>(Background::Color(INPUT_BG));
-    properties.insert::<TextInput, _>(BorderColor { color: INPUT_BORDER });
+    properties.insert::<TextInput, _>(BorderColor {
+        color: INPUT_BORDER,
+    });
     properties.insert::<TextInput, _>(CaretColor { color: SHELL_TEXT });
     properties.insert::<TextInput, _>(PlaceholderColor::new(SHELL_PLACEHOLDER));
     {
@@ -272,8 +274,8 @@ fn launcher_view(results: Vec<DesktopApp>) -> impl WidgetView<ShellState> + use<
 }
 
 fn app_logic(state: &mut ShellState) -> impl Iterator<Item = WindowView<ShellState>> + use<> {
-    let bar = window(state.bar_window_id, "Hearthspace Shell", bar_view(state)).with_options(
-        |options| {
+    let bar =
+        window(state.bar_window_id, "Hearthspace Shell", bar_view(state)).with_options(|options| {
             options
                 // Tag the surface so the compositor renders it as chrome-less shell.
                 .with_name(SHELL_BAR_APP_ID, SHELL_BAR_APP_ID)
@@ -282,8 +284,7 @@ fn app_logic(state: &mut ShellState) -> impl Iterator<Item = WindowView<ShellSta
                 .with_resizable(false)
                 .with_initial_inner_size(LogicalSize::new(760.0, f64::from(CONTROL_BAR_HEIGHT)))
                 .on_close(|state: &mut ShellState| state.running = false)
-        },
-    );
+        });
 
     let results = search_results(state);
     let launcher_id = state.launcher_window_id;
