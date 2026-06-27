@@ -53,16 +53,21 @@ async fn waydriver_backends_drive_input_capture_and_teardown() {
 
 #[tokio::test]
 #[ignore = "requires surfaceless EGL and shell AT-SPI exposure"]
-async fn waydriver_session_locates_xilem_shell_by_xpath() {
+async fn waydriver_session_locates_xilem_shell_by_xpath() -> Result<(), Box<dyn std::error::Error>>
+{
     init_tracing();
     let _guard = WAYDRIVER_TEST_LOCK.lock().await;
-    let mut compositor = HearthspaceCompositor::new(hearthspace_binary())
-        .unwrap()
-        .with_shell();
-    compositor.start(Some("800x600"), Some(1.0)).await.unwrap();
-    let previous_screen_reader_enabled = set_screen_reader_enabled(true).await.unwrap();
+    let previous_screen_reader_enabled = set_screen_reader_enabled(true).await?;
+    let result = run_xilem_shell_xpath_check().await;
+    set_screen_reader_enabled(previous_screen_reader_enabled).await?;
+    result
+}
 
-    let state = compositor.state().unwrap();
+async fn run_xilem_shell_xpath_check() -> Result<(), Box<dyn std::error::Error>> {
+    let mut compositor = HearthspaceCompositor::new(hearthspace_binary())?.with_shell();
+    compositor.start(Some("800x600"), Some(1.0)).await?;
+
+    let state = compositor.state()?;
     let input = Box::new(HearthspaceInput::new(Arc::clone(&state)));
     let capture = Box::new(HearthspaceCapture::new(state));
     let compositor = Box::new(compositor);
@@ -73,26 +78,33 @@ async fn waydriver_session_locates_xilem_shell_by_xpath() {
             capture,
             session_config("true", vec![], SHELL_ACCESSIBLE_NAME),
         )
-        .await
-        .unwrap(),
+        .await?,
     );
 
-    {
+    let check_result = async {
         let pan_left = session.locate("//*[@name='LEFT']").first();
-        assert_eq!(pan_left.name().await.unwrap().as_deref(), Some("LEFT"));
-        let bounds = pan_left.bounds().await.unwrap();
-        assert!(bounds.width > 0);
-        assert!(bounds.height > 0);
+        let name = pan_left.name().await?;
+        if name.as_deref() != Some("LEFT") {
+            return Err(std::io::Error::other(format!(
+                "expected LEFT shell control, got {name:?}"
+            ))
+            .into());
+        }
+        let bounds = pan_left.bounds().await?;
+        if bounds.width <= 0 || bounds.height <= 0 {
+            return Err(std::io::Error::other(format!(
+                "LEFT shell control has invalid bounds {bounds:?}"
+            ))
+            .into());
+        }
+        Ok(())
     }
+    .await;
 
-    let session = match Arc::try_unwrap(session) {
-        Ok(session) => session,
-        Err(_) => panic!("session still has live references"),
-    };
-    session.kill().await.unwrap();
-    set_screen_reader_enabled(previous_screen_reader_enabled)
-        .await
-        .unwrap();
+    let session = Arc::try_unwrap(session)
+        .map_err(|_| std::io::Error::other("session still has live references"))?;
+    session.kill().await?;
+    check_result
 }
 
 #[cfg(feature = "test-apps")]
@@ -180,12 +192,9 @@ async fn set_screen_reader_enabled(enabled: bool) -> Result<bool, Box<dyn std::e
     let connection = atspi::zbus::Connection::session().await?;
     let status = atspi::proxy::bus::StatusProxy::new(&connection).await?;
     let previous = status.screen_reader_enabled().await?;
-    if previous == enabled {
-        // AccessKit's Unix bridge reacts to property-change signals, so force a
-        // transition even if the host already had the requested value.
-        status.set_screen_reader_enabled(!enabled).await?;
+    if previous != enabled {
+        status.set_screen_reader_enabled(enabled).await?;
     }
-    status.set_screen_reader_enabled(enabled).await?;
     Ok(previous)
 }
 
