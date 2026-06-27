@@ -50,13 +50,7 @@ jobs:
         uses: ./.github/actions/setup-rust
 
       - name: Run headless control E2E tests
-        run: cargo test --test headless_control -- --ignored
-
-      - name: Run headless control E2E tests with test apps
         run: cargo test --features test-apps --test headless_control -- --ignored
 
       - name: Run WayDriver E2E tests
-        run: cargo test --test waydriver_hearthspace -- --ignored
-
-      - name: Run WayDriver E2E tests with test apps
-        run: cargo test --features test-apps --test waydriver_hearthspace -- --ignored
+        run: cargo test --features e2e,test-apps --test waydriver_hearthspace -- --ignored

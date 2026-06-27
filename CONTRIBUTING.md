@@ -42,7 +42,8 @@ sudo apt-get install -y build-essential cargo rustc rustfmt pkg-config clang lib
 For E2E testing, the WayDriver adapter depends on the published `waydriver` crate, which
 links GStreamer even when the Hearthspace backend overrides screenshot capture.
 Install the development packages before building tests that include
-`waydriver-hearthspace`:
+`waydriver-hearthspace`. Those crates are gated behind the Cargo feature `e2e`,
+so normal builds and CI do not require GStreamer:
 
 ```sh
 sudo apt-get install -y libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev
@@ -135,8 +136,8 @@ The WayDriver backend adapter lives in `crates/waydriver-hearthspace` and uses
 the published `waydriver` crate. Its ignored smoke tests can be run with:
 
 ```sh
-cargo test --test waydriver_hearthspace -- --ignored
-cargo test --features test-apps --test waydriver_hearthspace -- --ignored
+cargo test --features e2e --test waydriver_hearthspace -- --ignored
+cargo test --features e2e,test-apps --test waydriver_hearthspace -- --ignored
 ```
 
 The feature-gated WayDriver `Session` test launches the GTK test app through

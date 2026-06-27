@@ -6,6 +6,7 @@ rust-version = "1.93.1"
 license = "Apache-2.0"
 
 [features]
+e2e = ["dep:waydriver", "dep:waydriver-hearthspace"]
 test-apps = ["dep:gtk"]
 
 [dependencies]
@@ -37,6 +38,8 @@ smithay = { version = "0.7.0", default-features = false, features = ["backend_wi
 tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
 wayland-protocols = { version = "0.32.8", features = ["server"] }
 wayland-server = "0.31.9"
+waydriver = { version = "0.3.9", optional = true }
+waydriver-hearthspace = { path = "crates/waydriver-hearthspace", optional = true }
 
 [dev-dependencies]
 proptest = "1"
@@ -44,8 +47,11 @@ rstest = "0.26"
 tempfile = "3"
 tokio = { version = "1", features = ["macros", "process", "rt-multi-thread", "time"] }
 tokio-util = "0.7"
-waydriver = "0.3.9"
-waydriver-hearthspace = { path = "crates/waydriver-hearthspace" }
+
+[[test]]
+name = "waydriver_hearthspace"
+path = "tests/waydriver_hearthspace.rs"
+required-features = ["e2e"]
 
 # Workaround for an upstream incompatibility pulled in via Xilem/Masonry:
 # `vello_shaders` 0.8's build script depends on `naga` 28 with the `wgsl-in`
