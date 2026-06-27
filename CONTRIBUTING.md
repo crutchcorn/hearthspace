@@ -144,13 +144,10 @@ WayDriver, locates its `Research Workspace` heading by XPath on the AT-SPI tree,
 clicks it, and captures a screenshot.
 
 The non-feature WayDriver ignored suite also verifies the Xilem shell's
-Masonry/AccessKit tree. That test enables `org.a11y.Status.ScreenReaderEnabled`
-for its duration because AccessKit's Unix bridge registers with AT-SPI only while
-screen-reader status is active; AT-SPI does not provide a per-application version
-of that switch on the host session bus.
-
-Run the WayDriver ignored suites sequentially rather than as separate concurrent
-`cargo test` processes, since `ScreenReaderEnabled` is a session-bus global.
+Masonry/AccessKit tree. That test starts a private `dbus-daemon --session`, points
+Hearthspace and WayDriver at it, and enables `org.a11y.Status.ScreenReaderEnabled`
+inside that throwaway bus because AccessKit's Unix bridge registers with AT-SPI
+only while screen-reader status is active.
 
 ### Xilem Fork (git dependency)
 

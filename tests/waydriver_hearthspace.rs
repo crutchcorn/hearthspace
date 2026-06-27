@@ -1,4 +1,10 @@
-use std::{path::PathBuf, sync::Arc};
+use std::{
+    ffi::OsString,
+    io::BufRead,
+    path::PathBuf,
+    process::{Child, Command, Stdio},
+    sync::Arc,
+};
 
 use tokio_util::sync::CancellationToken;
 use waydriver::{CaptureBackend, CompositorRuntime, InputBackend, PointerAxis, PointerButton};
@@ -57,10 +63,9 @@ async fn waydriver_session_locates_xilem_shell_by_xpath() -> Result<(), Box<dyn 
 {
     init_tracing();
     let _guard = WAYDRIVER_TEST_LOCK.lock().await;
-    let previous_screen_reader_enabled = set_screen_reader_enabled(true).await?;
-    let result = run_xilem_shell_xpath_check().await;
-    set_screen_reader_enabled(previous_screen_reader_enabled).await?;
-    result
+    let _bus = PrivateSessionBus::start()?;
+    set_screen_reader_enabled(true).await?;
+    run_xilem_shell_xpath_check().await
 }
 
 async fn run_xilem_shell_xpath_check() -> Result<(), Box<dyn std::error::Error>> {
@@ -188,14 +193,71 @@ fn init_tracing() {
         .try_init();
 }
 
-async fn set_screen_reader_enabled(enabled: bool) -> Result<bool, Box<dyn std::error::Error>> {
+struct PrivateSessionBus {
+    previous_address: Option<OsString>,
+    child: Child,
+}
+
+impl PrivateSessionBus {
+    fn start() -> Result<Self, Box<dyn std::error::Error>> {
+        let previous_address = std::env::var_os("DBUS_SESSION_BUS_ADDRESS");
+        let mut child = Command::new("dbus-daemon")
+            .args(["--session", "--nofork", "--print-address=1"])
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .spawn()?;
+        let stdout = child
+            .stdout
+            .take()
+            .ok_or_else(|| std::io::Error::other("dbus-daemon stdout was not piped"))?;
+        let mut reader = std::io::BufReader::new(stdout);
+        let mut address = String::new();
+        reader.read_line(&mut address)?;
+        let address = address.trim();
+        if address.is_empty() {
+            return Err(std::io::Error::other("dbus-daemon did not print an address").into());
+        }
+
+        // SAFETY: these ignored WayDriver tests are serialized by
+        // WAYDRIVER_TEST_LOCK before this guard is created. The env var is
+        // restored in Drop before the lock is released, so no other test in this
+        // process observes the private bus address.
+        unsafe {
+            std::env::set_var("DBUS_SESSION_BUS_ADDRESS", address);
+        }
+
+        Ok(Self {
+            previous_address,
+            child,
+        })
+    }
+}
+
+impl Drop for PrivateSessionBus {
+    fn drop(&mut self) {
+        match &self.previous_address {
+            Some(address) => {
+                // SAFETY: see PrivateSessionBus::start; the same test lock is
+                // still held while this guard is dropped.
+                unsafe { std::env::set_var("DBUS_SESSION_BUS_ADDRESS", address) };
+            }
+            None => {
+                // SAFETY: see PrivateSessionBus::start; the same test lock is
+                // still held while this guard is dropped.
+                unsafe { std::env::remove_var("DBUS_SESSION_BUS_ADDRESS") };
+            }
+        }
+        let _ = self.child.kill();
+        let _ = self.child.wait();
+    }
+}
+
+async fn set_screen_reader_enabled(enabled: bool) -> Result<(), Box<dyn std::error::Error>> {
     let connection = atspi::zbus::Connection::session().await?;
     let status = atspi::proxy::bus::StatusProxy::new(&connection).await?;
-    let previous = status.screen_reader_enabled().await?;
-    if previous != enabled {
-        status.set_screen_reader_enabled(enabled).await?;
-    }
-    Ok(previous)
+    status.set_screen_reader_enabled(enabled).await?;
+    Ok(())
 }
 
 fn png_dimensions(png: &[u8]) -> (u32, u32) {

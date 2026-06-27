@@ -206,9 +206,9 @@ in place:
 - [ ] Video recording (PipeWire) if needed for CI artifacts.
 - [x] Confirm the Xilem shell's Masonry/AccessKit AT-SPI tree is XPath-locatable at runtime.
       `tests/waydriver_hearthspace.rs` starts headless Hearthspace with the shell,
-      toggles `org.a11y.Status.ScreenReaderEnabled` so AccessKit registers on
-      AT-SPI, targets the shell app root (`hearthspace`), and locates the `LEFT`
-      shell button by XPath.
+      runs it under a private session bus, toggles `org.a11y.Status.ScreenReaderEnabled`
+      on that throwaway bus so AccessKit registers on AT-SPI, targets the shell
+      app root (`hearthspace`), and locates the `LEFT` shell button by XPath.
 
 ## Decisions
 
