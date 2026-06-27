@@ -43,12 +43,6 @@ jobs:
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
-      - name: Set up Rust
-        uses: ./.github/actions/setup-rust
-
-      - name: Install cargo-deny
-        run: cargo install cargo-deny@0.19.9 --locked
-
       # No deny.toml is committed yet, so cargo-deny runs with its built-in
       # defaults. The license check is intentionally omitted because it needs an
       # explicit allow-list to be meaningful; advisories/bans/sources are useful
@@ -56,4 +50,8 @@ jobs:
       # only hits are transitive dependencies with no safe upgrade available;
       # genuine vulnerabilities/unsound advisories still fail the job.
       - name: cargo-deny
-        run: cargo deny check advisories bans sources --warn unmaintained
+        uses: EmbarkStudios/cargo-deny-action@bb137d7af7e4fb67e5f82a49c4fce4fad40782fe # v2.0.20
+        with:
+          rust-version: 1.93.1
+          command: check advisories bans sources
+          command-arguments: "--warn unmaintained"
