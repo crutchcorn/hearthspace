@@ -116,9 +116,11 @@ regression tests for both client applications and shell chrome.
 
 Client applications launched by `Session::start` use the WayDriver-provided
 Wayland display/runtime directory and the current D-Bus session bus. The
-feature-gated smoke test launches the in-repo GTK test app (`--gtk-test-app`),
-waits for its AT-SPI application root (`hearthspace-gtk-test-app`), locates the
-`Research Workspace` heading by XPath, clicks it, and captures a screenshot.
+WayDriver GTK smoke test runs under a private D-Bus/AT-SPI session so minimal CI
+images do not need a pre-existing user accessibility bus. It launches the
+in-repo GTK test app (`--gtk-test-app`), waits for its AT-SPI application root
+(`hearthspace-gtk-test-app`), locates the `Research Workspace` heading by XPath,
+clicks it, and captures a screenshot.
 
 GTK exposes the test app's AT-SPI application root using `argv[0]`, not the
 window title or application id. The current root name is
@@ -130,12 +132,12 @@ The shell is a Xilem/Masonry Wayland client. Masonry emits an AccessKit tree,
 and AccessKit's Unix bridge exposes that tree on AT-SPI. On Unix, AccessKit only
 registers with AT-SPI while `org.a11y.Status.ScreenReaderEnabled` is active.
 
-The shell XPath test avoids touching the developer's host accessibility state by
-starting a private `dbus-daemon --session`, temporarily setting
+The AT-SPI WayDriver tests avoid touching the developer's host accessibility
+state by starting a private `dbus-daemon --session`, temporarily setting
 `DBUS_SESSION_BUS_ADDRESS` for the serialized test scope, enabling
 `ScreenReaderEnabled` inside that private bus, and then launching headless
-Hearthspace with the shell enabled. The private bus is killed and the environment
-is restored when the test ends.
+Hearthspace and any target client. The private bus is killed and the environment
+is restored when each test ends.
 
 Under AccessKit, the shell's AT-SPI application root is the executable name
 `hearthspace`. The smoke test locates the `LEFT` shell control by XPath and
@@ -160,13 +162,14 @@ WayDriver `Session` path:
   with the Xilem shell under a private D-Bus/AT-SPI session and locates the shell
   `LEFT` control by XPath.
 - `waydriver_session_locates_real_client_by_xpath` is gated by `test-apps`; it
-  launches the GTK test app through WayDriver, locates `Research Workspace` by
-  XPath, clicks it, and captures a screenshot.
+  launches the GTK test app through WayDriver under a private D-Bus/AT-SPI
+  session, locates `Research Workspace` by XPath, clicks it, and captures a
+  screenshot.
 
 The E2E test targets require the Cargo feature `e2e`, which keeps them out of
 normal `cargo test --all-targets` and CI runs. Tests are serialized inside each
 test binary with a static lock because they share deterministic socket names
-and, for the shell test, temporarily modify process environment variables.
+and, for the AT-SPI tests, temporarily modify process environment variables.
 
 ## Running Tests
 
@@ -217,9 +220,9 @@ sudo apt-get install -y libgtk-4-dev
 cargo test --features test-apps
 ```
 
-The shell AT-SPI test requires `dbus-daemon` and a working `org.a11y.Bus` D-Bus
-service, normally provided by `dbus` and `at-spi2-core` packages on desktop Linux
-systems.
+The AT-SPI WayDriver tests require `dbus-daemon` and a working `org.a11y.Bus`
+D-Bus service, normally provided by `dbus` and `at-spi2-core` packages on desktop
+Linux systems.
 
 ## Current Limits
 
