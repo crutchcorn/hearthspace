@@ -29,9 +29,12 @@ use smithay::{
     backend::{
         allocator::Fourcc,
         allocator::dmabuf::Dmabuf,
-        egl::EGLDevice,
+        egl::{EGLContext, EGLDevice, EGLDisplay, native::EGLSurfacelessDisplay},
         renderer::{
-            ExportMem, ImportDma, damage::OutputDamageTracker, element::Id, gles::GlesRenderer,
+            Bind, ExportMem, ImportDma, Offscreen,
+            damage::OutputDamageTracker,
+            element::Id,
+            gles::{GlesRenderbuffer, GlesRenderer},
             utils::on_commit_buffer_handler,
         },
         winit::{self, WinitEvent},
@@ -717,7 +720,7 @@ pub fn run_winit(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> 
     let mut data = CalloopData {
         state,
         display,
-        backend: Backend::Winit(backend),
+        backend: Backend::Winit(Box::new(backend)),
         damage_tracker: OutputDamageTracker::new(output_size, 1.0, Transform::Flipped180),
         start_time: std::time::Instant::now(),
         running: true,
@@ -758,8 +761,184 @@ pub fn run_winit(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> 
     Ok(())
 }
 
+pub fn run_headless(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> {
+    let mut display: Display<App> = Display::new()?;
+    let dh = display.handle();
+
+    let compositor_state = CompositorState::new::<App>(&dh);
+    let xdg_decoration_state = XdgDecorationState::new::<App>(&dh);
+    let output_manager_state = OutputManagerState::new_with_xdg_output::<App>(&dh);
+    let shm_state = ShmState::new::<App>(&dh, vec![]);
+    let mut seat_state = SeatState::new();
+    let mut seat = seat_state.new_wl_seat(&dh, "hearthspace");
+    let keyboard = seat.add_keyboard(
+        Default::default(),
+        KEYBOARD_REPEAT_DELAY_MS,
+        KEYBOARD_REPEAT_RATE,
+    )?;
+    let pointer = seat.add_pointer();
+
+    let egl_display = unsafe { EGLDisplay::new(EGLSurfacelessDisplay)? };
+    let context = EGLContext::new(&egl_display)?;
+    let mut renderer = unsafe { GlesRenderer::new(context)? };
+    let output_size = Size::<i32, Physical>::from((HEADLESS_OUTPUT_WIDTH, HEADLESS_OUTPUT_HEIGHT));
+    let buffer_size = Size::<i32, BufferCoord>::from((output_size.w, output_size.h));
+    let buffer = renderer.create_buffer(Fourcc::Abgr8888, buffer_size)?;
+    let output = create_output(&dh, output_size);
+
+    let dmabuf_formats = renderer.dmabuf_formats().into_iter().collect::<Vec<_>>();
+    let render_node_dev = EGLDevice::device_for_display(renderer.egl_context().display())
+        .ok()
+        .and_then(|device| device.render_device_path().ok())
+        .and_then(|path| std::fs::metadata(path).ok())
+        .map(|metadata| metadata.rdev());
+    let mut dmabuf_state = DmabufState::new();
+    let dmabuf_global = match render_node_dev {
+        Some(dev) => {
+            let feedback =
+                DmabufFeedbackBuilder::new(dev, dmabuf_formats.iter().copied()).build()?;
+            dmabuf_state.create_global_with_default_feedback::<App>(&dh, &feedback)
+        }
+        None => dmabuf_state.create_global::<App>(&dh, dmabuf_formats.iter().copied()),
+    };
+
+    let mut event_loop: EventLoop<CalloopData> = EventLoop::try_new()?;
+    let handle = event_loop.handle();
+
+    let state = App {
+        compositor_state,
+        xdg_shell_state: XdgShellState::new_with_capabilities::<App>(
+            &dh,
+            std::iter::empty::<xdg_toplevel::WmCapabilities>(),
+        ),
+        _xdg_decoration_state: xdg_decoration_state,
+        _output_manager_state: output_manager_state,
+        shm_state,
+        seat_state,
+        data_device_state: DataDeviceState::new::<App>(&dh),
+        _seat: seat,
+        pointer,
+        keyboard,
+        viewport_offset: CanvasPoint { x: 0, y: 0 },
+        viewport_scale: 1.0,
+        viewport_animation: None,
+        windows: Vec::new(),
+        next_window_id: 1,
+        idle_daemon: WindowIdleDaemon::new(WINDOW_IDLE_THRESHOLDS),
+        focused_normal_window_id: None,
+        drag: None,
+        resize: None,
+        cursor_icon: CursorIcon::Default,
+        next_spawn_position: CanvasPoint { x: 80, y: 96 },
+        spawn_offset: 0,
+        pointer_location: (0.0, 0.0).into(),
+        scroll_zooms_without_super: options.scroll_zooms_without_super,
+        output_size,
+        output,
+        app_catalog: AppCatalog::load(),
+        needs_redraw: true,
+        dmabuf_state,
+        _dmabuf_global: dmabuf_global,
+        pending_dmabuf_imports: Vec::new(),
+        loop_handle: handle.clone(),
+        popups: PopupManager::default(),
+        background_dot_ids: Vec::new(),
+    };
+
+    let command_socket_path = command_socket_path();
+    remove_stale_socket(&command_socket_path)?;
+    let command_listener = CommandListener::bind(&command_socket_path)?;
+    command_listener.set_nonblocking(true)?;
+
+    let socket_source = ListeningSocketSource::with_name(WAYLAND_DISPLAY_NAME)?;
+    handle.insert_source(socket_source, |stream, _, data| {
+        if let Err(error) = data
+            .display
+            .handle()
+            .insert_client(stream, Arc::new(ClientState::default()))
+        {
+            eprintln!("Failed to insert Wayland client: {error}");
+        }
+        data.state.request_redraw();
+    })?;
+
+    let display_fd = display.backend().poll_fd().try_clone_to_owned()?;
+    handle.insert_source(
+        Generic::new(display_fd, Interest::READ, CalloopMode::Level),
+        |_, _, data| {
+            let CalloopData { state, display, .. } = data;
+            display.dispatch_clients(state)?;
+            Ok(PostAction::Continue)
+        },
+    )?;
+
+    let command_loop_handle = handle.clone();
+    handle.insert_source(
+        Generic::new(command_listener, Interest::READ, CalloopMode::Level),
+        move |_, listener, _| {
+            accept_command_connections(listener, &command_loop_handle)?;
+            Ok(PostAction::Continue)
+        },
+    )?;
+
+    spawn_shell(&command_socket_path);
+
+    println!("Headless Hearthspace running on WAYLAND_DISPLAY={WAYLAND_DISPLAY_NAME}");
+    if state.scroll_zooms_without_super {
+        println!("Scroll zoom testing mode enabled: vertical scroll zooms without Super");
+    }
+
+    let mut data = CalloopData {
+        state,
+        display,
+        backend: Backend::Headless(Box::new(HeadlessBackend { renderer, buffer })),
+        damage_tracker: OutputDamageTracker::new(output_size, 1.0, Transform::Flipped180),
+        start_time: std::time::Instant::now(),
+        running: true,
+        full_redraw: 1,
+        applied_cursor: CursorIcon::Default,
+    };
+
+    data.render()?;
+
+    while data.running {
+        let timeout = data
+            .state
+            .viewport_animation
+            .is_some()
+            .then_some(ANIMATION_FRAME_INTERVAL);
+        event_loop.dispatch(timeout, &mut data)?;
+
+        if !data.running {
+            break;
+        }
+
+        data.process_pending_dmabuf_imports();
+        data.state.handle_idle_transitions();
+        data.state.advance_viewport_animation();
+        data.apply_cursor_icon();
+
+        if data.state.needs_redraw {
+            data.render()?;
+            data.state.needs_redraw = false;
+        }
+
+        data.display.flush_clients()?;
+        data.state.popups.cleanup();
+        data.state.output.cleanup();
+    }
+
+    Ok(())
+}
+
 enum Backend {
-    Winit(smithay::backend::winit::WinitGraphicsBackend<GlesRenderer>),
+    Winit(Box<smithay::backend::winit::WinitGraphicsBackend<GlesRenderer>>),
+    Headless(Box<HeadlessBackend>),
+}
+
+struct HeadlessBackend {
+    renderer: GlesRenderer,
+    buffer: GlesRenderbuffer,
 }
 
 struct CalloopData {
@@ -787,8 +966,9 @@ impl CalloopData {
             return;
         }
         self.applied_cursor = self.state.cursor_icon;
-        let Backend::Winit(backend) = &self.backend;
-        backend.window().set_cursor(self.applied_cursor);
+        if let Backend::Winit(backend) = &self.backend {
+            backend.window().set_cursor(self.applied_cursor);
+        }
     }
 
     fn process_pending_dmabuf_imports(&mut self) {
@@ -796,9 +976,12 @@ impl CalloopData {
             return;
         }
         let CalloopData { state, backend, .. } = self;
-        let Backend::Winit(backend) = backend;
         for (dmabuf, notifier) in state.pending_dmabuf_imports.drain(..) {
-            match backend.renderer().import_dmabuf(&dmabuf, None) {
+            let import = match backend {
+                Backend::Winit(backend) => backend.renderer().import_dmabuf(&dmabuf, None),
+                Backend::Headless(backend) => backend.renderer.import_dmabuf(&dmabuf, None),
+            };
+            match import {
                 Ok(_texture) => {
                     let _ = notifier.successful::<App>();
                 }
@@ -823,22 +1006,34 @@ impl CalloopData {
             full_redraw,
             ..
         } = self;
-        let Backend::Winit(backend) = backend;
+        match backend {
+            Backend::Winit(backend) => {
+                // `buffer_age` is an `eglQuerySurface` that only succeeds while
+                // the window surface is the current EGL draw surface. After a
+                // dmabuf import (or on the first frame) that is not guaranteed,
+                // so those frames are forced to a full redraw (age 0) instead of
+                // querying a stale surface.
+                let age = if *full_redraw > 0 {
+                    *full_redraw = full_redraw.saturating_sub(1);
+                    0
+                } else {
+                    backend.buffer_age().unwrap_or(0)
+                };
+                let damage = {
+                    let (renderer, mut framebuffer) = backend.bind()?;
+                    state.render_frame(renderer, &mut framebuffer, damage_tracker, age)?
+                };
 
-        // `buffer_age` is an `eglQuerySurface` that only succeeds while the
-        // window surface is the current EGL draw surface. After a dmabuf import
-        // (or on the first frame) that is not guaranteed, so those frames are
-        // forced to a full redraw (age 0) instead of querying a stale surface.
-        let age = if *full_redraw > 0 {
-            *full_redraw = full_redraw.saturating_sub(1);
-            0
-        } else {
-            backend.buffer_age().unwrap_or(0)
-        };
-        let damage = {
-            let (renderer, mut framebuffer) = backend.bind()?;
-            state.render_frame(renderer, &mut framebuffer, damage_tracker, age)?
-        };
+                if let Some(damage) = damage.as_ref() {
+                    backend.submit(Some(damage))?;
+                }
+            }
+            Backend::Headless(backend) => {
+                *full_redraw = 0;
+                let mut framebuffer = backend.renderer.bind(&mut backend.buffer)?;
+                state.render_frame(&mut backend.renderer, &mut framebuffer, damage_tracker, 0)?;
+            }
+        }
 
         for window in &state.windows {
             send_frames_surface_tree(
@@ -860,11 +1055,6 @@ impl CalloopData {
 
         display.flush_clients()?;
 
-        // No damage means the scene is identical to the on-screen buffer, so
-        // there is nothing to swap.
-        if let Some(damage) = damage {
-            backend.submit(Some(&damage))?;
-        }
         Ok(())
     }
 
@@ -872,15 +1062,31 @@ impl CalloopData {
         self.process_pending_dmabuf_imports();
 
         let CalloopData { state, backend, .. } = self;
-        let Backend::Winit(backend) = backend;
         let size = state.output_size;
         let mut screenshot_damage = OutputDamageTracker::new(size, 1.0, Transform::Flipped180);
-        let (renderer, mut framebuffer) = backend.bind()?;
-        state.render_frame(renderer, &mut framebuffer, &mut screenshot_damage, 0)?;
-
         let region = Rectangle::from_size(Size::<i32, BufferCoord>::from((size.w, size.h)));
-        let mapping = renderer.copy_framebuffer(&framebuffer, region, Fourcc::Abgr8888)?;
-        let pixels = renderer.map_texture(&mapping)?.to_vec();
+        let pixels = match backend {
+            Backend::Winit(backend) => {
+                let (renderer, mut framebuffer) = backend.bind()?;
+                state.render_frame(renderer, &mut framebuffer, &mut screenshot_damage, 0)?;
+                let mapping = renderer.copy_framebuffer(&framebuffer, region, Fourcc::Abgr8888)?;
+                renderer.map_texture(&mapping)?.to_vec()
+            }
+            Backend::Headless(backend) => {
+                let mut framebuffer = backend.renderer.bind(&mut backend.buffer)?;
+                state.render_frame(
+                    &mut backend.renderer,
+                    &mut framebuffer,
+                    &mut screenshot_damage,
+                    0,
+                )?;
+                let mapping =
+                    backend
+                        .renderer
+                        .copy_framebuffer(&framebuffer, region, Fourcc::Abgr8888)?;
+                backend.renderer.map_texture(&mapping)?.to_vec()
+            }
+        };
         encode_png_rgba(size, &pixels)
     }
 }

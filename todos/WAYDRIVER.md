@@ -123,9 +123,9 @@ Three pieces of work, in rough effort order:
 
 - The repository paths for the referenced planning docs are `todos/BACKENDS.md`
   and `todos/TESTING.md`, not `docs/BACKENDS.md` / `docs/TESTING.md`.
-- `--headless` is now recognized by the CLI, but deliberately returns an error
-  instead of silently starting the winit backend. The real Smithay offscreen
-  renderer is still the blocking Phase 1 item.
+- `--headless` now starts a real Smithay surfaceless EGL/GLES backend backed by
+  an offscreen renderbuffer. The current virtual output is fixed at 1280x720;
+  resolution/scale CLI args are still pending.
 - The command socket now has a minimal line-based response path: parsed commands
   write `ok\n`; unsupported commands that parse but cannot complete write
   `err <message>\n`. This is intentionally smaller than the preferred future
@@ -138,8 +138,9 @@ Three pieces of work, in rough effort order:
   compositor adds Smithay's expected XKB offset internally. A future WayDriver
   backend can either send evdev codes or add a keysym-to-evdev mapping layer.
 - `screenshot` now reads back the current GLES framebuffer on the existing winit
-  backend and replies as `ok <byte-count>\n<PNG bytes>`. This is not headless
-  yet, but it proves the direct renderer readback path WayDriver needs.
+  backend and the new headless backend, then replies as
+  `ok <byte-count>\n<PNG bytes>`. A smoke test against `hearthspace --headless`
+  returned a valid PNG from the control socket.
 
 ### Phase 0 — design + spike ⬜
 

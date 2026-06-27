@@ -18,10 +18,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
 
 pub fn run_with_options(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> {
     if options.headless {
-        return Err(
-            "--headless is recognized but the Smithay offscreen backend is not implemented yet"
-                .into(),
-        );
+        return compositor::run_headless(options);
     }
 
     compositor::run_winit(options)

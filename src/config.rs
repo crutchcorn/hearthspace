@@ -14,6 +14,8 @@ pub const SHELL_COMMAND_SOCKET_NAME: &str = "hearthspace-shell.sock";
 pub const SHELL_COMMAND_SOCKET_ENV: &str = "HEARTHSPACE_COMMAND_SOCKET";
 pub const GTK_CLIENT_CONFIG_DIR_NAME: &str = "hearthspace-gtk-client-config";
 pub const SCROLL_ZOOMS_FLAG: &str = "--scroll-zooms";
+pub const HEADLESS_OUTPUT_WIDTH: i32 = 1280;
+pub const HEADLESS_OUTPUT_HEIGHT: i32 = 720;
 
 pub const KEYBOARD_REPEAT_DELAY_MS: i32 = 600;
 pub const KEYBOARD_REPEAT_RATE: i32 = 25;
