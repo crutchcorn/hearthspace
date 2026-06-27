@@ -14,9 +14,9 @@
 Hearthspace is a very early experimental Wayland compositor and shell built around an infinite canvas for applications, local-first AI, and a more persistent relationship with your workspace.
 
 <div align="center">
-<video controls>
-  <source src="https://raw.githubusercontent.com/crutchcorn/hearthspace/refs/heads/main/assets/demo.mp4" type="video/mp4">
-</video>
+
+https://github.com/user-attachments/assets/de48fb7e-0d4b-4aef-9380-fc27869ccbde
+
 </div>
 
 Instead of treating windows as temporary rectangles that pile up until you clean them away, Hearthspace explores a different model: applications live in a large spatial canvas, can be organized by context, and will eventually become easier to search, suspend, restore, and reason about.
