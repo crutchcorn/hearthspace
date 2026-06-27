@@ -148,7 +148,11 @@ in place:
   runs focused on the app under test.
 - `tests/headless_control.rs` is an ignored integration smoke test for the
   compositor-side protocol. It also has a `test-apps` feature-gated variant that
-  spawns and drives the in-repo GTK a11y client. Run it with
+  spawns the in-repo GTK a11y client and drives input/screenshot commands
+  against it. It probes for the client on the AT-SPI bus and treats that as an
+  opt-in assertion when `HEARTHSPACE_REQUIRE_ATSPI=1` is set, because the GTK
+  app currently renders under the headless compositor in this VM without
+  registering as an AT-SPI application root on the host bus. Run it with
   `cargo test --test headless_control -- --ignored` or
   `cargo test --features test-apps --test headless_control -- --ignored` on
   machines with surfaceless EGL support.
@@ -179,7 +183,8 @@ in place:
 - [x] Add an ignored integration smoke test that drives input commands,
       captures a screenshot, and quits over the socket.
 - [x] Add an ignored, `test-apps`-gated smoke test that spawns the GTK a11y
-      client and drives pointer/key/screenshot commands against it.
+      client and drives pointer/key/screenshot commands against it. It includes
+      an opt-in AT-SPI assertion via `HEARTHSPACE_REQUIRE_ATSPI=1`.
 - [x] **Done when:** a script can drive a headless client end-to-end (move
       pointer, click, type, screenshot) over the socket.
 

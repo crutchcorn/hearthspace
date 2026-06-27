@@ -116,6 +116,14 @@ fn headless_control_socket_spawns_and_drives_real_gtk_client() {
     assert_eq!(send_text_command("spawn a11y-test"), "ok\n");
     let with_client = wait_for_screenshot_change(&empty);
     assert_eq!(png_dimensions(&with_client), (CLIENT_WIDTH, CLIENT_HEIGHT));
+    let saw_accessible = wait_for_accessible_term("Research Workspace");
+    if std::env::var_os("HEARTHSPACE_REQUIRE_ATSPI").is_some() {
+        assert!(saw_accessible, "AT-SPI tree did not expose GTK test app");
+    } else if !saw_accessible {
+        eprintln!(
+            "GTK test app did not appear on AT-SPI bus; set HEARTHSPACE_REQUIRE_ATSPI=1 to make this fatal"
+        );
+    }
 
     for command in [
         "pointer-motion-abs 420 260",
@@ -184,6 +192,20 @@ fn wait_for_screenshot_change(previous: &[u8]) -> Vec<u8> {
         thread::sleep(Duration::from_millis(100));
     }
     panic!("screenshot did not change after spawning GTK test client");
+}
+
+#[cfg(feature = "test-apps")]
+fn wait_for_accessible_term(term: &str) -> bool {
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while Instant::now() < deadline {
+        if async_io::block_on(hearthspace::accessibility::accessibility_tree_contains_term(term))
+            .expect("query AT-SPI tree")
+        {
+            return true;
+        }
+        thread::sleep(Duration::from_millis(100));
+    }
+    false
 }
 
 fn read_line(stream: &mut UnixStream) -> String {
