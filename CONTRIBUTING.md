@@ -66,6 +66,7 @@ Common compositor flags:
 cargo run -- --scroll-zooms
 cargo run -- --headless
 cargo run -- --headless --headless-size 1280x720
+cargo run -- --headless --no-shell
 ```
 
 `--scroll-zooms` makes vertical scroll events zoom the canvas without holding
@@ -80,6 +81,9 @@ shell as a normal Wayland client.
 `--headless-size WIDTHxHEIGHT` overrides the headless virtual output size. The
 default is `1280x720`; both `--headless-size 800x600` and
 `--headless-size=800x600` are accepted.
+
+`--no-shell` skips spawning the Xilem shell client. This is useful for headless
+harnesses that want to launch only the client under test.
 
 The shell/control socket is `hearthspace-shell.sock` in `XDG_RUNTIME_DIR`. Shell
 clients receive its full path through `HEARTHSPACE_COMMAND_SOCKET`, but tests can

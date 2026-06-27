@@ -710,7 +710,9 @@ pub fn run_winit(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> 
         WinitEvent::Focus(_) => {}
     })?;
 
-    spawn_shell(&command_socket_path);
+    if options.start_shell {
+        spawn_shell(&command_socket_path);
+    }
 
     println!("Hearthspace running on WAYLAND_DISPLAY={WAYLAND_DISPLAY_NAME}");
     if state.scroll_zooms_without_super {
@@ -884,7 +886,9 @@ pub fn run_headless(options: RunOptions) -> Result<(), Box<dyn std::error::Error
         },
     )?;
 
-    spawn_shell(&command_socket_path);
+    if options.start_shell {
+        spawn_shell(&command_socket_path);
+    }
 
     println!("Headless Hearthspace running on WAYLAND_DISPLAY={WAYLAND_DISPLAY_NAME}");
     if state.scroll_zooms_without_super {

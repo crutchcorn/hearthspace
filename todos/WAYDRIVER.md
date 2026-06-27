@@ -144,6 +144,8 @@ Three pieces of work, in rough effort order:
   returned a valid PNG from the control socket.
 - `quit` stops the compositor cleanly over the control socket so harnesses do
   not need to rely on process termination for normal teardown.
+- `--no-shell` skips spawning the shell client, which keeps headless WayDriver
+  runs focused on the app under test.
 
 ### Phase 0 — design + spike ⬜
 

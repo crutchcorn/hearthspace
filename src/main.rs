@@ -30,6 +30,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .iter()
                 .any(|arg| arg == hearthspace::config::HEADLESS_FLAG),
             headless_output_size,
+            start_shell: !args
+                .iter()
+                .any(|arg| arg == hearthspace::config::NO_SHELL_FLAG),
         })
     }
 }
