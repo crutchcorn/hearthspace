@@ -91,31 +91,31 @@ WayDriver is `tokio`/`zbus`/`async-trait`. The two runtimes never mix because
 they live in **separate processes** communicating over the control socket.
 Hearthspace handles commands in its existing calloop source.
 
-## Gaps on the Hearthspace side
+## Hearthspace-side status
 
-Three pieces of work, in rough effort order:
+The compositor-side pieces needed for a first WayDriver backend are now mostly
+in place:
 
-1. **Headless backend (the real work).** Today Hearthspace has only the nested
-   **winit** backend; DRM is still planned ([BACKENDS.md](./BACKENDS.md)).
-   WayDriver needs a no-display compositor that renders offscreen to a fixed
-   virtual output and opens a Wayland socket at a known name + runtime dir.
-   Smithay supports this (headless EGL/GLES + a synthetic `Output`). It slots in
-   as a third `Backend` variant alongside the winit/udev seam that
-   [BACKENDS.md](./BACKENDS.md) Step 2 already created — `render_frame` is
-   already renderer-generic.
+1. **Headless backend: implemented.** `hearthspace --headless` starts a
+   surfaceless EGL/GLES renderer backed by an offscreen renderbuffer, advertises
+   a synthetic Smithay `Output`, opens the deterministic `wayland-99` socket, and
+   runs the same calloop-driven compositor state as the nested winit backend.
+   `--headless-size WIDTHxHEIGHT` configures the virtual output size,
+   `--headless-scale INTEGER` configures the advertised Wayland scale, and
+   `--no-shell` skips the Xilem shell client for app-focused harnesses.
 
-2. **Control-protocol extensions for input + screenshot.** The current command
-   socket is fire-and-forget (`shell/command.rs` `ShellCommand`). We need:
-   - new commands: `key-down/up <keysym>`, `pointer-motion-abs/rel`,
-     `pointer-button-down/up`, `axis`, `screenshot`;
-   - a **reply channel** — the socket has no response path today, and
-     `screenshot` must return bytes. This is the main protocol change.
-   - Input commands synthesize events directly into the Smithay seat
-     (`compositor/input.rs`); screenshot does a framebuffer readback → PNG.
+2. **Control-protocol extensions: implemented for screenshots and input.** The
+   command socket now replies to parsed commands, supports synthetic keyboard,
+   pointer, button, and axis events, and returns PNG bytes for `screenshot` via a
+   direct GLES framebuffer readback. `quit` provides graceful harness teardown.
+   The current keyboard command accepts Linux evdev key codes rather than XKB
+   keysyms; a WayDriver adapter can map keysyms before sending, or we can add a
+   compositor-side mapping later.
 
-3. **Video (optional, defer).** Screenshots are a direct readback. Continuous
-   WebM is the one place PipeWire would still earn its keep. Stub
-   `start_recording` initially and revisit.
+3. **Remaining Hearthspace-side gaps.** The response protocol is intentionally a
+   small line-based frame (`ok`, `err`, `ok <byte-count>` + payload), not the
+   previously preferred length-prefixed binary envelope. Continuous video is not
+   implemented; screenshots are the supported capture path for now.
 
 ## Incremental plan
 
@@ -147,28 +147,29 @@ Three pieces of work, in rough effort order:
 - `--no-shell` skips spawning the shell client, which keeps headless WayDriver
   runs focused on the app under test.
 
-### Phase 0 — design + spike ⬜
+### Phase 0 — design + spike ✅
 
-- [ ] Validate Smithay headless offscreen rendering (GLES + synthetic `Output`)
-      in a throwaway branch; confirm a client can connect and we can read back a
+- [x] Validate Smithay headless offscreen rendering (GLES + synthetic `Output`)
+      in the compositor; confirm a client can connect and we can read back a
       frame to PNG.
-- [ ] Decide the control-socket reply protocol (length-prefixed binary vs. a
-      small request/response framing) — see Open Questions.
+- [x] Decide the control-socket reply protocol (length-prefixed binary vs. a
+      small request/response framing) — see Decisions.
 
-### Phase 1 — headless backend ⬜
+### Phase 1 — headless backend ✅
 
-- [ ] Add a `Backend::Headless` variant; gate behind a `--headless` flag (and/or
+- [x] Add a `Backend::Headless` variant; gate behind a `--headless` flag (and/or
       a cargo feature) with a deterministic `WAYLAND_DISPLAY` + runtime dir.
-- [ ] Fixed virtual output size from a CLI arg (mirror WayDriver's
+- [x] Fixed virtual output size from a CLI arg (mirror WayDriver's
       `resolution` / `scale`).
-- [ ] **Done when:** `hearthspace --headless` runs with no monitor, a client can
+- [x] **Done when:** `hearthspace --headless` runs with no monitor, a client can
       connect, and the process is idle when nothing animates.
 
-### Phase 2 — input + screenshot IPC ⬜
+### Phase 2 — input + screenshot IPC ✅/⬜
 
-- [ ] Extend the control protocol with input + `screenshot` commands and a reply
+- [x] Extend the control protocol with input + `screenshot` commands and a reply
       channel.
-- [ ] Synthesize input into the Smithay seat; implement framebuffer→PNG readback.
+- [x] Synthesize input into the Smithay seat; implement framebuffer→PNG readback.
+- [x] Add a control-socket `quit` command for graceful harness teardown.
 - [ ] **Done when:** a script can drive a headless client end-to-end (move
       pointer, click, type, screenshot) over the socket.
 
@@ -187,7 +188,7 @@ Three pieces of work, in rough effort order:
 - [ ] Video recording (PipeWire) if needed for CI artifacts.
 - [ ] Confirm the Xilem shell's Masonry/AccessKit AT-SPI tree is XPath-locatable at runtime.
 
-## Decisions to make
+## Decisions
 
 - **Where do the backend crates live?** Since the goal is testing Hearthspace
   itself, keep `waydriver-{compositor,input,capture}-hearthspace` **in this
@@ -195,9 +196,10 @@ Three pieces of work, in rough effort order:
   the upstream `waydriver` library crate. Avoids coupling our test harness to
   WayDriver's release cadence. Upstreaming later stays possible (additive
   siblings).
-- **Control-socket reply protocol.** The current one-way text protocol needs a
-  response path for `screenshot`. Prefer a minimal length-prefixed framing over
-  re-using line-based text, so binary PNG payloads don't need escaping.
+- **Control-socket reply protocol.** Implemented as a minimal request/reply
+  protocol over the existing Unix stream: `ok\n`, `err <message>\n`, or
+  `ok <byte-count>\n<PNG bytes>` for screenshots. This keeps the current shell
+  command model simple while giving tests a binary-safe screenshot path.
 - **Headless gating.** CLI flag vs. cargo feature — a runtime `--headless` flag
   keeps a single binary (simpler for the backend to spawn) and avoids a build
   matrix.
@@ -205,8 +207,9 @@ Three pieces of work, in rough effort order:
 ## Open questions
 
 - Does Smithay's headless GLES path on our ARM64 VM read back framebuffers
-  without a real GBM device, or do we need a software/llvmpipe EGL? (Phase 0
-  spike answers this.)
+  without a real GBM device, or do we need a software/llvmpipe EGL? **Answered:**
+  surfaceless EGL works on the VM, and headless screenshot smoke tests return
+  valid PNGs.
 - Tokio dev-dependency: the backend crates pull `tokio`/`zbus`/`async-trait`
   into `[dev-dependencies]` only — confirm that doesn't leak into the main build.
 - How much CI cost does an E2E suite add, and should it be a separate, opt-in
