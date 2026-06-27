@@ -8,7 +8,6 @@ edges) or intentionally deferred. Backend work lives in
 
 ## Known Rough Edges
 
-- [ ] **Window resizing** — not implemented yet.
 - [ ] **Pinch-gesture zoom** — zoom currently supports shell buttons and
       `Super`-modified scroll, but there is no pinch gesture zoom yet.
 - [ ] **Optional desktop protocols** — several optional protocols are not
