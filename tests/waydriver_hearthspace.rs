@@ -4,6 +4,7 @@ use std::{
     path::PathBuf,
     process::{Child, Command, Stdio},
     sync::Arc,
+    time::Duration,
 };
 
 use tokio_util::sync::CancellationToken;
@@ -83,6 +84,7 @@ async fn run_xilem_shell_xpath_check() -> Result<(), Box<dyn std::error::Error>>
         )
         .await?,
     );
+    session.set_default_timeout(e2e_timeout());
 
     let check_result = async {
         let pan_left = session.locate("//*[@name='LEFT']").first();
@@ -115,6 +117,8 @@ async fn run_xilem_shell_xpath_check() -> Result<(), Box<dyn std::error::Error>>
 async fn waydriver_session_locates_real_client_by_xpath() {
     init_tracing();
     let _guard = WAYDRIVER_TEST_LOCK.lock().await;
+    let _bus = PrivateSessionBus::start().unwrap();
+    set_screen_reader_enabled(true).await.unwrap();
 
     let mut compositor = HearthspaceCompositor::new(hearthspace_binary()).unwrap();
     compositor.start(Some("800x600"), Some(1.0)).await.unwrap();
@@ -142,6 +146,7 @@ async fn waydriver_session_locates_real_client_by_xpath() {
         .await
         .unwrap(),
     );
+    session.set_default_timeout(e2e_timeout());
 
     {
         let header = session.locate("//*[@name='Research Workspace']");
@@ -190,6 +195,10 @@ fn init_tracing() {
         .try_init();
 }
 
+fn e2e_timeout() -> Duration {
+    Duration::from_secs(15)
+}
+
 struct PrivateSessionBus {
     previous_address: Option<OsString>,
     child: Child,
@@ -216,10 +225,10 @@ impl PrivateSessionBus {
             return Err(std::io::Error::other("dbus-daemon did not print an address").into());
         }
 
-        // SAFETY: these ignored WayDriver tests are serialized by
-        // WAYDRIVER_TEST_LOCK before this guard is created. The env var is
-        // restored in Drop before the lock is released, so no other test in this
-        // process observes the private bus address.
+        // SAFETY: these WayDriver E2E tests are serialized by WAYDRIVER_TEST_LOCK
+        // before this guard is created. The env var is restored in Drop before
+        // the lock is released, so no other test in this process observes the
+        // private bus address.
         unsafe {
             std::env::set_var("DBUS_SESSION_BUS_ADDRESS", address);
         }
