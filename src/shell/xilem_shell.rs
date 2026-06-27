@@ -24,6 +24,7 @@ use xilem::{
     masonry::{
         core::{DefaultProperties, PropertyStack, Selector},
         layout::AsUnit,
+        parley::fontique::GenericFamily,
         properties::{
             Background, BorderColor, BorderWidth, CaretColor, ContentColor, CornerRadius, Gap,
             Padding, PlaceholderColor,
@@ -200,6 +201,7 @@ fn bar_view(state: &ShellState) -> impl WidgetView<ShellState> + use<> {
         },
     )
     .placeholder("Search apps...")
+    .font(GenericFamily::SystemUi)
     .on_enter(|state: &mut ShellState, value: String| {
         let query = value.trim();
         if query.is_empty() {
