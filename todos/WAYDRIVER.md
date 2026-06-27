@@ -137,9 +137,9 @@ Three pieces of work, in rough effort order:
   codes (the values from `input-event-codes.h`) rather than XKB keysyms; the
   compositor adds Smithay's expected XKB offset internally. A future WayDriver
   backend can either send evdev codes or add a keysym-to-evdev mapping layer.
-- `screenshot` is parsed and replies with an `err` explaining that framebuffer
-  readback needs the future headless backend. No placeholder image bytes are
-  returned.
+- `screenshot` now reads back the current GLES framebuffer on the existing winit
+  backend and replies as `ok <byte-count>\n<PNG bytes>`. This is not headless
+  yet, but it proves the direct renderer readback path WayDriver needs.
 
 ### Phase 0 — design + spike ⬜
 

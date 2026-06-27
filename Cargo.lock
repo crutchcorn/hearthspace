@@ -1779,6 +1779,7 @@ dependencies = [
  "image",
  "masonry",
  "naga",
+ "png",
  "proptest",
  "rstest",
  "smithay",

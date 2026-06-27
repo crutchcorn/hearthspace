@@ -27,10 +27,11 @@ use windows::{
 use smithay::reexports::winit::window::CursorIcon;
 use smithay::{
     backend::{
+        allocator::Fourcc,
         allocator::dmabuf::Dmabuf,
         egl::EGLDevice,
         renderer::{
-            ImportDma, damage::OutputDamageTracker, element::Id, gles::GlesRenderer,
+            ExportMem, ImportDma, damage::OutputDamageTracker, element::Id, gles::GlesRenderer,
             utils::on_commit_buffer_handler,
         },
         winit::{self, WinitEvent},
@@ -53,7 +54,7 @@ use smithay::{
         },
         wayland_server::{Display, protocol::wl_seat},
     },
-    utils::{Logical, Physical, Point, Serial, Size, Transform},
+    utils::{Buffer as BufferCoord, Logical, Physical, Point, Rectangle, Serial, Size, Transform},
     wayland::{
         buffer::BufferHandler,
         compositor::{
@@ -866,6 +867,60 @@ impl CalloopData {
         }
         Ok(())
     }
+
+    fn screenshot_png(&mut self) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+        self.process_pending_dmabuf_imports();
+
+        let CalloopData { state, backend, .. } = self;
+        let Backend::Winit(backend) = backend;
+        let size = state.output_size;
+        let mut screenshot_damage = OutputDamageTracker::new(size, 1.0, Transform::Flipped180);
+        let (renderer, mut framebuffer) = backend.bind()?;
+        state.render_frame(renderer, &mut framebuffer, &mut screenshot_damage, 0)?;
+
+        let region = Rectangle::from_size(Size::<i32, BufferCoord>::from((size.w, size.h)));
+        let mapping = renderer.copy_framebuffer(&framebuffer, region, Fourcc::Abgr8888)?;
+        let pixels = renderer.map_texture(&mapping)?.to_vec();
+        encode_png_rgba(size, &pixels)
+    }
+}
+
+fn encode_png_rgba(
+    size: Size<i32, Physical>,
+    bottom_up_rgba: &[u8],
+) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+    let width = usize::try_from(size.w)?;
+    let height = usize::try_from(size.h)?;
+    let stride = width.checked_mul(4).ok_or("screenshot stride overflow")?;
+    let expected_len = stride
+        .checked_mul(height)
+        .ok_or("screenshot buffer length overflow")?;
+    if bottom_up_rgba.len() != expected_len {
+        return Err(format!(
+            "screenshot readback returned {} bytes, expected {expected_len}",
+            bottom_up_rgba.len()
+        )
+        .into());
+    }
+
+    let mut top_down_rgba = Vec::with_capacity(expected_len);
+    for row in bottom_up_rgba.chunks_exact(stride).rev() {
+        top_down_rgba.extend_from_slice(row);
+    }
+
+    let mut png_bytes = Vec::new();
+    {
+        let mut encoder = png::Encoder::new(
+            &mut png_bytes,
+            u32::try_from(width)?,
+            u32::try_from(height)?,
+        );
+        encoder.set_color(png::ColorType::Rgba);
+        encoder.set_depth(png::BitDepth::Eight);
+        let mut writer = encoder.write_header()?;
+        writer.write_image_data(&top_down_rgba)?;
+    }
+    Ok(png_bytes)
 }
 
 fn create_output(dh: &DisplayHandle, size: Size<i32, Physical>) -> Output {

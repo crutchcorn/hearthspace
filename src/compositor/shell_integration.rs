@@ -213,11 +213,7 @@ fn register_command_connection<'l>(handle: &LoopHandle<'l, CalloopData>, stream:
     let mut buffer: Vec<u8> = Vec::new();
     let source = Generic::new(stream, Interest::READ, Mode::Level);
     if let Err(error) = handle.insert_source(source, move |_, stream, data| {
-        Ok(read_command_connection(
-            stream,
-            &mut buffer,
-            &mut data.state,
-        ))
+        Ok(read_command_connection(stream, &mut buffer, data))
     }) {
         eprintln!("Failed to register shell command connection: {error}");
     }
@@ -226,7 +222,7 @@ fn register_command_connection<'l>(handle: &LoopHandle<'l, CalloopData>, stream:
 fn read_command_connection(
     stream: &UnixStream,
     buffer: &mut Vec<u8>,
-    state: &mut App,
+    data: &mut CalloopData,
 ) -> PostAction {
     // `Read` is implemented for `&UnixStream`, so read through a shared ref.
     let mut reader = stream;
@@ -236,13 +232,13 @@ fn read_command_connection(
             Ok(0) => {
                 // Client closed: run any trailing line that lacked a newline.
                 if !buffer.is_empty() {
-                    run_command_line(buffer, state);
+                    run_command_line(buffer, data);
                 }
                 return PostAction::Remove;
             }
             Ok(read) => {
                 buffer.extend_from_slice(&chunk[..read]);
-                if !drain_complete_commands(buffer, state, stream) {
+                if !drain_complete_commands(buffer, data, stream) {
                     return PostAction::Remove;
                 }
                 if buffer.len() > MAX_COMMAND_BUFFER_BYTES {
@@ -262,9 +258,13 @@ fn read_command_connection(
     }
 }
 
-fn drain_complete_commands(buffer: &mut Vec<u8>, state: &mut App, stream: &UnixStream) -> bool {
+fn drain_complete_commands(
+    buffer: &mut Vec<u8>,
+    data: &mut CalloopData,
+    stream: &UnixStream,
+) -> bool {
     for command in take_complete_commands(buffer) {
-        if !write_control_reply(stream, state.run_control_action(command)) {
+        if !write_control_reply(stream, data.run_control_action(command)) {
             return false;
         }
     }
@@ -285,9 +285,9 @@ fn take_complete_commands(buffer: &mut Vec<u8>) -> Vec<ShellCommand> {
     commands
 }
 
-fn run_command_line(bytes: &[u8], state: &mut App) {
+fn run_command_line(bytes: &[u8], data: &mut CalloopData) {
     if let Some(command) = parse_command_line(bytes) {
-        state.run_control_action(command);
+        data.run_control_action(command);
     }
 }
 
@@ -298,6 +298,7 @@ fn parse_command_line(bytes: &[u8]) -> Option<ShellCommand> {
 
 enum ControlReply {
     Ok,
+    Payload(Vec<u8>),
     Err(String),
 }
 
@@ -305,6 +306,11 @@ impl ControlReply {
     fn bytes(&self) -> Vec<u8> {
         match self {
             Self::Ok => b"ok\n".to_vec(),
+            Self::Payload(payload) => {
+                let mut bytes = format!("ok {}\n", payload.len()).into_bytes();
+                bytes.extend_from_slice(payload);
+                bytes
+            }
             Self::Err(message) => format!("err {message}\n").into_bytes(),
         }
     }
@@ -319,6 +325,19 @@ fn write_control_reply(stream: &UnixStream, reply: ControlReply) -> bool {
             eprintln!("Failed to write shell command reply: {error}");
             false
         }
+    }
+}
+
+impl CalloopData {
+    fn run_control_action(&mut self, action: ShellCommand) -> ControlReply {
+        if action == ShellCommand::Screenshot {
+            return match self.screenshot_png() {
+                Ok(bytes) => ControlReply::Payload(bytes),
+                Err(error) => ControlReply::Err(format!("screenshot failed: {error}")),
+            };
+        }
+
+        self.state.run_control_action(action)
     }
 }
 
@@ -357,11 +376,7 @@ impl App {
                 horizontal,
                 vertical,
             } => self.synthesize_axis(horizontal, vertical),
-            ShellCommand::Screenshot => {
-                return ControlReply::Err(
-                    "screenshot requires the future headless framebuffer readback path".to_string(),
-                );
-            }
+            ShellCommand::Screenshot => unreachable!("screenshot is handled by CalloopData"),
         }
         self.request_redraw();
         ControlReply::Ok
