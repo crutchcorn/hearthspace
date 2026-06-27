@@ -149,6 +149,9 @@ Hearthspace and WayDriver at it, and enables `org.a11y.Status.ScreenReaderEnable
 inside that throwaway bus because AccessKit's Unix bridge registers with AT-SPI
 only while screen-reader status is active.
 
+See [docs/E2E_TESTING.md](./docs/E2E_TESTING.md) for the evergreen technical
+architecture of the headless and WayDriver E2E harness.
+
 ### Xilem Fork (git dependency)
 
 The shell UI is built with [Xilem](https://github.com/linebender/xilem). Stock
