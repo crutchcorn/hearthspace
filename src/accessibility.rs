@@ -28,6 +28,41 @@ pub fn log_accessibility_tree(windows: Vec<ManagedWindowAccessibilityInfo>) {
     });
 }
 
+pub async fn accessibility_tree_contains_term(
+    term: &str,
+) -> Result<bool, Box<dyn std::error::Error>> {
+    let term = term.trim();
+    if term.is_empty() {
+        return Ok(false);
+    }
+
+    let connection = AccessibilityConnection::new().await?;
+    let root = connection.root_accessible_on_registry().await?;
+    let mut stack = root.get_children().await?;
+    let mut visited = 0;
+
+    while let Some(object) = stack.pop() {
+        if visited >= MAX_A11Y_NODES {
+            break;
+        }
+        visited += 1;
+
+        let Ok(proxy) = connection.object_as_accessible(&object).await else {
+            continue;
+        };
+        let summary = summarize_accessible(&proxy, object).await;
+        if !is_desktop_shell_root(&summary) && accessible_matches_term(&summary, term) {
+            return Ok(true);
+        }
+
+        if let Ok(children) = proxy.get_children().await {
+            stack.extend(children);
+        }
+    }
+
+    Ok(false)
+}
+
 async fn log_accessibility_tree_async(
     windows: Vec<ManagedWindowAccessibilityInfo>,
 ) -> Result<(), Box<dyn std::error::Error>> {

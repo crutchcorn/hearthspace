@@ -21,12 +21,44 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     {
         hearthspace::shell::xilem_shell::run()
     } else {
+        let headless_output_size = parse_headless_output_size(&args)?;
+        let headless_output_scale = parse_headless_output_scale(&args)?;
         hearthspace::run_with_options(hearthspace::RunOptions {
             scroll_zooms_without_super: args
                 .iter()
                 .any(|arg| arg == hearthspace::config::SCROLL_ZOOMS_FLAG),
+            headless: args
+                .iter()
+                .any(|arg| arg == hearthspace::config::HEADLESS_FLAG),
+            headless_output_size,
+            headless_output_scale,
+            start_shell: !args
+                .iter()
+                .any(|arg| arg == hearthspace::config::NO_SHELL_FLAG),
         })
     }
+}
+
+fn parse_headless_output_scale(args: &[String]) -> Result<Option<i32>, String> {
+    for (index, arg) in args.iter().enumerate() {
+        if arg == hearthspace::config::HEADLESS_SCALE_FLAG {
+            let Some(value) = args.get(index + 1) else {
+                return Err(format!(
+                    "{} requires a positive integer",
+                    hearthspace::config::HEADLESS_SCALE_FLAG
+                ));
+            };
+            return parse_positive_dimension(value, "scale").map(Some);
+        }
+
+        if let Some(value) =
+            arg.strip_prefix(&format!("{}=", hearthspace::config::HEADLESS_SCALE_FLAG))
+        {
+            return parse_positive_dimension(value, "scale").map(Some);
+        }
+    }
+
+    Ok(None)
 }
 
 #[cfg(feature = "test-apps")]
@@ -37,4 +69,93 @@ fn run_gtk_test_app() -> Result<(), Box<dyn std::error::Error>> {
 #[cfg(not(feature = "test-apps"))]
 fn run_gtk_test_app() -> Result<(), Box<dyn std::error::Error>> {
     Err("GTK test app support is not enabled; rebuild with `--features test-apps`".into())
+}
+
+fn parse_headless_output_size(args: &[String]) -> Result<Option<(i32, i32)>, String> {
+    for (index, arg) in args.iter().enumerate() {
+        if arg == hearthspace::config::HEADLESS_SIZE_FLAG {
+            let Some(value) = args.get(index + 1) else {
+                return Err(format!(
+                    "{} requires WIDTHxHEIGHT",
+                    hearthspace::config::HEADLESS_SIZE_FLAG
+                ));
+            };
+            return parse_size(value).map(Some);
+        }
+
+        if let Some(value) =
+            arg.strip_prefix(&format!("{}=", hearthspace::config::HEADLESS_SIZE_FLAG))
+        {
+            return parse_size(value).map(Some);
+        }
+    }
+
+    Ok(None)
+}
+
+fn parse_size(value: &str) -> Result<(i32, i32), String> {
+    let Some((width, height)) = value.split_once('x').or_else(|| value.split_once('X')) else {
+        return Err(format!("invalid size {value:?}; expected WIDTHxHEIGHT"));
+    };
+    let width = parse_positive_dimension(width, "width")?;
+    let height = parse_positive_dimension(height, "height")?;
+    Ok((width, height))
+}
+
+fn parse_positive_dimension(value: &str, name: &str) -> Result<i32, String> {
+    let parsed = value
+        .parse::<i32>()
+        .map_err(|_| format!("invalid {name} {value:?}"))?;
+    if parsed <= 0 {
+        return Err(format!("{name} must be positive"));
+    }
+    Ok(parsed)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_headless_size_forms() {
+        assert_eq!(
+            parse_headless_output_size(&["hearthspace".into(), "--headless-size=800x600".into()]),
+            Ok(Some((800, 600)))
+        );
+        assert_eq!(
+            parse_headless_output_size(&[
+                "hearthspace".into(),
+                "--headless-size".into(),
+                "1024X768".into(),
+            ]),
+            Ok(Some((1024, 768)))
+        );
+    }
+
+    #[test]
+    fn parses_headless_scale_forms() {
+        assert_eq!(
+            parse_headless_output_scale(&["hearthspace".into(), "--headless-scale=2".into()]),
+            Ok(Some(2))
+        );
+        assert_eq!(
+            parse_headless_output_scale(&[
+                "hearthspace".into(),
+                "--headless-scale".into(),
+                "3".into(),
+            ]),
+            Ok(Some(3))
+        );
+    }
+
+    #[test]
+    fn rejects_invalid_headless_size() {
+        assert!(parse_size("800").is_err());
+        assert!(parse_size("0x600").is_err());
+        assert!(parse_size("800xnope").is_err());
+        assert!(
+            parse_headless_output_scale(&["hearthspace".into(), "--headless-scale=0".into()])
+                .is_err()
+        );
+    }
 }

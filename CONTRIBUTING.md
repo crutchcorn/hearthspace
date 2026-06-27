@@ -34,10 +34,28 @@ As such, while my CPU, GPU, and RAM are all quite spec'd up, the VM is not a per
 I develop Hearthspace on Ubuntu 26.04 LTS, and the following packages are required to build and run the compositor and shell:
 
 ```sh
-sudo apt-get install -y build-essential cargo rustc rustfmt pkg-config clang libclang-dev libwayland-dev wayland-protocols wayland-utils libinput-dev libxkbcommon-dev libxkbcommon-x11-dev libudev-dev libseat-dev libgbm-dev libegl1-mesa-dev libgles2-mesa-dev libdrm-dev libsystemd-dev foot
+sudo apt-get install -y build-essential cargo rustc rustfmt pkg-config clang libclang-dev libwayland-dev wayland-protocols wayland-utils libinput-dev libxkbcommon-dev libxkbcommon-x11-dev libudev-dev libseat-dev libgbm-dev libegl1-mesa-dev libgles2-mesa-dev libdrm-dev libsystemd-dev
 ```
 
-`foot` is installed as a small Wayland-native terminal for server-side decoration testing.
+#### E2E Testing Dependencies
+
+For E2E testing, the WayDriver adapter depends on the published `waydriver` crate, which
+links GStreamer even when the Hearthspace backend overrides screenshot capture.
+Install the development packages before building tests that include
+`waydriver-hearthspace`. Those crates are gated behind the Cargo feature `e2e`,
+so normal builds and CI do not require GStreamer:
+
+```sh
+sudo apt-get install -y libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev
+```
+
+### Optional Dependencies
+
+For testing, `foot` is installed as a small Wayland-native terminal for server-side decoration testing.
+
+```
+sudo apt-get install -y foot
+```
 
 ### Optional Test Apps
 
@@ -57,6 +75,84 @@ cargo test --features test-apps
 ```
 
 Without `test-apps`, `--gtk-test-app` and the shell `A11yTest` action report that the binary must be rebuilt with `--features test-apps`.
+
+### Runtime And Test Flags
+
+Common compositor flags:
+
+```sh
+cargo run -- --scroll-zooms
+cargo run -- --headless
+cargo run -- --headless --headless-size 1280x720
+cargo run -- --headless --headless-scale 2
+cargo run -- --headless --no-shell
+```
+
+`--scroll-zooms` makes vertical scroll events zoom the canvas without holding
+Super. This is mainly for nested compositor and VM testing where host gestures or
+modifier routing are unreliable.
+
+`--headless` starts Hearthspace with a surfaceless EGL/GLES renderer and an
+offscreen virtual output instead of a host winit window. It still opens the
+deterministic Wayland socket `wayland-99` in `XDG_RUNTIME_DIR` and starts the
+shell as a normal Wayland client.
+
+`--headless-size WIDTHxHEIGHT` overrides the headless virtual output size. The
+default is `1280x720`; both `--headless-size 800x600` and
+`--headless-size=800x600` are accepted.
+
+`--headless-scale INTEGER` overrides the Wayland output scale advertised by the
+headless backend. The default is `1`; both `--headless-scale 2` and
+`--headless-scale=2` are accepted.
+
+`--no-shell` skips spawning the Xilem shell client. This is useful for headless
+harnesses that want to launch only the client under test.
+
+The shell/control socket is `hearthspace-shell.sock` in `XDG_RUNTIME_DIR`. Shell
+clients receive its full path through `HEARTHSPACE_COMMAND_SOCKET`, but tests can
+connect to it directly. The protocol is line-oriented for requests. Successful
+commands reply `ok\n`; screenshots reply `ok <byte-count>\n<PNG bytes>`; parsed
+commands that fail reply `err <message>\n`.
+
+Useful control commands for headless smoke tests:
+
+```text
+key-down <evdev-keycode>
+key-up <evdev-keycode>
+pointer-motion-abs <x> <y>
+pointer-motion-rel <dx> <dy>
+pointer-button-down <linux-button-code>
+pointer-button-up <linux-button-code>
+axis <horizontal> <vertical>
+screenshot
+quit
+```
+
+Keyboard commands currently take Linux evdev key codes, not XKB keysyms. Pointer
+button commands use Linux input button codes, for example `272` (`0x110`) for the
+left mouse button.
+
+The WayDriver backend adapter lives in `crates/waydriver-hearthspace` and uses
+the published `waydriver` crate. Its E2E smoke tests can be run with:
+
+```sh
+cargo test --features e2e --test waydriver_hearthspace
+cargo test --features e2e,test-apps --test waydriver_hearthspace
+```
+
+The feature-gated WayDriver `Session` test launches the GTK test app through
+WayDriver, locates its `Research Workspace` heading by XPath on the AT-SPI tree,
+clicks it, and captures a screenshot.
+
+The non-`test-apps` WayDriver suite also verifies the Xilem shell's
+Masonry/AccessKit tree. That test starts a private `dbus-daemon --session`,
+points Hearthspace and WayDriver at it, and enables
+`org.a11y.Status.ScreenReaderEnabled` inside that throwaway bus because
+AccessKit's Unix bridge registers with AT-SPI only while screen-reader status is
+active.
+
+See [docs/E2E_TESTING.md](./docs/E2E_TESTING.md) for the evergreen technical
+architecture of the headless and WayDriver E2E harness.
 
 ### Xilem Fork (git dependency)
 

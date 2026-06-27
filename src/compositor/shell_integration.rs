@@ -1,6 +1,6 @@
 use std::{
     env, fs,
-    io::{self, ErrorKind, Read},
+    io::{self, ErrorKind, Read, Write},
     os::unix::{
         fs::symlink,
         net::{UnixListener as CommandListener, UnixStream},
@@ -10,6 +10,10 @@ use std::{
 };
 
 use smithay::reexports::calloop::{Interest, LoopHandle, Mode, PostAction, generic::Generic};
+use smithay::{
+    backend::input::{ButtonState, KeyState},
+    utils::Point,
+};
 
 use crate::{
     config::*,
@@ -209,11 +213,7 @@ fn register_command_connection<'l>(handle: &LoopHandle<'l, CalloopData>, stream:
     let mut buffer: Vec<u8> = Vec::new();
     let source = Generic::new(stream, Interest::READ, Mode::Level);
     if let Err(error) = handle.insert_source(source, move |_, stream, data| {
-        Ok(read_command_connection(
-            stream,
-            &mut buffer,
-            &mut data.state,
-        ))
+        Ok(read_command_connection(stream, &mut buffer, data))
     }) {
         eprintln!("Failed to register shell command connection: {error}");
     }
@@ -222,7 +222,7 @@ fn register_command_connection<'l>(handle: &LoopHandle<'l, CalloopData>, stream:
 fn read_command_connection(
     stream: &UnixStream,
     buffer: &mut Vec<u8>,
-    state: &mut App,
+    data: &mut CalloopData,
 ) -> PostAction {
     // `Read` is implemented for `&UnixStream`, so read through a shared ref.
     let mut reader = stream;
@@ -232,13 +232,15 @@ fn read_command_connection(
             Ok(0) => {
                 // Client closed: run any trailing line that lacked a newline.
                 if !buffer.is_empty() {
-                    run_command_line(buffer, state);
+                    run_command_line(buffer, data);
                 }
                 return PostAction::Remove;
             }
             Ok(read) => {
                 buffer.extend_from_slice(&chunk[..read]);
-                drain_complete_commands(buffer, state);
+                if !drain_complete_commands(buffer, data, stream) {
+                    return PostAction::Remove;
+                }
                 if buffer.len() > MAX_COMMAND_BUFFER_BYTES {
                     eprintln!(
                         "Shell command exceeded {MAX_COMMAND_BUFFER_BYTES} bytes without a newline; dropping connection"
@@ -256,10 +258,17 @@ fn read_command_connection(
     }
 }
 
-fn drain_complete_commands(buffer: &mut Vec<u8>, state: &mut App) {
+fn drain_complete_commands(
+    buffer: &mut Vec<u8>,
+    data: &mut CalloopData,
+    stream: &UnixStream,
+) -> bool {
     for command in take_complete_commands(buffer) {
-        state.run_control_action(command);
+        if !write_control_reply(stream, data.run_control_action(command)) {
+            return false;
+        }
     }
+    true
 }
 
 /// Split every complete newline-terminated command off the front of `buffer`,
@@ -276,9 +285,9 @@ fn take_complete_commands(buffer: &mut Vec<u8>) -> Vec<ShellCommand> {
     commands
 }
 
-fn run_command_line(bytes: &[u8], state: &mut App) {
+fn run_command_line(bytes: &[u8], data: &mut CalloopData) {
     if let Some(command) = parse_command_line(bytes) {
-        state.run_control_action(command);
+        data.run_control_action(command);
     }
 }
 
@@ -287,8 +296,58 @@ fn parse_command_line(bytes: &[u8]) -> Option<ShellCommand> {
     ShellCommand::parse(text.trim())
 }
 
+enum ControlReply {
+    Ok,
+    Payload(Vec<u8>),
+    Err(String),
+}
+
+impl ControlReply {
+    fn bytes(&self) -> Vec<u8> {
+        match self {
+            Self::Ok => b"ok\n".to_vec(),
+            Self::Payload(payload) => {
+                let mut bytes = format!("ok {}\n", payload.len()).into_bytes();
+                bytes.extend_from_slice(payload);
+                bytes
+            }
+            Self::Err(message) => format!("err {message}\n").into_bytes(),
+        }
+    }
+}
+
+fn write_control_reply(stream: &UnixStream, reply: ControlReply) -> bool {
+    let mut writer = stream;
+    match writer.write_all(&reply.bytes()) {
+        Ok(()) => true,
+        Err(error) if matches!(error.kind(), ErrorKind::BrokenPipe | ErrorKind::WouldBlock) => true,
+        Err(error) => {
+            eprintln!("Failed to write shell command reply: {error}");
+            false
+        }
+    }
+}
+
+impl CalloopData {
+    fn run_control_action(&mut self, action: ShellCommand) -> ControlReply {
+        if action == ShellCommand::Quit {
+            self.running = false;
+            return ControlReply::Ok;
+        }
+
+        if action == ShellCommand::Screenshot {
+            return match self.screenshot_png() {
+                Ok(bytes) => ControlReply::Payload(bytes),
+                Err(error) => ControlReply::Err(format!("screenshot failed: {error}")),
+            };
+        }
+
+        self.state.run_control_action(action)
+    }
+}
+
 impl App {
-    fn run_control_action(&mut self, action: ShellCommand) {
+    fn run_control_action(&mut self, action: ShellCommand) -> ControlReply {
         self.advance_viewport_animation();
 
         match action {
@@ -304,8 +363,29 @@ impl App {
             ShellCommand::LogAccessibilityTree => {
                 crate::accessibility::log_accessibility_tree(self.accessibility_window_snapshot())
             }
+            ShellCommand::KeyDown(keycode) => self.synthesize_key(keycode, KeyState::Pressed),
+            ShellCommand::KeyUp(keycode) => self.synthesize_key(keycode, KeyState::Released),
+            ShellCommand::PointerMotionAbs { x, y } => {
+                self.synthesize_pointer_motion_abs(Point::from((x, y)))
+            }
+            ShellCommand::PointerMotionRel { dx, dy } => {
+                self.synthesize_pointer_motion_rel(Point::from((dx, dy)))
+            }
+            ShellCommand::PointerButtonDown(button) => {
+                self.synthesize_pointer_button(button, ButtonState::Pressed)
+            }
+            ShellCommand::PointerButtonUp(button) => {
+                self.synthesize_pointer_button(button, ButtonState::Released)
+            }
+            ShellCommand::Axis {
+                horizontal,
+                vertical,
+            } => self.synthesize_axis(horizontal, vertical),
+            ShellCommand::Screenshot => unreachable!("screenshot is handled by CalloopData"),
+            ShellCommand::Quit => unreachable!("quit is handled by CalloopData"),
         }
         self.request_redraw();
+        ControlReply::Ok
     }
 
     fn prepare_spawn_position(&mut self) {
