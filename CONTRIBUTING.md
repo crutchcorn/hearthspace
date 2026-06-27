@@ -139,9 +139,9 @@ cargo test --test waydriver_hearthspace -- --ignored
 cargo test --features test-apps --test waydriver_hearthspace -- --ignored
 ```
 
-The full WayDriver `Session` XPath test is compiled with `test-apps` but only
-exercises AT-SPI when `HEARTHSPACE_REQUIRE_ATSPI=1` is set, because the VM can
-render the GTK test client without exposing it as an AT-SPI application root.
+The feature-gated WayDriver `Session` test launches the GTK test app through
+WayDriver, locates its `Research Workspace` heading by XPath on the AT-SPI tree,
+clicks it, and captures a screenshot.
 
 ### Xilem Fork (git dependency)
 

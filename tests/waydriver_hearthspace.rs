@@ -6,11 +6,15 @@ use waydriver::{CaptureBackend, CompositorRuntime, InputBackend, PointerAxis, Po
 use waydriver::{Session, SessionConfig};
 use waydriver_hearthspace::{HearthspaceCapture, HearthspaceCompositor, HearthspaceInput};
 
+#[cfg(feature = "test-apps")]
+const GTK_TEST_APP_ACCESSIBLE_NAME: &str = "hearthspace-gtk-test-app";
+
 static WAYDRIVER_TEST_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
 #[tokio::test]
 #[ignore = "requires surfaceless EGL and the headless compositor socket"]
 async fn waydriver_backends_drive_input_capture_and_teardown() {
+    init_tracing();
     let _guard = WAYDRIVER_TEST_LOCK.lock().await;
     let mut compositor = HearthspaceCompositor::new(hearthspace_binary()).unwrap();
     compositor.start(Some("320x240"), Some(1.0)).await.unwrap();
@@ -49,15 +53,10 @@ async fn waydriver_backends_drive_input_capture_and_teardown() {
 
 #[cfg(feature = "test-apps")]
 #[tokio::test]
-#[ignore = "requires AT-SPI exposure for the GTK test client under headless Hearthspace"]
+#[ignore = "requires surfaceless EGL, GTK, and AT-SPI exposure"]
 async fn waydriver_session_locates_real_client_by_xpath() {
+    init_tracing();
     let _guard = WAYDRIVER_TEST_LOCK.lock().await;
-    if std::env::var_os("HEARTHSPACE_REQUIRE_ATSPI").is_none() {
-        eprintln!(
-            "skipping full WayDriver Session XPath test; set HEARTHSPACE_REQUIRE_ATSPI=1 to enable"
-        );
-        return;
-    }
 
     let mut compositor = HearthspaceCompositor::new(hearthspace_binary()).unwrap();
     compositor.start(Some("800x600"), Some(1.0)).await.unwrap();
@@ -75,7 +74,9 @@ async fn waydriver_session_locates_real_client_by_xpath() {
                 command: hearthspace_binary().to_string_lossy().into_owned(),
                 args: vec!["--gtk-test-app".to_string()],
                 cwd: None,
-                app_name: "Hearthspace Research Demo".to_string(),
+                // GTK exposes the AT-SPI application root using argv[0], not
+                // the window title or application id.
+                app_name: GTK_TEST_APP_ACCESSIBLE_NAME.to_string(),
                 video_output: None,
                 video_bitrate: None,
                 video_fps: None,
@@ -108,6 +109,12 @@ async fn waydriver_session_locates_real_client_by_xpath() {
 
 fn hearthspace_binary() -> PathBuf {
     PathBuf::from(env!("CARGO_BIN_EXE_hearthspace"))
+}
+
+fn init_tracing() {
+    let _ = tracing_subscriber::fmt()
+        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+        .try_init();
 }
 
 fn png_dimensions(png: &[u8]) -> (u32, u32) {

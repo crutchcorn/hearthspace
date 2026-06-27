@@ -188,7 +188,7 @@ in place:
 - [x] **Done when:** a script can drive a headless client end-to-end (move
       pointer, click, type, screenshot) over the socket.
 
-### Phase 3 — WayDriver backend crates ◩
+### Phase 3 — WayDriver backend crates ✅
 
 - [x] Implement `HearthspaceCompositor` (`CompositorRuntime`),
       `HearthspaceInput` (`InputBackend`), `HearthspaceCapture` (`CaptureBackend`,
@@ -197,10 +197,8 @@ in place:
       drives input, captures a PNG screenshot, and tears down through the
       adapter.
 - [x] Wire them into a `Session` and stand up the first AT-SPI-driven E2E test
-      against the in-repo a11y test app. The test is currently opt-in with
-      `HEARTHSPACE_REQUIRE_ATSPI=1` because the GTK client renders in this VM
-      but does not register as an AT-SPI application root on the host bus.
-- [ ] **Done when:** a `cargo test` E2E spins up headless Hearthspace, launches a
+      against the in-repo a11y test app.
+- [x] **Done when:** a `cargo test` E2E spins up headless Hearthspace, launches a
       client, locates a widget by XPath, clicks it, and asserts on the result.
 
 ### Phase 4 — optional follow-ups ⬜
