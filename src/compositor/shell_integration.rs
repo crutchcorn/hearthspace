@@ -330,6 +330,11 @@ fn write_control_reply(stream: &UnixStream, reply: ControlReply) -> bool {
 
 impl CalloopData {
     fn run_control_action(&mut self, action: ShellCommand) -> ControlReply {
+        if action == ShellCommand::Quit {
+            self.running = false;
+            return ControlReply::Ok;
+        }
+
         if action == ShellCommand::Screenshot {
             return match self.screenshot_png() {
                 Ok(bytes) => ControlReply::Payload(bytes),
@@ -377,6 +382,7 @@ impl App {
                 vertical,
             } => self.synthesize_axis(horizontal, vertical),
             ShellCommand::Screenshot => unreachable!("screenshot is handled by CalloopData"),
+            ShellCommand::Quit => unreachable!("quit is handled by CalloopData"),
         }
         self.request_redraw();
         ControlReply::Ok

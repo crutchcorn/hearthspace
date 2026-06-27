@@ -58,6 +58,53 @@ cargo test --features test-apps
 
 Without `test-apps`, `--gtk-test-app` and the shell `A11yTest` action report that the binary must be rebuilt with `--features test-apps`.
 
+### Runtime And Test Flags
+
+Common compositor flags:
+
+```sh
+cargo run -- --scroll-zooms
+cargo run -- --headless
+cargo run -- --headless --headless-size 1280x720
+```
+
+`--scroll-zooms` makes vertical scroll events zoom the canvas without holding
+Super. This is mainly for nested compositor and VM testing where host gestures or
+modifier routing are unreliable.
+
+`--headless` starts Hearthspace with a surfaceless EGL/GLES renderer and an
+offscreen virtual output instead of a host winit window. It still opens the
+deterministic Wayland socket `wayland-99` in `XDG_RUNTIME_DIR` and starts the
+shell as a normal Wayland client.
+
+`--headless-size WIDTHxHEIGHT` overrides the headless virtual output size. The
+default is `1280x720`; both `--headless-size 800x600` and
+`--headless-size=800x600` are accepted.
+
+The shell/control socket is `hearthspace-shell.sock` in `XDG_RUNTIME_DIR`. Shell
+clients receive its full path through `HEARTHSPACE_COMMAND_SOCKET`, but tests can
+connect to it directly. The protocol is line-oriented for requests. Successful
+commands reply `ok\n`; screenshots reply `ok <byte-count>\n<PNG bytes>`; parsed
+commands that fail reply `err <message>\n`.
+
+Useful control commands for headless smoke tests:
+
+```text
+key-down <evdev-keycode>
+key-up <evdev-keycode>
+pointer-motion-abs <x> <y>
+pointer-motion-rel <dx> <dy>
+pointer-button-down <linux-button-code>
+pointer-button-up <linux-button-code>
+axis <horizontal> <vertical>
+screenshot
+quit
+```
+
+Keyboard commands currently take Linux evdev key codes, not XKB keysyms. Pointer
+button commands use Linux input button codes, for example `272` (`0x110`) for the
+left mouse button.
+
 ### Xilem Fork (git dependency)
 
 The shell UI is built with [Xilem](https://github.com/linebender/xilem). Stock

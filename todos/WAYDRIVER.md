@@ -142,6 +142,8 @@ Three pieces of work, in rough effort order:
   backend and the new headless backend, then replies as
   `ok <byte-count>\n<PNG bytes>`. A smoke test against `hearthspace --headless`
   returned a valid PNG from the control socket.
+- `quit` stops the compositor cleanly over the control socket so harnesses do
+  not need to rely on process termination for normal teardown.
 
 ### Phase 0 — design + spike ⬜
 

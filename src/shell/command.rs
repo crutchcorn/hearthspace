@@ -49,6 +49,7 @@ pub enum ShellCommand {
     PointerButtonUp(u32),
     Axis { horizontal: f64, vertical: f64 },
     Screenshot,
+    Quit,
 }
 
 impl ShellCommand {
@@ -83,6 +84,7 @@ impl ShellCommand {
             Self::PointerButtonUp(_) => "BTNUP",
             Self::Axis { .. } => "AXIS",
             Self::Screenshot => "SHOT",
+            Self::Quit => "QUIT",
         }
     }
 
@@ -109,6 +111,7 @@ impl ShellCommand {
                 vertical,
             } => format!("axis {horizontal} {vertical}"),
             Self::Screenshot => "screenshot".to_string(),
+            Self::Quit => "quit".to_string(),
         }
     }
 
@@ -147,6 +150,7 @@ impl ShellCommand {
                 vertical: parse_f64(parts.next()?)?,
             },
             "screenshot" => Self::Screenshot,
+            "quit" => Self::Quit,
             _ => return None,
         })
     }
@@ -222,5 +226,6 @@ mod tests {
             ShellCommand::parse("screenshot"),
             Some(ShellCommand::Screenshot)
         );
+        assert_eq!(ShellCommand::parse("quit"), Some(ShellCommand::Quit));
     }
 }
