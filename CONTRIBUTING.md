@@ -1,21 +1,47 @@
-# Setup
+# Contributing
+
+Hearthspace is early, and the architecture is still changing quickly.
+
+Contributions and design discussions are welcome, especially around:
+
+* Wayland compositor development
+* Rust desktop infrastructure
+* Shell UI architecture
+* Infinite-canvas interaction design
+* Workspace persistence
+* Local-first AI systems
+
+For larger changes, opening an issue or discussion first is recommended.
+
+## Architecture Documentation
+
+As this project grows, you can find technical documentation in the [docs/](./docs/) folder. As these are not intended to be user-facing, there is no website or rendered version of the docs.
+
+## Setup
 
 This project targets modern Linux systems with Wayland only. The initial proof-of-concept is planned as a nested Wayland compositor built with Rust and Smithay.
 
-## Ubuntu 26.04 Packages
+Ubuntu 26.04 LTS is our development and runtime baseline, and it is expected to have the oldest supported version of most packages.
 
-The following packages were installed on the development VM:
+### My Environment
+
+I develop Hearthspace on Ubuntu 26.04 LTS, and I run it in a nested Wayland compositor inside a GNOME session. I use Parallels Desktop for macOS to run the Linux VM on an M4 Max 16" MacBook Pro.
+
+As such, while my CPU, GPU, and RAM are all quite spec'd up, the VM is not a perfect representation of a real Linux system. For example, the VM appears to only provide LavaPipe software rendering for OpenGL, so I cannot test GPU acceleration. I also cannot test Wayland gestures in the VM, so I have to run with `--scroll-zooms` to test zooming the canvas using the scroll wheel without a modifier key.
+
+### Required Packages
+
+I develop Hearthspace on Ubuntu 26.04 LTS, and the following packages are required to build and run the compositor and shell:
 
 ```sh
-sudo apt-get update
 sudo apt-get install -y build-essential cargo rustc rustfmt pkg-config clang libclang-dev libwayland-dev wayland-protocols wayland-utils libinput-dev libxkbcommon-dev libxkbcommon-x11-dev libudev-dev libseat-dev libgbm-dev libegl1-mesa-dev libgles2-mesa-dev libdrm-dev libsystemd-dev libgtk-4-dev foot
 ```
 
-`foot` is installed as a small Wayland-native terminal for early spawn testing.
+`foot` is installed as a small Wayland-native terminal for server-side decoration testing.
 
 `libgtk-4-dev` is required for the built-in GTK accessibility test app used by the default `SPAWN` action.
 
-## Xilem Fork (git dependency)
+### Xilem Fork (git dependency)
 
 The shell UI is built with [Xilem](https://github.com/linebender/xilem). Stock
 Xilem cannot set a Wayland `app_id` on its windows, which Hearthspace needs so
@@ -35,7 +61,7 @@ winit's `WindowAttributesExtWayland::with_name` (Wayland `app_id`) and
 these dependencies to an upstream `linebender/xilem` release/rev. No local clone
 is required; Cargo fetches the branch automatically.
 
-## Linting
+### Linting
 
 `cargo clippy` is run as part of CI (`.github/workflows/ci.yml`) and locally. On the development VM, clippy is provided by the apt package rather than `rustup`:
 
@@ -43,7 +69,7 @@ is required; Cargo fetches the branch automatically.
 sudo apt-get install -y rust-clippy
 ```
 
-## Verified Versions
+### Verified Versions
 
 The development VM currently has:
 
@@ -65,9 +91,9 @@ foot: 1.25.0
 
 Note: the pkg-config module for xkbcommon is `xkbcommon`, not `libxkbcommon`.
 
-## GNOME Host Session Tweaks
+### GNOME Host Session Tweaks
 
-The development VM's GNOME session was configured to stop intercepting `Super`-modified scroll gestures while testing Hearthspace's nested compositor:
+By default, GNOME uses dynamic workspaces and scroll-to-switch-workspace gestures. These interfere with the Hearthspace compositor, so tweaking GNOME's built-in settings may help fix the problem:
 
 ```sh
 gsettings set org.gnome.mutter dynamic-workspaces false
@@ -86,17 +112,3 @@ gsettings reset org.gnome.mutter overlay-key
 gsettings reset org.gnome.shell.extensions.dash-to-dock scroll-action
 gsettings reset org.gnome.shell.extensions.dash-to-dock scroll-switch-workspace
 ```
-
-In the current Parallels VM test environment, Hearthspace receives `Super` key events but may not receive touchpad scroll events until after `Super` has been released. Treat this as a host/VM input limitation when testing `Super` + two-finger scroll zoom; the compositor code is kept aligned with the behavior expected on a native Ubuntu/GNOME session.
-
-## Smithay Probe
-
-Smithay 0.7.0 is current on crates.io and requires Rust 1.80.1 or newer.
-
-The Smithay nested compositor example was check-built successfully with the feature set we expect to start from:
-
-```sh
-CARGO_TARGET_DIR="/tmp/opencode/hearthspace-smithay-target" cargo check --manifest-path "/home/crutchcorn/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/smithay-0.7.0/Cargo.toml" --example minimal --no-default-features --features backend_winit,renderer_gl,wayland_frontend
-```
-
-This validates that the installed system packages are sufficient for a nested Smithay compositor using the winit backend and GLES rendering.

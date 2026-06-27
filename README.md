@@ -2,7 +2,7 @@
 <h1>Hearthspace</h1>
 
 <picture>
-    <img width="256" alt="A cube with a chunk taken out and a fire inside" src="./assets/logo.svg">
+    <img width="256" alt="A cube with a chunk taken out and a fire inside" src="https://raw.githubusercontent.com/crutchcorn/hearthspace/refs/heads/main/assets/logo.svg">
 </picture>
 
 <p>A spatial Linux desktop for persistent, local-first computing.</p>
@@ -11,17 +11,21 @@
 
 <hr />
 
-Hearthspace is an experimental Linux desktop environment built around an infinite canvas for applications, local-first AI, and a more persistent relationship with your workspace.
+Hearthspace is a very early experimental Wayland compositor and shell built around an infinite canvas for applications, local-first AI, and a more persistent relationship with your workspace.
+
+<div align="center">
+<video controls>
+  <source src="https://raw.githubusercontent.com/crutchcorn/hearthspace/refs/heads/main/assets/demo.mp4" type="video/mp4">
+</video>
+</div>
 
 Instead of treating windows as temporary rectangles that pile up until you clean them away, Hearthspace explores a different model: applications live in a large spatial canvas, can be organized by context, and will eventually become easier to search, suspend, restore, and reason about.
 
-Today, Hearthspace is early. The current project contains a rough foundation for an infinite-canvas Wayland compositor and desktop shell. It is not ready to replace your daily desktop yet, but the core direction is already taking shape.
+**Hearthspace is not ready for daily use. I’m developing it in public while working toward a dogfoodable alpha.**
 
 ## Goals
 
 Hearthspace is an experiment in rethinking the desktop around context.
-
-Not just windows. Not just apps. Not just a chatbot bolted onto the side.
 
 The long-term goal is a Linux-based environment where your workspace is spatial, persistent, local-first, and intelligent by design. This means:
 
@@ -30,19 +34,6 @@ The long-term goal is a Linux-based environment where your workspace is spatial,
 * Local AI understands real desktop objects instead of acting like a separate chatbot
 * Inactive applications can eventually be quieted down without forcing users to manually manage everything
 * The system stays grounded in Linux, Wayland, and native desktop technologies
-
-## Current status
-
-Hearthspace is currently a prototype.
-
-The focus right now is:
-
-* Building a usable Wayland compositor foundation
-* Exploring infinite-canvas window management
-* Creating a minimal shell UI for dogfooding
-* Establishing the architecture for persistent workspace state
-
-Expect bugs, missing features, breaking changes, and unfinished UX.
 
 ## Technology
 
@@ -65,19 +56,10 @@ The rough direction is:
 
 The first milestone is not to build the full vision. It is to make Hearthspace usable enough to dogfood, learn from, and iterate on.
 
-Planned and deferred work is tracked under [todos/](./todos/).
+Planned work is tracked under [todos/](./todos/).
 
-## Contributing
+## License
 
-Hearthspace is early, and the architecture is still changing quickly.
+Hearthspace code is licensed under the Apache License 2.0.
 
-Contributions and design discussions are welcome, especially around:
-
-* Wayland compositor development
-* Rust desktop infrastructure
-* Shell UI architecture
-* Infinite-canvas interaction design
-* Workspace persistence
-* Local-first AI systems
-
-For larger changes, opening an issue or discussion first is recommended.
+The Hearthspace name and logo are not covered by the Apache-2.0 license. You may not use them to imply endorsement of a modified version, commercial product, or unrelated project without permission.
