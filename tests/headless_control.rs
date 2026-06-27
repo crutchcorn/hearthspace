@@ -74,7 +74,6 @@ impl Drop for HeadlessCompositor {
 }
 
 #[test]
-#[ignore = "requires surfaceless EGL and the headless compositor socket"]
 fn headless_control_socket_drives_input_screenshot_and_quit() {
     let _guard = HEADLESS_TEST_LOCK.lock().expect("headless test lock");
     let mut compositor = HeadlessCompositor::spawn();
@@ -103,7 +102,6 @@ fn headless_control_socket_drives_input_screenshot_and_quit() {
 
 #[cfg(feature = "test-apps")]
 #[test]
-#[ignore = "requires surfaceless EGL, GTK, and the headless compositor socket"]
 fn headless_control_socket_spawns_and_drives_real_gtk_client() {
     let _guard = HEADLESS_TEST_LOCK.lock().expect("headless test lock");
     let mut compositor = HeadlessCompositor::spawn_with_size("800x600");

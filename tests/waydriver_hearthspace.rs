@@ -18,7 +18,6 @@ const SHELL_ACCESSIBLE_NAME: &str = "hearthspace";
 static WAYDRIVER_TEST_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
 #[tokio::test]
-#[ignore = "requires surfaceless EGL and the headless compositor socket"]
 async fn waydriver_backends_drive_input_capture_and_teardown() {
     init_tracing();
     let _guard = WAYDRIVER_TEST_LOCK.lock().await;
@@ -58,7 +57,6 @@ async fn waydriver_backends_drive_input_capture_and_teardown() {
 }
 
 #[tokio::test]
-#[ignore = "requires surfaceless EGL and shell AT-SPI exposure"]
 async fn waydriver_session_locates_xilem_shell_by_xpath() -> Result<(), Box<dyn std::error::Error>>
 {
     init_tracing();
@@ -114,7 +112,6 @@ async fn run_xilem_shell_xpath_check() -> Result<(), Box<dyn std::error::Error>>
 
 #[cfg(feature = "test-apps")]
 #[tokio::test]
-#[ignore = "requires surfaceless EGL, GTK, and AT-SPI exposure"]
 async fn waydriver_session_locates_real_client_by_xpath() {
     init_tracing();
     let _guard = WAYDRIVER_TEST_LOCK.lock().await;

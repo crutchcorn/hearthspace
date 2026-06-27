@@ -163,9 +163,10 @@ WayDriver `Session` path:
   launches the GTK test app through WayDriver, locates `Research Workspace` by
   XPath, clicks it, and captures a screenshot.
 
-The ignored E2E tests are serialized inside each test binary with a static Tokio
-mutex because they share deterministic socket names and, for the shell test,
-temporarily modify process environment variables.
+The E2E test targets require the Cargo feature `e2e`, which keeps them out of
+normal `cargo test --all-targets` and CI runs. Tests are serialized inside each
+test binary with a static lock because they share deterministic socket names
+and, for the shell test, temporarily modify process environment variables.
 
 ## Running Tests
 
@@ -179,21 +180,21 @@ cargo clippy --all-targets
 Headless control socket smoke tests:
 
 ```sh
-cargo test --test headless_control -- --ignored
-cargo test --features test-apps --test headless_control -- --ignored
+cargo test --features e2e --test headless_control
+cargo test --features e2e,test-apps --test headless_control
 ```
 
 WayDriver smoke tests:
 
 ```sh
-cargo test --features e2e --test waydriver_hearthspace -- --ignored
-cargo test --features e2e,test-apps --test waydriver_hearthspace -- --ignored
+cargo test --features e2e --test waydriver_hearthspace
+cargo test --features e2e,test-apps --test waydriver_hearthspace
 ```
 
 When debugging AT-SPI discovery, enable WayDriver logs:
 
 ```sh
-RUST_LOG=waydriver=debug cargo test --features e2e,test-apps --test waydriver_hearthspace -- --ignored --nocapture
+RUST_LOG=waydriver=debug cargo test --features e2e,test-apps --test waydriver_hearthspace -- --nocapture
 ```
 
 ## System Dependencies
@@ -228,5 +229,5 @@ systems.
   a general binary RPC protocol.
 - Keyboard input maps only the keysyms currently needed by tests. Add mappings as
   tests require them.
-- Ignored E2E tests require surfaceless EGL support. They are not part of the
-  default `cargo test` run.
+- E2E tests require surfaceless EGL support and the Cargo feature `e2e`. They
+  are not part of the default `cargo test` run.

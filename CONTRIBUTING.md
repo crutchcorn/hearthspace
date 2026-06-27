@@ -133,22 +133,23 @@ button commands use Linux input button codes, for example `272` (`0x110`) for th
 left mouse button.
 
 The WayDriver backend adapter lives in `crates/waydriver-hearthspace` and uses
-the published `waydriver` crate. Its ignored smoke tests can be run with:
+the published `waydriver` crate. Its E2E smoke tests can be run with:
 
 ```sh
-cargo test --features e2e --test waydriver_hearthspace -- --ignored
-cargo test --features e2e,test-apps --test waydriver_hearthspace -- --ignored
+cargo test --features e2e --test waydriver_hearthspace
+cargo test --features e2e,test-apps --test waydriver_hearthspace
 ```
 
 The feature-gated WayDriver `Session` test launches the GTK test app through
 WayDriver, locates its `Research Workspace` heading by XPath on the AT-SPI tree,
 clicks it, and captures a screenshot.
 
-The non-feature WayDriver ignored suite also verifies the Xilem shell's
-Masonry/AccessKit tree. That test starts a private `dbus-daemon --session`, points
-Hearthspace and WayDriver at it, and enables `org.a11y.Status.ScreenReaderEnabled`
-inside that throwaway bus because AccessKit's Unix bridge registers with AT-SPI
-only while screen-reader status is active.
+The non-`test-apps` WayDriver suite also verifies the Xilem shell's
+Masonry/AccessKit tree. That test starts a private `dbus-daemon --session`,
+points Hearthspace and WayDriver at it, and enables
+`org.a11y.Status.ScreenReaderEnabled` inside that throwaway bus because
+AccessKit's Unix bridge registers with AT-SPI only while screen-reader status is
+active.
 
 See [docs/E2E_TESTING.md](./docs/E2E_TESTING.md) for the evergreen technical
 architecture of the headless and WayDriver E2E harness.
