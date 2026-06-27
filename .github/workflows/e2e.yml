@@ -1,0 +1,62 @@
+name: E2E Tests
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  e2e:
+    name: Headless E2E
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    env:
+      CARGO_TERM_COLOR: always
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Install native dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            at-spi2-core \
+            build-essential \
+            clang \
+            dbus \
+            libclang-dev \
+            libdrm-dev \
+            libegl1-mesa-dev \
+            libgbm-dev \
+            libgles2-mesa-dev \
+            libgstreamer-plugins-base1.0-dev \
+            libgstreamer1.0-dev \
+            libgtk-4-dev \
+            libinput-dev \
+            libseat-dev \
+            libsystemd-dev \
+            libudev-dev \
+            libwayland-dev \
+            libxkbcommon-dev \
+            libxkbcommon-x11-dev \
+            pkg-config \
+            wayland-protocols \
+            wayland-utils
+
+      - name: Set up Rust
+        uses: ./.github/actions/setup-rust
+
+      - name: Run headless control E2E tests
+        run: cargo test --test headless_control -- --ignored
+
+      - name: Run headless control E2E tests with test apps
+        run: cargo test --features test-apps --test headless_control -- --ignored
+
+      - name: Run WayDriver E2E tests
+        run: cargo test --test waydriver_hearthspace -- --ignored
+
+      - name: Run WayDriver E2E tests with test apps
+        run: cargo test --features test-apps --test waydriver_hearthspace -- --ignored
