@@ -42,6 +42,10 @@ wayland-server = "0.31.9"
 proptest = "1"
 rstest = "0.26"
 tempfile = "3"
+tokio = { version = "1", features = ["macros", "process", "rt-multi-thread", "time"] }
+tokio-util = "0.7"
+waydriver = "0.3.9"
+waydriver-hearthspace = { path = "crates/waydriver-hearthspace" }
 
 # Workaround for an upstream incompatibility pulled in via Xilem/Masonry:
 # `vello_shaders` 0.8's build script depends on `naga` 28 with the `wgsl-in`

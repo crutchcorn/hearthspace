@@ -34,10 +34,27 @@ As such, while my CPU, GPU, and RAM are all quite spec'd up, the VM is not a per
 I develop Hearthspace on Ubuntu 26.04 LTS, and the following packages are required to build and run the compositor and shell:
 
 ```sh
-sudo apt-get install -y build-essential cargo rustc rustfmt pkg-config clang libclang-dev libwayland-dev wayland-protocols wayland-utils libinput-dev libxkbcommon-dev libxkbcommon-x11-dev libudev-dev libseat-dev libgbm-dev libegl1-mesa-dev libgles2-mesa-dev libdrm-dev libsystemd-dev foot
+sudo apt-get install -y build-essential cargo rustc rustfmt pkg-config clang libclang-dev libwayland-dev wayland-protocols wayland-utils libinput-dev libxkbcommon-dev libxkbcommon-x11-dev libudev-dev libseat-dev libgbm-dev libegl1-mesa-dev libgles2-mesa-dev libdrm-dev libsystemd-dev
 ```
 
-`foot` is installed as a small Wayland-native terminal for server-side decoration testing.
+#### E2E Testing Dependencies
+
+For E2E testing, the WayDriver adapter depends on the published `waydriver` crate, which
+links GStreamer even when the Hearthspace backend overrides screenshot capture.
+Install the development packages before building tests that include
+`waydriver-hearthspace`:
+
+```sh
+sudo apt-get install -y libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev
+```
+
+### Optional Dependencies
+
+For testing, `foot` is installed as a small Wayland-native terminal for server-side decoration testing.
+
+```
+sudo apt-get install -y foot
+```
 
 ### Optional Test Apps
 
@@ -113,6 +130,18 @@ quit
 Keyboard commands currently take Linux evdev key codes, not XKB keysyms. Pointer
 button commands use Linux input button codes, for example `272` (`0x110`) for the
 left mouse button.
+
+The WayDriver backend adapter lives in `crates/waydriver-hearthspace` and uses
+the published `waydriver` crate. Its ignored smoke tests can be run with:
+
+```sh
+cargo test --test waydriver_hearthspace -- --ignored
+cargo test --features test-apps --test waydriver_hearthspace -- --ignored
+```
+
+The full WayDriver `Session` XPath test is compiled with `test-apps` but only
+exercises AT-SPI when `HEARTHSPACE_REQUIRE_ATSPI=1` is set, because the VM can
+render the GTK test client without exposing it as an AT-SPI application root.
 
 ### Xilem Fork (git dependency)
 
