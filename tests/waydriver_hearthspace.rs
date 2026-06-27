@@ -2,12 +2,12 @@ use std::{path::PathBuf, sync::Arc};
 
 use tokio_util::sync::CancellationToken;
 use waydriver::{CaptureBackend, CompositorRuntime, InputBackend, PointerAxis, PointerButton};
-#[cfg(feature = "test-apps")]
 use waydriver::{Session, SessionConfig};
 use waydriver_hearthspace::{HearthspaceCapture, HearthspaceCompositor, HearthspaceInput};
 
 #[cfg(feature = "test-apps")]
 const GTK_TEST_APP_ACCESSIBLE_NAME: &str = "hearthspace-gtk-test-app";
+const SHELL_ACCESSIBLE_NAME: &str = "hearthspace";
 
 static WAYDRIVER_TEST_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
@@ -51,6 +51,50 @@ async fn waydriver_backends_drive_input_capture_and_teardown() {
     compositor.stop().await.unwrap();
 }
 
+#[tokio::test]
+#[ignore = "requires surfaceless EGL and shell AT-SPI exposure"]
+async fn waydriver_session_locates_xilem_shell_by_xpath() {
+    init_tracing();
+    let _guard = WAYDRIVER_TEST_LOCK.lock().await;
+    let mut compositor = HearthspaceCompositor::new(hearthspace_binary())
+        .unwrap()
+        .with_shell();
+    compositor.start(Some("800x600"), Some(1.0)).await.unwrap();
+    let previous_screen_reader_enabled = set_screen_reader_enabled(true).await.unwrap();
+
+    let state = compositor.state().unwrap();
+    let input = Box::new(HearthspaceInput::new(Arc::clone(&state)));
+    let capture = Box::new(HearthspaceCapture::new(state));
+    let compositor = Box::new(compositor);
+    let session = Arc::new(
+        Session::start(
+            compositor,
+            input,
+            capture,
+            session_config("true", vec![], SHELL_ACCESSIBLE_NAME),
+        )
+        .await
+        .unwrap(),
+    );
+
+    {
+        let pan_left = session.locate("//*[@name='LEFT']").first();
+        assert_eq!(pan_left.name().await.unwrap().as_deref(), Some("LEFT"));
+        let bounds = pan_left.bounds().await.unwrap();
+        assert!(bounds.width > 0);
+        assert!(bounds.height > 0);
+    }
+
+    let session = match Arc::try_unwrap(session) {
+        Ok(session) => session,
+        Err(_) => panic!("session still has live references"),
+    };
+    session.kill().await.unwrap();
+    set_screen_reader_enabled(previous_screen_reader_enabled)
+        .await
+        .unwrap();
+}
+
 #[cfg(feature = "test-apps")]
 #[tokio::test]
 #[ignore = "requires surfaceless EGL, GTK, and AT-SPI exposure"]
@@ -77,17 +121,8 @@ async fn waydriver_session_locates_real_client_by_xpath() {
                 // GTK exposes the AT-SPI application root using argv[0], not
                 // the window title or application id.
                 app_name: GTK_TEST_APP_ACCESSIBLE_NAME.to_string(),
-                video_output: None,
-                video_bitrate: None,
-                video_fps: None,
-                prewarm_visual: false,
-                visual_region_tuning: Default::default(),
-                visual_text_tuning: Default::default(),
-                visual_click_tuning: Default::default(),
-                gsettings_isolated: true,
-                xdg_isolated: true,
                 extra_env: vec![("GDK_BACKEND".to_string(), "wayland".to_string())],
-                capture_external_effects: false,
+                ..session_config("", vec![], "")
             },
         )
         .await
@@ -111,10 +146,47 @@ fn hearthspace_binary() -> PathBuf {
     PathBuf::from(env!("CARGO_BIN_EXE_hearthspace"))
 }
 
+fn session_config(
+    command: impl Into<String>,
+    args: Vec<String>,
+    app_name: impl Into<String>,
+) -> SessionConfig {
+    SessionConfig {
+        command: command.into(),
+        args,
+        cwd: None,
+        app_name: app_name.into(),
+        video_output: None,
+        video_bitrate: None,
+        video_fps: None,
+        prewarm_visual: false,
+        visual_region_tuning: Default::default(),
+        visual_text_tuning: Default::default(),
+        visual_click_tuning: Default::default(),
+        gsettings_isolated: true,
+        xdg_isolated: true,
+        extra_env: vec![],
+        capture_external_effects: false,
+    }
+}
+
 fn init_tracing() {
     let _ = tracing_subscriber::fmt()
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
         .try_init();
+}
+
+async fn set_screen_reader_enabled(enabled: bool) -> Result<bool, Box<dyn std::error::Error>> {
+    let connection = atspi::zbus::Connection::session().await?;
+    let status = atspi::proxy::bus::StatusProxy::new(&connection).await?;
+    let previous = status.screen_reader_enabled().await?;
+    if previous == enabled {
+        // AccessKit's Unix bridge reacts to property-change signals, so force a
+        // transition even if the host already had the requested value.
+        status.set_screen_reader_enabled(!enabled).await?;
+    }
+    status.set_screen_reader_enabled(enabled).await?;
+    Ok(previous)
 }
 
 fn png_dimensions(png: &[u8]) -> (u32, u32) {

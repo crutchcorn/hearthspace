@@ -143,6 +143,14 @@ The feature-gated WayDriver `Session` test launches the GTK test app through
 WayDriver, locates its `Research Workspace` heading by XPath on the AT-SPI tree,
 clicks it, and captures a screenshot.
 
+The non-feature WayDriver ignored suite also verifies the Xilem shell's
+Masonry/AccessKit tree. That test enables `org.a11y.Status.ScreenReaderEnabled`
+for its duration because AccessKit's Unix bridge registers with AT-SPI only while
+screen-reader status is active.
+
+Run the WayDriver ignored suites sequentially rather than as separate concurrent
+`cargo test` processes, since `ScreenReaderEnabled` is a session-bus global.
+
 ### Xilem Fork (git dependency)
 
 The shell UI is built with [Xilem](https://github.com/linebender/xilem). Stock

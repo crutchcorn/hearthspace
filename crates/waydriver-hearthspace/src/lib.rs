@@ -47,6 +47,7 @@ impl HearthspaceState {
 pub struct HearthspaceCompositor {
     id: String,
     binary: PathBuf,
+    start_shell: bool,
     runtime_dir: TempDir,
     child: Option<Child>,
     state: Option<Arc<HearthspaceState>>,
@@ -63,10 +64,16 @@ impl HearthspaceCompositor {
         Ok(Self {
             id,
             binary: binary.into(),
+            start_shell: false,
             runtime_dir,
             child: None,
             state: None,
         })
+    }
+
+    pub fn with_shell(mut self) -> Self {
+        self.start_shell = true;
+        self
     }
 
     pub fn state(&self) -> Result<Arc<HearthspaceState>> {
@@ -93,13 +100,17 @@ impl CompositorRuntime for HearthspaceCompositor {
 
         let mut command = Command::new(&self.binary);
         command
-            .args(["--headless", "--no-shell", "--headless-size", resolution])
+            .args(["--headless", "--headless-size", resolution])
             .env("XDG_RUNTIME_DIR", self.runtime_dir.path())
             .env("WAYLAND_DISPLAY", WAYLAND_DISPLAY)
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .kill_on_drop(true);
+
+        if !self.start_shell {
+            command.arg("--no-shell");
+        }
 
         if let Some(scale) = scale {
             command.args(["--headless-scale", &scale.to_string()]);
