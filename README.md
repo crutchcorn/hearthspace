@@ -1,4 +1,15 @@
-# Hearthspace
+<div align="center">
+<h1>Hearthspace</h1>
+
+<picture>
+    <img width="256" alt="A cube with a chunk taken out and a fire inside" src="./assets/logo.svg">
+</picture>
+
+<p>A spatial Linux desktop for persistent, local-first computing.</p>
+
+</div>
+
+<hr />
 
 Hearthspace is an experimental Linux desktop environment built around an infinite canvas for applications, local-first AI, and a more persistent relationship with your workspace.
 
