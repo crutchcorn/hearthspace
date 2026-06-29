@@ -1,6 +1,7 @@
 use std::{
     os::unix::{fs::MetadataExt, net::UnixListener as CommandListener},
     sync::Arc,
+    time::Instant,
 };
 
 use crate::{RunOptions, config::*, geometry::CanvasPoint, shell::app_catalog::AppCatalog};
@@ -273,8 +274,9 @@ pub fn run_winit(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> 
         display,
         backend: Backend::Winit(Box::new(backend)),
         damage_tracker: OutputDamageTracker::new(output_size, 1.0, Transform::Flipped180),
-        start_time: std::time::Instant::now(),
+        start_time: Instant::now(),
         running: true,
+        exit_at: options.exit_after.map(|duration| Instant::now() + duration),
         full_redraw: 1,
         applied_cursor: CursorIcon::Default,
     };
@@ -330,8 +332,9 @@ pub fn run_headless(options: RunOptions) -> Result<(), Box<dyn std::error::Error
         display,
         backend: Backend::Headless(Box::new(HeadlessBackend { renderer, buffer })),
         damage_tracker: OutputDamageTracker::new(output_size, 1.0, Transform::Flipped180),
-        start_time: std::time::Instant::now(),
+        start_time: Instant::now(),
         running: true,
+        exit_at: options.exit_after.map(|duration| Instant::now() + duration),
         full_redraw: 1,
         applied_cursor: CursorIcon::Default,
     };
@@ -440,14 +443,17 @@ pub(in crate::compositor) fn create_calloop_data(
     display: Display<App>,
     backend: Backend,
     output_size: Size<i32, Physical>,
+    exit_after: Option<std::time::Duration>,
 ) -> CalloopData {
+    let start_time = Instant::now();
     CalloopData {
         state,
         display,
         backend,
         damage_tracker: OutputDamageTracker::new(output_size, 1.0, Transform::Flipped180),
-        start_time: std::time::Instant::now(),
+        start_time,
         running: true,
+        exit_at: exit_after.map(|duration| start_time + duration),
         full_redraw: 1,
         applied_cursor: CursorIcon::Default,
     }
@@ -518,12 +524,29 @@ fn run_event_loop(
 
     while data.running {
         // Block until an event arrives; while animating, wake every frame.
-        let timeout = data
+        let animation_timeout = data
             .state
             .viewport_animation
             .is_some()
             .then_some(ANIMATION_FRAME_INTERVAL);
+        let exit_timeout = data
+            .exit_at
+            .map(|exit_at| exit_at.saturating_duration_since(Instant::now()));
+        let timeout = match (animation_timeout, exit_timeout) {
+            (Some(animation), Some(exit)) => Some(animation.min(exit)),
+            (Some(animation), None) => Some(animation),
+            (None, Some(exit)) => Some(exit),
+            (None, None) => None,
+        };
         event_loop.dispatch(timeout, data)?;
+
+        if data
+            .exit_at
+            .is_some_and(|exit_at| Instant::now() >= exit_at)
+        {
+            println!("Exit timer elapsed; stopping compositor event loop");
+            data.running = false;
+        }
 
         if !data.running {
             break;
@@ -566,8 +589,9 @@ struct CalloopData {
     display: Display<App>,
     backend: Backend,
     damage_tracker: OutputDamageTracker,
-    start_time: std::time::Instant,
+    start_time: Instant,
     running: bool,
+    exit_at: Option<Instant>,
     // Number of upcoming frames that must be fully redrawn instead of querying
     // the back buffer age. Importing a client dmabuf (or the first frame) can
     // leave the renderer's EGL context surfaceless, which makes `buffer_age`

@@ -6,6 +6,8 @@ pub mod shell;
 #[cfg(feature = "test-apps")]
 pub mod test_apps;
 
+use std::time::Duration;
+
 #[derive(Debug, Clone, Copy)]
 pub enum BackendSelection {
     Auto,
@@ -21,6 +23,7 @@ pub struct RunOptions {
     pub headless_output_size: Option<(i32, i32)>,
     pub headless_output_scale: Option<i32>,
     pub start_shell: bool,
+    pub exit_after: Option<Duration>,
 }
 
 impl Default for RunOptions {
@@ -31,6 +34,7 @@ impl Default for RunOptions {
             headless_output_size: None,
             headless_output_scale: None,
             start_shell: true,
+            exit_after: None,
         }
     }
 }

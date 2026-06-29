@@ -277,6 +277,7 @@ pub fn run_udev(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> {
         display,
         super::Backend::Udev(Box::new(backend)),
         output_size,
+        options.exit_after,
     );
     event_loop.dispatch(Some(Duration::from_millis(0)), &mut data)?;
 

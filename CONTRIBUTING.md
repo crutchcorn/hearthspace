@@ -88,6 +88,7 @@ cargo run -- --headless --headless-scale 2
 cargo run -- --headless --no-shell
 cargo run -- --winit
 cargo run --features udev -- --tty
+cargo run --features udev -- --tty --no-shell --exit-after-ms 10000
 ```
 
 `--scroll-zooms` makes vertical scroll events zoom the canvas without holding
@@ -110,9 +111,12 @@ headless backend. The default is `1`; both `--headless-scale 2` and
 `--no-shell` skips spawning the Xilem shell client. This is useful for headless
 harnesses that want to launch only the client under test.
 
+`--exit-after-ms INTEGER` stops the compositor from inside its event loop after
+the requested duration. This is primarily for native VT smoke tests where an
+external `timeout` can terminate the process before DRM/KMS state is restored.
+
 `--winit` forces the nested development backend. `--tty` selects the native
-DRM/KMS backend path; it currently requires `--features udev`, initializes the
-libseat/udev discovery skeleton, and exits before KMS modesetting.
+DRM/KMS backend path; it currently requires `--features udev`.
 
 The shell/control socket is `hearthspace-shell.sock` in `XDG_RUNTIME_DIR`. Shell
 clients receive its full path through `HEARTHSPACE_COMMAND_SOCKET`, but tests can
