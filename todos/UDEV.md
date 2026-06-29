@@ -183,8 +183,8 @@ Goal: redraw only when KMS can accept the next frame.
 - [x] On `DrmEvent::VBlank`/page-flip completion, clear the pending flag, send
       Wayland frame callbacks for surfaces visible on that output, and schedule
       the next render if dirty.
-- [ ] Schedule the next render from vblank when the viewport is animating.
-- [ ] Replace timeout-based animation pacing for UDEV with vblank pacing.
+- [x] Schedule the next render from vblank when the viewport is animating.
+- [x] Replace timeout-based animation pacing for UDEV with vblank pacing.
 - [ ] Use damage from `render_frame` where possible; force full redraw after
       modeset, session activation, connector change, or dmabuf import.
 - [ ] Flush Wayland clients after frame callbacks.

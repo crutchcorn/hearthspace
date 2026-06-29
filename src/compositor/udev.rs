@@ -264,7 +264,7 @@ pub fn run_udev(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> {
                     if let Err(error) = data.send_frame_callbacks() {
                         eprintln!("Failed to send native frame callbacks: {error}");
                     }
-                    if should_redraw {
+                    if should_redraw || data.state.viewport_animation.is_some() {
                         data.state.request_redraw();
                     }
                 }

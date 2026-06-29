@@ -525,11 +525,14 @@ fn run_event_loop(
 
     while data.running {
         // Block until an event arrives; while animating, wake every frame.
-        let animation_timeout = data
-            .state
-            .viewport_animation
-            .is_some()
-            .then_some(ANIMATION_FRAME_INTERVAL);
+        let animation_timeout = (!data.uses_vblank_animation_pacing())
+            .then_some(())
+            .and_then(|()| {
+                data.state
+                    .viewport_animation
+                    .is_some()
+                    .then_some(ANIMATION_FRAME_INTERVAL)
+            });
         let exit_timeout = data
             .exit_at
             .map(|exit_at| exit_at.saturating_duration_since(Instant::now()));
@@ -604,6 +607,17 @@ struct CalloopData {
 }
 
 impl CalloopData {
+    fn uses_vblank_animation_pacing(&self) -> bool {
+        match &self.backend {
+            #[cfg(feature = "udev")]
+            Backend::Udev(_) => true,
+            #[cfg(feature = "winit")]
+            Backend::Winit(_) | Backend::Headless(_) => false,
+            #[cfg(not(feature = "winit"))]
+            Backend::Headless(_) => false,
+        }
+    }
+
     /// Push the compositor's desired cursor to the host winit window, but only
     /// when it differs from the cursor currently shown.
     fn apply_cursor_icon(&mut self) {
