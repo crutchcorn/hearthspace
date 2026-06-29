@@ -50,6 +50,7 @@ struct UdevDevice {
     drm_fd: DrmDeviceFd,
     drm_device: DrmDevice,
     active: bool,
+    output_targets: Vec<KmsOutputTarget>,
     output_target: Option<KmsOutputTarget>,
     gbm_surface: Option<GbmBufferedSurface<GbmAllocator<DrmDeviceFd>, ()>>,
     renderer: Option<GlesRenderer>,
@@ -73,6 +74,21 @@ impl KmsOutputTarget {
     fn output_size(&self) -> Size<i32, Physical> {
         let (width, height) = self.mode.size();
         Size::from((i32::from(width), i32::from(height)))
+    }
+
+    fn output_descriptor(&self) -> super::OutputDescriptor {
+        super::OutputDescriptor {
+            name: self.connector_name.clone(),
+            properties: PhysicalProperties {
+                size: self.physical_size_mm.into(),
+                subpixel: Subpixel::Unknown,
+                make: "DRM".into(),
+                model: self.connector_name.clone(),
+            },
+            size: self.output_size(),
+            scale: 1,
+            refresh: self.refresh_millihz(),
+        }
     }
 
     fn refresh_millihz(&self) -> i32 {
@@ -137,19 +153,15 @@ pub fn run_udev(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> {
         .unwrap_or_else(|| {
             Size::<i32, Physical>::from((HEADLESS_OUTPUT_WIDTH, HEADLESS_OUTPUT_HEIGHT))
         });
-    let output = if let Some(target) = output_target {
+    let primary_output = if let Some(target) = output_target {
+        let descriptor = target.output_descriptor();
         super::create_output_with_properties(
             &dh,
-            target.connector_name.clone(),
-            PhysicalProperties {
-                size: target.physical_size_mm.into(),
-                subpixel: Subpixel::Unknown,
-                make: "DRM".into(),
-                model: target.connector_name.clone(),
-            },
-            output_size,
-            1,
-            target.refresh_millihz(),
+            descriptor.name,
+            descriptor.properties,
+            descriptor.size,
+            descriptor.scale,
+            descriptor.refresh,
         )
     } else {
         super::create_output(&dh, output_size, 1)
@@ -178,16 +190,19 @@ pub fn run_udev(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> {
         display,
         mut event_loop,
         handle,
-        app,
+        mut app,
     } = super::initialize_app(
         display,
         options,
-        output_size,
-        output,
-        1,
+        primary_output,
         dmabuf,
         termination_signals,
     )?;
+    let output_descriptors = primary_device
+        .as_ref()
+        .map(UdevDevice::output_descriptors)
+        .unwrap_or_default();
+    app.sync_connector_outputs(&dh, output_descriptors);
 
     handle.insert_source(session_notifier, |event, _, data| match event {
         SessionEvent::PauseSession => {
@@ -207,25 +222,37 @@ pub fn run_udev(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> {
     handle.insert_source(udev_backend, |event, _, data| match event {
         UdevEvent::Added { device_id, path } => {
             println!("DRM device added {device_id} at {}", path.display());
-            if let Some(backend) = udev_backend_mut(data) {
+            let output_descriptors = if let Some(backend) = udev_backend_mut(data) {
                 backend.add_or_update_device(device_id as u64, path);
-            }
+                backend.output_descriptors()
+            } else {
+                Vec::new()
+            };
+            let dh = data.display.handle();
+            data.state.sync_connector_outputs(&dh, output_descriptors);
             data.full_redraw = data.full_redraw.max(1);
             data.state.request_redraw();
         }
         UdevEvent::Changed { device_id } => {
             println!("DRM device changed {device_id}");
-            if let Some(backend) = udev_backend_mut(data) {
-                backend.handle_device_changed(device_id as u64);
-            }
+            let output_descriptors = udev_backend_mut(data)
+                .map(|backend| backend.handle_device_changed(device_id as u64))
+                .unwrap_or_default();
+            let dh = data.display.handle();
+            data.state.sync_connector_outputs(&dh, output_descriptors);
             data.full_redraw = data.full_redraw.max(1);
             data.state.request_redraw();
         }
         UdevEvent::Removed { device_id } => {
             println!("DRM device removed {device_id}");
-            if let Some(backend) = udev_backend_mut(data) {
+            let output_descriptors = if let Some(backend) = udev_backend_mut(data) {
                 backend.remove_device(device_id as u64);
-            }
+                backend.output_descriptors()
+            } else {
+                Vec::new()
+            };
+            let dh = data.display.handle();
+            data.state.sync_connector_outputs(&dh, output_descriptors);
             data.full_redraw = data.full_redraw.max(1);
             data.state.request_redraw();
         }
@@ -493,35 +520,46 @@ impl UdevBackendState {
         self.connector_rescan_pending = true;
     }
 
-    fn handle_device_changed(&mut self, device_id: u64) {
+    fn output_descriptors(&self) -> Vec<super::OutputDescriptor> {
+        self.primary_device
+            .as_ref()
+            .map(UdevDevice::output_descriptors)
+            .unwrap_or_default()
+    }
+
+    fn handle_device_changed(&mut self, device_id: u64) -> Vec<super::OutputDescriptor> {
         self.connector_rescan_pending = true;
         if let Err(error) = self.rescan_devices() {
             eprintln!("Failed to re-scan DRM devices after device change: {error}");
         }
 
         let Some(device) = self.primary_device.as_mut() else {
-            return;
+            return Vec::new();
         };
         if device.drm_fd.dev_id().ok().map(|id| id as u64) != Some(device_id) {
             println!("Changed DRM device {device_id} is not the selected primary device");
-            return;
+            return device.output_descriptors();
         }
 
         let previous_target = device.output_target.clone();
-        let next_target = device.select_output_target();
+        let next_targets = device.connected_output_targets();
+        let next_target = next_targets.first().cloned();
         if previous_target == next_target {
             println!("Primary DRM connector state re-scanned; selected output is unchanged");
             self.connector_rescan_pending = false;
-            return;
+            device.output_targets = next_targets;
+            return device.output_descriptors();
         }
 
         println!(
             "Primary DRM connector selection changed from {:?} to {:?}; output rebuild remains pending",
             previous_target, next_target
         );
+        device.output_targets = next_targets;
         device.output_target = next_target;
         self.frame_dirty = true;
         self.repaint_pending = true;
+        device.output_descriptors()
     }
 
     fn remove_device(&mut self, device_id: u64) {
@@ -595,13 +633,20 @@ impl UdevBackendState {
 }
 
 impl UdevDevice {
-    fn select_output_target(&self) -> Option<KmsOutputTarget> {
+    fn output_descriptors(&self) -> Vec<super::OutputDescriptor> {
+        self.output_targets
+            .iter()
+            .map(KmsOutputTarget::output_descriptor)
+            .collect()
+    }
+
+    fn connected_output_targets(&self) -> Vec<KmsOutputTarget> {
         let Ok(resources) = self.drm_device.resource_handles() else {
             eprintln!(
                 "Failed to query DRM resource handles for {}",
                 self.path.display()
             );
-            return None;
+            return Vec::new();
         };
 
         let crtcs = resources.crtcs();
@@ -612,7 +657,7 @@ impl UdevDevice {
             crtcs.len()
         );
 
-        let mut selected = None;
+        let mut targets = Vec::new();
         for connector_handle in resources.connectors() {
             let Ok(info) = self.drm_device.get_connector(*connector_handle, true) else {
                 eprintln!("Failed to query DRM connector {:?}", connector_handle);
@@ -632,51 +677,49 @@ impl UdevDevice {
                         "Preferred/first mode for {:?}: {:?}",
                         connector_handle, mode
                     );
-                    if selected.is_none() {
-                        let crtc = info
-                            .current_encoder()
-                            .and_then(|encoder| self.drm_device.get_encoder(encoder).ok())
-                            .and_then(|encoder| encoder.crtc())
-                            .or_else(|| {
-                                info.encoders().iter().find_map(|encoder| {
-                                    self.drm_device.get_encoder(*encoder).ok().and_then(
-                                        |encoder_info| {
-                                            resources
-                                                .filter_crtcs(encoder_info.possible_crtcs())
-                                                .into_iter()
-                                                .next()
-                                        },
-                                    )
-                                })
-                            });
-                        if let Some(crtc) = crtc {
-                            let physical_size_mm = info
-                                .size()
-                                .map(|(width, height)| {
-                                    (
-                                        i32::try_from(width).unwrap_or(0),
-                                        i32::try_from(height).unwrap_or(0),
-                                    )
-                                })
-                                .unwrap_or((0, 0));
-                            selected = Some(KmsOutputTarget {
-                                connector: *connector_handle,
-                                crtc,
-                                mode: *mode,
-                                connector_name: format!(
-                                    "{}-{}",
-                                    info.interface().as_str(),
-                                    info.interface_id()
-                                ),
-                                physical_size_mm,
-                            });
-                        }
+                    let crtc = info
+                        .current_encoder()
+                        .and_then(|encoder| self.drm_device.get_encoder(encoder).ok())
+                        .and_then(|encoder| encoder.crtc())
+                        .or_else(|| {
+                            info.encoders().iter().find_map(|encoder| {
+                                self.drm_device.get_encoder(*encoder).ok().and_then(
+                                    |encoder_info| {
+                                        resources
+                                            .filter_crtcs(encoder_info.possible_crtcs())
+                                            .into_iter()
+                                            .next()
+                                    },
+                                )
+                            })
+                        });
+                    if let Some(crtc) = crtc {
+                        let physical_size_mm = info
+                            .size()
+                            .map(|(width, height)| {
+                                (
+                                    i32::try_from(width).unwrap_or(0),
+                                    i32::try_from(height).unwrap_or(0),
+                                )
+                            })
+                            .unwrap_or((0, 0));
+                        targets.push(KmsOutputTarget {
+                            connector: *connector_handle,
+                            crtc,
+                            mode: *mode,
+                            connector_name: format!(
+                                "{}-{}",
+                                info.interface().as_str(),
+                                info.interface_id()
+                            ),
+                            physical_size_mm,
+                        });
                     }
                 }
                 println!("CRTC candidates for {:?}: {:?}", connector_handle, crtcs);
             }
         }
-        if let Some(target) = &selected {
+        if let Some(target) = targets.first() {
             println!(
                 "Selected KMS target connector {:?}, CRTC {:?}, mode {:?}",
                 target.connector, target.crtc, target.mode
@@ -684,7 +727,7 @@ impl UdevDevice {
         } else {
             println!("No connected DRM connector with a usable CRTC was found");
         }
-        selected
+        targets
     }
 }
 
@@ -710,11 +753,13 @@ fn create_udev_device(
         drm_fd,
         drm_device,
         active,
+        output_targets: Vec::new(),
         output_target: None,
         gbm_surface: None,
         renderer: Some(renderer),
     };
-    device.output_target = device.select_output_target();
+    device.output_targets = device.connected_output_targets();
+    device.output_target = device.output_targets.first().cloned();
     if let Some(target) = device.output_target.clone() {
         let surface = device.drm_device.create_surface(
             target.crtc,

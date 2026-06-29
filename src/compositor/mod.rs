@@ -72,7 +72,7 @@ use smithay::{
 use wayland_protocols::xdg::shell::server::xdg_toplevel;
 use wayland_server::{
     DisplayHandle,
-    backend::{ClientData, ClientId, DisconnectReason},
+    backend::{ClientData, ClientId, DisconnectReason, GlobalId},
     protocol::wl_surface::WlSurface,
 };
 
@@ -174,7 +174,7 @@ struct App {
     spawn_offset: i32,
     pointer_location: Point<f64, Logical>,
     scroll_zooms_without_super: bool,
-    primary_output: PrimaryOutput,
+    outputs: OutputSet,
     app_catalog: AppCatalog,
     needs_redraw: bool,
     dmabuf_state: DmabufState,
@@ -188,11 +188,27 @@ struct App {
     background_dot_ids: Vec<Id>,
 }
 
-struct PrimaryOutput {
+struct OutputSet {
+    primary: OutputRecord,
+    secondary: Vec<OutputRecord>,
+}
+
+struct OutputRecord {
+    #[cfg_attr(not(feature = "udev"), allow(dead_code))]
+    name: String,
     output: Output,
+    #[cfg_attr(not(feature = "udev"), allow(dead_code))]
+    global_id: GlobalId,
     size: Size<i32, Physical>,
-    #[cfg_attr(not(feature = "winit"), allow(dead_code))]
     scale: i32,
+}
+
+pub(in crate::compositor) struct OutputDescriptor {
+    pub(in crate::compositor) name: String,
+    pub(in crate::compositor) properties: PhysicalProperties,
+    pub(in crate::compositor) size: Size<i32, Physical>,
+    pub(in crate::compositor) scale: i32,
+    pub(in crate::compositor) refresh: i32,
 }
 
 pub(in crate::compositor) struct AppInit {
@@ -208,39 +224,99 @@ pub(in crate::compositor) struct DmabufSetup {
     global: DmabufGlobal,
 }
 
-impl PrimaryOutput {
-    fn new(output: Output, size: Size<i32, Physical>, scale: i32) -> Self {
+impl OutputSet {
+    fn new(primary: OutputRecord) -> Self {
         Self {
-            output,
-            size,
-            scale,
+            primary,
+            secondary: Vec::new(),
+        }
+    }
+
+    #[cfg(feature = "udev")]
+    fn sync_secondary_outputs(&mut self, dh: &DisplayHandle, descriptors: Vec<OutputDescriptor>) {
+        let connected_names = descriptors
+            .iter()
+            .map(|descriptor| descriptor.name.as_str())
+            .collect::<Vec<_>>();
+
+        let mut index = 0;
+        while index < self.secondary.len() {
+            if connected_names.contains(&self.secondary[index].name.as_str()) {
+                index += 1;
+                continue;
+            }
+            let removed = self.secondary.remove(index);
+            println!("Disabling disconnected Wayland output {}", removed.name);
+            dh.disable_global::<App>(removed.global_id);
+        }
+
+        let mut next_x = self.primary.size.to_logical(self.primary.scale).w;
+        for output in &self.secondary {
+            next_x += output.size.to_logical(output.scale).w;
+        }
+
+        for descriptor in descriptors {
+            if descriptor.name == self.primary.name
+                || self
+                    .secondary
+                    .iter()
+                    .any(|output| output.name == descriptor.name)
+            {
+                continue;
+            }
+
+            let location = (next_x, 0).into();
+            let output = create_output_record(dh, descriptor, location);
+            println!(
+                "Advertising newly connected Wayland output {} at {:?}",
+                output.name, location
+            );
+            next_x += output.size.to_logical(output.scale).w;
+            self.secondary.push(output);
         }
     }
 }
 
 impl App {
     fn output_size(&self) -> Size<i32, Physical> {
-        self.primary_output.size
+        self.outputs.primary.size
     }
 
     fn output_logical_size(&self) -> Size<i32, Logical> {
-        self.primary_output
+        self.outputs
+            .primary
             .size
-            .to_logical(self.primary_output.scale)
+            .to_logical(self.outputs.primary.scale)
     }
 
     #[cfg_attr(not(feature = "winit"), allow(dead_code))]
     fn set_primary_output_size(&mut self, size: Size<i32, Physical>) {
-        self.primary_output.size = size;
-        update_output_mode(&self.primary_output.output, size, self.primary_output.scale);
+        self.outputs.primary.size = size;
+        update_output_mode(
+            &self.outputs.primary.output,
+            size,
+            self.outputs.primary.scale,
+        );
     }
 
     fn enter_primary_output(&self, surface: &WlSurface) {
-        self.primary_output.output.enter(surface);
+        self.outputs.primary.output.enter(surface);
     }
 
     fn cleanup_outputs(&mut self) {
-        self.primary_output.output.cleanup();
+        self.outputs.primary.output.cleanup();
+        for output in &mut self.outputs.secondary {
+            output.output.cleanup();
+        }
+    }
+
+    #[cfg(feature = "udev")]
+    pub(in crate::compositor) fn sync_connector_outputs(
+        &mut self,
+        dh: &DisplayHandle,
+        descriptors: Vec<OutputDescriptor>,
+    ) {
+        self.outputs.sync_secondary_outputs(dh, descriptors);
     }
 }
 
@@ -257,7 +333,7 @@ pub fn run_winit(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> 
 
     let (mut backend, winit) = winit::init::<GlesRenderer>()?;
     let output_size = backend.window_size();
-    let output = create_output(&dh, output_size, 1);
+    let primary_output = create_output(&dh, output_size, 1);
 
     // Advertise linux-dmabuf so GPU-accelerated clients (e.g. GTK4's GL
     // renderer) can hand us hardware buffers instead of failing EGL setup. The
@@ -282,9 +358,7 @@ pub fn run_winit(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> 
     } = initialize_app(
         display,
         options,
-        output_size,
-        output,
-        1,
+        primary_output,
         dmabuf,
         termination_signals,
     )?;
@@ -341,7 +415,7 @@ pub fn run_headless(options: RunOptions) -> Result<(), Box<dyn std::error::Error
     let output_scale = options.headless_output_scale.unwrap_or(1);
     let buffer_size = Size::<i32, BufferCoord>::from((output_size.w, output_size.h));
     let buffer = renderer.create_buffer(Fourcc::Abgr8888, buffer_size)?;
-    let output = create_output(&dh, output_size, output_scale);
+    let primary_output = create_output(&dh, output_size, output_scale);
 
     let dmabuf_formats = renderer.dmabuf_formats().into_iter().collect::<Vec<_>>();
     let render_node_dev = EGLDevice::device_for_display(renderer.egl_context().display())
@@ -358,9 +432,7 @@ pub fn run_headless(options: RunOptions) -> Result<(), Box<dyn std::error::Error
     } = initialize_app(
         display,
         options,
-        output_size,
-        output,
-        output_scale,
+        primary_output,
         dmabuf,
         termination_signals,
     )?;
@@ -404,9 +476,7 @@ pub(in crate::compositor) fn create_dmabuf_global(
 pub(in crate::compositor) fn initialize_app(
     mut display: Display<App>,
     options: RunOptions,
-    output_size: Size<i32, Physical>,
-    output: Output,
-    output_scale: i32,
+    primary_output: OutputRecord,
     dmabuf: DmabufSetup,
     termination_signals: Signals,
 ) -> Result<AppInit, Box<dyn std::error::Error>> {
@@ -457,7 +527,7 @@ pub(in crate::compositor) fn initialize_app(
         spawn_offset: 0,
         pointer_location: (0.0, 0.0).into(),
         scroll_zooms_without_super: options.scroll_zooms_without_super,
-        primary_output: PrimaryOutput::new(output, output_size, output_scale),
+        outputs: OutputSet::new(primary_output),
         app_catalog: AppCatalog::load(),
         needs_redraw: true,
         dmabuf_state: dmabuf.state,
@@ -885,22 +955,26 @@ pub(in crate::compositor) fn create_output(
     dh: &DisplayHandle,
     size: Size<i32, Physical>,
     scale: i32,
-) -> Output {
-    create_output_with_properties(
+) -> OutputRecord {
+    create_output_record(
         dh,
-        "hearthspace-0".into(),
-        PhysicalProperties {
-            size: (340, 190).into(),
-            subpixel: Subpixel::Unknown,
-            make: "Hearthspace".into(),
-            model: "Nested Canvas".into(),
+        OutputDescriptor {
+            name: "hearthspace-0".into(),
+            properties: PhysicalProperties {
+                size: (340, 190).into(),
+                subpixel: Subpixel::Unknown,
+                make: "Hearthspace".into(),
+                model: "Nested Canvas".into(),
+            },
+            size,
+            scale,
+            refresh: 60_000,
         },
-        size,
-        scale,
-        60_000,
+        (0, 0).into(),
     )
 }
 
+#[cfg_attr(not(feature = "udev"), allow(dead_code))]
 pub(in crate::compositor) fn create_output_with_properties(
     dh: &DisplayHandle,
     name: String,
@@ -908,11 +982,42 @@ pub(in crate::compositor) fn create_output_with_properties(
     size: Size<i32, Physical>,
     scale: i32,
     refresh: i32,
-) -> Output {
-    let output = Output::new(name, properties);
-    output.create_global::<App>(dh);
-    update_output_mode_with_refresh(&output, size, scale, refresh);
-    output
+) -> OutputRecord {
+    create_output_record(
+        dh,
+        OutputDescriptor {
+            name,
+            properties,
+            size,
+            scale,
+            refresh,
+        },
+        (0, 0).into(),
+    )
+}
+
+fn create_output_record(
+    dh: &DisplayHandle,
+    descriptor: OutputDescriptor,
+    location: Point<i32, Logical>,
+) -> OutputRecord {
+    let OutputDescriptor {
+        name,
+        properties,
+        size,
+        scale,
+        refresh,
+    } = descriptor;
+    let output = Output::new(name.clone(), properties);
+    let global_id = output.create_global::<App>(dh);
+    update_output_mode_with_refresh_at(&output, size, scale, refresh, location);
+    OutputRecord {
+        name,
+        output,
+        global_id,
+        size,
+        scale,
+    }
 }
 
 #[cfg_attr(not(feature = "winit"), allow(dead_code))]
@@ -926,13 +1031,23 @@ fn update_output_mode_with_refresh(
     scale: i32,
     refresh: i32,
 ) {
+    update_output_mode_with_refresh_at(output, size, scale, refresh, (0, 0).into());
+}
+
+fn update_output_mode_with_refresh_at(
+    output: &Output,
+    size: Size<i32, Physical>,
+    scale: i32,
+    refresh: i32,
+    location: Point<i32, Logical>,
+) {
     let mode = Mode { size, refresh };
     output.set_preferred(mode);
     output.change_current_state(
         Some(mode),
         Some(Transform::Normal),
         Some(Scale::Integer(scale)),
-        Some((0, 0).into()),
+        Some(location),
     );
 }
 
