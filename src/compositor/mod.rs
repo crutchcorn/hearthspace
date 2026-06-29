@@ -18,8 +18,8 @@ mod viewport;
 mod windows;
 
 use idle::{IdleTransition, WindowIdleDaemon};
-#[cfg(feature = "winit")]
-use input::handle_input_event;
+#[cfg(any(feature = "winit", feature = "udev"))]
+pub(in crate::compositor) use input::handle_input_event;
 use rendering::send_frames_surface_tree;
 use shell_integration::{
     accept_command_connections, command_socket_path, remove_stale_socket, spawn_shell,
@@ -187,15 +187,15 @@ struct App {
     background_dot_ids: Vec<Id>,
 }
 
-struct AppInit {
-    display: Display<App>,
-    event_loop: EventLoop<'static, CalloopData>,
+pub(in crate::compositor) struct AppInit {
+    pub(in crate::compositor) display: Display<App>,
+    pub(in crate::compositor) event_loop: EventLoop<'static, CalloopData>,
     #[cfg_attr(not(feature = "winit"), allow(dead_code))]
-    handle: LoopHandle<'static, CalloopData>,
-    app: App,
+    pub(in crate::compositor) handle: LoopHandle<'static, CalloopData>,
+    pub(in crate::compositor) app: App,
 }
 
-struct DmabufSetup {
+pub(in crate::compositor) struct DmabufSetup {
     state: DmabufState,
     global: DmabufGlobal,
 }
@@ -317,7 +317,7 @@ pub fn run_headless(options: RunOptions) -> Result<(), Box<dyn std::error::Error
     run_event_loop(event_loop, &mut data)
 }
 
-fn create_dmabuf_global(
+pub(in crate::compositor) fn create_dmabuf_global(
     dh: &DisplayHandle,
     formats: Vec<Format>,
     main_device: Option<u64>,
@@ -333,7 +333,7 @@ fn create_dmabuf_global(
     Ok(DmabufSetup { state, global })
 }
 
-fn initialize_app(
+pub(in crate::compositor) fn initialize_app(
     mut display: Display<App>,
     options: RunOptions,
     output_size: Size<i32, Physical>,
@@ -408,6 +408,25 @@ fn initialize_app(
         handle,
         app,
     })
+}
+
+#[cfg(feature = "udev")]
+pub(in crate::compositor) fn create_calloop_data(
+    state: App,
+    display: Display<App>,
+    backend: Backend,
+    output_size: Size<i32, Physical>,
+) -> CalloopData {
+    CalloopData {
+        state,
+        display,
+        backend,
+        damage_tracker: OutputDamageTracker::new(output_size, 1.0, Transform::Flipped180),
+        start_time: std::time::Instant::now(),
+        running: true,
+        full_redraw: 1,
+        applied_cursor: CursorIcon::Default,
+    }
 }
 
 fn register_common_event_sources(
@@ -716,7 +735,11 @@ fn encode_png_rgba(
     Ok(png_bytes)
 }
 
-fn create_output(dh: &DisplayHandle, size: Size<i32, Physical>, scale: i32) -> Output {
+pub(in crate::compositor) fn create_output(
+    dh: &DisplayHandle,
+    size: Size<i32, Physical>,
+    scale: i32,
+) -> Output {
     let output = Output::new(
         "hearthspace-0".into(),
         PhysicalProperties {

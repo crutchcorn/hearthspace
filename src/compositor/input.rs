@@ -3,7 +3,7 @@
 use smithay::{
     backend::input::{
         AbsolutePositionEvent, Axis, ButtonState, Event, InputBackend, InputEvent, KeyState,
-        KeyboardKeyEvent, PointerAxisEvent, PointerButtonEvent,
+        KeyboardKeyEvent, PointerAxisEvent, PointerButtonEvent, PointerMotionEvent,
     },
     input::{
         keyboard::{FilterResult, keysyms},
@@ -19,7 +19,10 @@ use super::{
     windows::resize_cursor_icon,
 };
 
-pub(super) fn handle_input_event<B: InputBackend>(state: &mut App, event: InputEvent<B>) {
+pub(in crate::compositor) fn handle_input_event<B: InputBackend>(
+    state: &mut App,
+    event: InputEvent<B>,
+) {
     match event {
         InputEvent::Keyboard { event } => {
             let time = event.time_msec();
@@ -90,6 +93,9 @@ pub(super) fn handle_input_event<B: InputBackend>(state: &mut App, event: InputE
                 },
             );
             pointer.frame(state);
+        }
+        InputEvent::PointerMotion { event } => {
+            state.apply_pointer_motion(state.pointer_location + event.delta(), event.time_msec());
         }
         InputEvent::PointerButton { event } => {
             let time = event.time_msec();

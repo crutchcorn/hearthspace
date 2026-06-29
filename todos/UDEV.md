@@ -131,13 +131,15 @@ Goal: feed native evdev input into the existing Smithay seat.
       accepting only `InputEvent<WinitInput>`.
 - [x] Make the axis-frame helpers generic too; they currently take
       `PointerAxisEvent<WinitInput>`.
-- [ ] Reuse the generic `handle_input_event(&mut App, event)` for keyboard,
+- [x] Add relative pointer motion handling to the generic input path, since
+      libinput mice usually report relative motion rather than absolute motion.
+- [x] Reuse the generic `handle_input_event(&mut App, event)` for keyboard,
       pointer button, relative motion, absolute motion, axis, and gesture events
       where Smithay's event traits line up with winit/libinput backends.
 - [ ] Map absolute pointer events into the active output's logical geometry.
-- [ ] Ignore unsupported tablet/touch/switch events initially with concise logs,
+- [x] Ignore unsupported tablet/touch/switch events initially with concise logs,
       then add follow-up todos when concrete hardware needs them.
-- [ ] On session pause, ensure libinput devices are suspended or their events are
+- [x] On session pause, ensure libinput devices are suspended or their events are
       ignored until activation.
 
 Done when: on a native VT, pointer movement, clicks, keyboard focus, key repeats,

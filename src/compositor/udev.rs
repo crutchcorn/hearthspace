@@ -8,13 +8,17 @@ use smithay::{
         udev::{UdevBackend, UdevEvent, all_gpus, primary_gpu},
     },
     reexports::{
-        calloop::EventLoop,
         input::Libinput,
         rustix::fs::{OFlags, stat},
+        wayland_server::Display,
     },
+    utils::{Physical, Size},
 };
 
-use crate::RunOptions;
+use crate::{
+    RunOptions,
+    config::{HEADLESS_OUTPUT_HEIGHT, HEADLESS_OUTPUT_WIDTH},
+};
 
 pub(super) struct UdevBackendState {
     session: LibSeatSession,
@@ -40,10 +44,14 @@ struct UdevDeviceInfo {
     path: PathBuf,
 }
 
-pub fn run_udev(_options: RunOptions) -> Result<(), Box<dyn std::error::Error>> {
+pub fn run_udev(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> {
     let (mut session, session_notifier) = LibSeatSession::new()?;
     let seat_name = session.seat();
     println!("Hearthspace native backend acquired seat {seat_name}");
+
+    if options.start_shell {
+        println!("Native shell startup is deferred until KMS modesetting is implemented");
+    }
 
     let udev_backend = UdevBackend::new(&seat_name)?;
     let devices = initial_device_list(&udev_backend);
@@ -80,35 +88,73 @@ pub fn run_udev(_options: RunOptions) -> Result<(), Box<dyn std::error::Error>> 
         .map_err(|()| format!("failed to assign libinput to seat {seat_name}"))?;
     let libinput_backend = LibinputInputBackend::new(libinput_context);
 
-    let mut event_loop = EventLoop::<UdevBackendState>::try_new()?;
-    let handle = event_loop.handle();
+    let display: Display<super::App> = Display::new()?;
+    let dh = display.handle();
+    let output_size = Size::<i32, Physical>::from((HEADLESS_OUTPUT_WIDTH, HEADLESS_OUTPUT_HEIGHT));
+    let output = super::create_output(&dh, output_size, 1);
+    let dmabuf = super::create_dmabuf_global(&dh, Vec::new(), None)?;
+    let app_options = RunOptions {
+        start_shell: false,
+        ..options
+    };
+    let super::AppInit {
+        display,
+        mut event_loop,
+        handle,
+        app,
+    } = super::initialize_app(display, app_options, output_size, output, dmabuf)?;
 
     handle.insert_source(session_notifier, |event, _, data| match event {
-        SessionEvent::PauseSession => data.pause_session(),
-        SessionEvent::ActivateSession => data.activate_session(),
+        SessionEvent::PauseSession => {
+            if let Some(backend) = udev_backend_mut(data) {
+                backend.pause_session();
+            }
+        }
+        SessionEvent::ActivateSession => {
+            if let Some(backend) = udev_backend_mut(data) {
+                backend.activate_session();
+            }
+        }
     })?;
 
     handle.insert_source(udev_backend, |event, _, data| match event {
         UdevEvent::Added { device_id, path } => {
             println!("DRM device added {device_id} at {}", path.display());
-            data.add_or_update_device(device_id as u64, path);
+            if let Some(backend) = udev_backend_mut(data) {
+                backend.add_or_update_device(device_id as u64, path);
+            }
         }
         UdevEvent::Changed { device_id } => {
             println!("DRM device changed {device_id}");
-            data.connector_rescan_pending = true;
+            if let Some(backend) = udev_backend_mut(data) {
+                backend.connector_rescan_pending = true;
+            }
         }
         UdevEvent::Removed { device_id } => {
             println!("DRM device removed {device_id}");
-            data.remove_device(device_id as u64);
+            if let Some(backend) = udev_backend_mut(data) {
+                backend.remove_device(device_id as u64);
+            }
         }
     })?;
 
     handle.insert_source(libinput_backend, |event, _, data| {
-        data.input_event_count += 1;
-        log_input_event(&event);
+        {
+            let Some(backend) = udev_backend_mut(data) else {
+                return;
+            };
+            if !backend.session_active {
+                println!("Input event ignored while native session is paused");
+                return;
+            }
+            backend.input_event_count += 1;
+            log_input_event(&event);
+        }
+
+        super::handle_input_event(&mut data.state, event);
     })?;
 
-    let mut data = UdevBackendState {
+    let backend = UdevBackendState {
         session,
         seat_name,
         session_active,
@@ -120,11 +166,31 @@ pub fn run_udev(_options: RunOptions) -> Result<(), Box<dyn std::error::Error>> 
         devices,
         input_event_count: 0,
     };
-    data.log_summary();
+    backend.log_summary();
+    let mut data = super::create_calloop_data(
+        app,
+        display,
+        super::Backend::Udev(Box::new(backend)),
+        output_size,
+    );
     event_loop.dispatch(Some(Duration::from_millis(0)), &mut data)?;
+
+    if let super::Backend::Udev(backend) = &data.backend {
+        backend.log_summary();
+    }
 
     println!("Native backend skeleton initialized; KMS modesetting is not implemented yet");
     Ok(())
+}
+
+fn udev_backend_mut(data: &mut super::CalloopData) -> Option<&mut UdevBackendState> {
+    match &mut data.backend {
+        super::Backend::Udev(backend) => Some(backend),
+        #[cfg(feature = "winit")]
+        super::Backend::Winit(_) | super::Backend::Headless(_) => None,
+        #[cfg(not(feature = "winit"))]
+        super::Backend::Headless(_) => None,
+    }
 }
 
 impl UdevBackendState {
@@ -283,6 +349,32 @@ fn log_input_event(event: &InputEvent<LibinputInputBackend>) {
         InputEvent::PointerMotionAbsolute { .. } => println!("Input absolute pointer motion event"),
         InputEvent::PointerButton { .. } => println!("Input pointer button event"),
         InputEvent::PointerAxis { .. } => println!("Input pointer axis event"),
-        _ => println!("Input event ignored until native compositor state is wired"),
+        InputEvent::GestureSwipeBegin { .. }
+        | InputEvent::GestureSwipeUpdate { .. }
+        | InputEvent::GestureSwipeEnd { .. }
+        | InputEvent::GesturePinchBegin { .. }
+        | InputEvent::GesturePinchUpdate { .. }
+        | InputEvent::GesturePinchEnd { .. }
+        | InputEvent::GestureHoldBegin { .. }
+        | InputEvent::GestureHoldEnd { .. } => {
+            println!("Input gesture event ignored until native compositor state is wired");
+        }
+        InputEvent::TouchDown { .. }
+        | InputEvent::TouchMotion { .. }
+        | InputEvent::TouchUp { .. }
+        | InputEvent::TouchCancel { .. }
+        | InputEvent::TouchFrame { .. } => {
+            println!("Input touch event ignored until native touch handling is needed");
+        }
+        InputEvent::TabletToolAxis { .. }
+        | InputEvent::TabletToolProximity { .. }
+        | InputEvent::TabletToolTip { .. }
+        | InputEvent::TabletToolButton { .. } => {
+            println!("Input tablet event ignored until native tablet handling is needed");
+        }
+        InputEvent::SwitchToggle { .. } => {
+            println!("Input switch event ignored until native switch handling is needed");
+        }
+        InputEvent::Special(_) => println!("Backend-specific input event ignored"),
     }
 }
