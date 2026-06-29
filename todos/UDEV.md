@@ -258,6 +258,33 @@ Goal: keep each backend working while native support lands incrementally.
 - [ ] VT switch away and back while native Hearthspace is running.
 - [ ] Start at least one Wayland client under the native compositor.
 
+## Future: KMS Damage Clips
+
+Goal: re-enable scanout damage hints only when the active DRM stack supports
+them reliably.
+
+- [ ] Keep renderer-side damage tracking enabled; it is still useful for
+      minimizing GLES redraw work into the GBM buffer.
+- [ ] Keep native KMS commits passing `None` for damage clips until a fallback
+      path exists. The Parallels/virgl VM path produced repeated failures while
+      running heavier clients such as Firefox/GNOME Calculator:
+      `Page flip commit failed on device Some("/dev/dri/card1") (Invalid argument
+      (os error 22))`.
+- [ ] Debug whether the failing property is `FB_DAMAGE_CLIPS` support, clip
+      rectangle shape/count, buffer age interaction, or virtual-driver behavior.
+      The relevant Smithay path is `GbmBufferedSurface::queue_buffer`, which
+      converts damage into `PlaneDamageClips` and attaches the resulting blob to
+      the primary plane commit.
+- [ ] Add per-output/per-device state such as `kms_damage_clips_supported`.
+- [ ] When damage clips are attempted, retry the same queued frame once without
+      clips after an `EINVAL` commit failure, then disable KMS damage clips for
+      that output/device for the rest of the run.
+- [ ] Re-enable clips only after VT smoke tests pass on real DRM hardware and on
+      the Parallels/virgl VM, or after feature-detecting and disabling clips on
+      drivers that reject them.
+- [ ] Log renderer damage and KMS damage separately so future failures clearly
+      show whether rendering succeeded and only the scanout hint was rejected.
+
 ## Non-Goals For The First Native Milestone
 
 - [ ] X11/Xwayland support.
