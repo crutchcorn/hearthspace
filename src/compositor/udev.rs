@@ -49,13 +49,27 @@ pub(super) struct UdevBackendState {
 
 struct UdevDevice {
     path: PathBuf,
-    drm_fd: DrmDeviceFd,
-    drm_device: DrmDevice,
+    render_node: RenderNode,
+    scanout_node: ScanoutNode,
     active: bool,
     output_targets: Vec<KmsOutputTarget>,
     output_target: Option<KmsOutputTarget>,
-    gbm_surface: Option<GbmBufferedSurface<GbmAllocator<DrmDeviceFd>, ()>>,
-    renderer: Option<GlesRenderer>,
+    output_surface: Option<KmsOutputSurface>,
+}
+
+struct RenderNode {
+    drm_fd: DrmDeviceFd,
+    renderer: GlesRenderer,
+}
+
+struct ScanoutNode {
+    drm_fd: DrmDeviceFd,
+    drm_device: DrmDevice,
+}
+
+struct KmsOutputSurface {
+    target: KmsOutputTarget,
+    gbm_surface: GbmBufferedSurface<GbmAllocator<DrmDeviceFd>, ()>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -172,11 +186,12 @@ pub fn run_udev(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> {
         .as_ref()
         .map(|device| {
             let formats = device
+                .render_node
                 .renderer
-                .as_ref()
-                .map(|renderer| renderer.dmabuf_formats().into_iter().collect::<Vec<_>>())
-                .unwrap_or_default();
-            let main_device = device.drm_fd.dev_id().ok();
+                .dmabuf_formats()
+                .into_iter()
+                .collect::<Vec<_>>();
+            let main_device = device.render_node.drm_fd.dev_id().ok();
             if let Some(main_device) = main_device {
                 println!(
                     "Native dmabuf feedback main device is {} from {}",
@@ -394,10 +409,12 @@ impl UdevBackendState {
         let Some(device) = self.primary_device.as_mut() else {
             return Err("udev backend has no primary DRM device".into());
         };
-        let Some(renderer) = device.renderer.as_mut() else {
-            return Err("udev renderer is not initialized".into());
-        };
-        let Some(gbm_surface) = device.gbm_surface.as_mut() else {
+        let renderer = &mut device.render_node.renderer;
+        let Some(gbm_surface) = device
+            .output_surface
+            .as_mut()
+            .map(|output| &mut output.gbm_surface)
+        else {
             return Err("udev GBM surface is not initialized".into());
         };
 
@@ -430,7 +447,8 @@ impl UdevBackendState {
         let Some(gbm_surface) = self
             .primary_device
             .as_mut()
-            .and_then(|device| device.gbm_surface.as_mut())
+            .and_then(|device| device.output_surface.as_mut())
+            .map(|output| &mut output.gbm_surface)
         else {
             return Ok(None);
         };
@@ -454,7 +472,7 @@ impl UdevBackendState {
         let Some(renderer) = self
             .primary_device
             .as_mut()
-            .and_then(|device| device.renderer.as_mut())
+            .map(|device| &mut device.render_node.renderer)
         else {
             return Err("udev renderer is not initialized".into());
         };
@@ -538,7 +556,7 @@ impl UdevBackendState {
         let Some(device) = self.primary_device.as_mut() else {
             return Vec::new();
         };
-        if device.drm_fd.dev_id().ok().map(|id| id as u64) != Some(device_id) {
+        if device.scanout_node.drm_fd.dev_id().ok().map(|id| id as u64) != Some(device_id) {
             println!("Changed DRM device {device_id} is not the selected primary device");
             return device.output_descriptors();
         }
@@ -614,21 +632,20 @@ impl UdevBackendState {
         );
         if let Some(device) = &self.primary_device {
             let target = device
-                .output_target
+                .output_surface
                 .as_ref()
-                .map(|target| {
+                .map(|output| {
                     format!(
                         "; selected connector {:?}, CRTC {:?}, mode {:?}",
-                        target.connector, target.crtc, target.mode
+                        output.target.connector, output.target.crtc, output.target.mode
                     )
                 })
                 .unwrap_or_default();
             println!(
-                "Primary DRM device opened through session: {}{}; gbm_surface={}; renderer={}",
+                "Primary DRM device opened through session: {}{}; gbm_surface={}",
                 device.path.display(),
                 target,
-                device.gbm_surface.is_some(),
-                device.renderer.is_some()
+                device.output_surface.is_some(),
             );
         }
     }
@@ -643,7 +660,7 @@ impl UdevDevice {
     }
 
     fn connected_output_targets(&self) -> Vec<KmsOutputTarget> {
-        let Ok(resources) = self.drm_device.resource_handles() else {
+        let Ok(resources) = self.scanout_node.drm_device.resource_handles() else {
             eprintln!(
                 "Failed to query DRM resource handles for {}",
                 self.path.display()
@@ -661,7 +678,11 @@ impl UdevDevice {
 
         let mut targets = Vec::new();
         for connector_handle in resources.connectors() {
-            let Ok(info) = self.drm_device.get_connector(*connector_handle, true) else {
+            let Ok(info) = self
+                .scanout_node
+                .drm_device
+                .get_connector(*connector_handle, true)
+            else {
                 eprintln!("Failed to query DRM connector {:?}", connector_handle);
                 continue;
             };
@@ -681,18 +702,20 @@ impl UdevDevice {
                     );
                     let crtc = info
                         .current_encoder()
-                        .and_then(|encoder| self.drm_device.get_encoder(encoder).ok())
+                        .and_then(|encoder| self.scanout_node.drm_device.get_encoder(encoder).ok())
                         .and_then(|encoder| encoder.crtc())
                         .or_else(|| {
                             info.encoders().iter().find_map(|encoder| {
-                                self.drm_device.get_encoder(*encoder).ok().and_then(
-                                    |encoder_info| {
+                                self.scanout_node
+                                    .drm_device
+                                    .get_encoder(*encoder)
+                                    .ok()
+                                    .and_then(|encoder_info| {
                                         resources
                                             .filter_crtcs(encoder_info.possible_crtcs())
                                             .into_iter()
                                             .next()
-                                    },
-                                )
+                                    })
                             })
                         });
                     if let Some(crtc) = crtc {
@@ -752,18 +775,20 @@ fn create_udev_device(
     let (drm_device, notifier) = DrmDevice::new(drm_fd.clone(), false)?;
     let mut device = UdevDevice {
         path,
-        drm_fd,
-        drm_device,
+        render_node: RenderNode {
+            drm_fd: drm_fd.clone(),
+            renderer,
+        },
+        scanout_node: ScanoutNode { drm_fd, drm_device },
         active,
         output_targets: Vec::new(),
         output_target: None,
-        gbm_surface: None,
-        renderer: Some(renderer),
+        output_surface: None,
     };
     device.output_targets = device.connected_output_targets();
     device.output_target = device.output_targets.first().cloned();
     if let Some(target) = device.output_target.clone() {
-        let surface = device.drm_device.create_surface(
+        let surface = device.scanout_node.drm_device.create_surface(
             target.crtc,
             target.mode,
             std::slice::from_ref(&target.connector),
@@ -773,15 +798,11 @@ fn create_udev_device(
             target.connector, target.crtc, target.mode
         );
         let renderer_formats = device
+            .render_node
             .renderer
-            .as_ref()
-            .map(|renderer| {
-                renderer
-                    .dmabuf_formats()
-                    .into_iter()
-                    .collect::<Vec<Format>>()
-            })
-            .unwrap_or_default();
+            .dmabuf_formats()
+            .into_iter()
+            .collect::<Vec<Format>>();
         let gbm_surface = GbmBufferedSurface::new(
             surface,
             gbm_allocator,
@@ -792,7 +813,10 @@ fn create_udev_device(
             "Created GBM buffered surface for connector {:?}, CRTC {:?}",
             target.connector, target.crtc
         );
-        device.gbm_surface = Some(gbm_surface);
+        device.output_surface = Some(KmsOutputSurface {
+            target,
+            gbm_surface,
+        });
     }
     Ok((device, notifier))
 }
