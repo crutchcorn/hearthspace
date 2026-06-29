@@ -231,12 +231,12 @@ crashing the compositor.
 
 Goal: defer complexity until the single-GPU path works.
 
-- [ ] Keep only one render GPU in the first native backend milestone.
-- [ ] Add `renderer_multi` only where needed to import buffers from clients or
+- [x] Keep only one render GPU in the first native backend milestone.
+- [x] Add `renderer_multi` only where needed to import buffers from clients or
       outputs on non-render GPUs.
 - [ ] Add explicit data structures for render node, scanout node, and per-output
       allocator ownership before enabling secondary GPUs.
-- [ ] Consider Smithay's DRM compositor helpers/direct-scanout path only after
+- [x] Consider Smithay's DRM compositor helpers/direct-scanout path only after
       normal composited rendering is stable.
 
 Done when: the code structure does not block multi-GPU work, but single-GPU

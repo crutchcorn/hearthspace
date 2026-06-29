@@ -32,6 +32,8 @@ pub(super) struct UdevBackendState {
     session: LibSeatSession,
     seat_name: String,
     session_active: bool,
+    // The first native milestone opens and renders through exactly one DRM
+    // device. `devices` below is discovery state for hotplug logging only.
     primary_device: Option<UdevDevice>,
     devices: Vec<UdevDeviceInfo>,
     kms_devices_active: bool,
