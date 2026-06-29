@@ -180,9 +180,10 @@ Goal: redraw only when KMS can accept the next frame.
       tracker, renderer/render target, pending frame flag, and current size.
 - [x] On `App::request_redraw`, mark affected native outputs dirty but do not
       immediately submit a second commit if a page flip is pending.
-- [ ] On `DrmEvent::VBlank`/page-flip completion, clear the pending flag, send
+- [x] On `DrmEvent::VBlank`/page-flip completion, clear the pending flag, send
       Wayland frame callbacks for surfaces visible on that output, and schedule
-      the next render if dirty or animating.
+      the next render if dirty.
+- [ ] Schedule the next render from vblank when the viewport is animating.
 - [ ] Replace timeout-based animation pacing for UDEV with vblank pacing.
 - [ ] Use damage from `render_frame` where possible; force full redraw after
       modeset, session activation, connector change, or dmabuf import.

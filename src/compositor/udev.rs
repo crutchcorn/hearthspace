@@ -249,11 +249,23 @@ pub fn run_udev(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> {
         handle.insert_source(drm_notifier, |event, metadata, data| match event {
             DrmEvent::VBlank(crtc) => {
                 println!("DRM vblank for {:?} with metadata {:?}", crtc, metadata);
-                if let Some(backend) = udev_backend_mut(data) {
+                let submitted_frame = if let Some(backend) = udev_backend_mut(data) {
                     match backend.frame_submitted(crtc) {
-                        Ok(true) => data.state.request_redraw(),
-                        Ok(false) => {}
-                        Err(error) => eprintln!("Failed to mark native frame submitted: {error}"),
+                        Ok(result) => result,
+                        Err(error) => {
+                            eprintln!("Failed to mark native frame submitted: {error}");
+                            None
+                        }
+                    }
+                } else {
+                    None
+                };
+                if let Some(should_redraw) = submitted_frame {
+                    if let Err(error) = data.send_frame_callbacks() {
+                        eprintln!("Failed to send native frame callbacks: {error}");
+                    }
+                    if should_redraw {
+                        data.state.request_redraw();
                     }
                 }
             }
@@ -378,16 +390,16 @@ impl UdevBackendState {
     pub(in crate::compositor) fn frame_submitted(
         &mut self,
         crtc: crtc::Handle,
-    ) -> Result<bool, Box<dyn std::error::Error>> {
+    ) -> Result<Option<bool>, Box<dyn std::error::Error>> {
         let Some(gbm_surface) = self
             .primary_device
             .as_mut()
             .and_then(|device| device.gbm_surface.as_mut())
         else {
-            return Ok(false);
+            return Ok(None);
         };
         if gbm_surface.crtc() != crtc {
-            return Ok(false);
+            return Ok(None);
         }
         gbm_surface.frame_submitted()?;
         self.frame_pending = false;
@@ -396,7 +408,7 @@ impl UdevBackendState {
         if should_redraw {
             println!("Native page flip completed with dirty state; scheduling next frame");
         }
-        Ok(should_redraw)
+        Ok(Some(should_redraw))
     }
 
     pub(in crate::compositor) fn import_dmabuf(

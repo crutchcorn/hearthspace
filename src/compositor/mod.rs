@@ -657,16 +657,7 @@ impl CalloopData {
     }
 
     fn render(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        let CalloopData {
-            state,
-            display,
-            backend,
-            damage_tracker,
-            start_time,
-            full_redraw,
-            ..
-        } = self;
-        match backend {
+        let send_callbacks_now = match &mut self.backend {
             #[cfg(feature = "winit")]
             Backend::Winit(backend) => {
                 // `buffer_age` is an `eglQuerySurface` that only succeeds while
@@ -674,40 +665,67 @@ impl CalloopData {
                 // dmabuf import (or on the first frame) that is not guaranteed,
                 // so those frames are forced to a full redraw (age 0) instead of
                 // querying a stale surface.
-                let age = if *full_redraw > 0 {
-                    *full_redraw = full_redraw.saturating_sub(1);
+                let age = if self.full_redraw > 0 {
+                    self.full_redraw = self.full_redraw.saturating_sub(1);
                     0
                 } else {
                     backend.buffer_age().unwrap_or(0)
                 };
                 let damage = {
                     let (renderer, mut framebuffer) = backend.bind()?;
-                    state.render_frame(renderer, &mut framebuffer, damage_tracker, age)?
+                    self.state.render_frame(
+                        renderer,
+                        &mut framebuffer,
+                        &mut self.damage_tracker,
+                        age,
+                    )?
                 };
 
                 if let Some(damage) = damage.as_ref() {
                     backend.submit(Some(damage))?;
                 }
+                true
             }
             Backend::Headless(backend) => {
-                *full_redraw = 0;
+                self.full_redraw = 0;
                 let mut framebuffer = backend.renderer.bind(&mut backend.buffer)?;
-                state.render_frame(&mut backend.renderer, &mut framebuffer, damage_tracker, 0)?;
+                self.state.render_frame(
+                    &mut backend.renderer,
+                    &mut framebuffer,
+                    &mut self.damage_tracker,
+                    0,
+                )?;
+                true
             }
             #[cfg(feature = "udev")]
             Backend::Udev(backend) => {
-                let force_full_redraw = *full_redraw > 0;
+                let force_full_redraw = self.full_redraw > 0;
                 if force_full_redraw {
-                    *full_redraw = full_redraw.saturating_sub(1);
+                    self.full_redraw = self.full_redraw.saturating_sub(1);
                 }
-                backend.render_frame(state, damage_tracker, force_full_redraw)?;
+                backend.render_frame(
+                    &mut self.state,
+                    &mut self.damage_tracker,
+                    force_full_redraw,
+                )?;
+                false
             }
+        };
+
+        if send_callbacks_now {
+            self.send_frame_callbacks()?;
         }
 
-        for window in &state.windows {
+        Ok(())
+    }
+
+    pub(in crate::compositor) fn send_frame_callbacks(
+        &mut self,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        for window in &self.state.windows {
             send_frames_surface_tree(
                 window.surface.wl_surface(),
-                start_time.elapsed().as_millis() as u32,
+                self.start_time.elapsed().as_millis() as u32,
             );
             // Popups (e.g. client menus) are tracked separately from the window
             // surface tree, so they need their own frame callbacks. Without
@@ -717,12 +735,12 @@ impl CalloopData {
             for (popup, _) in PopupManager::popups_for_surface(window.surface.wl_surface()) {
                 send_frames_surface_tree(
                     popup.wl_surface(),
-                    start_time.elapsed().as_millis() as u32,
+                    self.start_time.elapsed().as_millis() as u32,
                 );
             }
         }
 
-        display.flush_clients()?;
+        self.display.flush_clients()?;
 
         Ok(())
     }
