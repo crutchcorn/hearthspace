@@ -90,10 +90,6 @@ pub fn run_udev(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> {
     let seat_name = session.seat();
     println!("Hearthspace native backend acquired seat {seat_name}");
 
-    if options.start_shell {
-        println!("Native shell startup is deferred until KMS modesetting is implemented");
-    }
-
     let udev_backend = UdevBackend::new(&seat_name)?;
     let devices = initial_device_list(&udev_backend);
     log_device_list(&seat_name, &devices);
@@ -178,10 +174,6 @@ pub fn run_udev(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> {
         })
         .unwrap_or_default();
     let dmabuf = super::create_dmabuf_global(&dh, dmabuf_formats, main_device)?;
-    let app_options = RunOptions {
-        start_shell: false,
-        ..options
-    };
     let super::AppInit {
         display,
         mut event_loop,
@@ -189,7 +181,7 @@ pub fn run_udev(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> {
         app,
     } = super::initialize_app(
         display,
-        app_options,
+        options,
         output_size,
         output,
         1,
