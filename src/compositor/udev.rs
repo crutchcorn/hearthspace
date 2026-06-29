@@ -1,18 +1,20 @@
-use std::{io, os::fd::OwnedFd, path::PathBuf, time::Duration};
+use std::{io, path::PathBuf, time::Duration};
 
 use smithay::{
     backend::{
+        drm::{DrmDevice, DrmDeviceFd, DrmEvent},
         input::InputEvent,
         libinput::{LibinputInputBackend, LibinputSessionInterface},
         session::{Event as SessionEvent, Session, libseat::LibSeatSession},
         udev::{UdevBackend, UdevEvent, all_gpus, primary_gpu},
     },
+    reexports::drm::control::{Device as ControlDevice, connector},
     reexports::{
         input::Libinput,
         rustix::fs::{OFlags, stat},
         wayland_server::Display,
     },
-    utils::{Physical, Size},
+    utils::{DeviceFd, Physical, Size},
 };
 
 use crate::{
@@ -35,7 +37,8 @@ pub(super) struct UdevBackendState {
 
 struct UdevDevice {
     path: PathBuf,
-    _fd: OwnedFd,
+    _drm_fd: DrmDeviceFd,
+    drm_device: DrmDevice,
     active: bool,
 }
 
@@ -67,17 +70,19 @@ pub fn run_udev(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> {
                     device.path.display()
                 );
             }
-            let fd = session.open(&path, OFlags::RDWR | OFlags::CLOEXEC)?;
-            Some(UdevDevice {
-                path,
-                _fd: fd,
-                active: session.is_active(),
-            })
+            let active = session.is_active();
+            let (device, notifier) = create_udev_device(&mut session, path, active)?;
+            Some((device, notifier))
         }
         None => {
             println!("No primary DRM device available for seat {seat_name}");
             None
         }
+    };
+
+    let (primary_device, drm_notifier) = match primary_device {
+        Some((device, notifier)) => (Some(device), Some(notifier)),
+        None => (None, None),
     };
 
     let session_active = session.is_active();
@@ -154,6 +159,18 @@ pub fn run_udev(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> {
         super::handle_input_event(&mut data.state, event);
     })?;
 
+    if let Some(drm_notifier) = drm_notifier {
+        handle.insert_source(drm_notifier, |event, metadata, data| match event {
+            DrmEvent::VBlank(crtc) => {
+                println!("DRM vblank for {:?} with metadata {:?}", crtc, metadata);
+                if let Some(backend) = udev_backend_mut(data) {
+                    backend.repaint_pending = false;
+                }
+            }
+            DrmEvent::Error(error) => eprintln!("DRM event error: {error}"),
+        })?;
+    }
+
     let backend = UdevBackendState {
         session,
         seat_name,
@@ -174,10 +191,6 @@ pub fn run_udev(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> {
         output_size,
     );
     event_loop.dispatch(Some(Duration::from_millis(0)), &mut data)?;
-
-    if let super::Backend::Udev(backend) = &data.backend {
-        backend.log_summary();
-    }
 
     println!("Native backend skeleton initialized; KMS modesetting is not implemented yet");
     Ok(())
@@ -274,12 +287,8 @@ impl UdevBackendState {
         let Some(path) = primary_gpu(&self.seat_name)? else {
             return Ok(());
         };
-        let fd = self.session.open(&path, OFlags::RDWR | OFlags::CLOEXEC)?;
-        self.primary_device = Some(UdevDevice {
-            path,
-            _fd: fd,
-            active: self.session_active,
-        });
+        let (device, _notifier) = create_udev_device(&mut self.session, path, self.session_active)?;
+        self.primary_device = Some(device);
         Ok(())
     }
 
@@ -301,6 +310,69 @@ impl UdevBackendState {
             );
         }
     }
+}
+
+impl UdevDevice {
+    fn log_connectors(&self) {
+        let Ok(resources) = self.drm_device.resource_handles() else {
+            eprintln!(
+                "Failed to query DRM resource handles for {}",
+                self.path.display()
+            );
+            return;
+        };
+
+        let crtcs = resources.crtcs();
+        println!(
+            "DRM device {} exposes {} connector(s) and {} CRTC(s)",
+            self.path.display(),
+            resources.connectors().len(),
+            crtcs.len()
+        );
+
+        for connector_handle in resources.connectors() {
+            let Ok(info) = self.drm_device.get_connector(*connector_handle, true) else {
+                eprintln!("Failed to query DRM connector {:?}", connector_handle);
+                continue;
+            };
+            let connected = info.state() == connector::State::Connected;
+            println!(
+                "DRM connector {:?} {:?} connected={} mode_count={}",
+                connector_handle,
+                info.interface(),
+                connected,
+                info.modes().len()
+            );
+            if connected {
+                if let Some(mode) = info.modes().first() {
+                    println!(
+                        "Preferred/first mode for {:?}: {:?}",
+                        connector_handle, mode
+                    );
+                }
+                println!("CRTC candidates for {:?}: {:?}", connector_handle, crtcs);
+            }
+        }
+    }
+}
+
+fn create_udev_device(
+    session: &mut LibSeatSession,
+    path: PathBuf,
+    active: bool,
+) -> Result<(UdevDevice, smithay::backend::drm::DrmDeviceNotifier), Box<dyn std::error::Error>> {
+    let fd = session.open(&path, OFlags::RDWR | OFlags::CLOEXEC)?;
+    let drm_fd = DrmDeviceFd::new(DeviceFd::from(fd));
+    // Enumeration only: do not disable connectors until we create a real KMS surface.
+    let (drm_device, notifier) = DrmDevice::new(drm_fd.clone(), false)?;
+    let device = UdevDevice {
+        path,
+        _drm_fd: drm_fd,
+        drm_device,
+        active,
+    };
+    device.log_connectors();
+    Ok((device, notifier))
 }
 
 fn initial_device_list(udev_backend: &UdevBackend) -> Vec<UdevDeviceInfo> {

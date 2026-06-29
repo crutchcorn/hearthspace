@@ -149,10 +149,10 @@ and scroll zoom behave like the nested backend.
 
 Goal: modeset one connected monitor and present a first Hearthspace frame.
 
-- [ ] For the selected DRM node, create a `DrmDevice` and insert its
+- [x] For the selected DRM node, create a `DrmDevice` and insert its
       `DrmDeviceNotifier` into calloop.
-- [ ] Enumerate connectors, filter connected connectors with modes, and choose a
-      preferred mode.
+- [x] Enumerate connectors, filter connected connectors with modes, and choose a
+      preferred/first mode for logging.
 - [ ] Pick a compatible CRTC/plane assignment for the first connected connector.
 - [ ] Create a `DrmSurface` for that connector/CRTC/mode.
 - [ ] Create a GBM device/allocator for the DRM fd.
