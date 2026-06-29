@@ -196,13 +196,13 @@ smoothly, and clients repaint after frame callbacks.
 
 Goal: make GPU-accelerated clients work on the native backend.
 
-- [ ] Derive the dmabuf feedback main device from the selected render node/DRM
+- [x] Derive the dmabuf feedback main device from the selected render node/DRM
       node rather than the winit EGL display.
 - [ ] Advertise formats/modifiers compatible with the GBM allocator and renderer.
-- [ ] Import client dmabufs through the native renderer path in
+- [x] Import client dmabufs through the native renderer path in
       `process_pending_dmabuf_imports`.
-- [ ] Force a full redraw after imports, as the winit/headless paths already do.
-- [ ] Add logs for unsupported formats/modifiers that include enough detail to
+- [x] Force a full redraw after imports, as the winit/headless paths already do.
+- [x] Add logs for unsupported formats/modifiers that include enough detail to
       debug GTK/Mesa failures.
 
 Done when: the GTK test app can create EGL buffers and render through Hearthspace

@@ -1,12 +1,12 @@
-use std::{io, os::unix::fs::MetadataExt, path::PathBuf, time::Duration};
+use std::{io, path::PathBuf, time::Duration};
 
 use smithay::{
     backend::{
         allocator::dmabuf::Dmabuf,
         allocator::gbm::{GbmAllocator, GbmBufferFlags, GbmDevice},
-        allocator::{Format, Fourcc},
+        allocator::{Buffer, Format, Fourcc},
         drm::{DrmDevice, DrmDeviceFd, DrmEvent, GbmBufferedSurface},
-        egl::{EGLContext, EGLDevice, EGLDisplay},
+        egl::{EGLContext, EGLDisplay},
         input::{InputEvent, KeyState, KeyboardKeyEvent},
         libinput::{LibinputInputBackend, LibinputSessionInterface},
         renderer::{Bind, ImportDma, damage::OutputDamageTracker, gles::GlesRenderer},
@@ -47,7 +47,7 @@ pub(super) struct UdevBackendState {
 
 struct UdevDevice {
     path: PathBuf,
-    _drm_fd: DrmDeviceFd,
+    drm_fd: DrmDeviceFd,
     drm_device: DrmDevice,
     active: bool,
     output_target: Option<KmsOutputTarget>,
@@ -158,20 +158,26 @@ pub fn run_udev(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> {
     } else {
         super::create_output(&dh, output_size, 1)
     };
-    let (dmabuf_formats, render_node_dev) = primary_device
+    let (dmabuf_formats, main_device) = primary_device
         .as_ref()
-        .and_then(|device| device.renderer.as_ref())
-        .map(|renderer| {
-            let formats = renderer.dmabuf_formats().into_iter().collect::<Vec<_>>();
-            let render_node_dev = EGLDevice::device_for_display(renderer.egl_context().display())
-                .ok()
-                .and_then(|device| device.render_device_path().ok())
-                .and_then(|path| std::fs::metadata(path).ok())
-                .map(|metadata| metadata.rdev());
-            (formats, render_node_dev)
+        .map(|device| {
+            let formats = device
+                .renderer
+                .as_ref()
+                .map(|renderer| renderer.dmabuf_formats().into_iter().collect::<Vec<_>>())
+                .unwrap_or_default();
+            let main_device = device.drm_fd.dev_id().ok();
+            if let Some(main_device) = main_device {
+                println!(
+                    "Native dmabuf feedback main device is {} from {}",
+                    main_device,
+                    device.path.display()
+                );
+            }
+            (formats, main_device)
         })
         .unwrap_or_default();
-    let dmabuf = super::create_dmabuf_global(&dh, dmabuf_formats, render_node_dev)?;
+    let dmabuf = super::create_dmabuf_global(&dh, dmabuf_formats, main_device)?;
     let app_options = RunOptions {
         start_shell: false,
         ..options
@@ -430,7 +436,16 @@ impl UdevBackendState {
         else {
             return Err("udev renderer is not initialized".into());
         };
-        renderer.import_dmabuf(dmabuf, None)?;
+        renderer.import_dmabuf(dmabuf, None).map_err(|error| {
+            format!(
+                "failed to import native dmabuf size={:?} format={:?} planes={} has_modifier={} node={:?}: {error}",
+                dmabuf.size(),
+                dmabuf.format(),
+                dmabuf.num_planes(),
+                dmabuf.has_modifier(),
+                dmabuf.node()
+            )
+        })?;
         Ok(())
     }
 
@@ -668,7 +683,7 @@ fn create_udev_device(
     let (drm_device, notifier) = DrmDevice::new(drm_fd.clone(), false)?;
     let mut device = UdevDevice {
         path,
-        _drm_fd: drm_fd,
+        drm_fd,
         drm_device,
         active,
         output_target: None,
