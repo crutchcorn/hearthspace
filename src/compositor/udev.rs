@@ -428,7 +428,11 @@ impl UdevBackendState {
             let mut framebuffer = renderer.bind(&mut dmabuf)?;
             state.render_frame(renderer, &mut framebuffer, damage_tracker, age)?
         };
-        gbm_surface.queue_buffer(None, damage, ())?;
+        // Keep damage tracking for renderer-side redraw minimization, but do not
+        // forward damage clips to KMS yet. Some virtual DRM stacks reject
+        // FB_DAMAGE_CLIPS on page flip with EINVAL under client redraw load.
+        let _damage = damage;
+        gbm_surface.queue_buffer(None, None, ())?;
         self.frame_pending = true;
         self.frame_dirty = false;
         self.repaint_pending = true;
