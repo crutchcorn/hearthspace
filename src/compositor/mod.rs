@@ -30,6 +30,7 @@ use windows::ResizeEdges;
 #[cfg(feature = "udev")]
 pub use udev::run_udev;
 
+use calloop::signals::{Signal, Signals};
 use cursor::CursorIcon;
 #[cfg(feature = "winit")]
 use smithay::backend::winit::{self, WinitEvent};
@@ -433,6 +434,17 @@ fn register_common_event_sources(
     display: &mut Display<App>,
     handle: &LoopHandle<'static, CalloopData>,
 ) -> Result<std::path::PathBuf, Box<dyn std::error::Error>> {
+    handle.insert_source(
+        Signals::new(&[Signal::SIGINT, Signal::SIGTERM])?,
+        |event, _, data| {
+            println!(
+                "Received {:?}; stopping compositor event loop",
+                event.signal()
+            );
+            data.running = false;
+        },
+    )?;
+
     let command_socket_path = command_socket_path();
     remove_stale_socket(&command_socket_path)?;
     let command_listener = CommandListener::bind(&command_socket_path)?;
