@@ -246,11 +246,11 @@ native rendering remains the only supported path.
 
 Goal: keep each backend working while native support lands incrementally.
 
-- [ ] `cargo check`
-- [ ] `cargo check --features udev`
-- [ ] `cargo check --no-default-features --features udev`
-- [ ] `cargo test`
-- [ ] `cargo test --features e2e --test headless_control`
+- [x] `cargo check`
+- [x] `cargo check --features udev`
+- [x] `cargo check --no-default-features --features udev`
+- [x] `cargo test`
+- [x] `cargo test --features e2e --test headless_control`
 - [ ] Native smoke test on a VT:
       `cargo run --features udev -- --tty --no-shell`
 - [ ] Native shell test on a VT:
