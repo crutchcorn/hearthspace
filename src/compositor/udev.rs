@@ -200,6 +200,8 @@ pub fn run_udev(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> {
             if let Some(backend) = udev_backend_mut(data) {
                 backend.activate_session();
             }
+            data.full_redraw = data.full_redraw.max(1);
+            data.state.request_redraw();
         }
     })?;
 
@@ -209,18 +211,24 @@ pub fn run_udev(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> {
             if let Some(backend) = udev_backend_mut(data) {
                 backend.add_or_update_device(device_id as u64, path);
             }
+            data.full_redraw = data.full_redraw.max(1);
+            data.state.request_redraw();
         }
         UdevEvent::Changed { device_id } => {
             println!("DRM device changed {device_id}");
             if let Some(backend) = udev_backend_mut(data) {
                 backend.connector_rescan_pending = true;
             }
+            data.full_redraw = data.full_redraw.max(1);
+            data.state.request_redraw();
         }
         UdevEvent::Removed { device_id } => {
             println!("DRM device removed {device_id}");
             if let Some(backend) = udev_backend_mut(data) {
                 backend.remove_device(device_id as u64);
             }
+            data.full_redraw = data.full_redraw.max(1);
+            data.state.request_redraw();
         }
     })?;
 
@@ -343,16 +351,16 @@ impl UdevBackendState {
         state: &mut super::App,
         damage_tracker: &mut OutputDamageTracker,
         force_full_redraw: bool,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    ) -> Result<bool, Box<dyn std::error::Error>> {
         if self.drm_commits_paused {
             println!("Skipping native render while DRM commits are paused");
             self.frame_dirty = true;
-            return Ok(());
+            return Ok(false);
         }
         if self.frame_pending {
             self.frame_dirty = true;
             println!("Native redraw requested while page flip is pending; deferring until vblank");
-            return Ok(());
+            return Ok(false);
         }
 
         let Some(device) = self.primary_device.as_mut() else {
@@ -384,7 +392,7 @@ impl UdevBackendState {
             gbm_surface.crtc(),
             age
         );
-        Ok(())
+        Ok(true)
     }
 
     pub(in crate::compositor) fn frame_submitted(

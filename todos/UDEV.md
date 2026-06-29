@@ -185,9 +185,9 @@ Goal: redraw only when KMS can accept the next frame.
       the next render if dirty.
 - [x] Schedule the next render from vblank when the viewport is animating.
 - [x] Replace timeout-based animation pacing for UDEV with vblank pacing.
-- [ ] Use damage from `render_frame` where possible; force full redraw after
+- [x] Use damage from `render_frame` where possible; force full redraw after
       modeset, session activation, connector change, or dmabuf import.
-- [ ] Flush Wayland clients after frame callbacks.
+- [x] Flush Wayland clients after frame callbacks.
 
 Done when: native rendering is vblank-paced with no busy loop, animations advance
 smoothly, and clients repaint after frame callbacks.
