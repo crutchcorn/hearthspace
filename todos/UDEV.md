@@ -96,7 +96,7 @@ Goal: create a feature-gated module that can acquire a seat and enumerate GPUs,
 without modesetting yet.
 
 - [x] Add `src/compositor/udev.rs` behind `#[cfg(feature = "udev")]`.
-- [ ] Add `Backend::Udev(Box<udev::UdevBackendState>)` behind the same cfg.
+- [x] Add `Backend::Udev(Box<udev::UdevBackendState>)` behind the same cfg.
 - [x] In `run_udev`, create a `LibSeatSession` and insert its
       `LibSeatSessionNotifier` into the calloop loop.
 - [ ] On `SessionEvent::PauseSession`, stop scheduling new DRM commits, mark KMS
@@ -107,8 +107,8 @@ without modesetting yet.
       initial `device_list()` before inserting it into the loop.
 - [x] Insert the `UdevBackend` source and log `Added`, `Changed`, and `Removed`
       events with the device id/path.
-- [ ] Use `session.open(...)` for DRM nodes instead of opening them directly.
-- [ ] For the first milestone, choose one primary GPU and ignore secondary GPUs
+- [x] Use `session.open(...)` for DRM nodes instead of opening them directly.
+- [x] For the first milestone, choose one primary GPU and ignore secondary GPUs
       with an explicit log message.
 
 Done when: `cargo run --no-default-features --features udev -- --tty --no-shell`
@@ -119,14 +119,15 @@ pause/activate, then exit cleanly without modesetting.
 
 Goal: feed native evdev input into the existing Smithay seat.
 
-- [ ] Create a `libinput::Libinput` with
-      `LibinputSessionInterface::from(session.clone())`.
-- [ ] Call `udev_assign_seat(seat_name)` before wrapping it in
+- [x] Create a `libinput::Libinput` with
+      `LibinputSessionInterface::from(session)` after opening the primary DRM
+      node.
+- [x] Call `udev_assign_seat(seat_name)` before wrapping it in
       `LibinputInputBackend::new`.
-- [ ] Insert `LibinputInputBackend` into the calloop loop.
-- [ ] Make `handle_input_event` generic over Smithay input backends instead of
+- [x] Insert `LibinputInputBackend` into the calloop loop.
+- [x] Make `handle_input_event` generic over Smithay input backends instead of
       accepting only `InputEvent<WinitInput>`.
-- [ ] Make the axis-frame helpers generic too; they currently take
+- [x] Make the axis-frame helpers generic too; they currently take
       `PointerAxisEvent<WinitInput>`.
 - [ ] Reuse the generic `handle_input_event(&mut App, event)` for keyboard,
       pointer button, relative motion, absolute motion, axis, and gesture events

@@ -499,6 +499,9 @@ enum Backend {
     #[cfg(feature = "winit")]
     Winit(Box<smithay::backend::winit::WinitGraphicsBackend<GlesRenderer>>),
     Headless(Box<HeadlessBackend>),
+    #[cfg(feature = "udev")]
+    #[allow(dead_code)]
+    Udev(Box<udev::UdevBackendState>),
 }
 
 struct HeadlessBackend {
@@ -547,6 +550,11 @@ impl CalloopData {
                 #[cfg(feature = "winit")]
                 Backend::Winit(backend) => backend.renderer().import_dmabuf(&dmabuf, None),
                 Backend::Headless(backend) => backend.renderer.import_dmabuf(&dmabuf, None),
+                #[cfg(feature = "udev")]
+                Backend::Udev(_) => {
+                    notifier.failed();
+                    continue;
+                }
             };
             match import {
                 Ok(_texture) => {
@@ -601,6 +609,12 @@ impl CalloopData {
                 let mut framebuffer = backend.renderer.bind(&mut backend.buffer)?;
                 state.render_frame(&mut backend.renderer, &mut framebuffer, damage_tracker, 0)?;
             }
+            #[cfg(feature = "udev")]
+            Backend::Udev(_) => {
+                return Err(
+                    "udev rendering is not wired into the shared compositor loop yet".into(),
+                );
+            }
         }
 
         for window in &state.windows {
@@ -654,6 +668,10 @@ impl CalloopData {
                         .renderer
                         .copy_framebuffer(&framebuffer, region, Fourcc::Abgr8888)?;
                 backend.renderer.map_texture(&mapping)?.to_vec()
+            }
+            #[cfg(feature = "udev")]
+            Backend::Udev(_) => {
+                return Err("screenshots are not implemented for the udev backend yet".into());
             }
         };
         encode_png_rgba(size, &pixels)
