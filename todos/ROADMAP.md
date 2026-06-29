@@ -2,8 +2,8 @@
 
 Feature-level TODOs moved out of the project `README.md`. These are
 desktop-environment capabilities that are either partially implemented (rough
-edges) or intentionally deferred. Backend work lives in
-[BACKENDS.md](./BACKENDS.md); accessibility/AT-SPI work lives in
+edges) or intentionally deferred. Native backend work lives in
+[UDEV.md](./UDEV.md); accessibility/AT-SPI work lives in
 [OTHERS.md](./OTHERS.md).
 
 ## Known Rough Edges
@@ -21,7 +21,7 @@ edges) or intentionally deferred. Backend work lives in
 - [ ] **Multi-monitor support.**
 - [ ] **Theming** beyond the current proof-of-concept shell UI.
 - [ ] **DRM/KMS backend and libinput device management** — tracked in
-      [BACKENDS.md](./BACKENDS.md) (Step 3).
+      [UDEV.md](./UDEV.md).
 
 ## Out of Scope
 

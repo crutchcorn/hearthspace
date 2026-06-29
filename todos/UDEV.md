@@ -1,0 +1,254 @@
+# UDEV/DRM Backend: Step-by-Step Plan
+
+Implementation checklist for Hearthspace's native DRM/KMS backend. This is the
+action plan that follows from [../docs/DRM.md](../docs/DRM.md); keep the DRM doc
+as the evergreen architecture/background reference and this file as the working
+todo list.
+
+The goal is a native backend that shares the existing compositor state and draw
+path with the nested `winit` backend and the headless test backend.
+
+## Current Baseline
+
+- [x] `src/compositor/mod.rs` already uses `calloop` for Wayland client I/O,
+      the shell command socket, winit input/window events, and redraw dispatch.
+- [x] `Backend` already separates backend-owned rendering resources for `Winit`
+      and `Headless`.
+- [x] `App::render_frame` in `src/compositor/rendering.rs` is renderer-generic
+      and only needs a `GlesRenderer`, framebuffer, and `OutputDamageTracker`.
+- [x] `Headless` provides a useful non-winit backend reference for screenshots,
+      fixed-size output setup, and offscreen rendering.
+- [ ] Output, dmabuf setup, Wayland source setup, command socket setup, and the
+      main dispatch loop are still duplicated between `run_winit` and
+      `run_headless`.
+- [ ] `App` still assumes one `Output` and one `output_size`, which is enough for
+      the first native milestone but not for hotplug or multi-monitor support.
+
+## Step 1: Add Feature Gates And CLI Selection
+
+Goal: compile the current development path by default while allowing a native
+build to opt into the heavier DRM stack.
+
+- [ ] Move Smithay backend features out of the dependency line and into crate
+      features.
+
+      ```toml
+      [features]
+      default = ["winit"]
+      winit = ["smithay/backend_winit"]
+      udev = [
+        "smithay/backend_drm",
+        "smithay/backend_gbm",
+        "smithay/backend_libinput",
+        "smithay/backend_session_libseat",
+        "smithay/backend_udev",
+        "smithay/renderer_multi",
+      ]
+      ```
+
+- [ ] Keep shared Smithay features on the dependency itself:
+      `desktop`, `renderer_gl`, and `wayland_frontend`.
+- [ ] Gate winit imports and `run_winit` with `#[cfg(feature = "winit")]`.
+- [ ] Gate or genericize `src/compositor/input.rs`, which currently imports
+      `smithay::backend::winit::WinitInput` directly.
+- [ ] Add `--tty` and `--winit` constants in `src/config.rs`.
+- [ ] Extend `RunOptions` with a backend selection enum instead of more booleans:
+      `Auto`, `Winit`, `Udev`, `Headless`.
+- [ ] Select the backend in `main.rs` using:
+      `--headless` -> headless, `--winit` -> winit, `--tty` -> udev, otherwise
+      nested when `WAYLAND_DISPLAY` or `DISPLAY` exists, native otherwise.
+- [ ] Return a clear error when a selected backend was not compiled in, for
+      example `--tty requires rebuilding with --features udev`.
+
+Done when: `cargo check`, `cargo check --no-default-features --features udev`,
+and `cargo check --features udev` reach backend-selection code without feature
+resolution errors.
+
+## Step 2: Extract Shared Compositor Bootstrap
+
+Goal: avoid copying all of `run_winit` again for `run_udev`.
+
+- [ ] Introduce a small shared initializer that creates the Wayland display,
+      Smithay globals, seat, pointer, keyboard, app catalog, popup manager, and
+      event loop handle.
+- [ ] Keep backend-specific values as parameters: initial output metadata, output
+      size, scale, dmabuf formats, dmabuf main device, and command socket label.
+- [ ] Extract dmabuf global creation into one helper that takes renderer formats
+      and an optional render-node `dev_t`.
+- [ ] Extract Wayland listening socket registration into one helper.
+- [ ] Extract Wayland display fd dispatch registration into one helper.
+- [ ] Extract shell command socket creation/registration into one helper.
+- [ ] Extract the common post-dispatch maintenance loop:
+      pending dmabuf imports, idle transitions, viewport animation, cursor
+      application, redraw check, client flush, popup cleanup, output cleanup.
+- [ ] Leave `run_winit` and `run_headless` behavior unchanged after the refactor.
+
+Done when: `run_winit` and `run_headless` are thin backend setup functions plus
+the shared dispatch loop, with no behavior changes in headless E2E tests.
+
+## Step 3: Add A UDEV Backend Skeleton
+
+Goal: create a feature-gated module that can acquire a seat and enumerate GPUs,
+without modesetting yet.
+
+- [ ] Add `src/compositor/udev.rs` behind `#[cfg(feature = "udev")]`.
+- [ ] Add `Backend::Udev(Box<udev::UdevBackendState>)` behind the same cfg.
+- [ ] In `run_udev`, create a `LibSeatSession` and insert its
+      `LibSeatSessionNotifier` into the calloop loop.
+- [ ] On `SessionEvent::PauseSession`, stop scheduling new DRM commits, mark KMS
+      devices inactive, and leave Wayland clients connected.
+- [ ] On `SessionEvent::ActivateSession`, reactivate devices, re-scan connectors,
+      repaint every enabled output, and resume page flips.
+- [ ] Create `smithay::backend::udev::UdevBackend::new(seat_name)` and process the
+      initial `device_list()` before inserting it into the loop.
+- [ ] Insert the `UdevBackend` source and log `Added`, `Changed`, and `Removed`
+      events with the device id/path.
+- [ ] Use `session.open(...)` for DRM nodes instead of opening them directly.
+- [ ] For the first milestone, choose one primary GPU and ignore secondary GPUs
+      with an explicit log message.
+
+Done when: `cargo run --no-default-features --features udev -- --tty --no-shell`
+can start on a VT, acquire a session, list DRM devices, respond to VT switch
+pause/activate, then exit cleanly without modesetting.
+
+## Step 4: Wire Libinput Input
+
+Goal: feed native evdev input into the existing Smithay seat.
+
+- [ ] Create a `libinput::Libinput` with
+      `LibinputSessionInterface::from(session.clone())`.
+- [ ] Call `udev_assign_seat(seat_name)` before wrapping it in
+      `LibinputInputBackend::new`.
+- [ ] Insert `LibinputInputBackend` into the calloop loop.
+- [ ] Make `handle_input_event` generic over Smithay input backends instead of
+      accepting only `InputEvent<WinitInput>`.
+- [ ] Make the axis-frame helpers generic too; they currently take
+      `PointerAxisEvent<WinitInput>`.
+- [ ] Reuse the generic `handle_input_event(&mut App, event)` for keyboard,
+      pointer button, relative motion, absolute motion, axis, and gesture events
+      where Smithay's event traits line up with winit/libinput backends.
+- [ ] Map absolute pointer events into the active output's logical geometry.
+- [ ] Ignore unsupported tablet/touch/switch events initially with concise logs,
+      then add follow-up todos when concrete hardware needs them.
+- [ ] On session pause, ensure libinput devices are suspended or their events are
+      ignored until activation.
+
+Done when: on a native VT, pointer movement, clicks, keyboard focus, key repeats,
+and scroll zoom behave like the nested backend.
+
+## Step 5: Bring Up One KMS Output
+
+Goal: modeset one connected monitor and present a first Hearthspace frame.
+
+- [ ] For the selected DRM node, create a `DrmDevice` and insert its
+      `DrmDeviceNotifier` into calloop.
+- [ ] Enumerate connectors, filter connected connectors with modes, and choose a
+      preferred mode.
+- [ ] Pick a compatible CRTC/plane assignment for the first connected connector.
+- [ ] Create a `DrmSurface` for that connector/CRTC/mode.
+- [ ] Create a GBM device/allocator for the DRM fd.
+- [ ] Create an EGL/GLES renderer backed by GBM rather than a winit surface or
+      surfaceless display.
+- [ ] Create a Smithay `Output` using connector metadata instead of the current
+      hardcoded `hearthspace-0`/`Nested Canvas` values.
+- [ ] Use the chosen mode's pixel size and refresh for `OutputDamageTracker` and
+      Wayland output state.
+- [ ] Render one full frame with `App::render_frame` into a GBM-backed buffer and
+      commit it to the `DrmSurface`.
+- [ ] Keep software/headless screenshots unsupported for `Backend::Udev` at this
+      step unless readback is trivial; return a clear command-socket error.
+
+Done when: running with `--tty --no-shell` modesets one monitor and displays the
+background/shell-less compositor frame without clients.
+
+## Step 6: Page-Flip Driven Rendering
+
+Goal: redraw only when KMS can accept the next frame.
+
+- [ ] Track per-output state: `DrmSurface`, `Output`, damage tracker, renderer or
+      render target, pending frame flag, needs modeset flag, and current size.
+- [ ] On `App::request_redraw`, mark affected native outputs dirty but do not
+      immediately submit a second commit if a page flip is pending.
+- [ ] On `DrmEvent::VBlank`/page-flip completion, clear the pending flag, send
+      Wayland frame callbacks for surfaces visible on that output, and schedule
+      the next render if dirty or animating.
+- [ ] Replace timeout-based animation pacing for UDEV with vblank pacing.
+- [ ] Use damage from `render_frame` where possible; force full redraw after
+      modeset, session activation, connector change, or dmabuf import.
+- [ ] Flush Wayland clients after frame callbacks.
+
+Done when: native rendering is vblank-paced with no busy loop, animations advance
+smoothly, and clients repaint after frame callbacks.
+
+## Step 7: Dmabuf Feedback And Client Buffer Import
+
+Goal: make GPU-accelerated clients work on the native backend.
+
+- [ ] Derive the dmabuf feedback main device from the selected render node/DRM
+      node rather than the winit EGL display.
+- [ ] Advertise formats/modifiers compatible with the GBM allocator and renderer.
+- [ ] Import client dmabufs through the native renderer path in
+      `process_pending_dmabuf_imports`.
+- [ ] Force a full redraw after imports, as the winit/headless paths already do.
+- [ ] Add logs for unsupported formats/modifiers that include enough detail to
+      debug GTK/Mesa failures.
+
+Done when: the GTK test app can create EGL buffers and render through Hearthspace
+on the native backend.
+
+## Step 8: Connector Hotplug And Multi-Output Foundations
+
+Goal: move from one hardcoded output to a connector-backed output set.
+
+- [ ] Replace `App::output` and `App::output_size` with an output collection or a
+      primary-output abstraction that can grow to multiple outputs.
+- [ ] On udev `Changed`, re-enumerate connectors for the affected GPU.
+- [ ] Add newly connected connectors as Smithay `Output`s with globals.
+- [ ] Disable removed/disconnected outputs and destroy or update their globals in
+      the Smithay output manager.
+- [ ] Recompute pointer/output mapping when output geometry changes.
+- [ ] Keep multi-monitor layout simple at first: horizontal layout in connector
+      enumeration order, or single-primary until a layout policy exists.
+
+Done when: plugging or unplugging a monitor updates Wayland output state without
+crashing the compositor.
+
+## Step 9: Multi-GPU And Direct Scanout Later
+
+Goal: defer complexity until the single-GPU path works.
+
+- [ ] Keep only one render GPU in the first native backend milestone.
+- [ ] Add `renderer_multi` only where needed to import buffers from clients or
+      outputs on non-render GPUs.
+- [ ] Add explicit data structures for render node, scanout node, and per-output
+      allocator ownership before enabling secondary GPUs.
+- [ ] Consider Smithay's DRM compositor helpers/direct-scanout path only after
+      normal composited rendering is stable.
+
+Done when: the code structure does not block multi-GPU work, but single-GPU
+native rendering remains the only supported path.
+
+## Step 10: Validation Matrix
+
+Goal: keep each backend working while native support lands incrementally.
+
+- [ ] `cargo check`
+- [ ] `cargo check --features udev`
+- [ ] `cargo check --no-default-features --features udev`
+- [ ] `cargo test`
+- [ ] `cargo test --features e2e --test headless_control`
+- [ ] Native smoke test on a VT:
+      `cargo run --features udev -- --tty --no-shell`
+- [ ] Native shell test on a VT:
+      `cargo run --features udev -- --tty`
+- [ ] VT switch away and back while native Hearthspace is running.
+- [ ] Start at least one Wayland client under the native compositor.
+
+## Non-Goals For The First Native Milestone
+
+- [ ] X11/Xwayland support.
+- [ ] Direct scanout.
+- [ ] VRR/HDR/color management.
+- [ ] Complex multi-monitor layout policy.
+- [ ] Runtime GPU selection UI.
+- [ ] Tablet/touch hardware polish beyond not crashing.
