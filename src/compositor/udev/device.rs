@@ -261,7 +261,7 @@ pub(super) fn initial_device_list(udev_backend: &UdevBackend) -> Vec<UdevDeviceI
     udev_backend
         .device_list()
         .map(|(device_id, path)| UdevDeviceInfo {
-            device_id: device_id as u64,
+            device_id,
             path: path.to_path_buf(),
         })
         .collect()

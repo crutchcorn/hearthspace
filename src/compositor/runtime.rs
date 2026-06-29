@@ -278,10 +278,8 @@ impl CalloopData {
             }
         };
 
-        if send_callbacks_now {
-            if let Err(error) = self.send_frame_callbacks() {
-                eprintln!("Failed to send frame callbacks: {error}");
-            }
+        if send_callbacks_now && let Err(error) = self.send_frame_callbacks() {
+            eprintln!("Failed to send frame callbacks: {error}");
         }
 
         Ok(())

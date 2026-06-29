@@ -173,7 +173,7 @@ pub fn run_udev(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> {
         UdevEvent::Added { device_id, path } => {
             println!("DRM device added {device_id} at {}", path.display());
             let output_descriptors = if let Some(backend) = udev_backend_mut(data) {
-                backend.add_or_update_device(device_id as u64, path);
+                backend.add_or_update_device(device_id, path);
                 backend.output_descriptors()
             } else {
                 Vec::new()
@@ -186,7 +186,7 @@ pub fn run_udev(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> {
         UdevEvent::Changed { device_id } => {
             println!("DRM device changed {device_id}");
             let output_descriptors = udev_backend_mut(data)
-                .map(|backend| backend.handle_device_changed(device_id as u64))
+                .map(|backend| backend.handle_device_changed(device_id))
                 .unwrap_or_default();
             let dh = data.display.handle();
             data.state.sync_connector_outputs(&dh, output_descriptors);
@@ -196,7 +196,7 @@ pub fn run_udev(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> {
         UdevEvent::Removed { device_id } => {
             println!("DRM device removed {device_id}");
             let output_descriptors = if let Some(backend) = udev_backend_mut(data) {
-                backend.remove_device(device_id as u64);
+                backend.remove_device(device_id);
                 backend.output_descriptors()
             } else {
                 Vec::new()
@@ -469,7 +469,7 @@ impl UdevBackendState {
         let Some(device) = self.primary_device.as_mut() else {
             return Vec::new();
         };
-        if device.scanout_node.drm_fd.dev_id().ok().map(|id| id as u64) != Some(device_id) {
+        if device.scanout_node.drm_fd.dev_id().ok() != Some(device_id) {
             println!("Changed DRM device {device_id} is not the selected primary device");
             return device.output_descriptors();
         }
