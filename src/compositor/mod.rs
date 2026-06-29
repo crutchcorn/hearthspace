@@ -638,7 +638,9 @@ fn register_common_event_sources(
         Generic::new(display_fd, Interest::READ, CalloopMode::Level),
         |_, _, data| {
             let CalloopData { state, display, .. } = data;
-            display.dispatch_clients(state)?;
+            if let Err(error) = display.dispatch_clients(state) {
+                eprintln!("Failed to dispatch Wayland clients: {error}");
+            }
             Ok(PostAction::Continue)
         },
     )?;
@@ -662,7 +664,9 @@ fn run_event_loop(
     mut event_loop: EventLoop<CalloopData>,
     data: &mut CalloopData,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    data.render()?;
+    if let Err(error) = data.render() {
+        eprintln!("Initial compositor render failed: {error}");
+    }
     data.state.needs_redraw = false;
 
     while data.running {
@@ -704,11 +708,16 @@ fn run_event_loop(
         data.apply_cursor_icon();
 
         if data.state.needs_redraw {
-            data.render()?;
+            if let Err(error) = data.render() {
+                eprintln!("Compositor render failed; dropping this redraw: {error}");
+                data.full_redraw = data.full_redraw.max(1);
+            }
             data.state.needs_redraw = false;
         }
 
-        data.display.flush_clients()?;
+        if let Err(error) = data.display.flush_clients() {
+            eprintln!("Failed to flush Wayland clients: {error}");
+        }
         data.state.popups.cleanup();
         data.state.cleanup_outputs();
     }
@@ -869,7 +878,9 @@ impl CalloopData {
         };
 
         if send_callbacks_now {
-            self.send_frame_callbacks()?;
+            if let Err(error) = self.send_frame_callbacks() {
+                eprintln!("Failed to send frame callbacks: {error}");
+            }
         }
 
         Ok(())
