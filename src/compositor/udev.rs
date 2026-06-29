@@ -192,6 +192,7 @@ pub fn run_udev(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> {
         app_options,
         output_size,
         output,
+        1,
         dmabuf,
         termination_signals,
     )?;

@@ -173,8 +173,8 @@ impl App {
         // the edges are not clipped away.
         let top_left = self.screen_to_canvas(Point::from((0.0, 0.0)));
         let bottom_right = self.screen_to_canvas(Point::from((
-            f64::from(self.output_size.w),
-            f64::from(self.output_size.h),
+            f64::from(self.output_size().w),
+            f64::from(self.output_size().h),
         )));
         let first_x = (top_left.x / spacing).floor() as i64;
         let last_x = (bottom_right.x / spacing).ceil() as i64;

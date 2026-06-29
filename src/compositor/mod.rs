@@ -174,8 +174,7 @@ struct App {
     spawn_offset: i32,
     pointer_location: Point<f64, Logical>,
     scroll_zooms_without_super: bool,
-    output_size: Size<i32, Physical>,
-    output: Output,
+    primary_output: PrimaryOutput,
     app_catalog: AppCatalog,
     needs_redraw: bool,
     dmabuf_state: DmabufState,
@@ -189,6 +188,13 @@ struct App {
     background_dot_ids: Vec<Id>,
 }
 
+struct PrimaryOutput {
+    output: Output,
+    size: Size<i32, Physical>,
+    #[cfg_attr(not(feature = "winit"), allow(dead_code))]
+    scale: i32,
+}
+
 pub(in crate::compositor) struct AppInit {
     pub(in crate::compositor) display: Display<App>,
     pub(in crate::compositor) event_loop: EventLoop<'static, CalloopData>,
@@ -200,6 +206,36 @@ pub(in crate::compositor) struct AppInit {
 pub(in crate::compositor) struct DmabufSetup {
     state: DmabufState,
     global: DmabufGlobal,
+}
+
+impl PrimaryOutput {
+    fn new(output: Output, size: Size<i32, Physical>, scale: i32) -> Self {
+        Self {
+            output,
+            size,
+            scale,
+        }
+    }
+}
+
+impl App {
+    fn output_size(&self) -> Size<i32, Physical> {
+        self.primary_output.size
+    }
+
+    #[cfg_attr(not(feature = "winit"), allow(dead_code))]
+    fn set_primary_output_size(&mut self, size: Size<i32, Physical>) {
+        self.primary_output.size = size;
+        update_output_mode(&self.primary_output.output, size, self.primary_output.scale);
+    }
+
+    fn enter_primary_output(&self, surface: &WlSurface) {
+        self.primary_output.output.enter(surface);
+    }
+
+    fn cleanup_outputs(&mut self) {
+        self.primary_output.output.cleanup();
+    }
 }
 
 pub(in crate::compositor) fn create_termination_signals()
@@ -242,6 +278,7 @@ pub fn run_winit(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> 
         options,
         output_size,
         output,
+        1,
         dmabuf,
         termination_signals,
     )?;
@@ -249,9 +286,8 @@ pub fn run_winit(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> 
     // Winit drives input and resize events; it is itself a calloop event source.
     handle.insert_source(winit, |event, _, data| match event {
         WinitEvent::Resized { size, .. } => {
-            if size != data.state.output_size {
-                data.state.output_size = size;
-                update_output_mode(&data.state.output, size, 1);
+            if size != data.state.output_size() {
+                data.state.set_primary_output_size(size);
                 data.damage_tracker = OutputDamageTracker::new(size, 1.0, Transform::Flipped180);
                 data.full_redraw = 1;
                 data.state.configure_shell_bars();
@@ -318,6 +354,7 @@ pub fn run_headless(options: RunOptions) -> Result<(), Box<dyn std::error::Error
         options,
         output_size,
         output,
+        output_scale,
         dmabuf,
         termination_signals,
     )?;
@@ -363,6 +400,7 @@ pub(in crate::compositor) fn initialize_app(
     options: RunOptions,
     output_size: Size<i32, Physical>,
     output: Output,
+    output_scale: i32,
     dmabuf: DmabufSetup,
     termination_signals: Signals,
 ) -> Result<AppInit, Box<dyn std::error::Error>> {
@@ -413,8 +451,7 @@ pub(in crate::compositor) fn initialize_app(
         spawn_offset: 0,
         pointer_location: (0.0, 0.0).into(),
         scroll_zooms_without_super: options.scroll_zooms_without_super,
-        output_size,
-        output,
+        primary_output: PrimaryOutput::new(output, output_size, output_scale),
         app_catalog: AppCatalog::load(),
         needs_redraw: true,
         dmabuf_state: dmabuf.state,
@@ -568,7 +605,7 @@ fn run_event_loop(
 
         data.display.flush_clients()?;
         data.state.popups.cleanup();
-        data.state.output.cleanup();
+        data.state.cleanup_outputs();
     }
 
     Ok(())
@@ -763,7 +800,7 @@ impl CalloopData {
         self.process_pending_dmabuf_imports();
 
         let CalloopData { state, backend, .. } = self;
-        let size = state.output_size;
+        let size = state.output_size();
         let mut screenshot_damage = OutputDamageTracker::new(size, 1.0, Transform::Flipped180);
         let region = Rectangle::from_size(Size::<i32, BufferCoord>::from((size.w, size.h)));
         let pixels = match backend {

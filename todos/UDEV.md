@@ -214,7 +214,7 @@ Hearthspace on the native backend.
 
 Goal: move from one hardcoded output to a connector-backed output set.
 
-- [ ] Replace `App::output` and `App::output_size` with an output collection or a
+- [x] Replace `App::output` and `App::output_size` with an output collection or a
       primary-output abstraction that can grow to multiple outputs.
 - [ ] On udev `Changed`, re-enumerate connectors for the affected GPU.
 - [ ] Add newly connected connectors as Smithay `Output`s with globals.

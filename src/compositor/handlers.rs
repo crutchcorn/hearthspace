@@ -76,7 +76,7 @@ impl XdgShellHandler for App {
         if kind == ManagedWindowKind::Normal {
             self.idle_daemon.register_window(id);
         }
-        self.output.enter(surface.wl_surface());
+        self.enter_primary_output(surface.wl_surface());
         self.request_redraw();
 
         self.configure_toplevel(&surface, kind);

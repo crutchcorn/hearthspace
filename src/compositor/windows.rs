@@ -318,8 +318,9 @@ impl App {
                 .replace(std::iter::empty::<xdg_toplevel::WmCapabilities>());
             match kind {
                 ManagedWindowKind::ShellBar => {
-                    state.size = Some((self.output_size.w, CONTROL_BAR_HEIGHT).into());
-                    state.bounds = Some((self.output_size.w, CONTROL_BAR_HEIGHT).into());
+                    let output_size = self.output_size();
+                    state.size = Some((output_size.w, CONTROL_BAR_HEIGHT).into());
+                    state.bounds = Some((output_size.w, CONTROL_BAR_HEIGHT).into());
                     state.decoration_mode = Some(DecorationMode::ClientSide);
                 }
                 ManagedWindowKind::Launcher => {

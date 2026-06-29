@@ -389,13 +389,14 @@ impl App {
     }
 
     fn prepare_spawn_position(&mut self) {
+        let output_size = self.output_size();
         self.next_spawn_position = CanvasPoint {
             x: self.viewport_offset.x
-                + (f64::from(self.output_size.w) / 2.0 / self.viewport_scale).round() as i32
+                + (f64::from(output_size.w) / 2.0 / self.viewport_scale).round() as i32
                 - MIN_WINDOW_WIDTH / 2
                 + self.spawn_offset,
             y: self.viewport_offset.y
-                + (f64::from(self.output_size.h) / 2.0 / self.viewport_scale).round() as i32
+                + (f64::from(output_size.h) / 2.0 / self.viewport_scale).round() as i32
                 - 180
                 + self.spawn_offset,
         };

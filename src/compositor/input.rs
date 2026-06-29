@@ -39,7 +39,7 @@ pub(in crate::compositor) fn handle_input_event<B: InputBackend>(
         }
         InputEvent::PointerMotionAbsolute { event } => {
             let time = event.time_msec();
-            let location = event.position_transformed(state.output_size.to_logical(1));
+            let location = event.position_transformed(state.output_size().to_logical(1));
             state.pointer_location = location;
 
             if let Some(drag) = state.drag.as_ref() {
@@ -444,7 +444,7 @@ impl App {
     }
 
     fn apply_pointer_motion(&mut self, location: Point<f64, Logical>, time: u32) {
-        self.pointer_location = clamp_point_to_output(location, self.output_size.to_logical(1));
+        self.pointer_location = clamp_point_to_output(location, self.output_size().to_logical(1));
 
         if let Some(drag) = self.drag.as_ref() {
             let delta = self.pointer_location - drag.pointer_start;
