@@ -23,11 +23,11 @@ This project targets modern Linux systems with Wayland only. The initial proof-o
 
 Ubuntu 26.04 LTS is our development and runtime baseline, and it is expected to have the oldest supported version of most packages.
 
-### My Environment
+### Development Environment Notes
 
 I develop Hearthspace on Ubuntu 26.04 LTS, and I run it in a nested Wayland compositor inside a GNOME session. I use Parallels Desktop for macOS to run the Linux VM on an M4 Max 16" MacBook Pro.
 
-As such, while my CPU, GPU, and RAM are all quite spec'd up, the VM is not a perfect representation of a real Linux system. For example, the VM appears to only provide LavaPipe software rendering for OpenGL, so I cannot test GPU acceleration. I also cannot test Wayland gestures in the VM, so I have to run with `--scroll-zooms` to test zooming the canvas using the scroll wheel without a modifier key.
+As such, while my CPU, GPU, and RAM are all quite spec'd up, the VM is not a perfect representation of a real Linux system. Native DRM/KMS testing currently runs through a virtual Parallels/virgl stack, so real-hardware validation is still required for GPU, KMS, hotplug, and VT behavior. I also cannot test Wayland gestures reliably in the VM, so I have to run with `--scroll-zooms` to test zooming the canvas using the scroll wheel without a modifier key.
 
 ### Required Packages
 
@@ -86,6 +86,10 @@ cargo run -- --headless
 cargo run -- --headless --headless-size 1280x720
 cargo run -- --headless --headless-scale 2
 cargo run -- --headless --no-shell
+cargo run -- --winit
+cargo run --features udev -- --tty
+cargo run --no-default-features --features udev -- --tty --no-shell
+cargo run --features udev -- --tty --no-shell --exit-after-ms 10000
 ```
 
 `--scroll-zooms` makes vertical scroll events zoom the canvas without holding
@@ -107,6 +111,19 @@ headless backend. The default is `1`; both `--headless-scale 2` and
 
 `--no-shell` skips spawning the Xilem shell client. This is useful for headless
 harnesses that want to launch only the client under test.
+
+`--exit-after-ms INTEGER` stops the compositor from inside its event loop after
+the requested duration. This is primarily for native VT smoke tests where an
+external `timeout` can terminate the process before DRM/KMS state is restored.
+
+`--winit` forces the nested development backend. `--tty` selects the native
+DRM/KMS backend path; it currently requires `--features udev`. Backend flags are
+mutually exclusive: `--headless`, `--winit`, and `--tty` cannot be combined.
+
+Native backend runs can be exited with `Ctrl+Alt+Backspace`, `Ctrl+Alt+Esc`,
+`SIGINT`, `SIGTERM`, or `--exit-after-ms`. For repeatable native VT smoke tests
+and log interpretation, see [docs/NATIVE_TESTING.md](./docs/NATIVE_TESTING.md).
+For native backend architecture, see [docs/DRM.md](./docs/DRM.md).
 
 The shell/control socket is `hearthspace-shell.sock` in `XDG_RUNTIME_DIR`. Shell
 clients receive its full path through `HEARTHSPACE_COMMAND_SOCKET`, but tests can

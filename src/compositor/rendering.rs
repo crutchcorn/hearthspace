@@ -79,6 +79,10 @@ impl App {
         renderer: &mut GlesRenderer,
     ) -> Vec<HearthspaceRenderElement> {
         let mut elements = Vec::new();
+        for element in self.software_cursor_elements() {
+            elements.push(HearthspaceRenderElement::from(element));
+        }
+
         for index in (0..self.windows.len()).rev() {
             // Popups (e.g. menus) render above their window's content and chrome.
             for popup in self.popup_render_elements(renderer, index) {
@@ -106,6 +110,44 @@ impl App {
             elements.push(HearthspaceRenderElement::from(dot));
         }
         elements
+    }
+
+    fn software_cursor_elements(&mut self) -> Vec<SolidColorRenderElement> {
+        if !self.software_cursor_visible {
+            return Vec::new();
+        }
+
+        while self.software_cursor_ids.len() < 4 {
+            self.software_cursor_ids.push(Id::new());
+        }
+
+        let origin = Point::<i32, Physical>::from((
+            self.pointer_location.x.round() as i32,
+            self.pointer_location.y.round() as i32,
+        ));
+        let outline_origin = Point::<i32, Physical>::from((origin.x - 1, origin.y - 1));
+        let black = Color32F::new(0.02, 0.02, 0.02, 1.0);
+        let white = Color32F::new(1.0, 1.0, 1.0, 1.0);
+        let specs = [
+            (origin, Size::from((2, 18)), black),
+            (origin, Size::from((10, 2)), black),
+            (outline_origin, Size::from((4, 20)), white),
+            (outline_origin, Size::from((12, 4)), white),
+        ];
+
+        specs
+            .into_iter()
+            .enumerate()
+            .map(|(index, (location, size, color))| {
+                SolidColorRenderElement::new(
+                    self.software_cursor_ids[index].clone(),
+                    Rectangle::new(location, size),
+                    CommitCounter::default(),
+                    color,
+                    Kind::Cursor,
+                )
+            })
+            .collect()
     }
 
     /// Collect render elements for every popup anchored to the given window.
@@ -173,8 +215,8 @@ impl App {
         // the edges are not clipped away.
         let top_left = self.screen_to_canvas(Point::from((0.0, 0.0)));
         let bottom_right = self.screen_to_canvas(Point::from((
-            f64::from(self.output_size.w),
-            f64::from(self.output_size.h),
+            f64::from(self.output_size().w),
+            f64::from(self.output_size().h),
         )));
         let first_x = (top_left.x / spacing).floor() as i64;
         let last_x = (bottom_right.x / spacing).ceil() as i64;

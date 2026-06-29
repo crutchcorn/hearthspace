@@ -22,8 +22,10 @@ use crate::{
 };
 
 mod geometry;
+mod ordering;
 
 pub(super) use geometry::{ResizeEdges, resize_cursor_icon};
+use ordering::normal_insert_index_for_kinds;
 
 use geometry::{
     close_button_canvas_rect_for, content_canvas_origin_for, resize_anchored_position,
@@ -318,8 +320,9 @@ impl App {
                 .replace(std::iter::empty::<xdg_toplevel::WmCapabilities>());
             match kind {
                 ManagedWindowKind::ShellBar => {
-                    state.size = Some((self.output_size.w, CONTROL_BAR_HEIGHT).into());
-                    state.bounds = Some((self.output_size.w, CONTROL_BAR_HEIGHT).into());
+                    let output_size = self.output_size();
+                    state.size = Some((output_size.w, CONTROL_BAR_HEIGHT).into());
+                    state.bounds = Some((output_size.w, CONTROL_BAR_HEIGHT).into());
                     state.decoration_mode = Some(DecorationMode::ClientSide);
                 }
                 ManagedWindowKind::Launcher => {
@@ -336,6 +339,7 @@ impl App {
         surface.send_configure();
     }
 
+    #[cfg_attr(not(feature = "winit"), allow(dead_code))]
     pub(super) fn configure_shell_bars(&self) {
         for window in &self.windows {
             if window.kind == ManagedWindowKind::ShellBar {
@@ -589,40 +593,4 @@ fn surface_tree_contains(root: &wl_surface::WlSurface, target: &wl_surface::WlSu
         |_, _, &()| true,
     );
     contains
-}
-
-/// Index at which a newly raised normal window should be inserted so it sits on
-/// top of every other normal window while staying below the shell bars (which
-/// are kept at the end of the list).
-fn normal_insert_index_for_kinds(kinds: impl Iterator<Item = ManagedWindowKind>) -> usize {
-    kinds
-        .enumerate()
-        .filter_map(|(index, kind)| (kind == ManagedWindowKind::Normal).then_some(index + 1))
-        .last()
-        .unwrap_or(0)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn insert_index_is_after_the_last_normal_window() {
-        use ManagedWindowKind::{Normal, ShellBar};
-        assert_eq!(normal_insert_index_for_kinds([].into_iter()), 0);
-        assert_eq!(
-            normal_insert_index_for_kinds([ShellBar].into_iter()),
-            0,
-            "with only shell bars, normals go to the front"
-        );
-        assert_eq!(
-            normal_insert_index_for_kinds([Normal, Normal, ShellBar].into_iter()),
-            2,
-            "insert above the topmost normal but below the shell bar"
-        );
-        assert_eq!(
-            normal_insert_index_for_kinds([Normal, ShellBar, Normal].into_iter()),
-            3
-        );
-    }
 }

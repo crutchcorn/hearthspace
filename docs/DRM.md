@@ -1,70 +1,59 @@
 # DRM/KMS Backend Notes
 
-Evergreen reference for working on Hearthspace's display backends. This explains
-how the native (DRM) path differs from the nested (winit) path we develop
-against day-to-day, and what a real DRM backend entails.
+Evergreen reference for Hearthspace's display backends. This explains how the
+native DRM/KMS path differs from the nested winit path, what state is shared, and
+which native-backend constraints are intentional.
 
-## Nested (winit) vs. native (DRM)
+## Nested vs Native
 
-Hearthspace can run two ways:
+Hearthspace can run three display backends:
 
-- **Nested (winit backend):** Hearthspace is itself a Wayland/X11 client that
-  gets a window inside an existing desktop session. This is the default for
-  development — it coexists with the host desktop, snapshots, the Xilem shell,
-  and the GTK test app.
-- **Native (DRM/KMS backend):** Hearthspace runs directly on the GPU and a TTY
-  with no host compositor beneath it. This is "real-world" usage.
+- **winit:** nested development backend. Hearthspace is a Wayland/X11 client in
+  an existing desktop session. This is the default everyday path.
+- **headless:** offscreen backend for command-socket screenshots and e2e tests.
+- **udev/DRM/KMS:** native backend. Hearthspace owns a VT/session, reads input
+  through libinput, renders into GBM buffers, and presents directly with KMS.
 
-| Concern        | winit (nested)                       | DRM/KMS (native)                          |
-| -------------- | ------------------------------------ | ----------------------------------------- |
-| Where it runs  | A window inside another compositor   | Bare metal on a VT/TTY, owns the display  |
-| Display output | Host compositor presents the window  | Direct KMS mode-setting on a connector    |
-| Frame timing   | Host decides; winit must be pumped   | Kernel delivers vblank/page-flip on an fd |
-| Input          | winit translates host input          | libinput reads evdev devices via fds      |
-| Loop model     | `pump_events` (event source on winit)| Pure epoll: block until an fd is ready    |
+| Concern        | winit (nested)                       | udev/DRM/KMS (native)                    |
+| -------------- | ------------------------------------ | ---------------------------------------- |
+| Where it runs  | A window inside another compositor   | Bare VT/session, owns the display        |
+| Display output | Host compositor presents the window  | Direct KMS commit to a connector/CRTC    |
+| Frame timing   | Host decides; winit is calloop-driven | DRM vblank/page-flip events pace redraws |
+| Input          | winit translates host input          | libinput reads evdev through session fds |
+| Buffers        | winit surface/framebuffer            | GBM buffers exported as dmabufs          |
+| Screenshots    | Renderer readback                    | Unsupported until native readback exists |
 
-## Why DRM is the "fully event-driven" endgame
+## Runtime Selection
 
-On DRM every wakeup source is a real file descriptor that epoll/calloop can wait
-on directly:
+Backend selection is explicit when requested and auto-detected otherwise:
 
-- **DRM device fd** — fires when a page-flip/vblank completes, so you redraw
-  exactly when the hardware is ready for the next frame (vblank-paced).
-- **libinput fd** — fires on actual input.
-- **Wayland display fd** — fires on client requests.
+```text
+--headless -> headless
+--winit    -> winit
+--tty      -> udev/DRM
+auto       -> winit when WAYLAND_DISPLAY or DISPLAY is set, otherwise udev
+```
 
-The loop becomes "block until one of these is readable, handle it, repeat." No
-polling, no `sleep`; the kernel wakes you only when there is work.
+Native development commands:
 
-> Note: the winit backend is *also* event-driven in Smithay 0.7 —
-> `WinitEventLoop` implements calloop's `EventSource` (winit's loop is
-> epoll-backed). So the 1 ms busy-poll the project started with was an artifact
-> of the hand-written loop, **not** a limitation of winit. We do not need DRM to
-> remove the busy-poll.
+```sh
+cargo run --features udev -- --tty
+cargo run --no-default-features --features udev -- --tty --no-shell
+```
 
-## What a real DRM backend requires
+See [NATIVE_TESTING.md](./NATIVE_TESTING.md) for VT smoke commands, log capture,
+and native failure triage.
 
-Going native is a substantial lift beyond a feature flag:
+Useful native safety exits:
 
-1. **Session & seat management** — acquire the seat and DRM-master via
-   logind/`libseat` (`backend_session_libseat`). Required to drive a GPU/VT
-   without root and to handle VT switching.
-2. **Device discovery** — **udev** (`backend_udev`) to enumerate GPUs and input
-   devices and to handle hotplug.
-3. **Input** — **libinput** (`backend_libinput`) reading evdev devices, fed into
-   the same Smithay `Seat`/pointer/keyboard the winit path already uses.
-4. **KMS mode-setting** — `backend_drm`: enumerate connectors/CRTCs, pick modes,
-   create a `DrmDevice`/`DrmSurface`, and schedule page flips. Handle vblank
-   completion events to pace rendering.
-5. **Buffer allocation & rendering** — GBM allocator + DMA-BUF, and typically
-   `renderer_multi` for multi-GPU import/export. The actual draw code can stay
-   shared because both backends expose a `GlesRenderer`.
-6. **Output management** — connectors map to Smithay `Output`s (the winit path
-   hardcodes a single output today).
+- `Ctrl+Alt+Backspace`
+- `Ctrl+Alt+Esc`
+- `SIGINT` / `SIGTERM`
+- `--exit-after-ms INTEGER` for timed VT smoke tests
 
-## Cargo features
+## Cargo Features
 
-Keep DRM deps behind a feature so everyday builds stay light:
+The default feature set keeps native-only dependencies out of everyday builds:
 
 ```toml
 [features]
@@ -72,6 +61,7 @@ default = ["winit"]
 winit = ["smithay/backend_winit"]
 udev = [
   "smithay/backend_drm",
+  "smithay/backend_gbm",
   "smithay/backend_libinput",
   "smithay/backend_session_libseat",
   "smithay/backend_udev",
@@ -79,29 +69,129 @@ udev = [
 ]
 ```
 
-- Dev: `cargo run` (winit only, fast).
-- Native: `cargo run --features udev -- --tty` (or auto-detected on a bare TTY).
+Shared Smithay features remain on the dependency itself: `desktop`,
+`renderer_gl`, and `wayland_frontend`.
 
-The udev module sits behind `#[cfg(feature = "udev")]`.
+`renderer_multi` is enabled for native dmabuf import plumbing, but the first
+native milestone still opens and renders through a single primary DRM device.
 
-## What stays shared between backends
+## Event Loop Model
 
-Almost everything. All Wayland protocol handlers, window management
-(`compositor/windows.rs`), hit-testing, the idle daemon (`compositor/idle.rs`),
-viewport/geometry, the shell + command socket, and the Xilem shell are
-backend-neutral. Only output creation, frame scheduling, renderer acquisition,
-and the input source differ — these are the parts isolated behind the `Backend`
-seam.
+All backends share the same calloop-driven compositor loop:
 
-## Backend selection (intended behavior)
+- Wayland display fd dispatches client requests.
+- The shell command socket accepts control commands.
+- Backend event sources drive input/redraw timing.
+- Post-dispatch maintenance imports pending dmabufs, advances idle/viewport
+  state, applies cursor changes, renders if needed, flushes clients, and cleans
+  popups/outputs.
+
+The native backend adds fd-driven sources for:
+
+- `LibSeatSessionNotifier` for VT/session pause and activation.
+- `UdevBackend` for DRM device add/change/remove events.
+- `LibinputInputBackend` for keyboard/pointer events.
+- `DrmDeviceNotifier` for page-flip/vblank completion.
+
+The native render path is vblank-paced. `App::request_redraw` marks state dirty;
+if a KMS page flip is pending, the request is deferred until the vblank handler
+clears the pending frame. Native animation pacing also wakes from vblank rather
+than a timer.
+
+## Native Backend Architecture
+
+Native setup currently uses one selected primary DRM device:
+
+1. Acquire a `LibSeatSession` and seat name.
+2. Enumerate DRM devices through Smithay's udev backend.
+3. Select `primary_gpu(seat)` and log secondary DRM devices as ignored for now.
+4. Open the selected DRM node through the session.
+5. Build explicit ownership records:
+   - `RenderNode`: DRM fd plus `GlesRenderer`.
+   - `ScanoutNode`: DRM fd plus `DrmDevice`.
+   - `KmsOutputSurface`: selected connector/CRTC/mode plus `GbmBufferedSurface`.
+6. Enumerate connected connectors, choose the first usable target, and create a
+   Smithay `Output` from connector metadata.
+7. Create a GBM allocator/device and EGL/GLES renderer backed by the DRM node.
+8. Render with the shared `App::render_frame` into GBM buffers and queue KMS
+   commits through `GbmBufferedSurface`.
+
+The render and scanout nodes are structurally separate even though they point at
+the same DRM node today. That keeps the code ready for future render-node,
+scanout-node, and per-output allocator ownership without enabling multi-GPU
+behavior prematurely.
+
+## Output State
+
+The compositor tracks outputs as an `OutputSet`:
+
+- One primary output backs the current KMS render target.
+- Secondary connected connectors are advertised as Smithay `Output`s with
+  Wayland globals, but are not rendered to yet.
+- Secondary outputs are laid out horizontally after the primary in connector
+  enumeration order.
+- Existing secondary outputs update their mode/scale/location on connector
+  resync.
+- Removed secondary outputs have their Wayland globals disabled.
+- Absolute pointer mapping clamps against the aggregate logical output bounds.
+
+Primary-output rebuild after the selected KMS target changes is still future
+work. The first connected target remains the rendered output for now.
+
+## Dmabuf Feedback And Clients
+
+Native dmabuf feedback uses the opened DRM node's `dev_t` as the main device.
+The native renderer advertises its dmabuf import formats, and client dmabufs are
+imported through the udev `GlesRenderer` before the next full redraw.
+
+Import failures should include enough detail to debug Mesa/GTK/client issues:
+size, format, plane count, modifier presence, and node.
+
+The compositor keeps running after recoverable live errors from client dispatch,
+client flush, frame callbacks, or render submission. Those errors are logged and
+the next redraw is forced full where appropriate. Initialization failures remain
+fatal.
+
+## KMS Damage Clips
+
+Renderer-side damage tracking remains enabled and useful. It minimizes GLES
+redraw work into the GBM buffer.
+
+Native KMS commits intentionally do **not** pass scanout damage clips today.
+During Firefox/GNOME Calculator testing on the Parallels/virgl VM, forwarding
+damage through Smithay's `GbmBufferedSurface::queue_buffer` produced repeated KMS
+commit failures:
 
 ```text
-nested = WAYLAND_DISPLAY is set || DISPLAY is set
---tty  forces DRM/udev ; --winit forces nested
-default: nested -> winit, otherwise -> udev
+Page flip commit failed on device Some("/dev/dri/card1") (Invalid argument (os error 22))
 ```
+
+The likely failing path is Smithay converting renderer damage into
+`PlaneDamageClips` / `FB_DAMAGE_CLIPS` and attaching that blob to the primary
+plane commit. Until we have per-device fallback, native commits pass `None` for
+KMS damage clips and submit full-plane scanout updates.
+
+Future re-enablement should be per output/device: try clips, retry the same
+frame once without clips on `EINVAL`, then disable KMS damage clips for that
+output/device for the rest of the run.
+
+## What Stays Shared
+
+Almost all compositor logic is backend-neutral:
+
+- Wayland protocol handlers.
+- Window management and hit-testing.
+- Viewport geometry and animations.
+- Idle daemon/window activity tracking.
+- Shell command socket.
+- Xilem shell integration.
+- Shared `App::render_frame` over `GlesRenderer`.
+
+Backend-specific code owns output creation, frame scheduling, renderer/buffer
+acquisition, dmabuf main-device discovery, and input/event sources.
 
 ## Reference
 
-Smithay's reference compositor **anvil** implements winit, x11, and udev/DRM
-backends over one shared state and is the canonical model for this structure.
+Smithay's reference compositor anvil implements winit, x11, and udev/DRM
+backends over one shared compositor state and remains the canonical model for
+this structure.

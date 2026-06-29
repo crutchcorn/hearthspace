@@ -1,0 +1,76 @@
+use smithay::backend::{
+    input::{InputEvent, KeyState, KeyboardKeyEvent},
+    libinput::LibinputInputBackend,
+};
+
+use super::UdevBackendState;
+
+impl UdevBackendState {
+    pub(super) fn handle_emergency_exit_chord(
+        &mut self,
+        event: &InputEvent<LibinputInputBackend>,
+    ) -> bool {
+        const KEY_ESC: u32 = 1 + 8;
+        const KEY_BACKSPACE: u32 = 14 + 8;
+        const KEY_LEFTCTRL: u32 = 29 + 8;
+        const KEY_LEFTALT: u32 = 56 + 8;
+        const KEY_RIGHTCTRL: u32 = 97 + 8;
+        const KEY_RIGHTALT: u32 = 100 + 8;
+
+        let InputEvent::Keyboard { event } = event else {
+            return false;
+        };
+        let keycode: u32 = event.key_code().into();
+        let pressed = event.state() == KeyState::Pressed;
+        match keycode {
+            KEY_LEFTCTRL | KEY_RIGHTCTRL => self.emergency_exit_ctrl_pressed = pressed,
+            KEY_LEFTALT | KEY_RIGHTALT => self.emergency_exit_alt_pressed = pressed,
+            KEY_BACKSPACE | KEY_ESC if pressed => {
+                return self.emergency_exit_ctrl_pressed && self.emergency_exit_alt_pressed;
+            }
+            _ => {}
+        }
+        false
+    }
+}
+
+pub(super) fn log_input_event(event: &InputEvent<LibinputInputBackend>) {
+    match event {
+        InputEvent::DeviceAdded { device } => println!("Input device added: {}", device.name()),
+        InputEvent::DeviceRemoved { device } => {
+            println!("Input device removed: {}", device.name());
+        }
+        InputEvent::Keyboard { .. } => println!("Input keyboard event"),
+        InputEvent::PointerMotion { .. } => println!("Input relative pointer motion event"),
+        InputEvent::PointerMotionAbsolute { .. } => println!("Input absolute pointer motion event"),
+        InputEvent::PointerButton { .. } => println!("Input pointer button event"),
+        InputEvent::PointerAxis { .. } => println!("Input pointer axis event"),
+        InputEvent::GestureSwipeBegin { .. }
+        | InputEvent::GestureSwipeUpdate { .. }
+        | InputEvent::GestureSwipeEnd { .. }
+        | InputEvent::GesturePinchBegin { .. }
+        | InputEvent::GesturePinchUpdate { .. }
+        | InputEvent::GesturePinchEnd { .. }
+        | InputEvent::GestureHoldBegin { .. }
+        | InputEvent::GestureHoldEnd { .. } => {
+            println!("Input gesture event ignored until native compositor state is wired");
+        }
+        InputEvent::TouchDown { .. }
+        | InputEvent::TouchMotion { .. }
+        | InputEvent::TouchUp { .. }
+        | InputEvent::TouchCancel { .. }
+        | InputEvent::TouchFrame { .. } => {
+            println!("Input touch event ignored until native touch handling is needed");
+        }
+        InputEvent::TabletToolAxis { .. }
+        | InputEvent::TabletToolProximity { .. }
+        | InputEvent::TabletToolTip { .. }
+        | InputEvent::TabletToolButton { .. } => {
+            println!("Input tablet event ignored until native tablet handling is needed");
+        }
+        InputEvent::SwitchToggle { .. } => {
+            println!("Input switch event ignored until native switch handling is needed");
+        }
+        InputEvent::Special(_) => println!("Backend-specific input event ignored"),
+    }
+}

@@ -4,6 +4,8 @@ pub const WAYLAND_DISPLAY_NAME: &str = "wayland-99";
 pub const GTK_TEST_APP_FLAG: &str = "--gtk-test-app";
 pub const SHELL_FLAG: &str = "--shell";
 pub const HEADLESS_FLAG: &str = "--headless";
+pub const TTY_FLAG: &str = "--tty";
+pub const WINIT_FLAG: &str = "--winit";
 pub const GTK_TEST_APP_ID: &str = "dev.hearthspace.A11yTest";
 pub const GTK_TEST_APP_TITLE: &str = "Hearthspace Research Demo";
 pub const SHELL_BAR_APP_ID: &str = "dev.hearthspace.shell-bar";
@@ -17,6 +19,7 @@ pub const SCROLL_ZOOMS_FLAG: &str = "--scroll-zooms";
 pub const HEADLESS_SIZE_FLAG: &str = "--headless-size";
 pub const HEADLESS_SCALE_FLAG: &str = "--headless-scale";
 pub const NO_SHELL_FLAG: &str = "--no-shell";
+pub const EXIT_AFTER_MS_FLAG: &str = "--exit-after-ms";
 pub const HEADLESS_OUTPUT_WIDTH: i32 = 1280;
 pub const HEADLESS_OUTPUT_HEIGHT: i32 = 720;
 

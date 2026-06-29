@@ -1,7 +1,6 @@
-use smithay::{
-    reexports::winit::window::CursorIcon,
-    utils::{Logical, Point, Rectangle, Size},
-};
+use smithay::utils::{Logical, Point, Rectangle, Size};
+
+use crate::compositor::cursor::CursorIcon;
 use wayland_protocols::xdg::shell::server::xdg_toplevel;
 
 use crate::{

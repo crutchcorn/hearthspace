@@ -1,24 +1,28 @@
+#![cfg_attr(not(feature = "winit"), allow(dead_code))]
+
 use smithay::{
-    backend::{
-        input::{
-            AbsolutePositionEvent, Axis, ButtonState, Event, InputEvent, KeyState,
-            KeyboardKeyEvent, PointerAxisEvent, PointerButtonEvent,
-        },
-        winit::WinitInput,
+    backend::input::{
+        AbsolutePositionEvent, Axis, ButtonState, Event, InputBackend, InputEvent, KeyState,
+        KeyboardKeyEvent, PointerAxisEvent, PointerButtonEvent, PointerMotionEvent,
     },
     input::{
         keyboard::{FilterResult, keysyms},
         pointer::{AxisFrame, ButtonEvent, MotionEvent},
     },
-    reexports::winit::window::CursorIcon,
     utils::{Logical, Point, SERIAL_COUNTER},
 };
 
 use crate::config::{SCROLL_ZOOM_SENSITIVITY, WHEEL_SCROLL_PIXEL_EQUIVALENT};
 
-use super::{App, DragState, HitTarget, idle::ActivityReason, windows::resize_cursor_icon};
+use super::{
+    App, DragState, HitTarget, cursor::CursorIcon, idle::ActivityReason,
+    windows::resize_cursor_icon,
+};
 
-pub(super) fn handle_input_event(state: &mut App, event: InputEvent<WinitInput>) {
+pub(in crate::compositor) fn handle_input_event<B: InputBackend>(
+    state: &mut App,
+    event: InputEvent<B>,
+) {
     match event {
         InputEvent::Keyboard { event } => {
             let time = event.time_msec();
@@ -35,60 +39,11 @@ pub(super) fn handle_input_event(state: &mut App, event: InputEvent<WinitInput>)
         }
         InputEvent::PointerMotionAbsolute { event } => {
             let time = event.time_msec();
-            let location = event.position_transformed(state.output_size.to_logical(1));
-            state.pointer_location = location;
-
-            if let Some(drag) = state.drag.as_ref() {
-                let delta = location - drag.pointer_start;
-                let new_position = super::CanvasPoint {
-                    x: drag.window_start.x + (delta.x / state.viewport_scale).round() as i32,
-                    y: drag.window_start.y + (delta.y / state.viewport_scale).round() as i32,
-                };
-                let window_id = drag.window_id;
-                if let Some(window) = state.window_mut_by_id(window_id) {
-                    window.position = new_position;
-                    state.request_redraw();
-                }
-                return;
-            }
-
-            if let Some(resize) = state.resize.as_ref() {
-                let edges = resize.edges;
-                state.cursor_icon = resize_cursor_icon(edges);
-                state.update_resize(location);
-                return;
-            }
-
-            let hit = state.hit_test(location);
-            state.cursor_icon = match &hit {
-                Some(HitTarget::ResizeBorder { edges, .. }) => resize_cursor_icon(*edges),
-                _ => CursorIcon::Default,
-            };
-            let focus = match hit {
-                Some(HitTarget::Client {
-                    window_index,
-                    surface,
-                    surface_location,
-                }) => {
-                    state.record_client_activity_for_window_index(
-                        window_index,
-                        ActivityReason::ClientInput,
-                    );
-                    Some((surface, surface_location))
-                }
-                _ => None,
-            };
-            let pointer = state.pointer.clone();
-            pointer.motion(
-                state,
-                focus,
-                &MotionEvent {
-                    location,
-                    serial: SERIAL_COUNTER.next_serial(),
-                    time,
-                },
-            );
-            pointer.frame(state);
+            let location = event.position_transformed(state.output_logical_size());
+            state.apply_pointer_motion(location, time);
+        }
+        InputEvent::PointerMotion { event } => {
+            state.apply_pointer_motion(state.pointer_location + event.delta(), event.time_msec());
         }
         InputEvent::PointerButton { event } => {
             let time = event.time_msec();
@@ -231,7 +186,10 @@ pub(super) fn handle_input_event(state: &mut App, event: InputEvent<WinitInput>)
     }
 }
 
-fn axis_frame_from_event(event: &impl PointerAxisEvent<WinitInput>, time: u32) -> AxisFrame {
+fn axis_frame_from_event<B: InputBackend>(
+    event: &impl PointerAxisEvent<B>,
+    time: u32,
+) -> AxisFrame {
     let mut frame = AxisFrame::new(time)
         .source(event.source())
         .relative_direction(Axis::Horizontal, event.relative_direction(Axis::Horizontal))
@@ -241,9 +199,9 @@ fn axis_frame_from_event(event: &impl PointerAxisEvent<WinitInput>, time: u32) -
     add_axis_to_frame(frame, event, Axis::Vertical)
 }
 
-fn add_axis_to_frame(
+fn add_axis_to_frame<B: InputBackend>(
     mut frame: AxisFrame,
-    event: &impl PointerAxisEvent<WinitInput>,
+    event: &impl PointerAxisEvent<B>,
     axis: Axis,
 ) -> AxisFrame {
     if let Some(amount) = scroll_amount_for_axis(event, axis) {
@@ -261,7 +219,10 @@ fn add_axis_to_frame(
     frame
 }
 
-fn scroll_amount_for_axis(event: &impl PointerAxisEvent<WinitInput>, axis: Axis) -> Option<f64> {
+fn scroll_amount_for_axis<B: InputBackend>(
+    event: &impl PointerAxisEvent<B>,
+    axis: Axis,
+) -> Option<f64> {
     event.amount(axis).or_else(|| {
         event
             .amount_v120(axis)
@@ -431,7 +392,11 @@ impl App {
     }
 
     fn apply_pointer_motion(&mut self, location: Point<f64, Logical>, time: u32) {
-        self.pointer_location = clamp_point_to_output(location, self.output_size.to_logical(1));
+        let previous_location = self.pointer_location;
+        self.pointer_location = clamp_point_to_output(location, self.output_logical_size());
+        if self.software_cursor_visible && self.pointer_location != previous_location {
+            self.request_redraw();
+        }
 
         if let Some(drag) = self.drag.as_ref() {
             let delta = self.pointer_location - drag.pointer_start;
@@ -499,7 +464,7 @@ impl App {
         self.scroll_zooms_without_super || self.super_modifier_active()
     }
 
-    fn zoom_from_scroll(&mut self, event: &impl PointerAxisEvent<WinitInput>) -> bool {
+    fn zoom_from_scroll<B: InputBackend>(&mut self, event: &impl PointerAxisEvent<B>) -> bool {
         let Some(scroll_amount) = scroll_amount_for_axis(event, Axis::Vertical) else {
             return false;
         };
