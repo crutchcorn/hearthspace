@@ -164,7 +164,7 @@ Goal: modeset one connected monitor and present a first Hearthspace frame.
       hardcoded `hearthspace-0`/`Nested Canvas` values.
 - [x] Use the chosen mode's pixel size and refresh for `OutputDamageTracker` and
       Wayland output state.
-- [ ] Render one full frame with `App::render_frame` into a GBM-backed buffer and
+- [x] Render one full frame with `App::render_frame` into a GBM-backed buffer and
       commit it to the `DrmSurface`.
 - [ ] Keep software/headless screenshots unsupported for `Backend::Udev` at this
       step unless readback is trivial; return a clear command-socket error.

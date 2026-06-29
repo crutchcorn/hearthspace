@@ -637,10 +637,12 @@ impl CalloopData {
                 state.render_frame(&mut backend.renderer, &mut framebuffer, damage_tracker, 0)?;
             }
             #[cfg(feature = "udev")]
-            Backend::Udev(_) => {
-                return Err(
-                    "udev rendering is not wired into the shared compositor loop yet".into(),
-                );
+            Backend::Udev(backend) => {
+                let force_full_redraw = *full_redraw > 0;
+                if force_full_redraw {
+                    *full_redraw = full_redraw.saturating_sub(1);
+                }
+                backend.render_frame(state, damage_tracker, force_full_redraw)?;
             }
         }
 

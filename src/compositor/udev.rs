@@ -4,11 +4,12 @@ use smithay::{
     backend::{
         allocator::dmabuf::Dmabuf,
         allocator::gbm::{GbmAllocator, GbmBufferFlags, GbmDevice},
-        drm::{DrmDevice, DrmDeviceFd, DrmEvent, DrmSurface},
+        allocator::{Format, Fourcc},
+        drm::{DrmDevice, DrmDeviceFd, DrmEvent, GbmBufferedSurface},
         egl::{EGLContext, EGLDevice, EGLDisplay},
-        input::InputEvent,
+        input::{InputEvent, KeyState, KeyboardKeyEvent},
         libinput::{LibinputInputBackend, LibinputSessionInterface},
-        renderer::{ImportDma, gles::GlesRenderer},
+        renderer::{Bind, ImportDma, damage::OutputDamageTracker, gles::GlesRenderer},
         session::{Event as SessionEvent, Session, libseat::LibSeatSession},
         udev::{UdevBackend, UdevEvent, all_gpus, primary_gpu},
     },
@@ -38,6 +39,8 @@ pub(super) struct UdevBackendState {
     connector_rescan_pending: bool,
     repaint_pending: bool,
     input_event_count: u64,
+    emergency_exit_ctrl_pressed: bool,
+    emergency_exit_alt_pressed: bool,
 }
 
 struct UdevDevice {
@@ -46,8 +49,7 @@ struct UdevDevice {
     drm_device: DrmDevice,
     active: bool,
     output_target: Option<KmsOutputTarget>,
-    drm_surface: Option<DrmSurface>,
-    gbm_allocator: Option<GbmAllocator<DrmDeviceFd>>,
+    gbm_surface: Option<GbmBufferedSurface<GbmAllocator<DrmDeviceFd>, ()>>,
     renderer: Option<GlesRenderer>,
 }
 
@@ -223,6 +225,11 @@ pub fn run_udev(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> {
             }
             backend.input_event_count += 1;
             log_input_event(&event);
+            if backend.handle_emergency_exit_chord(&event) {
+                println!("Native emergency exit chord pressed; stopping compositor event loop");
+                data.running = false;
+                return;
+            }
         }
 
         super::handle_input_event(&mut data.state, event);
@@ -233,7 +240,9 @@ pub fn run_udev(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> {
             DrmEvent::VBlank(crtc) => {
                 println!("DRM vblank for {:?} with metadata {:?}", crtc, metadata);
                 if let Some(backend) = udev_backend_mut(data) {
-                    backend.repaint_pending = false;
+                    if let Err(error) = backend.frame_submitted(crtc) {
+                        eprintln!("Failed to mark native frame submitted: {error}");
+                    }
                 }
             }
             DrmEvent::Error(error) => eprintln!("DRM event error: {error}"),
@@ -251,6 +260,8 @@ pub fn run_udev(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> {
         primary_device,
         devices,
         input_event_count: 0,
+        emergency_exit_ctrl_pressed: false,
+        emergency_exit_alt_pressed: false,
     };
     backend.log_summary();
     let mut data = super::create_calloop_data(
@@ -261,8 +272,8 @@ pub fn run_udev(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> {
     );
     event_loop.dispatch(Some(Duration::from_millis(0)), &mut data)?;
 
-    println!("Native backend skeleton initialized; KMS modesetting is not implemented yet");
-    Ok(())
+    println!("Native backend initialized; entering compositor event loop");
+    super::run_event_loop(event_loop, &mut data)
 }
 
 fn udev_backend_mut(data: &mut super::CalloopData) -> Option<&mut UdevBackendState> {
@@ -276,6 +287,90 @@ fn udev_backend_mut(data: &mut super::CalloopData) -> Option<&mut UdevBackendSta
 }
 
 impl UdevBackendState {
+    fn handle_emergency_exit_chord(&mut self, event: &InputEvent<LibinputInputBackend>) -> bool {
+        const KEY_ESC: u32 = 1 + 8;
+        const KEY_BACKSPACE: u32 = 14 + 8;
+        const KEY_LEFTCTRL: u32 = 29 + 8;
+        const KEY_LEFTALT: u32 = 56 + 8;
+        const KEY_RIGHTCTRL: u32 = 97 + 8;
+        const KEY_RIGHTALT: u32 = 100 + 8;
+
+        let InputEvent::Keyboard { event } = event else {
+            return false;
+        };
+        let keycode: u32 = event.key_code().into();
+        let pressed = event.state() == KeyState::Pressed;
+        match keycode {
+            KEY_LEFTCTRL | KEY_RIGHTCTRL => self.emergency_exit_ctrl_pressed = pressed,
+            KEY_LEFTALT | KEY_RIGHTALT => self.emergency_exit_alt_pressed = pressed,
+            KEY_BACKSPACE | KEY_ESC if pressed => {
+                return self.emergency_exit_ctrl_pressed && self.emergency_exit_alt_pressed;
+            }
+            _ => {}
+        }
+        false
+    }
+
+    pub(in crate::compositor) fn render_frame(
+        &mut self,
+        state: &mut super::App,
+        damage_tracker: &mut OutputDamageTracker,
+        force_full_redraw: bool,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        if self.drm_commits_paused {
+            println!("Skipping native render while DRM commits are paused");
+            return Ok(());
+        }
+
+        let Some(device) = self.primary_device.as_mut() else {
+            return Err("udev backend has no primary DRM device".into());
+        };
+        let Some(renderer) = device.renderer.as_mut() else {
+            return Err("udev renderer is not initialized".into());
+        };
+        let Some(gbm_surface) = device.gbm_surface.as_mut() else {
+            return Err("udev GBM surface is not initialized".into());
+        };
+
+        let (mut dmabuf, buffer_age) = gbm_surface.next_buffer()?;
+        let age = if force_full_redraw {
+            0
+        } else {
+            usize::from(buffer_age)
+        };
+        let damage = {
+            let mut framebuffer = renderer.bind(&mut dmabuf)?;
+            state.render_frame(renderer, &mut framebuffer, damage_tracker, age)?
+        };
+        gbm_surface.queue_buffer(None, damage, ())?;
+        self.repaint_pending = true;
+        println!(
+            "Queued native frame on CRTC {:?} with buffer age {}",
+            gbm_surface.crtc(),
+            age
+        );
+        Ok(())
+    }
+
+    pub(in crate::compositor) fn frame_submitted(
+        &mut self,
+        crtc: crtc::Handle,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let Some(gbm_surface) = self
+            .primary_device
+            .as_mut()
+            .and_then(|device| device.gbm_surface.as_mut())
+        else {
+            return Ok(());
+        };
+        if gbm_surface.crtc() != crtc {
+            return Ok(());
+        }
+        gbm_surface.frame_submitted()?;
+        self.repaint_pending = false;
+        Ok(())
+    }
+
     pub(in crate::compositor) fn import_dmabuf(
         &mut self,
         dmabuf: &Dmabuf,
@@ -399,11 +494,10 @@ impl UdevBackendState {
                 })
                 .unwrap_or_default();
             println!(
-                "Primary DRM device opened through session: {}{}; drm_surface={}; gbm_allocator={}; renderer={}",
+                "Primary DRM device opened through session: {}{}; gbm_surface={}; renderer={}",
                 device.path.display(),
                 target,
-                device.drm_surface.is_some(),
-                device.gbm_allocator.is_some(),
+                device.gbm_surface.is_some(),
                 device.renderer.is_some()
             );
         }
@@ -512,13 +606,13 @@ fn create_udev_device(
     let fd = session.open(&path, OFlags::RDWR | OFlags::CLOEXEC)?;
     let drm_fd = DrmDeviceFd::new(DeviceFd::from(fd));
     let gbm_device = GbmDevice::new(drm_fd.clone())?;
+    let egl_display = unsafe { EGLDisplay::new(gbm_device.clone())? };
+    let context = EGLContext::new(&egl_display)?;
+    let renderer = unsafe { GlesRenderer::new(context)? };
     let gbm_allocator = GbmAllocator::new(
         gbm_device,
         GbmBufferFlags::SCANOUT | GbmBufferFlags::RENDERING,
     );
-    let egl_display = unsafe { EGLDisplay::new(gbm_allocator.as_ref().clone())? };
-    let context = EGLContext::new(&egl_display)?;
-    let renderer = unsafe { GlesRenderer::new(context)? };
     // Avoid disabling existing connectors until the first real frame commit path is in place.
     let (drm_device, notifier) = DrmDevice::new(drm_fd.clone(), false)?;
     let mut device = UdevDevice {
@@ -527,8 +621,7 @@ fn create_udev_device(
         drm_device,
         active,
         output_target: None,
-        drm_surface: None,
-        gbm_allocator: Some(gbm_allocator),
+        gbm_surface: None,
         renderer: Some(renderer),
     };
     device.output_target = device.select_output_target();
@@ -542,7 +635,27 @@ fn create_udev_device(
             "Created DRM surface for connector {:?}, CRTC {:?}, mode {:?}",
             target.connector, target.crtc, target.mode
         );
-        device.drm_surface = Some(surface);
+        let renderer_formats = device
+            .renderer
+            .as_ref()
+            .map(|renderer| {
+                renderer
+                    .dmabuf_formats()
+                    .into_iter()
+                    .collect::<Vec<Format>>()
+            })
+            .unwrap_or_default();
+        let gbm_surface = GbmBufferedSurface::new(
+            surface,
+            gbm_allocator,
+            &[Fourcc::Argb8888, Fourcc::Xrgb8888],
+            renderer_formats,
+        )?;
+        println!(
+            "Created GBM buffered surface for connector {:?}, CRTC {:?}",
+            target.connector, target.crtc
+        );
+        device.gbm_surface = Some(gbm_surface);
     }
     Ok((device, notifier))
 }
