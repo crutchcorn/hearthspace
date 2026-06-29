@@ -176,9 +176,9 @@ background/shell-less compositor frame without clients.
 
 Goal: redraw only when KMS can accept the next frame.
 
-- [ ] Track per-output state: `DrmSurface`, `Output`, damage tracker, renderer or
-      render target, pending frame flag, needs modeset flag, and current size.
-- [ ] On `App::request_redraw`, mark affected native outputs dirty but do not
+- [x] Track initial single-output native state: `DrmSurface`, `Output`, damage
+      tracker, renderer/render target, pending frame flag, and current size.
+- [x] On `App::request_redraw`, mark affected native outputs dirty but do not
       immediately submit a second commit if a page flip is pending.
 - [ ] On `DrmEvent::VBlank`/page-flip completion, clear the pending flag, send
       Wayland frame callbacks for surfaces visible on that output, and schedule

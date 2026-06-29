@@ -521,6 +521,7 @@ fn run_event_loop(
     data: &mut CalloopData,
 ) -> Result<(), Box<dyn std::error::Error>> {
     data.render()?;
+    data.state.needs_redraw = false;
 
     while data.running {
         // Block until an event arrives; while animating, wake every frame.

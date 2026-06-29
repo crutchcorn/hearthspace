@@ -38,6 +38,8 @@ pub(super) struct UdevBackendState {
     drm_commits_paused: bool,
     connector_rescan_pending: bool,
     repaint_pending: bool,
+    frame_pending: bool,
+    frame_dirty: bool,
     input_event_count: u64,
     emergency_exit_ctrl_pressed: bool,
     emergency_exit_alt_pressed: bool,
@@ -248,8 +250,10 @@ pub fn run_udev(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> {
             DrmEvent::VBlank(crtc) => {
                 println!("DRM vblank for {:?} with metadata {:?}", crtc, metadata);
                 if let Some(backend) = udev_backend_mut(data) {
-                    if let Err(error) = backend.frame_submitted(crtc) {
-                        eprintln!("Failed to mark native frame submitted: {error}");
+                    match backend.frame_submitted(crtc) {
+                        Ok(true) => data.state.request_redraw(),
+                        Ok(false) => {}
+                        Err(error) => eprintln!("Failed to mark native frame submitted: {error}"),
                     }
                 }
             }
@@ -265,6 +269,8 @@ pub fn run_udev(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> {
         drm_commits_paused: !session_active,
         connector_rescan_pending: false,
         repaint_pending: false,
+        frame_pending: false,
+        frame_dirty: false,
         primary_device,
         devices,
         input_event_count: 0,
@@ -328,6 +334,12 @@ impl UdevBackendState {
     ) -> Result<(), Box<dyn std::error::Error>> {
         if self.drm_commits_paused {
             println!("Skipping native render while DRM commits are paused");
+            self.frame_dirty = true;
+            return Ok(());
+        }
+        if self.frame_pending {
+            self.frame_dirty = true;
+            println!("Native redraw requested while page flip is pending; deferring until vblank");
             return Ok(());
         }
 
@@ -352,6 +364,8 @@ impl UdevBackendState {
             state.render_frame(renderer, &mut framebuffer, damage_tracker, age)?
         };
         gbm_surface.queue_buffer(None, damage, ())?;
+        self.frame_pending = true;
+        self.frame_dirty = false;
         self.repaint_pending = true;
         println!(
             "Queued native frame on CRTC {:?} with buffer age {}",
@@ -364,20 +378,25 @@ impl UdevBackendState {
     pub(in crate::compositor) fn frame_submitted(
         &mut self,
         crtc: crtc::Handle,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    ) -> Result<bool, Box<dyn std::error::Error>> {
         let Some(gbm_surface) = self
             .primary_device
             .as_mut()
             .and_then(|device| device.gbm_surface.as_mut())
         else {
-            return Ok(());
+            return Ok(false);
         };
         if gbm_surface.crtc() != crtc {
-            return Ok(());
+            return Ok(false);
         }
         gbm_surface.frame_submitted()?;
+        self.frame_pending = false;
         self.repaint_pending = false;
-        Ok(())
+        let should_redraw = self.frame_dirty;
+        if should_redraw {
+            println!("Native page flip completed with dirty state; scheduling next frame");
+        }
+        Ok(should_redraw)
     }
 
     pub(in crate::compositor) fn import_dmabuf(
@@ -400,6 +419,8 @@ impl UdevBackendState {
         self.drm_commits_paused = true;
         self.kms_devices_active = false;
         self.repaint_pending = false;
+        self.frame_pending = false;
+        self.frame_dirty = true;
         if let Some(device) = &mut self.primary_device {
             device.active = false;
         }
@@ -420,6 +441,7 @@ impl UdevBackendState {
         self.kms_devices_active = self.primary_device.is_some();
         self.connector_rescan_pending = true;
         self.repaint_pending = self.kms_devices_active;
+        self.frame_dirty = self.kms_devices_active;
 
         if let Err(error) = self.rescan_devices() {
             eprintln!("Failed to re-scan DRM devices after session activation: {error}");
