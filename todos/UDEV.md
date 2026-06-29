@@ -99,10 +99,11 @@ without modesetting yet.
 - [x] Add `Backend::Udev(Box<udev::UdevBackendState>)` behind the same cfg.
 - [x] In `run_udev`, create a `LibSeatSession` and insert its
       `LibSeatSessionNotifier` into the calloop loop.
-- [ ] On `SessionEvent::PauseSession`, stop scheduling new DRM commits, mark KMS
-      devices inactive, and leave Wayland clients connected.
-- [ ] On `SessionEvent::ActivateSession`, reactivate devices, re-scan connectors,
-      repaint every enabled output, and resume page flips.
+- [x] On `SessionEvent::PauseSession`, stop scheduling new DRM commits, mark
+      placeholder KMS device state inactive, and leave Wayland clients connected.
+- [x] On `SessionEvent::ActivateSession`, reactivate placeholder device state,
+      re-scan DRM devices, queue connector re-scan, and queue repaint for the
+      future KMS output path.
 - [x] Create `smithay::backend::udev::UdevBackend::new(seat_name)` and process the
       initial `device_list()` before inserting it into the loop.
 - [x] Insert the `UdevBackend` source and log `Added`, `Changed`, and `Removed`

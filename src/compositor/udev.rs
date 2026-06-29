@@ -1,27 +1,38 @@
-use std::{os::fd::OwnedFd, path::PathBuf, time::Duration};
+use std::{io, os::fd::OwnedFd, path::PathBuf, time::Duration};
 
 use smithay::{
     backend::{
         input::InputEvent,
         libinput::{LibinputInputBackend, LibinputSessionInterface},
         session::{Event as SessionEvent, Session, libseat::LibSeatSession},
-        udev::{UdevBackend, UdevEvent, primary_gpu},
+        udev::{UdevBackend, UdevEvent, all_gpus, primary_gpu},
     },
-    reexports::{calloop::EventLoop, input::Libinput, rustix::fs::OFlags},
+    reexports::{
+        calloop::EventLoop,
+        input::Libinput,
+        rustix::fs::{OFlags, stat},
+    },
 };
 
 use crate::RunOptions;
 
 pub(super) struct UdevBackendState {
+    session: LibSeatSession,
+    seat_name: String,
     session_active: bool,
     primary_device: Option<UdevDevice>,
     devices: Vec<UdevDeviceInfo>,
+    kms_devices_active: bool,
+    drm_commits_paused: bool,
+    connector_rescan_pending: bool,
+    repaint_pending: bool,
     input_event_count: u64,
 }
 
 struct UdevDevice {
     path: PathBuf,
     _fd: OwnedFd,
+    active: bool,
 }
 
 struct UdevDeviceInfo {
@@ -35,24 +46,8 @@ pub fn run_udev(_options: RunOptions) -> Result<(), Box<dyn std::error::Error>> 
     println!("Hearthspace native backend acquired seat {seat_name}");
 
     let udev_backend = UdevBackend::new(&seat_name)?;
-    let devices = udev_backend
-        .device_list()
-        .map(|(device_id, path)| UdevDeviceInfo {
-            device_id: device_id as u64,
-            path: path.to_path_buf(),
-        })
-        .collect::<Vec<_>>();
-    if devices.is_empty() {
-        println!("No DRM devices found for seat {seat_name}");
-    } else {
-        for device in &devices {
-            println!(
-                "Found DRM device {} at {}",
-                device.device_id,
-                device.path.display()
-            );
-        }
-    }
+    let devices = initial_device_list(&udev_backend);
+    log_device_list(&seat_name, &devices);
 
     let primary_device = match primary_gpu(&seat_name)? {
         Some(path) => {
@@ -65,7 +60,11 @@ pub fn run_udev(_options: RunOptions) -> Result<(), Box<dyn std::error::Error>> 
                 );
             }
             let fd = session.open(&path, OFlags::RDWR | OFlags::CLOEXEC)?;
-            Some(UdevDevice { path, _fd: fd })
+            Some(UdevDevice {
+                path,
+                _fd: fd,
+                active: session.is_active(),
+            })
         }
         None => {
             println!("No primary DRM device available for seat {seat_name}");
@@ -74,7 +73,8 @@ pub fn run_udev(_options: RunOptions) -> Result<(), Box<dyn std::error::Error>> 
     };
 
     let session_active = session.is_active();
-    let mut libinput_context = Libinput::new_with_udev(LibinputSessionInterface::from(session));
+    let mut libinput_context =
+        Libinput::new_with_udev(LibinputSessionInterface::from(session.clone()));
     libinput_context
         .udev_assign_seat(&seat_name)
         .map_err(|()| format!("failed to assign libinput to seat {seat_name}"))?;
@@ -84,25 +84,22 @@ pub fn run_udev(_options: RunOptions) -> Result<(), Box<dyn std::error::Error>> 
     let handle = event_loop.handle();
 
     handle.insert_source(session_notifier, |event, _, data| match event {
-        SessionEvent::PauseSession => {
-            data.session_active = false;
-            println!("Native session paused");
-        }
-        SessionEvent::ActivateSession => {
-            data.session_active = true;
-            println!("Native session activated");
-        }
+        SessionEvent::PauseSession => data.pause_session(),
+        SessionEvent::ActivateSession => data.activate_session(),
     })?;
 
-    handle.insert_source(udev_backend, |event, _, _data| match event {
+    handle.insert_source(udev_backend, |event, _, data| match event {
         UdevEvent::Added { device_id, path } => {
             println!("DRM device added {device_id} at {}", path.display());
+            data.add_or_update_device(device_id as u64, path);
         }
         UdevEvent::Changed { device_id } => {
             println!("DRM device changed {device_id}");
+            data.connector_rescan_pending = true;
         }
         UdevEvent::Removed { device_id } => {
             println!("DRM device removed {device_id}");
+            data.remove_device(device_id as u64);
         }
     })?;
 
@@ -112,7 +109,13 @@ pub fn run_udev(_options: RunOptions) -> Result<(), Box<dyn std::error::Error>> 
     })?;
 
     let mut data = UdevBackendState {
+        session,
+        seat_name,
         session_active,
+        kms_devices_active: primary_device.is_some() && session_active,
+        drm_commits_paused: !session_active,
+        connector_rescan_pending: false,
+        repaint_pending: false,
         primary_device,
         devices,
         input_event_count: 0,
@@ -125,10 +128,103 @@ pub fn run_udev(_options: RunOptions) -> Result<(), Box<dyn std::error::Error>> 
 }
 
 impl UdevBackendState {
+    fn pause_session(&mut self) {
+        self.session_active = false;
+        self.drm_commits_paused = true;
+        self.kms_devices_active = false;
+        self.repaint_pending = false;
+        if let Some(device) = &mut self.primary_device {
+            device.active = false;
+        }
+        println!(
+            "Native session paused; DRM commits disabled and Wayland clients remain connected"
+        );
+    }
+
+    fn activate_session(&mut self) {
+        self.session_active = true;
+        self.drm_commits_paused = false;
+        if let Some(device) = &mut self.primary_device {
+            device.active = true;
+        } else if let Err(error) = self.open_primary_device() {
+            eprintln!("Failed to open primary DRM device after session activation: {error}");
+        }
+
+        self.kms_devices_active = self.primary_device.is_some();
+        self.connector_rescan_pending = true;
+        self.repaint_pending = self.kms_devices_active;
+
+        if let Err(error) = self.rescan_devices() {
+            eprintln!("Failed to re-scan DRM devices after session activation: {error}");
+        }
+
+        println!(
+            "Native session activated; DRM devices reactivated, connector rescan queued, repaint queued: {}",
+            self.repaint_pending
+        );
+    }
+
+    fn add_or_update_device(&mut self, device_id: u64, path: PathBuf) {
+        match self
+            .devices
+            .iter_mut()
+            .find(|device| device.device_id == device_id)
+        {
+            Some(device) => device.path = path,
+            None => self.devices.push(UdevDeviceInfo { device_id, path }),
+        }
+        self.connector_rescan_pending = true;
+    }
+
+    fn remove_device(&mut self, device_id: u64) {
+        let Some(index) = self
+            .devices
+            .iter()
+            .position(|device| device.device_id == device_id)
+        else {
+            return;
+        };
+        let removed = self.devices.remove(index);
+        if self
+            .primary_device
+            .as_ref()
+            .is_some_and(|device| device.path == removed.path)
+        {
+            self.primary_device = None;
+            self.kms_devices_active = false;
+            self.repaint_pending = false;
+            println!("Primary DRM device removed; KMS state marked inactive");
+        }
+        self.connector_rescan_pending = true;
+    }
+
+    fn rescan_devices(&mut self) -> io::Result<()> {
+        self.devices = current_device_list(&self.seat_name)?;
+        log_device_list(&self.seat_name, &self.devices);
+        Ok(())
+    }
+
+    fn open_primary_device(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        let Some(path) = primary_gpu(&self.seat_name)? else {
+            return Ok(());
+        };
+        let fd = self.session.open(&path, OFlags::RDWR | OFlags::CLOEXEC)?;
+        self.primary_device = Some(UdevDevice {
+            path,
+            _fd: fd,
+            active: self.session_active,
+        });
+        Ok(())
+    }
+
     fn log_summary(&self) {
         println!(
-            "Native backend session active: {}; {} DRM device(s) known; {} input event(s) processed",
+            "Native backend session active: {}; KMS active: {}; DRM commits paused: {}; connector rescan pending: {}; repaint pending: {}; {} DRM device(s) known; {} input event(s) processed",
             self.session_active,
+            self.kms_devices_active,
+            self.drm_commits_paused,
+            self.connector_rescan_pending,
+            self.repaint_pending,
             self.devices.len(),
             self.input_event_count
         );
@@ -138,6 +234,41 @@ impl UdevBackendState {
                 device.path.display()
             );
         }
+    }
+}
+
+fn initial_device_list(udev_backend: &UdevBackend) -> Vec<UdevDeviceInfo> {
+    udev_backend
+        .device_list()
+        .map(|(device_id, path)| UdevDeviceInfo {
+            device_id: device_id as u64,
+            path: path.to_path_buf(),
+        })
+        .collect()
+}
+
+fn current_device_list(seat_name: &str) -> io::Result<Vec<UdevDeviceInfo>> {
+    all_gpus(seat_name)?
+        .into_iter()
+        .map(|path| {
+            let device_id = stat(&path)?.st_rdev as u64;
+            Ok(UdevDeviceInfo { device_id, path })
+        })
+        .collect()
+}
+
+fn log_device_list(seat_name: &str, devices: &[UdevDeviceInfo]) {
+    if devices.is_empty() {
+        println!("No DRM devices found for seat {seat_name}");
+        return;
+    }
+
+    for device in devices {
+        println!(
+            "Found DRM device {} at {}",
+            device.device_id,
+            device.path.display()
+        );
     }
 }
 
