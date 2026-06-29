@@ -18,9 +18,10 @@ path with the nested `winit` backend and the headless test backend.
       and only needs a `GlesRenderer`, framebuffer, and `OutputDamageTracker`.
 - [x] `Headless` provides a useful non-winit backend reference for screenshots,
       fixed-size output setup, and offscreen rendering.
-- [ ] Output, dmabuf setup, Wayland source setup, command socket setup, and the
-      main dispatch loop are still duplicated between `run_winit` and
-      `run_headless`.
+- [x] Dmabuf setup, Wayland source setup, command socket setup, and the main
+      dispatch loop are shared between `run_winit` and `run_headless`.
+- [ ] Output creation is still backend-specific, which is correct for now but
+      means native output hotplug cannot use the current single-output shape.
 - [ ] `App` still assumes one `Output` and one `output_size`, which is enough for
       the first native milestone but not for hotplug or multi-monitor support.
 
