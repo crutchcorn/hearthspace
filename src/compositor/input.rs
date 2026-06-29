@@ -39,60 +39,8 @@ pub(in crate::compositor) fn handle_input_event<B: InputBackend>(
         }
         InputEvent::PointerMotionAbsolute { event } => {
             let time = event.time_msec();
-            let location = event.position_transformed(state.output_size().to_logical(1));
-            state.pointer_location = location;
-
-            if let Some(drag) = state.drag.as_ref() {
-                let delta = location - drag.pointer_start;
-                let new_position = super::CanvasPoint {
-                    x: drag.window_start.x + (delta.x / state.viewport_scale).round() as i32,
-                    y: drag.window_start.y + (delta.y / state.viewport_scale).round() as i32,
-                };
-                let window_id = drag.window_id;
-                if let Some(window) = state.window_mut_by_id(window_id) {
-                    window.position = new_position;
-                    state.request_redraw();
-                }
-                return;
-            }
-
-            if let Some(resize) = state.resize.as_ref() {
-                let edges = resize.edges;
-                state.cursor_icon = resize_cursor_icon(edges);
-                state.update_resize(location);
-                return;
-            }
-
-            let hit = state.hit_test(location);
-            state.cursor_icon = match &hit {
-                Some(HitTarget::ResizeBorder { edges, .. }) => resize_cursor_icon(*edges),
-                _ => CursorIcon::Default,
-            };
-            let focus = match hit {
-                Some(HitTarget::Client {
-                    window_index,
-                    surface,
-                    surface_location,
-                }) => {
-                    state.record_client_activity_for_window_index(
-                        window_index,
-                        ActivityReason::ClientInput,
-                    );
-                    Some((surface, surface_location))
-                }
-                _ => None,
-            };
-            let pointer = state.pointer.clone();
-            pointer.motion(
-                state,
-                focus,
-                &MotionEvent {
-                    location,
-                    serial: SERIAL_COUNTER.next_serial(),
-                    time,
-                },
-            );
-            pointer.frame(state);
+            let location = event.position_transformed(state.output_logical_size());
+            state.apply_pointer_motion(location, time);
         }
         InputEvent::PointerMotion { event } => {
             state.apply_pointer_motion(state.pointer_location + event.delta(), event.time_msec());
@@ -444,7 +392,7 @@ impl App {
     }
 
     fn apply_pointer_motion(&mut self, location: Point<f64, Logical>, time: u32) {
-        self.pointer_location = clamp_point_to_output(location, self.output_size().to_logical(1));
+        self.pointer_location = clamp_point_to_output(location, self.output_logical_size());
 
         if let Some(drag) = self.drag.as_ref() {
             let delta = self.pointer_location - drag.pointer_start;

@@ -223,6 +223,12 @@ impl App {
         self.primary_output.size
     }
 
+    fn output_logical_size(&self) -> Size<i32, Logical> {
+        self.primary_output
+            .size
+            .to_logical(self.primary_output.scale)
+    }
+
     #[cfg_attr(not(feature = "winit"), allow(dead_code))]
     fn set_primary_output_size(&mut self, size: Size<i32, Physical>) {
         self.primary_output.size = size;
@@ -827,7 +833,10 @@ impl CalloopData {
             }
             #[cfg(feature = "udev")]
             Backend::Udev(_) => {
-                return Err("screenshots are not implemented for the udev backend yet".into());
+                return Err(
+                    "screenshots are unsupported on the udev backend until native readback is implemented"
+                        .into(),
+                );
             }
         };
         encode_png_rgba(size, &pixels)

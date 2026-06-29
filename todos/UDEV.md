@@ -20,10 +20,10 @@ path with the nested `winit` backend and the headless test backend.
       fixed-size output setup, and offscreen rendering.
 - [x] Dmabuf setup, Wayland source setup, command socket setup, and the main
       dispatch loop are shared between `run_winit` and `run_headless`.
-- [ ] Output creation is still backend-specific, which is correct for now but
-      means native output hotplug cannot use the current single-output shape.
-- [ ] `App` still assumes one `Output` and one `output_size`, which is enough for
-      the first native milestone but not for hotplug or multi-monitor support.
+- [x] Output creation remains backend-specific for initial backend setup; dynamic
+      native output creation starts from the Step 8 hotplug work.
+- [x] `App` now wraps its single output in a `PrimaryOutput` abstraction, which is
+      enough for the first native milestone and can grow into an output set.
 
 ## Step 1: Add Feature Gates And CLI Selection
 
@@ -136,7 +136,7 @@ Goal: feed native evdev input into the existing Smithay seat.
 - [x] Reuse the generic `handle_input_event(&mut App, event)` for keyboard,
       pointer button, relative motion, absolute motion, axis, and gesture events
       where Smithay's event traits line up with winit/libinput backends.
-- [ ] Map absolute pointer events into the active output's logical geometry.
+- [x] Map absolute pointer events into the active output's logical geometry.
 - [x] Ignore unsupported tablet/touch/switch events initially with concise logs,
       then add follow-up todos when concrete hardware needs them.
 - [x] On session pause, ensure libinput devices are suspended or their events are
@@ -166,7 +166,7 @@ Goal: modeset one connected monitor and present a first Hearthspace frame.
       Wayland output state.
 - [x] Render one full frame with `App::render_frame` into a GBM-backed buffer and
       commit it to the `DrmSurface`.
-- [ ] Keep software/headless screenshots unsupported for `Backend::Udev` at this
+- [x] Keep software/headless screenshots unsupported for `Backend::Udev` at this
       step unless readback is trivial; return a clear command-socket error.
 
 Done when: running with `--tty --no-shell` modesets one monitor and displays the
