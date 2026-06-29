@@ -21,21 +21,59 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     {
         hearthspace::shell::xilem_shell::run()
     } else {
+        let backend = parse_backend_selection(&args)?;
         let headless_output_size = parse_headless_output_size(&args)?;
         let headless_output_scale = parse_headless_output_scale(&args)?;
         hearthspace::run_with_options(hearthspace::RunOptions {
             scroll_zooms_without_super: args
                 .iter()
                 .any(|arg| arg == hearthspace::config::SCROLL_ZOOMS_FLAG),
-            headless: args
-                .iter()
-                .any(|arg| arg == hearthspace::config::HEADLESS_FLAG),
+            backend,
             headless_output_size,
             headless_output_scale,
             start_shell: !args
                 .iter()
                 .any(|arg| arg == hearthspace::config::NO_SHELL_FLAG),
         })
+    }
+}
+
+fn parse_backend_selection(args: &[String]) -> Result<hearthspace::BackendSelection, String> {
+    let mut selected = Vec::new();
+    if args
+        .iter()
+        .any(|arg| arg == hearthspace::config::HEADLESS_FLAG)
+    {
+        selected.push((
+            hearthspace::config::HEADLESS_FLAG,
+            hearthspace::BackendSelection::Headless,
+        ));
+    }
+    if args.iter().any(|arg| arg == hearthspace::config::TTY_FLAG) {
+        selected.push((
+            hearthspace::config::TTY_FLAG,
+            hearthspace::BackendSelection::Udev,
+        ));
+    }
+    if args
+        .iter()
+        .any(|arg| arg == hearthspace::config::WINIT_FLAG)
+    {
+        selected.push((
+            hearthspace::config::WINIT_FLAG,
+            hearthspace::BackendSelection::Winit,
+        ));
+    }
+
+    match selected.as_slice() {
+        [] => Ok(hearthspace::BackendSelection::Auto),
+        [(_, backend)] => Ok(*backend),
+        _ => Err(format!(
+            "choose only one backend flag: {}, {}, or {}",
+            hearthspace::config::HEADLESS_FLAG,
+            hearthspace::config::TTY_FLAG,
+            hearthspace::config::WINIT_FLAG
+        )),
     }
 }
 
@@ -145,6 +183,34 @@ mod tests {
                 "3".into(),
             ]),
             Ok(Some(3))
+        );
+    }
+
+    #[test]
+    fn parses_backend_selection() {
+        assert!(matches!(
+            parse_backend_selection(&["hearthspace".into()]),
+            Ok(hearthspace::BackendSelection::Auto)
+        ));
+        assert!(matches!(
+            parse_backend_selection(&["hearthspace".into(), "--headless".into()]),
+            Ok(hearthspace::BackendSelection::Headless)
+        ));
+        assert!(matches!(
+            parse_backend_selection(&["hearthspace".into(), "--tty".into()]),
+            Ok(hearthspace::BackendSelection::Udev)
+        ));
+        assert!(matches!(
+            parse_backend_selection(&["hearthspace".into(), "--winit".into()]),
+            Ok(hearthspace::BackendSelection::Winit)
+        ));
+    }
+
+    #[test]
+    fn rejects_conflicting_backend_selection() {
+        assert!(
+            parse_backend_selection(&["hearthspace".into(), "--headless".into(), "--tty".into()])
+                .is_err()
         );
     }
 

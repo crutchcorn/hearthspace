@@ -5,6 +5,7 @@ use std::{
 
 use crate::{RunOptions, config::*, geometry::CanvasPoint, shell::app_catalog::AppCatalog};
 
+mod cursor;
 mod handlers;
 mod idle;
 mod input;
@@ -15,6 +16,7 @@ mod viewport;
 mod windows;
 
 use idle::{IdleTransition, WindowIdleDaemon};
+#[cfg(feature = "winit")]
 use input::handle_input_event;
 use rendering::send_frames_surface_tree;
 use shell_integration::{
@@ -23,7 +25,9 @@ use shell_integration::{
 use viewport::ViewportAnimation;
 use windows::ResizeEdges;
 
-use smithay::reexports::winit::window::CursorIcon;
+use cursor::CursorIcon;
+#[cfg(feature = "winit")]
+use smithay::backend::winit::{self, WinitEvent};
 use smithay::{
     backend::{
         allocator::Fourcc,
@@ -35,7 +39,6 @@ use smithay::{
             element::Id,
             gles::{GlesRenderbuffer, GlesRenderer},
         },
-        winit::{self, WinitEvent},
     },
     delegate_compositor, delegate_data_device, delegate_dmabuf, delegate_output, delegate_seat,
     delegate_shm, delegate_xdg_decoration, delegate_xdg_shell,
@@ -179,6 +182,7 @@ struct App {
     background_dot_ids: Vec<Id>,
 }
 
+#[cfg(feature = "winit")]
 pub fn run_winit(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> {
     let mut display: Display<App> = Display::new()?;
     let dh = display.handle();
@@ -556,6 +560,7 @@ pub fn run_headless(options: RunOptions) -> Result<(), Box<dyn std::error::Error
 }
 
 enum Backend {
+    #[cfg(feature = "winit")]
     Winit(Box<smithay::backend::winit::WinitGraphicsBackend<GlesRenderer>>),
     Headless(Box<HeadlessBackend>),
 }
@@ -590,6 +595,7 @@ impl CalloopData {
             return;
         }
         self.applied_cursor = self.state.cursor_icon;
+        #[cfg(feature = "winit")]
         if let Backend::Winit(backend) = &self.backend {
             backend.window().set_cursor(self.applied_cursor);
         }
@@ -602,6 +608,7 @@ impl CalloopData {
         let CalloopData { state, backend, .. } = self;
         for (dmabuf, notifier) in state.pending_dmabuf_imports.drain(..) {
             let import = match backend {
+                #[cfg(feature = "winit")]
                 Backend::Winit(backend) => backend.renderer().import_dmabuf(&dmabuf, None),
                 Backend::Headless(backend) => backend.renderer.import_dmabuf(&dmabuf, None),
             };
@@ -631,6 +638,7 @@ impl CalloopData {
             ..
         } = self;
         match backend {
+            #[cfg(feature = "winit")]
             Backend::Winit(backend) => {
                 // `buffer_age` is an `eglQuerySurface` that only succeeds while
                 // the window surface is the current EGL draw surface. After a
@@ -690,6 +698,7 @@ impl CalloopData {
         let mut screenshot_damage = OutputDamageTracker::new(size, 1.0, Transform::Flipped180);
         let region = Rectangle::from_size(Size::<i32, BufferCoord>::from((size.w, size.h)));
         let pixels = match backend {
+            #[cfg(feature = "winit")]
             Backend::Winit(backend) => {
                 let (renderer, mut framebuffer) = backend.bind()?;
                 state.render_frame(renderer, &mut framebuffer, &mut screenshot_damage, 0)?;

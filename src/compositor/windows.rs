@@ -336,6 +336,7 @@ impl App {
         surface.send_configure();
     }
 
+    #[cfg_attr(not(feature = "winit"), allow(dead_code))]
     pub(super) fn configure_shell_bars(&self) {
         for window in &self.windows {
             if window.kind == ManagedWindowKind::ShellBar {

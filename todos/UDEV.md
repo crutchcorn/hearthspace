@@ -29,7 +29,7 @@ path with the nested `winit` backend and the headless test backend.
 Goal: compile the current development path by default while allowing a native
 build to opt into the heavier DRM stack.
 
-- [ ] Move Smithay backend features out of the dependency line and into crate
+- [x] Move Smithay backend features out of the dependency line and into crate
       features.
 
       ```toml
@@ -46,19 +46,23 @@ build to opt into the heavier DRM stack.
       ]
       ```
 
-- [ ] Keep shared Smithay features on the dependency itself:
+- [x] Keep shared Smithay features on the dependency itself:
       `desktop`, `renderer_gl`, and `wayland_frontend`.
-- [ ] Gate winit imports and `run_winit` with `#[cfg(feature = "winit")]`.
-- [ ] Gate or genericize `src/compositor/input.rs`, which currently imports
+- [x] Gate winit imports and `run_winit` with `#[cfg(feature = "winit")]`.
+- [x] Gate or genericize `src/compositor/input.rs`, which currently imports
       `smithay::backend::winit::WinitInput` directly.
-- [ ] Add `--tty` and `--winit` constants in `src/config.rs`.
-- [ ] Extend `RunOptions` with a backend selection enum instead of more booleans:
+- [x] Add crate-level `winit` and `udev` feature names for startup/backend cfgs.
+- [x] Add `--tty` and `--winit` constants in `src/config.rs`.
+- [x] Extend `RunOptions` with a backend selection enum instead of more booleans:
       `Auto`, `Winit`, `Udev`, `Headless`.
-- [ ] Select the backend in `main.rs` using:
+- [x] Select the backend in `main.rs` using:
       `--headless` -> headless, `--winit` -> winit, `--tty` -> udev, otherwise
       nested when `WAYLAND_DISPLAY` or `DISPLAY` exists, native otherwise.
-- [ ] Return a clear error when a selected backend was not compiled in, for
+- [x] Reject conflicting explicit backend flags.
+- [x] Return a clear error when a selected backend was not compiled in, for
       example `--tty requires rebuilding with --features udev`.
+- [x] Return a clear placeholder error when `--features udev -- --tty` reaches
+      the selected-but-not-implemented native backend.
 
 Done when: `cargo check`, `cargo check --no-default-features --features udev`,
 and `cargo check --features udev` reach backend-selection code without feature

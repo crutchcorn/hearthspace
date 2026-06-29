@@ -6,8 +6,18 @@ rust-version = "1.93.1"
 license = "Apache-2.0"
 
 [features]
+default = ["winit"]
 e2e = ["dep:waydriver", "dep:waydriver-hearthspace"]
 test-apps = ["dep:gtk"]
+udev = [
+    "smithay/backend_drm",
+    "smithay/backend_gbm",
+    "smithay/backend_libinput",
+    "smithay/backend_session_libseat",
+    "smithay/backend_udev",
+    "smithay/renderer_multi",
+]
+winit = ["smithay/backend_winit"]
 
 [dependencies]
 async-io = "2.3.3"
@@ -34,7 +44,7 @@ fontique = { version = "0.8.0", features = ["fontconfig-dlopen"] }
 # already, so this only fixes the version we link against.
 image = { version = "0.25", default-features = false }
 png = "0.18.1"
-smithay = { version = "0.7.0", default-features = false, features = ["backend_winit", "desktop", "renderer_gl", "wayland_frontend"] }
+smithay = { version = "0.7.0", default-features = false, features = ["desktop", "renderer_gl", "wayland_frontend"] }
 tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
 wayland-protocols = { version = "0.32.8", features = ["server"] }
 wayland-server = "0.31.9"

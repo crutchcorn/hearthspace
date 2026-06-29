@@ -1,24 +1,25 @@
+#![cfg_attr(not(feature = "winit"), allow(dead_code))]
+
 use smithay::{
-    backend::{
-        input::{
-            AbsolutePositionEvent, Axis, ButtonState, Event, InputEvent, KeyState,
-            KeyboardKeyEvent, PointerAxisEvent, PointerButtonEvent,
-        },
-        winit::WinitInput,
+    backend::input::{
+        AbsolutePositionEvent, Axis, ButtonState, Event, InputBackend, InputEvent, KeyState,
+        KeyboardKeyEvent, PointerAxisEvent, PointerButtonEvent,
     },
     input::{
         keyboard::{FilterResult, keysyms},
         pointer::{AxisFrame, ButtonEvent, MotionEvent},
     },
-    reexports::winit::window::CursorIcon,
     utils::{Logical, Point, SERIAL_COUNTER},
 };
 
 use crate::config::{SCROLL_ZOOM_SENSITIVITY, WHEEL_SCROLL_PIXEL_EQUIVALENT};
 
-use super::{App, DragState, HitTarget, idle::ActivityReason, windows::resize_cursor_icon};
+use super::{
+    App, DragState, HitTarget, cursor::CursorIcon, idle::ActivityReason,
+    windows::resize_cursor_icon,
+};
 
-pub(super) fn handle_input_event(state: &mut App, event: InputEvent<WinitInput>) {
+pub(super) fn handle_input_event<B: InputBackend>(state: &mut App, event: InputEvent<B>) {
     match event {
         InputEvent::Keyboard { event } => {
             let time = event.time_msec();
@@ -231,7 +232,10 @@ pub(super) fn handle_input_event(state: &mut App, event: InputEvent<WinitInput>)
     }
 }
 
-fn axis_frame_from_event(event: &impl PointerAxisEvent<WinitInput>, time: u32) -> AxisFrame {
+fn axis_frame_from_event<B: InputBackend>(
+    event: &impl PointerAxisEvent<B>,
+    time: u32,
+) -> AxisFrame {
     let mut frame = AxisFrame::new(time)
         .source(event.source())
         .relative_direction(Axis::Horizontal, event.relative_direction(Axis::Horizontal))
@@ -241,9 +245,9 @@ fn axis_frame_from_event(event: &impl PointerAxisEvent<WinitInput>, time: u32) -
     add_axis_to_frame(frame, event, Axis::Vertical)
 }
 
-fn add_axis_to_frame(
+fn add_axis_to_frame<B: InputBackend>(
     mut frame: AxisFrame,
-    event: &impl PointerAxisEvent<WinitInput>,
+    event: &impl PointerAxisEvent<B>,
     axis: Axis,
 ) -> AxisFrame {
     if let Some(amount) = scroll_amount_for_axis(event, axis) {
@@ -261,7 +265,10 @@ fn add_axis_to_frame(
     frame
 }
 
-fn scroll_amount_for_axis(event: &impl PointerAxisEvent<WinitInput>, axis: Axis) -> Option<f64> {
+fn scroll_amount_for_axis<B: InputBackend>(
+    event: &impl PointerAxisEvent<B>,
+    axis: Axis,
+) -> Option<f64> {
     event.amount(axis).or_else(|| {
         event
             .amount_v120(axis)
@@ -499,7 +506,7 @@ impl App {
         self.scroll_zooms_without_super || self.super_modifier_active()
     }
 
-    fn zoom_from_scroll(&mut self, event: &impl PointerAxisEvent<WinitInput>) -> bool {
+    fn zoom_from_scroll<B: InputBackend>(&mut self, event: &impl PointerAxisEvent<B>) -> bool {
         let Some(scroll_amount) = scroll_amount_for_axis(event, Axis::Vertical) else {
             return false;
         };

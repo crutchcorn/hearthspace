@@ -86,6 +86,8 @@ cargo run -- --headless
 cargo run -- --headless --headless-size 1280x720
 cargo run -- --headless --headless-scale 2
 cargo run -- --headless --no-shell
+cargo run -- --winit
+cargo run --features udev -- --tty
 ```
 
 `--scroll-zooms` makes vertical scroll events zoom the canvas without holding
@@ -107,6 +109,10 @@ headless backend. The default is `1`; both `--headless-scale 2` and
 
 `--no-shell` skips spawning the Xilem shell client. This is useful for headless
 harnesses that want to launch only the client under test.
+
+`--winit` forces the nested development backend. `--tty` selects the native
+DRM/KMS backend path; it currently requires `--features udev` and reaches a
+placeholder error until the backend is implemented.
 
 The shell/control socket is `hearthspace-shell.sock` in `XDG_RUNTIME_DIR`. Shell
 clients receive its full path through `HEARTHSPACE_COMMAND_SOCKET`, but tests can
