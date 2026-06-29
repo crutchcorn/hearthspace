@@ -1,14 +1,19 @@
-use std::{io, path::PathBuf, time::Duration};
+use std::{io, os::unix::fs::MetadataExt, path::PathBuf, time::Duration};
 
 use smithay::{
     backend::{
-        drm::{DrmDevice, DrmDeviceFd, DrmEvent},
+        allocator::dmabuf::Dmabuf,
+        allocator::gbm::{GbmAllocator, GbmBufferFlags, GbmDevice},
+        drm::{DrmDevice, DrmDeviceFd, DrmEvent, DrmSurface},
+        egl::{EGLContext, EGLDevice, EGLDisplay},
         input::InputEvent,
         libinput::{LibinputInputBackend, LibinputSessionInterface},
+        renderer::{ImportDma, gles::GlesRenderer},
         session::{Event as SessionEvent, Session, libseat::LibSeatSession},
         udev::{UdevBackend, UdevEvent, all_gpus, primary_gpu},
     },
-    reexports::drm::control::{Device as ControlDevice, connector},
+    output::{PhysicalProperties, Subpixel},
+    reexports::drm::control::{Device as ControlDevice, Mode, connector, crtc},
     reexports::{
         input::Libinput,
         rustix::fs::{OFlags, stat},
@@ -40,11 +45,39 @@ struct UdevDevice {
     _drm_fd: DrmDeviceFd,
     drm_device: DrmDevice,
     active: bool,
+    output_target: Option<KmsOutputTarget>,
+    drm_surface: Option<DrmSurface>,
+    gbm_allocator: Option<GbmAllocator<DrmDeviceFd>>,
+    renderer: Option<GlesRenderer>,
+}
+
+#[derive(Debug, Clone)]
+struct KmsOutputTarget {
+    connector: connector::Handle,
+    crtc: crtc::Handle,
+    mode: Mode,
+    connector_name: String,
+    physical_size_mm: (i32, i32),
 }
 
 struct UdevDeviceInfo {
     device_id: u64,
     path: PathBuf,
+}
+
+impl KmsOutputTarget {
+    fn output_size(&self) -> Size<i32, Physical> {
+        let (width, height) = self.mode.size();
+        Size::from((i32::from(width), i32::from(height)))
+    }
+
+    fn refresh_millihz(&self) -> i32 {
+        let refresh_hz = self.mode.vrefresh();
+        if refresh_hz == 0 {
+            return 60_000;
+        }
+        i32::try_from(refresh_hz.saturating_mul(1000)).unwrap_or(60_000)
+    }
 }
 
 pub fn run_udev(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> {
@@ -95,9 +128,45 @@ pub fn run_udev(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> {
 
     let display: Display<super::App> = Display::new()?;
     let dh = display.handle();
-    let output_size = Size::<i32, Physical>::from((HEADLESS_OUTPUT_WIDTH, HEADLESS_OUTPUT_HEIGHT));
-    let output = super::create_output(&dh, output_size, 1);
-    let dmabuf = super::create_dmabuf_global(&dh, Vec::new(), None)?;
+    let output_target = primary_device
+        .as_ref()
+        .and_then(|device| device.output_target.as_ref());
+    let output_size = output_target
+        .map(KmsOutputTarget::output_size)
+        .unwrap_or_else(|| {
+            Size::<i32, Physical>::from((HEADLESS_OUTPUT_WIDTH, HEADLESS_OUTPUT_HEIGHT))
+        });
+    let output = if let Some(target) = output_target {
+        super::create_output_with_properties(
+            &dh,
+            target.connector_name.clone(),
+            PhysicalProperties {
+                size: target.physical_size_mm.into(),
+                subpixel: Subpixel::Unknown,
+                make: "DRM".into(),
+                model: target.connector_name.clone(),
+            },
+            output_size,
+            1,
+            target.refresh_millihz(),
+        )
+    } else {
+        super::create_output(&dh, output_size, 1)
+    };
+    let (dmabuf_formats, render_node_dev) = primary_device
+        .as_ref()
+        .and_then(|device| device.renderer.as_ref())
+        .map(|renderer| {
+            let formats = renderer.dmabuf_formats().into_iter().collect::<Vec<_>>();
+            let render_node_dev = EGLDevice::device_for_display(renderer.egl_context().display())
+                .ok()
+                .and_then(|device| device.render_device_path().ok())
+                .and_then(|path| std::fs::metadata(path).ok())
+                .map(|metadata| metadata.rdev());
+            (formats, render_node_dev)
+        })
+        .unwrap_or_default();
+    let dmabuf = super::create_dmabuf_global(&dh, dmabuf_formats, render_node_dev)?;
     let app_options = RunOptions {
         start_shell: false,
         ..options
@@ -207,6 +276,21 @@ fn udev_backend_mut(data: &mut super::CalloopData) -> Option<&mut UdevBackendSta
 }
 
 impl UdevBackendState {
+    pub(in crate::compositor) fn import_dmabuf(
+        &mut self,
+        dmabuf: &Dmabuf,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let Some(renderer) = self
+            .primary_device
+            .as_mut()
+            .and_then(|device| device.renderer.as_mut())
+        else {
+            return Err("udev renderer is not initialized".into());
+        };
+        renderer.import_dmabuf(dmabuf, None)?;
+        Ok(())
+    }
+
     fn pause_session(&mut self) {
         self.session_active = false;
         self.drm_commits_paused = true;
@@ -304,22 +388,36 @@ impl UdevBackendState {
             self.input_event_count
         );
         if let Some(device) = &self.primary_device {
+            let target = device
+                .output_target
+                .as_ref()
+                .map(|target| {
+                    format!(
+                        "; selected connector {:?}, CRTC {:?}, mode {:?}",
+                        target.connector, target.crtc, target.mode
+                    )
+                })
+                .unwrap_or_default();
             println!(
-                "Primary DRM device opened through session: {}",
-                device.path.display()
+                "Primary DRM device opened through session: {}{}; drm_surface={}; gbm_allocator={}; renderer={}",
+                device.path.display(),
+                target,
+                device.drm_surface.is_some(),
+                device.gbm_allocator.is_some(),
+                device.renderer.is_some()
             );
         }
     }
 }
 
 impl UdevDevice {
-    fn log_connectors(&self) {
+    fn select_output_target(&self) -> Option<KmsOutputTarget> {
         let Ok(resources) = self.drm_device.resource_handles() else {
             eprintln!(
                 "Failed to query DRM resource handles for {}",
                 self.path.display()
             );
-            return;
+            return None;
         };
 
         let crtcs = resources.crtcs();
@@ -330,6 +428,7 @@ impl UdevDevice {
             crtcs.len()
         );
 
+        let mut selected = None;
         for connector_handle in resources.connectors() {
             let Ok(info) = self.drm_device.get_connector(*connector_handle, true) else {
                 eprintln!("Failed to query DRM connector {:?}", connector_handle);
@@ -349,10 +448,59 @@ impl UdevDevice {
                         "Preferred/first mode for {:?}: {:?}",
                         connector_handle, mode
                     );
+                    if selected.is_none() {
+                        let crtc = info
+                            .current_encoder()
+                            .and_then(|encoder| self.drm_device.get_encoder(encoder).ok())
+                            .and_then(|encoder| encoder.crtc())
+                            .or_else(|| {
+                                info.encoders().iter().find_map(|encoder| {
+                                    self.drm_device.get_encoder(*encoder).ok().and_then(
+                                        |encoder_info| {
+                                            resources
+                                                .filter_crtcs(encoder_info.possible_crtcs())
+                                                .into_iter()
+                                                .next()
+                                        },
+                                    )
+                                })
+                            });
+                        if let Some(crtc) = crtc {
+                            let physical_size_mm = info
+                                .size()
+                                .map(|(width, height)| {
+                                    (
+                                        i32::try_from(width).unwrap_or(0),
+                                        i32::try_from(height).unwrap_or(0),
+                                    )
+                                })
+                                .unwrap_or((0, 0));
+                            selected = Some(KmsOutputTarget {
+                                connector: *connector_handle,
+                                crtc,
+                                mode: *mode,
+                                connector_name: format!(
+                                    "{}-{}",
+                                    info.interface().as_str(),
+                                    info.interface_id()
+                                ),
+                                physical_size_mm,
+                            });
+                        }
+                    }
                 }
                 println!("CRTC candidates for {:?}: {:?}", connector_handle, crtcs);
             }
         }
+        if let Some(target) = &selected {
+            println!(
+                "Selected KMS target connector {:?}, CRTC {:?}, mode {:?}",
+                target.connector, target.crtc, target.mode
+            );
+        } else {
+            println!("No connected DRM connector with a usable CRTC was found");
+        }
+        selected
     }
 }
 
@@ -363,15 +511,39 @@ fn create_udev_device(
 ) -> Result<(UdevDevice, smithay::backend::drm::DrmDeviceNotifier), Box<dyn std::error::Error>> {
     let fd = session.open(&path, OFlags::RDWR | OFlags::CLOEXEC)?;
     let drm_fd = DrmDeviceFd::new(DeviceFd::from(fd));
-    // Enumeration only: do not disable connectors until we create a real KMS surface.
+    let gbm_device = GbmDevice::new(drm_fd.clone())?;
+    let gbm_allocator = GbmAllocator::new(
+        gbm_device,
+        GbmBufferFlags::SCANOUT | GbmBufferFlags::RENDERING,
+    );
+    let egl_display = unsafe { EGLDisplay::new(gbm_allocator.as_ref().clone())? };
+    let context = EGLContext::new(&egl_display)?;
+    let renderer = unsafe { GlesRenderer::new(context)? };
+    // Avoid disabling existing connectors until the first real frame commit path is in place.
     let (drm_device, notifier) = DrmDevice::new(drm_fd.clone(), false)?;
-    let device = UdevDevice {
+    let mut device = UdevDevice {
         path,
         _drm_fd: drm_fd,
         drm_device,
         active,
+        output_target: None,
+        drm_surface: None,
+        gbm_allocator: Some(gbm_allocator),
+        renderer: Some(renderer),
     };
-    device.log_connectors();
+    device.output_target = device.select_output_target();
+    if let Some(target) = device.output_target.clone() {
+        let surface = device.drm_device.create_surface(
+            target.crtc,
+            target.mode,
+            std::slice::from_ref(&target.connector),
+        )?;
+        println!(
+            "Created DRM surface for connector {:?}, CRTC {:?}, mode {:?}",
+            target.connector, target.crtc, target.mode
+        );
+        device.drm_surface = Some(surface);
+    }
     Ok((device, notifier))
 }
 

@@ -153,14 +153,16 @@ Goal: modeset one connected monitor and present a first Hearthspace frame.
       `DrmDeviceNotifier` into calloop.
 - [x] Enumerate connectors, filter connected connectors with modes, and choose a
       preferred/first mode for logging.
-- [ ] Pick a compatible CRTC/plane assignment for the first connected connector.
-- [ ] Create a `DrmSurface` for that connector/CRTC/mode.
-- [ ] Create a GBM device/allocator for the DRM fd.
-- [ ] Create an EGL/GLES renderer backed by GBM rather than a winit surface or
+- [x] Pick a compatible CRTC candidate for the first connected connector.
+- [x] Let Smithay pick and claim a primary plane for the selected CRTC through
+      `DrmDevice::create_surface`.
+- [x] Create a `DrmSurface` for that connector/CRTC/mode.
+- [x] Create a GBM device/allocator for the DRM fd.
+- [x] Create an EGL/GLES renderer backed by GBM rather than a winit surface or
       surfaceless display.
-- [ ] Create a Smithay `Output` using connector metadata instead of the current
+- [x] Create a Smithay `Output` using connector metadata instead of the current
       hardcoded `hearthspace-0`/`Nested Canvas` values.
-- [ ] Use the chosen mode's pixel size and refresh for `OutputDamageTracker` and
+- [x] Use the chosen mode's pixel size and refresh for `OutputDamageTracker` and
       Wayland output state.
 - [ ] Render one full frame with `App::render_frame` into a GBM-backed buffer and
       commit it to the `DrmSurface`.

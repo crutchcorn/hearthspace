@@ -570,8 +570,16 @@ impl CalloopData {
                 Backend::Winit(backend) => backend.renderer().import_dmabuf(&dmabuf, None),
                 Backend::Headless(backend) => backend.renderer.import_dmabuf(&dmabuf, None),
                 #[cfg(feature = "udev")]
-                Backend::Udev(_) => {
-                    notifier.failed();
+                Backend::Udev(backend) => {
+                    match backend.import_dmabuf(&dmabuf) {
+                        Ok(()) => {
+                            let _ = notifier.successful::<App>();
+                        }
+                        Err(error) => {
+                            eprintln!("Failed to import client dmabuf: {error}");
+                            notifier.failed();
+                        }
+                    }
                     continue;
                 }
             };
@@ -740,7 +748,8 @@ pub(in crate::compositor) fn create_output(
     size: Size<i32, Physical>,
     scale: i32,
 ) -> Output {
-    let output = Output::new(
+    create_output_with_properties(
+        dh,
         "hearthspace-0".into(),
         PhysicalProperties {
             size: (340, 190).into(),
@@ -748,17 +757,38 @@ pub(in crate::compositor) fn create_output(
             make: "Hearthspace".into(),
             model: "Nested Canvas".into(),
         },
-    );
+        size,
+        scale,
+        60_000,
+    )
+}
+
+pub(in crate::compositor) fn create_output_with_properties(
+    dh: &DisplayHandle,
+    name: String,
+    properties: PhysicalProperties,
+    size: Size<i32, Physical>,
+    scale: i32,
+    refresh: i32,
+) -> Output {
+    let output = Output::new(name, properties);
     output.create_global::<App>(dh);
-    update_output_mode(&output, size, scale);
+    update_output_mode_with_refresh(&output, size, scale, refresh);
     output
 }
 
+#[cfg_attr(not(feature = "winit"), allow(dead_code))]
 fn update_output_mode(output: &Output, size: Size<i32, Physical>, scale: i32) {
-    let mode = Mode {
-        size,
-        refresh: 60_000,
-    };
+    update_output_mode_with_refresh(output, size, scale, 60_000);
+}
+
+fn update_output_mode_with_refresh(
+    output: &Output,
+    size: Size<i32, Physical>,
+    scale: i32,
+    refresh: i32,
+) {
+    let mode = Mode { size, refresh };
     output.set_preferred(mode);
     output.change_current_state(
         Some(mode),
