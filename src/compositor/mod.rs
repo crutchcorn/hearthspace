@@ -450,7 +450,7 @@ pub(in crate::compositor) fn create_calloop_data(
         state,
         display,
         backend,
-        damage_tracker: OutputDamageTracker::new(output_size, 1.0, Transform::Flipped180),
+        damage_tracker: OutputDamageTracker::new(output_size, 1.0, Transform::Normal),
         start_time,
         running: true,
         exit_at: exit_after.map(|duration| start_time + duration),
