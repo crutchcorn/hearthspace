@@ -55,7 +55,7 @@ struct UdevDevice {
     renderer: Option<GlesRenderer>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 struct KmsOutputTarget {
     connector: connector::Handle,
     crtc: crtc::Handle,
@@ -224,7 +224,7 @@ pub fn run_udev(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> {
         UdevEvent::Changed { device_id } => {
             println!("DRM device changed {device_id}");
             if let Some(backend) = udev_backend_mut(data) {
-                backend.connector_rescan_pending = true;
+                backend.handle_device_changed(device_id as u64);
             }
             data.full_redraw = data.full_redraw.max(1);
             data.state.request_redraw();
@@ -499,6 +499,37 @@ impl UdevBackendState {
             None => self.devices.push(UdevDeviceInfo { device_id, path }),
         }
         self.connector_rescan_pending = true;
+    }
+
+    fn handle_device_changed(&mut self, device_id: u64) {
+        self.connector_rescan_pending = true;
+        if let Err(error) = self.rescan_devices() {
+            eprintln!("Failed to re-scan DRM devices after device change: {error}");
+        }
+
+        let Some(device) = self.primary_device.as_mut() else {
+            return;
+        };
+        if device.drm_fd.dev_id().ok().map(|id| id as u64) != Some(device_id) {
+            println!("Changed DRM device {device_id} is not the selected primary device");
+            return;
+        }
+
+        let previous_target = device.output_target.clone();
+        let next_target = device.select_output_target();
+        if previous_target == next_target {
+            println!("Primary DRM connector state re-scanned; selected output is unchanged");
+            self.connector_rescan_pending = false;
+            return;
+        }
+
+        println!(
+            "Primary DRM connector selection changed from {:?} to {:?}; output rebuild remains pending",
+            previous_target, next_target
+        );
+        device.output_target = next_target;
+        self.frame_dirty = true;
+        self.repaint_pending = true;
     }
 
     fn remove_device(&mut self, device_id: u64) {

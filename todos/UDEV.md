@@ -216,7 +216,7 @@ Goal: move from one hardcoded output to a connector-backed output set.
 
 - [x] Replace `App::output` and `App::output_size` with an output collection or a
       primary-output abstraction that can grow to multiple outputs.
-- [ ] On udev `Changed`, re-enumerate connectors for the affected GPU.
+- [x] On udev `Changed`, re-enumerate connectors for the affected GPU.
 - [ ] Add newly connected connectors as Smithay `Output`s with globals.
 - [ ] Disable removed/disconnected outputs and destroy or update their globals in
       the Smithay output manager.
