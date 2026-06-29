@@ -201,8 +201,14 @@ pub(in crate::compositor) struct DmabufSetup {
     global: DmabufGlobal,
 }
 
+pub(in crate::compositor) fn create_termination_signals()
+-> Result<Signals, Box<dyn std::error::Error>> {
+    Ok(Signals::new(&[Signal::SIGINT, Signal::SIGTERM])?)
+}
+
 #[cfg(feature = "winit")]
 pub fn run_winit(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> {
+    let termination_signals = create_termination_signals()?;
     let display: Display<App> = Display::new()?;
     let dh = display.handle();
 
@@ -230,7 +236,14 @@ pub fn run_winit(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> 
         event_loop,
         handle,
         app: state,
-    } = initialize_app(display, options, output_size, output, dmabuf)?;
+    } = initialize_app(
+        display,
+        options,
+        output_size,
+        output,
+        dmabuf,
+        termination_signals,
+    )?;
 
     // Winit drives input and resize events; it is itself a calloop event source.
     handle.insert_source(winit, |event, _, data| match event {
@@ -270,6 +283,7 @@ pub fn run_winit(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> 
 }
 
 pub fn run_headless(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> {
+    let termination_signals = create_termination_signals()?;
     let display: Display<App> = Display::new()?;
     let dh = display.handle();
 
@@ -297,7 +311,14 @@ pub fn run_headless(options: RunOptions) -> Result<(), Box<dyn std::error::Error
         event_loop,
         app: state,
         ..
-    } = initialize_app(display, options, output_size, output, dmabuf)?;
+    } = initialize_app(
+        display,
+        options,
+        output_size,
+        output,
+        dmabuf,
+        termination_signals,
+    )?;
 
     println!("Headless Hearthspace running on WAYLAND_DISPLAY={WAYLAND_DISPLAY_NAME}");
     if state.scroll_zooms_without_super {
@@ -340,6 +361,7 @@ pub(in crate::compositor) fn initialize_app(
     output_size: Size<i32, Physical>,
     output: Output,
     dmabuf: DmabufSetup,
+    termination_signals: Signals,
 ) -> Result<AppInit, Box<dyn std::error::Error>> {
     let dh = display.handle();
     let compositor_state = CompositorState::new::<App>(&dh);
@@ -357,7 +379,8 @@ pub(in crate::compositor) fn initialize_app(
 
     let event_loop: EventLoop<CalloopData> = EventLoop::try_new()?;
     let handle = event_loop.handle();
-    let command_socket_path = register_common_event_sources(&mut display, &handle)?;
+    let command_socket_path =
+        register_common_event_sources(&mut display, &handle, termination_signals)?;
 
     let app = App {
         compositor_state,
@@ -433,17 +456,15 @@ pub(in crate::compositor) fn create_calloop_data(
 fn register_common_event_sources(
     display: &mut Display<App>,
     handle: &LoopHandle<'static, CalloopData>,
+    termination_signals: Signals,
 ) -> Result<std::path::PathBuf, Box<dyn std::error::Error>> {
-    handle.insert_source(
-        Signals::new(&[Signal::SIGINT, Signal::SIGTERM])?,
-        |event, _, data| {
-            println!(
-                "Received {:?}; stopping compositor event loop",
-                event.signal()
-            );
-            data.running = false;
-        },
-    )?;
+    handle.insert_source(termination_signals, |event, _, data| {
+        println!(
+            "Received {:?}; stopping compositor event loop",
+            event.signal()
+        );
+        data.running = false;
+    })?;
 
     let command_socket_path = command_socket_path();
     remove_stale_socket(&command_socket_path)?;

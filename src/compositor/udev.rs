@@ -83,6 +83,7 @@ impl KmsOutputTarget {
 }
 
 pub fn run_udev(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> {
+    let termination_signals = super::create_termination_signals()?;
     let (mut session, session_notifier) = LibSeatSession::new()?;
     let seat_name = session.seat();
     println!("Hearthspace native backend acquired seat {seat_name}");
@@ -178,7 +179,14 @@ pub fn run_udev(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> {
         mut event_loop,
         handle,
         app,
-    } = super::initialize_app(display, app_options, output_size, output, dmabuf)?;
+    } = super::initialize_app(
+        display,
+        app_options,
+        output_size,
+        output,
+        dmabuf,
+        termination_signals,
+    )?;
 
     handle.insert_source(session_notifier, |event, _, data| match event {
         SessionEvent::PauseSession => {
