@@ -72,20 +72,20 @@ resolution errors.
 
 Goal: avoid copying all of `run_winit` again for `run_udev`.
 
-- [ ] Introduce a small shared initializer that creates the Wayland display,
-      Smithay globals, seat, pointer, keyboard, app catalog, popup manager, and
-      event loop handle.
-- [ ] Keep backend-specific values as parameters: initial output metadata, output
+- [x] Introduce a small shared initializer that receives the backend-created
+      Wayland display and creates Smithay globals, seat, pointer, keyboard, app
+      catalog, popup manager, and event loop handle.
+- [x] Keep backend-specific values as parameters: initial output metadata, output
       size, scale, dmabuf formats, dmabuf main device, and command socket label.
-- [ ] Extract dmabuf global creation into one helper that takes renderer formats
+- [x] Extract dmabuf global creation into one helper that takes renderer formats
       and an optional render-node `dev_t`.
-- [ ] Extract Wayland listening socket registration into one helper.
-- [ ] Extract Wayland display fd dispatch registration into one helper.
-- [ ] Extract shell command socket creation/registration into one helper.
-- [ ] Extract the common post-dispatch maintenance loop:
+- [x] Extract Wayland listening socket registration into one helper.
+- [x] Extract Wayland display fd dispatch registration into one helper.
+- [x] Extract shell command socket creation/registration into one helper.
+- [x] Extract the common post-dispatch maintenance loop:
       pending dmabuf imports, idle transitions, viewport animation, cursor
       application, redraw check, client flush, popup cleanup, output cleanup.
-- [ ] Leave `run_winit` and `run_headless` behavior unchanged after the refactor.
+- [x] Leave `run_winit` and `run_headless` behavior unchanged after the refactor.
 
 Done when: `run_winit` and `run_headless` are thin backend setup functions plus
 the shared dispatch loop, with no behavior changes in headless E2E tests.
@@ -95,17 +95,17 @@ the shared dispatch loop, with no behavior changes in headless E2E tests.
 Goal: create a feature-gated module that can acquire a seat and enumerate GPUs,
 without modesetting yet.
 
-- [ ] Add `src/compositor/udev.rs` behind `#[cfg(feature = "udev")]`.
+- [x] Add `src/compositor/udev.rs` behind `#[cfg(feature = "udev")]`.
 - [ ] Add `Backend::Udev(Box<udev::UdevBackendState>)` behind the same cfg.
-- [ ] In `run_udev`, create a `LibSeatSession` and insert its
+- [x] In `run_udev`, create a `LibSeatSession` and insert its
       `LibSeatSessionNotifier` into the calloop loop.
 - [ ] On `SessionEvent::PauseSession`, stop scheduling new DRM commits, mark KMS
       devices inactive, and leave Wayland clients connected.
 - [ ] On `SessionEvent::ActivateSession`, reactivate devices, re-scan connectors,
       repaint every enabled output, and resume page flips.
-- [ ] Create `smithay::backend::udev::UdevBackend::new(seat_name)` and process the
+- [x] Create `smithay::backend::udev::UdevBackend::new(seat_name)` and process the
       initial `device_list()` before inserting it into the loop.
-- [ ] Insert the `UdevBackend` source and log `Added`, `Changed`, and `Removed`
+- [x] Insert the `UdevBackend` source and log `Added`, `Changed`, and `Removed`
       events with the device id/path.
 - [ ] Use `session.open(...)` for DRM nodes instead of opening them directly.
 - [ ] For the first milestone, choose one primary GPU and ignore secondary GPUs

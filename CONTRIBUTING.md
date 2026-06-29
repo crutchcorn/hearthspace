@@ -111,8 +111,8 @@ headless backend. The default is `1`; both `--headless-scale 2` and
 harnesses that want to launch only the client under test.
 
 `--winit` forces the nested development backend. `--tty` selects the native
-DRM/KMS backend path; it currently requires `--features udev` and reaches a
-placeholder error until the backend is implemented.
+DRM/KMS backend path; it currently requires `--features udev`, initializes the
+libseat/udev discovery skeleton, and exits before KMS modesetting.
 
 The shell/control socket is `hearthspace-shell.sock` in `XDG_RUNTIME_DIR`. Shell
 clients receive its full path through `HEARTHSPACE_COMMAND_SOCKET`, but tests can

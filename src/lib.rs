@@ -70,8 +70,8 @@ fn run_winit_backend(_options: RunOptions) -> Result<(), Box<dyn std::error::Err
 }
 
 #[cfg(feature = "udev")]
-fn run_udev_backend(_options: RunOptions) -> Result<(), Box<dyn std::error::Error>> {
-    Err("udev backend support is enabled, but the native backend is not implemented yet".into())
+fn run_udev_backend(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> {
+    compositor::run_udev(options)
 }
 
 #[cfg(not(feature = "udev"))]

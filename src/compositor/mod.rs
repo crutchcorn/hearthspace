@@ -12,6 +12,8 @@ mod input;
 mod masonry_titlebar;
 mod rendering;
 mod shell_integration;
+#[cfg(feature = "udev")]
+mod udev;
 mod viewport;
 mod windows;
 
@@ -25,13 +27,16 @@ use shell_integration::{
 use viewport::ViewportAnimation;
 use windows::ResizeEdges;
 
+#[cfg(feature = "udev")]
+pub use udev::run_udev;
+
 use cursor::CursorIcon;
 #[cfg(feature = "winit")]
 use smithay::backend::winit::{self, WinitEvent};
 use smithay::{
     backend::{
-        allocator::Fourcc,
         allocator::dmabuf::Dmabuf,
+        allocator::{Format, Fourcc},
         egl::{EGLContext, EGLDevice, EGLDisplay, native::EGLSurfacelessDisplay},
         renderer::{
             Bind, ExportMem, ImportDma, Offscreen,
@@ -182,23 +187,23 @@ struct App {
     background_dot_ids: Vec<Id>,
 }
 
+struct AppInit {
+    display: Display<App>,
+    event_loop: EventLoop<'static, CalloopData>,
+    #[cfg_attr(not(feature = "winit"), allow(dead_code))]
+    handle: LoopHandle<'static, CalloopData>,
+    app: App,
+}
+
+struct DmabufSetup {
+    state: DmabufState,
+    global: DmabufGlobal,
+}
+
 #[cfg(feature = "winit")]
 pub fn run_winit(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> {
-    let mut display: Display<App> = Display::new()?;
+    let display: Display<App> = Display::new()?;
     let dh = display.handle();
-
-    let compositor_state = CompositorState::new::<App>(&dh);
-    let xdg_decoration_state = XdgDecorationState::new::<App>(&dh);
-    let output_manager_state = OutputManagerState::new_with_xdg_output::<App>(&dh);
-    let shm_state = ShmState::new::<App>(&dh, vec![]);
-    let mut seat_state = SeatState::new();
-    let mut seat = seat_state.new_wl_seat(&dh, "hearthspace");
-    let keyboard = seat.add_keyboard(
-        Default::default(),
-        KEYBOARD_REPEAT_DELAY_MS,
-        KEYBOARD_REPEAT_RATE,
-    )?;
-    let pointer = seat.add_pointer();
 
     let (mut backend, winit) = winit::init::<GlesRenderer>()?;
     let output_size = backend.window_size();
@@ -218,20 +223,142 @@ pub fn run_winit(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> 
         .and_then(|device| device.render_device_path().ok())
         .and_then(|path| std::fs::metadata(path).ok())
         .map(|metadata| metadata.rdev());
-    let mut dmabuf_state = DmabufState::new();
-    let dmabuf_global = match render_node_dev {
-        Some(dev) => {
-            let feedback =
-                DmabufFeedbackBuilder::new(dev, dmabuf_formats.iter().copied()).build()?;
-            dmabuf_state.create_global_with_default_feedback::<App>(&dh, &feedback)
+    let dmabuf = create_dmabuf_global(&dh, dmabuf_formats, render_node_dev)?;
+    let AppInit {
+        display,
+        event_loop,
+        handle,
+        app: state,
+    } = initialize_app(display, options, output_size, output, dmabuf)?;
+
+    // Winit drives input and resize events; it is itself a calloop event source.
+    handle.insert_source(winit, |event, _, data| match event {
+        WinitEvent::Resized { size, .. } => {
+            if size != data.state.output_size {
+                data.state.output_size = size;
+                update_output_mode(&data.state.output, size, 1);
+                data.damage_tracker = OutputDamageTracker::new(size, 1.0, Transform::Flipped180);
+                data.full_redraw = 1;
+                data.state.configure_shell_bars();
+                data.state.request_redraw();
+            }
         }
-        None => dmabuf_state.create_global::<App>(&dh, dmabuf_formats.iter().copied()),
+        WinitEvent::Input(event) => handle_input_event(&mut data.state, event),
+        WinitEvent::Redraw => data.state.request_redraw(),
+        WinitEvent::CloseRequested => data.running = false,
+        WinitEvent::Focus(_) => {}
+    })?;
+
+    println!("Hearthspace running on WAYLAND_DISPLAY={WAYLAND_DISPLAY_NAME}");
+    if state.scroll_zooms_without_super {
+        println!("Scroll zoom testing mode enabled: vertical scroll zooms without Super");
+    }
+
+    let mut data = CalloopData {
+        state,
+        display,
+        backend: Backend::Winit(Box::new(backend)),
+        damage_tracker: OutputDamageTracker::new(output_size, 1.0, Transform::Flipped180),
+        start_time: std::time::Instant::now(),
+        running: true,
+        full_redraw: 1,
+        applied_cursor: CursorIcon::Default,
     };
 
-    let mut event_loop: EventLoop<CalloopData> = EventLoop::try_new()?;
-    let handle = event_loop.handle();
+    run_event_loop(event_loop, &mut data)
+}
 
-    let state = App {
+pub fn run_headless(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> {
+    let display: Display<App> = Display::new()?;
+    let dh = display.handle();
+
+    let egl_display = unsafe { EGLDisplay::new(EGLSurfacelessDisplay)? };
+    let context = EGLContext::new(&egl_display)?;
+    let mut renderer = unsafe { GlesRenderer::new(context)? };
+    let (width, height) = options
+        .headless_output_size
+        .unwrap_or((HEADLESS_OUTPUT_WIDTH, HEADLESS_OUTPUT_HEIGHT));
+    let output_size = Size::<i32, Physical>::from((width, height));
+    let output_scale = options.headless_output_scale.unwrap_or(1);
+    let buffer_size = Size::<i32, BufferCoord>::from((output_size.w, output_size.h));
+    let buffer = renderer.create_buffer(Fourcc::Abgr8888, buffer_size)?;
+    let output = create_output(&dh, output_size, output_scale);
+
+    let dmabuf_formats = renderer.dmabuf_formats().into_iter().collect::<Vec<_>>();
+    let render_node_dev = EGLDevice::device_for_display(renderer.egl_context().display())
+        .ok()
+        .and_then(|device| device.render_device_path().ok())
+        .and_then(|path| std::fs::metadata(path).ok())
+        .map(|metadata| metadata.rdev());
+    let dmabuf = create_dmabuf_global(&dh, dmabuf_formats, render_node_dev)?;
+    let AppInit {
+        display,
+        event_loop,
+        app: state,
+        ..
+    } = initialize_app(display, options, output_size, output, dmabuf)?;
+
+    println!("Headless Hearthspace running on WAYLAND_DISPLAY={WAYLAND_DISPLAY_NAME}");
+    if state.scroll_zooms_without_super {
+        println!("Scroll zoom testing mode enabled: vertical scroll zooms without Super");
+    }
+
+    let mut data = CalloopData {
+        state,
+        display,
+        backend: Backend::Headless(Box::new(HeadlessBackend { renderer, buffer })),
+        damage_tracker: OutputDamageTracker::new(output_size, 1.0, Transform::Flipped180),
+        start_time: std::time::Instant::now(),
+        running: true,
+        full_redraw: 1,
+        applied_cursor: CursorIcon::Default,
+    };
+
+    run_event_loop(event_loop, &mut data)
+}
+
+fn create_dmabuf_global(
+    dh: &DisplayHandle,
+    formats: Vec<Format>,
+    main_device: Option<u64>,
+) -> Result<DmabufSetup, Box<dyn std::error::Error>> {
+    let mut state = DmabufState::new();
+    let global = match main_device {
+        Some(dev) => {
+            let feedback = DmabufFeedbackBuilder::new(dev, formats.iter().copied()).build()?;
+            state.create_global_with_default_feedback::<App>(dh, &feedback)
+        }
+        None => state.create_global::<App>(dh, formats.iter().copied()),
+    };
+    Ok(DmabufSetup { state, global })
+}
+
+fn initialize_app(
+    mut display: Display<App>,
+    options: RunOptions,
+    output_size: Size<i32, Physical>,
+    output: Output,
+    dmabuf: DmabufSetup,
+) -> Result<AppInit, Box<dyn std::error::Error>> {
+    let dh = display.handle();
+    let compositor_state = CompositorState::new::<App>(&dh);
+    let xdg_decoration_state = XdgDecorationState::new::<App>(&dh);
+    let output_manager_state = OutputManagerState::new_with_xdg_output::<App>(&dh);
+    let shm_state = ShmState::new::<App>(&dh, vec![]);
+    let mut seat_state = SeatState::new();
+    let mut seat = seat_state.new_wl_seat(&dh, "hearthspace");
+    let keyboard = seat.add_keyboard(
+        Default::default(),
+        KEYBOARD_REPEAT_DELAY_MS,
+        KEYBOARD_REPEAT_RATE,
+    )?;
+    let pointer = seat.add_pointer();
+
+    let event_loop: EventLoop<CalloopData> = EventLoop::try_new()?;
+    let handle = event_loop.handle();
+    let command_socket_path = register_common_event_sources(&mut display, &handle)?;
+
+    let app = App {
         compositor_state,
         xdg_shell_state: XdgShellState::new_with_capabilities::<App>(
             &dh,
@@ -263,14 +390,30 @@ pub fn run_winit(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> 
         output,
         app_catalog: AppCatalog::load(),
         needs_redraw: true,
-        dmabuf_state,
-        _dmabuf_global: dmabuf_global,
+        dmabuf_state: dmabuf.state,
+        _dmabuf_global: dmabuf.global,
         pending_dmabuf_imports: Vec::new(),
         loop_handle: handle.clone(),
         popups: PopupManager::default(),
         background_dot_ids: Vec::new(),
     };
 
+    if options.start_shell {
+        spawn_shell(&command_socket_path);
+    }
+
+    Ok(AppInit {
+        display,
+        event_loop,
+        handle,
+        app,
+    })
+}
+
+fn register_common_event_sources(
+    display: &mut Display<App>,
+    handle: &LoopHandle<'static, CalloopData>,
+) -> Result<std::path::PathBuf, Box<dyn std::error::Error>> {
     let command_socket_path = command_socket_path();
     remove_stale_socket(&command_socket_path)?;
     let command_listener = CommandListener::bind(&command_socket_path)?;
@@ -312,44 +455,13 @@ pub fn run_winit(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> 
         },
     )?;
 
-    // Winit drives input and resize events; it is itself a calloop event source.
-    handle.insert_source(winit, |event, _, data| match event {
-        WinitEvent::Resized { size, .. } => {
-            if size != data.state.output_size {
-                data.state.output_size = size;
-                update_output_mode(&data.state.output, size, 1);
-                data.damage_tracker = OutputDamageTracker::new(size, 1.0, Transform::Flipped180);
-                data.full_redraw = 1;
-                data.state.configure_shell_bars();
-                data.state.request_redraw();
-            }
-        }
-        WinitEvent::Input(event) => handle_input_event(&mut data.state, event),
-        WinitEvent::Redraw => data.state.request_redraw(),
-        WinitEvent::CloseRequested => data.running = false,
-        WinitEvent::Focus(_) => {}
-    })?;
+    Ok(command_socket_path)
+}
 
-    if options.start_shell {
-        spawn_shell(&command_socket_path);
-    }
-
-    println!("Hearthspace running on WAYLAND_DISPLAY={WAYLAND_DISPLAY_NAME}");
-    if state.scroll_zooms_without_super {
-        println!("Scroll zoom testing mode enabled: vertical scroll zooms without Super");
-    }
-
-    let mut data = CalloopData {
-        state,
-        display,
-        backend: Backend::Winit(Box::new(backend)),
-        damage_tracker: OutputDamageTracker::new(output_size, 1.0, Transform::Flipped180),
-        start_time: std::time::Instant::now(),
-        running: true,
-        full_redraw: 1,
-        applied_cursor: CursorIcon::Default,
-    };
-
+fn run_event_loop(
+    mut event_loop: EventLoop<CalloopData>,
+    data: &mut CalloopData,
+) -> Result<(), Box<dyn std::error::Error>> {
     data.render()?;
 
     while data.running {
@@ -359,183 +471,7 @@ pub fn run_winit(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> 
             .viewport_animation
             .is_some()
             .then_some(ANIMATION_FRAME_INTERVAL);
-        event_loop.dispatch(timeout, &mut data)?;
-
-        if !data.running {
-            break;
-        }
-
-        data.process_pending_dmabuf_imports();
-        data.state.handle_idle_transitions();
-        data.state.advance_viewport_animation();
-        data.apply_cursor_icon();
-
-        if data.state.needs_redraw {
-            data.render()?;
-            data.state.needs_redraw = false;
-        }
-
-        data.display.flush_clients()?;
-        data.state.popups.cleanup();
-        data.state.output.cleanup();
-    }
-
-    Ok(())
-}
-
-pub fn run_headless(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> {
-    let mut display: Display<App> = Display::new()?;
-    let dh = display.handle();
-
-    let compositor_state = CompositorState::new::<App>(&dh);
-    let xdg_decoration_state = XdgDecorationState::new::<App>(&dh);
-    let output_manager_state = OutputManagerState::new_with_xdg_output::<App>(&dh);
-    let shm_state = ShmState::new::<App>(&dh, vec![]);
-    let mut seat_state = SeatState::new();
-    let mut seat = seat_state.new_wl_seat(&dh, "hearthspace");
-    let keyboard = seat.add_keyboard(
-        Default::default(),
-        KEYBOARD_REPEAT_DELAY_MS,
-        KEYBOARD_REPEAT_RATE,
-    )?;
-    let pointer = seat.add_pointer();
-
-    let egl_display = unsafe { EGLDisplay::new(EGLSurfacelessDisplay)? };
-    let context = EGLContext::new(&egl_display)?;
-    let mut renderer = unsafe { GlesRenderer::new(context)? };
-    let (width, height) = options
-        .headless_output_size
-        .unwrap_or((HEADLESS_OUTPUT_WIDTH, HEADLESS_OUTPUT_HEIGHT));
-    let output_size = Size::<i32, Physical>::from((width, height));
-    let output_scale = options.headless_output_scale.unwrap_or(1);
-    let buffer_size = Size::<i32, BufferCoord>::from((output_size.w, output_size.h));
-    let buffer = renderer.create_buffer(Fourcc::Abgr8888, buffer_size)?;
-    let output = create_output(&dh, output_size, output_scale);
-
-    let dmabuf_formats = renderer.dmabuf_formats().into_iter().collect::<Vec<_>>();
-    let render_node_dev = EGLDevice::device_for_display(renderer.egl_context().display())
-        .ok()
-        .and_then(|device| device.render_device_path().ok())
-        .and_then(|path| std::fs::metadata(path).ok())
-        .map(|metadata| metadata.rdev());
-    let mut dmabuf_state = DmabufState::new();
-    let dmabuf_global = match render_node_dev {
-        Some(dev) => {
-            let feedback =
-                DmabufFeedbackBuilder::new(dev, dmabuf_formats.iter().copied()).build()?;
-            dmabuf_state.create_global_with_default_feedback::<App>(&dh, &feedback)
-        }
-        None => dmabuf_state.create_global::<App>(&dh, dmabuf_formats.iter().copied()),
-    };
-
-    let mut event_loop: EventLoop<CalloopData> = EventLoop::try_new()?;
-    let handle = event_loop.handle();
-
-    let state = App {
-        compositor_state,
-        xdg_shell_state: XdgShellState::new_with_capabilities::<App>(
-            &dh,
-            std::iter::empty::<xdg_toplevel::WmCapabilities>(),
-        ),
-        _xdg_decoration_state: xdg_decoration_state,
-        _output_manager_state: output_manager_state,
-        shm_state,
-        seat_state,
-        data_device_state: DataDeviceState::new::<App>(&dh),
-        _seat: seat,
-        pointer,
-        keyboard,
-        viewport_offset: CanvasPoint { x: 0, y: 0 },
-        viewport_scale: 1.0,
-        viewport_animation: None,
-        windows: Vec::new(),
-        next_window_id: 1,
-        idle_daemon: WindowIdleDaemon::new(WINDOW_IDLE_THRESHOLDS),
-        focused_normal_window_id: None,
-        drag: None,
-        resize: None,
-        cursor_icon: CursorIcon::Default,
-        next_spawn_position: CanvasPoint { x: 80, y: 96 },
-        spawn_offset: 0,
-        pointer_location: (0.0, 0.0).into(),
-        scroll_zooms_without_super: options.scroll_zooms_without_super,
-        output_size,
-        output,
-        app_catalog: AppCatalog::load(),
-        needs_redraw: true,
-        dmabuf_state,
-        _dmabuf_global: dmabuf_global,
-        pending_dmabuf_imports: Vec::new(),
-        loop_handle: handle.clone(),
-        popups: PopupManager::default(),
-        background_dot_ids: Vec::new(),
-    };
-
-    let command_socket_path = command_socket_path();
-    remove_stale_socket(&command_socket_path)?;
-    let command_listener = CommandListener::bind(&command_socket_path)?;
-    command_listener.set_nonblocking(true)?;
-
-    let socket_source = ListeningSocketSource::with_name(WAYLAND_DISPLAY_NAME)?;
-    handle.insert_source(socket_source, |stream, _, data| {
-        if let Err(error) = data
-            .display
-            .handle()
-            .insert_client(stream, Arc::new(ClientState::default()))
-        {
-            eprintln!("Failed to insert Wayland client: {error}");
-        }
-        data.state.request_redraw();
-    })?;
-
-    let display_fd = display.backend().poll_fd().try_clone_to_owned()?;
-    handle.insert_source(
-        Generic::new(display_fd, Interest::READ, CalloopMode::Level),
-        |_, _, data| {
-            let CalloopData { state, display, .. } = data;
-            display.dispatch_clients(state)?;
-            Ok(PostAction::Continue)
-        },
-    )?;
-
-    let command_loop_handle = handle.clone();
-    handle.insert_source(
-        Generic::new(command_listener, Interest::READ, CalloopMode::Level),
-        move |_, listener, _| {
-            accept_command_connections(listener, &command_loop_handle)?;
-            Ok(PostAction::Continue)
-        },
-    )?;
-
-    if options.start_shell {
-        spawn_shell(&command_socket_path);
-    }
-
-    println!("Headless Hearthspace running on WAYLAND_DISPLAY={WAYLAND_DISPLAY_NAME}");
-    if state.scroll_zooms_without_super {
-        println!("Scroll zoom testing mode enabled: vertical scroll zooms without Super");
-    }
-
-    let mut data = CalloopData {
-        state,
-        display,
-        backend: Backend::Headless(Box::new(HeadlessBackend { renderer, buffer })),
-        damage_tracker: OutputDamageTracker::new(output_size, 1.0, Transform::Flipped180),
-        start_time: std::time::Instant::now(),
-        running: true,
-        full_redraw: 1,
-        applied_cursor: CursorIcon::Default,
-    };
-
-    data.render()?;
-
-    while data.running {
-        let timeout = data
-            .state
-            .viewport_animation
-            .is_some()
-            .then_some(ANIMATION_FRAME_INTERVAL);
-        event_loop.dispatch(timeout, &mut data)?;
+        event_loop.dispatch(timeout, data)?;
 
         if !data.running {
             break;
