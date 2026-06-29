@@ -35,9 +35,6 @@ exists.
       `target/debug/hearthspace --tty --exit-after-ms 15000`.
 - [ ] Run native VT smoke with Firefox, GNOME Calculator, or another heavier
       Wayland client and confirm no repeated KMS commit failures.
-- [ ] Run `scripts/smoke-udev-gtk.sh` and confirm the GTK client renders upright.
-- [ ] Run `scripts/smoke-udev-screenshot-command.sh` and confirm native
-      screenshots return the expected unsupported-backend error.
 - [ ] Switch away from the VT and back while Hearthspace is running.
 - [ ] Unplug/replug or add/remove a monitor and confirm Wayland output globals
       update without crashing.

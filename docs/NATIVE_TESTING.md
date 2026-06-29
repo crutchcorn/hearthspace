@@ -123,19 +123,3 @@ Native coverage still needs manual VT testing:
 - Switch away from the VT and back while Hearthspace is running.
 - Exit with an emergency chord and confirm the tail of the log is expected
   shutdown noise rather than a compositor panic.
-
-## Existing Smoke Helpers
-
-The repository includes native smoke helpers for repeatable scenarios:
-
-```sh
-scripts/smoke-udev-gtk.sh
-scripts/smoke-udev-screenshot-command.sh
-```
-
-The screenshot command is expected to fail clearly on native until DRM readback
-is implemented:
-
-```text
-screenshots are unsupported on the udev backend until native readback is implemented
-```
