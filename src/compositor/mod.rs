@@ -1,7 +1,8 @@
+#[cfg(feature = "winit")]
+use std::time::Instant;
 use std::{
     os::unix::{fs::MetadataExt, net::UnixListener as CommandListener},
     sync::Arc,
-    time::Instant,
 };
 
 use crate::{RunOptions, config::*, geometry::CanvasPoint, shell::app_catalog::AppCatalog};
@@ -11,7 +12,9 @@ mod handlers;
 mod idle;
 mod input;
 mod masonry_titlebar;
+mod output;
 mod rendering;
+mod runtime;
 mod shell_integration;
 #[cfg(feature = "udev")]
 mod udev;
@@ -21,7 +24,12 @@ mod windows;
 use idle::{IdleTransition, WindowIdleDaemon};
 #[cfg(any(feature = "winit", feature = "udev"))]
 pub(in crate::compositor) use input::handle_input_event;
-use rendering::send_frames_surface_tree;
+#[cfg(feature = "udev")]
+pub(in crate::compositor) use output::{OutputDescriptor, create_output_with_properties};
+pub(in crate::compositor) use output::{OutputRecord, OutputSet, create_output};
+#[cfg(feature = "udev")]
+pub(in crate::compositor) use runtime::create_calloop_data;
+pub(in crate::compositor) use runtime::{Backend, CalloopData, HeadlessBackend, run_event_loop};
 use shell_integration::{
     accept_command_connections, command_socket_path, remove_stale_socket, spawn_shell,
 };
@@ -35,30 +43,26 @@ use calloop::signals::{Signal, Signals};
 use cursor::CursorIcon;
 #[cfg(feature = "winit")]
 use smithay::backend::winit::{self, WinitEvent};
+#[cfg(feature = "winit")]
+use smithay::{backend::renderer::damage::OutputDamageTracker, utils::Transform};
 use smithay::{
     backend::{
         allocator::dmabuf::Dmabuf,
         allocator::{Format, Fourcc},
         egl::{EGLContext, EGLDevice, EGLDisplay, native::EGLSurfacelessDisplay},
-        renderer::{
-            Bind, ExportMem, ImportDma, Offscreen,
-            damage::OutputDamageTracker,
-            element::Id,
-            gles::{GlesRenderbuffer, GlesRenderer},
-        },
+        renderer::{ImportDma, Offscreen, element::Id, gles::GlesRenderer},
     },
     delegate_compositor, delegate_data_device, delegate_dmabuf, delegate_output, delegate_seat,
     delegate_shm, delegate_xdg_decoration, delegate_xdg_shell,
     desktop::PopupManager,
     input::{Seat, SeatState, keyboard::KeyboardHandle, pointer::PointerHandle},
-    output::{Mode, Output, PhysicalProperties, Scale, Subpixel},
     reexports::{
         calloop::{
             EventLoop, Interest, LoopHandle, Mode as CalloopMode, PostAction, generic::Generic,
         },
         wayland_server::Display,
     },
-    utils::{Buffer as BufferCoord, Logical, Physical, Point, Rectangle, Size, Transform},
+    utils::{Buffer as BufferCoord, Logical, Physical, Point, Size},
     wayland::{
         compositor::{CompositorClientState, CompositorState},
         dmabuf::{DmabufFeedbackBuilder, DmabufGlobal, DmabufState, ImportNotifier},
@@ -72,7 +76,7 @@ use smithay::{
 use wayland_protocols::xdg::shell::server::xdg_toplevel;
 use wayland_server::{
     DisplayHandle,
-    backend::{ClientData, ClientId, DisconnectReason, GlobalId},
+    backend::{ClientData, ClientId, DisconnectReason},
     protocol::wl_surface::WlSurface,
 };
 
@@ -186,31 +190,16 @@ struct App {
     /// number of visible dots requires. Reusing ids across frames keeps the
     /// damage tracker from treating every dot as new on each redraw.
     background_dot_ids: Vec<Id>,
+    software_cursor_visible: bool,
+    software_cursor_ids: Vec<Id>,
 }
 
-struct OutputSet {
-    primary: OutputRecord,
-    secondary: Vec<OutputRecord>,
-}
-
-struct OutputRecord {
-    #[cfg_attr(not(feature = "udev"), allow(dead_code))]
-    name: String,
-    output: Output,
-    #[cfg_attr(not(feature = "udev"), allow(dead_code))]
-    global_id: GlobalId,
-    size: Size<i32, Physical>,
-    scale: i32,
-    refresh: i32,
-    location: Point<i32, Logical>,
-}
-
-pub(in crate::compositor) struct OutputDescriptor {
-    pub(in crate::compositor) name: String,
-    pub(in crate::compositor) properties: PhysicalProperties,
-    pub(in crate::compositor) size: Size<i32, Physical>,
-    pub(in crate::compositor) scale: i32,
-    pub(in crate::compositor) refresh: i32,
+impl App {
+    #[cfg(feature = "udev")]
+    pub(in crate::compositor) fn enable_software_cursor(&mut self) {
+        self.software_cursor_visible = true;
+        self.request_redraw();
+    }
 }
 
 pub(in crate::compositor) struct AppInit {
@@ -224,129 +213,6 @@ pub(in crate::compositor) struct AppInit {
 pub(in crate::compositor) struct DmabufSetup {
     state: DmabufState,
     global: DmabufGlobal,
-}
-
-impl OutputSet {
-    fn new(primary: OutputRecord) -> Self {
-        Self {
-            primary,
-            secondary: Vec::new(),
-        }
-    }
-
-    #[cfg(feature = "udev")]
-    fn sync_secondary_outputs(&mut self, dh: &DisplayHandle, descriptors: Vec<OutputDescriptor>) {
-        let mut next_x = self.primary.size.to_logical(self.primary.scale).w;
-        let mut existing = std::mem::take(&mut self.secondary);
-        let mut next_secondary = Vec::with_capacity(existing.len());
-
-        for descriptor in descriptors {
-            if descriptor.name == self.primary.name {
-                continue;
-            }
-
-            let location = (next_x, 0).into();
-            let output = if let Some(index) = existing
-                .iter()
-                .position(|output| output.name == descriptor.name)
-            {
-                let mut output = existing.remove(index);
-                output.update(descriptor, location);
-                output
-            } else {
-                let output = create_output_record(dh, descriptor, location);
-                println!(
-                    "Advertising newly connected Wayland output {} at {:?}",
-                    output.name, location
-                );
-                output
-            };
-            next_x += output.size.to_logical(output.scale).w;
-            next_secondary.push(output);
-        }
-
-        for removed in existing {
-            println!("Disabling disconnected Wayland output {}", removed.name);
-            dh.disable_global::<App>(removed.global_id);
-        }
-
-        self.secondary = next_secondary;
-    }
-
-    fn logical_size(&self) -> Size<i32, Logical> {
-        let primary_size = self.primary.logical_size();
-        let mut width = primary_size.w;
-        let mut height = primary_size.h;
-        for output in &self.secondary {
-            let size = output.logical_size();
-            width = width.max(output.location.x + size.w);
-            height = height.max(output.location.y + size.h);
-        }
-        Size::from((width.max(1), height.max(1)))
-    }
-}
-
-impl OutputRecord {
-    fn logical_size(&self) -> Size<i32, Logical> {
-        self.size.to_logical(self.scale)
-    }
-
-    #[cfg(feature = "udev")]
-    fn update(&mut self, descriptor: OutputDescriptor, location: Point<i32, Logical>) {
-        self.size = descriptor.size;
-        self.scale = descriptor.scale;
-        self.refresh = descriptor.refresh;
-        self.location = location;
-        update_output_mode_with_refresh_at(
-            &self.output,
-            self.size,
-            self.scale,
-            self.refresh,
-            self.location,
-        );
-    }
-}
-
-impl App {
-    fn output_size(&self) -> Size<i32, Physical> {
-        self.outputs.primary.size
-    }
-
-    fn output_logical_size(&self) -> Size<i32, Logical> {
-        self.outputs.logical_size()
-    }
-
-    #[cfg_attr(not(feature = "winit"), allow(dead_code))]
-    fn set_primary_output_size(&mut self, size: Size<i32, Physical>) {
-        self.outputs.primary.size = size;
-        self.outputs.primary.refresh = 60_000;
-        self.outputs.primary.location = (0, 0).into();
-        update_output_mode(
-            &self.outputs.primary.output,
-            size,
-            self.outputs.primary.scale,
-        );
-    }
-
-    fn enter_primary_output(&self, surface: &WlSurface) {
-        self.outputs.primary.output.enter(surface);
-    }
-
-    fn cleanup_outputs(&mut self) {
-        self.outputs.primary.output.cleanup();
-        for output in &mut self.outputs.secondary {
-            output.output.cleanup();
-        }
-    }
-
-    #[cfg(feature = "udev")]
-    pub(in crate::compositor) fn sync_connector_outputs(
-        &mut self,
-        dh: &DisplayHandle,
-        descriptors: Vec<OutputDescriptor>,
-    ) {
-        self.outputs.sync_secondary_outputs(dh, descriptors);
-    }
 }
 
 pub(in crate::compositor) fn create_termination_signals()
@@ -471,17 +337,13 @@ pub fn run_headless(options: RunOptions) -> Result<(), Box<dyn std::error::Error
         println!("Scroll zoom testing mode enabled: vertical scroll zooms without Super");
     }
 
-    let mut data = CalloopData {
+    let mut data = runtime::create_headless_calloop_data(
         state,
         display,
-        backend: Backend::Headless(Box::new(HeadlessBackend { renderer, buffer })),
-        damage_tracker: OutputDamageTracker::new(output_size, 1.0, Transform::Flipped180),
-        start_time: Instant::now(),
-        running: true,
-        exit_at: options.exit_after.map(|duration| Instant::now() + duration),
-        full_redraw: 1,
-        applied_cursor: CursorIcon::Default,
-    };
+        HeadlessBackend { renderer, buffer },
+        output_size,
+        options.exit_after,
+    );
 
     run_event_loop(event_loop, &mut data)
 }
@@ -565,6 +427,8 @@ pub(in crate::compositor) fn initialize_app(
         loop_handle: handle.clone(),
         popups: PopupManager::default(),
         background_dot_ids: Vec::new(),
+        software_cursor_visible: false,
+        software_cursor_ids: Vec::new(),
     };
 
     if options.start_shell {
@@ -577,28 +441,6 @@ pub(in crate::compositor) fn initialize_app(
         handle,
         app,
     })
-}
-
-#[cfg(feature = "udev")]
-pub(in crate::compositor) fn create_calloop_data(
-    state: App,
-    display: Display<App>,
-    backend: Backend,
-    output_size: Size<i32, Physical>,
-    exit_after: Option<std::time::Duration>,
-) -> CalloopData {
-    let start_time = Instant::now();
-    CalloopData {
-        state,
-        display,
-        backend,
-        damage_tracker: OutputDamageTracker::new(output_size, 1.0, Transform::Normal),
-        start_time,
-        running: true,
-        exit_at: exit_after.map(|duration| start_time + duration),
-        full_redraw: 1,
-        applied_cursor: CursorIcon::Default,
-    }
 }
 
 fn register_common_event_sources(
@@ -658,439 +500,6 @@ fn register_common_event_sources(
     )?;
 
     Ok(command_socket_path)
-}
-
-fn run_event_loop(
-    mut event_loop: EventLoop<CalloopData>,
-    data: &mut CalloopData,
-) -> Result<(), Box<dyn std::error::Error>> {
-    if let Err(error) = data.render() {
-        eprintln!("Initial compositor render failed: {error}");
-    }
-    data.state.needs_redraw = false;
-
-    while data.running {
-        // Block until an event arrives; while animating, wake every frame.
-        let animation_timeout = (!data.uses_vblank_animation_pacing())
-            .then_some(())
-            .and_then(|()| {
-                data.state
-                    .viewport_animation
-                    .is_some()
-                    .then_some(ANIMATION_FRAME_INTERVAL)
-            });
-        let exit_timeout = data
-            .exit_at
-            .map(|exit_at| exit_at.saturating_duration_since(Instant::now()));
-        let timeout = match (animation_timeout, exit_timeout) {
-            (Some(animation), Some(exit)) => Some(animation.min(exit)),
-            (Some(animation), None) => Some(animation),
-            (None, Some(exit)) => Some(exit),
-            (None, None) => None,
-        };
-        event_loop.dispatch(timeout, data)?;
-
-        if data
-            .exit_at
-            .is_some_and(|exit_at| Instant::now() >= exit_at)
-        {
-            println!("Exit timer elapsed; stopping compositor event loop");
-            data.running = false;
-        }
-
-        if !data.running {
-            break;
-        }
-
-        data.process_pending_dmabuf_imports();
-        data.state.handle_idle_transitions();
-        data.state.advance_viewport_animation();
-        data.apply_cursor_icon();
-
-        if data.state.needs_redraw {
-            if let Err(error) = data.render() {
-                eprintln!("Compositor render failed; dropping this redraw: {error}");
-                data.full_redraw = data.full_redraw.max(1);
-            }
-            data.state.needs_redraw = false;
-        }
-
-        if let Err(error) = data.display.flush_clients() {
-            eprintln!("Failed to flush Wayland clients: {error}");
-        }
-        data.state.popups.cleanup();
-        data.state.cleanup_outputs();
-    }
-
-    Ok(())
-}
-
-enum Backend {
-    #[cfg(feature = "winit")]
-    Winit(Box<smithay::backend::winit::WinitGraphicsBackend<GlesRenderer>>),
-    Headless(Box<HeadlessBackend>),
-    #[cfg(feature = "udev")]
-    #[allow(dead_code)]
-    Udev(Box<udev::UdevBackendState>),
-}
-
-struct HeadlessBackend {
-    renderer: GlesRenderer,
-    buffer: GlesRenderbuffer,
-}
-
-struct CalloopData {
-    state: App,
-    display: Display<App>,
-    backend: Backend,
-    damage_tracker: OutputDamageTracker,
-    start_time: Instant,
-    running: bool,
-    exit_at: Option<Instant>,
-    // Number of upcoming frames that must be fully redrawn instead of querying
-    // the back buffer age. Importing a client dmabuf (or the first frame) can
-    // leave the renderer's EGL context surfaceless, which makes `buffer_age`
-    // (an `eglQuerySurface` that requires the window surface be current) fail.
-    full_redraw: u8,
-    // Cursor icon currently applied to the winit window, so the desired cursor
-    // (`state.cursor_icon`) is only pushed to the backend when it changes.
-    applied_cursor: CursorIcon,
-}
-
-impl CalloopData {
-    fn uses_vblank_animation_pacing(&self) -> bool {
-        match &self.backend {
-            #[cfg(feature = "udev")]
-            Backend::Udev(_) => true,
-            #[cfg(feature = "winit")]
-            Backend::Winit(_) | Backend::Headless(_) => false,
-            #[cfg(not(feature = "winit"))]
-            Backend::Headless(_) => false,
-        }
-    }
-
-    /// Push the compositor's desired cursor to the host winit window, but only
-    /// when it differs from the cursor currently shown.
-    fn apply_cursor_icon(&mut self) {
-        if self.applied_cursor == self.state.cursor_icon {
-            return;
-        }
-        self.applied_cursor = self.state.cursor_icon;
-        #[cfg(feature = "winit")]
-        if let Backend::Winit(backend) = &self.backend {
-            backend.window().set_cursor(self.applied_cursor);
-        }
-    }
-
-    fn process_pending_dmabuf_imports(&mut self) {
-        if self.state.pending_dmabuf_imports.is_empty() {
-            return;
-        }
-        let CalloopData { state, backend, .. } = self;
-        for (dmabuf, notifier) in state.pending_dmabuf_imports.drain(..) {
-            let import = match backend {
-                #[cfg(feature = "winit")]
-                Backend::Winit(backend) => backend.renderer().import_dmabuf(&dmabuf, None),
-                Backend::Headless(backend) => backend.renderer.import_dmabuf(&dmabuf, None),
-                #[cfg(feature = "udev")]
-                Backend::Udev(backend) => {
-                    match backend.import_dmabuf(&dmabuf) {
-                        Ok(()) => {
-                            let _ = notifier.successful::<App>();
-                        }
-                        Err(error) => {
-                            eprintln!("Failed to import client dmabuf: {error}");
-                            notifier.failed();
-                        }
-                    }
-                    continue;
-                }
-            };
-            match import {
-                Ok(_texture) => {
-                    let _ = notifier.successful::<App>();
-                }
-                Err(error) => {
-                    eprintln!("Failed to import client dmabuf: {error}");
-                    notifier.failed();
-                }
-            }
-        }
-        // Importing made the renderer's EGL context surfaceless, so skip the
-        // next frame's back-buffer-age query and redraw it fully instead.
-        self.full_redraw = self.full_redraw.max(1);
-    }
-
-    fn render(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        let send_callbacks_now = match &mut self.backend {
-            #[cfg(feature = "winit")]
-            Backend::Winit(backend) => {
-                // `buffer_age` is an `eglQuerySurface` that only succeeds while
-                // the window surface is the current EGL draw surface. After a
-                // dmabuf import (or on the first frame) that is not guaranteed,
-                // so those frames are forced to a full redraw (age 0) instead of
-                // querying a stale surface.
-                let age = if self.full_redraw > 0 {
-                    self.full_redraw = self.full_redraw.saturating_sub(1);
-                    0
-                } else {
-                    backend.buffer_age().unwrap_or(0)
-                };
-                let damage = {
-                    let (renderer, mut framebuffer) = backend.bind()?;
-                    self.state.render_frame(
-                        renderer,
-                        &mut framebuffer,
-                        &mut self.damage_tracker,
-                        age,
-                    )?
-                };
-
-                if let Some(damage) = damage.as_ref() {
-                    backend.submit(Some(damage))?;
-                }
-                true
-            }
-            Backend::Headless(backend) => {
-                self.full_redraw = 0;
-                let mut framebuffer = backend.renderer.bind(&mut backend.buffer)?;
-                self.state.render_frame(
-                    &mut backend.renderer,
-                    &mut framebuffer,
-                    &mut self.damage_tracker,
-                    0,
-                )?;
-                true
-            }
-            #[cfg(feature = "udev")]
-            Backend::Udev(backend) => {
-                let force_full_redraw = self.full_redraw > 0;
-                let submitted = backend.render_frame(
-                    &mut self.state,
-                    &mut self.damage_tracker,
-                    force_full_redraw,
-                )?;
-                if submitted && force_full_redraw {
-                    self.full_redraw = self.full_redraw.saturating_sub(1);
-                }
-                false
-            }
-        };
-
-        if send_callbacks_now {
-            if let Err(error) = self.send_frame_callbacks() {
-                eprintln!("Failed to send frame callbacks: {error}");
-            }
-        }
-
-        Ok(())
-    }
-
-    pub(in crate::compositor) fn send_frame_callbacks(
-        &mut self,
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        for window in &self.state.windows {
-            send_frames_surface_tree(
-                window.surface.wl_surface(),
-                self.start_time.elapsed().as_millis() as u32,
-            );
-            // Popups (e.g. client menus) are tracked separately from the window
-            // surface tree, so they need their own frame callbacks. Without
-            // these the client (e.g. GTK4) throttles and never repaints the
-            // popup after its first frame, so keyboard navigation highlights
-            // never appear.
-            for (popup, _) in PopupManager::popups_for_surface(window.surface.wl_surface()) {
-                send_frames_surface_tree(
-                    popup.wl_surface(),
-                    self.start_time.elapsed().as_millis() as u32,
-                );
-            }
-        }
-
-        self.display.flush_clients()?;
-
-        Ok(())
-    }
-
-    fn screenshot_png(&mut self) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
-        self.process_pending_dmabuf_imports();
-
-        let CalloopData { state, backend, .. } = self;
-        let size = state.output_size();
-        let mut screenshot_damage = OutputDamageTracker::new(size, 1.0, Transform::Flipped180);
-        let region = Rectangle::from_size(Size::<i32, BufferCoord>::from((size.w, size.h)));
-        let pixels = match backend {
-            #[cfg(feature = "winit")]
-            Backend::Winit(backend) => {
-                let (renderer, mut framebuffer) = backend.bind()?;
-                state.render_frame(renderer, &mut framebuffer, &mut screenshot_damage, 0)?;
-                let mapping = renderer.copy_framebuffer(&framebuffer, region, Fourcc::Abgr8888)?;
-                renderer.map_texture(&mapping)?.to_vec()
-            }
-            Backend::Headless(backend) => {
-                let mut framebuffer = backend.renderer.bind(&mut backend.buffer)?;
-                state.render_frame(
-                    &mut backend.renderer,
-                    &mut framebuffer,
-                    &mut screenshot_damage,
-                    0,
-                )?;
-                let mapping =
-                    backend
-                        .renderer
-                        .copy_framebuffer(&framebuffer, region, Fourcc::Abgr8888)?;
-                backend.renderer.map_texture(&mapping)?.to_vec()
-            }
-            #[cfg(feature = "udev")]
-            Backend::Udev(_) => {
-                return Err(
-                    "screenshots are unsupported on the udev backend until native readback is implemented"
-                        .into(),
-                );
-            }
-        };
-        encode_png_rgba(size, &pixels)
-    }
-}
-
-fn encode_png_rgba(
-    size: Size<i32, Physical>,
-    bottom_up_rgba: &[u8],
-) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
-    let width = usize::try_from(size.w)?;
-    let height = usize::try_from(size.h)?;
-    let stride = width.checked_mul(4).ok_or("screenshot stride overflow")?;
-    let expected_len = stride
-        .checked_mul(height)
-        .ok_or("screenshot buffer length overflow")?;
-    if bottom_up_rgba.len() != expected_len {
-        return Err(format!(
-            "screenshot readback returned {} bytes, expected {expected_len}",
-            bottom_up_rgba.len()
-        )
-        .into());
-    }
-
-    let mut top_down_rgba = Vec::with_capacity(expected_len);
-    for row in bottom_up_rgba.chunks_exact(stride).rev() {
-        top_down_rgba.extend_from_slice(row);
-    }
-
-    let mut png_bytes = Vec::new();
-    {
-        let mut encoder = png::Encoder::new(
-            &mut png_bytes,
-            u32::try_from(width)?,
-            u32::try_from(height)?,
-        );
-        encoder.set_color(png::ColorType::Rgba);
-        encoder.set_depth(png::BitDepth::Eight);
-        let mut writer = encoder.write_header()?;
-        writer.write_image_data(&top_down_rgba)?;
-    }
-    Ok(png_bytes)
-}
-
-pub(in crate::compositor) fn create_output(
-    dh: &DisplayHandle,
-    size: Size<i32, Physical>,
-    scale: i32,
-) -> OutputRecord {
-    create_output_record(
-        dh,
-        OutputDescriptor {
-            name: "hearthspace-0".into(),
-            properties: PhysicalProperties {
-                size: (340, 190).into(),
-                subpixel: Subpixel::Unknown,
-                make: "Hearthspace".into(),
-                model: "Nested Canvas".into(),
-            },
-            size,
-            scale,
-            refresh: 60_000,
-        },
-        (0, 0).into(),
-    )
-}
-
-#[cfg_attr(not(feature = "udev"), allow(dead_code))]
-pub(in crate::compositor) fn create_output_with_properties(
-    dh: &DisplayHandle,
-    name: String,
-    properties: PhysicalProperties,
-    size: Size<i32, Physical>,
-    scale: i32,
-    refresh: i32,
-) -> OutputRecord {
-    create_output_record(
-        dh,
-        OutputDescriptor {
-            name,
-            properties,
-            size,
-            scale,
-            refresh,
-        },
-        (0, 0).into(),
-    )
-}
-
-fn create_output_record(
-    dh: &DisplayHandle,
-    descriptor: OutputDescriptor,
-    location: Point<i32, Logical>,
-) -> OutputRecord {
-    let OutputDescriptor {
-        name,
-        properties,
-        size,
-        scale,
-        refresh,
-    } = descriptor;
-    let output = Output::new(name.clone(), properties);
-    let global_id = output.create_global::<App>(dh);
-    update_output_mode_with_refresh_at(&output, size, scale, refresh, location);
-    OutputRecord {
-        name,
-        output,
-        global_id,
-        size,
-        scale,
-        refresh,
-        location,
-    }
-}
-
-#[cfg_attr(not(feature = "winit"), allow(dead_code))]
-fn update_output_mode(output: &Output, size: Size<i32, Physical>, scale: i32) {
-    update_output_mode_with_refresh(output, size, scale, 60_000);
-}
-
-fn update_output_mode_with_refresh(
-    output: &Output,
-    size: Size<i32, Physical>,
-    scale: i32,
-    refresh: i32,
-) {
-    update_output_mode_with_refresh_at(output, size, scale, refresh, (0, 0).into());
-}
-
-fn update_output_mode_with_refresh_at(
-    output: &Output,
-    size: Size<i32, Physical>,
-    scale: i32,
-    refresh: i32,
-    location: Point<i32, Logical>,
-) {
-    let mode = Mode { size, refresh };
-    output.set_preferred(mode);
-    output.change_current_state(
-        Some(mode),
-        Some(Transform::Normal),
-        Some(Scale::Integer(scale)),
-        Some(location),
-    );
 }
 
 fn log_idle_transition(transition: IdleTransition) {

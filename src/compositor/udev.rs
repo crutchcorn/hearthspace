@@ -1,26 +1,27 @@
 use std::{io, path::PathBuf, time::Duration};
 
+mod device;
+mod input;
+
+use device::{
+    KmsOutputTarget, UdevDevice, UdevDeviceInfo, create_udev_device, current_device_list,
+    initial_device_list, log_device_list,
+};
+use input::log_input_event;
+
 use smithay::{
     backend::{
+        allocator::Buffer,
         allocator::dmabuf::Dmabuf,
-        allocator::gbm::{GbmAllocator, GbmBufferFlags, GbmDevice},
-        allocator::{Buffer, Format, Fourcc},
-        drm::{DrmDevice, DrmDeviceFd, DrmEvent, GbmBufferedSurface},
-        egl::{EGLContext, EGLDisplay},
-        input::{InputEvent, KeyState, KeyboardKeyEvent},
+        drm::DrmEvent,
         libinput::{LibinputInputBackend, LibinputSessionInterface},
-        renderer::{Bind, ImportDma, damage::OutputDamageTracker, gles::GlesRenderer},
+        renderer::{Bind, ImportDma, damage::OutputDamageTracker},
         session::{Event as SessionEvent, Session, libseat::LibSeatSession},
-        udev::{UdevBackend, UdevEvent, all_gpus, primary_gpu},
+        udev::{UdevBackend, UdevEvent, primary_gpu},
     },
-    output::{PhysicalProperties, Subpixel},
-    reexports::drm::control::{Device as ControlDevice, Mode, connector, crtc},
-    reexports::{
-        input::Libinput,
-        rustix::fs::{OFlags, stat},
-        wayland_server::Display,
-    },
-    utils::{DeviceFd, Physical, Size},
+    reexports::drm::control::crtc,
+    reexports::{input::Libinput, wayland_server::Display},
+    utils::{Physical, Size},
 };
 
 use crate::{
@@ -45,75 +46,6 @@ pub(super) struct UdevBackendState {
     input_event_count: u64,
     emergency_exit_ctrl_pressed: bool,
     emergency_exit_alt_pressed: bool,
-}
-
-struct UdevDevice {
-    path: PathBuf,
-    render_node: RenderNode,
-    scanout_node: ScanoutNode,
-    active: bool,
-    output_targets: Vec<KmsOutputTarget>,
-    output_target: Option<KmsOutputTarget>,
-    output_surface: Option<KmsOutputSurface>,
-}
-
-struct RenderNode {
-    drm_fd: DrmDeviceFd,
-    renderer: GlesRenderer,
-}
-
-struct ScanoutNode {
-    drm_fd: DrmDeviceFd,
-    drm_device: DrmDevice,
-}
-
-struct KmsOutputSurface {
-    target: KmsOutputTarget,
-    gbm_surface: GbmBufferedSurface<GbmAllocator<DrmDeviceFd>, ()>,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-struct KmsOutputTarget {
-    connector: connector::Handle,
-    crtc: crtc::Handle,
-    mode: Mode,
-    connector_name: String,
-    physical_size_mm: (i32, i32),
-}
-
-struct UdevDeviceInfo {
-    device_id: u64,
-    path: PathBuf,
-}
-
-impl KmsOutputTarget {
-    fn output_size(&self) -> Size<i32, Physical> {
-        let (width, height) = self.mode.size();
-        Size::from((i32::from(width), i32::from(height)))
-    }
-
-    fn output_descriptor(&self) -> super::OutputDescriptor {
-        super::OutputDescriptor {
-            name: self.connector_name.clone(),
-            properties: PhysicalProperties {
-                size: self.physical_size_mm.into(),
-                subpixel: Subpixel::Unknown,
-                make: "DRM".into(),
-                model: self.connector_name.clone(),
-            },
-            size: self.output_size(),
-            scale: 1,
-            refresh: self.refresh_millihz(),
-        }
-    }
-
-    fn refresh_millihz(&self) -> i32 {
-        let refresh_hz = self.mode.vrefresh();
-        if refresh_hz == 0 {
-            return 60_000;
-        }
-        i32::try_from(refresh_hz.saturating_mul(1000)).unwrap_or(60_000)
-    }
 }
 
 pub fn run_udev(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> {
@@ -220,6 +152,7 @@ pub fn run_udev(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> {
         .map(UdevDevice::output_descriptors)
         .unwrap_or_default();
     app.sync_connector_outputs(&dh, output_descriptors);
+    app.enable_software_cursor();
 
     handle.insert_source(session_notifier, |event, _, data| match event {
         SessionEvent::PauseSession => {
@@ -365,30 +298,6 @@ fn udev_backend_mut(data: &mut super::CalloopData) -> Option<&mut UdevBackendSta
 }
 
 impl UdevBackendState {
-    fn handle_emergency_exit_chord(&mut self, event: &InputEvent<LibinputInputBackend>) -> bool {
-        const KEY_ESC: u32 = 1 + 8;
-        const KEY_BACKSPACE: u32 = 14 + 8;
-        const KEY_LEFTCTRL: u32 = 29 + 8;
-        const KEY_LEFTALT: u32 = 56 + 8;
-        const KEY_RIGHTCTRL: u32 = 97 + 8;
-        const KEY_RIGHTALT: u32 = 100 + 8;
-
-        let InputEvent::Keyboard { event } = event else {
-            return false;
-        };
-        let keycode: u32 = event.key_code().into();
-        let pressed = event.state() == KeyState::Pressed;
-        match keycode {
-            KEY_LEFTCTRL | KEY_RIGHTCTRL => self.emergency_exit_ctrl_pressed = pressed,
-            KEY_LEFTALT | KEY_RIGHTALT => self.emergency_exit_alt_pressed = pressed,
-            KEY_BACKSPACE | KEY_ESC if pressed => {
-                return self.emergency_exit_ctrl_pressed && self.emergency_exit_alt_pressed;
-            }
-            _ => {}
-        }
-        false
-    }
-
     pub(in crate::compositor) fn render_frame(
         &mut self,
         state: &mut super::App,
@@ -652,251 +561,5 @@ impl UdevBackendState {
                 device.output_surface.is_some(),
             );
         }
-    }
-}
-
-impl UdevDevice {
-    fn output_descriptors(&self) -> Vec<super::OutputDescriptor> {
-        self.output_targets
-            .iter()
-            .map(KmsOutputTarget::output_descriptor)
-            .collect()
-    }
-
-    fn connected_output_targets(&self) -> Vec<KmsOutputTarget> {
-        let Ok(resources) = self.scanout_node.drm_device.resource_handles() else {
-            eprintln!(
-                "Failed to query DRM resource handles for {}",
-                self.path.display()
-            );
-            return Vec::new();
-        };
-
-        let crtcs = resources.crtcs();
-        println!(
-            "DRM device {} exposes {} connector(s) and {} CRTC(s)",
-            self.path.display(),
-            resources.connectors().len(),
-            crtcs.len()
-        );
-
-        let mut targets = Vec::new();
-        for connector_handle in resources.connectors() {
-            let Ok(info) = self
-                .scanout_node
-                .drm_device
-                .get_connector(*connector_handle, true)
-            else {
-                eprintln!("Failed to query DRM connector {:?}", connector_handle);
-                continue;
-            };
-            let connected = info.state() == connector::State::Connected;
-            println!(
-                "DRM connector {:?} {:?} connected={} mode_count={}",
-                connector_handle,
-                info.interface(),
-                connected,
-                info.modes().len()
-            );
-            if connected {
-                if let Some(mode) = info.modes().first() {
-                    println!(
-                        "Preferred/first mode for {:?}: {:?}",
-                        connector_handle, mode
-                    );
-                    let crtc = info
-                        .current_encoder()
-                        .and_then(|encoder| self.scanout_node.drm_device.get_encoder(encoder).ok())
-                        .and_then(|encoder| encoder.crtc())
-                        .or_else(|| {
-                            info.encoders().iter().find_map(|encoder| {
-                                self.scanout_node
-                                    .drm_device
-                                    .get_encoder(*encoder)
-                                    .ok()
-                                    .and_then(|encoder_info| {
-                                        resources
-                                            .filter_crtcs(encoder_info.possible_crtcs())
-                                            .into_iter()
-                                            .next()
-                                    })
-                            })
-                        });
-                    if let Some(crtc) = crtc {
-                        let physical_size_mm = info
-                            .size()
-                            .map(|(width, height)| {
-                                (
-                                    i32::try_from(width).unwrap_or(0),
-                                    i32::try_from(height).unwrap_or(0),
-                                )
-                            })
-                            .unwrap_or((0, 0));
-                        targets.push(KmsOutputTarget {
-                            connector: *connector_handle,
-                            crtc,
-                            mode: *mode,
-                            connector_name: format!(
-                                "{}-{}",
-                                info.interface().as_str(),
-                                info.interface_id()
-                            ),
-                            physical_size_mm,
-                        });
-                    }
-                }
-                println!("CRTC candidates for {:?}: {:?}", connector_handle, crtcs);
-            }
-        }
-        if let Some(target) = targets.first() {
-            println!(
-                "Selected KMS target connector {:?}, CRTC {:?}, mode {:?}",
-                target.connector, target.crtc, target.mode
-            );
-        } else {
-            println!("No connected DRM connector with a usable CRTC was found");
-        }
-        targets
-    }
-}
-
-fn create_udev_device(
-    session: &mut LibSeatSession,
-    path: PathBuf,
-    active: bool,
-) -> Result<(UdevDevice, smithay::backend::drm::DrmDeviceNotifier), Box<dyn std::error::Error>> {
-    let fd = session.open(&path, OFlags::RDWR | OFlags::CLOEXEC)?;
-    let drm_fd = DrmDeviceFd::new(DeviceFd::from(fd));
-    let gbm_device = GbmDevice::new(drm_fd.clone())?;
-    let egl_display = unsafe { EGLDisplay::new(gbm_device.clone())? };
-    let context = EGLContext::new(&egl_display)?;
-    let renderer = unsafe { GlesRenderer::new(context)? };
-    let gbm_allocator = GbmAllocator::new(
-        gbm_device,
-        GbmBufferFlags::SCANOUT | GbmBufferFlags::RENDERING,
-    );
-    // Avoid disabling existing connectors until the first real frame commit path is in place.
-    let (drm_device, notifier) = DrmDevice::new(drm_fd.clone(), false)?;
-    let mut device = UdevDevice {
-        path,
-        render_node: RenderNode {
-            drm_fd: drm_fd.clone(),
-            renderer,
-        },
-        scanout_node: ScanoutNode { drm_fd, drm_device },
-        active,
-        output_targets: Vec::new(),
-        output_target: None,
-        output_surface: None,
-    };
-    device.output_targets = device.connected_output_targets();
-    device.output_target = device.output_targets.first().cloned();
-    if let Some(target) = device.output_target.clone() {
-        let surface = device.scanout_node.drm_device.create_surface(
-            target.crtc,
-            target.mode,
-            std::slice::from_ref(&target.connector),
-        )?;
-        println!(
-            "Created DRM surface for connector {:?}, CRTC {:?}, mode {:?}",
-            target.connector, target.crtc, target.mode
-        );
-        let renderer_formats = device
-            .render_node
-            .renderer
-            .dmabuf_formats()
-            .into_iter()
-            .collect::<Vec<Format>>();
-        let gbm_surface = GbmBufferedSurface::new(
-            surface,
-            gbm_allocator,
-            &[Fourcc::Argb8888, Fourcc::Xrgb8888],
-            renderer_formats,
-        )?;
-        println!(
-            "Created GBM buffered surface for connector {:?}, CRTC {:?}",
-            target.connector, target.crtc
-        );
-        device.output_surface = Some(KmsOutputSurface {
-            target,
-            gbm_surface,
-        });
-    }
-    Ok((device, notifier))
-}
-
-fn initial_device_list(udev_backend: &UdevBackend) -> Vec<UdevDeviceInfo> {
-    udev_backend
-        .device_list()
-        .map(|(device_id, path)| UdevDeviceInfo {
-            device_id: device_id as u64,
-            path: path.to_path_buf(),
-        })
-        .collect()
-}
-
-fn current_device_list(seat_name: &str) -> io::Result<Vec<UdevDeviceInfo>> {
-    all_gpus(seat_name)?
-        .into_iter()
-        .map(|path| {
-            let device_id = stat(&path)?.st_rdev as u64;
-            Ok(UdevDeviceInfo { device_id, path })
-        })
-        .collect()
-}
-
-fn log_device_list(seat_name: &str, devices: &[UdevDeviceInfo]) {
-    if devices.is_empty() {
-        println!("No DRM devices found for seat {seat_name}");
-        return;
-    }
-
-    for device in devices {
-        println!(
-            "Found DRM device {} at {}",
-            device.device_id,
-            device.path.display()
-        );
-    }
-}
-
-fn log_input_event(event: &InputEvent<LibinputInputBackend>) {
-    match event {
-        InputEvent::DeviceAdded { device } => println!("Input device added: {}", device.name()),
-        InputEvent::DeviceRemoved { device } => {
-            println!("Input device removed: {}", device.name());
-        }
-        InputEvent::Keyboard { .. } => println!("Input keyboard event"),
-        InputEvent::PointerMotion { .. } => println!("Input relative pointer motion event"),
-        InputEvent::PointerMotionAbsolute { .. } => println!("Input absolute pointer motion event"),
-        InputEvent::PointerButton { .. } => println!("Input pointer button event"),
-        InputEvent::PointerAxis { .. } => println!("Input pointer axis event"),
-        InputEvent::GestureSwipeBegin { .. }
-        | InputEvent::GestureSwipeUpdate { .. }
-        | InputEvent::GestureSwipeEnd { .. }
-        | InputEvent::GesturePinchBegin { .. }
-        | InputEvent::GesturePinchUpdate { .. }
-        | InputEvent::GesturePinchEnd { .. }
-        | InputEvent::GestureHoldBegin { .. }
-        | InputEvent::GestureHoldEnd { .. } => {
-            println!("Input gesture event ignored until native compositor state is wired");
-        }
-        InputEvent::TouchDown { .. }
-        | InputEvent::TouchMotion { .. }
-        | InputEvent::TouchUp { .. }
-        | InputEvent::TouchCancel { .. }
-        | InputEvent::TouchFrame { .. } => {
-            println!("Input touch event ignored until native touch handling is needed");
-        }
-        InputEvent::TabletToolAxis { .. }
-        | InputEvent::TabletToolProximity { .. }
-        | InputEvent::TabletToolTip { .. }
-        | InputEvent::TabletToolButton { .. } => {
-            println!("Input tablet event ignored until native tablet handling is needed");
-        }
-        InputEvent::SwitchToggle { .. } => {
-            println!("Input switch event ignored until native switch handling is needed");
-        }
-        InputEvent::Special(_) => println!("Backend-specific input event ignored"),
     }
 }

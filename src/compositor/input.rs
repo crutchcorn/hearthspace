@@ -392,7 +392,11 @@ impl App {
     }
 
     fn apply_pointer_motion(&mut self, location: Point<f64, Logical>, time: u32) {
+        let previous_location = self.pointer_location;
         self.pointer_location = clamp_point_to_output(location, self.output_logical_size());
+        if self.software_cursor_visible && self.pointer_location != previous_location {
+            self.request_redraw();
+        }
 
         if let Some(drag) = self.drag.as_ref() {
             let delta = self.pointer_location - drag.pointer_start;
