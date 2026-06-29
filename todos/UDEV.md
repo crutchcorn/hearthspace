@@ -218,10 +218,10 @@ Goal: move from one hardcoded output to a connector-backed output set.
       primary-output abstraction that can grow to multiple outputs.
 - [x] On udev `Changed`, re-enumerate connectors for the affected GPU.
 - [x] Add newly connected connectors as Smithay `Output`s with globals.
-- [ ] Disable removed/disconnected outputs and destroy or update their globals in
+- [x] Disable removed/disconnected outputs and destroy or update their globals in
       the Smithay output manager.
-- [ ] Recompute pointer/output mapping when output geometry changes.
-- [ ] Keep multi-monitor layout simple at first: horizontal layout in connector
+- [x] Recompute pointer/output mapping when output geometry changes.
+- [x] Keep multi-monitor layout simple at first: horizontal layout in connector
       enumeration order, or single-primary until a layout policy exists.
 
 Done when: plugging or unplugging a monitor updates Wayland output state without

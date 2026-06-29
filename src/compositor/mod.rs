@@ -201,6 +201,8 @@ struct OutputRecord {
     global_id: GlobalId,
     size: Size<i32, Physical>,
     scale: i32,
+    refresh: i32,
+    location: Point<i32, Logical>,
 }
 
 pub(in crate::compositor) struct OutputDescriptor {
@@ -234,46 +236,74 @@ impl OutputSet {
 
     #[cfg(feature = "udev")]
     fn sync_secondary_outputs(&mut self, dh: &DisplayHandle, descriptors: Vec<OutputDescriptor>) {
-        let connected_names = descriptors
-            .iter()
-            .map(|descriptor| descriptor.name.as_str())
-            .collect::<Vec<_>>();
-
-        let mut index = 0;
-        while index < self.secondary.len() {
-            if connected_names.contains(&self.secondary[index].name.as_str()) {
-                index += 1;
-                continue;
-            }
-            let removed = self.secondary.remove(index);
-            println!("Disabling disconnected Wayland output {}", removed.name);
-            dh.disable_global::<App>(removed.global_id);
-        }
-
         let mut next_x = self.primary.size.to_logical(self.primary.scale).w;
-        for output in &self.secondary {
-            next_x += output.size.to_logical(output.scale).w;
-        }
+        let mut existing = std::mem::take(&mut self.secondary);
+        let mut next_secondary = Vec::with_capacity(existing.len());
 
         for descriptor in descriptors {
-            if descriptor.name == self.primary.name
-                || self
-                    .secondary
-                    .iter()
-                    .any(|output| output.name == descriptor.name)
-            {
+            if descriptor.name == self.primary.name {
                 continue;
             }
 
             let location = (next_x, 0).into();
-            let output = create_output_record(dh, descriptor, location);
-            println!(
-                "Advertising newly connected Wayland output {} at {:?}",
-                output.name, location
-            );
+            let output = if let Some(index) = existing
+                .iter()
+                .position(|output| output.name == descriptor.name)
+            {
+                let mut output = existing.remove(index);
+                output.update(descriptor, location);
+                output
+            } else {
+                let output = create_output_record(dh, descriptor, location);
+                println!(
+                    "Advertising newly connected Wayland output {} at {:?}",
+                    output.name, location
+                );
+                output
+            };
             next_x += output.size.to_logical(output.scale).w;
-            self.secondary.push(output);
+            next_secondary.push(output);
         }
+
+        for removed in existing {
+            println!("Disabling disconnected Wayland output {}", removed.name);
+            dh.disable_global::<App>(removed.global_id);
+        }
+
+        self.secondary = next_secondary;
+    }
+
+    fn logical_size(&self) -> Size<i32, Logical> {
+        let primary_size = self.primary.logical_size();
+        let mut width = primary_size.w;
+        let mut height = primary_size.h;
+        for output in &self.secondary {
+            let size = output.logical_size();
+            width = width.max(output.location.x + size.w);
+            height = height.max(output.location.y + size.h);
+        }
+        Size::from((width.max(1), height.max(1)))
+    }
+}
+
+impl OutputRecord {
+    fn logical_size(&self) -> Size<i32, Logical> {
+        self.size.to_logical(self.scale)
+    }
+
+    #[cfg(feature = "udev")]
+    fn update(&mut self, descriptor: OutputDescriptor, location: Point<i32, Logical>) {
+        self.size = descriptor.size;
+        self.scale = descriptor.scale;
+        self.refresh = descriptor.refresh;
+        self.location = location;
+        update_output_mode_with_refresh_at(
+            &self.output,
+            self.size,
+            self.scale,
+            self.refresh,
+            self.location,
+        );
     }
 }
 
@@ -283,15 +313,14 @@ impl App {
     }
 
     fn output_logical_size(&self) -> Size<i32, Logical> {
-        self.outputs
-            .primary
-            .size
-            .to_logical(self.outputs.primary.scale)
+        self.outputs.logical_size()
     }
 
     #[cfg_attr(not(feature = "winit"), allow(dead_code))]
     fn set_primary_output_size(&mut self, size: Size<i32, Physical>) {
         self.outputs.primary.size = size;
+        self.outputs.primary.refresh = 60_000;
+        self.outputs.primary.location = (0, 0).into();
         update_output_mode(
             &self.outputs.primary.output,
             size,
@@ -1017,6 +1046,8 @@ fn create_output_record(
         global_id,
         size,
         scale,
+        refresh,
+        location,
     }
 }
 
