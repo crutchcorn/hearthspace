@@ -273,6 +273,7 @@ pub fn run_winit(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> 
                 data.damage_tracker = OutputDamageTracker::new(size, 1.0, Transform::Flipped180);
                 data.full_redraw = 1;
                 data.state.configure_shell_bars();
+                data.state.reconcile_pointer_after_output_geometry_change();
                 data.state.request_redraw();
             }
         }

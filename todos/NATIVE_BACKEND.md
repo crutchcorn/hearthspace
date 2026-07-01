@@ -52,7 +52,7 @@ exists.
       globals.
 - [x] Replace the temporary horizontal connector-order layout with an explicit
       layout policy.
-- [ ] Preserve or migrate pointer position/focus predictably when output geometry
+- [x] Preserve or migrate pointer position/focus predictably when output geometry
       changes.
 - [ ] Add real output removal cleanup if Smithay exposes a better lifecycle than
       disabling globals.

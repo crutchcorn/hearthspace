@@ -177,6 +177,7 @@ pub fn run_udev(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> {
             };
             let dh = data.display.handle();
             data.state.sync_connector_outputs(&dh, output_descriptors);
+            data.state.reconcile_pointer_after_output_geometry_change();
             data.full_redraw = data.full_redraw.max(1);
             data.state.request_redraw();
         }
@@ -198,6 +199,7 @@ pub fn run_udev(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> {
             };
             let dh = data.display.handle();
             data.state.sync_connector_outputs(&dh, output_descriptors);
+            data.state.reconcile_pointer_after_output_geometry_change();
             data.full_redraw = data.full_redraw.max(1);
             data.state.request_redraw();
         }
@@ -290,6 +292,7 @@ fn apply_connector_sync(data: &mut super::CalloopData, connector_sync: Connector
     }
     data.state
         .sync_connector_outputs(&dh, connector_sync.descriptors);
+    data.state.reconcile_pointer_after_output_geometry_change();
     data.full_redraw = data.full_redraw.max(1);
 }
 

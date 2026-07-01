@@ -548,6 +548,46 @@ impl App {
         pointer.frame(self);
     }
 
+    pub(super) fn reconcile_pointer_after_output_geometry_change(&mut self) {
+        let output_size = self.output_logical_size();
+        let previous_location = self.pointer_location;
+        self.pointer_location = clamp_point_to_output(self.pointer_location, output_size);
+        if self.software_cursor_visible && self.pointer_location != previous_location {
+            self.request_redraw();
+        }
+
+        let hit = self.hit_test(self.pointer_location);
+        self.cursor_icon = match &hit {
+            Some(HitTarget::ResizeBorder { edges, .. }) => resize_cursor_icon(*edges),
+            _ => CursorIcon::Default,
+        };
+        let focus = match hit {
+            Some(HitTarget::Client {
+                surface,
+                surface_location,
+                ..
+            }) => Some((surface, surface_location)),
+            _ => None,
+        };
+        let pointer = self.pointer.clone();
+        pointer.motion(
+            self,
+            focus,
+            &MotionEvent {
+                location: self.pointer_location,
+                serial: SERIAL_COUNTER.next_serial(),
+                time: event_time_msec(),
+            },
+        );
+        pointer.frame(self);
+        debug!(
+            ?previous_location,
+            location = ?self.pointer_location,
+            ?output_size,
+            "reconciled pointer after output geometry change"
+        );
+    }
+
     fn super_modifier_active(&self) -> bool {
         self.keyboard.modifier_state().logo
             || self.keyboard.with_pressed_keysyms(|pressed| {
