@@ -2,6 +2,7 @@ use smithay::{
     output::{Mode, Output, PhysicalProperties, Scale, Subpixel},
     utils::{Logical, Physical, Point, Size, Transform},
 };
+use tracing::debug;
 use wayland_server::{DisplayHandle, backend::GlobalId, protocol::wl_surface::WlSurface};
 
 use super::App;
@@ -60,10 +61,7 @@ impl OutputSet {
                 output
             } else {
                 let output = create_output_record(dh, descriptor, location);
-                println!(
-                    "Advertising newly connected Wayland output {} at {:?}",
-                    output.name, location
-                );
+                tracing::info!(name = %output.name, ?location, "advertising newly connected Wayland output");
                 output
             };
             next_x += output.size.to_logical(output.scale).w;
@@ -71,7 +69,7 @@ impl OutputSet {
         }
 
         for removed in existing {
-            println!("Disabling disconnected Wayland output {}", removed.name);
+            tracing::info!(name = %removed.name, "disabling disconnected Wayland output");
             dh.disable_global::<App>(removed.global_id);
         }
 
@@ -123,6 +121,7 @@ impl App {
 
     #[cfg_attr(not(feature = "winit"), allow(dead_code))]
     pub(super) fn set_primary_output_size(&mut self, size: Size<i32, Physical>) {
+        debug!(old_size = ?self.outputs.primary.size, new_size = ?size, "resizing primary output");
         self.outputs.primary.size = size;
         self.outputs.primary.refresh = 60_000;
         self.outputs.primary.location = (0, 0).into();

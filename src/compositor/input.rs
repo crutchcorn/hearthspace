@@ -11,6 +11,7 @@ use smithay::{
     },
     utils::{Logical, Point, SERIAL_COUNTER},
 };
+use tracing::{debug, trace};
 
 use crate::config::{SCROLL_ZOOM_SENSITIVITY, WHEEL_SCROLL_PIXEL_EQUIVALENT};
 
@@ -26,6 +27,7 @@ pub(in crate::compositor) fn handle_input_event<B: InputBackend>(
     match event {
         InputEvent::Keyboard { event } => {
             let time = event.time_msec();
+            trace!(key_code = ?event.key_code(), state = ?event.state(), time, "keyboard input");
             state.record_focused_client_activity(ActivityReason::ClientInput);
             let keyboard = state.keyboard.clone();
             keyboard.input::<(), _>(
@@ -40,19 +42,23 @@ pub(in crate::compositor) fn handle_input_event<B: InputBackend>(
         InputEvent::PointerMotionAbsolute { event } => {
             let time = event.time_msec();
             let location = event.position_transformed(state.output_logical_size());
+            trace!(?location, time, "absolute pointer motion input");
             state.apply_pointer_motion(location, time);
         }
         InputEvent::PointerMotion { event } => {
+            trace!(delta = ?event.delta(), time = event.time_msec(), "relative pointer motion input");
             state.apply_pointer_motion(state.pointer_location + event.delta(), event.time_msec());
         }
         InputEvent::PointerButton { event } => {
             let time = event.time_msec();
             let is_left_button = event.button() == Some(smithay::backend::input::MouseButton::Left);
+            trace!(button = event.button_code(), state = ?event.state(), time, "pointer button input");
 
             if is_left_button
                 && event.state() == ButtonState::Released
                 && (state.drag.is_some() || state.resize.is_some())
             {
+                debug!("ending pointer drag/resize from button release");
                 state.drag = None;
                 state.finish_resize();
                 // Forward the release to the pointer so the implicit grab
@@ -77,6 +83,10 @@ pub(in crate::compositor) fn handle_input_event<B: InputBackend>(
             if is_left_button && event.state() == ButtonState::Pressed {
                 match state.hit_test(state.pointer_location) {
                     Some(HitTarget::CloseButton { window_index }) => {
+                        debug!(
+                            window_id = state.windows[window_index].id,
+                            "close button clicked"
+                        );
                         state.windows[window_index].surface.send_close();
                         state.drag = None;
                         return;
@@ -90,6 +100,10 @@ pub(in crate::compositor) fn handle_input_event<B: InputBackend>(
                             pointer_start: state.pointer_location,
                             window_start: state.windows[window_index].position,
                         });
+                        debug!(
+                            window_id = state.windows[window_index].id,
+                            "started titlebar drag"
+                        );
                         state.request_redraw();
                         return;
                     }
@@ -100,6 +114,11 @@ pub(in crate::compositor) fn handle_input_event<B: InputBackend>(
                         let window_index = state.raise_window(window_index);
                         let surface = state.windows[window_index].surface.wl_surface().clone();
                         state.set_keyboard_focus_to_window(window_index, surface);
+                        debug!(
+                            window_id = state.windows[window_index].id,
+                            ?edges,
+                            "started resize from pointer press"
+                        );
                         state.start_resize(window_index, edges);
                         return;
                     }
@@ -109,6 +128,7 @@ pub(in crate::compositor) fn handle_input_event<B: InputBackend>(
                         state.set_keyboard_focus_to_window(window_index, surface);
                     }
                     None => {
+                        debug!("clearing keyboard focus from pointer press on canvas");
                         state.clear_keyboard_focus();
                     }
                 }
@@ -164,6 +184,11 @@ pub(in crate::compositor) fn handle_input_event<B: InputBackend>(
             pointer.frame(state);
         }
         InputEvent::PointerAxis { event } => {
+            trace!(
+                horizontal = ?scroll_amount_for_axis(&event, Axis::Horizontal),
+                vertical = ?scroll_amount_for_axis(&event, Axis::Vertical),
+                "pointer axis input"
+            );
             if state.scroll_zoom_active() && state.zoom_from_scroll(&event) {
                 return;
             }
@@ -244,6 +269,7 @@ fn is_super_keysym(keysym: u32) -> bool {
 
 impl App {
     pub(super) fn synthesize_key(&mut self, evdev_keycode: u32, state: KeyState) {
+        trace!(evdev_keycode, ?state, "synthesizing key input");
         self.record_focused_client_activity(ActivityReason::ClientInput);
         let keyboard = self.keyboard.clone();
         keyboard.input::<(), _>(
@@ -257,14 +283,17 @@ impl App {
     }
 
     pub(super) fn synthesize_pointer_motion_abs(&mut self, location: Point<f64, Logical>) {
+        trace!(?location, "synthesizing absolute pointer motion");
         self.apply_pointer_motion(location, event_time_msec());
     }
 
     pub(super) fn synthesize_pointer_motion_rel(&mut self, delta: Point<f64, Logical>) {
+        trace!(?delta, "synthesizing relative pointer motion");
         self.apply_pointer_motion(self.pointer_location + delta, event_time_msec());
     }
 
     pub(super) fn synthesize_pointer_button(&mut self, button: u32, state: ButtonState) {
+        trace!(button, ?state, "synthesizing pointer button");
         let time = event_time_msec();
         let is_left_button = button == 0x110;
 
@@ -272,6 +301,7 @@ impl App {
             && state == ButtonState::Released
             && (self.drag.is_some() || self.resize.is_some())
         {
+            debug!("ending synthetic pointer drag/resize from button release");
             self.drag = None;
             self.finish_resize();
             let pointer = self.pointer.clone();
@@ -291,6 +321,10 @@ impl App {
         if is_left_button && state == ButtonState::Pressed {
             match self.hit_test(self.pointer_location) {
                 Some(HitTarget::CloseButton { window_index }) => {
+                    debug!(
+                        window_id = self.windows[window_index].id,
+                        "close button clicked from synthetic input"
+                    );
                     self.windows[window_index].surface.send_close();
                     self.drag = None;
                     return;
@@ -304,6 +338,10 @@ impl App {
                         pointer_start: self.pointer_location,
                         window_start: self.windows[window_index].position,
                     });
+                    debug!(
+                        window_id = self.windows[window_index].id,
+                        "started titlebar drag from synthetic input"
+                    );
                     self.request_redraw();
                     return;
                 }
@@ -314,6 +352,11 @@ impl App {
                     let window_index = self.raise_window(window_index);
                     let surface = self.windows[window_index].surface.wl_surface().clone();
                     self.set_keyboard_focus_to_window(window_index, surface);
+                    debug!(
+                        window_id = self.windows[window_index].id,
+                        ?edges,
+                        "started resize from synthetic pointer press"
+                    );
                     self.start_resize(window_index, edges);
                     return;
                 }
@@ -323,6 +366,7 @@ impl App {
                     self.set_keyboard_focus_to_window(window_index, surface);
                 }
                 None => {
+                    debug!("clearing keyboard focus from synthetic pointer press on canvas");
                     self.clear_keyboard_focus();
                 }
             }
@@ -377,6 +421,7 @@ impl App {
     }
 
     pub(super) fn synthesize_axis(&mut self, horizontal: f64, vertical: f64) {
+        trace!(horizontal, vertical, "synthesizing pointer axis");
         if let Some(HitTarget::Client { window_index, .. }) = self.hit_test(self.pointer_location) {
             self.record_client_activity_for_window_index(window_index, ActivityReason::ClientInput);
         }
@@ -407,6 +452,7 @@ impl App {
             let window_id = drag.window_id;
             if let Some(window) = self.window_mut_by_id(window_id) {
                 window.position = new_position;
+                trace!(window_id, ?new_position, "updated window drag position");
                 self.request_redraw();
             }
             return;
@@ -473,6 +519,7 @@ impl App {
         }
 
         self.advance_viewport_animation();
+        debug!(scroll_amount, "zooming viewport from scroll input");
         self.animate_zoom_around_viewport_center((-scroll_amount * SCROLL_ZOOM_SENSITIVITY).exp());
         true
     }

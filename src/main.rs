@@ -1,3 +1,5 @@
+use tracing::{debug, info};
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     match tracing_subscriber::EnvFilter::try_from_default_env() {
         Ok(env_filter) => {
@@ -9,23 +11,26 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let args = std::env::args().collect::<Vec<_>>();
+    debug!(?args, "parsed process arguments");
 
     if args
         .iter()
         .any(|arg| arg == hearthspace::config::GTK_TEST_APP_FLAG)
     {
+        info!("starting GTK test app client");
         run_gtk_test_app()
     } else if args
         .iter()
         .any(|arg| arg == hearthspace::config::SHELL_FLAG)
     {
+        info!("starting shell client");
         hearthspace::shell::xilem_shell::run()
     } else {
         let backend = parse_backend_selection(&args)?;
         let headless_output_size = parse_headless_output_size(&args)?;
         let headless_output_scale = parse_headless_output_scale(&args)?;
         let exit_after = parse_exit_after(&args)?;
-        hearthspace::run_with_options(hearthspace::RunOptions {
+        let options = hearthspace::RunOptions {
             scroll_zooms_without_super: args
                 .iter()
                 .any(|arg| arg == hearthspace::config::SCROLL_ZOOMS_FLAG),
@@ -36,7 +41,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             start_shell: !args
                 .iter()
                 .any(|arg| arg == hearthspace::config::NO_SHELL_FLAG),
-        })
+        };
+        info!(?options, "starting compositor");
+        hearthspace::run_with_options(options)
     }
 }
 

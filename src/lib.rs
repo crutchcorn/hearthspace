@@ -8,6 +8,8 @@ pub mod test_apps;
 
 use std::time::Duration;
 
+use tracing::info;
+
 #[derive(Debug, Clone, Copy)]
 pub enum BackendSelection {
     Auto,
@@ -44,7 +46,9 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 pub fn run_with_options(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> {
-    match selected_backend(options.backend) {
+    let backend = selected_backend(options.backend);
+    info!(requested_backend = ?options.backend, selected_backend = ?backend, "selected compositor backend");
+    match backend {
         BackendSelection::Headless => compositor::run_headless(options),
         BackendSelection::Winit => run_winit_backend(options),
         BackendSelection::Udev => run_udev_backend(options),

@@ -2,6 +2,7 @@ use smithay::backend::{
     input::{InputEvent, KeyState, KeyboardKeyEvent},
     libinput::LibinputInputBackend,
 };
+use tracing::{debug, trace};
 
 use super::UdevBackendState;
 
@@ -36,15 +37,15 @@ impl UdevBackendState {
 
 pub(super) fn log_input_event(event: &InputEvent<LibinputInputBackend>) {
     match event {
-        InputEvent::DeviceAdded { device } => println!("Input device added: {}", device.name()),
+        InputEvent::DeviceAdded { device } => debug!(name = device.name(), "input device added"),
         InputEvent::DeviceRemoved { device } => {
-            println!("Input device removed: {}", device.name());
+            debug!(name = device.name(), "input device removed");
         }
-        InputEvent::Keyboard { .. } => println!("Input keyboard event"),
-        InputEvent::PointerMotion { .. } => println!("Input relative pointer motion event"),
-        InputEvent::PointerMotionAbsolute { .. } => println!("Input absolute pointer motion event"),
-        InputEvent::PointerButton { .. } => println!("Input pointer button event"),
-        InputEvent::PointerAxis { .. } => println!("Input pointer axis event"),
+        InputEvent::Keyboard { .. } => trace!("input keyboard event"),
+        InputEvent::PointerMotion { .. } => trace!("input relative pointer motion event"),
+        InputEvent::PointerMotionAbsolute { .. } => trace!("input absolute pointer motion event"),
+        InputEvent::PointerButton { .. } => trace!("input pointer button event"),
+        InputEvent::PointerAxis { .. } => trace!("input pointer axis event"),
         InputEvent::GestureSwipeBegin { .. }
         | InputEvent::GestureSwipeUpdate { .. }
         | InputEvent::GestureSwipeEnd { .. }
@@ -53,24 +54,24 @@ pub(super) fn log_input_event(event: &InputEvent<LibinputInputBackend>) {
         | InputEvent::GesturePinchEnd { .. }
         | InputEvent::GestureHoldBegin { .. }
         | InputEvent::GestureHoldEnd { .. } => {
-            println!("Input gesture event ignored until native compositor state is wired");
+            debug!("input gesture event ignored until native compositor state is wired");
         }
         InputEvent::TouchDown { .. }
         | InputEvent::TouchMotion { .. }
         | InputEvent::TouchUp { .. }
         | InputEvent::TouchCancel { .. }
         | InputEvent::TouchFrame { .. } => {
-            println!("Input touch event ignored until native touch handling is needed");
+            debug!("input touch event ignored until native touch handling is needed");
         }
         InputEvent::TabletToolAxis { .. }
         | InputEvent::TabletToolProximity { .. }
         | InputEvent::TabletToolTip { .. }
         | InputEvent::TabletToolButton { .. } => {
-            println!("Input tablet event ignored until native tablet handling is needed");
+            debug!("input tablet event ignored until native tablet handling is needed");
         }
         InputEvent::SwitchToggle { .. } => {
-            println!("Input switch event ignored until native switch handling is needed");
+            debug!("input switch event ignored until native switch handling is needed");
         }
-        InputEvent::Special(_) => println!("Backend-specific input event ignored"),
+        InputEvent::Special(_) => debug!("backend-specific input event ignored"),
     }
 }

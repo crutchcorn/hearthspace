@@ -17,6 +17,7 @@
 
 use std::{env, io::Write, os::unix::net::UnixStream, path::PathBuf};
 
+use tracing::{debug, error, info};
 use xilem::{
     AnyWidgetView, AppState, Color, EventLoop, TextAlign, WidgetView, WindowId,
     WindowOptionsExtLinux, WindowView, Xilem,
@@ -315,6 +316,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     let command_socket = env::var_os(SHELL_COMMAND_SOCKET_ENV)
         .map(PathBuf::from)
         .ok_or_else(|| format!("{SHELL_COMMAND_SOCKET_ENV} is not set"))?;
+    info!(path = %command_socket.display(), "starting Xilem shell");
 
     let state = ShellState {
         command_socket,
@@ -340,11 +342,14 @@ fn launch_app(command_socket: &PathBuf, app_id: &str) {
 }
 
 fn send_command(command_socket: &PathBuf, command: &str) {
+    debug!(path = %command_socket.display(), command, "sending shell command");
     match UnixStream::connect(command_socket).and_then(|mut stream| {
         stream.write_all(command.as_bytes())?;
         stream.write_all(b"\n")
     }) {
         Ok(()) => {}
-        Err(error) => eprintln!("failed to send shell command {command:?}: {error}"),
+        Err(error) => {
+            error!(path = %command_socket.display(), command, %error, "failed to send shell command")
+        }
     }
 }

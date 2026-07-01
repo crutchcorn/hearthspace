@@ -1,6 +1,7 @@
 use std::time::Instant;
 
 use smithay::utils::{Logical, Point};
+use tracing::{debug, trace};
 
 use crate::{
     config::VIEWPORT_ANIMATION_DURATION,
@@ -26,10 +27,18 @@ impl App {
         if self.viewport_offset == to_offset
             && (self.viewport_scale - to_scale).abs() < f64::EPSILON
         {
+            trace!(?to_offset, to_scale, "skipping no-op viewport animation");
             self.viewport_animation = None;
             return;
         }
 
+        debug!(
+            from_offset = ?self.viewport_offset,
+            from_scale = self.viewport_scale,
+            ?to_offset,
+            to_scale,
+            "starting viewport animation"
+        );
         self.viewport_animation = Some(ViewportAnimation {
             from_offset: self.viewport_offset,
             from_scale: self.viewport_scale,
@@ -58,12 +67,14 @@ impl App {
             let animation = self.viewport_animation.take().unwrap();
             self.viewport_offset = animation.to_offset;
             self.viewport_scale = animation.to_scale;
+            debug!(offset = ?self.viewport_offset, scale = self.viewport_scale, "viewport animation completed");
         } else {
             self.request_redraw();
         }
     }
 
     pub(super) fn pan_viewport_by(&mut self, x: i32, y: i32) {
+        debug!(x, y, "panning viewport");
         self.start_viewport_animation(
             CanvasPoint {
                 x: self.viewport_offset.x + x,
@@ -90,6 +101,7 @@ impl App {
     }
 
     pub(super) fn animate_zoom_around_viewport_center(&mut self, multiplier: f64) {
+        debug!(multiplier, "zooming viewport around center");
         let center_screen = Point::<f64, Logical>::from((
             f64::from(self.output_size().w) / 2.0,
             f64::from(self.output_size().h) / 2.0,

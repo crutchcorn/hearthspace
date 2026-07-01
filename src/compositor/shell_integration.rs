@@ -14,6 +14,7 @@ use smithay::{
     backend::input::{ButtonState, KeyState},
     utils::Point,
 };
+use tracing::{debug, error, info, trace, warn};
 
 use crate::{
     config::*,
@@ -138,18 +139,20 @@ pub(super) fn spawn_shell(command_socket_path: &PathBuf) {
     let current_exe = match env::current_exe() {
         Ok(path) => path,
         Err(error) => {
-            eprintln!("Failed to locate current executable for shell: {error}");
+            error!(%error, "failed to locate current executable for shell");
             return;
         }
     };
 
-    if let Err(error) = Command::new(current_exe)
+    if let Err(error) = Command::new(&current_exe)
         .arg(SHELL_FLAG)
         .env("WAYLAND_DISPLAY", WAYLAND_DISPLAY_NAME)
         .env(SHELL_COMMAND_SOCKET_ENV, command_socket_path)
         .spawn()
     {
-        eprintln!("Failed to spawn shell: {error}");
+        error!(path = %current_exe.display(), %error, "failed to spawn shell");
+    } else {
+        debug!(path = %current_exe.display(), "spawned shell process");
     }
 }
 
@@ -181,7 +184,7 @@ fn apply_gtk_client_environment(command: &mut Command) {
             command.env("XDG_CONFIG_HOME", config_dir);
             command.env("GSETTINGS_BACKEND", "keyfile");
         }
-        Err(error) => eprintln!("Failed to prepare GTK client settings: {error}"),
+        Err(error) => warn!(%error, "failed to prepare GTK client settings"),
     }
 }
 
@@ -200,6 +203,7 @@ pub(super) fn accept_command_connections<'l>(
     loop {
         match listener.accept() {
             Ok((stream, _)) => {
+                debug!("accepted shell command connection");
                 stream.set_nonblocking(true)?;
                 register_command_connection(handle, stream);
             }
@@ -215,7 +219,7 @@ fn register_command_connection<'l>(handle: &LoopHandle<'l, CalloopData>, stream:
     if let Err(error) = handle.insert_source(source, move |_, stream, data| {
         Ok(read_command_connection(stream, &mut buffer, data))
     }) {
-        eprintln!("Failed to register shell command connection: {error}");
+        error!(%error, "failed to register shell command connection");
     }
 }
 
@@ -242,8 +246,9 @@ fn read_command_connection(
                     return PostAction::Remove;
                 }
                 if buffer.len() > MAX_COMMAND_BUFFER_BYTES {
-                    eprintln!(
-                        "Shell command exceeded {MAX_COMMAND_BUFFER_BYTES} bytes without a newline; dropping connection"
+                    warn!(
+                        limit = MAX_COMMAND_BUFFER_BYTES,
+                        "shell command exceeded maximum buffered length; dropping connection"
                     );
                     return PostAction::Remove;
                 }
@@ -251,7 +256,7 @@ fn read_command_connection(
             Err(error) if error.kind() == ErrorKind::Interrupted => continue,
             Err(error) if error.kind() == ErrorKind::WouldBlock => return PostAction::Continue,
             Err(error) => {
-                eprintln!("Failed to read shell command: {error}");
+                error!(%error, "failed to read shell command");
                 return PostAction::Remove;
             }
         }
@@ -287,13 +292,19 @@ fn take_complete_commands(buffer: &mut Vec<u8>) -> Vec<ShellCommand> {
 
 fn run_command_line(bytes: &[u8], data: &mut CalloopData) {
     if let Some(command) = parse_command_line(bytes) {
+        trace!(command = %command.wire_name(), "running trailing shell command line");
         data.run_control_action(command);
     }
 }
 
 fn parse_command_line(bytes: &[u8]) -> Option<ShellCommand> {
     let text = std::str::from_utf8(bytes).ok()?;
-    ShellCommand::parse(text.trim())
+    let trimmed = text.trim();
+    let command = ShellCommand::parse(trimmed);
+    if command.is_none() && !trimmed.is_empty() {
+        warn!(line = trimmed, "ignored invalid shell command");
+    }
+    command
 }
 
 enum ControlReply {
@@ -322,7 +333,7 @@ fn write_control_reply(stream: &UnixStream, reply: ControlReply) -> bool {
         Ok(()) => true,
         Err(error) if matches!(error.kind(), ErrorKind::BrokenPipe | ErrorKind::WouldBlock) => true,
         Err(error) => {
-            eprintln!("Failed to write shell command reply: {error}");
+            error!(%error, "failed to write shell command reply");
             false
         }
     }
@@ -330,7 +341,10 @@ fn write_control_reply(stream: &UnixStream, reply: ControlReply) -> bool {
 
 impl CalloopData {
     fn run_control_action(&mut self, action: ShellCommand) -> ControlReply {
+        let command = action.wire_name();
+        debug!(%command, "running compositor control action");
         if action == ShellCommand::Quit {
+            info!("quit control action requested; stopping compositor event loop");
             self.running = false;
             return ControlReply::Ok;
         }
@@ -348,6 +362,8 @@ impl CalloopData {
 
 impl App {
     fn run_control_action(&mut self, action: ShellCommand) -> ControlReply {
+        let command = action.wire_name();
+        debug!(%command, "running app control action");
         self.advance_viewport_animation();
 
         match action {
@@ -411,7 +427,7 @@ impl App {
             let current_exe = match env::current_exe() {
                 Ok(path) => path,
                 Err(error) => {
-                    eprintln!("Failed to locate current executable for GTK test app: {error}");
+                    error!(%error, "failed to locate current executable for GTK test app");
                     return;
                 }
             };
@@ -424,13 +440,13 @@ impl App {
             apply_gtk_client_environment(&mut command);
 
             match command.spawn() {
-                Ok(_) => {}
-                Err(error) => eprintln!("Failed to spawn GTK test app: {error}"),
+                Ok(child) => info!(pid = child.id(), "spawned GTK test app"),
+                Err(error) => error!(%error, "failed to spawn GTK test app"),
             }
         }
 
         #[cfg(not(feature = "test-apps"))]
-        eprintln!("GTK test app support is not enabled; rebuild with `--features test-apps`");
+        warn!("GTK test app support is not enabled; rebuild with `--features test-apps`");
     }
 
     fn spawn_foot(&mut self) {
@@ -440,21 +456,22 @@ impl App {
             .env("WAYLAND_DISPLAY", WAYLAND_DISPLAY_NAME)
             .spawn()
         {
-            Ok(_) => {}
-            Err(error) => eprintln!("Failed to spawn foot: {error}"),
+            Ok(child) => info!(pid = child.id(), "spawned foot terminal"),
+            Err(error) => error!(%error, "failed to spawn foot"),
         }
     }
 
     fn launch_app(&mut self, app_id: &str) {
         let Some(app) = self.app_catalog.app_by_id(app_id) else {
-            eprintln!("No launchable desktop app found for {app_id}");
+            warn!(app_id, "no launchable desktop app found");
             return;
         };
+        info!(app_id, name = %app.name, terminal = app.terminal, "launching desktop app");
 
         let app_command = match app.launch_argv() {
             Ok(command) => command,
             Err(error) => {
-                eprintln!("Failed to build command for {app_id}: {error}");
+                error!(app_id, %error, "failed to build desktop app command");
                 return;
             }
         };
@@ -462,7 +479,7 @@ impl App {
             match self.app_catalog.terminal_command_for(app_command) {
                 Ok(command) => command,
                 Err(error) => {
-                    eprintln!("Failed to find terminal for {app_id}: {error}");
+                    error!(app_id, %error, "failed to find terminal for desktop app");
                     return;
                 }
             }
@@ -474,7 +491,7 @@ impl App {
             match ensure_snap_wayland_socket(instance_name) {
                 Ok(display_name) => display_name,
                 Err(error) => {
-                    eprintln!("Failed to prepare Snap Wayland socket for {app_id}: {error}");
+                    error!(app_id, %error, "failed to prepare Snap Wayland socket");
                     return;
                 }
             }
@@ -485,7 +502,7 @@ impl App {
         let launch_env = match launch_environment_for_app(app) {
             Ok(env) => env,
             Err(error) => {
-                eprintln!("Failed to prepare app environment for {app_id}: {error}");
+                error!(app_id, %error, "failed to prepare app environment");
                 return;
             }
         };
@@ -496,7 +513,9 @@ impl App {
 
         self.prepare_spawn_position();
         if let Err(error) = spawn_argv_with_env(&command, &wayland_display, &launch_env_refs) {
-            eprintln!("Failed to launch {app_id}: {error}");
+            error!(app_id, %error, "failed to launch desktop app");
+        } else {
+            info!(app_id, wayland_display, argv = ?command, "launched desktop app");
         }
     }
 }

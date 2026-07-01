@@ -34,6 +34,7 @@ use smithay::{
         shm::{ShmHandler, ShmState},
     },
 };
+use tracing::{debug, error, info, trace, warn};
 use wayland_protocols::xdg::{
     decoration::zv1::server::zxdg_toplevel_decoration_v1::Mode as DecorationMode,
     shell::server::xdg_toplevel,
@@ -64,6 +65,7 @@ impl XdgShellHandler for App {
         let kind = window_kind_for_toplevel(&surface);
         let id = self.next_window_id;
         self.next_window_id += 1;
+        info!(window_id = id, ?kind, "new xdg toplevel");
         self.windows.push(ManagedWindow {
             id,
             surface: surface.clone(),
@@ -83,6 +85,7 @@ impl XdgShellHandler for App {
     }
 
     fn new_popup(&mut self, surface: PopupSurface, positioner: PositionerState) {
+        debug!(geometry = ?positioner.get_geometry(), "new xdg popup");
         // Record the popup's geometry from the client's positioner. The initial
         // configure is sent on the popup's first commit (see `commit`), not here:
         // sending it at role-creation time races the client's first commit so the
@@ -92,7 +95,7 @@ impl XdgShellHandler for App {
             state.geometry = positioner.get_geometry();
         });
         if let Err(err) = self.popups.track_popup(PopupKind::Xdg(surface)) {
-            eprintln!("Failed to track popup: {err}");
+            warn!(%err, "failed to track popup");
         }
     }
 
@@ -112,6 +115,10 @@ impl XdgShellHandler for App {
         let window_index = self.raise_window(window_index);
         let surface = self.windows[window_index].surface.wl_surface().clone();
         self.set_keyboard_focus_to_window(window_index, surface);
+        debug!(
+            window_id = self.windows[window_index].id,
+            "client requested window move"
+        );
         self.drag = Some(DragState {
             window_id: self.windows[window_index].id,
             pointer_start: self.pointer_location,
@@ -146,6 +153,11 @@ impl XdgShellHandler for App {
         let window_index = self.raise_window(window_index);
         let surface = self.windows[window_index].surface.wl_surface().clone();
         self.set_keyboard_focus_to_window(window_index, surface);
+        debug!(
+            window_id = self.windows[window_index].id,
+            ?edges,
+            "client requested window resize"
+        );
         self.start_resize(window_index, edges);
     }
 
@@ -203,6 +215,7 @@ impl XdgShellHandler for App {
 
     fn toplevel_destroyed(&mut self, surface: ToplevelSurface) {
         if let Some(window) = self.windows.iter().find(|window| window.surface == surface) {
+            info!(window_id = window.id, kind = ?window.kind, "xdg toplevel destroyed");
             self.idle_daemon.unregister_window(window.id);
             if self.focused_normal_window_id == Some(window.id) {
                 self.focused_normal_window_id = None;
@@ -224,6 +237,7 @@ impl XdgShellHandler for App {
             let mut window = self.windows.remove(window_index);
             let old_kind = window.kind;
             window.kind = kind;
+            info!(window_id = window.id, from = ?old_kind, to = ?kind, "toplevel app id changed window kind");
             window.position = position_for_new_window(kind, window.position);
             if kind.is_shell_chrome() {
                 window.decoration = WindowDecoration::ClientSide;
@@ -253,11 +267,13 @@ impl XdgShellHandler for App {
 
 impl XdgDecorationHandler for App {
     fn new_decoration(&mut self, toplevel: ToplevelSurface) {
+        debug!("new xdg decoration object");
         self.set_window_decoration(&toplevel, WindowDecoration::ClientSide);
         self.request_redraw();
     }
 
     fn request_mode(&mut self, toplevel: ToplevelSurface, mode: DecorationMode) {
+        debug!(?mode, "client requested decoration mode");
         let decoration = match mode {
             DecorationMode::ClientSide => WindowDecoration::ClientSide,
             DecorationMode::ServerSide => WindowDecoration::ServerSide,
@@ -287,6 +303,10 @@ impl DmabufHandler for App {
         // The renderer lives on the winit backend (not in `App`), so the import
         // is deferred to the event loop where the renderer is reachable.
         self.pending_dmabuf_imports.push((dmabuf, notifier));
+        trace!(
+            pending = self.pending_dmabuf_imports.len(),
+            "queued client dmabuf import"
+        );
         self.request_redraw();
     }
 }
@@ -355,7 +375,10 @@ impl CompositorHandler for App {
                 Ok(())
             });
             if inserted.is_ok() {
+                trace!("installed dmabuf commit blocker");
                 add_blocker(surface, blocker);
+            } else if let Err(error) = inserted {
+                error!(%error, "failed to install dmabuf commit blocker source");
             }
         });
     }
@@ -371,7 +394,7 @@ impl CompositorHandler for App {
             && !popup.is_initial_configure_sent()
             && let Err(err) = popup.send_configure()
         {
-            eprintln!("Failed to send initial popup configure: {err}");
+            warn!(%err, "failed to send initial popup configure");
         }
         self.refresh_window_content_bbox(surface);
         self.reanchor_resize(surface);

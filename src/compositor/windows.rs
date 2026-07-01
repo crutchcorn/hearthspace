@@ -9,6 +9,7 @@ use smithay::{
         shell::xdg::{ToplevelSurface, XdgToplevelSurfaceData},
     },
 };
+use tracing::{debug, trace};
 use wayland_protocols::xdg::{
     decoration::zv1::server::zxdg_toplevel_decoration_v1::Mode as DecorationMode,
     shell::server::xdg_toplevel,
@@ -106,6 +107,7 @@ pub(super) fn decoration_for_new_window(kind: ManagedWindowKind) -> WindowDecora
 
 impl App {
     pub(super) fn set_keyboard_focus_to_window(&mut self, window_index: usize, surface: WlSurface) {
+        debug!(window_id = self.windows[window_index].id, kind = ?self.windows[window_index].kind, "setting keyboard focus to window");
         self.focused_normal_window_id = (self.windows[window_index].kind
             == ManagedWindowKind::Normal)
             .then_some(self.windows[window_index].id);
@@ -114,6 +116,7 @@ impl App {
     }
 
     pub(super) fn clear_keyboard_focus(&mut self) {
+        debug!("clearing keyboard focus");
         self.focused_normal_window_id = None;
         let keyboard = self.keyboard.clone();
         keyboard.set_focus(
@@ -303,8 +306,15 @@ impl App {
         }
 
         let window = self.windows.remove(window_index);
+        let window_id = window.id;
         let insert_index = self.normal_insert_index();
         self.windows.insert(insert_index, window);
+        debug!(
+            window_id,
+            from_index = window_index,
+            to_index = insert_index,
+            "raised window"
+        );
         self.request_redraw();
         insert_index
     }
@@ -314,6 +324,7 @@ impl App {
     }
 
     pub(super) fn configure_toplevel(&self, surface: &ToplevelSurface, kind: ManagedWindowKind) {
+        trace!(?kind, "configuring xdg toplevel");
         surface.with_pending_state(|state| {
             state
                 .capabilities
@@ -446,6 +457,12 @@ impl App {
     pub(super) fn start_resize(&mut self, window_index: usize, edges: ResizeEdges) {
         let initial_content_size = self.window_geometry_size(window_index);
         let window = &self.windows[window_index];
+        debug!(
+            window_id = window.id,
+            ?edges,
+            ?initial_content_size,
+            "starting interactive resize"
+        );
         self.resize = Some(ResizeState {
             window_id: window.id,
             edges,
@@ -471,6 +488,7 @@ impl App {
             (delta.y / self.viewport_scale).round() as i32,
         ));
         let size = resize_target_content_size(edges, initial, canvas_delta);
+        trace!(window_id, ?edges, ?size, "configuring interactive resize");
         self.configure_resize(window_id, size);
     }
 
@@ -493,6 +511,7 @@ impl App {
         let Some(resize) = self.resize.take() else {
             return;
         };
+        debug!(window_id = resize.window_id, "finishing interactive resize");
         if let Some(window) = self
             .windows
             .iter()

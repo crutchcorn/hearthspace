@@ -125,6 +125,33 @@ Native backend runs can be exited with `Ctrl+Alt+Backspace`, `Ctrl+Alt+Esc`,
 and log interpretation, see [docs/NATIVE_TESTING.md](./docs/NATIVE_TESTING.md).
 For native backend architecture, see [docs/DRM.md](./docs/DRM.md).
 
+### Tracing Logs
+
+Hearthspace initializes `tracing` automatically. No Cargo feature flags are
+required to enable logs; set `RUST_LOG` when running the binary.
+
+Common examples:
+
+```sh
+RUST_LOG=info cargo run
+RUST_LOG=hearthspace=debug cargo run
+RUST_LOG=hearthspace=trace cargo run
+RUST_LOG=hearthspace=debug,smithay=warn cargo run
+```
+
+For noisy paths, target a narrower module:
+
+```sh
+RUST_LOG=hearthspace::compositor::input=trace,hearthspace=info cargo run
+```
+
+Backend-specific examples:
+
+```sh
+RUST_LOG=hearthspace=debug cargo run -- --headless
+RUST_LOG=hearthspace=debug cargo run --features udev -- --tty
+```
+
 The shell/control socket is `hearthspace-shell.sock` in `XDG_RUNTIME_DIR`. Shell
 clients receive its full path through `HEARTHSPACE_COMMAND_SOCKET`, but tests can
 connect to it directly. The protocol is line-oriented for requests. Successful

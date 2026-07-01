@@ -4,6 +4,7 @@ use std::{
     path::{Path, PathBuf},
     process::Command,
 };
+use tracing::debug;
 
 const CURRENT_DESKTOP: &str = "Hearthspace";
 
@@ -34,6 +35,7 @@ impl AppCatalog {
     }
 
     fn load_from_data_dirs(data_dirs: Vec<PathBuf>) -> Self {
+        let data_dir_count = data_dirs.len();
         let mut apps = Vec::new();
         let mut seen_ids = HashSet::new();
 
@@ -63,6 +65,11 @@ impl AppCatalog {
         }
 
         apps.sort_by(|left, right| left.name.cmp(&right.name).then(left.id.cmp(&right.id)));
+        debug!(
+            data_dir_count,
+            app_count = apps.len(),
+            "loaded desktop app catalog"
+        );
         Self { apps }
     }
 

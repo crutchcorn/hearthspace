@@ -73,6 +73,7 @@ use smithay::{
         socket::ListeningSocketSource,
     },
 };
+use tracing::{debug, error, info};
 use wayland_protocols::xdg::shell::server::xdg_toplevel;
 use wayland_server::{
     DisplayHandle,
@@ -222,12 +223,14 @@ pub(in crate::compositor) fn create_termination_signals()
 
 #[cfg(feature = "winit")]
 pub fn run_winit(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> {
+    info!(?options, "initializing winit compositor backend");
     let termination_signals = create_termination_signals()?;
     let display: Display<App> = Display::new()?;
     let dh = display.handle();
 
     let (mut backend, winit) = winit::init::<GlesRenderer>()?;
     let output_size = backend.window_size();
+    debug!(?output_size, "created winit window");
     let primary_output = create_output(&dh, output_size, 1);
 
     // Advertise linux-dmabuf so GPU-accelerated clients (e.g. GTK4's GL
@@ -262,6 +265,7 @@ pub fn run_winit(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> 
     handle.insert_source(winit, |event, _, data| match event {
         WinitEvent::Resized { size, .. } => {
             if size != data.state.output_size() {
+                debug!(old_size = ?data.state.output_size(), new_size = ?size, "winit output resized");
                 data.state.set_primary_output_size(size);
                 data.damage_tracker = OutputDamageTracker::new(size, 1.0, Transform::Flipped180);
                 data.full_redraw = 1;
@@ -271,13 +275,19 @@ pub fn run_winit(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> 
         }
         WinitEvent::Input(event) => handle_input_event(&mut data.state, event),
         WinitEvent::Redraw => data.state.request_redraw(),
-        WinitEvent::CloseRequested => data.running = false,
+        WinitEvent::CloseRequested => {
+            info!("winit close requested; stopping compositor event loop");
+            data.running = false;
+        }
         WinitEvent::Focus(_) => {}
     })?;
 
-    println!("Hearthspace running on WAYLAND_DISPLAY={WAYLAND_DISPLAY_NAME}");
+    info!(
+        wayland_display = WAYLAND_DISPLAY_NAME,
+        "Hearthspace compositor running"
+    );
     if state.scroll_zooms_without_super {
-        println!("Scroll zoom testing mode enabled: vertical scroll zooms without Super");
+        info!("scroll zoom testing mode enabled: vertical scroll zooms without Super");
     }
 
     let mut data = CalloopData {
@@ -296,6 +306,7 @@ pub fn run_winit(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> 
 }
 
 pub fn run_headless(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> {
+    info!(?options, "initializing headless compositor backend");
     let termination_signals = create_termination_signals()?;
     let display: Display<App> = Display::new()?;
     let dh = display.handle();
@@ -308,6 +319,7 @@ pub fn run_headless(options: RunOptions) -> Result<(), Box<dyn std::error::Error
         .unwrap_or((HEADLESS_OUTPUT_WIDTH, HEADLESS_OUTPUT_HEIGHT));
     let output_size = Size::<i32, Physical>::from((width, height));
     let output_scale = options.headless_output_scale.unwrap_or(1);
+    debug!(?output_size, output_scale, "created headless output");
     let buffer_size = Size::<i32, BufferCoord>::from((output_size.w, output_size.h));
     let buffer = renderer.create_buffer(Fourcc::Abgr8888, buffer_size)?;
     let primary_output = create_output(&dh, output_size, output_scale);
@@ -332,9 +344,12 @@ pub fn run_headless(options: RunOptions) -> Result<(), Box<dyn std::error::Error
         termination_signals,
     )?;
 
-    println!("Headless Hearthspace running on WAYLAND_DISPLAY={WAYLAND_DISPLAY_NAME}");
+    info!(
+        wayland_display = WAYLAND_DISPLAY_NAME,
+        "headless Hearthspace compositor running"
+    );
     if state.scroll_zooms_without_super {
-        println!("Scroll zoom testing mode enabled: vertical scroll zooms without Super");
+        info!("scroll zoom testing mode enabled: vertical scroll zooms without Super");
     }
 
     let mut data = runtime::create_headless_calloop_data(
@@ -354,6 +369,10 @@ pub(in crate::compositor) fn create_dmabuf_global(
     main_device: Option<u64>,
 ) -> Result<DmabufSetup, Box<dyn std::error::Error>> {
     let mut state = DmabufState::new();
+    debug!(
+        format_count = formats.len(),
+        main_device, "creating linux-dmabuf global"
+    );
     let global = match main_device {
         Some(dev) => {
             let feedback = DmabufFeedbackBuilder::new(dev, formats.iter().copied()).build()?;
@@ -371,6 +390,10 @@ pub(in crate::compositor) fn initialize_app(
     dmabuf: DmabufSetup,
     termination_signals: Signals,
 ) -> Result<AppInit, Box<dyn std::error::Error>> {
+    info!(
+        start_shell = options.start_shell,
+        "initializing compositor app state"
+    );
     let dh = display.handle();
     let compositor_state = CompositorState::new::<App>(&dh);
     let xdg_decoration_state = XdgDecorationState::new::<App>(&dh);
@@ -389,6 +412,12 @@ pub(in crate::compositor) fn initialize_app(
     let handle = event_loop.handle();
     let command_socket_path =
         register_common_event_sources(&mut display, &handle, termination_signals)?;
+
+    let app_catalog = AppCatalog::load();
+    debug!(
+        app_count = app_catalog.apps().len(),
+        "loaded app catalog for compositor"
+    );
 
     let app = App {
         compositor_state,
@@ -419,7 +448,7 @@ pub(in crate::compositor) fn initialize_app(
         pointer_location: (0.0, 0.0).into(),
         scroll_zooms_without_super: options.scroll_zooms_without_super,
         outputs: OutputSet::new(primary_output),
-        app_catalog: AppCatalog::load(),
+        app_catalog,
         needs_redraw: true,
         dmabuf_state: dmabuf.state,
         _dmabuf_global: dmabuf.global,
@@ -432,6 +461,7 @@ pub(in crate::compositor) fn initialize_app(
     };
 
     if options.start_shell {
+        info!(path = %command_socket_path.display(), "spawning shell client");
         spawn_shell(&command_socket_path);
     }
 
@@ -449,10 +479,7 @@ fn register_common_event_sources(
     termination_signals: Signals,
 ) -> Result<std::path::PathBuf, Box<dyn std::error::Error>> {
     handle.insert_source(termination_signals, |event, _, data| {
-        println!(
-            "Received {:?}; stopping compositor event loop",
-            event.signal()
-        );
+        info!(signal = ?event.signal(), "received termination signal; stopping compositor event loop");
         data.running = false;
     })?;
 
@@ -460,16 +487,18 @@ fn register_common_event_sources(
     remove_stale_socket(&command_socket_path)?;
     let command_listener = CommandListener::bind(&command_socket_path)?;
     command_listener.set_nonblocking(true)?;
+    info!(path = %command_socket_path.display(), "listening for shell commands");
 
     // Accept new Wayland clients (epoll-driven instead of polled).
     let socket_source = ListeningSocketSource::with_name(WAYLAND_DISPLAY_NAME)?;
     handle.insert_source(socket_source, |stream, _, data| {
-        if let Err(error) = data
+        match data
             .display
             .handle()
             .insert_client(stream, Arc::new(ClientState::default()))
         {
-            eprintln!("Failed to insert Wayland client: {error}");
+            Ok(client_id) => debug!(?client_id, "accepted Wayland client"),
+            Err(error) => error!(%error, "failed to insert Wayland client"),
         }
         data.state.request_redraw();
     })?;
@@ -481,7 +510,7 @@ fn register_common_event_sources(
         |_, _, data| {
             let CalloopData { state, display, .. } = data;
             if let Err(error) = display.dispatch_clients(state) {
-                eprintln!("Failed to dispatch Wayland clients: {error}");
+                error!(%error, "failed to dispatch Wayland clients");
             }
             Ok(PostAction::Continue)
         },
@@ -503,9 +532,12 @@ fn register_common_event_sources(
 }
 
 fn log_idle_transition(transition: IdleTransition) {
-    println!(
-        "Window {} idle transition: {:?} -> {:?} ({:?})",
-        transition.window_id, transition.from, transition.to, transition.reason
+    info!(
+        window_id = transition.window_id,
+        from = ?transition.from,
+        to = ?transition.to,
+        reason = ?transition.reason,
+        "window idle state changed"
     );
 }
 
@@ -515,12 +547,12 @@ struct ClientState {
 }
 
 impl ClientData for ClientState {
-    fn initialized(&self, _client_id: ClientId) {
-        println!("initialized");
+    fn initialized(&self, client_id: ClientId) {
+        debug!(?client_id, "Wayland client initialized");
     }
 
-    fn disconnected(&self, _client_id: ClientId, _reason: DisconnectReason) {
-        println!("disconnected");
+    fn disconnected(&self, client_id: ClientId, reason: DisconnectReason) {
+        debug!(?client_id, ?reason, "Wayland client disconnected");
     }
 }
 

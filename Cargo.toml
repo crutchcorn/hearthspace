@@ -48,6 +48,7 @@ fontique = { version = "0.8.0", features = ["fontconfig-dlopen"] }
 image = { version = "0.25", default-features = false }
 png = "0.18.1"
 smithay = { version = "0.7.0", default-features = false, features = ["desktop", "renderer_gl", "wayland_frontend"] }
+tracing = "0.1.41"
 tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
 wayland-protocols = { version = "0.32.8", features = ["server"] }
 wayland-server = "0.31.9"

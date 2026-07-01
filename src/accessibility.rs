@@ -1,6 +1,7 @@
 use atspi::{
     AccessibilityConnection, ObjectRefOwned, connection::P2P, proxy::accessible::AccessibleProxy,
 };
+use tracing::error;
 
 const MAX_A11Y_NODES: usize = 2_000;
 
@@ -23,7 +24,7 @@ struct AccessibleNodeSummary {
 pub fn log_accessibility_tree(windows: Vec<ManagedWindowAccessibilityInfo>) {
     std::thread::spawn(move || {
         if let Err(error) = async_io::block_on(log_accessibility_tree_async(windows)) {
-            eprintln!("failed to log AT-SPI accessibility tree: {error}");
+            error!(%error, "failed to log AT-SPI accessibility tree");
         }
     });
 }

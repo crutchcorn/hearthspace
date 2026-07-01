@@ -17,6 +17,7 @@ use smithay::{
     },
     utils::{DeviceFd, Physical, Size},
 };
+use tracing::{debug, error, info, warn};
 
 pub(super) struct UdevDevice {
     pub(super) path: PathBuf,
@@ -97,19 +98,16 @@ impl UdevDevice {
 
     pub(super) fn connected_output_targets(&self) -> Vec<KmsOutputTarget> {
         let Ok(resources) = self.scanout_node.drm_device.resource_handles() else {
-            eprintln!(
-                "Failed to query DRM resource handles for {}",
-                self.path.display()
-            );
+            error!(path = %self.path.display(), "failed to query DRM resource handles");
             return Vec::new();
         };
 
         let crtcs = resources.crtcs();
-        println!(
-            "DRM device {} exposes {} connector(s) and {} CRTC(s)",
-            self.path.display(),
-            resources.connectors().len(),
-            crtcs.len()
+        debug!(
+            path = %self.path.display(),
+            connector_count = resources.connectors().len(),
+            crtc_count = crtcs.len(),
+            "DRM device resources queried"
         );
 
         let mut targets = Vec::new();
@@ -119,23 +117,20 @@ impl UdevDevice {
                 .drm_device
                 .get_connector(*connector_handle, true)
             else {
-                eprintln!("Failed to query DRM connector {:?}", connector_handle);
+                warn!(connector = ?connector_handle, "failed to query DRM connector");
                 continue;
             };
             let connected = info.state() == connector::State::Connected;
-            println!(
-                "DRM connector {:?} {:?} connected={} mode_count={}",
-                connector_handle,
-                info.interface(),
+            debug!(
+                connector = ?connector_handle,
+                interface = ?info.interface(),
                 connected,
-                info.modes().len()
+                mode_count = info.modes().len(),
+                "DRM connector queried"
             );
             if connected {
                 if let Some(mode) = info.modes().first() {
-                    println!(
-                        "Preferred/first mode for {:?}: {:?}",
-                        connector_handle, mode
-                    );
+                    debug!(connector = ?connector_handle, ?mode, "selected preferred/first DRM mode");
                     let crtc = info
                         .current_encoder()
                         .and_then(|encoder| self.scanout_node.drm_device.get_encoder(encoder).ok())
@@ -177,16 +172,13 @@ impl UdevDevice {
                         });
                     }
                 }
-                println!("CRTC candidates for {:?}: {:?}", connector_handle, crtcs);
+                debug!(connector = ?connector_handle, ?crtcs, "DRM CRTC candidates");
             }
         }
         if let Some(target) = targets.first() {
-            println!(
-                "Selected KMS target connector {:?}, CRTC {:?}, mode {:?}",
-                target.connector, target.crtc, target.mode
-            );
+            info!(connector = ?target.connector, crtc = ?target.crtc, mode = ?target.mode, "selected KMS output target");
         } else {
-            println!("No connected DRM connector with a usable CRTC was found");
+            warn!("no connected DRM connector with a usable CRTC was found");
         }
         targets
     }
@@ -197,6 +189,7 @@ pub(super) fn create_udev_device(
     path: PathBuf,
     active: bool,
 ) -> Result<(UdevDevice, smithay::backend::drm::DrmDeviceNotifier), Box<dyn std::error::Error>> {
+    info!(path = %path.display(), active, "opening udev DRM device");
     let fd = session.open(&path, OFlags::RDWR | OFlags::CLOEXEC)?;
     let drm_fd = DrmDeviceFd::new(DeviceFd::from(fd));
     let gbm_device = GbmDevice::new(drm_fd.clone())?;
@@ -229,10 +222,7 @@ pub(super) fn create_udev_device(
             target.mode,
             std::slice::from_ref(&target.connector),
         )?;
-        println!(
-            "Created DRM surface for connector {:?}, CRTC {:?}, mode {:?}",
-            target.connector, target.crtc, target.mode
-        );
+        info!(connector = ?target.connector, crtc = ?target.crtc, mode = ?target.mode, "created DRM surface");
         let renderer_formats = device
             .render_node
             .renderer
@@ -245,10 +235,7 @@ pub(super) fn create_udev_device(
             &[Fourcc::Argb8888, Fourcc::Xrgb8888],
             renderer_formats,
         )?;
-        println!(
-            "Created GBM buffered surface for connector {:?}, CRTC {:?}",
-            target.connector, target.crtc
-        );
+        info!(connector = ?target.connector, crtc = ?target.crtc, "created GBM buffered surface");
         device.output_surface = Some(KmsOutputSurface {
             target,
             gbm_surface,
@@ -279,15 +266,11 @@ pub(super) fn current_device_list(seat_name: &str) -> io::Result<Vec<UdevDeviceI
 
 pub(super) fn log_device_list(seat_name: &str, devices: &[UdevDeviceInfo]) {
     if devices.is_empty() {
-        println!("No DRM devices found for seat {seat_name}");
+        warn!(seat = seat_name, "no DRM devices found for seat");
         return;
     }
 
     for device in devices {
-        println!(
-            "Found DRM device {} at {}",
-            device.device_id,
-            device.path.display()
-        );
+        debug!(seat = seat_name, device_id = device.device_id, path = %device.path.display(), "found DRM device");
     }
 }

@@ -23,6 +23,7 @@ use smithay::{
     reexports::{input::Libinput, wayland_server::Display},
     utils::{Physical, Size},
 };
+use tracing::{debug, error, info, trace, warn};
 
 use crate::{
     RunOptions,
@@ -49,10 +50,11 @@ pub(super) struct UdevBackendState {
 }
 
 pub fn run_udev(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> {
+    info!(?options, "initializing native udev compositor backend");
     let termination_signals = super::create_termination_signals()?;
     let (mut session, session_notifier) = LibSeatSession::new()?;
     let seat_name = session.seat();
-    println!("Hearthspace native backend acquired seat {seat_name}");
+    info!(seat = seat_name, "native backend acquired seat");
 
     let udev_backend = UdevBackend::new(&seat_name)?;
     let devices = initial_device_list(&udev_backend);
@@ -60,20 +62,16 @@ pub fn run_udev(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> {
 
     let primary_device = match primary_gpu(&seat_name)? {
         Some(path) => {
-            println!("Selected primary DRM device {}", path.display());
+            info!(path = %path.display(), "selected primary DRM device");
             for device in devices.iter().filter(|device| device.path != path) {
-                println!(
-                    "Ignoring secondary DRM device {} at {} for now",
-                    device.device_id,
-                    device.path.display()
-                );
+                debug!(device_id = device.device_id, path = %device.path.display(), "ignoring secondary DRM device for now");
             }
             let active = session.is_active();
             let (device, notifier) = create_udev_device(&mut session, path, active)?;
             Some((device, notifier))
         }
         None => {
-            println!("No primary DRM device available for seat {seat_name}");
+            warn!(seat = seat_name, "no primary DRM device available for seat");
             None
         }
     };
@@ -125,11 +123,7 @@ pub fn run_udev(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> {
                 .collect::<Vec<_>>();
             let main_device = device.render_node.drm_fd.dev_id().ok();
             if let Some(main_device) = main_device {
-                println!(
-                    "Native dmabuf feedback main device is {} from {}",
-                    main_device,
-                    device.path.display()
-                );
+                debug!(main_device, path = %device.path.display(), "native dmabuf feedback main device selected");
             }
             (formats, main_device)
         })
@@ -171,7 +165,7 @@ pub fn run_udev(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> {
 
     handle.insert_source(udev_backend, |event, _, data| match event {
         UdevEvent::Added { device_id, path } => {
-            println!("DRM device added {device_id} at {}", path.display());
+            info!(device_id, path = %path.display(), "DRM device added");
             let output_descriptors = if let Some(backend) = udev_backend_mut(data) {
                 backend.add_or_update_device(device_id, path);
                 backend.output_descriptors()
@@ -184,7 +178,7 @@ pub fn run_udev(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> {
             data.state.request_redraw();
         }
         UdevEvent::Changed { device_id } => {
-            println!("DRM device changed {device_id}");
+            info!(device_id, "DRM device changed");
             let output_descriptors = udev_backend_mut(data)
                 .map(|backend| backend.handle_device_changed(device_id))
                 .unwrap_or_default();
@@ -194,7 +188,7 @@ pub fn run_udev(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> {
             data.state.request_redraw();
         }
         UdevEvent::Removed { device_id } => {
-            println!("DRM device removed {device_id}");
+            info!(device_id, "DRM device removed");
             let output_descriptors = if let Some(backend) = udev_backend_mut(data) {
                 backend.remove_device(device_id);
                 backend.output_descriptors()
@@ -214,13 +208,13 @@ pub fn run_udev(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> {
                 return;
             };
             if !backend.session_active {
-                println!("Input event ignored while native session is paused");
+                trace!("input event ignored while native session is paused");
                 return;
             }
             backend.input_event_count += 1;
             log_input_event(&event);
             if backend.handle_emergency_exit_chord(&event) {
-                println!("Native emergency exit chord pressed; stopping compositor event loop");
+                info!("native emergency exit chord pressed; stopping compositor event loop");
                 data.running = false;
                 return;
             }
@@ -232,12 +226,12 @@ pub fn run_udev(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> {
     if let Some(drm_notifier) = drm_notifier {
         handle.insert_source(drm_notifier, |event, metadata, data| match event {
             DrmEvent::VBlank(crtc) => {
-                println!("DRM vblank for {:?} with metadata {:?}", crtc, metadata);
+                trace!(?crtc, ?metadata, "DRM vblank");
                 let submitted_frame = if let Some(backend) = udev_backend_mut(data) {
                     match backend.frame_submitted(crtc) {
                         Ok(result) => result,
                         Err(error) => {
-                            eprintln!("Failed to mark native frame submitted: {error}");
+                            error!(%error, "failed to mark native frame submitted");
                             None
                         }
                     }
@@ -246,14 +240,14 @@ pub fn run_udev(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> {
                 };
                 if let Some(should_redraw) = submitted_frame {
                     if let Err(error) = data.send_frame_callbacks() {
-                        eprintln!("Failed to send native frame callbacks: {error}");
+                        warn!(%error, "failed to send native frame callbacks");
                     }
                     if should_redraw || data.state.viewport_animation.is_some() {
                         data.state.request_redraw();
                     }
                 }
             }
-            DrmEvent::Error(error) => eprintln!("DRM event error: {error}"),
+            DrmEvent::Error(error) => error!(%error, "DRM event error"),
         })?;
     }
 
@@ -283,7 +277,7 @@ pub fn run_udev(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> {
     );
     event_loop.dispatch(Some(Duration::from_millis(0)), &mut data)?;
 
-    println!("Native backend initialized; entering compositor event loop");
+    info!("native backend initialized; entering compositor event loop");
     super::run_event_loop(event_loop, &mut data)
 }
 
@@ -305,13 +299,13 @@ impl UdevBackendState {
         force_full_redraw: bool,
     ) -> Result<bool, Box<dyn std::error::Error>> {
         if self.drm_commits_paused {
-            println!("Skipping native render while DRM commits are paused");
+            debug!("skipping native render while DRM commits are paused");
             self.frame_dirty = true;
             return Ok(false);
         }
         if self.frame_pending {
             self.frame_dirty = true;
-            println!("Native redraw requested while page flip is pending; deferring until vblank");
+            debug!("native redraw requested while page flip is pending; deferring until vblank");
             return Ok(false);
         }
 
@@ -345,11 +339,7 @@ impl UdevBackendState {
         self.frame_pending = true;
         self.frame_dirty = false;
         self.repaint_pending = true;
-        println!(
-            "Queued native frame on CRTC {:?} with buffer age {}",
-            gbm_surface.crtc(),
-            age
-        );
+        trace!(crtc = ?gbm_surface.crtc(), age, "queued native frame");
         Ok(true)
     }
 
@@ -373,7 +363,7 @@ impl UdevBackendState {
         self.repaint_pending = false;
         let should_redraw = self.frame_dirty;
         if should_redraw {
-            println!("Native page flip completed with dirty state; scheduling next frame");
+            debug!("native page flip completed with dirty state; scheduling next frame");
         }
         Ok(Some(should_redraw))
     }
@@ -412,9 +402,7 @@ impl UdevBackendState {
         if let Some(device) = &mut self.primary_device {
             device.active = false;
         }
-        println!(
-            "Native session paused; DRM commits disabled and Wayland clients remain connected"
-        );
+        info!("native session paused; DRM commits disabled and Wayland clients remain connected");
     }
 
     fn activate_session(&mut self) {
@@ -423,7 +411,7 @@ impl UdevBackendState {
         if let Some(device) = &mut self.primary_device {
             device.active = true;
         } else if let Err(error) = self.open_primary_device() {
-            eprintln!("Failed to open primary DRM device after session activation: {error}");
+            error!(%error, "failed to open primary DRM device after session activation");
         }
 
         self.kms_devices_active = self.primary_device.is_some();
@@ -432,12 +420,12 @@ impl UdevBackendState {
         self.frame_dirty = self.kms_devices_active;
 
         if let Err(error) = self.rescan_devices() {
-            eprintln!("Failed to re-scan DRM devices after session activation: {error}");
+            error!(%error, "failed to re-scan DRM devices after session activation");
         }
 
-        println!(
-            "Native session activated; DRM devices reactivated, connector rescan queued, repaint queued: {}",
-            self.repaint_pending
+        info!(
+            repaint_pending = self.repaint_pending,
+            "native session activated; DRM devices reactivated"
         );
     }
 
@@ -463,14 +451,17 @@ impl UdevBackendState {
     fn handle_device_changed(&mut self, device_id: u64) -> Vec<super::OutputDescriptor> {
         self.connector_rescan_pending = true;
         if let Err(error) = self.rescan_devices() {
-            eprintln!("Failed to re-scan DRM devices after device change: {error}");
+            error!(%error, "failed to re-scan DRM devices after device change");
         }
 
         let Some(device) = self.primary_device.as_mut() else {
             return Vec::new();
         };
         if device.scanout_node.drm_fd.dev_id().ok() != Some(device_id) {
-            println!("Changed DRM device {device_id} is not the selected primary device");
+            debug!(
+                device_id,
+                "changed DRM device is not the selected primary device"
+            );
             return device.output_descriptors();
         }
 
@@ -478,16 +469,13 @@ impl UdevBackendState {
         let next_targets = device.connected_output_targets();
         let next_target = next_targets.first().cloned();
         if previous_target == next_target {
-            println!("Primary DRM connector state re-scanned; selected output is unchanged");
+            debug!("primary DRM connector state re-scanned; selected output is unchanged");
             self.connector_rescan_pending = false;
             device.output_targets = next_targets;
             return device.output_descriptors();
         }
 
-        println!(
-            "Primary DRM connector selection changed from {:?} to {:?}; output rebuild remains pending",
-            previous_target, next_target
-        );
+        info!(previous_target = ?previous_target, next_target = ?next_target, "primary DRM connector selection changed; output rebuild remains pending");
         device.output_targets = next_targets;
         device.output_target = next_target;
         self.frame_dirty = true;
@@ -512,7 +500,7 @@ impl UdevBackendState {
             self.primary_device = None;
             self.kms_devices_active = false;
             self.repaint_pending = false;
-            println!("Primary DRM device removed; KMS state marked inactive");
+            warn!("primary DRM device removed; KMS state marked inactive");
         }
         self.connector_rescan_pending = true;
     }
@@ -533,33 +521,29 @@ impl UdevBackendState {
     }
 
     fn log_summary(&self) {
-        println!(
-            "Native backend session active: {}; KMS active: {}; DRM commits paused: {}; connector rescan pending: {}; repaint pending: {}; {} DRM device(s) known; {} input event(s) processed",
-            self.session_active,
-            self.kms_devices_active,
-            self.drm_commits_paused,
-            self.connector_rescan_pending,
-            self.repaint_pending,
-            self.devices.len(),
-            self.input_event_count
+        info!(
+            session_active = self.session_active,
+            kms_devices_active = self.kms_devices_active,
+            drm_commits_paused = self.drm_commits_paused,
+            connector_rescan_pending = self.connector_rescan_pending,
+            repaint_pending = self.repaint_pending,
+            drm_device_count = self.devices.len(),
+            input_event_count = self.input_event_count,
+            "native backend state"
         );
         if let Some(device) = &self.primary_device {
-            let target = device
-                .output_surface
-                .as_ref()
-                .map(|output| {
-                    format!(
-                        "; selected connector {:?}, CRTC {:?}, mode {:?}",
-                        output.target.connector, output.target.crtc, output.target.mode
-                    )
-                })
-                .unwrap_or_default();
-            println!(
-                "Primary DRM device opened through session: {}{}; gbm_surface={}",
-                device.path.display(),
-                target,
-                device.output_surface.is_some(),
-            );
+            if let Some(output) = &device.output_surface {
+                info!(
+                    path = %device.path.display(),
+                    connector = ?output.target.connector,
+                    crtc = ?output.target.crtc,
+                    mode = ?output.target.mode,
+                    gbm_surface = true,
+                    "primary DRM device opened through session"
+                );
+            } else {
+                info!(path = %device.path.display(), gbm_surface = false, "primary DRM device opened through session");
+            }
         }
     }
 }

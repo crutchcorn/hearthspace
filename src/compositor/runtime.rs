@@ -13,6 +13,7 @@ use smithay::{
     reexports::{calloop::EventLoop, wayland_server::Display},
     utils::{Buffer as BufferCoord, Physical, Rectangle, Size, Transform},
 };
+use tracing::{debug, error, info, trace, warn};
 
 use super::{
     ANIMATION_FRAME_INTERVAL, App, cursor::CursorIcon, rendering::send_frames_surface_tree,
@@ -58,6 +59,11 @@ pub(in crate::compositor) fn create_headless_calloop_data(
     exit_after: Option<std::time::Duration>,
 ) -> CalloopData {
     let start_time = Instant::now();
+    debug!(
+        ?output_size,
+        ?exit_after,
+        "creating headless event-loop data"
+    );
     CalloopData {
         state,
         display,
@@ -80,6 +86,11 @@ pub(in crate::compositor) fn create_calloop_data(
     exit_after: Option<std::time::Duration>,
 ) -> CalloopData {
     let start_time = Instant::now();
+    debug!(
+        ?output_size,
+        ?exit_after,
+        "creating compositor event-loop data"
+    );
     CalloopData {
         state,
         display,
@@ -97,8 +108,9 @@ pub(in crate::compositor) fn run_event_loop(
     mut event_loop: EventLoop<CalloopData>,
     data: &mut CalloopData,
 ) -> Result<(), Box<dyn std::error::Error>> {
+    info!("entering compositor event loop");
     if let Err(error) = data.render() {
-        eprintln!("Initial compositor render failed: {error}");
+        warn!(%error, "initial compositor render failed");
     }
     data.state.needs_redraw = false;
 
@@ -127,7 +139,7 @@ pub(in crate::compositor) fn run_event_loop(
             .exit_at
             .is_some_and(|exit_at| Instant::now() >= exit_at)
         {
-            println!("Exit timer elapsed; stopping compositor event loop");
+            info!("exit timer elapsed; stopping compositor event loop");
             data.running = false;
         }
 
@@ -142,19 +154,20 @@ pub(in crate::compositor) fn run_event_loop(
 
         if data.state.needs_redraw {
             if let Err(error) = data.render() {
-                eprintln!("Compositor render failed; dropping this redraw: {error}");
+                warn!(%error, "compositor render failed; dropping this redraw");
                 data.full_redraw = data.full_redraw.max(1);
             }
             data.state.needs_redraw = false;
         }
 
         if let Err(error) = data.display.flush_clients() {
-            eprintln!("Failed to flush Wayland clients: {error}");
+            error!(%error, "failed to flush Wayland clients");
         }
         data.state.popups.cleanup();
         data.state.cleanup_outputs();
     }
 
+    info!("compositor event loop exited");
     Ok(())
 }
 
@@ -176,6 +189,7 @@ impl CalloopData {
         if self.applied_cursor == self.state.cursor_icon {
             return;
         }
+        trace!(from = ?self.applied_cursor, to = ?self.state.cursor_icon, "applying cursor icon");
         self.applied_cursor = self.state.cursor_icon;
         #[cfg(feature = "winit")]
         if let Backend::Winit(backend) = &self.backend {
@@ -187,6 +201,10 @@ impl CalloopData {
         if self.state.pending_dmabuf_imports.is_empty() {
             return;
         }
+        debug!(
+            count = self.state.pending_dmabuf_imports.len(),
+            "processing pending client dmabuf imports"
+        );
         let CalloopData { state, backend, .. } = self;
         for (dmabuf, notifier) in state.pending_dmabuf_imports.drain(..) {
             let import = match backend {
@@ -200,7 +218,7 @@ impl CalloopData {
                             let _ = notifier.successful::<App>();
                         }
                         Err(error) => {
-                            eprintln!("Failed to import client dmabuf: {error}");
+                            warn!(%error, "failed to import client dmabuf");
                             notifier.failed();
                         }
                     }
@@ -212,7 +230,7 @@ impl CalloopData {
                     let _ = notifier.successful::<App>();
                 }
                 Err(error) => {
-                    eprintln!("Failed to import client dmabuf: {error}");
+                    warn!(%error, "failed to import client dmabuf");
                     notifier.failed();
                 }
             }
@@ -223,6 +241,7 @@ impl CalloopData {
     }
 
     fn render(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        trace!(full_redraw = self.full_redraw, "rendering compositor frame");
         let send_callbacks_now = match &mut self.backend {
             #[cfg(feature = "winit")]
             Backend::Winit(backend) => {
@@ -247,6 +266,10 @@ impl CalloopData {
                     )?
                 };
 
+                trace!(
+                    damage_regions = damage.as_ref().map_or(0, Vec::len),
+                    "rendered winit frame"
+                );
                 if let Some(damage) = damage.as_ref() {
                     backend.submit(Some(damage))?;
                 }
@@ -261,6 +284,7 @@ impl CalloopData {
                     &mut self.damage_tracker,
                     0,
                 )?;
+                trace!("rendered headless frame");
                 true
             }
             #[cfg(feature = "udev")]
@@ -271,6 +295,7 @@ impl CalloopData {
                     &mut self.damage_tracker,
                     force_full_redraw,
                 )?;
+                trace!(submitted, force_full_redraw, "rendered native frame");
                 if submitted && force_full_redraw {
                     self.full_redraw = self.full_redraw.saturating_sub(1);
                 }
@@ -279,7 +304,7 @@ impl CalloopData {
         };
 
         if send_callbacks_now && let Err(error) = self.send_frame_callbacks() {
-            eprintln!("Failed to send frame callbacks: {error}");
+            warn!(%error, "failed to send frame callbacks");
         }
 
         Ok(())
@@ -314,6 +339,7 @@ impl CalloopData {
     pub(in crate::compositor) fn screenshot_png(
         &mut self,
     ) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+        debug!("capturing compositor screenshot");
         self.process_pending_dmabuf_imports();
 
         let CalloopData { state, backend, .. } = self;
@@ -350,7 +376,9 @@ impl CalloopData {
                 );
             }
         };
-        encode_png_rgba(size, &pixels)
+        let png = encode_png_rgba(size, &pixels)?;
+        debug!(?size, bytes = png.len(), "captured compositor screenshot");
+        Ok(png)
     }
 }
 
