@@ -45,13 +45,10 @@ impl OutputSet {
     fn sync_secondary_outputs(&mut self, dh: &DisplayHandle, descriptors: Vec<OutputDescriptor>) {
         let mut next_x = self.primary.size.to_logical(self.primary.scale).w;
         let mut existing = std::mem::take(&mut self.secondary);
-        let mut next_secondary = Vec::with_capacity(existing.len());
+        let descriptors = secondary_descriptors_for_layout(descriptors, &self.primary.name);
+        let mut next_secondary = Vec::with_capacity(descriptors.len());
 
-        for descriptor in descriptors.into_iter().skip(1) {
-            if descriptor.name == self.primary.name {
-                continue;
-            }
-
+        for descriptor in descriptors {
             let location = (next_x, 0).into();
             let output = if let Some(index) = existing
                 .iter()
@@ -88,6 +85,22 @@ impl OutputSet {
         }
         Size::from((width.max(1), height.max(1)))
     }
+}
+
+/// Native layout policy: selected primary at (0, 0), all other connectors placed
+/// horizontally to the right in stable connector-name order.
+#[cfg(feature = "udev")]
+fn secondary_descriptors_for_layout(
+    descriptors: Vec<OutputDescriptor>,
+    primary_name: &str,
+) -> Vec<OutputDescriptor> {
+    let mut secondary = descriptors
+        .into_iter()
+        .skip(1)
+        .filter(|descriptor| descriptor.name != primary_name)
+        .collect::<Vec<_>>();
+    secondary.sort_by(|a, b| a.name.cmp(&b.name));
+    secondary
 }
 
 impl OutputRecord {
@@ -269,4 +282,62 @@ fn update_output_mode_with_refresh_at(
         Some(Scale::Integer(scale)),
         Some(location),
     );
+}
+
+#[cfg(all(test, feature = "udev"))]
+mod tests {
+    use smithay::{
+        output::{PhysicalProperties, Subpixel},
+        utils::{Physical, Size},
+    };
+
+    use super::{OutputDescriptor, secondary_descriptors_for_layout};
+
+    fn descriptor(name: &str) -> OutputDescriptor {
+        OutputDescriptor {
+            name: name.into(),
+            properties: PhysicalProperties {
+                size: (0, 0).into(),
+                subpixel: Subpixel::Unknown,
+                make: "test".into(),
+                model: name.into(),
+            },
+            size: Size::<i32, Physical>::from((100, 100)),
+            scale: 1,
+            refresh: 60_000,
+        }
+    }
+
+    #[test]
+    fn secondary_layout_skips_selected_primary_and_sorts_by_connector_name() {
+        let descriptors = vec![
+            descriptor("eDP-1"),
+            descriptor("DP-2"),
+            descriptor("HDMI-A-1"),
+            descriptor("DP-1"),
+        ];
+
+        let names = secondary_descriptors_for_layout(descriptors, "eDP-1")
+            .into_iter()
+            .map(|descriptor| descriptor.name)
+            .collect::<Vec<_>>();
+
+        assert_eq!(names, ["DP-1", "DP-2", "HDMI-A-1"]);
+    }
+
+    #[test]
+    fn secondary_layout_avoids_duplicate_primary_global_name() {
+        let descriptors = vec![
+            descriptor("DP-1"),
+            descriptor("eDP-1"),
+            descriptor("HDMI-A-1"),
+        ];
+
+        let names = secondary_descriptors_for_layout(descriptors, "eDP-1")
+            .into_iter()
+            .map(|descriptor| descriptor.name)
+            .collect::<Vec<_>>();
+
+        assert_eq!(names, ["HDMI-A-1"]);
+    }
 }

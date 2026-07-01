@@ -50,7 +50,7 @@ exists.
       at runtime.
 - [ ] Render to secondary outputs instead of only advertising their Wayland
       globals.
-- [ ] Replace the temporary horizontal connector-order layout with an explicit
+- [x] Replace the temporary horizontal connector-order layout with an explicit
       layout policy.
 - [ ] Preserve or migrate pointer position/focus predictably when output geometry
       changes.
