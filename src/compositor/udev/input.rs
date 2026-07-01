@@ -56,13 +56,11 @@ pub(super) fn log_input_event(event: &InputEvent<LibinputInputBackend>) {
         | InputEvent::GestureHoldEnd { .. } => {
             debug!("input gesture event ignored until native compositor state is wired");
         }
-        InputEvent::TouchDown { .. }
-        | InputEvent::TouchMotion { .. }
-        | InputEvent::TouchUp { .. }
-        | InputEvent::TouchCancel { .. }
-        | InputEvent::TouchFrame { .. } => {
-            debug!("input touch event ignored until native touch handling is needed");
-        }
+        InputEvent::TouchDown { .. } => trace!("input touch down event"),
+        InputEvent::TouchMotion { .. } => trace!("input touch motion event"),
+        InputEvent::TouchUp { .. } => trace!("input touch up event"),
+        InputEvent::TouchCancel { .. } => trace!("input touch cancel event"),
+        InputEvent::TouchFrame { .. } => trace!("input touch frame event"),
         InputEvent::TabletToolAxis { .. }
         | InputEvent::TabletToolProximity { .. }
         | InputEvent::TabletToolTip { .. }

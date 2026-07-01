@@ -3,7 +3,7 @@
 use smithay::{
     backend::input::{
         AbsolutePositionEvent, Axis, ButtonState, Event, InputBackend, InputEvent, KeyState,
-        KeyboardKeyEvent, PointerAxisEvent, PointerButtonEvent, PointerMotionEvent,
+        KeyboardKeyEvent, PointerAxisEvent, PointerButtonEvent, PointerMotionEvent, TouchEvent,
     },
     input::{
         keyboard::{FilterResult, keysyms},
@@ -207,6 +207,57 @@ pub(in crate::compositor) fn handle_input_event<B: InputBackend>(
             pointer.axis(state, axis_frame_from_event(&event, time));
             pointer.frame(state);
         }
+        InputEvent::TouchDown { event } => {
+            let slot = event.slot();
+            let time = event.time_msec();
+            if state.active_touch_slot.is_some() {
+                trace!(?slot, time, "ignoring additional touch contact");
+                return;
+            }
+
+            let location = event.position_transformed(state.output_logical_size());
+            trace!(?slot, ?location, time, "single-touch down input");
+            state.active_touch_slot = Some(slot);
+            state.apply_pointer_motion(location, time);
+            state.synthesize_pointer_button(0x110, ButtonState::Pressed);
+        }
+        InputEvent::TouchMotion { event } => {
+            let slot = event.slot();
+            let time = event.time_msec();
+            if state.active_touch_slot != Some(slot) {
+                trace!(?slot, time, "ignoring inactive touch motion");
+                return;
+            }
+
+            let location = event.position_transformed(state.output_logical_size());
+            trace!(?slot, ?location, time, "single-touch motion input");
+            state.apply_pointer_motion(location, time);
+        }
+        InputEvent::TouchUp { event } => {
+            let slot = event.slot();
+            let time = event.time_msec();
+            if state.active_touch_slot != Some(slot) {
+                trace!(?slot, time, "ignoring inactive touch up");
+                return;
+            }
+
+            trace!(?slot, time, "single-touch up input");
+            state.synthesize_pointer_button(0x110, ButtonState::Released);
+            state.active_touch_slot = None;
+        }
+        InputEvent::TouchCancel { event } => {
+            let slot = event.slot();
+            let time = event.time_msec();
+            if state.active_touch_slot != Some(slot) {
+                trace!(?slot, time, "ignoring inactive touch cancel");
+                return;
+            }
+
+            debug!(?slot, time, "single-touch input cancelled");
+            state.synthesize_pointer_button(0x110, ButtonState::Released);
+            state.active_touch_slot = None;
+        }
+        InputEvent::TouchFrame { .. } => trace!("single-touch frame input"),
         _ => {}
     }
 }

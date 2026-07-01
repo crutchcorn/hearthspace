@@ -41,6 +41,8 @@ pub use udev::run_udev;
 
 use calloop::signals::{Signal, Signals};
 use cursor::{CursorIcon, SoftwareCursor};
+#[cfg(any(feature = "winit", feature = "udev"))]
+use smithay::backend::input::TouchSlot;
 #[cfg(feature = "winit")]
 use smithay::backend::winit::{self, WinitEvent};
 #[cfg(feature = "winit")]
@@ -178,6 +180,7 @@ struct App {
     next_spawn_position: CanvasPoint,
     spawn_offset: i32,
     pointer_location: Point<f64, Logical>,
+    active_touch_slot: Option<TouchSlot>,
     scroll_zooms_without_super: bool,
     outputs: OutputSet,
     app_catalog: AppCatalog,
@@ -446,6 +449,7 @@ pub(in crate::compositor) fn initialize_app(
         next_spawn_position: CanvasPoint { x: 80, y: 96 },
         spawn_offset: 0,
         pointer_location: (0.0, 0.0).into(),
+        active_touch_slot: None,
         scroll_zooms_without_super: options.scroll_zooms_without_super,
         outputs: OutputSet::new(primary_output),
         app_catalog,

@@ -108,8 +108,9 @@ them reliably.
 ## Input And Session Polish
 
 - [ ] Test multiple real keyboard and pointer devices through libinput.
-- [ ] Test touch/tablet/switch events on concrete hardware and add support beyond
-      not crashing.
+- [x] Test touch events on concrete hardware and add basic single-touch handling.
+- [ ] Test tablet/switch events on concrete hardware and add support beyond not
+      crashing.
 - [x] Improve VT pause/activate behavior if real hardware exposes connector,
       libinput, or DRM-master edge cases.
 
