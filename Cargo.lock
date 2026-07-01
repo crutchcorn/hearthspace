@@ -2155,6 +2155,7 @@ dependencies = [
  "waydriver-hearthspace",
  "wayland-protocols",
  "wayland-server",
+ "xcursor",
  "xilem",
 ]
 

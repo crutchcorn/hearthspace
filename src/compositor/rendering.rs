@@ -79,7 +79,7 @@ impl App {
         renderer: &mut GlesRenderer,
     ) -> Vec<HearthspaceRenderElement> {
         let mut elements = Vec::new();
-        for element in self.software_cursor_elements() {
+        if let Some(element) = self.software_cursor_element(renderer) {
             elements.push(HearthspaceRenderElement::from(element));
         }
 
@@ -112,42 +112,29 @@ impl App {
         elements
     }
 
-    fn software_cursor_elements(&mut self) -> Vec<SolidColorRenderElement> {
+    fn software_cursor_element(
+        &mut self,
+        renderer: &mut GlesRenderer,
+    ) -> Option<MemoryRenderBufferRenderElement<GlesRenderer>> {
         if !self.software_cursor_visible {
-            return Vec::new();
+            return None;
         }
 
-        while self.software_cursor_ids.len() < 4 {
-            self.software_cursor_ids.push(Id::new());
-        }
-
-        let origin = Point::<i32, Physical>::from((
-            self.pointer_location.x.round() as i32,
-            self.pointer_location.y.round() as i32,
+        let location = Point::<f64, Physical>::from((
+            self.pointer_location.x.round() - f64::from(self.software_cursor.hotspot.0),
+            self.pointer_location.y.round() - f64::from(self.software_cursor.hotspot.1),
         ));
-        let outline_origin = Point::<i32, Physical>::from((origin.x - 1, origin.y - 1));
-        let black = Color32F::new(0.02, 0.02, 0.02, 1.0);
-        let white = Color32F::new(1.0, 1.0, 1.0, 1.0);
-        let specs = [
-            (origin, Size::from((2, 18)), black),
-            (origin, Size::from((10, 2)), black),
-            (outline_origin, Size::from((4, 20)), white),
-            (outline_origin, Size::from((12, 4)), white),
-        ];
 
-        specs
-            .into_iter()
-            .enumerate()
-            .map(|(index, (location, size, color))| {
-                SolidColorRenderElement::new(
-                    self.software_cursor_ids[index].clone(),
-                    Rectangle::new(location, size),
-                    CommitCounter::default(),
-                    color,
-                    Kind::Cursor,
-                )
-            })
-            .collect()
+        MemoryRenderBufferRenderElement::from_buffer(
+            renderer,
+            location,
+            &self.software_cursor.buffer,
+            None,
+            None,
+            None,
+            Kind::Cursor,
+        )
+        .ok()
     }
 
     /// Collect render elements for every popup anchored to the given window.

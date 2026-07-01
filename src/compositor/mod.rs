@@ -40,7 +40,7 @@ use windows::ResizeEdges;
 pub use udev::run_udev;
 
 use calloop::signals::{Signal, Signals};
-use cursor::CursorIcon;
+use cursor::{CursorIcon, SoftwareCursor};
 #[cfg(feature = "winit")]
 use smithay::backend::winit::{self, WinitEvent};
 #[cfg(feature = "winit")]
@@ -192,7 +192,7 @@ struct App {
     /// damage tracker from treating every dot as new on each redraw.
     background_dot_ids: Vec<Id>,
     software_cursor_visible: bool,
-    software_cursor_ids: Vec<Id>,
+    software_cursor: SoftwareCursor,
 }
 
 impl App {
@@ -457,7 +457,7 @@ pub(in crate::compositor) fn initialize_app(
         popups: PopupManager::default(),
         background_dot_ids: Vec::new(),
         software_cursor_visible: false,
-        software_cursor_ids: Vec::new(),
+        software_cursor: cursor::standard_software_cursor(),
     };
 
     if options.start_shell {

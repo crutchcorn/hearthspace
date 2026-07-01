@@ -54,6 +54,7 @@ wayland-protocols = { version = "0.32.8", features = ["server"] }
 wayland-server = "0.31.9"
 waydriver = { version = "0.3.9", optional = true }
 waydriver-hearthspace = { path = "crates/waydriver-hearthspace", optional = true }
+xcursor = "0.3.10"
 
 [dev-dependencies]
 proptest = "1"
