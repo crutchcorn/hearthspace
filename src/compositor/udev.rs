@@ -20,8 +20,10 @@ use smithay::{
         udev::{UdevBackend, UdevEvent, primary_gpu},
     },
     reexports::drm::control::crtc,
-    reexports::{input::Libinput, wayland_server::Display},
-    utils::{Physical, Size},
+    reexports::{
+        calloop::LoopHandle, calloop::RegistrationToken, input::Libinput, wayland_server::Display,
+    },
+    utils::{Physical, Size, Transform},
 };
 use tracing::{debug, error, info, trace, warn};
 
@@ -36,6 +38,8 @@ pub(super) struct UdevBackendState {
     session_active: bool,
     // The first native milestone opens and renders through exactly one DRM
     // device. `devices` below is discovery state for hotplug logging only.
+    loop_handle: LoopHandle<'static, super::CalloopData>,
+    input_source: Option<RegistrationToken>,
     primary_device: Option<UdevDevice>,
     devices: Vec<UdevDeviceInfo>,
     kms_devices_active: bool,
@@ -47,6 +51,12 @@ pub(super) struct UdevBackendState {
     input_event_count: u64,
     emergency_exit_ctrl_pressed: bool,
     emergency_exit_alt_pressed: bool,
+}
+
+#[derive(Default)]
+struct ConnectorSync {
+    descriptors: Vec<super::OutputDescriptor>,
+    primary: Option<super::OutputDescriptor>,
 }
 
 pub fn run_udev(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> {
@@ -82,13 +92,6 @@ pub fn run_udev(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> {
     };
 
     let session_active = session.is_active();
-    let mut libinput_context =
-        Libinput::new_with_udev(LibinputSessionInterface::from(session.clone()));
-    libinput_context
-        .udev_assign_seat(&seat_name)
-        .map_err(|()| format!("failed to assign libinput to seat {seat_name}"))?;
-    let libinput_backend = LibinputInputBackend::new(libinput_context);
-
     let display: Display<super::App> = Display::new()?;
     let dh = display.handle();
     let output_target = primary_device
@@ -155,10 +158,10 @@ pub fn run_udev(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> {
             }
         }
         SessionEvent::ActivateSession => {
-            if let Some(backend) = udev_backend_mut(data) {
-                backend.activate_session();
-            }
-            data.full_redraw = data.full_redraw.max(1);
+            let connector_sync = udev_backend_mut(data)
+                .map(|backend| backend.activate_session())
+                .unwrap_or_default();
+            apply_connector_sync(data, connector_sync);
             data.state.request_redraw();
         }
     })?;
@@ -179,12 +182,10 @@ pub fn run_udev(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> {
         }
         UdevEvent::Changed { device_id } => {
             info!(device_id, "DRM device changed");
-            let output_descriptors = udev_backend_mut(data)
+            let connector_sync = udev_backend_mut(data)
                 .map(|backend| backend.handle_device_changed(device_id))
                 .unwrap_or_default();
-            let dh = data.display.handle();
-            data.state.sync_connector_outputs(&dh, output_descriptors);
-            data.full_redraw = data.full_redraw.max(1);
+            apply_connector_sync(data, connector_sync);
             data.state.request_redraw();
         }
         UdevEvent::Removed { device_id } => {
@@ -202,26 +203,11 @@ pub fn run_udev(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> {
         }
     })?;
 
-    handle.insert_source(libinput_backend, |event, _, data| {
-        {
-            let Some(backend) = udev_backend_mut(data) else {
-                return;
-            };
-            if !backend.session_active {
-                trace!("input event ignored while native session is paused");
-                return;
-            }
-            backend.input_event_count += 1;
-            log_input_event(&event);
-            if backend.handle_emergency_exit_chord(&event) {
-                info!("native emergency exit chord pressed; stopping compositor event loop");
-                data.running = false;
-                return;
-            }
-        }
-
-        super::handle_input_event(&mut data.state, event);
-    })?;
+    let input_source = Some(insert_libinput_source(
+        &handle,
+        session.clone(),
+        &seat_name,
+    )?);
 
     if let Some(drm_notifier) = drm_notifier {
         handle.insert_source(drm_notifier, |event, metadata, data| match event {
@@ -255,6 +241,8 @@ pub fn run_udev(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> {
         session,
         seat_name,
         session_active,
+        loop_handle: handle.clone(),
+        input_source,
         kms_devices_active: primary_device.is_some() && session_active,
         drm_commits_paused: !session_active,
         connector_rescan_pending: false,
@@ -291,6 +279,61 @@ fn udev_backend_mut(data: &mut super::CalloopData) -> Option<&mut UdevBackendSta
     }
 }
 
+fn apply_connector_sync(data: &mut super::CalloopData, connector_sync: ConnectorSync) {
+    let dh = data.display.handle();
+    if let Some(primary) = connector_sync.primary {
+        let size = primary.size;
+        data.state.set_primary_output_descriptor(primary);
+        data.damage_tracker = OutputDamageTracker::new(size, 1.0, Transform::Normal);
+        data.full_redraw = 1;
+        data.state.configure_shell_bars();
+    }
+    data.state
+        .sync_connector_outputs(&dh, connector_sync.descriptors);
+    data.full_redraw = data.full_redraw.max(1);
+}
+
+fn create_libinput_backend(
+    session: LibSeatSession,
+    seat_name: &str,
+) -> Result<LibinputInputBackend, Box<dyn std::error::Error>> {
+    let mut libinput_context = Libinput::new_with_udev(LibinputSessionInterface::from(session));
+    libinput_context
+        .udev_assign_seat(seat_name)
+        .map_err(|()| format!("failed to assign libinput to seat {seat_name}"))?;
+    Ok(LibinputInputBackend::new(libinput_context))
+}
+
+fn insert_libinput_source(
+    handle: &LoopHandle<'static, super::CalloopData>,
+    session: LibSeatSession,
+    seat_name: &str,
+) -> Result<RegistrationToken, Box<dyn std::error::Error>> {
+    let libinput_backend = create_libinput_backend(session, seat_name)?;
+    let token = handle.insert_source(libinput_backend, |event, _, data| {
+        {
+            let Some(backend) = udev_backend_mut(data) else {
+                return;
+            };
+            if !backend.session_active {
+                trace!("input event ignored while native session is paused");
+                return;
+            }
+            backend.input_event_count += 1;
+            log_input_event(&event);
+            if backend.handle_emergency_exit_chord(&event) {
+                info!("native emergency exit chord pressed; stopping compositor event loop");
+                data.running = false;
+                return;
+            }
+        }
+
+        super::handle_input_event(&mut data.state, event);
+    })?;
+    info!(seat = seat_name, "native libinput source registered");
+    Ok(token)
+}
+
 impl UdevBackendState {
     pub(in crate::compositor) fn render_frame(
         &mut self,
@@ -318,7 +361,9 @@ impl UdevBackendState {
             .as_mut()
             .map(|output| &mut output.gbm_surface)
         else {
-            return Err("udev GBM surface is not initialized".into());
+            debug!("skipping native render because no KMS output surface is initialized");
+            self.frame_dirty = true;
+            return Ok(false);
         };
 
         let (mut dmabuf, buffer_age) = gbm_surface.next_buffer()?;
@@ -399,34 +444,82 @@ impl UdevBackendState {
         self.repaint_pending = false;
         self.frame_pending = false;
         self.frame_dirty = true;
+        if let Some(token) = self.input_source.take() {
+            self.loop_handle.remove(token);
+            info!("native libinput source removed for session pause");
+        }
         if let Some(device) = &mut self.primary_device {
+            device.scanout_node.drm_device.pause();
+            device.output_surface = None;
             device.active = false;
         }
         info!("native session paused; DRM commits disabled and Wayland clients remain connected");
     }
 
-    fn activate_session(&mut self) {
+    fn activate_session(&mut self) -> ConnectorSync {
         self.session_active = true;
-        self.drm_commits_paused = false;
-        if let Some(device) = &mut self.primary_device {
-            device.active = true;
-        } else if let Err(error) = self.open_primary_device() {
+        self.connector_rescan_pending = true;
+
+        if self.primary_device.is_none()
+            && let Err(error) = self.open_primary_device()
+        {
             error!(%error, "failed to open primary DRM device after session activation");
         }
 
-        self.kms_devices_active = self.primary_device.is_some();
-        self.connector_rescan_pending = true;
-        self.repaint_pending = self.kms_devices_active;
-        self.frame_dirty = self.kms_devices_active;
+        if self.input_source.is_none() {
+            match insert_libinput_source(&self.loop_handle, self.session.clone(), &self.seat_name) {
+                Ok(token) => {
+                    self.input_source = Some(token);
+                    info!("native libinput source recreated after session activation");
+                }
+                Err(error) => {
+                    error!(%error, "failed to recreate native libinput source after session activation");
+                }
+            }
+        }
 
         if let Err(error) = self.rescan_devices() {
             error!(%error, "failed to re-scan DRM devices after session activation");
         }
 
+        let Some(device) = self.primary_device.as_mut() else {
+            self.kms_devices_active = false;
+            self.drm_commits_paused = true;
+            self.repaint_pending = false;
+            self.frame_pending = false;
+            self.frame_dirty = true;
+            warn!("native session activated but no primary DRM device is available");
+            return ConnectorSync::default();
+        };
+
+        device.active = true;
+        if let Err(error) = device.scanout_node.drm_device.activate(true) {
+            error!(%error, "failed to reactivate primary DRM device after session activation");
+        }
+
+        device.output_targets = device.connected_output_targets();
+        let next_target = device.output_targets.first().cloned();
+        let primary = next_target.as_ref().map(KmsOutputTarget::output_descriptor);
+        if let Err(error) = device.rebuild_output_surface(next_target) {
+            error!(%error, "failed to rebuild primary KMS output surface after session activation");
+        }
+
+        self.kms_devices_active = device.output_surface.is_some();
+        self.drm_commits_paused = !self.kms_devices_active;
+        self.connector_rescan_pending = false;
+        self.repaint_pending = self.kms_devices_active;
+        self.frame_pending = false;
+        self.frame_dirty = true;
+
         info!(
             repaint_pending = self.repaint_pending,
             "native session activated; DRM devices reactivated"
         );
+
+        ConnectorSync {
+            descriptors: device.output_descriptors(),
+            primary,
+        }
     }
 
     fn add_or_update_device(&mut self, device_id: u64, path: PathBuf) {
@@ -448,21 +541,32 @@ impl UdevBackendState {
             .unwrap_or_default()
     }
 
-    fn handle_device_changed(&mut self, device_id: u64) -> Vec<super::OutputDescriptor> {
+    fn handle_device_changed(&mut self, device_id: u64) -> ConnectorSync {
         self.connector_rescan_pending = true;
+        if !self.session_active || self.drm_commits_paused {
+            debug!(
+                device_id,
+                "deferring DRM device change while native session is paused"
+            );
+            return ConnectorSync::default();
+        }
+
         if let Err(error) = self.rescan_devices() {
             error!(%error, "failed to re-scan DRM devices after device change");
         }
 
         let Some(device) = self.primary_device.as_mut() else {
-            return Vec::new();
+            return ConnectorSync::default();
         };
         if device.scanout_node.drm_fd.dev_id().ok() != Some(device_id) {
             debug!(
                 device_id,
                 "changed DRM device is not the selected primary device"
             );
-            return device.output_descriptors();
+            return ConnectorSync {
+                descriptors: device.output_descriptors(),
+                primary: None,
+            };
         }
 
         let previous_target = device.output_target.clone();
@@ -472,15 +576,30 @@ impl UdevBackendState {
             debug!("primary DRM connector state re-scanned; selected output is unchanged");
             self.connector_rescan_pending = false;
             device.output_targets = next_targets;
-            return device.output_descriptors();
+            return ConnectorSync {
+                descriptors: device.output_descriptors(),
+                primary: None,
+            };
         }
 
-        info!(previous_target = ?previous_target, next_target = ?next_target, "primary DRM connector selection changed; output rebuild remains pending");
+        info!(previous_target = ?previous_target, next_target = ?next_target, "primary DRM connector selection changed; rebuilding output surface");
         device.output_targets = next_targets;
-        device.output_target = next_target;
-        self.frame_dirty = true;
-        self.repaint_pending = true;
-        device.output_descriptors()
+        let primary = next_target.as_ref().map(KmsOutputTarget::output_descriptor);
+        if let Err(error) = device.rebuild_output_surface(next_target) {
+            error!(%error, "failed to rebuild primary KMS output surface");
+        }
+
+        self.kms_devices_active = self.session_active && device.output_surface.is_some();
+        self.drm_commits_paused = !self.session_active || device.output_surface.is_none();
+        self.connector_rescan_pending = false;
+        self.frame_pending = false;
+        self.frame_dirty = self.kms_devices_active;
+        self.repaint_pending = self.kms_devices_active;
+
+        ConnectorSync {
+            descriptors: device.output_descriptors(),
+            primary,
+        }
     }
 
     fn remove_device(&mut self, device_id: u64) {

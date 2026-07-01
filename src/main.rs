@@ -1,14 +1,9 @@
+use std::fs::OpenOptions;
+
 use tracing::{debug, info};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    match tracing_subscriber::EnvFilter::try_from_default_env() {
-        Ok(env_filter) => {
-            tracing_subscriber::fmt().with_env_filter(env_filter).init();
-        }
-        _ => {
-            tracing_subscriber::fmt().init();
-        }
-    }
+    initialize_tracing();
 
     let args = std::env::args().collect::<Vec<_>>();
     debug!(?args, "parsed process arguments");
@@ -44,6 +39,30 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         };
         info!(?options, "starting compositor");
         hearthspace::run_with_options(options)
+    }
+}
+
+fn initialize_tracing() {
+    let env_filter = tracing_subscriber::EnvFilter::try_from_default_env();
+    if let Some(log_path) = std::env::var_os(hearthspace::config::LOG_FILE_ENV) {
+        let make_writer = move || {
+            OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(&log_path)
+                .expect("failed to open Hearthspace log file")
+        };
+        let subscriber = tracing_subscriber::fmt().with_writer(make_writer);
+        match env_filter {
+            Ok(env_filter) => subscriber.with_env_filter(env_filter).init(),
+            Err(_) => subscriber.init(),
+        }
+        return;
+    }
+
+    match env_filter {
+        Ok(env_filter) => tracing_subscriber::fmt().with_env_filter(env_filter).init(),
+        Err(_) => tracing_subscriber::fmt().init(),
     }
 }
 

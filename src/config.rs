@@ -14,6 +14,7 @@ pub const SHELL_BAR_APP_ID: &str = "dev.hearthspace.shell-bar";
 pub const LAUNCHER_APP_ID: &str = "dev.hearthspace.launcher";
 pub const SHELL_COMMAND_SOCKET_NAME: &str = "hearthspace-shell.sock";
 pub const SHELL_COMMAND_SOCKET_ENV: &str = "HEARTHSPACE_COMMAND_SOCKET";
+pub const LOG_FILE_ENV: &str = "HEARTHSPACE_LOG_FILE";
 pub const GTK_CLIENT_CONFIG_DIR_NAME: &str = "hearthspace-gtk-client-config";
 pub const SCROLL_ZOOMS_FLAG: &str = "--scroll-zooms";
 pub const HEADLESS_SIZE_FLAG: &str = "--headless-size";

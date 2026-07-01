@@ -24,6 +24,7 @@ pub(in crate::compositor) struct OutputRecord {
     location: Point<i32, Logical>,
 }
 
+#[derive(Clone)]
 pub(in crate::compositor) struct OutputDescriptor {
     pub(in crate::compositor) name: String,
     pub(in crate::compositor) properties: PhysicalProperties,
@@ -46,7 +47,7 @@ impl OutputSet {
         let mut existing = std::mem::take(&mut self.secondary);
         let mut next_secondary = Vec::with_capacity(existing.len());
 
-        for descriptor in descriptors {
+        for descriptor in descriptors.into_iter().skip(1) {
             if descriptor.name == self.primary.name {
                 continue;
             }
@@ -130,6 +131,21 @@ impl App {
             size,
             self.outputs.primary.scale,
         );
+    }
+
+    #[cfg(feature = "udev")]
+    pub(in crate::compositor) fn set_primary_output_descriptor(
+        &mut self,
+        descriptor: OutputDescriptor,
+    ) {
+        if self.outputs.primary.name != descriptor.name {
+            tracing::info!(
+                wayland_name = %self.outputs.primary.name,
+                kms_name = %descriptor.name,
+                "retargeting primary KMS output while keeping the existing Wayland output global"
+            );
+        }
+        self.outputs.primary.update(descriptor, (0, 0).into());
     }
 
     pub(super) fn enter_primary_output(&self, surface: &WlSurface) {

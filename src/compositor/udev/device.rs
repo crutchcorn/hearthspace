@@ -182,6 +182,62 @@ impl UdevDevice {
         }
         targets
     }
+
+    pub(super) fn rebuild_output_surface(
+        &mut self,
+        target: Option<KmsOutputTarget>,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        self.output_surface = None;
+        self.output_target = target.clone();
+
+        let Some(target) = target else {
+            warn!(path = %self.path.display(), "no KMS output target selected; native scanout disabled");
+            return Ok(());
+        };
+
+        self.output_surface = Some(create_output_surface(
+            &mut self.scanout_node,
+            &self.render_node,
+            target,
+        )?);
+        Ok(())
+    }
+}
+
+fn create_output_surface(
+    scanout_node: &mut ScanoutNode,
+    render_node: &RenderNode,
+    target: KmsOutputTarget,
+) -> Result<KmsOutputSurface, Box<dyn std::error::Error>> {
+    let surface = scanout_node.drm_device.create_surface(
+        target.crtc,
+        target.mode,
+        std::slice::from_ref(&target.connector),
+    )?;
+    info!(connector = ?target.connector, crtc = ?target.crtc, mode = ?target.mode, "created DRM surface");
+
+    let gbm_device = GbmDevice::new(render_node.drm_fd.clone())?;
+    let gbm_allocator = GbmAllocator::new(
+        gbm_device,
+        GbmBufferFlags::SCANOUT | GbmBufferFlags::RENDERING,
+    );
+    let renderer_formats = render_node
+        .renderer
+        .dmabuf_formats()
+        .into_iter()
+        .collect::<Vec<Format>>();
+    let gbm_surface = GbmBufferedSurface::new(
+        surface,
+        gbm_allocator,
+        &[Fourcc::Argb8888, Fourcc::Xrgb8888],
+        renderer_formats,
+    )?;
+    info!(connector = ?target.connector, crtc = ?target.crtc, "created GBM buffered surface");
+
+    Ok(KmsOutputSurface {
+        target,
+        gbm_surface,
+    })
 }
 
 pub(super) fn create_udev_device(
@@ -196,10 +252,6 @@ pub(super) fn create_udev_device(
     let egl_display = unsafe { EGLDisplay::new(gbm_device.clone())? };
     let context = EGLContext::new(&egl_display)?;
     let renderer = unsafe { GlesRenderer::new(context)? };
-    let gbm_allocator = GbmAllocator::new(
-        gbm_device,
-        GbmBufferFlags::SCANOUT | GbmBufferFlags::RENDERING,
-    );
     // Avoid disabling existing connectors until the first real frame commit path is in place.
     let (drm_device, notifier) = DrmDevice::new(drm_fd.clone(), false)?;
     let mut device = UdevDevice {
@@ -217,29 +269,11 @@ pub(super) fn create_udev_device(
     device.output_targets = device.connected_output_targets();
     device.output_target = device.output_targets.first().cloned();
     if let Some(target) = device.output_target.clone() {
-        let surface = device.scanout_node.drm_device.create_surface(
-            target.crtc,
-            target.mode,
-            std::slice::from_ref(&target.connector),
-        )?;
-        info!(connector = ?target.connector, crtc = ?target.crtc, mode = ?target.mode, "created DRM surface");
-        let renderer_formats = device
-            .render_node
-            .renderer
-            .dmabuf_formats()
-            .into_iter()
-            .collect::<Vec<Format>>();
-        let gbm_surface = GbmBufferedSurface::new(
-            surface,
-            gbm_allocator,
-            &[Fourcc::Argb8888, Fourcc::Xrgb8888],
-            renderer_formats,
-        )?;
-        info!(connector = ?target.connector, crtc = ?target.crtc, "created GBM buffered surface");
-        device.output_surface = Some(KmsOutputSurface {
+        device.output_surface = Some(create_output_surface(
+            &mut device.scanout_node,
+            &device.render_node,
             target,
-            gbm_surface,
-        });
+        )?);
     }
     Ok((device, notifier))
 }

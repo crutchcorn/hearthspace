@@ -14,20 +14,25 @@ cargo build --no-default-features --features udev
 Basic VT smoke without the shell:
 
 ```sh
-target/debug/hearthspace --tty --no-shell --exit-after-ms 10000 2>&1 | tee /tmp/hearthspace-udev-smoke.log
+HEARTHSPACE_LOG_FILE=/tmp/hearthspace-udev-smoke.log target/debug/hearthspace --tty --no-shell --exit-after-ms 10000
 ```
 
 Native shell smoke:
 
 ```sh
-target/debug/hearthspace --tty --exit-after-ms 15000 2>&1 | tee /tmp/hearthspace-udev-shell.log
+HEARTHSPACE_LOG_FILE=/tmp/hearthspace-udev-shell.log target/debug/hearthspace --tty --exit-after-ms 15000
 ```
 
 Client stress repro with retained logs:
 
 ```sh
-target/debug/hearthspace --tty 2>&1 | tee /tmp/hearthspace-udev-client.log
+HEARTHSPACE_LOG_FILE=/tmp/hearthspace-udev-client.log target/debug/hearthspace --tty
 ```
+
+Add `RUST_LOG=hearthspace=trace,smithay=debug` before the command when chasing
+VT, KMS, or libseat problems. `HEARTHSPACE_LOG_FILE` is inherited by the shell
+client, so compositor and shell logs append to the same file instead of being
+trapped on the active VT.
 
 Use `Ctrl+Alt+Backspace` or `Ctrl+Alt+Esc` to exit a live native run.
 

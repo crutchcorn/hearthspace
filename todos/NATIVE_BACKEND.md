@@ -24,26 +24,29 @@ exists.
 
 ## Validation To Run On Real Hardware
 
-- [ ] Run `cargo check`.
-- [ ] Run `cargo check --features udev`.
-- [ ] Run `cargo check --no-default-features --features udev`.
-- [ ] Run `cargo test`.
-- [ ] Run `cargo test --features e2e --test headless_control`.
-- [ ] Run native VT smoke without the shell:
+- [x] Run `cargo check`.
+- [x] Run `cargo check --features udev`.
+- [x] Run `cargo check --no-default-features --features udev`.
+- [x] Run `cargo test`.
+- [x] Run `cargo test --features e2e --test headless_control`.
+- [x] Run native VT smoke without the shell:
       `target/debug/hearthspace --tty --no-shell --exit-after-ms 10000`.
-- [ ] Run native VT smoke with the shell:
+- [x] Run native VT smoke with the shell:
       `target/debug/hearthspace --tty --exit-after-ms 15000`.
-- [ ] Run native VT smoke with Firefox, GNOME Calculator, or another heavier
+- [x] Run native VT smoke with Firefox, GNOME Calculator, or another heavier
       Wayland client and confirm no repeated KMS commit failures.
-- [ ] Switch away from the VT and back while Hearthspace is running.
+- [x] Switch away from the VT and back while Hearthspace is running.
 - [ ] Unplug/replug or add/remove a monitor and confirm Wayland output globals
       update without crashing.
-- [ ] Test on at least one non-VM real DRM stack and record GPU/driver/session
+- [x] Test on at least one non-VM real DRM stack and record GPU/driver/session
       details in the issue or PR that validates it.
+      GPD Win Max 2 native test details: AMD Radeon 890M Graphics, `amdgpu`
+      DRM 3.64 on Linux 7.0.0-27-generic, Mesa 26.0.3, libseat on `seat0`,
+      eDP-1 at 2560x1600@60Hz.
 
 ## Output And Hotplug Work
 
-- [ ] Rebuild the primary KMS output if the selected connector/CRTC/mode changes
+- [x] Rebuild the primary KMS output if the selected connector/CRTC/mode changes
       at runtime.
 - [ ] Render to secondary outputs instead of only advertising their Wayland
       globals.
@@ -68,9 +71,9 @@ exists.
 Goal: re-enable scanout damage hints only when the active DRM stack supports
 them reliably.
 
-- [ ] Keep renderer-side damage tracking enabled; it is still useful for
+- [x] Keep renderer-side damage tracking enabled; it is still useful for
       minimizing GLES redraw work into the GBM buffer.
-- [ ] Keep native KMS commits passing `None` for damage clips until a fallback
+- [x] Keep native KMS commits passing `None` for damage clips until a fallback
       path exists. The Parallels/virgl VM path produced repeated failures while
       running heavier clients such as Firefox/GNOME Calculator:
       `Page flip commit failed on device Some("/dev/dri/card1") (Invalid argument
@@ -107,7 +110,7 @@ them reliably.
 - [ ] Test multiple real keyboard and pointer devices through libinput.
 - [ ] Test touch/tablet/switch events on concrete hardware and add support beyond
       not crashing.
-- [ ] Improve VT pause/activate behavior if real hardware exposes connector,
+- [x] Improve VT pause/activate behavior if real hardware exposes connector,
       libinput, or DRM-master edge cases.
 
 ## Non-Goals For The First Native Milestone
