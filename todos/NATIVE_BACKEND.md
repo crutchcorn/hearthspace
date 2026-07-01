@@ -36,8 +36,11 @@ exists.
 - [x] Run native VT smoke with Firefox, GNOME Calculator, or another heavier
       Wayland client and confirm no repeated KMS commit failures.
 - [x] Switch away from the VT and back while Hearthspace is running.
-- [ ] Unplug/replug or add/remove a monitor and confirm Wayland output globals
+- [x] Unplug/replug or add/remove a monitor and confirm Wayland output globals
       update without crashing.
+      GPD Win Max 2 HDMI-A-1 hotplug test passed: Wayland output globals were
+      advertised/disabled across plug/unplug cycles and the compositor exited via
+      the emergency exit chord without panics or KMS commit failures.
 - [x] Test on at least one non-VM real DRM stack and record GPU/driver/session
       details in the issue or PR that validates it.
       GPD Win Max 2 native test details: AMD Radeon 890M Graphics, `amdgpu`
