@@ -17,8 +17,8 @@ exists.
 - [x] Native rendering is vblank/page-flip paced.
 - [x] Native clients can use renderer-backed dmabuf import.
 - [x] Native shell startup is enabled.
-- [x] Secondary connectors are advertised as Wayland outputs, but only the
-      primary KMS target is rendered today.
+- [x] Secondary connectors are advertised as Wayland outputs and rendered through
+      independent KMS/GBM surfaces.
 - [x] Native screenshots intentionally return a clear unsupported error until DRM
       readback exists.
 
@@ -51,8 +51,11 @@ exists.
 
 - [x] Rebuild the primary KMS output if the selected connector/CRTC/mode changes
       at runtime.
-- [ ] Render to secondary outputs instead of only advertising their Wayland
+- [x] Render to secondary outputs instead of only advertising their Wayland
       globals.
+      GPD Win Max 2 HDMI-A-1 validation passed: secondary output rendered
+      correctly through the native backend after `feat: render native outputs
+      independently`.
 - [x] Replace the temporary horizontal connector-order layout with an explicit
       layout policy.
 - [x] Preserve or migrate pointer position/focus predictably when output geometry
