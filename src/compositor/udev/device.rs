@@ -6,7 +6,7 @@ use smithay::{
         allocator::{Format, Fourcc},
         drm::{DrmDevice, DrmDeviceFd, GbmBufferedSurface},
         egl::{EGLContext, EGLDisplay},
-        renderer::{ImportDma, gles::GlesRenderer},
+        renderer::{ImportDma, damage::OutputDamageTracker, gles::GlesRenderer},
         session::{Session, libseat::LibSeatSession},
         udev::{UdevBackend, all_gpus},
     },
@@ -15,7 +15,7 @@ use smithay::{
         drm::control::{Device as ControlDevice, Mode, connector, crtc},
         rustix::fs::{OFlags, stat},
     },
-    utils::{DeviceFd, Physical, Size},
+    utils::{DeviceFd, Physical, Size, Transform},
 };
 use tracing::{debug, error, info, warn};
 
@@ -26,7 +26,7 @@ pub(super) struct UdevDevice {
     pub(super) active: bool,
     pub(super) output_targets: Vec<KmsOutputTarget>,
     pub(super) output_target: Option<KmsOutputTarget>,
-    pub(super) output_surface: Option<KmsOutputSurface>,
+    pub(super) output_surfaces: Vec<KmsOutputSurface>,
 }
 
 pub(super) struct RenderNode {
@@ -42,6 +42,9 @@ pub(super) struct ScanoutNode {
 pub(super) struct KmsOutputSurface {
     pub(super) target: KmsOutputTarget,
     pub(super) gbm_surface: GbmBufferedSurface<GbmAllocator<DrmDeviceFd>, ()>,
+    pub(super) damage_tracker: OutputDamageTracker,
+    pub(super) frame_pending: bool,
+    pub(super) frame_dirty: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -79,6 +82,10 @@ impl KmsOutputTarget {
         }
     }
 
+    pub(super) fn connector_name(&self) -> &str {
+        &self.connector_name
+    }
+
     fn refresh_millihz(&self) -> i32 {
         let refresh_hz = self.mode.vrefresh();
         if refresh_hz == 0 {
@@ -111,6 +118,7 @@ impl UdevDevice {
         );
 
         let mut targets = Vec::new();
+        let mut used_crtcs = Vec::new();
         for connector_handle in resources.connectors() {
             let Ok(info) = self
                 .scanout_node
@@ -131,25 +139,39 @@ impl UdevDevice {
             if connected {
                 if let Some(mode) = info.modes().first() {
                     debug!(connector = ?connector_handle, ?mode, "selected preferred/first DRM mode");
-                    let crtc = info
+                    let current_crtc = info
                         .current_encoder()
                         .and_then(|encoder| self.scanout_node.drm_device.get_encoder(encoder).ok())
-                        .and_then(|encoder| encoder.crtc())
+                        .and_then(|encoder| encoder.crtc());
+                    let crtc_candidates = info
+                        .encoders()
+                        .iter()
+                        .filter_map(|encoder| {
+                            self.scanout_node.drm_device.get_encoder(*encoder).ok().map(
+                                |encoder_info| {
+                                    resources.filter_crtcs(encoder_info.possible_crtcs())
+                                },
+                            )
+                        })
+                        .flatten()
+                        .collect::<Vec<_>>();
+                    let crtc = current_crtc
+                        .filter(|crtc| !used_crtcs.contains(crtc))
                         .or_else(|| {
-                            info.encoders().iter().find_map(|encoder| {
-                                self.scanout_node
-                                    .drm_device
-                                    .get_encoder(*encoder)
-                                    .ok()
-                                    .and_then(|encoder_info| {
-                                        resources
-                                            .filter_crtcs(encoder_info.possible_crtcs())
-                                            .into_iter()
-                                            .next()
-                                    })
-                            })
+                            crtc_candidates
+                                .iter()
+                                .copied()
+                                .find(|crtc| !used_crtcs.contains(crtc))
                         });
+                    debug!(
+                        connector = ?connector_handle,
+                        current_crtc = ?current_crtc,
+                        crtcs = ?crtc_candidates,
+                        selected_crtc = ?crtc,
+                        "DRM CRTC candidates"
+                    );
                     if let Some(crtc) = crtc {
+                        used_crtcs.push(crtc);
                         let physical_size_mm = info
                             .size()
                             .map(|(width, height)| {
@@ -172,7 +194,6 @@ impl UdevDevice {
                         });
                     }
                 }
-                debug!(connector = ?connector_handle, ?crtcs, "DRM CRTC candidates");
             }
         }
         if let Some(target) = targets.first() {
@@ -183,24 +204,53 @@ impl UdevDevice {
         targets
     }
 
-    pub(super) fn rebuild_output_surface(
+    pub(super) fn rebuild_output_surfaces(
         &mut self,
-        target: Option<KmsOutputTarget>,
+        targets: Vec<KmsOutputTarget>,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        self.output_surface = None;
-        self.output_target = target.clone();
+        self.output_surfaces.clear();
+        self.output_target = targets.first().cloned();
 
-        let Some(target) = target else {
+        if targets.is_empty() {
             warn!(path = %self.path.display(), "no KMS output target selected; native scanout disabled");
             return Ok(());
-        };
+        }
 
-        self.output_surface = Some(create_output_surface(
-            &mut self.scanout_node,
-            &self.render_node,
-            target,
-        )?);
+        for target in targets {
+            match create_output_surface(&mut self.scanout_node, &self.render_node, target.clone()) {
+                Ok(surface) => self.output_surfaces.push(surface),
+                Err(error) => {
+                    error!(connector = ?target.connector, crtc = ?target.crtc, %error, "failed to create KMS output surface");
+                }
+            }
+        }
+
+        if self.output_surfaces.is_empty() {
+            return Err("failed to create any KMS output surfaces".into());
+        }
         Ok(())
+    }
+
+    pub(super) fn has_output_surfaces(&self) -> bool {
+        !self.output_surfaces.is_empty()
+    }
+
+    pub(super) fn mark_all_surfaces_dirty(&mut self) {
+        for surface in &mut self.output_surfaces {
+            surface.frame_dirty = true;
+        }
+    }
+
+    pub(super) fn any_frame_pending(&self) -> bool {
+        self.output_surfaces
+            .iter()
+            .any(|surface| surface.frame_pending)
+    }
+
+    pub(super) fn any_frame_dirty(&self) -> bool {
+        self.output_surfaces
+            .iter()
+            .any(|surface| surface.frame_dirty)
     }
 }
 
@@ -235,6 +285,9 @@ fn create_output_surface(
     info!(connector = ?target.connector, crtc = ?target.crtc, "created GBM buffered surface");
 
     Ok(KmsOutputSurface {
+        damage_tracker: OutputDamageTracker::new(target.output_size(), 1.0, Transform::Normal),
+        frame_pending: false,
+        frame_dirty: true,
         target,
         gbm_surface,
     })
@@ -264,17 +317,10 @@ pub(super) fn create_udev_device(
         active,
         output_targets: Vec::new(),
         output_target: None,
-        output_surface: None,
+        output_surfaces: Vec::new(),
     };
     device.output_targets = device.connected_output_targets();
-    device.output_target = device.output_targets.first().cloned();
-    if let Some(target) = device.output_target.clone() {
-        device.output_surface = Some(create_output_surface(
-            &mut device.scanout_node,
-            &device.render_node,
-            target,
-        )?);
-    }
+    device.rebuild_output_surfaces(device.output_targets.clone())?;
     Ok((device, notifier))
 }
 

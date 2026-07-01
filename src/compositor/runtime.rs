@@ -290,11 +290,7 @@ impl CalloopData {
             #[cfg(feature = "udev")]
             Backend::Udev(backend) => {
                 let force_full_redraw = self.full_redraw > 0;
-                let submitted = backend.render_frame(
-                    &mut self.state,
-                    &mut self.damage_tracker,
-                    force_full_redraw,
-                )?;
+                let submitted = backend.render_frame(&mut self.state, force_full_redraw)?;
                 trace!(submitted, force_full_redraw, "rendered native frame");
                 if submitted && force_full_redraw {
                     self.full_redraw = self.full_redraw.saturating_sub(1);

@@ -239,14 +239,18 @@ pub fn run_udev(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> {
         })?;
     }
 
+    let kms_devices_active = primary_device
+        .as_ref()
+        .is_some_and(|device| device.has_output_surfaces())
+        && session_active;
     let backend = UdevBackendState {
         session,
         seat_name,
         session_active,
         loop_handle: handle.clone(),
         input_source,
-        kms_devices_active: primary_device.is_some() && session_active,
-        drm_commits_paused: !session_active,
+        kms_devices_active,
+        drm_commits_paused: !session_active || !kms_devices_active,
         connector_rescan_pending: false,
         repaint_pending: false,
         frame_pending: false,
@@ -341,74 +345,107 @@ impl UdevBackendState {
     pub(in crate::compositor) fn render_frame(
         &mut self,
         state: &mut super::App,
-        damage_tracker: &mut OutputDamageTracker,
         force_full_redraw: bool,
     ) -> Result<bool, Box<dyn std::error::Error>> {
         if self.drm_commits_paused {
             debug!("skipping native render while DRM commits are paused");
             self.frame_dirty = true;
-            return Ok(false);
-        }
-        if self.frame_pending {
-            self.frame_dirty = true;
-            debug!("native redraw requested while page flip is pending; deferring until vblank");
+            if let Some(device) = &mut self.primary_device {
+                device.mark_all_surfaces_dirty();
+            }
             return Ok(false);
         }
 
         let Some(device) = self.primary_device.as_mut() else {
             return Err("udev backend has no primary DRM device".into());
         };
-        let renderer = &mut device.render_node.renderer;
-        let Some(gbm_surface) = device
-            .output_surface
-            .as_mut()
-            .map(|output| &mut output.gbm_surface)
-        else {
+        if device.output_surfaces.is_empty() {
             debug!("skipping native render because no KMS output surface is initialized");
             self.frame_dirty = true;
             return Ok(false);
-        };
+        }
 
-        let (mut dmabuf, buffer_age) = gbm_surface.next_buffer()?;
-        let age = if force_full_redraw {
-            0
-        } else {
-            usize::from(buffer_age)
-        };
-        let damage = {
-            let mut framebuffer = renderer.bind(&mut dmabuf)?;
-            state.render_frame(renderer, &mut framebuffer, damage_tracker, age)?
-        };
-        // Keep damage tracking for renderer-side redraw minimization, but do not
-        // forward damage clips to KMS yet. Some virtual DRM stacks reject
-        // FB_DAMAGE_CLIPS on page flip with EINVAL under client redraw load.
-        let _damage = damage;
-        gbm_surface.queue_buffer(None, None, ())?;
-        self.frame_pending = true;
-        self.frame_dirty = false;
-        self.repaint_pending = true;
-        trace!(crtc = ?gbm_surface.crtc(), age, "queued native frame");
-        Ok(true)
+        let renderer = &mut device.render_node.renderer;
+        let mut submitted = false;
+        for output in &mut device.output_surfaces {
+            if output.frame_pending {
+                output.frame_dirty = true;
+                debug!(crtc = ?output.gbm_surface.crtc(), "native redraw requested while output page flip is pending; deferring until vblank");
+                continue;
+            }
+
+            let Some(view) = state.output_render_view(output.target.connector_name()) else {
+                output.frame_dirty = true;
+                warn!(
+                    connector = ?output.target.connector,
+                    name = output.target.connector_name(),
+                    "skipping native output render because no Wayland output view exists"
+                );
+                continue;
+            };
+
+            let (mut dmabuf, buffer_age) = output.gbm_surface.next_buffer()?;
+            let age = if force_full_redraw {
+                0
+            } else {
+                usize::from(buffer_age)
+            };
+            let damage = {
+                let mut framebuffer = renderer.bind(&mut dmabuf)?;
+                state.render_frame_at(
+                    renderer,
+                    &mut framebuffer,
+                    &mut output.damage_tracker,
+                    age,
+                    view.location,
+                )?
+            };
+            // Keep damage tracking for renderer-side redraw minimization, but do not
+            // forward damage clips to KMS yet. Some virtual DRM stacks reject
+            // FB_DAMAGE_CLIPS on page flip with EINVAL under client redraw load.
+            let _damage = damage;
+            output.gbm_surface.queue_buffer(None, None, ())?;
+            output.frame_pending = true;
+            output.frame_dirty = false;
+            submitted = true;
+            trace!(
+                crtc = ?output.gbm_surface.crtc(),
+                name = %view.name,
+                location = ?view.location,
+                age,
+                "queued native frame"
+            );
+        }
+
+        self.frame_pending = device.any_frame_pending();
+        self.frame_dirty = device.any_frame_dirty();
+        self.repaint_pending = self.frame_pending;
+        Ok(submitted)
     }
 
     pub(in crate::compositor) fn frame_submitted(
         &mut self,
         crtc: crtc::Handle,
     ) -> Result<Option<bool>, Box<dyn std::error::Error>> {
-        let Some(gbm_surface) = self
-            .primary_device
-            .as_mut()
-            .and_then(|device| device.output_surface.as_mut())
-            .map(|output| &mut output.gbm_surface)
+        let Some(device) = self.primary_device.as_mut() else {
+            return Ok(None);
+        };
+        let Some(output) = device
+            .output_surfaces
+            .iter_mut()
+            .find(|output| output.gbm_surface.crtc() == crtc)
         else {
             return Ok(None);
         };
-        if gbm_surface.crtc() != crtc {
+        output.gbm_surface.frame_submitted()?;
+        output.frame_pending = false;
+        self.frame_pending = device.any_frame_pending();
+        self.repaint_pending = self.frame_pending;
+        self.frame_dirty = device.any_frame_dirty();
+        if self.frame_pending {
             return Ok(None);
         }
-        gbm_surface.frame_submitted()?;
-        self.frame_pending = false;
-        self.repaint_pending = false;
+
         let should_redraw = self.frame_dirty;
         if should_redraw {
             debug!("native page flip completed with dirty state; scheduling next frame");
@@ -453,7 +490,7 @@ impl UdevBackendState {
         }
         if let Some(device) = &mut self.primary_device {
             device.scanout_node.drm_device.pause();
-            device.output_surface = None;
+            device.output_surfaces.clear();
             device.active = false;
         }
         info!("native session paused; DRM commits disabled and Wayland clients remain connected");
@@ -501,13 +538,15 @@ impl UdevBackendState {
         }
 
         device.output_targets = device.connected_output_targets();
-        let next_target = device.output_targets.first().cloned();
-        let primary = next_target.as_ref().map(KmsOutputTarget::output_descriptor);
-        if let Err(error) = device.rebuild_output_surface(next_target) {
-            error!(%error, "failed to rebuild primary KMS output surface after session activation");
+        let primary = device
+            .output_targets
+            .first()
+            .map(KmsOutputTarget::output_descriptor);
+        if let Err(error) = device.rebuild_output_surfaces(device.output_targets.clone()) {
+            error!(%error, "failed to rebuild KMS output surfaces after session activation");
         }
 
-        self.kms_devices_active = device.output_surface.is_some();
+        self.kms_devices_active = device.has_output_surfaces();
         self.drm_commits_paused = !self.kms_devices_active;
         self.connector_rescan_pending = false;
         self.repaint_pending = self.kms_devices_active;
@@ -575,7 +614,7 @@ impl UdevBackendState {
         let previous_target = device.output_target.clone();
         let next_targets = device.connected_output_targets();
         let next_target = next_targets.first().cloned();
-        if previous_target == next_target {
+        if previous_target == next_target && device.output_targets == next_targets {
             debug!("primary DRM connector state re-scanned; selected output is unchanged");
             self.connector_rescan_pending = false;
             device.output_targets = next_targets;
@@ -585,15 +624,15 @@ impl UdevBackendState {
             };
         }
 
-        info!(previous_target = ?previous_target, next_target = ?next_target, "primary DRM connector selection changed; rebuilding output surface");
+        info!(previous_target = ?previous_target, next_target = ?next_target, "DRM connector selection changed; rebuilding KMS output surfaces");
         device.output_targets = next_targets;
         let primary = next_target.as_ref().map(KmsOutputTarget::output_descriptor);
-        if let Err(error) = device.rebuild_output_surface(next_target) {
-            error!(%error, "failed to rebuild primary KMS output surface");
+        if let Err(error) = device.rebuild_output_surfaces(device.output_targets.clone()) {
+            error!(%error, "failed to rebuild KMS output surfaces");
         }
 
-        self.kms_devices_active = self.session_active && device.output_surface.is_some();
-        self.drm_commits_paused = !self.session_active || device.output_surface.is_none();
+        self.kms_devices_active = self.session_active && device.has_output_surfaces();
+        self.drm_commits_paused = !self.session_active || !device.has_output_surfaces();
         self.connector_rescan_pending = false;
         self.frame_pending = false;
         self.frame_dirty = self.kms_devices_active;
@@ -654,17 +693,19 @@ impl UdevBackendState {
             "native backend state"
         );
         if let Some(device) = &self.primary_device {
-            if let Some(output) = &device.output_surface {
-                info!(
-                    path = %device.path.display(),
-                    connector = ?output.target.connector,
-                    crtc = ?output.target.crtc,
-                    mode = ?output.target.mode,
-                    gbm_surface = true,
-                    "primary DRM device opened through session"
-                );
+            if device.output_surfaces.is_empty() {
+                info!(path = %device.path.display(), gbm_surfaces = 0, "primary DRM device opened through session");
             } else {
-                info!(path = %device.path.display(), gbm_surface = false, "primary DRM device opened through session");
+                for output in &device.output_surfaces {
+                    info!(
+                        path = %device.path.display(),
+                        connector = ?output.target.connector,
+                        crtc = ?output.target.crtc,
+                        mode = ?output.target.mode,
+                        gbm_surface = true,
+                        "primary DRM device opened through session"
+                    );
+                }
             }
         }
     }

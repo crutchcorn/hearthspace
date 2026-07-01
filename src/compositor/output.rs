@@ -24,6 +24,12 @@ pub(in crate::compositor) struct OutputRecord {
     location: Point<i32, Logical>,
 }
 
+#[cfg(feature = "udev")]
+pub(in crate::compositor) struct OutputRenderView {
+    pub(in crate::compositor) name: String,
+    pub(in crate::compositor) location: Point<i32, Logical>,
+}
+
 #[derive(Clone)]
 pub(in crate::compositor) struct OutputDescriptor {
     pub(in crate::compositor) name: String,
@@ -131,6 +137,25 @@ impl App {
 
     pub(super) fn output_logical_size(&self) -> Size<i32, Logical> {
         self.outputs.logical_size()
+    }
+
+    #[cfg(feature = "udev")]
+    pub(in crate::compositor) fn output_render_view(&self, name: &str) -> Option<OutputRenderView> {
+        if self.outputs.primary.name == name {
+            return Some(OutputRenderView {
+                name: self.outputs.primary.name.clone(),
+                location: self.outputs.primary.location,
+            });
+        }
+
+        self.outputs
+            .secondary
+            .iter()
+            .find(|output| output.name == name)
+            .map(|output| OutputRenderView {
+                name: output.name.clone(),
+                location: output.location,
+            })
     }
 
     #[cfg_attr(not(feature = "winit"), allow(dead_code))]

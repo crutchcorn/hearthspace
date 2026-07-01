@@ -8,7 +8,7 @@ use smithay::{
             render_elements,
             solid::SolidColorRenderElement,
             surface::{WaylandSurfaceRenderElement, render_elements_from_surface_tree},
-            utils::RescaleRenderElement,
+            utils::{Relocate, RelocateRenderElement, RescaleRenderElement},
         },
         gles::GlesRenderer,
         utils::CommitCounter,
@@ -30,6 +30,11 @@ render_elements! {
     Surface = RescaleRenderElement<WaylandSurfaceRenderElement<GlesRenderer>>,
     Memory = MemoryRenderBufferRenderElement<GlesRenderer>,
     Solid = SolidColorRenderElement,
+}
+
+render_elements! {
+    pub(super) TranslatedHearthspaceRenderElement<=GlesRenderer>;
+    Translated = RelocateRenderElement<HearthspaceRenderElement>,
 }
 
 /// Result of rendering one frame: the damaged output regions to submit, or
@@ -56,7 +61,35 @@ impl App {
         damage_tracker: &mut OutputDamageTracker,
         age: usize,
     ) -> RenderFrameResult {
+        self.render_frame_at(
+            renderer,
+            framebuffer,
+            damage_tracker,
+            age,
+            Point::from((0, 0)),
+        )
+    }
+
+    pub(super) fn render_frame_at(
+        &mut self,
+        renderer: &mut GlesRenderer,
+        framebuffer: &mut <GlesRenderer as RendererSuper>::Framebuffer<'_>,
+        damage_tracker: &mut OutputDamageTracker,
+        age: usize,
+        output_location: Point<i32, Logical>,
+    ) -> RenderFrameResult {
+        let output_offset = Point::<i32, Physical>::from((-output_location.x, -output_location.y));
         let elements = self.collect_render_elements(renderer);
+        let elements = elements
+            .into_iter()
+            .map(|element| {
+                TranslatedHearthspaceRenderElement::from(RelocateRenderElement::from_element(
+                    element,
+                    output_offset,
+                    Relocate::Relative,
+                ))
+            })
+            .collect::<Vec<_>>();
         let result = damage_tracker.render_output(
             renderer,
             framebuffer,
@@ -202,8 +235,8 @@ impl App {
         // the edges are not clipped away.
         let top_left = self.screen_to_canvas(Point::from((0.0, 0.0)));
         let bottom_right = self.screen_to_canvas(Point::from((
-            f64::from(self.output_size().w),
-            f64::from(self.output_size().h),
+            f64::from(self.output_logical_size().w),
+            f64::from(self.output_logical_size().h),
         )));
         let first_x = (top_left.x / spacing).floor() as i64;
         let last_x = (bottom_right.x / spacing).ceil() as i64;
