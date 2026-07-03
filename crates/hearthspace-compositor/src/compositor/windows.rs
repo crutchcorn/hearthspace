@@ -466,7 +466,7 @@ impl App {
         self.resize = Some(ResizeState {
             window_id: window.id,
             edges,
-            pointer_start: self.pointer_location,
+            pointer_start: self.raw_pointer_location,
             initial_position: window.position,
             initial_content_size,
         });
