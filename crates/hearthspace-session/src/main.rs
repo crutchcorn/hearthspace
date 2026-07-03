@@ -369,7 +369,9 @@ impl Supervisor {
             if args.watch_apps {
                 warn!("app watcher requested, but neither cargo-watch nor watchexec was found");
             } else {
-                warn!("cargo-watch/watchexec not found; Hearthspace Settings will build on first launch");
+                warn!(
+                    "cargo-watch/watchexec not found; Hearthspace Settings will build on first launch"
+                );
             }
             return Ok(());
         };
@@ -395,7 +397,10 @@ impl Supervisor {
     }
 
     fn wait_for_compositor_ready(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        let socket = self.paths.runtime_dir.join(&self.session_env.wayland_display);
+        let socket = self
+            .paths
+            .runtime_dir
+            .join(&self.session_env.wayland_display);
         info!(socket = %socket.display(), "waiting for compositor readiness");
         let deadline = Instant::now() + Duration::from_secs(120);
         while Instant::now() < deadline {
@@ -460,9 +465,13 @@ impl Supervisor {
         wait_then_kill_process(&mut self.watcher);
 
         match fs::remove_dir_all(&self.paths.session_dir) {
-            Ok(()) => info!(path = %self.paths.session_dir.display(), "removed session runtime directory"),
+            Ok(()) => {
+                info!(path = %self.paths.session_dir.display(), "removed session runtime directory")
+            }
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-            Err(error) => warn!(path = %self.paths.session_dir.display(), %error, "failed to remove session runtime directory"),
+            Err(error) => {
+                warn!(path = %self.paths.session_dir.display(), %error, "failed to remove session runtime directory")
+            }
         }
     }
 
@@ -527,7 +536,9 @@ impl Supervisor {
         self.session_env
             .vars
             .iter()
-            .filter(|(key, _)| include_client_wayland || key != hearthspace_common::WAYLAND_DISPLAY_ENV)
+            .filter(|(key, _)| {
+                include_client_wayland || key != hearthspace_common::WAYLAND_DISPLAY_ENV
+            })
             .cloned()
             .collect()
     }
@@ -673,12 +684,18 @@ fn terminate_process(process: &mut Option<ManagedProcess>) {
         return;
     }
     let Ok(raw_pid) = i32::try_from(process.child.id()) else {
-        warn!(name = process.spec.name, pid = process.child.id(), "cannot signal process with oversized pid");
+        warn!(
+            name = process.spec.name,
+            pid = process.child.id(),
+            "cannot signal process with oversized pid"
+        );
         return;
     };
     match signal::kill(Pid::from_raw(raw_pid), signal::Signal::SIGTERM) {
         Ok(()) => info!(name = process.spec.name, pid = raw_pid, "sent SIGTERM"),
-        Err(error) => warn!(name = process.spec.name, pid = raw_pid, %error, "failed to send SIGTERM"),
+        Err(error) => {
+            warn!(name = process.spec.name, pid = raw_pid, %error, "failed to send SIGTERM")
+        }
     }
 }
 
@@ -702,8 +719,13 @@ fn wait_then_kill_process(process: &mut Option<ManagedProcess>) {
     }
 
     match process.child.kill() {
-        Ok(()) => info!(name = process.spec.name, "killed process after shutdown timeout"),
-        Err(error) => warn!(name = process.spec.name, %error, "failed to kill process after shutdown timeout"),
+        Ok(()) => info!(
+            name = process.spec.name,
+            "killed process after shutdown timeout"
+        ),
+        Err(error) => {
+            warn!(name = process.spec.name, %error, "failed to kill process after shutdown timeout")
+        }
     }
     let _ = process.child.wait();
 }

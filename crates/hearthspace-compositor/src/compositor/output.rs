@@ -617,9 +617,7 @@ fn update_output_mode_with_refresh_at(
     );
 }
 
-fn minimum_output_width(
-    rects: impl IntoIterator<Item = Rectangle<i32, Logical>>,
-) -> Option<i32> {
+fn minimum_output_width(rects: impl IntoIterator<Item = Rectangle<i32, Logical>>) -> Option<i32> {
     rects.into_iter().map(|rect| rect.size.w.max(1)).min()
 }
 

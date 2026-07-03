@@ -296,10 +296,7 @@ fn monitors_overlap(monitors: &[MonitorConfig]) -> bool {
 }
 
 fn monitor_rects_overlap(a: &MonitorConfig, b: &MonitorConfig) -> bool {
-    a.x < b.x + b.width
-        && a.x + a.width > b.x
-        && a.y < b.y + b.height
-        && a.y + a.height > b.y
+    a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y
 }
 
 fn default_placeholder_monitors(monitors: &[MonitorConfig]) -> bool {

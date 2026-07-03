@@ -61,7 +61,10 @@ fn parse_backend_selection(
             hearthspace_compositor::BackendSelection::Headless,
         ));
     }
-    if args.iter().any(|arg| arg == hearthspace_compositor::config::TTY_FLAG) {
+    if args
+        .iter()
+        .any(|arg| arg == hearthspace_compositor::config::TTY_FLAG)
+    {
         selected.push((
             hearthspace_compositor::config::TTY_FLAG,
             hearthspace_compositor::BackendSelection::Udev,
@@ -101,12 +104,10 @@ fn parse_exit_after(args: &[String]) -> Result<Option<std::time::Duration>, Stri
             return parse_positive_duration_ms(value).map(Some);
         }
 
-        if let Some(value) =
-            arg.strip_prefix(&format!(
-                "{}=",
-                hearthspace_compositor::config::EXIT_AFTER_MS_FLAG
-            ))
-        {
+        if let Some(value) = arg.strip_prefix(&format!(
+            "{}=",
+            hearthspace_compositor::config::EXIT_AFTER_MS_FLAG
+        )) {
             return parse_positive_duration_ms(value).map(Some);
         }
     }
@@ -126,12 +127,10 @@ fn parse_headless_output_size(args: &[String]) -> Result<Option<(i32, i32)>, Str
             return parse_size(value).map(Some);
         }
 
-        if let Some(value) =
-            arg.strip_prefix(&format!(
-                "{}=",
-                hearthspace_compositor::config::HEADLESS_SIZE_FLAG
-            ))
-        {
+        if let Some(value) = arg.strip_prefix(&format!(
+            "{}=",
+            hearthspace_compositor::config::HEADLESS_SIZE_FLAG
+        )) {
             return parse_size(value).map(Some);
         }
     }
@@ -151,12 +150,10 @@ fn parse_headless_output_scale(args: &[String]) -> Result<Option<i32>, String> {
             return parse_positive_dimension(value, "scale").map(Some);
         }
 
-        if let Some(value) =
-            arg.strip_prefix(&format!(
-                "{}=",
-                hearthspace_compositor::config::HEADLESS_SCALE_FLAG
-            ))
-        {
+        if let Some(value) = arg.strip_prefix(&format!(
+            "{}=",
+            hearthspace_compositor::config::HEADLESS_SCALE_FLAG
+        )) {
             return parse_positive_dimension(value, "scale").map(Some);
         }
     }
