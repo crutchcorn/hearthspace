@@ -31,7 +31,8 @@ use crate::config::DEFAULT_BACKGROUND_MOVES_WITH_CANVAS;
 type GlesTexture = <GlesRenderer as RendererSuper>::TextureId;
 
 const MAX_BACKGROUND_TILE_ELEMENTS: usize = 512;
-const DEFAULT_BACKGROUND_IMAGE_PNG: &[u8] = include_bytes!("../../../../assets/backgrounds/default.png");
+const DEFAULT_BACKGROUND_IMAGE_PNG: &[u8] =
+    include_bytes!("../../../../assets/backgrounds/default.png");
 
 pub(super) struct BackgroundImageTile {
     context_id: ContextId<GlesTexture>,
@@ -116,8 +117,8 @@ impl App {
             framebuffer,
             age,
             &elements,
-            // White canvas; the repeated background image is drawn on top of it.
-            Color32F::new(1.0, 1.0, 1.0, 1.0),
+            // The repeated background image is opaque and covers the output.
+            Color32F::new(0.0, 0.0, 0.0, 0.0),
         )?;
         Ok(result.damage.cloned())
     }
@@ -601,7 +602,9 @@ pub(super) fn send_frames_surface_tree(surface: &wl_surface::WlSurface, time: u3
 mod tests {
     use smithay::utils::{Logical, Point, Rectangle, Size};
 
-    use super::{background_tile_axis_bounds, default_background_image_data, point_in_logical_rect};
+    use super::{
+        background_tile_axis_bounds, default_background_image_data, point_in_logical_rect,
+    };
 
     #[test]
     fn point_in_logical_rect_excludes_other_outputs() {
@@ -634,13 +637,22 @@ mod tests {
         let image = default_background_image_data();
         assert_eq!(image.size, Size::<i32, Logical>::from((1920, 1080)));
 
-        assert_eq!(pixel_alpha(&image.pixels, image.size, 0, 0), 255);
-        assert_eq!(pixel_alpha(&image.pixels, image.size, 1919, 0), 255);
-        assert_eq!(pixel_alpha(&image.pixels, image.size, 60, 60), 0);
+        assert_eq!(
+            pixel_rgba(&image.pixels, image.size, 0, 0),
+            [199, 199, 204, 255]
+        );
+        assert_eq!(
+            pixel_rgba(&image.pixels, image.size, 1919, 0),
+            [199, 199, 204, 255]
+        );
+        assert_eq!(
+            pixel_rgba(&image.pixels, image.size, 60, 60),
+            [255, 255, 255, 255]
+        );
     }
 
-    fn pixel_alpha(pixels: &[u8], size: Size<i32, Logical>, x: i32, y: i32) -> u8 {
-        let offset = ((y * size.w + x) * 4 + 3) as usize;
-        pixels[offset]
+    fn pixel_rgba(pixels: &[u8], size: Size<i32, Logical>, x: i32, y: i32) -> [u8; 4] {
+        let offset = ((y * size.w + x) * 4) as usize;
+        pixels[offset..offset + 4].try_into().unwrap()
     }
 }
