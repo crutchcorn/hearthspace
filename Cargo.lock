@@ -2292,6 +2292,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "hearthspace-settings"
+version = "0.1.0"
+dependencies = [
+ "hearthspace",
+ "xilem",
+]
+
+[[package]]
+name = "hearthspace-settingsd"
+version = "0.1.0"
+dependencies = [
+ "hearthspace",
+ "tempfile",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "heck"
 version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"

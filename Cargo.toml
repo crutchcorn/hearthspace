@@ -10,6 +10,8 @@ default-run = "hearthspace-session"
 resolver = "2"
 members = [
     ".",
+    "crates/hearthspace-settings",
+    "crates/hearthspace-settingsd",
     "crates/waydriver-hearthspace",
 ]
 default-members = ["."]

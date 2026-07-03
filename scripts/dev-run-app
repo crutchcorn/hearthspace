@@ -6,6 +6,6 @@ REPO_ROOT="${HEARTHSPACE_REPO_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
 
 cd "$REPO_ROOT"
 
-cargo build --bin "$APP"
+cargo build -p "$APP"
 
 exec "$REPO_ROOT/target/debug/$APP"

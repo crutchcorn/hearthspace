@@ -491,7 +491,12 @@ impl Supervisor {
             .then(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")));
         match self.mode {
             RunMode::DevCargo => {
-                let mut args = vec!["run".to_string(), "--bin".to_string(), binary.to_string()];
+                let mut args = vec!["run".to_string()];
+                if cargo_package_exists(binary) {
+                    args.extend(["-p".to_string(), binary.to_string()]);
+                } else {
+                    args.extend(["--bin".to_string(), binary.to_string()]);
+                }
                 args.push("--".to_string());
                 args.extend(binary_args.iter().map(|arg| (*arg).to_string()));
                 ProcessSpec {
@@ -531,11 +536,11 @@ impl Supervisor {
                 args: vec![
                     "watch".to_string(),
                     "-w".to_string(),
-                    "src/bin/hearthspace-settings.rs".to_string(),
+                    "crates/hearthspace-settings".to_string(),
                     "-w".to_string(),
                     "src/settings".to_string(),
                     "-x".to_string(),
-                    "build --bin hearthspace-settings".to_string(),
+                    "build -p hearthspace-settings".to_string(),
                 ],
                 envs,
                 current_dir,
@@ -547,13 +552,13 @@ impl Supervisor {
                 program: "watchexec".to_string(),
                 args: vec![
                     "-w".to_string(),
-                    "src/bin/hearthspace-settings.rs".to_string(),
+                    "crates/hearthspace-settings".to_string(),
                     "-w".to_string(),
                     "src/settings".to_string(),
                     "--".to_string(),
                     "cargo".to_string(),
                     "build".to_string(),
-                    "--bin".to_string(),
+                    "-p".to_string(),
                     "hearthspace-settings".to_string(),
                 ],
                 envs,
@@ -562,6 +567,10 @@ impl Supervisor {
         }
         None
     }
+}
+
+fn cargo_package_exists(package: &str) -> bool {
+    matches!(package, "hearthspace-settings" | "hearthspace-settingsd")
 }
 
 impl ManagedProcess {
