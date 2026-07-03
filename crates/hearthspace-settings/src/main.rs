@@ -250,13 +250,14 @@ impl View<SettingsApp, (), ViewCtx> for MonitorLayoutEditor {
             return MessageResult::Stale;
         };
         apply_monitor_editor_action(state, *action);
-        MessageResult::RequestRebuild
+        MessageResult::Action(())
     }
 }
 
 fn apply_monitor_editor_action(state: &mut SettingsApp, action: MonitorEditorAction) {
     match action {
-        MonitorEditorAction::Select { id } => {
+        MonitorEditorAction::Select { id, monitors } => {
+            state.settings.monitors = monitors;
             state.selected_monitor_id = Some(id.clone());
             state.status = format!("Selected monitor {id}");
         }
@@ -619,6 +620,7 @@ fn save_monitor_positions(monitors: &[MonitorConfig]) -> std::io::Result<Option<
 enum MonitorEditorAction {
     Select {
         id: String,
+        monitors: Vec<MonitorConfig>,
     },
     Drag {
         moved_id: String,
@@ -766,6 +768,7 @@ impl Widget for MonitorLayoutWidget {
                     });
                     ctx.submit_action::<MonitorEditorAction>(MonitorEditorAction::Select {
                         id: selected_id,
+                        monitors: self.monitors.clone(),
                     });
                     ctx.request_render();
                 }
@@ -790,12 +793,17 @@ impl Widget for MonitorLayoutWidget {
                     ctx.set_handled();
                 }
             }
-            PointerEvent::Up(PointerButtonEvent { state, .. }) if ctx.is_active() => {
+            PointerEvent::Up(PointerButtonEvent {
+                button: None | Some(PointerButton::Primary),
+                state,
+                ..
+            }) => {
                 if let Some(drag) = self.drag.take() {
                     if !drag.moved {
                         self.selected_monitor_id = Some(drag.id.clone());
                         ctx.submit_action::<MonitorEditorAction>(MonitorEditorAction::Select {
                             id: drag.id,
+                            monitors: self.monitors.clone(),
                         });
                         ctx.request_render();
                         ctx.set_handled();
