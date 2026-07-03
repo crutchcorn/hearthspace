@@ -20,7 +20,7 @@ use tracing::{info, warn};
 #[derive(Debug, Parser)]
 #[command(about = "Start a Hearthspace desktop session")]
 struct Args {
-    /// Run child processes through `cargo run --bin ...`.
+    /// Run child processes through `cargo run -p ...`.
     #[arg(long, conflicts_with = "installed")]
     dev: bool,
 

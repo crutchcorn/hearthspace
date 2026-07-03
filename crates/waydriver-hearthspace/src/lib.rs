@@ -298,15 +298,14 @@ async fn wait_for_socket(child: Option<&mut Child>, path: &Path) -> Result<()> {
     let mut last_error = None;
 
     while tokio::time::Instant::now() < deadline {
-        if let Some(child) = child.as_deref_mut() {
-            if let Some(status) = child
+        if let Some(child) = child.as_deref_mut()
+            && let Some(status) = child
                 .try_wait()
                 .map_err(|e| Error::process_with("poll hearthspace", e))?
-            {
-                return Err(Error::process(format!(
-                    "hearthspace exited before accepting commands: {status}"
-                )));
-            }
+        {
+            return Err(Error::process(format!(
+                "hearthspace exited before accepting commands: {status}"
+            )));
         }
 
         match UnixStream::connect(path).await {
@@ -434,10 +433,10 @@ fn scale_to_integer(scale: Option<f64>) -> Result<Option<i32>> {
 }
 
 fn keysym_to_evdev(keysym: u32) -> Result<u32> {
-    if let Ok(byte) = u8::try_from(keysym) {
-        if let Some(keycode) = ascii_keysym_to_evdev(byte) {
-            return Ok(keycode);
-        }
+    if let Ok(byte) = u8::try_from(keysym)
+        && let Some(keycode) = ascii_keysym_to_evdev(byte)
+    {
+        return Ok(keycode);
     }
 
     let keycode = match keysym {
