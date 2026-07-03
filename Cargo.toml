@@ -6,6 +6,14 @@ rust-version = "1.93.1"
 license = "Apache-2.0"
 default-run = "hearthspace-session"
 
+[workspace]
+resolver = "2"
+members = [
+    ".",
+    "crates/waydriver-hearthspace",
+]
+default-members = ["."]
+
 [features]
 default = ["winit"]
 e2e = ["dep:waydriver", "dep:waydriver-hearthspace"]
