@@ -825,4 +825,34 @@ mod tests {
         assert_eq!(catalog.search("settings", 1)[0].id, app.id);
         assert_eq!(app.launch_argv().unwrap(), vec!["hearthspace-settings"]);
     }
+
+    #[test]
+    fn session_settings_desktop_file_is_searchable_and_launchable() {
+        let dir = tempfile::tempdir().unwrap();
+        let apps_dir = dir.path().join("share/applications");
+        fs::create_dir_all(&apps_dir).unwrap();
+        fs::write(
+            apps_dir.join("hearthspace-settings.desktop"),
+            "[Desktop Entry]\n\
+             Type=Application\n\
+             Name=Hearthspace Settings\n\
+             Comment=Configure Hearthspace\n\
+             Exec=\"/repo/scripts/dev-run-app\" hearthspace-settings\n\
+             Categories=Settings;System;\n\
+             Keywords=hearthspace;settings;config;preferences;\n\
+             X-Hearthspace-Dev=true\n",
+        )
+        .unwrap();
+
+        let catalog = AppCatalog::load_from_data_dirs(vec![dir.path().join("share")]);
+
+        let app = catalog.app_by_id("hearthspace-settings.desktop").unwrap();
+        assert_eq!(app.name, "Hearthspace Settings");
+        assert_eq!(catalog.search("hearthspace", 1)[0].id, app.id);
+        assert_eq!(catalog.search("preferences", 1)[0].id, app.id);
+        assert_eq!(
+            app.launch_argv().unwrap(),
+            vec!["/repo/scripts/dev-run-app", "hearthspace-settings"]
+        );
+    }
 }
