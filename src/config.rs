@@ -1,6 +1,8 @@
 use std::time::Duration;
 
 pub const WAYLAND_DISPLAY_NAME: &str = "wayland-99";
+pub const WAYLAND_DISPLAY_ENV: &str = "WAYLAND_DISPLAY";
+pub const HEARTHSPACE_WAYLAND_DISPLAY_ENV: &str = "HEARTHSPACE_WAYLAND_DISPLAY";
 pub const GTK_TEST_APP_FLAG: &str = "--gtk-test-app";
 pub const SHELL_FLAG: &str = "--shell";
 pub const HEADLESS_FLAG: &str = "--headless";
@@ -56,6 +58,12 @@ pub const WINDOW_IDLE_THRESHOLDS: [Duration; 3] = [
 ];
 
 pub const ANIMATION_FRAME_INTERVAL: Duration = Duration::from_millis(16);
+
+pub fn wayland_display_name() -> String {
+    std::env::var(HEARTHSPACE_WAYLAND_DISPLAY_ENV)
+        .or_else(|_| std::env::var(WAYLAND_DISPLAY_ENV))
+        .unwrap_or_else(|_| WAYLAND_DISPLAY_NAME.to_string())
+}
 
 /// Background dot grid. The dots live in canvas space, so they pan and zoom with
 /// the viewport and frame canvas movement even when no windows are open.

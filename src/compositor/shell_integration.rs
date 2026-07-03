@@ -57,7 +57,8 @@ fn ensure_snap_wayland_socket(instance_name: &str) -> std::io::Result<String> {
 
     let snap_runtime_dir = runtime_path(&format!("snap.{instance_name}"));
     fs::create_dir_all(&snap_runtime_dir)?;
-    let snap_socket_path = snap_runtime_dir.join(WAYLAND_DISPLAY_NAME);
+    let wayland_display = wayland_display_name();
+    let snap_socket_path = snap_runtime_dir.join(&wayland_display);
 
     match fs::remove_file(&snap_socket_path) {
         Ok(()) => {}
@@ -65,11 +66,8 @@ fn ensure_snap_wayland_socket(instance_name: &str) -> std::io::Result<String> {
         Err(error) => return Err(error),
     }
 
-    symlink(
-        PathBuf::from("..").join(WAYLAND_DISPLAY_NAME),
-        &snap_socket_path,
-    )?;
-    Ok(WAYLAND_DISPLAY_NAME.to_string())
+    symlink(PathBuf::from("..").join(&wayland_display), &snap_socket_path)?;
+    Ok(wayland_display)
 }
 
 fn launch_environment_for_app(app: &DesktopApp) -> std::io::Result<Vec<(String, String)>> {
@@ -146,7 +144,7 @@ pub(super) fn spawn_shell(command_socket_path: &PathBuf) {
 
     if let Err(error) = Command::new(&current_exe)
         .arg(SHELL_FLAG)
-        .env("WAYLAND_DISPLAY", WAYLAND_DISPLAY_NAME)
+        .env(WAYLAND_DISPLAY_ENV, wayland_display_name())
         .env(SHELL_COMMAND_SOCKET_ENV, command_socket_path)
         .spawn()
     {
@@ -435,7 +433,7 @@ impl App {
             let mut command = Command::new(current_exe);
             command
                 .arg(GTK_TEST_APP_FLAG)
-                .env("WAYLAND_DISPLAY", WAYLAND_DISPLAY_NAME)
+                .env(WAYLAND_DISPLAY_ENV, wayland_display_name())
                 .env("GDK_BACKEND", "wayland");
             apply_gtk_client_environment(&mut command);
 
@@ -453,7 +451,7 @@ impl App {
         self.prepare_spawn_position();
 
         match Command::new("foot")
-            .env("WAYLAND_DISPLAY", WAYLAND_DISPLAY_NAME)
+            .env(WAYLAND_DISPLAY_ENV, wayland_display_name())
             .spawn()
         {
             Ok(child) => info!(pid = child.id(), "spawned foot terminal"),
@@ -496,7 +494,7 @@ impl App {
                 }
             }
         } else {
-            WAYLAND_DISPLAY_NAME.to_string()
+            wayland_display_name()
         };
 
         let launch_env = match launch_environment_for_app(app) {

@@ -554,7 +554,8 @@ fn xdg_config_dirs() -> Vec<PathBuf> {
 }
 
 pub fn spawn_argv(argv: &[String]) -> Result<(), String> {
-    spawn_argv_with_wayland_display(argv, crate::config::WAYLAND_DISPLAY_NAME)
+    let wayland_display = crate::config::wayland_display_name();
+    spawn_argv_with_wayland_display(argv, &wayland_display)
 }
 
 pub fn spawn_argv_with_wayland_display(

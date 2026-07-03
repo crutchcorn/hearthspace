@@ -286,10 +286,8 @@ pub fn run_winit(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> 
         WinitEvent::Focus(_) => {}
     })?;
 
-    info!(
-        wayland_display = WAYLAND_DISPLAY_NAME,
-        "Hearthspace compositor running"
-    );
+    let wayland_display = crate::config::wayland_display_name();
+    info!(wayland_display, "Hearthspace compositor running");
     if state.scroll_zooms_without_super {
         info!("scroll zoom testing mode enabled: vertical scroll zooms without Super");
     }
@@ -348,10 +346,8 @@ pub fn run_headless(options: RunOptions) -> Result<(), Box<dyn std::error::Error
         termination_signals,
     )?;
 
-    info!(
-        wayland_display = WAYLAND_DISPLAY_NAME,
-        "headless Hearthspace compositor running"
-    );
+    let wayland_display = crate::config::wayland_display_name();
+    info!(wayland_display, "headless Hearthspace compositor running");
     if state.scroll_zooms_without_super {
         info!("scroll zoom testing mode enabled: vertical scroll zooms without Super");
     }
@@ -495,7 +491,8 @@ fn register_common_event_sources(
     info!(path = %command_socket_path.display(), "listening for shell commands");
 
     // Accept new Wayland clients (epoll-driven instead of polled).
-    let socket_source = ListeningSocketSource::with_name(WAYLAND_DISPLAY_NAME)?;
+    let wayland_display = crate::config::wayland_display_name();
+    let socket_source = ListeningSocketSource::with_name(&wayland_display)?;
     handle.insert_source(socket_source, |stream, _, data| {
         match data
             .display
