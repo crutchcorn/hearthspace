@@ -604,6 +604,7 @@ fn session_environment_keys() -> &'static [&'static str] {
     &[
         "XDG_CURRENT_DESKTOP",
         "DESKTOP_SESSION",
+        hearthspace_common::SHELL_COMMAND_SOCKET_ENV,
         hearthspace_common::SETTINGS_SOCKET_ENV,
         hearthspace_common::SESSION_SOCKET_ENV,
         hearthspace_common::REPO_ROOT_ENV,
@@ -940,5 +941,10 @@ mod tests {
             catalog.search("settings", 1)[0].launch_argv().unwrap(),
             vec!["/repo/scripts/dev-run-app", "hearthspace-settings"]
         );
+    }
+
+    #[test]
+    fn launched_apps_receive_compositor_command_socket_env() {
+        assert!(session_environment_keys().contains(&hearthspace_common::SHELL_COMMAND_SOCKET_ENV));
     }
 }
