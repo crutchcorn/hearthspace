@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+APP="${1:?usage: dev-run-app <app-binary>}"
+REPO_ROOT="${HEARTHSPACE_REPO_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
+
+cd "$REPO_ROOT"
+
+if [[ ! -x "target/debug/$APP" ]]; then
+  cargo build --bin "$APP"
+fi
+
+exec "$REPO_ROOT/target/debug/$APP"
