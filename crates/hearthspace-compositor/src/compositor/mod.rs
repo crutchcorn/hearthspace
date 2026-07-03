@@ -193,6 +193,7 @@ struct App {
     loop_handle: LoopHandle<'static, CalloopData>,
     popups: PopupManager,
     background_moves_with_canvas: bool,
+    background_image_path: Option<String>,
     /// Cached texture for the repeated background image tile.
     background_image_tile: Option<rendering::BackgroundImageTile>,
     /// Stable render-element ids for visible background tile instances. Reusing
@@ -222,6 +223,11 @@ impl App {
 
         if self.background_moves_with_canvas != settings.background_moves_with_canvas {
             self.background_moves_with_canvas = settings.background_moves_with_canvas;
+            refresh.background_changed = true;
+        }
+        if self.background_image_path != settings.background_image_path {
+            self.background_image_path = settings.background_image_path;
+            self.background_image_tile = None;
             refresh.background_changed = true;
         }
 
@@ -489,6 +495,7 @@ pub(in crate::compositor) fn initialize_app(
         loop_handle: handle.clone(),
         popups: PopupManager::default(),
         background_moves_with_canvas: settings.background_moves_with_canvas,
+        background_image_path: settings.background_image_path,
         background_image_tile: None,
         background_tile_ids: Vec::new(),
         software_cursor_visible: false,

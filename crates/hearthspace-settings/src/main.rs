@@ -11,7 +11,7 @@ use wayland_client::{
     globals::{GlobalListContents, registry_queue_init},
     protocol::{wl_output, wl_registry},
 };
-use xilem::core::{MessageCtx, MessageResult, Mut, View, ViewMarker};
+use xilem::core::{MessageCtx, MessageResult, Mut, View, ViewMarker, fork};
 use xilem::masonry::accesskit::{Node, Role};
 use xilem::masonry::core::{
     AccessCtx, AccessEvent, ChildrenIds, CursorIcon, EventCtx, LayoutCtx, MeasureCtx, PaintCtx,
@@ -23,18 +23,21 @@ use xilem::masonry::kurbo::{Axis, Point, Rect, Size, Stroke};
 use xilem::masonry::layout::{LenReq, Length};
 use xilem::masonry::palette;
 use xilem::peniko::Color;
+use xilem::tokio::sync::mpsc::UnboundedSender;
 use xilem::{Pod, ViewCtx};
 
 use hearthspace_ipc::{
-    MonitorConfig, Settings, client_get_settings, client_set_background_moves_with_canvas,
-    client_set_monitor_position, client_set_monitor_scale, client_set_test,
+    MonitorConfig, Settings, client_get_settings, client_set_background_image_path,
+    client_set_background_moves_with_canvas, client_set_monitor_position, client_set_monitor_scale,
+    client_set_test,
 };
+use rfd::FileDialog;
 use xilem::{
     AnyWidgetView, EventLoop, WidgetView, WindowOptions, Xilem,
     dpi::LogicalSize,
     masonry::{layout::AsUnit, parley::fontique::GenericFamily},
     style::Style,
-    view::{checkbox, flex_col, flex_row, label, sized_box, text_button},
+    view::{checkbox, flex_col, flex_row, label, sized_box, text_button, worker},
 };
 
 const EDITOR_PADDING: f64 = 24.0;
@@ -48,8 +51,22 @@ struct SettingsApp {
     settings: Settings,
     live_outputs: Vec<LiveOutput>,
     selected_monitor_id: Option<String>,
+    background_picker_request_sender: Option<UnboundedSender<BackgroundPickerRequest>>,
+    background_picker_pending: bool,
     status: String,
     config_label: String,
+}
+
+#[derive(Debug)]
+enum BackgroundPickerRequest {
+    PickFile,
+}
+
+#[derive(Debug)]
+enum BackgroundPickerResponse {
+    Selected(PathBuf),
+    Cancelled,
+    Failed(String),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -102,6 +119,8 @@ fn initial_state() -> SettingsApp {
         settings,
         live_outputs,
         selected_monitor_id,
+        background_picker_request_sender: None,
+        background_picker_pending: false,
         status,
         config_label,
     }
@@ -110,9 +129,20 @@ fn initial_state() -> SettingsApp {
 fn app_logic(state: &mut SettingsApp) -> impl WidgetView<SettingsApp> + use<> {
     let test_checked = state.settings.test;
     let background_moves_with_canvas = state.settings.background_moves_with_canvas;
+    let background_image_label = state
+        .settings
+        .background_image_path
+        .as_deref()
+        .unwrap_or("Default background")
+        .to_string();
+    let select_background_button_label = if state.background_picker_pending {
+        "Selecting background image..."
+    } else {
+        "Select background image"
+    };
     let monitor_summary = format_monitor_summary(&state.settings.monitors);
 
-    sized_box(
+    let content = sized_box(
         flex_col((
             label("Hearthspace Settings")
                 .font(GenericFamily::SystemUi)
@@ -162,12 +192,79 @@ fn app_logic(state: &mut SettingsApp) -> impl WidgetView<SettingsApp> + use<> {
                     }
                 },
             ),
+            label(format!("Background image: {background_image_label}")),
+            flex_row((
+                text_button(select_background_button_label, |state: &mut SettingsApp| {
+                    if state.background_picker_pending {
+                        state.status = "Background image picker is already open".to_string();
+                        return;
+                    }
+
+                    let Some(sender) = &state.background_picker_request_sender else {
+                        state.status = "Background image picker is not ready".to_string();
+                        return;
+                    };
+
+                    match sender.send(BackgroundPickerRequest::PickFile) {
+                        Ok(()) => {
+                            state.background_picker_pending = true;
+                            state.status = "Opening background image picker".to_string();
+                        }
+                        Err(error) => {
+                            state.status = format!("Failed to open background image picker: {error}");
+                        }
+                    }
+                }),
+                text_button("Use default background", |state: &mut SettingsApp| {
+                    save_background_image_path(state, None);
+                }),
+            )),
             label(state.config_label.clone()),
             label(state.status.clone()),
         ))
         .gap(12.0.px()),
     )
-    .padding(20.0.px())
+    .padding(20.0.px());
+
+    fork(
+        content,
+        worker(
+            |proxy, mut rx| async move {
+                while let Some(BackgroundPickerRequest::PickFile) = rx.recv().await {
+                    let response = match xilem::tokio::task::spawn_blocking(|| {
+                        FileDialog::new()
+                            .add_filter("PNG image", &["png"])
+                            .pick_file()
+                    })
+                    .await
+                    {
+                        Ok(Some(path)) => BackgroundPickerResponse::Selected(path),
+                        Ok(None) => BackgroundPickerResponse::Cancelled,
+                        Err(error) => BackgroundPickerResponse::Failed(error.to_string()),
+                    };
+
+                    drop(proxy.message(response));
+                }
+            },
+            |state: &mut SettingsApp, sender| {
+                state.background_picker_request_sender = Some(sender);
+            },
+            |state: &mut SettingsApp, response| {
+                state.background_picker_pending = false;
+                match response {
+                    BackgroundPickerResponse::Selected(path) => {
+                        save_background_image_path(state, Some(path));
+                    }
+                    BackgroundPickerResponse::Cancelled => {
+                        state.status = "Background image selection cancelled".to_string();
+                    }
+                    BackgroundPickerResponse::Failed(error) => {
+                        state.status = format!("Background image picker failed: {error}");
+                    }
+                }
+            },
+        ),
+    )
 }
 
 fn format_monitor_summary(monitors: &[MonitorConfig]) -> String {
@@ -375,6 +472,38 @@ fn save_monitor_scale(state: &mut SettingsApp, id: &str, scale: i32) {
         Err(error) => {
             state.settings = previous;
             state.status = format!("Failed to save monitor scale: {error}");
+        }
+    }
+}
+
+fn save_background_image_path(state: &mut SettingsApp, path: Option<PathBuf>) {
+    let previous = state.settings.background_image_path.clone();
+    let path = match path {
+        Some(path) => match path.into_os_string().into_string() {
+            Ok(path) => Some(path),
+            Err(path) => {
+                state.status = format!("Background path is not valid UTF-8: {path:?}");
+                return;
+            }
+        },
+        None => None,
+    };
+    state.settings.background_image_path = path.clone();
+
+    match client_set_background_image_path(path.as_deref()) {
+        Ok(settings) => {
+            state.settings = settings_with_live_outputs(settings, &state.live_outputs);
+            state.status = match notify_compositor_settings_changed() {
+                Ok(()) => match &state.settings.background_image_path {
+                    Some(path) => format!("Saved background image: {path}"),
+                    None => "Restored default background image".to_string(),
+                },
+                Err(error) => format!("Saved background image; compositor reload failed: {error}"),
+            };
+        }
+        Err(error) => {
+            state.settings.background_image_path = previous;
+            state.status = format!("Failed to save background image: {error}");
         }
     }
 }

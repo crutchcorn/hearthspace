@@ -584,7 +584,8 @@ pub fn spawn_argv_with_env(
     command
         .args(args)
         .env("WAYLAND_DISPLAY", wayland_display)
-        .env_remove("DISPLAY");
+        .env_remove("DISPLAY")
+        .env_remove("DBUS_SESSION_BUS_ADDRESS");
     for key in session_environment_keys() {
         if let Some(value) = env::var_os(key) {
             command.env(key, value);

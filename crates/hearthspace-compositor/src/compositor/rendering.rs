@@ -22,7 +22,8 @@ use smithay::{
         shell::xdg::SurfaceCachedState,
     },
 };
-use std::io::Cursor;
+use std::{fs, io::Cursor};
+use tracing::warn;
 use wayland_server::protocol::wl_surface;
 
 use super::{App, ManagedWindowKind, masonry_titlebar, windows::toplevel_title};
@@ -357,7 +358,7 @@ impl App {
             .unwrap_or(true);
 
         if needs_rebuild {
-            let data = default_background_image_data();
+            let data = self.background_image_data();
             let texture = renderer.import_memory(
                 &data.pixels,
                 data.format,
@@ -372,6 +373,22 @@ impl App {
         }
 
         Ok(self.background_image_tile.as_ref().unwrap())
+    }
+
+    fn background_image_data(&self) -> BackgroundImageData {
+        if let Some(path) = &self.background_image_path {
+            match fs::read(path) {
+                Ok(contents) => match decode_background_png(&contents) {
+                    Ok(image) => return image,
+                    Err(error) => {
+                        warn!(path, %error, "failed to decode background image; using default")
+                    }
+                },
+                Err(error) => warn!(path, %error, "failed to read background image; using default"),
+            }
+        }
+
+        default_background_image_data()
     }
 
     fn window_render_elements_at(
@@ -533,16 +550,22 @@ fn default_background_image_data() -> BackgroundImageData {
         .expect("packaged default background image must be a valid 8-bit RGBA PNG")
 }
 
-fn decode_background_png(contents: &[u8]) -> Result<BackgroundImageData, png::DecodingError> {
+fn decode_background_png(contents: &[u8]) -> Result<BackgroundImageData, String> {
     let mut decoder = png::Decoder::new(Cursor::new(contents));
     decoder.set_transformations(png::Transformations::ALPHA | png::Transformations::STRIP_16);
-    let mut reader = decoder.read_info()?;
+    let mut reader = decoder.read_info().map_err(|error| error.to_string())?;
     let mut pixels = vec![0; reader.output_buffer_size().unwrap_or_default()];
-    let output = reader.next_frame(&mut pixels)?;
+    let output = reader
+        .next_frame(&mut pixels)
+        .map_err(|error| error.to_string())?;
     pixels.truncate(output.buffer_size());
 
-    assert_eq!(output.color_type, png::ColorType::Rgba);
-    assert_eq!(output.bit_depth, png::BitDepth::Eight);
+    if output.color_type != png::ColorType::Rgba || output.bit_depth != png::BitDepth::Eight {
+        return Err(format!(
+            "expected 8-bit RGBA PNG, got {:?} {:?}",
+            output.bit_depth, output.color_type
+        ));
+    }
 
     Ok(BackgroundImageData {
         pixels,
