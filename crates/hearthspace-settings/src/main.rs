@@ -182,36 +182,45 @@ impl View<SettingsApp, (), ViewCtx> for MonitorLayoutEditor {
 }
 
 fn apply_monitor_editor_action(state: &mut SettingsApp, action: MonitorEditorAction) {
-    let Some(monitor) = state
-        .settings
+    let moved_monitor = action
         .monitors
-        .iter_mut()
-        .find(|monitor| monitor.id == action.id)
-    else {
-        state.status = format!("Unknown monitor: {}", action.id);
-        return;
-    };
-    monitor.x = action.x;
-    monitor.y = action.y;
+        .iter()
+        .find(|monitor| monitor.id == action.moved_id)
+        .cloned();
+    state.settings.monitors = action.monitors;
 
     if action.commit {
-        match client_set_monitor_position(&action.id, action.x, action.y) {
-            Ok(settings) => {
+        match save_monitor_positions(&state.settings.monitors) {
+            Ok(Some(settings)) => {
                 state.settings = settings;
-                state.status = format!("Saved monitor layout for {}", action.id);
+                state.status = format!("Saved monitor layout for {}", action.moved_id);
             }
+            Ok(None) => state.status = "Saved empty monitor layout".to_string(),
             Err(error) => state.status = format!("Failed to save monitor layout: {error}"),
         }
+    } else if let Some(monitor) = moved_monitor {
+        state.status = format!("Moving {} to {},{}", monitor.name, monitor.x, monitor.y);
     } else {
-        state.status = format!("Moving {} to {},{}", monitor.name, action.x, action.y);
+        state.status = format!("Unknown monitor: {}", action.moved_id);
     }
+}
+
+fn save_monitor_positions(monitors: &[MonitorConfig]) -> std::io::Result<Option<Settings>> {
+    let mut saved = None;
+    for monitor in monitors {
+        saved = Some(client_set_monitor_position(
+            &monitor.id,
+            monitor.x,
+            monitor.y,
+        )?);
+    }
+    Ok(saved)
 }
 
 #[derive(Debug)]
 struct MonitorEditorAction {
-    id: String,
-    x: i32,
-    y: i32,
+    moved_id: String,
+    monitors: Vec<MonitorConfig>,
     commit: bool,
 }
 
@@ -227,6 +236,8 @@ struct MonitorDrag {
     start_pointer: Point,
     start_x: i32,
     start_y: i32,
+    origin_x: f64,
+    origin_y: f64,
     scale: f64,
 }
 
@@ -250,13 +261,21 @@ impl MonitorLayoutWidget {
     }
 
     fn layout_metrics(&self, size: Size) -> LayoutMetrics {
+        if let Some(drag) = &self.drag {
+            return LayoutMetrics {
+                origin_x: drag.origin_x,
+                origin_y: drag.origin_y,
+                scale: drag.scale,
+            };
+        }
+
         let canvas_size = monitor_canvas_size(&self.monitors);
         let scale = layout_scale_for_canvas(&self.monitors, size);
-        let (combined_width, combined_height) = monitor_canvas_span(&self.monitors);
+        let (origin_x, origin_y) = monitor_canvas_origin(&self.monitors, canvas_size);
 
         LayoutMetrics {
-            origin_x: (f64::from(combined_width) - canvas_size.width) / 2.0,
-            origin_y: (f64::from(combined_height) - canvas_size.height) / 2.0,
+            origin_x,
+            origin_y,
             scale,
         }
     }
@@ -279,17 +298,22 @@ impl MonitorLayoutWidget {
             .find(|monitor| self.monitor_rect(monitor, metrics).contains(point))
     }
 
-    fn apply_drag_position(&mut self, id: &str, x: i32, y: i32) {
-        if let Some(monitor) = self.monitors.iter_mut().find(|monitor| monitor.id == id) {
-            monitor.x = x;
-            monitor.y = y;
-        }
-    }
-
-    fn drag_position(&self, drag: &MonitorDrag, point: Point) -> (i32, i32) {
+    fn monitors_for_drag(
+        &self,
+        drag: &MonitorDrag,
+        point: Point,
+        normalize: bool,
+    ) -> Vec<MonitorConfig> {
         let x = drag.start_x + ((point.x - drag.start_pointer.x) / drag.scale).round() as i32;
         let y = drag.start_y + ((point.y - drag.start_pointer.y) / drag.scale).round() as i32;
-        snap_monitor_to_neighbor(&self.monitors, &drag.id, snap_position(x), snap_position(y))
+        let (x, y) =
+            snap_monitor_to_neighbor(&self.monitors, &drag.id, snap_position(x), snap_position(y));
+        let mut monitors = self.monitors.clone();
+        set_monitor_position(&mut monitors, &drag.id, x, y);
+        if normalize {
+            normalize_monitors_near_origin(&mut monitors);
+        }
+        monitors
     }
 }
 
@@ -319,6 +343,8 @@ impl Widget for MonitorLayoutWidget {
                         start_pointer: point,
                         start_x: monitor.x,
                         start_y: monitor.y,
+                        origin_x: metrics.origin_x,
+                        origin_y: metrics.origin_y,
                         scale: metrics.scale,
                     });
                 }
@@ -326,13 +352,12 @@ impl Widget for MonitorLayoutWidget {
             PointerEvent::Move(PointerUpdate { current, .. }) if ctx.is_active() => {
                 if let Some(drag) = &self.drag {
                     let point = ctx.local_position(current.position);
-                    let (x, y) = self.drag_position(drag, point);
-                    let id = drag.id.clone();
-                    self.apply_drag_position(&id, x, y);
+                    let moved_id = drag.id.clone();
+                    let monitors = self.monitors_for_drag(drag, point, false);
+                    self.monitors = monitors.clone();
                     ctx.submit_action::<MonitorEditorAction>(MonitorEditorAction {
-                        id,
-                        x,
-                        y,
+                        moved_id,
+                        monitors,
                         commit: false,
                     });
                     ctx.request_render();
@@ -342,12 +367,11 @@ impl Widget for MonitorLayoutWidget {
             PointerEvent::Up(PointerButtonEvent { state, .. }) if ctx.is_active() => {
                 if let Some(drag) = self.drag.take() {
                     let point = ctx.local_position(state.position);
-                    let (x, y) = self.drag_position(&drag, point);
-                    self.apply_drag_position(&drag.id, x, y);
+                    let monitors = self.monitors_for_drag(&drag, point, true);
+                    self.monitors = monitors.clone();
                     ctx.submit_action::<MonitorEditorAction>(MonitorEditorAction {
-                        id: drag.id,
-                        x,
-                        y,
+                        moved_id: drag.id,
+                        monitors,
                         commit: true,
                     });
                     ctx.request_render();
@@ -462,6 +486,18 @@ fn monitor_canvas_size(monitors: &[MonitorConfig]) -> Size {
     )
 }
 
+fn monitor_canvas_origin(monitors: &[MonitorConfig], canvas_size: Size) -> (f64, f64) {
+    let Some((min_x, min_y, max_x, max_y)) = monitor_arrangement_bounds(monitors) else {
+        return (canvas_size.width / -2.0, canvas_size.height / -2.0);
+    };
+    let center_x = (f64::from(min_x) + f64::from(max_x)) / 2.0;
+    let center_y = (f64::from(min_y) + f64::from(max_y)) / 2.0;
+    (
+        center_x - canvas_size.width / 2.0,
+        center_y - canvas_size.height / 2.0,
+    )
+}
+
 fn monitor_canvas_span(monitors: &[MonitorConfig]) -> (i32, i32) {
     if monitors.is_empty() {
         return (EMPTY_MONITOR_CANVAS_WIDTH, EMPTY_MONITOR_CANVAS_HEIGHT);
@@ -490,12 +526,47 @@ fn layout_scale_for_canvas(monitors: &[MonitorConfig], size: Size) -> f64 {
         .clamp(0.03, 1.0)
 }
 
-#[cfg(test)]
-fn offset_monitor(monitors: &mut [MonitorConfig], id: &str, x: i32, y: i32) {
+fn set_monitor_position(monitors: &mut [MonitorConfig], id: &str, x: i32, y: i32) {
     if let Some(monitor) = monitors.iter_mut().find(|monitor| monitor.id == id) {
         monitor.x = x;
         monitor.y = y;
     }
+}
+
+fn normalize_monitors_near_origin(monitors: &mut [MonitorConfig]) {
+    let Some((min_x, min_y, max_x, max_y)) = monitor_arrangement_bounds(monitors) else {
+        return;
+    };
+    let center_x = midpoint_i32(min_x, max_x);
+    let center_y = midpoint_i32(min_y, max_y);
+    for monitor in monitors {
+        monitor.x -= center_x;
+        monitor.y -= center_y;
+    }
+}
+
+fn monitor_arrangement_bounds(monitors: &[MonitorConfig]) -> Option<(i32, i32, i32, i32)> {
+    let first = monitors.first()?;
+    let mut min_x = first.x;
+    let mut min_y = first.y;
+    let mut max_x = first.x + first.width.max(1);
+    let mut max_y = first.y + first.height.max(1);
+    for monitor in monitors.iter().skip(1) {
+        min_x = min_x.min(monitor.x);
+        min_y = min_y.min(monitor.y);
+        max_x = max_x.max(monitor.x + monitor.width.max(1));
+        max_y = max_y.max(monitor.y + monitor.height.max(1));
+    }
+    Some((min_x, min_y, max_x, max_y))
+}
+
+fn midpoint_i32(start: i32, end: i32) -> i32 {
+    ((i64::from(start) + i64::from(end)) / 2) as i32
+}
+
+#[cfg(test)]
+fn offset_monitor(monitors: &mut [MonitorConfig], id: &str, x: i32, y: i32) {
+    set_monitor_position(monitors, id, x, y);
 }
 
 fn snap_position(value: i32) -> i32 {
@@ -650,6 +721,86 @@ mod tests {
         offset_monitor(&mut monitors, "secondary", -3200, 900);
 
         assert_eq!(layout_scale_for_canvas(&monitors, size), scale);
+    }
+
+    #[test]
+    fn layout_metrics_do_not_recenter_during_live_drag() {
+        let mut widget = MonitorLayoutWidget::new(Settings::default().monitors);
+        let size = Size::new(760.0, 320.0);
+        let metrics = widget.layout_metrics(size);
+        widget.drag = Some(MonitorDrag {
+            id: "secondary".to_string(),
+            start_pointer: Point::from((0.0, 0.0)),
+            start_x: 1920,
+            start_y: 0,
+            origin_x: metrics.origin_x,
+            origin_y: metrics.origin_y,
+            scale: metrics.scale,
+        });
+
+        offset_monitor(&mut widget.monitors, "secondary", 0, 1200);
+
+        let live_metrics = widget.layout_metrics(size);
+        assert_eq!(live_metrics.origin_x, metrics.origin_x);
+        assert_eq!(live_metrics.origin_y, metrics.origin_y);
+        assert_eq!(live_metrics.scale, metrics.scale);
+    }
+
+    #[test]
+    fn canvas_origin_centers_far_away_arrangements() {
+        let mut monitors = Settings::default().monitors;
+        offset_monitor(&mut monitors, "primary", 10_000, -8_000);
+        offset_monitor(&mut monitors, "secondary", 11_920, -8_000);
+        let canvas_size = monitor_canvas_size(&monitors);
+
+        let origin = monitor_canvas_origin(&monitors, canvas_size);
+
+        assert_eq!(origin, (9616.0, -8756.0));
+    }
+
+    #[test]
+    fn normalize_monitors_keeps_layout_shape_centered_near_origin() {
+        let mut monitors = Settings::default().monitors;
+        offset_monitor(&mut monitors, "primary", 10_000, -8_000);
+        offset_monitor(&mut monitors, "secondary", 11_920, -8_000);
+
+        normalize_monitors_near_origin(&mut monitors);
+
+        assert_eq!(
+            monitor_arrangement_bounds(&monitors),
+            Some((-1920, -540, 1920, 540))
+        );
+        assert!(monitor_borders_another(&monitors, "secondary", (0, -540)));
+    }
+
+    #[test]
+    fn live_drag_moves_only_selected_monitor_until_release() {
+        let widget = MonitorLayoutWidget::new(Settings::default().monitors);
+        let drag = MonitorDrag {
+            id: "secondary".to_string(),
+            start_pointer: Point::from((0.0, 0.0)),
+            start_x: 1920,
+            start_y: 0,
+            origin_x: 0.0,
+            origin_y: 0.0,
+            scale: 1.0,
+        };
+
+        let live = widget.monitors_for_drag(&drag, Point::from((0.0, 1200.0)), false);
+        let released = widget.monitors_for_drag(&drag, Point::from((0.0, 1200.0)), true);
+
+        let live_primary = live.iter().find(|monitor| monitor.id == "primary").unwrap();
+        let live_secondary = live
+            .iter()
+            .find(|monitor| monitor.id == "secondary")
+            .unwrap();
+        assert_eq!((live_primary.x, live_primary.y), (0, 0));
+        assert_eq!((live_secondary.x, live_secondary.y), (1919, 1080));
+
+        assert_eq!(
+            monitor_arrangement_bounds(&released),
+            Some((-1919, -1080, 1920, 1080))
+        );
     }
 
     #[test]
