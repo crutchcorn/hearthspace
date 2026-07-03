@@ -2,7 +2,8 @@ use std::{
     fs, io,
     io::{BufRead, Write},
     os::unix::net::{UnixListener, UnixStream},
-    path::Path,
+    path::{Path, PathBuf},
+    process,
 };
 
 use hearthspace_ipc::{
@@ -14,7 +15,13 @@ use tracing::{error, info, warn};
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     initialize_tracing();
 
-    let listener = bind_settings_socket()?;
+    let listener = match bind_settings_socket()? {
+        BindSettingsSocket::Listening(listener) => listener,
+        BindSettingsSocket::AlreadyRunning(path) => {
+            warn!(socket = %path.display(), "hearthspace settings daemon is already running");
+            return Ok(());
+        }
+    };
     info!("hearthspace settings daemon is listening");
 
     for stream in listener.incoming() {
@@ -38,17 +45,23 @@ fn initialize_tracing() {
     }
 }
 
-fn bind_settings_socket() -> io::Result<UnixListener> {
+enum BindSettingsSocket {
+    Listening(UnixListener),
+    AlreadyRunning(PathBuf),
+}
+
+fn bind_settings_socket() -> io::Result<BindSettingsSocket> {
     let path = settings_socket_path()?;
+    bind_settings_socket_at(path)
+}
+
+fn bind_settings_socket_at(path: PathBuf) -> io::Result<BindSettingsSocket> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;
     }
 
     if UnixStream::connect(&path).is_ok() {
-        return Err(io::Error::new(
-            io::ErrorKind::AddrInUse,
-            format!("settings daemon is already listening at {}", path.display()),
-        ));
+        return Ok(BindSettingsSocket::AlreadyRunning(path));
     }
 
     match fs::remove_file(&path) {
@@ -57,7 +70,7 @@ fn bind_settings_socket() -> io::Result<UnixListener> {
         Err(error) => return Err(error),
     }
 
-    UnixListener::bind(path)
+    UnixListener::bind(path).map(BindSettingsSocket::Listening)
 }
 
 fn handle_connection(stream: UnixStream) -> io::Result<()> {
@@ -107,7 +120,14 @@ fn save_settings_to_path(settings: Settings, path: impl AsRef<Path>) -> io::Resu
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;
     }
-    fs::write(path, format_settings(settings))
+    let temp_path = path.with_extension(format!("tmp-{}", process::id()));
+    let mut file = fs::File::create(&temp_path)?;
+    file.write_all(format_settings(settings).as_bytes())?;
+    file.sync_all()?;
+    drop(file);
+    fs::rename(&temp_path, path).inspect_err(|_| {
+        let _ = fs::remove_file(&temp_path);
+    })
 }
 
 fn parse_settings(contents: &str) -> io::Result<Settings> {
@@ -159,7 +179,7 @@ mod tests {
         path::Path,
     };
 
-    use super::handle_connection_with_config_path;
+    use super::{BindSettingsSocket, bind_settings_socket_at, handle_connection_with_config_path};
 
     #[test]
     fn get_returns_default_settings_when_config_is_missing() {
@@ -204,6 +224,28 @@ mod tests {
 
         assert!(response.starts_with("err unknown request:"));
         assert!(!config_path.exists());
+    }
+
+    #[test]
+    fn bind_exits_cleanly_when_listener_is_already_active() {
+        let dir = tempfile::tempdir().unwrap();
+        let socket_path = dir.path().join("settings.sock");
+        let _listener = std::os::unix::net::UnixListener::bind(&socket_path).unwrap();
+
+        let result = bind_settings_socket_at(socket_path.clone()).unwrap();
+
+        assert!(matches!(result, BindSettingsSocket::AlreadyRunning(path) if path == socket_path));
+    }
+
+    #[test]
+    fn bind_removes_stale_socket_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let socket_path = dir.path().join("settings.sock");
+        std::os::unix::net::UnixListener::bind(&socket_path).unwrap();
+
+        let result = bind_settings_socket_at(socket_path).unwrap();
+
+        assert!(matches!(result, BindSettingsSocket::Listening(_)));
     }
 
     fn round_trip(request: &str, config_path: &Path) -> String {
