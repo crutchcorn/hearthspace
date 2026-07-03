@@ -1,3 +1,8 @@
+use wayland_client::{
+    Connection, Dispatch, QueueHandle, WEnum,
+    globals::{GlobalListContents, registry_queue_init},
+    protocol::{wl_output, wl_registry},
+};
 use xilem::core::{MessageCtx, MessageResult, Mut, View, ViewMarker};
 use xilem::masonry::accesskit::{Node, Role};
 use xilem::masonry::core::{
@@ -31,8 +36,17 @@ const EMPTY_MONITOR_CANVAS_HEIGHT: i32 = 1080;
 
 struct SettingsApp {
     settings: Settings,
+    live_outputs: Vec<LiveOutput>,
     status: String,
     config_label: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct LiveOutput {
+    id: String,
+    name: String,
+    width: i32,
+    height: i32,
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -50,13 +64,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 fn initial_state() -> SettingsApp {
-    let (settings, status) = match client_get_settings() {
+    let (mut settings, mut status) = match client_get_settings() {
         Ok(settings) => (settings, "Connected to hearthspace-settingsd".to_string()),
         Err(error) => (
             Settings::default(),
             format!("Settings backend unavailable: {error}"),
         ),
     };
+    let live_outputs = match live_wayland_outputs() {
+        Ok(outputs) => outputs,
+        Err(error) => {
+            status.push_str(&format!("; live monitors unavailable: {error}"));
+            Vec::new()
+        }
+    };
+    settings = settings_with_live_outputs(settings, &live_outputs);
 
     let config_label = match hearthspace_common::config_path() {
         Ok(path) => format!("Config: {}", path.display()),
@@ -65,6 +87,7 @@ fn initial_state() -> SettingsApp {
 
     SettingsApp {
         settings,
+        live_outputs,
         status,
         config_label,
     }
@@ -89,7 +112,7 @@ fn app_logic(state: &mut SettingsApp) -> impl WidgetView<SettingsApp> + use<> {
                 match client_set_test(checked) {
                     Ok(settings) => {
                         let saved_test = settings.test;
-                        state.settings = settings;
+                        state.settings = settings_with_live_outputs(settings, &state.live_outputs);
                         state.status = format!("Saved test = {saved_test}");
                     }
                     Err(error) => {
@@ -192,7 +215,7 @@ fn apply_monitor_editor_action(state: &mut SettingsApp, action: MonitorEditorAct
     if action.commit {
         match save_monitor_positions(&state.settings.monitors) {
             Ok(Some(settings)) => {
-                state.settings = settings;
+                state.settings = settings_with_live_outputs(settings, &state.live_outputs);
                 state.status = format!("Saved monitor layout for {}", action.moved_id);
             }
             Ok(None) => state.status = "Saved empty monitor layout".to_string(),
@@ -203,6 +226,174 @@ fn apply_monitor_editor_action(state: &mut SettingsApp, action: MonitorEditorAct
     } else {
         state.status = format!("Unknown monitor: {}", action.moved_id);
     }
+}
+
+fn settings_with_live_outputs(mut settings: Settings, live_outputs: &[LiveOutput]) -> Settings {
+    if live_outputs.is_empty() {
+        return settings;
+    }
+
+    settings.monitors = monitors_for_live_outputs(&settings.monitors, live_outputs);
+    settings
+}
+
+fn monitors_for_live_outputs(
+    saved_monitors: &[MonitorConfig],
+    live_outputs: &[LiveOutput],
+) -> Vec<MonitorConfig> {
+    let mut monitors = Vec::with_capacity(live_outputs.len());
+    let mut next_x = 0;
+    for (index, output) in live_outputs.iter().enumerate() {
+        let role_id = monitor_role_id(index);
+        let saved = saved_monitors
+            .iter()
+            .find(|monitor| monitor.id == output.id || monitor.name == output.name)
+            .or_else(|| saved_monitors.iter().find(|monitor| monitor.id == role_id));
+        let (id, x, y) = saved
+            .map(|monitor| (monitor.id.clone(), monitor.x, monitor.y))
+            .unwrap_or_else(|| (output.id.clone(), next_x, 0));
+        monitors.push(MonitorConfig {
+            id,
+            name: output.name.clone(),
+            width: output.width,
+            height: output.height,
+            x,
+            y,
+        });
+        next_x += output.width.max(1);
+    }
+    monitors
+}
+
+fn monitor_role_id(index: usize) -> String {
+    if index == 0 {
+        "primary".to_string()
+    } else if index == 1 {
+        "secondary".to_string()
+    } else {
+        format!("secondary-{index}")
+    }
+}
+
+fn live_wayland_outputs() -> std::io::Result<Vec<LiveOutput>> {
+    let connection = Connection::connect_to_env().map_err(std::io::Error::other)?;
+    let (globals, mut event_queue) =
+        registry_queue_init::<OutputProbe>(&connection).map_err(std::io::Error::other)?;
+    let queue_handle = event_queue.handle();
+    let mut probe = OutputProbe::default();
+    for global in globals.contents().clone_list() {
+        if global.interface == "wl_output" {
+            globals.registry().bind::<wl_output::WlOutput, _, _>(
+                global.name,
+                global.version.min(4),
+                &queue_handle,
+                OutputGlobal { name: global.name },
+            );
+        }
+    }
+    event_queue
+        .roundtrip(&mut probe)
+        .map_err(std::io::Error::other)?;
+    Ok(probe.live_outputs())
+}
+
+#[derive(Default)]
+struct OutputProbe {
+    outputs: Vec<OutputState>,
+}
+
+struct OutputGlobal {
+    name: u32,
+}
+
+#[derive(Debug)]
+struct OutputState {
+    global_name: u32,
+    name: Option<String>,
+    description: Option<String>,
+    width: Option<i32>,
+    height: Option<i32>,
+}
+
+impl OutputProbe {
+    fn output_mut(&mut self, global_name: u32) -> &mut OutputState {
+        if let Some(index) = self
+            .outputs
+            .iter()
+            .position(|output| output.global_name == global_name)
+        {
+            return &mut self.outputs[index];
+        }
+        self.outputs.push(OutputState {
+            global_name,
+            name: None,
+            description: None,
+            width: None,
+            height: None,
+        });
+        self.outputs.last_mut().unwrap()
+    }
+
+    fn live_outputs(self) -> Vec<LiveOutput> {
+        self.outputs
+            .into_iter()
+            .map(|output| {
+                let fallback = format!("output-{}", output.global_name);
+                let id = output.name.clone().unwrap_or_else(|| fallback.clone());
+                LiveOutput {
+                    id: id.clone(),
+                    name: output.description.or(output.name).unwrap_or(id),
+                    width: output.width.unwrap_or(EMPTY_MONITOR_CANVAS_WIDTH),
+                    height: output.height.unwrap_or(EMPTY_MONITOR_CANVAS_HEIGHT),
+                }
+            })
+            .collect()
+    }
+}
+
+impl Dispatch<wl_registry::WlRegistry, GlobalListContents> for OutputProbe {
+    fn event(
+        _state: &mut Self,
+        _proxy: &wl_registry::WlRegistry,
+        _event: wl_registry::Event,
+        _data: &GlobalListContents,
+        _connection: &Connection,
+        _queue_handle: &QueueHandle<Self>,
+    ) {
+    }
+}
+
+impl Dispatch<wl_output::WlOutput, OutputGlobal> for OutputProbe {
+    fn event(
+        state: &mut Self,
+        _proxy: &wl_output::WlOutput,
+        event: wl_output::Event,
+        data: &OutputGlobal,
+        _connection: &Connection,
+        _queue_handle: &QueueHandle<Self>,
+    ) {
+        let output = state.output_mut(data.name);
+        match event {
+            wl_output::Event::Name { name } => output.name = Some(name),
+            wl_output::Event::Description { description } => {
+                output.description = Some(description);
+            }
+            wl_output::Event::Mode {
+                flags,
+                width,
+                height,
+                ..
+            } if output_size_is_current(flags) => {
+                output.width = Some(width);
+                output.height = Some(height);
+            }
+            _ => {}
+        }
+    }
+}
+
+fn output_size_is_current(flags: WEnum<wl_output::Mode>) -> bool {
+    matches!(flags, WEnum::Value(flags) if flags.contains(wl_output::Mode::Current))
 }
 
 fn save_monitor_positions(monitors: &[MonitorConfig]) -> std::io::Result<Option<Settings>> {
@@ -710,6 +901,52 @@ mod tests {
                 f64::from(EMPTY_MONITOR_CANVAS_HEIGHT) * MONITOR_LAYOUT_CANVAS_MULTIPLIER,
             )
         );
+    }
+
+    #[test]
+    fn live_outputs_hide_saved_disconnected_monitors() {
+        let monitors = monitors_for_live_outputs(
+            &Settings::default().monitors,
+            &[LiveOutput {
+                id: "eDP-1".to_string(),
+                name: "Built-in Display".to_string(),
+                width: 2256,
+                height: 1504,
+            }],
+        );
+
+        assert_eq!(monitors.len(), 1);
+        assert_eq!(monitors[0].id, "primary");
+        assert_eq!(monitors[0].name, "Built-in Display");
+        assert_eq!((monitors[0].width, monitors[0].height), (2256, 1504));
+    }
+
+    #[test]
+    fn live_outputs_preserve_saved_connector_positions() {
+        let saved = vec![MonitorConfig {
+            id: "HDMI-A-1".to_string(),
+            name: "HDMI-A-1".to_string(),
+            width: 1920,
+            height: 1080,
+            x: -1920,
+            y: 200,
+        }];
+
+        let monitors = monitors_for_live_outputs(
+            &saved,
+            &[LiveOutput {
+                id: "HDMI-A-1".to_string(),
+                name: "External Monitor".to_string(),
+                width: 2560,
+                height: 1440,
+            }],
+        );
+
+        assert_eq!(monitors.len(), 1);
+        assert_eq!(monitors[0].id, "HDMI-A-1");
+        assert_eq!(monitors[0].name, "External Monitor");
+        assert_eq!((monitors[0].x, monitors[0].y), (-1920, 200));
+        assert_eq!((monitors[0].width, monitors[0].height), (2560, 1440));
     }
 
     #[test]

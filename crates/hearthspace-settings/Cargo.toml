@@ -8,6 +8,7 @@ license = "Apache-2.0"
 [dependencies]
 hearthspace-common = { path = "../hearthspace-common" }
 hearthspace-ipc = { path = "../hearthspace-ipc" }
+wayland-client = "0.31.14"
 xilem = { git = "https://github.com/crutchcorn/xilem", branch = "wayland-app-id" }
 
 [lints.rust]
