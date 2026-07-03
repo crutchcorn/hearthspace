@@ -57,7 +57,6 @@ impl OutputSet {
         outputs
     }
 
-    #[cfg(feature = "udev")]
     pub(in crate::compositor) fn set_layout(&mut self, layout: OutputLayout) -> bool {
         if self.layout == layout {
             return false;
@@ -204,7 +203,9 @@ impl OutputRecord {
 }
 
 impl OutputLayout {
-    fn from_monitors(monitors: Vec<hearthspace_ipc::MonitorConfig>) -> Self {
+    pub(in crate::compositor) fn from_monitors(
+        monitors: Vec<hearthspace_ipc::MonitorConfig>,
+    ) -> Self {
         Self { monitors }
     }
 
@@ -238,16 +239,6 @@ impl OutputLayout {
 
 fn default_placeholder_monitors(monitors: &[hearthspace_ipc::MonitorConfig]) -> bool {
     monitors == hearthspace_ipc::Settings::default().monitors
-}
-
-pub(in crate::compositor) fn load_output_layout() -> OutputLayout {
-    match hearthspace_ipc::client_get_settings() {
-        Ok(settings) => OutputLayout::from_monitors(settings.monitors),
-        Err(error) => {
-            debug!(%error, "using fallback output layout because settingsd is unavailable");
-            OutputLayout::default()
-        }
-    }
 }
 
 #[derive(Clone)]
@@ -490,7 +481,6 @@ impl App {
         self.outputs.minimum_logical_width()
     }
 
-    #[cfg(feature = "udev")]
     pub(in crate::compositor) fn set_output_layout(&mut self, layout: OutputLayout) -> bool {
         self.outputs.set_layout(layout)
     }

@@ -378,6 +378,7 @@ impl App {
             ShellCommand::PanDown => self.pan_viewport_by(0, self.vertical_pan_step()),
             ShellCommand::ZoomIn => self.animate_zoom_around_viewport_center(ZOOM_STEP),
             ShellCommand::ZoomOut => self.animate_zoom_around_viewport_center(1.0 / ZOOM_STEP),
+            ShellCommand::ReloadSettings => self.reload_settings(),
             ShellCommand::LogAccessibilityTree => {
                 crate::accessibility::log_accessibility_tree(self.accessibility_window_snapshot())
             }
@@ -404,6 +405,20 @@ impl App {
         }
         self.request_redraw();
         ControlReply::Ok
+    }
+
+    fn reload_settings(&mut self) {
+        match hearthspace_ipc::client_get_settings() {
+            Ok(settings) => {
+                let refresh = self.apply_settings(settings);
+                debug!(
+                    output_layout_changed = refresh.output_layout_changed,
+                    background_changed = refresh.background_changed,
+                    "reloaded compositor settings"
+                );
+            }
+            Err(error) => warn!(%error, "failed to reload compositor settings"),
+        }
     }
 
     fn prepare_spawn_position(&mut self) {

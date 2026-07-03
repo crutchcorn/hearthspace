@@ -22,20 +22,28 @@ use smithay::{
         shell::xdg::SurfaceCachedState,
     },
 };
+use std::{fs, io::Cursor};
+use tracing::warn;
 use wayland_server::protocol::wl_surface;
 
 use super::{App, ManagedWindowKind, masonry_titlebar, windows::toplevel_title};
-use crate::config::{BACKGROUND_DOT_SIZE, BACKGROUND_DOT_SPACING};
+use crate::geometry::CanvasPoint;
 
 type GlesTexture = <GlesRenderer as RendererSuper>::TextureId;
 
-const BACKGROUND_DOT_TILE_WIDTH: i32 = 1_920;
-const BACKGROUND_DOT_TILE_HEIGHT: i32 = 1_080;
 const MAX_BACKGROUND_TILE_ELEMENTS: usize = 512;
+const DEFAULT_BACKGROUND_IMAGE_PNG: &[u8] =
+    include_bytes!("../../../../assets/backgrounds/default.png");
 
-pub(super) struct BackgroundDotTile {
+pub(super) struct BackgroundImageTile {
     context_id: ContextId<GlesTexture>,
     texture: GlesTexture,
+    size: Size<i32, Logical>,
+}
+
+struct BackgroundImageData {
+    pixels: Vec<u8>,
+    format: Fourcc,
     size: Size<i32, Logical>,
 }
 
@@ -110,8 +118,8 @@ impl App {
             framebuffer,
             age,
             &elements,
-            // White canvas; the gray dot grid is drawn on top of it.
-            Color32F::new(1.0, 1.0, 1.0, 1.0),
+            // The repeated background image is opaque and covers the output.
+            Color32F::new(0.0, 0.0, 0.0, 0.0),
         )?;
         Ok(result.damage.cloned())
     }
@@ -161,10 +169,11 @@ impl App {
             }
         }
 
-        // The dot grid sits behind every window, directly on top of the white
-        // clear color, so it is appended last in this front-to-back ordering.
-        for dot in self.background_dot_elements(renderer, output_rect) {
-            elements.push(HearthspaceRenderElement::from(dot));
+        // The repeated background image sits behind every window, directly on
+        // top of the white clear color, so it is appended last in this
+        // front-to-back ordering.
+        for tile in self.background_image_elements(renderer, output_rect) {
+            elements.push(HearthspaceRenderElement::from(tile));
         }
         elements
     }
@@ -245,13 +254,13 @@ impl App {
         elements
     }
 
-    /// Build repeated background dot-tile render elements for the current viewport.
+    /// Build repeated background image render elements for the current viewport.
     ///
     /// The tile is laid out in *canvas* space, so it pans and zooms with the
-    /// viewport while keeping the render-element count proportional to visible
-    /// tiles rather than visible dots. This is also the shape future user-defined
-    /// repeating backgrounds can reuse.
-    fn background_dot_elements(
+    /// viewport by default while keeping the render-element count proportional
+    /// to visible image tiles, not to details inside the image. This is also the
+    /// shape future user-defined repeating backgrounds can reuse.
+    fn background_image_elements(
         &mut self,
         renderer: &mut GlesRenderer,
         output_rect: Rectangle<i32, Logical>,
@@ -259,24 +268,19 @@ impl App {
         if self.viewport_scale <= 0.0 || !self.viewport_scale.is_finite() {
             return Vec::new();
         }
+        let moves_with_canvas = self.background_moves_with_canvas;
 
-        let (context_id, texture, tile_size) = match self.background_dot_tile(renderer) {
+        let (context_id, texture, tile_size) = match self.background_image_tile(renderer) {
             Ok(tile) => (tile.context_id.clone(), tile.texture.clone(), tile.size),
             Err(_) => return Vec::new(),
         };
 
-        let top_left = self.screen_to_canvas(Point::from((
-            f64::from(output_rect.loc.x),
-            f64::from(output_rect.loc.y),
-        )));
-        let bottom_right = self.screen_to_canvas(Point::from((
-            f64::from(output_rect.loc.x) + f64::from(output_rect.size.w),
-            f64::from(output_rect.loc.y) + f64::from(output_rect.size.h),
-        )));
-        let min_x = top_left.x.min(bottom_right.x);
-        let max_x = top_left.x.max(bottom_right.x);
-        let min_y = top_left.y.min(bottom_right.y);
-        let max_y = top_left.y.max(bottom_right.y);
+        let (min_x, max_x, min_y, max_y) = background_image_visible_bounds(
+            output_rect,
+            moves_with_canvas,
+            self.viewport_offset,
+            self.viewport_scale,
+        );
 
         let Some((first_x, last_x, x_count)) =
             background_tile_axis_bounds(min_x, max_x, f64::from(tile_size.w))
@@ -293,24 +297,30 @@ impl App {
             return Vec::new();
         }
 
-        while self.background_dot_ids.len() < tile_count {
-            self.background_dot_ids.push(Id::new());
+        while self.background_tile_ids.len() < tile_count {
+            self.background_tile_ids.push(Id::new());
         }
 
         let mut elements = Vec::with_capacity(tile_count);
         let src = Rectangle::from_size(tile_size.to_f64());
         for gy in first_y..=last_y {
             for gx in first_x..=last_x {
-                let canvas = Point::from((
+                let tile_origin = Point::from((
                     gx as f64 * f64::from(tile_size.w),
                     gy as f64 * f64::from(tile_size.h),
                 ));
-                let next_canvas = Point::from((
+                let next_tile_origin = Point::from((
                     (gx + 1) as f64 * f64::from(tile_size.w),
                     (gy + 1) as f64 * f64::from(tile_size.h),
                 ));
-                let screen = self.canvas_to_screen(canvas);
-                let next_screen = self.canvas_to_screen(next_canvas);
+                let (screen, next_screen) = if moves_with_canvas {
+                    (
+                        self.canvas_to_screen(tile_origin),
+                        self.canvas_to_screen(next_tile_origin),
+                    )
+                } else {
+                    (tile_origin, next_tile_origin)
+                };
                 let left = screen.x.round() as i32;
                 let top = screen.y.round() as i32;
                 let right = next_screen.x.round() as i32;
@@ -319,7 +329,7 @@ impl App {
                 let size = Size::from(((right - left).max(1), (bottom - top).max(1)));
                 let slot = elements.len();
                 elements.push(TextureRenderElement::from_static_texture(
-                    self.background_dot_ids[slot].clone(),
+                    self.background_tile_ids[slot].clone(),
                     context_id.clone(),
                     location,
                     texture.clone(),
@@ -336,35 +346,49 @@ impl App {
         elements
     }
 
-    fn background_dot_tile(
+    fn background_image_tile(
         &mut self,
         renderer: &mut GlesRenderer,
-    ) -> Result<&BackgroundDotTile, <GlesRenderer as RendererSuper>::Error> {
+    ) -> Result<&BackgroundImageTile, <GlesRenderer as RendererSuper>::Error> {
         let context_id = renderer.context_id();
         let needs_rebuild = self
-            .background_dot_tile
+            .background_image_tile
             .as_ref()
             .map(|tile| tile.context_id != context_id)
             .unwrap_or(true);
 
         if needs_rebuild {
-            let size =
-                Size::<i32, Logical>::from((BACKGROUND_DOT_TILE_WIDTH, BACKGROUND_DOT_TILE_HEIGHT));
-            let pixels = rasterize_background_dot_tile(size);
+            let data = self.background_image_data();
             let texture = renderer.import_memory(
-                &pixels,
-                Fourcc::Abgr8888,
-                (size.w, size.h).into(),
+                &data.pixels,
+                data.format,
+                (data.size.w, data.size.h).into(),
                 false,
             )?;
-            self.background_dot_tile = Some(BackgroundDotTile {
+            self.background_image_tile = Some(BackgroundImageTile {
                 context_id,
                 texture,
-                size,
+                size: data.size,
             });
         }
 
-        Ok(self.background_dot_tile.as_ref().unwrap())
+        Ok(self.background_image_tile.as_ref().unwrap())
+    }
+
+    fn background_image_data(&self) -> BackgroundImageData {
+        if let Some(path) = &self.background_image_path {
+            match fs::read(path) {
+                Ok(contents) => match decode_background_png(&contents) {
+                    Ok(image) => return image,
+                    Err(error) => {
+                        warn!(path, %error, "failed to decode background image; using default")
+                    }
+                },
+                Err(error) => warn!(path, %error, "failed to read background image; using default"),
+            }
+        }
+
+        default_background_image_data()
     }
 
     fn window_render_elements_at(
@@ -492,58 +516,62 @@ fn background_tile_axis_bounds(min: f64, max: f64, tile_size: f64) -> Option<(i6
     Some((first, last, count))
 }
 
-fn rasterize_background_dot_tile(size: Size<i32, Logical>) -> Vec<u8> {
-    let len = size
-        .w
-        .checked_mul(size.h)
-        .and_then(|pixels| pixels.checked_mul(4))
-        .and_then(|bytes| usize::try_from(bytes).ok())
-        .unwrap_or_default();
-    let mut pixels = vec![0; len];
-    let spacing = BACKGROUND_DOT_SPACING.max(1) as usize;
-    let dot_size = BACKGROUND_DOT_SIZE.max(1);
+fn background_image_visible_bounds(
+    output_rect: Rectangle<i32, Logical>,
+    moves_with_canvas: bool,
+    viewport_offset: CanvasPoint,
+    viewport_scale: f64,
+) -> (f64, f64, f64, f64) {
+    let top_left = Point::from((f64::from(output_rect.loc.x), f64::from(output_rect.loc.y)));
+    let bottom_right = Point::from((
+        f64::from(output_rect.loc.x) + f64::from(output_rect.size.w),
+        f64::from(output_rect.loc.y) + f64::from(output_rect.size.h),
+    ));
 
-    for cy in (0..=size.h).step_by(spacing) {
-        for cx in (0..=size.w).step_by(spacing) {
-            rasterize_background_dot(&mut pixels, size, cx, cy, dot_size);
-        }
-    }
+    let (top_left, bottom_right) = if moves_with_canvas {
+        (
+            crate::geometry::screen_to_canvas(top_left, viewport_offset, viewport_scale),
+            crate::geometry::screen_to_canvas(bottom_right, viewport_offset, viewport_scale),
+        )
+    } else {
+        (top_left, bottom_right)
+    };
 
-    pixels
+    (
+        top_left.x.min(bottom_right.x),
+        top_left.x.max(bottom_right.x),
+        top_left.y.min(bottom_right.y),
+        top_left.y.max(bottom_right.y),
+    )
 }
 
-fn rasterize_background_dot(
-    pixels: &mut [u8],
-    size: Size<i32, Logical>,
-    center_x: i32,
-    center_y: i32,
-    dot_size: i32,
-) {
-    let half = dot_size / 2;
-    let x0 = (center_x - half).max(0);
-    let y0 = (center_y - half).max(0);
-    let x1 = (center_x - half + dot_size).min(size.w);
-    let y1 = (center_y - half + dot_size).min(size.h);
+fn default_background_image_data() -> BackgroundImageData {
+    decode_background_png(DEFAULT_BACKGROUND_IMAGE_PNG)
+        .expect("packaged default background image must be a valid 8-bit RGBA PNG")
+}
 
-    for y in y0..y1 {
-        for x in x0..x1 {
-            let Some(offset) = y
-                .checked_mul(size.w)
-                .and_then(|row| row.checked_add(x))
-                .and_then(|pixel| pixel.checked_mul(4))
-                .and_then(|byte| usize::try_from(byte).ok())
-            else {
-                continue;
-            };
-            if offset + 3 >= pixels.len() {
-                continue;
-            }
-            pixels[offset] = 199;
-            pixels[offset + 1] = 199;
-            pixels[offset + 2] = 204;
-            pixels[offset + 3] = 255;
-        }
+fn decode_background_png(contents: &[u8]) -> Result<BackgroundImageData, String> {
+    let mut decoder = png::Decoder::new(Cursor::new(contents));
+    decoder.set_transformations(png::Transformations::ALPHA | png::Transformations::STRIP_16);
+    let mut reader = decoder.read_info().map_err(|error| error.to_string())?;
+    let mut pixels = vec![0; reader.output_buffer_size().unwrap_or_default()];
+    let output = reader
+        .next_frame(&mut pixels)
+        .map_err(|error| error.to_string())?;
+    pixels.truncate(output.buffer_size());
+
+    if output.color_type != png::ColorType::Rgba || output.bit_depth != png::BitDepth::Eight {
+        return Err(format!(
+            "expected 8-bit RGBA PNG, got {:?} {:?}",
+            output.bit_depth, output.color_type
+        ));
     }
+
+    Ok(BackgroundImageData {
+        pixels,
+        format: Fourcc::Abgr8888,
+        size: Size::<i32, Logical>::from((output.width as i32, output.height as i32)),
+    })
 }
 
 /// The offset of a toplevel's window geometry within its surface, used to place
@@ -602,8 +630,10 @@ pub(super) fn send_frames_surface_tree(surface: &wl_surface::WlSurface, time: u3
 mod tests {
     use smithay::utils::{Logical, Point, Rectangle, Size};
 
+    use crate::geometry::CanvasPoint;
+
     use super::{
-        background_tile_axis_bounds, point_in_logical_rect, rasterize_background_dot_tile,
+        background_tile_axis_bounds, default_background_image_data, point_in_logical_rect,
     };
 
     #[test]
@@ -633,17 +663,62 @@ mod tests {
     }
 
     #[test]
-    fn background_dot_tile_rasterizes_seam_dots() {
-        let size = Size::<i32, Logical>::from((240, 120));
-        let pixels = rasterize_background_dot_tile(size);
+    fn fixed_background_bounds_ignore_viewport_pan_and_zoom() {
+        let output = Rectangle::<i32, Logical>::new((0, 0).into(), (800, 600).into());
 
-        assert_eq!(pixel_alpha(&pixels, size, 0, 0), 255);
-        assert_eq!(pixel_alpha(&pixels, size, 239, 0), 255);
-        assert_eq!(pixel_alpha(&pixels, size, 60, 60), 0);
+        assert_eq!(
+            super::background_image_visible_bounds(output, false, CanvasPoint { x: 0, y: 0 }, 1.0,),
+            super::background_image_visible_bounds(
+                output,
+                false,
+                CanvasPoint {
+                    x: 10_000,
+                    y: -5_000
+                },
+                0.25,
+            )
+        );
     }
 
-    fn pixel_alpha(pixels: &[u8], size: Size<i32, Logical>, x: i32, y: i32) -> u8 {
-        let offset = ((y * size.w + x) * 4 + 3) as usize;
-        pixels[offset]
+    #[test]
+    fn canvas_background_bounds_follow_viewport_pan_and_zoom() {
+        let output = Rectangle::<i32, Logical>::new((0, 0).into(), (800, 600).into());
+
+        assert_ne!(
+            super::background_image_visible_bounds(output, true, CanvasPoint { x: 0, y: 0 }, 1.0,),
+            super::background_image_visible_bounds(
+                output,
+                true,
+                CanvasPoint {
+                    x: 10_000,
+                    y: -5_000
+                },
+                0.25,
+            )
+        );
+    }
+
+    #[test]
+    fn default_background_image_loads_from_png_asset() {
+        let image = default_background_image_data();
+        assert_eq!(image.size, Size::<i32, Logical>::from((1920, 1080)));
+
+        assert_eq!(
+            pixel_rgba(&image.pixels, image.size, 0, 0),
+            [199, 199, 204, 255]
+        );
+        assert_eq!(
+            pixel_rgba(&image.pixels, image.size, 1919, 0),
+            [199, 199, 204, 255]
+        );
+        assert_eq!(
+            pixel_rgba(&image.pixels, image.size, 60, 60),
+            [255, 255, 255, 255]
+        );
+    }
+
+    fn pixel_rgba(pixels: &[u8], size: Size<i32, Logical>, x: i32, y: i32) -> [u8; 4] {
+        let offset = ((y * size.w + x) * 4) as usize;
+        pixels[offset..offset + 4].try_into().unwrap()
     }
 }

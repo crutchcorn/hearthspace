@@ -9,7 +9,6 @@ use device::{
 };
 use input::log_input_event;
 
-use calloop::timer::{TimeoutAction, Timer};
 use smithay::{
     backend::{
         allocator::Buffer,
@@ -32,8 +31,6 @@ use crate::{
     RunOptions,
     config::{HEADLESS_OUTPUT_HEIGHT, HEADLESS_OUTPUT_WIDTH},
 };
-
-const SETTINGS_LAYOUT_REFRESH_INTERVAL: Duration = Duration::from_millis(500);
 
 pub(super) struct UdevBackendState {
     session: LibSeatSession,
@@ -155,7 +152,6 @@ pub fn run_udev(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> {
     app.configure_shell_bars();
     app.reconcile_pointer_after_output_geometry_change();
     app.request_redraw();
-    insert_settings_layout_refresh(&handle)?;
 
     handle.insert_source(session_notifier, |event, _, data| match event {
         SessionEvent::PauseSession => {
@@ -281,23 +277,6 @@ pub fn run_udev(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> {
 
     info!("native backend initialized; entering compositor event loop");
     super::run_event_loop(event_loop, &mut data)
-}
-
-fn insert_settings_layout_refresh(
-    handle: &LoopHandle<'static, super::CalloopData>,
-) -> Result<(), Box<dyn std::error::Error>> {
-    let timer = Timer::from_duration(SETTINGS_LAYOUT_REFRESH_INTERVAL);
-    handle.insert_source(timer, |_, _, data| {
-        if data.state.set_output_layout(super::load_output_layout()) {
-            data.state.configure_shell_bars();
-            data.state.reconcile_pointer_after_output_geometry_change();
-            data.full_redraw = data.full_redraw.max(1);
-            data.state.request_redraw();
-            debug!("applied updated monitor layout settings");
-        }
-        TimeoutAction::ToDuration(SETTINGS_LAYOUT_REFRESH_INTERVAL)
-    })?;
-    Ok(())
 }
 
 fn udev_backend_mut(data: &mut super::CalloopData) -> Option<&mut UdevBackendState> {

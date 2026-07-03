@@ -27,9 +27,7 @@ use idle::{IdleTransition, WindowIdleDaemon};
 pub(in crate::compositor) use input::handle_input_event;
 #[cfg(feature = "udev")]
 pub(in crate::compositor) use output::{OutputDescriptor, create_output_with_properties};
-pub(in crate::compositor) use output::{
-    OutputRecord, OutputSet, create_output, load_output_layout,
-};
+pub(in crate::compositor) use output::{OutputLayout, OutputRecord, OutputSet, create_output};
 #[cfg(feature = "udev")]
 pub(in crate::compositor) use runtime::create_calloop_data;
 pub(in crate::compositor) use runtime::{Backend, CalloopData, HeadlessBackend, run_event_loop};
@@ -194,14 +192,48 @@ struct App {
     pending_dmabuf_imports: Vec<(Dmabuf, ImportNotifier)>,
     loop_handle: LoopHandle<'static, CalloopData>,
     popups: PopupManager,
-    /// Cached texture for the repeated background dot tile.
-    background_dot_tile: Option<rendering::BackgroundDotTile>,
+    background_moves_with_canvas: bool,
+    background_image_path: Option<String>,
+    /// Cached texture for the repeated background image tile.
+    background_image_tile: Option<rendering::BackgroundImageTile>,
     /// Stable render-element ids for visible background tile instances. Reusing
     /// ids across frames keeps the damage tracker from treating every tile as
     /// new on each redraw.
-    background_dot_ids: Vec<Id>,
+    background_tile_ids: Vec<Id>,
     software_cursor_visible: bool,
     software_cursor: SoftwareCursor,
+}
+
+#[derive(Debug, Default)]
+struct SettingsRefresh {
+    output_layout_changed: bool,
+    background_changed: bool,
+}
+
+impl App {
+    fn apply_settings(&mut self, settings: hearthspace_ipc::Settings) -> SettingsRefresh {
+        let mut refresh = SettingsRefresh {
+            output_layout_changed: self
+                .set_output_layout(OutputLayout::from_monitors(settings.monitors)),
+            ..SettingsRefresh::default()
+        };
+        if refresh.output_layout_changed {
+            self.configure_shell_bars();
+            self.reconcile_pointer_after_output_geometry_change();
+        }
+
+        if self.background_moves_with_canvas != settings.background_moves_with_canvas {
+            self.background_moves_with_canvas = settings.background_moves_with_canvas;
+            refresh.background_changed = true;
+        }
+        if self.background_image_path != settings.background_image_path {
+            self.background_image_path = settings.background_image_path;
+            self.background_image_tile = None;
+            refresh.background_changed = true;
+        }
+
+        refresh
+    }
 }
 
 pub(in crate::compositor) struct AppInit {
@@ -416,6 +448,14 @@ pub(in crate::compositor) fn initialize_app(
         app_count = app_catalog.apps().len(),
         "loaded app catalog for compositor"
     );
+    let settings = match hearthspace_ipc::client_get_settings() {
+        Ok(settings) => settings,
+        Err(error) => {
+            debug!(%error, "using default compositor settings because settingsd is unavailable");
+            hearthspace_ipc::Settings::default()
+        }
+    };
+    let output_layout = OutputLayout::from_monitors(settings.monitors.clone());
 
     let app = App {
         compositor_state,
@@ -447,7 +487,7 @@ pub(in crate::compositor) fn initialize_app(
         raw_pointer_location: (0.0, 0.0).into(),
         active_touch_slot: None,
         scroll_zooms_without_super: options.scroll_zooms_without_super,
-        outputs: OutputSet::new(primary_output, load_output_layout()),
+        outputs: OutputSet::new(primary_output, output_layout),
         app_catalog,
         needs_redraw: true,
         dmabuf_state: dmabuf.state,
@@ -455,8 +495,10 @@ pub(in crate::compositor) fn initialize_app(
         pending_dmabuf_imports: Vec::new(),
         loop_handle: handle.clone(),
         popups: PopupManager::default(),
-        background_dot_tile: None,
-        background_dot_ids: Vec::new(),
+        background_moves_with_canvas: settings.background_moves_with_canvas,
+        background_image_path: settings.background_image_path,
+        background_image_tile: None,
+        background_tile_ids: Vec::new(),
         software_cursor_visible: false,
         software_cursor: cursor::standard_software_cursor(),
     };

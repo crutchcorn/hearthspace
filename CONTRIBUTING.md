@@ -51,6 +51,23 @@ sudo apt-get install -y libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev
 
 ### Optional Dependencies
 
+The settings app uses `rfd` for file selection. On Linux, `rfd` is built with
+its XDG Desktop Portal backend and falls back to `zenity` if the portal request
+fails. Hearthspace gives session children a private `XDG_RUNTIME_DIR` and strips
+the host `DBUS_SESSION_BUS_ADDRESS` from shell-launched apps so file pickers do
+not accidentally discover GNOME's session bus and open through GNOME's portal on
+another TTY. Until Hearthspace has its own session bus and portal backend setup,
+install `zenity` for the fallback path:
+
+```sh
+sudo apt-get install -y zenity
+```
+
+The file chooser portal is an external desktop service, not code inside the
+Hearthspace compositor. If we later provide a Hearthspace-owned portal session,
+the compositor still needs to support the dialog window created by the portal
+backend.
+
 For testing, `foot` is installed as a small Wayland-native terminal for server-side decoration testing.
 
 ```

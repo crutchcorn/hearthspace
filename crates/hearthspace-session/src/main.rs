@@ -2,6 +2,7 @@ use std::{
     env, fs,
     io::{Read, Write},
     net::Shutdown,
+    os::unix::fs::PermissionsExt,
     os::unix::net::UnixStream,
     path::{Path, PathBuf},
     process::{self, Child, Command, ExitStatus, Stdio},
@@ -69,7 +70,6 @@ enum RunMode {
 
 #[derive(Debug)]
 struct SessionPaths {
-    runtime_dir: PathBuf,
     session_dir: PathBuf,
     applications_dir: PathBuf,
     settings_socket: PathBuf,
@@ -176,17 +176,16 @@ fn resolve_mode(args: &Args) -> RunMode {
 }
 
 fn create_session_paths() -> Result<SessionPaths, Box<dyn std::error::Error>> {
-    let runtime_dir = env::var_os("XDG_RUNTIME_DIR").ok_or("XDG_RUNTIME_DIR is not set")?;
-    let runtime_dir = PathBuf::from(runtime_dir);
-    let session_dir = runtime_dir
+    let host_runtime_dir = env::var_os("XDG_RUNTIME_DIR").ok_or("XDG_RUNTIME_DIR is not set")?;
+    let session_dir = PathBuf::from(host_runtime_dir)
         .join("hearthspace")
         .join(format!("session-{}", process::id()));
     let applications_dir = session_dir.join("share/applications");
 
     fs::create_dir_all(&applications_dir)?;
+    fs::set_permissions(&session_dir, fs::Permissions::from_mode(0o700))?;
 
     Ok(SessionPaths {
-        runtime_dir,
         settings_socket: session_dir.join("settings.sock"),
         session_socket: session_dir.join("session.sock"),
         shell_command_socket: session_dir.join("shell-command.sock"),
@@ -209,6 +208,7 @@ fn create_session_env(
     let session_socket = path_to_string(&paths.session_socket)?;
     let shell_command_socket = path_to_string(&paths.shell_command_socket)?;
     let mut vars = vec![
+        ("XDG_RUNTIME_DIR".to_string(), session_dir.clone()),
         ("WAYLAND_DISPLAY".to_string(), wayland_display.clone()),
         (
             "XDG_CURRENT_DESKTOP".to_string(),
@@ -399,7 +399,7 @@ impl Supervisor {
     fn wait_for_compositor_ready(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         let socket = self
             .paths
-            .runtime_dir
+            .session_dir
             .join(&self.session_env.wayland_display);
         info!(socket = %socket.display(), "waiting for compositor readiness");
         let deadline = Instant::now() + Duration::from_secs(120);
@@ -751,5 +751,36 @@ mod tests {
                 hearthspace_common::NO_SHELL_FLAG,
             ]
         );
+    }
+
+    #[test]
+    fn session_env_uses_private_runtime_dir() {
+        let paths = SessionPaths {
+            session_dir: PathBuf::from("/tmp/hearthspace-test/session-1"),
+            applications_dir: PathBuf::from("/tmp/hearthspace-test/session-1/share/applications"),
+            settings_socket: PathBuf::from("/tmp/hearthspace-test/session-1/settings.sock"),
+            session_socket: PathBuf::from("/tmp/hearthspace-test/session-1/session.sock"),
+            shell_command_socket: PathBuf::from(
+                "/tmp/hearthspace-test/session-1/shell-command.sock",
+            ),
+        };
+        let args = Args {
+            dev: false,
+            installed: true,
+            wayland_display: Some("hearthspace-test".to_string()),
+            watch_apps: false,
+            no_watch_apps: false,
+            no_shell_restart: false,
+            no_settingsd_restart: false,
+            log_level: "info".to_string(),
+            print_env: false,
+            dry_run: false,
+        };
+
+        let env = create_session_env(&args, RunMode::InstalledBinaries, &paths).unwrap();
+
+        assert!(env.vars.iter().any(|(key, value)| {
+            key == "XDG_RUNTIME_DIR" && value == "/tmp/hearthspace-test/session-1"
+        }));
     }
 }
