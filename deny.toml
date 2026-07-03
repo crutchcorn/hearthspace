@@ -1,0 +1,10 @@
+[advisories]
+ignore = [
+    # Temporary: `quick-xml` is pulled in by `wayland-scanner` and `zbus_xml`,
+    # which currently require `quick-xml = "0.39"`. Remove once those crates
+    # publish releases that allow `quick-xml >= 0.41`.
+    "RUSTSEC-2026-0194",
+    # Same `quick-xml` constraint issue as above; this was reported recently,
+    # so prefer dropping the ignore when upstream dependency bounds catch up.
+    "RUSTSEC-2026-0195",
+]
