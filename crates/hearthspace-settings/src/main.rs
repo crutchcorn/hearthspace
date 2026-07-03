@@ -1,4 +1,4 @@
-use hearthspace::settings::{Settings, client_get_settings, client_set_test, config_path};
+use hearthspace_ipc::{Settings, client_get_settings, client_set_test};
 use xilem::{
     EventLoop, WidgetView, WindowOptions, Xilem,
     dpi::LogicalSize,
@@ -36,7 +36,7 @@ fn initial_state() -> SettingsApp {
         ),
     };
 
-    let config_label = match config_path() {
+    let config_label = match hearthspace_common::config_path() {
         Ok(path) => format!("Config: {}", path.display()),
         Err(error) => format!("Config path unavailable: {error}"),
     };

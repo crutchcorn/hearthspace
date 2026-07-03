@@ -5,9 +5,9 @@ use std::{
     path::Path,
 };
 
-use hearthspace::settings::{
-    SettingsRequest, config_path, error_response, load_settings_from_path, parse_settings_request,
-    save_settings_to_path, settings_response, settings_socket_path,
+use hearthspace_ipc::{
+    Settings, SettingsRequest, error_response, parse_settings_request, settings_response,
+    settings_socket_path,
 };
 use tracing::{error, info, warn};
 
@@ -61,7 +61,7 @@ fn bind_settings_socket() -> io::Result<UnixListener> {
 }
 
 fn handle_connection(stream: UnixStream) -> io::Result<()> {
-    handle_connection_with_config_path(stream, &config_path()?)
+    handle_connection_with_config_path(stream, &hearthspace_common::config_path()?)
 }
 
 fn handle_connection_with_config_path(
@@ -91,6 +91,61 @@ fn handle_request(request: SettingsRequest, config_path: &Path) -> io::Result<St
             save_settings_to_path(settings, config_path)?;
             Ok(settings_response(settings))
         }
+    }
+}
+
+fn load_settings_from_path(path: impl AsRef<Path>) -> io::Result<Settings> {
+    match fs::read_to_string(path) {
+        Ok(contents) => parse_settings(&contents),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(Settings::default()),
+        Err(error) => Err(error),
+    }
+}
+
+fn save_settings_to_path(settings: Settings, path: impl AsRef<Path>) -> io::Result<()> {
+    let path = path.as_ref();
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    fs::write(path, format_settings(settings))
+}
+
+fn parse_settings(contents: &str) -> io::Result<Settings> {
+    let mut settings = Settings::default();
+    for raw_line in contents.lines() {
+        let line = raw_line.split('#').next().unwrap_or_default().trim();
+        if line.is_empty() || line.starts_with('[') {
+            continue;
+        }
+
+        let Some((key, value)) = line.split_once('=') else {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("invalid settings line: {line:?}"),
+            ));
+        };
+
+        if key.trim() == "test" {
+            settings.test = parse_bool(value.trim()).map_err(|error| {
+                io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    format!("invalid test setting: {error}"),
+                )
+            })?;
+        }
+    }
+    Ok(settings)
+}
+
+fn format_settings(settings: Settings) -> String {
+    format!("test = {}\n", settings.test)
+}
+
+fn parse_bool(value: &str) -> Result<bool, String> {
+    match value {
+        "true" => Ok(true),
+        "false" => Ok(false),
+        _ => Err(format!("expected true or false, got {value:?}")),
     }
 }
 

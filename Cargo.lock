@@ -2297,10 +2297,18 @@ name = "hearthspace-common"
 version = "0.1.0"
 
 [[package]]
+name = "hearthspace-ipc"
+version = "0.1.0"
+dependencies = [
+ "hearthspace-common",
+]
+
+[[package]]
 name = "hearthspace-settings"
 version = "0.1.0"
 dependencies = [
- "hearthspace",
+ "hearthspace-common",
+ "hearthspace-ipc",
  "xilem",
 ]
 
@@ -2308,7 +2316,8 @@ dependencies = [
 name = "hearthspace-settingsd"
 version = "0.1.0"
 dependencies = [
- "hearthspace",
+ "hearthspace-common",
+ "hearthspace-ipc",
  "tempfile",
  "tracing",
  "tracing-subscriber",

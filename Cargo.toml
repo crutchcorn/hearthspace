@@ -11,6 +11,7 @@ resolver = "2"
 members = [
     ".",
     "crates/hearthspace-common",
+    "crates/hearthspace-ipc",
     "crates/hearthspace-settings",
     "crates/hearthspace-settingsd",
     "crates/waydriver-hearthspace",

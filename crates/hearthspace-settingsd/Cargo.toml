@@ -6,7 +6,8 @@ rust-version = "1.93.1"
 license = "Apache-2.0"
 
 [dependencies]
-hearthspace = { path = "../.." }
+hearthspace-common = { path = "../hearthspace-common" }
+hearthspace-ipc = { path = "../hearthspace-ipc" }
 tracing = "0.1.41"
 tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
 
