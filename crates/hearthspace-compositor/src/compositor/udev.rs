@@ -409,7 +409,7 @@ impl UdevBackendState {
             };
 
             let (mut dmabuf, buffer_age) = output.gbm_surface.next_buffer()?;
-            let age = if force_full_redraw {
+            let age = if force_full_redraw || state.software_cursor_visible {
                 0
             } else {
                 usize::from(buffer_age)

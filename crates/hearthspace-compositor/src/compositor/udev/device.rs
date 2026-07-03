@@ -4,7 +4,7 @@ use smithay::{
     backend::{
         allocator::gbm::{GbmAllocator, GbmBufferFlags, GbmDevice},
         allocator::{Format, Fourcc},
-        drm::{DrmDevice, DrmDeviceFd, GbmBufferedSurface},
+        drm::{DrmDevice, DrmDeviceFd, DrmSurface, GbmBufferedSurface},
         egl::{EGLContext, EGLDisplay},
         renderer::{ImportDma, damage::OutputDamageTracker, gles::GlesRenderer},
         session::{Session, libseat::LibSeatSession},
@@ -12,7 +12,7 @@ use smithay::{
     },
     output::{PhysicalProperties, Subpixel},
     reexports::{
-        drm::control::{Device as ControlDevice, Mode, connector, crtc},
+        drm::control::{Device as ControlDevice, Mode, connector, crtc, dumbbuffer},
         rustix::fs::{OFlags, stat},
     },
     utils::{DeviceFd, Physical, Size, Transform},
@@ -260,6 +260,7 @@ fn create_output_surface(
         target.mode,
         std::slice::from_ref(&target.connector),
     )?;
+    clear_hardware_cursor(scanout_node, &surface, &target);
     info!(connector = ?target.connector, crtc = ?target.crtc, mode = ?target.mode, "created DRM surface");
 
     let gbm_device = GbmDevice::new(render_node.drm_fd.clone())?;
@@ -287,6 +288,30 @@ fn create_output_surface(
         target,
         gbm_surface,
     })
+}
+
+fn clear_hardware_cursor(
+    scanout_node: &ScanoutNode,
+    surface: &DrmSurface,
+    target: &KmsOutputTarget,
+) {
+    #[allow(deprecated)]
+    match scanout_node
+        .drm_fd
+        .set_cursor(target.crtc, Option::<&dumbbuffer::DumbBuffer>::None)
+    {
+        Ok(()) => debug!(crtc = ?target.crtc, "cleared legacy DRM cursor plane"),
+        Err(error) => debug!(crtc = ?target.crtc, %error, "legacy DRM cursor clear failed"),
+    }
+
+    for plane in surface.planes().cursor.iter().map(|plane| plane.handle) {
+        match surface.clear_plane(plane) {
+            Ok(()) => debug!(crtc = ?target.crtc, ?plane, "queued atomic DRM cursor plane clear"),
+            Err(error) => {
+                debug!(crtc = ?target.crtc, ?plane, %error, "atomic DRM cursor plane clear failed")
+            }
+        }
+    }
 }
 
 pub(super) fn create_udev_device(
