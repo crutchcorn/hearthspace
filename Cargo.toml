@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2024"
 rust-version = "1.93.1"
 license = "Apache-2.0"
+default-run = "hearthspace-session"
 
 [features]
 default = ["winit"]
@@ -25,6 +26,7 @@ winit = ["smithay/backend_winit"]
 async-io = "2.3.3"
 atspi = { version = "0.30.0", features = ["zbus"] }
 calloop = { version = "0.14.4", features = ["signals"] }
+clap = { version = "4", features = ["derive"] }
 gtk = { package = "gtk4", version = "0.11", optional = true }
 # Xilem (app shell) and Masonry (compositor-side imaging) are pulled from our
 # linebender/xilem fork branch backing PR linebender/xilem#1830, which adds
