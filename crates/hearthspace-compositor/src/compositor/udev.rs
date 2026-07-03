@@ -24,7 +24,7 @@ use smithay::{
     reexports::{
         calloop::LoopHandle, calloop::RegistrationToken, input::Libinput, wayland_server::Display,
     },
-    utils::{Physical, Size, Transform},
+    utils::{Physical, Rectangle, Size, Transform},
 };
 use tracing::{debug, error, info, trace, warn};
 
@@ -152,7 +152,9 @@ pub fn run_udev(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> {
         .map(UdevDevice::output_descriptors)
         .unwrap_or_default();
     app.sync_connector_outputs(&dh, output_descriptors);
-    app.enable_software_cursor();
+    app.configure_shell_bars();
+    app.reconcile_pointer_after_output_geometry_change();
+    app.request_redraw();
     insert_settings_layout_refresh(&handle)?;
 
     handle.insert_source(session_notifier, |event, _, data| match event {
@@ -366,6 +368,15 @@ fn insert_libinput_source(
 }
 
 impl UdevBackendState {
+    pub(in crate::compositor) fn update_hardware_cursor(&mut self, state: &super::App) {
+        if self.drm_commits_paused {
+            return;
+        }
+        if let Some(device) = self.primary_device.as_mut() {
+            device.update_hardware_cursor(state);
+        }
+    }
+
     pub(in crate::compositor) fn render_frame(
         &mut self,
         state: &mut super::App,
@@ -409,7 +420,7 @@ impl UdevBackendState {
             };
 
             let (mut dmabuf, buffer_age) = output.gbm_surface.next_buffer()?;
-            let age = if force_full_redraw {
+            let age = if force_full_redraw || state.software_cursor_visible {
                 0
             } else {
                 usize::from(buffer_age)
@@ -421,7 +432,7 @@ impl UdevBackendState {
                     &mut framebuffer,
                     &mut output.damage_tracker,
                     age,
-                    view.location,
+                    Rectangle::new(view.location, view.size),
                 )?
             };
             // Keep damage tracking for renderer-side redraw minimization, but do not

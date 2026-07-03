@@ -18,6 +18,7 @@ pub struct MonitorConfig {
     pub name: String,
     pub width: i32,
     pub height: i32,
+    pub scale: i32,
     pub x: i32,
     pub y: i32,
 }
@@ -32,6 +33,7 @@ impl Default for Settings {
                     name: "Primary".to_string(),
                     width: 1920,
                     height: 1080,
+                    scale: 1,
                     x: 0,
                     y: 0,
                 },
@@ -40,6 +42,7 @@ impl Default for Settings {
                     name: "Secondary".to_string(),
                     width: 1920,
                     height: 1080,
+                    scale: 1,
                     x: 1920,
                     y: 0,
                 },
@@ -53,6 +56,7 @@ pub enum SettingsRequest {
     Get,
     SetTest(bool),
     SetMonitorPosition { id: String, x: i32, y: i32 },
+    SetMonitorScale { id: String, scale: i32 },
 }
 
 pub fn settings_socket_path() -> io::Result<PathBuf> {
@@ -75,13 +79,19 @@ pub fn client_set_test(test: bool) -> io::Result<Settings> {
 }
 
 pub fn client_set_monitor_position(id: &str, x: i32, y: i32) -> io::Result<Settings> {
-    if id.is_empty() || id.chars().any(char::is_whitespace) {
+    validate_monitor_id(id)?;
+    send_settings_request(&format!("set monitor {id} {x} {y}\n"))
+}
+
+pub fn client_set_monitor_scale(id: &str, scale: i32) -> io::Result<Settings> {
+    validate_monitor_id(id)?;
+    if scale <= 0 {
         return Err(io::Error::new(
             io::ErrorKind::InvalidInput,
-            format!("monitor id cannot contain whitespace: {id:?}"),
+            format!("monitor scale must be positive: {scale}"),
         ));
     }
-    send_settings_request(&format!("set monitor {id} {x} {y}\n"))
+    send_settings_request(&format!("set monitor-scale {id} {scale}\n"))
 }
 
 pub fn parse_settings_request(line: &str) -> Result<SettingsRequest, String> {
@@ -94,6 +104,10 @@ pub fn parse_settings_request(line: &str) -> Result<SettingsRequest, String> {
             x: parse_i32(x, "monitor x")?,
             y: parse_i32(y, "monitor y")?,
         }),
+        ["set", "monitor-scale", id, scale] => Ok(SettingsRequest::SetMonitorScale {
+            id: (*id).to_string(),
+            scale: parse_positive_i32(scale, "monitor scale")?,
+        }),
         [] => Err("empty request".into()),
         _ => Err(format!("unknown request: {line:?}")),
     }
@@ -103,10 +117,11 @@ pub fn settings_response(settings: Settings) -> String {
     let mut response = format!("ok test {}", settings.test);
     for monitor in settings.monitors {
         response.push_str(&format!(
-            " monitor {} {} {} {} {} {}",
+            " monitor {} {} {} {} {} {} {}",
             encode_token(&monitor.id),
             monitor.width,
             monitor.height,
+            monitor.scale,
             monitor.x,
             monitor.y,
             encode_token(&monitor.name)
@@ -148,7 +163,7 @@ fn parse_settings_response_parts(test: &str, rest: &[&str]) -> io::Result<Settin
         test: parse_bool(test).map_err(io::Error::other)?,
         monitors: Vec::new(),
     };
-    let chunks = rest.chunks_exact(7);
+    let chunks = rest.chunks_exact(8);
     if !chunks.remainder().is_empty() {
         return Err(io::Error::new(
             io::ErrorKind::InvalidData,
@@ -169,9 +184,10 @@ fn parse_settings_response_parts(test: &str, rest: &[&str]) -> io::Result<Settin
             id: decode_token(monitor[1])?,
             width: parse_i32(monitor[2], "monitor width").map_err(io::Error::other)?,
             height: parse_i32(monitor[3], "monitor height").map_err(io::Error::other)?,
-            x: parse_i32(monitor[4], "monitor x").map_err(io::Error::other)?,
-            y: parse_i32(monitor[5], "monitor y").map_err(io::Error::other)?,
-            name: decode_token(monitor[6])?,
+            scale: parse_positive_i32(monitor[4], "monitor scale").map_err(io::Error::other)?,
+            x: parse_i32(monitor[5], "monitor x").map_err(io::Error::other)?,
+            y: parse_i32(monitor[6], "monitor y").map_err(io::Error::other)?,
+            name: decode_token(monitor[7])?,
         });
     }
     if settings.monitors.is_empty() {
@@ -231,6 +247,24 @@ fn parse_i32(value: &str, label: &str) -> Result<i32, String> {
         .map_err(|error| format!("invalid {label}: {error}"))
 }
 
+fn parse_positive_i32(value: &str, label: &str) -> Result<i32, String> {
+    let value = parse_i32(value, label)?;
+    if value <= 0 {
+        return Err(format!("{label} must be positive"));
+    }
+    Ok(value)
+}
+
+fn validate_monitor_id(id: &str) -> io::Result<()> {
+    if id.is_empty() || id.chars().any(char::is_whitespace) {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!("monitor id cannot contain whitespace: {id:?}"),
+        ));
+    }
+    Ok(())
+}
+
 fn parse_bool(value: &str) -> Result<bool, String> {
     match value {
         "true" => Ok(true),
@@ -258,13 +292,20 @@ mod tests {
                 y: -40,
             })
         );
+        assert_eq!(
+            parse_settings_request("set monitor-scale primary 2\n"),
+            Ok(SettingsRequest::SetMonitorScale {
+                id: "primary".to_string(),
+                scale: 2,
+            })
+        );
     }
 
     #[test]
     fn parses_ipc_response() {
         assert_eq!(
             parse_settings_response(
-                "ok test true monitor primary 1920 1080 120 -40 Primary monitor secondary 1280 720 2040 0 Secondary%20Display\n"
+                "ok test true monitor primary 1920 1080 2 120 -40 Primary monitor secondary 1280 720 1 2040 0 Secondary%20Display\n"
             )
             .unwrap(),
             Settings {
@@ -275,6 +316,7 @@ mod tests {
                         name: "Primary".to_string(),
                         width: 1920,
                         height: 1080,
+                        scale: 2,
                         x: 120,
                         y: -40,
                     },
@@ -283,6 +325,7 @@ mod tests {
                         name: "Secondary Display".to_string(),
                         width: 1280,
                         height: 720,
+                        scale: 1,
                         x: 2040,
                         y: 0,
                     },

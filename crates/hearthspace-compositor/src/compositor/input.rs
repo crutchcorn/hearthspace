@@ -558,7 +558,11 @@ impl App {
     pub(super) fn reconcile_pointer_after_output_geometry_change(&mut self) {
         let output_rects = self.output_logical_rects();
         let previous_location = self.pointer_location;
-        self.pointer_location = clamp_point_to_outputs(self.pointer_location, &output_rects);
+        self.pointer_location = if self.pointer_location == Point::from((0.0, 0.0)) {
+            primary_output_center(&output_rects).unwrap_or(self.pointer_location)
+        } else {
+            clamp_point_to_outputs(self.pointer_location, &output_rects)
+        };
         self.raw_pointer_location = self.pointer_location;
         if self.software_cursor_visible && self.pointer_location != previous_location {
             self.request_redraw();
@@ -631,6 +635,14 @@ fn add_synthetic_axis_to_frame(mut frame: AxisFrame, axis: Axis, amount: f64) ->
         frame = frame.value(axis, amount);
     }
     frame
+}
+
+fn primary_output_center(output_rects: &[Rectangle<i32, Logical>]) -> Option<Point<f64, Logical>> {
+    let rect = output_rects.first()?;
+    Some(Point::from((
+        f64::from(rect.loc.x) + f64::from(rect.size.w.max(1)) / 2.0,
+        f64::from(rect.loc.y) + f64::from(rect.size.h.max(1)) / 2.0,
+    )))
 }
 
 fn clamp_point_to_outputs(
@@ -711,6 +723,19 @@ mod tests {
         assert_eq!(
             clamp_point_to_outputs(Point::from((3200.0, 1200.0)), &output_rects),
             Point::from((3200.0, 767.0))
+        );
+    }
+
+    #[test]
+    fn primary_output_center_uses_first_active_output() {
+        let output_rects = [
+            Rectangle::new((100, 20).into(), (800, 600).into()),
+            Rectangle::new((900, 20).into(), (640, 480).into()),
+        ];
+
+        assert_eq!(
+            primary_output_center(&output_rects),
+            Some(Point::from((500.0, 320.0)))
         );
     }
 }

@@ -214,12 +214,12 @@ impl App {
                     }
                 }
                 ManagedWindowKind::Launcher => {
-                    if let Some(target) = self.hit_test_shell_surface(
-                        window_index,
-                        location,
-                        self.launcher_screen_logical_origin(),
-                    ) {
-                        return Some(target);
+                    for origin in self.launcher_logical_origins() {
+                        if let Some(target) =
+                            self.hit_test_shell_surface(window_index, location, origin)
+                        {
+                            return Some(target);
+                        }
                     }
                 }
                 ManagedWindowKind::Normal => continue,
@@ -578,6 +578,13 @@ impl App {
             .collect()
     }
 
+    pub(super) fn launcher_screen_origins(&self) -> Vec<Point<i32, Physical>> {
+        self.launcher_logical_origins()
+            .into_iter()
+            .map(|origin| origin.to_physical(1))
+            .collect()
+    }
+
     fn shell_bar_logical_origins(&self) -> Vec<Point<i32, Logical>> {
         self.output_logical_rects()
             .into_iter()
@@ -585,17 +592,22 @@ impl App {
             .collect()
     }
 
-    /// Logical screen-space origin of the launcher palette: pinned to the left
-    /// edge, directly below the bar.
-    fn launcher_screen_logical_origin(&self) -> Point<i32, Logical> {
-        Point::from((0, CONTROL_BAR_HEIGHT))
+    /// Logical screen-space origins of launcher palettes: pinned below each
+    /// mirrored shell bar until shell surfaces become truly per-output.
+    fn launcher_logical_origins(&self) -> Vec<Point<i32, Logical>> {
+        launcher_logical_origins_for_outputs(self.output_logical_rects())
     }
 
     pub(super) fn surface_screen_origin(&self, window_index: usize) -> Point<i32, Physical> {
         match self.windows[window_index].kind {
             ManagedWindowKind::Normal => self.content_screen_origin(window_index),
             ManagedWindowKind::ShellBar => self.shell_bar_screen_origin(),
-            ManagedWindowKind::Launcher => self.launcher_screen_logical_origin().to_physical(1),
+            ManagedWindowKind::Launcher => self
+                .launcher_logical_origins()
+                .into_iter()
+                .next()
+                .unwrap_or_else(|| Point::from((0, CONTROL_BAR_HEIGHT)))
+                .to_physical(1),
         }
     }
 
@@ -622,6 +634,15 @@ impl App {
     }
 }
 
+fn launcher_logical_origins_for_outputs(
+    output_rects: Vec<Rectangle<i32, Logical>>,
+) -> Vec<Point<i32, Logical>> {
+    output_rects
+        .into_iter()
+        .map(|rect| Point::from((rect.loc.x, rect.loc.y + CONTROL_BAR_HEIGHT)))
+        .collect()
+}
+
 fn surface_tree_contains(root: &wl_surface::WlSurface, target: &wl_surface::WlSurface) -> bool {
     let mut contains = false;
     with_surface_tree_downward(
@@ -639,4 +660,21 @@ fn surface_tree_contains(root: &wl_surface::WlSurface, target: &wl_surface::WlSu
         |_, _, &()| true,
     );
     contains
+}
+
+#[cfg(test)]
+mod tests {
+    use smithay::utils::{Logical, Point, Rectangle};
+
+    use super::launcher_logical_origins_for_outputs;
+
+    #[test]
+    fn launcher_origins_follow_each_output_shell_bar() {
+        let origins = launcher_logical_origins_for_outputs(vec![
+            Rectangle::<i32, Logical>::new((0, 0).into(), (1280, 720).into()),
+            Rectangle::<i32, Logical>::new((1280, 120).into(), (1024, 768).into()),
+        ]);
+
+        assert_eq!(origins, [Point::from((0, 48)), Point::from((1280, 168))]);
+    }
 }

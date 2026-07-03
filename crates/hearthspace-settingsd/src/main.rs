@@ -118,6 +118,19 @@ fn handle_request(request: SettingsRequest, config_path: &Path) -> io::Result<St
             save_settings_to_path(settings.clone(), config_path)?;
             Ok(settings_response(settings))
         }
+        SettingsRequest::SetMonitorScale { id, scale } => {
+            let mut settings = load_settings_from_path(config_path)?;
+            let Some(monitor) = settings
+                .monitors
+                .iter_mut()
+                .find(|monitor| monitor.id == id)
+            else {
+                return Ok(error_response(format!("unknown monitor id: {id}")));
+            };
+            monitor.scale = scale;
+            save_settings_to_path(settings.clone(), config_path)?;
+            Ok(settings_response(settings))
+        }
     }
 }
 
@@ -163,6 +176,7 @@ fn parse_settings(contents: &str) -> io::Result<Settings> {
                 name: String::new(),
                 width: 1920,
                 height: 1080,
+                scale: 1,
                 x: 0,
                 y: 0,
             });
@@ -188,6 +202,7 @@ fn parse_settings(contents: &str) -> io::Result<Settings> {
                 "name" => monitor.name = value.to_string(),
                 "width" => monitor.width = parse_i32(value, "monitor width")?,
                 "height" => monitor.height = parse_i32(value, "monitor height")?,
+                "scale" => monitor.scale = parse_positive_i32(value, "monitor scale")?,
                 "x" => monitor.x = parse_i32(value, "monitor x")?,
                 "y" => monitor.y = parse_i32(value, "monitor y")?,
                 _ => {}
@@ -221,9 +236,16 @@ fn format_settings(settings: Settings) -> String {
              name = {}\n\
              width = {}\n\
              height = {}\n\
+             scale = {}\n\
              x = {}\n\
              y = {}\n",
-            monitor.id, monitor.name, monitor.width, monitor.height, monitor.x, monitor.y,
+            monitor.id,
+            monitor.name,
+            monitor.width,
+            monitor.height,
+            monitor.scale,
+            monitor.x,
+            monitor.y,
         ));
     }
     contents
@@ -246,6 +268,17 @@ fn parse_i32(value: &str, label: &str) -> io::Result<i32> {
     })
 }
 
+fn parse_positive_i32(value: &str, label: &str) -> io::Result<i32> {
+    let value = parse_i32(value, label)?;
+    if value <= 0 {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!("{label} must be positive"),
+        ));
+    }
+    Ok(value)
+}
+
 #[cfg(test)]
 mod tests {
     use std::{
@@ -265,8 +298,8 @@ mod tests {
 
         let response = round_trip("get\n", &config_path);
 
-        assert!(response.starts_with("ok test false monitor primary 1920 1080 0 0 Primary"));
-        assert!(response.contains("monitor secondary 1920 1080 1920 0 Secondary"));
+        assert!(response.starts_with("ok test false monitor primary 1920 1080 1 0 0 Primary"));
+        assert!(response.contains("monitor secondary 1920 1080 1 1920 0 Secondary"));
         assert!(!config_path.exists());
     }
 
@@ -284,6 +317,7 @@ mod tests {
              name = Dock Display\n\
              width = 2560\n\
              height = 1440\n\
+             scale = 2\n\
              x = -2560\n\
              y = 120\n",
         )
@@ -293,7 +327,7 @@ mod tests {
 
         assert_eq!(
             response,
-            "ok test true monitor dock 2560 1440 -2560 120 Dock%20Display\n"
+            "ok test true monitor dock 2560 1440 2 -2560 120 Dock%20Display\n"
         );
     }
 
@@ -304,10 +338,11 @@ mod tests {
 
         let response = round_trip("set test true\n", &config_path);
 
-        assert!(response.starts_with("ok test true monitor primary 1920 1080 0 0 Primary"));
+        assert!(response.starts_with("ok test true monitor primary 1920 1080 1 0 0 Primary"));
         let contents = fs::read_to_string(config_path).unwrap();
         assert!(contents.starts_with("test = true\n"));
         assert!(contents.contains("[[monitor]]\nid = primary\n"));
+        assert!(contents.contains("scale = 1\n"));
     }
 
     #[test]
@@ -317,11 +352,24 @@ mod tests {
 
         let response = round_trip("set monitor secondary -1600 90\n", &config_path);
 
-        assert!(response.contains("monitor secondary 1920 1080 -1600 90 Secondary"));
+        assert!(response.contains("monitor secondary 1920 1080 1 -1600 90 Secondary"));
         let contents = fs::read_to_string(config_path).unwrap();
         assert!(contents.contains("id = secondary\n"));
         assert!(contents.contains("x = -1600\n"));
         assert!(contents.contains("y = 90\n"));
+    }
+
+    #[test]
+    fn set_monitor_scale_writes_config_and_returns_layout() {
+        let dir = tempfile::tempdir().unwrap();
+        let config_path = dir.path().join("hearthspace/config.toml");
+
+        let response = round_trip("set monitor-scale secondary 2\n", &config_path);
+
+        assert!(response.contains("monitor secondary 1920 1080 2 1920 0 Secondary"));
+        let contents = fs::read_to_string(config_path).unwrap();
+        assert!(contents.contains("id = secondary\n"));
+        assert!(contents.contains("scale = 2\n"));
     }
 
     #[test]

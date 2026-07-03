@@ -22,23 +22,28 @@ pub(super) struct SoftwareCursor {
     pub(super) hotspot: (i32, i32),
 }
 
+pub(in crate::compositor) struct CursorImage {
+    pub(in crate::compositor) width: u32,
+    pub(in crate::compositor) height: u32,
+    pub(in crate::compositor) hotspot: (i32, i32),
+    pub(in crate::compositor) pixels_rgba: Vec<u8>,
+}
+
 const DEFAULT_CURSOR: &[u8] = include_bytes!("../../../../assets/cursors/default");
+#[cfg(feature = "udev")]
+const NS_RESIZE_CURSOR: &[u8] = include_bytes!("../../../../assets/cursors/ns-resize");
+#[cfg(feature = "udev")]
+const EW_RESIZE_CURSOR: &[u8] = include_bytes!("../../../../assets/cursors/ew-resize");
+#[cfg(feature = "udev")]
+const NWSE_RESIZE_CURSOR: &[u8] = include_bytes!("../../../../assets/cursors/nwse-resize");
+#[cfg(feature = "udev")]
+const NESW_RESIZE_CURSOR: &[u8] = include_bytes!("../../../../assets/cursors/nesw-resize");
 const DESIRED_CURSOR_SIZE: u32 = 24;
 
 pub(super) fn standard_software_cursor() -> SoftwareCursor {
-    let images =
-        parse_xcursor(DEFAULT_CURSOR).expect("packaged default cursor must be valid Xcursor data");
-    let image = images
-        .iter()
-        .min_by_key(|image| image.size.abs_diff(DESIRED_CURSOR_SIZE))
-        .expect("packaged default cursor must contain at least one image");
-
+    let image = standard_cursor_image();
     let width = i32::try_from(image.width).expect("cursor width must fit in i32");
     let height = i32::try_from(image.height).expect("cursor height must fit in i32");
-    let hotspot = (
-        i32::try_from(image.xhot).expect("cursor x hotspot must fit in i32"),
-        i32::try_from(image.yhot).expect("cursor y hotspot must fit in i32"),
-    );
 
     let buffer = MemoryRenderBuffer::from_slice(
         &image.pixels_rgba,
@@ -49,5 +54,45 @@ pub(super) fn standard_software_cursor() -> SoftwareCursor {
         None,
     );
 
-    SoftwareCursor { buffer, hotspot }
+    SoftwareCursor {
+        buffer,
+        hotspot: image.hotspot,
+    }
+}
+
+#[cfg(feature = "udev")]
+pub(in crate::compositor) fn cursor_image_for_icon(icon: CursorIcon) -> CursorImage {
+    match icon {
+        CursorIcon::Default => cursor_image_from_xcursor(DEFAULT_CURSOR),
+        CursorIcon::NsResize => cursor_image_from_xcursor(NS_RESIZE_CURSOR),
+        CursorIcon::EwResize => cursor_image_from_xcursor(EW_RESIZE_CURSOR),
+        CursorIcon::NwseResize => cursor_image_from_xcursor(NWSE_RESIZE_CURSOR),
+        CursorIcon::NeswResize => cursor_image_from_xcursor(NESW_RESIZE_CURSOR),
+        #[cfg(feature = "winit")]
+        _ => cursor_image_from_xcursor(DEFAULT_CURSOR),
+    }
+}
+
+pub(in crate::compositor) fn standard_cursor_image() -> CursorImage {
+    cursor_image_from_xcursor(DEFAULT_CURSOR)
+}
+
+fn cursor_image_from_xcursor(contents: &[u8]) -> CursorImage {
+    let images = parse_xcursor(contents).expect("packaged cursor must be valid Xcursor data");
+    let image = images
+        .iter()
+        .min_by_key(|image| image.size.abs_diff(DESIRED_CURSOR_SIZE))
+        .expect("packaged cursor must contain at least one image");
+
+    let hotspot = (
+        i32::try_from(image.xhot).expect("cursor x hotspot must fit in i32"),
+        i32::try_from(image.yhot).expect("cursor y hotspot must fit in i32"),
+    );
+
+    CursorImage {
+        width: image.width,
+        height: image.height,
+        hotspot,
+        pixels_rgba: image.pixels_rgba.clone(),
+    }
 }

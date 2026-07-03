@@ -57,6 +57,24 @@ For testing, `foot` is installed as a small Wayland-native terminal for server-s
 sudo apt-get install -y foot
 ```
 
+Cursor assets are stored as standard Xcursor files under `assets/cursors/`, with
+editable SVG/PNG/config sources under `assets/cursors/source/`. Install
+`xcursorgen` from `x11-apps` and ImageMagick when editing cursor assets:
+
+```sh
+sudo apt-get install -y x11-apps imagemagick
+```
+
+Regenerate the resize cursor assets from the workspace root with:
+
+```sh
+magick assets/cursors/source/ns-resize.svg assets/cursors/source/ns-resize.png
+magick assets/cursors/source/ew-resize.svg assets/cursors/source/ew-resize.png
+magick assets/cursors/source/nwse-resize.svg assets/cursors/source/nwse-resize.png
+magick assets/cursors/source/nesw-resize.svg assets/cursors/source/nesw-resize.png
+(cd assets/cursors/source && xcursorgen ns-resize.cursor ../ns-resize && xcursorgen ew-resize.cursor ../ew-resize && xcursorgen nwse-resize.cursor ../nwse-resize && xcursorgen nesw-resize.cursor ../nesw-resize)
+```
+
 ### Optional Test Apps
 
 Built-in test apps are gated behind the Cargo feature `test-apps` so normal compositor and shell builds do not require their dependencies.

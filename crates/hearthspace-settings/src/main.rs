@@ -18,14 +18,15 @@ use xilem::peniko::Color;
 use xilem::{Pod, ViewCtx};
 
 use hearthspace_ipc::{
-    MonitorConfig, Settings, client_get_settings, client_set_monitor_position, client_set_test,
+    MonitorConfig, Settings, client_get_settings, client_set_monitor_position,
+    client_set_monitor_scale, client_set_test,
 };
 use xilem::{
-    EventLoop, WidgetView, WindowOptions, Xilem,
+    AnyWidgetView, EventLoop, WidgetView, WindowOptions, Xilem,
     dpi::LogicalSize,
     masonry::{layout::AsUnit, parley::fontique::GenericFamily},
     style::Style,
-    view::{checkbox, flex_col, label, sized_box},
+    view::{checkbox, flex_col, flex_row, label, sized_box, text_button},
 };
 
 const EDITOR_PADDING: f64 = 24.0;
@@ -33,10 +34,12 @@ const MONITOR_SNAP: i32 = 10;
 const MONITOR_LAYOUT_CANVAS_MULTIPLIER: f64 = 1.2;
 const EMPTY_MONITOR_CANVAS_WIDTH: i32 = 1920;
 const EMPTY_MONITOR_CANVAS_HEIGHT: i32 = 1080;
+const MONITOR_SCALE_OPTIONS: [i32; 4] = [1, 2, 3, 4];
 
 struct SettingsApp {
     settings: Settings,
     live_outputs: Vec<LiveOutput>,
+    selected_monitor_id: Option<String>,
     status: String,
     config_label: String,
 }
@@ -47,6 +50,7 @@ struct LiveOutput {
     name: String,
     width: i32,
     height: i32,
+    scale: i32,
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -55,8 +59,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         state,
         app_logic,
         WindowOptions::new("Hearthspace Settings")
-            .with_initial_inner_size(LogicalSize::new(760.0, 620.0))
-            .with_min_inner_size(LogicalSize::new(560.0, 480.0)),
+            .with_initial_inner_size(LogicalSize::new(840.0, 720.0))
+            .with_min_inner_size(LogicalSize::new(680.0, 600.0)),
     );
 
     app.run_in(EventLoop::with_user_event())?;
@@ -79,6 +83,7 @@ fn initial_state() -> SettingsApp {
         }
     };
     settings = settings_with_live_outputs(settings, &live_outputs);
+    let selected_monitor_id = settings.monitors.first().map(|monitor| monitor.id.clone());
 
     let config_label = match hearthspace_common::config_path() {
         Ok(path) => format!("Config: {}", path.display()),
@@ -88,6 +93,7 @@ fn initial_state() -> SettingsApp {
     SettingsApp {
         settings,
         live_outputs,
+        selected_monitor_id,
         status,
         config_label,
     }
@@ -105,6 +111,7 @@ fn app_logic(state: &mut SettingsApp) -> impl WidgetView<SettingsApp> + use<> {
             label("Drag monitors to arrange their relative positions."),
             sized_box(monitor_layout_editor()).fixed_height(320.0.px()),
             label(monitor_summary),
+            monitor_details_view(state),
             checkbox("test", test_checked, |state: &mut SettingsApp, checked| {
                 let previous = state.settings.test;
                 state.settings.test = checked;
@@ -134,12 +141,50 @@ fn format_monitor_summary(monitors: &[MonitorConfig]) -> String {
         .iter()
         .map(|monitor| {
             format!(
-                "{}: {}x{} at {},{}",
-                monitor.name, monitor.width, monitor.height, monitor.x, monitor.y
+                "{}: {}x{} @ {}x at {},{}",
+                monitor.name, monitor.width, monitor.height, monitor.scale, monitor.x, monitor.y
             )
         })
         .collect::<Vec<_>>()
         .join(" | ")
+}
+
+fn monitor_details_view(state: &SettingsApp) -> Box<AnyWidgetView<SettingsApp>> {
+    let Some(monitor) = selected_monitor(state) else {
+        return label("Select a monitor to edit its settings.").boxed();
+    };
+
+    let scale_buttons = MONITOR_SCALE_OPTIONS.map(|scale| {
+        let id = monitor.id.clone();
+        text_button(format!("{}x", scale), move |state: &mut SettingsApp| {
+            save_monitor_scale(state, &id, scale);
+        })
+    });
+
+    flex_col((
+        label(format!("Selected: {}", monitor.name)),
+        label(format!(
+            "Physical: {}x{} | Desktop: {}x{} | Position: {},{}",
+            monitor.width,
+            monitor.height,
+            monitor_logical_width(monitor),
+            monitor_logical_height(monitor),
+            monitor.x,
+            monitor.y
+        )),
+        flex_row((label(format!("Scale: {}x", monitor.scale)), scale_buttons)),
+    ))
+    .gap(8.0.px())
+    .boxed()
+}
+
+fn selected_monitor(state: &SettingsApp) -> Option<&MonitorConfig> {
+    let selected_id = state.selected_monitor_id.as_ref()?;
+    state
+        .settings
+        .monitors
+        .iter()
+        .find(|monitor| &monitor.id == selected_id)
 }
 
 fn monitor_layout_editor() -> MonitorLayoutEditor {
@@ -161,7 +206,10 @@ impl View<SettingsApp, (), ViewCtx> for MonitorLayoutEditor {
     ) -> (Self::Element, Self::ViewState) {
         (
             ctx.with_action_widget(|ctx| {
-                ctx.create_pod(MonitorLayoutWidget::new(state.settings.monitors.clone()))
+                ctx.create_pod(MonitorLayoutWidget::new(
+                    state.settings.monitors.clone(),
+                    state.selected_monitor_id.clone(),
+                ))
             }),
             (),
         )
@@ -175,9 +223,11 @@ impl View<SettingsApp, (), ViewCtx> for MonitorLayoutEditor {
         mut element: Mut<'_, Self::Element>,
         state: &mut SettingsApp,
     ) {
-        element
-            .widget
-            .set_monitors(state.settings.monitors.clone(), &mut element.ctx);
+        element.widget.set_monitors(
+            state.settings.monitors.clone(),
+            state.selected_monitor_id.clone(),
+            &mut element.ctx,
+        );
     }
 
     fn teardown(
@@ -200,31 +250,131 @@ impl View<SettingsApp, (), ViewCtx> for MonitorLayoutEditor {
             return MessageResult::Stale;
         };
         apply_monitor_editor_action(state, *action);
-        MessageResult::RequestRebuild
+        MessageResult::Action(())
     }
 }
 
 fn apply_monitor_editor_action(state: &mut SettingsApp, action: MonitorEditorAction) {
-    let moved_monitor = action
-        .monitors
-        .iter()
-        .find(|monitor| monitor.id == action.moved_id)
-        .cloned();
-    state.settings.monitors = action.monitors;
+    match action {
+        MonitorEditorAction::Select { id, monitors } => {
+            state.settings.monitors = monitors;
+            state.selected_monitor_id = Some(id.clone());
+            state.status = format!("Selected monitor {id}");
+        }
+        MonitorEditorAction::Drag {
+            moved_id,
+            monitors,
+            commit,
+        } => {
+            let moved_monitor = monitors
+                .iter()
+                .find(|monitor| monitor.id == moved_id)
+                .cloned();
+            state.selected_monitor_id = Some(moved_id.clone());
+            state.settings.monitors = monitors;
 
-    if action.commit {
-        match save_monitor_positions(&state.settings.monitors) {
+            if commit {
+                match save_monitor_positions(&state.settings.monitors) {
+                    Ok(Some(settings)) => {
+                        state.settings = settings_with_live_outputs(settings, &state.live_outputs);
+                        keep_selected_monitor_available(state);
+                        state.status = format!("Saved monitor layout for {moved_id}");
+                    }
+                    Ok(None) => state.status = "Saved empty monitor layout".to_string(),
+                    Err(error) => state.status = format!("Failed to save monitor layout: {error}"),
+                }
+            } else if let Some(monitor) = moved_monitor {
+                state.status = format!("Moving {} to {},{}", monitor.name, monitor.x, monitor.y);
+            } else {
+                state.status = format!("Unknown monitor: {moved_id}");
+            }
+        }
+    }
+}
+
+fn keep_selected_monitor_available(state: &mut SettingsApp) {
+    if state.selected_monitor_id.as_ref().is_some_and(|id| {
+        state
+            .settings
+            .monitors
+            .iter()
+            .any(|monitor| &monitor.id == id)
+    }) {
+        return;
+    }
+    state.selected_monitor_id = state
+        .settings
+        .monitors
+        .first()
+        .map(|monitor| monitor.id.clone());
+}
+
+fn save_monitor_scale(state: &mut SettingsApp, id: &str, scale: i32) {
+    let previous = state.settings.clone();
+    let mut monitors = state.settings.monitors.clone();
+    recalculate_monitor_positions_for_scale(&mut monitors, id, scale);
+    state.settings.monitors = monitors.clone();
+
+    match client_set_monitor_scale(id, scale) {
+        Ok(_) => match save_monitor_positions(&monitors) {
             Ok(Some(settings)) => {
                 state.settings = settings_with_live_outputs(settings, &state.live_outputs);
-                state.status = format!("Saved monitor layout for {}", action.moved_id);
+                state.selected_monitor_id = Some(id.to_string());
+                keep_selected_monitor_available(state);
+                state.status = format!("Saved monitor scale for {id}: {scale}x");
             }
-            Ok(None) => state.status = "Saved empty monitor layout".to_string(),
-            Err(error) => state.status = format!("Failed to save monitor layout: {error}"),
+            Ok(None) => {
+                state.settings.monitors = monitors;
+                state.selected_monitor_id = Some(id.to_string());
+                state.status = format!("Saved monitor scale for {id}: {scale}x");
+            }
+            Err(error) => {
+                let _ = previous
+                    .monitors
+                    .iter()
+                    .find(|monitor| monitor.id == id)
+                    .map(|monitor| client_set_monitor_scale(id, monitor.scale));
+                state.settings = previous;
+                state.status = format!("Failed to save monitor positions after scale: {error}");
+            }
+        },
+        Err(error) => {
+            state.settings = previous;
+            state.status = format!("Failed to save monitor scale: {error}");
         }
-    } else if let Some(monitor) = moved_monitor {
-        state.status = format!("Moving {} to {},{}", monitor.name, monitor.x, monitor.y);
-    } else {
-        state.status = format!("Unknown monitor: {}", action.moved_id);
+    }
+}
+
+fn recalculate_monitor_positions_for_scale(monitors: &mut [MonitorConfig], id: &str, scale: i32) {
+    let Some(index) = monitors.iter().position(|monitor| monitor.id == id) else {
+        return;
+    };
+    let old_monitor = monitors[index].clone();
+    let old_width = monitor_logical_width(&old_monitor);
+    let old_height = monitor_logical_height(&old_monitor);
+    let old_right = old_monitor.x + old_width;
+    let old_bottom = old_monitor.y + old_height;
+
+    monitors[index].scale = scale.max(1);
+    let new_width = monitor_logical_width(&monitors[index]);
+    let new_height = monitor_logical_height(&monitors[index]);
+    let dx = new_width - old_width;
+    let dy = new_height - old_height;
+
+    for (monitor_index, monitor) in monitors.iter_mut().enumerate() {
+        if monitor_index == index {
+            continue;
+        }
+        if monitor.x >= old_right {
+            monitor.x += dx;
+        }
+        if monitor.y >= old_bottom {
+            monitor.y += dy;
+        }
+    }
+
+    if monitors_overlap(monitors) {
+        place_monitors_edge_to_edge(monitors);
     }
 }
 
@@ -254,22 +404,23 @@ fn monitors_for_live_outputs(
                     .or_else(|| saved_monitors.iter().find(|monitor| monitor.id == role_id))
             })
             .flatten();
-        let (id, x, y) = if let Some(saved) = saved {
-            (saved.id.clone(), saved.x, saved.y)
+        let (id, scale, x, y) = if let Some(saved) = saved {
+            (saved.id.clone(), saved.scale.max(1), saved.x, saved.y)
         } else if saved_monitors_are_placeholders && index < 2 {
-            (role_id, next_x, 0)
+            (role_id, output.scale.max(1), next_x, 0)
         } else {
-            (output.id.clone(), next_x, 0)
+            (output.id.clone(), output.scale.max(1), next_x, 0)
         };
         monitors.push(MonitorConfig {
             id,
             name: output.name.clone(),
             width: output.width,
             height: output.height,
+            scale,
             x,
             y,
         });
-        next_x += output.width.max(1);
+        next_x += logical_dimension(output.width, scale);
     }
     if monitors_overlap(&monitors) {
         place_monitors_edge_to_edge(&mut monitors);
@@ -282,7 +433,7 @@ fn place_monitors_edge_to_edge(monitors: &mut [MonitorConfig]) {
     for monitor in monitors {
         monitor.x = next_x;
         monitor.y = 0;
-        next_x += monitor.width.max(1);
+        next_x += monitor_logical_width(monitor);
     }
 }
 
@@ -296,7 +447,22 @@ fn monitors_overlap(monitors: &[MonitorConfig]) -> bool {
 }
 
 fn monitor_rects_overlap(a: &MonitorConfig, b: &MonitorConfig) -> bool {
-    a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y
+    a.x < b.x + monitor_logical_width(b)
+        && a.x + monitor_logical_width(a) > b.x
+        && a.y < b.y + monitor_logical_height(b)
+        && a.y + monitor_logical_height(a) > b.y
+}
+
+fn monitor_logical_width(monitor: &MonitorConfig) -> i32 {
+    logical_dimension(monitor.width, monitor.scale)
+}
+
+fn monitor_logical_height(monitor: &MonitorConfig) -> i32 {
+    logical_dimension(monitor.height, monitor.scale)
+}
+
+fn logical_dimension(size: i32, _scale: i32) -> i32 {
+    size.max(1)
 }
 
 fn default_placeholder_monitors(monitors: &[MonitorConfig]) -> bool {
@@ -351,6 +517,7 @@ struct OutputState {
     description: Option<String>,
     width: Option<i32>,
     height: Option<i32>,
+    scale: Option<i32>,
 }
 
 impl OutputProbe {
@@ -368,6 +535,7 @@ impl OutputProbe {
             description: None,
             width: None,
             height: None,
+            scale: None,
         });
         self.outputs.last_mut().unwrap()
     }
@@ -383,6 +551,7 @@ impl OutputProbe {
                     name: output.description.or(output.name).unwrap_or(id),
                     width: output.width.unwrap_or(EMPTY_MONITOR_CANVAS_WIDTH),
                     height: output.height.unwrap_or(EMPTY_MONITOR_CANVAS_HEIGHT),
+                    scale: output.scale.unwrap_or(1).max(1),
                 }
             })
             .collect()
@@ -425,6 +594,7 @@ impl Dispatch<wl_output::WlOutput, OutputGlobal> for OutputProbe {
                 output.width = Some(width);
                 output.height = Some(height);
             }
+            wl_output::Event::Scale { factor } => output.scale = Some(factor.max(1)),
             _ => {}
         }
     }
@@ -447,19 +617,28 @@ fn save_monitor_positions(monitors: &[MonitorConfig]) -> std::io::Result<Option<
 }
 
 #[derive(Debug)]
-struct MonitorEditorAction {
-    moved_id: String,
-    monitors: Vec<MonitorConfig>,
-    commit: bool,
+enum MonitorEditorAction {
+    Select {
+        id: String,
+        monitors: Vec<MonitorConfig>,
+    },
+    Drag {
+        moved_id: String,
+        monitors: Vec<MonitorConfig>,
+        commit: bool,
+    },
 }
+
+const DRAG_START_DISTANCE: f64 = 3.0;
 
 #[derive(Debug)]
 struct MonitorLayoutWidget {
     monitors: Vec<MonitorConfig>,
+    selected_monitor_id: Option<String>,
     drag: Option<MonitorDrag>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct MonitorDrag {
     id: String,
     start_pointer: Point,
@@ -468,12 +647,14 @@ struct MonitorDrag {
     origin_x: f64,
     origin_y: f64,
     scale: f64,
+    moved: bool,
 }
 
 impl MonitorLayoutWidget {
-    fn new(monitors: Vec<MonitorConfig>) -> Self {
+    fn new(monitors: Vec<MonitorConfig>, selected_monitor_id: Option<String>) -> Self {
         Self {
             monitors,
+            selected_monitor_id,
             drag: None,
         }
     }
@@ -481,10 +662,12 @@ impl MonitorLayoutWidget {
     fn set_monitors(
         &mut self,
         monitors: Vec<MonitorConfig>,
+        selected_monitor_id: Option<String>,
         ctx: &mut xilem::masonry::core::MutateCtx<'_>,
     ) {
-        if self.monitors != monitors {
+        if self.monitors != monitors || self.selected_monitor_id != selected_monitor_id {
             self.monitors = monitors;
+            self.selected_monitor_id = selected_monitor_id;
             ctx.request_render();
         }
     }
@@ -514,9 +697,11 @@ impl MonitorLayoutWidget {
             EDITOR_PADDING + (f64::from(monitor.x) - metrics.origin_x) * metrics.scale,
             EDITOR_PADDING + (f64::from(monitor.y) - metrics.origin_y) * metrics.scale,
             EDITOR_PADDING
-                + (f64::from(monitor.x + monitor.width) - metrics.origin_x) * metrics.scale,
+                + (f64::from(monitor.x + monitor_logical_width(monitor)) - metrics.origin_x)
+                    * metrics.scale,
             EDITOR_PADDING
-                + (f64::from(monitor.y + monitor.height) - metrics.origin_y) * metrics.scale,
+                + (f64::from(monitor.y + monitor_logical_height(monitor)) - metrics.origin_y)
+                    * metrics.scale,
         )
     }
 
@@ -564,27 +749,42 @@ impl Widget for MonitorLayoutWidget {
                 let point = ctx.local_position(state.position);
                 let metrics = self.layout_metrics(ctx.content_box().size());
                 if let Some(monitor) = self.hit_monitor(point, metrics) {
+                    let selected_id = monitor.id.clone();
+                    let start_x = monitor.x;
+                    let start_y = monitor.y;
                     ctx.capture_pointer();
                     ctx.request_focus();
                     ctx.set_handled();
+                    self.selected_monitor_id = Some(selected_id.clone());
                     self.drag = Some(MonitorDrag {
-                        id: monitor.id.clone(),
+                        id: selected_id.clone(),
                         start_pointer: point,
-                        start_x: monitor.x,
-                        start_y: monitor.y,
+                        start_x,
+                        start_y,
                         origin_x: metrics.origin_x,
                         origin_y: metrics.origin_y,
                         scale: metrics.scale,
+                        moved: false,
                     });
+                    ctx.submit_action::<MonitorEditorAction>(MonitorEditorAction::Select {
+                        id: selected_id,
+                        monitors: self.monitors.clone(),
+                    });
+                    ctx.request_render();
                 }
             }
             PointerEvent::Move(PointerUpdate { current, .. }) if ctx.is_active() => {
-                if let Some(drag) = &self.drag {
+                if let Some(drag) = &mut self.drag {
                     let point = ctx.local_position(current.position);
+                    if !drag.moved && point.distance(drag.start_pointer) < DRAG_START_DISTANCE {
+                        return;
+                    }
+                    drag.moved = true;
+                    let drag = drag.clone();
                     let moved_id = drag.id.clone();
-                    let monitors = self.monitors_for_drag(drag, point, false);
+                    let monitors = self.monitors_for_drag(&drag, point, false);
                     self.monitors = monitors.clone();
-                    ctx.submit_action::<MonitorEditorAction>(MonitorEditorAction {
+                    ctx.submit_action::<MonitorEditorAction>(MonitorEditorAction::Drag {
                         moved_id,
                         monitors,
                         commit: false,
@@ -593,12 +793,26 @@ impl Widget for MonitorLayoutWidget {
                     ctx.set_handled();
                 }
             }
-            PointerEvent::Up(PointerButtonEvent { state, .. }) if ctx.is_active() => {
+            PointerEvent::Up(PointerButtonEvent {
+                button: None | Some(PointerButton::Primary),
+                state,
+                ..
+            }) => {
                 if let Some(drag) = self.drag.take() {
+                    if !drag.moved {
+                        self.selected_monitor_id = Some(drag.id.clone());
+                        ctx.submit_action::<MonitorEditorAction>(MonitorEditorAction::Select {
+                            id: drag.id,
+                            monitors: self.monitors.clone(),
+                        });
+                        ctx.request_render();
+                        ctx.set_handled();
+                        return;
+                    }
                     let point = ctx.local_position(state.position);
                     let monitors = self.monitors_for_drag(&drag, point, true);
                     self.monitors = monitors.clone();
-                    ctx.submit_action::<MonitorEditorAction>(MonitorEditorAction {
+                    ctx.submit_action::<MonitorEditorAction>(MonitorEditorAction::Drag {
                         moved_id: drag.id,
                         monitors,
                         commit: true,
@@ -661,8 +875,14 @@ impl Widget for MonitorLayoutWidget {
         for monitor in &self.monitors {
             let rect = self.monitor_rect(monitor, metrics);
             let active = self.drag.as_ref().is_some_and(|drag| drag.id == monitor.id);
+            let selected = self
+                .selected_monitor_id
+                .as_ref()
+                .is_some_and(|id| id == &monitor.id);
             let fill = if active {
                 Color::from_rgb8(0x74, 0x9C, 0xFF)
+            } else if selected {
+                Color::from_rgb8(0x50, 0x72, 0xD8)
             } else {
                 Color::from_rgb8(0x38, 0x55, 0xA3)
             };
@@ -739,11 +959,11 @@ fn monitor_canvas_span(monitors: &[MonitorConfig]) -> (i32, i32) {
 }
 
 fn combined_monitor_width(monitors: &[MonitorConfig]) -> i32 {
-    monitors.iter().map(|monitor| monitor.width.max(1)).sum()
+    monitors.iter().map(monitor_logical_width).sum()
 }
 
 fn combined_monitor_height(monitors: &[MonitorConfig]) -> i32 {
-    monitors.iter().map(|monitor| monitor.height.max(1)).sum()
+    monitors.iter().map(monitor_logical_height).sum()
 }
 
 fn layout_scale_for_canvas(monitors: &[MonitorConfig], size: Size) -> f64 {
@@ -778,13 +998,13 @@ fn monitor_arrangement_bounds(monitors: &[MonitorConfig]) -> Option<(i32, i32, i
     let first = monitors.first()?;
     let mut min_x = first.x;
     let mut min_y = first.y;
-    let mut max_x = first.x + first.width.max(1);
-    let mut max_y = first.y + first.height.max(1);
+    let mut max_x = first.x + monitor_logical_width(first);
+    let mut max_y = first.y + monitor_logical_height(first);
     for monitor in monitors.iter().skip(1) {
         min_x = min_x.min(monitor.x);
         min_y = min_y.min(monitor.y);
-        max_x = max_x.max(monitor.x + monitor.width.max(1));
-        max_y = max_y.max(monitor.y + monitor.height.max(1));
+        max_x = max_x.max(monitor.x + monitor_logical_width(monitor));
+        max_y = max_y.max(monitor.y + monitor_logical_height(monitor));
     }
     Some((min_x, min_y, max_x, max_y))
 }
@@ -831,26 +1051,30 @@ fn bordered_positions_for(
     x: i32,
     y: i32,
 ) -> [(i32, i32); 4] {
-    let left_of_other = other.x - monitor.width;
-    let right_of_other = other.x + other.width;
-    let above_other = other.y - monitor.height;
-    let below_other = other.y + other.height;
+    let monitor_width = monitor_logical_width(monitor);
+    let monitor_height = monitor_logical_height(monitor);
+    let other_width = monitor_logical_width(other);
+    let other_height = monitor_logical_height(other);
+    let left_of_other = other.x - monitor_width;
+    let right_of_other = other.x + other_width;
+    let above_other = other.y - monitor_height;
+    let below_other = other.y + other_height;
 
     [
         (
             left_of_other,
-            clamp_overlap(y, monitor.height, other.y, other.height),
+            clamp_overlap(y, monitor_height, other.y, other_height),
         ),
         (
             right_of_other,
-            clamp_overlap(y, monitor.height, other.y, other.height),
+            clamp_overlap(y, monitor_height, other.y, other_height),
         ),
         (
-            clamp_overlap(x, monitor.width, other.x, other.width),
+            clamp_overlap(x, monitor_width, other.x, other_width),
             above_other,
         ),
         (
-            clamp_overlap(x, monitor.width, other.x, other.width),
+            clamp_overlap(x, monitor_width, other.x, other_width),
             below_other,
         ),
     ]
@@ -874,6 +1098,7 @@ mod tests {
                 name: "Left".to_string(),
                 width: 1280,
                 height: 720,
+                scale: 1,
                 x: -1280,
                 y: 120,
             },
@@ -882,6 +1107,7 @@ mod tests {
                 name: "Main".to_string(),
                 width: 1920,
                 height: 1080,
+                scale: 1,
                 x: 0,
                 y: 0,
             },
@@ -906,6 +1132,7 @@ mod tests {
                 name: "Ultrawide".to_string(),
                 width: 5120,
                 height: 1440,
+                scale: 1,
                 x: 0,
                 y: 0,
             },
@@ -914,6 +1141,7 @@ mod tests {
                 name: "HiDPI".to_string(),
                 width: 3840,
                 height: 2160,
+                scale: 1,
                 x: 5120,
                 y: 0,
             },
@@ -950,6 +1178,7 @@ mod tests {
                 name: "Built-in Display".to_string(),
                 width: 2256,
                 height: 1504,
+                scale: 1,
             }],
         );
 
@@ -969,12 +1198,14 @@ mod tests {
                     name: "Built-in Display".to_string(),
                     width: 2560,
                     height: 1440,
+                    scale: 1,
                 },
                 LiveOutput {
                     id: "HDMI-A-1".to_string(),
                     name: "External Monitor".to_string(),
                     width: 1366,
                     height: 768,
+                    scale: 1,
                 },
             ],
         );
@@ -993,6 +1224,7 @@ mod tests {
                 name: "Primary".to_string(),
                 width: 1920,
                 height: 1080,
+                scale: 1,
                 x: -1280,
                 y: -736,
             },
@@ -1001,6 +1233,7 @@ mod tests {
                 name: "Secondary".to_string(),
                 width: 1920,
                 height: 1080,
+                scale: 1,
                 x: -1920,
                 y: -540,
             },
@@ -1014,12 +1247,14 @@ mod tests {
                     name: "Built-in Display".to_string(),
                     width: 2560,
                     height: 1440,
+                    scale: 1,
                 },
                 LiveOutput {
                     id: "HDMI-A-1".to_string(),
                     name: "External Monitor".to_string(),
                     width: 1366,
                     height: 768,
+                    scale: 1,
                 },
             ],
         );
@@ -1036,6 +1271,7 @@ mod tests {
             name: "HDMI-A-1".to_string(),
             width: 1920,
             height: 1080,
+            scale: 2,
             x: -1920,
             y: 200,
         }];
@@ -1047,6 +1283,7 @@ mod tests {
                 name: "External Monitor".to_string(),
                 width: 2560,
                 height: 1440,
+                scale: 1,
             }],
         );
 
@@ -1055,6 +1292,59 @@ mod tests {
         assert_eq!(monitors[0].name, "External Monitor");
         assert_eq!((monitors[0].x, monitors[0].y), (-1920, 200));
         assert_eq!((monitors[0].width, monitors[0].height), (2560, 1440));
+        assert_eq!(monitors[0].scale, 2);
+    }
+
+    #[test]
+    fn live_outputs_use_reported_scale_for_new_monitors() {
+        let monitors = monitors_for_live_outputs(
+            &[],
+            &[LiveOutput {
+                id: "eDP-1".to_string(),
+                name: "Built-in Display".to_string(),
+                width: 2560,
+                height: 1440,
+                scale: 2,
+            }],
+        );
+
+        assert_eq!(monitors[0].scale, 2);
+        assert_eq!(monitor_logical_width(&monitors[0]), 2560);
+    }
+
+    #[test]
+    fn scaling_monitor_keeps_outputs_at_physical_desktop_size() {
+        let mut monitors = Settings::default().monitors;
+
+        recalculate_monitor_positions_for_scale(&mut monitors, "primary", 2);
+
+        let primary = monitors
+            .iter()
+            .find(|monitor| monitor.id == "primary")
+            .unwrap();
+        let secondary = monitors
+            .iter()
+            .find(|monitor| monitor.id == "secondary")
+            .unwrap();
+        assert_eq!(primary.scale, 2);
+        assert_eq!(monitor_logical_width(primary), 1920);
+        assert_eq!((secondary.x, secondary.y), (1920, 0));
+        assert!(!monitors_overlap(&monitors));
+    }
+
+    #[test]
+    fn scaling_monitor_keeps_outputs_below_at_physical_desktop_size() {
+        let mut monitors = Settings::default().monitors;
+        offset_monitor(&mut monitors, "secondary", 0, 1080);
+
+        recalculate_monitor_positions_for_scale(&mut monitors, "primary", 2);
+
+        let secondary = monitors
+            .iter()
+            .find(|monitor| monitor.id == "secondary")
+            .unwrap();
+        assert_eq!((secondary.x, secondary.y), (0, 1080));
+        assert!(!monitors_overlap(&monitors));
     }
 
     #[test]
@@ -1070,7 +1360,7 @@ mod tests {
 
     #[test]
     fn layout_metrics_do_not_recenter_during_live_drag() {
-        let mut widget = MonitorLayoutWidget::new(Settings::default().monitors);
+        let mut widget = MonitorLayoutWidget::new(Settings::default().monitors, None);
         let size = Size::new(760.0, 320.0);
         let metrics = widget.layout_metrics(size);
         widget.drag = Some(MonitorDrag {
@@ -1081,6 +1371,7 @@ mod tests {
             origin_x: metrics.origin_x,
             origin_y: metrics.origin_y,
             scale: metrics.scale,
+            moved: false,
         });
 
         offset_monitor(&mut widget.monitors, "secondary", 0, 1200);
@@ -1120,7 +1411,7 @@ mod tests {
 
     #[test]
     fn live_drag_moves_only_selected_monitor_until_release() {
-        let widget = MonitorLayoutWidget::new(Settings::default().monitors);
+        let widget = MonitorLayoutWidget::new(Settings::default().monitors, None);
         let drag = MonitorDrag {
             id: "secondary".to_string(),
             start_pointer: Point::from((0.0, 0.0)),
@@ -1129,6 +1420,7 @@ mod tests {
             origin_x: 0.0,
             origin_y: 0.0,
             scale: 1.0,
+            moved: true,
         };
 
         let live = widget.monitors_for_drag(&drag, Point::from((0.0, 1200.0)), false);
@@ -1178,17 +1470,20 @@ mod tests {
 
     fn monitor_borders_another(monitors: &[MonitorConfig], id: &str, position: (i32, i32)) -> bool {
         let monitor = monitors.iter().find(|monitor| monitor.id == id).unwrap();
-        monitors.iter().any(|other| {
-            other.id != id
-                && shares_border(position.0, position.1, monitor.width, monitor.height, other)
-        })
+        monitors
+            .iter()
+            .any(|other| other.id != id && shares_border(position.0, position.1, monitor, other))
     }
 
-    fn shares_border(x: i32, y: i32, width: i32, height: i32, other: &MonitorConfig) -> bool {
-        let horizontal_overlap = y < other.y + other.height && y + height > other.y;
-        let vertical_overlap = x < other.x + other.width && x + width > other.x;
-        let touches_left_or_right = x + width == other.x || x == other.x + other.width;
-        let touches_top_or_bottom = y + height == other.y || y == other.y + other.height;
+    fn shares_border(x: i32, y: i32, monitor: &MonitorConfig, other: &MonitorConfig) -> bool {
+        let width = monitor_logical_width(monitor);
+        let height = monitor_logical_height(monitor);
+        let other_width = monitor_logical_width(other);
+        let other_height = monitor_logical_height(other);
+        let horizontal_overlap = y < other.y + other_height && y + height > other.y;
+        let vertical_overlap = x < other.x + other_width && x + width > other.x;
+        let touches_left_or_right = x + width == other.x || x == other.x + other_width;
+        let touches_top_or_bottom = y + height == other.y || y == other.y + other_height;
 
         (touches_left_or_right && horizontal_overlap) || (touches_top_or_bottom && vertical_overlap)
     }

@@ -109,6 +109,7 @@ pub(in crate::compositor) fn run_event_loop(
     data: &mut CalloopData,
 ) -> Result<(), Box<dyn std::error::Error>> {
     info!("entering compositor event loop");
+    data.update_native_hardware_cursor();
     if let Err(error) = data.render() {
         warn!(%error, "initial compositor render failed");
     }
@@ -151,6 +152,7 @@ pub(in crate::compositor) fn run_event_loop(
         data.state.handle_idle_transitions();
         data.state.advance_viewport_animation();
         data.apply_cursor_icon();
+        data.update_native_hardware_cursor();
 
         if data.state.needs_redraw {
             if let Err(error) = data.render() {
@@ -180,6 +182,13 @@ impl CalloopData {
             Backend::Winit(_) | Backend::Headless(_) => false,
             #[cfg(not(feature = "winit"))]
             Backend::Headless(_) => false,
+        }
+    }
+
+    fn update_native_hardware_cursor(&mut self) {
+        #[cfg(feature = "udev")]
+        if let Backend::Udev(backend) = &mut self.backend {
+            backend.update_hardware_cursor(&self.state);
         }
     }
 

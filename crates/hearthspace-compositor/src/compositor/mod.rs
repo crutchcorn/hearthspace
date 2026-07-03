@@ -194,20 +194,14 @@ struct App {
     pending_dmabuf_imports: Vec<(Dmabuf, ImportNotifier)>,
     loop_handle: LoopHandle<'static, CalloopData>,
     popups: PopupManager,
-    /// Stable render-element ids for the background dot grid, grown as the
-    /// number of visible dots requires. Reusing ids across frames keeps the
-    /// damage tracker from treating every dot as new on each redraw.
+    /// Cached texture for the repeated background dot tile.
+    background_dot_tile: Option<rendering::BackgroundDotTile>,
+    /// Stable render-element ids for visible background tile instances. Reusing
+    /// ids across frames keeps the damage tracker from treating every tile as
+    /// new on each redraw.
     background_dot_ids: Vec<Id>,
     software_cursor_visible: bool,
     software_cursor: SoftwareCursor,
-}
-
-impl App {
-    #[cfg(feature = "udev")]
-    pub(in crate::compositor) fn enable_software_cursor(&mut self) {
-        self.software_cursor_visible = true;
-        self.request_redraw();
-    }
 }
 
 pub(in crate::compositor) struct AppInit {
@@ -461,6 +455,7 @@ pub(in crate::compositor) fn initialize_app(
         pending_dmabuf_imports: Vec::new(),
         loop_handle: handle.clone(),
         popups: PopupManager::default(),
+        background_dot_tile: None,
         background_dot_ids: Vec::new(),
         software_cursor_visible: false,
         software_cursor: cursor::standard_software_cursor(),
