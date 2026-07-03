@@ -226,7 +226,10 @@ fn create_session_env(
             shell_command_socket,
         ),
         ("RUST_LOG".to_string(), args.log_level.clone()),
-        ("XDG_DATA_DIRS".to_string(), xdg_data_dirs(&session_dir)?),
+        (
+            "XDG_DATA_DIRS".to_string(),
+            xdg_data_dirs(&path_to_string(&paths.session_dir.join("share"))?)?,
+        ),
     ];
 
     if mode == RunMode::DevCargo {
@@ -250,8 +253,8 @@ fn path_to_string(path: &Path) -> Result<String, Box<dyn std::error::Error>> {
         .to_string())
 }
 
-fn xdg_data_dirs(session_dir: &str) -> Result<String, Box<dyn std::error::Error>> {
-    let mut dirs = vec![PathBuf::from(session_dir)];
+fn xdg_data_dirs(session_share_dir: &str) -> Result<String, Box<dyn std::error::Error>> {
+    let mut dirs = vec![PathBuf::from(session_share_dir)];
     if let Some(existing) = env::var_os("XDG_DATA_DIRS") {
         dirs.extend(env::split_paths(&existing));
     } else {
