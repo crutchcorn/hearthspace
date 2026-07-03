@@ -152,7 +152,6 @@ pub fn run_udev(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> {
         .map(UdevDevice::output_descriptors)
         .unwrap_or_default();
     app.sync_connector_outputs(&dh, output_descriptors);
-    app.enable_software_cursor();
     app.configure_shell_bars();
     app.reconcile_pointer_after_output_geometry_change();
     app.request_redraw();
@@ -369,6 +368,15 @@ fn insert_libinput_source(
 }
 
 impl UdevBackendState {
+    pub(in crate::compositor) fn update_hardware_cursor(&mut self, state: &super::App) {
+        if self.drm_commits_paused {
+            return;
+        }
+        if let Some(device) = self.primary_device.as_mut() {
+            device.update_hardware_cursor(state);
+        }
+    }
+
     pub(in crate::compositor) fn render_frame(
         &mut self,
         state: &mut super::App,

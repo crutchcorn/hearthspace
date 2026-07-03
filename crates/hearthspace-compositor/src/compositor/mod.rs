@@ -202,14 +202,6 @@ struct App {
     software_cursor: SoftwareCursor,
 }
 
-impl App {
-    #[cfg(feature = "udev")]
-    pub(in crate::compositor) fn enable_software_cursor(&mut self) {
-        self.software_cursor_visible = true;
-        self.request_redraw();
-    }
-}
-
 pub(in crate::compositor) struct AppInit {
     pub(in crate::compositor) display: Display<App>,
     pub(in crate::compositor) event_loop: EventLoop<'static, CalloopData>,
