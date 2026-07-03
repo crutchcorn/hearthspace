@@ -1,20 +1,22 @@
 use smithay::{
-    backend::renderer::{
-        Color32F, RendererSuper,
-        damage::OutputDamageTracker,
-        element::{
-            Id, Kind,
-            memory::MemoryRenderBufferRenderElement,
-            render_elements,
-            solid::SolidColorRenderElement,
-            surface::{WaylandSurfaceRenderElement, render_elements_from_surface_tree},
-            utils::{Relocate, RelocateRenderElement, RescaleRenderElement},
+    backend::{
+        allocator::Fourcc,
+        renderer::{
+            Color32F, ContextId, ImportMem, Renderer, RendererSuper,
+            damage::OutputDamageTracker,
+            element::{
+                Id, Kind,
+                memory::MemoryRenderBufferRenderElement,
+                render_elements,
+                surface::{WaylandSurfaceRenderElement, render_elements_from_surface_tree},
+                texture::TextureRenderElement,
+                utils::{Relocate, RelocateRenderElement, RescaleRenderElement},
+            },
+            gles::GlesRenderer,
         },
-        gles::GlesRenderer,
-        utils::CommitCounter,
     },
     desktop::PopupManager,
-    utils::{Logical, Physical, Point, Rectangle, Size},
+    utils::{Logical, Physical, Point, Rectangle, Size, Transform},
     wayland::{
         compositor::{SurfaceAttributes, TraversalAction, with_states, with_surface_tree_downward},
         shell::xdg::SurfaceCachedState,
@@ -25,11 +27,23 @@ use wayland_server::protocol::wl_surface;
 use super::{App, ManagedWindowKind, masonry_titlebar, windows::toplevel_title};
 use crate::config::{BACKGROUND_DOT_SIZE, BACKGROUND_DOT_SPACING};
 
+type GlesTexture = <GlesRenderer as RendererSuper>::TextureId;
+
+const BACKGROUND_DOT_TILE_WIDTH: i32 = 1_920;
+const BACKGROUND_DOT_TILE_HEIGHT: i32 = 1_080;
+const MAX_BACKGROUND_TILE_ELEMENTS: usize = 512;
+
+pub(super) struct BackgroundDotTile {
+    context_id: ContextId<GlesTexture>,
+    texture: GlesTexture,
+    size: Size<i32, Logical>,
+}
+
 render_elements! {
     pub(super) HearthspaceRenderElement<=GlesRenderer>;
     Surface = RescaleRenderElement<WaylandSurfaceRenderElement<GlesRenderer>>,
     Memory = MemoryRenderBufferRenderElement<GlesRenderer>,
-    Solid = SolidColorRenderElement,
+    Texture = TextureRenderElement<GlesTexture>,
 }
 
 render_elements! {
@@ -149,7 +163,7 @@ impl App {
 
         // The dot grid sits behind every window, directly on top of the white
         // clear color, so it is appended last in this front-to-back ordering.
-        for dot in self.background_dot_elements() {
+        for dot in self.background_dot_elements(renderer, output_rect) {
             elements.push(HearthspaceRenderElement::from(dot));
         }
         elements
@@ -231,67 +245,126 @@ impl App {
         elements
     }
 
-    /// Build the background dot-grid render elements for the current viewport.
+    /// Build repeated background dot-tile render elements for the current viewport.
     ///
-    /// The dots are laid out on a fixed grid in *canvas* space, so they pan and
-    /// zoom together with the viewport and frame canvas movement even when no
-    /// windows are open. Only the dots that fall inside the visible region are
-    /// emitted. Each visible slot reuses a stable [`Id`] across frames so the
-    /// damage tracker can tell when a dot actually moves.
-    fn background_dot_elements(&mut self) -> Vec<SolidColorRenderElement> {
-        let spacing = f64::from(BACKGROUND_DOT_SPACING);
-        if spacing <= 0.0 {
+    /// The tile is laid out in *canvas* space, so it pans and zooms with the
+    /// viewport while keeping the render-element count proportional to visible
+    /// tiles rather than visible dots. This is also the shape future user-defined
+    /// repeating backgrounds can reuse.
+    fn background_dot_elements(
+        &mut self,
+        renderer: &mut GlesRenderer,
+        output_rect: Rectangle<i32, Logical>,
+    ) -> Vec<TextureRenderElement<GlesTexture>> {
+        if self.viewport_scale <= 0.0 || !self.viewport_scale.is_finite() {
             return Vec::new();
         }
 
-        // Visible canvas region (the screen rectangle mapped back into canvas
-        // space). Grid bounds are expanded by one cell so dots partially inside
-        // the edges are not clipped away.
-        let top_left = self.screen_to_canvas(Point::from((0.0, 0.0)));
-        let bottom_right = self.screen_to_canvas(Point::from((
-            f64::from(self.output_logical_size().w),
-            f64::from(self.output_logical_size().h),
+        let (context_id, texture, tile_size) = match self.background_dot_tile(renderer) {
+            Ok(tile) => (tile.context_id.clone(), tile.texture.clone(), tile.size),
+            Err(_) => return Vec::new(),
+        };
+
+        let top_left = self.screen_to_canvas(Point::from((
+            f64::from(output_rect.loc.x),
+            f64::from(output_rect.loc.y),
         )));
-        let first_x = (top_left.x / spacing).floor() as i64;
-        let last_x = (bottom_right.x / spacing).ceil() as i64;
-        let first_y = (top_left.y / spacing).floor() as i64;
-        let last_y = (bottom_right.y / spacing).ceil() as i64;
+        let bottom_right = self.screen_to_canvas(Point::from((
+            f64::from(output_rect.loc.x) + f64::from(output_rect.size.w),
+            f64::from(output_rect.loc.y) + f64::from(output_rect.size.h),
+        )));
+        let min_x = top_left.x.min(bottom_right.x);
+        let max_x = top_left.x.max(bottom_right.x);
+        let min_y = top_left.y.min(bottom_right.y);
+        let max_y = top_left.y.max(bottom_right.y);
 
-        let dot_px = (f64::from(BACKGROUND_DOT_SIZE) * self.viewport_scale).round() as i32;
-        let dot_px = dot_px.max(1);
-        let half = dot_px / 2;
-        // Light gray, matching the shell's neutral palette.
-        let color = Color32F::new(0.78, 0.78, 0.80, 1.0);
-
-        let mut positions = Vec::new();
-        for gy in first_y..=last_y {
-            for gx in first_x..=last_x {
-                let canvas = Point::from((gx as f64 * spacing, gy as f64 * spacing));
-                let screen = self.canvas_to_screen(canvas);
-                positions.push(Point::<i32, Physical>::from((
-                    screen.x.round() as i32 - half,
-                    screen.y.round() as i32 - half,
-                )));
-            }
+        let Some((first_x, last_x, x_count)) =
+            background_tile_axis_bounds(min_x, max_x, f64::from(tile_size.w))
+        else {
+            return Vec::new();
+        };
+        let Some((first_y, last_y, y_count)) =
+            background_tile_axis_bounds(min_y, max_y, f64::from(tile_size.h))
+        else {
+            return Vec::new();
+        };
+        let tile_count = x_count.saturating_mul(y_count);
+        if tile_count > MAX_BACKGROUND_TILE_ELEMENTS {
+            return Vec::new();
         }
 
-        while self.background_dot_ids.len() < positions.len() {
+        while self.background_dot_ids.len() < tile_count {
             self.background_dot_ids.push(Id::new());
         }
 
-        positions
-            .into_iter()
-            .enumerate()
-            .map(|(slot, location)| {
-                SolidColorRenderElement::new(
+        let mut elements = Vec::with_capacity(tile_count);
+        let src = Rectangle::from_size(tile_size.to_f64());
+        for gy in first_y..=last_y {
+            for gx in first_x..=last_x {
+                let canvas = Point::from((
+                    gx as f64 * f64::from(tile_size.w),
+                    gy as f64 * f64::from(tile_size.h),
+                ));
+                let next_canvas = Point::from((
+                    (gx + 1) as f64 * f64::from(tile_size.w),
+                    (gy + 1) as f64 * f64::from(tile_size.h),
+                ));
+                let screen = self.canvas_to_screen(canvas);
+                let next_screen = self.canvas_to_screen(next_canvas);
+                let left = screen.x.round() as i32;
+                let top = screen.y.round() as i32;
+                let right = next_screen.x.round() as i32;
+                let bottom = next_screen.y.round() as i32;
+                let location = Point::<f64, Physical>::from((f64::from(left), f64::from(top)));
+                let size = Size::from(((right - left).max(1), (bottom - top).max(1)));
+                let slot = elements.len();
+                elements.push(TextureRenderElement::from_static_texture(
                     self.background_dot_ids[slot].clone(),
-                    Rectangle::new(location, Size::from((dot_px, dot_px))),
-                    CommitCounter::default(),
-                    color,
+                    context_id.clone(),
+                    location,
+                    texture.clone(),
+                    1,
+                    Transform::Normal,
+                    None,
+                    Some(src),
+                    Some(size),
+                    None,
                     Kind::Unspecified,
-                )
-            })
-            .collect()
+                ));
+            }
+        }
+        elements
+    }
+
+    fn background_dot_tile(
+        &mut self,
+        renderer: &mut GlesRenderer,
+    ) -> Result<&BackgroundDotTile, <GlesRenderer as RendererSuper>::Error> {
+        let context_id = renderer.context_id();
+        let needs_rebuild = self
+            .background_dot_tile
+            .as_ref()
+            .map(|tile| tile.context_id != context_id)
+            .unwrap_or(true);
+
+        if needs_rebuild {
+            let size =
+                Size::<i32, Logical>::from((BACKGROUND_DOT_TILE_WIDTH, BACKGROUND_DOT_TILE_HEIGHT));
+            let pixels = rasterize_background_dot_tile(size);
+            let texture = renderer.import_memory(
+                &pixels,
+                Fourcc::Abgr8888,
+                (size.w, size.h).into(),
+                false,
+            )?;
+            self.background_dot_tile = Some(BackgroundDotTile {
+                context_id,
+                texture,
+                size,
+            });
+        }
+
+        Ok(self.background_dot_tile.as_ref().unwrap())
     }
 
     fn window_render_elements_at(
@@ -408,6 +481,71 @@ fn point_in_logical_rect(point: Point<f64, Logical>, rect: Rectangle<i32, Logica
         && point.y < f64::from(rect.loc.y + rect.size.h.max(1))
 }
 
+fn background_tile_axis_bounds(min: f64, max: f64, tile_size: f64) -> Option<(i64, i64, usize)> {
+    if !min.is_finite() || !max.is_finite() || tile_size <= 0.0 || !tile_size.is_finite() {
+        return None;
+    }
+
+    let first = (min / tile_size).floor() as i64;
+    let last = (max / tile_size).ceil() as i64 - 1;
+    let count = usize::try_from(last.checked_sub(first)?.checked_add(1)?).ok()?;
+    Some((first, last, count))
+}
+
+fn rasterize_background_dot_tile(size: Size<i32, Logical>) -> Vec<u8> {
+    let len = size
+        .w
+        .checked_mul(size.h)
+        .and_then(|pixels| pixels.checked_mul(4))
+        .and_then(|bytes| usize::try_from(bytes).ok())
+        .unwrap_or_default();
+    let mut pixels = vec![0; len];
+    let spacing = BACKGROUND_DOT_SPACING.max(1) as usize;
+    let dot_size = BACKGROUND_DOT_SIZE.max(1);
+
+    for cy in (0..=size.h).step_by(spacing) {
+        for cx in (0..=size.w).step_by(spacing) {
+            rasterize_background_dot(&mut pixels, size, cx, cy, dot_size);
+        }
+    }
+
+    pixels
+}
+
+fn rasterize_background_dot(
+    pixels: &mut [u8],
+    size: Size<i32, Logical>,
+    center_x: i32,
+    center_y: i32,
+    dot_size: i32,
+) {
+    let half = dot_size / 2;
+    let x0 = (center_x - half).max(0);
+    let y0 = (center_y - half).max(0);
+    let x1 = (center_x - half + dot_size).min(size.w);
+    let y1 = (center_y - half + dot_size).min(size.h);
+
+    for y in y0..y1 {
+        for x in x0..x1 {
+            let Some(offset) = y
+                .checked_mul(size.w)
+                .and_then(|row| row.checked_add(x))
+                .and_then(|pixel| pixel.checked_mul(4))
+                .and_then(|byte| usize::try_from(byte).ok())
+            else {
+                continue;
+            };
+            if offset + 3 >= pixels.len() {
+                continue;
+            }
+            pixels[offset] = 199;
+            pixels[offset + 1] = 199;
+            pixels[offset + 2] = 204;
+            pixels[offset + 3] = 255;
+        }
+    }
+}
+
 /// The offset of a toplevel's window geometry within its surface, used to place
 /// popups relative to the parent surface origin. Defaults to `(0, 0)` when the
 /// client has not set an explicit window geometry.
@@ -462,9 +600,11 @@ pub(super) fn send_frames_surface_tree(surface: &wl_surface::WlSurface, time: u3
 
 #[cfg(test)]
 mod tests {
-    use smithay::utils::{Logical, Point, Rectangle};
+    use smithay::utils::{Logical, Point, Rectangle, Size};
 
-    use super::point_in_logical_rect;
+    use super::{
+        background_tile_axis_bounds, point_in_logical_rect, rasterize_background_dot_tile,
+    };
 
     #[test]
     fn point_in_logical_rect_excludes_other_outputs() {
@@ -474,5 +614,36 @@ mod tests {
         assert!(point_in_logical_rect(Point::from((2303.0, 767.0)), rect));
         assert!(!point_in_logical_rect(Point::from((1279.0, 12.0)), rect));
         assert!(!point_in_logical_rect(Point::from((2304.0, 12.0)), rect));
+    }
+
+    #[test]
+    fn background_tile_axis_bounds_include_partially_visible_tiles() {
+        assert_eq!(
+            background_tile_axis_bounds(0.0, 240.0, 120.0),
+            Some((0, 1, 2))
+        );
+        assert_eq!(
+            background_tile_axis_bounds(-240.0, 0.0, 120.0),
+            Some((-2, -1, 2))
+        );
+        assert_eq!(
+            background_tile_axis_bounds(10.0, 240.1, 120.0),
+            Some((0, 2, 3))
+        );
+    }
+
+    #[test]
+    fn background_dot_tile_rasterizes_seam_dots() {
+        let size = Size::<i32, Logical>::from((240, 120));
+        let pixels = rasterize_background_dot_tile(size);
+
+        assert_eq!(pixel_alpha(&pixels, size, 0, 0), 255);
+        assert_eq!(pixel_alpha(&pixels, size, 239, 0), 255);
+        assert_eq!(pixel_alpha(&pixels, size, 60, 60), 0);
+    }
+
+    fn pixel_alpha(pixels: &[u8], size: Size<i32, Logical>, x: i32, y: i32) -> u8 {
+        let offset = ((y * size.w + x) * 4 + 3) as usize;
+        pixels[offset]
     }
 }
