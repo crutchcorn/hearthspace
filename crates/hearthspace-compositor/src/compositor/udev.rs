@@ -24,7 +24,7 @@ use smithay::{
     reexports::{
         calloop::LoopHandle, calloop::RegistrationToken, input::Libinput, wayland_server::Display,
     },
-    utils::{Physical, Size, Transform},
+    utils::{Physical, Rectangle, Size, Transform},
 };
 use tracing::{debug, error, info, trace, warn};
 
@@ -421,7 +421,7 @@ impl UdevBackendState {
                     &mut framebuffer,
                     &mut output.damage_tracker,
                     age,
-                    view.location,
+                    Rectangle::new(view.location, view.size),
                 )?
             };
             // Keep damage tracking for renderer-side redraw minimization, but do not

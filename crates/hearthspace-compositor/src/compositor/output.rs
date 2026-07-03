@@ -34,6 +34,7 @@ pub(in crate::compositor) struct OutputRecord {
 pub(in crate::compositor) struct OutputRenderView {
     pub(in crate::compositor) name: String,
     pub(in crate::compositor) location: Point<i32, Logical>,
+    pub(in crate::compositor) size: Size<i32, Logical>,
 }
 
 #[derive(Clone)]
@@ -76,11 +77,15 @@ impl OutputSet {
             descriptors.iter().map(OutputGeometry::from).collect(),
             &self.layout,
         );
-        self.primary.set_location(plan.primary);
+        self.primary
+            .set_scale_and_location(plan.primary_scale, plan.primary);
         let mut next_secondary = Vec::with_capacity(descriptors.len());
 
-        for descriptor in descriptors {
+        for mut descriptor in descriptors {
             let location = plan.secondary_location(&descriptor.name);
+            descriptor.scale = plan
+                .secondary_scale(&descriptor.name)
+                .unwrap_or(descriptor.scale);
             let output = if let Some(index) = existing
                 .iter()
                 .position(|output| output.name == descriptor.name)
@@ -110,9 +115,11 @@ impl OutputSet {
             self.secondary.iter().map(OutputGeometry::from).collect(),
             &self.layout,
         );
-        self.primary.set_location(plan.primary);
+        self.primary
+            .set_scale_and_location(plan.primary_scale, plan.primary);
         for output in &mut self.secondary {
-            output.set_location(plan.secondary_location(&output.name));
+            let scale = plan.secondary_scale(&output.name).unwrap_or(output.scale);
+            output.set_scale_and_location(scale, plan.secondary_location(&output.name));
         }
     }
 
@@ -178,11 +185,13 @@ impl OutputRecord {
         );
     }
 
-    fn set_location(&mut self, location: Point<i32, Logical>) {
-        if self.location == location {
+    fn set_scale_and_location(&mut self, scale: i32, location: Point<i32, Logical>) {
+        let scale = scale.max(1);
+        if self.scale == scale && self.location == location {
             return;
         }
 
+        self.scale = scale;
         self.location = location;
         update_output_mode_with_refresh_at(
             &self.output,
@@ -201,6 +210,21 @@ impl OutputLayout {
 
     fn location_for(&self, output_name: &str, role_id: &str) -> Option<Point<i32, Logical>> {
         let use_role_fallback = !default_placeholder_monitors(&self.monitors);
+        self.monitor_for(output_name, role_id, use_role_fallback)
+            .map(|monitor| Point::from((monitor.x, monitor.y)))
+    }
+
+    fn scale_for(&self, output_name: &str, role_id: &str) -> Option<i32> {
+        self.monitor_for(output_name, role_id, true)
+            .map(|monitor| monitor.scale.max(1))
+    }
+
+    fn monitor_for(
+        &self,
+        output_name: &str,
+        role_id: &str,
+        use_role_fallback: bool,
+    ) -> Option<&hearthspace_ipc::MonitorConfig> {
         self.monitors
             .iter()
             .find(|monitor| monitor.id == output_name || monitor.name == output_name)
@@ -209,7 +233,6 @@ impl OutputLayout {
                     .then(|| self.monitors.iter().find(|monitor| monitor.id == role_id))
                     .flatten()
             })
-            .map(|monitor| Point::from((monitor.x, monitor.y)))
     }
 }
 
@@ -262,7 +285,8 @@ impl From<&OutputDescriptor> for OutputGeometry {
 
 struct OutputLayoutPlan {
     primary: Point<i32, Logical>,
-    secondary: Vec<(String, Point<i32, Logical>)>,
+    primary_scale: i32,
+    secondary: Vec<(String, Point<i32, Logical>, i32)>,
 }
 
 #[derive(Debug, Clone)]
@@ -270,24 +294,41 @@ struct OutputPlacement {
     name: String,
     size: Size<i32, Logical>,
     location: Point<i32, Logical>,
+    scale: i32,
 }
 
 impl OutputLayoutPlan {
     fn secondary_location(&self, name: &str) -> Point<i32, Logical> {
         self.secondary
             .iter()
-            .find(|(secondary_name, _)| secondary_name == name)
-            .map(|(_, location)| *location)
+            .find(|(secondary_name, _, _)| secondary_name == name)
+            .map(|(_, location, _)| *location)
             .unwrap_or((0, 0).into())
+    }
+
+    fn secondary_scale(&self, name: &str) -> Option<i32> {
+        self.secondary
+            .iter()
+            .find(|(secondary_name, _, _)| secondary_name == name)
+            .map(|(_, _, scale)| *scale)
     }
 }
 
 fn output_locations_for_layout(
-    primary: OutputGeometry,
+    mut primary: OutputGeometry,
     mut secondary: Vec<OutputGeometry>,
     layout: &OutputLayout,
 ) -> OutputLayoutPlan {
     secondary.sort_by(|a, b| a.name.cmp(&b.name));
+    if let Some(scale) = layout.scale_for(&primary.name, "primary") {
+        primary.scale = scale;
+    }
+    for (index, output) in secondary.iter_mut().enumerate() {
+        let role_id = secondary_role_id(index);
+        if let Some(scale) = layout.scale_for(&output.name, &role_id) {
+            output.scale = scale;
+        }
+    }
     let fallback_primary = primary.clone();
     let fallback_secondary = secondary.clone();
 
@@ -298,6 +339,7 @@ fn output_locations_for_layout(
         name: primary.name.clone(),
         size: primary.logical_size(),
         location: primary_location,
+        scale: primary.scale,
     }];
     let mut unplaced = Vec::new();
 
@@ -309,6 +351,7 @@ fn output_locations_for_layout(
                 name: output.name,
                 size,
                 location,
+                scale: output.scale,
             });
         } else {
             unplaced.push(output);
@@ -329,6 +372,7 @@ fn output_locations_for_layout(
             name: output.name,
             size,
             location,
+            scale: output.scale,
         });
     }
 
@@ -349,18 +393,21 @@ fn output_locations_for_layout(
         .unwrap_or(0);
 
     let mut primary_plan = Point::from((0, 0));
+    let mut primary_scale = primary.scale;
     let mut secondary_plan = Vec::new();
     for placement in placed {
         let normalized = Point::from((placement.location.x - min_x, placement.location.y - min_y));
         if placement.name == primary.name {
             primary_plan = normalized;
+            primary_scale = placement.scale;
         } else {
-            secondary_plan.push((placement.name, normalized));
+            secondary_plan.push((placement.name, normalized, placement.scale));
         }
     }
 
     OutputLayoutPlan {
         primary: primary_plan,
+        primary_scale,
         secondary: secondary_plan,
     }
 }
@@ -380,6 +427,7 @@ fn fallback_output_placements(
                 name: output.name,
                 size,
                 location,
+                scale: output.scale,
             }
         })
         .collect()
@@ -453,6 +501,7 @@ impl App {
             return Some(OutputRenderView {
                 name: self.outputs.primary.name.clone(),
                 location: self.outputs.primary.location,
+                size: self.outputs.primary.logical_size(),
             });
         }
 
@@ -463,6 +512,7 @@ impl App {
             .map(|output| OutputRenderView {
                 name: output.name.clone(),
                 location: output.location,
+                size: output.logical_size(),
             })
     }
 
@@ -482,7 +532,7 @@ impl App {
     #[cfg(feature = "udev")]
     pub(in crate::compositor) fn set_primary_output_descriptor(
         &mut self,
-        descriptor: OutputDescriptor,
+        mut descriptor: OutputDescriptor,
     ) {
         if self.outputs.primary.name != descriptor.name {
             tracing::info!(
@@ -491,7 +541,15 @@ impl App {
                 "retargeting primary KMS output while keeping the existing Wayland output global"
             );
         }
-        self.outputs.primary.update(descriptor, (0, 0).into());
+        descriptor.scale = self
+            .outputs
+            .layout
+            .scale_for(&descriptor.name, "primary")
+            .unwrap_or(descriptor.scale);
+        self.outputs
+            .primary
+            .update(descriptor, self.outputs.primary.location);
+        self.outputs.apply_layout_to_existing_outputs();
     }
 
     pub(super) fn enter_primary_output(&self, surface: &WlSurface) {
@@ -669,6 +727,7 @@ mod tests {
                     name: (*id).into(),
                     width: 100,
                     height: 100,
+                    scale: 1,
                     x: *x,
                     y: *y,
                 })
@@ -743,6 +802,39 @@ mod tests {
 
         assert_eq!(plan.primary, Point::from((0, 0)));
         assert_eq!(plan.secondary_location("HDMI-A-1"), Point::from((2560, 0)));
+    }
+
+    #[test]
+    fn output_layout_applies_saved_scale_to_logical_size() {
+        let plan = output_locations_for_layout(
+            geometry_with_size("eDP-1", 2560, 1440),
+            vec![geometry_with_size("HDMI-A-1", 1920, 1080)],
+            &OutputLayout::from_monitors(vec![
+                hearthspace_ipc::MonitorConfig {
+                    id: "eDP-1".into(),
+                    name: "eDP-1".into(),
+                    width: 2560,
+                    height: 1440,
+                    scale: 2,
+                    x: 0,
+                    y: 0,
+                },
+                hearthspace_ipc::MonitorConfig {
+                    id: "HDMI-A-1".into(),
+                    name: "HDMI-A-1".into(),
+                    width: 1920,
+                    height: 1080,
+                    scale: 1,
+                    x: 1280,
+                    y: 0,
+                },
+            ]),
+        );
+
+        assert_eq!(plan.primary, Point::from((0, 0)));
+        assert_eq!(plan.primary_scale, 2);
+        assert_eq!(plan.secondary_location("HDMI-A-1"), Point::from((1280, 0)));
+        assert_eq!(plan.secondary_scale("HDMI-A-1"), Some(1));
     }
 
     #[test]

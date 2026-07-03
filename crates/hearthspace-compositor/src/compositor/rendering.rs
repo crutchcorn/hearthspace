@@ -66,7 +66,7 @@ impl App {
             framebuffer,
             damage_tracker,
             age,
-            Point::from((0, 0)),
+            Rectangle::from_size(self.output_logical_size()),
         )
     }
 
@@ -76,10 +76,11 @@ impl App {
         framebuffer: &mut <GlesRenderer as RendererSuper>::Framebuffer<'_>,
         damage_tracker: &mut OutputDamageTracker,
         age: usize,
-        output_location: Point<i32, Logical>,
+        output_rect: Rectangle<i32, Logical>,
     ) -> RenderFrameResult {
+        let output_location = output_rect.loc;
         let output_offset = Point::<i32, Physical>::from((-output_location.x, -output_location.y));
-        let elements = self.collect_render_elements(renderer);
+        let elements = self.collect_render_elements(renderer, output_rect);
         let elements = elements
             .into_iter()
             .map(|element| {
@@ -110,9 +111,10 @@ impl App {
     fn collect_render_elements(
         &mut self,
         renderer: &mut GlesRenderer,
+        output_rect: Rectangle<i32, Logical>,
     ) -> Vec<HearthspaceRenderElement> {
         let mut elements = Vec::new();
-        if let Some(element) = self.software_cursor_element(renderer) {
+        if let Some(element) = self.software_cursor_element(renderer, output_rect) {
             elements.push(HearthspaceRenderElement::from(element));
         }
 
@@ -131,7 +133,8 @@ impl App {
             let scale = self.window_render_scale(index);
             let origins = match self.windows[index].kind {
                 ManagedWindowKind::ShellBar => self.shell_bar_screen_origins(),
-                ManagedWindowKind::Normal | ManagedWindowKind::Launcher => {
+                ManagedWindowKind::Launcher => self.launcher_screen_origins(),
+                ManagedWindowKind::Normal => {
                     vec![self.surface_screen_origin(index)]
                 }
             };
@@ -155,8 +158,12 @@ impl App {
     fn software_cursor_element(
         &mut self,
         renderer: &mut GlesRenderer,
+        output_rect: Rectangle<i32, Logical>,
     ) -> Option<MemoryRenderBufferRenderElement<GlesRenderer>> {
         if !self.software_cursor_visible {
+            return None;
+        }
+        if !point_in_logical_rect(self.pointer_location, output_rect) {
             return None;
         }
 
@@ -394,6 +401,13 @@ impl App {
     }
 }
 
+fn point_in_logical_rect(point: Point<f64, Logical>, rect: Rectangle<i32, Logical>) -> bool {
+    point.x >= f64::from(rect.loc.x)
+        && point.x < f64::from(rect.loc.x + rect.size.w.max(1))
+        && point.y >= f64::from(rect.loc.y)
+        && point.y < f64::from(rect.loc.y + rect.size.h.max(1))
+}
+
 /// The offset of a toplevel's window geometry within its surface, used to place
 /// popups relative to the parent surface origin. Defaults to `(0, 0)` when the
 /// client has not set an explicit window geometry.
@@ -444,4 +458,21 @@ pub(super) fn send_frames_surface_tree(surface: &wl_surface::WlSurface, time: u3
         },
         |_, _, &()| true,
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use smithay::utils::{Logical, Point, Rectangle};
+
+    use super::point_in_logical_rect;
+
+    #[test]
+    fn point_in_logical_rect_excludes_other_outputs() {
+        let rect = Rectangle::<i32, Logical>::new((1280, 0).into(), (1024, 768).into());
+
+        assert!(point_in_logical_rect(Point::from((1280.0, 12.0)), rect));
+        assert!(point_in_logical_rect(Point::from((2303.0, 767.0)), rect));
+        assert!(!point_in_logical_rect(Point::from((1279.0, 12.0)), rect));
+        assert!(!point_in_logical_rect(Point::from((2304.0, 12.0)), rect));
+    }
 }

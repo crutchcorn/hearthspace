@@ -99,6 +99,10 @@ impl AppCatalog {
                 .then(left.id.cmp(&right.id))
         });
 
+        if scored.is_empty() {
+            return self.apps.iter().take(limit).cloned().collect();
+        }
+
         scored
             .into_iter()
             .take(limit)
@@ -681,6 +685,32 @@ mod tests {
         let catalog = AppCatalog { apps: vec![app] };
         assert_eq!(catalog.search("calc", 10)[0].name, "Calculator");
         assert_eq!(catalog.search("arith", 10)[0].name, "Calculator");
+    }
+
+    #[test]
+    fn search_with_no_matches_still_returns_apps_for_launcher_dropdown() {
+        let catalog = AppCatalog {
+            apps: vec![
+                app_with(
+                    "calc",
+                    "[Desktop Entry]\nType=Application\nName=Calculator\nExec=gnome-calculator\n",
+                ),
+                app_with(
+                    "files",
+                    "[Desktop Entry]\nType=Application\nName=Files\nExec=nautilus\n",
+                ),
+            ],
+        };
+
+        let results = catalog.search("does-not-match", 10);
+
+        assert_eq!(
+            results
+                .iter()
+                .map(|app| app.name.as_str())
+                .collect::<Vec<_>>(),
+            ["Calculator", "Files"]
+        );
     }
 
     #[test]
