@@ -22,19 +22,16 @@ use smithay::{
         shell::xdg::SurfaceCachedState,
     },
 };
+use std::io::Cursor;
 use wayland_server::protocol::wl_surface;
 
 use super::{App, ManagedWindowKind, masonry_titlebar, windows::toplevel_title};
-use crate::config::{
-    DEFAULT_BACKGROUND_MOVES_WITH_CANVAS, DEFAULT_BACKGROUND_PATTERN_MARK_SIZE,
-    DEFAULT_BACKGROUND_PATTERN_SPACING,
-};
+use crate::config::DEFAULT_BACKGROUND_MOVES_WITH_CANVAS;
 
 type GlesTexture = <GlesRenderer as RendererSuper>::TextureId;
 
-const DEFAULT_BACKGROUND_TILE_WIDTH: i32 = 1_920;
-const DEFAULT_BACKGROUND_TILE_HEIGHT: i32 = 1_080;
 const MAX_BACKGROUND_TILE_ELEMENTS: usize = 512;
+const DEFAULT_BACKGROUND_IMAGE_PNG: &[u8] = include_bytes!("../../../../assets/backgrounds/default.png");
 
 pub(super) struct BackgroundImageTile {
     context_id: ContextId<GlesTexture>,
@@ -526,69 +523,26 @@ fn background_tile_axis_bounds(min: f64, max: f64, tile_size: f64) -> Option<(i6
 }
 
 fn default_background_image_data() -> BackgroundImageData {
-    let size = Size::<i32, Logical>::from((
-        DEFAULT_BACKGROUND_TILE_WIDTH,
-        DEFAULT_BACKGROUND_TILE_HEIGHT,
-    ));
-    BackgroundImageData {
-        pixels: rasterize_default_background_image(size),
+    decode_background_png(DEFAULT_BACKGROUND_IMAGE_PNG)
+        .expect("packaged default background image must be a valid 8-bit RGBA PNG")
+}
+
+fn decode_background_png(contents: &[u8]) -> Result<BackgroundImageData, png::DecodingError> {
+    let mut decoder = png::Decoder::new(Cursor::new(contents));
+    decoder.set_transformations(png::Transformations::ALPHA | png::Transformations::STRIP_16);
+    let mut reader = decoder.read_info()?;
+    let mut pixels = vec![0; reader.output_buffer_size().unwrap_or_default()];
+    let output = reader.next_frame(&mut pixels)?;
+    pixels.truncate(output.buffer_size());
+
+    assert_eq!(output.color_type, png::ColorType::Rgba);
+    assert_eq!(output.bit_depth, png::BitDepth::Eight);
+
+    Ok(BackgroundImageData {
+        pixels,
         format: Fourcc::Abgr8888,
-        size,
-    }
-}
-
-fn rasterize_default_background_image(size: Size<i32, Logical>) -> Vec<u8> {
-    let len = size
-        .w
-        .checked_mul(size.h)
-        .and_then(|pixels| pixels.checked_mul(4))
-        .and_then(|bytes| usize::try_from(bytes).ok())
-        .unwrap_or_default();
-    let mut pixels = vec![0; len];
-    let spacing = DEFAULT_BACKGROUND_PATTERN_SPACING.max(1) as usize;
-    let mark_size = DEFAULT_BACKGROUND_PATTERN_MARK_SIZE.max(1);
-
-    for cy in (0..=size.h).step_by(spacing) {
-        for cx in (0..=size.w).step_by(spacing) {
-            rasterize_default_background_mark(&mut pixels, size, cx, cy, mark_size);
-        }
-    }
-
-    pixels
-}
-
-fn rasterize_default_background_mark(
-    pixels: &mut [u8],
-    size: Size<i32, Logical>,
-    center_x: i32,
-    center_y: i32,
-    mark_size: i32,
-) {
-    let half = mark_size / 2;
-    let x0 = (center_x - half).max(0);
-    let y0 = (center_y - half).max(0);
-    let x1 = (center_x - half + mark_size).min(size.w);
-    let y1 = (center_y - half + mark_size).min(size.h);
-
-    for y in y0..y1 {
-        for x in x0..x1 {
-            let Some(offset) = y
-                .checked_mul(size.w)
-                .and_then(|row| row.checked_add(x))
-                .and_then(|pixel| pixel.checked_mul(4))
-                .and_then(|byte| usize::try_from(byte).ok())
-            else {
-                continue;
-            };
-            if offset + 3 >= pixels.len() {
-                continue;
-            }
-            pixels[offset] = 199;
-            pixels[offset + 1] = 199;
-            pixels[offset + 2] = 204;
-            pixels[offset + 3] = 255;
-        }
-    }
+        size: Size::<i32, Logical>::from((output.width as i32, output.height as i32)),
+    })
 }
 
 /// The offset of a toplevel's window geometry within its surface, used to place
@@ -647,9 +601,7 @@ pub(super) fn send_frames_surface_tree(surface: &wl_surface::WlSurface, time: u3
 mod tests {
     use smithay::utils::{Logical, Point, Rectangle, Size};
 
-    use super::{
-        background_tile_axis_bounds, point_in_logical_rect, rasterize_default_background_image,
-    };
+    use super::{background_tile_axis_bounds, default_background_image_data, point_in_logical_rect};
 
     #[test]
     fn point_in_logical_rect_excludes_other_outputs() {
@@ -678,13 +630,13 @@ mod tests {
     }
 
     #[test]
-    fn default_background_image_rasterizes_tile_edges() {
-        let size = Size::<i32, Logical>::from((240, 120));
-        let pixels = rasterize_default_background_image(size);
+    fn default_background_image_loads_from_png_asset() {
+        let image = default_background_image_data();
+        assert_eq!(image.size, Size::<i32, Logical>::from((1920, 1080)));
 
-        assert_eq!(pixel_alpha(&pixels, size, 0, 0), 255);
-        assert_eq!(pixel_alpha(&pixels, size, 239, 0), 255);
-        assert_eq!(pixel_alpha(&pixels, size, 60, 60), 0);
+        assert_eq!(pixel_alpha(&image.pixels, image.size, 0, 0), 255);
+        assert_eq!(pixel_alpha(&image.pixels, image.size, 1919, 0), 255);
+        assert_eq!(pixel_alpha(&image.pixels, image.size, 60, 60), 0);
     }
 
     fn pixel_alpha(pixels: &[u8], size: Size<i32, Logical>, x: i32, y: i32) -> u8 {

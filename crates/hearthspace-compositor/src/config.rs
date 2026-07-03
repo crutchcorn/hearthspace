@@ -52,8 +52,5 @@ pub const WINDOW_IDLE_THRESHOLDS: [Duration; 3] = [
 
 pub const ANIMATION_FRAME_INTERVAL: Duration = Duration::from_millis(16);
 
-/// Default generated repeating background image. The renderer treats this as a
-/// generic image tile; these values only define the built-in fallback pattern.
-pub const DEFAULT_BACKGROUND_PATTERN_SPACING: i32 = 120;
-pub const DEFAULT_BACKGROUND_PATTERN_MARK_SIZE: i32 = 4;
+/// Whether the repeated background image is anchored in canvas space by default.
 pub const DEFAULT_BACKGROUND_MOVES_WITH_CANVAS: bool = true;
