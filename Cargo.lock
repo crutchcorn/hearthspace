@@ -2259,14 +2259,16 @@ dependencies = [
 ]
 
 [[package]]
-name = "hearthspace"
+name = "hearthspace-common"
+version = "0.1.0"
+
+[[package]]
+name = "hearthspace-compositor"
 version = "0.1.0"
 dependencies = [
  "async-io",
  "atspi 0.30.0",
  "calloop 0.14.4",
- "clap",
- "ctrlc",
  "fontique",
  "gtk4",
  "hearthspace-common",
@@ -2274,7 +2276,6 @@ dependencies = [
  "image",
  "masonry",
  "naga",
- "nix 0.30.1",
  "png",
  "proptest",
  "rstest",
@@ -2288,20 +2289,28 @@ dependencies = [
  "waydriver-hearthspace",
  "wayland-protocols",
  "wayland-server",
- "which",
  "xcursor",
  "xilem",
 ]
-
-[[package]]
-name = "hearthspace-common"
-version = "0.1.0"
 
 [[package]]
 name = "hearthspace-ipc"
 version = "0.1.0"
 dependencies = [
  "hearthspace-common",
+]
+
+[[package]]
+name = "hearthspace-session"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "ctrlc",
+ "hearthspace-common",
+ "nix 0.30.1",
+ "tracing",
+ "tracing-subscriber",
+ "which",
 ]
 
 [[package]]

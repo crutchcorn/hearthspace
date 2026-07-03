@@ -2,8 +2,8 @@ use std::time::Duration;
 
 pub use hearthspace_common::{
     CONTROL_BAR_HEIGHT, HEARTHSPACE_WAYLAND_DISPLAY_ENV, LAUNCHER_APP_ID, LOG_FILE_ENV,
-    SHELL_BAR_APP_ID, SHELL_COMMAND_SOCKET_ENV, SHELL_COMMAND_SOCKET_NAME, WAYLAND_DISPLAY_ENV,
-    WAYLAND_DISPLAY_NAME, wayland_display_name,
+    NO_SHELL_FLAG, SHELL_BAR_APP_ID, SHELL_COMMAND_SOCKET_ENV, SHELL_COMMAND_SOCKET_NAME,
+    WAYLAND_DISPLAY_ENV, WAYLAND_DISPLAY_NAME, wayland_display_name,
 };
 pub const GTK_TEST_APP_FLAG: &str = "--gtk-test-app";
 pub const SHELL_FLAG: &str = "--shell";
@@ -16,7 +16,6 @@ pub const GTK_CLIENT_CONFIG_DIR_NAME: &str = "hearthspace-gtk-client-config";
 pub const SCROLL_ZOOMS_FLAG: &str = "--scroll-zooms";
 pub const HEADLESS_SIZE_FLAG: &str = "--headless-size";
 pub const HEADLESS_SCALE_FLAG: &str = "--headless-scale";
-pub const NO_SHELL_FLAG: &str = "--no-shell";
 pub const EXIT_AFTER_MS_FLAG: &str = "--exit-after-ms";
 pub const HEADLESS_OUTPUT_WIDTH: i32 = 1280;
 pub const HEADLESS_OUTPUT_HEIGHT: i32 = 720;

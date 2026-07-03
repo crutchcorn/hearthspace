@@ -339,7 +339,7 @@ impl Supervisor {
     fn start_compositor(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         let spec = self.binary_spec(
             "hearthspace-compositor",
-            &[hearthspace::config::NO_SHELL_FLAG],
+            &[hearthspace_common::NO_SHELL_FLAG],
             false,
         );
         self.compositor = Some(ManagedProcess::spawn(spec, 0)?);
@@ -585,7 +585,10 @@ impl Supervisor {
 fn cargo_package_exists(package: &str) -> bool {
     matches!(
         package,
-        "hearthspace-settings" | "hearthspace-settingsd" | "hearthspace-shell"
+        "hearthspace-compositor"
+            | "hearthspace-settings"
+            | "hearthspace-settingsd"
+            | "hearthspace-shell"
     )
 }
 

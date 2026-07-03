@@ -22,7 +22,7 @@ pub(super) struct SoftwareCursor {
     pub(super) hotspot: (i32, i32),
 }
 
-const DEFAULT_CURSOR: &[u8] = include_bytes!("../../assets/cursors/default");
+const DEFAULT_CURSOR: &[u8] = include_bytes!("../../../../assets/cursors/default");
 const DESIRED_CURSOR_SIZE: u32 = 24;
 
 pub(super) fn standard_software_cursor() -> SoftwareCursor {

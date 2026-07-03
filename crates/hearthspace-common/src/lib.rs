@@ -14,6 +14,7 @@ pub const REPO_ROOT_ENV: &str = "HEARTHSPACE_REPO_ROOT";
 pub const DEV_ENV: &str = "HEARTHSPACE_DEV";
 pub const CURRENT_DESKTOP: &str = "Hearthspace";
 pub const DESKTOP_SESSION: &str = "hearthspace";
+pub const NO_SHELL_FLAG: &str = "--no-shell";
 const CONFIG_DIR_NAME: &str = "hearthspace";
 const CONFIG_FILE_NAME: &str = "config.toml";
 

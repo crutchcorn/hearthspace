@@ -196,8 +196,10 @@ fn wait_for_screenshot_change(previous: &[u8]) -> Vec<u8> {
 fn wait_for_accessible_term(term: &str) -> bool {
     let deadline = Instant::now() + Duration::from_secs(10);
     while Instant::now() < deadline {
-        if async_io::block_on(hearthspace::accessibility::accessibility_tree_contains_term(term))
-            .expect("query AT-SPI tree")
+        if async_io::block_on(
+            hearthspace_compositor::accessibility::accessibility_tree_contains_term(term),
+        )
+        .expect("query AT-SPI tree")
         {
             return true;
         }

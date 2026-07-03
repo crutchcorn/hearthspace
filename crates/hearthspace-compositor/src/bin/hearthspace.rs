@@ -1,5 +1,6 @@
 use std::fs::OpenOptions;
 
+use hearthspace_compositor as hearthspace;
 use tracing::{debug, info};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -10,13 +11,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     if args
         .iter()
-        .any(|arg| arg == hearthspace::config::GTK_TEST_APP_FLAG)
+        .any(|arg| arg == hearthspace_compositor::config::GTK_TEST_APP_FLAG)
     {
         info!("starting GTK test app client");
         run_gtk_test_app()
     } else if args
         .iter()
-        .any(|arg| arg == hearthspace::config::SHELL_FLAG)
+        .any(|arg| arg == hearthspace_compositor::config::SHELL_FLAG)
     {
         info!("starting shell client");
         hearthspace_shell::xilem_shell::run()
@@ -25,26 +26,26 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let headless_output_size = parse_headless_output_size(&args)?;
         let headless_output_scale = parse_headless_output_scale(&args)?;
         let exit_after = parse_exit_after(&args)?;
-        let options = hearthspace::RunOptions {
+        let options = hearthspace_compositor::RunOptions {
             scroll_zooms_without_super: args
                 .iter()
-                .any(|arg| arg == hearthspace::config::SCROLL_ZOOMS_FLAG),
+                .any(|arg| arg == hearthspace_compositor::config::SCROLL_ZOOMS_FLAG),
             backend,
             headless_output_size,
             headless_output_scale,
             exit_after,
             start_shell: !args
                 .iter()
-                .any(|arg| arg == hearthspace::config::NO_SHELL_FLAG),
+                .any(|arg| arg == hearthspace_compositor::config::NO_SHELL_FLAG),
         };
         info!(?options, "starting compositor");
-        hearthspace::run_with_options(options)
+        hearthspace_compositor::run_with_options(options)
     }
 }
 
 fn initialize_tracing() {
     let env_filter = tracing_subscriber::EnvFilter::try_from_default_env();
-    if let Some(log_path) = std::env::var_os(hearthspace::config::LOG_FILE_ENV) {
+    if let Some(log_path) = std::env::var_os(hearthspace_compositor::config::LOG_FILE_ENV) {
         let make_writer = move || {
             OpenOptions::new()
                 .create(true)
@@ -88,7 +89,9 @@ fn parse_exit_after(args: &[String]) -> Result<Option<std::time::Duration>, Stri
     Ok(None)
 }
 
-fn parse_backend_selection(args: &[String]) -> Result<hearthspace::BackendSelection, String> {
+fn parse_backend_selection(
+    args: &[String],
+) -> Result<hearthspace_compositor::BackendSelection, String> {
     let mut selected = Vec::new();
     if args
         .iter()
