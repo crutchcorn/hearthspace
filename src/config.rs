@@ -1,8 +1,9 @@
 use std::time::Duration;
 
-pub const WAYLAND_DISPLAY_NAME: &str = "wayland-99";
-pub const WAYLAND_DISPLAY_ENV: &str = "WAYLAND_DISPLAY";
-pub const HEARTHSPACE_WAYLAND_DISPLAY_ENV: &str = "HEARTHSPACE_WAYLAND_DISPLAY";
+pub use hearthspace_common::{
+    HEARTHSPACE_WAYLAND_DISPLAY_ENV, LOG_FILE_ENV, SHELL_COMMAND_SOCKET_ENV,
+    SHELL_COMMAND_SOCKET_NAME, WAYLAND_DISPLAY_ENV, WAYLAND_DISPLAY_NAME, wayland_display_name,
+};
 pub const GTK_TEST_APP_FLAG: &str = "--gtk-test-app";
 pub const SHELL_FLAG: &str = "--shell";
 pub const HEADLESS_FLAG: &str = "--headless";
@@ -14,9 +15,6 @@ pub const SHELL_BAR_APP_ID: &str = "dev.hearthspace.shell-bar";
 /// Wayland `app_id` of the launcher palette: a short-lived shell surface the
 /// shell opens just below the bar to show app-search results as a dropdown.
 pub const LAUNCHER_APP_ID: &str = "dev.hearthspace.launcher";
-pub const SHELL_COMMAND_SOCKET_NAME: &str = "hearthspace-shell.sock";
-pub const SHELL_COMMAND_SOCKET_ENV: &str = "HEARTHSPACE_COMMAND_SOCKET";
-pub const LOG_FILE_ENV: &str = "HEARTHSPACE_LOG_FILE";
 pub const GTK_CLIENT_CONFIG_DIR_NAME: &str = "hearthspace-gtk-client-config";
 pub const SCROLL_ZOOMS_FLAG: &str = "--scroll-zooms";
 pub const HEADLESS_SIZE_FLAG: &str = "--headless-size";
@@ -58,12 +56,6 @@ pub const WINDOW_IDLE_THRESHOLDS: [Duration; 3] = [
 ];
 
 pub const ANIMATION_FRAME_INTERVAL: Duration = Duration::from_millis(16);
-
-pub fn wayland_display_name() -> String {
-    std::env::var(HEARTHSPACE_WAYLAND_DISPLAY_ENV)
-        .or_else(|_| std::env::var(WAYLAND_DISPLAY_ENV))
-        .unwrap_or_else(|_| WAYLAND_DISPLAY_NAME.to_string())
-}
 
 /// Background dot grid. The dots live in canvas space, so they pan and zoom with
 /// the viewport and frame canvas movement even when no windows are open.

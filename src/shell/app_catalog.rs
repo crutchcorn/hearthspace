@@ -596,9 +596,9 @@ fn session_environment_keys() -> &'static [&'static str] {
     &[
         "XDG_CURRENT_DESKTOP",
         "DESKTOP_SESSION",
-        "HEARTHSPACE_SETTINGS_SOCKET",
-        "HEARTHSPACE_SESSION_SOCKET",
-        "HEARTHSPACE_REPO_ROOT",
+        hearthspace_common::SETTINGS_SOCKET_ENV,
+        hearthspace_common::SESSION_SOCKET_ENV,
+        hearthspace_common::REPO_ROOT_ENV,
     ]
 }
 

@@ -9,7 +9,6 @@ use std::{
 const CONFIG_DIR_NAME: &str = "hearthspace";
 const CONFIG_FILE_NAME: &str = "config.toml";
 const SETTINGS_SOCKET_NAME: &str = "hearthspace-settingsd.sock";
-const SETTINGS_SOCKET_ENV: &str = "HEARTHSPACE_SETTINGS_SOCKET";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct Settings {
@@ -27,7 +26,7 @@ pub fn config_path() -> io::Result<PathBuf> {
 }
 
 pub fn settings_socket_path() -> io::Result<PathBuf> {
-    if let Some(socket_path) = env::var_os(SETTINGS_SOCKET_ENV) {
+    if let Some(socket_path) = env::var_os(hearthspace_common::SETTINGS_SOCKET_ENV) {
         return Ok(PathBuf::from(socket_path));
     }
 

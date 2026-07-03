@@ -212,17 +212,26 @@ fn create_session_env(
         ("WAYLAND_DISPLAY".to_string(), wayland_display.clone()),
         (
             "XDG_CURRENT_DESKTOP".to_string(),
-            "Hearthspace".to_string(),
+            hearthspace_common::CURRENT_DESKTOP.to_string(),
         ),
-        ("DESKTOP_SESSION".to_string(), "hearthspace".to_string()),
-        ("HEARTHSPACE_SESSION_DIR".to_string(), session_dir.clone()),
         (
-            "HEARTHSPACE_SETTINGS_SOCKET".to_string(),
+            "DESKTOP_SESSION".to_string(),
+            hearthspace_common::DESKTOP_SESSION.to_string(),
+        ),
+        (
+            hearthspace_common::SESSION_DIR_ENV.to_string(),
+            session_dir.clone(),
+        ),
+        (
+            hearthspace_common::SETTINGS_SOCKET_ENV.to_string(),
             settings_socket,
         ),
-        ("HEARTHSPACE_SESSION_SOCKET".to_string(), session_socket),
         (
-            hearthspace::config::SHELL_COMMAND_SOCKET_ENV.to_string(),
+            hearthspace_common::SESSION_SOCKET_ENV.to_string(),
+            session_socket,
+        ),
+        (
+            hearthspace_common::SHELL_COMMAND_SOCKET_ENV.to_string(),
             shell_command_socket,
         ),
         ("RUST_LOG".to_string(), args.log_level.clone()),
@@ -233,9 +242,9 @@ fn create_session_env(
     ];
 
     if mode == RunMode::DevCargo {
-        vars.push(("HEARTHSPACE_DEV".to_string(), "1".to_string()));
+        vars.push((hearthspace_common::DEV_ENV.to_string(), "1".to_string()));
         vars.push((
-            "HEARTHSPACE_REPO_ROOT".to_string(),
+            hearthspace_common::REPO_ROOT_ENV.to_string(),
             env!("CARGO_MANIFEST_DIR").to_string(),
         ));
     }
@@ -482,7 +491,7 @@ impl Supervisor {
         let mut envs = self.child_env(include_client_wayland);
         if !include_client_wayland {
             envs.push((
-                hearthspace::config::HEARTHSPACE_WAYLAND_DISPLAY_ENV.to_string(),
+                hearthspace_common::HEARTHSPACE_WAYLAND_DISPLAY_ENV.to_string(),
                 self.session_env.wayland_display.clone(),
             ));
         }
@@ -521,7 +530,7 @@ impl Supervisor {
         self.session_env
             .vars
             .iter()
-            .filter(|(key, _)| include_client_wayland || key != hearthspace::config::WAYLAND_DISPLAY_ENV)
+            .filter(|(key, _)| include_client_wayland || key != hearthspace_common::WAYLAND_DISPLAY_ENV)
             .cloned()
             .collect()
     }

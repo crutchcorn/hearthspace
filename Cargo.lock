@@ -2269,6 +2269,7 @@ dependencies = [
  "ctrlc",
  "fontique",
  "gtk4",
+ "hearthspace-common",
  "image",
  "masonry",
  "naga",
@@ -2290,6 +2291,10 @@ dependencies = [
  "xcursor",
  "xilem",
 ]
+
+[[package]]
+name = "hearthspace-common"
+version = "0.1.0"
 
 [[package]]
 name = "hearthspace-settings"
