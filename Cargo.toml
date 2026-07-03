@@ -1,38 +1,21 @@
-[package]
-name = "hearthspace-session"
-version = "0.1.0"
-edition = "2024"
-rust-version = "1.93.1"
-license = "Apache-2.0"
-default-run = "hearthspace-session"
-
 [workspace]
 resolver = "2"
 members = [
-    ".",
     "crates/hearthspace-compositor",
     "crates/hearthspace-common",
     "crates/hearthspace-ipc",
+    "crates/hearthspace-session",
     "crates/hearthspace-settings",
     "crates/hearthspace-settingsd",
     "crates/hearthspace-shell",
     "crates/waydriver-hearthspace",
 ]
-default-members = ["."]
-
-[dependencies]
-clap = { version = "4", features = ["derive"] }
-ctrlc = "3"
-hearthspace-common = { path = "crates/hearthspace-common" }
-nix = { version = "0.30", features = ["signal", "process"] }
-tracing = "0.1.41"
-tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
-which = "8"
+default-members = ["crates/hearthspace-session"]
 
 # Centralized lint policy so local `cargo clippy`/`cargo build` enforce the same
 # discipline as CI (which also passes `-D warnings` to escalate rustc warnings).
-[lints.rust]
+[workspace.lints.rust]
 unsafe_op_in_unsafe_fn = "deny"
 
-[lints.clippy]
+[workspace.lints.clippy]
 all = { level = "deny", priority = -1 }

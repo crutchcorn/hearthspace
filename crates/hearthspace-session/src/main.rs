@@ -245,7 +245,7 @@ fn create_session_env(
         vars.push((hearthspace_common::DEV_ENV.to_string(), "1".to_string()));
         vars.push((
             hearthspace_common::REPO_ROOT_ENV.to_string(),
-            env!("CARGO_MANIFEST_DIR").to_string(),
+            path_to_string(&repo_root())?,
         ));
     }
 
@@ -273,8 +273,13 @@ fn xdg_data_dirs(session_share_dir: &str) -> Result<String, Box<dyn std::error::
     Ok(env::join_paths(dirs)?.to_string_lossy().into_owned())
 }
 
+fn repo_root() -> PathBuf {
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    root.canonicalize().unwrap_or(root)
+}
+
 fn generate_dev_desktop_entries(paths: &SessionPaths) -> Result<(), Box<dyn std::error::Error>> {
-    let exec = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("scripts/dev-run-app");
+    let exec = repo_root().join("scripts/dev-run-app");
     let desktop_entry = format!(
         "[Desktop Entry]\n\
          Type=Application\n\
@@ -496,8 +501,7 @@ impl Supervisor {
             ));
         }
 
-        let current_dir = (self.mode == RunMode::DevCargo)
-            .then(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")));
+        let current_dir = (self.mode == RunMode::DevCargo).then(repo_root);
         match self.mode {
             RunMode::DevCargo => {
                 let mut args = vec!["run".to_string()];
@@ -537,7 +541,7 @@ impl Supervisor {
 
     fn watcher_spec(&self) -> Option<ProcessSpec> {
         let envs = self.child_env(true);
-        let current_dir = Some(PathBuf::from(env!("CARGO_MANIFEST_DIR")));
+        let current_dir = Some(repo_root());
         if which::which("cargo-watch").is_ok() {
             return Some(ProcessSpec {
                 name: "settings-watch",
