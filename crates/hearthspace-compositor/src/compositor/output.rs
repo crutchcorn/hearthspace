@@ -7,9 +7,15 @@ use wayland_server::{DisplayHandle, backend::GlobalId, protocol::wl_surface::WlS
 
 use super::App;
 
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(in crate::compositor) struct OutputLayout {
+    monitors: Vec<hearthspace_ipc::MonitorConfig>,
+}
+
 pub(in crate::compositor) struct OutputSet {
     primary: OutputRecord,
     secondary: Vec<OutputRecord>,
+    layout: OutputLayout,
 }
 
 pub(in crate::compositor) struct OutputRecord {
@@ -40,22 +46,41 @@ pub(in crate::compositor) struct OutputDescriptor {
 }
 
 impl OutputSet {
-    pub(in crate::compositor) fn new(primary: OutputRecord) -> Self {
-        Self {
+    pub(in crate::compositor) fn new(primary: OutputRecord, layout: OutputLayout) -> Self {
+        let mut outputs = Self {
             primary,
             secondary: Vec::new(),
+            layout,
+        };
+        outputs.apply_layout_to_existing_outputs();
+        outputs
+    }
+
+    #[cfg(feature = "udev")]
+    pub(in crate::compositor) fn set_layout(&mut self, layout: OutputLayout) -> bool {
+        if self.layout == layout {
+            return false;
         }
+
+        self.layout = layout;
+        self.apply_layout_to_existing_outputs();
+        true
     }
 
     #[cfg(feature = "udev")]
     fn sync_secondary_outputs(&mut self, dh: &DisplayHandle, descriptors: Vec<OutputDescriptor>) {
-        let mut next_x = self.primary.size.to_logical(self.primary.scale).w;
         let mut existing = std::mem::take(&mut self.secondary);
         let descriptors = secondary_descriptors_for_layout(descriptors, &self.primary.name);
+        let plan = output_locations_for_layout(
+            OutputGeometry::from(&self.primary),
+            descriptors.iter().map(OutputGeometry::from).collect(),
+            &self.layout,
+        );
+        self.primary.set_location(plan.primary);
         let mut next_secondary = Vec::with_capacity(descriptors.len());
 
         for descriptor in descriptors {
-            let location = (next_x, 0).into();
+            let location = plan.secondary_location(&descriptor.name);
             let output = if let Some(index) = existing
                 .iter()
                 .position(|output| output.name == descriptor.name)
@@ -68,7 +93,6 @@ impl OutputSet {
                 tracing::info!(name = %output.name, ?location, "advertising newly connected Wayland output");
                 output
             };
-            next_x += output.size.to_logical(output.scale).w;
             next_secondary.push(output);
         }
 
@@ -78,6 +102,18 @@ impl OutputSet {
         }
 
         self.secondary = next_secondary;
+    }
+
+    fn apply_layout_to_existing_outputs(&mut self) {
+        let plan = output_locations_for_layout(
+            OutputGeometry::from(&self.primary),
+            self.secondary.iter().map(OutputGeometry::from).collect(),
+            &self.layout,
+        );
+        self.primary.set_location(plan.primary);
+        for output in &mut self.secondary {
+            output.set_location(plan.secondary_location(&output.name));
+        }
     }
 
     fn logical_size(&self) -> Size<i32, Logical> {
@@ -128,6 +164,169 @@ impl OutputRecord {
             self.location,
         );
     }
+
+    fn set_location(&mut self, location: Point<i32, Logical>) {
+        if self.location == location {
+            return;
+        }
+
+        self.location = location;
+        update_output_mode_with_refresh_at(
+            &self.output,
+            self.size,
+            self.scale,
+            self.refresh,
+            self.location,
+        );
+    }
+}
+
+impl OutputLayout {
+    fn from_monitors(monitors: Vec<hearthspace_ipc::MonitorConfig>) -> Self {
+        Self { monitors }
+    }
+
+    fn location_for(&self, output_name: &str, role_id: &str) -> Option<Point<i32, Logical>> {
+        self.monitors
+            .iter()
+            .find(|monitor| monitor.id == output_name || monitor.name == output_name)
+            .or_else(|| self.monitors.iter().find(|monitor| monitor.id == role_id))
+            .map(|monitor| Point::from((monitor.x, monitor.y)))
+    }
+}
+
+pub(in crate::compositor) fn load_output_layout() -> OutputLayout {
+    match hearthspace_ipc::client_get_settings() {
+        Ok(settings) => OutputLayout::from_monitors(settings.monitors),
+        Err(error) => {
+            debug!(%error, "using fallback output layout because settingsd is unavailable");
+            OutputLayout::default()
+        }
+    }
+}
+
+#[derive(Clone)]
+struct OutputGeometry {
+    name: String,
+    size: Size<i32, Physical>,
+    scale: i32,
+}
+
+impl OutputGeometry {
+    fn logical_size(&self) -> Size<i32, Logical> {
+        self.size.to_logical(self.scale)
+    }
+}
+
+impl From<&OutputRecord> for OutputGeometry {
+    fn from(output: &OutputRecord) -> Self {
+        Self {
+            name: output.name.clone(),
+            size: output.size,
+            scale: output.scale,
+        }
+    }
+}
+
+impl From<&OutputDescriptor> for OutputGeometry {
+    fn from(descriptor: &OutputDescriptor) -> Self {
+        Self {
+            name: descriptor.name.clone(),
+            size: descriptor.size,
+            scale: descriptor.scale,
+        }
+    }
+}
+
+struct OutputLayoutPlan {
+    primary: Point<i32, Logical>,
+    secondary: Vec<(String, Point<i32, Logical>)>,
+}
+
+impl OutputLayoutPlan {
+    fn secondary_location(&self, name: &str) -> Point<i32, Logical> {
+        self.secondary
+            .iter()
+            .find(|(secondary_name, _)| secondary_name == name)
+            .map(|(_, location)| *location)
+            .unwrap_or((0, 0).into())
+    }
+}
+
+fn output_locations_for_layout(
+    primary: OutputGeometry,
+    mut secondary: Vec<OutputGeometry>,
+    layout: &OutputLayout,
+) -> OutputLayoutPlan {
+    secondary.sort_by(|a, b| a.name.cmp(&b.name));
+
+    let primary_location = layout
+        .location_for(&primary.name, "primary")
+        .unwrap_or((0, 0).into());
+    let mut placed = vec![(
+        primary.name.clone(),
+        primary.logical_size(),
+        primary_location,
+    )];
+    let mut unplaced = Vec::new();
+
+    for (index, output) in secondary.into_iter().enumerate() {
+        let role_id = secondary_role_id(index);
+        if let Some(location) = layout.location_for(&output.name, &role_id) {
+            let size = output.logical_size();
+            placed.push((output.name, size, location));
+        } else {
+            unplaced.push(output);
+        }
+    }
+
+    let fallback_y = primary_location.y;
+    let mut next_x = placed
+        .iter()
+        .map(|(_, size, location)| location.x + size.w)
+        .max()
+        .unwrap_or(0);
+    for output in unplaced {
+        let size = output.logical_size();
+        let location = Point::from((next_x, fallback_y));
+        next_x += size.w;
+        placed.push((output.name, size, location));
+    }
+
+    let min_x = placed
+        .iter()
+        .map(|(_, _, location)| location.x)
+        .min()
+        .unwrap_or(0);
+    let min_y = placed
+        .iter()
+        .map(|(_, _, location)| location.y)
+        .min()
+        .unwrap_or(0);
+
+    let mut primary_plan = Point::from((0, 0));
+    let mut secondary_plan = Vec::new();
+    for (name, _, location) in placed {
+        let normalized = Point::from((location.x - min_x, location.y - min_y));
+        if name == primary.name {
+            primary_plan = normalized;
+        } else {
+            secondary_plan.push((name, normalized));
+        }
+    }
+
+    OutputLayoutPlan {
+        primary: primary_plan,
+        secondary: secondary_plan,
+    }
+}
+
+fn secondary_role_id(index: usize) -> String {
+    if index == 0 {
+        "secondary".to_string()
+    } else {
+        format!("secondary-{}", index + 1)
+    }
 }
 
 impl App {
@@ -137,6 +336,11 @@ impl App {
 
     pub(super) fn output_logical_size(&self) -> Size<i32, Logical> {
         self.outputs.logical_size()
+    }
+
+    #[cfg(feature = "udev")]
+    pub(in crate::compositor) fn set_output_layout(&mut self, layout: OutputLayout) -> bool {
+        self.outputs.set_layout(layout)
     }
 
     #[cfg(feature = "udev")]
@@ -313,10 +517,13 @@ fn update_output_mode_with_refresh_at(
 mod tests {
     use smithay::{
         output::{PhysicalProperties, Subpixel},
-        utils::{Physical, Size},
+        utils::{Physical, Point, Size},
     };
 
-    use super::{OutputDescriptor, secondary_descriptors_for_layout};
+    use super::{
+        OutputDescriptor, OutputGeometry, OutputLayout, output_locations_for_layout,
+        secondary_descriptors_for_layout,
+    };
 
     fn descriptor(name: &str) -> OutputDescriptor {
         OutputDescriptor {
@@ -331,6 +538,26 @@ mod tests {
             scale: 1,
             refresh: 60_000,
         }
+    }
+
+    fn geometry(name: &str) -> OutputGeometry {
+        OutputGeometry::from(&descriptor(name))
+    }
+
+    fn layout(monitors: &[(&str, i32, i32)]) -> OutputLayout {
+        OutputLayout::from_monitors(
+            monitors
+                .iter()
+                .map(|(id, x, y)| hearthspace_ipc::MonitorConfig {
+                    id: (*id).into(),
+                    name: (*id).into(),
+                    width: 100,
+                    height: 100,
+                    x: *x,
+                    y: *y,
+                })
+                .collect(),
+        )
     }
 
     #[test]
@@ -364,5 +591,42 @@ mod tests {
             .collect::<Vec<_>>();
 
         assert_eq!(names, ["HDMI-A-1"]);
+    }
+
+    #[test]
+    fn output_layout_uses_connector_positions_and_normalizes_to_zero_origin() {
+        let plan = output_locations_for_layout(
+            geometry("eDP-1"),
+            vec![geometry("HDMI-A-1")],
+            &layout(&[("eDP-1", 1920, 0), ("HDMI-A-1", 0, -200)]),
+        );
+
+        assert_eq!(plan.primary, Point::from((1920, 200)));
+        assert_eq!(plan.secondary_location("HDMI-A-1"), Point::from((0, 0)));
+    }
+
+    #[test]
+    fn output_layout_maps_placeholder_roles_by_output_order() {
+        let plan = output_locations_for_layout(
+            geometry("eDP-1"),
+            vec![geometry("HDMI-A-1")],
+            &layout(&[("primary", 0, 0), ("secondary", -100, 100)]),
+        );
+
+        assert_eq!(plan.primary, Point::from((100, 0)));
+        assert_eq!(plan.secondary_location("HDMI-A-1"), Point::from((0, 100)));
+    }
+
+    #[test]
+    fn output_layout_places_unconfigured_outputs_to_the_right() {
+        let plan = output_locations_for_layout(
+            geometry("eDP-1"),
+            vec![geometry("HDMI-A-1"), geometry("DP-1")],
+            &layout(&[("primary", 0, 0)]),
+        );
+
+        assert_eq!(plan.primary, Point::from((0, 0)));
+        assert_eq!(plan.secondary_location("DP-1"), Point::from((100, 0)));
+        assert_eq!(plan.secondary_location("HDMI-A-1"), Point::from((200, 0)));
     }
 }

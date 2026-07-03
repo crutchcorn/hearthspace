@@ -136,63 +136,59 @@ impl UdevDevice {
                 mode_count = info.modes().len(),
                 "DRM connector queried"
             );
-            if connected {
-                if let Some(mode) = info.modes().first() {
-                    debug!(connector = ?connector_handle, ?mode, "selected preferred/first DRM mode");
-                    let current_crtc = info
-                        .current_encoder()
-                        .and_then(|encoder| self.scanout_node.drm_device.get_encoder(encoder).ok())
-                        .and_then(|encoder| encoder.crtc());
-                    let crtc_candidates = info
-                        .encoders()
-                        .iter()
-                        .filter_map(|encoder| {
-                            self.scanout_node.drm_device.get_encoder(*encoder).ok().map(
-                                |encoder_info| {
-                                    resources.filter_crtcs(encoder_info.possible_crtcs())
-                                },
+            if connected && let Some(mode) = info.modes().first() {
+                debug!(connector = ?connector_handle, ?mode, "selected preferred/first DRM mode");
+                let current_crtc = info
+                    .current_encoder()
+                    .and_then(|encoder| self.scanout_node.drm_device.get_encoder(encoder).ok())
+                    .and_then(|encoder| encoder.crtc());
+                let crtc_candidates = info
+                    .encoders()
+                    .iter()
+                    .filter_map(|encoder| {
+                        self.scanout_node.drm_device.get_encoder(*encoder).ok().map(
+                            |encoder_info| resources.filter_crtcs(encoder_info.possible_crtcs()),
+                        )
+                    })
+                    .flatten()
+                    .collect::<Vec<_>>();
+                let crtc = current_crtc
+                    .filter(|crtc| !used_crtcs.contains(crtc))
+                    .or_else(|| {
+                        crtc_candidates
+                            .iter()
+                            .copied()
+                            .find(|crtc| !used_crtcs.contains(crtc))
+                    });
+                debug!(
+                    connector = ?connector_handle,
+                    current_crtc = ?current_crtc,
+                    crtcs = ?crtc_candidates,
+                    selected_crtc = ?crtc,
+                    "DRM CRTC candidates"
+                );
+                if let Some(crtc) = crtc {
+                    used_crtcs.push(crtc);
+                    let physical_size_mm = info
+                        .size()
+                        .map(|(width, height)| {
+                            (
+                                i32::try_from(width).unwrap_or(0),
+                                i32::try_from(height).unwrap_or(0),
                             )
                         })
-                        .flatten()
-                        .collect::<Vec<_>>();
-                    let crtc = current_crtc
-                        .filter(|crtc| !used_crtcs.contains(crtc))
-                        .or_else(|| {
-                            crtc_candidates
-                                .iter()
-                                .copied()
-                                .find(|crtc| !used_crtcs.contains(crtc))
-                        });
-                    debug!(
-                        connector = ?connector_handle,
-                        current_crtc = ?current_crtc,
-                        crtcs = ?crtc_candidates,
-                        selected_crtc = ?crtc,
-                        "DRM CRTC candidates"
-                    );
-                    if let Some(crtc) = crtc {
-                        used_crtcs.push(crtc);
-                        let physical_size_mm = info
-                            .size()
-                            .map(|(width, height)| {
-                                (
-                                    i32::try_from(width).unwrap_or(0),
-                                    i32::try_from(height).unwrap_or(0),
-                                )
-                            })
-                            .unwrap_or((0, 0));
-                        targets.push(KmsOutputTarget {
-                            connector: *connector_handle,
-                            crtc,
-                            mode: *mode,
-                            connector_name: format!(
-                                "{}-{}",
-                                info.interface().as_str(),
-                                info.interface_id()
-                            ),
-                            physical_size_mm,
-                        });
-                    }
+                        .unwrap_or((0, 0));
+                    targets.push(KmsOutputTarget {
+                        connector: *connector_handle,
+                        crtc,
+                        mode: *mode,
+                        connector_name: format!(
+                            "{}-{}",
+                            info.interface().as_str(),
+                            info.interface_id()
+                        ),
+                        physical_size_mm,
+                    });
                 }
             }
         }

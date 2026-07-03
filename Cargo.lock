@@ -2272,6 +2272,7 @@ dependencies = [
  "fontique",
  "gtk4",
  "hearthspace-common",
+ "hearthspace-ipc",
  "hearthspace-shell",
  "image",
  "masonry",
