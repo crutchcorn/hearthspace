@@ -30,6 +30,14 @@ pub(in crate::compositor) struct CursorImage {
 }
 
 const DEFAULT_CURSOR: &[u8] = include_bytes!("../../../../assets/cursors/default");
+#[cfg(feature = "udev")]
+const NS_RESIZE_CURSOR: &[u8] = include_bytes!("../../../../assets/cursors/ns-resize");
+#[cfg(feature = "udev")]
+const EW_RESIZE_CURSOR: &[u8] = include_bytes!("../../../../assets/cursors/ew-resize");
+#[cfg(feature = "udev")]
+const NWSE_RESIZE_CURSOR: &[u8] = include_bytes!("../../../../assets/cursors/nwse-resize");
+#[cfg(feature = "udev")]
+const NESW_RESIZE_CURSOR: &[u8] = include_bytes!("../../../../assets/cursors/nesw-resize");
 const DESIRED_CURSOR_SIZE: u32 = 24;
 
 pub(super) fn standard_software_cursor() -> SoftwareCursor {
@@ -52,13 +60,29 @@ pub(super) fn standard_software_cursor() -> SoftwareCursor {
     }
 }
 
+#[cfg(feature = "udev")]
+pub(in crate::compositor) fn cursor_image_for_icon(icon: CursorIcon) -> CursorImage {
+    match icon {
+        CursorIcon::Default => cursor_image_from_xcursor(DEFAULT_CURSOR),
+        CursorIcon::NsResize => cursor_image_from_xcursor(NS_RESIZE_CURSOR),
+        CursorIcon::EwResize => cursor_image_from_xcursor(EW_RESIZE_CURSOR),
+        CursorIcon::NwseResize => cursor_image_from_xcursor(NWSE_RESIZE_CURSOR),
+        CursorIcon::NeswResize => cursor_image_from_xcursor(NESW_RESIZE_CURSOR),
+        #[cfg(feature = "winit")]
+        _ => cursor_image_from_xcursor(DEFAULT_CURSOR),
+    }
+}
+
 pub(in crate::compositor) fn standard_cursor_image() -> CursorImage {
-    let images =
-        parse_xcursor(DEFAULT_CURSOR).expect("packaged default cursor must be valid Xcursor data");
+    cursor_image_from_xcursor(DEFAULT_CURSOR)
+}
+
+fn cursor_image_from_xcursor(contents: &[u8]) -> CursorImage {
+    let images = parse_xcursor(contents).expect("packaged cursor must be valid Xcursor data");
     let image = images
         .iter()
         .min_by_key(|image| image.size.abs_diff(DESIRED_CURSOR_SIZE))
-        .expect("packaged default cursor must contain at least one image");
+        .expect("packaged cursor must contain at least one image");
 
     let hotspot = (
         i32::try_from(image.xhot).expect("cursor x hotspot must fit in i32"),

@@ -26,7 +26,7 @@ use smithay::{
 };
 use tracing::{debug, error, info, warn};
 
-use super::super::cursor::{CursorImage, standard_cursor_image};
+use super::super::cursor::{CursorIcon, CursorImage, cursor_image_for_icon};
 
 pub(super) struct UdevDevice {
     pub(super) path: PathBuf,
@@ -63,6 +63,7 @@ pub(super) struct KmsOutputSurface {
 struct HardwareCursor {
     buffer: dumbbuffer::DumbBuffer,
     hotspot: (i32, i32),
+    icon: CursorIcon,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -249,9 +250,16 @@ impl UdevDevice {
     }
 
     pub(super) fn update_hardware_cursor(&mut self, state: &super::super::App) {
-        let Some(cursor) = self.hardware_cursor.as_ref() else {
+        let Some(cursor) = self.hardware_cursor.as_mut() else {
             return;
         };
+        if cursor.icon != state.cursor_icon {
+            update_hardware_cursor_image(&self.scanout_node, cursor, state.cursor_icon);
+            if let Some(crtc) = self.hardware_cursor_crtc {
+                set_legacy_cursor(&self.scanout_node, crtc, cursor);
+            }
+            self.hardware_cursor_position = None;
+        }
 
         if !self.hardware_cursor_initialized {
             clear_all_drm_cursor_planes(&self.scanout_node);
@@ -444,7 +452,8 @@ fn clear_all_drm_cursor_planes(scanout_node: &ScanoutNode) {
 }
 
 fn create_hardware_cursor(scanout_node: &ScanoutNode) -> Option<HardwareCursor> {
-    let image = standard_cursor_image();
+    let icon = CursorIcon::Default;
+    let image = cursor_image_for_icon(icon);
     let width = cursor_capability(scanout_node, DriverCapability::CursorWidth)
         .unwrap_or(image.width)
         .max(image.width);
@@ -485,7 +494,44 @@ fn create_hardware_cursor(scanout_node: &ScanoutNode) -> Option<HardwareCursor> 
         ?hotspot,
         "created DRM hardware cursor buffer"
     );
-    Some(HardwareCursor { buffer, hotspot })
+    Some(HardwareCursor {
+        buffer,
+        hotspot,
+        icon,
+    })
+}
+
+fn update_hardware_cursor_image(
+    scanout_node: &ScanoutNode,
+    cursor: &mut HardwareCursor,
+    icon: CursorIcon,
+) {
+    let image = cursor_image_for_icon(icon);
+    let (width, height) = cursor.buffer.size();
+    let pitch = match usize::try_from(cursor.buffer.pitch()) {
+        Ok(pitch) => pitch,
+        Err(error) => {
+            warn!(%error, "failed to read DRM hardware cursor pitch");
+            return;
+        }
+    };
+    let mut mapping = match scanout_node.drm_device.map_dumb_buffer(&mut cursor.buffer) {
+        Ok(mapping) => mapping,
+        Err(error) => {
+            warn!(%error, ?icon, "failed to map DRM hardware cursor buffer for icon update");
+            return;
+        }
+    };
+    mapping.fill(0);
+    copy_cursor_rgba_to_argb8888(&image, mapping.as_mut(), pitch, width, height);
+    drop(mapping);
+
+    cursor.hotspot = (
+        cmp::min(image.hotspot.0.max(0), width.saturating_sub(1) as i32),
+        cmp::min(image.hotspot.1.max(0), height.saturating_sub(1) as i32),
+    );
+    cursor.icon = icon;
+    debug!(?icon, hotspot = ?cursor.hotspot, "updated DRM hardware cursor image");
 }
 
 fn cursor_capability(scanout_node: &ScanoutNode, capability: DriverCapability) -> Option<u32> {
