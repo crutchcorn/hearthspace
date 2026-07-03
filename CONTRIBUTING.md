@@ -125,6 +125,21 @@ Native backend runs can be exited with `Ctrl+Alt+Backspace`, `Ctrl+Alt+Esc`,
 and log interpretation, see [docs/NATIVE_TESTING.md](./docs/NATIVE_TESTING.md).
 For native backend architecture, see [docs/DRM.md](./docs/DRM.md).
 
+Settings runs use separate Cargo binaries rather than `hearthspace` runtime
+flags. Start the backend daemon first, then launch the Xilem frontend:
+
+```sh
+cargo run --bin hearthspace-settingsd
+cargo run --bin hearthspace-settings
+```
+
+The settings daemon writes `~/.config/hearthspace/config.toml` and listens on
+`$XDG_RUNTIME_DIR/hearthspace-settingsd.sock`. Its focused tests can be run with:
+
+```sh
+cargo test --bin hearthspace-settingsd
+```
+
 ### Tracing Logs
 
 Hearthspace initializes `tracing` automatically. No Cargo feature flags are

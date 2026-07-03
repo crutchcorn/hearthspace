@@ -2,6 +2,7 @@ pub mod accessibility;
 pub mod compositor;
 pub mod config;
 pub mod geometry;
+pub mod settings;
 pub mod shell;
 #[cfg(feature = "test-apps")]
 pub mod test_apps;
