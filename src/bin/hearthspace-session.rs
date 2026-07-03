@@ -272,10 +272,13 @@ fn generate_dev_desktop_entries(paths: &SessionPaths) -> Result<(), Box<dyn std:
          Icon=hearthspace\n\
          Categories=Settings;System;\n\
          Keywords=hearthspace;settings;config;preferences;\n\
+         OnlyShowIn=Hearthspace;\n\
          X-Hearthspace-Dev=true\n",
         escape_exec_path(&exec)
     );
-    let path = paths.applications_dir.join("hearthspace-settings.desktop");
+    let path = paths
+        .applications_dir
+        .join("dev.hearthspace.Settings.desktop");
     fs::write(&path, desktop_entry)?;
     info!(path = %path.display(), "generated development desktop entry");
     Ok(())

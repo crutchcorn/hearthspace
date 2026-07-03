@@ -578,6 +578,11 @@ pub fn spawn_argv_with_env(
         .args(args)
         .env("WAYLAND_DISPLAY", wayland_display)
         .env_remove("DISPLAY");
+    for key in session_environment_keys() {
+        if let Some(value) = env::var_os(key) {
+            command.env(key, value);
+        }
+    }
     for (key, value) in envs {
         command.env(key, value);
     }
@@ -585,6 +590,16 @@ pub fn spawn_argv_with_env(
         .spawn()
         .map(|_| ())
         .map_err(|error| format!("failed to spawn {program}: {error}"))
+}
+
+fn session_environment_keys() -> &'static [&'static str] {
+    &[
+        "XDG_CURRENT_DESKTOP",
+        "DESKTOP_SESSION",
+        "HEARTHSPACE_SETTINGS_SOCKET",
+        "HEARTHSPACE_SESSION_SOCKET",
+        "HEARTHSPACE_REPO_ROOT",
+    ]
 }
 
 fn resolve_launch_program(program: &str) -> PathBuf {
@@ -832,7 +847,7 @@ mod tests {
         let apps_dir = dir.path().join("share/applications");
         fs::create_dir_all(&apps_dir).unwrap();
         fs::write(
-            apps_dir.join("hearthspace-settings.desktop"),
+            apps_dir.join("dev.hearthspace.Settings.desktop"),
             "[Desktop Entry]\n\
              Type=Application\n\
              Name=Hearthspace Settings\n\
@@ -840,18 +855,52 @@ mod tests {
              Exec=\"/repo/scripts/dev-run-app\" hearthspace-settings\n\
              Categories=Settings;System;\n\
              Keywords=hearthspace;settings;config;preferences;\n\
+             OnlyShowIn=Hearthspace;\n\
              X-Hearthspace-Dev=true\n",
         )
         .unwrap();
 
         let catalog = AppCatalog::load_from_data_dirs(vec![dir.path().join("share")]);
 
-        let app = catalog.app_by_id("hearthspace-settings.desktop").unwrap();
+        let app = catalog.app_by_id("dev.hearthspace.Settings.desktop").unwrap();
         assert_eq!(app.name, "Hearthspace Settings");
         assert_eq!(catalog.search("hearthspace", 1)[0].id, app.id);
         assert_eq!(catalog.search("preferences", 1)[0].id, app.id);
         assert_eq!(
             app.launch_argv().unwrap(),
+            vec!["/repo/scripts/dev-run-app", "hearthspace-settings"]
+        );
+    }
+
+    #[test]
+    fn session_settings_entry_overrides_source_tree_entry() {
+        let session = tempfile::tempdir().unwrap();
+        let source = tempfile::tempdir().unwrap();
+        let write = |dir: &Path, exec: &str| {
+            let apps_dir = dir.join("applications");
+            fs::create_dir_all(&apps_dir).unwrap();
+            fs::write(
+                apps_dir.join("dev.hearthspace.Settings.desktop"),
+                format!(
+                    "[Desktop Entry]\n\
+                     Type=Application\n\
+                     Name=Hearthspace Settings\n\
+                     Exec={exec}\n\
+                     Categories=Settings;\n"
+                ),
+            )
+            .unwrap();
+        };
+        write(session.path(), "\"/repo/scripts/dev-run-app\" hearthspace-settings");
+        write(source.path(), "hearthspace-settings");
+
+        let catalog = AppCatalog::load_from_data_dirs(vec![
+            session.path().to_path_buf(),
+            source.path().to_path_buf(),
+        ]);
+
+        assert_eq!(
+            catalog.search("settings", 1)[0].launch_argv().unwrap(),
             vec!["/repo/scripts/dev-run-app", "hearthspace-settings"]
         );
     }
