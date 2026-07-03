@@ -164,7 +164,7 @@ fn monitor_details_view(state: &SettingsApp) -> Box<AnyWidgetView<SettingsApp>> 
     flex_col((
         label(format!("Selected: {}", monitor.name)),
         label(format!(
-            "Physical: {}x{} | Logical: {}x{} | Position: {},{}",
+            "Physical: {}x{} | Desktop: {}x{} | Position: {},{}",
             monitor.width,
             monitor.height,
             monitor_logical_width(monitor),
@@ -460,9 +460,8 @@ fn monitor_logical_height(monitor: &MonitorConfig) -> i32 {
     logical_dimension(monitor.height, monitor.scale)
 }
 
-fn logical_dimension(size: i32, scale: i32) -> i32 {
-    let scale = scale.max(1);
-    (size.max(1) / scale).max(1)
+fn logical_dimension(size: i32, _scale: i32) -> i32 {
+    size.max(1)
 }
 
 fn default_placeholder_monitors(monitors: &[MonitorConfig]) -> bool {
@@ -1302,11 +1301,11 @@ mod tests {
         );
 
         assert_eq!(monitors[0].scale, 2);
-        assert_eq!(monitor_logical_width(&monitors[0]), 1280);
+        assert_eq!(monitor_logical_width(&monitors[0]), 2560);
     }
 
     #[test]
-    fn scaling_monitor_shifts_outputs_to_the_right_by_logical_delta() {
+    fn scaling_monitor_keeps_outputs_at_physical_desktop_size() {
         let mut monitors = Settings::default().monitors;
 
         recalculate_monitor_positions_for_scale(&mut monitors, "primary", 2);
@@ -1320,13 +1319,13 @@ mod tests {
             .find(|monitor| monitor.id == "secondary")
             .unwrap();
         assert_eq!(primary.scale, 2);
-        assert_eq!(monitor_logical_width(primary), 960);
-        assert_eq!((secondary.x, secondary.y), (960, 0));
+        assert_eq!(monitor_logical_width(primary), 1920);
+        assert_eq!((secondary.x, secondary.y), (1920, 0));
         assert!(!monitors_overlap(&monitors));
     }
 
     #[test]
-    fn scaling_monitor_shifts_outputs_below_by_logical_delta() {
+    fn scaling_monitor_keeps_outputs_below_at_physical_desktop_size() {
         let mut monitors = Settings::default().monitors;
         offset_monitor(&mut monitors, "secondary", 0, 1080);
 
@@ -1336,7 +1335,7 @@ mod tests {
             .iter()
             .find(|monitor| monitor.id == "secondary")
             .unwrap();
-        assert_eq!((secondary.x, secondary.y), (0, 540));
+        assert_eq!((secondary.x, secondary.y), (0, 1080));
         assert!(!monitors_overlap(&monitors));
     }
 

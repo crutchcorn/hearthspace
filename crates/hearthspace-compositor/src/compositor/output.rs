@@ -163,7 +163,7 @@ fn secondary_descriptors_for_layout(
 
 impl OutputRecord {
     fn logical_size(&self) -> Size<i32, Logical> {
-        self.size.to_logical(self.scale)
+        Size::from((self.size.w, self.size.h))
     }
 
     fn logical_rect(&self) -> Rectangle<i32, Logical> {
@@ -259,7 +259,7 @@ struct OutputGeometry {
 
 impl OutputGeometry {
     fn logical_size(&self) -> Size<i32, Logical> {
-        self.size.to_logical(self.scale)
+        Size::from((self.size.w, self.size.h))
     }
 }
 
@@ -805,7 +805,7 @@ mod tests {
     }
 
     #[test]
-    fn output_layout_applies_saved_scale_to_logical_size() {
+    fn output_layout_keeps_scaled_outputs_at_physical_layout_size() {
         let plan = output_locations_for_layout(
             geometry_with_size("eDP-1", 2560, 1440),
             vec![geometry_with_size("HDMI-A-1", 1920, 1080)],
@@ -833,7 +833,7 @@ mod tests {
 
         assert_eq!(plan.primary, Point::from((0, 0)));
         assert_eq!(plan.primary_scale, 2);
-        assert_eq!(plan.secondary_location("HDMI-A-1"), Point::from((1280, 0)));
+        assert_eq!(plan.secondary_location("HDMI-A-1"), Point::from((2560, 0)));
         assert_eq!(plan.secondary_scale("HDMI-A-1"), Some(1));
     }
 
