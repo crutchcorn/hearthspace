@@ -212,10 +212,11 @@ struct SettingsRefresh {
 
 impl App {
     fn apply_settings(&mut self, settings: hearthspace_ipc::Settings) -> SettingsRefresh {
-        let mut refresh = SettingsRefresh::default();
-
-        refresh.output_layout_changed =
-            self.set_output_layout(OutputLayout::from_monitors(settings.monitors));
+        let mut refresh = SettingsRefresh {
+            output_layout_changed: self
+                .set_output_layout(OutputLayout::from_monitors(settings.monitors)),
+            ..SettingsRefresh::default()
+        };
         if refresh.output_layout_changed {
             self.configure_shell_bars();
             self.reconcile_pointer_after_output_geometry_change();
