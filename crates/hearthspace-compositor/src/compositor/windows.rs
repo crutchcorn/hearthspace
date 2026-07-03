@@ -203,14 +203,26 @@ impl App {
         // space above the canvas, so it is hit-tested first using each surface's
         // own screen-space origin.
         for (window_index, window) in self.windows.iter().enumerate().rev() {
-            let origin = match window.kind {
-                ManagedWindowKind::ShellBar => Point::from((0, 0)),
-                ManagedWindowKind::Launcher => self.launcher_screen_logical_origin(),
+            match window.kind {
+                ManagedWindowKind::ShellBar => {
+                    for origin in self.shell_bar_logical_origins() {
+                        if let Some(target) =
+                            self.hit_test_shell_surface(window_index, location, origin)
+                        {
+                            return Some(target);
+                        }
+                    }
+                }
+                ManagedWindowKind::Launcher => {
+                    if let Some(target) = self.hit_test_shell_surface(
+                        window_index,
+                        location,
+                        self.launcher_screen_logical_origin(),
+                    ) {
+                        return Some(target);
+                    }
+                }
                 ManagedWindowKind::Normal => continue,
-            };
-
-            if let Some(target) = self.hit_test_shell_surface(window_index, location, origin) {
-                return Some(target);
             }
         }
 
@@ -331,9 +343,10 @@ impl App {
                 .replace(std::iter::empty::<xdg_toplevel::WmCapabilities>());
             match kind {
                 ManagedWindowKind::ShellBar => {
-                    let output_size = self.output_size();
-                    state.size = Some((output_size.w, CONTROL_BAR_HEIGHT).into());
-                    state.bounds = Some((output_size.w, CONTROL_BAR_HEIGHT).into());
+                    let width = self.minimum_output_logical_width();
+                    trace!(width, "configuring shell bar to smallest output width");
+                    state.size = Some((width, CONTROL_BAR_HEIGHT).into());
+                    state.bounds = Some((width, CONTROL_BAR_HEIGHT).into());
                     state.decoration_mode = Some(DecorationMode::ClientSide);
                 }
                 ManagedWindowKind::Launcher => {
@@ -556,6 +569,20 @@ impl App {
 
     fn shell_bar_screen_origin(&self) -> Point<i32, Physical> {
         Point::<i32, Logical>::from((0, 0)).to_physical(1)
+    }
+
+    pub(super) fn shell_bar_screen_origins(&self) -> Vec<Point<i32, Physical>> {
+        self.shell_bar_logical_origins()
+            .into_iter()
+            .map(|origin| origin.to_physical(1))
+            .collect()
+    }
+
+    fn shell_bar_logical_origins(&self) -> Vec<Point<i32, Logical>> {
+        self.output_logical_rects()
+            .into_iter()
+            .map(|rect| rect.loc)
+            .collect()
     }
 
     /// Logical screen-space origin of the launcher palette: pinned to the left

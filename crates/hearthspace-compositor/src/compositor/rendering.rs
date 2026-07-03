@@ -128,12 +128,19 @@ impl App {
                 elements.push(titlebar);
             }
 
-            let origin = self.surface_screen_origin(index);
             let scale = self.window_render_scale(index);
-            for surface in self.window_render_elements(renderer, index) {
-                elements.push(HearthspaceRenderElement::from(
-                    RescaleRenderElement::from_element(surface, origin, scale),
-                ));
+            let origins = match self.windows[index].kind {
+                ManagedWindowKind::ShellBar => self.shell_bar_screen_origins(),
+                ManagedWindowKind::Normal | ManagedWindowKind::Launcher => {
+                    vec![self.surface_screen_origin(index)]
+                }
+            };
+            for origin in origins {
+                for surface in self.window_render_elements_at(renderer, index, origin) {
+                    elements.push(HearthspaceRenderElement::from(
+                        RescaleRenderElement::from_element(surface, origin, scale),
+                    ));
+                }
             }
         }
 
@@ -280,16 +287,17 @@ impl App {
             .collect()
     }
 
-    pub(super) fn window_render_elements(
+    fn window_render_elements_at(
         &self,
         renderer: &mut GlesRenderer,
         window_index: usize,
+        origin: Point<i32, Physical>,
     ) -> Vec<WaylandSurfaceRenderElement<GlesRenderer>> {
         let window = &self.windows[window_index];
         render_elements_from_surface_tree(
             renderer,
             window.surface.wl_surface(),
-            self.surface_screen_origin(window_index),
+            origin,
             // Built at native scale; the viewport zoom is applied by wrapping
             // these elements in a `RescaleRenderElement` in the caller.
             1.0,

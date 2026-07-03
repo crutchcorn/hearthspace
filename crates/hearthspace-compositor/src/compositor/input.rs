@@ -9,7 +9,7 @@ use smithay::{
         keyboard::{FilterResult, keysyms},
         pointer::{AxisFrame, ButtonEvent, MotionEvent},
     },
-    utils::{Logical, Point, SERIAL_COUNTER},
+    utils::{Logical, Point, Rectangle, SERIAL_COUNTER},
 };
 use tracing::{debug, trace};
 
@@ -496,7 +496,7 @@ impl App {
     fn apply_pointer_motion(&mut self, location: Point<f64, Logical>, time: u32) {
         let previous_location = self.pointer_location;
         self.raw_pointer_location = location;
-        self.pointer_location = clamp_point_to_output(location, self.output_logical_size());
+        self.pointer_location = clamp_point_to_outputs(location, &self.output_logical_rects());
         if self.software_cursor_visible && self.pointer_location != previous_location {
             self.request_redraw();
         }
@@ -556,9 +556,9 @@ impl App {
     }
 
     pub(super) fn reconcile_pointer_after_output_geometry_change(&mut self) {
-        let output_size = self.output_logical_size();
+        let output_rects = self.output_logical_rects();
         let previous_location = self.pointer_location;
-        self.pointer_location = clamp_point_to_output(self.pointer_location, output_size);
+        self.pointer_location = clamp_point_to_outputs(self.pointer_location, &output_rects);
         self.raw_pointer_location = self.pointer_location;
         if self.software_cursor_visible && self.pointer_location != previous_location {
             self.request_redraw();
@@ -591,7 +591,7 @@ impl App {
         debug!(
             ?previous_location,
             location = ?self.pointer_location,
-            ?output_size,
+            output_rects = ?output_rects,
             "reconciled pointer after output geometry change"
         );
     }
@@ -633,18 +633,41 @@ fn add_synthetic_axis_to_frame(mut frame: AxisFrame, axis: Axis, amount: f64) ->
     frame
 }
 
-fn clamp_point_to_output(
+fn clamp_point_to_outputs(
     location: Point<f64, Logical>,
-    output_size: smithay::utils::Size<i32, Logical>,
+    output_rects: &[Rectangle<i32, Logical>],
+) -> Point<f64, Logical> {
+    output_rects
+        .iter()
+        .map(|rect| clamp_point_to_rect(location, *rect))
+        .min_by(|a, b| {
+            squared_distance(location, *a)
+                .partial_cmp(&squared_distance(location, *b))
+                .unwrap_or(std::cmp::Ordering::Equal)
+        })
+        .unwrap_or(location)
+}
+
+fn clamp_point_to_rect(
+    location: Point<f64, Logical>,
+    rect: Rectangle<i32, Logical>,
 ) -> Point<f64, Logical> {
     Point::from((
-        location
-            .x
-            .clamp(0.0, f64::from(output_size.w.saturating_sub(1))),
-        location
-            .y
-            .clamp(0.0, f64::from(output_size.h.saturating_sub(1))),
+        location.x.clamp(
+            f64::from(rect.loc.x),
+            f64::from(rect.loc.x + rect.size.w.saturating_sub(1)),
+        ),
+        location.y.clamp(
+            f64::from(rect.loc.y),
+            f64::from(rect.loc.y + rect.size.h.saturating_sub(1)),
+        ),
     ))
+}
+
+fn squared_distance(a: Point<f64, Logical>, b: Point<f64, Logical>) -> f64 {
+    let dx = a.x - b.x;
+    let dy = a.y - b.y;
+    dx * dx + dy * dy
 }
 
 fn relative_pointer_location(
@@ -663,20 +686,31 @@ fn event_time_msec() -> u32 {
 
 #[cfg(test)]
 mod tests {
-    use smithay::utils::Size;
-
     use super::*;
 
     #[test]
     fn relative_motion_continues_from_unclamped_location_after_visible_pointer_hits_edge() {
-        let output_size: Size<i32, Logical> = (100, 100).into();
+        let output_rects = [Rectangle::from_size((100, 100).into())];
         let raw_location = Point::from((120.0, 50.0));
-        let visible_location = clamp_point_to_output(raw_location, output_size);
+        let visible_location = clamp_point_to_outputs(raw_location, &output_rects);
 
         assert_eq!(visible_location, Point::from((99.0, 50.0)));
         assert_eq!(
             relative_pointer_location(raw_location, Point::from((20.0, 0.0))),
             Point::from((140.0, 50.0))
+        );
+    }
+
+    #[test]
+    fn pointer_clamps_to_real_outputs_not_dead_space_in_bounding_box() {
+        let output_rects = [
+            Rectangle::new((0, 0).into(), (2560, 1440).into()),
+            Rectangle::new((2560, 0).into(), (1366, 768).into()),
+        ];
+
+        assert_eq!(
+            clamp_point_to_outputs(Point::from((3200.0, 1200.0)), &output_rects),
+            Point::from((3200.0, 767.0))
         );
     }
 }

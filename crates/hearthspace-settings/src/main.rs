@@ -243,15 +243,24 @@ fn monitors_for_live_outputs(
 ) -> Vec<MonitorConfig> {
     let mut monitors = Vec::with_capacity(live_outputs.len());
     let mut next_x = 0;
+    let saved_monitors_are_placeholders = default_placeholder_monitors(saved_monitors);
     for (index, output) in live_outputs.iter().enumerate() {
         let role_id = monitor_role_id(index);
-        let saved = saved_monitors
-            .iter()
-            .find(|monitor| monitor.id == output.id || monitor.name == output.name)
-            .or_else(|| saved_monitors.iter().find(|monitor| monitor.id == role_id));
-        let (id, x, y) = saved
-            .map(|monitor| (monitor.id.clone(), monitor.x, monitor.y))
-            .unwrap_or_else(|| (output.id.clone(), next_x, 0));
+        let saved = (!saved_monitors_are_placeholders)
+            .then(|| {
+                saved_monitors
+                    .iter()
+                    .find(|monitor| monitor.id == output.id || monitor.name == output.name)
+                    .or_else(|| saved_monitors.iter().find(|monitor| monitor.id == role_id))
+            })
+            .flatten();
+        let (id, x, y) = if let Some(saved) = saved {
+            (saved.id.clone(), saved.x, saved.y)
+        } else if saved_monitors_are_placeholders && index < 2 {
+            (role_id, next_x, 0)
+        } else {
+            (output.id.clone(), next_x, 0)
+        };
         monitors.push(MonitorConfig {
             id,
             name: output.name.clone(),
@@ -262,7 +271,39 @@ fn monitors_for_live_outputs(
         });
         next_x += output.width.max(1);
     }
+    if monitors_overlap(&monitors) {
+        place_monitors_edge_to_edge(&mut monitors);
+    }
     monitors
+}
+
+fn place_monitors_edge_to_edge(monitors: &mut [MonitorConfig]) {
+    let mut next_x = 0;
+    for monitor in monitors {
+        monitor.x = next_x;
+        monitor.y = 0;
+        next_x += monitor.width.max(1);
+    }
+}
+
+fn monitors_overlap(monitors: &[MonitorConfig]) -> bool {
+    monitors.iter().enumerate().any(|(index, monitor)| {
+        monitors
+            .iter()
+            .skip(index + 1)
+            .any(|other| monitor_rects_overlap(monitor, other))
+    })
+}
+
+fn monitor_rects_overlap(a: &MonitorConfig, b: &MonitorConfig) -> bool {
+    a.x < b.x + b.width
+        && a.x + a.width > b.x
+        && a.y < b.y + b.height
+        && a.y + a.height > b.y
+}
+
+fn default_placeholder_monitors(monitors: &[MonitorConfig]) -> bool {
+    monitors == Settings::default().monitors
 }
 
 fn monitor_role_id(index: usize) -> String {
@@ -919,6 +960,76 @@ mod tests {
         assert_eq!(monitors[0].id, "primary");
         assert_eq!(monitors[0].name, "Built-in Display");
         assert_eq!((monitors[0].width, monitors[0].height), (2256, 1504));
+    }
+
+    #[test]
+    fn live_outputs_do_not_reuse_placeholder_positions_for_mixed_resolutions() {
+        let monitors = monitors_for_live_outputs(
+            &Settings::default().monitors,
+            &[
+                LiveOutput {
+                    id: "eDP-1".to_string(),
+                    name: "Built-in Display".to_string(),
+                    width: 2560,
+                    height: 1440,
+                },
+                LiveOutput {
+                    id: "HDMI-A-1".to_string(),
+                    name: "External Monitor".to_string(),
+                    width: 1366,
+                    height: 768,
+                },
+            ],
+        );
+
+        assert_eq!(monitors[0].id, "primary");
+        assert_eq!((monitors[0].x, monitors[0].y), (0, 0));
+        assert_eq!(monitors[1].id, "secondary");
+        assert_eq!((monitors[1].x, monitors[1].y), (2560, 0));
+    }
+
+    #[test]
+    fn live_outputs_repair_overlapping_saved_active_monitors() {
+        let saved = vec![
+            MonitorConfig {
+                id: "primary".to_string(),
+                name: "Primary".to_string(),
+                width: 1920,
+                height: 1080,
+                x: -1280,
+                y: -736,
+            },
+            MonitorConfig {
+                id: "secondary".to_string(),
+                name: "Secondary".to_string(),
+                width: 1920,
+                height: 1080,
+                x: -1920,
+                y: -540,
+            },
+        ];
+
+        let monitors = monitors_for_live_outputs(
+            &saved,
+            &[
+                LiveOutput {
+                    id: "eDP-1".to_string(),
+                    name: "Built-in Display".to_string(),
+                    width: 2560,
+                    height: 1440,
+                },
+                LiveOutput {
+                    id: "HDMI-A-1".to_string(),
+                    name: "External Monitor".to_string(),
+                    width: 1366,
+                    height: 768,
+                },
+            ],
+        );
+
+        assert_eq!((monitors[0].x, monitors[0].y), (0, 0));
+        assert_eq!((monitors[1].x, monitors[1].y), (2560, 0));
+        assert!(!monitors_overlap(&monitors));
     }
 
     #[test]
