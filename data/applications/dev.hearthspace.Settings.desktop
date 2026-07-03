@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Hearthspace Settings
+GenericName=Settings
+Comment=Configure Hearthspace
+Exec=hearthspace-settings
+Categories=Settings;
+Keywords=Hearthspace;Settings;Preferences;Configuration;
+OnlyShowIn=Hearthspace;

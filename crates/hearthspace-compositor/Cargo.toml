@@ -1,0 +1,97 @@
+[package]
+name = "hearthspace-compositor"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.93.1"
+license = "Apache-2.0"
+default-run = "hearthspace-compositor"
+
+[features]
+default = ["winit"]
+e2e = ["dep:waydriver", "dep:waydriver-hearthspace"]
+test-apps = ["dep:gtk"]
+udev = [
+    "smithay/backend_drm",
+    "smithay/backend_gbm",
+    "smithay/backend_libinput",
+    "smithay/backend_session_libseat",
+    "smithay/backend_udev",
+    # Native mode still renders through one primary GPU, but Smithay's dmabuf
+    # import path needs renderer_multi available for client buffers.
+    "smithay/renderer_multi",
+]
+winit = ["smithay/backend_winit"]
+
+[[bin]]
+name = "hearthspace"
+path = "src/bin/hearthspace.rs"
+
+[dependencies]
+async-io = "2.3.3"
+atspi = { version = "0.30.0", features = ["zbus"] }
+calloop = { version = "0.14.4", features = ["signals"] }
+gtk = { package = "gtk4", version = "0.11", optional = true }
+hearthspace-common = { path = "../hearthspace-common" }
+hearthspace-ipc = { path = "../hearthspace-ipc" }
+hearthspace-shell = { path = "../hearthspace-shell" }
+# Xilem (app shell) and Masonry (compositor-side imaging) are pulled from our
+# linebender/xilem fork branch backing PR linebender/xilem#1830, which adds
+# `WindowOptionsExtLinux::with_name` so a Xilem window can advertise a Wayland
+# `app_id` (and X11 `WM_CLASS`). Repoint to upstream once the PR lands.
+# See SETUP.md for details.
+masonry = { git = "https://github.com/crutchcorn/xilem", branch = "wayland-app-id", features = ["testing"] }
+xilem = { git = "https://github.com/crutchcorn/xilem", branch = "wayland-app-id" }
+# naga 28 (pulled in transitively via wgpu/vello) only compiles its WGSL
+# error-emit path when the `termcolor` feature is enabled, but the crates that
+# depend on it (wgpu-core, vello_shaders) enable `wgsl-in` without it. We add a
+# direct dependency purely to union `termcolor` into the shared naga build.
+naga = { version = "28.0.0", default-features = false, features = ["termcolor"] }
+# Parley's fontique discovers system fonts via fontconfig. Enabling its
+# `fontconfig-dlopen` code path makes it load libfontconfig at runtime instead
+# of link-time, which avoids needing fontconfig dev headers at build time.
+fontique = { version = "0.8.0", features = ["fontconfig-dlopen"] }
+# Masonry's CPU render harness returns an `image::RgbaImage`; name the type
+# directly so the title-text raster path is testable. Pulled in transitively
+# already, so this only fixes the version we link against.
+image = { version = "0.25", default-features = false }
+png = "0.18.1"
+smithay = { version = "0.7.0", default-features = false, features = ["desktop", "renderer_gl", "wayland_frontend"] }
+tracing = "0.1.41"
+tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
+wayland-protocols = { version = "0.32.8", features = ["server"] }
+wayland-server = "0.31.9"
+waydriver = { version = "0.3.9", optional = true }
+waydriver-hearthspace = { path = "../waydriver-hearthspace", optional = true }
+xcursor = "0.3.10"
+
+[dev-dependencies]
+proptest = "1"
+rstest = "0.26"
+tempfile = "3"
+tokio = { version = "1", features = ["macros", "process", "rt-multi-thread", "time"] }
+tokio-util = "0.7"
+
+[[test]]
+name = "headless_control"
+path = "tests/headless_control.rs"
+required-features = ["e2e"]
+
+[[test]]
+name = "waydriver_hearthspace"
+path = "tests/waydriver_hearthspace.rs"
+required-features = ["e2e"]
+
+# Workaround for an upstream incompatibility pulled in via Xilem/Masonry:
+# `vello_shaders` 0.8's build script depends on `naga` 28 with the `wgsl-in`
+# feature but without `termcolor`, yet naga 28's WGSL error-emit path only
+# compiles when `termcolor` is enabled. Declaring naga in our own build graph
+# with `termcolor` makes Cargo unify that feature in, so the vello shader build
+# script compiles. The empty `build.rs` exists solely to activate this entry.
+[build-dependencies]
+naga = { version = "28.0.0", default-features = false, features = ["wgsl-in", "termcolor"] }
+
+[lints.rust]
+unsafe_op_in_unsafe_fn = "deny"
+
+[lints.clippy]
+all = { level = "deny", priority = -1 }

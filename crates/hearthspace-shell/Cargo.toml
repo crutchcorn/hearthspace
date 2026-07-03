@@ -1,0 +1,22 @@
+[package]
+name = "hearthspace-shell"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.93.1"
+license = "Apache-2.0"
+
+[dependencies]
+hearthspace-common = { path = "../hearthspace-common" }
+tracing = "0.1.41"
+tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
+xilem = { git = "https://github.com/crutchcorn/xilem", branch = "wayland-app-id" }
+
+[dev-dependencies]
+rstest = "0.26"
+tempfile = "3"
+
+[lints.rust]
+unsafe_op_in_unsafe_fn = "deny"
+
+[lints.clippy]
+all = { level = "deny", priority = -1 }
