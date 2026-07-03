@@ -194,12 +194,12 @@ struct App {
     pending_dmabuf_imports: Vec<(Dmabuf, ImportNotifier)>,
     loop_handle: LoopHandle<'static, CalloopData>,
     popups: PopupManager,
-    /// Cached texture for the repeated background dot tile.
-    background_dot_tile: Option<rendering::BackgroundDotTile>,
+    /// Cached texture for the repeated background image tile.
+    background_image_tile: Option<rendering::BackgroundImageTile>,
     /// Stable render-element ids for visible background tile instances. Reusing
     /// ids across frames keeps the damage tracker from treating every tile as
     /// new on each redraw.
-    background_dot_ids: Vec<Id>,
+    background_tile_ids: Vec<Id>,
     software_cursor_visible: bool,
     software_cursor: SoftwareCursor,
 }
@@ -455,8 +455,8 @@ pub(in crate::compositor) fn initialize_app(
         pending_dmabuf_imports: Vec::new(),
         loop_handle: handle.clone(),
         popups: PopupManager::default(),
-        background_dot_tile: None,
-        background_dot_ids: Vec::new(),
+        background_image_tile: None,
+        background_tile_ids: Vec::new(),
         software_cursor_visible: false,
         software_cursor: cursor::standard_software_cursor(),
     };

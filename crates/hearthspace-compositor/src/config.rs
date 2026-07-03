@@ -52,9 +52,8 @@ pub const WINDOW_IDLE_THRESHOLDS: [Duration; 3] = [
 
 pub const ANIMATION_FRAME_INTERVAL: Duration = Duration::from_millis(16);
 
-/// Background dot grid. The dots live in canvas space, so they pan and zoom with
-/// the viewport and frame canvas movement even when no windows are open.
-/// `BACKGROUND_DOT_SPACING` is the (intentionally large) gap between dots in
-/// canvas pixels; `BACKGROUND_DOT_SIZE` is the side length of each square dot.
-pub const BACKGROUND_DOT_SPACING: i32 = 120;
-pub const BACKGROUND_DOT_SIZE: i32 = 4;
+/// Default generated repeating background image. The renderer treats this as a
+/// generic image tile; these values only define the built-in fallback pattern.
+pub const DEFAULT_BACKGROUND_PATTERN_SPACING: i32 = 120;
+pub const DEFAULT_BACKGROUND_PATTERN_MARK_SIZE: i32 = 4;
+pub const DEFAULT_BACKGROUND_MOVES_WITH_CANVAS: bool = true;
