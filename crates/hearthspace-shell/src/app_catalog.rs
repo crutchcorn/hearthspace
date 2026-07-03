@@ -597,8 +597,8 @@ pub fn spawn_argv_with_env(
 
 fn session_environment_keys() -> &'static [&'static str] {
     &[
-            "XDG_CURRENT_DESKTOP",
-            "DESKTOP_SESSION",
+        "XDG_CURRENT_DESKTOP",
+        "DESKTOP_SESSION",
         hearthspace_common::SETTINGS_SOCKET_ENV,
         hearthspace_common::SESSION_SOCKET_ENV,
         hearthspace_common::REPO_ROOT_ENV,
@@ -832,9 +832,7 @@ mod tests {
 
     #[test]
     fn source_tree_settings_desktop_file_is_searchable_and_launchable() {
-        let catalog = AppCatalog::load_from_data_dirs(vec![
-            source_tree_data_dir(),
-        ]);
+        let catalog = AppCatalog::load_from_data_dirs(vec![source_tree_data_dir()]);
 
         let app = catalog
             .app_by_id("dev.hearthspace.Settings.desktop")
@@ -865,7 +863,9 @@ mod tests {
 
         let catalog = AppCatalog::load_from_data_dirs(vec![dir.path().join("share")]);
 
-        let app = catalog.app_by_id("dev.hearthspace.Settings.desktop").unwrap();
+        let app = catalog
+            .app_by_id("dev.hearthspace.Settings.desktop")
+            .unwrap();
         assert_eq!(app.name, "Hearthspace Settings");
         assert_eq!(catalog.search("hearthspace", 1)[0].id, app.id);
         assert_eq!(catalog.search("preferences", 1)[0].id, app.id);
@@ -894,7 +894,10 @@ mod tests {
             )
             .unwrap();
         };
-        write(session.path(), "\"/repo/scripts/dev-run-app\" hearthspace-settings");
+        write(
+            session.path(),
+            "\"/repo/scripts/dev-run-app\" hearthspace-settings",
+        );
         write(source.path(), "hearthspace-settings");
 
         let catalog = AppCatalog::load_from_data_dirs(vec![

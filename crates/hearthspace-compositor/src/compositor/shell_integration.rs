@@ -16,10 +16,7 @@ use smithay::{
 };
 use tracing::{debug, error, info, trace, warn};
 
-use crate::{
-    config::*,
-    geometry::CanvasPoint,
-};
+use crate::{config::*, geometry::CanvasPoint};
 use hearthspace_shell::{
     ShellCommand, SpawnTarget,
     app_catalog::{DesktopApp, spawn_argv_with_env},
@@ -70,7 +67,10 @@ fn ensure_snap_wayland_socket(instance_name: &str) -> std::io::Result<String> {
         Err(error) => return Err(error),
     }
 
-    symlink(PathBuf::from("..").join(&wayland_display), &snap_socket_path)?;
+    symlink(
+        PathBuf::from("..").join(&wayland_display),
+        &snap_socket_path,
+    )?;
     Ok(wayland_display)
 }
 

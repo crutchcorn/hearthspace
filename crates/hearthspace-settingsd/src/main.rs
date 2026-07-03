@@ -7,8 +7,8 @@ use std::{
 };
 
 use hearthspace_ipc::{
-    Settings, SettingsRequest, error_response, parse_settings_request, settings_response,
-    settings_socket_path,
+    MonitorConfig, Settings, SettingsRequest, error_response, parse_settings_request,
+    settings_response, settings_socket_path,
 };
 use tracing::{error, info, warn};
 
@@ -101,7 +101,21 @@ fn handle_request(request: SettingsRequest, config_path: &Path) -> io::Result<St
         SettingsRequest::SetTest(test) => {
             let mut settings = load_settings_from_path(config_path)?;
             settings.test = test;
-            save_settings_to_path(settings, config_path)?;
+            save_settings_to_path(settings.clone(), config_path)?;
+            Ok(settings_response(settings))
+        }
+        SettingsRequest::SetMonitorPosition { id, x, y } => {
+            let mut settings = load_settings_from_path(config_path)?;
+            let Some(monitor) = settings
+                .monitors
+                .iter_mut()
+                .find(|monitor| monitor.id == id)
+            else {
+                return Ok(error_response(format!("unknown monitor id: {id}")));
+            };
+            monitor.x = x;
+            monitor.y = y;
+            save_settings_to_path(settings.clone(), config_path)?;
             Ok(settings_response(settings))
         }
     }
@@ -132,9 +146,30 @@ fn save_settings_to_path(settings: Settings, path: impl AsRef<Path>) -> io::Resu
 
 fn parse_settings(contents: &str) -> io::Result<Settings> {
     let mut settings = Settings::default();
+    settings.monitors.clear();
+    let mut current_monitor: Option<MonitorConfig> = None;
     for raw_line in contents.lines() {
         let line = raw_line.split('#').next().unwrap_or_default().trim();
-        if line.is_empty() || line.starts_with('[') {
+        if line.is_empty() {
+            continue;
+        }
+
+        if line == "[[monitor]]" {
+            if let Some(monitor) = current_monitor.take() {
+                settings.monitors.push(monitor);
+            }
+            current_monitor = Some(MonitorConfig {
+                id: String::new(),
+                name: String::new(),
+                width: 1920,
+                height: 1080,
+                x: 0,
+                y: 0,
+            });
+            continue;
+        }
+
+        if line.starts_with('[') {
             continue;
         }
 
@@ -144,9 +179,21 @@ fn parse_settings(contents: &str) -> io::Result<Settings> {
                 format!("invalid settings line: {line:?}"),
             ));
         };
+        let key = key.trim();
+        let value = value.trim();
 
-        if key.trim() == "test" {
-            settings.test = parse_bool(value.trim()).map_err(|error| {
+        if let Some(monitor) = &mut current_monitor {
+            match key {
+                "id" => monitor.id = value.to_string(),
+                "name" => monitor.name = value.to_string(),
+                "width" => monitor.width = parse_i32(value, "monitor width")?,
+                "height" => monitor.height = parse_i32(value, "monitor height")?,
+                "x" => monitor.x = parse_i32(value, "monitor x")?,
+                "y" => monitor.y = parse_i32(value, "monitor y")?,
+                _ => {}
+            }
+        } else if key == "test" {
+            settings.test = parse_bool(value).map_err(|error| {
                 io::Error::new(
                     io::ErrorKind::InvalidData,
                     format!("invalid test setting: {error}"),
@@ -154,11 +201,32 @@ fn parse_settings(contents: &str) -> io::Result<Settings> {
             })?;
         }
     }
+
+    if let Some(monitor) = current_monitor.take() {
+        settings.monitors.push(monitor);
+    }
+    settings.monitors.retain(|monitor| !monitor.id.is_empty());
+    if settings.monitors.is_empty() {
+        settings.monitors = Settings::default().monitors;
+    }
     Ok(settings)
 }
 
 fn format_settings(settings: Settings) -> String {
-    format!("test = {}\n", settings.test)
+    let mut contents = format!("test = {}\n", settings.test);
+    for monitor in settings.monitors {
+        contents.push_str(&format!(
+            "\n[[monitor]]\n\
+             id = {}\n\
+             name = {}\n\
+             width = {}\n\
+             height = {}\n\
+             x = {}\n\
+             y = {}\n",
+            monitor.id, monitor.name, monitor.width, monitor.height, monitor.x, monitor.y,
+        ));
+    }
+    contents
 }
 
 fn parse_bool(value: &str) -> Result<bool, String> {
@@ -167,6 +235,15 @@ fn parse_bool(value: &str) -> Result<bool, String> {
         "false" => Ok(false),
         _ => Err(format!("expected true or false, got {value:?}")),
     }
+}
+
+fn parse_i32(value: &str, label: &str) -> io::Result<i32> {
+    value.parse::<i32>().map_err(|error| {
+        io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!("invalid {label}: {error}"),
+        )
+    })
 }
 
 #[cfg(test)]
@@ -188,7 +265,8 @@ mod tests {
 
         let response = round_trip("get\n", &config_path);
 
-        assert_eq!(response, "ok test false\n");
+        assert!(response.starts_with("ok test false monitor primary 1920 1080 0 0 Primary"));
+        assert!(response.contains("monitor secondary 1920 1080 1920 0 Secondary"));
         assert!(!config_path.exists());
     }
 
@@ -197,11 +275,26 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let config_path = dir.path().join("hearthspace/config.toml");
         fs::create_dir_all(config_path.parent().unwrap()).unwrap();
-        fs::write(&config_path, "test = true\n").unwrap();
+        fs::write(
+            &config_path,
+            "test = true\n\
+             \n\
+             [[monitor]]\n\
+             id = dock\n\
+             name = Dock Display\n\
+             width = 2560\n\
+             height = 1440\n\
+             x = -2560\n\
+             y = 120\n",
+        )
+        .unwrap();
 
         let response = round_trip("get\n", &config_path);
 
-        assert_eq!(response, "ok test true\n");
+        assert_eq!(
+            response,
+            "ok test true monitor dock 2560 1440 -2560 120 Dock%20Display\n"
+        );
     }
 
     #[test]
@@ -211,8 +304,35 @@ mod tests {
 
         let response = round_trip("set test true\n", &config_path);
 
-        assert_eq!(response, "ok test true\n");
-        assert_eq!(fs::read_to_string(config_path).unwrap(), "test = true\n");
+        assert!(response.starts_with("ok test true monitor primary 1920 1080 0 0 Primary"));
+        let contents = fs::read_to_string(config_path).unwrap();
+        assert!(contents.starts_with("test = true\n"));
+        assert!(contents.contains("[[monitor]]\nid = primary\n"));
+    }
+
+    #[test]
+    fn set_monitor_position_writes_config_and_returns_layout() {
+        let dir = tempfile::tempdir().unwrap();
+        let config_path = dir.path().join("hearthspace/config.toml");
+
+        let response = round_trip("set monitor secondary -1600 90\n", &config_path);
+
+        assert!(response.contains("monitor secondary 1920 1080 -1600 90 Secondary"));
+        let contents = fs::read_to_string(config_path).unwrap();
+        assert!(contents.contains("id = secondary\n"));
+        assert!(contents.contains("x = -1600\n"));
+        assert!(contents.contains("y = 90\n"));
+    }
+
+    #[test]
+    fn set_monitor_position_rejects_unknown_monitor() {
+        let dir = tempfile::tempdir().unwrap();
+        let config_path = dir.path().join("hearthspace/config.toml");
+
+        let response = round_trip("set monitor missing 10 20\n", &config_path);
+
+        assert_eq!(response, "err unknown monitor id: missing\n");
+        assert!(!config_path.exists());
     }
 
     #[test]

@@ -19,7 +19,7 @@ As this project grows, you can find technical documentation in the [docs/](./doc
 
 ## Setup
 
-This project targets modern Linux systems with Wayland only. The initial proof-of-concept is planned as a nested Wayland compositor built with Rust and Smithay.
+This project targets modern Linux systems with Wayland only. Hearthspace is a Rust workspace with separate crates for the session supervisor, compositor, shell, settings daemon, settings app, and shared IPC/common code.
 
 Ubuntu 26.04 LTS is our development and runtime baseline, and it is expected to have the oldest supported version of most packages.
 
@@ -70,26 +70,63 @@ sudo apt-get install -y libgtk-4-dev
 Build or run with the feature when you need the GTK test app or the shell's `A11yTest` spawn action:
 
 ```sh
-cargo run --features test-apps -- --gtk-test-app
-cargo test --features test-apps
+cargo run -p hearthspace-compositor --bin hearthspace --features test-apps -- --gtk-test-app
+cargo test -p hearthspace-compositor --features test-apps
 ```
 
 Without `test-apps`, `--gtk-test-app` and the shell `A11yTest` action report that the binary must be rebuilt with `--features test-apps`.
 
+### Workspace Packages
+
+The root `Cargo.toml` is a virtual workspace. Its default member is `hearthspace-session`, so `cargo run` starts the session supervisor rather than the compositor directly.
+
+Common packages:
+
+```text
+crates/hearthspace-session      session supervisor; root cargo run target
+crates/hearthspace-compositor   Smithay compositor; binary: hearthspace-compositor
+crates/hearthspace-shell        Xilem shell client; binary: hearthspace-shell
+crates/hearthspace-settingsd    settings daemon; binary: hearthspace-settingsd
+crates/hearthspace-settings     settings app; binary: hearthspace-settings
+crates/hearthspace-ipc          settings IPC protocol/types
+crates/hearthspace-common       shared environment/path constants
+crates/waydriver-hearthspace    WayDriver backend adapter
+```
+
 ### Runtime And Test Flags
+
+For a normal development session, run the session supervisor from the workspace root:
+
+```sh
+cargo run -- --dev
+cargo run -- --dev --no-watch-apps
+cargo run -- --dev --dry-run --print-env
+```
+
+The supervisor starts `hearthspace-settingsd`, `hearthspace-compositor --no-shell`, `hearthspace-shell`, and optionally a settings-app build watcher. It creates per-session sockets under `$XDG_RUNTIME_DIR/hearthspace/session-<pid>/` and passes them to child processes through environment variables.
+
+From a real Linux TTY/VT, the same dev-session command launches the full native session:
+
+```sh
+cargo run -- --dev --no-watch-apps
+```
+
+In dev mode, the supervisor runs its compositor child as `cargo run -p hearthspace-compositor --features udev -- --no-shell`. The compositor chooses `udev` automatically when neither `WAYLAND_DISPLAY` nor `DISPLAY` is present; inside GNOME or another graphical host session it still chooses the nested winit backend unless `--tty` is passed directly to the compositor.
+
+Use direct compositor commands when you want to test only the compositor backend:
 
 Common compositor flags:
 
 ```sh
-cargo run -- --scroll-zooms
-cargo run -- --headless
-cargo run -- --headless --headless-size 1280x720
-cargo run -- --headless --headless-scale 2
-cargo run -- --headless --no-shell
-cargo run -- --winit
-cargo run --features udev -- --tty
-cargo run --no-default-features --features udev -- --tty --no-shell
-cargo run --features udev -- --tty --no-shell --exit-after-ms 10000
+cargo run -p hearthspace-compositor -- --scroll-zooms
+cargo run -p hearthspace-compositor -- --headless
+cargo run -p hearthspace-compositor -- --headless --headless-size 1280x720
+cargo run -p hearthspace-compositor -- --headless --headless-scale 2
+cargo run -p hearthspace-compositor -- --headless --no-shell
+cargo run -p hearthspace-compositor -- --winit
+cargo run -p hearthspace-compositor --features udev -- --tty
+cargo run -p hearthspace-compositor --no-default-features --features udev -- --tty --no-shell
+cargo run -p hearthspace-compositor --features udev -- --tty --no-shell --exit-after-ms 10000
 ```
 
 `--scroll-zooms` makes vertical scroll events zoom the canvas without holding
@@ -125,13 +162,12 @@ Native backend runs can be exited with `Ctrl+Alt+Backspace`, `Ctrl+Alt+Esc`,
 and log interpretation, see [docs/NATIVE_TESTING.md](./docs/NATIVE_TESTING.md).
 For native backend architecture, see [docs/DRM.md](./docs/DRM.md).
 
-Settings runs use separate Cargo binaries rather than `hearthspace` runtime
-flags. Start the backend daemon first, then launch the Xilem frontend:
+Settings runs use separate packages rather than compositor runtime flags. Start the backend daemon first, then launch the Xilem frontend:
 
 ```sh
-cargo build --bin hearthspace-settings
-cargo run --bin hearthspace-settingsd
-cargo run --bin hearthspace-settings
+cargo build -p hearthspace-settings
+cargo run -p hearthspace-settingsd
+cargo run -p hearthspace-settings
 ```
 
 The settings daemon writes `~/.config/hearthspace/config.toml` and listens on
@@ -139,14 +175,13 @@ The settings daemon writes `~/.config/hearthspace/config.toml` and listens on
 to the Hearthspace shell through
 `data/applications/dev.hearthspace.Settings.desktop`; during source-tree runs,
 the app catalog includes `data/` as a low-priority XDG data directory. Build the
-settings frontend once with `cargo build --bin hearthspace-settings` before
-launching it from shell search so `target/debug/hearthspace-settings` exists next
-to the compositor binary.
+settings frontend once with `cargo build -p hearthspace-settings` before
+launching it from shell search so `target/debug/hearthspace-settings` exists.
 
 The daemon's focused tests can be run with:
 
 ```sh
-cargo test --bin hearthspace-settingsd
+cargo test -p hearthspace-settingsd
 ```
 
 ### Tracing Logs
@@ -158,22 +193,22 @@ Common examples:
 
 ```sh
 RUST_LOG=info cargo run
-RUST_LOG=hearthspace=debug cargo run
-RUST_LOG=hearthspace=trace cargo run
-RUST_LOG=hearthspace=debug,smithay=warn cargo run
+RUST_LOG=hearthspace_compositor=debug cargo run -p hearthspace-compositor
+RUST_LOG=hearthspace_compositor=trace cargo run -p hearthspace-compositor
+RUST_LOG=hearthspace_compositor=debug,smithay=warn cargo run -p hearthspace-compositor
 ```
 
 For noisy paths, target a narrower module:
 
 ```sh
-RUST_LOG=hearthspace::compositor::input=trace,hearthspace=info cargo run
+RUST_LOG=hearthspace_compositor::compositor::input=trace,hearthspace_compositor=info cargo run -p hearthspace-compositor
 ```
 
 Backend-specific examples:
 
 ```sh
-RUST_LOG=hearthspace=debug cargo run -- --headless
-RUST_LOG=hearthspace=debug cargo run --features udev -- --tty
+RUST_LOG=hearthspace_compositor=debug cargo run -p hearthspace-compositor -- --headless
+RUST_LOG=hearthspace_compositor=debug cargo run -p hearthspace-compositor --features udev -- --tty
 ```
 
 The shell/control socket is `hearthspace-shell.sock` in `XDG_RUNTIME_DIR`. Shell
@@ -204,8 +239,8 @@ The WayDriver backend adapter lives in `crates/waydriver-hearthspace` and uses
 the published `waydriver` crate. Its E2E smoke tests can be run with:
 
 ```sh
-cargo test --features e2e --test waydriver_hearthspace
-cargo test --features e2e,test-apps --test waydriver_hearthspace
+cargo test -p hearthspace-compositor --features e2e --test waydriver_hearthspace
+cargo test -p hearthspace-compositor --features e2e,test-apps --test waydriver_hearthspace
 ```
 
 The feature-gated WayDriver `Session` test launches the GTK test app under a

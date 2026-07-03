@@ -121,7 +121,7 @@ impl XdgShellHandler for App {
         );
         self.drag = Some(DragState {
             window_id: self.windows[window_index].id,
-            pointer_start: self.pointer_location,
+            pointer_start: self.raw_pointer_location,
             window_start: self.windows[window_index].position,
         });
         self.request_redraw();

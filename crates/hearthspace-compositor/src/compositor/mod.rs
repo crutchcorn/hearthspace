@@ -27,7 +27,9 @@ use idle::{IdleTransition, WindowIdleDaemon};
 pub(in crate::compositor) use input::handle_input_event;
 #[cfg(feature = "udev")]
 pub(in crate::compositor) use output::{OutputDescriptor, create_output_with_properties};
-pub(in crate::compositor) use output::{OutputRecord, OutputSet, create_output};
+pub(in crate::compositor) use output::{
+    OutputRecord, OutputSet, create_output, load_output_layout,
+};
 #[cfg(feature = "udev")]
 pub(in crate::compositor) use runtime::create_calloop_data;
 pub(in crate::compositor) use runtime::{Backend, CalloopData, HeadlessBackend, run_event_loop};
@@ -181,6 +183,7 @@ struct App {
     next_spawn_position: CanvasPoint,
     spawn_offset: i32,
     pointer_location: Point<f64, Logical>,
+    raw_pointer_location: Point<f64, Logical>,
     active_touch_slot: Option<TouchSlot>,
     scroll_zooms_without_super: bool,
     outputs: OutputSet,
@@ -447,9 +450,10 @@ pub(in crate::compositor) fn initialize_app(
         next_spawn_position: CanvasPoint { x: 80, y: 96 },
         spawn_offset: 0,
         pointer_location: (0.0, 0.0).into(),
+        raw_pointer_location: (0.0, 0.0).into(),
         active_touch_slot: None,
         scroll_zooms_without_super: options.scroll_zooms_without_super,
-        outputs: OutputSet::new(primary_output),
+        outputs: OutputSet::new(primary_output, load_output_layout()),
         app_catalog,
         needs_redraw: true,
         dmabuf_state: dmabuf.state,
