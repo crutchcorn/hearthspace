@@ -26,7 +26,7 @@ use std::io::Cursor;
 use wayland_server::protocol::wl_surface;
 
 use super::{App, ManagedWindowKind, masonry_titlebar, windows::toplevel_title};
-use crate::config::DEFAULT_BACKGROUND_MOVES_WITH_CANVAS;
+use crate::geometry::CanvasPoint;
 
 type GlesTexture = <GlesRenderer as RendererSuper>::TextureId;
 
@@ -267,15 +267,19 @@ impl App {
         if self.viewport_scale <= 0.0 || !self.viewport_scale.is_finite() {
             return Vec::new();
         }
-        let moves_with_canvas = DEFAULT_BACKGROUND_MOVES_WITH_CANVAS;
+        let moves_with_canvas = self.background_moves_with_canvas;
 
         let (context_id, texture, tile_size) = match self.background_image_tile(renderer) {
             Ok(tile) => (tile.context_id.clone(), tile.texture.clone(), tile.size),
             Err(_) => return Vec::new(),
         };
 
-        let (min_x, max_x, min_y, max_y) =
-            self.background_image_visible_bounds(output_rect, moves_with_canvas);
+        let (min_x, max_x, min_y, max_y) = background_image_visible_bounds(
+            output_rect,
+            moves_with_canvas,
+            self.viewport_offset,
+            self.viewport_scale,
+        );
 
         let Some((first_x, last_x, x_count)) =
             background_tile_axis_bounds(min_x, max_x, f64::from(tile_size.w))
@@ -368,34 +372,6 @@ impl App {
         }
 
         Ok(self.background_image_tile.as_ref().unwrap())
-    }
-
-    fn background_image_visible_bounds(
-        &self,
-        output_rect: Rectangle<i32, Logical>,
-        moves_with_canvas: bool,
-    ) -> (f64, f64, f64, f64) {
-        let top_left = Point::from((f64::from(output_rect.loc.x), f64::from(output_rect.loc.y)));
-        let bottom_right = Point::from((
-            f64::from(output_rect.loc.x) + f64::from(output_rect.size.w),
-            f64::from(output_rect.loc.y) + f64::from(output_rect.size.h),
-        ));
-
-        let (top_left, bottom_right) = if moves_with_canvas {
-            (
-                self.screen_to_canvas(top_left),
-                self.screen_to_canvas(bottom_right),
-            )
-        } else {
-            (top_left, bottom_right)
-        };
-
-        (
-            top_left.x.min(bottom_right.x),
-            top_left.x.max(bottom_right.x),
-            top_left.y.min(bottom_right.y),
-            top_left.y.max(bottom_right.y),
-        )
     }
 
     fn window_render_elements_at(
@@ -523,6 +499,35 @@ fn background_tile_axis_bounds(min: f64, max: f64, tile_size: f64) -> Option<(i6
     Some((first, last, count))
 }
 
+fn background_image_visible_bounds(
+    output_rect: Rectangle<i32, Logical>,
+    moves_with_canvas: bool,
+    viewport_offset: CanvasPoint,
+    viewport_scale: f64,
+) -> (f64, f64, f64, f64) {
+    let top_left = Point::from((f64::from(output_rect.loc.x), f64::from(output_rect.loc.y)));
+    let bottom_right = Point::from((
+        f64::from(output_rect.loc.x) + f64::from(output_rect.size.w),
+        f64::from(output_rect.loc.y) + f64::from(output_rect.size.h),
+    ));
+
+    let (top_left, bottom_right) = if moves_with_canvas {
+        (
+            crate::geometry::screen_to_canvas(top_left, viewport_offset, viewport_scale),
+            crate::geometry::screen_to_canvas(bottom_right, viewport_offset, viewport_scale),
+        )
+    } else {
+        (top_left, bottom_right)
+    };
+
+    (
+        top_left.x.min(bottom_right.x),
+        top_left.x.max(bottom_right.x),
+        top_left.y.min(bottom_right.y),
+        top_left.y.max(bottom_right.y),
+    )
+}
+
 fn default_background_image_data() -> BackgroundImageData {
     decode_background_png(DEFAULT_BACKGROUND_IMAGE_PNG)
         .expect("packaged default background image must be a valid 8-bit RGBA PNG")
@@ -602,6 +607,8 @@ pub(super) fn send_frames_surface_tree(surface: &wl_surface::WlSurface, time: u3
 mod tests {
     use smithay::utils::{Logical, Point, Rectangle, Size};
 
+    use crate::geometry::CanvasPoint;
+
     use super::{
         background_tile_axis_bounds, default_background_image_data, point_in_logical_rect,
     };
@@ -629,6 +636,42 @@ mod tests {
         assert_eq!(
             background_tile_axis_bounds(10.0, 240.1, 120.0),
             Some((0, 2, 3))
+        );
+    }
+
+    #[test]
+    fn fixed_background_bounds_ignore_viewport_pan_and_zoom() {
+        let output = Rectangle::<i32, Logical>::new((0, 0).into(), (800, 600).into());
+
+        assert_eq!(
+            super::background_image_visible_bounds(output, false, CanvasPoint { x: 0, y: 0 }, 1.0,),
+            super::background_image_visible_bounds(
+                output,
+                false,
+                CanvasPoint {
+                    x: 10_000,
+                    y: -5_000
+                },
+                0.25,
+            )
+        );
+    }
+
+    #[test]
+    fn canvas_background_bounds_follow_viewport_pan_and_zoom() {
+        let output = Rectangle::<i32, Logical>::new((0, 0).into(), (800, 600).into());
+
+        assert_ne!(
+            super::background_image_visible_bounds(output, true, CanvasPoint { x: 0, y: 0 }, 1.0,),
+            super::background_image_visible_bounds(
+                output,
+                true,
+                CanvasPoint {
+                    x: 10_000,
+                    y: -5_000
+                },
+                0.25,
+            )
         );
     }
 

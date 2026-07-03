@@ -1,3 +1,11 @@
+use std::{
+    env, io,
+    io::{Read, Write},
+    net::Shutdown,
+    os::unix::net::UnixStream,
+    path::PathBuf,
+};
+
 use wayland_client::{
     Connection, Dispatch, QueueHandle, WEnum,
     globals::{GlobalListContents, registry_queue_init},
@@ -18,8 +26,8 @@ use xilem::peniko::Color;
 use xilem::{Pod, ViewCtx};
 
 use hearthspace_ipc::{
-    MonitorConfig, Settings, client_get_settings, client_set_monitor_position,
-    client_set_monitor_scale, client_set_test,
+    MonitorConfig, Settings, client_get_settings, client_set_background_moves_with_canvas,
+    client_set_monitor_position, client_set_monitor_scale, client_set_test,
 };
 use xilem::{
     AnyWidgetView, EventLoop, WidgetView, WindowOptions, Xilem,
@@ -101,6 +109,7 @@ fn initial_state() -> SettingsApp {
 
 fn app_logic(state: &mut SettingsApp) -> impl WidgetView<SettingsApp> + use<> {
     let test_checked = state.settings.test;
+    let background_moves_with_canvas = state.settings.background_moves_with_canvas;
     let monitor_summary = format_monitor_summary(&state.settings.monitors);
 
     sized_box(
@@ -128,6 +137,31 @@ fn app_logic(state: &mut SettingsApp) -> impl WidgetView<SettingsApp> + use<> {
                     }
                 }
             }),
+            checkbox(
+                "Move background with canvas",
+                background_moves_with_canvas,
+                |state: &mut SettingsApp, checked| {
+                    let previous = state.settings.background_moves_with_canvas;
+                    state.settings.background_moves_with_canvas = checked;
+
+                    match client_set_background_moves_with_canvas(checked) {
+                        Ok(settings) => {
+                            state.settings =
+                                settings_with_live_outputs(settings, &state.live_outputs);
+                            state.status = match notify_compositor_settings_changed() {
+                                Ok(()) => format!("Saved background canvas movement = {checked}"),
+                                Err(error) => format!(
+                                    "Saved background canvas movement = {checked}; compositor reload failed: {error}"
+                                ),
+                            };
+                        }
+                        Err(error) => {
+                            state.settings.background_moves_with_canvas = previous;
+                            state.status = format!("Failed to save setting: {error}");
+                        }
+                    }
+                },
+            ),
             label(state.config_label.clone()),
             label(state.status.clone()),
         ))
@@ -614,6 +648,37 @@ fn save_monitor_positions(monitors: &[MonitorConfig]) -> std::io::Result<Option<
         )?);
     }
     Ok(saved)
+}
+
+fn notify_compositor_settings_changed() -> io::Result<()> {
+    let command_socket = command_socket_path()?;
+    let mut stream = UnixStream::connect(&command_socket)?;
+    stream.write_all(b"reload-settings\n")?;
+    stream.shutdown(Shutdown::Write)?;
+
+    let mut response = String::new();
+    stream.read_to_string(&mut response)?;
+    if response == "ok\n" {
+        Ok(())
+    } else {
+        Err(io::Error::other(format!(
+            "unexpected compositor response: {response:?}"
+        )))
+    }
+}
+
+fn command_socket_path() -> io::Result<PathBuf> {
+    env::var_os(hearthspace_common::SHELL_COMMAND_SOCKET_ENV)
+        .map(PathBuf::from)
+        .ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::NotFound,
+                format!(
+                    "{} is not set",
+                    hearthspace_common::SHELL_COMMAND_SOCKET_ENV
+                ),
+            )
+        })
 }
 
 #[derive(Debug)]

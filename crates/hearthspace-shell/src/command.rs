@@ -40,6 +40,7 @@ pub enum ShellCommand {
     PanDown,
     ZoomIn,
     ZoomOut,
+    ReloadSettings,
     LogAccessibilityTree,
     KeyDown(u32),
     KeyUp(u32),
@@ -53,7 +54,7 @@ pub enum ShellCommand {
 }
 
 impl ShellCommand {
-    pub const STATIC_COMMANDS: [Self; 9] = [
+    pub const STATIC_COMMANDS: [Self; 10] = [
         Self::Spawn(SpawnTarget::A11yTest),
         Self::Spawn(SpawnTarget::Foot),
         Self::PanLeft,
@@ -62,6 +63,7 @@ impl ShellCommand {
         Self::PanDown,
         Self::ZoomIn,
         Self::ZoomOut,
+        Self::ReloadSettings,
         Self::LogAccessibilityTree,
     ];
 
@@ -75,6 +77,7 @@ impl ShellCommand {
             Self::PanDown => "DOWN",
             Self::ZoomIn => "ZOOM+",
             Self::ZoomOut => "ZOOM-",
+            Self::ReloadSettings => "RELOAD",
             Self::LogAccessibilityTree => "LOG",
             Self::KeyDown(_) => "KEYDOWN",
             Self::KeyUp(_) => "KEYUP",
@@ -99,6 +102,7 @@ impl ShellCommand {
             Self::PanDown => "pan-down".to_string(),
             Self::ZoomIn => "zoom-in".to_string(),
             Self::ZoomOut => "zoom-out".to_string(),
+            Self::ReloadSettings => "reload-settings".to_string(),
             Self::LogAccessibilityTree => "log-a11y-tree".to_string(),
             Self::KeyDown(keycode) => format!("key-down {keycode}"),
             Self::KeyUp(keycode) => format!("key-up {keycode}"),
@@ -132,6 +136,7 @@ impl ShellCommand {
             "pan-down" => Self::PanDown,
             "zoom-in" => Self::ZoomIn,
             "zoom-out" => Self::ZoomOut,
+            "reload-settings" => Self::ReloadSettings,
             "log-a11y-tree" => Self::LogAccessibilityTree,
             "key-down" => Self::KeyDown(parse_u32(parts.next()?)?),
             "key-up" => Self::KeyUp(parse_u32(parts.next()?)?),

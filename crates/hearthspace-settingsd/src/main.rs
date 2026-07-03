@@ -104,6 +104,12 @@ fn handle_request(request: SettingsRequest, config_path: &Path) -> io::Result<St
             save_settings_to_path(settings.clone(), config_path)?;
             Ok(settings_response(settings))
         }
+        SettingsRequest::SetBackgroundMovesWithCanvas(value) => {
+            let mut settings = load_settings_from_path(config_path)?;
+            settings.background_moves_with_canvas = value;
+            save_settings_to_path(settings.clone(), config_path)?;
+            Ok(settings_response(settings))
+        }
         SettingsRequest::SetMonitorPosition { id, x, y } => {
             let mut settings = load_settings_from_path(config_path)?;
             let Some(monitor) = settings
@@ -214,6 +220,13 @@ fn parse_settings(contents: &str) -> io::Result<Settings> {
                     format!("invalid test setting: {error}"),
                 )
             })?;
+        } else if key == "background_moves_with_canvas" {
+            settings.background_moves_with_canvas = parse_bool(value).map_err(|error| {
+                io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    format!("invalid background_moves_with_canvas setting: {error}"),
+                )
+            })?;
         }
     }
 
@@ -228,7 +241,10 @@ fn parse_settings(contents: &str) -> io::Result<Settings> {
 }
 
 fn format_settings(settings: Settings) -> String {
-    let mut contents = format!("test = {}\n", settings.test);
+    let mut contents = format!(
+        "test = {}\nbackground_moves_with_canvas = {}\n",
+        settings.test, settings.background_moves_with_canvas
+    );
     for monitor in settings.monitors {
         contents.push_str(&format!(
             "\n[[monitor]]\n\
@@ -298,7 +314,9 @@ mod tests {
 
         let response = round_trip("get\n", &config_path);
 
-        assert!(response.starts_with("ok test false monitor primary 1920 1080 1 0 0 Primary"));
+        assert!(response.starts_with(
+            "ok test false background-moves-with-canvas true monitor primary 1920 1080 1 0 0 Primary"
+        ));
         assert!(response.contains("monitor secondary 1920 1080 1 1920 0 Secondary"));
         assert!(!config_path.exists());
     }
@@ -311,6 +329,7 @@ mod tests {
         fs::write(
             &config_path,
             "test = true\n\
+             background_moves_with_canvas = false\n\
              \n\
              [[monitor]]\n\
              id = dock\n\
@@ -327,7 +346,7 @@ mod tests {
 
         assert_eq!(
             response,
-            "ok test true monitor dock 2560 1440 2 -2560 120 Dock%20Display\n"
+            "ok test true background-moves-with-canvas false monitor dock 2560 1440 2 -2560 120 Dock%20Display\n"
         );
     }
 
@@ -338,11 +357,28 @@ mod tests {
 
         let response = round_trip("set test true\n", &config_path);
 
-        assert!(response.starts_with("ok test true monitor primary 1920 1080 1 0 0 Primary"));
+        assert!(response.starts_with(
+            "ok test true background-moves-with-canvas true monitor primary 1920 1080 1 0 0 Primary"
+        ));
         let contents = fs::read_to_string(config_path).unwrap();
         assert!(contents.starts_with("test = true\n"));
+        assert!(contents.contains("background_moves_with_canvas = true\n"));
         assert!(contents.contains("[[monitor]]\nid = primary\n"));
         assert!(contents.contains("scale = 1\n"));
+    }
+
+    #[test]
+    fn set_background_moves_with_canvas_writes_config_and_returns_saved_settings() {
+        let dir = tempfile::tempdir().unwrap();
+        let config_path = dir.path().join("hearthspace/config.toml");
+
+        let response = round_trip("set background-moves-with-canvas false\n", &config_path);
+
+        assert!(response.starts_with(
+            "ok test false background-moves-with-canvas false monitor primary 1920 1080 1 0 0 Primary"
+        ));
+        let contents = fs::read_to_string(config_path).unwrap();
+        assert!(contents.contains("background_moves_with_canvas = false\n"));
     }
 
     #[test]

@@ -51,6 +51,3 @@ pub const WINDOW_IDLE_THRESHOLDS: [Duration; 3] = [
 ];
 
 pub const ANIMATION_FRAME_INTERVAL: Duration = Duration::from_millis(16);
-
-/// Whether the repeated background image is anchored in canvas space by default.
-pub const DEFAULT_BACKGROUND_MOVES_WITH_CANVAS: bool = true;

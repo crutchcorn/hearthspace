@@ -9,6 +9,7 @@ use std::{
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Settings {
     pub test: bool,
+    pub background_moves_with_canvas: bool,
     pub monitors: Vec<MonitorConfig>,
 }
 
@@ -27,6 +28,7 @@ impl Default for Settings {
     fn default() -> Self {
         Self {
             test: false,
+            background_moves_with_canvas: true,
             monitors: vec![
                 MonitorConfig {
                     id: "primary".to_string(),
@@ -55,6 +57,7 @@ impl Default for Settings {
 pub enum SettingsRequest {
     Get,
     SetTest(bool),
+    SetBackgroundMovesWithCanvas(bool),
     SetMonitorPosition { id: String, x: i32, y: i32 },
     SetMonitorScale { id: String, scale: i32 },
 }
@@ -78,6 +81,11 @@ pub fn client_set_test(test: bool) -> io::Result<Settings> {
     send_settings_request(&format!("set test {value}\n"))
 }
 
+pub fn client_set_background_moves_with_canvas(value: bool) -> io::Result<Settings> {
+    let value = if value { "true" } else { "false" };
+    send_settings_request(&format!("set background-moves-with-canvas {value}\n"))
+}
+
 pub fn client_set_monitor_position(id: &str, x: i32, y: i32) -> io::Result<Settings> {
     validate_monitor_id(id)?;
     send_settings_request(&format!("set monitor {id} {x} {y}\n"))
@@ -99,6 +107,9 @@ pub fn parse_settings_request(line: &str) -> Result<SettingsRequest, String> {
     match parts.as_slice() {
         ["get"] => Ok(SettingsRequest::Get),
         ["set", "test", value] => Ok(SettingsRequest::SetTest(parse_bool(value)?)),
+        ["set", "background-moves-with-canvas", value] => Ok(
+            SettingsRequest::SetBackgroundMovesWithCanvas(parse_bool(value)?),
+        ),
         ["set", "monitor", id, x, y] => Ok(SettingsRequest::SetMonitorPosition {
             id: (*id).to_string(),
             x: parse_i32(x, "monitor x")?,
@@ -114,7 +125,10 @@ pub fn parse_settings_request(line: &str) -> Result<SettingsRequest, String> {
 }
 
 pub fn settings_response(settings: Settings) -> String {
-    let mut response = format!("ok test {}", settings.test);
+    let mut response = format!(
+        "ok test {} background-moves-with-canvas {}",
+        settings.test, settings.background_moves_with_canvas
+    );
     for monitor in settings.monitors {
         response.push_str(&format!(
             " monitor {} {} {} {} {} {} {}",
@@ -149,7 +163,23 @@ fn parse_settings_response(response: &str) -> io::Result<Settings> {
     let line = response.trim();
     let parts = line.split_whitespace().collect::<Vec<_>>();
     match parts.as_slice() {
-        ["ok", "test", value, rest @ ..] => parse_settings_response_parts(value, rest),
+        [
+            "ok",
+            "test",
+            test,
+            "background-moves-with-canvas",
+            background_moves_with_canvas,
+            rest @ ..,
+        ] => parse_settings_response_parts(test, background_moves_with_canvas, rest),
+        ["ok", "test", test, rest @ ..] => parse_settings_response_parts(
+            test,
+            if Settings::default().background_moves_with_canvas {
+                "true"
+            } else {
+                "false"
+            },
+            rest,
+        ),
         ["err", message @ ..] => Err(io::Error::other(message.join(" "))),
         _ => Err(io::Error::new(
             io::ErrorKind::InvalidData,
@@ -158,9 +188,15 @@ fn parse_settings_response(response: &str) -> io::Result<Settings> {
     }
 }
 
-fn parse_settings_response_parts(test: &str, rest: &[&str]) -> io::Result<Settings> {
+fn parse_settings_response_parts(
+    test: &str,
+    background_moves_with_canvas: &str,
+    rest: &[&str],
+) -> io::Result<Settings> {
     let mut settings = Settings {
         test: parse_bool(test).map_err(io::Error::other)?,
+        background_moves_with_canvas: parse_bool(background_moves_with_canvas)
+            .map_err(io::Error::other)?,
         monitors: Vec::new(),
     };
     let chunks = rest.chunks_exact(8);
@@ -285,6 +321,10 @@ mod tests {
             Ok(SettingsRequest::SetTest(true))
         );
         assert_eq!(
+            parse_settings_request("set background-moves-with-canvas false\n"),
+            Ok(SettingsRequest::SetBackgroundMovesWithCanvas(false))
+        );
+        assert_eq!(
             parse_settings_request("set monitor primary 120 -40\n"),
             Ok(SettingsRequest::SetMonitorPosition {
                 id: "primary".to_string(),
@@ -305,11 +345,12 @@ mod tests {
     fn parses_ipc_response() {
         assert_eq!(
             parse_settings_response(
-                "ok test true monitor primary 1920 1080 2 120 -40 Primary monitor secondary 1280 720 1 2040 0 Secondary%20Display\n"
+                "ok test true background-moves-with-canvas false monitor primary 1920 1080 2 120 -40 Primary monitor secondary 1280 720 1 2040 0 Secondary%20Display\n"
             )
             .unwrap(),
             Settings {
                 test: true,
+                background_moves_with_canvas: false,
                 monitors: vec![
                     MonitorConfig {
                         id: "primary".to_string(),
@@ -331,6 +372,16 @@ mod tests {
                     },
                 ],
             }
+        );
+    }
+
+    #[test]
+    fn parses_legacy_ipc_response_with_default_background_setting() {
+        assert_eq!(
+            parse_settings_response("ok test true monitor primary 1920 1080 1 0 0 Primary\n")
+                .unwrap()
+                .background_moves_with_canvas,
+            Settings::default().background_moves_with_canvas
         );
     }
 }
