@@ -74,6 +74,7 @@ struct SessionPaths {
     applications_dir: PathBuf,
     settings_socket: PathBuf,
     session_socket: PathBuf,
+    shell_command_socket: PathBuf,
 }
 
 #[derive(Debug)]
@@ -188,6 +189,7 @@ fn create_session_paths() -> Result<SessionPaths, Box<dyn std::error::Error>> {
         runtime_dir,
         settings_socket: session_dir.join("settings.sock"),
         session_socket: session_dir.join("session.sock"),
+        shell_command_socket: session_dir.join("shell-command.sock"),
         session_dir,
         applications_dir,
     })
@@ -205,6 +207,7 @@ fn create_session_env(
     let session_dir = path_to_string(&paths.session_dir)?;
     let settings_socket = path_to_string(&paths.settings_socket)?;
     let session_socket = path_to_string(&paths.session_socket)?;
+    let shell_command_socket = path_to_string(&paths.shell_command_socket)?;
     let mut vars = vec![
         ("WAYLAND_DISPLAY".to_string(), wayland_display.clone()),
         (
@@ -218,6 +221,10 @@ fn create_session_env(
             settings_socket,
         ),
         ("HEARTHSPACE_SESSION_SOCKET".to_string(), session_socket),
+        (
+            hearthspace::config::SHELL_COMMAND_SOCKET_ENV.to_string(),
+            shell_command_socket,
+        ),
         ("RUST_LOG".to_string(), args.log_level.clone()),
         ("XDG_DATA_DIRS".to_string(), xdg_data_dirs(&session_dir)?),
     ];

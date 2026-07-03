@@ -28,6 +28,10 @@ use crate::{
 use super::{App, CalloopData};
 
 pub(super) fn command_socket_path() -> PathBuf {
+    if let Some(socket_path) = env::var_os(SHELL_COMMAND_SOCKET_ENV) {
+        return PathBuf::from(socket_path);
+    }
+
     runtime_path(SHELL_COMMAND_SOCKET_NAME)
 }
 
