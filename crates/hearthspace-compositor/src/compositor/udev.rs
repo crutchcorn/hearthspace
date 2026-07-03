@@ -153,6 +153,9 @@ pub fn run_udev(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> {
         .unwrap_or_default();
     app.sync_connector_outputs(&dh, output_descriptors);
     app.enable_software_cursor();
+    app.configure_shell_bars();
+    app.reconcile_pointer_after_output_geometry_change();
+    app.request_redraw();
     insert_settings_layout_refresh(&handle)?;
 
     handle.insert_source(session_notifier, |event, _, data| match event {
