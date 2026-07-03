@@ -129,12 +129,21 @@ Settings runs use separate Cargo binaries rather than `hearthspace` runtime
 flags. Start the backend daemon first, then launch the Xilem frontend:
 
 ```sh
+cargo build --bin hearthspace-settings
 cargo run --bin hearthspace-settingsd
 cargo run --bin hearthspace-settings
 ```
 
 The settings daemon writes `~/.config/hearthspace/config.toml` and listens on
-`$XDG_RUNTIME_DIR/hearthspace-settingsd.sock`. Its focused tests can be run with:
+`$XDG_RUNTIME_DIR/hearthspace-settingsd.sock`. The settings frontend is exposed
+to the Hearthspace shell through
+`data/applications/dev.hearthspace.Settings.desktop`; during source-tree runs,
+the app catalog includes `data/` as a low-priority XDG data directory. Build the
+settings frontend once with `cargo build --bin hearthspace-settings` before
+launching it from shell search so `target/debug/hearthspace-settings` exists next
+to the compositor binary.
+
+The daemon's focused tests can be run with:
 
 ```sh
 cargo test --bin hearthspace-settingsd

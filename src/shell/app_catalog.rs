@@ -7,6 +7,7 @@ use std::{
 use tracing::debug;
 
 const CURRENT_DESKTOP: &str = "Hearthspace";
+const SETTINGS_APP_BINARY: &str = "hearthspace-settings";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DesktopApp {
@@ -224,6 +225,7 @@ fn xdg_data_dirs() -> Vec<PathBuf> {
             ]
         });
     dirs.extend(data_dirs);
+    dirs.push(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("data"));
     dirs
 }
 
@@ -570,7 +572,7 @@ pub fn spawn_argv_with_env(
     let Some((program, args)) = argv.split_first() else {
         return Err("cannot spawn an empty command".to_string());
     };
-    let mut command = Command::new(program);
+    let mut command = Command::new(resolve_launch_program(program));
     command
         .args(args)
         .env("WAYLAND_DISPLAY", wayland_display)
@@ -582,6 +584,19 @@ pub fn spawn_argv_with_env(
         .spawn()
         .map(|_| ())
         .map_err(|error| format!("failed to spawn {program}: {error}"))
+}
+
+fn resolve_launch_program(program: &str) -> PathBuf {
+    let path = Path::new(program);
+    if program != SETTINGS_APP_BINARY || path.components().count() != 1 {
+        return path.to_path_buf();
+    }
+
+    env::current_exe()
+        .ok()
+        .and_then(|current_exe| current_exe.parent().map(|parent| parent.join(program)))
+        .filter(|candidate| candidate.exists())
+        .unwrap_or_else(|| path.to_path_buf())
 }
 
 #[cfg(test)]
@@ -794,5 +809,19 @@ mod tests {
                 .map(|app| app.name.as_str()),
             Some("Editor (first)")
         );
+    }
+
+    #[test]
+    fn source_tree_settings_desktop_file_is_searchable_and_launchable() {
+        let catalog = AppCatalog::load_from_data_dirs(vec![
+            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("data"),
+        ]);
+
+        let app = catalog
+            .app_by_id("dev.hearthspace.Settings.desktop")
+            .unwrap();
+        assert_eq!(app.name, "Hearthspace Settings");
+        assert_eq!(catalog.search("settings", 1)[0].id, app.id);
+        assert_eq!(app.launch_argv().unwrap(), vec!["hearthspace-settings"]);
     }
 }
