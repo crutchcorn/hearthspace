@@ -2270,6 +2270,7 @@ dependencies = [
  "fontique",
  "gtk4",
  "hearthspace-common",
+ "hearthspace-shell",
  "image",
  "masonry",
  "naga",
@@ -2321,6 +2322,18 @@ dependencies = [
  "tempfile",
  "tracing",
  "tracing-subscriber",
+]
+
+[[package]]
+name = "hearthspace-shell"
+version = "0.1.0"
+dependencies = [
+ "hearthspace-common",
+ "rstest",
+ "tempfile",
+ "tracing",
+ "tracing-subscriber",
+ "xilem",
 ]
 
 [[package]]

@@ -1,8 +1,9 @@
 use std::time::Duration;
 
 pub use hearthspace_common::{
-    HEARTHSPACE_WAYLAND_DISPLAY_ENV, LOG_FILE_ENV, SHELL_COMMAND_SOCKET_ENV,
-    SHELL_COMMAND_SOCKET_NAME, WAYLAND_DISPLAY_ENV, WAYLAND_DISPLAY_NAME, wayland_display_name,
+    CONTROL_BAR_HEIGHT, HEARTHSPACE_WAYLAND_DISPLAY_ENV, LAUNCHER_APP_ID, LOG_FILE_ENV,
+    SHELL_BAR_APP_ID, SHELL_COMMAND_SOCKET_ENV, SHELL_COMMAND_SOCKET_NAME, WAYLAND_DISPLAY_ENV,
+    WAYLAND_DISPLAY_NAME, wayland_display_name,
 };
 pub const GTK_TEST_APP_FLAG: &str = "--gtk-test-app";
 pub const SHELL_FLAG: &str = "--shell";
@@ -11,10 +12,6 @@ pub const TTY_FLAG: &str = "--tty";
 pub const WINIT_FLAG: &str = "--winit";
 pub const GTK_TEST_APP_ID: &str = "dev.hearthspace.A11yTest";
 pub const GTK_TEST_APP_TITLE: &str = "Hearthspace Research Demo";
-pub const SHELL_BAR_APP_ID: &str = "dev.hearthspace.shell-bar";
-/// Wayland `app_id` of the launcher palette: a short-lived shell surface the
-/// shell opens just below the bar to show app-search results as a dropdown.
-pub const LAUNCHER_APP_ID: &str = "dev.hearthspace.launcher";
 pub const GTK_CLIENT_CONFIG_DIR_NAME: &str = "hearthspace-gtk-client-config";
 pub const SCROLL_ZOOMS_FLAG: &str = "--scroll-zooms";
 pub const HEADLESS_SIZE_FLAG: &str = "--headless-size";
@@ -27,7 +24,6 @@ pub const HEADLESS_OUTPUT_HEIGHT: i32 = 720;
 pub const KEYBOARD_REPEAT_DELAY_MS: i32 = 600;
 pub const KEYBOARD_REPEAT_RATE: i32 = 25;
 
-pub const CONTROL_BAR_HEIGHT: i32 = 48;
 pub const TITLE_BAR_HEIGHT: i32 = 30;
 pub const CLOSE_BUTTON_SIZE: i32 = 18;
 pub const CLOSE_BUTTON_MARGIN: i32 = 6;

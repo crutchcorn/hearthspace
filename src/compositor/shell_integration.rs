@@ -19,10 +19,10 @@ use tracing::{debug, error, info, trace, warn};
 use crate::{
     config::*,
     geometry::CanvasPoint,
-    shell::{
-        ShellCommand, SpawnTarget,
-        app_catalog::{DesktopApp, spawn_argv_with_env},
-    },
+};
+use hearthspace_shell::{
+    ShellCommand, SpawnTarget,
+    app_catalog::{DesktopApp, spawn_argv_with_env},
 };
 
 use super::{App, CalloopData};
@@ -525,7 +525,7 @@ impl App {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::shell::SpawnTarget;
+    use hearthspace_shell::SpawnTarget;
 
     #[test]
     fn drains_only_complete_newline_terminated_commands() {

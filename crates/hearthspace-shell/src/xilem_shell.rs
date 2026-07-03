@@ -42,11 +42,11 @@ use xilem::{
 };
 
 use crate::{
-    config::{CONTROL_BAR_HEIGHT, LAUNCHER_APP_ID, SHELL_BAR_APP_ID, SHELL_COMMAND_SOCKET_ENV},
-    shell::{
-        ShellCommand,
-        app_catalog::{AppCatalog, DesktopApp},
-    },
+    ShellCommand,
+    app_catalog::{AppCatalog, DesktopApp},
+};
+use hearthspace_common::{
+    CONTROL_BAR_HEIGHT, LAUNCHER_APP_ID, SHELL_BAR_APP_ID, SHELL_COMMAND_SOCKET_ENV,
 };
 
 /// Maximum number of app search results to surface at once.

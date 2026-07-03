@@ -6,7 +6,6 @@ use std::{
 };
 use tracing::debug;
 
-const CURRENT_DESKTOP: &str = "Hearthspace";
 const SETTINGS_APP_BINARY: &str = "hearthspace-settings";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -225,8 +224,12 @@ fn xdg_data_dirs() -> Vec<PathBuf> {
             ]
         });
     dirs.extend(data_dirs);
-    dirs.push(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("data"));
+    dirs.push(source_tree_data_dir());
     dirs
+}
+
+fn source_tree_data_dir() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../data")
 }
 
 fn desktop_files_under(dir: &Path) -> std::io::Result<Vec<PathBuf>> {
@@ -337,7 +340,7 @@ fn only_show_in_allows(value: Option<&String>) -> bool {
 
     parse_semicolon_list(value)
         .iter()
-        .any(|desktop| desktop == CURRENT_DESKTOP)
+        .any(|desktop| desktop == hearthspace_common::CURRENT_DESKTOP)
 }
 
 fn not_show_in_allows(value: Option<&String>) -> bool {
@@ -347,7 +350,7 @@ fn not_show_in_allows(value: Option<&String>) -> bool {
 
     !parse_semicolon_list(value)
         .iter()
-        .any(|desktop| desktop == CURRENT_DESKTOP)
+        .any(|desktop| desktop == hearthspace_common::CURRENT_DESKTOP)
 }
 
 fn try_exec_resolves(try_exec: &str) -> bool {
@@ -554,7 +557,7 @@ fn xdg_config_dirs() -> Vec<PathBuf> {
 }
 
 pub fn spawn_argv(argv: &[String]) -> Result<(), String> {
-    let wayland_display = crate::config::wayland_display_name();
+    let wayland_display = hearthspace_common::wayland_display_name();
     spawn_argv_with_wayland_display(argv, &wayland_display)
 }
 
@@ -594,8 +597,8 @@ pub fn spawn_argv_with_env(
 
 fn session_environment_keys() -> &'static [&'static str] {
     &[
-        "XDG_CURRENT_DESKTOP",
-        "DESKTOP_SESSION",
+            "XDG_CURRENT_DESKTOP",
+            "DESKTOP_SESSION",
         hearthspace_common::SETTINGS_SOCKET_ENV,
         hearthspace_common::SESSION_SOCKET_ENV,
         hearthspace_common::REPO_ROOT_ENV,
@@ -830,7 +833,7 @@ mod tests {
     #[test]
     fn source_tree_settings_desktop_file_is_searchable_and_launchable() {
         let catalog = AppCatalog::load_from_data_dirs(vec![
-            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("data"),
+            source_tree_data_dir(),
         ]);
 
         let app = catalog

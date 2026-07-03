@@ -583,7 +583,10 @@ impl Supervisor {
 }
 
 fn cargo_package_exists(package: &str) -> bool {
-    matches!(package, "hearthspace-settings" | "hearthspace-settingsd")
+    matches!(
+        package,
+        "hearthspace-settings" | "hearthspace-settingsd" | "hearthspace-shell"
+    )
 }
 
 impl ManagedProcess {

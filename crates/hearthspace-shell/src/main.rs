@@ -3,12 +3,12 @@ use std::fs::OpenOptions;
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     initialize_tracing();
     tracing::info!("starting Hearthspace shell");
-    hearthspace::shell::xilem_shell::run()
+    hearthspace_shell::xilem_shell::run()
 }
 
 fn initialize_tracing() {
     let env_filter = tracing_subscriber::EnvFilter::try_from_default_env();
-    if let Some(log_path) = std::env::var_os(hearthspace::config::LOG_FILE_ENV) {
+    if let Some(log_path) = std::env::var_os(hearthspace_common::LOG_FILE_ENV) {
         let make_writer = move || {
             OpenOptions::new()
                 .create(true)

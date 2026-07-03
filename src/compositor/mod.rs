@@ -5,7 +5,8 @@ use std::{
     sync::Arc,
 };
 
-use crate::{RunOptions, config::*, geometry::CanvasPoint, shell::app_catalog::AppCatalog};
+use crate::{RunOptions, config::*, geometry::CanvasPoint};
+use hearthspace_shell::app_catalog::AppCatalog;
 
 mod cursor;
 mod handlers;

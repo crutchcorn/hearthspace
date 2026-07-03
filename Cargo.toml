@@ -14,6 +14,7 @@ members = [
     "crates/hearthspace-ipc",
     "crates/hearthspace-settings",
     "crates/hearthspace-settingsd",
+    "crates/hearthspace-shell",
     "crates/waydriver-hearthspace",
 ]
 default-members = ["."]
@@ -42,6 +43,7 @@ clap = { version = "4", features = ["derive"] }
 ctrlc = "3"
 gtk = { package = "gtk4", version = "0.11", optional = true }
 hearthspace-common = { path = "crates/hearthspace-common" }
+hearthspace-shell = { path = "crates/hearthspace-shell" }
 # Xilem (app shell) and Masonry (compositor-side imaging) are pulled from our
 # linebender/xilem fork branch backing PR linebender/xilem#1830, which adds
 # `WindowOptionsExtLinux::with_name` so a Xilem window can advertise a Wayland
