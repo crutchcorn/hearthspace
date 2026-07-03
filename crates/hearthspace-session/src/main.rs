@@ -504,14 +504,7 @@ impl Supervisor {
         let current_dir = (self.mode == RunMode::DevCargo).then(repo_root);
         match self.mode {
             RunMode::DevCargo => {
-                let mut args = vec!["run".to_string()];
-                if cargo_package_exists(binary) {
-                    args.extend(["-p".to_string(), binary.to_string()]);
-                } else {
-                    args.extend(["--bin".to_string(), binary.to_string()]);
-                }
-                args.push("--".to_string());
-                args.extend(binary_args.iter().map(|arg| (*arg).to_string()));
+                let args = dev_cargo_args(binary, binary_args);
                 ProcessSpec {
                     name: binary,
                     program: "cargo".to_string(),
@@ -584,6 +577,21 @@ impl Supervisor {
         }
         None
     }
+}
+
+fn dev_cargo_args(binary: &str, binary_args: &[&str]) -> Vec<String> {
+    let mut args = vec!["run".to_string()];
+    if cargo_package_exists(binary) {
+        args.extend(["-p".to_string(), binary.to_string()]);
+    } else {
+        args.extend(["--bin".to_string(), binary.to_string()]);
+    }
+    if binary == "hearthspace-compositor" {
+        args.extend(["--features".to_string(), "udev".to_string()]);
+    }
+    args.push("--".to_string());
+    args.extend(binary_args.iter().map(|arg| (*arg).to_string()));
+    args
 }
 
 fn cargo_package_exists(package: &str) -> bool {
@@ -698,4 +706,28 @@ fn wait_then_kill_process(process: &mut Option<ManagedProcess>) {
         Err(error) => warn!(name = process.spec.name, %error, "failed to kill process after shutdown timeout"),
     }
     let _ = process.child.wait();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn dev_compositor_child_enables_udev_feature() {
+        assert_eq!(
+            dev_cargo_args(
+                "hearthspace-compositor",
+                &[hearthspace_common::NO_SHELL_FLAG]
+            ),
+            vec![
+                "run",
+                "-p",
+                "hearthspace-compositor",
+                "--features",
+                "udev",
+                "--",
+                hearthspace_common::NO_SHELL_FLAG,
+            ]
+        );
+    }
 }
