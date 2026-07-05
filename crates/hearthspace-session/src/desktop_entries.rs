@@ -8,7 +8,7 @@ pub(crate) fn generate_dev_desktop_entries(
     paths: &SessionPaths,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let exec = repo_root().join("scripts/dev-run-app");
-    let desktop_entry = format!(
+    let settings_entry = format!(
         "[Desktop Entry]\n\
          Type=Application\n\
          Name=Hearthspace Settings\n\
@@ -21,11 +21,30 @@ pub(crate) fn generate_dev_desktop_entries(
          X-Hearthspace-Dev=true\n",
         escape_exec_path(&exec)
     );
-    let path = paths
+    let settings_path = paths
         .applications_dir
         .join("dev.hearthspace.Settings.desktop");
-    fs::write(&path, desktop_entry)?;
-    info!(path = %path.display(), "generated development desktop entry");
+    fs::write(&settings_path, settings_entry)?;
+    info!(path = %settings_path.display(), "generated development desktop entry");
+
+    let storybook_entry = format!(
+        "[Desktop Entry]\n\
+         Type=Application\n\
+         Name=Hearthspace UI Storybook\n\
+         Comment=Browse and tune Hearthspace UI components\n\
+         Exec=\"{}\" hearthspace-ui-storybook\n\
+         Icon=hearthspace\n\
+         Categories=Development;GUIDesigner;\n\
+         Keywords=hearthspace;ui;components;storybook;design;\n\
+         OnlyShowIn=Hearthspace;\n\
+         X-Hearthspace-Dev=true\n",
+        escape_exec_path(&exec)
+    );
+    let storybook_path = paths
+        .applications_dir
+        .join("dev.hearthspace.UIStorybook.desktop");
+    fs::write(&storybook_path, storybook_entry)?;
+    info!(path = %storybook_path.display(), "generated development desktop entry");
     Ok(())
 }
 

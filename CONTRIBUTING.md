@@ -123,6 +123,9 @@ crates/hearthspace-compositor   Smithay compositor; binary: hearthspace-composit
 crates/hearthspace-shell        Xilem shell client; binary: hearthspace-shell
 crates/hearthspace-settingsd    settings daemon; binary: hearthspace-settingsd
 crates/hearthspace-settings     settings app; binary: hearthspace-settings
+crates/hearthspace-ui-storybook UI component gallery app; binary: hearthspace-ui-storybook
+crates/ui-components            shared Hearthspace Xilem UI components/theme
+crates/xilem-storybook          generic Storybook-like state model for Xilem apps
 crates/hearthspace-ipc          settings IPC protocol/types
 crates/hearthspace-common       shared environment/path constants
 crates/waydriver-hearthspace    WayDriver backend adapter
@@ -219,6 +222,41 @@ The daemon's focused tests can be run with:
 cargo test -p hearthspace-settingsd
 ```
 
+### Shared UI Components
+
+Reusable Hearthspace Xilem UI lives in `crates/ui-components`. Shell and
+settings surfaces should prefer these components and theme helpers over raw
+Xilem buttons, panels, sidebar rows, and section wrappers when the behavior is
+not surface-specific. This keeps the shell, settings app, and future rich UI
+clients visually consistent.
+
+When adding or changing a reusable component:
+
+- keep the generic visual primitive in `crates/ui-components`;
+- use the existing component from shell/settings code instead of recreating the
+  styling locally;
+- add or update a story in `crates/hearthspace-ui-storybook` so the component
+  can be inspected and tuned interactively;
+- run the focused package checks before the full workspace pass:
+
+```sh
+cargo run -p hearthspace-ui-storybook
+cargo check -p hearthspace-ui-components -p hearthspace-ui-storybook
+cargo clippy -p hearthspace-ui-components -p hearthspace-ui-storybook --all-targets -- -D warnings
+```
+
+The storybook app is exposed to the Hearthspace shell through
+`data/applications/dev.hearthspace.UIStorybook.desktop`. During `cargo run --
+--dev`, the session supervisor also generates a session-local desktop entry that
+launches it through `scripts/dev-run-app`, so it can be found from shell search
+as "Hearthspace UI Storybook".
+
+`crates/xilem-storybook` is intentionally Hearthspace-agnostic. It owns
+storybook state, selected-story tracking, and typed live controls, but it does
+not depend on `hearthspace-ui-components` or impose a theme. Other Xilem
+projects should be able to reuse it with their own component library and view
+layer.
+
 ### Tracing Logs
 
 Hearthspace initializes `tracing` automatically. No Cargo feature flags are
@@ -291,25 +329,23 @@ with AT-SPI only while screen-reader status is active.
 See [docs/E2E_TESTING.md](./docs/E2E_TESTING.md) for the evergreen technical
 architecture of the headless and WayDriver E2E harness.
 
-### Xilem Fork (git dependency)
+### Xilem Git Dependency
 
-The shell UI is built with [Xilem](https://github.com/linebender/xilem). Stock
-Xilem cannot set a Wayland `app_id` on its windows, which Hearthspace needs so
-the compositor can recognize the shell surface and render it without window
-chrome. We therefore depend on a fork branch via git in `Cargo.toml`:
+The shell UI, settings app, UI storybook, and shared UI components are built
+with [Xilem](https://github.com/linebender/xilem). We depend on upstream Xilem
+from git rather than the latest published crates because crates.io is still
+behind APIs Hearthspace uses, including
+`xilem::WindowOptionsExtLinux::with_name(general, instance)` for setting
+Wayland `app_id` / X11 `WM_CLASS`.
 
 ```toml
-masonry = { git = "https://github.com/crutchcorn/xilem", branch = "wayland-app-id", features = ["testing"] }
-xilem = { git = "https://github.com/crutchcorn/xilem", branch = "wayland-app-id" }
+masonry = { git = "https://github.com/linebender/xilem", features = ["testing"] }
+xilem = { git = "https://github.com/linebender/xilem" }
 ```
 
-The branch backs upstream PR
-[linebender/xilem#1830](https://github.com/linebender/xilem/pull/1830), which
-adds `xilem::WindowOptionsExtLinux::with_name(general, instance)` — forwarding to
-winit's `WindowAttributesExtWayland::with_name` (Wayland `app_id`) and
-`WindowAttributesExtX11::with_name` (X11 `WM_CLASS`). Once the PR merges, repoint
-these dependencies to an upstream `linebender/xilem` release/rev. No local clone
-is required; Cargo fetches the branch automatically.
+No local Xilem clone is required for normal development; Cargo fetches the git
+dependency automatically. A local clone at `~/git/linebender/xilem` is useful
+for source search when working through Xilem/Masonry behavior or API questions.
 
 ### Linting
 

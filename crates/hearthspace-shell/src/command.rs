@@ -205,7 +205,7 @@ fn hex_encode(input: &str) -> String {
 }
 
 fn hex_decode_to_string(input: &str) -> Option<String> {
-    if input.len() % 2 != 0 {
+    if !input.len().is_multiple_of(2) {
         return None;
     }
 

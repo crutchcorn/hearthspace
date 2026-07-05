@@ -34,13 +34,11 @@ gtk = { package = "gtk4", version = "0.11", optional = true }
 hearthspace-common = { path = "../hearthspace-common" }
 hearthspace-ipc = { path = "../hearthspace-ipc" }
 hearthspace-shell = { path = "../hearthspace-shell" }
-# Xilem (app shell) and Masonry (compositor-side imaging) are pulled from our
-# linebender/xilem fork branch backing PR linebender/xilem#1830, which adds
-# `WindowOptionsExtLinux::with_name` so a Xilem window can advertise a Wayland
-# `app_id` (and X11 `WM_CLASS`). Repoint to upstream once the PR lands.
-# See SETUP.md for details.
-masonry = { git = "https://github.com/crutchcorn/xilem", branch = "wayland-app-id", features = ["testing"] }
-xilem = { git = "https://github.com/crutchcorn/xilem", branch = "wayland-app-id" }
+# Xilem (app shell) and Masonry (compositor-side imaging) are pulled from
+# upstream git because the latest published crates are still behind the APIs we
+# use, including `WindowOptionsExtLinux::with_name`.
+masonry = { git = "https://github.com/linebender/xilem", features = ["testing"] }
+xilem = { git = "https://github.com/linebender/xilem" }
 # naga 28 (pulled in transitively via wgpu/vello) only compiles its WGSL
 # error-emit path when the `termcolor` feature is enabled, but the crates that
 # depend on it (wgpu-core, vello_shaders) enable `wgsl-in` without it. We add a

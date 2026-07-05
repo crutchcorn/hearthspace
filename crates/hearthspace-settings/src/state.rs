@@ -11,11 +11,37 @@ use crate::{
 pub(crate) struct SettingsApp {
     pub(crate) settings: Settings,
     pub(crate) live_outputs: Vec<LiveOutput>,
+    pub(crate) selected_category: SettingsCategory,
     pub(crate) selected_monitor_id: Option<String>,
     pub(crate) background_picker_request_sender: Option<UnboundedSender<BackgroundPickerRequest>>,
     pub(crate) background_picker_pending: bool,
     pub(crate) status: String,
     pub(crate) config_label: String,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum SettingsCategory {
+    Display,
+    Appearance,
+    Advanced,
+}
+
+impl SettingsCategory {
+    pub(crate) const fn label(self) -> &'static str {
+        match self {
+            Self::Display => "Display",
+            Self::Appearance => "Appearance",
+            Self::Advanced => "Advanced",
+        }
+    }
+
+    pub(crate) const fn description(self) -> &'static str {
+        match self {
+            Self::Display => "Monitor placement and scale",
+            Self::Appearance => "Canvas background image and fit",
+            Self::Advanced => "Diagnostics and configuration",
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -56,6 +82,7 @@ pub(crate) fn initial_state() -> SettingsApp {
     SettingsApp {
         settings,
         live_outputs,
+        selected_category: SettingsCategory::Display,
         selected_monitor_id,
         background_picker_request_sender: None,
         background_picker_pending: false,

@@ -7,10 +7,11 @@ license = "Apache-2.0"
 
 [dependencies]
 hearthspace-common = { path = "../hearthspace-common" }
+hearthspace-ui-components = { path = "../ui-components" }
 tracing = "0.1.41"
 tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
 wayland-client = "0.31.14"
-xilem = { git = "https://github.com/crutchcorn/xilem", branch = "wayland-app-id" }
+xilem = { git = "https://github.com/linebender/xilem" }
 
 [dev-dependencies]
 rstest = "0.26"

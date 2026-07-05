@@ -8,9 +8,10 @@ license = "Apache-2.0"
 [dependencies]
 hearthspace-common = { path = "../hearthspace-common" }
 hearthspace-ipc = { path = "../hearthspace-ipc" }
+hearthspace-ui-components = { path = "../ui-components" }
 rfd = { version = "0.17.2", features = ["xdg-portal"] }
 wayland-client = "0.31.14"
-xilem = { git = "https://github.com/crutchcorn/xilem", branch = "wayland-app-id" }
+xilem = { git = "https://github.com/linebender/xilem" }
 
 [lints.rust]
 unsafe_op_in_unsafe_fn = "deny"

@@ -1,0 +1,17 @@
+[package]
+name = "hearthspace-ui-storybook"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.93.1"
+license = "Apache-2.0"
+
+[dependencies]
+hearthspace-ui-components = { path = "../ui-components" }
+xilem = { git = "https://github.com/linebender/xilem" }
+xilem-storybook = { path = "../xilem-storybook" }
+
+[lints.rust]
+unsafe_op_in_unsafe_fn = "deny"
+
+[lints.clippy]
+all = { level = "deny", priority = -1 }
