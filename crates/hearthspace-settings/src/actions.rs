@@ -45,9 +45,15 @@ pub(crate) fn apply_monitor_editor_action(state: &mut SettingsApp, action: Monit
                     Ok(Some(settings)) => {
                         state.settings = settings_with_live_outputs(settings, &state.live_outputs);
                         keep_selected_monitor_available(state);
-                        state.status = format!("Saved monitor layout for {moved_id}");
+                        state.status = status_after_compositor_reload(format!(
+                            "Saved monitor layout for {moved_id}"
+                        ));
                     }
-                    Ok(None) => state.status = "Saved empty monitor layout".to_string(),
+                    Ok(None) => {
+                        state.status = status_after_compositor_reload(
+                            "Saved empty monitor layout".to_string(),
+                        );
+                    }
                     Err(error) => state.status = format!("Failed to save monitor layout: {error}"),
                 }
             } else if let Some(monitor) = moved_monitor {
@@ -88,12 +94,16 @@ pub(crate) fn save_monitor_scale(state: &mut SettingsApp, id: &str, scale: i32) 
                 state.settings = settings_with_live_outputs(settings, &state.live_outputs);
                 state.selected_monitor_id = Some(id.to_string());
                 keep_selected_monitor_available(state);
-                state.status = format!("Saved monitor scale for {id}: {scale}x");
+                state.status = status_after_compositor_reload(format!(
+                    "Saved monitor scale for {id}: {scale}x"
+                ));
             }
             Ok(None) => {
                 state.settings.monitors = monitors;
                 state.selected_monitor_id = Some(id.to_string());
-                state.status = format!("Saved monitor scale for {id}: {scale}x");
+                state.status = status_after_compositor_reload(format!(
+                    "Saved monitor scale for {id}: {scale}x"
+                ));
             }
             Err(error) => {
                 let _ = previous
@@ -109,6 +119,13 @@ pub(crate) fn save_monitor_scale(state: &mut SettingsApp, id: &str, scale: i32) 
             state.settings = previous;
             state.status = format!("Failed to save monitor scale: {error}");
         }
+    }
+}
+
+fn status_after_compositor_reload(saved_message: String) -> String {
+    match notify_compositor_settings_changed() {
+        Ok(()) => saved_message,
+        Err(error) => format!("{saved_message}; compositor reload failed: {error}"),
     }
 }
 
