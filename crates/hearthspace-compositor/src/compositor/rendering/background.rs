@@ -1,5 +1,6 @@
 use std::{fs, io::Cursor};
 
+use hearthspace_ipc::BackgroundMode;
 use smithay::{
     backend::{
         allocator::Fourcc,
@@ -50,19 +51,24 @@ impl App {
         if self.viewport_scale <= 0.0 || !self.viewport_scale.is_finite() {
             return Vec::new();
         }
-        let moves_with_canvas = self.background_moves_with_canvas;
-
         let (context_id, texture, tile_size) = match self.background_image_tile(renderer) {
             Ok(tile) => (tile.context_id.clone(), tile.texture.clone(), tile.size),
             Err(_) => return Vec::new(),
         };
 
-        let (min_x, max_x, min_y, max_y) = background_image_visible_bounds(
-            wallpaper_presentation_rect(output_rect, output_scale),
-            moves_with_canvas,
-            self.viewport_offset,
-            self.viewport_scale,
-        );
+        let output_rect = wallpaper_presentation_rect(output_rect, output_scale);
+        if self.background_mode != BackgroundMode::RepeatWithCanvas {
+            return self.fixed_background_image_element(
+                context_id,
+                texture,
+                tile_size,
+                output_rect,
+                self.background_mode,
+            );
+        }
+
+        let (min_x, max_x, min_y, max_y) =
+            background_image_visible_bounds(output_rect, self.viewport_offset, self.viewport_scale);
 
         let Some((first_x, last_x, x_count)) =
             background_tile_axis_bounds(min_x, max_x, f64::from(tile_size.w))
@@ -95,14 +101,8 @@ impl App {
                     (gx + 1) as f64 * f64::from(tile_size.w),
                     (gy + 1) as f64 * f64::from(tile_size.h),
                 ));
-                let (screen, next_screen) = if moves_with_canvas {
-                    (
-                        self.canvas_to_screen(tile_origin),
-                        self.canvas_to_screen(next_tile_origin),
-                    )
-                } else {
-                    (tile_origin, next_tile_origin)
-                };
+                let screen = self.canvas_to_screen(tile_origin);
+                let next_screen = self.canvas_to_screen(next_tile_origin);
                 let left = screen.x.round() as i32;
                 let top = screen.y.round() as i32;
                 let right = next_screen.x.round() as i32;
@@ -126,6 +126,37 @@ impl App {
             }
         }
         elements
+    }
+
+    fn fixed_background_image_element(
+        &mut self,
+        context_id: ContextId<GlesTexture>,
+        texture: GlesTexture,
+        image_size: Size<i32, Logical>,
+        output_rect: Rectangle<i32, Logical>,
+        mode: BackgroundMode,
+    ) -> Vec<TextureRenderElement<GlesTexture>> {
+        let Some((src, dst)) = fixed_background_rects(image_size, output_rect, mode) else {
+            return Vec::new();
+        };
+
+        if self.background_tile_ids.is_empty() {
+            self.background_tile_ids.push(Id::new());
+        }
+
+        vec![TextureRenderElement::from_static_texture(
+            self.background_tile_ids[0].clone(),
+            context_id,
+            dst.loc.to_physical(1).to_f64(),
+            texture,
+            1,
+            Transform::Normal,
+            None,
+            Some(src),
+            Some(dst.size),
+            None,
+            Kind::Unspecified,
+        )]
     }
 
     fn background_image_tile(
@@ -198,7 +229,6 @@ fn background_tile_axis_bounds(min: f64, max: f64, tile_size: f64) -> Option<(i6
 
 fn background_image_visible_bounds(
     output_rect: Rectangle<i32, Logical>,
-    moves_with_canvas: bool,
     viewport_offset: CanvasPoint,
     viewport_scale: f64,
 ) -> (f64, f64, f64, f64) {
@@ -208,14 +238,9 @@ fn background_image_visible_bounds(
         f64::from(output_rect.loc.y) + f64::from(output_rect.size.h),
     ));
 
-    let (top_left, bottom_right) = if moves_with_canvas {
-        (
-            crate::geometry::screen_to_canvas(top_left, viewport_offset, viewport_scale),
-            crate::geometry::screen_to_canvas(bottom_right, viewport_offset, viewport_scale),
-        )
-    } else {
-        (top_left, bottom_right)
-    };
+    let top_left = crate::geometry::screen_to_canvas(top_left, viewport_offset, viewport_scale);
+    let bottom_right =
+        crate::geometry::screen_to_canvas(bottom_right, viewport_offset, viewport_scale);
 
     (
         top_left.x.min(bottom_right.x),
@@ -223,6 +248,60 @@ fn background_image_visible_bounds(
         top_left.y.min(bottom_right.y),
         top_left.y.max(bottom_right.y),
     )
+}
+
+fn fixed_background_rects(
+    image_size: Size<i32, Logical>,
+    output_rect: Rectangle<i32, Logical>,
+    mode: BackgroundMode,
+) -> Option<(Rectangle<f64, Logical>, Rectangle<i32, Logical>)> {
+    if image_size.w <= 0 || image_size.h <= 0 || output_rect.size.w <= 0 || output_rect.size.h <= 0
+    {
+        return None;
+    }
+
+    let image_w = f64::from(image_size.w);
+    let image_h = f64::from(image_size.h);
+    let output_w = f64::from(output_rect.size.w);
+    let output_h = f64::from(output_rect.size.h);
+    let full_src = Rectangle::from_size(Size::<f64, Logical>::from((image_w, image_h)));
+
+    match mode {
+        BackgroundMode::RepeatWithCanvas => None,
+        BackgroundMode::Stretch => Some((full_src, output_rect)),
+        BackgroundMode::Contains => {
+            let scale = (output_w / image_w).min(output_h / image_h);
+            let dst_w = (image_w * scale).round().max(1.0) as i32;
+            let dst_h = (image_h * scale).round().max(1.0) as i32;
+            let dst = Rectangle::new(
+                (
+                    output_rect.loc.x + (output_rect.size.w - dst_w) / 2,
+                    output_rect.loc.y + (output_rect.size.h - dst_h) / 2,
+                )
+                    .into(),
+                (dst_w, dst_h).into(),
+            );
+            Some((full_src, dst))
+        }
+        BackgroundMode::Cover => {
+            let output_aspect = output_w / output_h;
+            let image_aspect = image_w / image_h;
+            let src = if image_aspect > output_aspect {
+                let src_w = image_h * output_aspect;
+                Rectangle::new(
+                    ((image_w - src_w) / 2.0, 0.0).into(),
+                    (src_w, image_h).into(),
+                )
+            } else {
+                let src_h = image_w / output_aspect;
+                Rectangle::new(
+                    (0.0, (image_h - src_h) / 2.0).into(),
+                    (image_w, src_h).into(),
+                )
+            };
+            Some((src, output_rect))
+        }
+    }
 }
 
 fn default_background_image_data() -> BackgroundImageData {
@@ -256,12 +335,14 @@ fn decode_background_png(contents: &[u8]) -> Result<BackgroundImageData, String>
 
 #[cfg(test)]
 mod tests {
+    use hearthspace_ipc::BackgroundMode;
     use smithay::utils::{Logical, Rectangle, Size};
 
     use crate::geometry::CanvasPoint;
 
     use super::{
-        background_tile_axis_bounds, default_background_image_data, wallpaper_presentation_rect,
+        background_tile_axis_bounds, default_background_image_data, fixed_background_rects,
+        wallpaper_presentation_rect,
     };
 
     #[test]
@@ -281,14 +362,13 @@ mod tests {
     }
 
     #[test]
-    fn fixed_background_bounds_ignore_viewport_pan_and_zoom() {
+    fn canvas_background_bounds_follow_viewport_pan_and_zoom() {
         let output = Rectangle::<i32, Logical>::new((0, 0).into(), (800, 600).into());
 
-        assert_eq!(
-            super::background_image_visible_bounds(output, false, CanvasPoint { x: 0, y: 0 }, 1.0,),
+        assert_ne!(
+            super::background_image_visible_bounds(output, CanvasPoint { x: 0, y: 0 }, 1.0,),
             super::background_image_visible_bounds(
                 output,
-                false,
                 CanvasPoint {
                     x: 10_000,
                     y: -5_000
@@ -299,20 +379,44 @@ mod tests {
     }
 
     #[test]
-    fn canvas_background_bounds_follow_viewport_pan_and_zoom() {
-        let output = Rectangle::<i32, Logical>::new((0, 0).into(), (800, 600).into());
+    fn stretch_background_uses_full_image_and_output() {
+        let image = Size::<i32, Logical>::from((400, 200));
+        let output = Rectangle::<i32, Logical>::new((10, 20).into(), (800, 600).into());
 
-        assert_ne!(
-            super::background_image_visible_bounds(output, true, CanvasPoint { x: 0, y: 0 }, 1.0,),
-            super::background_image_visible_bounds(
+        assert_eq!(
+            fixed_background_rects(image, output, BackgroundMode::Stretch),
+            Some((
+                Rectangle::from_size(Size::<f64, Logical>::from((400.0, 200.0))),
                 output,
-                true,
-                CanvasPoint {
-                    x: 10_000,
-                    y: -5_000
-                },
-                0.25,
-            )
+            ))
+        );
+    }
+
+    #[test]
+    fn contains_background_preserves_aspect_inside_output() {
+        let image = Size::<i32, Logical>::from((400, 200));
+        let output = Rectangle::<i32, Logical>::new((10, 20).into(), (800, 600).into());
+
+        assert_eq!(
+            fixed_background_rects(image, output, BackgroundMode::Contains),
+            Some((
+                Rectangle::from_size(Size::<f64, Logical>::from((400.0, 200.0))),
+                Rectangle::new((10, 120).into(), (800, 400).into()),
+            ))
+        );
+    }
+
+    #[test]
+    fn cover_background_crops_source_to_fill_output() {
+        let image = Size::<i32, Logical>::from((400, 200));
+        let output = Rectangle::<i32, Logical>::new((10, 20).into(), (300, 300).into());
+
+        assert_eq!(
+            fixed_background_rects(image, output, BackgroundMode::Cover),
+            Some((
+                Rectangle::new((100.0, 0.0).into(), (200.0, 200.0).into()),
+                output,
+            ))
         );
     }
 

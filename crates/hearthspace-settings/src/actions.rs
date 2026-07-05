@@ -1,6 +1,9 @@
 use std::path::PathBuf;
 
-use hearthspace_ipc::{MonitorConfig, client_set_background_image_path, client_set_monitor_scale};
+use hearthspace_ipc::{
+    BackgroundMode, MonitorConfig, client_set_background_image_path, client_set_background_mode,
+    client_set_monitor_scale,
+};
 
 use crate::{
     monitors::{recalculate_monitor_positions_for_scale, settings_with_live_outputs},
@@ -157,6 +160,27 @@ pub(crate) fn save_background_image_path(state: &mut SettingsApp, path: Option<P
         Err(error) => {
             state.settings.background_image_path = previous;
             state.status = format!("Failed to save background image: {error}");
+        }
+    }
+}
+
+pub(crate) fn save_background_mode(state: &mut SettingsApp, mode: BackgroundMode) {
+    let previous = state.settings.background_mode;
+    state.settings.background_mode = mode;
+
+    match client_set_background_mode(mode) {
+        Ok(settings) => {
+            state.settings = settings_with_live_outputs(settings, &state.live_outputs);
+            state.status = match notify_compositor_settings_changed() {
+                Ok(()) => format!("Saved background mode: {mode}"),
+                Err(error) => {
+                    format!("Saved background mode: {mode}; compositor reload failed: {error}")
+                }
+            };
+        }
+        Err(error) => {
+            state.settings.background_mode = previous;
+            state.status = format!("Failed to save background mode: {error}");
         }
     }
 }

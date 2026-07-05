@@ -58,7 +58,8 @@ The daemon currently formats the file like this:
 
 ```text
 test = false
-background_moves_with_canvas = true
+background_mode = repeat-with-canvas
+background_image_path = default
 
 [[monitor]]
 id = primary
@@ -79,7 +80,7 @@ x = 1920
 y = 0
 ```
 
-Unknown top-level keys and unknown monitor keys are ignored. Invalid booleans, invalid integers, invalid positive integers, and malformed key/value lines make parsing fail for that request. Monitor entries without an `id` are dropped. If no valid monitors remain, the daemon restores the default monitor list.
+Unknown top-level keys and unknown monitor keys are ignored. Invalid booleans, invalid background modes, invalid integers, invalid positive integers, and malformed key/value lines make parsing fail for that request. Monitor entries without an `id` are dropped. If no valid monitors remain, the daemon restores the default monitor list.
 
 ## Settings Model
 
@@ -88,8 +89,15 @@ The shared settings model lives in `hearthspace-ipc`:
 ```text
 Settings
 - test: bool
-- background_moves_with_canvas: bool
+- background_mode: BackgroundMode
+- background_image_path: Option<String>
 - monitors: Vec<MonitorConfig>
+
+BackgroundMode
+- repeat-with-canvas
+- stretch
+- contains
+- cover
 
 MonitorConfig
 - id: String
@@ -105,14 +113,15 @@ Defaults are deliberately useful in development and headless cases:
 
 ```text
 test = false
-background_moves_with_canvas = true
+background_mode = repeat-with-canvas
+background_image_path = default
 primary: 1920x1080 scale 1 at 0,0
 secondary: 1920x1080 scale 1 at 1920,0
 ```
 
 Monitor `x` and `y` are logical desktop positions. `scale` must be positive. Monitor IDs cannot be empty or contain whitespace when sent through the IPC client helpers.
 
-Monitor layout is the settings model's active compositor consumer today. `background_moves_with_canvas` is persisted, returned through IPC, and exposed by the settings app; compositor background rendering still uses its compiled default until that rendering path is wired to settings.
+Monitor layout and background settings are active compositor consumers today. `background_mode` and `background_image_path` are persisted, returned through IPC, exposed by the settings app, and reloaded by the compositor when settings change. Legacy config files with `background_moves_with_canvas = true` load as `repeat-with-canvas`; `false` loads as `cover`.
 
 ## IPC Protocol
 
@@ -123,7 +132,8 @@ Supported requests are:
 ```text
 get
 set test <true|false>
-set background-moves-with-canvas <true|false>
+set background-mode <repeat-with-canvas|stretch|contains|cover>
+set background-image-path <default|percent-encoded-path>
 set monitor <id> <x> <y>
 set monitor-scale <id> <scale>
 ```
@@ -131,7 +141,7 @@ set monitor-scale <id> <scale>
 Successful responses start with `ok` and include a complete settings snapshot:
 
 ```text
-ok test false background-moves-with-canvas true monitor primary 1920 1080 1 0 0 Primary monitor secondary 1920 1080 1 1920 0 Secondary
+ok test false background-mode repeat-with-canvas background-image-path default monitor primary 1920 1080 1 0 0 Primary monitor secondary 1920 1080 1 1920 0 Secondary
 ```
 
 Error responses start with `err`:
@@ -147,7 +157,8 @@ All normal clients should use the `hearthspace-ipc` helper functions instead of 
 ```text
 client_get_settings()
 client_set_test(test)
-client_set_background_moves_with_canvas(value)
+client_set_background_mode(mode)
+client_set_background_image_path(path)
 client_set_monitor_position(id, x, y)
 client_set_monitor_scale(id, scale)
 ```
@@ -179,7 +190,8 @@ On startup, the settings app:
 The app never writes `config.toml` directly. User actions update local UI state optimistically, then call the daemon through `hearthspace-ipc`:
 
 - The `test` checkbox calls `client_set_test()`.
-- The `Move background with canvas` checkbox calls `client_set_background_moves_with_canvas()`.
+- The background fit radio group calls `client_set_background_mode()`.
+- The background image controls call `client_set_background_image_path()`.
 - Dragging a monitor commits positions through `client_set_monitor_position()` for each monitor.
 - Changing monitor scale calls `client_set_monitor_scale()` and then saves recalculated monitor positions.
 

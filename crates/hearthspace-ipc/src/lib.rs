@@ -4,14 +4,68 @@ use std::{
     net::Shutdown,
     os::unix::net::UnixStream,
     path::PathBuf,
+    str::FromStr,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Settings {
     pub test: bool,
-    pub background_moves_with_canvas: bool,
+    pub background_mode: BackgroundMode,
     pub background_image_path: Option<String>,
     pub monitors: Vec<MonitorConfig>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BackgroundMode {
+    RepeatWithCanvas,
+    Stretch,
+    Contains,
+    Cover,
+}
+
+impl BackgroundMode {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::RepeatWithCanvas => "repeat-with-canvas",
+            Self::Stretch => "stretch",
+            Self::Contains => "contains",
+            Self::Cover => "cover",
+        }
+    }
+
+    pub fn from_legacy_moves_with_canvas(value: bool) -> Self {
+        if value {
+            Self::RepeatWithCanvas
+        } else {
+            Self::Cover
+        }
+    }
+}
+
+impl Default for BackgroundMode {
+    fn default() -> Self {
+        Self::RepeatWithCanvas
+    }
+}
+
+impl std::fmt::Display for BackgroundMode {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(self.as_str())
+    }
+}
+
+impl FromStr for BackgroundMode {
+    type Err = String;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        match value {
+            "repeat-with-canvas" => Ok(Self::RepeatWithCanvas),
+            "stretch" => Ok(Self::Stretch),
+            "contains" => Ok(Self::Contains),
+            "cover" => Ok(Self::Cover),
+            _ => Err(format!("invalid background mode: {value:?}")),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -29,7 +83,7 @@ impl Default for Settings {
     fn default() -> Self {
         Self {
             test: false,
-            background_moves_with_canvas: true,
+            background_mode: BackgroundMode::default(),
             background_image_path: None,
             monitors: vec![
                 MonitorConfig {
@@ -59,7 +113,7 @@ impl Default for Settings {
 pub enum SettingsRequest {
     Get,
     SetTest(bool),
-    SetBackgroundMovesWithCanvas(bool),
+    SetBackgroundMode(BackgroundMode),
     SetBackgroundImagePath(Option<String>),
     SetMonitorPosition { id: String, x: i32, y: i32 },
     SetMonitorScale { id: String, scale: i32 },
@@ -84,9 +138,8 @@ pub fn client_set_test(test: bool) -> io::Result<Settings> {
     send_settings_request(&format!("set test {value}\n"))
 }
 
-pub fn client_set_background_moves_with_canvas(value: bool) -> io::Result<Settings> {
-    let value = if value { "true" } else { "false" };
-    send_settings_request(&format!("set background-moves-with-canvas {value}\n"))
+pub fn client_set_background_mode(mode: BackgroundMode) -> io::Result<Settings> {
+    send_settings_request(&format!("set background-mode {mode}\n"))
 }
 
 pub fn client_set_background_image_path(path: Option<&str>) -> io::Result<Settings> {
@@ -117,9 +170,12 @@ pub fn parse_settings_request(line: &str) -> Result<SettingsRequest, String> {
     match parts.as_slice() {
         ["get"] => Ok(SettingsRequest::Get),
         ["set", "test", value] => Ok(SettingsRequest::SetTest(parse_bool(value)?)),
-        ["set", "background-moves-with-canvas", value] => Ok(
-            SettingsRequest::SetBackgroundMovesWithCanvas(parse_bool(value)?),
-        ),
+        ["set", "background-mode", value] => Ok(SettingsRequest::SetBackgroundMode(
+            value.parse::<BackgroundMode>()?,
+        )),
+        ["set", "background-moves-with-canvas", value] => Ok(SettingsRequest::SetBackgroundMode(
+            BackgroundMode::from_legacy_moves_with_canvas(parse_bool(value)?),
+        )),
         ["set", "background-image-path", value] => Ok(SettingsRequest::SetBackgroundImagePath(
             parse_background_image_path(value).map_err(|error| error.to_string())?,
         )),
@@ -139,9 +195,9 @@ pub fn parse_settings_request(line: &str) -> Result<SettingsRequest, String> {
 
 pub fn settings_response(settings: Settings) -> String {
     let mut response = format!(
-        "ok test {} background-moves-with-canvas {} background-image-path {}",
+        "ok test {} background-mode {} background-image-path {}",
         settings.test,
-        settings.background_moves_with_canvas,
+        settings.background_mode,
         settings
             .background_image_path
             .as_deref()
@@ -186,6 +242,38 @@ fn parse_settings_response(response: &str) -> io::Result<Settings> {
             "ok",
             "test",
             test,
+            "background-mode",
+            background_mode,
+            "background-image-path",
+            background_image_path,
+            rest @ ..,
+        ] => parse_settings_response_parts(
+            test,
+            background_mode
+                .parse::<BackgroundMode>()
+                .map_err(io::Error::other)?,
+            parse_background_image_path(background_image_path)?,
+            rest,
+        ),
+        [
+            "ok",
+            "test",
+            test,
+            "background-mode",
+            background_mode,
+            rest @ ..,
+        ] => parse_settings_response_parts(
+            test,
+            background_mode
+                .parse::<BackgroundMode>()
+                .map_err(io::Error::other)?,
+            None,
+            rest,
+        ),
+        [
+            "ok",
+            "test",
+            test,
             "background-moves-with-canvas",
             background_moves_with_canvas,
             "background-image-path",
@@ -193,7 +281,9 @@ fn parse_settings_response(response: &str) -> io::Result<Settings> {
             rest @ ..,
         ] => parse_settings_response_parts(
             test,
-            background_moves_with_canvas,
+            BackgroundMode::from_legacy_moves_with_canvas(
+                parse_bool(background_moves_with_canvas).map_err(io::Error::other)?,
+            ),
             parse_background_image_path(background_image_path)?,
             rest,
         ),
@@ -204,17 +294,17 @@ fn parse_settings_response(response: &str) -> io::Result<Settings> {
             "background-moves-with-canvas",
             background_moves_with_canvas,
             rest @ ..,
-        ] => parse_settings_response_parts(test, background_moves_with_canvas, None, rest),
-        ["ok", "test", test, rest @ ..] => parse_settings_response_parts(
+        ] => parse_settings_response_parts(
             test,
-            if Settings::default().background_moves_with_canvas {
-                "true"
-            } else {
-                "false"
-            },
+            BackgroundMode::from_legacy_moves_with_canvas(
+                parse_bool(background_moves_with_canvas).map_err(io::Error::other)?,
+            ),
             None,
             rest,
         ),
+        ["ok", "test", test, rest @ ..] => {
+            parse_settings_response_parts(test, Settings::default().background_mode, None, rest)
+        }
         ["err", message @ ..] => Err(io::Error::other(message.join(" "))),
         _ => Err(io::Error::new(
             io::ErrorKind::InvalidData,
@@ -225,14 +315,13 @@ fn parse_settings_response(response: &str) -> io::Result<Settings> {
 
 fn parse_settings_response_parts(
     test: &str,
-    background_moves_with_canvas: &str,
+    background_mode: BackgroundMode,
     background_image_path: Option<String>,
     rest: &[&str],
 ) -> io::Result<Settings> {
     let mut settings = Settings {
         test: parse_bool(test).map_err(io::Error::other)?,
-        background_moves_with_canvas: parse_bool(background_moves_with_canvas)
-            .map_err(io::Error::other)?,
+        background_mode,
         background_image_path,
         monitors: Vec::new(),
     };
@@ -366,8 +455,12 @@ mod tests {
             Ok(SettingsRequest::SetTest(true))
         );
         assert_eq!(
+            parse_settings_request("set background-mode cover\n"),
+            Ok(SettingsRequest::SetBackgroundMode(BackgroundMode::Cover))
+        );
+        assert_eq!(
             parse_settings_request("set background-moves-with-canvas false\n"),
-            Ok(SettingsRequest::SetBackgroundMovesWithCanvas(false))
+            Ok(SettingsRequest::SetBackgroundMode(BackgroundMode::Cover))
         );
         assert_eq!(
             parse_settings_request("set background-image-path %2Ftmp%2Fwallpaper.png\n"),
@@ -400,12 +493,12 @@ mod tests {
     fn parses_ipc_response() {
         assert_eq!(
             parse_settings_response(
-                "ok test true background-moves-with-canvas false background-image-path %2Ftmp%2Fwallpaper.png monitor primary 1920 1080 2 120 -40 Primary monitor secondary 1280 720 1 2040 0 Secondary%20Display\n"
+                "ok test true background-mode contains background-image-path %2Ftmp%2Fwallpaper.png monitor primary 1920 1080 2 120 -40 Primary monitor secondary 1280 720 1 2040 0 Secondary%20Display\n"
             )
             .unwrap(),
             Settings {
                 test: true,
-                background_moves_with_canvas: false,
+                background_mode: BackgroundMode::Contains,
                 background_image_path: Some("/tmp/wallpaper.png".to_string()),
                 monitors: vec![
                     MonitorConfig {
@@ -432,12 +525,24 @@ mod tests {
     }
 
     #[test]
+    fn parses_legacy_ipc_response_with_background_moves_with_canvas() {
+        assert_eq!(
+            parse_settings_response(
+                "ok test true background-moves-with-canvas false background-image-path %2Ftmp%2Fwallpaper.png monitor primary 1920 1080 2 120 -40 Primary\n"
+            )
+            .unwrap()
+            .background_mode,
+            BackgroundMode::Cover
+        );
+    }
+
+    #[test]
     fn parses_legacy_ipc_response_with_default_background_setting() {
         assert_eq!(
             parse_settings_response("ok test true monitor primary 1920 1080 1 0 0 Primary\n")
                 .unwrap()
-                .background_moves_with_canvas,
-            Settings::default().background_moves_with_canvas
+                .background_mode,
+            Settings::default().background_mode
         );
     }
 }

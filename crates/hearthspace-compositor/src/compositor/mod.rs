@@ -195,7 +195,7 @@ struct App {
     pending_dmabuf_imports: Vec<(Dmabuf, ImportNotifier)>,
     loop_handle: LoopHandle<'static, CalloopData>,
     popups: PopupManager,
-    background_moves_with_canvas: bool,
+    background_mode: hearthspace_ipc::BackgroundMode,
     background_image_path: Option<String>,
     /// Cached texture for the repeated background image tile.
     background_image_tile: Option<rendering::BackgroundImageTile>,
@@ -225,8 +225,8 @@ impl App {
             self.reconcile_pointer_after_output_geometry_change();
         }
 
-        if self.background_moves_with_canvas != settings.background_moves_with_canvas {
-            self.background_moves_with_canvas = settings.background_moves_with_canvas;
+        if self.background_mode != settings.background_mode {
+            self.background_mode = settings.background_mode;
             refresh.background_changed = true;
         }
         if self.background_image_path != settings.background_image_path {
@@ -501,7 +501,7 @@ pub(in crate::compositor) fn initialize_app(
         pending_dmabuf_imports: Vec::new(),
         loop_handle: handle.clone(),
         popups: PopupManager::default(),
-        background_moves_with_canvas: settings.background_moves_with_canvas,
+        background_mode: settings.background_mode,
         background_image_path: settings.background_image_path,
         background_image_tile: None,
         background_tile_ids: Vec::new(),

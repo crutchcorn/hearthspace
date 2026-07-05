@@ -1,27 +1,29 @@
-use hearthspace_ipc::{MonitorConfig, client_set_background_moves_with_canvas, client_set_test};
+use hearthspace_ipc::{BackgroundMode, MonitorConfig, client_set_test};
 use rfd::FileDialog;
 use xilem::{
     AnyWidgetView, WidgetView,
     core::fork,
     masonry::{layout::AsUnit, parley::fontique::GenericFamily},
     style::Style,
-    view::{checkbox, flex_col, flex_row, label, sized_box, text_button, worker},
+    view::{
+        checkbox, flex_col, flex_row, label, radio_button, radio_group, sized_box, text_button,
+        worker,
+    },
 };
 
 use crate::{
-    actions::{save_background_image_path, save_monitor_scale},
+    actions::{save_background_image_path, save_background_mode, save_monitor_scale},
     monitor_layout_view::monitor_layout_editor,
     monitors::{
         MONITOR_SCALE_OPTIONS, monitor_logical_height, monitor_logical_width,
         settings_with_live_outputs,
     },
-    settings_backend::notify_compositor_settings_changed,
     state::{BackgroundPickerRequest, BackgroundPickerResponse, SettingsApp},
 };
 
 pub(crate) fn app_logic(state: &mut SettingsApp) -> impl WidgetView<SettingsApp> + use<> {
     let test_checked = state.settings.test;
-    let background_moves_with_canvas = state.settings.background_moves_with_canvas;
+    let background_mode = state.settings.background_mode;
     let background_image_label = state
         .settings
         .background_image_path
@@ -60,30 +62,8 @@ pub(crate) fn app_logic(state: &mut SettingsApp) -> impl WidgetView<SettingsApp>
                     }
                 }
             }),
-            checkbox(
-                "Move background with canvas",
-                background_moves_with_canvas,
-                |state: &mut SettingsApp, checked| {
-                    let previous = state.settings.background_moves_with_canvas;
-                    state.settings.background_moves_with_canvas = checked;
-
-                    match client_set_background_moves_with_canvas(checked) {
-                        Ok(settings) => {
-                            state.settings = settings_with_live_outputs(settings, &state.live_outputs);
-                            state.status = match notify_compositor_settings_changed() {
-                                Ok(()) => format!("Saved background canvas movement = {checked}"),
-                                Err(error) => format!(
-                                    "Saved background canvas movement = {checked}; compositor reload failed: {error}"
-                                ),
-                            };
-                        }
-                        Err(error) => {
-                            state.settings.background_moves_with_canvas = previous;
-                            state.status = format!("Failed to save setting: {error}");
-                        }
-                    }
-                },
-            ),
+            label("Background fit"),
+            background_mode_picker(background_mode),
             label(format!("Background image: {background_image_label}")),
             flex_row((
                 text_button(select_background_button_label, |state: &mut SettingsApp| {
@@ -103,7 +83,8 @@ pub(crate) fn app_logic(state: &mut SettingsApp) -> impl WidgetView<SettingsApp>
                             state.status = "Opening background image picker".to_string();
                         }
                         Err(error) => {
-                            state.status = format!("Failed to open background image picker: {error}");
+                            state.status =
+                                format!("Failed to open background image picker: {error}");
                         }
                     }
                 }),
@@ -157,6 +138,39 @@ pub(crate) fn app_logic(state: &mut SettingsApp) -> impl WidgetView<SettingsApp>
             },
         ),
     )
+}
+
+fn background_mode_picker(selected_mode: BackgroundMode) -> impl WidgetView<SettingsApp> + use<> {
+    radio_group(flex_row((
+        radio_button(
+            "Repeat with canvas",
+            selected_mode == BackgroundMode::RepeatWithCanvas,
+            |state: &mut SettingsApp| {
+                save_background_mode(state, BackgroundMode::RepeatWithCanvas);
+            },
+        ),
+        radio_button(
+            "Stretch",
+            selected_mode == BackgroundMode::Stretch,
+            |state: &mut SettingsApp| {
+                save_background_mode(state, BackgroundMode::Stretch);
+            },
+        ),
+        radio_button(
+            "Contains",
+            selected_mode == BackgroundMode::Contains,
+            |state: &mut SettingsApp| {
+                save_background_mode(state, BackgroundMode::Contains);
+            },
+        ),
+        radio_button(
+            "Cover",
+            selected_mode == BackgroundMode::Cover,
+            |state: &mut SettingsApp| {
+                save_background_mode(state, BackgroundMode::Cover);
+            },
+        ),
+    )))
 }
 
 fn format_monitor_summary(monitors: &[MonitorConfig]) -> String {

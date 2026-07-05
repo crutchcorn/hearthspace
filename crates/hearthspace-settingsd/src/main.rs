@@ -7,8 +7,8 @@ use std::{
 };
 
 use hearthspace_ipc::{
-    MonitorConfig, Settings, SettingsRequest, error_response, parse_settings_request,
-    settings_response, settings_socket_path,
+    BackgroundMode, MonitorConfig, Settings, SettingsRequest, error_response,
+    parse_settings_request, settings_response, settings_socket_path,
 };
 use tracing::{error, info, warn};
 
@@ -104,9 +104,9 @@ fn handle_request(request: SettingsRequest, config_path: &Path) -> io::Result<St
             save_settings_to_path(settings.clone(), config_path)?;
             Ok(settings_response(settings))
         }
-        SettingsRequest::SetBackgroundMovesWithCanvas(value) => {
+        SettingsRequest::SetBackgroundMode(mode) => {
             let mut settings = load_settings_from_path(config_path)?;
-            settings.background_moves_with_canvas = value;
+            settings.background_mode = mode;
             save_settings_to_path(settings.clone(), config_path)?;
             Ok(settings_response(settings))
         }
@@ -226,13 +226,22 @@ fn parse_settings(contents: &str) -> io::Result<Settings> {
                     format!("invalid test setting: {error}"),
                 )
             })?;
+        } else if key == "background_mode" {
+            settings.background_mode = value.parse::<BackgroundMode>().map_err(|error| {
+                io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    format!("invalid background_mode setting: {error}"),
+                )
+            })?;
         } else if key == "background_moves_with_canvas" {
-            settings.background_moves_with_canvas = parse_bool(value).map_err(|error| {
+            let moves_with_canvas = parse_bool(value).map_err(|error| {
                 io::Error::new(
                     io::ErrorKind::InvalidData,
                     format!("invalid background_moves_with_canvas setting: {error}"),
                 )
             })?;
+            settings.background_mode =
+                BackgroundMode::from_legacy_moves_with_canvas(moves_with_canvas);
         } else if key == "background_image_path" {
             settings.background_image_path = parse_background_image_path(value);
         }
@@ -250,9 +259,9 @@ fn parse_settings(contents: &str) -> io::Result<Settings> {
 
 fn format_settings(settings: Settings) -> String {
     let mut contents = format!(
-        "test = {}\nbackground_moves_with_canvas = {}\nbackground_image_path = {}\n",
+        "test = {}\nbackground_mode = {}\nbackground_image_path = {}\n",
         settings.test,
-        settings.background_moves_with_canvas,
+        settings.background_mode,
         settings
             .background_image_path
             .as_deref()
@@ -332,7 +341,7 @@ mod tests {
         let response = round_trip("get\n", &config_path);
 
         assert!(response.starts_with(
-            "ok test false background-moves-with-canvas true background-image-path default monitor primary 1920 1080 1 0 0 Primary"
+            "ok test false background-mode repeat-with-canvas background-image-path default monitor primary 1920 1080 1 0 0 Primary"
         ));
         assert!(response.contains("monitor secondary 1920 1080 1 1920 0 Secondary"));
         assert!(!config_path.exists());
@@ -346,7 +355,7 @@ mod tests {
         fs::write(
             &config_path,
             "test = true\n\
-             background_moves_with_canvas = false\n\
+             background_mode = contains\n\
              background_image_path = /tmp/wallpaper.png\n\
              \n\
              [[monitor]]\n\
@@ -364,8 +373,27 @@ mod tests {
 
         assert_eq!(
             response,
-            "ok test true background-moves-with-canvas false background-image-path %2Ftmp%2Fwallpaper.png monitor dock 2560 1440 2 -2560 120 Dock%20Display\n"
+            "ok test true background-mode contains background-image-path %2Ftmp%2Fwallpaper.png monitor dock 2560 1440 2 -2560 120 Dock%20Display\n"
         );
+    }
+
+    #[test]
+    fn get_reads_legacy_background_moves_with_canvas_config() {
+        let dir = tempfile::tempdir().unwrap();
+        let config_path = dir.path().join("hearthspace/config.toml");
+        fs::create_dir_all(config_path.parent().unwrap()).unwrap();
+        fs::write(
+            &config_path,
+            "test = true\n\
+             background_moves_with_canvas = false\n",
+        )
+        .unwrap();
+
+        let response = round_trip("get\n", &config_path);
+
+        assert!(response.starts_with(
+            "ok test true background-mode cover background-image-path default monitor primary 1920 1080 1 0 0 Primary"
+        ));
     }
 
     #[test]
@@ -376,28 +404,28 @@ mod tests {
         let response = round_trip("set test true\n", &config_path);
 
         assert!(response.starts_with(
-            "ok test true background-moves-with-canvas true background-image-path default monitor primary 1920 1080 1 0 0 Primary"
+            "ok test true background-mode repeat-with-canvas background-image-path default monitor primary 1920 1080 1 0 0 Primary"
         ));
         let contents = fs::read_to_string(config_path).unwrap();
         assert!(contents.starts_with("test = true\n"));
-        assert!(contents.contains("background_moves_with_canvas = true\n"));
+        assert!(contents.contains("background_mode = repeat-with-canvas\n"));
         assert!(contents.contains("background_image_path = default\n"));
         assert!(contents.contains("[[monitor]]\nid = primary\n"));
         assert!(contents.contains("scale = 1\n"));
     }
 
     #[test]
-    fn set_background_moves_with_canvas_writes_config_and_returns_saved_settings() {
+    fn set_background_mode_writes_config_and_returns_saved_settings() {
         let dir = tempfile::tempdir().unwrap();
         let config_path = dir.path().join("hearthspace/config.toml");
 
-        let response = round_trip("set background-moves-with-canvas false\n", &config_path);
+        let response = round_trip("set background-mode cover\n", &config_path);
 
         assert!(response.starts_with(
-            "ok test false background-moves-with-canvas false background-image-path default monitor primary 1920 1080 1 0 0 Primary"
+            "ok test false background-mode cover background-image-path default monitor primary 1920 1080 1 0 0 Primary"
         ));
         let contents = fs::read_to_string(config_path).unwrap();
-        assert!(contents.contains("background_moves_with_canvas = false\n"));
+        assert!(contents.contains("background_mode = cover\n"));
     }
 
     #[test]
@@ -411,7 +439,7 @@ mod tests {
         );
 
         assert!(response.starts_with(
-            "ok test false background-moves-with-canvas true background-image-path %2Ftmp%2Fwallpaper.png monitor primary 1920 1080 1 0 0 Primary"
+            "ok test false background-mode repeat-with-canvas background-image-path %2Ftmp%2Fwallpaper.png monitor primary 1920 1080 1 0 0 Primary"
         ));
         let contents = fs::read_to_string(config_path).unwrap();
         assert!(contents.contains("background_image_path = /tmp/wallpaper.png\n"));
@@ -425,7 +453,7 @@ mod tests {
         let response = round_trip("set background-image-path default\n", &config_path);
 
         assert!(response.starts_with(
-            "ok test false background-moves-with-canvas true background-image-path default monitor primary 1920 1080 1 0 0 Primary"
+            "ok test false background-mode repeat-with-canvas background-image-path default monitor primary 1920 1080 1 0 0 Primary"
         ));
         let contents = fs::read_to_string(config_path).unwrap();
         assert!(contents.contains("background_image_path = default\n"));
