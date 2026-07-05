@@ -34,6 +34,7 @@ impl SpawnTarget {
 pub enum ShellCommand {
     Spawn(SpawnTarget),
     LaunchApp(String),
+    LaunchAppOnOutput { app_id: String, output_name: String },
     PanLeft,
     PanRight,
     PanUp,
@@ -70,7 +71,7 @@ impl ShellCommand {
     pub fn label(&self) -> &'static str {
         match self {
             Self::Spawn(target) => target.label(),
-            Self::LaunchApp(_) => "APP",
+            Self::LaunchApp(_) | Self::LaunchAppOnOutput { .. } => "APP",
             Self::PanLeft => "LEFT",
             Self::PanRight => "RIGHT",
             Self::PanUp => "UP",
@@ -96,6 +97,10 @@ impl ShellCommand {
             Self::Spawn(SpawnTarget::A11yTest) => "spawn a11y-test".to_string(),
             Self::Spawn(SpawnTarget::Foot) => "spawn foot".to_string(),
             Self::LaunchApp(app_id) => format!("launch-app {app_id}"),
+            Self::LaunchAppOnOutput {
+                app_id,
+                output_name,
+            } => format!("launch-app-on-output {} {app_id}", hex_encode(output_name)),
             Self::PanLeft => "pan-left".to_string(),
             Self::PanRight => "pan-right".to_string(),
             Self::PanUp => "pan-up".to_string(),
@@ -123,6 +128,18 @@ impl ShellCommand {
         if let Some(app_id) = input.strip_prefix("launch-app ") {
             let app_id = app_id.trim();
             return (!app_id.is_empty()).then(|| Self::LaunchApp(app_id.to_string()));
+        }
+
+        if let Some(rest) = input.strip_prefix("launch-app-on-output ") {
+            let (output_name_hex, app_id) = rest.split_once(' ')?;
+            let app_id = app_id.trim();
+            let output_name = hex_decode_to_string(output_name_hex)?;
+            return (!app_id.is_empty() && !output_name.is_empty()).then(|| {
+                Self::LaunchAppOnOutput {
+                    app_id: app_id.to_string(),
+                    output_name,
+                }
+            });
         }
 
         let mut parts = input.split_whitespace();
@@ -177,6 +194,38 @@ fn parse_f64(input: &str) -> Option<f64> {
     f64::is_finite(value).then_some(value)
 }
 
+fn hex_encode(input: &str) -> String {
+    const HEX: &[u8; 16] = b"0123456789abcdef";
+    let mut output = String::with_capacity(input.len() * 2);
+    for byte in input.as_bytes() {
+        output.push(HEX[(byte >> 4) as usize] as char);
+        output.push(HEX[(byte & 0x0f) as usize] as char);
+    }
+    output
+}
+
+fn hex_decode_to_string(input: &str) -> Option<String> {
+    if input.len() % 2 != 0 {
+        return None;
+    }
+
+    let bytes = input
+        .as_bytes()
+        .chunks_exact(2)
+        .map(|pair| Some(hex_value(pair[0])? << 4 | hex_value(pair[1])?))
+        .collect::<Option<Vec<_>>>()?;
+    String::from_utf8(bytes).ok()
+}
+
+fn hex_value(byte: u8) -> Option<u8> {
+    match byte {
+        b'0'..=b'9' => Some(byte - b'0'),
+        b'a'..=b'f' => Some(byte - b'a' + 10),
+        b'A'..=b'F' => Some(byte - b'A' + 10),
+        _ => None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -196,6 +245,16 @@ mod tests {
                 "org.gnome.Calculator.desktop".to_string()
             ))
         );
+    }
+
+    #[test]
+    fn launch_app_on_output_round_trips_output_name() {
+        let command = ShellCommand::LaunchAppOnOutput {
+            app_id: "org.gnome.Calculator.desktop".to_string(),
+            output_name: "HDMI-A-1".to_string(),
+        };
+
+        assert_eq!(ShellCommand::parse(&command.wire_name()), Some(command));
     }
 
     #[test]

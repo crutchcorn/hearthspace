@@ -87,6 +87,7 @@ struct ManagedWindow {
     surface: ToplevelSurface,
     position: CanvasPoint,
     kind: ManagedWindowKind,
+    shell_output_name: Option<String>,
     decoration: WindowDecoration,
     /// Masonry-rasterized title-bar image (background, title, close button),
     /// lazily built and cached. See [`masonry_titlebar`].
@@ -103,6 +104,8 @@ enum ManagedWindowKind {
     /// The launcher palette: a transient shell surface the shell opens below the
     /// bar to show app-search results as a dropdown.
     Launcher,
+    /// Invisible shell-owned surface that hosts the shell's output watcher task.
+    ShellWatcher,
 }
 
 impl ManagedWindowKind {
@@ -110,7 +113,7 @@ impl ManagedWindowKind {
     /// which is rendered in screen space without server-side decorations rather
     /// than as a normal canvas window.
     fn is_shell_chrome(self) -> bool {
-        matches!(self, Self::ShellBar | Self::Launcher)
+        matches!(self, Self::ShellBar | Self::Launcher | Self::ShellWatcher)
     }
 }
 
@@ -177,6 +180,7 @@ struct App {
     /// (which owns the winit window, a sibling of this handler state).
     cursor_icon: CursorIcon,
     next_spawn_position: CanvasPoint,
+    next_spawn_output_name: Option<String>,
     spawn_offset: i32,
     pointer_location: Point<f64, Logical>,
     raw_pointer_location: Point<f64, Logical>,
@@ -480,6 +484,7 @@ pub(in crate::compositor) fn initialize_app(
         resize: None,
         cursor_icon: CursorIcon::Default,
         next_spawn_position: CanvasPoint { x: 80, y: 96 },
+        next_spawn_output_name: None,
         spawn_offset: 0,
         pointer_location: (0.0, 0.0).into(),
         raw_pointer_location: (0.0, 0.0).into(),

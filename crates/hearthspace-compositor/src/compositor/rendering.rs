@@ -136,8 +136,9 @@ impl App {
 
             let scale = self.window_render_scale(index);
             let origins = match self.windows[index].kind {
-                ManagedWindowKind::ShellBar => self.shell_bar_screen_origins(),
-                ManagedWindowKind::Launcher => self.launcher_screen_origins(),
+                ManagedWindowKind::ShellBar => self.shell_bar_screen_origins(index),
+                ManagedWindowKind::Launcher => self.launcher_screen_origins(index),
+                ManagedWindowKind::ShellWatcher => Vec::new(),
                 ManagedWindowKind::Normal => {
                     vec![self.surface_screen_origin(index)]
                 }
@@ -258,7 +259,10 @@ impl App {
     pub(super) fn window_render_scale(&self, window_index: usize) -> f64 {
         match self.windows[window_index].kind {
             ManagedWindowKind::Normal => self.viewport_scale,
-            ManagedWindowKind::ShellBar | ManagedWindowKind::Launcher => 1.0,
+            ManagedWindowKind::ShellBar | ManagedWindowKind::Launcher => f64::from(
+                self.output_scale_for_name(self.windows[window_index].shell_output_name.as_deref()),
+            ),
+            ManagedWindowKind::ShellWatcher => 1.0,
         }
     }
 

@@ -185,7 +185,11 @@ impl App {
         match action {
             ShellCommand::Spawn(SpawnTarget::A11yTest) => self.spawn_a11y_test(),
             ShellCommand::Spawn(SpawnTarget::Foot) => self.spawn_foot(),
-            ShellCommand::LaunchApp(app_id) => self.launch_app(&app_id),
+            ShellCommand::LaunchApp(app_id) => self.launch_app(&app_id, None),
+            ShellCommand::LaunchAppOnOutput {
+                app_id,
+                output_name,
+            } => self.launch_app(&app_id, Some(&output_name)),
             ShellCommand::PanLeft => self.pan_viewport_by(-self.horizontal_pan_step(), 0),
             ShellCommand::PanRight => self.pan_viewport_by(self.horizontal_pan_step(), 0),
             ShellCommand::PanUp => self.pan_viewport_by(0, -self.vertical_pan_step()),
@@ -236,17 +240,36 @@ impl App {
     }
 
     fn prepare_spawn_position(&mut self) {
-        let output_size = self.output_size();
-        self.next_spawn_position = CanvasPoint {
-            x: self.viewport_offset.x
-                + (f64::from(output_size.w) / 2.0 / self.viewport_scale).round() as i32
-                - MIN_WINDOW_WIDTH / 2
-                + self.spawn_offset,
-            y: self.viewport_offset.y
-                + (f64::from(output_size.h) / 2.0 / self.viewport_scale).round() as i32
-                - 180
-                + self.spawn_offset,
+        self.prepare_spawn_position_for_output(None);
+    }
+
+    fn prepare_spawn_position_for_output(&mut self, output_name: Option<&str>) {
+        let resolved_output_name = match output_name {
+            Some(name) if self.output_logical_rect_for_name(Some(name)).is_some() => {
+                Some(name.to_string())
+            }
+            Some(name) => {
+                warn!(
+                    output_name = name,
+                    "launch output no longer exists; using primary output"
+                );
+                None
+            }
+            None => None,
         };
+        let output_rect = self
+            .output_logical_rect_for_name(resolved_output_name.as_deref())
+            .unwrap_or_else(|| self.primary_output_logical_rect());
+        let output_center = Point::from((
+            f64::from(output_rect.loc.x) + f64::from(output_rect.size.w) / 2.0,
+            f64::from(output_rect.loc.y) + f64::from(output_rect.size.h) / 2.0,
+        ));
+        let canvas_center = self.screen_to_canvas(output_center);
+        self.next_spawn_position = CanvasPoint {
+            x: canvas_center.x.round() as i32 - MIN_WINDOW_WIDTH / 2 + self.spawn_offset,
+            y: canvas_center.y.round() as i32 - 180 + self.spawn_offset,
+        };
+        self.next_spawn_output_name = resolved_output_name;
         self.spawn_offset = (self.spawn_offset + SPAWN_OFFSET_STEP) % SPAWN_OFFSET_WRAP;
     }
 
@@ -292,12 +315,12 @@ impl App {
         }
     }
 
-    fn launch_app(&mut self, app_id: &str) {
+    fn launch_app(&mut self, app_id: &str, output_name: Option<&str>) {
         let Some(app) = self.app_catalog.app_by_id(app_id) else {
             warn!(app_id, "no launchable desktop app found");
             return;
         };
-        info!(app_id, name = %app.name, terminal = app.terminal, "launching desktop app");
+        info!(app_id, name = %app.name, terminal = app.terminal, ?output_name, "launching desktop app");
 
         let app_command = match app.launch_argv() {
             Ok(command) => command,
@@ -342,7 +365,7 @@ impl App {
             .map(|(key, value)| (key.as_str(), value.as_str()))
             .collect::<Vec<_>>();
 
-        self.prepare_spawn_position();
+        self.prepare_spawn_position_for_output(output_name);
         if let Err(error) = spawn_argv_with_env(&command, &wayland_display, &launch_env_refs) {
             error!(app_id, %error, "failed to launch desktop app");
         } else {

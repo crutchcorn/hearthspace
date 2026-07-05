@@ -14,6 +14,7 @@ use wayland_protocols::xdg::{
 use wayland_server::protocol::wl_surface::{self, WlSurface};
 
 use crate::{accessibility::ManagedWindowAccessibilityInfo, config::*, geometry::CanvasPoint};
+use hearthspace_common::{launcher_output_name_from_app_id, shell_bar_output_name_from_app_id};
 
 mod geometry;
 mod hit_testing;
@@ -52,11 +53,32 @@ fn configure_client_side_decoration(toplevel: &ToplevelSurface) {
 }
 
 pub(super) fn window_kind_for_toplevel(surface: &ToplevelSurface) -> ManagedWindowKind {
-    match toplevel_app_id(surface).as_deref() {
-        Some(SHELL_BAR_APP_ID) => ManagedWindowKind::ShellBar,
-        Some(LAUNCHER_APP_ID) => ManagedWindowKind::Launcher,
-        _ => ManagedWindowKind::Normal,
+    let app_id = toplevel_app_id(surface);
+    if app_id
+        .as_deref()
+        .and_then(shell_bar_output_name_from_app_id)
+        .is_some()
+    {
+        return ManagedWindowKind::ShellBar;
     }
+    if app_id
+        .as_deref()
+        .and_then(launcher_output_name_from_app_id)
+        .is_some()
+    {
+        return ManagedWindowKind::Launcher;
+    }
+    if app_id.as_deref() == Some(SHELL_OUTPUT_WATCHER_APP_ID) {
+        return ManagedWindowKind::ShellWatcher;
+    }
+    ManagedWindowKind::Normal
+}
+
+pub(super) fn shell_output_name_for_toplevel(surface: &ToplevelSurface) -> Option<String> {
+    let app_id = toplevel_app_id(surface)?;
+    shell_bar_output_name_from_app_id(&app_id)
+        .or_else(|| launcher_output_name_from_app_id(&app_id))
+        .flatten()
 }
 
 fn toplevel_app_id(surface: &ToplevelSurface) -> Option<String> {
@@ -84,6 +106,7 @@ pub(super) fn position_for_new_window(
     match kind {
         ManagedWindowKind::Normal => fallback,
         ManagedWindowKind::ShellBar => CanvasPoint { x: 0, y: 0 },
+        ManagedWindowKind::ShellWatcher => CanvasPoint { x: 0, y: 0 },
         ManagedWindowKind::Launcher => CanvasPoint {
             x: 0,
             y: CONTROL_BAR_HEIGHT,
@@ -93,9 +116,10 @@ pub(super) fn position_for_new_window(
 
 pub(super) fn decoration_for_new_window(kind: ManagedWindowKind) -> WindowDecoration {
     match kind {
-        ManagedWindowKind::Normal | ManagedWindowKind::ShellBar | ManagedWindowKind::Launcher => {
-            WindowDecoration::ClientSide
-        }
+        ManagedWindowKind::Normal
+        | ManagedWindowKind::ShellBar
+        | ManagedWindowKind::Launcher
+        | ManagedWindowKind::ShellWatcher => WindowDecoration::ClientSide,
     }
 }
 
@@ -215,7 +239,12 @@ impl App {
         normal_insert_index_for_kinds(self.windows.iter().map(|window| window.kind))
     }
 
-    pub(super) fn configure_toplevel(&self, surface: &ToplevelSurface, kind: ManagedWindowKind) {
+    pub(super) fn configure_toplevel(
+        &self,
+        surface: &ToplevelSurface,
+        kind: ManagedWindowKind,
+        shell_output_name: Option<&str>,
+    ) {
         trace!(?kind, "configuring xdg toplevel");
         surface.with_pending_state(|state| {
             state
@@ -223,8 +252,15 @@ impl App {
                 .replace(std::iter::empty::<xdg_toplevel::WmCapabilities>());
             match kind {
                 ManagedWindowKind::ShellBar => {
-                    let width = self.minimum_output_client_logical_width();
-                    trace!(width, "configuring shell bar to smallest output width");
+                    let width = self
+                        .output_client_logical_size_for_name(shell_output_name)
+                        .map(|size| size.w)
+                        .unwrap_or_else(|| self.minimum_output_client_logical_width());
+                    trace!(
+                        width,
+                        ?shell_output_name,
+                        "configuring shell bar to output width"
+                    );
                     state.size = Some((width, CONTROL_BAR_HEIGHT).into());
                     state.bounds = Some((width, CONTROL_BAR_HEIGHT).into());
                     state.decoration_mode = Some(DecorationMode::ClientSide);
@@ -233,6 +269,11 @@ impl App {
                     // The launcher sizes itself to its result list, so the
                     // compositor leaves the size unset (client-driven) and only
                     // enforces client-side decorations.
+                    state.decoration_mode = Some(DecorationMode::ClientSide);
+                }
+                ManagedWindowKind::ShellWatcher => {
+                    state.size = Some((1, 1).into());
+                    state.bounds = Some((1, 1).into());
                     state.decoration_mode = Some(DecorationMode::ClientSide);
                 }
                 ManagedWindowKind::Normal => {
@@ -246,8 +287,18 @@ impl App {
     #[cfg_attr(not(feature = "winit"), allow(dead_code))]
     pub(super) fn configure_shell_bars(&self) {
         for window in &self.windows {
+            if window.kind.is_shell_chrome() {
+                self.enter_shell_output(
+                    window.surface.wl_surface(),
+                    window.shell_output_name.as_deref(),
+                );
+            }
             if window.kind == ManagedWindowKind::ShellBar {
-                self.configure_toplevel(&window.surface, window.kind);
+                self.configure_toplevel(
+                    &window.surface,
+                    window.kind,
+                    window.shell_output_name.as_deref(),
+                );
             }
         }
     }
@@ -447,58 +498,65 @@ impl App {
             .to_physical(1)
     }
 
-    fn shell_bar_screen_origin(&self) -> Point<i32, Physical> {
-        Point::<i32, Logical>::from((0, 0)).to_physical(1)
+    fn shell_bar_screen_origin(&self, window_index: usize) -> Option<Point<i32, Physical>> {
+        self.shell_bar_logical_origin(window_index)
+            .map(|origin| origin.to_physical(1))
     }
 
-    pub(super) fn shell_bar_screen_origins(&self) -> Vec<Point<i32, Physical>> {
-        self.shell_bar_logical_origins()
+    pub(super) fn shell_bar_screen_origins(
+        &self,
+        window_index: usize,
+    ) -> Vec<Point<i32, Physical>> {
+        self.shell_bar_screen_origin(window_index)
             .into_iter()
-            .map(|origin| origin.to_physical(1))
             .collect()
     }
 
-    pub(super) fn launcher_screen_origins(&self) -> Vec<Point<i32, Physical>> {
-        self.launcher_logical_origins()
-            .into_iter()
+    pub(super) fn launcher_screen_origins(&self, window_index: usize) -> Vec<Point<i32, Physical>> {
+        self.launcher_logical_origin(window_index)
             .map(|origin| origin.to_physical(1))
+            .into_iter()
             .collect()
     }
 
-    fn shell_bar_logical_origins(&self) -> Vec<Point<i32, Logical>> {
-        self.output_logical_rects()
-            .into_iter()
+    fn shell_bar_logical_origin(&self, window_index: usize) -> Option<Point<i32, Logical>> {
+        let output_name = self.windows[window_index].shell_output_name.as_deref();
+        self.output_logical_rect_for_name(output_name)
             .map(|rect| rect.loc)
-            .collect()
     }
 
-    /// Logical screen-space origins of launcher palettes: pinned below each
-    /// mirrored shell bar until shell surfaces become truly per-output.
-    fn launcher_logical_origins(&self) -> Vec<Point<i32, Logical>> {
-        launcher_logical_origins_for_outputs(self.output_logical_rects())
+    /// Logical screen-space origin of a launcher palette: pinned below its
+    /// output's shell bar.
+    fn launcher_logical_origin(&self, window_index: usize) -> Option<Point<i32, Logical>> {
+        let scale =
+            self.output_scale_for_name(self.windows[window_index].shell_output_name.as_deref());
+        self.shell_bar_logical_origin(window_index)
+            .map(|origin| launcher_logical_origin_for_shell_bar(origin, scale))
     }
 
     pub(super) fn surface_screen_origin(&self, window_index: usize) -> Point<i32, Physical> {
         match self.windows[window_index].kind {
             ManagedWindowKind::Normal => self.content_screen_origin(window_index),
-            ManagedWindowKind::ShellBar => self.shell_bar_screen_origin(),
+            ManagedWindowKind::ShellBar => self
+                .shell_bar_screen_origin(window_index)
+                .unwrap_or_else(|| Point::from((0, 0))),
+            ManagedWindowKind::ShellWatcher => Point::from((0, 0)),
             ManagedWindowKind::Launcher => self
-                .launcher_logical_origins()
-                .into_iter()
-                .next()
+                .launcher_logical_origin(window_index)
                 .unwrap_or_else(|| Point::from((0, CONTROL_BAR_HEIGHT)))
                 .to_physical(1),
         }
     }
 }
 
-fn launcher_logical_origins_for_outputs(
-    output_rects: Vec<Rectangle<i32, Logical>>,
-) -> Vec<Point<i32, Logical>> {
-    output_rects
-        .into_iter()
-        .map(|rect| Point::from((rect.loc.x, rect.loc.y + CONTROL_BAR_HEIGHT)))
-        .collect()
+fn launcher_logical_origin_for_shell_bar(
+    origin: Point<i32, Logical>,
+    output_scale: i32,
+) -> Point<i32, Logical> {
+    Point::from((
+        origin.x,
+        origin.y + CONTROL_BAR_HEIGHT * output_scale.max(1),
+    ))
 }
 
 fn surface_tree_contains(root: &wl_surface::WlSurface, target: &wl_surface::WlSurface) -> bool {
@@ -524,15 +582,23 @@ fn surface_tree_contains(root: &wl_surface::WlSurface, target: &wl_surface::WlSu
 mod tests {
     use smithay::utils::{Logical, Point, Rectangle};
 
-    use super::launcher_logical_origins_for_outputs;
+    use super::launcher_logical_origin_for_shell_bar;
 
     #[test]
-    fn launcher_origins_follow_each_output_shell_bar() {
-        let origins = launcher_logical_origins_for_outputs(vec![
-            Rectangle::<i32, Logical>::new((0, 0).into(), (1280, 720).into()),
-            Rectangle::<i32, Logical>::new((1280, 120).into(), (1024, 768).into()),
-        ]);
+    fn launcher_origin_sits_below_its_output_shell_bar() {
+        let output = Rectangle::<i32, Logical>::new((1280, 120).into(), (1024, 768).into());
 
-        assert_eq!(origins, [Point::from((0, 48)), Point::from((1280, 168))]);
+        assert_eq!(
+            launcher_logical_origin_for_shell_bar(output.loc, 1),
+            Point::from((1280, 168))
+        );
+    }
+
+    #[test]
+    fn launcher_origin_sits_below_scaled_output_shell_bar() {
+        assert_eq!(
+            launcher_logical_origin_for_shell_bar(Point::from((0, 10)), 3),
+            Point::from((0, 154))
+        );
     }
 }

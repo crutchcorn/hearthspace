@@ -22,23 +22,24 @@ impl App {
         for (window_index, window) in self.windows.iter().enumerate().rev() {
             match window.kind {
                 ManagedWindowKind::ShellBar => {
-                    for origin in self.shell_bar_logical_origins() {
-                        if let Some(target) =
-                            self.hit_test_shell_surface(window_index, location, origin)
-                        {
-                            return Some(target);
-                        }
+                    if let Some(origin) = self.shell_bar_logical_origin(window_index)
+                        && let scale = self.window_render_scale(window_index)
+                        && let Some(target) =
+                            self.hit_test_shell_surface(window_index, location, origin, scale)
+                    {
+                        return Some(target);
                     }
                 }
                 ManagedWindowKind::Launcher => {
-                    for origin in self.launcher_logical_origins() {
-                        if let Some(target) =
-                            self.hit_test_shell_surface(window_index, location, origin)
-                        {
-                            return Some(target);
-                        }
+                    if let Some(origin) = self.launcher_logical_origin(window_index)
+                        && let scale = self.window_render_scale(window_index)
+                        && let Some(target) =
+                            self.hit_test_shell_surface(window_index, location, origin, scale)
+                    {
+                        return Some(target);
                     }
                 }
+                ManagedWindowKind::ShellWatcher => continue,
                 ManagedWindowKind::Normal => continue,
             }
         }
@@ -134,15 +135,22 @@ impl App {
         window_index: usize,
         location: Point<f64, Logical>,
         origin: Point<i32, Logical>,
+        scale: f64,
     ) -> Option<HitTarget> {
         let window = &self.windows[window_index];
+        let scale = scale.max(1.0);
+        let origin_f64 = origin.to_f64();
+        let unscaled_location = Point::from((
+            origin_f64.x + (location.x - origin_f64.x) / scale,
+            origin_f64.y + (location.y - origin_f64.y) / scale,
+        ));
         let (surface, surface_location) = under_from_surface_tree(
             window.surface.wl_surface(),
-            location,
+            unscaled_location,
             origin,
             WindowSurfaceType::ALL,
         )?;
-        let relative_surface_location = location - surface_location.to_f64();
+        let relative_surface_location = unscaled_location - surface_location.to_f64();
         let pointer_focus_origin = location - relative_surface_location;
         Some(HitTarget::Client {
             window_index,

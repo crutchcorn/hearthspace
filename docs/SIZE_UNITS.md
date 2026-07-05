@@ -24,7 +24,7 @@ Use them for:
 
 - Monitor arrangement positions from settings.
 - Output rectangles used for pointer clamping and native output render views.
-- Screen-space placement of mirrored shell chrome across outputs.
+- Screen-space placement of per-output shell chrome.
 
 Example: a `2560x1600` output at `4x` still occupies `2560x1600` in Hearthspace layout coordinates. A second monitor to the right begins at `x = 2560`, not `x = 640`.
 

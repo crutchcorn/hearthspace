@@ -9,6 +9,7 @@ license = "Apache-2.0"
 hearthspace-common = { path = "../hearthspace-common" }
 tracing = "0.1.41"
 tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
+wayland-client = "0.31.14"
 xilem = { git = "https://github.com/crutchcorn/xilem", branch = "wayland-app-id" }
 
 [dev-dependencies]
