@@ -22,23 +22,22 @@ impl App {
         for (window_index, window) in self.windows.iter().enumerate().rev() {
             match window.kind {
                 ManagedWindowKind::ShellBar => {
-                    for origin in self.shell_bar_logical_origins() {
-                        if let Some(target) =
+                    if let Some(origin) = self.shell_bar_logical_origin(window_index)
+                        && let Some(target) =
                             self.hit_test_shell_surface(window_index, location, origin)
-                        {
-                            return Some(target);
-                        }
+                    {
+                        return Some(target);
                     }
                 }
                 ManagedWindowKind::Launcher => {
-                    for origin in self.launcher_logical_origins() {
-                        if let Some(target) =
+                    if let Some(origin) = self.launcher_logical_origin(window_index)
+                        && let Some(target) =
                             self.hit_test_shell_surface(window_index, location, origin)
-                        {
-                            return Some(target);
-                        }
+                    {
+                        return Some(target);
                     }
                 }
+                ManagedWindowKind::ShellWatcher => continue,
                 ManagedWindowKind::Normal => continue,
             }
         }

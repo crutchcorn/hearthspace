@@ -48,7 +48,8 @@ use super::{
     App, ClientState, DragState, ManagedWindow, ManagedWindowKind, WindowDecoration,
     idle::ActivityReason,
     windows::{
-        ResizeEdges, decoration_for_new_window, position_for_new_window, window_kind_for_toplevel,
+        ResizeEdges, decoration_for_new_window, position_for_new_window,
+        shell_output_name_for_toplevel, window_kind_for_toplevel,
     },
 };
 
@@ -63,14 +64,21 @@ impl XdgShellHandler for App {
 
     fn new_toplevel(&mut self, surface: ToplevelSurface) {
         let kind = window_kind_for_toplevel(&surface);
+        let shell_output_name = shell_output_name_for_toplevel(&surface);
         let id = self.next_window_id;
         self.next_window_id += 1;
-        info!(window_id = id, ?kind, "new xdg toplevel");
+        info!(
+            window_id = id,
+            ?kind,
+            ?shell_output_name,
+            "new xdg toplevel"
+        );
         self.windows.push(ManagedWindow {
             id,
             surface: surface.clone(),
             position: position_for_new_window(kind, self.next_spawn_position),
             kind,
+            shell_output_name: shell_output_name.clone(),
             decoration: decoration_for_new_window(kind),
             titlebar: None,
             content_bbox_size: Size::default(),
@@ -78,10 +86,14 @@ impl XdgShellHandler for App {
         if kind == ManagedWindowKind::Normal {
             self.idle_daemon.register_window(id);
         }
-        self.enter_primary_output(surface.wl_surface());
+        if kind.is_shell_chrome() {
+            self.enter_shell_output(surface.wl_surface(), shell_output_name.as_deref());
+        } else {
+            self.enter_primary_output(surface.wl_surface());
+        }
         self.request_redraw();
 
-        self.configure_toplevel(&surface, kind);
+        self.configure_toplevel(&surface, kind, shell_output_name.as_deref());
     }
 
     fn new_popup(&mut self, surface: PopupSurface, positioner: PositionerState) {
@@ -229,6 +241,7 @@ impl XdgShellHandler for App {
 
     fn app_id_changed(&mut self, surface: ToplevelSurface) {
         let kind = window_kind_for_toplevel(&surface);
+        let shell_output_name = shell_output_name_for_toplevel(&surface);
         if let Some(window_index) = self
             .windows
             .iter()
@@ -236,8 +249,17 @@ impl XdgShellHandler for App {
         {
             let mut window = self.windows.remove(window_index);
             let old_kind = window.kind;
+            let old_shell_output_name = window.shell_output_name.clone();
             window.kind = kind;
-            info!(window_id = window.id, from = ?old_kind, to = ?kind, "toplevel app id changed window kind");
+            window.shell_output_name = shell_output_name.clone();
+            info!(
+                window_id = window.id,
+                from = ?old_kind,
+                to = ?kind,
+                from_output = ?old_shell_output_name,
+                to_output = ?shell_output_name,
+                "toplevel app id changed window kind"
+            );
             window.position = position_for_new_window(kind, window.position);
             if kind.is_shell_chrome() {
                 window.decoration = WindowDecoration::ClientSide;
@@ -252,10 +274,17 @@ impl XdgShellHandler for App {
             }
             let insert_index = match kind {
                 ManagedWindowKind::Normal => self.normal_insert_index(),
-                ManagedWindowKind::ShellBar | ManagedWindowKind::Launcher => self.windows.len(),
+                ManagedWindowKind::ShellBar
+                | ManagedWindowKind::Launcher
+                | ManagedWindowKind::ShellWatcher => self.windows.len(),
             };
             self.windows.insert(insert_index, window);
-            self.configure_toplevel(&surface, kind);
+            if kind.is_shell_chrome() {
+                self.enter_shell_output(surface.wl_surface(), shell_output_name.as_deref());
+            } else {
+                self.enter_primary_output(surface.wl_surface());
+            }
+            self.configure_toplevel(&surface, kind, shell_output_name.as_deref());
             self.request_redraw();
         }
     }

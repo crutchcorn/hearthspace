@@ -3,7 +3,7 @@ use std::time::Duration;
 pub use hearthspace_common::{
     CONTROL_BAR_HEIGHT, HEARTHSPACE_WAYLAND_DISPLAY_ENV, LAUNCHER_APP_ID, LOG_FILE_ENV,
     NO_SHELL_FLAG, SHELL_BAR_APP_ID, SHELL_COMMAND_SOCKET_ENV, SHELL_COMMAND_SOCKET_NAME,
-    WAYLAND_DISPLAY_ENV, WAYLAND_DISPLAY_NAME, wayland_display_name,
+    SHELL_OUTPUT_WATCHER_APP_ID, WAYLAND_DISPLAY_ENV, WAYLAND_DISPLAY_NAME, wayland_display_name,
 };
 pub const GTK_TEST_APP_FLAG: &str = "--gtk-test-app";
 pub const SHELL_FLAG: &str = "--shell";

@@ -148,6 +148,14 @@ impl OutputSet {
             .min()
             .unwrap_or(1)
     }
+
+    fn output_for_name(&self, name: Option<&str>) -> Option<&OutputRecord> {
+        match name {
+            None => Some(&self.primary),
+            Some(name) if self.primary.name == name => Some(&self.primary),
+            Some(name) => self.secondary.iter().find(|output| output.name == name),
+        }
+    }
 }
 
 impl OutputRecord {
@@ -240,6 +248,24 @@ impl App {
         self.outputs.minimum_client_logical_width()
     }
 
+    pub(super) fn output_client_logical_size_for_name(
+        &self,
+        name: Option<&str>,
+    ) -> Option<Size<i32, Logical>> {
+        self.outputs
+            .output_for_name(name)
+            .map(OutputRecord::client_logical_size)
+    }
+
+    pub(super) fn output_logical_rect_for_name(
+        &self,
+        name: Option<&str>,
+    ) -> Option<Rectangle<i32, Logical>> {
+        self.outputs
+            .output_for_name(name)
+            .map(OutputRecord::logical_rect)
+    }
+
     pub(in crate::compositor) fn set_output_layout(&mut self, layout: OutputLayout) -> bool {
         self.outputs.set_layout(layout)
     }
@@ -303,6 +329,20 @@ impl App {
 
     pub(super) fn enter_primary_output(&self, surface: &WlSurface) {
         self.outputs.primary.output.enter(surface);
+    }
+
+    pub(super) fn enter_shell_output(&self, surface: &WlSurface, name: Option<&str>) {
+        for output in std::iter::once(&self.outputs.primary).chain(self.outputs.secondary.iter()) {
+            if self
+                .outputs
+                .output_for_name(name)
+                .is_some_and(|target| target.name == output.name)
+            {
+                output.output.enter(surface);
+            } else {
+                output.output.leave(surface);
+            }
+        }
     }
 
     pub(super) fn cleanup_outputs(&mut self) {
