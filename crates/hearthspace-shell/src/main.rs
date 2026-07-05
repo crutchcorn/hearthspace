@@ -3,7 +3,7 @@ use std::fs::OpenOptions;
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     initialize_tracing();
     tracing::info!("starting Hearthspace shell");
-    hearthspace_shell::xilem_shell::run()
+    hearthspace_shell::ui::run()
 }
 
 fn initialize_tracing() {

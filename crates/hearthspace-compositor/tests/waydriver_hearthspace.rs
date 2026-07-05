@@ -58,16 +58,15 @@ async fn waydriver_backends_drive_input_capture_and_teardown() {
 }
 
 #[tokio::test]
-async fn waydriver_session_locates_xilem_shell_by_xpath() -> Result<(), Box<dyn std::error::Error>>
-{
+async fn waydriver_session_locates_shell_ui_by_xpath() -> Result<(), Box<dyn std::error::Error>> {
     init_tracing();
     let _guard = WAYDRIVER_TEST_LOCK.lock().await;
     let _bus = PrivateSessionBus::start()?;
     set_screen_reader_enabled(true).await?;
-    run_xilem_shell_xpath_check().await
+    run_shell_ui_xpath_check().await
 }
 
-async fn run_xilem_shell_xpath_check() -> Result<(), Box<dyn std::error::Error>> {
+async fn run_shell_ui_xpath_check() -> Result<(), Box<dyn std::error::Error>> {
     let mut compositor = HearthspaceCompositor::new(hearthspace_binary())?.with_shell();
     compositor.start(Some("800x600"), Some(1.0)).await?;
 

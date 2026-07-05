@@ -20,7 +20,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .any(|arg| arg == hearthspace_compositor::config::SHELL_FLAG)
     {
         info!("starting shell client");
-        hearthspace_shell::xilem_shell::run()
+        hearthspace_shell::ui::run()
     } else {
         let backend = parse_backend_selection(&args)?;
         let headless_output_size = parse_headless_output_size(&args)?;
