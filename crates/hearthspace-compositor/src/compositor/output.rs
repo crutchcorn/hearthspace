@@ -295,6 +295,17 @@ impl App {
         self.outputs.primary.scale.max(1)
     }
 
+    /// The integer scale of whichever output contains `point` (in logical
+    /// screen space), falling back to the primary output's scale. Used to pick
+    /// the preferred fractional scale advertised to a surface's clients.
+    pub(super) fn output_scale_at(&self, point: Point<f64, Logical>) -> i32 {
+        std::iter::once(&self.outputs.primary)
+            .chain(self.outputs.secondary.iter())
+            .find(|output| point_in_rect(point, output.logical_rect()))
+            .map(|output| output.scale.max(1))
+            .unwrap_or_else(|| self.primary_output_scale())
+    }
+
     pub(in crate::compositor) fn set_output_layout(&mut self, layout: OutputLayout) -> bool {
         self.outputs.set_layout(layout)
     }
@@ -514,6 +525,13 @@ fn scaled_client_dimension(size: i32, scale: i32) -> i32 {
     let size = size.max(1);
     let scale = scale.max(1);
     ((size + scale - 1) / scale).max(1)
+}
+
+fn point_in_rect(point: Point<f64, Logical>, rect: Rectangle<i32, Logical>) -> bool {
+    point.x >= f64::from(rect.loc.x)
+        && point.y >= f64::from(rect.loc.y)
+        && point.x < f64::from(rect.loc.x + rect.size.w)
+        && point.y < f64::from(rect.loc.y + rect.size.h)
 }
 
 fn rectangles_overlap(a: Rectangle<i32, Logical>, b: Rectangle<i32, Logical>) -> bool {

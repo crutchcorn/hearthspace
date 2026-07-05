@@ -10,14 +10,16 @@ use smithay::{
         pointer::{CursorImageStatus, Focus},
     },
     reexports::{calloop::Interest, wayland_server::protocol::wl_seat},
-    utils::{Serial, Size},
+    utils::{Point, Serial, Size},
     wayland::{
         buffer::BufferHandler,
         compositor::{
             BufferAssignment, CompositorClientState, CompositorHandler, CompositorState,
-            SurfaceAttributes, add_blocker, add_pre_commit_hook, with_states,
+            SurfaceAttributes, TraversalAction, add_blocker, add_pre_commit_hook, with_states,
+            with_surface_tree_downward,
         },
         dmabuf::{DmabufGlobal, DmabufHandler, DmabufState, ImportNotifier, get_dmabuf},
+        fractional_scale::{FractionalScaleHandler, with_fractional_scale},
         output::OutputHandler,
         selection::{
             SelectionHandler,
@@ -473,5 +475,59 @@ impl SeatHandler for App {
         // The cursor changed, so a frame is needed to update software cursor
         // presentation (and to hand the new shape to the backend cursor policy).
         self.request_redraw();
+    }
+}
+
+impl FractionalScaleHandler for App {
+    fn new_fractional_scale(&mut self, surface: WlSurface) {
+        // Advertise the preferred fractional scale so HiDPI toolkits (GTK,
+        // Firefox) render their buffers at the monitor scale and declare their
+        // logical size through `wp_viewport`, instead of rendering an oversized
+        // integer-scaled buffer that the compositor would then scale again.
+        let scale = self.preferred_fractional_scale(&surface);
+        with_states(&surface, |states| {
+            with_fractional_scale(states, |fractional_scale| {
+                fractional_scale.set_preferred_scale(scale);
+            });
+        });
+    }
+}
+
+impl App {
+    /// The fractional scale to advertise for `surface`: the integer scale of the
+    /// output its window sits on, or the primary output's scale when the surface
+    /// is not (yet) a managed window.
+    pub(super) fn preferred_fractional_scale(&self, surface: &WlSurface) -> f64 {
+        let scale = self
+            .window_index_for_surface(surface)
+            .map(|index| {
+                let position = self.windows[index].position;
+                let screen = self
+                    .canvas_to_screen(Point::from((f64::from(position.x), f64::from(position.y))));
+                self.output_scale_at(screen)
+            })
+            .unwrap_or_else(|| self.primary_output_scale());
+        f64::from(scale.max(1))
+    }
+
+    /// Re-advertise the preferred fractional scale for every managed window's
+    /// surface tree. Called when the output layout (and thus per-output scale)
+    /// changes so already-mapped clients update their buffers.
+    pub(super) fn refresh_fractional_scales(&self) {
+        for window in &self.windows {
+            let root = window.surface.wl_surface();
+            let scale = self.preferred_fractional_scale(root);
+            with_surface_tree_downward(
+                root,
+                (),
+                |_, _, _| TraversalAction::DoChildren(()),
+                |_, states, _| {
+                    with_fractional_scale(states, |fractional_scale| {
+                        fractional_scale.set_preferred_scale(scale);
+                    });
+                },
+                |_, _, _| true,
+            );
+        }
     }
 }
