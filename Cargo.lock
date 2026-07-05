@@ -2357,6 +2357,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "hearthspace-ui-storybook"
+version = "0.1.0"
+dependencies = [
+ "hearthspace-ui-components",
+ "xilem",
+ "xilem-storybook",
+]
+
+[[package]]
 name = "heck"
 version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6546,6 +6555,10 @@ dependencies = [
  "xilem_core",
  "xilem_masonry",
 ]
+
+[[package]]
+name = "xilem-storybook"
+version = "0.1.0"
 
 [[package]]
 name = "xilem_core"

@@ -5,6 +5,7 @@ use std::{
 };
 
 const SETTINGS_APP_BINARY: &str = "hearthspace-settings";
+const UI_STORYBOOK_APP_BINARY: &str = "hearthspace-ui-storybook";
 
 pub fn spawn_argv(argv: &[String]) -> Result<(), String> {
     let wayland_display = hearthspace_common::wayland_display_name();
@@ -59,7 +60,9 @@ pub(super) fn session_environment_keys() -> &'static [&'static str] {
 
 fn resolve_launch_program(program: &str) -> PathBuf {
     let path = Path::new(program);
-    if program != SETTINGS_APP_BINARY || path.components().count() != 1 {
+    if !matches!(program, SETTINGS_APP_BINARY | UI_STORYBOOK_APP_BINARY)
+        || path.components().count() != 1
+    {
         return path.to_path_buf();
     }
 

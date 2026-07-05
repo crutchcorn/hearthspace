@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Hearthspace UI Storybook
+GenericName=UI Component Gallery
+Comment=Browse and tune Hearthspace UI components
+Exec=hearthspace-ui-storybook
+Categories=Development;GUIDesigner;
+Keywords=Hearthspace;UI;Components;Storybook;Design;
+OnlyShowIn=Hearthspace;

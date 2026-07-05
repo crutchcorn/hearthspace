@@ -20,6 +20,7 @@ fn cargo_package_exists(package: &str) -> bool {
             | "hearthspace-settings"
             | "hearthspace-settingsd"
             | "hearthspace-shell"
+            | "hearthspace-ui-storybook"
     )
 }
 
