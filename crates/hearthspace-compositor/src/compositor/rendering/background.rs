@@ -45,6 +45,7 @@ impl App {
         &mut self,
         renderer: &mut GlesRenderer,
         output_rect: Rectangle<i32, Logical>,
+        output_scale: i32,
     ) -> Vec<TextureRenderElement<GlesTexture>> {
         if self.viewport_scale <= 0.0 || !self.viewport_scale.is_finite() {
             return Vec::new();
@@ -57,7 +58,7 @@ impl App {
         };
 
         let (min_x, max_x, min_y, max_y) = background_image_visible_bounds(
-            output_rect,
+            wallpaper_presentation_rect(output_rect, output_scale),
             moves_with_canvas,
             self.viewport_offset,
             self.viewport_scale,
@@ -173,6 +174,17 @@ impl App {
     }
 }
 
+fn wallpaper_presentation_rect(
+    output_rect: Rectangle<i32, Logical>,
+    output_scale: i32,
+) -> Rectangle<i32, Logical> {
+    let scale = output_scale.max(1);
+    Rectangle::new(
+        output_rect.loc,
+        Size::from((output_rect.size.w * scale, output_rect.size.h * scale)),
+    )
+}
+
 fn background_tile_axis_bounds(min: f64, max: f64, tile_size: f64) -> Option<(i64, i64, usize)> {
     if !min.is_finite() || !max.is_finite() || tile_size <= 0.0 || !tile_size.is_finite() {
         return None;
@@ -248,7 +260,9 @@ mod tests {
 
     use crate::geometry::CanvasPoint;
 
-    use super::{background_tile_axis_bounds, default_background_image_data};
+    use super::{
+        background_tile_axis_bounds, default_background_image_data, wallpaper_presentation_rect,
+    };
 
     #[test]
     fn background_tile_axis_bounds_include_partially_visible_tiles() {
@@ -299,6 +313,16 @@ mod tests {
                 },
                 0.25,
             )
+        );
+    }
+
+    #[test]
+    fn wallpaper_presentation_rect_uses_physical_output_size() {
+        let rect = Rectangle::<i32, Logical>::new((960, 0).into(), (960, 540).into());
+
+        assert_eq!(
+            wallpaper_presentation_rect(rect, 2),
+            Rectangle::new((960, 0).into(), (1920, 1080).into())
         );
     }
 

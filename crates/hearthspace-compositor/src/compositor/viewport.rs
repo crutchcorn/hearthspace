@@ -85,11 +85,13 @@ impl App {
     }
 
     pub(super) fn horizontal_pan_step(&self) -> i32 {
-        (f64::from(self.output_size().w) / 2.0 / self.viewport_scale).round() as i32
+        (f64::from(self.primary_output_logical_rect().size.w) / 2.0 / self.viewport_scale).round()
+            as i32
     }
 
     pub(super) fn vertical_pan_step(&self) -> i32 {
-        (f64::from(self.output_size().h) / 2.0 / self.viewport_scale).round() as i32
+        (f64::from(self.primary_output_logical_rect().size.h) / 2.0 / self.viewport_scale).round()
+            as i32
     }
 
     pub(super) fn canvas_to_screen(&self, point: Point<f64, Logical>) -> Point<f64, Logical> {
@@ -102,9 +104,10 @@ impl App {
 
     pub(super) fn animate_zoom_around_viewport_center(&mut self, multiplier: f64) {
         debug!(multiplier, "zooming viewport around center");
+        let primary_output = self.primary_output_logical_rect();
         let center_screen = Point::<f64, Logical>::from((
-            f64::from(self.output_size().w) / 2.0,
-            f64::from(self.output_size().h) / 2.0,
+            f64::from(primary_output.loc.x) + f64::from(primary_output.size.w) / 2.0,
+            f64::from(primary_output.loc.y) + f64::from(primary_output.size.h) / 2.0,
         ));
         let (viewport_offset, viewport_scale) = zoom_around_screen_point(
             self.viewport_offset,

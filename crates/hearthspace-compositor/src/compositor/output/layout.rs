@@ -20,7 +20,12 @@ impl OutputLayout {
     ) -> Option<Point<i32, Logical>> {
         let use_role_fallback = !default_placeholder_monitors(&self.monitors);
         self.monitor_for(output_name, role_id, use_role_fallback)
-            .map(|monitor| Point::from((monitor.x, monitor.y)))
+            .map(|monitor| {
+                Point::from((
+                    logical_axis_position(&self.monitors, monitor.x, Axis::X),
+                    logical_axis_position(&self.monitors, monitor.y, Axis::Y),
+                ))
+            })
     }
 
     pub(super) fn scale_for(&self, output_name: &str, role_id: &str) -> Option<i32> {
@@ -45,6 +50,65 @@ impl OutputLayout {
     }
 }
 
+#[derive(Clone, Copy)]
+enum Axis {
+    X,
+    Y,
+}
+
+fn logical_axis_position(
+    monitors: &[hearthspace_ipc::MonitorConfig],
+    coordinate: i32,
+    axis: Axis,
+) -> i32 {
+    let mut intervals = monitors
+        .iter()
+        .map(|monitor| {
+            let start = match axis {
+                Axis::X => monitor.x,
+                Axis::Y => monitor.y,
+            };
+            let size = match axis {
+                Axis::X => monitor.width,
+                Axis::Y => monitor.height,
+            }
+            .max(1);
+            (start, start + size, monitor.scale.max(1))
+        })
+        .collect::<Vec<_>>();
+    intervals.sort_by_key(|(start, _, _)| *start);
+
+    let Some((first_start, _, _)) = intervals.first().copied() else {
+        return coordinate;
+    };
+    let mut previous_end = first_start;
+    let mut logical = 0;
+
+    for (start, end, scale) in intervals {
+        if coordinate < start {
+            return logical + coordinate - previous_end;
+        }
+        if start > previous_end {
+            logical += start - previous_end;
+        }
+        if coordinate <= end {
+            return logical + scaled_offset(coordinate - start, scale);
+        }
+        logical += scaled_dimension(end - start, scale);
+        previous_end = previous_end.max(end);
+    }
+
+    logical + coordinate - previous_end
+}
+
+fn scaled_offset(offset: i32, scale: i32) -> i32 {
+    if offset <= 0 {
+        return 0;
+    }
+    let scale = scale.max(1);
+    (offset + scale - 1) / scale
+}
+
 fn default_placeholder_monitors(monitors: &[hearthspace_ipc::MonitorConfig]) -> bool {
     monitors == hearthspace_ipc::Settings::default().monitors
 }
@@ -58,8 +122,17 @@ pub(super) struct OutputGeometry {
 
 impl OutputGeometry {
     fn logical_size(&self) -> Size<i32, Logical> {
-        Size::from((self.size.w, self.size.h))
+        Size::from((
+            scaled_dimension(self.size.w, self.scale),
+            scaled_dimension(self.size.h, self.scale),
+        ))
     }
+}
+
+fn scaled_dimension(size: i32, scale: i32) -> i32 {
+    let size = size.max(1);
+    let scale = scale.max(1);
+    ((size + scale - 1) / scale).max(1)
 }
 
 pub(super) struct OutputLayoutPlan {
@@ -402,7 +475,7 @@ mod tests {
     }
 
     #[test]
-    fn output_layout_keeps_scaled_outputs_at_physical_layout_size() {
+    fn output_layout_places_scaled_outputs_by_logical_size() {
         let plan = output_locations_for_layout(
             geometry_with_size("eDP-1", 2560, 1440),
             vec![geometry_with_size("HDMI-A-1", 1920, 1080)],
@@ -430,8 +503,39 @@ mod tests {
 
         assert_eq!(plan.primary, Point::from((0, 0)));
         assert_eq!(plan.primary_scale, 2);
-        assert_eq!(plan.secondary_location("HDMI-A-1"), Point::from((2560, 0)));
+        assert_eq!(plan.secondary_location("HDMI-A-1"), Point::from((1280, 0)));
         assert_eq!(plan.secondary_scale("HDMI-A-1"), Some(1));
+    }
+
+    #[test]
+    fn output_layout_compacts_scaled_monitor_left_of_unscaled_monitor() {
+        let plan = output_locations_for_layout(
+            geometry_with_size("HDMI-A-1", 1920, 1080),
+            vec![geometry_with_size("eDP-1", 1920, 1080)],
+            &OutputLayout::from_monitors(vec![
+                hearthspace_ipc::MonitorConfig {
+                    id: "eDP-1".into(),
+                    name: "eDP-1".into(),
+                    width: 1920,
+                    height: 1080,
+                    scale: 2,
+                    x: -1920,
+                    y: 0,
+                },
+                hearthspace_ipc::MonitorConfig {
+                    id: "HDMI-A-1".into(),
+                    name: "HDMI-A-1".into(),
+                    width: 1920,
+                    height: 1080,
+                    scale: 1,
+                    x: 0,
+                    y: 0,
+                },
+            ]),
+        );
+
+        assert_eq!(plan.secondary_location("eDP-1"), Point::from((0, 0)));
+        assert_eq!(plan.primary, Point::from((960, 0)));
     }
 
     #[test]

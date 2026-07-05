@@ -198,6 +198,18 @@ impl App {
         self.windows[window_index].content_bbox_size = bbox.size;
     }
 
+    pub(super) fn refresh_normal_window_outputs(&self) {
+        for (window_index, window) in self.windows.iter().enumerate() {
+            if window.kind != ManagedWindowKind::Normal {
+                continue;
+            }
+            let Some(rect) = self.normal_window_screen_rect(window_index) else {
+                continue;
+            };
+            self.enter_outputs_intersecting(window.surface.wl_surface(), rect);
+        }
+    }
+
     pub(super) fn handle_idle_transitions(&self) {
         for transition in self.idle_daemon.drain_transitions() {
             super::log_idle_transition(transition);
@@ -396,6 +408,29 @@ impl App {
         )
     }
 
+    fn normal_window_screen_rect(&self, window_index: usize) -> Option<Rectangle<i32, Logical>> {
+        if self.windows[window_index].kind != ManagedWindowKind::Normal {
+            return None;
+        }
+
+        let canvas_rect = self.window_canvas_rect(window_index);
+        if canvas_rect.size.w <= 0 || canvas_rect.size.h <= 0 {
+            return None;
+        }
+
+        let origin = self
+            .canvas_to_screen(canvas_rect.loc.to_f64())
+            .to_i32_round();
+        Some(Rectangle::new(
+            origin,
+            (
+                (f64::from(canvas_rect.size.w) * self.viewport_scale).round() as i32,
+                (f64::from(canvas_rect.size.h) * self.viewport_scale).round() as i32,
+            )
+                .into(),
+        ))
+    }
+
     /// Begin an interactive resize of `window_index` along `edges`, capturing the
     /// window's starting geometry so motion deltas can be resolved against it.
     pub(super) fn start_resize(&mut self, window_index: usize, edges: ResizeEdges) {
@@ -528,10 +563,8 @@ impl App {
     /// Logical screen-space origin of a launcher palette: pinned below its
     /// output's shell bar.
     fn launcher_logical_origin(&self, window_index: usize) -> Option<Point<i32, Logical>> {
-        let scale =
-            self.output_scale_for_name(self.windows[window_index].shell_output_name.as_deref());
         self.shell_bar_logical_origin(window_index)
-            .map(|origin| launcher_logical_origin_for_shell_bar(origin, scale))
+            .map(launcher_logical_origin_for_shell_bar)
     }
 
     pub(super) fn surface_screen_origin(&self, window_index: usize) -> Point<i32, Physical> {
@@ -549,14 +582,8 @@ impl App {
     }
 }
 
-fn launcher_logical_origin_for_shell_bar(
-    origin: Point<i32, Logical>,
-    output_scale: i32,
-) -> Point<i32, Logical> {
-    Point::from((
-        origin.x,
-        origin.y + CONTROL_BAR_HEIGHT * output_scale.max(1),
-    ))
+fn launcher_logical_origin_for_shell_bar(origin: Point<i32, Logical>) -> Point<i32, Logical> {
+    Point::from((origin.x, origin.y + CONTROL_BAR_HEIGHT))
 }
 
 fn surface_tree_contains(root: &wl_surface::WlSurface, target: &wl_surface::WlSurface) -> bool {
@@ -589,16 +616,16 @@ mod tests {
         let output = Rectangle::<i32, Logical>::new((1280, 120).into(), (1024, 768).into());
 
         assert_eq!(
-            launcher_logical_origin_for_shell_bar(output.loc, 1),
+            launcher_logical_origin_for_shell_bar(output.loc),
             Point::from((1280, 168))
         );
     }
 
     #[test]
-    fn launcher_origin_sits_below_scaled_output_shell_bar() {
+    fn launcher_origin_uses_logical_bar_height_on_scaled_outputs() {
         assert_eq!(
-            launcher_logical_origin_for_shell_bar(Point::from((0, 10)), 3),
-            Point::from((0, 154))
+            launcher_logical_origin_for_shell_bar(Point::from((0, 10))),
+            Point::from((0, 58))
         );
     }
 }

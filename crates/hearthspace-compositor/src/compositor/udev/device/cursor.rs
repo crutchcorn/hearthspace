@@ -17,13 +17,14 @@ use tracing::{debug, info, warn};
 use super::{ScanoutNode, UdevDevice};
 use crate::compositor::{
     App,
-    cursor::{CursorIcon, CursorImage, cursor_image_for_icon},
+    cursor::{CursorIcon, CursorImage, cursor_image_for_icon, cursor_image_for_icon_at_size},
 };
 
 pub(super) struct HardwareCursor {
     buffer: dumbbuffer::DumbBuffer,
     hotspot: (i32, i32),
     icon: CursorIcon,
+    scale: i32,
 }
 
 impl UdevDevice {
@@ -31,13 +32,40 @@ impl UdevDevice {
         let Some(cursor) = self.hardware_cursor.as_mut() else {
             return;
         };
-        if cursor.icon != state.cursor_icon {
-            update_hardware_cursor_image(&self.scanout_node, cursor, state.cursor_icon);
+        let pointer = state.pointer_location;
+        let target = self.output_surfaces.iter().find_map(|output| {
+            let view = state.output_render_view(output.target.connector_name())?;
+            let rect = Rectangle::new(view.location, view.size);
+            point_in_logical_rect(pointer, rect).then(|| {
+                let scale = view.scale.max(1);
+                let local = Point::<f64, Logical>::from((
+                    (pointer.x - f64::from(view.location.x)) * f64::from(scale),
+                    (pointer.y - f64::from(view.location.y)) * f64::from(scale),
+                ));
+                (output.target.crtc, local, scale)
+            })
+        });
+
+        let Some((crtc, local, scale)) = target else {
+            if let Some(active_crtc) = self.hardware_cursor_crtc.take() {
+                clear_legacy_cursor(&self.scanout_node, active_crtc);
+            }
+            self.hardware_cursor_position = None;
+            return;
+        };
+
+        if cursor.icon != state.cursor_icon || cursor.scale != scale {
+            update_hardware_cursor_image(&self.scanout_node, cursor, state.cursor_icon, scale);
             if let Some(crtc) = self.hardware_cursor_crtc {
                 set_legacy_cursor(&self.scanout_node, crtc, cursor);
             }
             self.hardware_cursor_position = None;
         }
+
+        let position = (
+            local.x.round() as i32 - cursor.hotspot.0,
+            local.y.round() as i32 - cursor.hotspot.1,
+        );
 
         if !self.hardware_cursor_initialized {
             clear_all_drm_cursor_planes(&self.scanout_node);
@@ -46,25 +74,6 @@ impl UdevDevice {
             }
             self.hardware_cursor_initialized = true;
         }
-
-        let pointer = state.pointer_location;
-        let target = self.output_surfaces.iter().find_map(|output| {
-            let view = state.output_render_view(output.target.connector_name())?;
-            let rect = Rectangle::new(view.location, view.size);
-            point_in_logical_rect(pointer, rect).then(|| {
-                let x = (pointer.x - f64::from(view.location.x)).round() as i32 - cursor.hotspot.0;
-                let y = (pointer.y - f64::from(view.location.y)).round() as i32 - cursor.hotspot.1;
-                (output.target.crtc, (x, y))
-            })
-        });
-
-        let Some((crtc, position)) = target else {
-            if let Some(active_crtc) = self.hardware_cursor_crtc.take() {
-                clear_legacy_cursor(&self.scanout_node, active_crtc);
-            }
-            self.hardware_cursor_position = None;
-            return;
-        };
 
         if self.hardware_cursor_crtc != Some(crtc) {
             if let Some(active_crtc) = self.hardware_cursor_crtc {
@@ -215,6 +224,7 @@ pub(super) fn create_hardware_cursor(scanout_node: &ScanoutNode) -> Option<Hardw
         buffer,
         hotspot,
         icon,
+        scale: 1,
     })
 }
 
@@ -222,9 +232,14 @@ fn update_hardware_cursor_image(
     scanout_node: &ScanoutNode,
     cursor: &mut HardwareCursor,
     icon: CursorIcon,
+    scale: i32,
 ) {
-    let image = cursor_image_for_icon(icon);
     let (width, height) = cursor.buffer.size();
+    let desired_size = 24_u32
+        .saturating_mul(u32::try_from(scale.max(1)).unwrap_or(1))
+        .min(width.max(1))
+        .min(height.max(1));
+    let image = cursor_image_for_icon_at_size(icon, desired_size);
     let pitch = match usize::try_from(cursor.buffer.pitch()) {
         Ok(pitch) => pitch,
         Err(error) => {
@@ -248,7 +263,8 @@ fn update_hardware_cursor_image(
         cmp::min(image.hotspot.1.max(0), height.saturating_sub(1) as i32),
     );
     cursor.icon = icon;
-    debug!(?icon, hotspot = ?cursor.hotspot, "updated DRM hardware cursor image");
+    cursor.scale = scale.max(1);
+    debug!(?icon, scale = cursor.scale, hotspot = ?cursor.hotspot, "updated DRM hardware cursor image");
 }
 
 fn cursor_capability(scanout_node: &ScanoutNode, capability: DriverCapability) -> Option<u32> {

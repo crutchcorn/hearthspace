@@ -413,6 +413,7 @@ impl UdevBackendState {
                     &mut output.damage_tracker,
                     age,
                     Rectangle::new(view.location, view.size),
+                    view.scale,
                 )?
             };
             // Keep damage tracking for renderer-side redraw minimization, but do not
