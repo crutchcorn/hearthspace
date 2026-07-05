@@ -140,6 +140,7 @@ impl App {
         output_rect: Rectangle<i32, Logical>,
     ) -> Vec<HearthspaceRenderElement> {
         self.refresh_normal_window_outputs();
+        self.refresh_fractional_scales();
 
         let mut elements = Vec::new();
         for element in self.software_cursor_elements(renderer, output_rect) {

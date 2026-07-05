@@ -83,6 +83,7 @@ impl XdgShellHandler for App {
             decoration: decoration_for_new_window(kind),
             titlebar: None,
             content_bbox_size: Size::default(),
+            advertised_fractional_scale: 0.0,
         });
         if kind == ManagedWindowKind::Normal {
             self.idle_daemon.register_window(id);
@@ -498,27 +499,34 @@ impl App {
     /// output its window sits on, or the primary output's scale when the surface
     /// is not (yet) a managed window.
     pub(super) fn preferred_fractional_scale(&self, surface: &WlSurface) -> f64 {
-        let scale = self
-            .window_index_for_surface(surface)
-            .map(|index| {
-                let position = self.windows[index].position;
-                let screen = self
-                    .canvas_to_screen(Point::from((f64::from(position.x), f64::from(position.y))));
-                self.output_scale_at(screen)
-            })
-            .unwrap_or_else(|| self.primary_output_scale());
-        f64::from(scale.max(1))
+        self.window_index_for_surface(surface)
+            .map(|index| self.window_fractional_scale(index))
+            .unwrap_or_else(|| f64::from(self.primary_output_scale().max(1)))
     }
 
-    /// Re-advertise the preferred fractional scale for every managed window's
-    /// surface tree. Called when the output layout (and thus per-output scale)
-    /// changes so already-mapped clients update their buffers.
-    pub(super) fn refresh_fractional_scales(&self) {
-        for window in &self.windows {
-            let root = window.surface.wl_surface();
-            let scale = self.preferred_fractional_scale(root);
+    /// The scale of the output the window at `index` currently sits on.
+    fn window_fractional_scale(&self, index: usize) -> f64 {
+        let position = self.windows[index].position;
+        let screen =
+            self.canvas_to_screen(Point::from((f64::from(position.x), f64::from(position.y))));
+        f64::from(self.output_scale_at(screen).max(1))
+    }
+
+    /// Re-advertise the preferred fractional scale for every managed window whose
+    /// output scale changed since the last frame. Runs each frame so a window
+    /// dragged onto a differently-scaled monitor re-renders at the new scale, and
+    /// is also triggered on output-layout changes. The surface tree is only
+    /// walked when the scale actually changes, so the steady state is cheap.
+    pub(super) fn refresh_fractional_scales(&mut self) {
+        for index in 0..self.windows.len() {
+            let scale = self.window_fractional_scale(index);
+            if (self.windows[index].advertised_fractional_scale - scale).abs() < f64::EPSILON {
+                continue;
+            }
+            self.windows[index].advertised_fractional_scale = scale;
+            let root = self.windows[index].surface.wl_surface().clone();
             with_surface_tree_downward(
-                root,
+                &root,
                 (),
                 |_, _, _| TraversalAction::DoChildren(()),
                 |_, states, _| {

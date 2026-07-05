@@ -97,6 +97,11 @@ struct ManagedWindow {
     /// Bounding-box size of the window's surface tree, cached on commit so the
     /// per-frame rendering and hit-testing paths don't re-walk the tree.
     content_bbox_size: Size<i32, Logical>,
+    /// Fractional scale most recently advertised to this window's surface tree.
+    /// Compared each frame so the preferred scale is only re-sent when the
+    /// window moves onto an output with a different scale (e.g. dragged across
+    /// monitors). `0.0` is a sentinel meaning "nothing advertised yet".
+    advertised_fractional_scale: f64,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
