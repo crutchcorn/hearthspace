@@ -15,8 +15,9 @@ pub struct Settings {
     pub monitors: Vec<MonitorConfig>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum BackgroundMode {
+    #[default]
     RepeatWithCanvas,
     Stretch,
     Contains,
@@ -39,12 +40,6 @@ impl BackgroundMode {
         } else {
             Self::Cover
         }
-    }
-}
-
-impl Default for BackgroundMode {
-    fn default() -> Self {
-        Self::RepeatWithCanvas
     }
 }
 

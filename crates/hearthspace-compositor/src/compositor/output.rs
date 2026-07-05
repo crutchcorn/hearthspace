@@ -32,6 +32,14 @@ pub(in crate::compositor) struct OutputRecord {
     location: Point<i32, Logical>,
 }
 
+type OutputDebugEntry = (
+    String,
+    Point<i32, Logical>,
+    Size<i32, Physical>,
+    Size<i32, Logical>,
+    i32,
+);
+
 #[cfg(feature = "udev")]
 pub(in crate::compositor) struct OutputRenderView {
     pub(in crate::compositor) name: String,
@@ -126,15 +134,7 @@ impl OutputSet {
         debug!(outputs = ?self.output_debug(), "applied logical output layout");
     }
 
-    fn output_debug(
-        &self,
-    ) -> Vec<(
-        String,
-        Point<i32, Logical>,
-        Size<i32, Physical>,
-        Size<i32, Logical>,
-        i32,
-    )> {
+    fn output_debug(&self) -> Vec<OutputDebugEntry> {
         std::iter::once(&self.primary)
             .chain(self.secondary.iter())
             .map(|output| {

@@ -2318,6 +2318,7 @@ version = "0.1.0"
 dependencies = [
  "hearthspace-common",
  "hearthspace-ipc",
+ "hearthspace-ui-components",
  "rfd",
  "wayland-client",
  "xilem",
@@ -2344,6 +2345,13 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "wayland-client",
+ "xilem",
+]
+
+[[package]]
+name = "hearthspace-ui-components"
+version = "0.1.0"
+dependencies = [
  "xilem",
 ]
 

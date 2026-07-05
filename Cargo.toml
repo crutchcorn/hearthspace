@@ -8,6 +8,7 @@ members = [
     "crates/hearthspace-settings",
     "crates/hearthspace-settingsd",
     "crates/hearthspace-shell",
+    "crates/ui-components",
     "crates/waydriver-hearthspace",
 ]
 default-members = ["crates/hearthspace-session"]
