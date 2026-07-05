@@ -8,6 +8,7 @@ use std::{
 use crate::{RunOptions, config::*, geometry::CanvasPoint};
 use hearthspace_shell::app_catalog::AppCatalog;
 
+mod client;
 mod cursor;
 mod handlers;
 mod idle;
@@ -41,6 +42,7 @@ use windows::ResizeEdges;
 pub use udev::run_udev;
 
 use calloop::signals::{Signal, Signals};
+use client::ClientState;
 use cursor::{CursorIcon, SoftwareCursor};
 #[cfg(any(feature = "winit", feature = "udev"))]
 use smithay::backend::input::TouchSlot;
@@ -67,7 +69,7 @@ use smithay::{
     },
     utils::{Buffer as BufferCoord, Logical, Physical, Point, Size},
     wayland::{
-        compositor::{CompositorClientState, CompositorState},
+        compositor::CompositorState,
         dmabuf::{DmabufFeedbackBuilder, DmabufGlobal, DmabufState, ImportNotifier},
         output::OutputManagerState,
         selection::data_device::DataDeviceState,
@@ -78,11 +80,7 @@ use smithay::{
 };
 use tracing::{debug, error, info};
 use wayland_protocols::xdg::shell::server::xdg_toplevel;
-use wayland_server::{
-    DisplayHandle,
-    backend::{ClientData, ClientId, DisconnectReason},
-    protocol::wl_surface::WlSurface,
-};
+use wayland_server::{DisplayHandle, protocol::wl_surface::WlSurface};
 
 struct ManagedWindow {
     id: u64,
@@ -583,21 +581,6 @@ fn log_idle_transition(transition: IdleTransition) {
         reason = ?transition.reason,
         "window idle state changed"
     );
-}
-
-#[derive(Default)]
-struct ClientState {
-    compositor_state: CompositorClientState,
-}
-
-impl ClientData for ClientState {
-    fn initialized(&self, client_id: ClientId) {
-        debug!(?client_id, "Wayland client initialized");
-    }
-
-    fn disconnected(&self, client_id: ClientId, reason: DisconnectReason) {
-        debug!(?client_id, ?reason, "Wayland client disconnected");
-    }
 }
 
 delegate_xdg_shell!(App);
