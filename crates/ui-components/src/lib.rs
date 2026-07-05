@@ -12,7 +12,7 @@ use xilem::{
         widgets::{Button, Checkbox, Label, RadioButton, TextArea, TextInput},
     },
     style::Style,
-    view::{CrossAxisAlignment, button, flex_col, label, sized_box},
+    view::{CrossAxisAlignment, button, flex_col, label, portal, sized_box},
 };
 
 pub const APP_BACKGROUND: Color = Color::from_rgb8(0xf6, 0xf7, 0xf9);
@@ -158,6 +158,12 @@ pub fn sidebar_panel<State: 'static, V: WidgetView<State>>(
         .border(BORDER, 1.0.px())
         .corner_radius(8.0.px())
         .padding(10.0.px())
+}
+
+pub fn scroll_area<State: 'static, V: WidgetView<State>>(
+    content: V,
+) -> impl WidgetView<State> + use<State, V> {
+    portal(content).constrain_horizontal(true).must_fill(true)
 }
 
 pub fn settings_section<State: 'static, V: WidgetView<State>, T: Into<ArcStr>>(

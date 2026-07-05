@@ -73,7 +73,7 @@ pub(crate) fn app_logic(state: &mut SettingsApp) -> impl WidgetView<SettingsApp>
 fn sidebar_view(state: &SettingsApp) -> impl WidgetView<SettingsApp> + use<> {
     let selected_category = state.selected_category;
 
-    components::sidebar_panel(
+    components::sidebar_panel(components::scroll_area(
         flex_col((
             components::page_title("Settings"),
             components::muted_text("Hearthspace"),
@@ -101,13 +101,13 @@ fn sidebar_view(state: &SettingsApp) -> impl WidgetView<SettingsApp> + use<> {
         ))
         .cross_axis_alignment(CrossAxisAlignment::Stretch)
         .gap(8.0.px()),
-    )
+    ))
 }
 
 fn category_view(state: &SettingsApp) -> impl WidgetView<SettingsApp> + use<> {
     let category = state.selected_category;
 
-    sized_box(
+    components::scroll_area(sized_box(
         flex_col((
             components::page_title(category.label()),
             components::muted_text(category.description()),
@@ -116,7 +116,7 @@ fn category_view(state: &SettingsApp) -> impl WidgetView<SettingsApp> + use<> {
         ))
         .cross_axis_alignment(CrossAxisAlignment::Stretch)
         .gap(16.0.px()),
-    )
+    ))
 }
 
 fn selected_category_view(state: &SettingsApp) -> Box<AnyWidgetView<SettingsApp>> {
