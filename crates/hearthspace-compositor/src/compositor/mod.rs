@@ -179,6 +179,7 @@ struct App {
     /// pointer-motion hit-testing and applied to the backend by the event loop
     /// (which owns the winit window, a sibling of this handler state).
     cursor_icon: CursorIcon,
+    cursor_visible: bool,
     next_spawn_position: CanvasPoint,
     next_spawn_output_name: Option<String>,
     spawn_offset: i32,
@@ -334,6 +335,7 @@ pub fn run_winit(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> 
         exit_at: options.exit_after.map(|duration| Instant::now() + duration),
         full_redraw: 1,
         applied_cursor: CursorIcon::Default,
+        applied_cursor_visible: true,
     };
 
     run_event_loop(event_loop, &mut data)
@@ -483,6 +485,7 @@ pub(in crate::compositor) fn initialize_app(
         drag: None,
         resize: None,
         cursor_icon: CursorIcon::Default,
+        cursor_visible: true,
         next_spawn_position: CanvasPoint { x: 80, y: 96 },
         next_spawn_output_name: None,
         spawn_offset: 0,

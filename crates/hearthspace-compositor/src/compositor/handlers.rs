@@ -457,5 +457,17 @@ impl SeatHandler for App {
 
     fn focus_changed(&mut self, _seat: &Seat<Self>, _focused: Option<&WlSurface>) {}
 
-    fn cursor_image(&mut self, _seat: &Seat<Self>, _image: CursorImageStatus) {}
+    fn cursor_image(&mut self, _seat: &Seat<Self>, image: CursorImageStatus) {
+        match image {
+            CursorImageStatus::Hidden => self.cursor_visible = false,
+            CursorImageStatus::Named(icon) => {
+                self.cursor_visible = true;
+                self.cursor_icon = crate::compositor::cursor::cursor_icon_from_smithay(icon);
+            }
+            CursorImageStatus::Surface(_) => {
+                self.cursor_visible = true;
+                self.cursor_icon = crate::compositor::cursor::CursorIcon::Default;
+            }
+        }
+    }
 }

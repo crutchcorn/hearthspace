@@ -1,5 +1,6 @@
 use smithay::{
     backend::{allocator::Fourcc, renderer::element::memory::MemoryRenderBuffer},
+    input::pointer::CursorIcon as SmithayCursorIcon,
     utils::Transform,
 };
 use xcursor::parser::parse_xcursor;
@@ -39,6 +40,17 @@ const NWSE_RESIZE_CURSOR: &[u8] = include_bytes!("../../../../assets/cursors/nws
 #[cfg(feature = "udev")]
 const NESW_RESIZE_CURSOR: &[u8] = include_bytes!("../../../../assets/cursors/nesw-resize");
 const DESIRED_CURSOR_SIZE: u32 = 24;
+
+pub(super) fn cursor_icon_from_smithay(icon: SmithayCursorIcon) -> CursorIcon {
+    match icon {
+        SmithayCursorIcon::Default => CursorIcon::Default,
+        SmithayCursorIcon::NsResize => CursorIcon::NsResize,
+        SmithayCursorIcon::EwResize => CursorIcon::EwResize,
+        SmithayCursorIcon::NwseResize => CursorIcon::NwseResize,
+        SmithayCursorIcon::NeswResize => CursorIcon::NeswResize,
+        _ => CursorIcon::Default,
+    }
+}
 
 pub(super) fn standard_software_cursor() -> SoftwareCursor {
     let image = standard_cursor_image();

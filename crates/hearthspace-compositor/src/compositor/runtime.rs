@@ -49,6 +49,7 @@ pub(in crate::compositor) struct CalloopData {
     // Cursor icon currently applied to the winit window, so the desired cursor
     // (`state.cursor_icon`) is only pushed to the backend when it changes.
     pub(in crate::compositor) applied_cursor: CursorIcon,
+    pub(in crate::compositor) applied_cursor_visible: bool,
 }
 
 pub(in crate::compositor) fn create_headless_calloop_data(
@@ -74,6 +75,7 @@ pub(in crate::compositor) fn create_headless_calloop_data(
         exit_at: exit_after.map(|duration| start_time + duration),
         full_redraw: 1,
         applied_cursor: CursorIcon::Default,
+        applied_cursor_visible: true,
     }
 }
 
@@ -101,6 +103,7 @@ pub(in crate::compositor) fn create_calloop_data(
         exit_at: exit_after.map(|duration| start_time + duration),
         full_redraw: 1,
         applied_cursor: CursorIcon::Default,
+        applied_cursor_visible: true,
     }
 }
 
@@ -195,13 +198,19 @@ impl CalloopData {
     /// Push the compositor's desired cursor to the host winit window, but only
     /// when it differs from the cursor currently shown.
     fn apply_cursor_icon(&mut self) {
-        if self.applied_cursor == self.state.cursor_icon {
+        if self.applied_cursor == self.state.cursor_icon
+            && self.applied_cursor_visible == self.state.cursor_visible
+        {
             return;
         }
-        trace!(from = ?self.applied_cursor, to = ?self.state.cursor_icon, "applying cursor icon");
+        trace!(from = ?self.applied_cursor, to = ?self.state.cursor_icon, visible = self.state.cursor_visible, "applying cursor icon");
         self.applied_cursor = self.state.cursor_icon;
+        self.applied_cursor_visible = self.state.cursor_visible;
         #[cfg(feature = "winit")]
         if let Backend::Winit(backend) = &self.backend {
+            backend
+                .window()
+                .set_cursor_visible(self.state.cursor_visible);
             backend.window().set_cursor(self.applied_cursor);
         }
     }

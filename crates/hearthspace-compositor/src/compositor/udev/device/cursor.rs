@@ -32,6 +32,13 @@ impl UdevDevice {
         let Some(cursor) = self.hardware_cursor.as_mut() else {
             return;
         };
+        if !state.cursor_visible {
+            if let Some(active_crtc) = self.hardware_cursor_crtc.take() {
+                clear_legacy_cursor(&self.scanout_node, active_crtc);
+            }
+            self.hardware_cursor_position = None;
+            return;
+        }
         let pointer = state.pointer_location;
         let target = self.output_surfaces.iter().find_map(|output| {
             let view = state.output_render_view(output.target.connector_name())?;
