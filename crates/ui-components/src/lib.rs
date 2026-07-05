@@ -233,6 +233,52 @@ where
     .corner_radius(6.0.px())
 }
 
+pub fn compact_action_button<State: 'static, Action: 'static, T, F>(
+    text: T,
+    callback: F,
+) -> impl WidgetView<State, Action> + use<State, Action, T, F>
+where
+    T: Into<ArcStr>,
+    F: Fn(&mut State) -> Action + Send + Sync + 'static,
+{
+    button(
+        label(text)
+            .font(GenericFamily::SystemUi)
+            .text_alignment(TextAlign::Center)
+            .text_size(13.0)
+            .color(TEXT),
+        callback,
+    )
+    .background_color(SURFACE_SUBTLE)
+    .border(BORDER, 1.0.px())
+    .corner_radius(6.0.px())
+    .padding(Padding::from_vh(5.0.px(), 9.0.px()))
+}
+
+pub fn launcher_item<State: 'static, Action: 'static, T, F>(
+    text: T,
+    width: f64,
+    callback: F,
+) -> impl WidgetView<State, Action> + use<State, Action, T, F>
+where
+    T: Into<ArcStr>,
+    F: Fn(&mut State) -> Action + Send + Sync + 'static,
+{
+    button(
+        sized_box(
+            label(text)
+                .font(GenericFamily::SystemUi)
+                .text_alignment(TextAlign::Start)
+                .color(TEXT),
+        )
+        .fixed_width(width.px()),
+        callback,
+    )
+    .background_color(SURFACE)
+    .border(Color::TRANSPARENT, 1.0.px())
+    .corner_radius(6.0.px())
+}
+
 pub fn segmented_option<State: 'static, Action: 'static, T, F>(
     text: T,
     selected: bool,

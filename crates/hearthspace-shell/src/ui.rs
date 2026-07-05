@@ -15,12 +15,10 @@ mod command_client;
 mod constants;
 mod output_watcher;
 mod state;
-mod theme;
 mod views;
 
 use output_watcher::initial_wayland_output_names;
 use state::ShellState;
-use theme::{SHELL_BG, shell_properties};
 use views::app_logic;
 
 pub fn run() -> Result<(), Box<dyn std::error::Error>> {
@@ -36,8 +34,8 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     let state = ShellState::new(command_socket, output_names);
 
     let app = Xilem::new(state, app_logic)
-        .with_default_properties(shell_properties())
-        .with_default_base_color(SHELL_BG);
+        .with_default_properties(hearthspace_ui_components::hearthspace_light_properties())
+        .with_default_base_color(hearthspace_ui_components::APP_BACKGROUND);
     app.run_in(EventLoop::with_user_event())?;
     Ok(())
 }

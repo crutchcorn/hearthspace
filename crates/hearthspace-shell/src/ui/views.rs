@@ -1,14 +1,12 @@
 use hearthspace_common::{CONTROL_BAR_HEIGHT, SHELL_OUTPUT_WATCHER_APP_ID};
+use hearthspace_ui_components as components;
 use xilem::{
-    AnyWidgetView, TextAlign, WidgetView, WindowOptionsExtLinux, WindowView,
+    AnyWidgetView, WidgetView, WindowOptionsExtLinux, WindowView,
     core::fork,
     dpi::LogicalSize,
-    masonry::{layout::AsUnit, parley::fontique::GenericFamily, properties::Gap},
+    masonry::{layout::AsUnit, parley::fontique::GenericFamily},
     style::Style,
-    view::{
-        CrossAxisAlignment, FlexSpacer, button, flex_col, flex_row, label, sized_box, text_button,
-        text_input,
-    },
+    view::{CrossAxisAlignment, FlexSpacer, flex_col, flex_row, label, sized_box, text_input},
     window,
 };
 
@@ -151,21 +149,26 @@ fn bar_view(output: &ShellOutputInstance) -> impl WidgetView<ShellState> + use<>
     ]
     .into_iter()
     .map(|command| {
-        text_button(command.label(), move |state: &mut ShellState| {
+        components::compact_action_button(command.label(), move |state: &mut ShellState| {
             send_command(&state.command_socket, &command.wire_name());
         })
         .boxed()
     })
     .collect();
 
-    flex_row((
-        FlexSpacer::Fixed(SHELL_BAR_H_PAD.px()),
-        sized_box(search)
-            .fixed_width(SEARCH_BOX_WIDTH.px())
-            .fixed_height(SEARCH_BOX_HEIGHT.px()),
-        command_buttons,
-        FlexSpacer::Fixed(SHELL_BAR_H_PAD.px()),
-    ))
+    sized_box(
+        flex_row((
+            FlexSpacer::Fixed(SHELL_BAR_H_PAD.px()),
+            sized_box(search)
+                .fixed_width(SEARCH_BOX_WIDTH.px())
+                .fixed_height(SEARCH_BOX_HEIGHT.px()),
+            command_buttons,
+            FlexSpacer::Fixed(SHELL_BAR_H_PAD.px()),
+        ))
+        .gap(8.0.px()),
+    )
+    .background_color(components::SURFACE)
+    .padding(7.0.px())
 }
 
 fn output_watcher_view() -> impl WidgetView<ShellState> + use<> {
@@ -185,9 +188,9 @@ fn launcher_view(
             let app_id = app.id;
             let output_key = output_key.clone();
             let output_name = output_name.clone();
-            button(
-                sized_box(label(app.name).text_alignment(TextAlign::Start))
-                    .fixed_width(LAUNCHER_ITEM_WIDTH.px()),
+            components::launcher_item(
+                app.name,
+                LAUNCHER_ITEM_WIDTH,
                 move |state: &mut ShellState| {
                     launch_app(&state.command_socket, &app_id, output_name.as_deref());
                     if let Some(query) = state.output_query_mut(&output_key) {
@@ -199,7 +202,11 @@ fn launcher_view(
         })
         .collect();
 
-    flex_col(buttons)
-        .cross_axis_alignment(CrossAxisAlignment::Stretch)
-        .gap(Gap::ZERO)
+    sized_box(
+        flex_col(buttons)
+            .cross_axis_alignment(CrossAxisAlignment::Stretch)
+            .gap(4.0.px()),
+    )
+    .background_color(components::SURFACE)
+    .padding(6.0.px())
 }
