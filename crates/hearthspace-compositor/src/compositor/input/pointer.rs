@@ -212,8 +212,24 @@ impl App {
 
     pub(super) fn apply_pointer_motion(&mut self, location: Point<f64, Logical>, time: u32) {
         let previous_location = self.pointer_location;
-        let constrained =
-            constrain_pointer_to_outputs(previous_location, location, &self.output_logical_rects());
+        let output_rects = self.output_logical_rects();
+        let previous_output = rect_index_containing_point(previous_location, &output_rects);
+        let proposed_output = rect_index_containing_point(location, &output_rects);
+        let constrained = constrain_pointer_to_outputs(previous_location, location, &output_rects);
+        let visible_output = rect_index_containing_point(constrained.visible, &output_rects);
+        if constrained.visible != location || previous_output != visible_output {
+            debug!(
+                ?previous_location,
+                proposed = ?location,
+                visible = ?constrained.visible,
+                raw = ?constrained.raw,
+                ?previous_output,
+                ?proposed_output,
+                ?visible_output,
+                ?output_rects,
+                "resolved pointer motion against active output bounds"
+            );
+        }
         self.pointer_location = constrained.visible;
         self.raw_pointer_location = constrained.raw;
         if self.software_cursor_visible && self.pointer_location != previous_location {
@@ -395,23 +411,10 @@ fn constrain_pointer_to_outputs(
     let previous_rect = rect_containing_point(previous, output_rects)
         .or_else(|| nearest_rect_to_point(previous, output_rects));
 
-    if let Some(target_rect) = rect_containing_point(location, output_rects) {
-        if previous_rect
-            .map(|previous_rect| rects_are_connected(previous_rect, target_rect))
-            .unwrap_or(true)
-        {
-            return PointerConstraint {
-                visible: location,
-                raw: location,
-            };
-        }
-
-        let visible = previous_rect
-            .map(|rect| clamp_point_to_rect(location, rect))
-            .unwrap_or(location);
+    if rect_containing_point(location, output_rects).is_some() {
         return PointerConstraint {
-            visible,
-            raw: visible,
+            visible: location,
+            raw: location,
         };
     }
 
@@ -434,6 +437,13 @@ fn rect_containing_point(
         .find(|rect| point_in_rect(point, *rect))
 }
 
+fn rect_index_containing_point(
+    point: Point<f64, Logical>,
+    rects: &[Rectangle<i32, Logical>],
+) -> Option<usize> {
+    rects.iter().position(|rect| point_in_rect(point, *rect))
+}
+
 fn nearest_rect_to_point(
     point: Point<f64, Logical>,
     rects: &[Rectangle<i32, Logical>],
@@ -443,39 +453,6 @@ fn nearest_rect_to_point(
             .partial_cmp(&squared_distance(point, clamp_point_to_rect(point, *b)))
             .unwrap_or(std::cmp::Ordering::Equal)
     })
-}
-
-fn rects_are_connected(a: Rectangle<i32, Logical>, b: Rectangle<i32, Logical>) -> bool {
-    rectangles_overlap(a, b)
-        || horizontal_edges_touch_with_overlap(a, b)
-        || horizontal_edges_touch_with_overlap(b, a)
-        || vertical_edges_touch_with_overlap(a, b)
-        || vertical_edges_touch_with_overlap(b, a)
-}
-
-fn rectangles_overlap(a: Rectangle<i32, Logical>, b: Rectangle<i32, Logical>) -> bool {
-    a.loc.x < b.loc.x + b.size.w.max(1)
-        && a.loc.x + a.size.w.max(1) > b.loc.x
-        && a.loc.y < b.loc.y + b.size.h.max(1)
-        && a.loc.y + a.size.h.max(1) > b.loc.y
-}
-
-fn horizontal_edges_touch_with_overlap(
-    a: Rectangle<i32, Logical>,
-    b: Rectangle<i32, Logical>,
-) -> bool {
-    a.loc.x + a.size.w.max(1) == b.loc.x && ranges_overlap(a.loc.y, a.size.h, b.loc.y, b.size.h)
-}
-
-fn vertical_edges_touch_with_overlap(
-    a: Rectangle<i32, Logical>,
-    b: Rectangle<i32, Logical>,
-) -> bool {
-    a.loc.y + a.size.h.max(1) == b.loc.y && ranges_overlap(a.loc.x, a.size.w, b.loc.x, b.size.w)
-}
-
-fn ranges_overlap(a_start: i32, a_size: i32, b_start: i32, b_size: i32) -> bool {
-    a_start < b_start + b_size.max(1) && a_start + a_size.max(1) > b_start
 }
 
 fn clamp_point_to_rect(
@@ -570,7 +547,7 @@ mod tests {
     }
 
     #[test]
-    fn pointer_does_not_jump_across_real_output_gaps() {
+    fn pointer_accepts_locations_inside_any_output() {
         let output_rects = [
             Rectangle::new((0, 0).into(), (100, 100).into()),
             Rectangle::new((120, 0).into(), (100, 100).into()),
@@ -582,7 +559,7 @@ mod tests {
             &output_rects,
         );
 
-        assert_eq!(constrained.visible, Point::from((99.999_999, 50.0)));
+        assert_eq!(constrained.visible, Point::from((130.0, 50.0)));
         assert_eq!(constrained.raw, constrained.visible);
     }
 

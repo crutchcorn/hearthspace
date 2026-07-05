@@ -136,8 +136,10 @@ pub(crate) fn monitor_logical_height(monitor: &MonitorConfig) -> i32 {
     logical_dimension(monitor.height, monitor.scale)
 }
 
-fn logical_dimension(size: i32, _scale: i32) -> i32 {
-    size.max(1)
+fn logical_dimension(size: i32, scale: i32) -> i32 {
+    let size = size.max(1);
+    let scale = scale.max(1);
+    ((size + scale - 1) / scale).max(1)
 }
 
 fn default_placeholder_monitors(monitors: &[MonitorConfig]) -> bool {
@@ -305,11 +307,11 @@ mod tests {
         );
 
         assert_eq!(monitors[0].scale, 2);
-        assert_eq!(monitor_logical_width(&monitors[0]), 2560);
+        assert_eq!(monitor_logical_width(&monitors[0]), 1280);
     }
 
     #[test]
-    fn scaling_monitor_keeps_outputs_at_physical_desktop_size() {
+    fn scaling_monitor_moves_neighbors_to_scaled_logical_edge() {
         let mut monitors = Settings::default().monitors;
 
         recalculate_monitor_positions_for_scale(&mut monitors, "primary", 2);
@@ -323,13 +325,13 @@ mod tests {
             .find(|monitor| monitor.id == "secondary")
             .unwrap();
         assert_eq!(primary.scale, 2);
-        assert_eq!(monitor_logical_width(primary), 1920);
-        assert_eq!((secondary.x, secondary.y), (1920, 0));
+        assert_eq!(monitor_logical_width(primary), 960);
+        assert_eq!((secondary.x, secondary.y), (960, 0));
         assert!(!monitors_overlap(&monitors));
     }
 
     #[test]
-    fn scaling_monitor_keeps_outputs_below_at_physical_desktop_size() {
+    fn scaling_monitor_moves_outputs_below_to_scaled_logical_edge() {
         let mut monitors = Settings::default().monitors;
         offset_monitor(&mut monitors, "secondary", 0, 1080);
 
@@ -339,7 +341,7 @@ mod tests {
             .iter()
             .find(|monitor| monitor.id == "secondary")
             .unwrap();
-        assert_eq!((secondary.x, secondary.y), (0, 1080));
+        assert_eq!((secondary.x, secondary.y), (0, 540));
         assert!(!monitors_overlap(&monitors));
     }
 }

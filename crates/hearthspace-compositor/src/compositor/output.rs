@@ -123,6 +123,30 @@ impl OutputSet {
             let scale = plan.secondary_scale(&output.name).unwrap_or(output.scale);
             output.set_scale_and_location(scale, plan.secondary_location(&output.name));
         }
+        debug!(outputs = ?self.output_debug(), "applied logical output layout");
+    }
+
+    fn output_debug(
+        &self,
+    ) -> Vec<(
+        String,
+        Point<i32, Logical>,
+        Size<i32, Physical>,
+        Size<i32, Logical>,
+        i32,
+    )> {
+        std::iter::once(&self.primary)
+            .chain(self.secondary.iter())
+            .map(|output| {
+                (
+                    output.name.clone(),
+                    output.location,
+                    output.size,
+                    output.logical_size(),
+                    output.scale,
+                )
+            })
+            .collect()
     }
 
     fn logical_size(&self) -> Size<i32, Logical> {

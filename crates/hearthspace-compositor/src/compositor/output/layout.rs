@@ -20,10 +20,20 @@ impl OutputLayout {
     ) -> Option<Point<i32, Logical>> {
         let use_role_fallback = !default_placeholder_monitors(&self.monitors);
         self.monitor_for(output_name, role_id, use_role_fallback)
+            .map(|monitor| Point::from((monitor.x, monitor.y)))
+    }
+
+    fn physical_location_for(
+        &self,
+        output_name: &str,
+        role_id: &str,
+    ) -> Option<Point<i32, Logical>> {
+        let use_role_fallback = !default_placeholder_monitors(&self.monitors);
+        self.monitor_for(output_name, role_id, use_role_fallback)
             .map(|monitor| {
                 Point::from((
-                    logical_axis_position(&self.monitors, monitor.x, Axis::X),
-                    logical_axis_position(&self.monitors, monitor.y, Axis::Y),
+                    physical_axis_position_to_logical(&self.monitors, monitor.x, Axis::X),
+                    physical_axis_position_to_logical(&self.monitors, monitor.y, Axis::Y),
                 ))
             })
     }
@@ -56,7 +66,7 @@ enum Axis {
     Y,
 }
 
-fn logical_axis_position(
+fn physical_axis_position_to_logical(
     monitors: &[hearthspace_ipc::MonitorConfig],
     coordinate: i32,
     axis: Axis,
@@ -228,6 +238,22 @@ pub(super) fn output_locations_for_layout(
         });
     }
 
+    if !placements_connected(&placed) {
+        let physical_placed = output_placements_for_physical_positions(
+            fallback_primary.clone(),
+            fallback_secondary.clone(),
+            layout,
+        );
+        if !placements_overlap(&physical_placed) && placements_connected(&physical_placed) {
+            debug!(
+                direct = ?placement_debug(&placed),
+                physical = ?placement_debug(&physical_placed),
+                "interpreting saved monitor positions as physical coordinates"
+            );
+            placed = physical_placed;
+        }
+    }
+
     if placements_overlap(&placed) {
         debug!(placements = ?placement_debug(&placed), "repairing overlapping active monitor layout");
         placed = fallback_output_placements(fallback_primary, fallback_secondary);
@@ -264,6 +290,58 @@ pub(super) fn output_locations_for_layout(
     }
 }
 
+fn output_placements_for_physical_positions(
+    primary: OutputGeometry,
+    secondary: Vec<OutputGeometry>,
+    layout: &OutputLayout,
+) -> Vec<OutputPlacement> {
+    let primary_location = layout
+        .physical_location_for(&primary.name, "primary")
+        .unwrap_or((0, 0).into());
+    let mut placed = vec![OutputPlacement {
+        name: primary.name.clone(),
+        size: primary.logical_size(),
+        location: primary_location,
+        scale: primary.scale,
+    }];
+    let mut unplaced = Vec::new();
+
+    for (index, output) in secondary.into_iter().enumerate() {
+        let role_id = secondary_role_id(index);
+        if let Some(location) = layout.physical_location_for(&output.name, &role_id) {
+            let size = output.logical_size();
+            placed.push(OutputPlacement {
+                name: output.name,
+                size,
+                location,
+                scale: output.scale,
+            });
+        } else {
+            unplaced.push(output);
+        }
+    }
+
+    let fallback_y = primary_location.y;
+    let mut next_x = placed
+        .iter()
+        .map(|placement| placement.location.x + placement.size.w)
+        .max()
+        .unwrap_or(0);
+    for output in unplaced {
+        let size = output.logical_size();
+        let location = Point::from((next_x, fallback_y));
+        next_x += size.w;
+        placed.push(OutputPlacement {
+            name: output.name,
+            size,
+            location,
+            scale: output.scale,
+        });
+    }
+
+    placed
+}
+
 fn fallback_output_placements(
     primary: OutputGeometry,
     secondary: Vec<OutputGeometry>,
@@ -293,6 +371,47 @@ fn placements_overlap(placements: &[OutputPlacement]) -> bool {
             .skip(index + 1)
             .any(|other| rectangles_overlap(rect, Rectangle::new(other.location, other.size)))
     })
+}
+
+fn placements_connected(placements: &[OutputPlacement]) -> bool {
+    let Some(first) = placements.first() else {
+        return true;
+    };
+    let mut connected = vec![first.name.clone()];
+    let mut changed = true;
+
+    while changed {
+        changed = false;
+        for placement in placements {
+            if connected.contains(&placement.name) {
+                continue;
+            }
+            let rect = Rectangle::new(placement.location, placement.size);
+            if placements.iter().any(|other| {
+                connected.contains(&other.name)
+                    && rectangles_connected(rect, Rectangle::new(other.location, other.size))
+            }) {
+                connected.push(placement.name.clone());
+                changed = true;
+            }
+        }
+    }
+
+    connected.len() == placements.len()
+}
+
+fn rectangles_connected(a: Rectangle<i32, Logical>, b: Rectangle<i32, Logical>) -> bool {
+    rectangles_overlap(a, b) || rectangles_touch(a, b) || rectangles_touch(b, a)
+}
+
+fn rectangles_touch(a: Rectangle<i32, Logical>, b: Rectangle<i32, Logical>) -> bool {
+    let horizontal_touch = a.loc.x + a.size.w == b.loc.x
+        && a.loc.y < b.loc.y + b.size.h
+        && a.loc.y + a.size.h > b.loc.y;
+    let vertical_touch = a.loc.y + a.size.h == b.loc.y
+        && a.loc.x < b.loc.x + b.size.w
+        && a.loc.x + a.size.w > b.loc.x;
+    horizontal_touch || vertical_touch
 }
 
 fn rectangles_overlap(a: Rectangle<i32, Logical>, b: Rectangle<i32, Logical>) -> bool {
@@ -509,6 +628,37 @@ mod tests {
 
     #[test]
     fn output_layout_compacts_scaled_monitor_left_of_unscaled_monitor() {
+        let plan = output_locations_for_layout(
+            geometry_with_size("HDMI-A-1", 1920, 1080),
+            vec![geometry_with_size("eDP-1", 1920, 1080)],
+            &OutputLayout::from_monitors(vec![
+                hearthspace_ipc::MonitorConfig {
+                    id: "eDP-1".into(),
+                    name: "eDP-1".into(),
+                    width: 1920,
+                    height: 1080,
+                    scale: 2,
+                    x: -960,
+                    y: 0,
+                },
+                hearthspace_ipc::MonitorConfig {
+                    id: "HDMI-A-1".into(),
+                    name: "HDMI-A-1".into(),
+                    width: 1920,
+                    height: 1080,
+                    scale: 1,
+                    x: 0,
+                    y: 0,
+                },
+            ]),
+        );
+
+        assert_eq!(plan.secondary_location("eDP-1"), Point::from((0, 0)));
+        assert_eq!(plan.primary, Point::from((960, 0)));
+    }
+
+    #[test]
+    fn output_layout_accepts_old_physical_positions_for_scaled_outputs() {
         let plan = output_locations_for_layout(
             geometry_with_size("HDMI-A-1", 1920, 1080),
             vec![geometry_with_size("eDP-1", 1920, 1080)],
