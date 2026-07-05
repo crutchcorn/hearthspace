@@ -1,7 +1,7 @@
 use std::{
     io::{Read, Write},
     os::unix::net::UnixStream,
-    path::PathBuf,
+    path::{Path, PathBuf},
     process::{Child, Command, Stdio},
     sync::Mutex,
     thread,
@@ -19,6 +19,8 @@ static HEADLESS_TEST_LOCK: Mutex<()> = Mutex::new(());
 
 struct HeadlessCompositor {
     child: Child,
+    runtime_dir: tempfile::TempDir,
+    command_socket_path: PathBuf,
 }
 
 impl HeadlessCompositor {
@@ -27,20 +29,29 @@ impl HeadlessCompositor {
     }
 
     fn spawn_with_size(size: &str) -> Self {
+        let runtime_dir = tempfile::tempdir().expect("create headless runtime dir");
+        let command_socket_path = runtime_dir.path().join("command.sock");
+        let wayland_display = format!("hearthspace-test-{}", std::process::id());
         let child = Command::new(env!("CARGO_BIN_EXE_hearthspace"))
             .args(["--headless", "--no-shell", "--headless-size", size])
+            .env("XDG_RUNTIME_DIR", runtime_dir.path())
+            .env("HEARTHSPACE_COMMAND_SOCKET", &command_socket_path)
+            .env("HEARTHSPACE_WAYLAND_DISPLAY", wayland_display)
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .spawn()
             .expect("spawn headless Hearthspace");
 
-        Self { child }
+        Self {
+            child,
+            runtime_dir,
+            command_socket_path,
+        }
     }
 
     fn wait_for_socket(&mut self) -> UnixStream {
         let deadline = Instant::now() + Duration::from_secs(10);
-        let path = command_socket_path();
         let mut last_error = None;
 
         while Instant::now() < deadline {
@@ -48,7 +59,7 @@ impl HeadlessCompositor {
                 panic!("headless Hearthspace exited before accepting commands: {status}");
             }
 
-            match UnixStream::connect(&path) {
+            match UnixStream::connect(&self.command_socket_path) {
                 Ok(stream) => return stream,
                 Err(error) => last_error = Some(error),
             }
@@ -58,9 +69,17 @@ impl HeadlessCompositor {
 
         panic!(
             "timed out connecting to {}: {:?}",
-            path.display(),
+            self.command_socket_path.display(),
             last_error
         );
+    }
+
+    fn send_text_command(&self, command: &str) -> String {
+        send_text_command(&self.command_socket_path, command)
+    }
+
+    fn take_screenshot(&self) -> Vec<u8> {
+        take_screenshot(&self.command_socket_path)
     }
 }
 
@@ -70,6 +89,7 @@ impl Drop for HeadlessCompositor {
             let _ = self.child.kill();
             let _ = self.child.wait();
         }
+        let _ = self.runtime_dir.path();
     }
 }
 
@@ -89,14 +109,18 @@ fn headless_control_socket_drives_input_screenshot_and_quit() {
         "key-down 30",
         "key-up 30",
     ] {
-        assert_eq!(send_text_command(command), "ok\n", "command {command:?}");
+        assert_eq!(
+            compositor.send_text_command(command),
+            "ok\n",
+            "command {command:?}"
+        );
     }
 
-    let screenshot = take_screenshot();
+    let screenshot = compositor.take_screenshot();
     assert!(screenshot.starts_with(b"\x89PNG\r\n\x1a\n"));
     assert_eq!(png_dimensions(&screenshot), (WIDTH, HEIGHT));
 
-    assert_eq!(send_text_command("quit"), "ok\n");
+    assert_eq!(compositor.send_text_command("quit"), "ok\n");
     wait_for_exit(&mut compositor.child);
 }
 
@@ -108,11 +132,11 @@ fn headless_control_socket_spawns_and_drives_real_gtk_client() {
     let first_stream = compositor.wait_for_socket();
     drop(first_stream);
 
-    let empty = take_screenshot();
+    let empty = compositor.take_screenshot();
     assert_eq!(png_dimensions(&empty), (CLIENT_WIDTH, CLIENT_HEIGHT));
 
-    assert_eq!(send_text_command("spawn a11y-test"), "ok\n");
-    let with_client = wait_for_screenshot_change(&empty);
+    assert_eq!(compositor.send_text_command("spawn a11y-test"), "ok\n");
+    let with_client = wait_for_screenshot_change(&compositor, &empty);
     assert_eq!(png_dimensions(&with_client), (CLIENT_WIDTH, CLIENT_HEIGHT));
     let saw_accessible = wait_for_accessible_term("Research Workspace");
     if std::env::var_os("HEARTHSPACE_REQUIRE_ATSPI").is_some() {
@@ -133,35 +157,32 @@ fn headless_control_socket_spawns_and_drives_real_gtk_client() {
     ] {
         if command == "screenshot" {
             assert_eq!(
-                png_dimensions(&take_screenshot()),
+                png_dimensions(&compositor.take_screenshot()),
                 (CLIENT_WIDTH, CLIENT_HEIGHT)
             );
         } else {
-            assert_eq!(send_text_command(command), "ok\n", "command {command:?}");
+            assert_eq!(
+                compositor.send_text_command(command),
+                "ok\n",
+                "command {command:?}"
+            );
         }
     }
 
-    assert_eq!(send_text_command("quit"), "ok\n");
+    assert_eq!(compositor.send_text_command("quit"), "ok\n");
     wait_for_exit(&mut compositor.child);
 }
 
-fn command_socket_path() -> PathBuf {
-    std::env::var_os("XDG_RUNTIME_DIR")
-        .map(PathBuf::from)
-        .unwrap_or_else(std::env::temp_dir)
-        .join("hearthspace-shell.sock")
-}
-
-fn send_text_command(command: &str) -> String {
-    let mut stream = UnixStream::connect(command_socket_path()).expect("connect command socket");
+fn send_text_command(command_socket_path: &Path, command: &str) -> String {
+    let mut stream = UnixStream::connect(command_socket_path).expect("connect command socket");
     stream
         .write_all(format!("{command}\n").as_bytes())
         .expect("write command");
     read_line(&mut stream)
 }
 
-fn take_screenshot() -> Vec<u8> {
-    let mut stream = UnixStream::connect(command_socket_path()).expect("connect command socket");
+fn take_screenshot(command_socket_path: &Path) -> Vec<u8> {
+    let mut stream = UnixStream::connect(command_socket_path).expect("connect command socket");
     stream.write_all(b"screenshot\n").expect("write screenshot");
 
     let header = read_line(&mut stream);
@@ -180,10 +201,10 @@ fn take_screenshot() -> Vec<u8> {
 }
 
 #[cfg(feature = "test-apps")]
-fn wait_for_screenshot_change(previous: &[u8]) -> Vec<u8> {
+fn wait_for_screenshot_change(compositor: &HeadlessCompositor, previous: &[u8]) -> Vec<u8> {
     let deadline = Instant::now() + Duration::from_secs(10);
     while Instant::now() < deadline {
-        let screenshot = take_screenshot();
+        let screenshot = compositor.take_screenshot();
         if screenshot != previous {
             return screenshot;
         }

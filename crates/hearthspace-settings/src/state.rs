@@ -1,0 +1,65 @@
+use std::path::PathBuf;
+
+use hearthspace_ipc::{Settings, client_get_settings};
+use xilem::tokio::sync::mpsc::UnboundedSender;
+
+use crate::{
+    monitors::{LiveOutput, settings_with_live_outputs},
+    wayland_outputs::live_wayland_outputs,
+};
+
+pub(crate) struct SettingsApp {
+    pub(crate) settings: Settings,
+    pub(crate) live_outputs: Vec<LiveOutput>,
+    pub(crate) selected_monitor_id: Option<String>,
+    pub(crate) background_picker_request_sender: Option<UnboundedSender<BackgroundPickerRequest>>,
+    pub(crate) background_picker_pending: bool,
+    pub(crate) status: String,
+    pub(crate) config_label: String,
+}
+
+#[derive(Debug)]
+pub(crate) enum BackgroundPickerRequest {
+    PickFile,
+}
+
+#[derive(Debug)]
+pub(crate) enum BackgroundPickerResponse {
+    Selected(PathBuf),
+    Cancelled,
+    Failed(String),
+}
+
+pub(crate) fn initial_state() -> SettingsApp {
+    let (mut settings, mut status) = match client_get_settings() {
+        Ok(settings) => (settings, "Connected to hearthspace-settingsd".to_string()),
+        Err(error) => (
+            Settings::default(),
+            format!("Settings backend unavailable: {error}"),
+        ),
+    };
+    let live_outputs = match live_wayland_outputs() {
+        Ok(outputs) => outputs,
+        Err(error) => {
+            status.push_str(&format!("; live monitors unavailable: {error}"));
+            Vec::new()
+        }
+    };
+    settings = settings_with_live_outputs(settings, &live_outputs);
+    let selected_monitor_id = settings.monitors.first().map(|monitor| monitor.id.clone());
+
+    let config_label = match hearthspace_common::config_path() {
+        Ok(path) => format!("Config: {}", path.display()),
+        Err(error) => format!("Config path unavailable: {error}"),
+    };
+
+    SettingsApp {
+        settings,
+        live_outputs,
+        selected_monitor_id,
+        background_picker_request_sender: None,
+        background_picker_pending: false,
+        status,
+        config_label,
+    }
+}
