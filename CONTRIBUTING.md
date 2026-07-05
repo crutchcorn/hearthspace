@@ -19,7 +19,11 @@ As this project grows, you can find technical documentation in the [docs/](./doc
 
 ## Setup
 
-This project targets modern Linux systems with Wayland only. Hearthspace is a Rust workspace with separate crates for the session supervisor, compositor, shell, settings daemon, settings app, and shared IPC/common code.
+This project targets modern Linux systems with Wayland as the native display
+protocol. X11 applications are supported through XWayland when the `Xwayland`
+runtime is installed. Hearthspace is a Rust workspace with separate crates for
+the session supervisor, compositor, shell, settings daemon, settings app, and
+shared IPC/common code.
 
 Ubuntu 26.04 LTS is our development and runtime baseline, and it is expected to have the oldest supported version of most packages.
 
@@ -67,6 +71,13 @@ The file chooser portal is an external desktop service, not code inside the
 Hearthspace compositor. If we later provide a Hearthspace-owned portal session,
 the compositor still needs to support the dialog window created by the portal
 backend.
+
+X11 app support is provided by Smithay's XWayland integration. Install the
+runtime when testing X11-only applications:
+
+```sh
+sudo apt-get install -y xwayland
+```
 
 For testing, `foot` is installed as a small Wayland-native terminal for server-side decoration testing.
 

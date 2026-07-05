@@ -122,7 +122,7 @@ them reliably.
 
 ## Non-Goals For The First Native Milestone
 
-- [ ] X11/Xwayland support.
+- [ ] Full X11/XWayland polish beyond first-pass window mapping.
 - [ ] Direct scanout.
 - [ ] VRR/HDR/color management.
 - [ ] Complex multi-monitor layout policy.

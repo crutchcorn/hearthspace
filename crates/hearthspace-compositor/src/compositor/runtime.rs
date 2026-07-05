@@ -1,5 +1,7 @@
 use std::time::Instant;
 
+#[cfg(feature = "xwayland")]
+use smithay::input::SeatState;
 use smithay::{
     backend::{
         allocator::Fourcc,
@@ -50,6 +52,8 @@ pub(in crate::compositor) struct CalloopData {
     // (`state.cursor_icon`) is only pushed to the backend when it changes.
     pub(in crate::compositor) applied_cursor: CursorIcon,
     pub(in crate::compositor) applied_cursor_visible: bool,
+    #[cfg(feature = "xwayland")]
+    pub(in crate::compositor) xwayland_seat_state: SeatState<CalloopData>,
 }
 
 pub(in crate::compositor) fn create_headless_calloop_data(
@@ -76,6 +80,8 @@ pub(in crate::compositor) fn create_headless_calloop_data(
         full_redraw: 1,
         applied_cursor: CursorIcon::Default,
         applied_cursor_visible: true,
+        #[cfg(feature = "xwayland")]
+        xwayland_seat_state: SeatState::new(),
     }
 }
 
@@ -104,6 +110,8 @@ pub(in crate::compositor) fn create_calloop_data(
         full_redraw: 1,
         applied_cursor: CursorIcon::Default,
         applied_cursor_visible: true,
+        #[cfg(feature = "xwayland")]
+        xwayland_seat_state: SeatState::new(),
     }
 }
 
@@ -346,16 +354,16 @@ impl CalloopData {
         &mut self,
     ) -> Result<(), Box<dyn std::error::Error>> {
         for window in &self.state.windows {
-            send_frames_surface_tree(
-                window.surface.wl_surface(),
-                self.start_time.elapsed().as_millis() as u32,
-            );
+            let Some(root) = window.surface.wl_surface() else {
+                continue;
+            };
+            send_frames_surface_tree(&root, self.start_time.elapsed().as_millis() as u32);
             // Popups (e.g. client menus) are tracked separately from the window
             // surface tree, so they need their own frame callbacks. Without
             // these the client (e.g. GTK4) throttles and never repaints the
             // popup after its first frame, so keyboard navigation highlights
             // never appear.
-            for (popup, _) in PopupManager::popups_for_surface(window.surface.wl_surface()) {
+            for (popup, _) in PopupManager::popups_for_surface(&root) {
                 send_frames_surface_tree(
                     popup.wl_surface(),
                     self.start_time.elapsed().as_millis() as u32,

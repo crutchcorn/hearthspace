@@ -107,8 +107,9 @@ pub(in crate::compositor) fn handle_input_event<B: InputBackend>(
                     }
                     Some(HitTarget::TitleBar { window_index }) => {
                         let window_index = state.raise_window(window_index);
-                        let surface = state.windows[window_index].surface.wl_surface().clone();
-                        state.set_keyboard_focus_to_window(window_index, surface);
+                        if let Some(surface) = state.windows[window_index].surface.wl_surface() {
+                            state.set_keyboard_focus_to_window(window_index, surface);
+                        }
                         state.drag = Some(DragState {
                             window_id: state.windows[window_index].id,
                             pointer_start: state.raw_pointer_location,
@@ -126,8 +127,9 @@ pub(in crate::compositor) fn handle_input_event<B: InputBackend>(
                         edges,
                     }) => {
                         let window_index = state.raise_window(window_index);
-                        let surface = state.windows[window_index].surface.wl_surface().clone();
-                        state.set_keyboard_focus_to_window(window_index, surface);
+                        if let Some(surface) = state.windows[window_index].surface.wl_surface() {
+                            state.set_keyboard_focus_to_window(window_index, surface);
+                        }
                         debug!(
                             window_id = state.windows[window_index].id,
                             ?edges,
@@ -138,8 +140,9 @@ pub(in crate::compositor) fn handle_input_event<B: InputBackend>(
                     }
                     Some(HitTarget::Client { window_index, .. }) => {
                         let window_index = state.raise_window(window_index);
-                        let surface = state.windows[window_index].surface.wl_surface().clone();
-                        state.set_keyboard_focus_to_window(window_index, surface);
+                        if let Some(surface) = state.windows[window_index].surface.wl_surface() {
+                            state.set_keyboard_focus_to_window(window_index, surface);
+                        }
                     }
                     None => {
                         debug!("clearing keyboard focus from pointer press on canvas");

@@ -1,3 +1,5 @@
+#[cfg(feature = "xwayland")]
+use smithay::xwayland::XWaylandClientData;
 use smithay::{
     backend::allocator::dmabuf::Dmabuf,
     backend::renderer::utils::on_commit_buffer_handler,
@@ -43,7 +45,8 @@ use wayland_server::{
 };
 
 use super::{
-    App, ClientState, DragState, ManagedWindow, ManagedWindowKind, WindowDecoration,
+    App, ClientState, DragState, ManagedSurface, ManagedWindow, ManagedWindowKind,
+    WindowDecoration,
     idle::ActivityReason,
     windows::{
         ResizeEdges, decoration_for_new_window, position_for_new_window,
@@ -76,7 +79,7 @@ impl XdgShellHandler for App {
         );
         self.windows.push(ManagedWindow {
             id,
-            surface: surface.clone(),
+            surface: ManagedSurface::Xdg(surface.clone()),
             position: position_for_new_window(kind, self.next_spawn_position),
             kind,
             shell_output_name: shell_output_name.clone(),
@@ -117,7 +120,7 @@ impl XdgShellHandler for App {
         let Some(window_index) = self
             .windows
             .iter()
-            .position(|window| window.surface == surface)
+            .position(|window| window.surface.same_xdg(&surface))
         else {
             return;
         };
@@ -127,8 +130,9 @@ impl XdgShellHandler for App {
         }
 
         let window_index = self.raise_window(window_index);
-        let surface = self.windows[window_index].surface.wl_surface().clone();
-        self.set_keyboard_focus_to_window(window_index, surface);
+        if let Some(surface) = self.windows[window_index].surface.wl_surface() {
+            self.set_keyboard_focus_to_window(window_index, surface);
+        }
         debug!(
             window_id = self.windows[window_index].id,
             "client requested window move"
@@ -155,7 +159,7 @@ impl XdgShellHandler for App {
         let Some(window_index) = self
             .windows
             .iter()
-            .position(|window| window.surface == surface)
+            .position(|window| window.surface.same_xdg(&surface))
         else {
             return;
         };
@@ -165,8 +169,9 @@ impl XdgShellHandler for App {
         }
 
         let window_index = self.raise_window(window_index);
-        let surface = self.windows[window_index].surface.wl_surface().clone();
-        self.set_keyboard_focus_to_window(window_index, surface);
+        if let Some(surface) = self.windows[window_index].surface.wl_surface() {
+            self.set_keyboard_focus_to_window(window_index, surface);
+        }
         debug!(
             window_id = self.windows[window_index].id,
             ?edges,
@@ -228,14 +233,19 @@ impl XdgShellHandler for App {
     }
 
     fn toplevel_destroyed(&mut self, surface: ToplevelSurface) {
-        if let Some(window) = self.windows.iter().find(|window| window.surface == surface) {
+        if let Some(window) = self
+            .windows
+            .iter()
+            .find(|window| window.surface.same_xdg(&surface))
+        {
             info!(window_id = window.id, kind = ?window.kind, "xdg toplevel destroyed");
             self.idle_daemon.unregister_window(window.id);
             if self.focused_normal_window_id == Some(window.id) {
                 self.focused_normal_window_id = None;
             }
         }
-        self.windows.retain(|window| window.surface != surface);
+        self.windows
+            .retain(|window| !window.surface.same_xdg(&surface));
         self.drag = None;
         self.resize = None;
         self.request_redraw();
@@ -247,7 +257,7 @@ impl XdgShellHandler for App {
         if let Some(window_index) = self
             .windows
             .iter()
-            .position(|window| window.surface == surface)
+            .position(|window| window.surface.same_xdg(&surface))
         {
             let mut window = self.windows.remove(window_index);
             let old_kind = window.kind;
@@ -280,11 +290,14 @@ impl XdgShellHandler for App {
                 | ManagedWindowKind::Launcher
                 | ManagedWindowKind::ShellWatcher => self.windows.len(),
             };
+            let wl_surface = window.surface.wl_surface();
             self.windows.insert(insert_index, window);
             if kind.is_shell_chrome() {
-                self.enter_shell_output(surface.wl_surface(), shell_output_name.as_deref());
-            } else {
-                self.enter_output(surface.wl_surface(), None);
+                if let Some(surface) = &wl_surface {
+                    self.enter_shell_output(surface, shell_output_name.as_deref());
+                }
+            } else if let Some(surface) = &wl_surface {
+                self.enter_output(surface, None);
             }
             self.configure_toplevel(&surface, kind, shell_output_name.as_deref());
             self.request_redraw();
@@ -360,7 +373,14 @@ impl CompositorHandler for App {
     }
 
     fn client_compositor_state<'a>(&self, client: &'a Client) -> &'a CompositorClientState {
-        &client.get_data::<ClientState>().unwrap().compositor_state
+        if let Some(state) = client.get_data::<ClientState>() {
+            return &state.compositor_state;
+        }
+        #[cfg(feature = "xwayland")]
+        if let Some(state) = client.get_data::<XWaylandClientData>() {
+            return &state.compositor_state;
+        }
+        panic!("unknown compositor client data type")
     }
 
     fn new_surface(&mut self, surface: &WlSurface) {
@@ -524,7 +544,9 @@ impl App {
                 continue;
             }
             self.windows[index].advertised_fractional_scale = scale;
-            let root = self.windows[index].surface.wl_surface().clone();
+            let Some(root) = self.windows[index].surface.wl_surface() else {
+                continue;
+            };
             with_surface_tree_downward(
                 &root,
                 (),
