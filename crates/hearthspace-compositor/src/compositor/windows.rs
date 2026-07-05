@@ -223,7 +223,7 @@ impl App {
                 .replace(std::iter::empty::<xdg_toplevel::WmCapabilities>());
             match kind {
                 ManagedWindowKind::ShellBar => {
-                    let width = self.minimum_output_logical_width();
+                    let width = self.minimum_output_client_logical_width();
                     trace!(width, "configuring shell bar to smallest output width");
                     state.size = Some((width, CONTROL_BAR_HEIGHT).into());
                     state.bounds = Some((width, CONTROL_BAR_HEIGHT).into());

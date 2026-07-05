@@ -268,6 +268,7 @@ pub(super) fn secondary_descriptors_for_layout(
     secondary
 }
 
+#[cfg(all(test, feature = "udev"))]
 pub(super) fn minimum_output_width(
     rects: impl IntoIterator<Item = Rectangle<i32, Logical>>,
 ) -> Option<i32> {

@@ -12,7 +12,7 @@ mod layout;
 pub(in crate::compositor) use layout::OutputLayout;
 #[cfg(feature = "udev")]
 use layout::secondary_descriptors_for_layout;
-use layout::{OutputGeometry, minimum_output_width, output_locations_for_layout};
+use layout::{OutputGeometry, output_locations_for_layout};
 
 pub(in crate::compositor) struct OutputSet {
     primary: OutputRecord,
@@ -141,14 +141,25 @@ impl OutputSet {
             .collect()
     }
 
-    fn minimum_logical_width(&self) -> i32 {
-        minimum_output_width(self.logical_rects().iter().copied()).unwrap_or(1)
+    fn minimum_client_logical_width(&self) -> i32 {
+        std::iter::once(&self.primary)
+            .chain(self.secondary.iter())
+            .map(|output| output.client_logical_size().w)
+            .min()
+            .unwrap_or(1)
     }
 }
 
 impl OutputRecord {
     fn logical_size(&self) -> Size<i32, Logical> {
         Size::from((self.size.w, self.size.h))
+    }
+
+    fn client_logical_size(&self) -> Size<i32, Logical> {
+        Size::from((
+            scaled_client_dimension(self.size.w, self.scale),
+            scaled_client_dimension(self.size.h, self.scale),
+        ))
     }
 
     fn logical_rect(&self) -> Rectangle<i32, Logical> {
@@ -221,8 +232,8 @@ impl App {
         self.outputs.logical_rects()
     }
 
-    pub(super) fn minimum_output_logical_width(&self) -> i32 {
-        self.outputs.minimum_logical_width()
+    pub(super) fn minimum_output_client_logical_width(&self) -> i32 {
+        self.outputs.minimum_client_logical_width()
     }
 
     pub(in crate::compositor) fn set_output_layout(&mut self, layout: OutputLayout) -> bool {
@@ -407,4 +418,28 @@ fn update_output_mode_with_refresh_at(
         Some(Scale::Integer(scale)),
         Some(location),
     );
+}
+
+fn scaled_client_dimension(size: i32, scale: i32) -> i32 {
+    let size = size.max(1);
+    let scale = scale.max(1);
+    ((size + scale - 1) / scale).max(1)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::scaled_client_dimension;
+
+    #[test]
+    fn client_logical_dimension_divides_physical_size_by_output_scale() {
+        assert_eq!(scaled_client_dimension(2560, 4), 640);
+        assert_eq!(scaled_client_dimension(1920, 2), 960);
+    }
+
+    #[test]
+    fn client_logical_dimension_rounds_up_and_stays_positive() {
+        assert_eq!(scaled_client_dimension(1366, 2), 683);
+        assert_eq!(scaled_client_dimension(0, 4), 1);
+        assert_eq!(scaled_client_dimension(2560, 0), 2560);
+    }
 }
