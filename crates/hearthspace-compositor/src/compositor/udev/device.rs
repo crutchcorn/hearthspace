@@ -83,6 +83,7 @@ impl KmsOutputTarget {
                 subpixel: Subpixel::Unknown,
                 make: "DRM".into(),
                 model: self.connector_name.clone(),
+                serial_number: self.connector_name.clone(),
             },
             size: self.output_size(),
             scale: 1,

@@ -6,7 +6,7 @@ rust-version = "1.93.1"
 license = "Apache-2.0"
 
 [dependencies]
-xilem = { git = "https://github.com/linebender/xilem" }
+xilem = { git = "https://github.com/linebender/xilem", rev = "c5950bcb03d4f3d187a20d1159f6aa276fd056bf" }
 
 [lints.rust]
 unsafe_op_in_unsafe_fn = "deny"

@@ -337,10 +337,12 @@ from git rather than the latest published crates because crates.io is still
 behind APIs Hearthspace uses, including
 `xilem::WindowOptionsExtLinux::with_name(general, instance)` for setting
 Wayland `app_id` / X11 `WM_CLASS`.
+Keep these dependencies pinned to an explicit commit until intentionally
+updating Xilem and rerunning the full workspace checks.
 
 ```toml
-masonry = { git = "https://github.com/linebender/xilem", features = ["testing"] }
-xilem = { git = "https://github.com/linebender/xilem" }
+masonry = { git = "https://github.com/linebender/xilem", rev = "c5950bcb03d4f3d187a20d1159f6aa276fd056bf", features = ["testing"] }
+xilem = { git = "https://github.com/linebender/xilem", rev = "c5950bcb03d4f3d187a20d1159f6aa276fd056bf" }
 ```
 
 No local Xilem clone is required for normal development; Cargo fetches the git

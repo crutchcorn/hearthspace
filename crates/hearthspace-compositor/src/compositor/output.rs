@@ -429,6 +429,7 @@ pub(in crate::compositor) fn create_output(
                 subpixel: Subpixel::Unknown,
                 make: "Hearthspace".into(),
                 model: "Nested Canvas".into(),
+                serial_number: "Unknown".into(),
             },
             size,
             scale,

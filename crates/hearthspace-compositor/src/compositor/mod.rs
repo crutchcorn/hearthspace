@@ -30,9 +30,11 @@ pub(in crate::compositor) use input::handle_input_event;
 #[cfg(feature = "udev")]
 pub(in crate::compositor) use output::{OutputDescriptor, create_output_with_properties};
 pub(in crate::compositor) use output::{OutputLayout, OutputRecord, OutputSet, create_output};
+#[cfg(any(feature = "winit", feature = "udev"))]
+pub(in crate::compositor) use runtime::Backend;
 #[cfg(feature = "udev")]
 pub(in crate::compositor) use runtime::create_calloop_data;
-pub(in crate::compositor) use runtime::{Backend, CalloopData, HeadlessBackend, run_event_loop};
+pub(in crate::compositor) use runtime::{CalloopData, HeadlessBackend, run_event_loop};
 use shell_integration::{
     accept_command_connections, command_socket_path, remove_stale_socket, spawn_shell,
 };
@@ -45,7 +47,6 @@ pub use udev::run_udev;
 use calloop::signals::{Signal, Signals};
 use client::ClientState;
 use cursor::{CursorIcon, SoftwareCursor};
-#[cfg(any(feature = "winit", feature = "udev"))]
 use smithay::backend::input::TouchSlot;
 #[cfg(feature = "winit")]
 use smithay::backend::winit::{self, WinitEvent};
@@ -58,8 +59,6 @@ use smithay::{
         egl::{EGLContext, EGLDevice, EGLDisplay, native::EGLSurfacelessDisplay},
         renderer::{ImportDma, Offscreen, element::Id, gles::GlesRenderer},
     },
-    delegate_compositor, delegate_data_device, delegate_dmabuf, delegate_output, delegate_seat,
-    delegate_shm, delegate_xdg_decoration, delegate_xdg_shell,
     desktop::PopupManager,
     input::{Seat, SeatState, keyboard::KeyboardHandle, pointer::PointerHandle},
     reexports::{
@@ -594,11 +593,4 @@ fn log_idle_transition(transition: IdleTransition) {
     );
 }
 
-delegate_xdg_shell!(App);
-delegate_compositor!(App);
-delegate_shm!(App);
-delegate_seat!(App);
-delegate_data_device!(App);
-delegate_output!(App);
-delegate_xdg_decoration!(App);
-delegate_dmabuf!(App);
+smithay::delegate_dispatch2!(App);

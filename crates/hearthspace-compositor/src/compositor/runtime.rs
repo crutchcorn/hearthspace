@@ -211,7 +211,11 @@ impl CalloopData {
             backend
                 .window()
                 .set_cursor_visible(self.state.cursor_visible);
-            backend.window().set_cursor(self.applied_cursor);
+            backend
+                .window()
+                .set_cursor(smithay::reexports::winit::cursor::Cursor::Icon(
+                    self.applied_cursor,
+                ));
         }
     }
 
