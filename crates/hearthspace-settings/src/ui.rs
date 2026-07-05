@@ -6,10 +6,7 @@ use xilem::{
     core::fork,
     masonry::layout::AsUnit,
     style::Style,
-    view::{
-        CrossAxisAlignment, checkbox, flex_col, flex_item, flex_row, label, radio_button,
-        radio_group, sized_box, text_button, worker,
-    },
+    view::{CrossAxisAlignment, checkbox, flex_col, flex_item, flex_row, label, sized_box, worker},
 };
 
 use crate::{
@@ -168,32 +165,36 @@ fn appearance_settings_view(state: &SettingsApp) -> Box<AnyWidgetView<SettingsAp
             background_mode_picker(background_mode),
             components::field_label(format!("Background image: {background_image_label}")),
             flex_row((
-                text_button(select_background_button_label, |state: &mut SettingsApp| {
-                    if state.background_picker_pending {
-                        state.status = "Background image picker is already open".to_string();
-                        return;
-                    }
-
-                    let Some(sender) = &state.background_picker_request_sender else {
-                        state.status = "Background image picker is not ready".to_string();
-                        return;
-                    };
-
-                    match sender.send(BackgroundPickerRequest::PickFile) {
-                        Ok(()) => {
-                            state.background_picker_pending = true;
-                            state.status = "Opening background image picker".to_string();
+                components::action_button(
+                    select_background_button_label,
+                    |state: &mut SettingsApp| {
+                        if state.background_picker_pending {
+                            state.status = "Background image picker is already open".to_string();
+                            return;
                         }
-                        Err(error) => {
-                            state.status =
-                                format!("Failed to open background image picker: {error}");
+
+                        let Some(sender) = &state.background_picker_request_sender else {
+                            state.status = "Background image picker is not ready".to_string();
+                            return;
+                        };
+
+                        match sender.send(BackgroundPickerRequest::PickFile) {
+                            Ok(()) => {
+                                state.background_picker_pending = true;
+                                state.status = "Opening background image picker".to_string();
+                            }
+                            Err(error) => {
+                                state.status =
+                                    format!("Failed to open background image picker: {error}");
+                            }
                         }
-                    }
-                }),
-                text_button("Use default background", |state: &mut SettingsApp| {
+                    },
+                ),
+                components::action_button("Use default background", |state: &mut SettingsApp| {
                     save_background_image_path(state, None);
                 }),
-            )),
+            ))
+            .gap(10.0.px()),
         ))
         .cross_axis_alignment(CrossAxisAlignment::Start)
         .gap(12.0.px()),
@@ -251,36 +252,37 @@ fn status_footer(state: &SettingsApp) -> impl WidgetView<SettingsApp> + use<> {
 }
 
 fn background_mode_picker(selected_mode: BackgroundMode) -> impl WidgetView<SettingsApp> + use<> {
-    radio_group(flex_row((
-        radio_button(
+    flex_row((
+        components::segmented_option(
             "Repeat with canvas",
             selected_mode == BackgroundMode::RepeatWithCanvas,
             |state: &mut SettingsApp| {
                 save_background_mode(state, BackgroundMode::RepeatWithCanvas);
             },
         ),
-        radio_button(
+        components::segmented_option(
             "Stretch",
             selected_mode == BackgroundMode::Stretch,
             |state: &mut SettingsApp| {
                 save_background_mode(state, BackgroundMode::Stretch);
             },
         ),
-        radio_button(
+        components::segmented_option(
             "Contains",
             selected_mode == BackgroundMode::Contains,
             |state: &mut SettingsApp| {
                 save_background_mode(state, BackgroundMode::Contains);
             },
         ),
-        radio_button(
+        components::segmented_option(
             "Cover",
             selected_mode == BackgroundMode::Cover,
             |state: &mut SettingsApp| {
                 save_background_mode(state, BackgroundMode::Cover);
             },
         ),
-    )))
+    ))
+    .gap(8.0.px())
 }
 
 fn format_monitor_summary(monitors: &[MonitorConfig]) -> String {
@@ -305,11 +307,16 @@ fn monitor_details_view(state: &SettingsApp) -> Box<AnyWidgetView<SettingsApp>> 
         return label("Select a monitor to edit its settings.").boxed();
     };
 
+    let selected_scale = monitor.scale;
     let scale_buttons = MONITOR_SCALE_OPTIONS.map(|scale| {
         let id = monitor.id.clone();
-        text_button(format!("{}x", scale), move |state: &mut SettingsApp| {
-            save_monitor_scale(state, &id, scale);
-        })
+        components::segmented_option(
+            format!("{}x", scale),
+            selected_scale == scale,
+            move |state: &mut SettingsApp| {
+                save_monitor_scale(state, &id, scale);
+            },
+        )
     });
 
     flex_col((

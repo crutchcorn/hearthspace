@@ -5,8 +5,8 @@ use xilem::{
         layout::AsUnit,
         parley::{fontique::GenericFamily, style::FontWeight},
         properties::{
-            Background, BorderColor, BorderWidth, CaretColor, ContentColor, CornerRadius, Padding,
-            PlaceholderColor,
+            Background, BorderColor, BorderWidth, CaretColor, CheckmarkColor, CheckmarkStrokeWidth,
+            ContentColor, CornerRadius, Padding, PlaceholderColor,
         },
         theme::default_property_set,
         widgets::{Button, Checkbox, Label, RadioButton, TextArea, TextInput},
@@ -49,8 +49,53 @@ pub fn hearthspace_light_properties() -> DefaultProperties {
     }
 
     properties.insert::<Label, _>(ContentColor::new(TEXT));
+
     properties.insert::<Checkbox, _>(ContentColor::new(TEXT));
+    properties.insert::<Checkbox, _>(Background::Color(SURFACE));
+    properties.insert::<Checkbox, _>(BorderColor { color: BORDER });
+    properties.insert::<Checkbox, _>(BorderWidth { width: 1.0.px() });
+    properties.insert::<Checkbox, _>(CornerRadius { radius: 4.0.px() });
+    properties.insert::<Checkbox, _>(CheckmarkColor::new(ACCENT));
+    properties.insert::<Checkbox, _>(CheckmarkStrokeWidth { width: 2.0 });
+    {
+        let mut stack = PropertyStack::new();
+        stack.push(
+            Selector::new().with_hovered(true),
+            BorderColor { color: ACCENT },
+        );
+        stack.push(
+            Selector::new().with_focused(true),
+            BorderColor { color: ACCENT },
+        );
+        stack.push(
+            Selector::new().with_active(true),
+            Background::Color(ACCENT_SUBTLE),
+        );
+        properties.insert_stack::<Checkbox>(stack);
+    }
+
     properties.insert::<RadioButton, _>(ContentColor::new(TEXT));
+    properties.insert::<RadioButton, _>(Background::Color(SURFACE));
+    properties.insert::<RadioButton, _>(BorderColor { color: BORDER });
+    properties.insert::<RadioButton, _>(BorderWidth { width: 1.0.px() });
+    properties.insert::<RadioButton, _>(CheckmarkColor::new(ACCENT));
+    {
+        let mut stack = PropertyStack::new();
+        stack.push(
+            Selector::new().with_hovered(true),
+            BorderColor { color: ACCENT },
+        );
+        stack.push(
+            Selector::new().with_focused(true),
+            BorderColor { color: ACCENT },
+        );
+        stack.push(
+            Selector::new().with_active(true),
+            Background::Color(ACCENT_SUBTLE),
+        );
+        properties.insert_stack::<RadioButton>(stack);
+    }
+
     properties.insert::<TextArea<true>, _>(ContentColor::new(TEXT));
     properties.insert::<TextArea<false>, _>(ContentColor::new(TEXT));
 
@@ -155,6 +200,51 @@ where
                 .color(text_color),
         )
         .fixed_width(160.0.px()),
+        callback,
+    )
+    .background_color(background)
+    .border(border, 1.0.px())
+    .corner_radius(6.0.px())
+}
+
+pub fn action_button<State: 'static, Action: 'static, T, F>(
+    text: T,
+    callback: F,
+) -> impl WidgetView<State, Action> + use<State, Action, T, F>
+where
+    T: Into<ArcStr>,
+    F: Fn(&mut State) -> Action + Send + Sync + 'static,
+{
+    button(
+        label(text)
+            .font(GenericFamily::SystemUi)
+            .text_alignment(TextAlign::Center)
+            .color(TEXT),
+        callback,
+    )
+    .background_color(SURFACE)
+    .border(BORDER, 1.0.px())
+    .corner_radius(6.0.px())
+}
+
+pub fn segmented_option<State: 'static, Action: 'static, T, F>(
+    text: T,
+    selected: bool,
+    callback: F,
+) -> impl WidgetView<State, Action> + use<State, Action, T, F>
+where
+    T: Into<ArcStr>,
+    F: Fn(&mut State) -> Action + Send + Sync + 'static,
+{
+    let background = if selected { ACCENT_SUBTLE } else { SURFACE };
+    let border = if selected { ACCENT } else { BORDER };
+    let text_color = if selected { ACCENT } else { TEXT };
+
+    button(
+        label(text)
+            .font(GenericFamily::SystemUi)
+            .text_alignment(TextAlign::Center)
+            .color(text_color),
         callback,
     )
     .background_color(background)
