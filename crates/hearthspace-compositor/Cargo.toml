@@ -7,7 +7,7 @@ license = "Apache-2.0"
 default-run = "hearthspace-compositor"
 
 [features]
-default = ["winit"]
+default = ["winit", "xwayland"]
 e2e = ["dep:waydriver", "dep:waydriver-hearthspace"]
 test-apps = ["dep:gtk"]
 udev = [
@@ -21,6 +21,7 @@ udev = [
     "smithay/renderer_multi",
 ]
 winit = ["smithay/backend_winit"]
+xwayland = ["smithay/xwayland", "smithay/x11rb_event_source"]
 
 [[bin]]
 name = "hearthspace"

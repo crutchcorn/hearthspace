@@ -12,6 +12,8 @@ edges) or intentionally deferred. Native backend work lives in
       `Super`-modified scroll, but there is no pinch gesture zoom yet.
 - [ ] **Optional desktop protocols** — several optional protocols are not
       implemented yet, so clients may print warnings.
+- [ ] **XWayland polish** — X11 apps can map through XWayland, but clipboard,
+      drag-and-drop, and full EWMH state handling still need follow-up work.
 
 ## Deferred Scope
 
@@ -22,8 +24,3 @@ edges) or intentionally deferred. Native backend work lives in
 - [ ] **Theming** beyond the current proof-of-concept shell UI.
 - [ ] **DRM/KMS backend and libinput device management** — tracked in
       [NATIVE_BACKEND.md](./NATIVE_BACKEND.md).
-
-## Out of Scope
-
-- **X11/Xwayland support** — intentionally out of scope unless a concrete need
-  appears.

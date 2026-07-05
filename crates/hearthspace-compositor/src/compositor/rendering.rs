@@ -23,7 +23,7 @@ use smithay::{
 use std::sync::Mutex;
 use wayland_server::protocol::wl_surface;
 
-use super::{App, ManagedWindowKind, masonry_titlebar, windows::toplevel_title};
+use super::{App, ManagedWindowKind, masonry_titlebar, windows::window_title};
 
 mod background;
 
@@ -284,13 +284,15 @@ impl App {
         window_index: usize,
     ) -> Vec<HearthspaceRenderElement> {
         let window = &self.windows[window_index];
-        let parent = window.surface.wl_surface();
+        let Some(parent) = window.surface.wl_surface() else {
+            return Vec::new();
+        };
         let base = self.surface_screen_origin(window_index);
         let scale = self.window_render_scale(window_index);
-        let geometry_loc = toplevel_geometry_loc(parent);
+        let geometry_loc = self.window_surface_geometry_loc(window_index);
 
         let mut elements = Vec::new();
-        for (popup, popup_offset) in PopupManager::popups_for_surface(parent) {
+        for (popup, popup_offset) in PopupManager::popups_for_surface(&parent) {
             // Offset of the popup surface origin from the parent surface origin,
             // in the parent's native (unscaled) logical coordinates.
             let offset = geometry_loc + popup_offset - popup.geometry().loc;
@@ -325,9 +327,12 @@ impl App {
         origin: Point<i32, Physical>,
     ) -> Vec<WaylandSurfaceRenderElement<GlesRenderer>> {
         let window = &self.windows[window_index];
+        let Some(root) = window.surface.wl_surface() else {
+            return Vec::new();
+        };
         render_elements_from_surface_tree(
             renderer,
-            window.surface.wl_surface(),
+            &root,
             origin,
             // Built at native scale; the viewport zoom is applied by wrapping
             // these elements in a `RescaleRenderElement` in the caller.
@@ -374,7 +379,7 @@ impl App {
         let native_size = self.title_bar_canvas_rect(window_index).size;
         let native_w = native_size.w.max(1);
 
-        let title = toplevel_title(&self.windows[window_index].surface)
+        let title = window_title(&self.windows[window_index].surface)
             .filter(|title| !title.trim().is_empty())
             .unwrap_or_else(|| "Hearthspace".to_string());
         let active = Some(window_index)

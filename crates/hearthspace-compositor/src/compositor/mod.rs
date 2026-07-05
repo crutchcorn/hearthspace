@@ -23,6 +23,8 @@ mod shell_integration;
 mod udev;
 mod viewport;
 mod windows;
+#[cfg(feature = "xwayland")]
+mod xwayland;
 
 use idle::{IdleTransition, WindowIdleDaemon};
 #[cfg(any(feature = "winit", feature = "udev"))]
@@ -80,13 +82,18 @@ use smithay::{
         viewporter::ViewporterState,
     },
 };
+#[cfg(feature = "xwayland")]
+use smithay::{
+    wayland::xwayland_shell::XWaylandShellState,
+    xwayland::{X11Surface, X11Wm},
+};
 use tracing::{debug, error, info};
 use wayland_protocols::xdg::shell::server::xdg_toplevel;
 use wayland_server::{DisplayHandle, protocol::wl_surface::WlSurface};
 
 struct ManagedWindow {
     id: u64,
-    surface: ToplevelSurface,
+    surface: ManagedSurface,
     position: CanvasPoint,
     kind: ManagedWindowKind,
     shell_output_name: Option<String>,
@@ -102,6 +109,59 @@ struct ManagedWindow {
     /// window moves onto an output with a different scale (e.g. dragged across
     /// monitors). `0.0` is a sentinel meaning "nothing advertised yet".
     advertised_fractional_scale: f64,
+}
+
+#[derive(Clone)]
+enum ManagedSurface {
+    Xdg(ToplevelSurface),
+    #[cfg(feature = "xwayland")]
+    X11(Box<X11Surface>),
+}
+
+impl ManagedSurface {
+    fn wl_surface(&self) -> Option<WlSurface> {
+        match self {
+            Self::Xdg(surface) => Some(surface.wl_surface().clone()),
+            #[cfg(feature = "xwayland")]
+            Self::X11(surface) => surface.wl_surface(),
+        }
+    }
+
+    fn xdg_toplevel(&self) -> Option<&ToplevelSurface> {
+        match self {
+            Self::Xdg(surface) => Some(surface),
+            #[cfg(feature = "xwayland")]
+            Self::X11(_) => None,
+        }
+    }
+
+    fn send_close(&self) {
+        match self {
+            Self::Xdg(surface) => surface.send_close(),
+            #[cfg(feature = "xwayland")]
+            Self::X11(surface) => {
+                if let Err(error) = surface.close() {
+                    tracing::warn!(%error, "failed to close X11 window");
+                }
+            }
+        }
+    }
+
+    fn same_xdg(&self, other: &ToplevelSurface) -> bool {
+        match self {
+            Self::Xdg(surface) => surface == other,
+            #[cfg(feature = "xwayland")]
+            Self::X11(_) => false,
+        }
+    }
+
+    #[cfg(feature = "xwayland")]
+    fn same_x11(&self, other: &X11Surface) -> bool {
+        match self {
+            Self::Xdg(_) => false,
+            Self::X11(surface) => surface.as_ref() == other,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -175,6 +235,8 @@ struct App {
     /// they render buffers at the monitor scale instead of falling back to a
     /// mismatched integer buffer scale.
     _fractional_scale_manager_state: FractionalScaleManagerState,
+    #[cfg(feature = "xwayland")]
+    _xwayland_shell_state: XWaylandShellState,
     shm_state: ShmState,
     seat_state: SeatState<Self>,
     data_device_state: DataDeviceState,
@@ -226,6 +288,10 @@ struct App {
     background_tile_ids: Vec<Id>,
     software_cursor_visible: bool,
     software_cursor: SoftwareCursor,
+    #[cfg(feature = "xwayland")]
+    xwm: Option<X11Wm>,
+    #[cfg(feature = "xwayland")]
+    xdisplay: Option<u32>,
 }
 
 #[derive(Debug, Default)]
@@ -358,6 +424,8 @@ pub fn run_winit(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> 
         full_redraw: 1,
         applied_cursor: CursorIcon::Default,
         applied_cursor_visible: true,
+        #[cfg(feature = "xwayland")]
+        xwayland_seat_state: SeatState::new(),
     };
 
     run_event_loop(event_loop, &mut data)
@@ -456,6 +524,8 @@ pub(in crate::compositor) fn initialize_app(
     let output_manager_state = OutputManagerState::new_with_xdg_output::<App>(&dh);
     let viewporter_state = ViewporterState::new::<App>(&dh);
     let fractional_scale_manager_state = FractionalScaleManagerState::new::<App>(&dh);
+    #[cfg(feature = "xwayland")]
+    let xwayland_shell_state = XWaylandShellState::new::<App>(&dh);
     let shm_state = ShmState::new::<App>(&dh, vec![]);
     let mut seat_state = SeatState::new();
     let mut seat = seat_state.new_wl_seat(&dh, "hearthspace");
@@ -495,6 +565,8 @@ pub(in crate::compositor) fn initialize_app(
         _output_manager_state: output_manager_state,
         _viewporter_state: viewporter_state,
         _fractional_scale_manager_state: fractional_scale_manager_state,
+        #[cfg(feature = "xwayland")]
+        _xwayland_shell_state: xwayland_shell_state,
         shm_state,
         seat_state,
         data_device_state: DataDeviceState::new::<App>(&dh),
@@ -535,7 +607,16 @@ pub(in crate::compositor) fn initialize_app(
         background_tile_ids: Vec::new(),
         software_cursor_visible: false,
         software_cursor: cursor::standard_software_cursor(),
+        #[cfg(feature = "xwayland")]
+        xwm: None,
+        #[cfg(feature = "xwayland")]
+        xdisplay: None,
     };
+
+    #[cfg(feature = "xwayland")]
+    let mut app = app;
+    #[cfg(feature = "xwayland")]
+    app.start_xwayland(&dh);
 
     if options.start_shell {
         info!(path = %command_socket_path.display(), "spawning shell client");

@@ -105,8 +105,9 @@ impl App {
                 }
                 Some(HitTarget::TitleBar { window_index }) => {
                     let window_index = self.raise_window(window_index);
-                    let surface = self.windows[window_index].surface.wl_surface().clone();
-                    self.set_keyboard_focus_to_window(window_index, surface);
+                    if let Some(surface) = self.windows[window_index].surface.wl_surface() {
+                        self.set_keyboard_focus_to_window(window_index, surface);
+                    }
                     self.drag = Some(DragState {
                         window_id: self.windows[window_index].id,
                         pointer_start: self.raw_pointer_location,
@@ -124,8 +125,9 @@ impl App {
                     edges,
                 }) => {
                     let window_index = self.raise_window(window_index);
-                    let surface = self.windows[window_index].surface.wl_surface().clone();
-                    self.set_keyboard_focus_to_window(window_index, surface);
+                    if let Some(surface) = self.windows[window_index].surface.wl_surface() {
+                        self.set_keyboard_focus_to_window(window_index, surface);
+                    }
                     debug!(
                         window_id = self.windows[window_index].id,
                         ?edges,
@@ -136,8 +138,9 @@ impl App {
                 }
                 Some(HitTarget::Client { window_index, .. }) => {
                     let window_index = self.raise_window(window_index);
-                    let surface = self.windows[window_index].surface.wl_surface().clone();
-                    self.set_keyboard_focus_to_window(window_index, surface);
+                    if let Some(surface) = self.windows[window_index].surface.wl_surface() {
+                        self.set_keyboard_focus_to_window(window_index, surface);
+                    }
                 }
                 None => {
                     debug!("clearing keyboard focus from synthetic pointer press on canvas");

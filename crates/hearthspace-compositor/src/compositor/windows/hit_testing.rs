@@ -9,7 +9,7 @@ use crate::{
 };
 
 use super::geometry::resize_edges_at;
-use crate::compositor::{App, HitTarget, ManagedWindowKind, rendering::toplevel_geometry_loc};
+use crate::compositor::{App, HitTarget, ManagedWindowKind};
 
 impl App {
     pub(in crate::compositor) fn hit_test(
@@ -60,10 +60,11 @@ impl App {
             // Popups (menus) sit above this window's content and chrome, so
             // they are hit-tested first. Their location comes from the popup's
             // configured offset relative to the parent surface origin.
-            let geometry_loc = toplevel_geometry_loc(window.surface.wl_surface());
-            for (popup, popup_offset) in
-                PopupManager::popups_for_surface(window.surface.wl_surface())
-            {
+            let Some(root) = window.surface.wl_surface() else {
+                continue;
+            };
+            let geometry_loc = self.window_surface_geometry_loc(window_index);
+            for (popup, popup_offset) in PopupManager::popups_for_surface(&root) {
                 let popup_origin =
                     content_origin + geometry_loc + popup_offset - popup.geometry().loc;
                 let hit = under_from_surface_tree(
@@ -112,7 +113,7 @@ impl App {
             }
 
             if let Some((surface, surface_location)) = under_from_surface_tree(
-                window.surface.wl_surface(),
+                &root,
                 canvas_location,
                 content_origin,
                 WindowSurfaceType::ALL,
@@ -138,18 +139,15 @@ impl App {
         scale: f64,
     ) -> Option<HitTarget> {
         let window = &self.windows[window_index];
+        let root = window.surface.wl_surface()?;
         let scale = scale.max(1.0);
         let origin_f64 = origin.to_f64();
         let unscaled_location = Point::from((
             origin_f64.x + (location.x - origin_f64.x) / scale,
             origin_f64.y + (location.y - origin_f64.y) / scale,
         ));
-        let (surface, surface_location) = under_from_surface_tree(
-            window.surface.wl_surface(),
-            unscaled_location,
-            origin,
-            WindowSurfaceType::ALL,
-        )?;
+        let (surface, surface_location) =
+            under_from_surface_tree(&root, unscaled_location, origin, WindowSurfaceType::ALL)?;
         let relative_surface_location = unscaled_location - surface_location.to_f64();
         let pointer_focus_origin = location - relative_surface_location;
         Some(HitTarget::Client {

@@ -359,7 +359,12 @@ impl App {
         };
 
         let launch_env = match launch_environment_for_app(&app) {
-            Ok(env) => env,
+            Ok(mut env) => {
+                if let Some(display) = self.xwayland_display_name() {
+                    env.push(("DISPLAY".to_string(), display));
+                }
+                env
+            }
             Err(error) => {
                 error!(app_id, %error, "failed to prepare app environment");
                 return;
@@ -375,6 +380,18 @@ impl App {
             error!(app_id, %error, "failed to launch desktop app");
         } else {
             info!(app_id, wayland_display, argv = ?command, "launched desktop app");
+        }
+    }
+
+    fn xwayland_display_name(&self) -> Option<String> {
+        #[cfg(feature = "xwayland")]
+        {
+            self.xdisplay
+                .map(|display_number| format!(":{display_number}"))
+        }
+        #[cfg(not(feature = "xwayland"))]
+        {
+            None
         }
     }
 

@@ -29,7 +29,7 @@ use geometry::{
 };
 
 use super::{
-    App, ManagedWindow, ManagedWindowKind, ResizeState, WindowDecoration,
+    App, ManagedSurface, ManagedWindow, ManagedWindowKind, ResizeState, WindowDecoration,
     idle::ActivityReason,
     rendering::{toplevel_geometry_loc, toplevel_geometry_size},
 };
@@ -99,6 +99,17 @@ pub(super) fn toplevel_title(surface: &ToplevelSurface) -> Option<String> {
     })
 }
 
+pub(super) fn window_title(surface: &ManagedSurface) -> Option<String> {
+    match surface {
+        ManagedSurface::Xdg(surface) => toplevel_title(surface),
+        #[cfg(feature = "xwayland")]
+        ManagedSurface::X11(surface) => {
+            let title = surface.title();
+            (!title.trim().is_empty()).then_some(title)
+        }
+    }
+}
+
 pub(super) fn position_for_new_window(
     kind: ManagedWindowKind,
     fallback: CanvasPoint,
@@ -164,9 +175,13 @@ impl App {
     }
 
     pub(super) fn window_index_for_surface(&self, surface: &WlSurface) -> Option<usize> {
-        self.windows
-            .iter()
-            .position(|window| surface_tree_contains(window.surface.wl_surface(), surface))
+        self.windows.iter().position(|window| {
+            window
+                .surface
+                .wl_surface()
+                .as_ref()
+                .is_some_and(|root| surface_tree_contains(root, surface))
+        })
     }
 
     pub(super) fn window_mut_by_id(&mut self, window_id: u64) -> Option<&mut ManagedWindow> {
@@ -178,7 +193,11 @@ impl App {
     pub(super) fn managed_normal_window_id_for_surface(&self, surface: &WlSurface) -> Option<u64> {
         self.windows.iter().find_map(|window| {
             (window.kind == ManagedWindowKind::Normal
-                && surface_tree_contains(window.surface.wl_surface(), surface))
+                && window
+                    .surface
+                    .wl_surface()
+                    .as_ref()
+                    .is_some_and(|root| surface_tree_contains(root, surface)))
             .then_some(window.id)
         })
     }
@@ -191,11 +210,10 @@ impl App {
         let Some(window_index) = self.window_index_for_surface(surface) else {
             return;
         };
-        let bbox = bbox_from_surface_tree(
-            self.windows[window_index].surface.wl_surface(),
-            Point::<i32, Logical>::from((0, 0)),
-        );
-        self.windows[window_index].content_bbox_size = bbox.size;
+        if let Some(root) = self.windows[window_index].surface.wl_surface() {
+            let bbox = bbox_from_surface_tree(&root, Point::<i32, Logical>::from((0, 0)));
+            self.windows[window_index].content_bbox_size = bbox.size;
+        }
     }
 
     pub(super) fn refresh_normal_window_outputs(&self) {
@@ -206,7 +224,9 @@ impl App {
             let Some(rect) = self.normal_window_screen_rect(window_index) else {
                 continue;
             };
-            self.enter_outputs_intersecting(window.surface.wl_surface(), rect);
+            if let Some(surface) = window.surface.wl_surface() {
+                self.enter_outputs_intersecting(&surface, rect);
+            }
         }
     }
 
@@ -222,8 +242,8 @@ impl App {
             .filter(|window| window.kind == ManagedWindowKind::Normal)
             .map(|window| ManagedWindowAccessibilityInfo {
                 id: window.id,
-                app_id: toplevel_app_id(&window.surface),
-                title: toplevel_title(&window.surface),
+                app_id: window_app_id(&window.surface),
+                title: window_title(&window.surface),
             })
             .collect()
     }
@@ -299,18 +319,15 @@ impl App {
     #[cfg_attr(not(feature = "winit"), allow(dead_code))]
     pub(super) fn configure_shell_bars(&self) {
         for window in &self.windows {
-            if window.kind.is_shell_chrome() {
-                self.enter_shell_output(
-                    window.surface.wl_surface(),
-                    window.shell_output_name.as_deref(),
-                );
+            if window.kind.is_shell_chrome()
+                && let Some(surface) = window.surface.wl_surface()
+            {
+                self.enter_shell_output(&surface, window.shell_output_name.as_deref());
             }
-            if window.kind == ManagedWindowKind::ShellBar {
-                self.configure_toplevel(
-                    &window.surface,
-                    window.kind,
-                    window.shell_output_name.as_deref(),
-                );
+            if window.kind == ManagedWindowKind::ShellBar
+                && let Some(surface) = window.surface.xdg_toplevel()
+            {
+                self.configure_toplevel(surface, window.kind, window.shell_output_name.as_deref());
             }
         }
     }
@@ -332,7 +349,7 @@ impl App {
         if let Some(window) = self
             .windows
             .iter_mut()
-            .find(|window| window.surface == *toplevel)
+            .find(|window| window.surface.same_xdg(toplevel))
         {
             window.decoration = decoration;
         }
@@ -386,7 +403,7 @@ impl App {
     /// surface-tree bounding box otherwise.
     fn window_geometry_size(&self, window_index: usize) -> Size<i32, Logical> {
         let window = &self.windows[window_index];
-        toplevel_geometry_size(window.surface.wl_surface())
+        self.window_surface_geometry_size(window_index)
             .filter(|size| size.w > 0 && size.h > 0)
             .unwrap_or(window.content_bbox_size)
     }
@@ -401,7 +418,7 @@ impl App {
             return window_canvas_rect_for(window.position, window.content_bbox_size, true);
         }
         let surface_origin = self.content_canvas_origin(window_index);
-        let geometry_loc = toplevel_geometry_loc(window.surface.wl_surface());
+        let geometry_loc = self.window_surface_geometry_loc(window_index);
         Rectangle::new(
             surface_origin + geometry_loc,
             self.window_geometry_size(window_index),
@@ -477,11 +494,23 @@ impl App {
         let Some(window) = self.windows.iter().find(|window| window.id == window_id) else {
             return;
         };
-        window.surface.with_pending_state(|state| {
-            state.states.set(xdg_toplevel::State::Resizing);
-            state.size = Some(size);
-        });
-        window.surface.send_configure();
+        match &window.surface {
+            ManagedSurface::Xdg(surface) => {
+                surface.with_pending_state(|state| {
+                    state.states.set(xdg_toplevel::State::Resizing);
+                    state.size = Some(size);
+                });
+                surface.send_configure();
+            }
+            #[cfg(feature = "xwayland")]
+            ManagedSurface::X11(surface) => {
+                let rect =
+                    Rectangle::new(Point::from((window.position.x, window.position.y)), size);
+                if let Err(error) = surface.configure(Some(rect)) {
+                    tracing::warn!(%error, "failed to configure X11 resize");
+                }
+            }
+        }
     }
 
     /// End the active interactive resize, clearing the `Resizing` state on the
@@ -495,11 +524,12 @@ impl App {
             .windows
             .iter()
             .find(|window| window.id == resize.window_id)
+            && let Some(surface) = window.surface.xdg_toplevel()
         {
-            window.surface.with_pending_state(|state| {
+            surface.with_pending_state(|state| {
                 state.states.unset(xdg_toplevel::State::Resizing);
             });
-            window.surface.send_configure();
+            surface.send_configure();
         }
     }
 
@@ -578,6 +608,33 @@ impl App {
                 .launcher_logical_origin(window_index)
                 .unwrap_or_else(|| Point::from((0, CONTROL_BAR_HEIGHT)))
                 .to_physical(1),
+        }
+    }
+
+    pub(super) fn window_surface_geometry_loc(&self, window_index: usize) -> Point<i32, Logical> {
+        match &self.windows[window_index].surface {
+            ManagedSurface::Xdg(surface) => toplevel_geometry_loc(surface.wl_surface()),
+            #[cfg(feature = "xwayland")]
+            ManagedSurface::X11(surface) => surface.geometry().loc,
+        }
+    }
+
+    fn window_surface_geometry_size(&self, window_index: usize) -> Option<Size<i32, Logical>> {
+        match &self.windows[window_index].surface {
+            ManagedSurface::Xdg(surface) => toplevel_geometry_size(surface.wl_surface()),
+            #[cfg(feature = "xwayland")]
+            ManagedSurface::X11(surface) => Some(surface.geometry().size),
+        }
+    }
+}
+
+fn window_app_id(surface: &ManagedSurface) -> Option<String> {
+    match surface {
+        ManagedSurface::Xdg(surface) => toplevel_app_id(surface),
+        #[cfg(feature = "xwayland")]
+        ManagedSurface::X11(surface) => {
+            let class = surface.class();
+            (!class.trim().is_empty()).then_some(class)
         }
     }
 }
