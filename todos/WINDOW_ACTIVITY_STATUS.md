@@ -10,9 +10,9 @@ This is purely about a window's **activity lifecycle** — how idle it is and wh
 
 Today this system is a rough, timer-based per-window inactivity tracker. It tracks elapsed inactivity and emits transition hooks, but does not yet act on them.
 
-* Hearthspace has a standalone timer-based per-window idle daemon in `src/compositor/idle.rs`.
+* Hearthspace has a standalone timer-based per-window idle daemon.
 * Normal app windows are tracked individually by Hearthspace window ID; shell UI is excluded.
-* Idle levels are configured by `WINDOW_IDLE_THRESHOLDS` in `src/config.rs`.
+* Idle levels are configured by `WINDOW_IDLE_THRESHOLDS`.
 * Each level is measured from the previous level transition, not from original window creation.
 * Client input and client surface commits reset app-window idle state.
 * Compositor chrome interactions, such as title-bar drags and close-button clicks, do not count as app activity.

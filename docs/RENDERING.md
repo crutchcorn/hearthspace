@@ -15,7 +15,7 @@ Wayland clients deliver frames as either:
   Xilem shell). These come with an *implicit-sync fence* that only signals
   once the client's GPU work has actually finished. We advertise
   `zwp_linux_dmabuf_v1` so these clients can hand us hardware buffers instead of
-  failing EGL setup. See `run_winit` in `src/compositor/mod.rs`.
+  failing EGL setup.
 
 Because our `GlesRenderer` is not reachable from the Wayland handlers (it lives
 on `CalloopData`, a sibling of the `App` handler state), dmabuf imports are
