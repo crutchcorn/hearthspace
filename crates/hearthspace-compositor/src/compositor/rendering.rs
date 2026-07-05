@@ -259,9 +259,10 @@ impl App {
     pub(super) fn window_render_scale(&self, window_index: usize) -> f64 {
         match self.windows[window_index].kind {
             ManagedWindowKind::Normal => self.viewport_scale,
-            ManagedWindowKind::ShellBar
-            | ManagedWindowKind::Launcher
-            | ManagedWindowKind::ShellWatcher => 1.0,
+            ManagedWindowKind::ShellBar | ManagedWindowKind::Launcher => f64::from(
+                self.output_scale_for_name(self.windows[window_index].shell_output_name.as_deref()),
+            ),
+            ManagedWindowKind::ShellWatcher => 1.0,
         }
     }
 

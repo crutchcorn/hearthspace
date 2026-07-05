@@ -266,6 +266,13 @@ impl App {
             .map(OutputRecord::logical_rect)
     }
 
+    pub(super) fn output_scale_for_name(&self, name: Option<&str>) -> i32 {
+        self.outputs
+            .output_for_name(name)
+            .map(|output| output.scale.max(1))
+            .unwrap_or(1)
+    }
+
     pub(in crate::compositor) fn set_output_layout(&mut self, layout: OutputLayout) -> bool {
         self.outputs.set_layout(layout)
     }
