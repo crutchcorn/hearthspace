@@ -76,11 +76,12 @@ fn launcher_window(
 ) -> WindowView<ShellState> {
     let launcher_app_id = output.launcher_app_id();
     let launcher_id = output.launcher_window_id;
+    let output_name = output.output_name.clone();
     let size = launcher_size(results.len());
     window(
         launcher_id,
         "Hearthspace Launcher",
-        launcher_view(output_key, results),
+        launcher_view(output_key, output_name, results),
     )
     .with_options(move |options| {
         options
@@ -111,6 +112,7 @@ fn search_results(state: &ShellState, output_key: &str) -> Vec<DesktopApp> {
 fn bar_view(output: &ShellOutputInstance) -> impl WidgetView<ShellState> + use<> {
     let output_key = output.key().to_string();
     let search_output_key = output_key.clone();
+    let search_output_name = output.output_name.clone();
     let search = text_input(
         output.query.clone(),
         move |state: &mut ShellState, value: String| {
@@ -127,7 +129,11 @@ fn bar_view(output: &ShellOutputInstance) -> impl WidgetView<ShellState> + use<>
             return;
         }
         if let Some(app) = state.catalog.search(query, 1).into_iter().next() {
-            launch_app(&state.command_socket, &app.id);
+            launch_app(
+                &state.command_socket,
+                &app.id,
+                search_output_name.as_deref(),
+            );
             if let Some(query) = state.output_query_mut(&search_output_key) {
                 query.clear();
             }
@@ -170,6 +176,7 @@ fn output_watcher_view() -> impl WidgetView<ShellState> + use<> {
 
 fn launcher_view(
     output_key: String,
+    output_name: Option<String>,
     results: Vec<DesktopApp>,
 ) -> impl WidgetView<ShellState> + use<> {
     let buttons: Vec<Box<AnyWidgetView<ShellState>>> = results
@@ -177,11 +184,12 @@ fn launcher_view(
         .map(|app| {
             let app_id = app.id;
             let output_key = output_key.clone();
+            let output_name = output_name.clone();
             button(
                 sized_box(label(app.name).text_alignment(TextAlign::Start))
                     .fixed_width(LAUNCHER_ITEM_WIDTH.px()),
                 move |state: &mut ShellState| {
-                    launch_app(&state.command_socket, &app_id);
+                    launch_app(&state.command_socket, &app_id, output_name.as_deref());
                     if let Some(query) = state.output_query_mut(&output_key) {
                         query.clear();
                     }

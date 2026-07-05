@@ -334,11 +334,7 @@ impl App {
         self.outputs.apply_layout_to_existing_outputs();
     }
 
-    pub(super) fn enter_primary_output(&self, surface: &WlSurface) {
-        self.outputs.primary.output.enter(surface);
-    }
-
-    pub(super) fn enter_shell_output(&self, surface: &WlSurface, name: Option<&str>) {
+    pub(super) fn enter_output(&self, surface: &WlSurface, name: Option<&str>) {
         for output in std::iter::once(&self.outputs.primary).chain(self.outputs.secondary.iter()) {
             if self
                 .outputs
@@ -350,6 +346,10 @@ impl App {
                 output.output.leave(surface);
             }
         }
+    }
+
+    pub(super) fn enter_shell_output(&self, surface: &WlSurface, name: Option<&str>) {
+        self.enter_output(surface, name);
     }
 
     pub(super) fn cleanup_outputs(&mut self) {

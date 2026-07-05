@@ -4,11 +4,15 @@ use tracing::{debug, error};
 
 use crate::ShellCommand;
 
-pub(super) fn launch_app(command_socket: &PathBuf, app_id: &str) {
-    send_command(
-        command_socket,
-        &ShellCommand::LaunchApp(app_id.to_string()).wire_name(),
-    );
+pub(super) fn launch_app(command_socket: &PathBuf, app_id: &str, output_name: Option<&str>) {
+    let command = match output_name {
+        Some(output_name) => ShellCommand::LaunchAppOnOutput {
+            app_id: app_id.to_string(),
+            output_name: output_name.to_string(),
+        },
+        None => ShellCommand::LaunchApp(app_id.to_string()),
+    };
+    send_command(command_socket, &command.wire_name());
 }
 
 pub(super) fn send_command(command_socket: &PathBuf, command: &str) {

@@ -180,6 +180,7 @@ struct App {
     /// (which owns the winit window, a sibling of this handler state).
     cursor_icon: CursorIcon,
     next_spawn_position: CanvasPoint,
+    next_spawn_output_name: Option<String>,
     spawn_offset: i32,
     pointer_location: Point<f64, Logical>,
     raw_pointer_location: Point<f64, Logical>,
@@ -483,6 +484,7 @@ pub(in crate::compositor) fn initialize_app(
         resize: None,
         cursor_icon: CursorIcon::Default,
         next_spawn_position: CanvasPoint { x: 80, y: 96 },
+        next_spawn_output_name: None,
         spawn_offset: 0,
         pointer_location: (0.0, 0.0).into(),
         raw_pointer_location: (0.0, 0.0).into(),

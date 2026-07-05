@@ -65,6 +65,9 @@ impl XdgShellHandler for App {
     fn new_toplevel(&mut self, surface: ToplevelSurface) {
         let kind = window_kind_for_toplevel(&surface);
         let shell_output_name = shell_output_name_for_toplevel(&surface);
+        let spawn_output_name = (kind == ManagedWindowKind::Normal)
+            .then(|| self.next_spawn_output_name.take())
+            .flatten();
         let id = self.next_window_id;
         self.next_window_id += 1;
         info!(
@@ -89,7 +92,7 @@ impl XdgShellHandler for App {
         if kind.is_shell_chrome() {
             self.enter_shell_output(surface.wl_surface(), shell_output_name.as_deref());
         } else {
-            self.enter_primary_output(surface.wl_surface());
+            self.enter_output(surface.wl_surface(), spawn_output_name.as_deref());
         }
         self.request_redraw();
 
@@ -282,7 +285,7 @@ impl XdgShellHandler for App {
             if kind.is_shell_chrome() {
                 self.enter_shell_output(surface.wl_surface(), shell_output_name.as_deref());
             } else {
-                self.enter_primary_output(surface.wl_surface());
+                self.enter_output(surface.wl_surface(), None);
             }
             self.configure_toplevel(&surface, kind, shell_output_name.as_deref());
             self.request_redraw();
