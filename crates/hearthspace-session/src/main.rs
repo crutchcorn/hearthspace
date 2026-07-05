@@ -89,7 +89,14 @@ struct ProcessSpec {
     program: String,
     args: Vec<String>,
     envs: Vec<(String, String)>,
+    env_removals: Vec<String>,
     current_dir: Option<PathBuf>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum CompositorBackend {
+    NativeTty,
+    NestedWinit,
 }
 
 struct ManagedProcess {
@@ -138,14 +145,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let shutdown_requested = install_signal_handler()?;
     let mut supervisor = Supervisor::new(mode, paths, session_env, shutdown_requested);
 
-    supervisor.start_settingsd(if args.no_settingsd_restart { 0 } else { 3 })?;
-    supervisor.wait_for_settingsd_ready()?;
-    supervisor.start_compositor()?;
-    supervisor.wait_for_compositor_ready()?;
-    supervisor.start_shell(if args.no_shell_restart { 0 } else { 3 })?;
-    supervisor.start_app_watcher_if_available(&args)?;
+    let monitor_result = (|| {
+        supervisor.start_settingsd(if args.no_settingsd_restart { 0 } else { 3 })?;
+        supervisor.wait_for_settingsd_ready()?;
+        supervisor.start_compositor()?;
+        supervisor.wait_for_compositor_ready()?;
+        supervisor.start_shell(if args.no_shell_restart { 0 } else { 3 })?;
+        supervisor.start_app_watcher_if_available(&args)?;
 
-    let monitor_result = supervisor.monitor_until_exit();
+        supervisor.monitor_until_exit()
+    })();
     supervisor.shutdown();
     monitor_result
 }
@@ -342,11 +351,17 @@ impl Supervisor {
     }
 
     fn start_compositor(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        let spec = self.binary_spec(
+        let backend = select_compositor_backend();
+        let backend_flag = match backend {
+            CompositorBackend::NativeTty => "--tty",
+            CompositorBackend::NestedWinit => "--winit",
+        };
+        let mut spec = self.binary_spec(
             "hearthspace-compositor",
-            &[hearthspace_common::NO_SHELL_FLAG],
+            &[hearthspace_common::NO_SHELL_FLAG, backend_flag],
             false,
         );
+        configure_compositor_environment(&mut spec, backend);
         self.compositor = Some(ManagedProcess::spawn(spec, 0)?);
         Ok(())
     }
@@ -519,6 +534,7 @@ impl Supervisor {
                     program: "cargo".to_string(),
                     args,
                     envs,
+                    env_removals: Vec::new(),
                     current_dir,
                 }
             }
@@ -527,6 +543,7 @@ impl Supervisor {
                 program: binary.to_string(),
                 args: binary_args.iter().map(|arg| (*arg).to_string()).collect(),
                 envs,
+                env_removals: Vec::new(),
                 current_dir,
             },
         }
@@ -562,6 +579,7 @@ impl Supervisor {
                     "build -p hearthspace-settings".to_string(),
                 ],
                 envs,
+                env_removals: Vec::new(),
                 current_dir,
             });
         }
@@ -583,11 +601,59 @@ impl Supervisor {
                     "hearthspace-settings".to_string(),
                 ],
                 envs,
+                env_removals: Vec::new(),
                 current_dir,
             });
         }
         None
     }
+}
+
+fn select_compositor_backend() -> CompositorBackend {
+    if env::var("XDG_SESSION_TYPE").is_ok_and(|session_type| session_type == "tty") {
+        return CompositorBackend::NativeTty;
+    }
+
+    if host_wayland_display_path().is_some() || env::var_os("DISPLAY").is_some() {
+        CompositorBackend::NestedWinit
+    } else {
+        CompositorBackend::NativeTty
+    }
+}
+
+fn configure_compositor_environment(spec: &mut ProcessSpec, backend: CompositorBackend) {
+    spec.env_removals.extend([
+        "WAYLAND_DISPLAY".to_string(),
+        "WAYLAND_SOCKET".to_string(),
+        "DISPLAY".to_string(),
+    ]);
+
+    if backend == CompositorBackend::NestedWinit {
+        if let Some(path) = host_wayland_display_path() {
+            spec.envs
+                .push((hearthspace_common::WAYLAND_DISPLAY_ENV.to_string(), path));
+        }
+        if let Some(display) = env::var_os("DISPLAY") {
+            spec.envs.push((
+                "DISPLAY".to_string(),
+                display.to_string_lossy().into_owned(),
+            ));
+        }
+    }
+}
+
+fn host_wayland_display_path() -> Option<String> {
+    let display = env::var_os("WAYLAND_DISPLAY")?;
+    let display_path = PathBuf::from(&display);
+    let socket_path = if display_path.is_absolute() {
+        display_path
+    } else {
+        PathBuf::from(env::var_os("XDG_RUNTIME_DIR")?).join(display_path)
+    };
+
+    socket_path
+        .exists()
+        .then(|| socket_path.to_string_lossy().into_owned())
 }
 
 fn dev_cargo_args(binary: &str, binary_args: &[&str]) -> Vec<String> {
@@ -636,6 +702,9 @@ impl ManagedProcess {
 fn spawn_child(spec: &ProcessSpec) -> Result<Child, Box<dyn std::error::Error>> {
     info!(name = spec.name, program = %spec.program, args = ?spec.args, "starting process");
     let mut command = Command::new(&spec.program);
+    for key in &spec.env_removals {
+        command.env_remove(key);
+    }
     command
         .args(&spec.args)
         .envs(spec.envs.iter().map(|(key, value)| (key, value)))

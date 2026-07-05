@@ -146,7 +146,7 @@ From a real Linux TTY/VT, the same dev-session command launches the full native 
 cargo run -- --dev --no-watch-apps
 ```
 
-In dev mode, the supervisor runs its compositor child as `cargo run -p hearthspace-compositor --features udev -- --no-shell`. The compositor chooses `udev` automatically when neither `WAYLAND_DISPLAY` nor `DISPLAY` is present; inside GNOME or another graphical host session it still chooses the nested winit backend unless `--tty` is passed directly to the compositor.
+In dev mode, the supervisor runs its compositor child as `cargo run -p hearthspace-compositor --features udev -- --no-shell --tty` from real TTY sessions and as `cargo run -p hearthspace-compositor --features udev -- --no-shell --winit` inside GNOME or another graphical host session. The explicit backend flag prevents stale host display variables from changing the intended session mode.
 
 Use direct compositor commands when you want to test only the compositor backend:
 
