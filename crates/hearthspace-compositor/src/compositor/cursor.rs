@@ -19,6 +19,9 @@ pub(crate) enum CursorIcon {
 }
 
 pub(super) struct SoftwareCursor {
+    /// The named shape this buffer was rasterized for, so the render path can
+    /// rebuild the buffer only when the desired shape changes.
+    pub(super) icon: CursorIcon,
     pub(super) buffer: MemoryRenderBuffer,
     pub(super) hotspot: (i32, i32),
 }
@@ -31,13 +34,9 @@ pub(in crate::compositor) struct CursorImage {
 }
 
 const DEFAULT_CURSOR: &[u8] = include_bytes!("../../../../assets/cursors/default");
-#[cfg(feature = "udev")]
 const NS_RESIZE_CURSOR: &[u8] = include_bytes!("../../../../assets/cursors/ns-resize");
-#[cfg(feature = "udev")]
 const EW_RESIZE_CURSOR: &[u8] = include_bytes!("../../../../assets/cursors/ew-resize");
-#[cfg(feature = "udev")]
 const NWSE_RESIZE_CURSOR: &[u8] = include_bytes!("../../../../assets/cursors/nwse-resize");
-#[cfg(feature = "udev")]
 const NESW_RESIZE_CURSOR: &[u8] = include_bytes!("../../../../assets/cursors/nesw-resize");
 const DESIRED_CURSOR_SIZE: u32 = 24;
 
@@ -53,7 +52,14 @@ pub(super) fn cursor_icon_from_smithay(icon: SmithayCursorIcon) -> CursorIcon {
 }
 
 pub(super) fn standard_software_cursor() -> SoftwareCursor {
-    let image = standard_cursor_image();
+    software_cursor_for_icon(CursorIcon::Default)
+}
+
+/// Rasterize the software cursor buffer for a named shape at native (unscaled)
+/// size. The whole scene is rescaled by the output scale at render time, so this
+/// buffer stays scale-1 and its hotspot is expressed in native cursor pixels.
+pub(super) fn software_cursor_for_icon(icon: CursorIcon) -> SoftwareCursor {
+    let image = cursor_image_for_icon(icon);
     let width = i32::try_from(image.width).expect("cursor width must fit in i32");
     let height = i32::try_from(image.height).expect("cursor height must fit in i32");
 
@@ -67,17 +73,16 @@ pub(super) fn standard_software_cursor() -> SoftwareCursor {
     );
 
     SoftwareCursor {
+        icon,
         buffer,
         hotspot: image.hotspot,
     }
 }
 
-#[cfg(feature = "udev")]
 pub(in crate::compositor) fn cursor_image_for_icon(icon: CursorIcon) -> CursorImage {
     cursor_image_for_icon_at_size(icon, DESIRED_CURSOR_SIZE)
 }
 
-#[cfg(feature = "udev")]
 pub(in crate::compositor) fn cursor_image_for_icon_at_size(
     icon: CursorIcon,
     desired_size: u32,
@@ -91,10 +96,6 @@ pub(in crate::compositor) fn cursor_image_for_icon_at_size(
         #[cfg(feature = "winit")]
         _ => cursor_image_from_xcursor(DEFAULT_CURSOR, desired_size),
     }
-}
-
-pub(in crate::compositor) fn standard_cursor_image() -> CursorImage {
-    cursor_image_from_xcursor(DEFAULT_CURSOR, DESIRED_CURSOR_SIZE)
 }
 
 fn cursor_image_from_xcursor(contents: &[u8], desired_size: u32) -> CursorImage {
@@ -114,5 +115,43 @@ fn cursor_image_from_xcursor(contents: &[u8], desired_size: u32) -> CursorImage 
         height: image.height,
         hotspot,
         pixels_rgba: image.pixels_rgba.clone(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const NAMED_ICONS: [CursorIcon; 5] = [
+        CursorIcon::Default,
+        CursorIcon::NsResize,
+        CursorIcon::EwResize,
+        CursorIcon::NwseResize,
+        CursorIcon::NeswResize,
+    ];
+
+    #[test]
+    fn every_named_cursor_builds_a_software_buffer() {
+        // The software cursor path is now used by every backend (headless, the
+        // native software fallback, and client-surface presentation), so each
+        // packaged shape must rasterize without panicking.
+        for icon in NAMED_ICONS {
+            let cursor = software_cursor_for_icon(icon);
+            assert_eq!(cursor.icon, icon);
+        }
+    }
+
+    #[test]
+    fn cursor_images_carry_hotspot_and_pixels() {
+        for icon in NAMED_ICONS {
+            let image = cursor_image_for_icon(icon);
+            assert!(image.width > 0 && image.height > 0);
+            assert_eq!(
+                image.pixels_rgba.len(),
+                (image.width * image.height * 4) as usize
+            );
+            assert!(image.hotspot.0 >= 0 && image.hotspot.0 as u32 <= image.width);
+            assert!(image.hotspot.1 >= 0 && image.hotspot.1 as u32 <= image.height);
+        }
     }
 }

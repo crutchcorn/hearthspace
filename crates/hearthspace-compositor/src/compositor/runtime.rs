@@ -189,28 +189,42 @@ impl CalloopData {
     }
 
     fn update_native_hardware_cursor(&mut self) {
-        #[cfg(feature = "udev")]
-        if let Backend::Udev(backend) = &mut self.backend {
-            backend.update_hardware_cursor(&self.state);
+        let CalloopData { state, backend, .. } = self;
+        match backend {
+            #[cfg(feature = "udev")]
+            Backend::Udev(device) => device.update_hardware_cursor(state),
+            #[cfg(feature = "winit")]
+            Backend::Winit(_) => {
+                // The host window system draws the cursor for named shapes; only
+                // a client-drawn cursor surface needs software presentation.
+                state.software_cursor_visible = state.cursor_surface.is_some();
+            }
+            Backend::Headless(_) => {
+                // The headless output has no external cursor plane, so the cursor
+                // is always composited into the framebuffer (screenshots/tests).
+                state.software_cursor_visible = true;
+            }
         }
     }
 
     /// Push the compositor's desired cursor to the host winit window, but only
     /// when it differs from the cursor currently shown.
     fn apply_cursor_icon(&mut self) {
+        // The host cursor only shows named shapes; when a client is drawing its
+        // own cursor surface the host cursor is hidden and the surface is
+        // presented in software instead.
+        let host_cursor_visible = self.state.cursor_visible && self.state.cursor_surface.is_none();
         if self.applied_cursor == self.state.cursor_icon
-            && self.applied_cursor_visible == self.state.cursor_visible
+            && self.applied_cursor_visible == host_cursor_visible
         {
             return;
         }
-        trace!(from = ?self.applied_cursor, to = ?self.state.cursor_icon, visible = self.state.cursor_visible, "applying cursor icon");
+        trace!(from = ?self.applied_cursor, to = ?self.state.cursor_icon, visible = host_cursor_visible, "applying cursor icon");
         self.applied_cursor = self.state.cursor_icon;
-        self.applied_cursor_visible = self.state.cursor_visible;
+        self.applied_cursor_visible = host_cursor_visible;
         #[cfg(feature = "winit")]
         if let Backend::Winit(backend) = &self.backend {
-            backend
-                .window()
-                .set_cursor_visible(self.state.cursor_visible);
+            backend.window().set_cursor_visible(host_cursor_visible);
             backend
                 .window()
                 .set_cursor(smithay::reexports::winit::cursor::Cursor::Icon(

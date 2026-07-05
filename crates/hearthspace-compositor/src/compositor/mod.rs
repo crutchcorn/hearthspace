@@ -180,6 +180,11 @@ struct App {
     /// (which owns the winit window, a sibling of this handler state).
     cursor_icon: CursorIcon,
     cursor_visible: bool,
+    /// Client-provided cursor surface set through `wl_pointer.set_cursor`, when a
+    /// focused client wants to draw its own cursor (e.g. Firefox's text I-beam).
+    /// When present it takes precedence over `cursor_icon` and is presented as a
+    /// software cursor with the client-supplied hotspot.
+    cursor_surface: Option<WlSurface>,
     next_spawn_position: CanvasPoint,
     next_spawn_output_name: Option<String>,
     spawn_offset: i32,
@@ -487,6 +492,7 @@ pub(in crate::compositor) fn initialize_app(
         resize: None,
         cursor_icon: CursorIcon::Default,
         cursor_visible: true,
+        cursor_surface: None,
         next_spawn_position: CanvasPoint { x: 80, y: 96 },
         next_spawn_output_name: None,
         spawn_offset: 0,

@@ -28,17 +28,29 @@ pub(super) struct HardwareCursor {
 }
 
 impl UdevDevice {
-    pub(in crate::compositor::udev) fn update_hardware_cursor(&mut self, state: &App) {
-        let Some(cursor) = self.hardware_cursor.as_mut() else {
-            return;
-        };
-        if !state.cursor_visible {
+    pub(in crate::compositor::udev) fn update_hardware_cursor(&mut self, state: &mut App) {
+        // Software presentation is required when a focused client is drawing its
+        // own cursor surface, or when this device never obtained a usable
+        // hardware cursor plane. In those cases the cursor is composited into the
+        // scene by the render path, so any lingering hardware cursor is cleared.
+        if state.cursor_surface.is_some() || self.hardware_cursor.is_none() {
+            state.software_cursor_visible = true;
             if let Some(active_crtc) = self.hardware_cursor_crtc.take() {
                 clear_legacy_cursor(&self.scanout_node, active_crtc);
             }
             self.hardware_cursor_position = None;
             return;
         }
+
+        if !state.cursor_visible {
+            state.software_cursor_visible = false;
+            if let Some(active_crtc) = self.hardware_cursor_crtc.take() {
+                clear_legacy_cursor(&self.scanout_node, active_crtc);
+            }
+            self.hardware_cursor_position = None;
+            return;
+        }
+
         let pointer = state.pointer_location;
         let target = self.output_surfaces.iter().find_map(|output| {
             let view = state.output_render_view(output.target.connector_name())?;
@@ -54,6 +66,7 @@ impl UdevDevice {
         });
 
         let Some((crtc, local, scale)) = target else {
+            state.software_cursor_visible = false;
             if let Some(active_crtc) = self.hardware_cursor_crtc.take() {
                 clear_legacy_cursor(&self.scanout_node, active_crtc);
             }
@@ -61,10 +74,21 @@ impl UdevDevice {
             return;
         };
 
+        let cursor = self
+            .hardware_cursor
+            .as_mut()
+            .expect("hardware cursor presence checked above");
+
+        // Track whether every DRM cursor operation succeeded. A driver can reject
+        // a cursor buffer or move at runtime, in which case the compositor falls
+        // back to software presentation for this frame rather than losing the
+        // cursor entirely.
+        let mut hardware_ok = true;
+
         if cursor.icon != state.cursor_icon || cursor.scale != scale {
             update_hardware_cursor_image(&self.scanout_node, cursor, state.cursor_icon, scale);
             if let Some(crtc) = self.hardware_cursor_crtc {
-                set_legacy_cursor(&self.scanout_node, crtc, cursor);
+                hardware_ok &= set_legacy_cursor(&self.scanout_node, crtc, cursor);
             }
             self.hardware_cursor_position = None;
         }
@@ -86,31 +110,61 @@ impl UdevDevice {
             if let Some(active_crtc) = self.hardware_cursor_crtc {
                 clear_legacy_cursor(&self.scanout_node, active_crtc);
             }
-            set_legacy_cursor(&self.scanout_node, crtc, cursor);
+            hardware_ok &= set_legacy_cursor(&self.scanout_node, crtc, cursor);
             self.hardware_cursor_crtc = Some(crtc);
             self.hardware_cursor_position = None;
         }
 
         if self.hardware_cursor_position != Some(position) {
-            move_legacy_cursor(&self.scanout_node, crtc, position);
+            hardware_ok &= move_legacy_cursor(&self.scanout_node, crtc, position);
             self.hardware_cursor_position = Some(position);
+        }
+
+        // If any DRM cursor operation failed, present the cursor in software for
+        // this frame instead of leaving it stuck or invisible.
+        state.software_cursor_visible = !hardware_ok;
+        if !hardware_ok {
+            if let Some(active_crtc) = self.hardware_cursor_crtc.take() {
+                clear_legacy_cursor(&self.scanout_node, active_crtc);
+            }
+            self.hardware_cursor_position = None;
         }
     }
 }
 
-fn set_legacy_cursor(scanout_node: &ScanoutNode, crtc: crtc::Handle, cursor: &HardwareCursor) {
+fn set_legacy_cursor(
+    scanout_node: &ScanoutNode,
+    crtc: crtc::Handle,
+    cursor: &HardwareCursor,
+) -> bool {
     #[allow(deprecated)]
     match scanout_node.drm_fd.set_cursor(crtc, Some(&cursor.buffer)) {
-        Ok(()) => debug!(?crtc, "set legacy DRM cursor"),
-        Err(error) => debug!(?crtc, %error, "legacy DRM cursor set failed"),
+        Ok(()) => {
+            debug!(?crtc, "set legacy DRM cursor");
+            true
+        }
+        Err(error) => {
+            debug!(?crtc, %error, "legacy DRM cursor set failed");
+            false
+        }
     }
 }
 
-fn move_legacy_cursor(scanout_node: &ScanoutNode, crtc: crtc::Handle, position: (i32, i32)) {
+fn move_legacy_cursor(
+    scanout_node: &ScanoutNode,
+    crtc: crtc::Handle,
+    position: (i32, i32),
+) -> bool {
     #[allow(deprecated)]
     match scanout_node.drm_fd.move_cursor(crtc, position) {
-        Ok(()) => debug!(?crtc, ?position, "moved legacy DRM cursor"),
-        Err(error) => debug!(?crtc, ?position, %error, "legacy DRM cursor move failed"),
+        Ok(()) => {
+            debug!(?crtc, ?position, "moved legacy DRM cursor");
+            true
+        }
+        Err(error) => {
+            debug!(?crtc, ?position, %error, "legacy DRM cursor move failed");
+            false
+        }
     }
 }
 

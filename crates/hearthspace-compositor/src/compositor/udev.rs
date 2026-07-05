@@ -348,12 +348,16 @@ fn insert_libinput_source(
 }
 
 impl UdevBackendState {
-    pub(in crate::compositor) fn update_hardware_cursor(&mut self, state: &super::App) {
+    pub(in crate::compositor) fn update_hardware_cursor(&mut self, state: &mut super::App) {
         if self.drm_commits_paused {
             return;
         }
         if let Some(device) = self.primary_device.as_mut() {
             device.update_hardware_cursor(state);
+        } else {
+            // No native device owns a cursor plane, so the cursor can only be
+            // presented in software (composited into the scene).
+            state.software_cursor_visible = true;
         }
     }
 

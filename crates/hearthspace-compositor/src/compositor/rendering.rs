@@ -13,12 +13,14 @@ use smithay::{
         gles::GlesRenderer,
     },
     desktop::PopupManager,
-    utils::{Logical, Physical, Point, Rectangle, Size},
+    input::pointer::CursorImageAttributes,
+    utils::{IsAlive, Logical, Physical, Point, Rectangle, Size},
     wayland::{
         compositor::{SurfaceAttributes, TraversalAction, with_states, with_surface_tree_downward},
         shell::xdg::SurfaceCachedState,
     },
 };
+use std::sync::Mutex;
 use wayland_server::protocol::wl_surface;
 
 use super::{App, ManagedWindowKind, masonry_titlebar, windows::toplevel_title};
@@ -140,8 +142,8 @@ impl App {
         self.refresh_normal_window_outputs();
 
         let mut elements = Vec::new();
-        if let Some(element) = self.software_cursor_element(renderer, output_rect) {
-            elements.push(HearthspaceRenderElement::from(element));
+        for element in self.software_cursor_elements(renderer, output_rect) {
+            elements.push(element);
         }
 
         for index in (0..self.windows.len()).rev() {
@@ -177,16 +179,75 @@ impl App {
         elements
     }
 
-    fn software_cursor_element(
+    /// Build the cursor render elements for the current frame, front-to-back.
+    ///
+    /// The software cursor is only used when the active backend has opted into
+    /// it (`software_cursor_visible`): headless always, the native backend as a
+    /// fallback when the hardware cursor plane is unavailable, and either
+    /// backend whenever a focused client is drawing its own cursor surface. A
+    /// client cursor surface takes precedence over the compositor's named shape
+    /// and is positioned by its own committed hotspot. Both paths are built at
+    /// native scale; the surrounding [`render_frame_at`](Self::render_frame_at)
+    /// rescales the whole scene by the output scale, so the cursor scales with
+    /// monitor DPI and its hotspot always lands on the logical pointer position.
+    fn software_cursor_elements(
         &mut self,
         renderer: &mut GlesRenderer,
         output_rect: Rectangle<i32, Logical>,
-    ) -> Option<MemoryRenderBufferRenderElement<GlesRenderer>> {
-        if !self.software_cursor_visible {
-            return None;
+    ) -> Vec<HearthspaceRenderElement> {
+        if !self.software_cursor_visible || !self.cursor_visible {
+            return Vec::new();
         }
         if !point_in_logical_rect(self.pointer_location, output_rect) {
-            return None;
+            return Vec::new();
+        }
+
+        if let Some(surface) = self.cursor_surface.clone() {
+            if surface.alive() {
+                let hotspot = with_states(&surface, |states| {
+                    states
+                        .data_map
+                        .get::<Mutex<CursorImageAttributes>>()
+                        .map(|attributes| {
+                            attributes
+                                .lock()
+                                .expect("cursor image attributes poisoned")
+                                .hotspot
+                        })
+                        .unwrap_or_default()
+                });
+                let location = Point::<i32, Physical>::from((
+                    self.pointer_location.x.round() as i32 - hotspot.x,
+                    self.pointer_location.y.round() as i32 - hotspot.y,
+                ));
+                let surface_elements: Vec<WaylandSurfaceRenderElement<GlesRenderer>> =
+                    render_elements_from_surface_tree(
+                        renderer,
+                        &surface,
+                        location,
+                        1.0,
+                        1.0,
+                        Kind::Cursor,
+                    );
+                return surface_elements
+                    .into_iter()
+                    .map(|element| {
+                        HearthspaceRenderElement::from(RescaleRenderElement::from_element(
+                            element, location, 1.0,
+                        ))
+                    })
+                    .collect();
+            }
+            // The client destroyed its cursor surface; drop it and fall back to
+            // the compositor's named cursor below.
+            self.cursor_surface = None;
+        }
+
+        // Named shape: rebuild the cursor buffer only when the desired icon
+        // changes, so steady-state motion reuses the cached rasterization.
+        if self.software_cursor.icon != self.cursor_icon {
+            self.software_cursor =
+                crate::compositor::cursor::software_cursor_for_icon(self.cursor_icon);
         }
 
         let location = Point::<f64, Physical>::from((
@@ -204,6 +265,9 @@ impl App {
             Kind::Cursor,
         )
         .ok()
+        .map(HearthspaceRenderElement::from)
+        .into_iter()
+        .collect()
     }
 
     /// Collect render elements for every popup anchored to the given window.
