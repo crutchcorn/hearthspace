@@ -71,11 +71,13 @@ use smithay::{
     wayland::{
         compositor::CompositorState,
         dmabuf::{DmabufFeedbackBuilder, DmabufGlobal, DmabufState, ImportNotifier},
+        fractional_scale::FractionalScaleManagerState,
         output::OutputManagerState,
         selection::data_device::DataDeviceState,
         shell::xdg::{ToplevelSurface, XdgShellState, decoration::XdgDecorationState},
         shm::ShmState,
         socket::ListeningSocketSource,
+        viewporter::ViewporterState,
     },
 };
 use tracing::{debug, error, info};
@@ -95,6 +97,11 @@ struct ManagedWindow {
     /// Bounding-box size of the window's surface tree, cached on commit so the
     /// per-frame rendering and hit-testing paths don't re-walk the tree.
     content_bbox_size: Size<i32, Logical>,
+    /// Fractional scale most recently advertised to this window's surface tree.
+    /// Compared each frame so the preferred scale is only re-sent when the
+    /// window moves onto an output with a different scale (e.g. dragged across
+    /// monitors). `0.0` is a sentinel meaning "nothing advertised yet".
+    advertised_fractional_scale: f64,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -160,6 +167,14 @@ struct App {
     xdg_shell_state: XdgShellState,
     _xdg_decoration_state: XdgDecorationState,
     _output_manager_state: OutputManagerState,
+    /// `wp_viewporter`: lets clients declare a surface's logical destination
+    /// size independently of its buffer, which HiDPI toolkits (GTK/Firefox) use
+    /// together with fractional scale to avoid rendering an oversized buffer.
+    _viewporter_state: ViewporterState,
+    /// `wp_fractional_scale_v1`: advertises the preferred scale to clients so
+    /// they render buffers at the monitor scale instead of falling back to a
+    /// mismatched integer buffer scale.
+    _fractional_scale_manager_state: FractionalScaleManagerState,
     shm_state: ShmState,
     seat_state: SeatState<Self>,
     data_device_state: DataDeviceState,
@@ -229,6 +244,7 @@ impl App {
         if refresh.output_layout_changed {
             self.configure_shell_bars();
             self.reconcile_pointer_after_output_geometry_change();
+            self.refresh_fractional_scales();
         }
 
         if self.background_mode != settings.background_mode {
@@ -438,6 +454,8 @@ pub(in crate::compositor) fn initialize_app(
     let compositor_state = CompositorState::new::<App>(&dh);
     let xdg_decoration_state = XdgDecorationState::new::<App>(&dh);
     let output_manager_state = OutputManagerState::new_with_xdg_output::<App>(&dh);
+    let viewporter_state = ViewporterState::new::<App>(&dh);
+    let fractional_scale_manager_state = FractionalScaleManagerState::new::<App>(&dh);
     let shm_state = ShmState::new::<App>(&dh, vec![]);
     let mut seat_state = SeatState::new();
     let mut seat = seat_state.new_wl_seat(&dh, "hearthspace");
@@ -475,6 +493,8 @@ pub(in crate::compositor) fn initialize_app(
         ),
         _xdg_decoration_state: xdg_decoration_state,
         _output_manager_state: output_manager_state,
+        _viewporter_state: viewporter_state,
+        _fractional_scale_manager_state: fractional_scale_manager_state,
         shm_state,
         seat_state,
         data_device_state: DataDeviceState::new::<App>(&dh),
