@@ -232,6 +232,10 @@ impl App {
         self.outputs.logical_rects()
     }
 
+    pub(super) fn primary_output_logical_rect(&self) -> Rectangle<i32, Logical> {
+        self.outputs.primary.logical_rect()
+    }
+
     pub(super) fn minimum_output_client_logical_width(&self) -> i32 {
         self.outputs.minimum_client_logical_width()
     }

@@ -9,7 +9,7 @@ use smithay::{
         keyboard::FilterResult,
         pointer::{AxisFrame, ButtonEvent},
     },
-    utils::SERIAL_COUNTER,
+    utils::{Logical, Point, Rectangle, SERIAL_COUNTER},
 };
 use tracing::{debug, trace};
 
@@ -219,7 +219,11 @@ pub(in crate::compositor) fn handle_input_event<B: InputBackend>(
                 return;
             }
 
-            let location = event.position_transformed(state.output_logical_size());
+            let primary_output = state.primary_output_logical_rect();
+            let location = touch_location_in_primary_output(
+                event.position_transformed(primary_output.size),
+                primary_output,
+            );
             trace!(?slot, ?location, time, "single-touch down input");
             state.active_touch_slot = Some(slot);
             state.apply_pointer_motion(location, time);
@@ -233,7 +237,11 @@ pub(in crate::compositor) fn handle_input_event<B: InputBackend>(
                 return;
             }
 
-            let location = event.position_transformed(state.output_logical_size());
+            let primary_output = state.primary_output_logical_rect();
+            let location = touch_location_in_primary_output(
+                event.position_transformed(primary_output.size),
+                primary_output,
+            );
             trace!(?slot, ?location, time, "single-touch motion input");
             state.apply_pointer_motion(location, time);
         }
@@ -264,6 +272,13 @@ pub(in crate::compositor) fn handle_input_event<B: InputBackend>(
         InputEvent::TouchFrame { .. } => trace!("single-touch frame input"),
         _ => {}
     }
+}
+
+fn touch_location_in_primary_output(
+    local_location: Point<f64, Logical>,
+    primary_output: Rectangle<i32, Logical>,
+) -> Point<f64, Logical> {
+    local_location + primary_output.loc.to_f64()
 }
 
 fn axis_frame_from_event<B: InputBackend>(
@@ -308,4 +323,20 @@ fn scroll_amount_for_axis<B: InputBackend>(
             .amount_v120(axis)
             .map(|amount| amount / 120.0 * WHEEL_SCROLL_PIXEL_EQUIVALENT)
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use smithay::utils::{Logical, Point, Rectangle};
+
+    use super::touch_location_in_primary_output;
+
+    #[test]
+    fn touch_location_is_relative_to_primary_output_not_combined_desktop() {
+        let primary = Rectangle::<i32, Logical>::new((2560, 400).into(), (2560, 1600).into());
+
+        let location = touch_location_in_primary_output(Point::from((1280.0, 800.0)), primary);
+
+        assert_eq!(location, Point::from((3840.0, 1200.0)));
+    }
 }
