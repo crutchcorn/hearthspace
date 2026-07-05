@@ -243,6 +243,8 @@ impl App {
                 y: drag.window_start.y + (delta.y / self.viewport_scale).round() as i32,
             };
             let window_id = drag.window_id;
+            // The compositor owns the cursor while dragging window chrome.
+            self.cursor_surface = None;
             if let Some(window) = self.window_mut_by_id(window_id) {
                 window.position = new_position;
                 trace!(window_id, ?new_position, "updated window drag position");
@@ -254,11 +256,20 @@ impl App {
         if let Some(resize) = self.resize.as_ref() {
             let edges = resize.edges;
             self.cursor_icon = resize_cursor_icon(edges);
+            // The compositor owns the cursor while resizing.
+            self.cursor_surface = None;
             self.update_resize(self.raw_pointer_location);
             return;
         }
 
         let hit = self.hit_test(self.pointer_location);
+        // A client only owns the cursor while the pointer is over its content;
+        // over compositor chrome, resize borders, or the canvas the compositor's
+        // named cursor takes over, so any lingering client cursor surface is
+        // dropped here.
+        if !matches!(hit, Some(HitTarget::Client { .. })) {
+            self.cursor_surface = None;
+        }
         self.cursor_icon = match &hit {
             Some(HitTarget::ResizeBorder { edges, .. }) => resize_cursor_icon(*edges),
             _ => CursorIcon::Default,
@@ -304,6 +315,9 @@ impl App {
         }
 
         let hit = self.hit_test(self.pointer_location);
+        if !matches!(hit, Some(HitTarget::Client { .. })) {
+            self.cursor_surface = None;
+        }
         self.cursor_icon = match &hit {
             Some(HitTarget::ResizeBorder { edges, .. }) => resize_cursor_icon(*edges),
             _ => CursorIcon::Default,

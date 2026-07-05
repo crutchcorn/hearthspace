@@ -39,7 +39,8 @@ impl OutputLayout {
     }
 
     pub(super) fn scale_for(&self, output_name: &str, role_id: &str) -> Option<i32> {
-        self.monitor_for(output_name, role_id, true)
+        let use_role_fallback = !default_placeholder_monitors(&self.monitors);
+        self.monitor_for(output_name, role_id, use_role_fallback)
             .map(|monitor| monitor.scale.max(1))
     }
 
@@ -592,6 +593,27 @@ mod tests {
 
         assert_eq!(plan.primary, Point::from((0, 0)));
         assert_eq!(plan.secondary_location("HDMI-A-1"), Point::from((2560, 0)));
+    }
+
+    #[test]
+    fn output_layout_keeps_backend_scale_when_monitors_are_placeholders() {
+        // Default placeholder monitors ("primary"/"secondary", scale 1) must not
+        // override a differently-named backend output's own scale through the
+        // "primary" role fallback. Regression: `scale_for` hardcoded role
+        // fallback, so `--headless-scale`/native scale was silently reset to 1.
+        let primary = OutputGeometry {
+            name: "hearthspace-0".into(),
+            size: Size::<i32, Physical>::from((1280, 720)),
+            scale: 2,
+        };
+
+        let plan = output_locations_for_layout(
+            primary,
+            vec![],
+            &OutputLayout::from_monitors(hearthspace_ipc::Settings::default().monitors),
+        );
+
+        assert_eq!(plan.primary_scale, 2);
     }
 
     #[test]

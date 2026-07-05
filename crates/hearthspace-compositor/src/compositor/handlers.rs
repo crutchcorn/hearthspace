@@ -452,15 +452,26 @@ impl SeatHandler for App {
 
     fn cursor_image(&mut self, _seat: &Seat<Self>, image: CursorImageStatus) {
         match image {
-            CursorImageStatus::Hidden => self.cursor_visible = false,
+            CursorImageStatus::Hidden => {
+                self.cursor_visible = false;
+                self.cursor_surface = None;
+            }
             CursorImageStatus::Named(icon) => {
                 self.cursor_visible = true;
+                self.cursor_surface = None;
                 self.cursor_icon = crate::compositor::cursor::cursor_icon_from_smithay(icon);
             }
-            CursorImageStatus::Surface(_) => {
+            CursorImageStatus::Surface(surface) => {
+                // A focused client wants to draw its own cursor. Present the
+                // client surface (with its committed hotspot) as a software
+                // cursor; the backend cursor policy falls back to software
+                // presentation whenever a client surface is active.
                 self.cursor_visible = true;
-                self.cursor_icon = crate::compositor::cursor::CursorIcon::Default;
+                self.cursor_surface = Some(surface);
             }
         }
+        // The cursor changed, so a frame is needed to update software cursor
+        // presentation (and to hand the new shape to the backend cursor policy).
+        self.request_redraw();
     }
 }

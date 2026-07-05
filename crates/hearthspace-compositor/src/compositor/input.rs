@@ -48,19 +48,18 @@ pub(in crate::compositor) fn handle_input_event<B: InputBackend>(
         }
         InputEvent::PointerMotion { event } => {
             trace!(delta = ?event.delta(), time = event.time_msec(), "relative pointer motion input");
-            let scale = f64::from(state.output_scale_at(state.pointer_location).max(1));
-            let delta = Point::from((event.delta().x / scale, event.delta().y / scale));
-            if scale != 1.0 {
-                debug!(
-                    pointer = ?state.pointer_location,
-                    raw_delta = ?event.delta(),
-                    logical_delta = ?delta,
-                    scale,
-                    "scaled relative pointer motion by output scale"
-                );
-            }
+            // libinput reports accelerated relative deltas already in the
+            // compositor's logical coordinate space, so they are applied
+            // directly to the logical pointer location (as Smithay's reference
+            // compositor does). They must NOT be divided by the output scale:
+            // the pointer position is logical, and monitor scale only governs
+            // how that logical position is *presented* (cursor plane, surface
+            // buffers), not how far a physical motion moves the pointer. Scaling
+            // the delta made the HiDPI pointer track at 1/scale speed, so the
+            // rendered cursor drifted away from where input was actually being
+            // routed.
             state.apply_pointer_motion(
-                relative_pointer_location(state.raw_pointer_location, delta),
+                relative_pointer_location(state.raw_pointer_location, event.delta()),
                 event.time_msec(),
             );
         }
