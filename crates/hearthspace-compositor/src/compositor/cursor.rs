@@ -6,7 +6,7 @@ use smithay::{
 use xcursor::parser::parse_xcursor;
 
 #[cfg(feature = "winit")]
-pub(crate) use smithay::reexports::winit::window::CursorIcon;
+pub(crate) use cursor_icon::CursorIcon;
 
 #[cfg(not(feature = "winit"))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

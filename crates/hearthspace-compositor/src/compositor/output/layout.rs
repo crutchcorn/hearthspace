@@ -488,6 +488,7 @@ mod tests {
                 subpixel: Subpixel::Unknown,
                 make: "test".into(),
                 model: name.into(),
+                serial_number: "test".into(),
             },
             size: Size::<i32, Physical>::from((100, 100)),
             scale: 1,

@@ -11,7 +11,7 @@ hearthspace-ipc = { path = "../hearthspace-ipc" }
 hearthspace-ui-components = { path = "../ui-components" }
 rfd = { version = "0.17.2", features = ["xdg-portal"] }
 wayland-client = "0.31.14"
-xilem = { git = "https://github.com/linebender/xilem" }
+xilem = { git = "https://github.com/linebender/xilem", rev = "c5950bcb03d4f3d187a20d1159f6aa276fd056bf" }
 
 [lints.rust]
 unsafe_op_in_unsafe_fn = "deny"

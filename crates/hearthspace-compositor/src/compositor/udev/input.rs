@@ -37,9 +37,11 @@ impl UdevBackendState {
 
 pub(super) fn log_input_event(event: &InputEvent<LibinputInputBackend>) {
     match event {
-        InputEvent::DeviceAdded { device } => debug!(name = device.name(), "input device added"),
+        InputEvent::DeviceAdded { device } => {
+            debug!(name = ?device.name(), "input device added");
+        }
         InputEvent::DeviceRemoved { device } => {
-            debug!(name = device.name(), "input device removed");
+            debug!(name = ?device.name(), "input device removed");
         }
         InputEvent::Keyboard { .. } => trace!("input keyboard event"),
         InputEvent::PointerMotion { .. } => trace!("input relative pointer motion event"),

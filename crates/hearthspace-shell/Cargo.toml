@@ -11,7 +11,7 @@ hearthspace-ui-components = { path = "../ui-components" }
 tracing = "0.1.41"
 tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
 wayland-client = "0.31.14"
-xilem = { git = "https://github.com/linebender/xilem" }
+xilem = { git = "https://github.com/linebender/xilem", rev = "c5950bcb03d4f3d187a20d1159f6aa276fd056bf" }
 
 [dev-dependencies]
 rstest = "0.26"
