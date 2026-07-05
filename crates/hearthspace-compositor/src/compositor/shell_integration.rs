@@ -1,16 +1,18 @@
 use std::{
     env, fs,
     io::{self, ErrorKind},
-    os::unix::fs::symlink,
-    path::PathBuf,
+    path::{Path, PathBuf},
     process::Command,
+    sync::Arc,
 };
 
 use smithay::{
     backend::input::{ButtonState, KeyState},
+    reexports::calloop::{Interest, Mode as CalloopMode, PostAction, generic::Generic},
     utils::Point,
 };
 use tracing::{debug, error, info, warn};
+use wayland_server::ListeningSocket;
 
 use crate::{config::*, geometry::CanvasPoint};
 use hearthspace_shell::{
@@ -19,6 +21,7 @@ use hearthspace_shell::{
 };
 
 use super::App;
+use super::client::ClientState;
 
 mod command_socket;
 
@@ -33,6 +36,13 @@ fn runtime_path(name: &str) -> PathBuf {
         .join(name)
 }
 
+fn host_runtime_dir() -> PathBuf {
+    env::var_os(hearthspace_common::HOST_RUNTIME_DIR_ENV)
+        .map(PathBuf::from)
+        .or_else(|| env::var_os("XDG_RUNTIME_DIR").map(PathBuf::from))
+        .unwrap_or_else(env::temp_dir)
+}
+
 /// Snap instance names are embedded into a runtime directory path, so reject any
 /// value containing path separators or other characters that could escape the
 /// intended `snap.<name>` directory.
@@ -42,7 +52,17 @@ fn is_valid_snap_instance_name(instance_name: &str) -> bool {
         .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_' | '.'))
 }
 
-fn ensure_snap_wayland_socket(instance_name: &str) -> std::io::Result<String> {
+fn snap_wayland_socket_path(
+    host_runtime_dir: &Path,
+    instance_name: &str,
+    wayland_display: &str,
+) -> PathBuf {
+    host_runtime_dir
+        .join(format!("snap.{instance_name}"))
+        .join(wayland_display)
+}
+
+fn ensure_snap_instance_name(instance_name: &str) -> std::io::Result<()> {
     if !is_valid_snap_instance_name(instance_name) {
         return Err(io::Error::new(
             ErrorKind::InvalidInput,
@@ -50,22 +70,7 @@ fn ensure_snap_wayland_socket(instance_name: &str) -> std::io::Result<String> {
         ));
     }
 
-    let snap_runtime_dir = runtime_path(&format!("snap.{instance_name}"));
-    fs::create_dir_all(&snap_runtime_dir)?;
-    let wayland_display = wayland_display_name();
-    let snap_socket_path = snap_runtime_dir.join(&wayland_display);
-
-    match fs::remove_file(&snap_socket_path) {
-        Ok(()) => {}
-        Err(error) if error.kind() == ErrorKind::NotFound => {}
-        Err(error) => return Err(error),
-    }
-
-    symlink(
-        PathBuf::from("..").join(&wayland_display),
-        &snap_socket_path,
-    )?;
-    Ok(wayland_display)
+    Ok(())
 }
 
 fn launch_environment_for_app(app: &DesktopApp) -> std::io::Result<Vec<(String, String)>> {
@@ -316,7 +321,7 @@ impl App {
     }
 
     fn launch_app(&mut self, app_id: &str, output_name: Option<&str>) {
-        let Some(app) = self.app_catalog.app_by_id(app_id) else {
+        let Some(app) = self.app_catalog.app_by_id(app_id).cloned() else {
             warn!(app_id, "no launchable desktop app found");
             return;
         };
@@ -342,7 +347,7 @@ impl App {
         };
 
         let wayland_display = if let Some(instance_name) = &app.snap_instance_name {
-            match ensure_snap_wayland_socket(instance_name) {
+            match self.ensure_snap_wayland_listener(instance_name) {
                 Ok(display_name) => display_name,
                 Err(error) => {
                     error!(app_id, %error, "failed to prepare Snap Wayland socket");
@@ -353,7 +358,7 @@ impl App {
             wayland_display_name()
         };
 
-        let launch_env = match launch_environment_for_app(app) {
+        let launch_env = match launch_environment_for_app(&app) {
             Ok(env) => env,
             Err(error) => {
                 error!(app_id, %error, "failed to prepare app environment");
@@ -371,6 +376,65 @@ impl App {
         } else {
             info!(app_id, wayland_display, argv = ?command, "launched desktop app");
         }
+    }
+
+    fn ensure_snap_wayland_listener(&mut self, instance_name: &str) -> io::Result<String> {
+        ensure_snap_instance_name(instance_name)?;
+
+        let wayland_display = wayland_display_name();
+        let socket_path =
+            snap_wayland_socket_path(&host_runtime_dir(), instance_name, &wayland_display);
+        if self.snap_wayland_socket_paths.contains(&socket_path) {
+            return Ok(wayland_display);
+        }
+        if let Some(parent) = socket_path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+
+        let socket = ListeningSocket::bind_absolute(socket_path.clone()).map_err(|error| {
+            io::Error::other(format!(
+                "failed to bind Snap Wayland socket {}: {error}",
+                socket_path.display()
+            ))
+        })?;
+        let source = Generic::new(socket, Interest::READ, CalloopMode::Level);
+        let log_path = socket_path.clone();
+        self.loop_handle
+            .insert_source(source, move |_, socket, data| {
+                while let Some(stream) = socket.accept()? {
+                    match data
+                        .display
+                        .handle()
+                        .insert_client(stream, Arc::new(ClientState::default()))
+                    {
+                        Ok(client_id) => {
+                            debug!(?client_id, socket = %log_path.display(), "accepted Snap Wayland client")
+                        }
+                        Err(error) => error!(
+                            %error,
+                            socket = %log_path.display(),
+                            "failed to insert Snap Wayland client"
+                        ),
+                    }
+                    data.state.request_redraw();
+                }
+                Ok(PostAction::Continue)
+            })
+            .map_err(|error| {
+                io::Error::other(format!(
+                    "failed to register Snap Wayland socket {}: {error}",
+                    socket_path.display()
+                ))
+            })?;
+
+        info!(
+            socket = %socket_path.display(),
+            instance_name,
+            wayland_display,
+            "listening for Snap Wayland clients"
+        );
+        self.snap_wayland_socket_paths.insert(socket_path);
+        Ok(wayland_display)
     }
 }
 
@@ -396,5 +460,16 @@ mod tests {
         assert!(!is_valid_snap_instance_name("../escape"));
         assert!(!is_valid_snap_instance_name("with/slash"));
         assert!(!is_valid_snap_instance_name("space here"));
+    }
+
+    #[test]
+    fn snap_wayland_socket_path_uses_host_snap_runtime() {
+        let socket_path =
+            snap_wayland_socket_path(Path::new("/run/user/1000"), "firefox", "wayland-99");
+
+        assert_eq!(
+            socket_path,
+            PathBuf::from("/run/user/1000/snap.firefox/wayland-99")
+        );
     }
 }

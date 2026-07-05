@@ -9,6 +9,7 @@ use crate::cli::{Args, RunMode};
 
 #[derive(Debug)]
 pub(crate) struct SessionPaths {
+    pub(crate) host_runtime_dir: PathBuf,
     pub(crate) session_dir: PathBuf,
     pub(crate) applications_dir: PathBuf,
     pub(crate) settings_socket: PathBuf,
@@ -24,7 +25,8 @@ pub(crate) struct SessionEnv {
 
 pub(crate) fn create_session_paths() -> Result<SessionPaths, Box<dyn std::error::Error>> {
     let host_runtime_dir = env::var_os("XDG_RUNTIME_DIR").ok_or("XDG_RUNTIME_DIR is not set")?;
-    let session_dir = PathBuf::from(host_runtime_dir)
+    let host_runtime_dir = PathBuf::from(host_runtime_dir);
+    let session_dir = host_runtime_dir
         .join("hearthspace")
         .join(format!("session-{}", process::id()));
     let applications_dir = session_dir.join("share/applications");
@@ -33,6 +35,7 @@ pub(crate) fn create_session_paths() -> Result<SessionPaths, Box<dyn std::error:
     fs::set_permissions(&session_dir, fs::Permissions::from_mode(0o700))?;
 
     Ok(SessionPaths {
+        host_runtime_dir,
         settings_socket: session_dir.join("settings.sock"),
         session_socket: session_dir.join("session.sock"),
         shell_command_socket: session_dir.join("shell-command.sock"),
@@ -49,7 +52,8 @@ pub(crate) fn create_session_env(
     let wayland_display = args
         .wayland_display
         .clone()
-        .unwrap_or_else(|| format!("hearthspace-dev-{}", process::id()));
+        .unwrap_or_else(|| hearthspace_common::WAYLAND_DISPLAY_NAME.to_string());
+    let host_runtime_dir = path_to_string(&paths.host_runtime_dir)?;
     let session_dir = path_to_string(&paths.session_dir)?;
     let settings_socket = path_to_string(&paths.settings_socket)?;
     let session_socket = path_to_string(&paths.session_socket)?;
@@ -68,6 +72,10 @@ pub(crate) fn create_session_env(
         (
             hearthspace_common::SESSION_DIR_ENV.to_string(),
             session_dir.clone(),
+        ),
+        (
+            hearthspace_common::HOST_RUNTIME_DIR_ENV.to_string(),
+            host_runtime_dir,
         ),
         (
             hearthspace_common::SETTINGS_SOCKET_ENV.to_string(),
@@ -132,6 +140,7 @@ mod tests {
     #[test]
     fn session_env_uses_private_runtime_dir() {
         let paths = SessionPaths {
+            host_runtime_dir: PathBuf::from("/tmp/hearthspace-test"),
             session_dir: PathBuf::from("/tmp/hearthspace-test/session-1"),
             applications_dir: PathBuf::from("/tmp/hearthspace-test/session-1/share/applications"),
             settings_socket: PathBuf::from("/tmp/hearthspace-test/session-1/settings.sock"),
@@ -157,6 +166,42 @@ mod tests {
 
         assert!(env.vars.iter().any(|(key, value)| {
             key == "XDG_RUNTIME_DIR" && value == "/tmp/hearthspace-test/session-1"
+        }));
+    }
+
+    #[test]
+    fn session_env_uses_stable_default_wayland_display() {
+        let paths = SessionPaths {
+            host_runtime_dir: PathBuf::from("/tmp/hearthspace-test"),
+            session_dir: PathBuf::from("/tmp/hearthspace-test/session-1"),
+            applications_dir: PathBuf::from("/tmp/hearthspace-test/session-1/share/applications"),
+            settings_socket: PathBuf::from("/tmp/hearthspace-test/session-1/settings.sock"),
+            session_socket: PathBuf::from("/tmp/hearthspace-test/session-1/session.sock"),
+            shell_command_socket: PathBuf::from(
+                "/tmp/hearthspace-test/session-1/shell-command.sock",
+            ),
+        };
+        let args = Args {
+            dev: false,
+            installed: true,
+            wayland_display: None,
+            watch_apps: false,
+            no_watch_apps: false,
+            no_shell_restart: false,
+            no_settingsd_restart: false,
+            log_level: "info".to_string(),
+            print_env: false,
+            dry_run: false,
+        };
+
+        let env = create_session_env(&args, RunMode::InstalledBinaries, &paths).unwrap();
+
+        assert_eq!(
+            env.wayland_display,
+            hearthspace_common::WAYLAND_DISPLAY_NAME
+        );
+        assert!(env.vars.iter().any(|(key, value)| {
+            key == hearthspace_common::HOST_RUNTIME_DIR_ENV && value == "/tmp/hearthspace-test"
         }));
     }
 }
