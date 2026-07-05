@@ -37,6 +37,7 @@ pub(in crate::compositor) struct OutputRenderView {
     pub(in crate::compositor) name: String,
     pub(in crate::compositor) location: Point<i32, Logical>,
     pub(in crate::compositor) size: Size<i32, Logical>,
+    pub(in crate::compositor) scale: i32,
 }
 
 #[derive(Clone)]
@@ -122,6 +123,30 @@ impl OutputSet {
             let scale = plan.secondary_scale(&output.name).unwrap_or(output.scale);
             output.set_scale_and_location(scale, plan.secondary_location(&output.name));
         }
+        debug!(outputs = ?self.output_debug(), "applied logical output layout");
+    }
+
+    fn output_debug(
+        &self,
+    ) -> Vec<(
+        String,
+        Point<i32, Logical>,
+        Size<i32, Physical>,
+        Size<i32, Logical>,
+        i32,
+    )> {
+        std::iter::once(&self.primary)
+            .chain(self.secondary.iter())
+            .map(|output| {
+                (
+                    output.name.clone(),
+                    output.location,
+                    output.size,
+                    output.logical_size(),
+                    output.scale,
+                )
+            })
+            .collect()
     }
 
     fn logical_size(&self) -> Size<i32, Logical> {
@@ -160,7 +185,7 @@ impl OutputSet {
 
 impl OutputRecord {
     fn logical_size(&self) -> Size<i32, Logical> {
-        Size::from((self.size.w, self.size.h))
+        self.client_logical_size()
     }
 
     fn client_logical_size(&self) -> Size<i32, Logical> {
@@ -266,11 +291,16 @@ impl App {
             .map(OutputRecord::logical_rect)
     }
 
-    pub(super) fn output_scale_for_name(&self, name: Option<&str>) -> i32 {
-        self.outputs
-            .output_for_name(name)
+    pub(super) fn primary_output_scale(&self) -> i32 {
+        self.outputs.primary.scale.max(1)
+    }
+
+    pub(super) fn output_scale_at(&self, point: Point<f64, Logical>) -> i32 {
+        std::iter::once(&self.outputs.primary)
+            .chain(self.outputs.secondary.iter())
+            .find(|output| point_in_rect(point, output.logical_rect()))
             .map(|output| output.scale.max(1))
-            .unwrap_or(1)
+            .unwrap_or_else(|| self.primary_output_scale())
     }
 
     pub(in crate::compositor) fn set_output_layout(&mut self, layout: OutputLayout) -> bool {
@@ -284,6 +314,7 @@ impl App {
                 name: self.outputs.primary.name.clone(),
                 location: self.outputs.primary.location,
                 size: self.outputs.primary.logical_size(),
+                scale: self.outputs.primary.scale.max(1),
             });
         }
 
@@ -295,6 +326,7 @@ impl App {
                 name: output.name.clone(),
                 location: output.location,
                 size: output.logical_size(),
+                scale: output.scale.max(1),
             })
     }
 
@@ -341,6 +373,20 @@ impl App {
                 .output_for_name(name)
                 .is_some_and(|target| target.name == output.name)
             {
+                output.output.enter(surface);
+            } else {
+                output.output.leave(surface);
+            }
+        }
+    }
+
+    pub(super) fn enter_outputs_intersecting(
+        &self,
+        surface: &WlSurface,
+        rect: Rectangle<i32, Logical>,
+    ) {
+        for output in std::iter::once(&self.outputs.primary).chain(self.outputs.secondary.iter()) {
+            if rectangles_overlap(rect, output.logical_rect()) {
                 output.output.enter(surface);
             } else {
                 output.output.leave(surface);
@@ -475,6 +521,20 @@ fn scaled_client_dimension(size: i32, scale: i32) -> i32 {
     let size = size.max(1);
     let scale = scale.max(1);
     ((size + scale - 1) / scale).max(1)
+}
+
+fn point_in_rect(point: Point<f64, Logical>, rect: Rectangle<i32, Logical>) -> bool {
+    point.x >= f64::from(rect.loc.x)
+        && point.y >= f64::from(rect.loc.y)
+        && point.x < f64::from(rect.loc.x + rect.size.w)
+        && point.y < f64::from(rect.loc.y + rect.size.h)
+}
+
+fn rectangles_overlap(a: Rectangle<i32, Logical>, b: Rectangle<i32, Logical>) -> bool {
+    a.loc.x < b.loc.x + b.size.w
+        && a.loc.x + a.size.w > b.loc.x
+        && a.loc.y < b.loc.y + b.size.h
+        && a.loc.y + a.size.h > b.loc.y
 }
 
 #[cfg(test)]

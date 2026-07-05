@@ -38,7 +38,8 @@ render_elements! {
 
 render_elements! {
     pub(super) TranslatedHearthspaceRenderElement<=GlesRenderer>;
-    Translated = RelocateRenderElement<HearthspaceRenderElement>,
+    Scaled = RescaleRenderElement<RelocateRenderElement<HearthspaceRenderElement>>,
+    Unscaled = RelocateRenderElement<HearthspaceRenderElement>,
 }
 
 /// Result of rendering one frame: the damaged output regions to submit, or
@@ -71,6 +72,7 @@ impl App {
             damage_tracker,
             age,
             Rectangle::from_size(self.output_logical_size()),
+            self.primary_output_scale(),
         )
     }
 
@@ -81,20 +83,38 @@ impl App {
         damage_tracker: &mut OutputDamageTracker,
         age: usize,
         output_rect: Rectangle<i32, Logical>,
+        output_scale: i32,
     ) -> RenderFrameResult {
         let output_location = output_rect.loc;
         let output_offset = Point::<i32, Physical>::from((-output_location.x, -output_location.y));
-        let elements = self.collect_render_elements(renderer, output_rect);
-        let elements = elements
+        let output_scale = output_scale.max(1);
+        let render_scale = f64::from(output_scale);
+        let foreground = self.collect_render_elements(renderer, output_rect);
+        let mut elements = foreground
             .into_iter()
             .map(|element| {
-                TranslatedHearthspaceRenderElement::from(RelocateRenderElement::from_element(
-                    element,
-                    output_offset,
-                    Relocate::Relative,
+                let relocated =
+                    RelocateRenderElement::from_element(element, output_offset, Relocate::Relative);
+                TranslatedHearthspaceRenderElement::from(RescaleRenderElement::from_element(
+                    relocated,
+                    Point::<i32, Physical>::from((0, 0)),
+                    render_scale,
                 ))
             })
             .collect::<Vec<_>>();
+
+        // Background tiles are wallpaper pixels, not client logical pixels, so
+        // they opt out of monitor DPI scaling while still being translated into
+        // this output's framebuffer-local coordinate space.
+        for tile in self.background_image_elements(renderer, output_rect, output_scale) {
+            elements.push(TranslatedHearthspaceRenderElement::from(
+                RelocateRenderElement::from_element(
+                    HearthspaceRenderElement::from(tile),
+                    output_offset,
+                    Relocate::Relative,
+                ),
+            ));
+        }
         let result = damage_tracker.render_output(
             renderer,
             framebuffer,
@@ -117,6 +137,8 @@ impl App {
         renderer: &mut GlesRenderer,
         output_rect: Rectangle<i32, Logical>,
     ) -> Vec<HearthspaceRenderElement> {
+        self.refresh_normal_window_outputs();
+
         let mut elements = Vec::new();
         if let Some(element) = self.software_cursor_element(renderer, output_rect) {
             elements.push(HearthspaceRenderElement::from(element));
@@ -152,12 +174,6 @@ impl App {
             }
         }
 
-        // The repeated background image sits behind every window, directly on
-        // top of the white clear color, so it is appended last in this
-        // front-to-back ordering.
-        for tile in self.background_image_elements(renderer, output_rect) {
-            elements.push(HearthspaceRenderElement::from(tile));
-        }
         elements
     }
 
@@ -259,9 +275,7 @@ impl App {
     pub(super) fn window_render_scale(&self, window_index: usize) -> f64 {
         match self.windows[window_index].kind {
             ManagedWindowKind::Normal => self.viewport_scale,
-            ManagedWindowKind::ShellBar | ManagedWindowKind::Launcher => f64::from(
-                self.output_scale_for_name(self.windows[window_index].shell_output_name.as_deref()),
-            ),
+            ManagedWindowKind::ShellBar | ManagedWindowKind::Launcher => 1.0,
             ManagedWindowKind::ShellWatcher => 1.0,
         }
     }

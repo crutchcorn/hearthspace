@@ -212,8 +212,26 @@ impl App {
 
     pub(super) fn apply_pointer_motion(&mut self, location: Point<f64, Logical>, time: u32) {
         let previous_location = self.pointer_location;
-        self.raw_pointer_location = location;
-        self.pointer_location = clamp_point_to_outputs(location, &self.output_logical_rects());
+        let output_rects = self.output_logical_rects();
+        let previous_output = rect_index_containing_point(previous_location, &output_rects);
+        let proposed_output = rect_index_containing_point(location, &output_rects);
+        let constrained = constrain_pointer_to_outputs(previous_location, location, &output_rects);
+        let visible_output = rect_index_containing_point(constrained.visible, &output_rects);
+        if constrained.visible != location || previous_output != visible_output {
+            debug!(
+                ?previous_location,
+                proposed = ?location,
+                visible = ?constrained.visible,
+                raw = ?constrained.raw,
+                ?previous_output,
+                ?proposed_output,
+                ?visible_output,
+                ?output_rects,
+                "resolved pointer motion against active output bounds"
+            );
+        }
+        self.pointer_location = constrained.visible;
+        self.raw_pointer_location = constrained.raw;
         if self.software_cursor_visible && self.pointer_location != previous_location {
             self.request_redraw();
         }
@@ -380,19 +398,73 @@ fn clamp_point_to_outputs(
         .unwrap_or(location)
 }
 
+struct PointerConstraint {
+    visible: Point<f64, Logical>,
+    raw: Point<f64, Logical>,
+}
+
+fn constrain_pointer_to_outputs(
+    previous: Point<f64, Logical>,
+    location: Point<f64, Logical>,
+    output_rects: &[Rectangle<i32, Logical>],
+) -> PointerConstraint {
+    let previous_rect = rect_containing_point(previous, output_rects)
+        .or_else(|| nearest_rect_to_point(previous, output_rects));
+
+    if rect_containing_point(location, output_rects).is_some() {
+        return PointerConstraint {
+            visible: location,
+            raw: location,
+        };
+    }
+
+    let visible = previous_rect
+        .map(|rect| clamp_point_to_rect(location, rect))
+        .unwrap_or_else(|| clamp_point_to_outputs(location, output_rects));
+    PointerConstraint {
+        visible,
+        raw: visible,
+    }
+}
+
+fn rect_containing_point(
+    point: Point<f64, Logical>,
+    rects: &[Rectangle<i32, Logical>],
+) -> Option<Rectangle<i32, Logical>> {
+    rects
+        .iter()
+        .copied()
+        .find(|rect| point_in_rect(point, *rect))
+}
+
+fn rect_index_containing_point(
+    point: Point<f64, Logical>,
+    rects: &[Rectangle<i32, Logical>],
+) -> Option<usize> {
+    rects.iter().position(|rect| point_in_rect(point, *rect))
+}
+
+fn nearest_rect_to_point(
+    point: Point<f64, Logical>,
+    rects: &[Rectangle<i32, Logical>],
+) -> Option<Rectangle<i32, Logical>> {
+    rects.iter().copied().min_by(|a, b| {
+        squared_distance(point, clamp_point_to_rect(point, *a))
+            .partial_cmp(&squared_distance(point, clamp_point_to_rect(point, *b)))
+            .unwrap_or(std::cmp::Ordering::Equal)
+    })
+}
+
 fn clamp_point_to_rect(
     location: Point<f64, Logical>,
     rect: Rectangle<i32, Logical>,
 ) -> Point<f64, Logical> {
+    const EDGE_EPSILON: f64 = 0.000_001;
+    let max_x = f64::from(rect.loc.x + rect.size.w.max(1)) - EDGE_EPSILON;
+    let max_y = f64::from(rect.loc.y + rect.size.h.max(1)) - EDGE_EPSILON;
     Point::from((
-        location.x.clamp(
-            f64::from(rect.loc.x),
-            f64::from(rect.loc.x + rect.size.w.saturating_sub(1)),
-        ),
-        location.y.clamp(
-            f64::from(rect.loc.y),
-            f64::from(rect.loc.y + rect.size.h.saturating_sub(1)),
-        ),
+        location.x.clamp(f64::from(rect.loc.x), max_x),
+        location.y.clamp(f64::from(rect.loc.y), max_y),
     ))
 }
 
@@ -400,6 +472,13 @@ fn squared_distance(a: Point<f64, Logical>, b: Point<f64, Logical>) -> f64 {
     let dx = a.x - b.x;
     let dy = a.y - b.y;
     dx * dx + dy * dy
+}
+
+fn point_in_rect(point: Point<f64, Logical>, rect: Rectangle<i32, Logical>) -> bool {
+    point.x >= f64::from(rect.loc.x)
+        && point.y >= f64::from(rect.loc.y)
+        && point.x < f64::from(rect.loc.x + rect.size.w.max(1))
+        && point.y < f64::from(rect.loc.y + rect.size.h.max(1))
 }
 
 pub(super) fn relative_pointer_location(
@@ -421,16 +500,67 @@ mod tests {
     use super::*;
 
     #[test]
-    fn relative_motion_continues_from_unclamped_location_after_visible_pointer_hits_edge() {
+    fn relative_motion_starts_from_visible_location_after_pointer_hits_edge() {
         let output_rects = [Rectangle::from_size((100, 100).into())];
         let raw_location = Point::from((120.0, 50.0));
         let visible_location = clamp_point_to_outputs(raw_location, &output_rects);
 
-        assert_eq!(visible_location, Point::from((99.0, 50.0)));
-        assert_eq!(
-            relative_pointer_location(raw_location, Point::from((20.0, 0.0))),
-            Point::from((140.0, 50.0))
+        assert!((visible_location.x - 99.999_999).abs() < f64::EPSILON);
+        assert_eq!(visible_location.y, 50.0);
+        let relative = relative_pointer_location(visible_location, Point::from((20.0, 0.0)));
+        assert!((relative.x - 119.999_999).abs() < f64::EPSILON);
+        assert_eq!(relative.y, 50.0);
+    }
+
+    #[test]
+    fn pointer_crosses_between_touching_outputs() {
+        let output_rects = [
+            Rectangle::new((0, 0).into(), (100, 100).into()),
+            Rectangle::new((100, 0).into(), (100, 100).into()),
+        ];
+
+        let constrained = constrain_pointer_to_outputs(
+            Point::from((99.999_999, 50.0)),
+            Point::from((100.000_001, 50.0)),
+            &output_rects,
         );
+
+        assert_eq!(constrained.visible, Point::from((100.000_001, 50.0)));
+        assert_eq!(constrained.raw, constrained.visible);
+    }
+
+    #[test]
+    fn raw_pointer_does_not_accumulate_in_real_output_gaps() {
+        let output_rects = [
+            Rectangle::new((0, 0).into(), (100, 100).into()),
+            Rectangle::new((120, 0).into(), (100, 100).into()),
+        ];
+
+        let constrained = constrain_pointer_to_outputs(
+            Point::from((99.999_999, 50.0)),
+            Point::from((110.0, 50.0)),
+            &output_rects,
+        );
+
+        assert_eq!(constrained.visible, Point::from((99.999_999, 50.0)));
+        assert_eq!(constrained.raw, constrained.visible);
+    }
+
+    #[test]
+    fn pointer_accepts_locations_inside_any_output() {
+        let output_rects = [
+            Rectangle::new((0, 0).into(), (100, 100).into()),
+            Rectangle::new((120, 0).into(), (100, 100).into()),
+        ];
+
+        let constrained = constrain_pointer_to_outputs(
+            Point::from((99.999_999, 50.0)),
+            Point::from((130.0, 50.0)),
+            &output_rects,
+        );
+
+        assert_eq!(constrained.visible, Point::from((130.0, 50.0)));
+        assert_eq!(constrained.raw, constrained.visible);
     }
 
     #[test]
@@ -440,10 +570,9 @@ mod tests {
             Rectangle::new((2560, 0).into(), (1366, 768).into()),
         ];
 
-        assert_eq!(
-            clamp_point_to_outputs(Point::from((3200.0, 1200.0)), &output_rects),
-            Point::from((3200.0, 767.0))
-        );
+        let clamped = clamp_point_to_outputs(Point::from((3200.0, 1200.0)), &output_rects);
+        assert_eq!(clamped.x, 3200.0);
+        assert!((clamped.y - 767.999_999).abs() < f64::EPSILON);
     }
 
     #[test]
