@@ -1,6 +1,7 @@
 #[cfg(feature = "winit")]
 use std::time::Instant;
 use std::{
+    collections::HashSet,
     os::unix::{fs::MetadataExt, net::UnixListener as CommandListener},
     sync::Arc,
 };
@@ -183,6 +184,7 @@ struct App {
     next_spawn_position: CanvasPoint,
     next_spawn_output_name: Option<String>,
     spawn_offset: i32,
+    snap_wayland_socket_paths: HashSet<std::path::PathBuf>,
     pointer_location: Point<f64, Logical>,
     raw_pointer_location: Point<f64, Logical>,
     active_touch_slot: Option<TouchSlot>,
@@ -489,6 +491,7 @@ pub(in crate::compositor) fn initialize_app(
         next_spawn_position: CanvasPoint { x: 80, y: 96 },
         next_spawn_output_name: None,
         spawn_offset: 0,
+        snap_wayland_socket_paths: HashSet::new(),
         pointer_location: (0.0, 0.0).into(),
         raw_pointer_location: (0.0, 0.0).into(),
         active_touch_slot: None,
