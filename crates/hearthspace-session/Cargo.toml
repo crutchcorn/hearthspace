@@ -7,7 +7,7 @@ license = "Apache-2.0"
 
 [dependencies]
 clap = { version = "4", features = ["derive"] }
-ctrlc = "3"
+ctrlc = { version = "3", features = ["termination"] }
 hearthspace-common = { path = "../hearthspace-common" }
 nix = { version = "0.30", features = ["signal", "process"] }
 tracing = "0.1.41"

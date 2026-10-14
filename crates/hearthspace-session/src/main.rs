@@ -6,6 +6,7 @@ mod compositor;
 mod desktop_entries;
 mod dev_cargo;
 mod process;
+mod readiness;
 mod session_env;
 mod settingsd;
 mod signals;
@@ -22,7 +23,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     initialize_tracing(&args.log_level);
 
     let mode = resolve_mode(&args);
-    let paths = create_session_paths()?;
+    let paths = create_session_paths(args.session_dir.as_deref())?;
     let session_env = create_session_env(&args, mode, &paths)?;
 
     if mode == RunMode::DevCargo {
@@ -43,7 +44,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let shutdown_requested = install_signal_handler()?;
-    let mut supervisor = Supervisor::new(mode, paths, session_env, shutdown_requested);
+    let mut supervisor = Supervisor::new(mode, paths, session_env, shutdown_requested, &args);
 
     let monitor_result = (|| {
         supervisor.start_settingsd(if args.no_settingsd_restart { 0 } else { 3 })?;

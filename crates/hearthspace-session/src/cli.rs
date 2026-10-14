@@ -1,4 +1,6 @@
-use clap::{ArgAction, Parser};
+use std::path::PathBuf;
+
+use clap::{ArgAction, Parser, ValueEnum};
 
 #[derive(Debug, Parser)]
 #[command(about = "Start a Hearthspace desktop session")]
@@ -10,6 +12,30 @@ pub(crate) struct Args {
     /// Run installed child binaries directly.
     #[arg(long, conflicts_with = "dev")]
     pub(crate) installed: bool,
+
+    /// Select a backend explicitly instead of detecting the host desktop.
+    #[arg(long, value_enum)]
+    pub(crate) backend: Option<Backend>,
+
+    /// Empty private runtime directory owned by this session.
+    #[arg(long)]
+    pub(crate) session_dir: Option<PathBuf>,
+
+    /// Directory containing prebuilt child binaries (installed mode only).
+    #[arg(long, requires = "installed")]
+    pub(crate) binary_dir: Option<PathBuf>,
+
+    /// Override the compositor executable (useful for recovery testing).
+    #[arg(long, requires = "installed")]
+    pub(crate) compositor_binary: Option<PathBuf>,
+
+    /// Export the dedicated dbus-run-session bus to launched applications.
+    #[arg(long)]
+    pub(crate) private_session_bus: bool,
+
+    /// Absolute startup budget in seconds, regardless of child output.
+    #[arg(long, default_value = "120", value_parser = clap::value_parser!(u64).range(1..))]
+    pub(crate) startup_timeout: u64,
 
     /// Wayland display socket name.
     #[arg(long)]
@@ -63,4 +89,10 @@ pub(crate) fn resolve_mode(args: &Args) -> RunMode {
     } else {
         RunMode::InstalledBinaries
     }
+}
+
+#[derive(Debug, Clone, Copy, ValueEnum)]
+pub(crate) enum Backend {
+    Native,
+    Nested,
 }
