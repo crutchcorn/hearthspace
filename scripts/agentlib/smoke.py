@@ -15,6 +15,8 @@ from pathlib import Path
 from .control import Control, ControlError, Deadline, save_capture
 from .input import Input
 from .png import crop, green_pixels
+from .startup_failure import verify_startup_failure
+from .visual import move_resize, software_cursor
 
 LAUNCHER = Path(__file__).resolve().parents[1] / "hearthspace-native"
 
@@ -155,7 +157,8 @@ class Smoke:
             **save_capture(visible, self.artifacts / "typed-visible.png"),
         )
         window = self.window(window["id"])
-        self.move_resize(window)
+        resized = move_resize(self, window, visible, initial)
+        software_cursor(self, resized, initial[0]["output"])
         self.cursor(initial[0])
 
     def mapped_terminal(self):
@@ -165,28 +168,6 @@ class Smoke:
             if window and window["height"] > window.get("titlebar_height", 30) + 20
             else None
         )
-
-    def move_resize(self, window):
-        titlebar = window.get("titlebar_height", 28)
-        if titlebar <= 0:
-            raise ControlError("foot needs compositor decorations for native drag test")
-        x = window["x"] + window["width"] / 2
-        y = window["y"] + titlebar / 2
-        with Input(self.control) as inputs:
-            inputs.drag(x, y, x - 48, y + 36)
-        moved = self.until("window move", lambda: self.changed(window, ("x", "y")))
-        self.record("move", before=window, after=moved)
-        self.capture("moved")
-        x, y = moved["x"] + moved["width"] - 2, moved["y"] + moved["height"] - 2
-        with Input(self.control) as inputs:
-            inputs.drag(x, y, x - 80, y - 48)
-        resized = self.until(
-            "window resize", lambda: self.changed(moved, ("width", "height"))
-        )
-        self.record("resize", before=moved, after=resized)
-        capture = self.capture("resized")
-        if green_pixels(capture[1]) < 100:
-            raise ControlError("typed visible marker disappeared after move/resize")
 
     def changed(self, before, fields):
         after = self.window(before["id"])
@@ -292,6 +273,11 @@ class Smoke:
             ["uname", "-a"], capture_output=True, text=True, check=True
         )
         self.record("host", uname=host.stdout.strip(), case=self.args.case)
+        if (
+            self.args.case == "startup-failure"
+            and (self.directory / "session.json").exists()
+        ):
+            raise ControlError("startup-failure requires a new session directory")
         error = None
         try:
             if self.args.case == "agent-interruption":
@@ -303,6 +289,10 @@ class Smoke:
                 )
                 if result.returncode == 0:
                     raise ControlError("invalid compositor unexpectedly started")
+                self.record(
+                    "injected-startup-failure",
+                    **verify_startup_failure(self.directory, "/bin/false"),
+                )
                 return
             watchdog = (
                 "8"

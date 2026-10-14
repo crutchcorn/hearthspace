@@ -1,5 +1,6 @@
 import contextlib
 import io
+import json
 import sys
 import tempfile
 import unittest
@@ -10,9 +11,122 @@ from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from agentlib.control import ControlError
 from agentlib.smoke import Smoke
+from agentlib.startup_failure import verify_startup_failure
 
 
 class SmokeTests(unittest.TestCase):
+    def startup_evidence(self, session):
+        manifest = {
+            "id": "startup-test",
+            "unit": "hearthspace-native-startup-test.service",
+            "session_dir": str(session),
+            "compositor": str(Path("/bin/false").resolve()),
+            "vt": 7,
+            "original_vt": 2,
+            "uid": 1000,
+        }
+        identity = {"vt": 7, "uid": 1000, "leader": 1234, "session_id": "test"}
+        (session / "session.json").write_text(json.dumps(manifest))
+        (session / "identity.json").write_text(json.dumps(identity))
+        (session / "session.log").write_text(
+            'Error: "compositor exited before readiness: exit status: 1"\n'
+        )
+        return manifest, identity
+
+    def test_startup_failure_rejects_preflight_errors_without_a_manifest(self):
+        with tempfile.TemporaryDirectory() as directory:
+            smoke = Smoke(
+                SimpleNamespace(
+                    session=Path(directory), timeout=10, case="startup-failure"
+                )
+            )
+            with (
+                patch("agentlib.smoke.subprocess.run") as run,
+                patch.object(smoke, "launcher") as launcher,
+                patch.object(smoke, "verify_restored") as restored,
+                contextlib.redirect_stdout(io.StringIO()),
+            ):
+                run.return_value.stdout = "test host"
+                launcher.return_value.returncode = 1
+                with self.assertRaisesRegex(ControlError, "allocated native session"):
+                    smoke.run()
+            self.assertEqual(launcher.call_count, 1)
+            restored.assert_not_called()
+
+    def test_startup_failure_rejects_stale_evidence_without_stopping_it(self):
+        with tempfile.TemporaryDirectory() as directory:
+            session = Path(directory)
+            self.startup_evidence(session)
+            smoke = Smoke(
+                SimpleNamespace(session=session, timeout=10, case="startup-failure")
+            )
+            with (
+                patch("agentlib.smoke.subprocess.run") as run,
+                patch.object(smoke, "launcher") as launcher,
+                contextlib.redirect_stdout(io.StringIO()),
+            ):
+                run.return_value.stdout = "test host"
+                with self.assertRaisesRegex(ControlError, "new session directory"):
+                    smoke.run()
+            launcher.assert_not_called()
+
+    def test_startup_failure_requires_matching_injection_and_pam_identity(self):
+        changes = (
+            ("session.json", "compositor", "/bin/true"),
+            ("session.json", "vt", 2),
+            ("identity.json", "vt", 8),
+            ("identity.json", "uid", 1001),
+            ("identity.json", "leader", 0),
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            session = Path(directory)
+            for filename, key, value in changes:
+                with self.subTest(filename=filename, key=key):
+                    self.startup_evidence(session)
+                    path = session / filename
+                    state = json.loads(path.read_text())
+                    state[key] = value
+                    path.write_text(json.dumps(state))
+                    with self.assertRaisesRegex(ControlError, "matching injected"):
+                        verify_startup_failure(session, "/bin/false")
+
+    def test_startup_failure_rejects_errors_before_compositor_execution(self):
+        with tempfile.TemporaryDirectory() as directory:
+            session = Path(directory)
+            self.startup_evidence(session)
+            (session / "session.log").write_text(
+                'Error: "settingsd exited before readiness: exit status: 1"\n'
+            )
+            with self.assertRaisesRegex(ControlError, "before the injected"):
+                verify_startup_failure(session, "/bin/false")
+
+    def test_startup_failure_verifies_injection_then_checks_restoration(self):
+        with tempfile.TemporaryDirectory() as directory:
+            session = Path(directory)
+            smoke = Smoke(
+                SimpleNamespace(session=session, timeout=10, case="startup-failure")
+            )
+
+            def launcher(operation, *_args, **_kwargs):
+                if operation == "start":
+                    self.startup_evidence(session)
+                return SimpleNamespace(returncode=1)
+
+            with (
+                patch("agentlib.smoke.subprocess.run") as run,
+                patch.object(smoke, "launcher", side_effect=launcher) as launch,
+                patch.object(smoke, "verify_restored") as restored,
+                contextlib.redirect_stdout(io.StringIO()),
+            ):
+                run.return_value.stdout = "test host"
+                smoke.run()
+            self.assertEqual(
+                [call.args[0] for call in launch.call_args_list], ["start", "stop"]
+            )
+            restored.assert_called_once()
+            self.assertEqual(smoke.results[-1]["step"], "injected-startup-failure")
+            self.assertEqual(smoke.results[-1]["session_id"], "test")
+
     def test_cursor_region_uses_exact_scale_with_rounded_bounds_and_offset(self):
         with tempfile.TemporaryDirectory() as directory:
             smoke = Smoke(SimpleNamespace(session=Path(directory)))
