@@ -25,6 +25,11 @@ exists.
 
 ## Validation To Run On Real Hardware
 
+Checked hardware cases below retain their original evidence and hardware scope.
+They are not blanket validation of later backend changes. Combined daily-use
+acceptance and subsequent native runs are recorded in
+[DAILY_USABILITY.md](./DAILY_USABILITY.md).
+
 - [x] Run `cargo check`.
 - [x] Run `cargo check --features udev`.
 - [x] Run `cargo check --no-default-features --features udev`.
@@ -61,6 +66,18 @@ exists.
       layout policy.
 - [x] Preserve or migrate pointer position/focus predictably when output geometry
       changes.
+- [x] Keep Wayland output identity attached to its physical connector when the
+      primary changes; promote an existing output instead of silently retargeting
+      its global to another connector.
+- [x] Expose no stale output after the last connector disappears, and allow
+      active-seat rescans while scanout is paused for lack of outputs. A deferred
+      VT-paused rescan is distinct from a real empty output set.
+      These lifecycle changes are covered by fake-connector/global tests and the
+      164-test compositor library run in
+      `/tmp/hearthspace-daily-output-lock-unit-tests.log` (`2d177b5`).
+- [ ] Repeat primary-output replacement and removal/reconnection of **all**
+      outputs on hardware, including lock/capture requests during the transition.
+      Earlier secondary HDMI hotplug evidence does not establish these cases.
 - [ ] Add real output removal cleanup if Smithay exposes a better lifecycle than
       disabling globals.
 
@@ -124,10 +141,30 @@ them reliably.
 - [ ] Log renderer damage and KMS damage separately so future failures clearly
       show whether rendering succeeded and only the scanout hint was rejected.
 
+## Session Protection
+
+- [x] Implement `ext-session-lock-v1` with native acknowledgements gated by a
+      protected frame's page flip on every connected output. Isolate input,
+      captures, metadata, and semantic agent actions while locking or locked.
+- [x] Cover competing lockers, owning-client unlock/focus restoration, role-only
+      destruction, dead-client isolation, and stale capture invalidation with
+      protocol and deterministic regressions.
+- [x] Exercise an owning protocol fixture on native KMS: confirmation, competing
+      rejection, blocked agent access, and focus restoration after unlock passed.
+- [x] Launch the distribution swaylock client and observe confirmed native
+      presentation. Authentication remains in its packaged PAM policy.
+- [ ] Repeat real swaylock parent-process death on native hardware and verify
+      the shield remains until the owned test session is stopped. Its PAM helper
+      is a separate child process; a process-name count alone is not a kill target.
+- [ ] Test lock/unlock across the broader output, VT, and GPU matrix.
+
+See [session locking](../docs/SESSION_LOCK.md) for the protocol test client and
+recovery boundary. Manual locking does not implement idle lock or suspend policy.
+
 ## Multi-GPU And Direct Scanout
 
-- [ ] Keep single-GPU rendering as the only supported native mode until the
-      single-output path is stable on real hardware.
+- [x] Keep single-GPU rendering as the supported native mode. Additional GPU
+      enablement requires separate ownership and recovery validation.
 - [ ] Split render-node, scanout-node, and per-output allocator ownership further
       before enabling secondary GPUs.
 - [ ] Add explicit GPU/device selection policy before opening non-primary GPUs.
@@ -147,9 +184,9 @@ them reliably.
 
 ## Non-Goals For The First Native Milestone
 
-- [ ] Full X11/XWayland polish beyond first-pass window mapping.
+- [ ] X11/XWayland drag-and-drop and EWMH behavior beyond implemented window states.
 - [ ] Direct scanout.
 - [ ] VRR/HDR/color management.
 - [ ] Complex multi-monitor layout policy.
 - [ ] Runtime GPU selection UI.
-- [ ] Tablet/touch hardware polish beyond not crashing.
+- [ ] Tablet/switch integration and the wider touch-device hardware matrix.
