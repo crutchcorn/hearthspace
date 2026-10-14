@@ -18,7 +18,7 @@ pub(super) const LAUNCHER_ITEM_H_PAD: f64 = 14.0;
 pub(super) const LAUNCHER_ITEM_WIDTH: f64 = LAUNCHER_WIDTH as f64 - 2.0 * LAUNCHER_ITEM_H_PAD;
 
 /// Maximum width of the search field.
-pub(super) const SEARCH_BOX_WIDTH: f64 = 420.0;
+pub(super) const SEARCH_BOX_WIDTH: f64 = 280.0;
 /// Fixed height of the search field.
 pub(super) const SEARCH_BOX_HEIGHT: f64 = 34.0;
 /// Horizontal inset between the bar's contents and the screen edges.

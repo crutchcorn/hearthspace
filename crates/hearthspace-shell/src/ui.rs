@@ -16,6 +16,7 @@ mod constants;
 mod launcher;
 mod output_watcher;
 mod search_focus;
+mod session_controls;
 mod state;
 mod views;
 mod window_catalog;

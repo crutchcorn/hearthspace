@@ -15,6 +15,7 @@ pub(super) struct ShellState {
     pub(super) catalog: AppCatalog,
     pub(super) windows: Vec<RunningWindow>,
     pub(super) windows_error: Option<String>,
+    pub(super) clock: String,
     pub(super) outputs: Vec<ShellOutputInstance>,
     pub(super) watcher_window_id: WindowId,
     running: bool,
@@ -25,6 +26,7 @@ pub(super) struct ShellOutputInstance {
     pub(super) output_name: Option<String>,
     pub(super) query: String,
     pub(super) show_windows: bool,
+    pub(super) confirm_logout: bool,
     pub(super) launch_error: Option<String>,
     pub(super) bar_window_id: WindowId,
     pub(super) launcher_window_id: WindowId,
@@ -48,6 +50,7 @@ impl ShellState {
             catalog: AppCatalog::load(),
             windows: Vec::new(),
             windows_error: None,
+            clock: super::session_controls::current_clock(),
             outputs: Vec::new(),
             watcher_window_id: WindowId::next(),
             running: true,
@@ -115,6 +118,7 @@ impl ShellState {
             .find(|output| output.key() == output_key)
         {
             output.show_windows = false;
+            output.confirm_logout = false;
             output.query.clear();
             output.launch_error = None;
         }
@@ -138,6 +142,7 @@ impl ShellOutputInstance {
             output_name,
             query: String::new(),
             show_windows: false,
+            confirm_logout: false,
             launch_error: None,
             bar_window_id: WindowId::next(),
             launcher_window_id: WindowId::next(),

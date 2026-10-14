@@ -13,11 +13,12 @@ use xilem::{
 use crate::ShellCommand;
 
 use super::{
-    command_client::send_command,
+    command_client::{launch_app, send_command},
     constants::{MAX_RESULTS, SEARCH_BOX_HEIGHT, SEARCH_BOX_WIDTH, SHELL_BAR_H_PAD, launcher_size},
     launcher::{self, Entry},
     output_watcher::output_watcher_task,
     search_focus::{FocusTarget, focus_on_activation, track_search},
+    session_controls::{clock_task, session_controls},
     state::{ShellOutputInstance, ShellState},
     window_catalog::window_catalog_task,
 };
@@ -41,7 +42,7 @@ pub(super) fn app_logic(
     let mut windows = vec![watcher];
 
     for output in &state.outputs {
-        windows.push(shell_bar_window(output));
+        windows.push(shell_bar_window(output, state.clock.clone()));
 
         let results = launcher::results(state, output);
         if !output.query.trim().is_empty() || output.show_windows || output.launch_error.is_some() {
@@ -56,18 +57,21 @@ pub(super) fn app_logic(
     windows.into_iter()
 }
 
-fn shell_bar_window(output: &ShellOutputInstance) -> WindowView<ShellState> {
+fn shell_bar_window(output: &ShellOutputInstance, clock: String) -> WindowView<ShellState> {
     let bar_app_id = output.bar_app_id();
-    window(output.bar_window_id, "Hearthspace Shell", bar_view(output)).with_options(
-        move |options| {
-            options
-                .with_name(&bar_app_id, &bar_app_id)
-                .with_decorations(false)
-                .with_resizable(false)
-                .with_initial_inner_size(LogicalSize::new(760.0, f64::from(CONTROL_BAR_HEIGHT)))
-                .on_close(ShellState::stop)
-        },
+    window(
+        output.bar_window_id,
+        "Hearthspace Shell",
+        bar_view(output, clock),
     )
+    .with_options(move |options| {
+        options
+            .with_name(&bar_app_id, &bar_app_id)
+            .with_decorations(false)
+            .with_resizable(false)
+            .with_initial_inner_size(LogicalSize::new(760.0, f64::from(CONTROL_BAR_HEIGHT)))
+            .on_close(ShellState::stop)
+    })
 }
 
 fn launcher_window(
@@ -99,7 +103,7 @@ fn launcher_window(
     })
 }
 
-fn bar_view(output: &ShellOutputInstance) -> impl WidgetView<ShellState> + use<> {
+fn bar_view(output: &ShellOutputInstance, clock: String) -> impl WidgetView<ShellState> + use<> {
     let focus_target = FocusTarget::default();
     let output_key = output.key().to_string();
     let search_output_key = output_key.clone();
@@ -143,22 +147,29 @@ fn bar_view(output: &ShellOutputInstance) -> impl WidgetView<ShellState> + use<>
         });
 
     let command_buttons: Vec<Box<AnyWidgetView<ShellState>>> = [
-        ShellCommand::PanLeft,
-        ShellCommand::PanRight,
-        ShellCommand::PanUp,
-        ShellCommand::PanDown,
-        ShellCommand::ZoomIn,
-        ShellCommand::ZoomOut,
-        ShellCommand::LogAccessibilityTree,
+        ("Reset view", ShellCommand::ResetView),
+        ("Zoom out", ShellCommand::ZoomOut),
+        ("Zoom in", ShellCommand::ZoomIn),
     ]
     .into_iter()
-    .map(|command| {
-        components::compact_action_button(command.label(), move |state: &mut ShellState| {
+    .map(|(label, command)| {
+        components::compact_action_button(label, move |state: &mut ShellState| {
             let _ = send_command(&state.command_socket, &command.wire_name());
         })
         .boxed()
     })
     .collect();
+    let settings_key = output.key().to_string();
+    let settings_output = output.output_name.clone();
+    let settings_button =
+        components::compact_action_button("Settings", move |state: &mut ShellState| {
+            let result = launch_app(
+                &state.command_socket,
+                "dev.hearthspace.Settings.desktop",
+                settings_output.as_deref(),
+            );
+            state.finish_launch(&settings_key, result);
+        });
 
     focus_on_activation(
         sized_box(
@@ -169,6 +180,9 @@ fn bar_view(output: &ShellOutputInstance) -> impl WidgetView<ShellState> + use<>
                     .fixed_height(SEARCH_BOX_HEIGHT.px()),
                 windows_button,
                 command_buttons,
+                settings_button,
+                FlexSpacer::Flex(1.0),
+                session_controls(output, clock),
                 FlexSpacer::Fixed(SHELL_BAR_H_PAD.px()),
             ))
             .gap(8.0.px()),
@@ -181,8 +195,11 @@ fn bar_view(output: &ShellOutputInstance) -> impl WidgetView<ShellState> + use<>
 
 fn output_watcher_view() -> impl WidgetView<ShellState> + use<> {
     sized_box(fork(
-        fork(label(""), output_watcher_task()),
-        window_catalog_task(),
+        fork(
+            fork(label(""), output_watcher_task()),
+            window_catalog_task(),
+        ),
+        clock_task(),
     ))
     .fixed_width(1.0.px())
     .fixed_height(1.0.px())

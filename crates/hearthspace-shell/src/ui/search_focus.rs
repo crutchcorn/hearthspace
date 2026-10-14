@@ -13,12 +13,13 @@ use xilem::{
             AccessCtx, ActionCtx, ChildrenIds, ErasedAction, EventCtx, LayoutCtx, MeasureCtx,
             NoAction, PaintCtx, PropertiesMut, PropertiesRef, RegisterCtx, TextEvent, Update,
             UpdateCtx, Widget, WidgetId, WidgetMut, WidgetPod,
+            keyboard::{Key, NamedKey},
         },
         imaging::Painter,
         kurbo::{Axis, Point, Size},
         layout::{LenReq, Length},
         properties::Dimensions,
-        widgets::TextInput,
+        widgets::{TextAction, TextInput},
     },
 };
 
@@ -227,6 +228,21 @@ impl Widget for SearchFocus {
         {
             ctx.set_focus(target);
         }
+        if let TextEvent::Keyboard(event) = event
+            && event.state.is_down()
+            && event.key == Key::Named(NamedKey::Escape)
+            && let Some(target) = *self.target.lock().unwrap()
+        {
+            // Escape must also dismiss shell panels when a toolbar button has
+            // keyboard focus. Reuse the search view's existing cancel callback.
+            ctx.mutate_later(target, |mut search| {
+                search
+                    .ctx
+                    .submit_action::<TextAction>(TextAction::Cancelled);
+            });
+            ctx.set_focus(target);
+            ctx.set_handled();
+        }
     }
 
     fn measure(
@@ -301,6 +317,15 @@ mod tests {
         // Dynamically created Xilem windows have no focus fallback.
         assert_eq!(harness.focused_widget_id(), Some(search_id));
         harness.process_text_event(TextEvent::WindowFocusChange(true));
+        assert_eq!(harness.focused_widget_id(), Some(search_id));
+
+        while harness.pop_action_erased().is_some() {}
+        harness.focus_on(Some(button_id));
+        harness.process_text_event(TextEvent::key_down(Key::Named(NamedKey::Escape)));
+        assert!(matches!(
+            harness.pop_action::<TextAction>(),
+            Some((TextAction::Cancelled, id)) if id == search_id
+        ));
         assert_eq!(harness.focused_widget_id(), Some(search_id));
         harness.keyboard_type_chars("foot");
         assert_eq!(

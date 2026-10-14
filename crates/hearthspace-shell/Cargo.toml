@@ -6,6 +6,7 @@ rust-version = "1.99.0"
 license = "Apache-2.0"
 
 [dependencies]
+chrono = { version = "0.4.45", default-features = false, features = ["clock"] }
 hearthspace-common = { path = "../hearthspace-common" }
 hearthspace-ipc = { path = "../hearthspace-ipc" }
 hearthspace-ui-components = { path = "../ui-components" }
