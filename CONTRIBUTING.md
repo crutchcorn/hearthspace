@@ -38,8 +38,29 @@ As such, while my CPU, GPU, and RAM are all quite spec'd up, the VM is not a per
 I develop Hearthspace on Ubuntu 26.04 LTS, and the following packages are required to build and run the compositor and shell:
 
 ```sh
-sudo apt-get install -y build-essential cargo rustc rustfmt pkg-config clang libclang-dev libwayland-dev wayland-protocols wayland-utils libinput-dev libxkbcommon-dev libxkbcommon-x11-dev libudev-dev libseat-dev libgbm-dev libegl1-mesa-dev libgles2-mesa-dev libdrm-dev libsystemd-dev
+sudo apt-get install -y build-essential pkg-config clang libclang-dev libwayland-dev wayland-protocols wayland-utils libinput-dev libxkbcommon-dev libxkbcommon-x11-dev libudev-dev libseat-dev libgbm-dev libegl1-mesa-dev libgles2-mesa-dev libdrm-dev libsystemd-dev
 ```
+
+### Rust Toolchain
+
+Use [rustup](https://rust-lang.org/tools/install/) for Rust. The repository's
+`rust-toolchain.toml` pins Rust **1.99.0** and installs Clippy, rustfmt,
+rust-analyzer, and the standard-library sources. CI uses the same pin.
+Ubuntu's Rust packages can be older than the project and its Xilem dependency.
+
+On the development host, rustup was updated to **1.29.1** and its user-wide
+default changed to **1.99.0** with:
+
+```sh
+rustup toolchain install 1.99.0 --profile minimal --component clippy,rustfmt,rust-analyzer,rust-src
+rustup default 1.99.0
+```
+
+The existing `~/.profile` and `~/.bashrc` source `~/.cargo/env`, putting rustup's
+commands ahead of `/usr/bin`. Distro-managed Rust packages remain installed;
+normal user commands now use the rustup toolchain, including outside this
+checkout. No system package files were overwritten. Verify with `rustc
+--version`, `cargo --version`, and `rustup show`.
 
 #### E2E Testing Dependencies
 
@@ -401,10 +422,24 @@ for source search when working through Xilem/Masonry behavior or API questions.
 
 ### Linting
 
-`cargo clippy` is run as part of CI (`.github/workflows/ci.yml`) and locally. On the development VM, clippy is provided by the apt package rather than `rustup`:
+Clippy and rustfmt come from the pinned rustup toolchain. Run:
 
 ```sh
-sudo apt-get install -y rust-clippy
+cargo fmt --all --check
+cargo clippy --workspace --all-targets --features udev,e2e,test-apps -- -D warnings
+```
+
+The development host also has [cargo-deny 0.20.2](https://github.com/EmbarkStudios/cargo-deny/releases/tag/0.20.2)
+in `~/.cargo/bin` and [Ruff 0.17.0](https://github.com/astral-sh/ruff/releases/tag/0.17.0)
+in `~/.local/bin`. Their official Linux release archives were verified against
+the published SHA256 checksum files before installing the binaries. Cargo-deny
+replaced 0.19.9; Ruff's previously temporary binary was verified and installed
+on PATH. These are user installations, with no apt package changes.
+
+```sh
+cargo deny check advisories bans sources --warn unmaintained
+ruff check scripts
+ruff format --check scripts
 ```
 
 ### Verified Versions
@@ -412,9 +447,9 @@ sudo apt-get install -y rust-clippy
 The development VM currently has:
 
 ```text
-rustc: 1.93.1
-cargo: 1.93.1
-rustfmt: 1.8.0
+rustc: 1.99.0
+cargo: 1.99.0
+rustfmt: 1.10.0-stable
 clang: 21.1.8
 wayland-server: 1.24.0
 wayland-protocols: 1.47
