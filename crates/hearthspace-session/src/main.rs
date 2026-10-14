@@ -8,6 +8,7 @@ mod desktop_entries;
 mod dev_cargo;
 mod process;
 mod readiness;
+mod session_bus;
 mod session_env;
 mod settingsd;
 mod signals;
@@ -22,6 +23,8 @@ use supervisor::Supervisor;
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = Args::parse();
     initialize_tracing(&args.log_level);
+
+    session_bus::bootstrap_native_session(&args)?;
 
     let mode = resolve_mode(&args);
     let paths = create_session_paths(args.session_dir.as_deref(), args.private_session_bus)?;
@@ -48,6 +51,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut supervisor = Supervisor::new(mode, paths, session_env, shutdown_requested, &args);
 
     let monitor_result = (|| {
+        supervisor.prepare_activation_environment(args.private_session_bus)?;
         supervisor.start_settingsd(if args.no_settingsd_restart { 0 } else { 3 })?;
         supervisor.wait_for_settingsd_ready()?;
         supervisor.start_compositor()?;

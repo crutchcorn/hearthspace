@@ -110,10 +110,17 @@ through the harness to restore its original VT and remove the private runtime;
 recovery records under `/run` disappear on reboot. User-selected artifact
 directories retain logs and screenshots until explicitly removed.
 
-The harness uses `dbus-run-session` and the supervisor's `--private-session-bus`
-option. That explicitly supplies `HEARTHSPACE_SESSION_BUS_ADDRESS` to children so
-app launch and AT-SPI stay on the Hearthspace bus. Normal nested sessions continue
-to exclude the host bus from shell-launched apps.
+Native supervisor launches automatically create a private `dbus-run-session`
+before starting desktop components. The harness already supplies that bus and
+uses `--private-session-bus` to reuse it. Both routes explicitly provide
+`HEARTHSPACE_SESSION_BUS_ADDRESS` to children so app launch and AT-SPI stay on the
+Hearthspace bus. Before desktop startup, `dbus-update-activation-environment`
+updates only the private bus with Hearthspace's display, runtime, and settings
+sockets. It does not update the shared systemd user manager or the host desktop.
+The bootstrap clears host display/socket and accessibility overrides before
+creating its bus. Normal nested sessions continue to exclude the host bus from
+shell-launched apps; use a dedicated `dbus-run-session` with
+`--private-session-bus` when testing desktop service activation there.
 
 Private sessions share the user's existing audio service. Unless explicitly
 overridden, the supervisor exports `PULSE_SERVER=unix:$HOST_RUNTIME/pulse/native`

@@ -64,6 +64,20 @@ impl Supervisor {
         }
     }
 
+    pub(crate) fn prepare_activation_environment(
+        &self,
+        private_session_bus: bool,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        if private_session_bus {
+            crate::session_bus::update_activation_environment(
+                &self.session_env,
+                self.startup_deadline,
+                &self.shutdown_requested,
+            )?;
+        }
+        Ok(())
+    }
+
     pub(crate) fn start_settingsd(
         &mut self,
         max_restarts: usize,

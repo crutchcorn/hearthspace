@@ -29,7 +29,7 @@ pub(crate) struct Args {
     #[arg(long, requires = "installed")]
     pub(crate) compositor_binary: Option<PathBuf>,
 
-    /// Export the dedicated dbus-run-session bus to launched applications.
+    /// Use an existing dedicated dbus-run-session bus (native sessions create one automatically).
     #[arg(long)]
     pub(crate) private_session_bus: bool,
 
