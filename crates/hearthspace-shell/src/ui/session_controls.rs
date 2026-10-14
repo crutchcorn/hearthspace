@@ -70,6 +70,7 @@ pub(super) fn session_controls(
 ) -> impl WidgetView<ShellState> + use<> {
     let output_key = output.key().to_string();
     let cancel_key = output_key.clone();
+    let lock_key = output_key.clone();
     let confirming = output.confirm_logout;
     let logout = components::compact_action_button(
         if confirming {
@@ -90,7 +91,14 @@ pub(super) fn session_controls(
             set_confirmation(state, &cancel_key, false);
         })
     });
-    flex_row((components::muted_text(clock), logout, cancel)).gap(8.0.px())
+    let lock = (!confirming).then(|| {
+        components::compact_action_button("Lock", move |state: &mut ShellState| {
+            if let Err(error) = send_command(&state.command_socket, "lock-session") {
+                state.finish_launch(&lock_key, Err(error));
+            }
+        })
+    });
+    flex_row((components::muted_text(clock), lock, logout, cancel)).gap(8.0.px())
 }
 
 #[cfg(test)]

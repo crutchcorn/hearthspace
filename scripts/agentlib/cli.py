@@ -10,6 +10,7 @@ from pathlib import Path
 from .accessibility import run_accessibility
 from .control import Control, ControlError, Deadline, pixel_to_logical, save_capture
 from .input import Input
+from .lock import lock_session
 from .text import clipboard_command, paste
 
 LAUNCHER = Path(__file__).resolve().parents[1] / "hearthspace-native"
@@ -87,6 +88,10 @@ def parser():
             "selector", help="XPath matching accessible UI elements"
         )
     sub.add_parser("stop")
+    lock = sub.add_parser(
+        "lock", help="lock the session and wait for secure presentation"
+    )
+    lock.add_argument("--wait", choices=("locked", "none"), default="locked")
     screenshot = sub.add_parser("screenshot")
     screenshot.add_argument("destination", type=Path)
     wait = sub.add_parser("wait", help="wait for a fresh frame or a PNG pixel change")
@@ -324,6 +329,8 @@ def run(args):
         # as --socket status. Never promote startup output/frame metadata.
         return {**lifecycle, "outputs": [], **snapshot}
     control = Control(target_socket(args), deadline)
+    if args.command == "lock":
+        return lock_session(control, args.wait)
     if args.command == "a11y":
         return run_accessibility(args, control, deadline)
     if args.command == "status":
