@@ -58,6 +58,17 @@ The chooser uses this cache, so `MimeType` in the entry alone is insufficient.
 Confirm the probe IDs appear and the default browser is unchanged. This command
 regenerates `mimeinfo.cache`; it does not set defaults in `mimeapps.list`.
 
+Harness runs also isolate the portal's `XDG_DATA_HOME`. Once native startup
+reports its owned runtime, copy the two probe entries into
+`RUNTIME/activated-app-profile/data/applications/` and run
+`update-desktop-database` on that directory too. Verify the runtime against
+`RUN/session.json`, require destination entries to be absent, and compare the
+copies with the hashes in `app-probe-ownership.json`. Record their exact private
+paths in the manifest. Check `gio mime` with the portal's own `XDG_DATA_HOME` and
+`XDG_DATA_DIRS`; registering only the user's ordinary applications directory
+does not make a probe visible to an isolated portal. These private copies and
+their cache are removed with the owned runtime at shutdown.
+
 ### Snap package
 
 Create its new profile under
