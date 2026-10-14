@@ -6086,6 +6086,9 @@ name = "waydriver-hearthspace"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "atspi 0.30.0",
+ "quick-xml",
+ "serde_json",
  "tempfile",
  "tokio",
  "tokio-util",

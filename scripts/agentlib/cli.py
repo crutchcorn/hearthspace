@@ -7,6 +7,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+from .accessibility import run_accessibility
 from .control import Control, ControlError, Deadline, pixel_to_logical, save_capture
 from .input import Input
 from .text import clipboard_command, paste
@@ -21,6 +22,9 @@ WINDOW_COMMANDS = {
     "focus-previous": "focus-previous-window",
     "focus-launcher": "focus-launcher",
     "reset-view": "reset-view",
+    "fullscreen": "fullscreen-window",
+    "maximize": "maximize-window",
+    "restore": "restore-window",
 }
 
 
@@ -73,6 +77,15 @@ def parser():
     sub.add_parser("status")
     sub.add_parser("apps", help="list launchable desktop applications")
     sub.add_parser("windows", help="list live windows and their stable IDs")
+    a11y = sub.add_parser(
+        "a11y", help="inspect or activate UI on the session's private accessibility bus"
+    )
+    semantic = a11y.add_subparsers(dest="a11y_action", required=True)
+    semantic.add_parser("snapshot")
+    for operation in ("find", "activate"):
+        semantic.add_parser(operation).add_argument(
+            "selector", help="XPath matching accessible UI elements"
+        )
     sub.add_parser("stop")
     screenshot = sub.add_parser("screenshot")
     screenshot.add_argument("destination", type=Path)
@@ -152,7 +165,15 @@ def parser():
                 )
         elif name == "launch":
             action.add_argument("app", help="desktop entry ID or 'foot'")
-        elif name in ("focus", "close", "move", "resize"):
+        elif name in (
+            "focus",
+            "close",
+            "move",
+            "resize",
+            "fullscreen",
+            "maximize",
+            "restore",
+        ):
             action.add_argument("window_id", type=positive_integer)
             if name == "move":
                 action.add_argument("canvas_x", type=canvas_coordinate)
@@ -160,6 +181,10 @@ def parser():
             elif name == "resize":
                 action.add_argument("width", type=window_size)
                 action.add_argument("height", type=window_size)
+            elif name in ("fullscreen", "maximize"):
+                action.add_argument(
+                    "--off", action="store_true", help="leave this window state"
+                )
     return root
 
 
@@ -243,22 +268,32 @@ def action(args, control):
         elif args.command == "paste":
             paste(inputs, clipboard_command(args.text, args.file), args.shortcut)
         elif args.command == "launch":
-            if args.app == "foot":
+            if args.app == "foot" and args.output is None:
                 control.request("spawn foot")
             elif args.output is None:
                 control.request(f"launch-app {args.app}")
             else:
                 control.request(
-                    f"launch-app-on-output {args.output.encode().hex()} {args.app}"
+                    f"launch-app-on-output {args.output.encode().hex()} {'foot.desktop' if args.app == 'foot' else args.app}"
                 )
         elif args.command in WINDOW_COMMANDS:
             command = WINDOW_COMMANDS[args.command]
-            if args.command in ("focus", "close", "move", "resize"):
+            if args.command in (
+                "focus",
+                "close",
+                "move",
+                "resize",
+                "fullscreen",
+                "maximize",
+                "restore",
+            ):
                 command += f" {args.window_id}"
             if args.command == "move":
                 command += f" {args.canvas_x} {args.canvas_y}"
             elif args.command == "resize":
                 command += f" {args.width} {args.height}"
+            elif args.command in ("fullscreen", "maximize"):
+                command += " false" if args.off else " true"
             control.request(command)
     result = {
         "ok": True,
@@ -289,6 +324,8 @@ def run(args):
         # as --socket status. Never promote startup output/frame metadata.
         return {**lifecycle, "outputs": [], **snapshot}
     control = Control(target_socket(args), deadline)
+    if args.command == "a11y":
+        return run_accessibility(args, control, deadline)
     if args.command == "status":
         return {"ok": True, **control.status()}
     if args.command in ("apps", "windows"):

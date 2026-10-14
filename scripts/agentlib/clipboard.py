@@ -143,6 +143,8 @@ class ClipboardRun:
         window = self.window(client)
         if window is None:
             raise ControlError(f"window disappeared: {client['title']}")
+        self.control.request(f"focus-window {window['id']}")
+        window = self.window(client)
         with Input(self.control) as inputs:
             inputs.click(window["x"] + 70, window["y"] + window["height"] / 2)
         self.wait(client, "editor focus", lambda state: state.get("focused"))
@@ -234,6 +236,11 @@ def run_clipboard(smoke, env, fixture):
         raise ControlError(
             "clipboard fixtures require an explicit private session environment"
         )
+    smoke.control.request("reset-view")
+    smoke.until(
+        "clipboard layout at normal zoom",
+        lambda: smoke.control.status()["viewport"]["scale"] == 1.0,
+    )
     with ExitStack() as resources:
         run = ClipboardRun(smoke, env, fixture, resources)
         wayland = run.launch("wayland", "wayland", 40)

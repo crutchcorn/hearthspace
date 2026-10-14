@@ -7,8 +7,11 @@ license = "Apache-2.0"
 
 [dependencies]
 async-trait = "0.1.92"
+atspi = "0.30.0"
+quick-xml = "0.41.0"
 tempfile = "3.27.0"
-tokio = { version = "1.53.3", features = ["io-util", "net", "process", "time"] }
+tokio = { version = "1.53.3", features = ["io-util", "net", "process", "time", "rt"] }
+serde_json = "1.0.154"
 tokio-util = "0.7.20"
 uuid = { version = "1.28.0", features = ["v4"] }
 waydriver = "0.3.10"

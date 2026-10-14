@@ -24,6 +24,11 @@ class WindowCommandTests(unittest.TestCase):
             (("focus-previous",), "focus-previous-window"),
             (("focus-launcher",), "focus-launcher"),
             (("reset-view",), "reset-view"),
+            (("fullscreen", "42"), "fullscreen-window 42 true"),
+            (("fullscreen", "42", "--off"), "fullscreen-window 42 false"),
+            (("maximize", "42"), "maximize-window 42 true"),
+            (("maximize", "42", "--off"), "maximize-window 42 false"),
+            (("restore", "42"), "restore-window 42"),
         ]:
             with self.subTest(args=args):
                 control = Mock(path="/tmp/unused.sock")

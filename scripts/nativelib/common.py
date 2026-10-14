@@ -15,6 +15,8 @@ BINARIES = (
     "hearthspace-compositor",
     "hearthspace-shell",
     "hearthspace-settingsd",
+    "hearthspace-a11y",
+    "hearthspace-notifications",
 )
 MAX_REPLY = 128 * 1024 * 1024
 

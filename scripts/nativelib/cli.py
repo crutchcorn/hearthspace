@@ -70,6 +70,10 @@ def build(args, session):
                 "hearthspace-shell",
                 "-p",
                 "hearthspace-settingsd",
+                "-p",
+                "waydriver-hearthspace",
+                "-p",
+                "hearthspace-notifications",
                 "--features",
                 "hearthspace-compositor/udev",
             ]

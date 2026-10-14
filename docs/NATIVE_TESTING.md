@@ -43,8 +43,9 @@ scripts/hearthspace-agent --session /tmp/hearthspace-run-1 status
 scripts/hearthspace-agent --session /tmp/hearthspace-run-1 screenshot /tmp/hearthspace-run-1/desktop.png
 ```
 
-Start builds the session supervisor, native compositor, shell, and settings
-daemon before changing VTs. `start --no-build` explicitly uses existing debug
+Start builds the session supervisor, native compositor, shell, settings and
+notification daemons, and accessibility CLI before changing VTs.
+`start --no-build` explicitly uses existing debug
 binaries; use it only after building the required native features. `binaries.json`
 records binary paths and hashes. The session manifest records runtime/socket
 paths, VT identity, process IDs, and output metadata. Readiness requires
@@ -70,11 +71,18 @@ Commands return JSON. Screenshots produce a PNG and adjacent JSON metadata file.
 Pointer coordinates default to global output-logical coordinates, independent of
 the canvas zoom. Use screenshot metadata to act in captured pixel coordinates:
 
+Use `apps` to discover desktop-entry IDs and `windows` for live titles, stable
+window IDs, focus, and geometry. Window IDs belong to the current compositor
+process. The `focus`, `close`, `move`, `resize`, `maximize`, `fullscreen`, and
+`restore` commands target those IDs; see [window management](./WINDOW_MANAGEMENT.md)
+for canvas coordinates, keyboard shortcuts, and restoration behavior.
+
 ```sh
 scripts/hearthspace-agent --session /tmp/hearthspace-run-1 launch foot
 scripts/hearthspace-agent --session /tmp/hearthspace-run-1 click 200 180
 scripts/hearthspace-agent --session /tmp/hearthspace-run-1 type 'hello from the agent'
 scripts/hearthspace-agent --session /tmp/hearthspace-run-1 key enter
+scripts/hearthspace-agent --session /tmp/hearthspace-run-1 paste 'Café 日本語 🦀' --shortcut ctrl+shift+v
 scripts/hearthspace-agent --session /tmp/hearthspace-run-1 drag 300 100 350 150 --save /tmp/hearthspace-run-1/moved.png
 scripts/hearthspace-agent --session /tmp/hearthspace-run-1 scroll -15
 scripts/hearthspace-agent --session /tmp/hearthspace-run-1 click 400 360 --units pixels --metadata /tmp/hearthspace-run-1/desktop.json
@@ -85,6 +93,12 @@ newline, and tab. Unsupported characters fail before typing. Key chords use
 names such as `ctrl+a`; input cleanup releases held keys and pointer buttons on
 errors. Synthetic scrolling follows the same compositor zoom rules as physical
 scrolling, including Super and `--scroll-zooms`.
+
+`clipboard-set TEXT` replaces the session clipboard with UTF-8 text;
+`paste TEXT` also sends Ctrl+V, or the requested `--shortcut` (terminals commonly
+use `ctrl+shift+v`). Both accept `--file PATH` instead of text and validate the
+entire payload before acting: at most 16 KiB of UTF-8 with no NUL bytes. Use these
+commands for Unicode text and verify the destination content afterward.
 
 Input operations wait for a fresh capture by default. `--wait change` waits for
 different image pixels; `--wait none` reports command acceptance only. A cursor
@@ -198,6 +212,26 @@ before discovery to activate the accessibility bridges on that private bus.
 `find(xpath, timeout)` returns matches, and `activate(xpath, timeout)` requires
 exactly one match. For example, `//*[@name='Save']` can locate an exposed Save
 control. Verify the action through the resulting UI as with pointer input.
+
+The agent CLI also exposes these semantic operations directly:
+
+```sh
+scripts/hearthspace-agent --session /tmp/hearthspace-run-1 a11y snapshot
+scripts/hearthspace-agent --session /tmp/hearthspace-run-1 a11y find "//*[@name='Save']"
+scripts/hearthspace-agent --session /tmp/hearthspace-run-1 a11y activate "//PushButton[@name='Save']"
+```
+
+The harness builds and records `hearthspace-a11y` alongside the session binaries.
+These commands require a live session manifest with a private bus address;
+`--socket` alone cannot select accessibility. Activation requires exactly one
+match and obtains a fresh capture afterward. Acceptance is not proof of an
+application-specific result; inspect the resulting state as usual.
+
+Snapshots resolve numeric AT-SPI roles when a toolkit such as AccessKit omits
+role-name methods. Use the observed role and accessible name when building a
+selector; different toolkits may call a button `Button` or `PushButton`.
+Accessibility bounds are toolkit-relative; use capture metadata for pointer
+coordinates instead of treating those bounds as screen coordinates.
 
 The terminal CLI is sufficient for an agent to operate this workflow. An MCP
 wrapper and a Wayland image-copy-capture frontend can reuse these boundaries when

@@ -3,7 +3,7 @@
 use std::{path::PathBuf, process::Stdio, time::Duration};
 
 use tokio::{
-    io::{AsyncBufReadExt, BufReader},
+    io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader},
     process::Command,
     time::{Instant, sleep, timeout},
 };
@@ -77,7 +77,7 @@ async fn attach_discovers_shell_on_private_bus_and_preserves_the_desktop() {
     assert_eq!(adapter.ownership(), SessionOwnership::Attached);
     let accessibility = SessionAccessibility::new(&address).unwrap();
     accessibility.enable(Duration::from_secs(5)).await.unwrap();
-    let selector = "//*[@name='LEFT' and @focusable='true']";
+    let selector = "//Button[@name='Zoom in' and @focusable='true']";
     loop {
         let matches = accessibility
             .find(selector, Duration::from_secs(5))
@@ -97,6 +97,26 @@ async fn attach_discovers_shell_on_private_bus_and_preserves_the_desktop() {
         .activate(selector, Duration::from_secs(5))
         .await
         .unwrap();
+    timeout(Duration::from_secs(5), async {
+        loop {
+            let mut stream = tokio::net::UnixStream::connect(&socket).await.unwrap();
+            stream.write_all(b"status\n").await.unwrap();
+            let mut reader = BufReader::new(stream);
+            let mut header = String::new();
+            reader.read_line(&mut header).await.unwrap();
+            let size: usize = header.strip_prefix("ok ").unwrap().trim().parse().unwrap();
+            assert!(size < 64 * 1024);
+            let mut bytes = vec![0; size];
+            reader.read_exact(&mut bytes).await.unwrap();
+            let status: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+            if status["viewport"]["scale"] == 1.25 {
+                break;
+            }
+            sleep(Duration::from_millis(20)).await;
+        }
+    })
+    .await
+    .expect("semantic Zoom in action changed viewport scale");
     let capture = HearthspaceCapture::new(adapter.state().unwrap());
     let stream = capture.start_stream().await.unwrap();
     assert!(
