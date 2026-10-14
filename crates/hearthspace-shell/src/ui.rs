@@ -14,6 +14,8 @@ use xilem::{EventLoop, Xilem};
 mod command_client;
 mod constants;
 mod launcher;
+mod notification_view;
+mod notifications;
 mod output_watcher;
 mod search_focus;
 mod session_controls;

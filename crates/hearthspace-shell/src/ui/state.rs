@@ -7,7 +7,9 @@ use xilem::{AppState, WindowId};
 
 use crate::app_catalog::AppCatalog;
 
-use super::{constants::FALLBACK_OUTPUT_KEY, window_catalog::RunningWindow};
+use super::{
+    constants::FALLBACK_OUTPUT_KEY, notifications::Notification, window_catalog::RunningWindow,
+};
 
 /// Reactive state backing the shell view.
 pub(super) struct ShellState {
@@ -16,6 +18,9 @@ pub(super) struct ShellState {
     pub(super) windows: Vec<RunningWindow>,
     pub(super) windows_error: Option<String>,
     pub(super) clock: String,
+    pub(super) notifications_socket: Option<PathBuf>,
+    pub(super) notifications: Vec<Notification>,
+    pub(super) notifications_error: Option<String>,
     pub(super) outputs: Vec<ShellOutputInstance>,
     pub(super) watcher_window_id: WindowId,
     running: bool,
@@ -27,6 +32,7 @@ pub(super) struct ShellOutputInstance {
     pub(super) query: String,
     pub(super) show_windows: bool,
     pub(super) confirm_logout: bool,
+    pub(super) show_notifications: bool,
     pub(super) launch_error: Option<String>,
     pub(super) bar_window_id: WindowId,
     pub(super) launcher_window_id: WindowId,
@@ -51,6 +57,10 @@ impl ShellState {
             windows: Vec::new(),
             windows_error: None,
             clock: super::session_controls::current_clock(),
+            notifications_socket: std::env::var_os("XDG_RUNTIME_DIR")
+                .map(|dir| PathBuf::from(dir).join("hearthspace-notifications.sock")),
+            notifications: Vec::new(),
+            notifications_error: None,
             outputs: Vec::new(),
             watcher_window_id: WindowId::next(),
             running: true,
@@ -92,6 +102,7 @@ impl ShellState {
                 Ok(()) => {
                     output.query.clear();
                     output.show_windows = false;
+                    output.show_notifications = false;
                     output.launch_error = None;
                 }
                 Err(error) => output.launch_error = Some(error),
@@ -106,6 +117,7 @@ impl ShellState {
             .find(|output| output.key() == output_key)
         {
             output.show_windows = !output.show_windows;
+            output.show_notifications = false;
             output.query.clear();
             output.launch_error = None;
         }
@@ -118,6 +130,7 @@ impl ShellState {
             .find(|output| output.key() == output_key)
         {
             output.show_windows = false;
+            output.show_notifications = false;
             output.confirm_logout = false;
             output.query.clear();
             output.launch_error = None;
@@ -131,6 +144,7 @@ impl ShellState {
             .find(|output| output.key() == output_key)
         {
             output.query = query;
+            output.show_notifications = false;
             output.launch_error = None;
         }
     }
@@ -143,6 +157,7 @@ impl ShellOutputInstance {
             query: String::new(),
             show_windows: false,
             confirm_logout: false,
+            show_notifications: false,
             launch_error: None,
             bar_window_id: WindowId::next(),
             launcher_window_id: WindowId::next(),

@@ -16,6 +16,8 @@ use super::{
     command_client::{launch_app, send_command},
     constants::{MAX_RESULTS, SEARCH_BOX_HEIGHT, SEARCH_BOX_WIDTH, SHELL_BAR_H_PAD, launcher_size},
     launcher::{self, Entry},
+    notification_view,
+    notifications::{Notification, notification_task},
     output_watcher::output_watcher_task,
     search_focus::{FocusTarget, focus_on_activation, track_search},
     session_controls::{clock_task, session_controls},
@@ -42,7 +44,19 @@ pub(super) fn app_logic(
     let mut windows = vec![watcher];
 
     for output in &state.outputs {
-        windows.push(shell_bar_window(output, state.clock.clone()));
+        windows.push(shell_bar_window(
+            output,
+            state.clock.clone(),
+            &state.notifications,
+        ));
+        if output.show_notifications {
+            windows.push(notification_window(
+                output,
+                state.notifications.clone(),
+                state.notifications_error.clone(),
+            ));
+            continue;
+        }
 
         let results = launcher::results(state, output);
         if !output.query.trim().is_empty() || output.show_windows || output.launch_error.is_some() {
@@ -57,12 +71,16 @@ pub(super) fn app_logic(
     windows.into_iter()
 }
 
-fn shell_bar_window(output: &ShellOutputInstance, clock: String) -> WindowView<ShellState> {
+fn shell_bar_window(
+    output: &ShellOutputInstance,
+    clock: String,
+    notifications: &[Notification],
+) -> WindowView<ShellState> {
     let bar_app_id = output.bar_app_id();
     window(
         output.bar_window_id,
         "Hearthspace Shell",
-        bar_view(output, clock),
+        bar_view(output, clock, notifications),
     )
     .with_options(move |options| {
         options
@@ -71,6 +89,29 @@ fn shell_bar_window(output: &ShellOutputInstance, clock: String) -> WindowView<S
             .with_resizable(false)
             .with_initial_inner_size(LogicalSize::new(760.0, f64::from(CONTROL_BAR_HEIGHT)))
             .on_close(ShellState::stop)
+    })
+}
+
+fn notification_window(
+    output: &ShellOutputInstance,
+    notifications: Vec<Notification>,
+    error: Option<String>,
+) -> WindowView<ShellState> {
+    let app_id = output.launcher_app_id();
+    let size = LogicalSize::new(f64::from(super::constants::LAUNCHER_WIDTH), 440.0);
+    window(
+        output.launcher_window_id,
+        "Hearthspace Notifications",
+        notification_view::panel(output, notifications, error),
+    )
+    .with_options(move |options| {
+        options
+            .with_name(&app_id, &app_id)
+            .with_decorations(false)
+            .with_resizable(false)
+            .with_initial_inner_size(size)
+            .with_min_inner_size(size)
+            .with_max_inner_size(size)
     })
 }
 
@@ -103,7 +144,11 @@ fn launcher_window(
     })
 }
 
-fn bar_view(output: &ShellOutputInstance, clock: String) -> impl WidgetView<ShellState> + use<> {
+fn bar_view(
+    output: &ShellOutputInstance,
+    clock: String,
+    notifications: &[Notification],
+) -> impl WidgetView<ShellState> + use<> {
     let focus_target = FocusTarget::default();
     let output_key = output.key().to_string();
     let search_output_key = output_key.clone();
@@ -152,6 +197,7 @@ fn bar_view(output: &ShellOutputInstance, clock: String) -> impl WidgetView<Shel
         ("Zoom in", ShellCommand::ZoomIn),
     ]
     .into_iter()
+    .filter(|_| !output.confirm_logout)
     .map(|(label, command)| {
         components::compact_action_button(label, move |state: &mut ShellState| {
             let _ = send_command(&state.command_socket, &command.wire_name());
@@ -161,7 +207,7 @@ fn bar_view(output: &ShellOutputInstance, clock: String) -> impl WidgetView<Shel
     .collect();
     let settings_key = output.key().to_string();
     let settings_output = output.output_name.clone();
-    let settings_button =
+    let settings_button = (!output.confirm_logout).then(|| {
         components::compact_action_button("Settings", move |state: &mut ShellState| {
             let result = launch_app(
                 &state.command_socket,
@@ -169,7 +215,8 @@ fn bar_view(output: &ShellOutputInstance, clock: String) -> impl WidgetView<Shel
                 settings_output.as_deref(),
             );
             state.finish_launch(&settings_key, result);
-        });
+        })
+    });
 
     focus_on_activation(
         sized_box(
@@ -181,6 +228,7 @@ fn bar_view(output: &ShellOutputInstance, clock: String) -> impl WidgetView<Shel
                 windows_button,
                 command_buttons,
                 settings_button,
+                (!output.confirm_logout).then(|| notification_view::button(output, notifications)),
                 FlexSpacer::Flex(1.0),
                 session_controls(output, clock),
                 FlexSpacer::Fixed(SHELL_BAR_H_PAD.px()),
@@ -199,7 +247,7 @@ fn output_watcher_view() -> impl WidgetView<ShellState> + use<> {
             fork(label(""), output_watcher_task()),
             window_catalog_task(),
         ),
-        clock_task(),
+        fork(clock_task(), notification_task()),
     ))
     .fixed_width(1.0.px())
     .fixed_height(1.0.px())
