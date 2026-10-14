@@ -13,7 +13,7 @@ use xilem::{
     masonry::core::keyboard::{Key, NamedKey},
 };
 
-use super::{ShellState, bar_view};
+use super::{Entry, ShellState, bar_view, launcher_window};
 use crate::ui::window_catalog::RunningWindow;
 
 #[derive(Debug)]
@@ -98,4 +98,53 @@ fn keyboard_enter_routes_through_rebuilt_bar_and_focuses_matching_window() {
     assert_eq!(received.try_recv().unwrap(), "focus-window 42\n");
     assert!(state.outputs[0].query.is_empty());
     assert!(state.outputs[0].launch_error.is_none());
+}
+
+#[test]
+fn launcher_creation_options_fit_results_headers_and_errors() {
+    // Build the real Xilem WindowView into its Winit creation attributes. A
+    // nonresizable Wayland window starts with min=max=initial size, so checking
+    // only our desired min/max hints would miss a clipped first presentation.
+    for (count, show_windows, launch_error, catalog_error, height) in [
+        (0, false, false, false, 52.0),
+        (1, false, false, false, 52.0),
+        (4, false, false, false, 172.0),
+        (4, true, false, false, 212.0),
+        (4, false, true, false, 272.0),
+        (4, false, false, true, 272.0),
+    ] {
+        let mut state = ShellState::new("/unused".into(), vec!["eDP-1".into()]);
+        state.outputs[0].show_windows = show_windows;
+        state.outputs[0].launch_error = launch_error.then(|| "Launch failed".into());
+        let results = (0..count)
+            .map(|id| {
+                Entry::Window(RunningWindow {
+                    id,
+                    title: format!("Notes {id}"),
+                    app_id: "editor".into(),
+                    focused: false,
+                })
+            })
+            .collect();
+        let view = launcher_window(
+            &state.outputs[0],
+            results,
+            catalog_error.then(|| "Catalog unavailable".into()),
+        )
+        .with_base_color(xilem::Color::BLACK);
+        let runtime = xilem::tokio::runtime::Builder::new_current_thread()
+            .build()
+            .unwrap();
+        let mut ctx = ViewCtx::new(Arc::new(NoMessages), Arc::new(runtime));
+        let (window, _) = view.build(&mut ctx, &mut state);
+        let attrs = window.0.attributes;
+        let expected = Some(xilem::dpi::LogicalSize::new(360.0, height).into());
+        assert!(!attrs.resizable);
+        assert_eq!(
+            attrs.inner_size, expected,
+            "initial size for {count} results"
+        );
+        assert_eq!(attrs.min_inner_size, expected);
+        assert_eq!(attrs.max_inner_size, expected);
+    }
 }

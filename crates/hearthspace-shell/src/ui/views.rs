@@ -142,7 +142,9 @@ fn launcher_window(
             .with_name(&launcher_app_id, &launcher_app_id)
             .with_decorations(false)
             .with_resizable(false)
-            .with_initial_inner_size(launcher_size(1))
+            // Winit replaces nonresizable min/max hints with the initial size
+            // while creating the window, before reactive hint updates apply.
+            .with_initial_inner_size(size)
             .with_min_inner_size(size)
             .with_max_inner_size(size)
     })
