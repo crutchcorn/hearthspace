@@ -197,8 +197,8 @@ class Smoke:
         )
 
     def cursor(self, metadata):
-        scale_x = metadata["width"] / metadata["logical_width"]
-        scale_y = metadata["height"] / metadata["logical_height"]
+        # Logical bounds are rounded; only the advertised scale maps pixels.
+        scale = metadata["scale"]
         x, y = metadata["logical_x"] + 20, metadata["logical_y"] + 100
         with Input(self.control) as inputs:
             inputs.motion(x, y)
@@ -208,7 +208,7 @@ class Smoke:
         after = self.capture("cursor-second", metadata["output"])
         if after[0].get("cursor") != "embedded":
             raise ControlError("capture cursor policy must be embedded")
-        rect = (10 * scale_x, 90 * scale_y, 55 * scale_x, 140 * scale_y)
+        rect = (10 * scale, 90 * scale, 55 * scale, 140 * scale)
         if crop(before[1], rect) == crop(after[1], rect):
             raise ControlError("moving cursor did not change the old cursor region")
         self.record("cursor-inclusion", policy="embedded", checked_pixel_region=rect)

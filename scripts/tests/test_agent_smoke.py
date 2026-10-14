@@ -13,6 +13,38 @@ from agentlib.smoke import Smoke
 
 
 class SmokeTests(unittest.TestCase):
+    def test_cursor_region_uses_exact_scale_with_rounded_bounds_and_offset(self):
+        with tempfile.TemporaryDirectory() as directory:
+            smoke = Smoke(SimpleNamespace(session=Path(directory)))
+            metadata = {
+                "width": 801,
+                "height": 601,
+                "scale": 2,
+                "logical_width": 401,
+                "logical_height": 301,
+                "logical_x": -401,
+                "logical_y": 200,
+                "output": "secondary",
+                "cursor": "embedded",
+            }
+            smoke.capture = lambda *_: (metadata, b"png")
+            with (
+                patch("agentlib.smoke.Input") as inputs,
+                patch(
+                    "agentlib.smoke.crop", side_effect=[b"cursor", b"background"]
+                ) as crop,
+                contextlib.redirect_stdout(io.StringIO()),
+            ):
+                smoke.cursor(metadata)
+            self.assertEqual(crop.call_args.args[1], (20, 180, 110, 280))
+            self.assertEqual(
+                [
+                    call.args
+                    for call in inputs.return_value.__enter__.return_value.motion.call_args_list
+                ],
+                [(-381, 300), (-311, 300)],
+            )
+
     def test_fractional_timeout_sends_integer_watchdog_and_tracing_filter(self):
         with tempfile.TemporaryDirectory() as directory:
             session = Path(directory)

@@ -3276,6 +3276,7 @@ dependencies = [
  "cfg-if",
  "cfg_aliases",
  "libc",
+ "memoffset",
 ]
 
 [[package]]
@@ -5891,6 +5892,7 @@ dependencies = [
  "tokio-util",
  "uuid",
  "waydriver",
+ "zbus",
 ]
 
 [[package]]
