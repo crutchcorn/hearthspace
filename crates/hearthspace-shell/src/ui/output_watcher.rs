@@ -38,6 +38,11 @@ pub(super) fn initial_wayland_output_names() -> io::Result<Vec<String>> {
     event_queue
         .roundtrip(&mut watcher)
         .map_err(io::Error::other)?;
+    // Registry dispatch binds wl_output objects. Their initial name events only
+    // arrive after those bind requests reach the compositor on a second trip.
+    event_queue
+        .roundtrip(&mut watcher)
+        .map_err(io::Error::other)?;
     Ok(watcher.output_names())
 }
 
@@ -50,6 +55,10 @@ fn watch_wayland_outputs(proxy: MessageProxy<OutputNamesChanged>) -> io::Result<
     event_queue
         .roundtrip(&mut watcher)
         .map_err(io::Error::other)?;
+    event_queue
+        .roundtrip(&mut watcher)
+        .map_err(io::Error::other)?;
+    watcher.take_changed();
     send_output_names(&proxy, &watcher)?;
 
     loop {

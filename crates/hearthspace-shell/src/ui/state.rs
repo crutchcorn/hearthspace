@@ -7,12 +7,14 @@ use xilem::{AppState, WindowId};
 
 use crate::app_catalog::AppCatalog;
 
-use super::constants::FALLBACK_OUTPUT_KEY;
+use super::{constants::FALLBACK_OUTPUT_KEY, window_catalog::RunningWindow};
 
 /// Reactive state backing the shell view.
 pub(super) struct ShellState {
     pub(super) command_socket: PathBuf,
     pub(super) catalog: AppCatalog,
+    pub(super) windows: Vec<RunningWindow>,
+    pub(super) windows_error: Option<String>,
     pub(super) outputs: Vec<ShellOutputInstance>,
     pub(super) watcher_window_id: WindowId,
     running: bool,
@@ -22,6 +24,7 @@ pub(super) struct ShellState {
 pub(super) struct ShellOutputInstance {
     pub(super) output_name: Option<String>,
     pub(super) query: String,
+    pub(super) show_windows: bool,
     pub(super) launch_error: Option<String>,
     pub(super) bar_window_id: WindowId,
     pub(super) launcher_window_id: WindowId,
@@ -43,6 +46,8 @@ impl ShellState {
         let mut state = Self {
             command_socket,
             catalog: AppCatalog::load(),
+            windows: Vec::new(),
+            windows_error: None,
             outputs: Vec::new(),
             watcher_window_id: WindowId::next(),
             running: true,
@@ -83,10 +88,35 @@ impl ShellState {
             match result {
                 Ok(()) => {
                     output.query.clear();
+                    output.show_windows = false;
                     output.launch_error = None;
                 }
                 Err(error) => output.launch_error = Some(error),
             }
+        }
+    }
+
+    pub(super) fn toggle_windows(&mut self, output_key: &str) {
+        if let Some(output) = self
+            .outputs
+            .iter_mut()
+            .find(|output| output.key() == output_key)
+        {
+            output.show_windows = !output.show_windows;
+            output.query.clear();
+            output.launch_error = None;
+        }
+    }
+
+    pub(super) fn dismiss_launcher(&mut self, output_key: &str) {
+        if let Some(output) = self
+            .outputs
+            .iter_mut()
+            .find(|output| output.key() == output_key)
+        {
+            output.show_windows = false;
+            output.query.clear();
+            output.launch_error = None;
         }
     }
 
@@ -107,6 +137,7 @@ impl ShellOutputInstance {
         Self {
             output_name,
             query: String::new(),
+            show_windows: false,
             launch_error: None,
             bar_window_id: WindowId::next(),
             launcher_window_id: WindowId::next(),

@@ -6,20 +6,20 @@ use xilem::{
     dpi::LogicalSize,
     masonry::{layout::AsUnit, parley::fontique::GenericFamily},
     style::Style,
-    view::{CrossAxisAlignment, FlexSpacer, flex_col, flex_row, label, sized_box, text_input},
+    view::{FlexSpacer, flex_row, label, sized_box, text_input},
     window,
 };
 
-use crate::{ShellCommand, app_catalog::DesktopApp};
+use crate::ShellCommand;
 
 use super::{
-    command_client::{launch_app, send_command},
-    constants::{
-        LAUNCHER_ITEM_WIDTH, MAX_RESULTS, SEARCH_BOX_HEIGHT, SEARCH_BOX_WIDTH, SHELL_BAR_H_PAD,
-        launcher_size,
-    },
+    command_client::send_command,
+    constants::{MAX_RESULTS, SEARCH_BOX_HEIGHT, SEARCH_BOX_WIDTH, SHELL_BAR_H_PAD, launcher_size},
+    launcher::{self, Entry},
     output_watcher::output_watcher_task,
+    search_focus::{FocusTarget, focus_on_activation, track_search},
     state::{ShellOutputInstance, ShellState},
+    window_catalog::window_catalog_task,
 };
 
 pub(super) fn app_logic(
@@ -43,10 +43,13 @@ pub(super) fn app_logic(
     for output in &state.outputs {
         windows.push(shell_bar_window(output));
 
-        let output_key = output.key().to_string();
-        let results = search_results(state, &output_key);
-        if !results.is_empty() || output.launch_error.is_some() {
-            windows.push(launcher_window(output, output_key, results));
+        let results = launcher::results(state, output);
+        if !output.query.trim().is_empty() || output.show_windows || output.launch_error.is_some() {
+            windows.push(launcher_window(
+                output,
+                results,
+                state.windows_error.clone(),
+            ));
         }
     }
 
@@ -69,25 +72,21 @@ fn shell_bar_window(output: &ShellOutputInstance) -> WindowView<ShellState> {
 
 fn launcher_window(
     output: &ShellOutputInstance,
-    output_key: String,
-    results: Vec<DesktopApp>,
+    results: Vec<Entry>,
+    windows_error: Option<String>,
 ) -> WindowView<ShellState> {
     let launcher_app_id = output.launcher_app_id();
-    let launcher_id = output.launcher_window_id;
-    let output_name = output.output_name.clone();
-    let mut size = launcher_size(results.len());
-    if output.launch_error.is_some() {
+    let mut size = launcher_size(results.len().max(1));
+    if output.show_windows && output.query.trim().is_empty() {
+        size.height += 40.0;
+    }
+    if output.launch_error.is_some() || windows_error.is_some() {
         size.height += 100.0;
     }
     window(
-        launcher_id,
+        output.launcher_window_id,
         "Hearthspace Launcher",
-        launcher_view(
-            output_key,
-            output_name,
-            results,
-            output.launch_error.clone(),
-        ),
+        launcher::launcher_view(output, results, windows_error),
     )
     .with_options(move |options| {
         options
@@ -100,24 +99,12 @@ fn launcher_window(
     })
 }
 
-fn search_results(state: &ShellState, output_key: &str) -> Vec<DesktopApp> {
-    let Some(output) = state
-        .outputs
-        .iter()
-        .find(|output| output.key() == output_key)
-    else {
-        return Vec::new();
-    };
-    let query = output.query.trim();
-    if query.is_empty() {
-        return Vec::new();
-    }
-    state.catalog.search(query, MAX_RESULTS)
-}
-
 fn bar_view(output: &ShellOutputInstance) -> impl WidgetView<ShellState> + use<> {
+    let focus_target = FocusTarget::default();
     let output_key = output.key().to_string();
     let search_output_key = output_key.clone();
+    let cancel_output_key = output_key.clone();
+    let windows_output_key = output_key.clone();
     let search_output_name = output.output_name.clone();
     let search = text_input(
         output.query.clone(),
@@ -125,22 +112,35 @@ fn bar_view(output: &ShellOutputInstance) -> impl WidgetView<ShellState> + use<>
             state.change_query(&output_key, value);
         },
     )
-    .placeholder("Search apps...")
+    .placeholder("Search apps and windows...")
     .font(GenericFamily::SystemUi)
     .on_enter(move |state: &mut ShellState, value: String| {
-        let query = value.trim();
-        if query.is_empty() {
-            return;
-        }
-        if let Some(app) = state.catalog.search(query, 1).into_iter().next() {
-            let result = launch_app(
-                &state.command_socket,
-                &app.id,
+        state.change_query(&search_output_key, value);
+        let entry = state
+            .outputs
+            .iter()
+            .find(|output| output.key() == search_output_key)
+            .and_then(|output| launcher::results(state, output).into_iter().next());
+        if let Some(entry) = entry {
+            launcher::select(
+                state,
+                &search_output_key,
                 search_output_name.as_deref(),
+                &entry,
             );
-            state.finish_launch(&search_output_key, result);
         }
+    })
+    .on_cancel(move |state: &mut ShellState, _value: String| {
+        state.dismiss_launcher(&cancel_output_key);
     });
+
+    let windows_button =
+        components::compact_action_button("Windows", move |state: &mut ShellState| {
+            state.toggle_windows(&windows_output_key);
+            if let Err(error) = send_command(&state.command_socket, "focus-launcher") {
+                state.finish_launch(&windows_output_key, Err(error));
+            }
+        });
 
     let command_buttons: Vec<Box<AnyWidgetView<ShellState>>> = [
         ShellCommand::PanLeft,
@@ -160,68 +160,30 @@ fn bar_view(output: &ShellOutputInstance) -> impl WidgetView<ShellState> + use<>
     })
     .collect();
 
-    sized_box(
-        flex_row((
-            FlexSpacer::Fixed(SHELL_BAR_H_PAD.px()),
-            sized_box(search)
-                .fixed_width(SEARCH_BOX_WIDTH.px())
-                .fixed_height(SEARCH_BOX_HEIGHT.px()),
-            command_buttons,
-            FlexSpacer::Fixed(SHELL_BAR_H_PAD.px()),
-        ))
-        .gap(8.0.px()),
+    focus_on_activation(
+        sized_box(
+            flex_row((
+                FlexSpacer::Fixed(SHELL_BAR_H_PAD.px()),
+                sized_box(track_search(search, focus_target.clone()))
+                    .fixed_width(SEARCH_BOX_WIDTH.px())
+                    .fixed_height(SEARCH_BOX_HEIGHT.px()),
+                windows_button,
+                command_buttons,
+                FlexSpacer::Fixed(SHELL_BAR_H_PAD.px()),
+            ))
+            .gap(8.0.px()),
+        )
+        .background_color(components::SURFACE)
+        .padding(7.0.px()),
+        focus_target,
     )
-    .background_color(components::SURFACE)
-    .padding(7.0.px())
 }
 
 fn output_watcher_view() -> impl WidgetView<ShellState> + use<> {
-    sized_box(fork(label(""), output_watcher_task()))
-        .fixed_width(1.0.px())
-        .fixed_height(1.0.px())
-}
-
-fn launcher_view(
-    output_key: String,
-    output_name: Option<String>,
-    results: Vec<DesktopApp>,
-    launch_error: Option<String>,
-) -> impl WidgetView<ShellState> + use<> {
-    let mut rows: Vec<Box<AnyWidgetView<ShellState>>> = results
-        .into_iter()
-        .map(|app| {
-            let app_id = app.id;
-            let output_key = output_key.clone();
-            let output_name = output_name.clone();
-            components::launcher_item(
-                app.name,
-                LAUNCHER_ITEM_WIDTH,
-                move |state: &mut ShellState| {
-                    let result = launch_app(&state.command_socket, &app_id, output_name.as_deref());
-                    state.finish_launch(&output_key, result);
-                },
-            )
-            .boxed()
-        })
-        .collect();
-
-    if let Some(error) = launch_error {
-        rows.insert(
-            0,
-            sized_box(components::field_label(format!(
-                "Could not start the app: {error}"
-            )))
-            .background_color(components::DANGER_SUBTLE)
-            .padding(8.0.px())
-            .boxed(),
-        );
-    }
-
-    sized_box(
-        flex_col(rows)
-            .cross_axis_alignment(CrossAxisAlignment::Stretch)
-            .gap(4.0.px()),
-    )
-    .background_color(components::SURFACE)
-    .padding(6.0.px())
+    sized_box(fork(
+        fork(label(""), output_watcher_task()),
+        window_catalog_task(),
+    ))
+    .fixed_width(1.0.px())
+    .fixed_height(1.0.px())
 }

@@ -181,7 +181,7 @@ mod tests {
     }
 
     #[test]
-    fn search_with_no_matches_still_returns_apps_for_launcher_dropdown() {
+    fn unmatched_queries_do_not_offer_unrelated_applications() {
         let catalog = AppCatalog {
             apps: vec![
                 app_with(
@@ -197,13 +197,8 @@ mod tests {
 
         let results = catalog.search("does-not-match", 10);
 
-        assert_eq!(
-            results
-                .iter()
-                .map(|app| app.name.as_str())
-                .collect::<Vec<_>>(),
-            ["Calculator", "Files"]
-        );
+        assert!(results.is_empty());
+        assert_eq!(catalog.search("", 10).len(), 2);
     }
 
     #[test]

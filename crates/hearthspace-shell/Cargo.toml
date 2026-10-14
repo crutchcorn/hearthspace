@@ -9,12 +9,14 @@ license = "Apache-2.0"
 hearthspace-common = { path = "../hearthspace-common" }
 hearthspace-ipc = { path = "../hearthspace-ipc" }
 hearthspace-ui-components = { path = "../ui-components" }
+serde_json = "1.0.154"
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
 wayland-client = "0.31.15"
 xilem = { git = "https://github.com/linebender/xilem", rev = "271a27a6d4a930f7878d404f9014e3c50a3a9b88" }
 
 [dev-dependencies]
+masonry = { git = "https://github.com/linebender/xilem", rev = "271a27a6d4a930f7878d404f9014e3c50a3a9b88", features = ["testing"] }
 rstest = "0.27.0"
 tempfile = "3.27.0"
 
