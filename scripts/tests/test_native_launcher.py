@@ -2,12 +2,14 @@
 
 import argparse
 import json
+import os
+import time
 import socket
 import sys
 import tempfile
 import threading
 import unittest
-from contextlib import ExitStack
+from contextlib import ExitStack, nullcontext
 from pathlib import Path
 from unittest.mock import Mock, patch
 
@@ -35,6 +37,29 @@ def state(directory):
 
 
 class NativeServiceTests(unittest.TestCase):
+    def test_incomplete_previous_recovery_blocks_new_vt_claim(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            previous = {**state(root), "status": "cleanup_failed", "started_at": 0}
+            common.save(root / "current.json", previous)
+            args = argparse.Namespace(session=root)
+            with (
+                patch.object(service, "STATE_ROOT", root),
+                patch.object(service, "allocation_lock", return_value=nullcontext()),
+                patch.object(service.os, "geteuid", return_value=0),
+                patch.dict(os.environ, {"SUDO_UID": str(os.getuid())}),
+                patch.object(
+                    service, "unit_info", return_value={"ActiveState": "failed"}
+                ),
+                patch.object(
+                    recovery, "recover", return_value={"cleanup": {"complete": False}}
+                ),
+                patch.object(service, "choose_vt") as claim,
+                self.assertRaisesRegex(RuntimeError, "refusing to claim"),
+            ):
+                service.launch(args)
+            claim.assert_not_called()
+
     def test_service_owns_real_pam_session_and_independent_recovery(self):
         args = service.service_command(state("/tmp/session with spaces"))
         for prop in (
@@ -259,6 +284,27 @@ class NativeReadinessTests(unittest.TestCase):
                 result = common.wait_ready(saved, 1)
             self.assertEqual(result["compositor_pid"], 123)
             self.assertEqual((Path(directory) / "ready.png").read_bytes(), png)
+
+    def test_each_readiness_step_receives_only_remaining_budget(self):
+        with tempfile.TemporaryDirectory() as directory:
+
+            def capture(_path, command, _timeout):
+                if command == "status":
+                    time.sleep(0.02)
+                    return b'{"backend":"native","shell_ready":true,"outputs":[]}'
+                return b'{"frame_id":1,"presentation":"page-flip"}\n\x89PNG\r\n\x1a\n'
+
+            with (
+                patch.object(
+                    common, "unit_info", return_value={"ActiveState": "active"}
+                ) as info,
+                patch.object(common, "control", side_effect=capture),
+                patch.object(common, "settings_ready", return_value=True) as settings,
+                patch.object(common, "load", return_value={"compositor": 123}),
+            ):
+                common.wait_ready(state(directory), 0.05)
+            self.assertLessEqual(info.call_args.kwargs["timeout"], 0.05)
+            self.assertLess(settings.call_args.args[1], 0.04)
 
     def test_startup_failure_cleans_accepted_service(self):
         with tempfile.TemporaryDirectory() as directory:
