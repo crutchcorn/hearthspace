@@ -106,3 +106,105 @@ Clippy passed with warnings denied. These checks precede session-lock integratio
 Remaining acceptance work includes the combined native desktop-service/UI pass,
 everyday browser/editor/file workflows, fail-closed session locking, repeated
 native daily smoke, and final checks/reconciliation. No daily-ready claim yet.
+
+### Native application and lock passes
+
+`/tmp/hearthspace-daily-native-2` verified keyboard terminal launch, exact Unicode
+paste, and a matching running-window search row, but Enter did not refocus the
+target. Cleanup completed and restored tty2. A focused real Xilem keyboard/view
+regression passes; `/tmp/hearthspace-daily-native-debug-3` subsequently delivered
+Enter to the same stable target ID on hardware. The original intermittent failure
+is retained; repeated daily smoke is still required. Catalog polling now retains
+last successful results across transient I/O failures, and failed submissions
+retain post-action screenshots and semantic state.
+
+`/tmp/hearthspace-daily-apps-native-1` exposed failures in real desktop services:
+PAM's inherited `CAP_WAKE_ALARM` made Bubblewrap reject GTK image loaders, Snap
+Firefox could not establish its required user scope on the private bus, and the
+GNOME polkit agent used an X11-only call on a Wayland window. VS Code launched,
+but its editing/saving workflow has not yet been verified. All owned processes
+and probe profiles were cleaned up; the original tty2 and both T3 services remained
+available.
+
+Commit `0f715bc` drops inherited capabilities before the session bus and child
+processes. On hardware, the previously failing image-loader probe then produced
+the expected 128×128 image, all four capability sets were zero in the supervisor
+and helpers, and the GTK portal chooser successfully returned the selected file
+URI. The authentication agent is being changed to the distribution's Wayland-aware
+MATE agent. Ubuntu's confined `notify-send` also denied `GetCapabilities` and
+notification response signals; the narrow local AppArmor extension and installed
+packages are documented in CONTRIBUTING.md.
+
+Commit `58b6395` adds `ext-session-lock-v1` with protected presentation barriers,
+input isolation, and fail-closed locker loss. The native protocol fixture in
+`/tmp/hearthspace-daily-native-debug-3` received confirmation, rejected a competing
+locker, verified blocked capture/input/accessibility and redacted live metadata,
+then restored the previous focused window after owner unlock. Real `swaylock`
+also reached confirmed lock. Its crash probe needs a rerun: process discovery
+found both the main locker and its PAM helper and safely aborted before killing
+either. The harness subsequently cleaned up and restored tty2. Two real headless
+lock tests passed; the complete compositor unit suite now passes 164 tests.
+
+Remaining work includes scoped Snap launch/recovery, real browser/editor/file
+workflows, notification actions and authentication cancellation, repeated native
+clipboard/daily acceptance, and moving PNG compression out of the display loop.
+Physical external-monitor hotplug remains an untested hardware matrix case;
+connector lifecycle fixes have fake-target regressions.
+
+### Combined native application acceptance
+
+`/tmp/hearthspace-daily-apps-native-4` ran on the same AMD display, tty7, with
+2560×1600 physical pixels and scale 2. It verified:
+
+- Catalog launch of both Snap Firefox and Mozilla's native Firefox. The Snap
+  process tree belonged to the recorded scope and its session owner service.
+- Browser Unicode paste and confirmation, exact browser-to-Foot clipboard bytes,
+  local link navigation, and file selection with the expected file-content
+  sentinel rendered by the browser.
+- VS Code saving exact Unicode bytes, GTK Text Editor reopening and saving that
+  file, and Nautilus creating a folder in the owned test workspace.
+- A real MATE authentication prompt and cancellation without authorization;
+  notification action selection returning exactly `open`; portal OpenURI returning
+  success and opening the exact requested HTTPS address in the isolated browser.
+- The complete Wayland/XWayland clipboard workflow, including both selection
+  types, Unicode agent paste, and invalid-paste preservation. Fixture processes
+  and windows disappeared afterward while the native session remained active.
+- Forward/reverse keyboard window switching, maximize/fullscreen restoration,
+  canvas pan/reset, and focused-close fallback with exact input received in the
+  surviving terminal.
+- Three screenshot rounds overlapping 274 control/input operations. Maximum
+  observed status latency was 2.73 ms and input latency 1.83 ms; each capture had
+  advancing page-flip metadata. Commit `82c870d` bounds PNG encoding work off the
+  compositor thread; GPU readback remains synchronous.
+- Confirmed real swaylock followed by killing only its identified main process.
+  Thirty subsequent samples stayed locked, with capture, input, metadata, and
+  accessibility protected. This tests fail-closed locker loss, not PAM password
+  authentication.
+
+Evidence is in `application-results.json`, `artifacts/clipboard-attached`,
+`artifacts/capture-responsiveness`, `artifacts/keyboard-navigation.json`, and
+`artifacts/locker-crash.json`, with screenshots and metadata retained. Early
+OpenURI probes timed out because the temporary desktop entries had not been
+registered in the portal's deliberately isolated data directory. The documented
+probe registration now includes that directory; the successful third attempt and
+original failures are retained. GTK's implicit trailing newline and Firefox's
+Linux tab shortcut required correcting probe expectations, not application code.
+
+This pass found a real accessibility serialization failure: Firefox supplied a
+second `description` attribute, making unrelated XPath actions fail. Commit
+`9f115a0` normalizes duplicate attributes while preserving canonical object
+identity. Eleven library tests and live semantic actions across Firefox and VS
+Code passed; the updated accessibility binary's hash is recorded separately in
+this run.
+
+Shutdown restored tty2 and preserved both T3 services, but initially could not
+remove Nautilus's private GVfs FUSE mount. Commit `81bfcf0` extends exact-owned
+mount cleanup and refuses unknown mounts before runtime deletion. The harness
+retry completed. Independent checks found the Snap scope/owner and their cgroups
+absent, no probe processes, no runtime, and the host's separate GVfs mount intact.
+Both temporary browser profiles and desktop entries were removed; host browser
+defaults stayed unchanged. A fresh normal shutdown with Nautilus remains required
+to validate this fix without recovery retry.
+
+Remaining acceptance work is native restart persistence, initial dialog bounds,
+normal UI logout/GVfs cleanup, repeated daily smoke, and final complete checks.
