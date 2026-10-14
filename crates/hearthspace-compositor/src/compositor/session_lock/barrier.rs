@@ -86,4 +86,22 @@ mod tests {
             "new output must present even after old output leaves"
         );
     }
+
+    #[test]
+    fn no_outputs_needs_no_page_flip_and_reconnection_requires_a_new_one() {
+        let mut barrier = PresentationBarrier::default();
+        let generation = barrier.begin([]);
+        assert!(barrier.ready());
+        barrier.update_outputs(["external".into()]);
+        assert!(!barrier.ready());
+        barrier.presented("external", generation);
+        assert!(barrier.ready());
+        barrier.update_outputs([]);
+        assert!(barrier.ready());
+        barrier.update_outputs(["external".into()]);
+        assert!(
+            !barrier.ready(),
+            "a reconnected output has no retained presentation"
+        );
+    }
 }

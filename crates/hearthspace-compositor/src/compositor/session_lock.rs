@@ -90,6 +90,7 @@ impl SessionLockHandler for App {
         self.session_lock.barrier.begin(outputs);
         self.session_lock.owner = Some(confirmation.ext_session_lock().clone());
         self.session_lock.pending = Some(confirmation);
+        self.confirm_session_lock_if_presented();
         self.request_redraw();
     }
 
@@ -153,7 +154,7 @@ impl App {
     }
 
     pub(super) fn lock_confirmed(&self) -> bool {
-        self.session_locked() && self.session_lock.pending.is_none()
+        self.session_lock.barrier.ready() && self.session_lock.pending.is_none()
     }
 
     pub(super) fn lock_frame_generation(&self) -> Option<u64> {
@@ -163,6 +164,10 @@ impl App {
     /// Called only after a backend confirms presentation of the tagged frame.
     pub(super) fn lock_frame_presented(&mut self, output: &str, generation: u64) {
         self.session_lock.barrier.presented(output, generation);
+        self.confirm_session_lock_if_presented();
+    }
+
+    fn confirm_session_lock_if_presented(&mut self) {
         if self.session_lock.barrier.ready()
             && let Some(confirmation) = self.session_lock.pending.take()
             && confirmation.ext_session_lock().is_alive()
@@ -181,6 +186,11 @@ impl App {
         self.session_lock
             .barrier
             .update_outputs(outputs.iter().map(|output| output.name.clone()));
+        // A removed output's role must not take keyboard focus or be reused if
+        // a new Wayland global later appears with the same connector name.
+        self.session_lock
+            .surfaces
+            .retain(|(name, _)| outputs.iter().any(|output| &output.name == name));
         for (name, surface) in &self.session_lock.surfaces {
             if let Some(output) = outputs.iter().find(|output| &output.name == name) {
                 surface.with_pending_state(|state| {
@@ -195,6 +205,10 @@ impl App {
                 surface.send_configure();
             }
         }
+        // With no connected outputs there are no outstanding presentations.
+        // Reconnecting still renders only the shield until a new lock surface
+        // is configured; the original owning object remains authoritative.
+        self.confirm_session_lock_if_presented();
         self.request_redraw();
     }
 

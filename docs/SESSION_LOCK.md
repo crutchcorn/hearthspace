@@ -15,7 +15,10 @@ Agent status reports these separately as `locked` and `lock_confirmed`.
 Native outputs attach a lock generation to each queued frame. Only a matching
 DRM page-flip completion satisfies the presentation barrier. A normal desktop
 frame queued before the lock request cannot satisfy it. Outputs added during
-locking join the barrier; outputs that disappear stop blocking it.
+locking join the barrier; outputs that disappear stop blocking it. With no
+connected outputs, there is no presentation left to wait for. A newly connected
+output clears `lock_confirmed` until its protected frame is presented. Pausing
+the VT preserves the output set and cannot substitute for a page flip.
 
 While locking or locked, the renderer draws only the owning lock client's surfaces and
 the cursor over an opaque background. Missing or destroyed lock surfaces leave
