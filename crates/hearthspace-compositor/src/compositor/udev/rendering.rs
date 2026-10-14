@@ -1,6 +1,10 @@
 use super::UdevBackendState;
 use crate::compositor::capture::{CaptureState, encode_png, read_pixels};
-use smithay::{backend::renderer::Bind, reexports::drm::control::crtc, utils::Rectangle};
+use smithay::{
+    backend::{drm::DrmEventMetadata, renderer::Bind},
+    reexports::drm::control::crtc,
+    utils::Rectangle,
+};
 use tracing::{debug, trace, warn};
 
 impl UdevBackendState {
@@ -135,6 +139,7 @@ impl UdevBackendState {
     pub(in crate::compositor) fn frame_submitted(
         &mut self,
         crtc: crtc::Handle,
+        metadata: Option<&DrmEventMetadata>,
         captures: &mut CaptureState,
     ) -> Result<Option<bool>, Box<dyn std::error::Error>> {
         let Some(device) = self.primary_device.as_mut() else {
@@ -147,6 +152,14 @@ impl UdevBackendState {
         else {
             return Ok(None);
         };
+        if !output.event_cutoff.accepts(metadata) {
+            trace!(
+                ?crtc,
+                ?metadata,
+                "ignoring DRM event predating the current surface"
+            );
+            return Ok(None);
+        }
         if output.gbm_surface.frame_submitted()?.is_none() {
             // A late event can outlive its surface after output reconfiguration.
             // Only acknowledge a frame that this surface actually submitted.

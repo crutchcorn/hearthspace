@@ -1,6 +1,7 @@
 use std::time::Duration;
 
 mod device;
+mod event_cutoff;
 mod hotplug;
 mod input;
 mod rendering;
@@ -223,7 +224,7 @@ pub fn run_udev(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> {
             DrmEvent::VBlank(crtc) => {
                 trace!(?crtc, ?metadata, "DRM vblank");
                 let submitted_frame = if let super::Backend::Udev(backend) = &mut data.backend {
-                    match backend.frame_submitted(crtc, &mut data.captures) {
+                    match backend.frame_submitted(crtc, metadata.as_ref(), &mut data.captures) {
                         Ok(result) => result,
                         Err(error) => {
                             error!(%error, "failed to mark native frame submitted");
