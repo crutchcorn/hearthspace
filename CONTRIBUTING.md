@@ -177,6 +177,17 @@ virtual device disappears and no gesture remains active.
 
 ### Optional Desktop Dependencies
 
+Native daily-use sessions use the distribution's GTK polkit authentication agent
+and GTK desktop portal backend. Install their runtime dependencies with:
+
+```sh
+sudo apt-get install -y policykit-1-gnome xdg-desktop-portal xdg-desktop-portal-gtk fuse3
+```
+
+On the physical development host, `policykit-1-gnome` version `0.105-8build1` was
+installed for this integration; the portal packages and FUSE helper were already
+present. No system service or authentication policy was changed.
+
 The settings app uses `rfd` for file selection. On Linux, `rfd` is built with
 its XDG Desktop Portal backend and falls back to `zenity` if the portal request
 fails. Hearthspace gives session children a private `XDG_RUNTIME_DIR` and strips
