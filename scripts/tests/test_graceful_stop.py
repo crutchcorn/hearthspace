@@ -187,6 +187,31 @@ class GracefulStopTests(unittest.TestCase):
         self.assertFalse(result["graceful_requested"])
         stop.assert_not_called()
 
+    def test_identity_enumeration_stops_at_the_operation_deadline(self):
+        state = {
+            "uid": 1000,
+            "id": "test",
+            "runtime_dir": "/run/user/1000/hearthspace-native-test",
+            "unit": "hearthspace-native-test.service",
+            "binary_dir": "/tmp/bin",
+        }
+        with (
+            patch.object(recovery, "read_state", return_value=state),
+            patch.object(graceful_stop, "unit_info", return_value={"MainPID": "20"}),
+            patch.object(os, "pidfd_open", return_value=10) as opened,
+            patch.object(os, "close"),
+            patch.object(Path, "read_text", return_value="21"),
+            patch.object(graceful_stop, "exited", return_value=False),
+            patch.object(graceful_stop, "process_matches", return_value=True),
+            patch.object(graceful_stop.time, "monotonic", side_effect=[0, 7]),
+            patch.object(graceful_stop, "signal_and_wait") as stop,
+        ):
+            result = graceful_stop.request_stop("ignored")
+        self.assertFalse(result["graceful_requested"])
+        self.assertEqual(result["reason"], "identity deadline exceeded")
+        opened.assert_called_once_with(20)
+        stop.assert_not_called()
+
     def test_stop_checks_direct_supervisor_and_private_runtime_before_signal(self):
         state = {
             "uid": 1000,

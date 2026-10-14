@@ -78,6 +78,11 @@ def request_stop(state_file):
         except FileNotFoundError:
             children = []
         for child in children[:1024]:
+            if time.monotonic() >= deadline:
+                return {
+                    "graceful_requested": False,
+                    "reason": "identity deadline exceeded",
+                }
             try:
                 childfd = os.pidfd_open(int(child))
             except ProcessLookupError:
@@ -95,7 +100,12 @@ def request_stop(state_file):
                     )
                 ):
                     continue
-                remaining = max(0, deadline - time.monotonic())
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    return {
+                        "graceful_requested": False,
+                        "reason": "identity deadline exceeded",
+                    }
                 completed = signal_and_wait(childfd, remaining)
                 return {
                     "graceful_requested": True,
