@@ -47,7 +47,7 @@ const DEFINITIONS: &[(&str, &str, Option<&str>)] = &[
     ),
     (
         "polkit-agent",
-        "/usr/lib/policykit-1-gnome/polkit-gnome-authentication-agent-1",
+        "/usr/libexec/polkit-mate-authentication-agent-1",
         None,
     ),
 ];

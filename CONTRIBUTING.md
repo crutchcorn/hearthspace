@@ -177,16 +177,33 @@ virtual device disappears and no gesture remains active.
 
 ### Optional Desktop Dependencies
 
-Native daily-use sessions use the distribution's GTK polkit authentication agent
+Native daily-use sessions use the distribution's MATE polkit authentication agent
 and GTK desktop portal backend. Install their runtime dependencies with:
 
 ```sh
-sudo apt-get install -y policykit-1-gnome xdg-desktop-portal xdg-desktop-portal-gtk fuse3
+sudo apt-get install -y mate-polkit xdg-desktop-portal xdg-desktop-portal-gtk fuse3
 ```
 
-On the physical development host, `policykit-1-gnome` version `0.105-8build1` was
-installed for this integration; the portal packages and FUSE helper were already
-present. No system service or authentication policy was changed.
+On the physical development host, `mate-polkit` and `mate-polkit-common` version
+`1.26.1-6` were installed; the portal packages and FUSE helper were already present.
+The earlier `policykit-1-gnome` (`0.105-8build1`) remains installed but is not used:
+its authentication dialog calls the X11-only `gdk_x11_get_server_time` on a Wayland
+window and crashes. MATE's agent checks the window backend before that call.
+No system authentication policy was changed.
+
+Ubuntu 26.04's `notify-send` AppArmor profile permits `Notify` and
+`GetServerInformation` but omits capability queries and response signals. This
+makes `notify-send --action` report unsupported actions and `--wait` miss closure.
+The repository supplies a narrow local protocol extension, installed on this host:
+
+```sh
+sudo install -m 0644 scripts/setup/notify-send.apparmor /etc/apparmor.d/local/notify-send
+sudo apparmor_parser -r /etc/apparmor.d/notify-send
+```
+
+Merge these rules with an existing local override instead of replacing it. The
+profile stays enforced; the extension allows only notification capability/close
+methods and action/closure signals on their standard session-bus object.
 
 Session locking uses the distribution's `swaylock` client and its packaged PAM
 configuration. Install it with `sudo apt-get install -y swaylock`. Version
