@@ -17,6 +17,7 @@ use wayland_server::protocol::wl_surface::{self, WlSurface};
 use crate::{accessibility::ManagedWindowAccessibilityInfo, config::*, geometry::CanvasPoint};
 use hearthspace_common::{launcher_output_name_from_app_id, shell_bar_output_name_from_app_id};
 
+mod bounds;
 mod geometry;
 mod hit_testing;
 mod ordering;
@@ -45,14 +46,18 @@ fn configure_server_side_decoration(toplevel: &ToplevelSurface) {
     toplevel.with_pending_state(|state| {
         state.decoration_mode = Some(DecorationMode::ServerSide);
     });
-    toplevel.send_configure();
+    if toplevel.is_initial_configure_sent() {
+        toplevel.send_configure();
+    }
 }
 
 fn configure_client_side_decoration(toplevel: &ToplevelSurface) {
     toplevel.with_pending_state(|state| {
         state.decoration_mode = Some(DecorationMode::ClientSide);
     });
-    toplevel.send_configure();
+    if toplevel.is_initial_configure_sent() {
+        toplevel.send_configure();
+    }
 }
 
 pub(super) fn window_kind_for_toplevel(surface: &ToplevelSurface) -> ManagedWindowKind {
@@ -314,6 +319,9 @@ impl App {
         shell_output_name: Option<&str>,
     ) {
         trace!(?kind, "configuring xdg toplevel");
+        let normal_bounds = (kind == ManagedWindowKind::Normal)
+            .then(|| self.normal_toplevel_bounds(surface))
+            .flatten();
         surface.with_pending_state(|state| {
             state
                 .capabilities
@@ -351,10 +359,14 @@ impl App {
                     state.bounds = Some((1, 1).into());
                     state.decoration_mode = Some(DecorationMode::ClientSide);
                 }
-                ManagedWindowKind::Normal => {}
+                ManagedWindowKind::Normal => state.bounds = normal_bounds,
             }
         });
-        surface.send_configure();
+        // The initial empty wl_surface.commit establishes the client's parent,
+        // decoration and size hints before its first configure is sent.
+        if surface.is_initial_configure_sent() {
+            surface.send_configure();
+        }
     }
 
     #[cfg_attr(not(feature = "winit"), allow(dead_code))]
@@ -544,6 +556,7 @@ impl App {
             ManagedSurface::Xdg(surface) => {
                 surface.with_pending_state(|state| {
                     state.states.set(xdg_toplevel::State::Resizing);
+                    state.bounds = None;
                     state.size = Some(size);
                 });
                 surface.send_configure();

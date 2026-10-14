@@ -14,6 +14,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 fn build(app: &gtk::Application, path: PathBuf) {
+    let size = std::env::var("HEARTHSPACE_WINDOW_TEST_SIZE")
+        .ok()
+        .map(|value| {
+            let (width, height) = value.split_once('x').expect("test size WIDTHxHEIGHT");
+            (
+                width.parse::<i32>().unwrap(),
+                height.parse::<i32>().unwrap(),
+            )
+        })
+        .unwrap_or((560, 360));
     let css = gtk::CssProvider::new();
     css.load_from_data(".fixture-editor, .fixture-editor text {background: #00cc66; color: #000000;} .fixture-popup {background: #dc143c; color: #ffffff; padding: 20px;}");
     gtk::style_context_add_provider_for_display(
@@ -24,8 +34,8 @@ fn build(app: &gtk::Application, path: PathBuf) {
     let window = gtk::ApplicationWindow::builder()
         .application(app)
         .title("Window states fixture")
-        .default_width(560)
-        .default_height(360)
+        .default_width(size.0)
+        .default_height(size.1)
         .build();
     let editor = gtk::TextView::builder().monospace(true).build();
     editor.add_css_class("fixture-editor");
@@ -75,13 +85,18 @@ fn build(app: &gtk::Application, path: PathBuf) {
                         window.maximize();
                     }
                 }
-                gdk::Key::F6 => {
+                gdk::Key::F6 | gdk::Key::F8 => {
+                    let size = if key == gdk::Key::F8 {
+                        (1600, 1200)
+                    } else {
+                        (300, 180)
+                    };
                     let child = gtk::Window::builder()
                         .title("Window fixture dialog")
                         .transient_for(&window)
                         .modal(true)
-                        .default_width(300)
-                        .default_height(180)
+                        .default_width(size.0)
+                        .default_height(size.1)
                         .build();
                     child.set_child(Some(
                         &gtk::Entry::builder()

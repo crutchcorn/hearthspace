@@ -222,6 +222,9 @@ impl App {
 fn configure_size(surface: &ToplevelSurface, size: Size<i32, Logical>) {
     surface.with_pending_state(|state| {
         state.states.unset(xdg_toplevel::State::Resizing);
+        // An explicit user/agent resize supersedes advisory initial bounds.
+        // None emits configure_bounds(0, 0), meaning unknown/unconstrained.
+        state.bounds = None;
         state.size = Some(size);
     });
     surface.send_configure();

@@ -62,6 +62,7 @@ impl XdgShellHandler for App {
         if !self
             .xdg_window_id(&surface)
             .is_some_and(|id| self.set_window_maximized(id, true).is_ok())
+            && surface.is_initial_configure_sent()
         {
             surface.send_configure();
         }
@@ -71,6 +72,7 @@ impl XdgShellHandler for App {
         if !self
             .xdg_window_id(&surface)
             .is_some_and(|id| self.set_window_maximized(id, false).is_ok())
+            && surface.is_initial_configure_sent()
         {
             surface.send_configure();
         }
@@ -88,6 +90,7 @@ impl XdgShellHandler for App {
         if !self
             .xdg_window_id(&surface)
             .is_some_and(|id| self.set_window_fullscreen(id, true, output).is_ok())
+            && surface.is_initial_configure_sent()
         {
             surface.send_configure();
         }
@@ -97,6 +100,7 @@ impl XdgShellHandler for App {
         if !self
             .xdg_window_id(&surface)
             .is_some_and(|id| self.set_window_fullscreen(id, false, None).is_ok())
+            && surface.is_initial_configure_sent()
         {
             surface.send_configure();
         }
@@ -504,6 +508,7 @@ impl CompositorHandler for App {
 
     fn commit(&mut self, surface: &WlSurface) {
         on_commit_buffer_handler::<Self>(surface);
+        self.configure_initial_toplevel(surface);
         self.popups.commit(surface);
         // Send the popup's initial configure on its first commit. xdg requires
         // the client to commit once (without a buffer) to request a configure;

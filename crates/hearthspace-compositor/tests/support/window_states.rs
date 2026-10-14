@@ -19,11 +19,23 @@ fn wait_state(path: &Path, condition: impl Fn(&Value) -> bool) -> Value {
 }
 
 fn fixture(compositor: &HeadlessCompositor, backend: &str, state: &Path) -> Editors {
+    fixture_with_size(compositor, backend, state, None)
+}
+
+fn fixture_with_size(
+    compositor: &HeadlessCompositor,
+    backend: &str,
+    state: &Path,
+    size: Option<&str>,
+) -> Editors {
     let mut command = Command::new(env!("CARGO_BIN_EXE_hearthspace-window-test"));
     command
         .arg(state)
         .env("XDG_RUNTIME_DIR", compositor.runtime_dir.path())
         .env("GDK_BACKEND", backend);
+    if let Some(size) = size {
+        command.env("HEARTHSPACE_WINDOW_TEST_SIZE", size);
+    }
     if backend == "wayland" {
         command
             .env(
@@ -245,6 +257,47 @@ fn run_window_states(backend: &str) {
 #[test]
 fn window_states_wayland_maximize_fullscreen_restore_and_dialogs() {
     run_window_states("wayland");
+}
+
+#[test]
+fn window_bounds_wayland_oversized_initial_window_and_dialog_fit_output() {
+    let _guard = HEADLESS_TEST_LOCK.lock().unwrap();
+    let mut compositor = HeadlessCompositor::spawn_with_size("1280x800");
+    drop(compositor.wait_for_socket());
+    let state_path = compositor.runtime_dir.path().join("window-state.json");
+    let _fixture = fixture_with_size(&compositor, "wayland", &state_path, Some("1600x1200"));
+    let fits = |window: &Value| {
+        let x = window["x"].as_i64().unwrap();
+        let y = window["y"].as_i64().unwrap();
+        let width = window["width"].as_i64().unwrap();
+        let height = window["height"].as_i64().unwrap();
+        x >= 0 && y >= 48 && width > 0 && height > 0 && x + width <= 1280 && y + height <= 800
+    };
+    let windows = wait_windows(&compositor, |windows| {
+        windows.len() == 1 && windows[0]["focused"] == true && fits(&windows[0])
+    });
+    let id = windows[0]["id"].as_u64().unwrap();
+    wait_state(&state_path, |state| state["active"] == true);
+    keys(&compositor, &[66]); // F8 requests a 1600x1200 transient window.
+    let windows = wait_windows(&compositor, |windows| {
+        windows.len() == 2
+            && windows.iter().all(fits)
+            && windows.iter().any(|window| {
+                window["title"] == "Window fixture dialog" && window["focused"] == true
+            })
+    });
+    let dialog = windows.iter().find(|window| window["id"] != id).unwrap();
+    action(&compositor, format!("close-window {}", dialog["id"]));
+    wait_windows(&compositor, |windows| {
+        windows.len() == 1 && windows[0]["focused"] == true
+    });
+    // Suggested initial bounds must not become a permanent canvas size limit.
+    action(&compositor, format!("resize-window {id} 1500 900"));
+    wait_windows(&compositor, |windows| {
+        windows[0]["content_width"] == 1500 && windows[0]["content_height"] == 900
+    });
+    action(&compositor, "quit");
+    wait_for_exit(&mut compositor.child);
 }
 
 #[cfg(feature = "xwayland")]

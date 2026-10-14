@@ -23,6 +23,8 @@ mod session_bus;
 #[cfg(feature = "test-apps")]
 #[path = "support/session_lock.rs"]
 mod session_lock;
+#[path = "support/window_bounds.rs"]
+mod window_bounds;
 #[cfg(feature = "test-apps")]
 #[path = "support/window_states.rs"]
 mod window_states;

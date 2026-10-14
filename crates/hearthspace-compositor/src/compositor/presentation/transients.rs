@@ -95,11 +95,8 @@ impl App {
         }
         let parent = self.window_canvas_rect(parent);
         let child = self.window_canvas_rect(index);
-        let origin = centered_origin(parent, child.size);
-        self.windows[index].position = CanvasPoint {
-            x: origin.x,
-            y: origin.y,
-        };
+        self.windows[index].position =
+            centered_canvas_position(parent, child, self.windows[index].position);
         self.request_redraw();
     }
 
@@ -151,4 +148,44 @@ fn centered_origin(
             (bounds.size.w - size.w).max(0) / 2,
             (bounds.size.h - size.h).max(0) / 2,
         ))
+}
+
+fn centered_canvas_position(
+    parent: Rectangle<i32, Logical>,
+    child: Rectangle<i32, Logical>,
+    position: CanvasPoint,
+) -> CanvasPoint {
+    // Center the visible window geometry, then remove the child's CSD shadow
+    // inset to recover its surface/canvas origin. SSD geometry has no inset.
+    let origin =
+        Point::from((position.x, position.y)) + centered_origin(parent, child.size) - child.loc;
+    CanvasPoint {
+        x: origin.x,
+        y: origin.y,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn same_size_csd_dialog_aligns_visible_geometry_with_parent() {
+        let parent = Rectangle::new((94, 108).into(), (1280, 752).into());
+        let child = Rectangle::new((94, 108).into(), (1280, 752).into());
+        assert_eq!(
+            centered_canvas_position(parent, child, CanvasPoint { x: 80, y: 96 }),
+            CanvasPoint { x: 80, y: 96 }
+        );
+    }
+
+    #[test]
+    fn server_decorated_dialog_keeps_its_canvas_origin_at_geometry_origin() {
+        let parent = Rectangle::new((100, 200).into(), (800, 600).into());
+        let child = Rectangle::new((0, 0).into(), (300, 200).into());
+        assert_eq!(
+            centered_canvas_position(parent, child, CanvasPoint { x: 0, y: 0 }),
+            CanvasPoint { x: 350, y: 400 }
+        );
+    }
 }

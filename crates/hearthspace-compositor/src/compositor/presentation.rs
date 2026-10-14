@@ -194,9 +194,12 @@ impl App {
                     );
                     pending.states.unset(xdg_toplevel::State::Resizing);
                     pending.fullscreen_output = None;
+                    pending.bounds = None;
                     pending.size = size;
                 });
-                surface.send_configure();
+                if surface.is_initial_configure_sent() {
+                    surface.send_configure();
+                }
             }
             #[cfg(feature = "xwayland")]
             ManagedSurface::X11(surface) => {
