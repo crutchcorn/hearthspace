@@ -1,32 +1,17 @@
 use smithay::{
-    backend::input::{Axis, ButtonState, InputBackend, KeyState, PointerAxisEvent},
+    backend::input::{Axis, ButtonState, KeyState},
     input::{
-        keyboard::{FilterResult, keysyms},
+        keyboard::FilterResult,
         pointer::{AxisFrame, ButtonEvent, MotionEvent},
     },
     utils::{Logical, Point, Rectangle, SERIAL_COUNTER},
 };
 use tracing::{debug, trace};
 
-use crate::config::SCROLL_ZOOM_SENSITIVITY;
-
-use super::scroll_amount_for_axis;
 use crate::compositor::{
     App, DragState, HitTarget, cursor::CursorIcon, idle::ActivityReason,
     windows::resize_cursor_icon,
 };
-
-fn is_super_keysym(keysym: u32) -> bool {
-    matches!(
-        keysym,
-        keysyms::KEY_Super_L
-            | keysyms::KEY_Super_R
-            | keysyms::KEY_Meta_L
-            | keysyms::KEY_Meta_R
-            | keysyms::KEY_Hyper_L
-            | keysyms::KEY_Hyper_R
-    )
-}
 
 impl App {
     pub(in crate::compositor) fn synthesize_key(&mut self, evdev_keycode: u32, state: KeyState) {
@@ -199,6 +184,9 @@ impl App {
 
     pub(in crate::compositor) fn synthesize_axis(&mut self, horizontal: f64, vertical: f64) {
         trace!(horizontal, vertical, "synthesizing pointer axis");
+        if self.zoom_from_scroll_amount(Some(vertical)) {
+            return;
+        }
         if let Some(HitTarget::Client { window_index, .. }) = self.hit_test(self.pointer_location) {
             self.record_client_activity_for_window_index(window_index, ActivityReason::ClientInput);
         }
@@ -350,36 +338,6 @@ impl App {
             output_rects = ?output_rects,
             "reconciled pointer after output geometry change"
         );
-    }
-
-    fn super_modifier_active(&self) -> bool {
-        self.keyboard.modifier_state().logo
-            || self.keyboard.with_pressed_keysyms(|pressed| {
-                pressed
-                    .iter()
-                    .any(|key| is_super_keysym(key.modified_sym().raw()))
-            })
-    }
-
-    pub(super) fn scroll_zoom_active(&self) -> bool {
-        self.scroll_zooms_without_super || self.super_modifier_active()
-    }
-
-    pub(super) fn zoom_from_scroll<B: InputBackend>(
-        &mut self,
-        event: &impl PointerAxisEvent<B>,
-    ) -> bool {
-        let Some(scroll_amount) = scroll_amount_for_axis(event, Axis::Vertical) else {
-            return false;
-        };
-        if scroll_amount == 0.0 {
-            return true;
-        }
-
-        self.advance_viewport_animation();
-        debug!(scroll_amount, "zooming viewport from scroll input");
-        self.animate_zoom_around_viewport_center((-scroll_amount * SCROLL_ZOOM_SENSITIVITY).exp());
-        true
     }
 }
 

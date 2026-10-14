@@ -18,6 +18,7 @@ use crate::config::WHEEL_SCROLL_PIXEL_EQUIVALENT;
 use super::{App, DragState, HitTarget, idle::ActivityReason};
 
 mod pointer;
+mod scroll;
 
 use pointer::relative_pointer_location;
 
@@ -206,7 +207,7 @@ pub(in crate::compositor) fn handle_input_event<B: InputBackend>(
                 vertical = ?scroll_amount_for_axis(&event, Axis::Vertical),
                 "pointer axis input"
             );
-            if state.scroll_zoom_active() && state.zoom_from_scroll(&event) {
+            if state.zoom_from_scroll_amount(scroll_amount_for_axis(&event, Axis::Vertical)) {
                 return;
             }
 
