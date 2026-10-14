@@ -67,17 +67,9 @@ impl Connection {
         now: Instant,
         mut run: impl FnMut(Vec<u8>) -> ControlReply,
     ) -> io::Result<bool> {
-        if now >= self.deadline {
-            if self.pending.take().is_some() {
-                self.close_after_reply = true;
-                self.set_reply(ControlReply::Err("command timed out".into()), now);
-            } else {
-                return Ok(false);
-            }
-        }
-        if readable && self.interest().readable {
-            self.read_available(stream)?;
-        }
+        // A busy compositor can delay dispatch after the producer has already
+        // completed. Preserve that result (including its precise capture error)
+        // before applying the transport's fallback deadline.
         if let Some(pending) = &self.pending {
             let reply = match pending.try_recv() {
                 Ok(reply) => Some(reply),
@@ -92,6 +84,17 @@ impl Connection {
                 self.output = Some(Output::new(reply, self.limits.clone()));
                 self.deadline = now + COMMAND_TIMEOUT;
             }
+        }
+        if now >= self.deadline {
+            if self.pending.take().is_some() {
+                self.close_after_reply = true;
+                self.set_reply(ControlReply::Err("command timed out".into()), now);
+            } else {
+                return Ok(false);
+            }
+        }
+        if readable && self.interest().readable {
+            self.read_available(stream)?;
         }
         for _ in 0..16 {
             if let Some(output) = self.output.as_mut() {
@@ -164,3 +167,6 @@ impl Connection {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests;
