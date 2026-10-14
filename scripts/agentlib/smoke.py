@@ -7,6 +7,7 @@ import shlex
 import shutil
 import signal
 import subprocess
+import sys
 import time
 from pathlib import Path
 
@@ -197,7 +198,7 @@ class Smoke:
 
     def recovery(self, case):
         manifest = self.connect()
-        if case == "compositor-failure":
+        if case in ("compositor-failure", "watchdog"):
             pid = manifest.get("compositor_pid")
             if not pid:
                 readiness = Path(manifest["runtime_dir"]) / "session-ready.json"
@@ -207,8 +208,11 @@ class Smoke:
                 raise ControlError(
                     "manifest needs compositor_pid for failure injection"
                 )
-            os.kill(int(pid), signal.SIGKILL)
-            self.record("injected-compositor-failure", pid=pid)
+            failure_signal = signal.SIGSTOP if case == "watchdog" else signal.SIGKILL
+            os.kill(int(pid), failure_signal)
+            self.record(
+                "injected-compositor-failure", pid=pid, signal=failure_signal.name
+            )
         deadline = Deadline(self.args.timeout + 15)
         while True:
             current = json.loads((self.directory / "session.json").read_text())
@@ -216,6 +220,51 @@ class Smoke:
                 self.record("independent-recovery", manifest=current)
                 return
             time.sleep(min(0.2, deadline.remaining()))
+
+    def interrupted_agent(self):
+        """Kill an agent that owns a completed start; recovery must be independent."""
+        command = [
+            str(LAUNCHER),
+            "start",
+            "--session",
+            str(self.directory),
+            "--timeout",
+            str(self.args.timeout),
+            "--no-build",
+            "--watchdog",
+            "12",
+        ]
+        worker = "import subprocess,sys,signal; subprocess.run(sys.argv[1:],check=True); signal.pause()"
+        with (self.artifacts / "interrupted-agent.log").open("w") as log:
+            process = subprocess.Popen(
+                [sys.executable, "-c", worker, *command],
+                stdout=log,
+                stderr=subprocess.STDOUT,
+            )
+            try:
+                deadline = Deadline(self.args.timeout)
+                while True:
+                    manifest = self.directory / "session.json"
+                    state = (
+                        json.loads(manifest.read_text()) if manifest.exists() else {}
+                    )
+                    if state.get("status") == "ready":
+                        break
+                    if process.poll() is not None:
+                        raise ControlError(
+                            "simulated agent exited before native readiness"
+                        )
+                    time.sleep(min(0.05, deadline.remaining()))
+                process.kill()
+                process.wait(timeout=5)
+                self.record(
+                    "injected-agent-interruption", pid=process.pid, signal="SIGKILL"
+                )
+                self.recovery("agent-interruption")
+            finally:
+                if process.poll() is None:
+                    process.kill()
+                    process.wait(timeout=5)
 
     def run(self):
         if self.args.case == "success" and shutil.which("foot") is None:
@@ -225,6 +274,9 @@ class Smoke:
         )
         self.record("host", uname=host.stdout.strip(), case=self.args.case)
         try:
+            if self.args.case == "agent-interruption":
+                self.interrupted_agent()
+                return
             if self.args.case == "startup-failure":
                 result = self.launcher(
                     "start", "--no-build", "--compositor", "/bin/false", expected=None
@@ -255,6 +307,10 @@ class Smoke:
         runtime = manifest.get("runtime_dir")
         if runtime and Path(runtime).exists():
             raise ControlError("owned session runtime directory was not removed")
+        if not manifest.get("cleanup", {}).get("complete"):
+            raise ControlError(
+                "launcher did not confirm complete process/scope cleanup"
+            )
         self.record("restored", active_vt=active, manifest=manifest)
 
 
@@ -266,7 +322,13 @@ def main():
     parser.add_argument("--timeout", type=float, default=45)
     parser.add_argument(
         "--case",
-        choices=("success", "startup-failure", "compositor-failure", "watchdog"),
+        choices=(
+            "success",
+            "startup-failure",
+            "compositor-failure",
+            "watchdog",
+            "agent-interruption",
+        ),
         default="success",
     )
     args = parser.parse_args()
