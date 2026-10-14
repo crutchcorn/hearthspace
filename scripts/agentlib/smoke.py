@@ -351,7 +351,7 @@ def main():
     parser.add_argument(
         "--session", required=True, type=Path, help="new evidence/session directory"
     )
-    parser.add_argument("--timeout", type=float, default=45)
+    parser.add_argument("--timeout", type=float, default=90)
     parser.add_argument(
         "--log-level", default="info", help="session/compositor tracing filter"
     )
