@@ -14,7 +14,7 @@ use crate::ShellCommand;
 
 use super::{
     command_client::{launch_app, send_command},
-    constants::{MAX_RESULTS, SEARCH_BOX_HEIGHT, SEARCH_BOX_WIDTH, SHELL_BAR_H_PAD, launcher_size},
+    constants::{SEARCH_BOX_HEIGHT, SEARCH_BOX_WIDTH, SHELL_BAR_H_PAD, launcher_size},
     launcher::{self, Entry},
     notification_view,
     notifications::{Notification, notification_task},
@@ -24,6 +24,10 @@ use super::{
     state::{ShellOutputInstance, ShellState},
     window_catalog::window_catalog_task,
 };
+
+#[cfg(test)]
+#[path = "views_tests.rs"]
+mod tests;
 
 pub(super) fn app_logic(
     state: &mut ShellState,
@@ -138,7 +142,7 @@ fn launcher_window(
             .with_name(&launcher_app_id, &launcher_app_id)
             .with_decorations(false)
             .with_resizable(false)
-            .with_initial_inner_size(launcher_size(MAX_RESULTS))
+            .with_initial_inner_size(launcher_size(1))
             .with_min_inner_size(size)
             .with_max_inner_size(size)
     })
@@ -148,7 +152,7 @@ fn bar_view(
     output: &ShellOutputInstance,
     clock: String,
     notifications: &[Notification],
-) -> impl WidgetView<ShellState> + use<> {
+) -> impl WidgetView<ShellState, Widget = super::search_focus::SearchFocus> + use<> {
     let focus_target = FocusTarget::default();
     let output_key = output.key().to_string();
     let search_output_key = output_key.clone();
@@ -170,6 +174,7 @@ fn bar_view(
             .iter()
             .find(|output| output.key() == search_output_key)
             .and_then(|output| launcher::results(state, output).into_iter().next());
+        tracing::debug!(output = %search_output_key, matched = entry.is_some(), "search submitted");
         if let Some(entry) = entry {
             launcher::select(
                 state,

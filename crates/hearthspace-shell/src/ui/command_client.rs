@@ -30,7 +30,10 @@ pub(super) fn send_command(command_socket: &Path, command: &str) -> Result<(), S
         &format!("{command}\n"),
         Duration::from_millis(750),
     )
-    .map_err(|error| format!("Could not confirm the command: {error}"))?;
+    .map_err(|error| {
+        error!(path = %command_socket.display(), command, %error, "shell command transport failed");
+        format!("Could not confirm the command: {error}")
+    })?;
     match response.trim_end() {
         "ok" => Ok(()),
         response => {
