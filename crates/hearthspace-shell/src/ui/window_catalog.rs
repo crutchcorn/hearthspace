@@ -95,17 +95,23 @@ pub(super) fn window_catalog_task()
                 }
             }
         },
-        |state: &mut ShellState, result: Result<Vec<RunningWindow>, String>| match result {
-            Ok(windows) => {
-                state.windows = windows;
-                state.windows_error = None;
-            }
-            Err(error) => {
-                state.windows.clear();
-                state.windows_error = Some(error);
-            }
-        },
+        apply_window_catalog,
     )
+}
+
+fn apply_window_catalog(state: &mut ShellState, result: Result<Vec<RunningWindow>, String>) {
+    match result {
+        Ok(windows) => {
+            state.windows = windows;
+            state.windows_error = None;
+        }
+        Err(error) => {
+            // A slow capture or busy compositor must not remove a visible
+            // selection just before Enter. Keep the last confirmed IDs while
+            // showing the error; the compositor validates each focus request.
+            state.windows_error = Some(error);
+        }
+    }
 }
 
 #[cfg(test)]
@@ -121,5 +127,31 @@ mod tests {
         assert_eq!(windows[1].label(), "Window: Untitled window");
         assert!(parse_windows(br#"{"windows":[{"id":0}]}"#).is_err());
         assert!(parse_windows(br#"{"wrong":[]}"#).is_err());
+    }
+
+    #[test]
+    fn transient_failure_preserves_visible_selection_until_a_successful_refresh() {
+        use crate::ui::launcher::{self, Entry};
+
+        let mut state = ShellState::new("/unused".into(), vec!["eDP-1".into()]);
+        state.catalog = Default::default();
+        state.outputs[0].query = "Notes".into();
+        apply_window_catalog(&mut state, Err("initial connection failed".into()));
+        assert!(launcher::results(&state, &state.outputs[0]).is_empty());
+
+        let windows =
+            parse_windows(br#"{"windows":[{"id":42,"title":"Notes","app_id":"editor"}]}"#).unwrap();
+        apply_window_catalog(&mut state, Ok(windows));
+        apply_window_catalog(&mut state, Err("capture delayed query".into()));
+        assert!(
+            matches!(launcher::results(&state, &state.outputs[0]).as_slice(), [Entry::Window(window)] if window.id == 42)
+        );
+        assert!(state.windows_error.is_some());
+
+        state.change_query("eDP-1", String::new());
+        assert!(launcher::results(&state, &state.outputs[0]).is_empty());
+        apply_window_catalog(&mut state, Ok(Vec::new()));
+        assert!(state.windows.is_empty());
+        assert!(state.windows_error.is_none());
     }
 }
