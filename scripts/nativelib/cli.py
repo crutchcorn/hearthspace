@@ -60,6 +60,8 @@ def build(args, session):
                 "cargo",
                 "build",
                 "--locked",
+                "--target-dir",
+                str(ROOT / "target"),
                 "-p",
                 "hearthspace-session",
                 "-p",
@@ -71,7 +73,7 @@ def build(args, session):
                 "--features",
                 "hearthspace-compositor/udev",
             ]
-            # Cargo builds default artifacts in target/debug, unless explicitly configured.
+            # Pin the artifact path even if the caller sets CARGO_TARGET_DIR.
             if args.binary_dir.resolve() != ROOT / "target/debug":
                 raise ValueError("a custom --binary-dir requires --no-build")
             result = subprocess.run(
