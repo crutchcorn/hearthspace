@@ -8,6 +8,7 @@ import time
 from pathlib import Path
 
 MAX_PAYLOAD = 128 * 1024 * 1024
+MAX_COMMAND_BYTES = 33 * 1024
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 
 
@@ -34,8 +35,14 @@ class Control:
         self.deadline = deadline
 
     def request(self, command):
-        if "\n" in command or "\r" in command or len(command.encode()) > 4094:
-            raise ControlError("command must be a single line of at most 4094 bytes")
+        if (
+            "\n" in command
+            or "\r" in command
+            or len(command.encode()) >= MAX_COMMAND_BYTES
+        ):
+            raise ControlError(
+                f"command must be a single line of at most {MAX_COMMAND_BYTES - 1} bytes"
+            )
         try:
             with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as stream:
                 stream.settimeout(self.deadline.remaining())
@@ -73,10 +80,16 @@ class Control:
         return data
 
     def status(self):
+        return self.query("status")
+
+    def query(self, command):
         try:
-            return json.loads(self.request("status"))
+            result = json.loads(self.request(command))
+            if not isinstance(result, dict):
+                raise ControlError(f"invalid {command} JSON: expected an object")
+            return result
         except ValueError as error:
-            raise ControlError(f"invalid status JSON: {error}") from error
+            raise ControlError(f"invalid {command} JSON: {error}") from error
 
     def capture(self, output=None):
         command = "capture" if output is None else f"capture {output}"

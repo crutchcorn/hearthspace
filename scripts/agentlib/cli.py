@@ -9,8 +9,40 @@ from pathlib import Path
 
 from .control import Control, ControlError, Deadline, pixel_to_logical, save_capture
 from .input import Input
+from .text import clipboard_command, paste
 
 LAUNCHER = Path(__file__).resolve().parents[1] / "hearthspace-native"
+WINDOW_COMMANDS = {
+    "focus": "focus-window",
+    "close": "close-window",
+    "move": "move-window",
+    "resize": "resize-window",
+    "focus-next": "focus-next-window",
+    "focus-previous": "focus-previous-window",
+    "focus-launcher": "focus-launcher",
+    "reset-view": "reset-view",
+}
+
+
+def positive_integer(value):
+    number = int(value)
+    if not 0 < number <= (1 << 64) - 1:
+        raise argparse.ArgumentTypeError("must be a positive 64-bit integer")
+    return number
+
+
+def canvas_coordinate(value):
+    number = int(value)
+    if not -1_000_000 <= number <= 1_000_000:
+        raise argparse.ArgumentTypeError("canvas coordinate must be within ±1000000")
+    return number
+
+
+def window_size(value):
+    number = int(value)
+    if not 0 < number <= 16384:
+        raise argparse.ArgumentTypeError("window size must be between 1 and 16384")
+    return number
 
 
 def parser():
@@ -39,6 +71,8 @@ def parser():
         "--log-level", default="info", help="compositor/session tracing filter"
     )
     sub.add_parser("status")
+    sub.add_parser("apps", help="list launchable desktop applications")
+    sub.add_parser("windows", help="list live windows and their stable IDs")
     sub.add_parser("stop")
     screenshot = sub.add_parser("screenshot")
     screenshot.add_argument("destination", type=Path)
@@ -47,7 +81,17 @@ def parser():
         "--change-from", type=Path, help="baseline PNG; any visible change counts"
     )
     wait.add_argument("--save", type=Path)
-    for name in ("click", "drag", "scroll", "key", "type", "launch"):
+    for name in (
+        "click",
+        "drag",
+        "scroll",
+        "key",
+        "type",
+        "paste",
+        "clipboard-set",
+        "launch",
+        *WINDOW_COMMANDS,
+    ):
         action = sub.add_parser(name)
         action.add_argument(
             "--wait",
@@ -90,8 +134,32 @@ def parser():
             action.add_argument(
                 "text", help="US ASCII text; unsupported Unicode fails before input"
             )
+        elif name in ("paste", "clipboard-set"):
+            action.description = (
+                "Replace the session clipboard with up to 16 KiB of UTF-8 text."
+            )
+            action.add_argument(
+                "text", nargs="?", help="text to place on the clipboard"
+            )
+            action.add_argument(
+                "--file", type=Path, help="read UTF-8 text from a file instead"
+            )
+            if name == "paste":
+                action.add_argument(
+                    "--shortcut",
+                    default="ctrl+v",
+                    help="paste shortcut; terminals commonly use ctrl+shift+v",
+                )
         elif name == "launch":
             action.add_argument("app", help="desktop entry ID or 'foot'")
+        elif name in ("focus", "close", "move", "resize"):
+            action.add_argument("window_id", type=positive_integer)
+            if name == "move":
+                action.add_argument("canvas_x", type=canvas_coordinate)
+                action.add_argument("canvas_y", type=canvas_coordinate)
+            elif name == "resize":
+                action.add_argument("width", type=window_size)
+                action.add_argument("height", type=window_size)
     return root
 
 
@@ -170,6 +238,10 @@ def action(args, control):
             inputs.chord(args.chord)
         elif args.command == "type":
             inputs.type(args.text)
+        elif args.command == "clipboard-set":
+            control.request(clipboard_command(args.text, args.file))
+        elif args.command == "paste":
+            paste(inputs, clipboard_command(args.text, args.file), args.shortcut)
         elif args.command == "launch":
             if args.app == "foot":
                 control.request("spawn foot")
@@ -179,6 +251,15 @@ def action(args, control):
                 control.request(
                     f"launch-app-on-output {args.output.encode().hex()} {args.app}"
                 )
+        elif args.command in WINDOW_COMMANDS:
+            command = WINDOW_COMMANDS[args.command]
+            if args.command in ("focus", "close", "move", "resize"):
+                command += f" {args.window_id}"
+            if args.command == "move":
+                command += f" {args.canvas_x} {args.canvas_y}"
+            elif args.command == "resize":
+                command += f" {args.width} {args.height}"
+            control.request(command)
     result = {
         "ok": True,
         "command": args.command,
@@ -199,11 +280,19 @@ def action(args, control):
 
 def run(args):
     deadline = Deadline(args.timeout)
-    if args.command in ("start", "stop") or (args.command == "status" and args.session):
+    if args.command in ("start", "stop"):
         return run_launcher(args)
+    if args.command == "status" and args.session:
+        lifecycle = run_launcher(args)
+        snapshot = lifecycle.get("compositor") or {}
+        # Keep lifecycle/recovery details, while exposing the same live fields
+        # as --socket status. Never promote startup output/frame metadata.
+        return {**lifecycle, "outputs": [], **snapshot}
     control = Control(target_socket(args), deadline)
     if args.command == "status":
         return {"ok": True, **control.status()}
+    if args.command in ("apps", "windows"):
+        return {"ok": True, **control.query(args.command)}
     if args.command == "screenshot":
         return {
             "ok": True,

@@ -139,17 +139,21 @@ pub(super) fn decoration_for_new_window(kind: ManagedWindowKind) -> WindowDecora
 impl App {
     pub(super) fn set_keyboard_focus_to_window(&mut self, window_index: usize, surface: WlSurface) {
         debug!(window_id = self.windows[window_index].id, kind = ?self.windows[window_index].kind, "setting keyboard focus to window");
-        self.focused_normal_window_id = (self.windows[window_index].kind
-            == ManagedWindowKind::Normal)
-            .then_some(self.windows[window_index].id);
         let focus = KeyboardFocusTarget::for_window(&self.windows[window_index].surface, surface);
         let keyboard = self.keyboard.clone();
+        let previous = keyboard.current_focus();
         keyboard.set_focus(self, Some(focus), SERIAL_COUNTER.next_serial());
+        let current = keyboard.current_focus();
+        // X11 may request activation before its first buffer maps. Smithay
+        // skips focus_changed when the target stays the same, so refresh the
+        // mapped/activated bookkeeping even on that transition.
+        if current == previous {
+            self.sync_window_activation(current.as_ref().map(KeyboardFocusTarget::surface));
+        }
     }
 
     pub(super) fn clear_keyboard_focus(&mut self) {
         debug!("clearing keyboard focus");
-        self.focused_normal_window_id = None;
         let keyboard = self.keyboard.clone();
         keyboard.set_focus(
             self,
@@ -160,6 +164,7 @@ impl App {
         // not when clearing focus. A grab may defer the keyboard change, so
         // revoke clipboard focus only once the keyboard is actually unfocused.
         if keyboard.current_focus().is_none() {
+            self.sync_window_activation(None);
             set_data_device_focus(&self.display_handle, &self._seat, None);
         }
     }
@@ -317,9 +322,7 @@ impl App {
                     state.bounds = Some((1, 1).into());
                     state.decoration_mode = Some(DecorationMode::ClientSide);
                 }
-                ManagedWindowKind::Normal => {
-                    state.states.set(xdg_toplevel::State::Activated);
-                }
+                ManagedWindowKind::Normal => {}
             }
         });
         surface.send_configure();
@@ -410,7 +413,7 @@ impl App {
     /// client has set one (client-side-decorated apps inset their visible window
     /// from the surface bounds with shadow margins), falling back to the
     /// surface-tree bounding box otherwise.
-    fn window_geometry_size(&self, window_index: usize) -> Size<i32, Logical> {
+    pub(super) fn window_geometry_size(&self, window_index: usize) -> Size<i32, Logical> {
         let window = &self.windows[window_index];
         self.window_surface_geometry_size(window_index)
             .filter(|size| size.w > 0 && size.h > 0)
@@ -421,7 +424,7 @@ impl App {
     /// server-side title bar when present. For client-side-decorated windows the
     /// rect tracks the *visible* window geometry (excluding shadow margins) so
     /// resize handles land on the visible edge rather than out in the shadow.
-    fn window_canvas_rect(&self, window_index: usize) -> Rectangle<i32, Logical> {
+    pub(super) fn window_canvas_rect(&self, window_index: usize) -> Rectangle<i32, Logical> {
         let window = &self.windows[window_index];
         if self.has_compositor_chrome(window_index) {
             return window_canvas_rect_for(window.position, window.content_bbox_size, true);
@@ -438,7 +441,9 @@ impl App {
         &self,
         window_index: usize,
     ) -> Option<Rectangle<i32, Logical>> {
-        if self.windows[window_index].kind != ManagedWindowKind::Normal {
+        if self.windows[window_index].kind != ManagedWindowKind::Normal
+            || !self.windows[window_index].mapped
+        {
             return None;
         }
 
@@ -628,7 +633,9 @@ impl App {
         match &self.windows[window_index].surface {
             ManagedSurface::Xdg(surface) => toplevel_geometry_loc(surface.wl_surface()),
             #[cfg(feature = "xwayland")]
-            ManagedSurface::X11(surface) => surface.geometry().loc,
+            // X11 geometry is in root-window coordinates. It is not an inset
+            // within the wl_surface as xdg window geometry is.
+            ManagedSurface::X11(_) => Point::from((0, 0)),
         }
     }
 

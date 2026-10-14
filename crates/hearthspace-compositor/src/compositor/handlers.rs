@@ -24,7 +24,7 @@ use smithay::{
         fractional_scale::{FractionalScaleHandler, with_fractional_scale},
         output::OutputHandler,
         pointer_constraints::PointerConstraintsHandler,
-        selection::data_device::set_data_device_focus,
+        selection::{data_device::set_data_device_focus, primary_selection::set_primary_focus},
         shell::xdg::{
             PopupSurface, PositionerState, ToplevelSurface, XdgShellHandler, XdgShellState,
             decoration::XdgDecorationHandler,
@@ -85,6 +85,7 @@ impl XdgShellHandler for App {
             decoration: decoration_for_new_window(kind),
             titlebar: None,
             content_bbox_size: Size::default(),
+            mapped: false,
             advertised_fractional_scale: 0.0,
         });
         if kind == ManagedWindowKind::Normal {
@@ -235,6 +236,9 @@ impl XdgShellHandler for App {
     }
 
     fn toplevel_destroyed(&mut self, surface: ToplevelSurface) {
+        let restore_focus = self.windows.iter().any(|window| {
+            window.surface.same_xdg(&surface) && self.focused_normal_window_id == Some(window.id)
+        });
         self.clear_keyboard_focus_for_surface(surface.wl_surface());
         if let Some(window) = self
             .windows
@@ -251,6 +255,9 @@ impl XdgShellHandler for App {
             .retain(|window| !window.surface.same_xdg(&surface));
         self.drag = None;
         self.resize = None;
+        if restore_focus {
+            self.restore_window_focus();
+        }
         self.request_redraw();
     }
 
@@ -436,6 +443,7 @@ impl CompositorHandler for App {
             warn!(%err, "failed to send initial popup configure");
         }
         self.refresh_window_content_bbox(surface);
+        self.refresh_window_mapping(surface);
         self.reanchor_resize(surface);
         if let Some(window_id) = self.managed_normal_window_id_for_surface(surface) {
             self.idle_daemon
@@ -467,7 +475,13 @@ impl SeatHandler for App {
     }
 
     fn focus_changed(&mut self, seat: &Seat<Self>, focused: Option<&KeyboardFocusTarget>) {
+        self.sync_window_activation(focused.map(KeyboardFocusTarget::surface));
         set_data_device_focus(
+            &self.display_handle,
+            seat,
+            focused.and_then(|focus| focus.surface().client()),
+        );
+        set_primary_focus(
             &self.display_handle,
             seat,
             focused.and_then(|focus| focus.surface().client()),

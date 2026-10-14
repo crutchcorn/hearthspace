@@ -83,6 +83,7 @@ def service_command(state):
         "PATH": f"{state['binary_dir']}:/usr/local/bin:/usr/bin:/bin",
         "HOME": state["home"],
         "LANG": "C.UTF-8",
+        "HEARTHSPACE_ISOLATE_APP_PROFILES": "1",
     }.items():
         args.append(f"--setenv={key}={value}")
     args.extend(["/usr/bin/python3", ENTRY, "_exec", "--state", state["state_file"]])

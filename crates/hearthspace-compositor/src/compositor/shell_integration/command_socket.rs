@@ -93,6 +93,12 @@ pub(in crate::compositor) enum ControlReply {
 
 impl CalloopData {
     fn run_command_text(&mut self, text: &str) -> ControlReply {
+        if text == "clipboard-set" {
+            return self.state.set_clipboard_text("");
+        }
+        if let Some(hex) = text.strip_prefix("clipboard-set ") {
+            return self.state.set_clipboard_text(hex);
+        }
         if let Some(reply) = self.run_automation_command(text) {
             return reply;
         }

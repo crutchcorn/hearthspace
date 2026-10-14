@@ -5,9 +5,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use super::{
-    App, CalloopData, ManagedWindowKind, runtime::Backend, shell_integration::ControlReply,
-};
+use super::{CalloopData, ManagedWindowKind, runtime::Backend, shell_integration::ControlReply};
 use serde::Serialize;
 
 mod legacy;
@@ -298,19 +296,5 @@ impl CalloopData {
             "shell_ready": self.state.windows.iter().any(|w| w.kind == ManagedWindowKind::ShellBar && w.content_bbox_size.w > 0),
             "windows": self.state.automation_windows(),
         })).expect("serializable automation status")
-    }
-}
-
-impl App {
-    fn automation_windows(&self) -> Vec<serde_json::Value> {
-        self.windows.iter().enumerate().filter_map(|(index, window)| {
-            let rect = self.normal_window_screen_rect(index)?;
-            Some(serde_json::json!({
-                "id": window.id, "title": super::windows::window_title(&window.surface),
-                "app_id": super::windows::window_app_id(&window.surface),
-                "x": rect.loc.x, "y": rect.loc.y, "width": rect.size.w, "height": rect.size.h,
-                "titlebar_height": if self.has_compositor_chrome(index) { self.title_bar_rect(index).size.h } else { 0 },
-            }))
-        }).collect()
     }
 }

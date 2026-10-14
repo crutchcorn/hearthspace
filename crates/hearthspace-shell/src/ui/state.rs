@@ -22,6 +22,7 @@ pub(super) struct ShellState {
 pub(super) struct ShellOutputInstance {
     pub(super) output_name: Option<String>,
     pub(super) query: String,
+    pub(super) launch_error: Option<String>,
     pub(super) bar_window_id: WindowId,
     pub(super) launcher_window_id: WindowId,
 }
@@ -73,11 +74,31 @@ impl ShellState {
         self.outputs = outputs;
     }
 
-    pub(super) fn output_query_mut(&mut self, output_key: &str) -> Option<&mut String> {
-        self.outputs
+    pub(super) fn finish_launch(&mut self, output_key: &str, result: Result<(), String>) {
+        if let Some(output) = self
+            .outputs
             .iter_mut()
             .find(|output| output.key() == output_key)
-            .map(|output| &mut output.query)
+        {
+            match result {
+                Ok(()) => {
+                    output.query.clear();
+                    output.launch_error = None;
+                }
+                Err(error) => output.launch_error = Some(error),
+            }
+        }
+    }
+
+    pub(super) fn change_query(&mut self, output_key: &str, query: String) {
+        if let Some(output) = self
+            .outputs
+            .iter_mut()
+            .find(|output| output.key() == output_key)
+        {
+            output.query = query;
+            output.launch_error = None;
+        }
     }
 }
 
@@ -86,6 +107,7 @@ impl ShellOutputInstance {
         Self {
             output_name,
             query: String::new(),
+            launch_error: None,
             bar_window_id: WindowId::next(),
             launcher_window_id: WindowId::next(),
         }
@@ -162,5 +184,23 @@ mod tests {
         assert_eq!(state.outputs[0].bar_window_id, bar_window_id);
         assert_eq!(state.outputs[0].query, "term");
         assert_eq!(state.outputs[1].output_name.as_deref(), Some("HDMI-A-1"));
+    }
+
+    #[test]
+    fn rejected_launch_preserves_query_and_shows_error_until_retry_or_edit() {
+        let mut state = ShellState::new(PathBuf::from("/tmp/socket"), vec!["eDP-1".into()]);
+        state.change_query("eDP-1", "editor".into());
+        state.finish_launch("eDP-1", Err("missing executable".into()));
+        assert_eq!(state.outputs[0].query, "editor");
+        assert_eq!(
+            state.outputs[0].launch_error.as_deref(),
+            Some("missing executable")
+        );
+        state.apply_output_names(vec!["eDP-1".into()]);
+        assert!(state.outputs[0].launch_error.is_some());
+        state.change_query("eDP-1", "terminal".into());
+        assert!(state.outputs[0].launch_error.is_none());
+        state.finish_launch("eDP-1", Ok(()));
+        assert!(state.outputs[0].query.is_empty());
     }
 }

@@ -18,6 +18,7 @@ mod handlers;
 mod idle;
 mod input;
 mod masonry_titlebar;
+mod navigation;
 mod output;
 mod rendering;
 mod runtime;
@@ -77,7 +78,7 @@ use smithay::{
         dmabuf::{DmabufFeedbackBuilder, DmabufGlobal, DmabufState, ImportNotifier},
         fractional_scale::FractionalScaleManagerState,
         output::OutputManagerState,
-        selection::data_device::DataDeviceState,
+        selection::{data_device::DataDeviceState, primary_selection::PrimarySelectionState},
         shell::xdg::{ToplevelSurface, XdgShellState, decoration::XdgDecorationState},
         shm::ShmState,
         socket::ListeningSocketSource,
@@ -106,6 +107,7 @@ struct ManagedWindow {
     /// Bounding-box size of the window's surface tree, cached on commit so the
     /// per-frame rendering and hit-testing paths don't re-walk the tree.
     content_bbox_size: Size<i32, Logical>,
+    mapped: bool,
     /// Fractional scale most recently advertised to this window's surface tree.
     /// Compared each frame so the preferred scale is only re-sent when the
     /// window moves onto an output with a different scale (e.g. dragged across
@@ -243,6 +245,7 @@ struct App {
     shm_state: ShmState,
     seat_state: SeatState<Self>,
     data_device_state: DataDeviceState,
+    primary_selection_state: PrimarySelectionState,
     _seat: Seat<Self>,
     pointer: PointerHandle<Self>,
     keyboard: KeyboardHandle<Self>,
@@ -254,6 +257,7 @@ struct App {
     next_window_id: u64,
     idle_daemon: WindowIdleDaemon,
     focused_normal_window_id: Option<u64>,
+    shortcuts: input::KeyboardShortcuts,
     drag: Option<DragState>,
     resize: Option<ResizeState>,
     /// Cursor the compositor wants the host winit window to show. Updated from
@@ -577,6 +581,7 @@ pub(in crate::compositor) fn initialize_app(
         shm_state,
         seat_state,
         data_device_state: DataDeviceState::new::<App>(&dh),
+        primary_selection_state: PrimarySelectionState::new::<App>(&dh),
         _seat: seat,
         pointer,
         keyboard,
@@ -588,6 +593,7 @@ pub(in crate::compositor) fn initialize_app(
         next_window_id: 1,
         idle_daemon: WindowIdleDaemon::new(WINDOW_IDLE_THRESHOLDS),
         focused_normal_window_id: None,
+        shortcuts: input::KeyboardShortcuts::default(),
         drag: None,
         resize: None,
         cursor_icon: CursorIcon::Default,

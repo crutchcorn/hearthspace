@@ -41,6 +41,10 @@ impl DesktopApp {
             icon: fields.get("Icon").cloned(),
             terminal: bool_field(&fields, "Terminal"),
             path,
+            working_directory: fields
+                .get("Path")
+                .filter(|value| !value.is_empty())
+                .map(PathBuf::from),
             categories: fields
                 .get("Categories")
                 .map(|value| parse_semicolon_list(value))
@@ -182,5 +186,22 @@ fn try_exec_resolves(try_exec: &str) -> bool {
         path.exists()
     } else {
         executable_in_path(try_exec)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn working_directory_uses_the_unescaped_desktop_path_field() {
+        let app = DesktopApp::from_desktop_entry(
+            "project.desktop".into(), "project.desktop".into(),
+            "[Desktop Entry]\nType=Application\nName=Project\nExec=editor\nPath=/tmp/project\\sfiles\n",
+        ).unwrap();
+        assert_eq!(
+            app.working_directory,
+            Some(PathBuf::from("/tmp/project files"))
+        );
     }
 }

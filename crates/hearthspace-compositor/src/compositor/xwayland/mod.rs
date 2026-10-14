@@ -120,16 +120,21 @@ impl App {
             decoration,
             titlebar: None,
             content_bbox_size: geometry.size,
+            mapped: false,
             advertised_fractional_scale: 0.0,
         });
         self.idle_daemon.register_window(id);
         let spawn_output_name = self.next_spawn_output_name.take();
         self.enter_output(&wl_surface, spawn_output_name.as_deref());
         self.refresh_window_content_bbox(&wl_surface);
+        self.refresh_window_mapping(&wl_surface);
         self.request_redraw();
     }
 
     fn unmap_x11_window(&mut self, window: &X11Surface) {
+        let restore_focus = self.windows.iter().any(|managed| {
+            managed.surface.same_x11(window) && self.focused_normal_window_id == Some(managed.id)
+        });
         if let Some(surface) = window.wl_surface() {
             self.clear_keyboard_focus_for_surface(&surface);
         }
@@ -152,6 +157,9 @@ impl App {
             .retain(|managed| !managed.surface.same_x11(window));
         self.drag = None;
         self.resize = None;
+        if restore_focus {
+            self.restore_window_focus();
+        }
         self.request_redraw();
     }
 
@@ -165,6 +173,9 @@ impl App {
         let Some(window_index) = self.window_index_for_x11(window) else {
             return;
         };
+        if !self.is_navigable_window(window_index) {
+            return;
+        }
         let window_index = self.raise_window(window_index);
         if let Some(surface) = self.windows[window_index].surface.wl_surface() {
             self.set_keyboard_focus_to_window(window_index, surface);

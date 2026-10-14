@@ -32,6 +32,16 @@ impl SpawnTarget {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ShellCommand {
+    ListApps,
+    ListWindows,
+    FocusWindow(u64),
+    CloseWindow(u64),
+    MoveWindow { id: u64, x: i32, y: i32 },
+    ResizeWindow { id: u64, width: u32, height: u32 },
+    FocusNextWindow,
+    FocusPreviousWindow,
+    FocusLauncher,
+    ResetView,
     Spawn(SpawnTarget),
     LaunchApp(String),
     LaunchAppOnOutput { app_id: String, output_name: String },
@@ -70,6 +80,16 @@ impl ShellCommand {
 
     pub fn label(&self) -> &'static str {
         match self {
+            Self::ListApps => "APPS",
+            Self::ListWindows => "WINDOWS",
+            Self::FocusWindow(_) => "FOCUS",
+            Self::CloseWindow(_) => "CLOSE",
+            Self::MoveWindow { .. } => "MOVE",
+            Self::ResizeWindow { .. } => "RESIZE",
+            Self::FocusNextWindow => "NEXT",
+            Self::FocusPreviousWindow => "PREVIOUS",
+            Self::FocusLauncher => "LAUNCHER",
+            Self::ResetView => "RESET",
             Self::Spawn(target) => target.label(),
             Self::LaunchApp(_) | Self::LaunchAppOnOutput { .. } => "APP",
             Self::PanLeft => "LEFT",
@@ -94,6 +114,18 @@ impl ShellCommand {
 
     pub fn wire_name(&self) -> String {
         match self {
+            Self::ListApps => "apps".into(),
+            Self::ListWindows => "windows".into(),
+            Self::FocusWindow(id) => format!("focus-window {id}"),
+            Self::CloseWindow(id) => format!("close-window {id}"),
+            Self::MoveWindow { id, x, y } => format!("move-window {id} {x} {y}"),
+            Self::ResizeWindow { id, width, height } => {
+                format!("resize-window {id} {width} {height}")
+            }
+            Self::FocusNextWindow => "focus-next-window".into(),
+            Self::FocusPreviousWindow => "focus-previous-window".into(),
+            Self::FocusLauncher => "focus-launcher".into(),
+            Self::ResetView => "reset-view".into(),
             Self::Spawn(SpawnTarget::A11yTest) => "spawn a11y-test".to_string(),
             Self::Spawn(SpawnTarget::Foot) => "spawn foot".to_string(),
             Self::LaunchApp(app_id) => format!("launch-app {app_id}"),
@@ -145,7 +177,25 @@ impl ShellCommand {
         let mut parts = input.split_whitespace();
         let command = parts.next()?;
 
-        Some(match command {
+        let parsed = match command {
+            "apps" => Self::ListApps,
+            "windows" => Self::ListWindows,
+            "focus-window" => Self::FocusWindow(parts.next()?.parse().ok()?),
+            "close-window" => Self::CloseWindow(parts.next()?.parse().ok()?),
+            "move-window" => Self::MoveWindow {
+                id: parts.next()?.parse().ok()?,
+                x: parts.next()?.parse().ok()?,
+                y: parts.next()?.parse().ok()?,
+            },
+            "resize-window" => Self::ResizeWindow {
+                id: parts.next()?.parse().ok()?,
+                width: parts.next()?.parse().ok()?,
+                height: parts.next()?.parse().ok()?,
+            },
+            "focus-next-window" => Self::FocusNextWindow,
+            "focus-previous-window" => Self::FocusPreviousWindow,
+            "focus-launcher" => Self::FocusLauncher,
+            "reset-view" => Self::ResetView,
             "spawn" => Self::Spawn(SpawnTarget::parse(parts.next()?)?),
             "pan-left" => Self::PanLeft,
             "pan-right" => Self::PanRight,
@@ -174,7 +224,8 @@ impl ShellCommand {
             "screenshot" => Self::Screenshot,
             "quit" => Self::Quit,
             _ => return None,
-        })
+        };
+        parts.next().is_none().then_some(parsed)
     }
 }
 
@@ -231,6 +282,41 @@ fn hex_value(byte: u8) -> Option<u8> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn window_commands_round_trip_without_ignoring_extra_arguments() {
+        for command in [
+            ShellCommand::ListApps,
+            ShellCommand::ListWindows,
+            ShellCommand::FocusWindow(17),
+            ShellCommand::CloseWindow(17),
+            ShellCommand::MoveWindow {
+                id: 17,
+                x: -300,
+                y: 420,
+            },
+            ShellCommand::ResizeWindow {
+                id: 17,
+                width: 900,
+                height: 700,
+            },
+            ShellCommand::FocusNextWindow,
+            ShellCommand::FocusPreviousWindow,
+            ShellCommand::FocusLauncher,
+            ShellCommand::ResetView,
+        ] {
+            let wire = command.wire_name();
+            assert_eq!(ShellCommand::parse(&wire), Some(command));
+            assert_eq!(ShellCommand::parse(&format!("{wire} unexpected")), None);
+        }
+        for invalid in [
+            "focus-window -1",
+            "move-window 1 2",
+            "resize-window 1 -1 90",
+        ] {
+            assert_eq!(ShellCommand::parse(invalid), None);
+        }
+    }
 
     #[test]
     fn shell_commands_round_trip_wire_names() {

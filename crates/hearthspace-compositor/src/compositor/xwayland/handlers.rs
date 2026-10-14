@@ -184,8 +184,8 @@ impl XwmHandler for App {
         self.focus_x11_window(&window);
     }
 
-    fn allow_selection_access(&mut self, xwm: XwmId, selection: SelectionTarget) -> bool {
-        selection == SelectionTarget::Clipboard && self.xwm_has_keyboard_focus(xwm)
+    fn allow_selection_access(&mut self, xwm: XwmId, _selection: SelectionTarget) -> bool {
+        self.xwm_has_keyboard_focus(xwm)
     }
 
     fn send_selection(
@@ -203,9 +203,7 @@ impl XwmHandler for App {
     }
 
     fn cleared_selection(&mut self, xwm: XwmId, selection: SelectionTarget) {
-        if selection == SelectionTarget::Clipboard {
-            self.clear_x11_clipboard(xwm);
-        }
+        self.clear_x11_selection(xwm, selection);
     }
 
     fn disconnected(&mut self, xwm: XwmId) {

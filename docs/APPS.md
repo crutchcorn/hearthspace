@@ -15,6 +15,18 @@ This is a running compatibility log for apps tested through Hearthspace's app la
 
 ## Notes
 
+Normal sessions inherit the user's application configuration directories. An
+editor launched from the app search and from a terminal therefore uses the same
+preferences. Set `HEARTHSPACE_ISOLATE_APP_PROFILES=1` before starting a session to
+use separate per-application XDG directories under Hearthspace's state directory.
+The native test harness sets this explicitly so test launches can coexist with
+applications on the original desktop. Hearthspace Settings always uses the
+session daemon's configuration path.
+
+Application single-instance behavior still belongs to the application. When
+running two desktops with shared profiles, use the application's own new-instance
+or profile option if it would otherwise reuse a window on the other desktop.
+
 - Server-side decorations are negotiated by the app/toolkit and drawn by Hearthspace when applicable.
 - Client-side decorations are drawn by the app/toolkit itself.
 - Snap apps may need special Wayland socket handling because Snap confinement restricts allowed socket paths.

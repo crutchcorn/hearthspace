@@ -2373,6 +2373,7 @@ name = "hearthspace-shell"
 version = "0.1.0"
 dependencies = [
  "hearthspace-common",
+ "hearthspace-ipc",
  "hearthspace-ui-components",
  "rstest",
  "tempfile",

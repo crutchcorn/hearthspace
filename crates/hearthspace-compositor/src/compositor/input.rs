@@ -6,10 +6,7 @@ use smithay::{
         GestureEndEvent, GesturePinchUpdateEvent, InputBackend, InputEvent, InputTime,
         KeyboardKeyEvent, PointerAxisEvent, PointerButtonEvent, PointerMotionEvent, TouchEvent,
     },
-    input::{
-        keyboard::FilterResult,
-        pointer::{AxisFrame, ButtonEvent},
-    },
+    input::pointer::{AxisFrame, ButtonEvent},
     utils::{Logical, Point, Rectangle, SERIAL_COUNTER},
 };
 use tracing::{debug, trace};
@@ -18,6 +15,7 @@ use crate::config::WHEEL_SCROLL_PIXEL_EQUIVALENT;
 
 use super::{App, DragState, HitTarget, idle::ActivityReason};
 
+mod keyboard;
 #[cfg(feature = "winit")]
 mod nested;
 mod pinch;
@@ -26,6 +24,7 @@ mod scroll;
 mod touch;
 mod touch_tracker;
 
+pub(super) use keyboard::KeyboardShortcuts;
 #[cfg(feature = "winit")]
 pub(super) use nested::handle_winit_input;
 use pinch::PinchInput;
@@ -64,16 +63,7 @@ pub(in crate::compositor) fn handle_input_event<B: InputBackend>(
         InputEvent::Keyboard { event } => {
             let time = event.time();
             trace!(key_code = ?event.key_code(), state = ?event.state(), ?time, "keyboard input");
-            state.record_focused_client_activity(ActivityReason::ClientInput);
-            let keyboard = state.keyboard.clone();
-            keyboard.input::<(), _>(
-                state,
-                event.key_code(),
-                event.state(),
-                SERIAL_COUNTER.next_serial(),
-                time,
-                |_, _, _| FilterResult::Forward,
-            );
+            state.handle_keyboard_input(event.key_code(), event.state(), time);
         }
         InputEvent::PointerMotionAbsolute { event } => {
             let time = event.time();

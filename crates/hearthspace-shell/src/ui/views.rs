@@ -45,7 +45,7 @@ pub(super) fn app_logic(
 
         let output_key = output.key().to_string();
         let results = search_results(state, &output_key);
-        if !results.is_empty() {
+        if !results.is_empty() || output.launch_error.is_some() {
             windows.push(launcher_window(output, output_key, results));
         }
     }
@@ -75,11 +75,19 @@ fn launcher_window(
     let launcher_app_id = output.launcher_app_id();
     let launcher_id = output.launcher_window_id;
     let output_name = output.output_name.clone();
-    let size = launcher_size(results.len());
+    let mut size = launcher_size(results.len());
+    if output.launch_error.is_some() {
+        size.height += 100.0;
+    }
     window(
         launcher_id,
         "Hearthspace Launcher",
-        launcher_view(output_key, output_name, results),
+        launcher_view(
+            output_key,
+            output_name,
+            results,
+            output.launch_error.clone(),
+        ),
     )
     .with_options(move |options| {
         options
@@ -114,9 +122,7 @@ fn bar_view(output: &ShellOutputInstance) -> impl WidgetView<ShellState> + use<>
     let search = text_input(
         output.query.clone(),
         move |state: &mut ShellState, value: String| {
-            if let Some(query) = state.output_query_mut(&output_key) {
-                *query = value;
-            }
+            state.change_query(&output_key, value);
         },
     )
     .placeholder("Search apps...")
@@ -127,14 +133,12 @@ fn bar_view(output: &ShellOutputInstance) -> impl WidgetView<ShellState> + use<>
             return;
         }
         if let Some(app) = state.catalog.search(query, 1).into_iter().next() {
-            launch_app(
+            let result = launch_app(
                 &state.command_socket,
                 &app.id,
                 search_output_name.as_deref(),
             );
-            if let Some(query) = state.output_query_mut(&search_output_key) {
-                query.clear();
-            }
+            state.finish_launch(&search_output_key, result);
         }
     });
 
@@ -150,7 +154,7 @@ fn bar_view(output: &ShellOutputInstance) -> impl WidgetView<ShellState> + use<>
     .into_iter()
     .map(|command| {
         components::compact_action_button(command.label(), move |state: &mut ShellState| {
-            send_command(&state.command_socket, &command.wire_name());
+            let _ = send_command(&state.command_socket, &command.wire_name());
         })
         .boxed()
     })
@@ -181,8 +185,9 @@ fn launcher_view(
     output_key: String,
     output_name: Option<String>,
     results: Vec<DesktopApp>,
+    launch_error: Option<String>,
 ) -> impl WidgetView<ShellState> + use<> {
-    let buttons: Vec<Box<AnyWidgetView<ShellState>>> = results
+    let mut rows: Vec<Box<AnyWidgetView<ShellState>>> = results
         .into_iter()
         .map(|app| {
             let app_id = app.id;
@@ -192,18 +197,28 @@ fn launcher_view(
                 app.name,
                 LAUNCHER_ITEM_WIDTH,
                 move |state: &mut ShellState| {
-                    launch_app(&state.command_socket, &app_id, output_name.as_deref());
-                    if let Some(query) = state.output_query_mut(&output_key) {
-                        query.clear();
-                    }
+                    let result = launch_app(&state.command_socket, &app_id, output_name.as_deref());
+                    state.finish_launch(&output_key, result);
                 },
             )
             .boxed()
         })
         .collect();
 
+    if let Some(error) = launch_error {
+        rows.insert(
+            0,
+            sized_box(components::field_label(format!(
+                "Could not start the app: {error}"
+            )))
+            .background_color(components::DANGER_SUBTLE)
+            .padding(8.0.px())
+            .boxed(),
+        );
+    }
+
     sized_box(
-        flex_col(buttons)
+        flex_col(rows)
             .cross_axis_alignment(CrossAxisAlignment::Stretch)
             .gap(4.0.px()),
     )

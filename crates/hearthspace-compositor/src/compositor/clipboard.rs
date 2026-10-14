@@ -1,23 +1,37 @@
 //! Seat clipboard integration. Smithay owns offers and asynchronous data transfer.
-use smithay::wayland::selection::{
-    SelectionHandler,
-    data_device::{DataDeviceHandler, DataDeviceState, WaylandDndGrabHandler},
+use std::{os::fd::OwnedFd, sync::Arc};
+
+use smithay::{
+    input::Seat,
+    wayland::selection::{
+        SelectionHandler, SelectionTarget,
+        data_device::{DataDeviceHandler, DataDeviceState, WaylandDndGrabHandler},
+        primary_selection::{PrimarySelectionHandler, PrimarySelectionState},
+    },
 };
+
+mod text;
 
 #[cfg(feature = "xwayland")]
 use {
     smithay::{
-        input::Seat,
         wayland::selection::{
-            SelectionSource, SelectionTarget, data_device::current_data_device_selection_userdata,
+            SelectionSource, data_device::current_data_device_selection_userdata,
+            primary_selection::current_primary_selection_userdata,
         },
         xwayland::xwm::XwmId,
     },
-    std::{os::fd::OwnedFd, sync::Arc},
     tracing::warn,
 };
 
 use super::App;
+
+#[derive(Clone)]
+pub(super) enum SelectionData {
+    Text(Arc<[u8]>),
+    #[cfg(feature = "xwayland")]
+    X11(ClipboardSource),
+}
 
 /// Identifies the XWM and the particular selection advertised by it. Wayland
 /// offers can outlive ownership changes; an old offer must never read a later
@@ -44,10 +58,7 @@ impl ClipboardSource {
 }
 
 impl SelectionHandler for App {
-    #[cfg(feature = "xwayland")]
-    type SelectionUserData = ClipboardSource;
-    #[cfg(not(feature = "xwayland"))]
-    type SelectionUserData = ();
+    type SelectionUserData = SelectionData;
 
     #[cfg(feature = "xwayland")]
     fn new_selection(
@@ -56,17 +67,37 @@ impl SelectionHandler for App {
         source: Option<SelectionSource>,
         _seat: Seat<Self>,
     ) {
-        if target == SelectionTarget::Clipboard
-            && self.xdisplay.is_some()
+        if self.xdisplay.is_some()
             && let Some(xwm) = self.xwm.as_mut()
             && let Err(error) = xwm.new_selection(target, source.map(|source| source.mime_types()))
         {
-            warn!(%error, "failed to advertise Wayland clipboard to XWayland");
+            warn!(%error, ?target, "failed to advertise Wayland selection to XWayland");
         }
     }
 
-    #[cfg(feature = "xwayland")]
     fn send_selection(
+        &mut self,
+        target: SelectionTarget,
+        mime_type: String,
+        fd: OwnedFd,
+        seat: Seat<Self>,
+        source: &SelectionData,
+    ) {
+        match source {
+            SelectionData::Text(bytes) => text::send_text(bytes.clone(), &mime_type, fd),
+            #[cfg(feature = "xwayland")]
+            SelectionData::X11(source) => {
+                self.send_x11_selection(target, mime_type, fd, seat, source)
+            }
+        }
+        #[cfg(not(feature = "xwayland"))]
+        let _ = (target, seat);
+    }
+}
+
+#[cfg(feature = "xwayland")]
+impl App {
+    fn send_x11_selection(
         &mut self,
         target: SelectionTarget,
         mime_type: String,
@@ -74,16 +105,17 @@ impl SelectionHandler for App {
         seat: Seat<Self>,
         source: &ClipboardSource,
     ) {
-        if target != SelectionTarget::Clipboard
-            || !current_data_device_selection_userdata(&seat)
-                .is_some_and(|current| current.is_same_selection(source))
-        {
+        let current = match target {
+            SelectionTarget::Clipboard => current_data_device_selection_userdata(&seat),
+            SelectionTarget::Primary => current_primary_selection_userdata(&seat),
+        };
+        if !current.is_some_and(|current| matches!(&*current, SelectionData::X11(current) if current.is_same_selection(source))) {
             return;
         }
         if let Some(xwm) = self.xwm.as_mut().filter(|xwm| xwm.id() == source.xwm)
             && let Err(error) = xwm.send_selection(target, mime_type, fd)
         {
-            warn!(%error, "failed to transfer X11 clipboard to Wayland");
+            warn!(%error, ?target, "failed to transfer X11 selection to Wayland");
         }
     }
 }
@@ -95,3 +127,9 @@ impl DataDeviceHandler for App {
 }
 
 impl WaylandDndGrabHandler for App {}
+
+impl PrimarySelectionHandler for App {
+    fn primary_selection_state(&mut self) -> &mut PrimarySelectionState {
+        &mut self.primary_selection_state
+    }
+}

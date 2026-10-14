@@ -12,6 +12,9 @@ use std::{
 #[path = "support/accessibility.rs"]
 mod accessibility_diagnostics;
 #[cfg(feature = "test-apps")]
+#[path = "support/navigation.rs"]
+mod navigation;
+#[cfg(feature = "test-apps")]
 #[path = "support/session_bus.rs"]
 mod session_bus;
 

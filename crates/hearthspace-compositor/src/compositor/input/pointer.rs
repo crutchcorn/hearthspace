@@ -1,9 +1,6 @@
 use smithay::{
     backend::input::{Axis, ButtonState, InputTime, KeyState},
-    input::{
-        keyboard::FilterResult,
-        pointer::{AxisFrame, ButtonEvent, MotionEvent},
-    },
+    input::pointer::{AxisFrame, ButtonEvent, MotionEvent},
     utils::{Logical, Point, Rectangle, SERIAL_COUNTER},
 };
 use tracing::{debug, trace};
@@ -16,15 +13,10 @@ use crate::compositor::{
 impl App {
     pub(in crate::compositor) fn synthesize_key(&mut self, evdev_keycode: u32, state: KeyState) {
         trace!(evdev_keycode, ?state, "synthesizing key input");
-        self.record_focused_client_activity(ActivityReason::ClientInput);
-        let keyboard = self.keyboard.clone();
-        keyboard.input::<(), _>(
-            self,
+        self.handle_keyboard_input(
             evdev_keycode.saturating_add(8).into(),
             state,
-            SERIAL_COUNTER.next_serial(),
             InputTime::now(),
-            |_, _, _| FilterResult::Forward,
         );
     }
 

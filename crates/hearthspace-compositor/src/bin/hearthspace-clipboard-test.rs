@@ -45,10 +45,12 @@ struct Snapshot<'a> {
     text: String,
     revision: u64,
     clipboard_revision: u64,
+    primary_revision: u64,
     clipboard_serialization: &'a str,
     paste_completed: u64,
     ready: bool,
     focused: bool,
+    active: bool,
     pid: u32,
 }
 
@@ -60,6 +62,7 @@ struct Recorder {
     backend: &'static str,
     revision: Cell<u64>,
     clipboard_revision: Cell<u64>,
+    primary_revision: Cell<u64>,
     clipboard_serialization: Cell<&'static str>,
     paste_completed: Cell<u64>,
 }
@@ -74,10 +77,12 @@ impl Recorder {
                 .to_string(),
             revision: self.revision.get(),
             clipboard_revision: self.clipboard_revision.get(),
+            primary_revision: self.primary_revision.get(),
             clipboard_serialization: self.clipboard_serialization.get(),
             paste_completed: self.paste_completed.get(),
             ready: self.window.is_mapped(),
             focused: self.editor.has_focus(),
+            active: self.window.is_active(),
             pid: std::process::id(),
         };
         // Readers must never observe half a UTF-8 string or a partial JSON file.
@@ -160,6 +165,7 @@ fn build_window(application: &Application, options: &Options, initial_text: &str
         backend,
         revision: Cell::new(0),
         clipboard_revision: Cell::new(0),
+        primary_revision: Cell::new(0),
         clipboard_serialization: Cell::new("none"),
         paste_completed: Cell::new(0),
     });
@@ -180,10 +186,19 @@ fn build_window(application: &Application, options: &Options, initial_text: &str
             .set(clipboard.clipboard_revision.get() + 1);
         clipboard.write();
     });
+    let primary = Rc::clone(&recorder);
+    editor.primary_clipboard().connect_changed(move |_| {
+        primary
+            .primary_revision
+            .set(primary.primary_revision.get() + 1);
+        primary.write();
+    });
     let mapped = Rc::clone(&recorder);
     window.connect_map(move |_| mapped.write());
     let focused = Rc::clone(&recorder);
     editor.connect_has_focus_notify(move |_| focused.write());
+    let active = Rc::clone(&recorder);
+    window.connect_is_active_notify(move |_| active.write());
 
     let keys = gtk::EventControllerKey::new();
     keys.set_propagation_phase(gtk::PropagationPhase::Capture);

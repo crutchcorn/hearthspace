@@ -9,7 +9,10 @@ mod search;
 mod spawn;
 mod terminal;
 
-pub use spawn::{spawn_argv, spawn_argv_with_env, spawn_argv_with_wayland_display};
+pub use spawn::{
+    reap_child, spawn_argv, spawn_argv_with_env, spawn_argv_with_options,
+    spawn_argv_with_wayland_display,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DesktopApp {
@@ -22,6 +25,7 @@ pub struct DesktopApp {
     pub icon: Option<String>,
     pub terminal: bool,
     pub path: PathBuf,
+    pub working_directory: Option<PathBuf>,
     pub categories: Vec<String>,
     pub terminal_arg_exec: Option<String>,
     pub snap_instance_name: Option<String>,

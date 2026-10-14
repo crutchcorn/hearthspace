@@ -12,7 +12,7 @@ use smithay::reexports::calloop::EventLoop;
 
 use super::{
     ControlReply,
-    connection::{COMMAND_TIMEOUT, Connection},
+    connection::{COMMAND_TIMEOUT, Connection, MAX_COMMAND_BYTES},
     reply::{Limits, MAX_CONNECTIONS, MAX_REPLY_BYTES, Output},
     run_command_line,
     source::CommandSource,
@@ -206,7 +206,9 @@ fn unterminated_oversized_command_gets_a_bounded_error() {
     let (server, mut client) = pair();
     let now = Instant::now();
     let mut connection = Connection::new(Rc::default(), now);
-    client.write_all(&vec![b'x'; 4097]).unwrap();
+    client
+        .write_all(&vec![b'x'; MAX_COMMAND_BYTES + 1])
+        .unwrap();
     assert!(
         !connection
             .advance(&server, true, now, |_| panic!("oversized command ran"))

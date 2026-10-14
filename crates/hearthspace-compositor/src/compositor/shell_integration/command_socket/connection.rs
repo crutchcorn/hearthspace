@@ -15,7 +15,8 @@ use super::{
 
 pub(super) const COMMAND_TIMEOUT: Duration = Duration::from_secs(10);
 const DEFERRED_POLL: Duration = Duration::from_millis(20);
-const MAX_COMMAND_BYTES: usize = 4096;
+// A 16 KiB UTF-8 clipboard is hex encoded on the single-line wire protocol.
+pub(super) const MAX_COMMAND_BYTES: usize = 33 * 1024;
 const MAX_INPUT_BYTES: usize = 64 * 1024;
 
 pub(super) struct Connection {

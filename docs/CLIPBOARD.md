@@ -7,11 +7,23 @@ X11 requests for the Wayland clipboard require an XWayland window to have focus.
 X11 applications share the same X server, so this is an XWM-level access check.
 
 The bridge forwards advertised MIME types and transfers data through Smithay's
-file-descriptor APIs. Hearthspace does not read clipboard contents into its
-window metadata or retain a clipboard history. The owning application supplies
-the data; closing it can leave the clipboard unavailable until another copy.
-Primary selection (middle-click paste) and cross-protocol drag-and-drop remain
+file-descriptor APIs. Hearthspace does not read application clipboard contents
+into its window metadata or retain a clipboard history. The owning application
+supplies the data; closing it can leave the clipboard unavailable until another copy.
+Primary selection uses Smithay's primary-selection protocol and the XWM bridge.
+Selecting text and middle-clicking pastes that selection independently of the
+ordinary Ctrl+C/Ctrl+V clipboard, including between Wayland and XWayland apps.
+Both selection offers follow keyboard focus. Cross-protocol drag-and-drop remains
 separate work.
+
+Agents can explicitly replace the clipboard with `hearthspace-agent clipboard-set`
+or replace it and send a paste shortcut with `hearthspace-agent paste`. These
+commands support Unicode, multiline text, and UTF-8 input files up to 16 KiB.
+`paste --shortcut ctrl+shift+v` supports terminals using that binding. This changes
+the ordinary clipboard; it does not change primary selection. The compositor owns
+that explicit payload until replaced, and serves it through bounded asynchronous
+transfers so a stalled paste recipient cannot freeze the desktop. The `type`
+command retains its keyboard-event behavior and US ASCII mapping.
 
 Large X11 transfers use Smithay's INCR protocol support. The upstream dependency
 is pinned to a revision containing the INCR header fix; no local fork or vendored
@@ -69,7 +81,8 @@ JSON, and PNG/metadata captures; the final result requires VT restoration and
 complete session cleanup. See [Native Testing](NATIVE_TESTING.md) for host
 requirements and recovery.
 
-The shared workflow covers copy and cut with Unicode/multiline text, large
+The shared workflow covers primary-selection middle-click paste in both
+directions and independence from the ordinary clipboard, copy and cut with Unicode/multiline text, large
 transfers in both directions, clipboard replacement, source process exit, and
 native Wayland copy/paste. A changed screenshot alone is not accepted as a
 successful transfer. Source-exit cases occur after completed transfers; they do
