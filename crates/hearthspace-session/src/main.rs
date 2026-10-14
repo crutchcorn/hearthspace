@@ -1,6 +1,7 @@
 use clap::Parser;
 use tracing::info;
 
+mod audio_env;
 mod cli;
 mod compositor;
 mod desktop_entries;

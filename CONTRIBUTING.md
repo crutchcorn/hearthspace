@@ -115,6 +115,17 @@ option. That explicitly supplies `HEARTHSPACE_SESSION_BUS_ADDRESS` to children s
 app launch and AT-SPI stay on the Hearthspace bus. Normal nested sessions continue
 to exclude the host bus from shell-launched apps.
 
+Private sessions share the user's existing audio service. Unless explicitly
+overridden, the supervisor exports `PULSE_SERVER=unix:$HOST_RUNTIME/pulse/native`
+and `PIPEWIRE_REMOTE=$HOST_RUNTIME/pipewire-0`, with `PIPEWIRE_RUNTIME_DIR` pointing
+to the original runtime directory. Here `$HOST_RUNTIME` is
+`HEARTHSPACE_HOST_XDG_RUNTIME_DIR`, or the inherited `XDG_RUNTIME_DIR` when no host
+override exists. Explicit PulseAudio/PipeWire server and runtime variables are
+preserved. This keeps audio clients connected while Wayland and desktop D-Bus
+remain private; it does not start another audio daemon. The endpoint variables
+follow the [PipeWire native protocol](https://docs.pipewire.org/page_module_protocol_native.html)
+and [PulseAudio server selection](https://wiki.freedesktop.org/www/Software/PulseAudio/FAQ/).
+
 Accessibility test buses must inherit the test's private `XDG_RUNTIME_DIR`, not
 the host runtime. Otherwise D-Bus activation can replace the host AT-SPI socket.
 During enablement, the existing host `at-spi-dbus-bus.service` was restarted to

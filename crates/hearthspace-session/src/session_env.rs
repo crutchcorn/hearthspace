@@ -97,7 +97,7 @@ pub(crate) fn create_session_env(
         ),
         (
             hearthspace_common::HOST_RUNTIME_DIR_ENV.to_string(),
-            host_runtime_dir,
+            host_runtime_dir.clone(),
         ),
         (
             hearthspace_common::SETTINGS_SOCKET_ENV.to_string(),
@@ -117,6 +117,8 @@ pub(crate) fn create_session_env(
             xdg_data_dirs(&path_to_string(&paths.session_dir.join("share"))?)?,
         ),
     ];
+
+    vars.extend(crate::audio_env::audio_environment(&host_runtime_dir));
 
     if args.private_session_bus {
         let bus = env::var("DBUS_SESSION_BUS_ADDRESS")
