@@ -87,14 +87,15 @@ criteria are tracked in [AI_ENABLEMENT.md](./AI_ENABLEMENT.md).
       tests, plus an opt-in native smoke/recovery suite.
 - [ ] Record a passing unattended native observe–act–verify run with retained
       PNGs, metadata, logs, and VT/process cleanup evidence on the VM DRM stack.
-- [ ] Validate capture on real hardware separately, including scaled/secondary
-      outputs, hardware and software cursor paths, VT transitions, and output
-      removal during a pending capture.
+- [x] Validate native capture on real AMD hardware with a scaled output,
+      hardware and software cursor paths, VT restoration, and all recovery
+      cases. See the 2026-10-14 validation record in AI_ENABLEMENT.md.
+- [ ] Extend capture validation to secondary outputs and live output removal
+      during a pending capture on real hardware.
 
-The checked implementation items above do not certify the new native acceptance
-workflow. Track end-to-end validation and recovery evidence in
-[AI_ENABLEMENT.md](./AI_ENABLEMENT.md); the earlier hardware results in this file
-cover the native backend foundation.
+Track end-to-end validation and recovery evidence in
+[AI_ENABLEMENT.md](./AI_ENABLEMENT.md); capture coverage on the available AMD
+display does not establish coverage on other GPU or VM drivers.
 
 ## KMS Damage Clips
 
