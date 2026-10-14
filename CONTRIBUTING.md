@@ -373,6 +373,10 @@ HTTP, HTTPS, and HTML defaults remained `google-chrome.desktop`, and the automat
 browser profiles were not opened or migrated. Native acceptance uses a new
 explicit `--profile` directory with `--no-remote`, plus temporary desktop entries
 removed after the owned session stops; see [application acceptance](docs/DAILY_APPS_TESTING.md).
+Preparing these temporary entries also regenerates
+`~/.local/share/applications/mimeinfo.cache` with `update-desktop-database`, which
+is regenerated again after their removal. Existing `mimeapps.list` files and
+browser defaults are preserved.
 
 ### Optional Test Apps
 

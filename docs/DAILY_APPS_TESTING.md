@@ -47,6 +47,17 @@ successful portal response and the requested URL in the resulting browser tab.
 Do not change the host's default browser. Use `ask=true` on the OpenURI request
 to select the temporary entry explicitly.
 
+After creating the probe entries, refresh their MIME registration:
+
+```sh
+update-desktop-database "$HOME/.local/share/applications"
+gio mime x-scheme-handler/https
+```
+
+The chooser uses this cache, so `MimeType` in the entry alone is insufficient.
+Confirm the probe IDs appear and the default browser is unchanged. This command
+regenerates `mimeinfo.cache`; it does not set defaults in `mimeapps.list`.
+
 ### Snap package
 
 Create its new profile under
@@ -167,3 +178,8 @@ directories that did not preexist. It retains run artifacts,
 screenshots, fixture copies, and edited workspace files. For later runs, apply
 the same ownership checks to their recorded paths; never remove a preexisting
 entry or profile.
+
+After removing the owned entries, run `update-desktop-database` on the same
+applications directory again. Verify their IDs are absent from `mimeinfo.cache`
+and browser defaults remain unchanged. The prepared cleanup helper does this
+before marking temporary setup removal complete.
