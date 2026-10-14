@@ -11,7 +11,7 @@
 
 <hr />
 
-Hearthspace is a very early experimental Wayland compositor and shell built around an infinite canvas for applications, local-first AI, and a more persistent relationship with your workspace.
+Hearthspace is an experimental Wayland compositor and shell built around an infinite canvas for applications, remembered window placement, and agent control.
 
 <div align="center">
 
@@ -21,7 +21,27 @@ https://github.com/user-attachments/assets/de48fb7e-0d4b-4aef-9380-fc27869ccbde
 
 Instead of treating windows as temporary rectangles that pile up until you clean them away, Hearthspace explores a different model: applications live in a large spatial canvas, can be organized by context, and will eventually become easier to search, suspend, restore, and reason about.
 
-**Hearthspace is not ready for daily use. I’m developing it in public while working toward a dogfoodable alpha.**
+**Hearthspace is experimental.** Browser, editor, terminal, and file-manager workflows have been exercised on native AMD hardware. The [daily usability record](./todos/DAILY_USABILITY.md) tracks acceptance evidence and remaining limits; this does not establish compatibility with every application or GPU.
+
+## Try the desktop
+
+After [setting up the development dependencies](./CONTRIBUTING.md), start a full
+session with `cargo run -- --dev --no-watch-apps`. From a real Linux TTY this uses
+the native DRM/KMS backend; inside another desktop it opens a nested window.
+
+Super+Return opens a terminal. Super+Space searches installed applications and
+running windows; Alt+Tab switches applications. Super+arrow keys pan the canvas,
+Super+0 resets the view, and Super+M / Super+F toggle maximize / fullscreen.
+Three-finger pinches zoom the canvas. Native sessions provide notifications and
+manual locking; the shell offers confirmed logout. See [window management](./docs/WINDOW_MANAGEMENT.md)
+for keyboard controls and [app compatibility](./docs/APPS.md) for profile and
+package behavior.
+
+Agents can start an owned native session on a spare VT, inspect apps and stable
+window IDs, send input or Unicode paste, and verify screenshots or accessibility
+state through `scripts/hearthspace-agent`. Follow [native testing](./docs/NATIVE_TESTING.md)
+for watchdogs, session ownership, and recovery, or run the repeatable
+[daily smoke workflow](./docs/DAILY_SMOKE.md).
 
 ## Goals
 

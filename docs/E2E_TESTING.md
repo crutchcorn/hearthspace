@@ -47,6 +47,8 @@ Hearthspace has three complementary E2E layers:
 - Native smoke tests: full sessions on a spare VT, covering presentation through
   KMS, hardware/software cursor capture, output geometry, and recovery after
   startup failure, compositor failure, watchdog expiry, or agent interruption.
+  The [daily workflow](DAILY_SMOKE.md) adds keyboard launch/search, Unicode,
+  window-state recovery, bounded settings I/O, and semantic notifications.
 
 Keep these layers distinct. The control-socket tests prove our direct test
 surface works. The WayDriver tests prove an external automation harness can drive
@@ -149,6 +151,20 @@ axis <horizontal> <vertical>
 screenshot
 capture [output-name]
 status
+apps
+windows
+focus-window <id>
+close-window <id>
+move-window <id> <canvas-x> <canvas-y>
+resize-window <id> <content-width> <content-height>
+fullscreen-window <id> true|false
+maximize-window <id> true|false
+restore-window <id>
+focus-next-window
+focus-previous-window
+focus-launcher
+reset-view
+lock-session
 quit
 ```
 
@@ -190,6 +206,8 @@ Payloads depend on the request:
 | `screenshot` | PNG bytes for the default output; preserves the existing client contract. |
 | `capture [output-name]` | One UTF-8 JSON metadata line, then PNG bytes. The length counts both. |
 | `status` | UTF-8 JSON describing backend, activity, outputs/frame IDs, shell readiness, and mapped window geometry. |
+| `windows` | Versioned JSON window metadata, including stable IDs, canvas and screen coordinates, focus, visibility, and presentation state. |
+| `apps` | Versioned JSON catalog of launchable desktop entries. |
 
 Capture metadata includes a version, output name, pixel dimensions, integer
 scale, logical origin and bounds, transform, frame ID, cursor policy/source, and
@@ -199,11 +217,20 @@ input coordinates with `logical_x + pixel_x / scale` and
 Frame IDs are scoped to one output in one compositor process.
 
 Native capture reads the normal output render target and replies after that
-frame's page flip, reporting `presentation: "page-flip"`. Headless and nested
+frame's page flip and PNG completion, reporting `presentation: "page-flip"`.
+PNG encoding runs off the native event-loop thread with two bounded jobs;
+GPU readback remains on that thread. A late encoding result cannot release a
+capture invalidated by locking, output loss, or its deadline. Headless and nested
 captures report `presentation: "offscreen"`. Native capture includes the
 software/client cursor in the framebuffer or overlays the hardware cursor once;
 `cursor_source` identifies the path and `cursor_sample: "render"` identifies when
 the independently moving hardware cursor was sampled.
+
+`lock-session` acknowledges the locker request; tests must wait for both
+`locked` and `lock_confirmed` in status before claiming secure presentation.
+Locked status redacts application/view metadata and other desktop automation
+commands are rejected. Protocol lock fixtures exercise isolation without
+claiming password-authentication coverage; see [session locking](SESSION_LOCK.md).
 
 An input `ok` proves command acceptance. A page flip proves display-pipeline
 progress. Neither proves that an application has finished responding. Verify

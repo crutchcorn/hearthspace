@@ -69,7 +69,9 @@ scripts/hearthspace-native stop --session /tmp/hearthspace-run-2
 
 Commands return JSON. Screenshots produce a PNG and adjacent JSON metadata file.
 Pointer coordinates default to global output-logical coordinates, independent of
-the canvas zoom. Use screenshot metadata to act in captured pixel coordinates:
+the canvas zoom. Use screenshot metadata to act in captured pixel coordinates.
+`status` combines launcher lifecycle information with a live compositor query;
+startup metadata is not a substitute for current window or output state.
 
 Use `apps` to discover desktop-entry IDs and `windows` for live titles, stable
 window IDs, focus, and geometry. Window IDs belong to the current compositor
@@ -78,6 +80,11 @@ process. The `focus`, `close`, `move`, `resize`, `maximize`, `fullscreen`, and
 for canvas coordinates, keyboard shortcuts, and restoration behavior.
 
 ```sh
+scripts/hearthspace-agent --session /tmp/hearthspace-run-1 apps
+scripts/hearthspace-agent --session /tmp/hearthspace-run-1 windows
+scripts/hearthspace-agent --session /tmp/hearthspace-run-1 focus 3
+scripts/hearthspace-agent --session /tmp/hearthspace-run-1 maximize 3
+scripts/hearthspace-agent --session /tmp/hearthspace-run-1 restore 3
 scripts/hearthspace-agent --session /tmp/hearthspace-run-1 launch foot
 scripts/hearthspace-agent --session /tmp/hearthspace-run-1 click 200 180
 scripts/hearthspace-agent --session /tmp/hearthspace-run-1 type 'hello from the agent'
@@ -87,6 +94,12 @@ scripts/hearthspace-agent --session /tmp/hearthspace-run-1 drag 300 100 350 150 
 scripts/hearthspace-agent --session /tmp/hearthspace-run-1 scroll -15
 scripts/hearthspace-agent --session /tmp/hearthspace-run-1 click 400 360 --units pixels --metadata /tmp/hearthspace-run-1/desktop.json
 ```
+
+Replace the example window ID with one returned by `windows`. Use
+`focus-next`, `focus-previous`, `focus-launcher`, and `reset-view` for navigation
+without an ID. `fullscreen ID --off` and `maximize ID --off` leave one state;
+`restore ID` clears both. Launch replies confirm that a process started, so wait
+for its mapped window and application-specific readiness before typing.
 
 `type` supports the CLI's US-layout key mappings, including printable ASCII,
 newline, and tab. Unsupported characters fail before typing. Key chords use
@@ -109,6 +122,13 @@ or accessibility result to verify the intended action. For explicit waits:
 scripts/hearthspace-agent --session /tmp/hearthspace-run-1 --timeout 10 wait
 scripts/hearthspace-agent --session /tmp/hearthspace-run-1 --timeout 10 wait --change-from /tmp/hearthspace-run-1/desktop.png
 ```
+
+`lock` instead waits for `locked` and `lock_confirmed`: protected frames must be
+presented before it reports success. `lock --wait none` confirms acceptance only.
+While locked, status is redacted and capture, input, clipboard, app/window queries,
+and accessibility are unavailable. The user authenticates through the real input
+devices; recovery for an abandoned owned session is `stop`. See
+[session locking](SESSION_LOCK.md).
 
 Select a monitor with `--output NAME`, taking names from `status`. Capture JSON
 includes output dimensions, scale, logical origin/bounds, transform, frame ID,
@@ -241,7 +261,10 @@ match and obtains a fresh capture afterward. Acceptance is not proof of an
 application-specific result; inspect the resulting state as usual.
 
 Snapshots resolve numeric AT-SPI roles when a toolkit such as AccessKit omits
-role-name methods. Use the observed role and accessible name when building a
+role-name methods, and normalize duplicate toolkit attributes without replacing
+the canonical object identity. Enabling a bridge does not synchronously publish
+its tree; retry discovery within a deadline when an application has just appeared.
+Use the observed role and accessible name when building a
 selector; different toolkits may call a button `Button` or `PushButton`.
 Accessibility bounds are toolkit-relative; use capture metadata for pointer
 coordinates instead of treating those bounds as screen coordinates.

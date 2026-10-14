@@ -9,6 +9,8 @@ The native observe–act–verify loop is implemented, with screenshots and logs
 retained as evidence. Native capture, bounded transport, session orchestration,
 the agent CLI, WayDriver attachment, and private-bus accessibility are available.
 The optional MCP wrapper remains deferred until an integration needs it.
+The subsequent [daily usability milestone](DAILY_USABILITY.md) owns combined
+application acceptance, desktop-service integration, and later regression runs.
 
 ## Implemented Foundation
 
@@ -112,6 +114,9 @@ an MCP wrapper remains an optional later integration.
 - [x] Expose app launch, `click`, `drag`, `scroll`, `key`, and `type` operations.
       Define coordinate units and text/key encoding, and release held keys and
       buttons on failure.
+- [x] Add live app/window discovery, stable window actions, private accessibility
+      snapshot/find/activate, and explicit UTF-8 clipboard/paste operations.
+      Locking waits for protected presentation and blocks desktop automation.
 - [x] Return structured results and useful errors with bounded operation
       deadlines, so automation can distinguish command acceptance from success.
 - [x] Provide waits for presentation after an action and for observable UI
@@ -184,7 +189,12 @@ reachable. Recovery paths must pass before the harness is used routinely.
 Full remote desktop streaming, production login-session integration, and
 unrelated XWayland polish are outside this first automation milestone.
 
-## Validation Record
+## Foundation Validation Record
+
+This record describes the original AI-enablement milestone. Later capture-worker,
+session-service, application, and shutdown changes have separate evidence in
+[daily usability](DAILY_USABILITY.md); the historical counts below are not the
+final daily-use test totals.
 
 All required validation gates passed with the execution permissions needed for
 Unix sockets and privileged VT operations. The WayDriver dependency uses the

@@ -102,6 +102,12 @@ criteria are tracked in [AI_ENABLEMENT.md](./AI_ENABLEMENT.md).
       preserve deferred request order, and bound connection/input/output queues.
 - [x] Add deterministic capture-state, cursor, metadata, and transport regression
       tests, plus an opt-in native smoke/recovery suite.
+- [x] Move PNG encoding off the compositor thread, bound queued/running/completed
+      images together, and preserve the captured frame's page-flip identity.
+      `/tmp/hearthspace-daily-apps-native-4/artifacts/capture-responsiveness`
+      records three captures overlapping 274 control/input operations, with
+      maximum status/input latency of 2.73/1.83 ms on the tested AMD output.
+      GPU readback still runs on the compositor thread.
 - [ ] Record a passing unattended native observe–act–verify run with retained
       PNGs, metadata, logs, and VT/process cleanup evidence on the VM DRM stack.
 - [x] Validate native capture on real AMD hardware with a scaled output,
@@ -153,9 +159,12 @@ them reliably.
       rejection, blocked agent access, and focus restoration after unlock passed.
 - [x] Launch the distribution swaylock client and observe confirmed native
       presentation. Authentication remains in its packaged PAM policy.
-- [ ] Repeat real swaylock parent-process death on native hardware and verify
-      the shield remains until the owned test session is stopped. Its PAM helper
-      is a separate child process; a process-name count alone is not a kill target.
+- [x] Repeat real swaylock parent-process death on native hardware and verify
+      the shield remains until the owned test session is stopped. The identified
+      main process was killed in `/tmp/hearthspace-daily-apps-native-4`; thirty
+      subsequent samples remained locked with desktop automation blocked.
+      See `artifacts/locker-crash.json`. Its PAM helper was not the kill target;
+      this establishes fail-closed locker loss, not password authentication.
 - [ ] Test lock/unlock across the broader output, VT, and GPU matrix.
 
 See [session locking](../docs/SESSION_LOCK.md) for the protocol test client and
