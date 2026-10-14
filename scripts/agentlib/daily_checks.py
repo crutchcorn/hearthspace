@@ -127,7 +127,11 @@ def selector(smoke):
     smoke.capture("running-window-search")
     with Input(smoke.control) as inputs:
         inputs.chord("enter")
-    smoke.until("original terminal selected", lambda: focused(smoke, smoke.target))
+    try:
+        smoke.until("original terminal selected", lambda: focused(smoke, smoke.target))
+    except ControlError:
+        smoke.failure_evidence("running-window-submit-failed")
+        raise
     actual_ids = {item["id"] for item in smoke.control.status()["windows"]}
     if actual_ids != expected_ids:
         raise ControlError("running-window selector spawned or removed an application")

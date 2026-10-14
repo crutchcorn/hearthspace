@@ -80,6 +80,23 @@ class DailySmoke(Smoke):
         self.record("ready", manifest=self.manifest, status=status)
         self.capture("initial")
 
+    def failure_evidence(self, name):
+        """Preserve post-action evidence without replacing the original failure."""
+        original = self.control
+        try:
+            budget = min(8.0, self.total.remaining())
+            self.control = Control(original.path, Deadline(budget))
+            self.record("failure-status", name=name, status=self.control.status())
+            self.capture(name)
+            snapshot = checks.a11y(self, "snapshot")
+            destination = self.artifacts / f"{name}.xml"
+            destination.write_text(snapshot["snapshot"])
+            self.record("failure-accessibility", name=name, artifact=str(destination))
+        except (ControlError, OSError, ValueError, KeyError) as error:
+            self.record("failure-evidence-unavailable", name=name, error=str(error))
+        finally:
+            self.control = original
+
     def workflow(self):
         self.manifest = self.connect()
         for name, operation in [

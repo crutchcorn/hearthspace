@@ -175,6 +175,67 @@ class DailySmokeTests(unittest.TestCase):
         ):
             daily_checks.selector(smoke)
 
+    def test_failed_enter_keeps_original_error_after_requesting_post_action_evidence(
+        self,
+    ):
+        smoke = Mock(target=1, marker="UNIQUE")
+        smoke.control.status.side_effect = [
+            {"windows": [{"id": 1}]},
+            {"windows": [{"id": 1}, {"id": 2}]},
+        ]
+        smoke.until.side_effect = [True, True, ControlError("selector deadline")]
+        with (
+            patch("agentlib.daily_checks.Input"),
+            self.assertRaisesRegex(ControlError, "selector deadline"),
+        ):
+            daily_checks.selector(smoke)
+        smoke.failure_evidence.assert_called_once_with("running-window-submit-failed")
+
+    def test_failure_evidence_shares_total_budget_and_restores_expired_action_control(
+        self,
+    ):
+        for capture_fails in [False, True]:
+            with (
+                self.subTest(capture_fails=capture_fails),
+                tempfile.TemporaryDirectory() as directory,
+                contextlib.redirect_stdout(io.StringIO()),
+            ):
+                smoke = DailySmoke(arguments(directory))
+                original = Mock(path="/unused")
+                smoke.control = original
+                diagnostic = Mock()
+                diagnostic.status.return_value = {"windows": []}
+                with (
+                    patch("time.monotonic", return_value=100),
+                    patch("agentlib.daily.Control", return_value=diagnostic) as control,
+                    patch.object(smoke, "capture") as capture,
+                    patch(
+                        "agentlib.daily.checks.a11y",
+                        return_value={"snapshot": "<desktop/>"},
+                    ) as snapshot,
+                ):
+                    smoke.total.end = 105
+                    if capture_fails:
+                        capture.side_effect = ControlError("capture unavailable")
+                    smoke.failure_evidence("failed")
+                    self.assertEqual(control.call_args.args[1].end, 105)
+                    self.assertIs(smoke.control, original)
+                    if capture_fails:
+                        self.assertEqual(
+                            smoke.results[-1]["step"], "failure-evidence-unavailable"
+                        )
+                    else:
+                        self.assertEqual(
+                            (smoke.artifacts / "failed.xml").read_text(), "<desktop/>"
+                        )
+                    smoke.total.end = 99
+                    control.reset_mock()
+                    snapshot.reset_mock()
+                    smoke.failure_evidence("no-time")
+                    control.assert_not_called()
+                    snapshot.assert_not_called()
+                    self.assertIs(smoke.control, original)
+
 
 if __name__ == "__main__":
     unittest.main()

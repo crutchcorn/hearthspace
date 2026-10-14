@@ -40,6 +40,10 @@ and interaction together, so starting another step cannot reset the overall
 budget. Cleanup reserves a separate 45 seconds, and an independent systemd
 watchdog covers agent death. A failed assertion still runs stop and verifies
 original-VT restoration, runtime removal, and the harness cleanup result.
+If submitting a running-window selection fails, diagnostics get up to eight
+seconds from the remaining aggregate budget to save the resulting status,
+capture, and accessibility tree before cleanup. Diagnostic failures never replace
+the original assertion failure.
 
 Results are written incrementally to `artifacts/results.json`. PNG captures have
 adjacent metadata files; `unicode-received.txt` is the exact destination artifact,
