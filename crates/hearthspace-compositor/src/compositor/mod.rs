@@ -17,9 +17,11 @@ mod focus;
 mod handlers;
 mod idle;
 mod input;
+mod layout;
 mod masonry_titlebar;
 mod navigation;
 mod output;
+mod presentation;
 mod rendering;
 mod runtime;
 mod shell_integration;
@@ -108,6 +110,7 @@ struct ManagedWindow {
     /// per-frame rendering and hit-testing paths don't re-walk the tree.
     content_bbox_size: Size<i32, Logical>,
     mapped: bool,
+    presentation: presentation::WindowPresentation,
     /// Fractional scale most recently advertised to this window's surface tree.
     /// Compared each frame so the preferred scale is only re-sent when the
     /// window moves onto an output with a different scale (e.g. dragged across
@@ -250,6 +253,7 @@ struct App {
     pointer: PointerHandle<Self>,
     keyboard: KeyboardHandle<Self>,
     viewport_offset: CanvasPoint,
+    layout_store: layout::LayoutStore,
     viewport_scale: f64,
     viewport_animation: Option<ViewportAnimation>,
     pinch_zoom: input::PinchZoom,
@@ -288,6 +292,7 @@ struct App {
     pending_dmabuf_imports: Vec<(Dmabuf, ImportNotifier)>,
     loop_handle: LoopHandle<'static, CalloopData>,
     popups: PopupManager,
+    popup_grab: Option<smithay::desktop::PopupGrab<App>>,
     background_mode: hearthspace_ipc::BackgroundMode,
     background_image_path: Option<String>,
     /// Cached texture for the repeated background image tile.
@@ -565,12 +570,20 @@ pub(in crate::compositor) fn initialize_app(
     };
     let output_layout = OutputLayout::from_monitors(settings.monitors.clone());
 
+    let layout_store = layout::LayoutStore::from_environment(matches!(
+        crate::selected_backend(options.backend),
+        crate::BackendSelection::Udev
+    ));
+    let (viewport_offset, viewport_scale) = layout_store.viewport();
     let app = App {
         display_handle: dh.clone(),
         compositor_state,
         xdg_shell_state: XdgShellState::new_with_capabilities::<App>(
             &dh,
-            std::iter::empty::<xdg_toplevel::WmCapabilities>(),
+            [
+                xdg_toplevel::WmCapabilities::Maximize,
+                xdg_toplevel::WmCapabilities::Fullscreen,
+            ],
         ),
         _xdg_decoration_state: xdg_decoration_state,
         _output_manager_state: output_manager_state,
@@ -585,8 +598,9 @@ pub(in crate::compositor) fn initialize_app(
         _seat: seat,
         pointer,
         keyboard,
-        viewport_offset: CanvasPoint { x: 0, y: 0 },
-        viewport_scale: 1.0,
+        viewport_offset,
+        viewport_scale,
+        layout_store,
         viewport_animation: None,
         pinch_zoom: input::PinchZoom::default(),
         windows: Vec::new(),
@@ -617,6 +631,7 @@ pub(in crate::compositor) fn initialize_app(
         pending_dmabuf_imports: Vec::new(),
         loop_handle: handle.clone(),
         popups: PopupManager::default(),
+        popup_grab: None,
         background_mode: settings.background_mode,
         background_image_path: settings.background_image_path,
         background_image_tile: None,

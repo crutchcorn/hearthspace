@@ -6,11 +6,14 @@ use super::ManagedWindowKind;
 pub(super) fn normal_insert_index_for_kinds(
     kinds: impl Iterator<Item = ManagedWindowKind>,
 ) -> usize {
-    kinds
-        .enumerate()
-        .filter_map(|(index, kind)| (kind == ManagedWindowKind::Normal).then_some(index + 1))
-        .last()
-        .unwrap_or(0)
+    let mut length = 0;
+    for kind in kinds {
+        if kind.is_shell_chrome() {
+            return length;
+        }
+        length += 1;
+    }
+    length
 }
 
 #[cfg(test)]
@@ -18,7 +21,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn insert_index_is_after_the_last_normal_window() {
+    fn insert_index_keeps_normal_windows_below_shell_chrome() {
         use ManagedWindowKind::{Normal, ShellBar};
         assert_eq!(normal_insert_index_for_kinds([].into_iter()), 0);
         assert_eq!(
@@ -33,7 +36,8 @@ mod tests {
         );
         assert_eq!(
             normal_insert_index_for_kinds([Normal, ShellBar, Normal].into_iter()),
-            3
+            1,
+            "an interleaved normal must not pull more windows above the shell"
         );
     }
 }

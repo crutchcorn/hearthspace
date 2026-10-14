@@ -10,6 +10,7 @@ use crate::{config::CONTROL_BAR_HEIGHT, geometry::CanvasPoint};
 
 mod lifecycle;
 mod metadata;
+mod popups;
 #[cfg(test)]
 mod tests;
 
@@ -93,6 +94,12 @@ impl App {
             return Err("canvas coordinates must be between -1000000 and 1000000".into());
         }
         let index = self.navigation_window_index(id)?;
+        if self.windows[index].presentation.pinned() {
+            return Err("restore the window before moving it".into());
+        }
+        if self.window_uses_output_coordinates(index) {
+            return Err("restore the parent window before moving its dialog".into());
+        }
         self.interrupt_pinch_zoom();
         let window = &mut self.windows[index];
         #[cfg(feature = "xwayland")]
@@ -113,6 +120,9 @@ impl App {
             return Err("window dimensions must be between 1 and 16384 logical pixels".into());
         }
         let index = self.navigation_window_index(id)?;
+        if self.windows[index].presentation.pinned() {
+            return Err("restore the window before resizing it".into());
+        }
         self.interrupt_pinch_zoom();
         let size = Size::from((width as i32, height as i32));
         let window = &self.windows[index];
@@ -160,6 +170,7 @@ impl App {
             })
             .ok_or_else(|| "application launcher is not ready".to_string())?;
         if let Some(surface) = self.windows[index].surface.wl_surface() {
+            self.clear_keyboard_focus();
             self.set_keyboard_focus_to_window(index, surface);
         }
         Ok(())
@@ -183,6 +194,10 @@ impl App {
     }
 
     fn reveal_window(&mut self, index: usize, center: bool) {
+        if self.window_uses_output_coordinates(index) || self.windows[index].presentation.restoring
+        {
+            return;
+        }
         let canvas = self.window_canvas_rect(index);
         let outputs = self.output_logical_rects();
         let usable: Vec<_> = outputs.iter().copied().map(usable_output).collect();

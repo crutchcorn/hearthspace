@@ -73,6 +73,15 @@ impl App {
             }
             ShellCommand::FocusLauncher => return action_reply(self.focus_launcher()),
             ShellCommand::ResetView => return action_reply(self.reset_view()),
+            ShellCommand::FullscreenWindow { id, enabled } => {
+                return action_reply(self.user_window_presentation(id, Some(enabled), None));
+            }
+            ShellCommand::MaximizeWindow { id, enabled } => {
+                return action_reply(self.user_window_presentation(id, None, Some(enabled)));
+            }
+            ShellCommand::RestoreWindow(id) => {
+                return action_reply(self.user_window_presentation(id, Some(false), Some(false)));
+            }
             ShellCommand::Spawn(SpawnTarget::A11yTest) => {
                 return self
                     .spawn_a11y_test()

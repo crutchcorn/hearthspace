@@ -138,6 +138,9 @@ pub(in crate::compositor) fn handle_input_event<B: InputBackend>(
                         if let Some(surface) = state.windows[window_index].surface.wl_surface() {
                             state.set_keyboard_focus_to_window(window_index, surface);
                         }
+                        if state.window_uses_output_coordinates(window_index) {
+                            return;
+                        }
                         state.drag = Some(DragState {
                             window_id: state.windows[window_index].id,
                             pointer_start: state.raw_pointer_location,

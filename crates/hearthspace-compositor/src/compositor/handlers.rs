@@ -12,7 +12,7 @@ use smithay::{
         pointer::{CursorImageStatus, Focus},
     },
     reexports::{calloop::Interest, wayland_server::protocol::wl_seat},
-    utils::{Point, Serial, Size},
+    utils::{Serial, Size},
     wayland::{
         buffer::BufferHandler,
         compositor::{
@@ -58,6 +58,50 @@ impl BufferHandler for App {
 }
 
 impl XdgShellHandler for App {
+    fn maximize_request(&mut self, surface: ToplevelSurface) {
+        if !self
+            .xdg_window_id(&surface)
+            .is_some_and(|id| self.set_window_maximized(id, true).is_ok())
+        {
+            surface.send_configure();
+        }
+    }
+
+    fn unmaximize_request(&mut self, surface: ToplevelSurface) {
+        if !self
+            .xdg_window_id(&surface)
+            .is_some_and(|id| self.set_window_maximized(id, false).is_ok())
+        {
+            surface.send_configure();
+        }
+    }
+
+    fn fullscreen_request(
+        &mut self,
+        surface: ToplevelSurface,
+        output: Option<wayland_server::protocol::wl_output::WlOutput>,
+    ) {
+        let output = output
+            .as_ref()
+            .and_then(smithay::output::Output::from_resource)
+            .map(|output| output.name());
+        if !self
+            .xdg_window_id(&surface)
+            .is_some_and(|id| self.set_window_fullscreen(id, true, output).is_ok())
+        {
+            surface.send_configure();
+        }
+    }
+
+    fn unfullscreen_request(&mut self, surface: ToplevelSurface) {
+        if !self
+            .xdg_window_id(&surface)
+            .is_some_and(|id| self.set_window_fullscreen(id, false, None).is_ok())
+        {
+            surface.send_configure();
+        }
+    }
+
     fn xdg_shell_state(&mut self) -> &mut XdgShellState {
         &mut self.xdg_shell_state
     }
@@ -86,6 +130,7 @@ impl XdgShellHandler for App {
             titlebar: None,
             content_bbox_size: Size::default(),
             mapped: false,
+            presentation: Default::default(),
             advertised_fractional_scale: 0.0,
         });
         if kind == ManagedWindowKind::Normal {
@@ -110,7 +155,9 @@ impl XdgShellHandler for App {
         // the popup mispositioned the first time it opens.
         surface.with_pending_state(|state| {
             state.geometry = positioner.get_geometry();
+            state.positioner = positioner;
         });
+        self.unconstrain_popup(&surface);
         if let Err(err) = self.popups.track_popup(PopupKind::Xdg(surface)) {
             warn!(%err, "failed to track popup");
         }
@@ -125,7 +172,9 @@ impl XdgShellHandler for App {
             return;
         };
 
-        if self.windows[window_index].kind != ManagedWindowKind::Normal {
+        if self.windows[window_index].kind != ManagedWindowKind::Normal
+            || self.window_uses_output_coordinates(window_index)
+        {
             return;
         }
 
@@ -165,7 +214,9 @@ impl XdgShellHandler for App {
             return;
         };
 
-        if self.windows[window_index].kind != ManagedWindowKind::Normal {
+        if self.windows[window_index].kind != ManagedWindowKind::Normal
+            || self.window_uses_output_coordinates(window_index)
+        {
             return;
         }
 
@@ -220,6 +271,7 @@ impl XdgShellHandler for App {
             self.interrupt_pinch_zoom();
             pointer.set_grab(self, PopupPointerGrab::new(&grab), serial, Focus::Keep);
         }
+        self.popup_grab = Some(grab);
     }
 
     fn reposition_request(
@@ -232,7 +284,19 @@ impl XdgShellHandler for App {
             state.geometry = positioner.get_geometry();
             state.positioner = positioner;
         });
+        self.unconstrain_popup(&surface);
         surface.send_repositioned(token);
+    }
+
+    fn parent_changed(&mut self, surface: ToplevelSurface) {
+        if let Some(index) = self
+            .windows
+            .iter()
+            .position(|window| window.surface.same_xdg(&surface))
+            && self.windows[index].mapped
+        {
+            self.position_transient(index);
+        }
     }
 
     fn toplevel_destroyed(&mut self, surface: ToplevelSurface) {
@@ -443,6 +507,7 @@ impl CompositorHandler for App {
             warn!(%err, "failed to send initial popup configure");
         }
         self.refresh_window_content_bbox(surface);
+        self.finish_presentation_restore(surface);
         self.refresh_window_mapping(surface);
         self.reanchor_resize(surface);
         if let Some(window_id) = self.managed_normal_window_id_for_surface(surface) {
@@ -541,9 +606,7 @@ impl App {
 
     /// The scale of the output the window at `index` currently sits on.
     fn window_fractional_scale(&self, index: usize) -> f64 {
-        let position = self.windows[index].position;
-        let screen =
-            self.canvas_to_screen(Point::from((f64::from(position.x), f64::from(position.y))));
+        let screen = self.window_surface_screen_origin(index);
         f64::from(self.output_scale_at(screen).max(1))
     }
 

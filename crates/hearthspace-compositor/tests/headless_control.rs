@@ -12,11 +12,17 @@ use std::{
 #[path = "support/accessibility.rs"]
 mod accessibility_diagnostics;
 #[cfg(feature = "test-apps")]
+#[path = "support/layout.rs"]
+mod layout;
+#[cfg(feature = "test-apps")]
 #[path = "support/navigation.rs"]
 mod navigation;
 #[cfg(feature = "test-apps")]
 #[path = "support/session_bus.rs"]
 mod session_bus;
+#[cfg(feature = "test-apps")]
+#[path = "support/window_states.rs"]
+mod window_states;
 
 const WIDTH: u32 = 320;
 const HEIGHT: u32 = 240;
@@ -39,13 +45,23 @@ impl HeadlessCompositor {
     }
 
     fn spawn_with_size(size: &str) -> Self {
+        Self::spawn_with_layout(size, None)
+    }
+
+    fn spawn_with_layout(size: &str, layout: Option<&Path>) -> Self {
         let runtime_dir = tempfile::tempdir().expect("create headless runtime dir");
         let command_socket_path = runtime_dir.path().join("command.sock");
         let wayland_display = format!("hearthspace-test-{}", std::process::id());
         let log = std::fs::File::create(runtime_dir.path().join("compositor.log"))
             .expect("create compositor log");
-        let child = Command::new(env!("CARGO_BIN_EXE_hearthspace"))
+        let mut command = Command::new(env!("CARGO_BIN_EXE_hearthspace"));
+        command
             .args(["--headless", "--no-shell", "--headless-size", size])
+            .env_remove("HEARTHSPACE_LAYOUT_PATH");
+        if let Some(path) = layout {
+            command.env("HEARTHSPACE_LAYOUT_PATH", path);
+        }
+        let child = command
             .env("XDG_RUNTIME_DIR", runtime_dir.path())
             .env("HEARTHSPACE_COMMAND_SOCKET", &command_socket_path)
             .env("HEARTHSPACE_WAYLAND_DISPLAY", wayland_display)

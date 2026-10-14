@@ -121,12 +121,21 @@ impl App {
             titlebar: None,
             content_bbox_size: geometry.size,
             mapped: false,
+            presentation: Default::default(),
             advertised_fractional_scale: 0.0,
         });
         self.idle_daemon.register_window(id);
         let spawn_output_name = self.next_spawn_output_name.take();
         self.enter_output(&wl_surface, spawn_output_name.as_deref());
         self.refresh_window_content_bbox(&wl_surface);
+        if !override_redirect {
+            if window.is_maximized() {
+                let _ = self.set_window_maximized(id, true);
+            }
+            if window.is_fullscreen() {
+                let _ = self.set_window_fullscreen(id, true, None);
+            }
+        }
         self.refresh_window_mapping(&wl_surface);
         self.request_redraw();
     }

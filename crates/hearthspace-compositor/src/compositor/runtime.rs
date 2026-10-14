@@ -173,10 +173,12 @@ pub(in crate::compositor) fn run_event_loop(
         if let Err(error) = data.display.flush_clients() {
             error!(%error, "failed to flush Wayland clients");
         }
-        data.state.popups.cleanup();
+        data.state.cleanup_popups();
         data.state.cleanup_outputs();
+        data.state.remember_layout();
     }
 
+    data.state.save_layout();
     info!("compositor event loop exited");
     Ok(())
 }

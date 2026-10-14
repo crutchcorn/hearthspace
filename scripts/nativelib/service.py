@@ -84,6 +84,7 @@ def service_command(state):
         "HOME": state["home"],
         "LANG": "C.UTF-8",
         "HEARTHSPACE_ISOLATE_APP_PROFILES": "1",
+        "HEARTHSPACE_LAYOUT_PATH": f"{state['session_dir']}/layout.json",
     }.items():
         args.append(f"--setenv={key}={value}")
     args.extend(["/usr/bin/python3", ENTRY, "_exec", "--state", state["state_file"]])

@@ -26,6 +26,7 @@ use wayland_server::protocol::wl_surface;
 use super::{App, ManagedWindowKind, masonry_titlebar, windows::window_title};
 
 mod background;
+mod order;
 
 pub(in crate::compositor) use background::BackgroundImageTile;
 
@@ -108,7 +109,12 @@ impl App {
         // Background tiles are wallpaper pixels, not client logical pixels, so
         // they opt out of monitor DPI scaling while still being translated into
         // this output's framebuffer-local coordinate space.
-        for tile in self.background_image_elements(renderer, output_rect, output_scale) {
+        let tiles = if self.fullscreen_on_output(output_rect) {
+            Vec::new()
+        } else {
+            self.background_image_elements(renderer, output_rect, output_scale)
+        };
+        for tile in tiles {
             elements.push(TranslatedHearthspaceRenderElement::from(
                 RelocateRenderElement::from_element(
                     HearthspaceRenderElement::from(tile),
@@ -123,7 +129,7 @@ impl App {
             age,
             &elements,
             // The repeated background image is opaque and covers the output.
-            Color32F::new(0.0, 0.0, 0.0, 0.0),
+            Color32F::new(0.0, 0.0, 0.0, 1.0),
         )?;
         Ok(result.damage.cloned())
     }
@@ -147,7 +153,10 @@ impl App {
             elements.push(element);
         }
 
-        for index in (0..self.windows.len()).rev() {
+        for index in order::render_order(self.windows.iter().map(|window| window.kind)) {
+            if !self.window_visible_on_output(index, output_rect) {
+                continue;
+            }
             // Popups (e.g. menus) render above their window's content and chrome.
             for popup in self.popup_render_elements(renderer, index) {
                 elements.push(popup);
@@ -174,6 +183,11 @@ impl App {
                         RescaleRenderElement::from_element(surface, origin, scale),
                     ));
                 }
+            }
+            // Fullscreen content must not reveal unrelated windows through
+            // transparent pixels or around a smaller-than-requested buffer.
+            if self.windows[index].presentation.fullscreen {
+                break;
             }
         }
 
@@ -344,6 +358,7 @@ impl App {
 
     pub(super) fn window_render_scale(&self, window_index: usize) -> f64 {
         match self.windows[window_index].kind {
+            ManagedWindowKind::Normal if self.window_uses_output_coordinates(window_index) => 1.0,
             ManagedWindowKind::Normal => self.viewport_scale,
             ManagedWindowKind::ShellBar | ManagedWindowKind::Launcher => 1.0,
             ManagedWindowKind::ShellWatcher => 1.0,
@@ -382,11 +397,7 @@ impl App {
         let title = window_title(&self.windows[window_index].surface)
             .filter(|title| !title.trim().is_empty())
             .unwrap_or_else(|| "Hearthspace".to_string());
-        let active = Some(window_index)
-            == self
-                .windows
-                .iter()
-                .rposition(|window| window.kind == ManagedWindowKind::Normal);
+        let active = self.focused_normal_window_id == Some(self.windows[window_index].id);
 
         // Re-run Masonry's layout/raster only when the cache key changes.
         let needs_rebuild = self.windows[window_index]

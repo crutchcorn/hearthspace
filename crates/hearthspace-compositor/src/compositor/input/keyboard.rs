@@ -26,6 +26,8 @@ enum Shortcut {
     Up,
     Down,
     Reset,
+    Fullscreen,
+    Maximize,
 }
 
 impl KeyboardShortcuts {
@@ -107,6 +109,25 @@ impl App {
             Shortcut::Up => ShellCommand::PanUp,
             Shortcut::Down => ShellCommand::PanDown,
             Shortcut::Reset => ShellCommand::ResetView,
+            Shortcut::Fullscreen | Shortcut::Maximize => {
+                let Some(id) = self.focused_normal_window_id else {
+                    return;
+                };
+                let Some(window) = self.windows.iter().find(|window| window.id == id) else {
+                    return;
+                };
+                if shortcut == Shortcut::Fullscreen {
+                    ShellCommand::FullscreenWindow {
+                        id,
+                        enabled: !window.presentation.fullscreen,
+                    }
+                } else {
+                    ShellCommand::MaximizeWindow {
+                        id,
+                        enabled: !window.presentation.maximized,
+                    }
+                }
+            }
         };
         if let ControlReply::Err(error) = self.run_control_action(command) {
             tracing::warn!(%error, ?shortcut, "keyboard action failed");
@@ -140,6 +161,8 @@ fn shortcut(modifiers: &ModifiersState, symbol: u32) -> Option<Shortcut> {
         keysyms::KEY_Up => Some(Shortcut::Up),
         keysyms::KEY_Down => Some(Shortcut::Down),
         keysyms::KEY_0 => Some(Shortcut::Reset),
+        keysyms::KEY_f => Some(Shortcut::Fullscreen),
+        keysyms::KEY_m => Some(Shortcut::Maximize),
         _ => None,
     }
 }

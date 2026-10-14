@@ -37,6 +37,30 @@ impl XWaylandShellHandler for App {
 impl DndGrabHandler for App {}
 
 impl XwmHandler for App {
+    fn maximize_request(&mut self, _xwm: XwmId, window: X11Surface) {
+        if let Some(index) = self.window_index_for_x11(&window) {
+            let _ = self.set_window_maximized(self.windows[index].id, true);
+        }
+    }
+
+    fn unmaximize_request(&mut self, _xwm: XwmId, window: X11Surface) {
+        if let Some(index) = self.window_index_for_x11(&window) {
+            let _ = self.set_window_maximized(self.windows[index].id, false);
+        }
+    }
+
+    fn fullscreen_request(&mut self, _xwm: XwmId, window: X11Surface) {
+        if let Some(index) = self.window_index_for_x11(&window) {
+            let _ = self.set_window_fullscreen(self.windows[index].id, true, None);
+        }
+    }
+
+    fn unfullscreen_request(&mut self, _xwm: XwmId, window: X11Surface) {
+        if let Some(index) = self.window_index_for_x11(&window) {
+            let _ = self.set_window_fullscreen(self.windows[index].id, false, None);
+        }
+    }
+
     fn xwm_state(&mut self, _xwm: XwmId) -> &mut X11Wm {
         self.xwm.as_mut().expect("XWM callback without X11Wm")
     }
@@ -156,6 +180,9 @@ impl XwmHandler for App {
         let Some(index) = self.window_index_for_x11(&window) else {
             return;
         };
+        if self.window_uses_output_coordinates(index) {
+            return;
+        }
         let index = self.raise_window(index);
         self.start_resize(index, ResizeEdges::from(resize_edge));
     }
@@ -164,6 +191,9 @@ impl XwmHandler for App {
         let Some(index) = self.window_index_for_x11(&window) else {
             return;
         };
+        if self.window_uses_output_coordinates(index) {
+            return;
+        }
         let index = self.raise_window(index);
         self.interrupt_pinch_zoom();
         self.drag = Some(DragState {

@@ -25,6 +25,8 @@ impl App {
         self.windows[index].mapped = mapped;
         let id = self.windows[index].id;
         if mapped && self.is_navigable_window(index) {
+            self.position_transient(index);
+            self.restore_window_placement(index);
             // An existing popup/drag owns input until it ends. A background app
             // mapping during that interaction must not break its grab.
             if self.navigation_available() {

@@ -267,10 +267,24 @@ impl App {
             return window_index;
         }
 
-        let window = self.windows.remove(window_index);
-        let window_id = window.id;
+        let window_id = self.windows[window_index].id;
+        let children: Vec<_> = self
+            .windows
+            .iter()
+            .enumerate()
+            .filter(|(index, _)| self.transient_descendant_of(*index, window_id))
+            .map(|(_, window)| window.id)
+            .collect();
+        let mut family = vec![self.windows.remove(window_index)];
+        for child in children {
+            if let Some(index) = self.windows.iter().position(|window| window.id == child) {
+                family.push(self.windows.remove(index));
+            }
+        }
         let insert_index = self.normal_insert_index();
-        self.windows.insert(insert_index, window);
+        for (offset, window) in family.into_iter().enumerate() {
+            self.windows.insert(insert_index + offset, window);
+        }
         debug!(
             window_id,
             from_index = window_index,
@@ -295,7 +309,14 @@ impl App {
         surface.with_pending_state(|state| {
             state
                 .capabilities
-                .replace(std::iter::empty::<xdg_toplevel::WmCapabilities>());
+                .replace(if kind == ManagedWindowKind::Normal {
+                    vec![
+                        xdg_toplevel::WmCapabilities::Maximize,
+                        xdg_toplevel::WmCapabilities::Fullscreen,
+                    ]
+                } else {
+                    Vec::new()
+                });
             match kind {
                 ManagedWindowKind::ShellBar => {
                     let width = self
@@ -329,7 +350,7 @@ impl App {
     }
 
     #[cfg_attr(not(feature = "winit"), allow(dead_code))]
-    pub(super) fn configure_shell_bars(&self) {
+    pub(super) fn configure_shell_bars(&mut self) {
         for window in &self.windows {
             if window.kind.is_shell_chrome()
                 && let Some(surface) = window.surface.wl_surface()
@@ -342,6 +363,7 @@ impl App {
                 self.configure_toplevel(surface, window.kind, window.shell_output_name.as_deref());
             }
         }
+        self.reconcile_window_presentations();
     }
 
     pub(super) fn request_redraw(&mut self) {
@@ -373,6 +395,10 @@ impl App {
     }
 
     pub(super) fn title_bar_rect(&self, window_index: usize) -> Rectangle<i32, Logical> {
+        if self.window_uses_output_coordinates(window_index) {
+            let rect = self.window_screen_bounds(window_index);
+            return Rectangle::new(rect.loc, (rect.size.w, TITLE_BAR_HEIGHT).into());
+        }
         let canvas_rect = self.title_bar_canvas_rect(window_index);
         let origin = self
             .canvas_to_screen(canvas_rect.loc.to_f64())
@@ -396,7 +422,7 @@ impl App {
         close_button_canvas_rect_for(self.title_bar_canvas_rect(window_index))
     }
 
-    fn content_canvas_origin(&self, window_index: usize) -> Point<i32, Logical> {
+    pub(super) fn content_canvas_origin(&self, window_index: usize) -> Point<i32, Logical> {
         content_canvas_origin_for(
             self.windows[window_index].position,
             self.has_compositor_chrome(window_index),
@@ -407,6 +433,7 @@ impl App {
         let window = &self.windows[window_index];
         window.kind == ManagedWindowKind::Normal
             && window.decoration == WindowDecoration::ServerSide
+            && !window.presentation.fullscreen
     }
 
     /// The window's interactive size: the xdg window geometry size when the
@@ -447,27 +474,19 @@ impl App {
             return None;
         }
 
-        let canvas_rect = self.window_canvas_rect(window_index);
-        if canvas_rect.size.w <= 0 || canvas_rect.size.h <= 0 {
+        let rect = self.window_screen_bounds(window_index);
+        if rect.size.w <= 0 || rect.size.h <= 0 {
             return None;
         }
-
-        let origin = self
-            .canvas_to_screen(canvas_rect.loc.to_f64())
-            .to_i32_round();
-        Some(Rectangle::new(
-            origin,
-            (
-                (f64::from(canvas_rect.size.w) * self.viewport_scale).round() as i32,
-                (f64::from(canvas_rect.size.h) * self.viewport_scale).round() as i32,
-            )
-                .into(),
-        ))
+        Some(rect)
     }
 
     /// Begin an interactive resize of `window_index` along `edges`, capturing the
     /// window's starting geometry so motion deltas can be resolved against it.
     pub(super) fn start_resize(&mut self, window_index: usize, edges: ResizeEdges) {
+        if self.window_uses_output_coordinates(window_index) {
+            return;
+        }
         self.interrupt_pinch_zoom();
         let initial_content_size = self.window_geometry_size(window_index);
         let window = &self.windows[window_index];
@@ -576,7 +595,7 @@ impl App {
         self.windows[window_index].position = new_position;
     }
     fn content_screen_origin(&self, window_index: usize) -> Point<i32, Physical> {
-        self.canvas_to_screen(self.content_canvas_origin(window_index).to_f64())
+        self.window_surface_screen_origin(window_index)
             .to_i32_round()
             .to_physical(1)
     }

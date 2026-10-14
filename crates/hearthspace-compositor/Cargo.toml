@@ -32,6 +32,11 @@ name = "hearthspace-clipboard-test"
 path = "src/bin/hearthspace-clipboard-test.rs"
 required-features = ["test-apps"]
 
+[[bin]]
+name = "hearthspace-window-test"
+path = "src/bin/hearthspace-window-test.rs"
+required-features = ["test-apps"]
+
 [dependencies]
 async-io = "2.6.0"
 atspi = { version = "0.30.0", features = ["zbus"] }

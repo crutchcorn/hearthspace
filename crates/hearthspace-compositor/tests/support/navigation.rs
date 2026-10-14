@@ -2,7 +2,7 @@
 use super::*;
 use serde_json::Value;
 
-struct Editors(Vec<Child>);
+pub(super) struct Editors(pub(super) Vec<Child>);
 
 impl Drop for Editors {
     fn drop(&mut self) {
@@ -13,7 +13,7 @@ impl Drop for Editors {
     }
 }
 
-fn query(compositor: &HeadlessCompositor, command: &str) -> Value {
+pub(super) fn query(compositor: &HeadlessCompositor, command: &str) -> Value {
     let mut stream = UnixStream::connect(&compositor.command_socket_path).unwrap();
     stream
         .set_read_timeout(Some(Duration::from_secs(5)))
@@ -31,7 +31,7 @@ fn query(compositor: &HeadlessCompositor, command: &str) -> Value {
     serde_json::from_slice(&bytes).unwrap()
 }
 
-fn wait_windows(
+pub(super) fn wait_windows(
     compositor: &HeadlessCompositor,
     condition: impl Fn(&[Value]) -> bool,
 ) -> Vec<Value> {
@@ -52,7 +52,7 @@ fn wait_windows(
     }
 }
 
-fn action(compositor: &HeadlessCompositor, command: impl AsRef<str>) {
+pub(super) fn action(compositor: &HeadlessCompositor, command: impl AsRef<str>) {
     assert_eq!(
         compositor.send_text_command(command.as_ref()),
         "ok\n",
@@ -61,7 +61,7 @@ fn action(compositor: &HeadlessCompositor, command: impl AsRef<str>) {
     );
 }
 
-fn keys(compositor: &HeadlessCompositor, codes: &[u32]) {
+pub(super) fn keys(compositor: &HeadlessCompositor, codes: &[u32]) {
     for code in codes {
         action(compositor, format!("key-down {code}"));
     }

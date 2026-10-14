@@ -88,6 +88,9 @@ impl App {
                     if let Some(surface) = self.windows[window_index].surface.wl_surface() {
                         self.set_keyboard_focus_to_window(window_index, surface);
                     }
+                    if self.window_uses_output_coordinates(window_index) {
+                        return;
+                    }
                     self.drag = Some(DragState {
                         window_id: self.windows[window_index].id,
                         pointer_start: self.raw_pointer_location,

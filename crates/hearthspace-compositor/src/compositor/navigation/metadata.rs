@@ -35,6 +35,8 @@ impl App {
                 "content_width": content.w, "content_height": content.h,
                 "mapped": window.mapped, "visible": !visible_outputs.is_empty(), "outputs": visible_outputs,
                 "focused": self.focused_normal_window_id == Some(window.id), "client_type": client_type,
+                "fullscreen": window.presentation.fullscreen, "maximized": window.presentation.maximized,
+                "presentation_output": window.presentation.output,
             }))
         }).collect()
     }
