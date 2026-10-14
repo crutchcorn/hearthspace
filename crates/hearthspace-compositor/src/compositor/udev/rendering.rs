@@ -147,7 +147,11 @@ impl UdevBackendState {
         else {
             return Ok(None);
         };
-        output.gbm_surface.frame_submitted()?;
+        if output.gbm_surface.frame_submitted()?.is_none() {
+            // A late event can outlive its surface after output reconfiguration.
+            // Only acknowledge a frame that this surface actually submitted.
+            return Ok(None);
+        }
         captures.presented(output.target.connector_name(), "page-flip");
         output.frame_pending = false;
         self.frame_pending = device.any_frame_pending();
