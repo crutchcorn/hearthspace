@@ -194,12 +194,17 @@ application's PulseAudio-compatible connection; `pw-cli info 0` verifies its
 PipeWire connection. Installing these client utilities does not start a second
 audio server.
 
-The native supervisor starts the permission store, document portal, GTK portal
-backend, desktop portal, and polkit agent after Wayland is ready. The portal
-processes must acquire their private-bus names before the shell starts. Helpers
+The native supervisor starts the notification daemon, permission store, document
+portal, GTK portal backend, desktop portal, and polkit agent after Wayland is ready.
+The portal processes must acquire their private-bus names before the shell starts. Helpers
 are restarted at most twice after an unexpected exit and are stopped with their
 session. `--no-desktop-services` skips these helpers for isolated diagnostics;
 normal nested sessions also leave them disabled.
+
+The notification daemon is the workspace binary `hearthspace-notifications`;
+include it alongside the session, compositor, shell, and settings daemon when
+building or installing a native session. Its application protocol, shell control
+API, limits, and tests are documented in [Desktop notifications](docs/NOTIFICATIONS.md).
 
 Hearthspace supplies `hearthspace-portals.conf` in the session's data directory,
 selecting the GTK backend according to the standard
@@ -301,6 +306,7 @@ crates/hearthspace-session      session supervisor; root cargo run target
 crates/hearthspace-compositor   Smithay compositor; binary: hearthspace-compositor
 crates/hearthspace-shell        Xilem shell client; binary: hearthspace-shell
 crates/hearthspace-settingsd    settings daemon; binary: hearthspace-settingsd
+crates/hearthspace-notifications notification daemon; binary: hearthspace-notifications
 crates/hearthspace-settings     settings app; binary: hearthspace-settings
 crates/hearthspace-ui-storybook UI component gallery app; binary: hearthspace-ui-storybook
 crates/ui-components            shared Hearthspace Xilem UI components/theme
@@ -320,7 +326,7 @@ cargo run -- --dev --no-watch-apps
 cargo run -- --dev --dry-run --print-env
 ```
 
-The supervisor starts `hearthspace-settingsd`, `hearthspace-compositor --no-shell`, `hearthspace-shell`, and optionally a settings-app build watcher. It creates per-session sockets under `$XDG_RUNTIME_DIR/hearthspace/session-<pid>/` and passes them to child processes through environment variables.
+The supervisor starts `hearthspace-settingsd`, `hearthspace-compositor --no-shell`, `hearthspace-shell`, and optionally a settings-app build watcher. Native sessions also supervise notifications, portals, and authentication. It creates per-session sockets under `$XDG_RUNTIME_DIR/hearthspace/session-<pid>/` and passes them to child processes through environment variables.
 
 From a real Linux TTY/VT, the same dev-session command launches the full native session:
 

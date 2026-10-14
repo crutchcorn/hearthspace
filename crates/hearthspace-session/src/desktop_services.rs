@@ -73,13 +73,15 @@ pub(crate) fn prepare(paths: &SessionPaths) -> io::Result<()> {
     // supervision. These overrides belong only to this private session bus.
     let services = paths.session_dir.join("dbus-1/services");
     fs::create_dir_all(&services)?;
-    for (_, _, bus) in DEFINITIONS {
-        if let Some(bus) = bus {
-            fs::write(
-                services.join(format!("{bus}.service")),
-                format!("[D-BUS Service]\nName={bus}\nExec=/usr/bin/false\n"),
-            )?;
-        }
+    for bus in DEFINITIONS
+        .iter()
+        .filter_map(|(_, _, bus)| *bus)
+        .chain(std::iter::once("org.freedesktop.Notifications"))
+    {
+        fs::write(
+            services.join(format!("{bus}.service")),
+            format!("[D-BUS Service]\nName={bus}\nExec=/usr/bin/false\n"),
+        )?;
     }
     Ok(())
 }

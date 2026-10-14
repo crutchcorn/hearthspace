@@ -21,6 +21,7 @@ use crate::{
 };
 
 mod commands;
+mod notifications;
 
 pub(crate) struct Supervisor {
     mode: RunMode,
@@ -36,6 +37,7 @@ pub(crate) struct Supervisor {
     compositor: Option<ManagedProcess>,
     shell: Option<ManagedProcess>,
     watcher: Option<ManagedProcess>,
+    notifications: Option<ManagedProcess>,
     desktop_services: crate::desktop_services::DesktopServices,
 }
 
@@ -61,6 +63,7 @@ impl Supervisor {
             compositor: None,
             shell: None,
             watcher: None,
+            notifications: None,
             desktop_services: crate::desktop_services::DesktopServices::default(),
         }
     }
@@ -235,6 +238,14 @@ impl Supervisor {
                 return Err(format!("shell exited: {status}").into());
             }
 
+            if let Some(status) = poll_process(&mut self.notifications)?
+                && !self.restart_process("notifications", status)?
+            {
+                warn!(%status, "notification service exhausted its restart budget");
+                self.notifications = None;
+                self.record_processes()?;
+            }
+
             if let Some(status) = poll_process(&mut self.watcher)? {
                 warn!(%status, "app watcher exited; continuing session");
                 self.watcher = None;
@@ -254,6 +265,7 @@ impl Supervisor {
         terminate_process(&mut self.compositor);
         terminate_process(&mut self.settingsd);
         terminate_process(&mut self.watcher);
+        terminate_process(&mut self.notifications);
 
         self.desktop_services.shutdown();
 
@@ -261,6 +273,7 @@ impl Supervisor {
         wait_then_kill_process(&mut self.compositor);
         wait_then_kill_process(&mut self.settingsd);
         wait_then_kill_process(&mut self.watcher);
+        wait_then_kill_process(&mut self.notifications);
 
         // Do not traverse/remove a still-mounted document portal on failure.
         crate::portal_cleanup::unmount_documents(&self.paths.session_dir)?;
@@ -289,11 +302,12 @@ impl Supervisor {
         fs::write(
             self.paths.session_dir.join("processes.json"),
             format!(
-                "{{\"supervisor\":{},\"settingsd\":{},\"compositor\":{},\"shell\":{}{}}}\n",
+                "{{\"supervisor\":{},\"settingsd\":{},\"compositor\":{},\"shell\":{},\"notifications\":{}{}}}\n",
                 std::process::id(),
                 pid(&self.settingsd),
                 pid(&self.compositor),
                 pid(&self.shell),
+                pid(&self.notifications),
                 self.desktop_services.process_json_fields(),
             ),
         )
@@ -307,6 +321,7 @@ impl Supervisor {
         let process = match name {
             "settingsd" => &mut self.settingsd,
             "shell" => &mut self.shell,
+            "notifications" => &mut self.notifications,
             _ => return Ok(false),
         };
         let Some(process) = process else {

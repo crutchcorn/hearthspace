@@ -2343,6 +2343,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "hearthspace-notifications"
+version = "0.1.0"
+dependencies = [
+ "ctrlc",
+ "futures-lite",
+ "hearthspace-ipc",
+ "nix",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "zbus",
+]
+
+[[package]]
 name = "hearthspace-session"
 version = "0.1.0"
 dependencies = [

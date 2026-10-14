@@ -57,7 +57,7 @@ pub(crate) struct Args {
     #[arg(long)]
     pub(crate) no_settingsd_restart: bool,
 
-    /// Skip native authentication and portal services (for isolated diagnostics).
+    /// Skip native authentication, portal, and notification services (for diagnostics).
     #[arg(long)]
     pub(crate) no_desktop_services: bool,
 

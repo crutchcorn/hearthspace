@@ -63,6 +63,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         supervisor.start_compositor()?;
         supervisor.wait_for_compositor_ready()?;
         if desktop_services::enabled(&args) {
+            supervisor.start_notifications()?;
             supervisor.start_desktop_services()?;
         }
         supervisor.start_shell(if args.no_shell_restart { 0 } else { 3 })?;
