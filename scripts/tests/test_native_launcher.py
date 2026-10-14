@@ -3,11 +3,11 @@
 import argparse
 import json
 import os
-import time
 import socket
 import sys
 import tempfile
 import threading
+import time
 import unittest
 from contextlib import ExitStack, nullcontext
 from pathlib import Path
@@ -107,6 +107,8 @@ class NativeServiceTests(unittest.TestCase):
         def result(args, **_kwargs):
             if "list-sessions" in args:
                 return Mock(returncode=0, stdout="10 user\n11 user\n12 user\n")
+            for name in ("User", "TTY", "Leader"):
+                self.assertIn(f"--property={name}", args)
             session_id = args[2]
             return Mock(
                 returncode=0,

@@ -47,7 +47,14 @@ def owned_sessions(state, deadline=None):
     ).stdout.splitlines():
         session_id = line.split()[0]
         result = run(
-            ["loginctl", "show-session", session_id, "--property=User,TTY,Leader"],
+            [
+                "loginctl",
+                "show-session",
+                session_id,
+                "--property=User",
+                "--property=TTY",
+                "--property=Leader",
+            ],
             check=False,
             timeout=budget(deadline),
         )
@@ -61,6 +68,10 @@ def owned_sessions(state, deadline=None):
         props = dict(
             item.split("=", 1) for item in result.stdout.splitlines() if "=" in item
         )
+        if not {"User", "TTY", "Leader"}.issubset(props):
+            raise RuntimeError(
+                f"logind omitted identity fields for session {session_id}"
+            )
         same_identity = not identity or identity["session_id"] == session_id
         if (
             same_identity
