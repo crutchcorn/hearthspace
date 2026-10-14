@@ -9,6 +9,9 @@ use std::{
 };
 
 #[cfg(feature = "test-apps")]
+#[path = "support/accessibility.rs"]
+mod accessibility_diagnostics;
+#[cfg(feature = "test-apps")]
 #[path = "support/session_bus.rs"]
 mod session_bus;
 
@@ -36,14 +39,16 @@ impl HeadlessCompositor {
         let runtime_dir = tempfile::tempdir().expect("create headless runtime dir");
         let command_socket_path = runtime_dir.path().join("command.sock");
         let wayland_display = format!("hearthspace-test-{}", std::process::id());
+        let log = std::fs::File::create(runtime_dir.path().join("compositor.log"))
+            .expect("create compositor log");
         let child = Command::new(env!("CARGO_BIN_EXE_hearthspace"))
             .args(["--headless", "--no-shell", "--headless-size", size])
             .env("XDG_RUNTIME_DIR", runtime_dir.path())
             .env("HEARTHSPACE_COMMAND_SOCKET", &command_socket_path)
             .env("HEARTHSPACE_WAYLAND_DISPLAY", wayland_display)
             .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
+            .stdout(log.try_clone().expect("clone compositor log"))
+            .stderr(log)
             .spawn()
             .expect("spawn headless Hearthspace");
 
@@ -93,7 +98,19 @@ impl Drop for HeadlessCompositor {
             let _ = self.child.kill();
             let _ = self.child.wait();
         }
-        let _ = self.runtime_dir.path();
+        if thread::panicking() {
+            self.runtime_dir.disable_cleanup(true);
+            eprintln!(
+                "headless failure artifacts: {}",
+                self.runtime_dir.path().display()
+            );
+            if let Ok(log) = std::fs::read_to_string(self.runtime_dir.path().join("compositor.log"))
+            {
+                let mut tail: Vec<_> = log.lines().rev().take(40).collect();
+                tail.reverse();
+                eprintln!("compositor/GTK log tail:\n{}", tail.join("\n"));
+            }
+        }
     }
 }
 
@@ -144,7 +161,22 @@ fn headless_control_socket_spawns_and_drives_real_gtk_client() {
     assert_eq!(compositor.send_text_command("spawn a11y-test"), "ok\n");
     let with_client = wait_for_screenshot_change(&compositor, &empty);
     assert_eq!(png_dimensions(&with_client), (CLIENT_WIDTH, CLIENT_HEIGHT));
-    let saw_accessible = wait_for_accessible_term("Research Workspace");
+    let lookup = wait_for_accessible_term("Research Workspace");
+    let saw_accessible = lookup.as_ref().is_ok_and(|found| *found);
+    if !saw_accessible {
+        let diagnostics = format!(
+            "lookup result: {lookup:?}\n{}",
+            accessibility_diagnostics::lookup_failure_report()
+        );
+        compositor.runtime_dir.disable_cleanup(true);
+        let path = compositor.runtime_dir.path().join("accessibility.log");
+        std::fs::write(&path, &diagnostics).expect("save AT-SPI failure diagnostics");
+        eprintln!(
+            "AT-SPI lookup diagnostics ({}):\n{diagnostics}",
+            path.display()
+        );
+    }
+    assert!(lookup.is_ok(), "AT-SPI tree query failed: {lookup:?}");
     if std::env::var_os("HEARTHSPACE_REQUIRE_ATSPI").is_some() {
         assert!(saw_accessible, "AT-SPI tree did not expose GTK test app");
     } else if !saw_accessible {
@@ -220,19 +252,17 @@ fn wait_for_screenshot_change(compositor: &HeadlessCompositor, previous: &[u8]) 
 }
 
 #[cfg(feature = "test-apps")]
-fn wait_for_accessible_term(term: &str) -> bool {
+fn wait_for_accessible_term(term: &str) -> Result<bool, Box<dyn std::error::Error>> {
     let deadline = Instant::now() + Duration::from_secs(10);
     while Instant::now() < deadline {
         if async_io::block_on(
             hearthspace_compositor::accessibility::accessibility_tree_contains_term(term),
-        )
-        .expect("query AT-SPI tree")
-        {
-            return true;
+        )? {
+            return Ok(true);
         }
         thread::sleep(Duration::from_millis(100));
     }
-    false
+    Ok(false)
 }
 
 fn read_line(stream: &mut UnixStream) -> String {
