@@ -188,6 +188,12 @@ On the physical development host, `policykit-1-gnome` version `0.105-8build1` wa
 installed for this integration; the portal packages and FUSE helper were already
 present. No system service or authentication policy was changed.
 
+For native audio validation, `pulseaudio-utils` and its `libpulsedsp` dependency
+(`1:17.0+dfsg1-2ubuntu4`) were also installed. `pactl info` verifies a launched
+application's PulseAudio-compatible connection; `pw-cli info 0` verifies its
+PipeWire connection. Installing these client utilities does not start a second
+audio server.
+
 The settings app uses `rfd` for file selection. On Linux, `rfd` is built with
 its XDG Desktop Portal backend and falls back to `zenity` if the portal request
 fails. Hearthspace gives session children a private `XDG_RUNTIME_DIR` and strips

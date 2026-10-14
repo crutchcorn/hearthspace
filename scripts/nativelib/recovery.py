@@ -10,6 +10,7 @@ import time
 from pathlib import Path
 
 from .common import STATE_ROOT, active_vt, load, run, save, unit_info
+from .portal_cleanup import cleanup_documents
 from .service import allocation_lock
 
 
@@ -149,13 +150,14 @@ def recover(state_file, lock=True):
                 or runtime.name != f"hearthspace-native-{state['id']}"
             ):
                 raise RuntimeError("refusing unexpected runtime directory")
+            cleanup_documents(runtime, timeout=budget(deadline, 2))
             shutil.rmtree(runtime, ignore_errors=False) if runtime.exists() else None
             cleanup["runtime_removed"] = not runtime.exists()
             with open("/dev/tty0", "rb", buffering=0) as tty:
                 fcntl.ioctl(
                     tty, 0x5608, state["vt"]
                 )  # VT_DISALLOCATE; never the original VT.
-        except OSError as error:
+        except (OSError, RuntimeError, subprocess.TimeoutExpired) as error:
             errors.append(str(error))
     cleanup["complete"] = not errors and all(
         cleanup.get(key)
