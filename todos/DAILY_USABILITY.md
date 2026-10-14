@@ -208,3 +208,43 @@ to validate this fix without recovery retry.
 
 Remaining acceptance work is native restart persistence, initial dialog bounds,
 normal UI logout/GVfs cleanup, repeated daily smoke, and final complete checks.
+
+### Native logout, restart, and final regression pass
+
+`/tmp/hearthspace-daily-layout-native-5` verified that a GTK app requesting
+1600×1200 and its oversized dialog both initially fit the 1280×752 usable logical
+area below the bar. Commit `af6100f` supplies initial configure bounds and corrects
+client-decorated dialog centering; real-client tests also confirm an intentional
+later resize can exceed those initial bounds. A quiet owned WAV played through
+the native session with `paplay` returning zero. Nautilus remained open during
+shutdown, with its private GVfs mount present.
+
+Keyboard navigation passed again. The session then recorded a terminal at canvas
+position (7310, -4190), viewport (6858, -4452), and scale 0.8. Semantic UI logout,
+including Cancel followed by confirmation, preserved that viewport and saved it
+on normal compositor exit. Cleanup completed without retry, removed the private
+portal and GVfs mounts, restored tty2, and preserved the host GVfs mount and both
+T3 services. Evidence includes `bounds-results.json`, `audio-exit.txt`,
+`artifacts/ui-logout.json`, `logout-pre-confirm.json`, and mount snapshots.
+
+`/tmp/hearthspace-daily-layout-native-6` started with only the saved layout copied
+into a fresh session directory. Before launching any apps, it had the exact saved
+viewport and no automatically reopened clients. Newly launched Foot windows
+reused their saved per-app slots, including the distant position, with the target
+focused and visible. `artifacts/layout-restart.json` and its captures retain the
+assertions. This establishes native restart persistence, not application-content
+restoration.
+
+The earlier harness stop had terminated its session bus before the compositor
+could save layout. Commits `f675da4` and `30e312a` give the verified, pidfd-bound
+supervisor a six-second graceful exit before existing forced recovery. Native6
+explicit harness stop completed gracefully with Nautilus open, saved its final
+viewport, removed owned runtime mounts, and restored tty2. Evidence is in
+`graceful-stop-proof.json` and `session.log`.
+
+The full Rust suite passed 377 tests with E2E and required AT-SPI enabled
+(`/tmp/hearthspace-daily-phase5-full-tests.log`). All 122 Python tests then passed
+with E2E enabled; nine additional graceful-stop tests and 17 launcher tests passed
+after the Python-only shutdown fix. Full workspace Clippy with warnings denied,
+formatting, Ruff, the native all-target build, and dependency checks passed.
+Complete Python revalidation and repeated native/failure runs follow below.
