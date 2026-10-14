@@ -19,13 +19,14 @@ LAUNCHER = Path(__file__).resolve().parents[1] / "hearthspace-native"
 
 
 class Smoke:
-    def __init__(self, args):
+    def __init__(self, args, *, presentation="page-flip"):
         self.args = args
         self.directory = args.session.resolve()
         self.artifacts = self.directory / "artifacts"
         self.artifacts.mkdir(parents=True, exist_ok=True)
         self.results = []
         self.control = None
+        self.presentation = presentation
 
     def record(self, step, **result):
         entry = {"step": step, **result}
@@ -80,10 +81,8 @@ class Smoke:
 
     def capture(self, name, output=None):
         capture = self.control.capture(output)
-        if capture[0].get("presentation") != "page-flip":
-            raise ControlError(
-                "native smoke requires successful KMS page-flip captures"
-            )
+        if capture[0].get("presentation") != self.presentation:
+            raise ControlError(f"smoke requires {self.presentation} captures")
         self.record(name, **save_capture(capture, self.artifacts / f"{name}.png"))
         return capture
 
@@ -113,8 +112,15 @@ class Smoke:
             if capture[0]["output"] != output["name"]:
                 raise ControlError("selected capture returned another output")
         initial = self.capture("initial")
+        self.terminal(initial)
+
+    def terminal(self, initial):
         self.control.request("spawn foot")
-        window = self.until("foot window", self.window)
+        window = self.until("mapped foot window", self.mapped_terminal)
+        self.capture("terminal-ready", initial[0]["output"])
+        window = self.window(window["id"])
+        if window is None:
+            raise ControlError("foot exited before its first captured frame")
         self.record("launch", command="spawn foot", window=window)
         marker = self.artifacts / "typed-marker.txt"
         text = (
@@ -148,6 +154,14 @@ class Smoke:
         window = self.window(window["id"])
         self.move_resize(window)
         self.cursor(initial[0])
+
+    def mapped_terminal(self):
+        window = self.window()
+        return (
+            window
+            if window and window["height"] > window.get("titlebar_height", 30) + 20
+            else None
+        )
 
     def move_resize(self, window):
         titlebar = window.get("titlebar_height", 28)
@@ -273,6 +287,7 @@ class Smoke:
             ["uname", "-a"], capture_output=True, text=True, check=True
         )
         self.record("host", uname=host.stdout.strip(), case=self.args.case)
+        error = None
         try:
             if self.args.case == "agent-interruption":
                 self.interrupted_agent()
@@ -292,9 +307,19 @@ class Smoke:
                 self.success()
             else:
                 self.recovery(self.args.case)
+        except BaseException as failure:
+            error = failure
+            self.record("operation-failed", error=str(failure))
+            raise
         finally:
-            self.launcher("stop")
-            self.verify_restored()
+            if (self.directory / "session.json").exists():
+                try:
+                    self.launcher("stop")
+                    self.verify_restored()
+                except BaseException as failure:
+                    self.record("recovery-failed", error=str(failure))
+                    if error is None:
+                        raise
 
     def verify_restored(self):
         manifest = json.loads((self.directory / "session.json").read_text())

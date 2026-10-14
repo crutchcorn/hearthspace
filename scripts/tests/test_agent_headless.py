@@ -1,13 +1,17 @@
 """Opt in with HEARTHSPACE_E2E=1; requires a built compositor."""
 
+import contextlib
+import io
 import json
 import os
+import signal
 import subprocess
 import sys
 import tempfile
 import time
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from agentlib.control import (
@@ -18,6 +22,7 @@ from agentlib.control import (
     pixel_to_logical,
 )
 from agentlib.input import Input
+from agentlib.smoke import Smoke
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -125,6 +130,55 @@ class HeadlessIntegrationTests(unittest.TestCase):
         )
         self.assertEqual(result.returncode, 1)
         self.assertFalse(json.loads(result.stderr)["ok"])
+
+    def test_real_terminal_typing_move_resize_and_cursor(self):
+        with tempfile.TemporaryDirectory(prefix="hs-foot-e2e-") as temporary:
+            directory = Path(temporary)
+            socket = directory / "control.sock"
+            env = {
+                **os.environ,
+                "XDG_RUNTIME_DIR": str(directory),
+                "HEARTHSPACE_COMMAND_SOCKET": str(socket),
+                "HEARTHSPACE_WAYLAND_DISPLAY": "wayland-foot-e2e",
+            }
+            with (directory / "compositor.log").open("w") as log:
+                process = subprocess.Popen(
+                    [
+                        str(ROOT / "target/debug/hearthspace"),
+                        "--headless",
+                        "--no-shell",
+                        "--headless-size",
+                        "2560x1600",
+                        "--headless-scale",
+                        "2",
+                    ],
+                    env=env,
+                    stdout=log,
+                    stderr=log,
+                    start_new_session=True,
+                )
+                try:
+                    control = Control(socket, Deadline(60))
+                    while not socket.exists():
+                        self.assertIsNone(process.poll())
+                        time.sleep(min(0.02, control.deadline.remaining()))
+                    smoke = Smoke(
+                        SimpleNamespace(session=directory, timeout=60),
+                        presentation="offscreen",
+                    )
+                    smoke.control = control
+                    with contextlib.redirect_stdout(io.StringIO()):
+                        smoke.terminal(control.capture())
+                    self.assertEqual(
+                        (smoke.artifacts / "typed-marker.txt").read_text(),
+                        "HEARTHSPACE_NATIVE_MARKER",
+                    )
+                    self.assertIn(
+                        "cursor-inclusion", [step["step"] for step in smoke.results]
+                    )
+                finally:
+                    os.killpg(process.pid, signal.SIGTERM)
+                    process.wait(timeout=5)
 
 
 if __name__ == "__main__":

@@ -35,6 +35,9 @@ def parser():
     start = sub.add_parser("start", help="start a native session on a spare VT")
     start.add_argument("--watchdog", type=int, default=300)
     start.add_argument("--no-build", action="store_true")
+    start.add_argument(
+        "--log-level", default="info", help="compositor/session tracing filter"
+    )
     sub.add_parser("status")
     sub.add_parser("stop")
     screenshot = sub.add_parser("screenshot")
@@ -111,7 +114,9 @@ def run_launcher(args):
     if args.command != "status":
         command.extend(["--timeout", str(args.timeout)])
     if args.command == "start":
-        command.extend(["--watchdog", str(args.watchdog)])
+        command.extend(
+            ["--watchdog", str(args.watchdog), "--log-level", args.log_level]
+        )
         if args.no_build:
             command.append("--no-build")
     # The launcher owns an independent watchdog, including cleanup if its caller
