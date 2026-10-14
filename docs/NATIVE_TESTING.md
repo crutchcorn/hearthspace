@@ -122,8 +122,12 @@ an overlay sampled from the actual hardware cursor image and position during
 rendering. `cursor_source` distinguishes those paths. Hardware cursor movement is
 independent of KMS page flips, so `cursor_sample: render` identifies that sampling
 boundary. Captures are limited to 16 megapixels and four pending requests, with a
-five-second presentation deadline. Paused sessions, removed outputs, and failed
-presentation return errors rather than stale success.
+five-second completion deadline. Native GPU readback runs on the compositor
+thread; PNG compression runs on one CPU worker with at most two jobs, including
+completed images awaiting presentation. A reply requires both compression and
+the captured frame's page flip. Input and other control clients remain responsive
+during compression. Paused sessions, removed outputs, locks, and failed
+presentation discard outstanding captures and return errors.
 
 ## Stop and Recover
 

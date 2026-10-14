@@ -1,5 +1,5 @@
 use super::UdevBackendState;
-use crate::compositor::capture::{CaptureState, encode_png, read_pixels};
+use crate::compositor::capture::{CaptureState, read_pixels};
 use smithay::{
     backend::{drm::DrmEventMetadata, renderer::Bind},
     reexports::drm::control::crtc,
@@ -99,7 +99,7 @@ impl UdevBackendState {
                             .into_iter()
                             .find(|o| o.name == view.name)
                             .ok_or("capture output disappeared")?;
-                        Ok((metadata, encode_png(size, &pixels)?, cursor_source))
+                        Ok((metadata, size, pixels, cursor_source))
                     })();
                     match result {
                         Ok(frame) => capture = Some(frame),
@@ -118,8 +118,10 @@ impl UdevBackendState {
                 captures.fail(&view.name, &format!("native presentation failed: {error}"));
                 return Err(error.into());
             }
-            if let Some((metadata, png, cursor_source)) = capture {
-                captures.stage(metadata, png, cursor_source);
+            if let Some((metadata, size, pixels, cursor_source)) = capture
+                && let Err(error) = captures.stage_pixels(metadata, size, pixels, cursor_source)
+            {
+                captures.fail(&view.name, &format!("native encoding failed: {error}"));
             }
             output.lock_frame_generation = state.lock_frame_generation();
             output.frame_pending = true;

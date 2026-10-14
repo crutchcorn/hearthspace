@@ -18,6 +18,8 @@ use super::{
     source::CommandSource,
 };
 
+mod encoding;
+
 fn pair() -> (UnixStream, UnixStream) {
     let (server, client) = UnixStream::pair().unwrap();
     server.set_nonblocking(true).unwrap();

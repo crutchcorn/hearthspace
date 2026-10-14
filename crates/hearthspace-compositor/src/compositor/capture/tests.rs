@@ -1,5 +1,7 @@
 use super::*;
 
+mod encoding;
+
 fn output(name: &str) -> OutputMetadata {
     OutputMetadata {
         name: name.into(),
