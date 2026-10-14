@@ -23,7 +23,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     initialize_tracing(&args.log_level);
 
     let mode = resolve_mode(&args);
-    let paths = create_session_paths(args.session_dir.as_deref())?;
+    let paths = create_session_paths(args.session_dir.as_deref(), args.private_session_bus)?;
     let session_env = create_session_env(&args, mode, &paths)?;
 
     if mode == RunMode::DevCargo {

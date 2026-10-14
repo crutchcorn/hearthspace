@@ -41,7 +41,7 @@ with socket.socket(socket.AF_UNIX) as server:
         );
         script(
             &root.join("hearthspace-compositor"),
-            "#!/bin/sh\nwhile true; do echo still-building; sleep 0.01; done\n",
+            "#!/bin/sh\ntouch \"$HEARTHSPACE_HOST_XDG_RUNTIME_DIR/compositor-started\"\nwhile true; do echo still-building; sleep 0.01; done\n",
         );
         Self(root)
     }
@@ -117,4 +117,40 @@ fn sigterm_interrupts_startup_and_cleans_children() {
     signal::kill(Pid::from_raw(child.id() as i32), Signal::SIGTERM).unwrap();
     assert!(!bounded_exit(&mut child).success());
     assert!(!fixture.0.join("runtime").exists());
+}
+
+#[test]
+fn private_dbus_session_can_initialize_and_cleanup_runtime() {
+    let fixture = Fixture::new();
+    let runtime = fixture.0.join("runtime");
+    fs::create_dir(&runtime).unwrap();
+    fs::set_permissions(&runtime, fs::Permissions::from_mode(0o700)).unwrap();
+    let mut child = Command::new("dbus-run-session")
+        .args([
+            "--",
+            env!("CARGO_BIN_EXE_hearthspace-session"),
+            "--installed",
+            "--backend",
+            "nested",
+            "--startup-timeout",
+            "1",
+            "--no-watch-apps",
+            "--private-session-bus",
+        ])
+        .arg("--binary-dir")
+        .arg(&fixture.0)
+        .arg("--session-dir")
+        .arg(&runtime)
+        .env("XDG_RUNTIME_DIR", &runtime)
+        .env("HEARTHSPACE_HOST_XDG_RUNTIME_DIR", &fixture.0)
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .unwrap();
+    assert!(!bounded_exit(&mut child).success());
+    assert!(
+        fixture.0.join("compositor-started").exists(),
+        "supervisor rejected dbus-run-session's runtime bootstrap"
+    );
+    assert!(!runtime.exists());
 }

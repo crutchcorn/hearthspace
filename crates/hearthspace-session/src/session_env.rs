@@ -25,6 +25,7 @@ pub(crate) struct SessionEnv {
 
 pub(crate) fn create_session_paths(
     requested: Option<&Path>,
+    private_session_bus: bool,
 ) -> Result<SessionPaths, Box<dyn std::error::Error>> {
     let host_runtime_dir = env::var_os(hearthspace_common::HOST_RUNTIME_DIR_ENV)
         .or_else(|| env::var_os("XDG_RUNTIME_DIR"))
@@ -35,9 +36,20 @@ pub(crate) fn create_session_paths(
             .join("hearthspace")
             .join(format!("session-{}", process::id()))
     });
-    // Never erase preexisting content during shutdown, even after startup fails.
-    if session_dir.exists() && fs::read_dir(&session_dir)?.next().is_some() {
-        return Err(format!("session directory must be empty: {}", session_dir.display()).into());
+    // dbus-run-session creates dbus-1/services before executing its child.
+    // Only its explicitly requested private bus directory may preexist.
+    if session_dir.exists() {
+        for entry in fs::read_dir(&session_dir)? {
+            let entry = entry?;
+            if !(private_session_bus
+                && entry.file_name() == "dbus-1"
+                && entry.file_type()?.is_dir())
+            {
+                return Err(
+                    format!("session directory must be empty: {}", session_dir.display()).into(),
+                );
+            }
+        }
     }
     let applications_dir = session_dir.join("share/applications");
 
