@@ -1,4 +1,4 @@
-use super::PinchZoom;
+use super::{PinchInput, PinchZoom};
 use crate::{
     config::{MAX_ZOOM, MIN_ZOOM},
     geometry::{CanvasPoint, screen_to_canvas},
@@ -10,6 +10,7 @@ const DEVICE: &str = "touchpad-a";
 fn updates_use_absolute_scale_from_the_initial_viewport() {
     let mut pinch = PinchZoom::default();
     pinch.begin(
+        PinchInput::Touchpad,
         DEVICE.into(),
         CanvasPoint { x: -37, y: 83 },
         0.75,
@@ -32,7 +33,13 @@ fn repeated_updates_and_return_to_one_do_not_accumulate_rounding() {
     let initial_scale = 1.25;
     let anchor = (643.125, 317.875).into();
     let mut pinch = PinchZoom::default();
-    pinch.begin(DEVICE.into(), initial_offset, initial_scale, anchor);
+    pinch.begin(
+        PinchInput::Touchpad,
+        DEVICE.into(),
+        initial_offset,
+        initial_scale,
+        anchor,
+    );
 
     let first = pinch.update(DEVICE, 1.3).unwrap();
     let anchored_canvas_point = screen_to_canvas(anchor, initial_offset, initial_scale);
@@ -55,6 +62,7 @@ fn repeated_updates_and_return_to_one_do_not_accumulate_rounding() {
 fn zoom_limits_do_not_replace_the_gesture_baseline() {
     let mut pinch = PinchZoom::default();
     pinch.begin(
+        PinchInput::Touchpad,
         DEVICE.into(),
         CanvasPoint { x: 20, y: -40 },
         1.25,
@@ -76,6 +84,7 @@ fn zoom_limits_do_not_replace_the_gesture_baseline() {
 fn invalid_scales_leave_the_gesture_active_and_usable() {
     let mut pinch = PinchZoom::default();
     pinch.begin(
+        PinchInput::Touchpad,
         DEVICE.into(),
         CanvasPoint { x: 4, y: -8 },
         1.0,
@@ -98,7 +107,13 @@ fn invalid_scales_leave_the_gesture_active_and_usable() {
 fn other_devices_cannot_update_or_finish_the_active_gesture() {
     let mut pinch = PinchZoom::default();
     let initial = (CanvasPoint { x: 17, y: -29 }, 0.75);
-    pinch.begin(DEVICE.into(), initial.0, initial.1, (123.5, 456.25).into());
+    pinch.begin(
+        PinchInput::Touchpad,
+        DEVICE.into(),
+        initial.0,
+        initial.1,
+        (123.5, 456.25).into(),
+    );
     let previous = pinch.update(DEVICE, 1.5);
 
     assert_eq!(pinch.update("touchpad-b", 2.0), None);
@@ -115,6 +130,7 @@ fn other_devices_cannot_update_or_finish_the_active_gesture() {
 fn normal_end_provides_no_rollback_and_rejects_late_updates() {
     let mut pinch = PinchZoom::default();
     pinch.begin(
+        PinchInput::Touchpad,
         DEVICE.into(),
         CanvasPoint { x: 0, y: 0 },
         1.0,
@@ -134,7 +150,13 @@ fn cancel_restores_the_exact_initial_viewport_once() {
     for explicit_cancel in [false, true] {
         let mut pinch = PinchZoom::default();
         let initial = (CanvasPoint { x: -289, y: 913 }, 0.85);
-        pinch.begin(DEVICE.into(), initial.0, initial.1, (521.125, 75.75).into());
+        pinch.begin(
+            PinchInput::Touchpad,
+            DEVICE.into(),
+            initial.0,
+            initial.1,
+            (521.125, 75.75).into(),
+        );
         assert_ne!(pinch.update(DEVICE, 1.7), Some(initial));
 
         let rollback = if explicit_cancel {
@@ -153,6 +175,7 @@ fn cancel_restores_the_exact_initial_viewport_once() {
 fn a_new_interaction_prevents_late_cancellation_from_rolling_back_the_view() {
     let mut pinch = PinchZoom::default();
     pinch.begin(
+        PinchInput::Touchpad,
         DEVICE.into(),
         CanvasPoint { x: 10, y: 20 },
         1.0,
@@ -165,6 +188,12 @@ fn a_new_interaction_prevents_late_cancellation_from_rolling_back_the_view() {
     assert_eq!(pinch.end(DEVICE, true), None);
     assert_eq!(pinch.cancel(), None);
     assert_eq!(pinch.update(DEVICE, 2.0), None);
-    pinch.begin(DEVICE.into(), visible.0, visible.1, (300.0, 150.0).into());
+    pinch.begin(
+        PinchInput::Touchpad,
+        DEVICE.into(),
+        visible.0,
+        visible.1,
+        (300.0, 150.0).into(),
+    );
     assert_eq!(pinch.update(DEVICE, 1.0), Some(visible));
 }

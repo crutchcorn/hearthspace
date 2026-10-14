@@ -30,7 +30,7 @@ mod windows;
 mod xwayland;
 
 use idle::{IdleTransition, WindowIdleDaemon};
-#[cfg(any(feature = "winit", feature = "udev"))]
+#[cfg(feature = "udev")]
 pub(in crate::compositor) use input::handle_input_event;
 #[cfg(feature = "udev")]
 pub(in crate::compositor) use output::{OutputDescriptor, create_output_with_properties};
@@ -52,7 +52,6 @@ pub use udev::run_udev;
 use calloop::signals::{Signal, Signals};
 use client::ClientState;
 use cursor::{CursorIcon, SoftwareCursor};
-use smithay::backend::input::TouchSlot;
 #[cfg(feature = "winit")]
 use smithay::backend::winit::{self, WinitEvent};
 #[cfg(feature = "winit")]
@@ -273,7 +272,9 @@ struct App {
     snap_wayland_socket_paths: HashSet<std::path::PathBuf>,
     pointer_location: Point<f64, Logical>,
     raw_pointer_location: Point<f64, Logical>,
-    active_touch_slot: Option<TouchSlot>,
+    touch_input: input::TouchTracker,
+    dispatching_touch: bool,
+    touch_pointer_pressed: bool,
     scroll_zooms_without_super: bool,
     outputs: OutputSet,
     app_catalog: AppCatalog,
@@ -403,13 +404,13 @@ pub fn run_winit(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> 
                 data.state.request_redraw();
             }
         }
-        WinitEvent::Input(event) => handle_input_event(&mut data.state, event),
+        WinitEvent::Input(event) => input::handle_winit_input(&mut data.state, event),
         WinitEvent::Redraw => data.state.request_redraw(),
         WinitEvent::CloseRequested => {
             info!("winit close requested; stopping compositor event loop");
             data.running = false;
         }
-        WinitEvent::Focus(false) => data.state.cancel_pinch_zoom(),
+        WinitEvent::Focus(false) => data.state.cancel_input_gestures(),
         WinitEvent::Focus(true) => {}
     })?;
 
@@ -598,7 +599,9 @@ pub(in crate::compositor) fn initialize_app(
         snap_wayland_socket_paths: HashSet::new(),
         pointer_location: (0.0, 0.0).into(),
         raw_pointer_location: (0.0, 0.0).into(),
-        active_touch_slot: None,
+        touch_input: input::TouchTracker::default(),
+        dispatching_touch: false,
+        touch_pointer_pressed: false,
         scroll_zooms_without_super: options.scroll_zooms_without_super,
         outputs: OutputSet::new(primary_output, output_layout),
         app_catalog,

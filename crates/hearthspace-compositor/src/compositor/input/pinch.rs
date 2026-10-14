@@ -1,4 +1,4 @@
-//! Compositor-owned two-finger zoom; Smithay/libinput recognize the gesture.
+//! Compositor-owned three-finger zoom for indirect and direct touch input.
 use smithay::{
     backend::input::InputTime,
     utils::{Logical, Point},
@@ -15,10 +15,17 @@ pub(in crate::compositor) struct PinchZoom {
 }
 
 struct Gesture {
+    input: PinchInput,
     device: String,
     offset: CanvasPoint,
     scale: f64,
     anchor: Point<f64, Logical>,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(super) enum PinchInput {
+    Touchpad,
+    Touchscreen,
 }
 
 impl PinchZoom {
@@ -28,17 +35,25 @@ impl PinchZoom {
 
     fn begin(
         &mut self,
+        input: PinchInput,
         device: String,
         offset: CanvasPoint,
         scale: f64,
         anchor: Point<f64, Logical>,
     ) {
         self.gesture = Some(Gesture {
+            input,
             device,
             offset,
             scale,
             anchor,
         });
+    }
+
+    fn accepts(&self, input: PinchInput) -> bool {
+        self.gesture
+            .as_ref()
+            .is_some_and(|gesture| gesture.input == input)
     }
 
     fn update(&self, device: &str, scale: f64) -> Option<(CanvasPoint, f64)> {
@@ -80,32 +95,53 @@ impl PinchZoom {
 }
 
 impl App {
-    fn pinch_blocked(&self) -> bool {
+    pub(super) fn pinch_blocked(&self) -> bool {
         self.drag.is_some()
             || self.resize.is_some()
             || self.pointer.is_grabbed()
             || self.keyboard.is_grabbed()
-            || self.active_touch_slot.is_some()
     }
 
     pub(super) fn begin_pinch_zoom(&mut self, device: String, fingers: u32) {
-        if fingers != 2 || self.pinch_zoom.is_active() || self.pinch_blocked() {
+        if fingers != 3 || self.touch_input.has_contacts() {
+            return;
+        }
+        self.start_pinch_zoom(PinchInput::Touchpad, device, self.pointer_location);
+    }
+
+    pub(super) fn start_pinch_zoom(
+        &mut self,
+        input: PinchInput,
+        device: String,
+        anchor: Point<f64, Logical>,
+    ) {
+        if self.pinch_zoom.is_active() || self.pinch_blocked() {
             return;
         }
         self.advance_viewport_animation();
         self.viewport_animation = None;
-        debug!(%device, anchor = ?self.pointer_location, "starting canvas pinch zoom");
+        debug!(%device, ?anchor, "starting canvas pinch zoom");
         self.pinch_zoom.begin(
+            input,
             device,
             self.viewport_offset,
             self.viewport_scale,
-            self.pointer_location,
+            anchor,
         );
         self.apply_pointer_motion(self.pointer_location, InputTime::now());
         self.request_redraw();
     }
 
-    pub(super) fn update_pinch_zoom(&mut self, device: &str, scale: f64, time: InputTime) {
+    pub(super) fn update_pinch_zoom(
+        &mut self,
+        input: PinchInput,
+        device: &str,
+        scale: f64,
+        time: InputTime,
+    ) {
+        if !self.pinch_zoom.accepts(input) {
+            return;
+        }
         if self.pinch_blocked() {
             // A newly opened popup or drag takes ownership of the interaction.
             // Keep its currently displayed transform; stale updates cannot resume.
@@ -118,7 +154,16 @@ impl App {
         }
     }
 
-    pub(super) fn end_pinch_zoom(&mut self, device: &str, cancelled: bool, time: InputTime) {
+    pub(super) fn end_pinch_zoom(
+        &mut self,
+        input: PinchInput,
+        device: &str,
+        cancelled: bool,
+        time: InputTime,
+    ) {
+        if !self.pinch_zoom.accepts(input) {
+            return;
+        }
         debug!(
             %device,
             cancelled,
@@ -147,6 +192,10 @@ impl App {
 
     pub(in crate::compositor) fn interrupt_pinch_zoom(&mut self) {
         self.pinch_zoom.interrupt();
+        if !self.dispatching_touch {
+            let actions = self.touch_input.interrupt();
+            self.apply_touch_actions(actions, InputTime::now());
+        }
     }
 
     fn apply_pinch_viewport(&mut self, offset: CanvasPoint, scale: f64, time: InputTime) {

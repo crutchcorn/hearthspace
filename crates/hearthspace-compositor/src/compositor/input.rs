@@ -18,12 +18,20 @@ use crate::config::WHEEL_SCROLL_PIXEL_EQUIVALENT;
 
 use super::{App, DragState, HitTarget, idle::ActivityReason};
 
+#[cfg(feature = "winit")]
+mod nested;
 mod pinch;
 mod pointer;
 mod scroll;
+mod touch;
+mod touch_tracker;
 
+#[cfg(feature = "winit")]
+pub(super) use nested::handle_winit_input;
+use pinch::PinchInput;
 pub(super) use pinch::PinchZoom;
 use pointer::relative_pointer_location;
+pub(super) use touch_tracker::TouchTracker;
 
 pub(in crate::compositor) fn handle_input_event<B: InputBackend>(
     state: &mut App,
@@ -31,16 +39,27 @@ pub(in crate::compositor) fn handle_input_event<B: InputBackend>(
 ) {
     match event {
         InputEvent::DeviceRemoved { device } => {
-            state.end_pinch_zoom(&device.id(), true, InputTime::now());
+            state.remove_touch_device(&device.id());
+            state.end_pinch_zoom(PinchInput::Touchpad, &device.id(), true, InputTime::now());
         }
         InputEvent::GesturePinchBegin { event } => {
             state.begin_pinch_zoom(event.device().id(), event.fingers());
         }
         InputEvent::GesturePinchUpdate { event } => {
-            state.update_pinch_zoom(&event.device().id(), event.scale(), event.time());
+            state.update_pinch_zoom(
+                PinchInput::Touchpad,
+                &event.device().id(),
+                event.scale(),
+                event.time(),
+            );
         }
         InputEvent::GesturePinchEnd { event } => {
-            state.end_pinch_zoom(&event.device().id(), event.cancelled(), event.time());
+            state.end_pinch_zoom(
+                PinchInput::Touchpad,
+                &event.device().id(),
+                event.cancelled(),
+                event.time(),
+            );
         }
         InputEvent::Keyboard { event } => {
             let time = event.time();
@@ -244,64 +263,27 @@ pub(in crate::compositor) fn handle_input_event<B: InputBackend>(
             pointer.frame(state);
         }
         InputEvent::TouchDown { event } => {
-            let slot = event.slot();
-            let time = event.time();
-            if state.active_touch_slot.is_some() {
-                trace!(?slot, ?time, "ignoring additional touch contact");
-                return;
-            }
-
-            let primary_output = state.primary_output_logical_rect();
-            let location = touch_location_in_primary_output(
-                event.position_transformed(primary_output.size),
-                primary_output,
-            );
-            trace!(?slot, ?location, ?time, "single-touch down input");
-            state.active_touch_slot = Some(slot);
-            state.apply_pointer_motion(location, time);
-            state.synthesize_pointer_button(0x110, ButtonState::Pressed);
+            let output = state.primary_output_logical_rect();
+            let location =
+                touch_location_in_primary_output(event.position_transformed(output.size), output);
+            state.touch_down(&event.device().id(), event.slot(), location, event.time());
         }
         InputEvent::TouchMotion { event } => {
-            let slot = event.slot();
-            let time = event.time();
-            if state.active_touch_slot != Some(slot) {
-                trace!(?slot, ?time, "ignoring inactive touch motion");
-                return;
-            }
-
-            let primary_output = state.primary_output_logical_rect();
-            let location = touch_location_in_primary_output(
-                event.position_transformed(primary_output.size),
-                primary_output,
-            );
-            trace!(?slot, ?location, ?time, "single-touch motion input");
-            state.apply_pointer_motion(location, time);
+            let output = state.primary_output_logical_rect();
+            let location =
+                touch_location_in_primary_output(event.position_transformed(output.size), output);
+            state
+                .touch_input
+                .motion(&event.device().id(), event.slot(), location);
         }
-        InputEvent::TouchUp { event } => {
-            let slot = event.slot();
-            let time = event.time();
-            if state.active_touch_slot != Some(slot) {
-                trace!(?slot, ?time, "ignoring inactive touch up");
-                return;
-            }
-
-            trace!(?slot, ?time, "single-touch up input");
-            state.synthesize_pointer_button(0x110, ButtonState::Released);
-            state.active_touch_slot = None;
-        }
+        InputEvent::TouchUp { event } => state.touch_input.up(&event.device().id(), event.slot()),
         InputEvent::TouchCancel { event } => {
-            let slot = event.slot();
-            let time = event.time();
-            if state.active_touch_slot != Some(slot) {
-                trace!(?slot, ?time, "ignoring inactive touch cancel");
-                return;
-            }
-
-            debug!(?slot, ?time, "single-touch input cancelled");
-            state.synthesize_pointer_button(0x110, ButtonState::Released);
-            state.active_touch_slot = None;
+            state.touch_input.cancel(&event.device().id(), event.slot());
+            state.flush_touch_frame(&event.device().id(), event.time());
         }
-        InputEvent::TouchFrame { .. } => trace!("single-touch frame input"),
+        InputEvent::TouchFrame { event } => {
+            state.flush_touch_frame(&event.device().id(), event.time())
+        }
         _ => {}
     }
 }
