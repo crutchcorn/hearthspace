@@ -71,6 +71,7 @@ pub(in crate::compositor) fn encode_png(
 #[cfg(feature = "udev")]
 pub(in crate::compositor) struct CursorOverlay {
     pub image: super::super::cursor::CursorImage,
+    pub plane_size: (u32, u32),
     pub x: i32,
     pub y: i32,
 }
@@ -79,12 +80,12 @@ pub(in crate::compositor) struct CursorOverlay {
 impl CursorOverlay {
     // Xcursor pixels are premultiplied RGBA, matching the DRM plane blend mode.
     pub(in crate::compositor) fn paint(&self, pixels: &mut [u8], size: Size<i32, Physical>) {
-        for row in 0..self.image.height as i32 {
+        for row in 0..self.image.height.min(self.plane_size.1) as i32 {
             let y = self.y + row;
             if y < 0 || y >= size.h {
                 continue;
             }
-            for column in 0..self.image.width as i32 {
+            for column in 0..self.image.width.min(self.plane_size.0) as i32 {
                 let x = self.x + column;
                 if x < 0 || x >= size.w {
                     continue;
@@ -132,6 +133,7 @@ mod tests {
     #[test]
     fn hardware_cursor_clips_and_blends_once() {
         let overlay = CursorOverlay {
+            plane_size: (2, 1),
             x: -1,
             y: 0,
             image: super::super::super::cursor::CursorImage {
@@ -144,5 +146,29 @@ mod tests {
         let mut pixels = [0, 0, 255, 255, 255, 255, 255, 255];
         overlay.paint(&mut pixels, (2, 1).into());
         assert_eq!(pixels, [0, 128, 127, 255, 255, 255, 255, 255]);
+    }
+
+    #[cfg(feature = "udev")]
+    #[test]
+    fn hardware_cursor_respects_plane_size_and_source_stride() {
+        let overlay = CursorOverlay {
+            x: 0,
+            y: 0,
+            plane_size: (1, 2),
+            image: super::super::super::cursor::CursorImage {
+                width: 2,
+                height: 2,
+                hotspot: (0, 0),
+                pixels_rgba: vec![
+                    255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255, 0, 255, 0, 255,
+                ],
+            },
+        };
+        let mut pixels = [0; 16];
+        overlay.paint(&mut pixels, (2, 2).into());
+        assert_eq!(
+            pixels,
+            [255, 0, 0, 255, 0, 0, 0, 0, 0, 0, 255, 255, 0, 0, 0, 0]
+        );
     }
 }

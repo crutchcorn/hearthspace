@@ -42,6 +42,7 @@ impl UdevDevice {
             self.hardware_cursor_crtc?,
             crate::compositor::capture::CursorOverlay {
                 image: cursor.image.clone(),
+                plane_size: cursor.buffer.size(),
                 x,
                 y,
             },
