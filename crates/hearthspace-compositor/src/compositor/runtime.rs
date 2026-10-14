@@ -3,17 +3,14 @@ use std::time::Instant;
 #[cfg(feature = "xwayland")]
 use smithay::input::SeatState;
 use smithay::{
-    backend::{
-        allocator::Fourcc,
-        renderer::{
-            Bind, ExportMem, ImportDma,
-            damage::OutputDamageTracker,
-            gles::{GlesRenderbuffer, GlesRenderer},
-        },
+    backend::renderer::{
+        Bind, ImportDma,
+        damage::OutputDamageTracker,
+        gles::{GlesRenderbuffer, GlesRenderer},
     },
     desktop::PopupManager,
     reexports::{calloop::EventLoop, wayland_server::Display},
-    utils::{Buffer as BufferCoord, Physical, Rectangle, Size, Transform},
+    utils::{Physical, Size, Transform},
 };
 use tracing::{debug, error, info, trace, warn};
 
@@ -36,6 +33,7 @@ pub(in crate::compositor) struct HeadlessBackend {
 }
 
 pub(in crate::compositor) struct CalloopData {
+    pub(in crate::compositor) captures: super::capture::CaptureState,
     pub(in crate::compositor) state: App,
     pub(in crate::compositor) display: Display<App>,
     pub(in crate::compositor) backend: Backend,
@@ -70,6 +68,7 @@ pub(in crate::compositor) fn create_headless_calloop_data(
         "creating headless event-loop data"
     );
     CalloopData {
+        captures: super::capture::CaptureState::default(),
         state,
         display,
         backend: Backend::Headless(Box::new(backend)),
@@ -100,6 +99,7 @@ pub(in crate::compositor) fn create_calloop_data(
         "creating compositor event-loop data"
     );
     CalloopData {
+        captures: super::capture::CaptureState::default(),
         state,
         display,
         backend,
@@ -145,7 +145,12 @@ pub(in crate::compositor) fn run_event_loop(
             (None, Some(exit)) => Some(exit),
             (None, None) => None,
         };
+        let timeout = match (timeout, data.captures.timeout()) {
+            (Some(a), Some(b)) => Some(a.min(b)),
+            (a, b) => a.or(b),
+        };
         event_loop.dispatch(timeout, data)?;
+        data.maintain_captures();
 
         if data
             .exit_at
@@ -241,7 +246,7 @@ impl CalloopData {
         }
     }
 
-    fn process_pending_dmabuf_imports(&mut self) {
+    pub(super) fn process_pending_dmabuf_imports(&mut self) {
         if self.state.pending_dmabuf_imports.is_empty() {
             return;
         }
@@ -334,7 +339,8 @@ impl CalloopData {
             #[cfg(feature = "udev")]
             Backend::Udev(backend) => {
                 let force_full_redraw = self.full_redraw > 0;
-                let submitted = backend.render_frame(&mut self.state, force_full_redraw)?;
+                let submitted =
+                    backend.render_frame(&mut self.state, force_full_redraw, &mut self.captures)?;
                 trace!(submitted, force_full_redraw, "rendered native frame");
                 if submitted && force_full_redraw {
                     self.full_redraw = self.full_redraw.saturating_sub(1);
@@ -375,87 +381,4 @@ impl CalloopData {
 
         Ok(())
     }
-
-    pub(in crate::compositor) fn screenshot_png(
-        &mut self,
-    ) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
-        debug!("capturing compositor screenshot");
-        self.process_pending_dmabuf_imports();
-
-        let CalloopData { state, backend, .. } = self;
-        let size = state.output_size();
-        let mut screenshot_damage = OutputDamageTracker::new(size, 1.0, Transform::Flipped180);
-        let region = Rectangle::from_size(Size::<i32, BufferCoord>::from((size.w, size.h)));
-        let pixels = match backend {
-            #[cfg(feature = "winit")]
-            Backend::Winit(backend) => {
-                let (renderer, mut framebuffer) = backend.bind()?;
-                state.render_frame(renderer, &mut framebuffer, &mut screenshot_damage, 0)?;
-                let mapping = renderer.copy_framebuffer(&framebuffer, region, Fourcc::Abgr8888)?;
-                renderer.map_texture(&mapping)?.to_vec()
-            }
-            Backend::Headless(backend) => {
-                let mut framebuffer = backend.renderer.bind(&mut backend.buffer)?;
-                state.render_frame(
-                    &mut backend.renderer,
-                    &mut framebuffer,
-                    &mut screenshot_damage,
-                    0,
-                )?;
-                let mapping =
-                    backend
-                        .renderer
-                        .copy_framebuffer(&framebuffer, region, Fourcc::Abgr8888)?;
-                backend.renderer.map_texture(&mapping)?.to_vec()
-            }
-            #[cfg(feature = "udev")]
-            Backend::Udev(_) => {
-                return Err(
-                    "screenshots are unsupported on the udev backend until native readback is implemented"
-                        .into(),
-                );
-            }
-        };
-        let png = encode_png_rgba(size, &pixels)?;
-        debug!(?size, bytes = png.len(), "captured compositor screenshot");
-        Ok(png)
-    }
-}
-
-fn encode_png_rgba(
-    size: Size<i32, Physical>,
-    bottom_up_rgba: &[u8],
-) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
-    let width = usize::try_from(size.w)?;
-    let height = usize::try_from(size.h)?;
-    let stride = width.checked_mul(4).ok_or("screenshot stride overflow")?;
-    let expected_len = stride
-        .checked_mul(height)
-        .ok_or("screenshot buffer length overflow")?;
-    if bottom_up_rgba.len() != expected_len {
-        return Err(format!(
-            "screenshot readback returned {} bytes, expected {expected_len}",
-            bottom_up_rgba.len()
-        )
-        .into());
-    }
-
-    let mut top_down_rgba = Vec::with_capacity(expected_len);
-    for row in bottom_up_rgba.chunks_exact(stride).rev() {
-        top_down_rgba.extend_from_slice(row);
-    }
-
-    let mut png_bytes = Vec::new();
-    {
-        let mut encoder = png::Encoder::new(
-            &mut png_bytes,
-            u32::try_from(width)?,
-            u32::try_from(height)?,
-        );
-        encoder.set_color(png::ColorType::Rgba);
-        encoder.set_depth(png::BitDepth::Eight);
-        let mut writer = encoder.write_header()?;
-        writer.write_image_data(&top_down_rgba)?;
-    }
-    Ok(png_bytes)
 }
