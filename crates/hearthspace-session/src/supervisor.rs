@@ -135,7 +135,13 @@ impl Supervisor {
             if let Some(status) = poll_process(&mut self.settingsd)? {
                 return Err(format!("settingsd exited before readiness: {status}").into());
             }
-            if settingsd_ping(&self.paths.settings_socket).is_ok() {
+            if settingsd_ping(
+                &self.paths.settings_socket,
+                self.startup_deadline,
+                &self.shutdown_requested,
+            )
+            .is_ok()
+            {
                 info!("settingsd ready");
                 return Ok(());
             }
@@ -155,7 +161,14 @@ impl Supervisor {
             if let Some(status) = poll_process(&mut self.compositor)? {
                 return Err(format!("compositor exited before readiness: {status}").into());
             }
-            if std::os::unix::net::UnixStream::connect(&socket).is_ok() {
+            if crate::readiness::connect_until(
+                &socket,
+                self.startup_deadline
+                    .min(Instant::now() + Duration::from_millis(250)),
+                &self.shutdown_requested,
+            )
+            .is_ok()
+            {
                 info!("compositor ready");
                 return Ok(());
             }

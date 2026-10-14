@@ -9,7 +9,7 @@ license = "Apache-2.0"
 clap = { version = "4", features = ["derive"] }
 ctrlc = { version = "3", features = ["termination"] }
 hearthspace-common = { path = "../hearthspace-common" }
-nix = { version = "0.30", features = ["signal", "process"] }
+nix = { version = "0.30", features = ["signal", "process", "socket"] }
 tracing = "0.1.41"
 tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
 which = "8"
