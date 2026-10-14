@@ -26,7 +26,9 @@ pub(crate) struct SessionEnv {
 pub(crate) fn create_session_paths(
     requested: Option<&Path>,
 ) -> Result<SessionPaths, Box<dyn std::error::Error>> {
-    let host_runtime_dir = env::var_os("XDG_RUNTIME_DIR").ok_or("XDG_RUNTIME_DIR is not set")?;
+    let host_runtime_dir = env::var_os(hearthspace_common::HOST_RUNTIME_DIR_ENV)
+        .or_else(|| env::var_os("XDG_RUNTIME_DIR"))
+        .ok_or("XDG_RUNTIME_DIR is not set")?;
     let host_runtime_dir = PathBuf::from(host_runtime_dir);
     let session_dir = requested.map(Path::to_path_buf).unwrap_or_else(|| {
         host_runtime_dir

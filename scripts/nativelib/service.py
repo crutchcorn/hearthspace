@@ -188,8 +188,12 @@ def exec_session(state_file):
         "DBUS_SESSION_BUS_PID",
     ):
         env.pop(key, None)
-    # PAM owns /run/user/UID; supervisor creates a separate runtime inside it.
-    env["XDG_RUNTIME_DIR"] = f"/run/user/{state['uid']}"
+    # D-Bus-activated portals/accessibility services inherit the daemon's env,
+    # so isolate it before dbus-run-session, not only in supervisor children.
+    env["HEARTHSPACE_HOST_XDG_RUNTIME_DIR"] = f"/run/user/{state['uid']}"
+    env["XDG_RUNTIME_DIR"] = state["runtime_dir"]
+    env["WAYLAND_DISPLAY"] = state["wayland_display"]
+    env["XDG_CURRENT_DESKTOP"] = "Hearthspace"
     supervisor = str(Path(state["binary_dir"]) / "hearthspace-session")
     args = [
         "/usr/bin/dbus-run-session",

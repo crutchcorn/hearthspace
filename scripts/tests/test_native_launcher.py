@@ -32,6 +32,7 @@ def state(directory):
         "startup_timeout": 30,
         "binary_dir": "/tmp/bin",
         "command_socket": "/tmp/test.sock",
+        "wayland_display": "wayland-99",
         "settings_socket": "/tmp/settings.sock",
     }
 
@@ -94,6 +95,29 @@ class NativeServiceTests(unittest.TestCase):
             patch.object(service.fcntl, "ioctl", side_effect=ioctl),
         ):
             self.assertEqual(service.choose_vt(), 9)
+
+    def test_dbus_activation_inherits_only_private_desktop_environment(self):
+        with tempfile.TemporaryDirectory() as directory:
+            saved = state(directory)
+            with (
+                patch.object(service, "load", return_value=saved),
+                patch.dict(
+                    os.environ,
+                    {
+                        "XDG_SESSION_ID": "12",
+                        "DISPLAY": ":0",
+                        "DBUS_SESSION_BUS_ADDRESS": "unix:path=/host/bus",
+                    },
+                ),
+                patch.object(service.os, "execve") as execute,
+            ):
+                service.exec_session("ignored")
+            env = execute.call_args.args[2]
+            self.assertEqual(env["XDG_RUNTIME_DIR"], saved["runtime_dir"])
+            self.assertEqual(env["WAYLAND_DISPLAY"], saved["wayland_display"])
+            self.assertEqual(env["HEARTHSPACE_HOST_XDG_RUNTIME_DIR"], "/run/user/1000")
+            self.assertNotIn("DISPLAY", env)
+            self.assertNotIn("DBUS_SESSION_BUS_ADDRESS", env)
 
     def test_systemd_command_escapes_specifiers_and_variables(self):
         value = service.property_command(
