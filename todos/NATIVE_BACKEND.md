@@ -65,6 +65,9 @@ exists.
 
 ## Native Screenshot And Readback
 
+The agent workflow, preferred presentation-linked capture design, and acceptance
+criteria are tracked in [AI_ENABLEMENT.md](./AI_ENABLEMENT.md).
+
 - [ ] Implement native readback for command-socket screenshots.
 - [ ] Decide whether native screenshots should read back the current scanout
       buffer, render into a separate offscreen target, or use a backend-specific
