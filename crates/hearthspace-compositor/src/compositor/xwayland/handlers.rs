@@ -3,6 +3,7 @@ use smithay::{
     utils::{Logical, Rectangle},
     wayland::{
         compositor::{CompositorClientState, CompositorHandler, CompositorState},
+        pointer_constraints::PointerConstraintsHandler,
         selection::{
             SelectionHandler, SelectionTarget,
             data_device::{DataDeviceHandler, DataDeviceState, WaylandDndGrabHandler},
@@ -43,6 +44,8 @@ impl SelectionHandler for CalloopData {
 }
 
 impl WaylandDndGrabHandler for CalloopData {}
+
+impl PointerConstraintsHandler for CalloopData {}
 
 impl DataDeviceHandler for CalloopData {
     fn data_device_state(&mut self) -> &mut DataDeviceState {

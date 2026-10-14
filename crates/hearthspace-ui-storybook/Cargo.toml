@@ -7,7 +7,7 @@ license = "Apache-2.0"
 
 [dependencies]
 hearthspace-ui-components = { path = "../ui-components" }
-xilem = { git = "https://github.com/linebender/xilem", rev = "c5950bcb03d4f3d187a20d1159f6aa276fd056bf" }
+xilem = { git = "https://github.com/linebender/xilem", rev = "271a27a6d4a930f7878d404f9014e3c50a3a9b88" }
 xilem-storybook = { path = "../xilem-storybook" }
 
 [lints.rust]

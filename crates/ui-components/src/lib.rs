@@ -37,11 +37,11 @@ pub fn hearthspace_light_properties() -> DefaultProperties {
     properties.insert::<Button, _>(Padding::from_vh(7.0.px(), 10.0.px()));
     {
         let mut stack = PropertyStack::new();
-        stack.push(
+        stack.push_layer(
             Selector::new().with_hovered(true),
             Background::Color(BUTTON_HOVER),
         );
-        stack.push(
+        stack.push_layer(
             Selector::new().with_active(true),
             Background::Color(BUTTON_ACTIVE),
         );
@@ -59,15 +59,15 @@ pub fn hearthspace_light_properties() -> DefaultProperties {
     properties.insert::<Checkbox, _>(CheckmarkStrokeWidth { width: 2.0 });
     {
         let mut stack = PropertyStack::new();
-        stack.push(
+        stack.push_layer(
             Selector::new().with_hovered(true),
             BorderColor { color: ACCENT },
         );
-        stack.push(
+        stack.push_layer(
             Selector::new().with_focused(true),
             BorderColor { color: ACCENT },
         );
-        stack.push(
+        stack.push_layer(
             Selector::new().with_active(true),
             Background::Color(ACCENT_SUBTLE),
         );
@@ -81,15 +81,15 @@ pub fn hearthspace_light_properties() -> DefaultProperties {
     properties.insert::<RadioButton, _>(CheckmarkColor::new(ACCENT));
     {
         let mut stack = PropertyStack::new();
-        stack.push(
+        stack.push_layer(
             Selector::new().with_hovered(true),
             BorderColor { color: ACCENT },
         );
-        stack.push(
+        stack.push_layer(
             Selector::new().with_focused(true),
             BorderColor { color: ACCENT },
         );
-        stack.push(
+        stack.push_layer(
             Selector::new().with_active(true),
             Background::Color(ACCENT_SUBTLE),
         );
@@ -105,7 +105,7 @@ pub fn hearthspace_light_properties() -> DefaultProperties {
     properties.insert::<TextInput, _>(PlaceholderColor::new(TEXT_MUTED));
     {
         let mut stack = PropertyStack::new();
-        stack.push(
+        stack.push_layer(
             Selector::new().with_focused(true),
             BorderColor { color: ACCENT },
         );

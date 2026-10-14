@@ -28,19 +28,19 @@ name = "hearthspace"
 path = "src/bin/hearthspace.rs"
 
 [dependencies]
-async-io = "2.3.3"
+async-io = "2.6.0"
 atspi = { version = "0.30.0", features = ["zbus"] }
-calloop = { version = "0.14.4", features = ["signals"] }
+calloop = { version = "0.14.5", features = ["signals"] }
 cursor-icon = "1.2.0"
-gtk = { package = "gtk4", version = "0.11", optional = true }
+gtk = { package = "gtk4", version = "0.11.5", optional = true }
 hearthspace-common = { path = "../hearthspace-common" }
 hearthspace-ipc = { path = "../hearthspace-ipc" }
 hearthspace-shell = { path = "../hearthspace-shell" }
 # Xilem (app shell) and Masonry (compositor-side imaging) are pulled from
 # upstream git because the latest published crates are still behind the APIs we
 # use, including `WindowOptionsExtLinux::with_name`.
-masonry = { git = "https://github.com/linebender/xilem", rev = "c5950bcb03d4f3d187a20d1159f6aa276fd056bf", features = ["testing"] }
-xilem = { git = "https://github.com/linebender/xilem", rev = "c5950bcb03d4f3d187a20d1159f6aa276fd056bf" }
+masonry = { git = "https://github.com/linebender/xilem", rev = "271a27a6d4a930f7878d404f9014e3c50a3a9b88", features = ["testing"] }
+xilem = { git = "https://github.com/linebender/xilem", rev = "271a27a6d4a930f7878d404f9014e3c50a3a9b88" }
 # naga 28 (pulled in transitively via wgpu/vello) only compiles its WGSL
 # error-emit path when the `termcolor` feature is enabled, but the crates that
 # depend on it (wgpu-core, vello_shaders) enable `wgsl-in` without it. We add a
@@ -53,25 +53,25 @@ fontique = { version = "0.8.0", features = ["fontconfig-dlopen"] }
 # Masonry's CPU render harness returns an `image::RgbaImage`; name the type
 # directly so the title-text raster path is testable. Pulled in transitively
 # already, so this only fixes the version we link against.
-image = { version = "0.25", default-features = false }
+image = { version = "0.25.10", default-features = false }
 png = "0.18.1"
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
-smithay = { git = "https://github.com/Smithay/smithay", rev = "cb1eb2a3f48d95a7ea4b030159a2512ba667a2fb", default-features = false, features = ["desktop", "renderer_gl", "wayland_frontend"] }
-tracing = "0.1.41"
-tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
-wayland-protocols = { version = "0.32.8", features = ["server"] }
-wayland-server = "0.31.9"
-waydriver = { version = "0.3.9", optional = true }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+smithay = { git = "https://github.com/Smithay/smithay", rev = "5c2ba4132556a08abc70ae1771d275ec2cfc031f", default-features = false, features = ["desktop", "renderer_gl", "wayland_frontend"] }
+tracing = "0.1.44"
+tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
+wayland-protocols = { version = "0.32.13", features = ["server"] }
+wayland-server = "0.31.14"
+waydriver = { version = "0.3.10", optional = true }
 waydriver-hearthspace = { path = "../waydriver-hearthspace", optional = true }
-xcursor = "0.3.10"
+xcursor = "0.3.11"
 
 [dev-dependencies]
-proptest = "1"
-rstest = "0.26"
-tempfile = "3"
-tokio = { version = "1", features = ["macros", "process", "rt-multi-thread", "time"] }
-tokio-util = "0.7"
+proptest = "1.12.0"
+rstest = "0.27.0"
+tempfile = "3.27.0"
+tokio = { version = "1.53.3", features = ["macros", "process", "rt-multi-thread", "time"] }
+tokio-util = "0.7.20"
 
 [[test]]
 name = "headless_control"

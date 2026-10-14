@@ -23,6 +23,7 @@ use smithay::{
         dmabuf::{DmabufGlobal, DmabufHandler, DmabufState, ImportNotifier, get_dmabuf},
         fractional_scale::{FractionalScaleHandler, with_fractional_scale},
         output::OutputHandler,
+        pointer_constraints::PointerConstraintsHandler,
         selection::{
             SelectionHandler,
             data_device::{DataDeviceHandler, DataDeviceState, WaylandDndGrabHandler},
@@ -461,6 +462,10 @@ impl ShmHandler for App {
 }
 
 impl OutputHandler for App {}
+
+// Smithay uses this hook for pointer-target cleanup even when the optional
+// pointer-constraints protocol is not advertised by the compositor.
+impl PointerConstraintsHandler for App {}
 
 impl SeatHandler for App {
     type KeyboardFocus = WlSurface;
