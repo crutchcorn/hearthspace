@@ -2327,6 +2327,8 @@ name = "hearthspace-ipc"
 version = "0.1.0"
 dependencies = [
  "hearthspace-common",
+ "nix",
+ "tempfile",
 ]
 
 [[package]]
@@ -2360,6 +2362,7 @@ version = "0.1.0"
 dependencies = [
  "hearthspace-common",
  "hearthspace-ipc",
+ "nix",
  "tempfile",
  "tracing",
  "tracing-subscriber",

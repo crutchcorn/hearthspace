@@ -7,6 +7,10 @@ license = "Apache-2.0"
 
 [dependencies]
 hearthspace-common = { path = "../hearthspace-common" }
+nix = { version = "0.31.3", features = ["socket"] }
+
+[dev-dependencies]
+tempfile = "3.27.0"
 
 [lints.rust]
 unsafe_op_in_unsafe_fn = "deny"

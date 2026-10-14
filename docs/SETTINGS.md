@@ -30,7 +30,9 @@ If `HEARTHSPACE_SETTINGS_SOCKET` is not set, `hearthspace-ipc` falls back to:
 $XDG_RUNTIME_DIR/hearthspace-settingsd.sock
 ```
 
-The daemon creates the socket parent directory, checks whether an existing listener is already running, removes stale socket files, and then accepts one-line requests on a Unix domain socket. A second daemon instance exits cleanly when it can connect to the existing socket.
+The daemon creates the socket parent directory, checks whether an existing listener is already running, removes stale socket files, and accepts one-line requests on a Unix domain socket. A second daemon instance exits cleanly when a live listener exists, including when its connection backlog is full.
+
+Connections are nonblocking and bounded: unfinished clients do not hold up other requests. The daemon accepts at most 32 simultaneous clients and expires incomplete exchanges after 250 ms. Requests must end with a newline and fit within 16 KiB; responses fit within 64 KiB. Settings updates remain serialized so concurrent changes cannot overwrite one another's fields.
 
 `hearthspace-session` restarts `hearthspace-settingsd` up to the configured restart limit. If the daemon exits and cannot be restarted, the session treats that as a fatal settings backend failure.
 
@@ -125,7 +127,7 @@ Monitor layout and background settings are active compositor consumers today. `b
 
 ## IPC Protocol
 
-The wire protocol is intentionally small and line-oriented. Clients send one request line, shut down the write side of the socket, and read the complete response.
+The wire protocol is intentionally small and line-oriented. Clients send one request line, shut down the write side of the socket, and read through the response's terminating newline. Connecting, writing, and reading share one absolute deadline, so trickled data or a full socket backlog cannot extend the exchange indefinitely. Settings reads have a 50 ms budget to limit disruption to compositor refresh; writes and the settings app's compositor reload request have a 500 ms budget. A timeout reports failure and leaves the consumer's previous settings available.
 
 Supported requests are:
 

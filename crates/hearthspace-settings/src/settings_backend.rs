@@ -1,10 +1,4 @@
-use std::{
-    env, io,
-    io::{Read, Write},
-    net::Shutdown,
-    os::unix::net::UnixStream,
-    path::PathBuf,
-};
+use std::{env, io, path::PathBuf, time::Duration};
 
 use hearthspace_ipc::{MonitorConfig, Settings, client_set_monitor_position};
 
@@ -24,12 +18,11 @@ pub(crate) fn save_monitor_positions(
 
 pub(crate) fn notify_compositor_settings_changed() -> io::Result<()> {
     let command_socket = command_socket_path()?;
-    let mut stream = UnixStream::connect(&command_socket)?;
-    stream.write_all(b"reload-settings\n")?;
-    stream.shutdown(Shutdown::Write)?;
-
-    let mut response = String::new();
-    stream.read_to_string(&mut response)?;
+    let response = hearthspace_ipc::transport::request_line(
+        &command_socket,
+        "reload-settings\n",
+        Duration::from_millis(500),
+    )?;
     if response == "ok\n" {
         Ok(())
     } else {
