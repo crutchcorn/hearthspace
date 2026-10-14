@@ -19,8 +19,9 @@ exists.
 - [x] Native shell startup is enabled.
 - [x] Secondary connectors are advertised as Wayland outputs and rendered through
       independent KMS/GBM surfaces.
-- [x] Native screenshots intentionally return a clear unsupported error until DRM
-      readback exists.
+- [x] Native screenshots read the selected output's normal GBM/GLES render
+      target and complete after its KMS page flip. The legacy PNG reply remains
+      available alongside metadata-bearing `capture` replies.
 
 ## Validation To Run On Real Hardware
 
@@ -68,12 +69,32 @@ exists.
 The agent workflow, preferred presentation-linked capture design, and acceptance
 criteria are tracked in [AI_ENABLEMENT.md](./AI_ENABLEMENT.md).
 
-- [ ] Implement native readback for command-socket screenshots.
-- [ ] Decide whether native screenshots should read back the current scanout
-      buffer, render into a separate offscreen target, or use a backend-specific
-      capture path.
-- [ ] Add tests or smoke scripts for native screenshot success once readback
-      exists.
+- [x] Implement native readback with Smithay's renderer memory-export helpers.
+- [x] Associate readback from normal output rendering with the matching output
+      page flip; do not report an independent offscreen redraw as native
+      presentation evidence.
+- [x] Return output identity, frame ID, pixel dimensions, logical bounds, scale,
+      transform, and cursor policy through `capture [output-name]`; preserve
+      `screenshot` PNG-only compatibility.
+- [x] Include the software/client cursor from the framebuffer or overlay the
+      sampled hardware cursor once, clipped to its actual plane buffer.
+- [x] Bound pending requests, readback dimensions, and presentation timeouts;
+      reject inactive sessions and invalidate requests when outputs disappear or
+      their configuration changes.
+- [x] Buffer partial command replies through nonblocking socket backpressure,
+      preserve deferred request order, and bound connection/input/output queues.
+- [x] Add deterministic capture-state, cursor, metadata, and transport regression
+      tests, plus an opt-in native smoke/recovery suite.
+- [ ] Record a passing unattended native observe–act–verify run with retained
+      PNGs, metadata, logs, and VT/process cleanup evidence on the VM DRM stack.
+- [ ] Validate capture on real hardware separately, including scaled/secondary
+      outputs, hardware and software cursor paths, VT transitions, and output
+      removal during a pending capture.
+
+The checked implementation items above do not certify the new native acceptance
+workflow. Track end-to-end validation and recovery evidence in
+[AI_ENABLEMENT.md](./AI_ENABLEMENT.md); the earlier hardware results in this file
+cover the native backend foundation.
 
 ## KMS Damage Clips
 
