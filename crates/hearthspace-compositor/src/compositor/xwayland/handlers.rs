@@ -1,13 +1,10 @@
+use std::os::fd::OwnedFd;
+
 use smithay::{
-    input::{Seat, SeatHandler, SeatState, dnd::DndGrabHandler, pointer::CursorImageStatus},
+    input::dnd::DndGrabHandler,
     utils::{Logical, Rectangle},
     wayland::{
-        compositor::{CompositorClientState, CompositorHandler, CompositorState},
-        pointer_constraints::PointerConstraintsHandler,
-        selection::{
-            SelectionHandler, SelectionTarget,
-            data_device::{DataDeviceHandler, DataDeviceState, WaylandDndGrabHandler},
-        },
+        selection::SelectionTarget,
         xwayland_shell::{XWaylandShellHandler, XWaylandShellState},
     },
     xwayland::{
@@ -16,9 +13,9 @@ use smithay::{
     },
 };
 use tracing::{debug, warn};
-use wayland_server::{Client, Resource, protocol::wl_surface::WlSurface};
+use wayland_server::{Resource, protocol::wl_surface::WlSurface};
 
-use crate::compositor::{App, CalloopData, DragState, WindowDecoration, windows::ResizeEdges};
+use crate::compositor::{App, DragState, WindowDecoration, windows::ResizeEdges};
 
 impl XWaylandShellHandler for App {
     fn xwayland_shell_state(&mut self) -> &mut XWaylandShellState {
@@ -38,60 +35,6 @@ impl XWaylandShellHandler for App {
 }
 
 impl DndGrabHandler for App {}
-
-impl SelectionHandler for CalloopData {
-    type SelectionUserData = ();
-}
-
-impl WaylandDndGrabHandler for CalloopData {}
-
-impl PointerConstraintsHandler for CalloopData {}
-
-impl DataDeviceHandler for CalloopData {
-    fn data_device_state(&mut self) -> &mut DataDeviceState {
-        &mut self.state.data_device_state
-    }
-}
-
-impl SeatHandler for CalloopData {
-    type KeyboardFocus = WlSurface;
-    type PointerFocus = WlSurface;
-    type TouchFocus = WlSurface;
-
-    fn seat_state(&mut self) -> &mut SeatState<Self> {
-        &mut self.xwayland_seat_state
-    }
-
-    fn focus_changed(&mut self, _seat: &Seat<Self>, _focused: Option<&Self::KeyboardFocus>) {}
-
-    fn cursor_image(&mut self, _seat: &Seat<Self>, _image: CursorImageStatus) {}
-}
-
-impl DndGrabHandler for CalloopData {}
-
-impl CompositorHandler for CalloopData {
-    fn compositor_state(&mut self) -> &mut CompositorState {
-        &mut self.state.compositor_state
-    }
-
-    fn client_compositor_state<'a>(&self, client: &'a Client) -> &'a CompositorClientState {
-        self.state.client_compositor_state(client)
-    }
-
-    fn commit(&mut self, surface: &WlSurface) {
-        CompositorHandler::commit(&mut self.state, surface);
-    }
-}
-
-impl XWaylandShellHandler for CalloopData {
-    fn xwayland_shell_state(&mut self) -> &mut XWaylandShellState {
-        &mut self.state._xwayland_shell_state
-    }
-
-    fn surface_associated(&mut self, xwm: XwmId, wl_surface: WlSurface, surface: X11Surface) {
-        XWaylandShellHandler::surface_associated(&mut self.state, xwm, wl_surface, surface);
-    }
-}
 
 impl XwmHandler for App {
     fn xwm_state(&mut self, _xwm: XwmId) -> &mut X11Wm {
@@ -240,103 +183,32 @@ impl XwmHandler for App {
         self.focus_x11_window(&window);
     }
 
-    fn allow_selection_access(&mut self, _xwm: XwmId, _selection: SelectionTarget) -> bool {
-        false
-    }
-}
-
-impl XwmHandler for CalloopData {
-    fn xwm_state(&mut self, xwm: XwmId) -> &mut X11Wm {
-        XwmHandler::xwm_state(&mut self.state, xwm)
-    }
-
-    fn new_window(&mut self, xwm: XwmId, window: X11Surface) {
-        XwmHandler::new_window(&mut self.state, xwm, window);
-    }
-
-    fn new_override_redirect_window(&mut self, xwm: XwmId, window: X11Surface) {
-        XwmHandler::new_override_redirect_window(&mut self.state, xwm, window);
-    }
-
-    fn map_window_request(&mut self, xwm: XwmId, window: X11Surface) {
-        XwmHandler::map_window_request(&mut self.state, xwm, window);
-    }
-
-    fn map_window_notify(&mut self, xwm: XwmId, window: X11Surface) {
-        XwmHandler::map_window_notify(&mut self.state, xwm, window);
-    }
-
-    fn mapped_override_redirect_window(&mut self, xwm: XwmId, window: X11Surface) {
-        XwmHandler::mapped_override_redirect_window(&mut self.state, xwm, window);
-    }
-
-    fn unmapped_window(&mut self, xwm: XwmId, window: X11Surface) {
-        XwmHandler::unmapped_window(&mut self.state, xwm, window);
-    }
-
-    fn destroyed_window(&mut self, xwm: XwmId, window: X11Surface) {
-        XwmHandler::destroyed_window(&mut self.state, xwm, window);
-    }
-
-    fn configure_request(
-        &mut self,
-        xwm: XwmId,
-        window: X11Surface,
-        x: Option<i32>,
-        y: Option<i32>,
-        w: Option<u32>,
-        h: Option<u32>,
-        reorder: Option<Reorder>,
-    ) {
-        XwmHandler::configure_request(&mut self.state, xwm, window, x, y, w, h, reorder);
-    }
-
-    fn configure_notify(
-        &mut self,
-        xwm: XwmId,
-        window: X11Surface,
-        geometry: Rectangle<i32, Logical>,
-        above: Option<u32>,
-    ) {
-        XwmHandler::configure_notify(&mut self.state, xwm, window, geometry, above);
-    }
-
-    fn property_notify(&mut self, xwm: XwmId, window: X11Surface, property: WmWindowProperty) {
-        XwmHandler::property_notify(&mut self.state, xwm, window, property);
-    }
-
-    fn resize_request(
-        &mut self,
-        xwm: XwmId,
-        window: X11Surface,
-        button: u32,
-        resize_edge: X11ResizeEdge,
-    ) {
-        XwmHandler::resize_request(&mut self.state, xwm, window, button, resize_edge);
-    }
-
-    fn move_request(&mut self, xwm: XwmId, window: X11Surface, button: u32) {
-        XwmHandler::move_request(&mut self.state, xwm, window, button);
-    }
-
-    fn active_window_request(
-        &mut self,
-        xwm: XwmId,
-        window: X11Surface,
-        timestamp: u32,
-        currently_active_window: Option<X11Surface>,
-    ) {
-        XwmHandler::active_window_request(
-            &mut self.state,
-            xwm,
-            window,
-            timestamp,
-            currently_active_window,
-        );
-    }
-
     fn allow_selection_access(&mut self, xwm: XwmId, selection: SelectionTarget) -> bool {
-        XwmHandler::allow_selection_access(&mut self.state, xwm, selection)
+        selection == SelectionTarget::Clipboard && self.xwm_has_keyboard_focus(xwm)
+    }
+
+    fn send_selection(
+        &mut self,
+        xwm: XwmId,
+        selection: SelectionTarget,
+        mime_type: String,
+        fd: OwnedFd,
+    ) {
+        self.send_wayland_clipboard_to_x11(xwm, selection, mime_type, fd);
+    }
+
+    fn new_selection(&mut self, xwm: XwmId, selection: SelectionTarget, mime_types: Vec<String>) {
+        self.set_x11_clipboard(xwm, selection, mime_types);
+    }
+
+    fn cleared_selection(&mut self, xwm: XwmId, selection: SelectionTarget) {
+        if selection == SelectionTarget::Clipboard {
+            self.clear_x11_clipboard(xwm);
+        }
+    }
+
+    fn disconnected(&mut self, xwm: XwmId) {
+        self.xwayland_disconnected(xwm);
     }
 }
 

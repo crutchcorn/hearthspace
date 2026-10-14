@@ -163,12 +163,17 @@ Run automated regressions without taking a VT:
 ```sh
 cargo fmt --all --check
 cargo clippy --workspace --all-targets --features udev,e2e,test-apps -- -D warnings
-HEARTHSPACE_E2E=1 cargo test --workspace --all-targets --features udev,e2e,test-apps
+HEARTHSPACE_E2E=1 HEARTHSPACE_REQUIRE_ATSPI=1 cargo test --workspace --all-targets --features udev,e2e,test-apps -- --test-threads=1
 cargo build --workspace --all-targets --features udev,e2e,test-apps
 HEARTHSPACE_E2E=1 python3 -m unittest discover -s scripts/tests -v
 ```
 
 ## External Automation and Accessibility
+
+For bidirectional copy/paste between real Wayland and X11 editors, use the
+[clipboard acceptance workflow](CLIPBOARD.md#regression-workflow). Its
+`scripts/clipboard-smoke` command retains exact-text assertions alongside native
+captures and verifies launcher cleanup.
 
 The WayDriver adapter can attach to the manifest's `runtime_dir`,
 `wayland_display`, and `command_socket` without owning the native process:

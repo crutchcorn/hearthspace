@@ -282,8 +282,13 @@ impl CalloopData {
             Backend::Winit(_) => "nested",
             Backend::Headless(_) => "headless",
         };
+        #[cfg(feature = "xwayland")]
+        let xwayland_display = self.state.xdisplay.map(|number| format!(":{number}"));
+        #[cfg(not(feature = "xwayland"))]
+        let xwayland_display: Option<String> = None;
         serde_json::to_vec(&serde_json::json!({
             "version": 1, "backend": backend, "active": self.capture_active(), "outputs": outputs,
+            "xwayland_display": xwayland_display,
             "shell_ready": self.state.windows.iter().any(|w| w.kind == ManagedWindowKind::ShellBar && w.content_bbox_size.w > 0),
             "windows": self.state.automation_windows(),
         })).expect("serializable automation status")

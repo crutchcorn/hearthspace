@@ -2,7 +2,7 @@ use std::process::Stdio;
 
 use smithay::{
     wayland::compositor::CompositorHandler,
-    xwayland::{X11Surface, X11Wm, XWayland, XWaylandEvent},
+    xwayland::{X11Surface, XWayland, XWaylandEvent},
 };
 use tracing::{error, info, trace, warn};
 use wayland_server::DisplayHandle;
@@ -12,6 +12,8 @@ use super::{
     windows::position_for_new_window,
 };
 
+mod clipboard;
+mod dispatch;
 mod handlers;
 
 impl App {
@@ -41,15 +43,13 @@ impl App {
                     data.state
                         .client_compositor_state(&client)
                         .set_client_scale(1.0);
-                    match X11Wm::start_wm(
-                        data.state.loop_handle.clone(),
+                    match data.state.start_xwm(
                         &display_handle,
                         x11_socket,
                         client.clone(),
+                        display_number,
                     ) {
-                        Ok(wm) => {
-                            data.state.xwm = Some(wm);
-                            data.state.xdisplay = Some(display_number);
+                        Ok(()) => {
                             info!(
                                 display = format_args!(":{display_number}"),
                                 "XWayland is ready"
@@ -130,6 +130,9 @@ impl App {
     }
 
     fn unmap_x11_window(&mut self, window: &X11Surface) {
+        if let Some(surface) = window.wl_surface() {
+            self.clear_keyboard_focus_for_surface(&surface);
+        }
         if let Some(managed) = self
             .windows
             .iter()

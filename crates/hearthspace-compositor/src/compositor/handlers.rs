@@ -24,10 +24,7 @@ use smithay::{
         fractional_scale::{FractionalScaleHandler, with_fractional_scale},
         output::OutputHandler,
         pointer_constraints::PointerConstraintsHandler,
-        selection::{
-            SelectionHandler,
-            data_device::{DataDeviceHandler, DataDeviceState, WaylandDndGrabHandler},
-        },
+        selection::data_device::set_data_device_focus,
         shell::xdg::{
             PopupSurface, PositionerState, ToplevelSurface, XdgShellHandler, XdgShellState,
             decoration::XdgDecorationHandler,
@@ -48,6 +45,7 @@ use wayland_server::{
 use super::{
     App, ClientState, DragState, ManagedSurface, ManagedWindow, ManagedWindowKind,
     WindowDecoration,
+    focus::KeyboardFocusTarget,
     idle::ActivityReason,
     windows::{
         ResizeEdges, decoration_for_new_window, position_for_new_window,
@@ -191,7 +189,7 @@ impl XdgShellHandler for App {
         let Ok(root) = find_popup_root_surface(&kind) else {
             return;
         };
-        let mut grab = match self.popups.grab_popup(root, kind, &seat, serial) {
+        let mut grab = match self.popups.grab_popup(root.into(), kind, &seat, serial) {
             Ok(grab) => grab,
             Err(_) => return,
         };
@@ -234,6 +232,7 @@ impl XdgShellHandler for App {
     }
 
     fn toplevel_destroyed(&mut self, surface: ToplevelSurface) {
+        self.clear_keyboard_focus_for_surface(surface.wl_surface());
         if let Some(window) = self
             .windows
             .iter()
@@ -356,18 +355,6 @@ impl DmabufHandler for App {
     }
 }
 
-impl SelectionHandler for App {
-    type SelectionUserData = ();
-}
-
-impl DataDeviceHandler for App {
-    fn data_device_state(&mut self) -> &mut DataDeviceState {
-        &mut self.data_device_state
-    }
-}
-
-impl WaylandDndGrabHandler for App {}
-
 impl CompositorHandler for App {
     fn compositor_state(&mut self) -> &mut CompositorState {
         &mut self.compositor_state
@@ -468,7 +455,7 @@ impl OutputHandler for App {}
 impl PointerConstraintsHandler for App {}
 
 impl SeatHandler for App {
-    type KeyboardFocus = WlSurface;
+    type KeyboardFocus = KeyboardFocusTarget;
     type PointerFocus = WlSurface;
     type TouchFocus = WlSurface;
 
@@ -476,7 +463,13 @@ impl SeatHandler for App {
         &mut self.seat_state
     }
 
-    fn focus_changed(&mut self, _seat: &Seat<Self>, _focused: Option<&WlSurface>) {}
+    fn focus_changed(&mut self, seat: &Seat<Self>, focused: Option<&KeyboardFocusTarget>) {
+        set_data_device_focus(
+            &self.display_handle,
+            seat,
+            focused.and_then(|focus| focus.surface().client()),
+        );
+    }
 
     fn cursor_image(&mut self, _seat: &Seat<Self>, image: CursorImageStatus) {
         match image {

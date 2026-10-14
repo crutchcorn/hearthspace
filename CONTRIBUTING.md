@@ -33,6 +33,12 @@ I develop Hearthspace on Ubuntu 26.04 LTS, and I run it in a nested Wayland comp
 
 As such, while my CPU, GPU, and RAM are all quite spec'd up, the VM is not a perfect representation of a real Linux system. Native DRM/KMS testing currently runs through a virtual Parallels/virgl stack, so real-hardware validation is still required for GPU, KMS, hotplug, and VT behavior. I also cannot test Wayland gestures reliably in the VM, so I have to run with `--scroll-zooms` to test zooming the canvas using the scroll wheel without a modifier key.
 
+Agent-driven native tests also run on a physical GPD host with AMD Strix
+Radeon 880M/890M graphics, the `amdgpu` driver, and Linux `7.0.0-38-generic`.
+The Rust 1.99/dependency upgrade passed desktop and clipboard acceptance there
+on `eDP-1` at 2560×1600 with scale 2, using a spare VT and restoring the original
+desktop after each run. See [Native Testing](./docs/NATIVE_TESTING.md).
+
 ### Required Packages
 
 I develop Hearthspace on Ubuntu 26.04 LTS, and the following packages are required to build and run the compositor and shell:
@@ -67,8 +73,9 @@ checkout. No system package files were overwritten. Verify with `rustc
 For E2E testing, the WayDriver adapter depends on the published `waydriver` crate, which
 links GStreamer even when the Hearthspace backend overrides screenshot capture.
 Install the development packages before building tests that include
-`waydriver-hearthspace`. Those crates are gated behind the Cargo feature `e2e`,
-so normal builds and CI do not require GStreamer:
+`waydriver-hearthspace`. The compositor gates its adapter behind the Cargo
+feature `e2e`; full workspace checks and CI also build the adapter crate itself
+and therefore require GStreamer:
 
 ```sh
 sudo apt-get install -y libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev
@@ -181,6 +188,11 @@ cargo test -p hearthspace-compositor --features test-apps
 ```
 
 Without `test-apps`, `--gtk-test-app` and the shell `A11yTest` action report that the binary must be rebuilt with `--features test-apps`.
+
+The same feature builds `hearthspace-clipboard-test`, a GTK editor used to verify
+copy/paste between Wayland and XWayland. It requires the GTK headers and Xwayland
+runtime listed above. See [clipboard regression testing](./docs/CLIPBOARD.md)
+for the headless test and native VT workflow.
 
 ### Workspace Packages
 
@@ -400,7 +412,11 @@ with AT-SPI only while screen-reader status is active.
 See [docs/E2E_TESTING.md](./docs/E2E_TESTING.md) for the evergreen technical
 architecture of the headless and WayDriver E2E harness.
 
-### Xilem Git Dependency
+### Compositor and UI Git Dependencies
+
+Smithay is pinned directly to upstream commit
+`5c2ba4132556a08abc70ae1771d275ec2cfc031f`, which includes the X11 INCR header
+fix needed for large clipboard transfers. No vendored Smithay copy is required.
 
 The shell UI, settings app, UI storybook, and shared UI components are built
 with [Xilem](https://github.com/linebender/xilem). We depend on upstream Xilem
@@ -411,9 +427,14 @@ Wayland `app_id` / X11 `WM_CLASS`.
 Keep these dependencies pinned to an explicit commit until intentionally
 updating Xilem and rerunning the full workspace checks.
 
+The direct Naga 28 and Fontique 0.8 dependencies intentionally match the versions
+used by this Xilem revision. They enable required features in the existing
+dependency graph; independently moving them to newer major versions would
+introduce separate copies and leave the required features disabled.
+
 ```toml
-masonry = { git = "https://github.com/linebender/xilem", rev = "c5950bcb03d4f3d187a20d1159f6aa276fd056bf", features = ["testing"] }
-xilem = { git = "https://github.com/linebender/xilem", rev = "c5950bcb03d4f3d187a20d1159f6aa276fd056bf" }
+masonry = { git = "https://github.com/linebender/xilem", rev = "271a27a6d4a930f7878d404f9014e3c50a3a9b88", features = ["testing"] }
+xilem = { git = "https://github.com/linebender/xilem", rev = "271a27a6d4a930f7878d404f9014e3c50a3a9b88" }
 ```
 
 No local Xilem clone is required for normal development; Cargo fetches the git
