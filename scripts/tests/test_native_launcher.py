@@ -113,6 +113,15 @@ class NativeServiceTests(unittest.TestCase):
             ):
                 service.exec_session("ignored")
             env = execute.call_args.args[2]
+            self.assertEqual(
+                execute.call_args.args[1][:4],
+                [
+                    "/usr/bin/setpriv",
+                    "--ambient-caps=-all",
+                    "--inh-caps=-all",
+                    "/usr/bin/dbus-run-session",
+                ],
+            )
             self.assertEqual(env["XDG_RUNTIME_DIR"], saved["runtime_dir"])
             self.assertEqual(env["WAYLAND_DISPLAY"], saved["wayland_display"])
             self.assertEqual(env["HEARTHSPACE_HOST_XDG_RUNTIME_DIR"], "/run/user/1000")

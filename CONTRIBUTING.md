@@ -240,6 +240,14 @@ The settings daemon and Hearthspace Settings retain their authoritative paths.
 Ordinary native sessions leave application configuration and GSettings defaults
 unchanged. This isolates XDG-aware app preferences; it is not a filesystem sandbox.
 
+Hearthspace discards inherited ambient, inheritable, effective, and permitted
+Linux capabilities before starting the private bus or desktop processes. On this
+Ubuntu host, PAM grants `CAP_WAKE_ALARM`; passing it to GTK's Glycin image loader
+causes Bubblewrap to fail with `Unexpected capabilities but not setuid`. The
+native harness uses `/usr/bin/setpriv` (from `util-linux`) before `dbus-run-session`
+for the same reason. Keep the capability bounding set and normal sudo/polkit
+authentication intact; no system PAM policy or image-loader sandbox is disabled.
+
 The settings app uses `rfd` for file selection. On Linux, `rfd` is built with
 its XDG Desktop Portal backend and falls back to `zenity` if the portal request
 fails. Hearthspace gives session children a private `XDG_RUNTIME_DIR` and strips

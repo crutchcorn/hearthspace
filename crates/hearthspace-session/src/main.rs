@@ -9,6 +9,7 @@ mod desktop_entries;
 mod desktop_services;
 mod dev_cargo;
 mod portal_cleanup;
+mod privileges;
 mod process;
 mod profile_env;
 mod readiness;
@@ -25,6 +26,7 @@ use signals::install_signal_handler;
 use supervisor::Supervisor;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    privileges::clear_inherited()?;
     let args = Args::parse();
     initialize_tracing(&args.log_level);
 

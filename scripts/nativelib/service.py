@@ -199,6 +199,11 @@ def exec_session(state_file):
     env["XDG_CURRENT_DESKTOP"] = "Hearthspace"
     supervisor = str(Path(state["binary_dir"]) / "hearthspace-session")
     args = [
+        # PAM may grant CAP_WAKE_ALARM. Clear inherited/ambient grants before
+        # exec so the private bus and sandboxed GTK loaders are ordinary users.
+        "/usr/bin/setpriv",
+        "--ambient-caps=-all",
+        "--inh-caps=-all",
         "/usr/bin/dbus-run-session",
         "--",
         supervisor,
