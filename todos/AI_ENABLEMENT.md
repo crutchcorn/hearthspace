@@ -186,14 +186,10 @@ unrelated XWayland polish are outside this first automation milestone.
 
 ## Validation Record
 
-The final workspace gate is still open. The workspace test run exposed a zbus
-executor feature conflict and a host AT-SPI connection error. The `async-io`
-dependency and private-bus test fixture changes address those failures; the
-retained `/tmp/hearthspace-ai-zbus-tests.log` records passing workspace tests.
-The current agent sandbox prevents Unix-socket binding and privileged VT
-operations, so its integration-test failures cannot establish compositor
-behavior. Final validation and remaining commits require restoring the execution
-permissions used for the native runs below.
+All required validation gates passed with the execution permissions needed for
+Unix sockets and privileged VT operations. The WayDriver dependency uses the
+same `async-io` executor as the compositor, and integration tests use a private
+accessibility bus to avoid interference with the host desktop.
 
 Native validation ran on 2026-10-14 on real GPD hardware, with AMD Radeon
 880M/890M graphics using `amdgpu`, Linux `7.0.0-38-generic`, and `eDP-1` at

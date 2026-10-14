@@ -45,10 +45,11 @@ scripts/hearthspace-agent --session /tmp/hearthspace-run-1 screenshot /tmp/heart
 
 Start builds the session supervisor, native compositor, shell, and settings
 daemon before changing VTs. `start --no-build` explicitly uses existing debug
-binaries; use it only after building the required native features. The manifest
-records binary hashes, runtime/socket paths, VT identity, process IDs, and output
-metadata. Readiness requires responsive control and settings sockets, a mapped
-shell surface, and a successful native capture.
+binaries; use it only after building the required native features. `binaries.json`
+records binary paths and hashes. The session manifest records runtime/socket
+paths, VT identity, process IDs, and output metadata. Readiness requires
+responsive control and settings sockets, a mapped shell surface, and a successful
+native capture.
 
 The watchdog is an absolute maximum session lifetime in seconds, independent of
 agent activity. Choose a lifetime long enough for the test. It deliberately ends
