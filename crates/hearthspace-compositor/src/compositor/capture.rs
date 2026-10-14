@@ -170,7 +170,6 @@ impl CaptureState {
         }
     }
 
-    #[cfg(feature = "udev")]
     pub(super) fn invalidate(&mut self, message: &str) {
         let names: Vec<_> = self
             .pending
@@ -216,6 +215,10 @@ impl CaptureState {
 
 impl CalloopData {
     pub(super) fn maintain_captures(&mut self) {
+        if self.state.session_locked() {
+            self.captures.invalidate("session is locked");
+            return;
+        }
         self.captures
             .maintain(&self.state.capture_outputs(), self.capture_active());
     }
@@ -239,6 +242,9 @@ impl CalloopData {
     }
 
     pub(super) fn request_capture(&mut self, name: Option<&str>, metadata: bool) -> ControlReply {
+        if self.state.session_locked() {
+            return ControlReply::Err("session is locked".into());
+        }
         if !self.capture_active() {
             return ControlReply::Err("native session is inactive".into());
         }
@@ -280,12 +286,21 @@ impl CalloopData {
             Backend::Winit(_) => "nested",
             Backend::Headless(_) => "headless",
         };
+        if self.state.session_locked() {
+            return serde_json::to_vec(&serde_json::json!({
+                "version": 1, "backend": backend, "active": self.capture_active(),
+                "locked": true, "lock_confirmed": self.state.lock_confirmed(),
+                "windows": [], "outputs": [],
+            }))
+            .expect("serializable locked status");
+        }
         #[cfg(feature = "xwayland")]
         let xwayland_display = self.state.xdisplay.map(|number| format!(":{number}"));
         #[cfg(not(feature = "xwayland"))]
         let xwayland_display: Option<String> = None;
         serde_json::to_vec(&serde_json::json!({
             "version": 1, "backend": backend, "active": self.capture_active(), "outputs": outputs,
+            "locked": false, "lock_confirmed": false,
             "xwayland_display": xwayland_display,
             "viewport": {
                 "x": self.state.viewport_offset.x,

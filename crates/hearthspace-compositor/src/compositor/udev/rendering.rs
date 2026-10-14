@@ -23,6 +23,9 @@ impl UdevBackendState {
         force_full_redraw: bool,
         captures: &mut CaptureState,
     ) -> Result<bool, Box<dyn std::error::Error>> {
+        if state.session_locked() {
+            captures.invalidate("session is locked");
+        }
         if self.drm_commits_paused {
             debug!("skipping native render while DRM commits are paused");
             self.frame_dirty = true;
@@ -118,6 +121,7 @@ impl UdevBackendState {
             if let Some((metadata, png, cursor_source)) = capture {
                 captures.stage(metadata, png, cursor_source);
             }
+            output.lock_frame_generation = state.lock_frame_generation();
             output.frame_pending = true;
             output.frame_dirty = false;
             submitted = true;
@@ -140,6 +144,7 @@ impl UdevBackendState {
         &mut self,
         crtc: crtc::Handle,
         metadata: Option<&DrmEventMetadata>,
+        state: &mut crate::compositor::App,
         captures: &mut CaptureState,
     ) -> Result<Option<bool>, Box<dyn std::error::Error>> {
         let Some(device) = self.primary_device.as_mut() else {
@@ -165,7 +170,14 @@ impl UdevBackendState {
             // Only acknowledge a frame that this surface actually submitted.
             return Ok(None);
         }
-        captures.presented(output.target.connector_name(), "page-flip");
+        if state.session_locked() {
+            captures.invalidate("session is locked");
+        } else {
+            captures.presented(output.target.connector_name(), "page-flip");
+        }
+        if let Some(generation) = output.lock_frame_generation.take() {
+            state.lock_frame_presented(output.target.connector_name(), generation);
+        }
         output.frame_pending = false;
         self.frame_pending = device.any_frame_pending();
         self.repaint_pending = self.frame_pending;

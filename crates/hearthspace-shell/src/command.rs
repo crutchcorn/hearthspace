@@ -32,6 +32,7 @@ impl SpawnTarget {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ShellCommand {
+    LockSession,
     ListApps,
     ListWindows,
     FocusWindow(u64),
@@ -83,6 +84,7 @@ impl ShellCommand {
 
     pub fn label(&self) -> &'static str {
         match self {
+            Self::LockSession => "LOCK",
             Self::ListApps => "APPS",
             Self::ListWindows => "WINDOWS",
             Self::FocusWindow(_) => "FOCUS",
@@ -120,6 +122,7 @@ impl ShellCommand {
 
     pub fn wire_name(&self) -> String {
         match self {
+            Self::LockSession => "lock-session".into(),
             Self::ListApps => "apps".into(),
             Self::ListWindows => "windows".into(),
             Self::FocusWindow(id) => format!("focus-window {id}"),
@@ -187,6 +190,7 @@ impl ShellCommand {
         let command = parts.next()?;
 
         let parsed = match command {
+            "lock-session" => Self::LockSession,
             "apps" => Self::ListApps,
             "windows" => Self::ListWindows,
             "focus-window" => Self::FocusWindow(parts.next()?.parse().ok()?),

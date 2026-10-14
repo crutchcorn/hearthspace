@@ -3,6 +3,7 @@ use super::*;
 #[test]
 fn window_commands_round_trip_without_ignoring_extra_arguments() {
     for command in [
+        ShellCommand::LockSession,
         ShellCommand::ListApps,
         ShellCommand::ListWindows,
         ShellCommand::FocusWindow(17),

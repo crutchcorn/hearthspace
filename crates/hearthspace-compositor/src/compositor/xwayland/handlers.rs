@@ -177,6 +177,9 @@ impl XwmHandler for App {
         _button: u32,
         resize_edge: X11ResizeEdge,
     ) {
+        if self.session_locked() {
+            return;
+        }
         let Some(index) = self.window_index_for_x11(&window) else {
             return;
         };
@@ -188,6 +191,9 @@ impl XwmHandler for App {
     }
 
     fn move_request(&mut self, _xwm: XwmId, window: X11Surface, _button: u32) {
+        if self.session_locked() {
+            return;
+        }
         let Some(index) = self.window_index_for_x11(&window) else {
             return;
         };

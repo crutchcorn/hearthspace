@@ -21,6 +21,9 @@ mod navigation;
 #[path = "support/session_bus.rs"]
 mod session_bus;
 #[cfg(feature = "test-apps")]
+#[path = "support/session_lock.rs"]
+mod session_lock;
+#[cfg(feature = "test-apps")]
 #[path = "support/window_states.rs"]
 mod window_states;
 

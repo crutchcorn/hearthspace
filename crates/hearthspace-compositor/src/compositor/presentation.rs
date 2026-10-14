@@ -90,6 +90,9 @@ impl App {
         maximized: Option<bool>,
         output: Option<String>,
     ) -> Result<(), String> {
+        if self.session_locked() {
+            return Err("session is locked".into());
+        }
         let index = self
             .windows
             .iter()

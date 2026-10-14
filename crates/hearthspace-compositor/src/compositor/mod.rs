@@ -24,6 +24,7 @@ mod output;
 mod presentation;
 mod rendering;
 mod runtime;
+mod session_lock;
 mod shell_integration;
 #[cfg(feature = "udev")]
 mod udev;
@@ -249,6 +250,7 @@ struct App {
     seat_state: SeatState<Self>,
     data_device_state: DataDeviceState,
     primary_selection_state: PrimarySelectionState,
+    session_lock: session_lock::LockState,
     _seat: Seat<Self>,
     pointer: PointerHandle<Self>,
     keyboard: KeyboardHandle<Self>,
@@ -595,6 +597,13 @@ pub(in crate::compositor) fn initialize_app(
         seat_state,
         data_device_state: DataDeviceState::new::<App>(&dh),
         primary_selection_state: PrimarySelectionState::new::<App>(&dh),
+        session_lock: session_lock::LockState::new(
+            &dh,
+            !matches!(
+                crate::selected_backend(options.backend),
+                crate::BackendSelection::Winit
+            ),
+        ),
         _seat: seat,
         pointer,
         keyboard,

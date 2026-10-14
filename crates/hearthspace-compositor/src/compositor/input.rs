@@ -89,6 +89,10 @@ pub(in crate::compositor) fn handle_input_event<B: InputBackend>(
             );
         }
         InputEvent::PointerButton { event } => {
+            if state.session_locked() {
+                state.deliver_lock_button(event.button_code(), event.state(), event.time());
+                return;
+            }
             if event.state() == ButtonState::Pressed {
                 state.interrupt_pinch_zoom();
             }

@@ -164,6 +164,9 @@ impl XdgShellHandler for App {
     }
 
     fn move_request(&mut self, surface: ToplevelSurface, _seat: wl_seat::WlSeat, _serial: Serial) {
+        if self.session_locked() {
+            return;
+        }
         let Some(window_index) = self
             .windows
             .iter()
@@ -202,6 +205,9 @@ impl XdgShellHandler for App {
         _serial: Serial,
         edges: xdg_toplevel::ResizeEdge,
     ) {
+        if self.session_locked() {
+            return;
+        }
         let edges = ResizeEdges::from(edges);
         if edges.is_empty() {
             return;
@@ -233,6 +239,9 @@ impl XdgShellHandler for App {
     }
 
     fn grab(&mut self, surface: PopupSurface, seat: wl_seat::WlSeat, serial: Serial) {
+        if self.session_locked() {
+            return;
+        }
         // Set up a popup grab so the menu behaves modally: keyboard and pointer
         // input route to the popup, and clicking elsewhere dismisses it.
         let Some(seat) = Seat::<Self>::from_resource(&seat) else {
@@ -507,6 +516,8 @@ impl CompositorHandler for App {
             warn!(%err, "failed to send initial popup configure");
         }
         self.refresh_window_content_bbox(surface);
+        self.configure_shell_palette_size(surface);
+        self.lock_surface_committed(surface);
         self.finish_presentation_restore(surface);
         self.refresh_window_mapping(surface);
         self.reanchor_resize(surface);

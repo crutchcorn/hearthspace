@@ -44,6 +44,10 @@ impl App {
         button: u32,
         state: ButtonState,
     ) {
+        if self.session_locked() {
+            self.deliver_lock_button(button, state, InputTime::now());
+            return;
+        }
         trace!(button, ?state, "synthesizing pointer button");
         if state == ButtonState::Pressed {
             self.interrupt_pinch_zoom();
@@ -225,6 +229,10 @@ impl App {
             self.request_redraw();
         }
 
+        if self.session_locked() {
+            self.lock_pointer_motion(time);
+            return;
+        }
         if let Some(drag) = self.drag.as_ref() {
             let delta = self.raw_pointer_location - drag.pointer_start;
             let new_position = crate::geometry::CanvasPoint {
@@ -305,6 +313,10 @@ impl App {
             self.request_redraw();
         }
 
+        if self.session_locked() {
+            self.lock_pointer_motion(InputTime::now());
+            return;
+        }
         let hit = self.hit_test(self.pointer_location);
         if !matches!(hit, Some(HitTarget::Client { .. })) {
             self.cursor_surface = None;

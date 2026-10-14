@@ -27,7 +27,8 @@ impl App {
     }
 
     pub(super) fn navigation_available(&self) -> bool {
-        !self.keyboard.is_grabbed()
+        !self.session_locked()
+            && !self.keyboard.is_grabbed()
             && !self.pointer.is_grabbed()
             && self.drag.is_none()
             && self.resize.is_none()

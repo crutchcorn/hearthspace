@@ -3,7 +3,7 @@ use smithay::{
     utils::{Logical, Physical, Point, Rectangle, SERIAL_COUNTER, Size},
     wayland::{
         compositor::{TraversalAction, with_states, with_surface_tree_downward},
-        selection::data_device::set_data_device_focus,
+        selection::{data_device::set_data_device_focus, primary_selection::set_primary_focus},
         shell::xdg::{ToplevelSurface, XdgToplevelSurfaceData},
     },
 };
@@ -20,6 +20,7 @@ use hearthspace_common::{launcher_output_name_from_app_id, shell_bar_output_name
 mod geometry;
 mod hit_testing;
 mod ordering;
+mod shell_size;
 
 pub(super) use geometry::{ResizeEdges, resize_cursor_icon};
 use ordering::normal_insert_index_for_kinds;
@@ -138,6 +139,9 @@ pub(super) fn decoration_for_new_window(kind: ManagedWindowKind) -> WindowDecora
 
 impl App {
     pub(super) fn set_keyboard_focus_to_window(&mut self, window_index: usize, surface: WlSurface) {
+        if self.session_locked() {
+            return;
+        }
         debug!(window_id = self.windows[window_index].id, kind = ?self.windows[window_index].kind, "setting keyboard focus to window");
         let focus = KeyboardFocusTarget::for_window(&self.windows[window_index].surface, surface);
         let keyboard = self.keyboard.clone();
@@ -166,6 +170,7 @@ impl App {
         if keyboard.current_focus().is_none() {
             self.sync_window_activation(None);
             set_data_device_focus(&self.display_handle, &self._seat, None);
+            set_primary_focus(&self.display_handle, &self._seat, None);
         }
     }
 
@@ -174,6 +179,9 @@ impl App {
         window_index: usize,
         reason: ActivityReason,
     ) {
+        if self.session_locked() {
+            return;
+        }
         let Some(window) = self.windows.get(window_index) else {
             return;
         };
@@ -364,6 +372,7 @@ impl App {
             }
         }
         self.reconcile_window_presentations();
+        self.reconfigure_lock_outputs();
     }
 
     pub(super) fn request_redraw(&mut self) {

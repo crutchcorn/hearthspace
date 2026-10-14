@@ -2336,6 +2336,7 @@ dependencies = [
  "tracing-subscriber",
  "waydriver",
  "waydriver-hearthspace",
+ "wayland-client",
  "wayland-protocols",
  "wayland-server",
  "xcursor",

@@ -7,6 +7,9 @@ impl App {
     /// Both physical and control-socket input enter the same policy after wheel
     /// steps have been converted into logical scroll pixels.
     pub(super) fn zoom_from_scroll_amount(&mut self, vertical: Option<f64>) -> bool {
+        if self.session_locked() {
+            return false;
+        }
         let super_active = self.keyboard.modifier_state().logo
             || self.keyboard.with_pressed_keysyms(|pressed| {
                 pressed

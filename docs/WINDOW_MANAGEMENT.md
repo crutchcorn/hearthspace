@@ -60,6 +60,7 @@ actions return an error until the popup is dismissed.
 | Super+0 | Reset zoom and reveal the focused window |
 | Super+F | Toggle fullscreen |
 | Super+M | Toggle maximized state |
+| Super+L | Lock the native session |
 
 Application shortcuts such as F11 continue to reach the client. Real and
 synthetic keyboard events share the same compositor shortcut policy.

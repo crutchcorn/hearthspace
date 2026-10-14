@@ -96,6 +96,9 @@ impl PinchZoom {
 
 impl App {
     pub(super) fn pinch_blocked(&self) -> bool {
+        if self.session_locked() {
+            return true;
+        }
         self.drag.is_some()
             || self.resize.is_some()
             || self.pointer.is_grabbed()

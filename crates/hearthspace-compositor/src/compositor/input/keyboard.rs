@@ -16,6 +16,7 @@ pub(in crate::compositor) struct KeyboardShortcuts {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Shortcut {
+    Lock,
     Terminal,
     Launcher,
     Next,
@@ -94,6 +95,7 @@ impl App {
 
     fn run_shortcut(&mut self, shortcut: Shortcut) {
         let command = match shortcut {
+            Shortcut::Lock => ShellCommand::LockSession,
             Shortcut::Terminal => ShellCommand::Spawn(SpawnTarget::Foot),
             Shortcut::Launcher => ShellCommand::FocusLauncher,
             Shortcut::Next => ShellCommand::FocusNextWindow,
@@ -154,6 +156,7 @@ fn shortcut(modifiers: &ModifiersState, symbol: u32) -> Option<Shortcut> {
         return None;
     }
     match symbol {
+        keysyms::KEY_l => Some(Shortcut::Lock),
         keysyms::KEY_Return => Some(Shortcut::Terminal),
         keysyms::KEY_space => Some(Shortcut::Launcher),
         keysyms::KEY_Left => Some(Shortcut::Left),
@@ -181,6 +184,7 @@ mod tests {
             Some(Shortcut::Terminal)
         );
         assert_eq!(shortcut(&mods, keysyms::KEY_0), Some(Shortcut::Reset));
+        assert_eq!(shortcut(&mods, keysyms::KEY_l), Some(Shortcut::Lock));
         assert_eq!(shortcut(&mods, keysyms::KEY_a), None);
         mods.ctrl = true;
         assert_eq!(shortcut(&mods, keysyms::KEY_Return), None);

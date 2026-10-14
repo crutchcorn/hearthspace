@@ -24,7 +24,7 @@ impl App {
         }
         self.touch_input.down(device, slot, location);
         // Do not let a new direct-touch sequence take over an existing grab.
-        if first && self.pinch_blocked() {
+        if first && self.pinch_blocked() && !self.session_locked() {
             let actions = self.touch_input.interrupt();
             self.apply_touch_actions(actions, time);
         }

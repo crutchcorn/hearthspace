@@ -26,6 +26,7 @@ use wayland_server::protocol::wl_surface;
 use super::{App, ManagedWindowKind, masonry_titlebar, windows::window_title};
 
 mod background;
+mod lock;
 mod order;
 
 pub(in crate::compositor) use background::BackgroundImageTile;
@@ -109,7 +110,7 @@ impl App {
         // Background tiles are wallpaper pixels, not client logical pixels, so
         // they opt out of monitor DPI scaling while still being translated into
         // this output's framebuffer-local coordinate space.
-        let tiles = if self.fullscreen_on_output(output_rect) {
+        let tiles = if self.session_locked() || self.fullscreen_on_output(output_rect) {
             Vec::new()
         } else {
             self.background_image_elements(renderer, output_rect, output_scale)
@@ -145,6 +146,9 @@ impl App {
         renderer: &mut GlesRenderer,
         output_rect: Rectangle<i32, Logical>,
     ) -> Vec<HearthspaceRenderElement> {
+        if self.session_locked() {
+            return self.collect_lock_elements(renderer, output_rect);
+        }
         self.refresh_normal_window_outputs();
         self.refresh_fractional_scales();
 

@@ -16,6 +16,9 @@ impl App {
         &self,
         location: Point<f64, Logical>,
     ) -> Option<HitTarget> {
+        if self.session_locked() {
+            return None;
+        }
         // Shell chrome (the bar and the launcher palette) is drawn in screen
         // space above the canvas, so it is hit-tested first using each surface's
         // own screen-space origin.

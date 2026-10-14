@@ -93,6 +93,9 @@ pub(in crate::compositor) enum ControlReply {
 
 impl CalloopData {
     fn run_command_text(&mut self, text: &str) -> ControlReply {
+        if self.state.session_locked() && text != "status" && text != "quit" {
+            return ControlReply::Err("session is locked".into());
+        }
         if text == "clipboard-set" {
             return self.state.set_clipboard_text("");
         }

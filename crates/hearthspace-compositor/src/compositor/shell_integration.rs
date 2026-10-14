@@ -53,11 +53,15 @@ pub(super) fn spawn_shell(command_socket_path: &PathBuf) {
 
 impl App {
     pub(super) fn run_control_action(&mut self, action: ShellCommand) -> ControlReply {
+        if self.session_locked() {
+            return ControlReply::Err("session is locked".into());
+        }
         let command = action.wire_name();
         debug!(%command, "running app control action");
         self.advance_viewport_animation();
 
         match action {
+            ShellCommand::LockSession => return action_reply(self.launch_session_locker()),
             ShellCommand::ListWindows => return ControlReply::Payload(self.window_list_json()),
             ShellCommand::FocusWindow(id) => return action_reply(self.focus_window(id)),
             ShellCommand::CloseWindow(id) => return action_reply(self.close_window(id)),
