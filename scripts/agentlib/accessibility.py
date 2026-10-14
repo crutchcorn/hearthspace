@@ -15,7 +15,8 @@ def run_accessibility(args, control, deadline):
     if not bus:
         raise ControlError("session manifest has no private D-Bus address")
     # Reject stale session manifests before enabling or acting on accessibility.
-    control.status()
+    if control.status().get("locked") is True:
+        raise ControlError("session is locked; accessibility is unavailable")
     binary = Path(manifest["binary_dir"]) / "hearthspace-a11y"
     if not binary.is_file():
         raise ControlError(

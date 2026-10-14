@@ -13,6 +13,32 @@ from agentlib.control import ControlError, Deadline
 
 
 class AccessibilityTests(unittest.TestCase):
+    def test_locked_session_never_accesses_private_app_semantics(self):
+        with tempfile.TemporaryDirectory() as directory:
+            session = Path(directory)
+            (session / "session.json").write_text(
+                json.dumps(
+                    {
+                        "dbus_session_bus_address": "unix:path=/private/bus",
+                        "binary_dir": directory,
+                    }
+                )
+            )
+            for operation in ("snapshot", "find", "activate"):
+                arguments = ["--session", directory, "a11y", operation]
+                if operation != "snapshot":
+                    arguments.append("//*[@name='Secret']")
+                args = parser().parse_args(arguments)
+                control = Mock()
+                control.status.return_value = {"locked": True}
+                with (
+                    self.subTest(operation=operation),
+                    patch("agentlib.accessibility.subprocess.run") as run,
+                    self.assertRaisesRegex(ControlError, "session is locked"),
+                ):
+                    run_accessibility(args, control, Deadline(5))
+                run.assert_not_called()
+
     def test_explicit_session_bus_is_required_without_host_fallback(self):
         args = parser().parse_args(["--socket", "/tmp/socket", "a11y", "snapshot"])
         with self.assertRaisesRegex(ControlError, "requires --session"):
