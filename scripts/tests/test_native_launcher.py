@@ -343,6 +343,7 @@ class NativeReadinessTests(unittest.TestCase):
                 watchdog=60,
                 no_build=True,
                 compositor=None,
+                log_level="info",
             )
             # Permit an existing fixture manifest only for simulating acceptance.
             with (
@@ -369,6 +370,7 @@ class NativeReadinessTests(unittest.TestCase):
                 watchdog=60,
                 no_build=True,
                 compositor=None,
+                log_level="info",
             )
             with (
                 patch.object(cli, "preflight"),

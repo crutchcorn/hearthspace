@@ -39,6 +39,7 @@ def parser():
             )
             command.add_argument("--no-build", action="store_true")
             command.add_argument("--compositor", type=Path)
+            command.add_argument("--log-level", default="info")
     for name in ("_exec", "_recover", "_stop"):
         command = commands.add_parser(name)
         command.add_argument("--state", required=True, type=Path)
@@ -144,6 +145,8 @@ def start(args):
                 args.timeout,
                 "--watchdog",
                 args.watchdog,
+                "--log-level",
+                args.log_level,
                 *extra,
             ],
         )

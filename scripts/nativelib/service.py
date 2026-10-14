@@ -142,6 +142,7 @@ def launch(args):
             "vt": choose_vt(),
             "watchdog": args.watchdog,
             "startup_timeout": args.timeout,
+            "log_level": args.log_level,
             "binary_dir": str(Path(args.binary_dir).resolve()),
             "started_at": time.time(),
             "compositor": str(args.compositor.resolve()) if args.compositor else None,
@@ -208,6 +209,8 @@ def exec_session(state_file):
         state["binary_dir"],
         "--startup-timeout",
         str(max(1, int(state["startup_timeout"]))),
+        "--log-level",
+        state.get("log_level", "info"),
         "--no-watch-apps",
         "--private-session-bus",
     ]
