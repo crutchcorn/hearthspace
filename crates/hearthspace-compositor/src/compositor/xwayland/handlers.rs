@@ -165,6 +165,7 @@ impl XwmHandler for App {
             return;
         };
         let index = self.raise_window(index);
+        self.interrupt_pinch_zoom();
         self.drag = Some(DragState {
             window_id: self.windows[index].id,
             pointer_start: self.raw_pointer_location,

@@ -136,6 +136,7 @@ impl XdgShellHandler for App {
             window_id = self.windows[window_index].id,
             "client requested window move"
         );
+        self.interrupt_pinch_zoom();
         self.drag = Some(DragState {
             window_id: self.windows[window_index].id,
             pointer_start: self.raw_pointer_location,
@@ -203,6 +204,7 @@ impl XdgShellHandler for App {
                 return;
             }
             keyboard.set_focus(self, grab.current_grab(), serial);
+            self.interrupt_pinch_zoom();
             keyboard.set_grab(self, PopupKeyboardGrab::new(&grab), serial);
         }
 
@@ -214,6 +216,7 @@ impl XdgShellHandler for App {
                 grab.ungrab(PopupUngrabStrategy::All);
                 return;
             }
+            self.interrupt_pinch_zoom();
             pointer.set_grab(self, PopupPointerGrab::new(&grab), serial, Focus::Keep);
         }
     }

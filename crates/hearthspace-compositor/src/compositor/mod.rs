@@ -250,6 +250,7 @@ struct App {
     viewport_offset: CanvasPoint,
     viewport_scale: f64,
     viewport_animation: Option<ViewportAnimation>,
+    pinch_zoom: input::PinchZoom,
     windows: Vec<ManagedWindow>,
     next_window_id: u64,
     idle_daemon: WindowIdleDaemon,
@@ -408,7 +409,8 @@ pub fn run_winit(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> 
             info!("winit close requested; stopping compositor event loop");
             data.running = false;
         }
-        WinitEvent::Focus(_) => {}
+        WinitEvent::Focus(false) => data.state.cancel_pinch_zoom(),
+        WinitEvent::Focus(true) => {}
     })?;
 
     let wayland_display = crate::config::wayland_display_name();
@@ -580,6 +582,7 @@ pub(in crate::compositor) fn initialize_app(
         viewport_offset: CanvasPoint { x: 0, y: 0 },
         viewport_scale: 1.0,
         viewport_animation: None,
+        pinch_zoom: input::PinchZoom::default(),
         windows: Vec::new(),
         next_window_id: 1,
         idle_daemon: WindowIdleDaemon::new(WINDOW_IDLE_THRESHOLDS),

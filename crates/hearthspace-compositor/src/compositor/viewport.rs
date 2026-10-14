@@ -24,6 +24,8 @@ pub(super) struct ViewportAnimation {
 
 impl App {
     pub(super) fn start_viewport_animation(&mut self, to_offset: CanvasPoint, to_scale: f64) {
+        // Explicit shell/scroll navigation supersedes an in-progress pinch.
+        self.interrupt_pinch_zoom();
         if self.viewport_offset == to_offset
             && (self.viewport_scale - to_scale).abs() < f64::EPSILON
         {

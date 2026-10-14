@@ -289,6 +289,12 @@ impl CalloopData {
         serde_json::to_vec(&serde_json::json!({
             "version": 1, "backend": backend, "active": self.capture_active(), "outputs": outputs,
             "xwayland_display": xwayland_display,
+            "viewport": {
+                "x": self.state.viewport_offset.x,
+                "y": self.state.viewport_offset.y,
+                "scale": self.state.viewport_scale,
+                "pinch_active": self.state.pinch_zoom.is_active(),
+            },
             "shell_ready": self.state.windows.iter().any(|w| w.kind == ManagedWindowKind::ShellBar && w.content_bbox_size.w > 0),
             "windows": self.state.automation_windows(),
         })).expect("serializable automation status")

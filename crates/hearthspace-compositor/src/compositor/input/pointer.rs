@@ -53,6 +53,9 @@ impl App {
         state: ButtonState,
     ) {
         trace!(button, ?state, "synthesizing pointer button");
+        if state == ButtonState::Pressed {
+            self.interrupt_pinch_zoom();
+        }
         let time = InputTime::now();
         let is_left_button = button == 0x110;
 
@@ -293,6 +296,8 @@ impl App {
     }
 
     pub(in crate::compositor) fn reconcile_pointer_after_output_geometry_change(&mut self) {
+        // The old screen anchor is no longer meaningful after output changes.
+        self.interrupt_pinch_zoom();
         let output_rects = self.output_logical_rects();
         let previous_location = self.pointer_location;
         self.pointer_location = if self.pointer_location == Point::from((0.0, 0.0)) {

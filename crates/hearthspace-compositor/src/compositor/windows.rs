@@ -463,6 +463,7 @@ impl App {
     /// Begin an interactive resize of `window_index` along `edges`, capturing the
     /// window's starting geometry so motion deltas can be resolved against it.
     pub(super) fn start_resize(&mut self, window_index: usize, edges: ResizeEdges) {
+        self.interrupt_pinch_zoom();
         let initial_content_size = self.window_geometry_size(window_index);
         let window = &self.windows[window_index];
         debug!(

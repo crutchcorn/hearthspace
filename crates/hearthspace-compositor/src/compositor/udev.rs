@@ -157,6 +157,7 @@ pub fn run_udev(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> {
 
     handle.insert_source(session_notifier, |event, _, data| match event {
         SessionEvent::PauseSession => {
+            data.state.cancel_pinch_zoom();
             data.captures.invalidate("native session became inactive");
             if let Some(backend) = udev_backend_mut(data) {
                 backend.pause_session();

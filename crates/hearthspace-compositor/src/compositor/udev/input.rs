@@ -48,15 +48,15 @@ pub(super) fn log_input_event(event: &InputEvent<LibinputInputBackend>) {
         InputEvent::PointerMotionAbsolute { .. } => trace!("input absolute pointer motion event"),
         InputEvent::PointerButton { .. } => trace!("input pointer button event"),
         InputEvent::PointerAxis { .. } => trace!("input pointer axis event"),
+        InputEvent::GesturePinchBegin { .. }
+        | InputEvent::GesturePinchUpdate { .. }
+        | InputEvent::GesturePinchEnd { .. } => trace!("input pinch gesture event"),
         InputEvent::GestureSwipeBegin { .. }
         | InputEvent::GestureSwipeUpdate { .. }
         | InputEvent::GestureSwipeEnd { .. }
-        | InputEvent::GesturePinchBegin { .. }
-        | InputEvent::GesturePinchUpdate { .. }
-        | InputEvent::GesturePinchEnd { .. }
         | InputEvent::GestureHoldBegin { .. }
         | InputEvent::GestureHoldEnd { .. } => {
-            debug!("input gesture event ignored until native compositor state is wired");
+            debug!("input swipe/hold gesture has no compositor binding");
         }
         InputEvent::TouchDown { .. } => trace!("input touch down event"),
         InputEvent::TouchMotion { .. } => trace!("input touch motion event"),

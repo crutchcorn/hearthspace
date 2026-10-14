@@ -2,7 +2,8 @@
 
 use smithay::{
     backend::input::{
-        AbsolutePositionEvent, Axis, ButtonState, Event, InputBackend, InputEvent, InputTime,
+        AbsolutePositionEvent, Axis, ButtonState, Device, Event, GestureBeginEvent,
+        GestureEndEvent, GesturePinchUpdateEvent, InputBackend, InputEvent, InputTime,
         KeyboardKeyEvent, PointerAxisEvent, PointerButtonEvent, PointerMotionEvent, TouchEvent,
     },
     input::{
@@ -17,9 +18,11 @@ use crate::config::WHEEL_SCROLL_PIXEL_EQUIVALENT;
 
 use super::{App, DragState, HitTarget, idle::ActivityReason};
 
+mod pinch;
 mod pointer;
 mod scroll;
 
+pub(super) use pinch::PinchZoom;
 use pointer::relative_pointer_location;
 
 pub(in crate::compositor) fn handle_input_event<B: InputBackend>(
@@ -27,6 +30,18 @@ pub(in crate::compositor) fn handle_input_event<B: InputBackend>(
     event: InputEvent<B>,
 ) {
     match event {
+        InputEvent::DeviceRemoved { device } => {
+            state.end_pinch_zoom(&device.id(), true, InputTime::now());
+        }
+        InputEvent::GesturePinchBegin { event } => {
+            state.begin_pinch_zoom(event.device().id(), event.fingers());
+        }
+        InputEvent::GesturePinchUpdate { event } => {
+            state.update_pinch_zoom(&event.device().id(), event.scale(), event.time());
+        }
+        InputEvent::GesturePinchEnd { event } => {
+            state.end_pinch_zoom(&event.device().id(), event.cancelled(), event.time());
+        }
         InputEvent::Keyboard { event } => {
             let time = event.time();
             trace!(key_code = ?event.key_code(), state = ?event.state(), ?time, "keyboard input");
@@ -65,6 +80,9 @@ pub(in crate::compositor) fn handle_input_event<B: InputBackend>(
             );
         }
         InputEvent::PointerButton { event } => {
+            if event.state() == ButtonState::Pressed {
+                state.interrupt_pinch_zoom();
+            }
             let time = event.time();
             let is_left_button = event.button() == Some(smithay::backend::input::MouseButton::Left);
             trace!(button = event.button_code(), state = ?event.state(), ?time, "pointer button input");
