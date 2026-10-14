@@ -116,8 +116,10 @@ impl DesktopServices {
             .find(|(key, _)| key == "HEARTHSPACE_SESSION_BUS_ADDRESS")
             .map(|(_, value)| value.clone())
             .ok_or("desktop services require a private bus")?;
+        let profile = crate::profile_env::for_session(session)?;
         for &(name, program, bus_name) in DEFINITIONS {
             let mut envs = session.vars.clone();
+            envs.extend(profile.iter().cloned());
             envs.push(("DBUS_SESSION_BUS_ADDRESS".into(), self.bus.clone()));
             envs.push(("GDK_BACKEND".into(), "wayland".into()));
             envs.push(("GIO_USE_VFS".into(), "local".into()));
@@ -169,7 +171,7 @@ impl DesktopServices {
     pub(crate) fn poll(&mut self, cancelled: &AtomicBool) -> bool {
         let mut changed = false;
         for entry in &mut self.entries {
-            if entry.child.is_none() && entry.adopted.is_none() {
+            if entry.child.is_none() && entry.adopted.is_none() && entry.restarts_left == 0 {
                 continue;
             }
             match entry.running() {

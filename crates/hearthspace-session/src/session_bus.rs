@@ -102,7 +102,8 @@ pub(crate) fn update_activation_environment(
 ) -> io::Result<()> {
     let deadline = startup_deadline.min(Instant::now() + Duration::from_secs(2));
     remaining(deadline, cancelled)?;
-    let mut child = activation_command(session)
+    let profile = crate::profile_env::for_session(session)?;
+    let mut child = activation_command(session, &profile)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .spawn()?;
@@ -127,11 +128,16 @@ pub(crate) fn update_activation_environment(
     }
 }
 
-fn activation_command(session: &SessionEnv) -> Command {
+fn activation_command(session: &SessionEnv, app_profile: &[(String, String)]) -> Command {
     let mut command = Command::new("dbus-update-activation-environment");
     command.envs(session.vars.iter().map(|(key, value)| (key, value)));
     for (key, _) in &session.vars {
         command.arg(key);
+    }
+    // Only activation gets these defaults. The compositor, settings daemon and
+    // Settings frontend continue using their authoritative session configuration.
+    for (key, value) in app_profile {
+        command.env(key, value).arg(key);
     }
     // UpdateActivationEnvironment cannot unset keys. An empty DISPLAY disables
     // host X11 discovery. WAYLAND_SOCKET must be absent, not empty, so the native

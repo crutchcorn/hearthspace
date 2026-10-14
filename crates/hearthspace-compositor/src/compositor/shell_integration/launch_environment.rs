@@ -48,7 +48,10 @@ pub(super) fn ensure_snap_instance_name(instance_name: &str) -> std::io::Result<
 pub(super) fn launch_environment_for_app(
     app: &DesktopApp,
 ) -> std::io::Result<Vec<(String, String)>> {
-    if !isolate_profile(&app.id, env::var("HEARTHSPACE_ISOLATE_APP_PROFILES").ok().as_deref()) {
+    if !isolate_profile(
+        &app.id,
+        env::var("HEARTHSPACE_ISOLATE_APP_PROFILES").ok().as_deref(),
+    ) {
         return Ok(Vec::new());
     }
     let base = app_state_base_dir().join(sanitized_path_component(&app.id));
@@ -62,6 +65,9 @@ pub(super) fn launch_environment_for_app(
     }
 
     Ok(vec![
+        // An isolated dconf client otherwise talks to a service activated with
+        // the ordinary session configuration, bypassing these private XDG dirs.
+        ("GSETTINGS_BACKEND".to_string(), "keyfile".to_string()),
         (
             "XDG_CONFIG_HOME".to_string(),
             config.to_string_lossy().into_owned(),
@@ -149,7 +155,10 @@ mod tests {
         assert!(!isolate_profile("org.gnome.TextEditor.desktop", None));
         assert!(!isolate_profile("org.gnome.TextEditor.desktop", Some("0")));
         assert!(isolate_profile("org.gnome.TextEditor.desktop", Some("1")));
-        assert!(!isolate_profile("dev.hearthspace.Settings.desktop", Some("1")));
+        assert!(!isolate_profile(
+            "dev.hearthspace.Settings.desktop",
+            Some("1")
+        ));
     }
 
     #[test]

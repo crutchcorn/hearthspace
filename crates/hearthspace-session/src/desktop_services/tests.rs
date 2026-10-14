@@ -99,3 +99,36 @@ fn stopping_a_managed_helper_also_kills_its_stubborn_descendant() {
         thread::sleep(Duration::from_millis(5));
     }
 }
+
+#[test]
+fn failed_first_restart_does_not_discard_the_second_attempt() {
+    let fixture = Fixture::new("restart");
+    let attempts = fixture.0.join("attempts");
+    let spec = ProcessSpec {
+        name: "mock-service", program: "/usr/bin/python3".into(),
+        args: vec!["-c".into(), "import pathlib,sys,time\np=pathlib.Path(sys.argv[1])\nn=int(p.read_text())+1 if p.exists() else 1\np.write_text(str(n))\nif n == 1: sys.exit(7)\ntime.sleep(60)".into(), attempts.to_string_lossy().into_owned()],
+        envs: Vec::new(), env_removals: Vec::new(), current_dir: None,
+    };
+    // The original process has already exited; both restart attempts remain.
+    let mut services = DesktopServices {
+        entries: vec![Entry {
+            spec,
+            bus_name: None,
+            child: None,
+            adopted: None,
+            restarts_left: 2,
+        }],
+        ..Default::default()
+    };
+    let cancelled = AtomicBool::new(false);
+    let first_changed = services.poll(&cancelled);
+    let first_failed = services.entries[0].pid().is_none();
+    let remaining = services.entries[0].restarts_left;
+    let second_changed = services.poll(&cancelled);
+    let recovered = services.entries[0].pid().is_some();
+    services.shutdown();
+    assert!(first_changed && first_failed);
+    assert_eq!(remaining, 1);
+    assert!(second_changed && recovered);
+    assert_eq!(fs::read_to_string(attempts).unwrap(), "2");
+}

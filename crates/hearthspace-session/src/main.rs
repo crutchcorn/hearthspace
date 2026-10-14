@@ -10,6 +10,7 @@ mod desktop_services;
 mod dev_cargo;
 mod portal_cleanup;
 mod process;
+mod profile_env;
 mod readiness;
 mod session_bus;
 mod session_env;

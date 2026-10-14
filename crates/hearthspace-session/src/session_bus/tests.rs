@@ -51,17 +51,20 @@ fn bootstrap_gives_the_bus_its_private_runtime_before_starting_it() {
 
 #[test]
 fn activation_updates_only_the_private_bus_with_session_values() {
-    let command = activation_command(&SessionEnv {
-        wayland_display: "wayland-99".into(),
-        vars: vec![
-            ("XDG_RUNTIME_DIR".into(), "/private/runtime".into()),
-            ("WAYLAND_DISPLAY".into(), "wayland-99".into()),
-            (
-                "HEARTHSPACE_SESSION_BUS_ADDRESS".into(),
-                "unix:path=/private/bus".into(),
-            ),
-        ],
-    });
+    let command = activation_command(
+        &SessionEnv {
+            wayland_display: "wayland-99".into(),
+            vars: vec![
+                ("XDG_RUNTIME_DIR".into(), "/private/runtime".into()),
+                ("WAYLAND_DISPLAY".into(), "wayland-99".into()),
+                (
+                    "HEARTHSPACE_SESSION_BUS_ADDRESS".into(),
+                    "unix:path=/private/bus".into(),
+                ),
+            ],
+        },
+        &[],
+    );
     let args = command.get_args().collect::<Vec<_>>();
     assert!(!args.contains(&OsStr::new("--systemd")));
     assert!(!args.contains(&OsStr::new("--all")));
@@ -75,4 +78,29 @@ fn activation_updates_only_the_private_bus_with_session_values() {
     );
     assert_eq!(variables[OsStr::new("DISPLAY")], Some(OsStr::new("")));
     assert!(!variables.contains_key(OsStr::new("WAYLAND_SOCKET")));
+}
+
+#[test]
+fn activation_profile_does_not_mutate_authoritative_session_environment() {
+    let session = SessionEnv {
+        wayland_display: "wayland-99".into(),
+        vars: vec![("XDG_CONFIG_HOME".into(), "/ordinary/config".into())],
+    };
+    let profile = vec![
+        ("XDG_CONFIG_HOME".into(), "/private/config".into()),
+        ("GSETTINGS_BACKEND".into(), "keyfile".into()),
+    ];
+    let command = activation_command(&session, &profile);
+    let variables = command
+        .get_envs()
+        .collect::<std::collections::HashMap<_, _>>();
+    assert_eq!(
+        variables[OsStr::new("XDG_CONFIG_HOME")],
+        Some(OsStr::new("/private/config"))
+    );
+    assert_eq!(
+        variables[OsStr::new("GSETTINGS_BACKEND")],
+        Some(OsStr::new("keyfile"))
+    );
+    assert_eq!(session.vars[0].1, "/ordinary/config");
 }

@@ -188,6 +188,13 @@ On the physical development host, `policykit-1-gnome` version `0.105-8build1` wa
 installed for this integration; the portal packages and FUSE helper were already
 present. No system service or authentication policy was changed.
 
+Session locking uses the distribution's `swaylock` client and its packaged PAM
+configuration. Install it with `sudo apt-get install -y swaylock`. Version
+`1.8.4-1` was installed on the physical development host for this integration;
+`/etc/pam.d/swaylock` includes the existing login authentication policy. No PAM
+or password configuration was modified. The compositor handles screen isolation
+through `ext-session-lock-v1`; the locker handles authentication.
+
 For native audio validation, `pulseaudio-utils` and its `libpulsedsp` dependency
 (`1:17.0+dfsg1-2ubuntu4`) were also installed. `pactl info` verifies a launched
 application's PulseAudio-compatible connection; `pw-cli info 0` verifies its
@@ -223,6 +230,15 @@ this state in their private runtime instead. Shutdown stops the helpers and
 unmounts only the `fuse.portal` mount at the owned runtime's `doc` directory before
 removing that runtime. Independent native recovery performs the same ownership
 check after stopping the session scope, including after supervisor crashes.
+
+`HEARTHSPACE_ISOLATE_APP_PROFILES=1`, set by the native harness, also gives portal
+helpers and D-Bus-activated applications private XDG configuration, cache, data,
+and state directories inside the owned runtime. Both these applications and
+isolated compositor launches use the keyfile GSettings backend, so a separately
+activated dconf service cannot redirect their writes to ordinary preferences.
+The settings daemon and Hearthspace Settings retain their authoritative paths.
+Ordinary native sessions leave application configuration and GSettings defaults
+unchanged. This isolates XDG-aware app preferences; it is not a filesystem sandbox.
 
 The settings app uses `rfd` for file selection. On Linux, `rfd` is built with
 its XDG Desktop Portal backend and falls back to `zenity` if the portal request
