@@ -69,3 +69,40 @@ does not establish the cause of that earlier failure.
 Record incremental commits, checks, native artifacts, and unresolved issues here
 as work progresses. Hardware claims apply to the actual tested GPU and outputs;
 unavailable hardware matrix cases remain in the native backend plan.
+
+### 2026-10-14 foundation and desktop integration
+
+Implemented bounded settings I/O and audio endpoints (`7442bd7`, `ce575b5`),
+focus/navigation and Unicode/primary clipboard control (`e67790b`), private
+session D-Bus and owned portal/authentication helpers (`7edd151`, `f6d079f`),
+keyboard search and running-window selection (`edb08a7`), clock and confirmed
+logout (`21ec423`), notification delivery/history/actions (`dbd4002`, `19bc0df`),
+standard window states and spatial persistence (`ab488bd`), and semantic agent
+commands with numeric accessibility-role fallback (`df1de83`).
+
+The first native pass, `/tmp/hearthspace-daily-foundation-native-1`, used the
+physical AMD GPD display on tty7 and restored tty2 with complete owned-process
+and runtime cleanup; both T3 background services remained active. It verified
+keyboard terminal launch/focus, exact `Café 日本語 🦀` paste, host PulseAudio and
+PipeWire access from the private runtime, off-canvas window recovery, semantic
+shell activation, twelve increasing page-flip capture IDs, and healthy settings
+queries while another client left an unfinished request. Evidence includes
+`foundation-results.json`, captures, and terminal output in that directory.
+
+That pass exposed launcher typing focus and missing accessible role names; both
+now have targeted regression coverage. Its later clipboard attempt failed after
+an earlier zoom action left the fixture layout at 1.25 scale. The workflow now
+establishes normal zoom and raises each target before editing; the original
+failure remains preserved. A native rerun is still required.
+
+The complete Rust suite with real headless clients and required AT-SPI passed
+(`/tmp/hearthspace-daily-phase2-full-tests-2.log`), as did all 95 Python tests with
+E2E enabled (`/tmp/hearthspace-daily-phase2-python-e2e.log`). New real-client
+regressions cover Wayland/X11 maximize/fullscreen/restore at non-unit zoom,
+reachable dialogs and constrained popups, retired popup grabs, and a graceful
+restart that restores positions without relaunching clients. Full workspace
+Clippy passed with warnings denied. These checks precede session-lock integration.
+
+Remaining acceptance work includes the combined native desktop-service/UI pass,
+everyday browser/editor/file workflows, fail-closed session locking, repeated
+native daily smoke, and final checks/reconciliation. No daily-ready claim yet.
