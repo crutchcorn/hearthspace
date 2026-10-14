@@ -62,6 +62,8 @@ pub(in crate::compositor) fn encode_png(
         let mut encoder = png::Encoder::new(&mut bytes, width as u32, height as u32);
         encoder.set_color(png::ColorType::Rgba);
         encoder.set_depth(png::BitDepth::Eight);
+        // Readback runs on the compositor thread; prioritize interactive latency.
+        encoder.set_compression(png::Compression::Fast);
         let mut writer = encoder.write_header()?;
         writer.write_image_data(pixels)?;
     }
