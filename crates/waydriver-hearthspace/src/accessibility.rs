@@ -28,6 +28,29 @@ impl SessionAccessibility {
         })
     }
 
+    /// Enable accessibility bridges (including AccessKit) on this session's
+    /// private bus. Call once before discovery; the host bus is never consulted.
+    pub async fn enable(&self, timeout: Duration) -> Result<()> {
+        tokio::time::timeout(timeout, async {
+            let connection =
+                waydriver::gaction::connect_session_bus(&self.session_bus_address).await?;
+            let proxy = zbus::Proxy::new(
+                &connection,
+                "org.a11y.Bus",
+                "/org/a11y/bus",
+                "org.a11y.Status",
+            )
+            .await
+            .map_err(|e| Error::atspi_with("accessibility status proxy", e))?;
+            proxy
+                .set_property("ScreenReaderEnabled", true)
+                .await
+                .map_err(|e| Error::atspi_with("enable private-session accessibility", e))
+        })
+        .await
+        .map_err(|_| Error::Timeout("AT-SPI enable deadline exceeded".into()))?
+    }
+
     /// Snapshot the registry and its application trees as searchable XML.
     pub async fn snapshot(&self, timeout: Duration) -> Result<String> {
         tokio::time::timeout(timeout, async {

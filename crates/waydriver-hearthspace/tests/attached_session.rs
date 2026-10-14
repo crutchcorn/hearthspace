@@ -29,6 +29,8 @@ async fn attach_discovers_shell_on_private_bus_and_preserves_the_desktop() {
 
     let mut bus = Command::new("dbus-daemon")
         .args(["--session", "--nofork", "--print-address=1"])
+        .env("XDG_RUNTIME_DIR", runtime.path())
+        .env_remove("AT_SPI_BUS_ADDRESS")
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
@@ -41,37 +43,6 @@ async fn attach_discovers_shell_on_private_bus_and_preserves_the_desktop() {
         .unwrap()
         .unwrap()
         .unwrap();
-
-    // Activate accessibility on this private bus before the real shell client
-    // starts. Do not alter the test process's host bus environment.
-    let enabled = timeout(
-        Duration::from_secs(5),
-        Command::new("gdbus")
-            .args([
-                "call",
-                "--address",
-                &address,
-                "--dest",
-                "org.a11y.Bus",
-                "--object-path",
-                "/org/a11y/bus",
-                "--method",
-                "org.freedesktop.DBus.Properties.Set",
-                "org.a11y.Status",
-                "ScreenReaderEnabled",
-                "<true>",
-            ])
-            .kill_on_drop(true)
-            .output(),
-    )
-    .await
-    .unwrap()
-    .unwrap();
-    assert!(
-        enabled.status.success(),
-        "{}",
-        String::from_utf8_lossy(&enabled.stderr)
-    );
 
     let mut desktop = Command::new(binary)
         .args(["--headless", "--headless-size", "800x600"])
@@ -105,6 +76,7 @@ async fn attach_discovers_shell_on_private_bus_and_preserves_the_desktop() {
     }
     assert_eq!(adapter.ownership(), SessionOwnership::Attached);
     let accessibility = SessionAccessibility::new(&address).unwrap();
+    accessibility.enable(Duration::from_secs(5)).await.unwrap();
     let selector = "//*[@name='LEFT' and @focusable='true']";
     loop {
         let matches = accessibility

@@ -26,7 +26,7 @@ def parser():
         "--timeout",
         type=float,
         default=10,
-        help="absolute operation deadline (seconds)",
+        help="absolute control/startup deadline (seconds)",
     )
     root.add_argument(
         "--output", help="output name to capture or use for pixel coordinates"
@@ -121,13 +121,15 @@ def run_launcher(args):
             command.append("--no-build")
     # The launcher owns an independent watchdog, including cleanup if its caller
     # disappears. Permit its bounded cleanup window after its startup deadline.
+    # Native launcher's pre-VT build has a separate 30-minute absolute deadline.
+    build_budget = 1800 if args.command == "start" and not args.no_build else 0
     try:
         result = subprocess.run(
             command,
             check=False,
             capture_output=True,
             text=True,
-            timeout=args.timeout + 30,
+            timeout=args.timeout + build_budget + 30,
         )
     except subprocess.TimeoutExpired as error:
         raise ControlError(
