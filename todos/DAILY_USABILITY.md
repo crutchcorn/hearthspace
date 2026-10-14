@@ -17,24 +17,24 @@ help this milestone; retain application data and prioritize reliable interaction
 
 ## Acceptance
 
-- [ ] Keyboard launch, forward/reverse window switching, close, canvas navigation,
+- [x] Keyboard launch, forward/reverse window switching, close, canvas navigation,
       and recovery of off-screen windows work with overlapping everyday apps.
-- [ ] Newly mapped apps receive focus; activation matches actual focus; closing a
+- [x] Newly mapped apps receive focus; activation matches actual focus; closing a
       focused app returns focus to a useful surviving window.
-- [ ] Maximize/fullscreen and restore work on Wayland and XWayland, including a
+- [x] Maximize/fullscreen and restore work on Wayland and XWayland, including a
       zoomed canvas; dialogs and menus remain reachable.
-- [ ] Agents discover installed apps and live windows, target stable window IDs,
+- [x] Agents discover installed apps and live windows, target stable window IDs,
       enter Unicode text, and receive errors for failed actions. Screenshots and
       semantic state verify each action's intended result.
-- [ ] Settings/control clients have bounded I/O. A stalled peer cannot indefinitely
+- [x] Settings/control clients have bounded I/O. A stalled peer cannot indefinitely
       freeze input, display updates, or subsequent automation.
-- [ ] A native session has working audio, ordinary application configuration,
+- [x] A native session has working audio, ordinary application configuration,
       useful desktop service integration, and a clear way to exit safely.
-- [ ] Frequently needed system interactions (notifications, files, links,
+- [x] Frequently needed system interactions (notifications, files, links,
       permissions, and session protection) have working, documented paths.
-- [ ] Useful spatial state survives a normal restart without automatically
+- [x] Useful spatial state survives a normal restart without automatically
       reopening or destroying application work.
-- [ ] A repeatable native daily-work smoke test covers the supported workflows,
+- [x] A repeatable native daily-work smoke test covers the supported workflows,
       repeated captures and input, and complete cleanup. Full format, lint, test,
       and build checks pass.
 
@@ -248,3 +248,42 @@ with E2E enabled; nine additional graceful-stop tests and 17 launcher tests pass
 after the Python-only shutdown fix. Full workspace Clippy with warnings denied,
 formatting, Ruff, the native all-target build, and dependency checks passed.
 Complete Python revalidation and repeated native/failure runs follow below.
+
+### Repeated daily use and failure recovery
+
+All three fresh runs, `/tmp/hearthspace-daily-repeat-1` through `-3`, passed every
+daily-smoke step with notifications enabled: keyboard launch and focus, exact
+Unicode paste, keyboard selection of a running window, off-canvas recovery,
+maximize/fullscreen/restore, five advancing captures, responsiveness to an
+unfinished settings client, semantic actions, and notification dismissal. Each
+completed in about 33–34 seconds including startup and cleanup. The earlier
+launcher-submit failure did not recur; its original artifacts remain available.
+
+All five final harness cases passed under
+`/tmp/hearthspace-daily-final-{success,watchdog,compositor-failure,agent-interruption,startup-failure}`.
+The success case also checked visible move/resize and both software and hardware
+cursor capture. The watchdog recovered a stopped compositor, the crash case
+recovered a killed compositor, and agent interruption recovered independently of
+the agent process. Every case restored tty2, stopped the owned scopes, removed
+its runtime, and left both T3 user services active. The summary is
+`/tmp/hearthspace-daily-final-recovery-proof.json`; each run retains full manifests,
+logs, binary hashes, and assertions.
+
+This milestone covers the tested AMD/eDP machine and the documented everyday app
+paths. Physical external-monitor hotplug and other GPU families remain untested.
+Real swaylock confirmation and fail-closed crash behavior passed; password/PAM
+unlock was not exercised, while owner unlock has protocol-fixture coverage.
+Snap Firefox launches and cleans up correctly through the catalog, but its
+private document-portal restriction remains; Mozilla's native DEB supplies the
+tested browser file/link workflow. Screenshot GPU readback remains synchronous,
+although PNG compression is bounded off-thread and concurrent native control
+passed. These limits do not expand this milestone into the entire roadmap.
+
+Final validation passed all 131 Python tests with `HEARTHSPACE_E2E=1` and
+`HEARTHSPACE_REQUIRE_ATSPI=1` (`/tmp/hearthspace-daily-final-python-e2e.log`), including
+the shutdown changes. The latest Rust source passed all 377 tests, full workspace
+Clippy, and the native all-target build; subsequent code changes were Python-only.
+Final `cargo fmt --all --check`, Ruff check/format, and `git diff --check` passed.
+An independent acceptance review found no remaining blocker for the scope above.
+The daily-use milestone is complete; the original tty2 and both background T3
+services are restored and no test session remains active.
