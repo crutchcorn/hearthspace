@@ -217,7 +217,9 @@ the machine administrator; the harness installed no persistent units or PAM
 configuration. Host requirements and reversal are documented in CONTRIBUTING.
 
 Evidence is retained locally under `/tmp/hearthspace-ai-evidence/`: the reference
-run is `native-reference` (with an earlier passing `native-success-3`), and recovery runs are `final-startup-failure`,
+run is `native-final`, invoked with the default smoke deadline after the final
+DRM event fix. Earlier passing runs are retained as well. Recovery runs are
+`final-startup-failure`,
 `final-compositor-failure`, `final-watchdog`, and `final-agent-interruption`.
 Each session retains its manifest and log, with commands/results and PNG/JSON
 pairs under `artifacts/`. Failed earlier runs are retained for diagnosis too.
@@ -228,7 +230,10 @@ output capture, live output removal during capture, and other GPU drivers remain
 separate hardware-matrix work in [NATIVE_BACKEND.md](./NATIVE_BACKEND.md). Output
 selection, removal/invalidation, deadlines, cursor clipping, scaled and odd-sized
 coordinate conversion, and backpressure also have deterministic regression
-coverage.
+coverage. A timestamp cutoff rejects delayed DRM events from replaced output
+surfaces before acknowledging a pending frame; regression tests cover both
+Smithay clock domains and missing metadata. Live hot-plug remains part of the
+separate hardware matrix.
 
 The Wayland capture protocol catalog and pinned Smithay helpers were evaluated.
 The control interface reuses Smithay framebuffer memory export and the normal
@@ -236,7 +241,7 @@ KMS presentation path. An `ext-image-copy-capture-v1` frontend can reuse this
 capture boundary when interoperability is needed; adding a second frontend is
 not required for this automation milestone.
 
-Final checks passed: all 206 Rust tests with workspace `udev,e2e,test-apps`
+Final checks passed: all 209 Rust tests with workspace `udev,e2e,test-apps`
 features and real attached-session E2E enabled; Rust format, workspace Clippy
 with warnings denied, full workspace build, and native-only feature check.
 All 42 Python harness tests passed with real headless sessions enabled;
