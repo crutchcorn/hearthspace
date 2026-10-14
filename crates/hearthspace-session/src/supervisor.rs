@@ -300,8 +300,8 @@ impl Supervisor {
             owner.shutdown()?;
         }
 
-        // Do not traverse/remove a still-mounted document portal on failure.
-        crate::portal_cleanup::unmount_documents(&self.paths.session_dir)?;
+        // Do not traverse/remove a still-mounted desktop filesystem on failure.
+        crate::portal_cleanup::unmount_runtime(&self.paths.session_dir)?;
 
         match fs::remove_dir_all(&self.paths.session_dir) {
             Ok(()) => {

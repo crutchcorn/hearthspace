@@ -11,7 +11,7 @@ from pathlib import Path
 
 from .app_scopes import cleanup_app_scopes
 from .common import STATE_ROOT, active_vt, load, run, save, unit_info
-from .portal_cleanup import cleanup_documents
+from .portal_cleanup import cleanup_runtime_mounts
 from .service import allocation_lock
 
 
@@ -155,7 +155,7 @@ def recover(state_file, lock=True):
                 or runtime.name != f"hearthspace-native-{state['id']}"
             ):
                 raise RuntimeError("refusing unexpected runtime directory")
-            cleanup_documents(runtime, timeout=budget(deadline, 2))
+            cleanup_runtime_mounts(runtime, timeout=budget(deadline, 2))
             shutil.rmtree(runtime, ignore_errors=False) if runtime.exists() else None
             cleanup["runtime_removed"] = not runtime.exists()
             with open("/dev/tty0", "rb", buffering=0) as tty:

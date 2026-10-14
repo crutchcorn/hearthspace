@@ -244,9 +244,12 @@ Document grants and portal permissions are stored under
 `$XDG_DATA_HOME/hearthspace/portals` (defaulting to
 `~/.local/share/hearthspace/portals`). Harness runs that isolate app profiles store
 this state in their private runtime instead. Shutdown stops the helpers and
-unmounts only the `fuse.portal` mount at the owned runtime's `doc` directory before
-removing that runtime. Independent native recovery performs the same ownership
-check after stopping the session scope, including after supervisor crashes.
+detaches the `fuse.portal` mount at the owned runtime's `doc` directory and any
+`fuse.gvfsd-fuse` mount at its `gvfs` directory before removing that runtime.
+Nautilus can activate the latter through the private session bus. Independent
+native recovery performs the same checks after stopping the session scope,
+including after supervisor crashes. Other mounted filesystems beneath the runtime
+block recursive removal. The host desktop's document and GVfs mounts are preserved.
 
 `HEARTHSPACE_ISOLATE_APP_PROFILES=1`, set by the native harness, also gives portal
 helpers and D-Bus-activated applications private XDG configuration, cache, data,
