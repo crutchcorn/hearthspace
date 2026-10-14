@@ -141,14 +141,22 @@ scripts/native-smoke --session /tmp/hearthspace-smoke-watchdog --case watchdog
 scripts/native-smoke --session /tmp/hearthspace-smoke-interrupted --case agent-interruption
 ```
 
-The success case launches `foot`, types a visible marker, checks its rendered
-pixels, moves and resizes the window using real pointer input, checks cursor
-inclusion, and captures available outputs. Recovery cases inject failed startup,
+The success case launches `foot`, types a visible marker, tracks its pixel
+position after moving the window, and verifies that resizing reveals the
+previously captured background. It checks movement of the terminal's software
+cursor and the desktop cursor in targeted image regions, and captures available
+outputs. Recovery cases inject failed startup,
 compositor death, a frozen compositor (`SIGSTOP`) recovered by the watchdog, and
 an owning agent killed with `SIGKILL` after readiness. Each run preserves commands, results,
 screenshots, and metadata under its artifact directory and checks VT/runtime
 restoration. Record GPU, driver, kernel, display scale, and whether the run used
 a VM or real hardware when reporting results.
+
+The startup-failure case requires a fresh artifact directory and evidence that
+the injected failing compositor actually ran in its allocated PAM/VT session.
+A preflight failure, such as missing sudo access, fails the test. Run native
+validation separately from GPU-intensive headless suites so concurrent workload
+does not obscure capture and presentation failures.
 
 Run automated regressions without taking a VT:
 

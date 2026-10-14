@@ -221,6 +221,16 @@ Each session retains its manifest and log, with commands/results and PNG/JSON
 pairs under `artifacts/`. Failed earlier runs are retained for diagnosis too.
 These temporary artifacts are not committed and can be removed after review.
 
+The strengthened smoke suite also passed as `native-assertions-2`: pixel
+landmarks followed the reported move, the resized window exposed the original
+background, and both software-cursor regions changed on pointer movement.
+`startup-assertions` verified the injected compositor failure inside its allocated
+PAM/VT session, rejecting preflight failures as recovery evidence. Both runs
+restored `tty2` with complete cleanup. The earlier `native-assertions` run hit
+a transport capture timeout while a headless GPU suite was also running;
+cleanup succeeded. The blocking operation was not identified, and concurrent
+GPU workload robustness remains unverified.
+
 This validates the available single AMD output. VM capture coverage, secondary
 output capture, live output removal during capture, and other GPU drivers remain
 separate hardware-matrix work in [NATIVE_BACKEND.md](./NATIVE_BACKEND.md). Output
@@ -240,6 +250,6 @@ not required for this automation milestone.
 Final checks passed: all 209 Rust tests with workspace `udev,e2e,test-apps`
 features and real attached-session E2E enabled; Rust format, workspace Clippy
 with warnings denied, full workspace build, and native-only feature check.
-All 42 Python harness tests passed with real headless sessions enabled;
+All 51 Python harness tests passed with real headless sessions enabled;
 Ruff lint and formatting checks passed too. Recovery tests run separately from these
 deterministic checks because they require privileged VT operations.
