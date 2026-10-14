@@ -106,6 +106,7 @@ fn element_json(element: ElementInfo) -> Value {
         .bounds
         .map(|rect| json!({"x": rect.x, "y": rect.y, "width": rect.width, "height": rect.height}));
     json!({"bus_name": element.ref_.0, "object_path": element.ref_.1, "role": element.role,
+        "role_raw": element.role_raw,
         "name": element.name, "description": element.description, "states": element.states,
         "attributes": element.attributes, "bounds": bounds})
 }
