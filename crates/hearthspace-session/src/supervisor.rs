@@ -39,6 +39,7 @@ pub(crate) struct Supervisor {
     watcher: Option<ManagedProcess>,
     notifications: Option<ManagedProcess>,
     desktop_services: crate::desktop_services::DesktopServices,
+    app_scopes: Option<crate::app_scopes::AppScopes>,
 }
 
 impl Supervisor {
@@ -65,6 +66,7 @@ impl Supervisor {
             watcher: None,
             notifications: None,
             desktop_services: crate::desktop_services::DesktopServices::default(),
+            app_scopes: None,
         }
     }
 
@@ -102,6 +104,25 @@ impl Supervisor {
             CompositorBackend::NativeTty => "--tty",
             CompositorBackend::NestedWinit => "--winit",
         };
+        if backend == CompositorBackend::NativeTty
+            && self
+                .session_env
+                .vars
+                .iter()
+                .any(|(key, _)| key == "HEARTHSPACE_SESSION_BUS_ADDRESS")
+        {
+            self.app_scopes = crate::app_scopes::AppScopes::start(
+                &self.paths,
+                self.binary_dir.as_deref(),
+                self.startup_deadline,
+                &self.shutdown_requested,
+            )?;
+            if let Some(owner) = &self.app_scopes {
+                self.session_env
+                    .vars
+                    .push((crate::app_scopes::OWNER_ENV.into(), owner.unit().into()));
+            }
+        }
         let mut spec = self.binary_spec(
             "hearthspace-compositor",
             &[hearthspace_common::NO_SHELL_FLAG, backend_flag],
@@ -274,6 +295,10 @@ impl Supervisor {
         wait_then_kill_process(&mut self.settingsd);
         wait_then_kill_process(&mut self.watcher);
         wait_then_kill_process(&mut self.notifications);
+
+        if let Some(owner) = &self.app_scopes {
+            owner.shutdown()?;
+        }
 
         // Do not traverse/remove a still-mounted document portal on failure.
         crate::portal_cleanup::unmount_documents(&self.paths.session_dir)?;

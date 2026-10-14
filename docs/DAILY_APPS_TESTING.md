@@ -45,7 +45,9 @@ The first native run uncovered an additional Snap integration requirement:
 Snap tries to create its tracking scope through the session bus, while the
 private Hearthspace bus intentionally has no user systemd manager. Firefox
 therefore exited before displaying a window. The Snap-accessible Wayland socket
-alone does not establish browser support. Snap's
+alone does not establish browser support. Hearthspace now has an
+[owned app-scope integration](SNAP_APPLICATIONS.md) for catalog launches;
+native acceptance must still verify its launch and cleanup. Snap's
 [tracking implementation](https://github.com/canonical/snapd/blob/2.76/sandbox/cgroup/tracking.go)
 and [launcher](https://github.com/canonical/snapd/blob/2.76/cmd/snap/cmd_run.go)
 recognize a preexisting `snap.firefox.firefox-UUID.scope`. A diagnostic may create

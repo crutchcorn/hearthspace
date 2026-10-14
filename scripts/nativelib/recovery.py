@@ -9,6 +9,7 @@ import termios
 import time
 from pathlib import Path
 
+from .app_scopes import cleanup_app_scopes
 from .common import STATE_ROOT, active_vt, load, run, save, unit_info
 from .portal_cleanup import cleanup_documents
 from .service import allocation_lock
@@ -143,7 +144,11 @@ def recover(state_file, lock=True):
     except (OSError, RuntimeError, subprocess.TimeoutExpired) as error:
         errors.append(str(error))
     runtime = Path(state["runtime_dir"])
-    if cleanup.get("session_scope_stopped"):
+    try:
+        cleanup["app_scopes_stopped"] = cleanup_app_scopes(state, deadline)
+    except (OSError, RuntimeError, subprocess.TimeoutExpired) as error:
+        errors.append(str(error))
+    if cleanup.get("session_scope_stopped") and cleanup.get("app_scopes_stopped"):
         try:
             if (
                 runtime.parent != Path(f"/run/user/{state['uid']}")
@@ -161,7 +166,12 @@ def recover(state_file, lock=True):
             errors.append(str(error))
     cleanup["complete"] = not errors and all(
         cleanup.get(key)
-        for key in ("vt_restored", "session_scope_stopped", "runtime_removed")
+        for key in (
+            "vt_restored",
+            "session_scope_stopped",
+            "app_scopes_stopped",
+            "runtime_removed",
+        )
     )
     cleanup["errors"] = errors
     state.update(

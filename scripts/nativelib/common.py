@@ -12,6 +12,7 @@ ENTRY = ROOT / "scripts/hearthspace-native"
 STATE_ROOT = Path("/run/hearthspace-native")
 BINARIES = (
     "hearthspace-session",
+    "hearthspace-app-scope-guard",
     "hearthspace-compositor",
     "hearthspace-shell",
     "hearthspace-settingsd",

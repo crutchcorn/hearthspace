@@ -12,6 +12,8 @@ use super::{App, launch_environment::*};
 use crate::compositor::client::ClientState;
 use crate::{config::*, geometry::CanvasPoint};
 
+mod snap_scope;
+
 impl App {
     fn prepare_spawn_position(&mut self) {
         self.prepare_spawn_position_for_output(None);
@@ -102,6 +104,11 @@ impl App {
             return Err(format!("unknown launch output: {name}"));
         }
         let app_command = app.launch_argv()?;
+        let app_command = if let Some(instance) = &app.snap_instance_name {
+            snap_scope::wrap(instance, app_command)?
+        } else {
+            app_command
+        };
         let command = if app.terminal {
             self.app_catalog.terminal_command_for(app_command)?
         } else {

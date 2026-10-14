@@ -225,6 +225,9 @@ class NativeServiceTests(unittest.TestCase):
                 patch.object(recovery, "owned_sessions", return_value=[])
             )
             stack.enter_context(patch.object(recovery, "run"))
+            stack.enter_context(
+                patch.object(recovery, "cleanup_app_scopes", return_value=True)
+            )
             stack.enter_context(patch.object(recovery, "load", return_value={}))
             stack.enter_context(patch.object(recovery, "save"))
             stack.enter_context(patch.object(Path, "chmod"))

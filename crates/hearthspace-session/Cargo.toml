@@ -1,5 +1,6 @@
 [package]
 name = "hearthspace-session"
+default-run = "hearthspace-session"
 version = "0.1.0"
 edition = "2024"
 rust-version = "1.99.0"
