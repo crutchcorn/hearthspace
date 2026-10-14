@@ -17,7 +17,7 @@ use crate::app_catalog::DesktopApp;
 #[derive(Clone)]
 pub(super) enum Entry {
     Window(RunningWindow),
-    App(DesktopApp),
+    App(Box<DesktopApp>),
 }
 
 impl Entry {
@@ -52,7 +52,7 @@ pub(super) fn results(state: &ShellState, output: &ShellOutputInstance) -> Vec<E
                 .catalog
                 .search(query, MAX_RESULTS)
                 .into_iter()
-                .map(Entry::App),
+                .map(|app| Entry::App(Box::new(app))),
         );
     }
     results
