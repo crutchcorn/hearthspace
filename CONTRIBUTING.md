@@ -194,21 +194,46 @@ application's PulseAudio-compatible connection; `pw-cli info 0` verifies its
 PipeWire connection. Installing these client utilities does not start a second
 audio server.
 
+The native supervisor starts the permission store, document portal, GTK portal
+backend, desktop portal, and polkit agent after Wayland is ready. The portal
+processes must acquire their private-bus names before the shell starts. Helpers
+are restarted at most twice after an unexpected exit and are stopped with their
+session. `--no-desktop-services` skips these helpers for isolated diagnostics;
+normal nested sessions also leave them disabled.
+
+Hearthspace supplies `hearthspace-portals.conf` in the session's data directory,
+selecting the GTK backend according to the standard
+[portal configuration lookup](https://flatpak.github.io/xdg-desktop-portal/docs/portals.conf.html).
+User portal configuration retains its normal precedence. Private runtime D-Bus
+service overrides prevent portals from being activated outside supervision.
+Existing portal owners may be adopted only when their executable, private bus,
+runtime directory, and process start identity match the owned session. The GTK
+chooser uses the local VFS; network filesystem browsing is not configured here.
+No shared user service environment or system-wide portal configuration is changed.
+
+Document grants and portal permissions are stored under
+`$XDG_DATA_HOME/hearthspace/portals` (defaulting to
+`~/.local/share/hearthspace/portals`). Harness runs that isolate app profiles store
+this state in their private runtime instead. Shutdown stops the helpers and
+unmounts only the `fuse.portal` mount at the owned runtime's `doc` directory before
+removing that runtime. Independent native recovery performs the same ownership
+check after stopping the session scope, including after supervisor crashes.
+
 The settings app uses `rfd` for file selection. On Linux, `rfd` is built with
 its XDG Desktop Portal backend and falls back to `zenity` if the portal request
 fails. Hearthspace gives session children a private `XDG_RUNTIME_DIR` and strips
 the host `DBUS_SESSION_BUS_ADDRESS` from shell-launched apps so file pickers do
 not accidentally discover GNOME's session bus and open through GNOME's portal on
-another TTY. The native test harness supplies a private session bus, but a portal
-backend may still be unavailable. Install `zenity` for the fallback path:
+another TTY. Native daily-use sessions provide the GTK portal backend; nested and
+diagnostic sessions may still need the fallback. Install `zenity` for that path:
 
 ```sh
 sudo apt-get install -y zenity
 ```
 
-The file chooser portal is an external desktop service, not code inside the
-Hearthspace compositor. A private bus does not itself provide a portal backend;
-the compositor still needs to support the dialog window created by that backend.
+The file chooser portal is an external desktop service. The compositor displays
+its dialog as an ordinary Wayland client, and the portal launches URI handlers on
+the same private desktop bus.
 
 X11 app support is provided by Smithay's XWayland integration. Install the
 runtime when testing X11-only applications:

@@ -2,10 +2,13 @@ use clap::Parser;
 use tracing::info;
 
 mod audio_env;
+mod bounded_command;
 mod cli;
 mod compositor;
 mod desktop_entries;
+mod desktop_services;
 mod dev_cargo;
+mod portal_cleanup;
 mod process;
 mod readiness;
 mod session_bus;
@@ -28,6 +31,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let mode = resolve_mode(&args);
     let paths = create_session_paths(args.session_dir.as_deref(), args.private_session_bus)?;
+    if desktop_services::enabled(&args) {
+        desktop_services::prepare(&paths)?;
+    }
     let session_env = create_session_env(&args, mode, &paths)?;
 
     if mode == RunMode::DevCargo {
@@ -56,13 +62,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         supervisor.wait_for_settingsd_ready()?;
         supervisor.start_compositor()?;
         supervisor.wait_for_compositor_ready()?;
+        if desktop_services::enabled(&args) {
+            supervisor.start_desktop_services()?;
+        }
         supervisor.start_shell(if args.no_shell_restart { 0 } else { 3 })?;
         supervisor.start_app_watcher_if_available(&args)?;
 
         supervisor.monitor_until_exit()
     })();
-    supervisor.shutdown();
-    monitor_result
+    let cleanup_result = supervisor.shutdown();
+    monitor_result?;
+    cleanup_result.map_err(Into::into)
 }
 
 fn initialize_tracing(log_level: &str) {

@@ -55,6 +55,7 @@ with socket.socket(socket.AF_UNIX) as server:
                 "--startup-timeout",
                 timeout,
                 "--no-watch-apps",
+                "--no-desktop-services",
             ])
             .arg("--binary-dir")
             .arg(&self.0)
@@ -139,6 +140,7 @@ fn private_dbus_session_can_initialize_and_cleanup_runtime() {
             "--startup-timeout",
             "1",
             "--no-watch-apps",
+            "--no-desktop-services",
             "--private-session-bus",
         ])
         .arg("--binary-dir")
@@ -210,6 +212,7 @@ while True:
             "--startup-timeout",
             "2",
             "--no-watch-apps",
+            "--no-desktop-services",
         ])
         .arg("--binary-dir")
         .arg(&fixture.0)
@@ -260,6 +263,7 @@ fn stalled_bus_activation_cannot_extend_startup_or_leave_the_runtime() {
             "--startup-timeout",
             "1",
             "--no-watch-apps",
+            "--no-desktop-services",
         ])
         .arg("--binary-dir")
         .arg(&fixture.0)

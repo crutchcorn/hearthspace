@@ -57,6 +57,10 @@ pub(crate) struct Args {
     #[arg(long)]
     pub(crate) no_settingsd_restart: bool,
 
+    /// Skip native authentication and portal services (for isolated diagnostics).
+    #[arg(long)]
+    pub(crate) no_desktop_services: bool,
+
     /// Set log level for session and children.
     #[arg(long, default_value = "info")]
     pub(crate) log_level: String,

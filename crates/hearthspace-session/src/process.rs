@@ -183,10 +183,17 @@ pub(crate) fn terminate_process(process: &mut Option<ManagedProcess>) {
 }
 
 pub(crate) fn wait_then_kill_process(process: &mut Option<ManagedProcess>) {
+    wait_then_kill_process_with_timeout(process, Duration::from_secs(3));
+}
+
+pub(crate) fn wait_then_kill_process_with_timeout(
+    process: &mut Option<ManagedProcess>,
+    timeout: Duration,
+) {
     let Some(process) = process else {
         return;
     };
-    let deadline = Instant::now() + Duration::from_secs(3);
+    let deadline = Instant::now() + timeout;
     while Instant::now() < deadline {
         match process.child.try_wait() {
             Ok(Some(status)) => {
