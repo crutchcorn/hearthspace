@@ -2,6 +2,7 @@
 
 import argparse
 import json
+import math
 import os
 import shlex
 import shutil
@@ -46,6 +47,8 @@ class Smoke:
             str(self.args.timeout),
             *extra,
         ]
+        if operation == "start":
+            command.extend(["--log-level", getattr(self.args, "log_level", "info")])
         result = subprocess.run(
             command,
             check=False,
@@ -247,6 +250,8 @@ class Smoke:
             "--no-build",
             "--watchdog",
             "12",
+            "--log-level",
+            getattr(self.args, "log_level", "info"),
         ]
         worker = "import subprocess,sys,signal; subprocess.run(sys.argv[1:],check=True); signal.pause()"
         with (self.artifacts / "interrupted-agent.log").open("w") as log:
@@ -300,7 +305,9 @@ class Smoke:
                     raise ControlError("invalid compositor unexpectedly started")
                 return
             watchdog = (
-                "8" if self.args.case == "watchdog" else str(self.args.timeout + 90)
+                "8"
+                if self.args.case == "watchdog"
+                else str(math.ceil(self.args.timeout + 90))
             )
             self.launcher("start", "--no-build", "--watchdog", watchdog)
             if self.args.case == "success":
@@ -345,6 +352,9 @@ def main():
         "--session", required=True, type=Path, help="new evidence/session directory"
     )
     parser.add_argument("--timeout", type=float, default=45)
+    parser.add_argument(
+        "--log-level", default="info", help="session/compositor tracing filter"
+    )
     parser.add_argument(
         "--case",
         choices=(

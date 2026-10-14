@@ -13,6 +13,29 @@ from agentlib.smoke import Smoke
 
 
 class SmokeTests(unittest.TestCase):
+    def test_fractional_timeout_sends_integer_watchdog_and_tracing_filter(self):
+        with tempfile.TemporaryDirectory() as directory:
+            session = Path(directory)
+            (session / "session.json").write_text("{}")
+            args = SimpleNamespace(
+                session=session, timeout=90.25, case="success", log_level="debug"
+            )
+            smoke = Smoke(args)
+            smoke.success = lambda: None
+            smoke.verify_restored = lambda: None
+            with (
+                patch("agentlib.smoke.shutil.which", return_value="/usr/bin/foot"),
+                patch("agentlib.smoke.subprocess.run") as run,
+                contextlib.redirect_stdout(io.StringIO()),
+            ):
+                run.return_value = SimpleNamespace(returncode=0, stdout="{}", stderr="")
+                smoke.run()
+            start = next(
+                call.args[0] for call in run.call_args_list if "start" in call.args[0]
+            )
+            self.assertEqual(start[start.index("--watchdog") + 1], "181")
+            self.assertEqual(start[start.index("--log-level") + 1], "debug")
+
     def test_recovery_failure_does_not_hide_original_interaction_error(self):
         with tempfile.TemporaryDirectory() as directory:
             session = Path(directory)
