@@ -1,0 +1,287 @@
+"""Native acceptance run, with artifacts preserved even when assertions fail."""
+
+import argparse
+import json
+import os
+import shlex
+import shutil
+import signal
+import subprocess
+import time
+from pathlib import Path
+
+from .control import Control, ControlError, Deadline, save_capture
+from .input import Input
+from .png import crop, green_pixels
+
+LAUNCHER = Path(__file__).resolve().parents[1] / "hearthspace-native"
+
+
+class Smoke:
+    def __init__(self, args):
+        self.args = args
+        self.directory = args.session.resolve()
+        self.artifacts = self.directory / "artifacts"
+        self.artifacts.mkdir(parents=True, exist_ok=True)
+        self.results = []
+        self.control = None
+
+    def record(self, step, **result):
+        entry = {"step": step, **result}
+        self.results.append(entry)
+        (self.artifacts / "results.json").write_text(
+            json.dumps(self.results, indent=2) + "\n"
+        )
+        print(json.dumps(entry), flush=True)
+
+    def launcher(self, operation, *extra, expected=0):
+        command = [
+            str(LAUNCHER),
+            operation,
+            "--session",
+            str(self.directory),
+            "--timeout",
+            str(self.args.timeout),
+            *extra,
+        ]
+        result = subprocess.run(
+            command,
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=self.args.timeout + 30,
+        )
+        self.record(
+            operation,
+            argv=command,
+            returncode=result.returncode,
+            stdout=result.stdout,
+            stderr=result.stderr,
+        )
+        if expected is not None and result.returncode != expected:
+            raise ControlError(f"launcher {operation} exited {result.returncode}")
+        return result
+
+    def connect(self):
+        manifest = json.loads((self.directory / "session.json").read_text())
+        self.control = Control(manifest["command_socket"], Deadline(self.args.timeout))
+        return manifest
+
+    def until(self, name, condition):
+        while True:
+            value = condition()
+            if value:
+                return value
+            try:
+                time.sleep(min(0.05, self.control.deadline.remaining()))
+            except ControlError as error:
+                raise ControlError(f"timed out waiting for {name}") from error
+
+    def capture(self, name, output=None):
+        capture = self.control.capture(output)
+        if capture[0].get("presentation") != "page-flip":
+            raise ControlError(
+                "native smoke requires successful KMS page-flip captures"
+            )
+        self.record(name, **save_capture(capture, self.artifacts / f"{name}.png"))
+        return capture
+
+    def window(self, window_id=None):
+        windows = self.control.status()["windows"]
+        return next(
+            (
+                window
+                for window in windows
+                if (
+                    window["id"] == window_id
+                    if window_id is not None
+                    else "foot" in window.get("app_id", "").lower()
+                )
+            ),
+            None,
+        )
+
+    def success(self):
+        manifest = self.connect()
+        status = self.control.status()
+        self.record("ready", status=status, manifest=manifest)
+        if not status["shell_ready"]:
+            raise ControlError("shell did not become ready")
+        for index, output in enumerate(status["outputs"]):
+            capture = self.capture(f"output-{index}", output["name"])
+            if capture[0]["output"] != output["name"]:
+                raise ControlError("selected capture returned another output")
+        initial = self.capture("initial")
+        self.control.request("spawn foot")
+        window = self.until("foot window", self.window)
+        self.record("launch", command="spawn foot", window=window)
+        marker = self.artifacts / "typed-marker.txt"
+        text = (
+            "printf '\\033]0;HEARTHSPACE_SMOKE\\007\\033[48;2;0;255;0m"
+            "HEARTHSPACE_NATIVE_MARKER\\033[0m\\n'; "
+            f"printf HEARTHSPACE_NATIVE_MARKER > {shlex.quote(str(marker))}\n"
+        )
+        with Input(self.control) as inputs:
+            inputs.click(
+                window["x"] + window["width"] / 2, window["y"] + window["height"] / 2
+            )
+            inputs.type(text)
+        self.record("type", text=text)
+        self.until(
+            "terminal input",
+            lambda: (
+                marker.exists() and marker.read_text() == "HEARTHSPACE_NATIVE_MARKER"
+            ),
+        )
+
+        def visible_marker():
+            capture = self.control.capture(initial[0]["output"])
+            return capture if green_pixels(capture[1]) >= 100 else None
+
+        visible = self.until("visible green terminal marker", visible_marker)
+        self.record(
+            "typed-visible",
+            green_pixels=green_pixels(visible[1]),
+            **save_capture(visible, self.artifacts / "typed-visible.png"),
+        )
+        window = self.window(window["id"])
+        self.move_resize(window)
+        self.cursor(initial[0])
+
+    def move_resize(self, window):
+        titlebar = window.get("titlebar_height", 28)
+        if titlebar <= 0:
+            raise ControlError("foot needs compositor decorations for native drag test")
+        x = window["x"] + window["width"] / 2
+        y = window["y"] + titlebar / 2
+        with Input(self.control) as inputs:
+            inputs.drag(x, y, x - 48, y + 36)
+        moved = self.until("window move", lambda: self.changed(window, ("x", "y")))
+        self.record("move", before=window, after=moved)
+        self.capture("moved")
+        x, y = moved["x"] + moved["width"] - 2, moved["y"] + moved["height"] - 2
+        with Input(self.control) as inputs:
+            inputs.drag(x, y, x - 80, y - 48)
+        resized = self.until(
+            "window resize", lambda: self.changed(moved, ("width", "height"))
+        )
+        self.record("resize", before=moved, after=resized)
+        capture = self.capture("resized")
+        if green_pixels(capture[1]) < 100:
+            raise ControlError("typed visible marker disappeared after move/resize")
+
+    def changed(self, before, fields):
+        after = self.window(before["id"])
+        return (
+            after
+            if after and any(abs(after[key] - before[key]) > 10 for key in fields)
+            else None
+        )
+
+    def cursor(self, metadata):
+        scale_x = metadata["width"] / metadata["logical_width"]
+        scale_y = metadata["height"] / metadata["logical_height"]
+        x, y = metadata["logical_x"] + 20, metadata["logical_y"] + 100
+        with Input(self.control) as inputs:
+            inputs.motion(x, y)
+        before = self.capture("cursor-first", metadata["output"])
+        with Input(self.control) as inputs:
+            inputs.motion(x + 70, y)
+        after = self.capture("cursor-second", metadata["output"])
+        if after[0].get("cursor") != "embedded":
+            raise ControlError("capture cursor policy must be embedded")
+        rect = (10 * scale_x, 90 * scale_y, 55 * scale_x, 140 * scale_y)
+        if crop(before[1], rect) == crop(after[1], rect):
+            raise ControlError("moving cursor did not change the old cursor region")
+        self.record("cursor-inclusion", policy="embedded", checked_pixel_region=rect)
+
+    def recovery(self, case):
+        manifest = self.connect()
+        if case == "compositor-failure":
+            pid = manifest.get("compositor_pid")
+            if not pid:
+                readiness = Path(manifest["runtime_dir"]) / "session-ready.json"
+                if readiness.exists():
+                    pid = json.loads(readiness.read_text()).get("compositor_pid")
+            if not pid:
+                raise ControlError(
+                    "manifest needs compositor_pid for failure injection"
+                )
+            os.kill(int(pid), signal.SIGKILL)
+            self.record("injected-compositor-failure", pid=pid)
+        deadline = Deadline(self.args.timeout + 15)
+        while True:
+            current = json.loads((self.directory / "session.json").read_text())
+            if current.get("status") in ("stopped", "failed", "expired"):
+                self.record("independent-recovery", manifest=current)
+                return
+            time.sleep(min(0.2, deadline.remaining()))
+
+    def run(self):
+        if self.args.case == "success" and shutil.which("foot") is None:
+            raise ControlError("native smoke requires foot")
+        host = subprocess.run(
+            ["uname", "-a"], capture_output=True, text=True, check=True
+        )
+        self.record("host", uname=host.stdout.strip(), case=self.args.case)
+        try:
+            if self.args.case == "startup-failure":
+                result = self.launcher(
+                    "start", "--no-build", "--compositor", "/bin/false", expected=None
+                )
+                if result.returncode == 0:
+                    raise ControlError("invalid compositor unexpectedly started")
+                return
+            watchdog = (
+                "8" if self.args.case == "watchdog" else str(self.args.timeout + 90)
+            )
+            self.launcher("start", "--no-build", "--watchdog", watchdog)
+            if self.args.case == "success":
+                self.success()
+            else:
+                self.recovery(self.args.case)
+        finally:
+            self.launcher("stop")
+            self.verify_restored()
+
+    def verify_restored(self):
+        manifest = json.loads((self.directory / "session.json").read_text())
+        active = Path("/sys/class/tty/tty0/active").read_text().strip()
+        original = str(manifest["original_vt"])
+        if active != (original if original.startswith("tty") else f"tty{original}"):
+            raise ControlError(
+                f"original VT was not restored: active={active}, original={original}"
+            )
+        runtime = manifest.get("runtime_dir")
+        if runtime and Path(runtime).exists():
+            raise ControlError("owned session runtime directory was not removed")
+        self.record("restored", active_vt=active, manifest=manifest)
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--session", required=True, type=Path, help="new evidence/session directory"
+    )
+    parser.add_argument("--timeout", type=float, default=45)
+    parser.add_argument(
+        "--case",
+        choices=("success", "startup-failure", "compositor-failure", "watchdog"),
+        default="success",
+    )
+    args = parser.parse_args()
+    smoke = Smoke(args)
+    try:
+        smoke.run()
+        smoke.record("complete", ok=True)
+        return 0
+    except (
+        ControlError,
+        OSError,
+        ValueError,
+        KeyError,
+        subprocess.SubprocessError,
+        KeyboardInterrupt,
+    ) as error:
+        smoke.record("failed", ok=False, error=str(error))
+        return 1

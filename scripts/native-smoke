@@ -1,0 +1,7 @@
+#!/usr/bin/env python3
+"""Exercise an isolated native desktop and retain visual evidence."""
+
+from agentlib.smoke import main
+
+if __name__ == "__main__":
+    raise SystemExit(main())

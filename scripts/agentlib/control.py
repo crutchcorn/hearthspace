@@ -119,11 +119,12 @@ def save_capture(capture, destination):
 def pixel_to_logical(x, y, metadata):
     """PNG pixels are in displayed orientation; transform is already applied."""
     width, height = metadata["width"], metadata["height"]
-    if not all(math.isfinite(v) for v in (x, y, width, height)):
+    scale = metadata["scale"]
+    if not all(math.isfinite(v) for v in (x, y, width, height, scale)) or scale <= 0:
         raise ControlError("coordinates and dimensions must be finite")
     if not (0 <= x < width and 0 <= y < height):
         raise ControlError("pixel coordinates are outside the captured output")
     return (
-        metadata["logical_x"] + x * metadata["logical_width"] / width,
-        metadata["logical_y"] + y * metadata["logical_height"] / height,
+        metadata["logical_x"] + x / scale,
+        metadata["logical_y"] + y / scale,
     )

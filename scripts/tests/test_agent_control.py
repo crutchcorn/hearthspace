@@ -128,6 +128,18 @@ class TransportTests(unittest.TestCase):
         control.capture = lambda output: ({"frame_id": 2}, b"new")
         self.assertEqual(control.wait_change(b"old")[1], b"new")
 
+    def test_pixel_mapping_uses_exact_scale_when_logical_bounds_round_up(self):
+        meta = {
+            "width": 801,
+            "height": 601,
+            "logical_width": 401,
+            "logical_height": 301,
+            "logical_x": 100,
+            "logical_y": 200,
+            "scale": 2,
+        }
+        self.assertEqual(pixel_to_logical(800, 600, meta), (500, 500))
+
 
 if __name__ == "__main__":
     unittest.main()

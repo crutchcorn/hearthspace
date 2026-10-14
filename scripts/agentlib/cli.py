@@ -33,7 +33,7 @@ def parser():
     )
     sub = root.add_subparsers(dest="command", required=True)
     start = sub.add_parser("start", help="start a native session on a spare VT")
-    start.add_argument("--watchdog", type=float, default=300)
+    start.add_argument("--watchdog", type=int, default=300)
     start.add_argument("--no-build", action="store_true")
     sub.add_parser("status")
     sub.add_parser("stop")
@@ -107,9 +107,9 @@ def run_launcher(args):
         args.command,
         "--session",
         str(args.session),
-        "--timeout",
-        str(args.timeout),
     ]
+    if args.command != "status":
+        command.extend(["--timeout", str(args.timeout)])
     if args.command == "start":
         command.extend(["--watchdog", str(args.watchdog)])
         if args.no_build:
@@ -192,7 +192,7 @@ def action(args, control):
 
 def run(args):
     deadline = Deadline(args.timeout)
-    if args.command in ("start", "stop"):
+    if args.command in ("start", "stop") or (args.command == "status" and args.session):
         return run_launcher(args)
     control = Control(target_socket(args), deadline)
     if args.command == "status":
