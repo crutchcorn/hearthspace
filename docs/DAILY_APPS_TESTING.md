@@ -9,10 +9,12 @@ display, and private D-Bus belong to the test.
 
 ## Temporary Firefox setup
 
-Firefox Snap needs an explicit new profile under
-`~/snap/firefox/common/hearthspace-native-probe-UNIQUE`. A new XDG configuration
-directory alone does not isolate Firefox's legacy profile storage. Never inspect,
-reuse, or modify an existing browser profile for these tests.
+Use Mozilla's native DEB for the complete browser/file-chooser/URI workflow;
+its installation is recorded in [CONTRIBUTING](../CONTRIBUTING.md#native-firefox-package).
+Keep a separate Snap probe to verify confined catalog launch and owned-scope
+cleanup. Both need an explicit new profile: a new XDG configuration directory
+alone does not isolate Firefox's legacy profile storage. Never inspect, reuse,
+or modify an existing browser profile for these tests.
 
 Copy `scripts/fixtures/daily-browser/` into a `fixtures` subdirectory of that new
 profile, and retain another copy in the run artifacts. These local pages make no
@@ -20,6 +22,35 @@ network requests. The optional profile-local `user.js` setting
 `user_pref("browser.aboutwelcome.enabled", false);` suppresses the initial welcome
 page ([Mozilla onboarding documentation](https://firefox-source-docs.mozilla.org/browser/components/asrouter/docs/first-run.html)).
 
+### Native package
+
+Create a new `RUN/native-firefox-profile` directory and copy the fixtures there.
+Create `~/.local/share/applications/dev.hearthspace.NativeFirefoxProbe.desktop`
+only if absent, substituting absolute paths:
+
+```ini
+[Desktop Entry]
+Type=Application
+Name=Hearthspace Native Firefox Probe
+Exec=/usr/bin/firefox --no-remote --profile "/absolute/RUN/native-firefox-profile" "file:///absolute/RUN/native-firefox-profile/fixtures/index.html" %u
+TryExec=/usr/bin/firefox
+Terminal=false
+Icon=firefox
+Categories=Network;WebBrowser;
+MimeType=text/html;x-scheme-handler/http;x-scheme-handler/https;
+```
+
+The `%u` argument lets the URI portal pass a requested URL. When testing URI
+launch, close the first owned Firefox instance before selecting this entry:
+`--no-remote` deliberately refuses to reuse its open profile. Verify both a
+successful portal response and the requested URL in the resulting browser tab.
+Do not change the host's default browser. Use `ask=true` on the OpenURI request
+to select the temporary entry explicitly.
+
+### Snap package
+
+Create its new profile under
+`~/snap/firefox/common/hearthspace-native-probe-UNIQUE` so Snap can access it.
 Create `~/.local/share/applications/dev.hearthspace.FirefoxProbe.desktop` only if
 it does not already exist. Substitute the absolute new profile and fixture URL:
 
@@ -51,34 +82,30 @@ native acceptance must still verify its launch and cleanup. Snap's
 [tracking implementation](https://github.com/canonical/snapd/blob/2.76/sandbox/cgroup/tracking.go)
 and [launcher](https://github.com/canonical/snapd/blob/2.76/cmd/snap/cmd_run.go)
 recognize a preexisting `snap.firefox.firefox-UUID.scope`. A diagnostic may create
-that scope using the host user manager, restore the private runtime and bus
-before executing Firefox, and impose a short `RuntimeMaxSec`. Record and stop
-that exact scope separately: a user-manager scope leaves the harness's PAM
-session cgroup. Never substitute the host desktop bus for Firefox's private bus
-or disable Snap confinement.
+that scope, but normal acceptance must use the integrated catalog launch and
+verify its owner service, `BindsTo` relationship, scope descendants, and cleanup.
+Never substitute the host desktop bus for Firefox's private bus or disable Snap
+confinement. Terminal commands and portal application launches currently bypass
+the catalog's tracking-scope integration.
 
-The prepared run has an ownership-checked `launch-firefox-scope.py` diagnostic
-with `start` and `stop` commands. Run `start` only from its owned native terminal;
-run `stop` before stopping the native harness. Its scope expires after 300
-seconds and is recorded in `firefox-scope.json`. This is a diagnostic, not yet an
-integrated application-launch or cleanup guarantee. Snap also expects the
-document portal at `/run/user/UID/doc`, whereas Hearthspace mounts its private
-portal beneath the private runtime. Treat file-chooser support as unverified
-until the exact file-selection workflow below passes with confinement intact.
+Snap also expects the document portal at `/run/user/UID/doc`, whereas Hearthspace
+mounts its private portal beneath the private runtime. Confined file-chooser
+support remains unresolved; a mapped browser window is not evidence for it.
 
 Record the exact entry path and SHA-256, new profile path, a unique ownership
 marker inside that profile, and whether the compositor's dedicated
 `~/.local/state/hearthspace/apps/dev.hearthspace.FirefoxProbe.desktop` directory
-already existed. Keep this record in the run's `app-probe-ownership.json`.
-The prepared `/tmp/hearthspace-daily-apps-native-1` run includes this manifest,
-copies of the fixtures, a `workspace` directory, and an ownership-checking
-`cleanup-app-probes.py`. Its manifest records the actual unique profile path.
+already existed. Record the equivalent paths for the native entry too. Keep this
+record in the run's `app-probe-ownership.json`. Each prepared run includes the
+manifest, fixture copies, a `workspace` directory, and an ownership-checking
+`cleanup-app-probes.py` with the actual unique paths.
 
 ## Workflows and evidence
 
-Launch `dev.hearthspace.FirefoxProbe.desktop` through the agent's `launch` command
-or the shell entry named **Hearthspace Firefox Probe**. Preserve screenshots and
-their native presentation metadata for the following checks:
+Launch `dev.hearthspace.NativeFirefoxProbe.desktop` through the agent's `launch`
+command or the shell entry named **Hearthspace Native Firefox Probe**. Use the
+separate **Hearthspace Firefox Probe** entry for Snap scope acceptance. Preserve
+screenshots and their native presentation metadata for the following checks:
 
 - Type or clipboard-paste a unique sentinel into **Browser text**, then click
   **Confirm text**. Assert the visible/accessibility output is exactly
@@ -129,14 +156,14 @@ do not use a broad process-name kill that could affect ordinary browsing.
 For the prepared run, execute:
 
 ```sh
-python3 /tmp/hearthspace-daily-apps-native-1/cleanup-app-probes.py
+python3 RUN/cleanup-app-probes.py
 ```
 
 The helper requires successful native cleanup, validates the exact profile
 parent/name and ownership marker, refuses to remove a changed desktop entry,
-and refuses while the owned Firefox profile is still in use. It removes only
-that entry, the new Firefox profile, and the dedicated compositor app-profile
-directory if that directory did not preexist. It retains run artifacts,
+and refuses while an owned Firefox profile is still in use. It removes only
+the recorded entries, new Firefox profiles, and dedicated compositor app-profile
+directories that did not preexist. It retains run artifacts,
 screenshots, fixture copies, and edited workspace files. For later runs, apply
 the same ownership checks to their recorded paths; never remove a preexisting
 entry or profile.

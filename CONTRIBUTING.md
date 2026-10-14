@@ -312,6 +312,68 @@ magick assets/cursors/source/nesw-resize.svg assets/cursors/source/nesw-resize.p
 (cd assets/cursors/source && xcursorgen ns-resize.cursor ../ns-resize && xcursorgen ew-resize.cursor ../ew-resize && xcursorgen nwse-resize.cursor ../nwse-resize && xcursorgen nesw-resize.cursor ../nesw-resize)
 ```
 
+### Native Firefox Package
+
+The physical development host also has Mozilla's official Firefox DEB for
+daily browser and portal testing. Snap expects its document portal at the
+canonical `/run/user/UID/doc`; Hearthspace's private portal uses a session-specific
+runtime. Catalog Snap launches have [owned tracking scopes](docs/SNAP_APPLICATIONS.md),
+but that does not resolve the document-portal path difference. The native DEB
+provides a browser without that Snap-specific path requirement and retains
+Firefox's normal content-process sandbox.
+
+The installation follows [Mozilla's Ubuntu instructions](https://support.mozilla.org/en-US/kb/install-firefox-linux).
+The key downloaded from `https://packages.mozilla.org/apt/repo-signing-key.gpg`
+was checked in a temporary GPG home before installation. Its primary fingerprint
+was `35BAA0B33E9EB396F59CA838C0BA5CE6DC6315A3`. Three new files were installed with
+mode `0644`:
+
+- `/etc/apt/keyrings/packages.mozilla.org.asc`: the verified signing key.
+- `/etc/apt/sources.list.d/mozilla.sources`:
+
+  ```deb822
+  Types: deb
+  URIs: https://packages.mozilla.org/apt
+  Suites: mozilla
+  Components: main
+  Signed-By: /etc/apt/keyrings/packages.mozilla.org.asc
+  ```
+
+- `/etc/apt/preferences.d/mozilla-firefox`:
+
+  ```text
+  Package: firefox firefox-l10n-*
+  Pin: origin packages.mozilla.org
+  Pin-Priority: 1000
+
+  Package: firefox
+  Pin: release o=Ubuntu
+  Pin-Priority: -1
+  ```
+
+The preference is limited to Firefox and its language packs. APT's normal
+repository-signature validation succeeded with the dedicated `Signed-By` key.
+After reviewing `apt-get -s install firefox`, the installation used:
+
+```sh
+sudo apt-get update
+sudo apt-get install -y --allow-downgrades firefox=158.0~build2
+```
+
+This replaced only Ubuntu's transitional `firefox` DEB (`1:1snap1-0ubuntu9.1`);
+its version epoch accounts for APT's downgrade label. The Firefox Snap
+(`149.0.2-1`, revision `8107`) remains installed. `/usr/bin/firefox` now resolves
+to `/usr/lib/firefox/firefox`, and `/snap/bin/firefox` still launches Snap.
+The corresponding desktop IDs are `firefox.desktop` and
+`firefox_firefox.desktop`. Future DEB updates come from the configured Mozilla
+repository; the version above records this host's installation.
+
+HTTP, HTTPS, and HTML defaults remained `google-chrome.desktop`, and the automatic
+`x-www-browser` selection remained `/usr/bin/google-chrome-stable`. Existing
+browser profiles were not opened or migrated. Native acceptance uses a new
+explicit `--profile` directory with `--no-remote`, plus temporary desktop entries
+removed after the owned session stops; see [application acceptance](docs/DAILY_APPS_TESTING.md).
+
 ### Optional Test Apps
 
 Built-in test apps are gated behind the Cargo feature `test-apps` so normal compositor and shell builds do not require their dependencies.
