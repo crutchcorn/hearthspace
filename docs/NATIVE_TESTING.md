@@ -141,6 +141,15 @@ artifacts, manifests, and logs remain available. The independent systemd watchdo
 uses the same recovery path after a hung compositor or interrupted agent.
 Privileged recovery uses the root-owned state under `/run/hearthspace-native/`.
 
+Before systemd terminates the private bus wrapper, its stop hook gives the
+session supervisor up to six seconds to exit normally. It verifies the unit's
+current main process and its direct supervisor child by executable, UID, and
+private runtime argument, then signals through a pidfd to avoid PID-reuse races.
+This lets the compositor save the isolated run's `layout.json`. A missing,
+unresponsive, or mismatched supervisor falls through to the existing bounded
+forced cleanup; saving layout is only guaranteed after a successful normal exit.
+The hook also applies when the watchdog stops a running unit.
+
 Inspect `session.log`, `session.json`, and the unit named in that manifest when
 startup or cleanup fails. `journalctl -u UNIT` includes systemd/PAM errors that
 precede compositor logging. Do not start another run while cleanup is incomplete;

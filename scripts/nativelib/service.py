@@ -67,6 +67,16 @@ def service_command(state):
         "WorkingDirectory": str(ROOT),
         "UnsetEnvironment": "DISPLAY WAYLAND_DISPLAY WAYLAND_SOCKET DBUS_SESSION_BUS_ADDRESS DBUS_SESSION_BUS_PID",
         "ExecStartPre": "+" + property_command(["/usr/bin/chvt", state["vt"]]),
+        "ExecStop": "+"
+        + property_command(
+            [
+                "/usr/bin/python3",
+                ENTRY,
+                "_graceful-stop",
+                "--state",
+                state["state_file"],
+            ]
+        ),
         "ExecStopPost": "+"
         + property_command(
             ["/usr/bin/python3", ENTRY, "_recover", "--state", state["state_file"]]
