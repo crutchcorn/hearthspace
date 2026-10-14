@@ -1,0 +1,2 @@
+Hearthspace browser file selection proof
+Exact sentinel: HEARTHSPACE_UPLOAD_OK

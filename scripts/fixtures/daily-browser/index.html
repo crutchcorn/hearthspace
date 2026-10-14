@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Hearthspace daily browser probe</title>
+<style>
+  body { max-width: 760px; margin: 24px auto; padding: 0 20px; font: 18px/1.4 sans-serif; color: #182331; background: #f4f6fa; }
+  h1 { font-size: 28px; margin-bottom: 8px; }
+  label, output { display: block; margin-top: 12px; }
+  input[type=text], textarea { box-sizing: border-box; width: 100%; padding: 10px; font: inherit; }
+  button, input[type=file] { margin-top: 8px; font: inherit; }
+  button { padding: 8px 14px; }
+  output { padding: 8px; background: white; white-space: pre-wrap; overflow-wrap: anywhere; }
+  a { display: inline-block; margin: 18px 0 8px; }
+</style>
+<h1>Hearthspace daily browser probe</h1>
+<p>This local page makes text, navigation, and file selection results visible.</p>
+<label for="browser-text">Browser text</label>
+<input id="browser-text" type="text" autocomplete="off" placeholder="Type or paste exact text here">
+<button id="confirm-text" type="button">Confirm text</button>
+<output id="confirmed-text" aria-label="Confirmed browser text" aria-live="polite">No text confirmed.</output>
+<label for="browser-notes">Browser notes</label>
+<textarea id="browser-notes" rows="2" placeholder="Multiline clipboard destination"></textarea>
+<a href="details.html">Open local link</a>
+<label for="probe-file">Choose a local proof file</label>
+<input id="probe-file" type="file" accept=".txt,text/plain">
+<output id="file-result" aria-label="Selected file contents" aria-live="polite">No file selected.</output>
+<script>
+  document.querySelector('#confirm-text').addEventListener('click', () => {
+    document.querySelector('#confirmed-text').textContent =
+      'Confirmed: ' + document.querySelector('#browser-text').value;
+  });
+  document.querySelector('#probe-file').addEventListener('change', async (event) => {
+    const file = event.target.files[0];
+    const result = document.querySelector('#file-result');
+    if (!file) { result.textContent = 'No file selected.'; return; }
+    if (file.size > 65536) { result.textContent = 'Choose a proof file smaller than 64 KiB.'; return; }
+    result.textContent = 'File: ' + file.name + '\nBytes: ' + file.size + '\nText: ' + await file.text();
+  });
+</script>
+</html>

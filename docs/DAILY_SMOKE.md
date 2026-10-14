@@ -51,4 +51,5 @@ original failure rather than replacing it.
 Run cross-application Wayland/X11 clipboard acceptance separately with
 `scripts/clipboard-smoke`; this workflow only checks explicit Unicode paste into
 Foot. Browser, editor, file-manager, suspend/resume, hotplug, and physical gesture
-checks remain separate acceptance work.
+checks remain separate acceptance work. Browser, editor, and file-manager
+workflows are described in [native app acceptance](DAILY_APPS_TESTING.md).
