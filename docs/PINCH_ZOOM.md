@@ -1,24 +1,42 @@
 # Pinch Zoom
 
-Spread two fingers on a touchpad to zoom into the canvas; bring them together to
-zoom out. No modifier key is required. The canvas point under the pointer when
-the gesture starts stays anchored there, within the canvas's integer coordinate
-rounding. The toolbar remains fixed in screen space.
+Spread three fingers on a touchpad or touchscreen to zoom into the canvas;
+bring them together to zoom out. No modifier key is required. Touchpad zoom is
+anchored at the pointer. Touchscreen zoom is anchored at the initial center of
+the three contacts. That canvas point stays fixed, within integer coordinate
+rounding, and the toolbar remains fixed in screen space.
 
 Zoom follows the fingers immediately, within the existing 0.5×–2× limits. Gesture
 translation and rotation do not pan or rotate the canvas. This gesture controls
 the desktop canvas even when the pointer is over an application.
 
-The compositor uses Smithay's existing pinch events from libinput or its nested
-Wayland backend. These are touchpad gestures; touchscreen input remains the
-existing single-contact pointer emulation. Nested X11 does not supply pinch
-events. Shell zoom buttons and Super+scroll remain available.
+Native touchpad zoom uses Smithay's existing libinput pinch events. Touchscreen
+zoom uses Smithay's raw touch contacts, grouped by device and frame. No new
+protocol or vendored backend is required. Shell zoom buttons and Super+scroll
+remain available.
+
+The pinned Smithay/winit backend only delivers two-finger touchpad pinch events,
+so three-finger touchpad zoom requires the native backend. Nested touchscreen
+events use the same recognizer, with an adapter for winit's unframed physical
+coordinates. Nested X11 does not supply touchpad pinch events.
 
 ## Interaction and Cancellation
 
 A pinch does not begin during a window drag, resize, pointer or keyboard grab
-(including popup grabs), or an active touchscreen contact. Only two-finger
-pinches are used. Updates from another input device cannot change the gesture.
+(including popup grabs). An active touchscreen sequence blocks touchpad zoom.
+Only three-finger pinches are used; contacts from separate touchscreens are never
+combined. Updates from another input device cannot change the gesture.
+Touchscreen positions use the compositor's existing primary-output mapping.
+
+Touchscreen taps click on release. A single contact moving at least eight logical
+pixels starts a drag from its original position. Adding another contact before
+that point suppresses the click and allows a three-finger pinch. Adding contacts
+after a drag has started releases the drag and suppresses the rest of that touch
+sequence. Two-finger touchscreen gestures do not zoom or click.
+
+The first normal lift ends touchscreen zoom at its current view. A fourth contact
+or touch cancellation cancels it. Remaining contacts cannot start another gesture
+or become a click until all fingers have lifted.
 
 Ending normally retains the current view. Cancelling an active gesture, removing
 its device, losing nested-window focus, or suspending the native session restores
@@ -43,8 +61,10 @@ is for forwarding gestures to applications; canvas zoom is owned by the
 compositor and does not require advertising that protocol.
 
 Unit regressions cover absolute scaling, fixed anchoring, bounds and reversal,
-invalid updates, device isolation, normal completion, and cancellation. For the
-kernel-to-compositor path and visible native presentation, use the optional
+invalid updates, device isolation, contact batching, pointer arbitration, normal
+completion, and cancellation. For the kernel-to-compositor path and visible
+native presentation, use the optional
 [native pinch acceptance test](../CONTRIBUTING.md#optional-native-pinch-testing).
-It creates a temporary virtual touchpad and exercises the normal libinput path;
-it does not emulate a person's physical finger feel on the built-in touchpad.
+It creates temporary virtual touchpad and touchscreen devices and exercises the
+normal libinput path. It checks visible scaling and the distinct pointer/centroid
+anchors, and does not emulate a person's physical finger feel on the hardware.

@@ -1,4 +1,4 @@
-"""A temporary uinput touchpad, restricted to an owned native test VT."""
+"""Temporary uinput touch devices, restricted to an owned native test VT."""
 
 import argparse
 import json
@@ -23,13 +23,24 @@ def contact_positions(width, fingers):
         (1000 - width / 2, 650),
         (1000 + width / 2, 650),
         (1000, 650 - width / 3),
+        (1000 - width / 4, 650 - width / 6),
     ][:fingers]
 
 
-class Touchpad:
-    def __init__(self, session, log):
+def checked_points(values):
+    if not 1 <= len(values) <= 4 or any(
+        len(point) != 2 or not 0 <= point[0] <= 2000 or not 0 <= point[1] <= 1400
+        for point in values
+    ):
+        raise ControlError("touchscreen requires 1–4 points within its absolute range")
+    return [[round(x), round(y)] for x, y in values]
+
+
+class TouchDevice:
+    def __init__(self, session, log, kind="touchpad"):
         self.session = session
         self.log = log
+        self.kind = kind
         self.process = None
 
     def __enter__(self):
@@ -39,7 +50,7 @@ class Touchpad:
                 "-n",
                 "/usr/bin/python3",
                 str(ENTRY),
-                "--touchpad",
+                f"--{self.kind}",
                 str(self.session),
             ],
             stdin=subprocess.PIPE,
@@ -58,13 +69,13 @@ class Touchpad:
         with selectors.DefaultSelector() as selector:
             selector.register(self.process.stdout, selectors.EVENT_READ)
             if not selector.select(15):
-                raise ControlError("virtual touchpad timed out")
+                raise ControlError("virtual touch device timed out")
         line = self.process.stdout.readline()
         if not line:
-            raise ControlError("virtual touchpad exited; inspect its retained log")
+            raise ControlError("virtual touch device exited; inspect its retained log")
         result = json.loads(line)
         if not result.get("ok"):
-            raise ControlError(result.get("error", "virtual touchpad failed"))
+            raise ControlError(result.get("error", "virtual touch device failed"))
         return result
 
     def request(self, operation, **values):
@@ -92,7 +103,7 @@ class Touchpad:
             self.process.stdout.close()
         if returncode and error_type is None:
             raise ControlError(
-                f"virtual touchpad worker exited with status {returncode}"
+                f"virtual touch device worker exited with status {returncode}"
             )
 
 
@@ -100,21 +111,23 @@ def require_owned_vt(session):
     manifest = json.loads((session / "session.json").read_text())
     active = Path("/sys/class/tty/tty0/active").read_text().strip()
     if manifest.get("status") != "ready" or active != f"tty{manifest['vt']}":
-        raise ControlError("virtual touchpad requires its owned native VT to be active")
+        raise ControlError(
+            "virtual touch device requires its owned native VT to be active"
+        )
     return manifest
 
 
-def worker(session):
+def worker(session, kind):
     # Optional dependency: ordinary unit tests/headless runs never import evdev.
     from evdev import AbsInfo, UInput
     from evdev import ecodes as e
 
     if os.geteuid() != 0:
-        raise ControlError("virtual touchpad requires sudo for /dev/uinput")
+        raise ControlError("virtual touch device requires sudo for /dev/uinput")
     require_owned_vt(session)
 
     def interrupted(*_):
-        raise SystemExit("virtual touchpad stopped")
+        raise SystemExit("virtual touch device stopped")
 
     signal.signal(signal.SIGTERM, interrupted)
     signal.signal(signal.SIGALRM, interrupted)
@@ -124,16 +137,31 @@ def worker(session):
         (e.ABS_Y, AbsInfo(0, 0, 1400, 0, 0, 20)),
         (e.ABS_MT_POSITION_X, AbsInfo(0, 0, 2000, 0, 0, 20)),
         (e.ABS_MT_POSITION_Y, AbsInfo(0, 0, 1400, 0, 0, 20)),
-        (e.ABS_MT_SLOT, AbsInfo(0, 0, 2, 0, 0, 0)),
+        (e.ABS_MT_SLOT, AbsInfo(0, 0, 3, 0, 0, 0)),
         (e.ABS_MT_TRACKING_ID, AbsInfo(0, 0, 65535, 0, 0, 0)),
     ]
-    counts = [e.BTN_TOOL_FINGER, e.BTN_TOOL_DOUBLETAP, e.BTN_TOOL_TRIPLETAP]
-    caps = {e.EV_KEY: [e.BTN_LEFT, e.BTN_TOUCH, *counts], e.EV_ABS: axes}
+    counts = (
+        [
+            e.BTN_TOOL_FINGER,
+            e.BTN_TOOL_DOUBLETAP,
+            e.BTN_TOOL_TRIPLETAP,
+            e.BTN_TOOL_QUADTAP,
+        ]
+        if kind == "touchpad"
+        else []
+    )
+    keys = [e.BTN_TOUCH, e.BTN_LEFT, *counts] if counts else [e.BTN_TOUCH]
+    props = (
+        [e.INPUT_PROP_POINTER, e.INPUT_PROP_BUTTONPAD]
+        if counts
+        else [e.INPUT_PROP_DIRECT]
+    )
+    caps = {e.EV_KEY: keys, e.EV_ABS: axes}
     with UInput(
         caps,
-        name="Hearthspace pinch acceptance touchpad",
-        phys="hearthspace/pinch-smoke",
-        input_props=[e.INPUT_PROP_POINTER, e.INPUT_PROP_BUTTONPAD],
+        name=f"Hearthspace pinch acceptance {kind}",
+        phys=f"hearthspace/pinch-smoke/{kind}",
+        input_props=props,
     ) as device:
         subprocess.run(["udevadm", "settle", "--timeout=5"], timeout=6, check=True)
         properties = subprocess.check_output(
@@ -141,8 +169,8 @@ def worker(session):
             text=True,
             timeout=5,
         )
-        if "ID_INPUT_TOUCHPAD=1" not in properties.splitlines():
-            raise ControlError("udev did not classify the virtual device as a touchpad")
+        if f"ID_INPUT_{kind.upper()}=1" not in properties.splitlines():
+            raise ControlError(f"udev did not classify the virtual device as a {kind}")
         observer = subprocess.Popen(
             [
                 "stdbuf",
@@ -167,60 +195,101 @@ def worker(session):
                 flush=True,
             )
             fingers, distance, tracking = 0, 0, 0
+            touch_points = []
 
             def positions(width):
-                points = contact_positions(width, fingers)
+                points = contact_positions(width, fingers) if counts else touch_points
                 for slot, (x, y) in enumerate(points):
                     device.write(e.EV_ABS, e.ABS_MT_SLOT, slot)
                     device.write(e.EV_ABS, e.ABS_MT_POSITION_X, round(x))
                     device.write(e.EV_ABS, e.ABS_MT_POSITION_Y, round(y))
                 device.write(e.EV_ABS, e.ABS_X, round(points[0][0]))
-                device.write(e.EV_ABS, e.ABS_Y, points[0][1])
+                device.write(e.EV_ABS, e.ABS_Y, round(points[0][1]))
 
             for line in sys.stdin:
                 require_owned_vt(session)
                 request = json.loads(line)
                 operation = request["operation"]
                 if operation == "begin":
-                    if fingers or request["fingers"] not in (2, 3):
+                    if fingers or request["fingers"] not in (1, 2, 3, 4):
                         raise ControlError("invalid touchpad begin")
                     fingers = request["fingers"]
-                    distance = float(request["distance"])
-                    if not 200 <= distance <= 1600:
-                        raise ControlError("touchpad distance must be in [200, 1600]")
+                    if counts:
+                        distance = float(request["distance"])
+                        if not 200 <= distance <= 1600:
+                            raise ControlError(
+                                "touchpad distance must be in [200, 1600]"
+                            )
+                    else:
+                        touch_points = checked_points(request["points"])
+                        if len(touch_points) != fingers:
+                            raise ControlError(
+                                "touchscreen finger count and positions differ"
+                            )
                     for slot in range(fingers):
                         tracking += 1
                         device.write(e.EV_ABS, e.ABS_MT_SLOT, slot)
                         device.write(e.EV_ABS, e.ABS_MT_TRACKING_ID, tracking)
                     device.write(e.EV_KEY, e.BTN_TOUCH, 1)
-                    device.write(e.EV_KEY, counts[fingers - 1], 1)
+                    if counts:
+                        device.write(e.EV_KEY, counts[fingers - 1], 1)
                     positions(distance)
                     device.syn()
-                    time.sleep(0.06)
+                    time.sleep(0.06 if counts else 0.02)
                 elif operation == "move":
-                    target = float(request["distance"])
-                    if not fingers or not 200 <= target <= 1600:
-                        raise ControlError("invalid touchpad move")
+                    if not fingers:
+                        raise ControlError("cannot move without active contacts")
+                    target = float(request["distance"]) if counts else distance
+                    old_points = touch_points
+                    if counts:
+                        if not 200 <= target <= 1600:
+                            raise ControlError("invalid touchpad move")
+                    else:
+                        new_points = checked_points(request["points"])
+                        if len(new_points) != fingers:
+                            raise ControlError(
+                                "touchscreen move must retain its contact count"
+                            )
                     for step in range(1, 41):
                         require_owned_vt(session)
+                        if not counts:
+                            touch_points = [
+                                [a + (b - a) * step / 40 for a, b in zip(old, new)]
+                                for old, new in zip(old_points, new_points)
+                            ]
                         positions(distance + (target - distance) * step / 40)
                         device.syn()
                         time.sleep(0.01)
                     distance = target
                 elif operation == "add-finger":
-                    if fingers != 2:
-                        raise ControlError(
-                            "adding a finger requires two active contacts"
-                        )
-                    fingers = 3
+                    if not 1 <= fingers <= 3 or (counts and fingers != 3):
+                        raise ControlError("invalid contact count when adding a finger")
+                    if not counts:
+                        touch_points = checked_points([*touch_points, request["point"]])
+                    fingers += 1
                     tracking += 1
-                    device.write(e.EV_ABS, e.ABS_MT_SLOT, 2)
+                    device.write(e.EV_ABS, e.ABS_MT_SLOT, fingers - 1)
                     device.write(e.EV_ABS, e.ABS_MT_TRACKING_ID, tracking)
-                    device.write(e.EV_KEY, e.BTN_TOOL_DOUBLETAP, 0)
-                    device.write(e.EV_KEY, e.BTN_TOOL_TRIPLETAP, 1)
+                    if counts:
+                        device.write(e.EV_KEY, counts[fingers - 2], 0)
+                        device.write(e.EV_KEY, counts[fingers - 1], 1)
                     positions(distance)
                     device.syn()
-                    time.sleep(0.1)
+                    time.sleep(0.1 if counts else 0.02)
+                elif operation == "lift":
+                    if counts or not fingers:
+                        raise ControlError(
+                            "individual lift requires touchscreen contacts"
+                        )
+                    fingers -= 1
+                    device.write(e.EV_ABS, e.ABS_MT_SLOT, fingers)
+                    device.write(e.EV_ABS, e.ABS_MT_TRACKING_ID, -1)
+                    touch_points.pop()
+                    if fingers:
+                        positions(distance)
+                    else:
+                        device.write(e.EV_KEY, e.BTN_TOUCH, 0)
+                    device.syn()
                 elif operation == "end":
                     for slot in range(fingers):
                         device.write(e.EV_ABS, e.ABS_MT_SLOT, slot)
@@ -250,10 +319,13 @@ def worker(session):
 
 def worker_main(argv):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--touchpad", type=Path, required=True)
+    group = parser.add_mutually_exclusive_group(required=True)
+    group.add_argument("--touchpad", type=Path)
+    group.add_argument("--touchscreen", type=Path)
     args = parser.parse_args(argv)
     try:
-        worker(args.touchpad.resolve())
+        kind = "touchpad" if args.touchpad else "touchscreen"
+        worker(getattr(args, kind).resolve(), kind)
         return 0
     except (
         ControlError,

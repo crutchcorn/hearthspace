@@ -180,7 +180,7 @@ synthetic and physical scrolling share the compositor's Super modifier and
 
 The `status` response also includes `viewport` with canvas offset `x`/`y`,
 `scale`, and `pinch_active`. Native [pinch tests](PINCH_ZOOM.md) inspect this
-alongside window geometry and captures, while injecting a temporary touchpad
+alongside window geometry and captures, while injecting temporary touch devices
 through uinput rather than synthesizing pinch commands on the control socket.
 
 Payloads depend on the request:

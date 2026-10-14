@@ -10,70 +10,11 @@ from pathlib import Path
 
 from .control import ControlError, save_capture
 from .input import Input
+from .pinch_assertions import same_viewport, verify_removal, verify_zoom
+from .pinch_touchscreen import acceptance as touchscreen_acceptance
 from .smoke import Smoke
-from .touchpad import Touchpad
+from .touchpad import TouchDevice
 from .visual import marker_bounds
-
-
-def verify_zoom(
-    before, after, anchor, before_window, after_window, before_image, after_image
-):
-    ratio = after["scale"] / before["scale"]
-    for axis, coordinate in zip(("x", "y"), anchor):
-        old_canvas = coordinate / before["scale"] + before[axis]
-        new_canvas = coordinate / after["scale"] + after[axis]
-        if abs(new_canvas - old_canvas) > 1.1:
-            raise ControlError(
-                "pinch moved the canvas point beneath its initial pointer anchor"
-            )
-    if abs(after_window["width"] - before_window["width"] * ratio) > 2:
-        raise ControlError("window geometry did not follow the pinch scale")
-    old_bounds = marker_bounds(before_image, before_window)
-    new_bounds = marker_bounds(after_image, after_window)
-    for start, end in ((0, 2), (1, 3)):
-        old_size = (old_bounds[end] - old_bounds[start]) / before_image[0]["scale"]
-        new_size = (new_bounds[end] - new_bounds[start]) / after_image[0]["scale"]
-        if abs(new_size - old_size * ratio) > 2:
-            raise ControlError(
-                "presented terminal marker did not scale with the viewport"
-            )
-    return {
-        "scale_ratio": ratio,
-        "before_marker": old_bounds,
-        "after_marker": new_bounds,
-    }
-
-
-def same_viewport(first, second):
-    return all(abs(first[key] - second[key]) < 1e-8 for key in ("x", "y", "scale"))
-
-
-def verify_removal(trace, before, active, after):
-    events = re.findall(
-        r"^\s*(\S+)\s+(GESTURE_PINCH_BEGIN|GESTURE_PINCH_END|DEVICE_REMOVED)\b([^\n]*)$",
-        trace,
-        re.MULTILINE,
-    )
-    final = events[-3:]
-    if (
-        [event[1] for event in final]
-        != ["GESTURE_PINCH_BEGIN", "GESTURE_PINCH_END", "DEVICE_REMOVED"]
-        or len({event[0] for event in final}) != 1
-        or not re.fullmatch(r"\s+\+\S+s\s+2\s*", final[0][2])
-    ):
-        raise ControlError(
-            "removal trace requires the final two-finger BEGIN, END, then DEVICE_REMOVED"
-        )
-    end = re.fullmatch(r"\s+\+\S+s\s+2(?:\s+(cancelled))?\s*", final[1][2])
-    if end is None:
-        raise ControlError("removal trace has an unrecognized final pinch END")
-    cancelled = end.group(1) is not None
-    expected = {**(before if cancelled else active), "pinch_active": False}
-    if after["pinch_active"] or not same_viewport(expected, after):
-        raise ControlError(
-            "viewport after removal does not match the observed final pinch END"
-        )
-    return {"end_cancelled": cancelled, "expected": expected, "final_events": final}
 
 
 def terminal(smoke):
@@ -110,7 +51,7 @@ def zoom(smoke, device, name, anchor, start, end):
     before = smoke.control.status()["viewport"]
     before_window = smoke.window()
     before_image = smoke.capture(f"{name}-before")
-    device.request("begin", fingers=2, distance=start)
+    device.request("begin", fingers=3, distance=start)
     device.request("move", distance=end)
 
     def changed():
@@ -149,20 +90,20 @@ def acceptance(smoke):
     window = terminal(smoke)
     anchor = (window["x"] + 80, window["y"] + window["titlebar_height"] + 70)
     with (smoke.artifacts / "libinput.log").open("w") as log:
-        with Touchpad(smoke.directory, log) as device:
+        with TouchDevice(smoke.directory, log) as device:
             smoke.record("virtual-touchpad", **device.device)
             zoom(smoke, device, "pinch-out", anchor, 900, 550)
             zoom(smoke, device, "pinch-in", anchor, 550, 850)
             before = smoke.control.status()["viewport"]
-            device.request("begin", fingers=3, distance=900)
+            device.request("begin", fingers=2, distance=900)
             device.request("move", distance=550)
             device.request("end")
             # Input has finished; allow its final kernel frame to dispatch.
             time.sleep(0.1)
             ignored = smoke.control.status()["viewport"]
             if ignored["pinch_active"] or not same_viewport(before, ignored):
-                raise ControlError("three-finger gesture changed the canvas")
-            smoke.record("three-finger-ignored", before=before, after=ignored)
+                raise ControlError("two-finger gesture changed the canvas")
+            smoke.record("two-finger-ignored", before=before, after=ignored)
             window = smoke.window()
             if window["titlebar_height"] <= 0:
                 raise ControlError(
@@ -174,7 +115,7 @@ def acceptance(smoke):
                     window["x"] + 100, window["y"] + window["titlebar_height"] / 2
                 )
                 inputs.down("pointer-button", 272)
-                device.request("begin", fingers=2, distance=900)
+                device.request("begin", fingers=3, distance=900)
                 device.request("move", distance=550)
                 device.request("end")
                 time.sleep(0.1)
@@ -186,7 +127,7 @@ def acceptance(smoke):
             with Input(smoke.control) as inputs:
                 inputs.motion(*anchor)
             before = smoke.control.status()["viewport"]
-            device.request("begin", fingers=2, distance=900)
+            device.request("begin", fingers=3, distance=900)
             device.request("move", distance=650)
             smoke.until(
                 "pinch before finger-count cancellation",
@@ -211,7 +152,7 @@ def acceptance(smoke):
             smoke.record("finger-count-cancelled", before=before, after=cancelled)
             before = smoke.control.status()["viewport"]
             smoke.capture("removal-before")
-            device.request("begin", fingers=2, distance=900)
+            device.request("begin", fingers=3, distance=900)
             device.request("move", distance=650)
             smoke.until(
                 "pinch before unplug",
@@ -280,7 +221,10 @@ def run(args):
         )
         manifest = smoke.connect()
         smoke.record("ready", manifest=manifest, status=smoke.control.status())
-        acceptance(smoke)
+        if args.device != "touchscreen":
+            acceptance(smoke)
+        if args.device != "touchpad":
+            touchscreen_acceptance(smoke, smoke.window() or terminal(smoke))
     except BaseException as failure:
         error = failure
         smoke.record("operation-failed", error=str(failure))
@@ -300,7 +244,10 @@ def run(args):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--session", type=Path, required=True)
-    parser.add_argument("--timeout", type=float, default=120)
+    parser.add_argument("--timeout", type=float, default=240)
+    parser.add_argument(
+        "--device", choices=("touchpad", "touchscreen", "both"), default="both"
+    )
     parser.add_argument(
         "--log-level", default="info,hearthspace_compositor::compositor::input=debug"
     )

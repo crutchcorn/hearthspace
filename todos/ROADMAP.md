@@ -12,8 +12,8 @@ edges) or intentionally deferred. Native backend work lives in
 - [x] **AI enablement** — native screenshots, reliable control transport, a VT
       session launcher with recovery, and agent CLI/smoke tests are implemented.
       See the [native-control skill](../.agents/skills/hearthspace-native-control/SKILL.md).
-- [x] **Pinch-gesture zoom** — two-finger touchpad pinches zoom the canvas around
-      the pointer, alongside shell buttons and `Super`-modified scroll.
+- [x] **Pinch-gesture zoom** — three-finger touchpad and touchscreen pinches zoom
+      the canvas, alongside shell buttons and `Super`-modified scroll.
       See [Pinch Zoom](../docs/PINCH_ZOOM.md) for behavior and native testing.
 - [ ] **Optional desktop protocols** — several optional protocols are not
       implemented yet, so clients may print warnings.

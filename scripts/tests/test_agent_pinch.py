@@ -7,8 +7,8 @@ from unittest.mock import Mock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from agentlib.control import ControlError
-from agentlib.pinch import verify_removal, verify_zoom
-from agentlib.touchpad import Touchpad, contact_positions, require_owned_vt
+from agentlib.pinch_assertions import verify_removal, verify_zoom
+from agentlib.touchpad import TouchDevice, contact_positions, require_owned_vt
 from test_agent_visual import window_capture
 
 
@@ -82,9 +82,9 @@ class PinchAssertionTests(unittest.TestCase):
 
 
 class RemovalEvidenceTests(unittest.TestCase):
-    BEGIN = " event17 GESTURE_PINCH_BEGIN +1.01s\t2\n"
-    END = " event17 GESTURE_PINCH_END +2.02s\t2\n"
-    CANCEL = " event17 GESTURE_PINCH_END +2.02s\t2 cancelled\n"
+    BEGIN = " event17 GESTURE_PINCH_BEGIN +1.01s\t3\n"
+    END = " event17 GESTURE_PINCH_END +2.02s\t3\n"
+    CANCEL = " event17 GESTURE_PINCH_END +2.02s\t3 cancelled\n"
     REMOVED = " event17 DEVICE_REMOVED Hearthspace pinch acceptance touchpad\n"
 
     def setUp(self):
@@ -138,7 +138,7 @@ class RemovalEvidenceTests(unittest.TestCase):
 
 class TouchpadCleanupTests(unittest.TestCase):
     def touchpad(self, returncode):
-        device = Touchpad(Path("/test"), None)
+        device = TouchDevice(Path("/test"), None)
         device.process = Mock()
         device.process.wait.return_value = returncode
         return device

@@ -159,8 +159,9 @@ validation separately from GPU-intensive headless suites so concurrent workload
 does not obscure capture and presentation failures.
 
 The [pinch zoom acceptance test](../CONTRIBUTING.md#optional-native-pinch-testing)
-uses a temporary uinput touchpad to exercise libinput recognition and verify the
-rendered canvas zoom. Run it separately from the smoke cases above.
+uses temporary uinput touchpad and touchscreen devices to exercise libinput input
+and verify rendered three-finger canvas zoom. Run it separately from the smoke
+cases above.
 
 Run automated regressions without taking a VT:
 

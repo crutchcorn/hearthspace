@@ -123,8 +123,9 @@ as Wayland. This was a transient service restart, with no configuration change.
 
 ### Optional Native Pinch Testing
 
-The native pinch acceptance script creates a temporary multitouch touchpad through
-Linux uinput, so gestures pass through udev and libinput before reaching Hearthspace.
+The native pinch acceptance script creates temporary touchpads and touchscreens
+through Linux uinput, so gestures and raw touch frames pass through udev and
+libinput before reaching Hearthspace.
 Install its optional test dependencies (installed on the development host):
 
 ```sh
@@ -143,12 +144,18 @@ cargo build --locked --workspace --all-targets --features udev,e2e,test-apps
 scripts/pinch-smoke --session "$(mktemp -d /tmp/hearthspace-pinch.XXXXXX)"
 ```
 
+The default tests both device types. Add `--device touchpad` or
+`--device touchscreen` for a focused run; each run still owns a fresh VT session.
+
 The session artifacts retain libinput's gesture trace, viewport/window assertions,
-and PNG/metadata pairs for zoom in/out, drag suppression, finger-count cancellation,
-and device removal. Cancellation restores the initial view. Removal follows the
-recorded final gesture event: a cancelled end restores the initial view, while a
-normal end retains the completed zoom. The test requires the observed outcome
-and verifies that the device disappears and no gesture remains active.
+and PNG/metadata pairs for three-finger zoom in/out, ignored two-finger gestures,
+fourth-finger cancellation, and device removal. Touchscreen cases additionally
+verify the initial touch chord cannot click the close button, completed gestures
+suppress remaining contacts, and single-finger taps/drags still work. Cancellation
+restores the initial view. Removal follows the recorded final event: cancellation
+or removal of an active gesture restores its initial view; a normal end/lift retains
+the completed zoom. The test requires the observed outcome and verifies that each
+virtual device disappears and no gesture remains active.
 
 ### Optional Desktop Dependencies
 
