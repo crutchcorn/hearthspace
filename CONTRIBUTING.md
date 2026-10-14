@@ -121,6 +121,35 @@ During enablement, the existing host `at-spi-dbus-bus.service` was restarted to
 repair such a stale socket; the test fixtures now isolate bus activation as well
 as Wayland. This was a transient service restart, with no configuration change.
 
+### Optional Native Pinch Testing
+
+The native pinch acceptance script creates a temporary multitouch touchpad through
+Linux uinput, so gestures pass through udev and libinput before reaching Hearthspace.
+Install its optional test dependencies (installed on the development host):
+
+```sh
+sudo apt-get install -y python3-evdev libinput-tools
+```
+
+Ubuntu also installs `python3-libevdev` and `python3-pyudev` as dependencies. The
+test uses noninteractive sudo to access `/dev/uinput`; it does not change device
+permissions, install udev rules, or leave a virtual device behind. The injector
+requires its owned native session's VT to be active and closes the device before
+the native harness restores the original VT. Build the native binaries first,
+then run this separately from other native or GPU tests:
+
+```sh
+cargo build --locked --workspace --all-targets --features udev,e2e,test-apps
+scripts/pinch-smoke --session "$(mktemp -d /tmp/hearthspace-pinch.XXXXXX)"
+```
+
+The session artifacts retain libinput's gesture trace, viewport/window assertions,
+and PNG/metadata pairs for zoom in/out, drag suppression, finger-count cancellation,
+and device removal. Cancellation restores the initial view. Removal follows the
+recorded final gesture event: a cancelled end restores the initial view, while a
+normal end retains the completed zoom. The test requires the observed outcome
+and verifies that the device disappears and no gesture remains active.
+
 ### Optional Desktop Dependencies
 
 The settings app uses `rfd` for file selection. On Linux, `rfd` is built with

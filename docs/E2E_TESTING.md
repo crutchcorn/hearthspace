@@ -178,6 +178,11 @@ output offsets. Axis amounts use the control socket's scroll-distance units;
 synthetic and physical scrolling share the compositor's Super modifier and
 `--scroll-zooms` policy.
 
+The `status` response also includes `viewport` with canvas offset `x`/`y`,
+`scale`, and `pinch_active`. Native [pinch tests](PINCH_ZOOM.md) inspect this
+alongside window geometry and captures, while injecting a temporary touchpad
+through uinput rather than synthesizing pinch commands on the control socket.
+
 Payloads depend on the request:
 
 | Request | Payload |

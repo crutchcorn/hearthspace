@@ -158,6 +158,10 @@ A preflight failure, such as missing sudo access, fails the test. Run native
 validation separately from GPU-intensive headless suites so concurrent workload
 does not obscure capture and presentation failures.
 
+The [pinch zoom acceptance test](../CONTRIBUTING.md#optional-native-pinch-testing)
+uses a temporary uinput touchpad to exercise libinput recognition and verify the
+rendered canvas zoom. Run it separately from the smoke cases above.
+
 Run automated regressions without taking a VT:
 
 ```sh

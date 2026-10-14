@@ -119,6 +119,13 @@ impl App {
     }
 
     pub(super) fn end_pinch_zoom(&mut self, device: &str, cancelled: bool, time: InputTime) {
+        debug!(
+            %device,
+            cancelled,
+            active = self.pinch_zoom.is_active(),
+            blocked = self.pinch_blocked(),
+            "ending canvas pinch zoom"
+        );
         if self.pinch_blocked() {
             self.interrupt_pinch_zoom();
             return;

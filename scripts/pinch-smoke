@@ -1,0 +1,11 @@
+#!/usr/bin/env python3
+import sys
+
+if "--touchpad" in sys.argv:
+    from agentlib.touchpad import worker_main
+
+    raise SystemExit(worker_main(sys.argv[1:]))
+
+from agentlib.pinch import main
+
+raise SystemExit(main())
