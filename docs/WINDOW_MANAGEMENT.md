@@ -173,6 +173,7 @@ lock state; switching back resumes it. On laptops whose function row defaults
 to media controls, hold Fn as well to send an F key. Nested and headless sessions
 do not switch the host's TTY. Agents can exercise the native binding through an
 owned uinput keyboard; control-socket key injection remains inside Hearthspace.
+See the [native TTY validation record](VT_TESTING.md) for recovery and lock checks.
 
 ## Agent control
 
