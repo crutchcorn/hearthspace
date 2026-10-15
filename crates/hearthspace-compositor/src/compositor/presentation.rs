@@ -8,10 +8,13 @@ use wayland_protocols::xdg::shell::server::xdg_toplevel;
 use super::{App, ManagedSurface, ManagedWindowKind, WindowDecoration};
 use crate::config::{CONTROL_BAR_HEIGHT, TITLE_BAR_HEIGHT};
 
+mod canvas_zoom;
 #[cfg(test)]
 mod tests;
 mod transform;
 mod transients;
+
+pub(super) use canvas_zoom::RestoredMaximizedWindow;
 
 #[derive(Debug, Default)]
 pub(super) struct WindowPresentation {
@@ -19,6 +22,7 @@ pub(super) struct WindowPresentation {
     pub(super) fullscreen: bool,
     pub(super) output: Option<String>,
     pub(super) restoring: bool,
+    reveal_on_restore: bool,
     restore_size: Option<Size<i32, Logical>>,
 }
 
@@ -45,8 +49,10 @@ impl WindowPresentation {
                 self.restore_size = (size.w > 0 && size.h > 0).then_some(size);
             }
             self.restoring = false;
+            self.reveal_on_restore = false;
         } else if was_pinned {
             self.restoring = true;
+            self.reveal_on_restore = true;
         }
     }
 }
@@ -283,10 +289,12 @@ impl App {
             ManagedSurface::X11(_) => self.windows[index].presentation.restore_size == Some(size),
         };
         if ready && size.w > 0 && size.h > 0 {
+            let reveal = self.windows[index].presentation.reveal_on_restore;
             self.windows[index].presentation.restoring = false;
+            self.windows[index].presentation.reveal_on_restore = false;
             self.windows[index].presentation.restore_size = None;
             let id = self.windows[index].id;
-            if self.focused_normal_window_id == Some(id) {
+            if reveal && self.focused_normal_window_id == Some(id) {
                 let _ = self.focus_window(id);
             }
         }

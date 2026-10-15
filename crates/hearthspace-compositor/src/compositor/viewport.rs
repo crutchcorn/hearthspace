@@ -111,6 +111,15 @@ impl App {
             f64::from(primary_output.loc.x) + f64::from(primary_output.size.w) / 2.0,
             f64::from(primary_output.loc.y) + f64::from(primary_output.size.h) / 2.0,
         ));
+        let (_, target_scale) = zoom_around_screen_point(
+            self.viewport_offset,
+            self.viewport_scale,
+            center_screen,
+            multiplier,
+        );
+        if target_scale != self.viewport_scale {
+            self.restore_maximized_for_canvas_zoom();
+        }
         let (viewport_offset, viewport_scale) = zoom_around_screen_point(
             self.viewport_offset,
             self.viewport_scale,

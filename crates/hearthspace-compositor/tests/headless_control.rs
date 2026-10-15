@@ -12,6 +12,9 @@ use std::{
 #[path = "support/accessibility.rs"]
 mod accessibility_diagnostics;
 #[cfg(feature = "test-apps")]
+#[path = "support/canvas_zoom.rs"]
+mod canvas_zoom;
+#[cfg(feature = "test-apps")]
 #[path = "support/layout.rs"]
 mod layout;
 #[cfg(feature = "test-apps")]

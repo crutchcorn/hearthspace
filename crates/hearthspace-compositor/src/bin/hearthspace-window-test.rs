@@ -4,13 +4,86 @@ use std::{cell::RefCell, path::PathBuf, rc::Rc};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let path = PathBuf::from(std::env::args().nth(1).ok_or("snapshot path required")?);
+    let shell_bar = std::env::var_os("HEARTHSPACE_WINDOW_TEST_SHELL_BAR").is_some();
     let app = gtk::Application::builder()
-        .application_id("dev.hearthspace.WindowTest")
+        .application_id(if shell_bar {
+            hearthspace_compositor::config::SHELL_BAR_APP_ID
+        } else {
+            "dev.hearthspace.WindowTest"
+        })
         .flags(gio::ApplicationFlags::NON_UNIQUE)
         .build();
-    app.connect_activate(move |app| build(app, path.clone()));
+    app.connect_activate(move |app| {
+        if shell_bar {
+            build_shell_bar(app, path.clone());
+        } else {
+            build(app, path.clone());
+        }
+    });
     app.run_with_args(&["hearthspace-window-test"]);
     Ok(())
+}
+
+fn build_shell_bar(app: &gtk::Application, path: PathBuf) {
+    use std::{
+        cell::Cell,
+        io::{Read, Write},
+        os::unix::net::UnixStream,
+    };
+
+    let window = gtk::ApplicationWindow::builder()
+        .application(app)
+        .title("Canvas zoom control fixture")
+        .decorated(false)
+        .default_width(1280)
+        .default_height(48)
+        .build();
+    let button = gtk::Button::with_label("Zoom out");
+    let clicked = Rc::new(Cell::new(false));
+    button.connect_clicked(glib::clone!(
+        #[strong]
+        clicked,
+        move |_| {
+            let socket = std::env::var_os("HEARTHSPACE_COMMAND_SOCKET").unwrap();
+            let mut stream = UnixStream::connect(socket).unwrap();
+            stream
+                .set_read_timeout(Some(std::time::Duration::from_secs(5)))
+                .unwrap();
+            stream
+                .set_write_timeout(Some(std::time::Duration::from_secs(5)))
+                .unwrap();
+            stream.write_all(b"zoom-out\n").unwrap();
+            let mut reply = [0; 3];
+            stream.read_exact(&mut reply).unwrap();
+            assert_eq!(&reply, b"ok\n");
+            clicked.set(true);
+        }
+    ));
+    window.set_child(Some(&button));
+    glib::timeout_add_local(
+        std::time::Duration::from_millis(25),
+        glib::clone!(
+            #[weak]
+            window,
+            #[weak]
+            button,
+            #[strong]
+            clicked,
+            #[upgrade_or]
+            glib::ControlFlow::Break,
+            move || {
+                let bounds = button.compute_bounds(&window).map(|bounds| serde_json::json!({
+                    "x": bounds.x(), "y": bounds.y(), "width": bounds.width(), "height": bounds.height(),
+                }));
+                let state = serde_json::json!({"active": window.is_active(), "mapped": window.is_mapped(), "clicked": clicked.get(), "button": bounds});
+                let temporary = path.with_extension("json.tmp");
+                std::fs::write(&temporary, serde_json::to_vec(&state).unwrap()).unwrap();
+                std::fs::rename(temporary, &path).unwrap();
+                glib::ControlFlow::Continue
+            }
+        ),
+    );
+    window.present();
 }
 
 fn build(app: &gtk::Application, path: PathBuf) {
@@ -154,6 +227,9 @@ fn build(app: &gtk::Application, path: PathBuf) {
             }
         ),
     );
+    if std::env::var_os("HEARTHSPACE_WINDOW_TEST_MAXIMIZED").is_some() {
+        window.maximize();
+    }
     window.present();
     editor.grab_focus();
 }

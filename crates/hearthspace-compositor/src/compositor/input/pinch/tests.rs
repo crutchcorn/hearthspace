@@ -197,3 +197,51 @@ fn a_new_interaction_prevents_late_cancellation_from_rolling_back_the_view() {
     );
     assert_eq!(pinch.update(DEVICE, 1.0), Some(visible));
 }
+
+#[test]
+fn canvas_restore_waits_for_a_meaningful_scale_change_on_either_input() {
+    for input in [PinchInput::Touchpad, PinchInput::Touchscreen] {
+        for initial in [MIN_ZOOM, 1.0, MAX_ZOOM] {
+            let mut pinch = PinchZoom::default();
+            pinch.begin(
+                input,
+                DEVICE.into(),
+                CanvasPoint { x: 10, y: -20 },
+                initial,
+                (300.0, 200.0).into(),
+            );
+            for factor in [1.0, 0.0, f64::NAN] {
+                assert!(!pinch.needs_canvas_restore(DEVICE, factor));
+            }
+            assert!(!pinch.needs_canvas_restore("another-device", 1.2));
+            if initial == MIN_ZOOM {
+                assert!(!pinch.needs_canvas_restore(DEVICE, 0.5));
+            }
+            if initial == MAX_ZOOM {
+                assert!(!pinch.needs_canvas_restore(DEVICE, 2.0));
+            }
+            let factor = if initial == MAX_ZOOM { 0.8 } else { 1.2 };
+            assert!(pinch.needs_canvas_restore(DEVICE, factor));
+            pinch.prepare_canvas(CanvasPoint { x: 10, y: -20 }, Vec::new());
+            assert!(!pinch.needs_canvas_restore(DEVICE, factor));
+        }
+    }
+}
+
+#[test]
+fn revealed_window_rebases_anchor_without_replacing_cancellation_viewport() {
+    let original = CanvasPoint { x: -100, y: 200 };
+    let revealed = CanvasPoint { x: 7400, y: -3100 };
+    let anchor = (500.25, 300.75).into();
+    for input in [PinchInput::Touchpad, PinchInput::Touchscreen] {
+        let mut pinch = PinchZoom::default();
+        pinch.begin(input, DEVICE.into(), original, 1.0, anchor);
+        pinch.prepare_canvas(revealed, Vec::new());
+        let before = screen_to_canvas(anchor, revealed, 1.0);
+        let (offset, scale) = pinch.update(DEVICE, 0.75).unwrap();
+        let after = screen_to_canvas(anchor, offset, scale);
+        assert!((before.x - after.x).abs() <= 0.5);
+        assert!((before.y - after.y).abs() <= 0.5);
+        assert_eq!(pinch.end(DEVICE, true), Some((original, 1.0)));
+    }
+}

@@ -7,7 +7,7 @@ use tracing::{debug, trace};
 
 use crate::geometry::{CanvasPoint, zoom_around_screen_point};
 
-use super::super::App;
+use super::super::{App, presentation::RestoredMaximizedWindow};
 
 #[derive(Default)]
 pub(in crate::compositor) struct PinchZoom {
@@ -18,8 +18,11 @@ struct Gesture {
     input: PinchInput,
     device: String,
     offset: CanvasPoint,
+    original_offset: CanvasPoint,
     scale: f64,
     anchor: Point<f64, Logical>,
+    prepared: bool,
+    restored: Vec<RestoredMaximizedWindow>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -45,8 +48,11 @@ impl PinchZoom {
             input,
             device,
             offset,
+            original_offset: offset,
             scale,
             anchor,
+            prepared: false,
+            restored: Vec::new(),
         });
     }
 
@@ -71,6 +77,31 @@ impl PinchZoom {
         ))
     }
 
+    fn needs_canvas_restore(&self, device: &str, factor: f64) -> bool {
+        self.gesture.as_ref().is_some_and(|gesture| {
+            !gesture.prepared
+                && self
+                    .update(device, factor)
+                    .is_some_and(|(_, scale)| scale != gesture.scale)
+        })
+    }
+
+    fn prepare_canvas(&mut self, offset: CanvasPoint, restored: Vec<RestoredMaximizedWindow>) {
+        if let Some(gesture) = &mut self.gesture {
+            gesture.offset = offset;
+            gesture.prepared = true;
+            gesture.restored = restored;
+        }
+    }
+
+    fn take_restored(&mut self, device: Option<&str>) -> Vec<RestoredMaximizedWindow> {
+        self.gesture
+            .as_mut()
+            .filter(|gesture| device.is_none_or(|device| device == gesture.device))
+            .map(|gesture| std::mem::take(&mut gesture.restored))
+            .unwrap_or_default()
+    }
+
     fn end(&mut self, device: &str, cancelled: bool) -> Option<(CanvasPoint, f64)> {
         if self
             .gesture
@@ -78,7 +109,7 @@ impl PinchZoom {
             .is_some_and(|gesture| gesture.device == device)
         {
             let gesture = self.gesture.take().unwrap();
-            return cancelled.then_some((gesture.offset, gesture.scale));
+            return cancelled.then_some((gesture.original_offset, gesture.scale));
         }
         None
     }
@@ -86,7 +117,7 @@ impl PinchZoom {
     fn cancel(&mut self) -> Option<(CanvasPoint, f64)> {
         self.gesture
             .take()
-            .map(|gesture| (gesture.offset, gesture.scale))
+            .map(|gesture| (gesture.original_offset, gesture.scale))
     }
 
     fn interrupt(&mut self) {
@@ -151,6 +182,15 @@ impl App {
             self.interrupt_pinch_zoom();
             return;
         }
+        if self.pinch_zoom.needs_canvas_restore(device, scale) {
+            // Presentation updates interrupt older input. Hold this gesture
+            // locally while releasing maximization, then rebase only its zoom
+            // anchor; cancellation still owns the original view and states.
+            let mut pinch = std::mem::take(&mut self.pinch_zoom);
+            let restored = self.restore_maximized_for_canvas_zoom();
+            pinch.prepare_canvas(self.viewport_offset, restored);
+            self.pinch_zoom = pinch;
+        }
         if let Some((offset, scale)) = self.pinch_zoom.update(device, scale) {
             trace!(%device, scale, "updating canvas pinch zoom");
             self.apply_pinch_viewport(offset, scale, time);
@@ -178,7 +218,13 @@ impl App {
             self.interrupt_pinch_zoom();
             return;
         }
+        let restored = if cancelled {
+            self.pinch_zoom.take_restored(Some(device))
+        } else {
+            Vec::new()
+        };
         if let Some((offset, scale)) = self.pinch_zoom.end(device, cancelled) {
+            self.cancel_canvas_zoom_restore(restored);
             self.apply_pinch_viewport(offset, scale, time);
         }
     }
@@ -188,7 +234,9 @@ impl App {
             self.interrupt_pinch_zoom();
             return;
         }
+        let restored = self.pinch_zoom.take_restored(None);
         if let Some((offset, scale)) = self.pinch_zoom.cancel() {
+            self.cancel_canvas_zoom_restore(restored);
             self.apply_pinch_viewport(offset, scale, InputTime::now());
         }
     }

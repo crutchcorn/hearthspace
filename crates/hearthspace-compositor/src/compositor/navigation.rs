@@ -230,14 +230,14 @@ fn configure_size(surface: &ToplevelSurface, size: Size<i32, Logical>) {
     surface.send_configure();
 }
 
-fn usable_output(mut output: Rectangle<i32, Logical>) -> Rectangle<i32, Logical> {
+pub(super) fn usable_output(mut output: Rectangle<i32, Logical>) -> Rectangle<i32, Logical> {
     let bar = CONTROL_BAR_HEIGHT.min(output.size.h.saturating_sub(1));
     output.loc.y += bar;
     output.size.h -= bar;
     output
 }
 
-fn reveal_offset(
+pub(super) fn reveal_offset(
     canvas: Rectangle<i32, Logical>,
     output: Rectangle<i32, Logical>,
     scale: f64,
