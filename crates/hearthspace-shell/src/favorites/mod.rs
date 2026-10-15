@@ -107,6 +107,41 @@ impl FavoriteStore {
     pub fn assign(&mut self, app_id: &str, points: &[Point]) -> Result<(), FavoriteError> {
         let gesture = Gesture::from_points(points)?;
         let index = self.index(app_id)?;
+        self.validate_gesture(app_id, &gesture)?;
+        let mut entries = self.entries.clone();
+        entries[index].gesture = Some(gesture);
+        self.replace(entries)
+    }
+
+    /// Save an app and its gesture in one transaction. Old favorites without
+    /// gestures no longer have a UI role and are retired only on a successful save.
+    pub fn set_gesture(&mut self, app_id: &str, points: &[Point]) -> Result<(), FavoriteError> {
+        validate_id(app_id)?;
+        let gesture = Gesture::from_points(points)?;
+        self.validate_gesture(app_id, &gesture)?;
+        let mut entries: Vec<_> = self
+            .entries
+            .iter()
+            .filter(|entry| entry.gesture.is_some())
+            .cloned()
+            .collect();
+        if let Some(entry) = entries.iter_mut().find(|entry| entry.app_id == app_id) {
+            entry.gesture = Some(gesture);
+        } else {
+            if entries.len() >= MAX_FAVORITES {
+                return Err(FavoriteError(format!(
+                    "You can save up to {MAX_FAVORITES} app gestures."
+                )));
+            }
+            entries.push(Favorite {
+                app_id: app_id.to_owned(),
+                gesture: Some(gesture),
+            });
+        }
+        self.replace(entries)
+    }
+
+    fn validate_gesture(&self, app_id: &str, gesture: &Gesture) -> Result<(), FavoriteError> {
         for entry in &self.entries {
             if entry.app_id != app_id
                 && entry
@@ -120,9 +155,7 @@ impl FavoriteStore {
                 )));
             }
         }
-        let mut entries = self.entries.clone();
-        entries[index].gesture = Some(gesture);
-        self.replace(entries)
+        Ok(())
     }
 
     pub fn clear_gesture(&mut self, app_id: &str) -> Result<(), FavoriteError> {
@@ -197,3 +230,6 @@ fn validate_id(id: &str) -> Result<(), FavoriteError> {
 #[cfg(test)]
 #[path = "store_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+mod upsert_tests;
