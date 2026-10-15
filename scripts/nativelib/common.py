@@ -15,6 +15,7 @@ BINARIES = (
     "hearthspace-app-scope-guard",
     "hearthspace-compositor",
     "hearthspace-shell",
+    "hearthspace-settings",
     "hearthspace-settingsd",
     "hearthspace-a11y",
     "hearthspace-notifications",

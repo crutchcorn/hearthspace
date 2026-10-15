@@ -183,7 +183,7 @@ class DailySmokeTests(unittest.TestCase):
             {"windows": [{"id": 1}]},
             {"windows": [{"id": 1}, {"id": 2}]},
         ]
-        smoke.until.side_effect = [True, True, ControlError("selector deadline")]
+        smoke.until.side_effect = [True, True, True, ControlError("selector deadline")]
         with (
             patch("agentlib.daily_checks.Input"),
             self.assertRaisesRegex(ControlError, "selector deadline"),

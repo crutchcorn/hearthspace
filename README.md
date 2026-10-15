@@ -35,10 +35,11 @@ To choose Hearthspace at the graphical login screen, run
 release before requesting sudo. See [graphical login](./docs/LOGIN_SESSION.md)
 for installation, updates, removal, and the remaining local acceptance checks.
 
-Super+Return opens a terminal. Super+Space searches installed applications and
-running windows; Alt+Tab switches applications with live window previews until
-Alt is released. Alt+Shift+Tab moves backward. Super+arrow keys pan the canvas,
-Super+0 resets the view, and Super+M / Super+F toggle maximize / fullscreen.
+Super+Return opens a terminal. Tap Meta (Super), press Super+Space, or click the
+search icon to search installed applications and running windows. Alt+Tab switches
+applications with live window previews until Alt is released. Alt+Shift+Tab moves
+backward. Super+arrow keys pan the canvas,
+and Super+M / Super+F toggle maximize / fullscreen.
 Slide three fingers to pan the canvas; pinch them to zoom. Swipe four fingers
 left/right on a touchpad, or four/five on a touchscreen, to switch windows with
 the same previews until you lift. Selection smoothly pans to the focused window.
@@ -46,11 +47,14 @@ Pinch inward to open
 the live window overview, or outward to dismiss it: use four fingers on a native
 touchpad, or four/five on a touchscreen. The native libinput backend does not
 emit five-finger touchpad gestures. Lift your fingers to finish the gesture. The
-**Overview** toolbar button and Super+O also open it; click or tap a preview to
+Super+O shortcut also opens it; click or tap a preview to
 focus that window, or press Escape to return. Native sessions provide
 notifications, locking, and [lid/suspend recovery](./docs/POWER.md);
-the shell offers confirmed logout. See [window management](./docs/WINDOW_MANAGEMENT.md)
-for keyboard controls and [app compatibility](./docs/APPS.md) for profile and
+the bell icon opens notifications, the map icon opens the canvas minimap, and
+the power menu contains Lock and confirmed Log out. Settings is available in
+search. See [the compact shell](./docs/SHELL.md) and
+[window management](./docs/WINDOW_MANAGEMENT.md) for keyboard controls and
+[app compatibility](./docs/APPS.md) for profile and
 package behavior.
 
 Agents can start an owned native session on a spare VT, inspect apps and stable

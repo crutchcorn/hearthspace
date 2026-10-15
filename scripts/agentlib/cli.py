@@ -22,7 +22,6 @@ WINDOW_COMMANDS = {
     "focus-next": "focus-next-window",
     "focus-previous": "focus-previous-window",
     "focus-launcher": "focus-launcher",
-    "reset-view": "reset-view",
     "fullscreen": "fullscreen-window",
     "maximize": "maximize-window",
     "restore": "restore-window",

@@ -14,6 +14,7 @@ impl App {
         location: Point<f64, Logical>,
         time: InputTime,
     ) {
+        self.shortcuts.cancel_meta_tap();
         let first = !self.touch_input.has_contacts();
         if first {
             // A previous sequence can have lifted in this same input frame.
@@ -47,6 +48,8 @@ impl App {
     }
 
     pub(in crate::compositor) fn cancel_input_gestures(&mut self) {
+        self.shortcuts.cancel_meta_tap();
+        self.cancel_pending_search();
         let actions = self.touch_input.reset();
         self.apply_touch_actions(actions, InputTime::now());
         self.cancel_pinch_zoom();

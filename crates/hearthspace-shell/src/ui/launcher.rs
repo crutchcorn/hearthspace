@@ -1,14 +1,16 @@
 use hearthspace_ui_components as components;
 use xilem::{
     AnyWidgetView, WidgetView,
-    masonry::layout::AsUnit,
+    masonry::{layout::AsUnit, properties::LineBreaking},
     style::Style,
-    view::{CrossAxisAlignment, flex_col, sized_box},
+    view::{CrossAxisAlignment, FlexSpacer, flex_col, flex_row, sized_box},
 };
 
 use super::{
     command_client::{launch_app, send_command},
-    constants::{LAUNCHER_ITEM_WIDTH, MAX_RESULTS},
+    constants::MAX_RESULTS,
+    icons::{Icon, icon_button},
+    search_focus::{FocusTarget, focus_on_activation},
     state::{ShellOutputInstance, ShellState},
     window_catalog::RunningWindow,
 };
@@ -21,7 +23,14 @@ pub(super) enum Entry {
 }
 
 impl Entry {
-    fn label(&self) -> String {
+    pub(super) fn id(&self) -> super::search_selection::EntryId {
+        match self {
+            Self::Window(window) => super::search_selection::EntryId::Window(window.id),
+            Self::App(app) => super::search_selection::EntryId::App(app.id.clone()),
+        }
+    }
+
+    pub(super) fn label(&self) -> String {
         match self {
             Self::Window(window) => window.label(),
             Self::App(app) => format!("Open: {}", app.name),
@@ -31,7 +40,7 @@ impl Entry {
 
 pub(super) fn results(state: &ShellState, output: &ShellOutputInstance) -> Vec<Entry> {
     let query = output.query.trim();
-    if query.is_empty() && !output.show_windows {
+    if query.is_empty() {
         return Vec::new();
     }
     let mut windows = state
@@ -78,55 +87,64 @@ pub(super) fn launcher_view(
     output: &ShellOutputInstance,
     entries: Vec<Entry>,
     windows_error: Option<String>,
-) -> impl WidgetView<ShellState> + use<> {
-    let key = output.key().to_string();
-    let output_name = output.output_name.clone();
+) -> impl WidgetView<ShellState, Widget = super::search_focus::SearchFocus> + use<> {
+    let focus_target = FocusTarget::default();
+    let search = super::search_input::input(output, focus_target.clone());
+    let close_key = output.key().to_string();
+    let close = icon_button(Icon::Close, "Close search", false, move |state| {
+        state.dismiss_search(&close_key)
+    });
+    let selected = super::search_selection::selected_index(output, &entries);
     let mut rows: Vec<Box<AnyWidgetView<ShellState>>> = entries
         .into_iter()
-        .map(|entry| {
-            let key = key.clone();
-            let output_name = output_name.clone();
-            components::launcher_item(
-                entry.label(),
-                LAUNCHER_ITEM_WIDTH,
-                move |state: &mut ShellState| {
-                    select(state, &key, output_name.as_deref(), &entry);
-                },
-            )
-            .boxed()
+        .enumerate()
+        .map(|(index, entry)| {
+            super::search_result::row(output, entry, Some(index) == selected, focus_target.clone())
+                .boxed()
         })
         .collect();
     if rows.is_empty() {
         rows.push(
             components::muted_text(if output.query.trim().is_empty() {
-                "No running windows"
+                "Type to search apps and open windows"
             } else {
                 "No matching apps or windows"
             })
             .boxed(),
         );
     }
-    if output.show_windows && output.query.trim().is_empty() {
-        rows.push(components::muted_text("Type a title or app name to find more windows.").boxed());
-    }
     if let Some(error) = output.launch_error.as_ref().or(windows_error.as_ref()) {
         rows.insert(
             0,
-            sized_box(components::field_label(format!(
-                "Could not complete the request: {error}"
-            )))
+            sized_box(
+                components::field_label(format!("Could not complete the request: {error}"))
+                    .line_break_mode(LineBreaking::WordWrap),
+            )
             .background_color(components::DANGER_SUBTLE)
             .padding(8.0.px())
             .boxed(),
         );
     }
-    sized_box(
-        flex_col(rows)
+    focus_on_activation(
+        super::popup::panel_with_header(
+            output,
+            super::popup::PopupKind::Search,
+            flex_col((
+                flex_row((
+                    components::section_title("Search"),
+                    FlexSpacer::Flex(1.0),
+                    close,
+                )),
+                search,
+            ))
             .cross_axis_alignment(CrossAxisAlignment::Stretch)
-            .gap(4.0.px()),
+            .gap(8.0.px()),
+            flex_col(rows)
+                .cross_axis_alignment(CrossAxisAlignment::Stretch)
+                .gap(4.0.px()),
+        ),
+        focus_target,
     )
-    .background_color(components::SURFACE)
-    .padding(6.0.px())
 }
 
 #[cfg(test)]
@@ -165,14 +183,11 @@ mod tests {
     }
 
     #[test]
-    fn windows_button_lists_running_windows_with_the_focused_window_first() {
+    fn empty_search_does_not_list_running_windows() {
         let mut state = state();
         assert!(results(&state, &state.outputs[0]).is_empty());
-        state.outputs[0].show_windows = true;
-        let entries = results(&state, &state.outputs[0]);
-        assert!(
-            matches!(entries.as_slice(), [Entry::Window(first), Entry::Window(second)] if first.id == 43 && second.id == 42)
-        );
+        state.toggle_search("eDP-1");
+        assert!(results(&state, &state.outputs[0]).is_empty());
     }
 
     #[test]
@@ -192,11 +207,11 @@ mod tests {
                 stream.write_all(reply.as_bytes()).unwrap();
             });
             state.outputs[0].query = "Research".into();
-            state.outputs[0].show_windows = true;
+            state.outputs[0].show_search = true;
             let entry = Entry::Window(state.windows[0].clone());
             select(&mut state, "eDP-1", Some("eDP-1"), &entry);
             assert_eq!(state.outputs[0].query.is_empty(), accepted);
-            assert_eq!(!state.outputs[0].show_windows, accepted);
+            assert_eq!(!state.outputs[0].show_search, accepted);
             assert_eq!(state.outputs[0].launch_error.is_none(), accepted);
             server.join().unwrap();
         }

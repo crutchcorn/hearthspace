@@ -11,11 +11,13 @@ use crate::compositor::{
     App, idle::ActivityReason, shell_integration::ControlReply, switcher::SwitcherSource,
 };
 
+mod meta;
 mod switcher;
 
 #[derive(Default)]
 pub(in crate::compositor) struct KeyboardShortcuts {
     intercepted: HashSet<Keycode>,
+    meta: meta::MetaTap,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -27,7 +29,7 @@ enum Shortcut {
     OverviewNext,
     OverviewPrevious,
     SwitcherCancel,
-    CanvasMapDismiss,
+    ShellPanelDismiss,
     Terminal,
     Launcher,
     Next,
@@ -37,13 +39,36 @@ enum Shortcut {
     Right,
     Up,
     Down,
-    Reset,
     Fullscreen,
     Maximize,
 }
 
 impl KeyboardShortcuts {
-    fn filter_canvas_map(
+    pub(in crate::compositor) fn cancel_meta_tap(&mut self) {
+        self.meta.cancel();
+    }
+
+    pub(in crate::compositor) fn discard_pending_key(
+        &mut self,
+        code: Keycode,
+        state: KeyState,
+        finish_existing: bool,
+    ) -> FilterResult<()> {
+        self.meta.discard(code, state);
+        match state {
+            KeyState::Pressed => {
+                self.intercepted.insert(code);
+            }
+            KeyState::Released => {
+                if !self.intercepted.remove(&code) && finish_existing {
+                    return FilterResult::Forward;
+                }
+            }
+        }
+        FilterResult::Intercept(())
+    }
+
+    fn filter_shell_panel(
         &mut self,
         code: Keycode,
         state: KeyState,
@@ -55,7 +80,7 @@ impl KeyboardShortcuts {
             return FilterResult::Intercept(
                 self.intercepted
                     .insert(code)
-                    .then_some(Shortcut::CanvasMapDismiss),
+                    .then_some(Shortcut::ShellPanelDismiss),
             );
         }
         self.filter(code, state, modifiers, symbol, available)
@@ -106,15 +131,19 @@ impl KeyboardShortcuts {
 impl App {
     /// Real and agent keyboard input use the same policy. Intercepted releases
     /// stay intercepted even if the modifier was released first.
-    pub(super) fn handle_keyboard_input(
+    pub(in crate::compositor) fn handle_keyboard_input(
         &mut self,
         code: Keycode,
         state: KeyState,
         time: InputTime,
     ) {
+        if self.buffer_pending_search_key(code, state, time) {
+            return;
+        }
         let keyboard = self.keyboard.clone();
         let available = self.navigation_available();
-        let canvas_map_focused = self.focused_canvas_map_index().is_some();
+        let mut toggle_launcher = false;
+        let shell_panel_focused = self.active_shell_panel_index().is_some();
         let previous_modifiers = keyboard.modifier_state();
         let intercepted = keyboard.input(
             self,
@@ -127,15 +156,19 @@ impl App {
                     .raw_latin_sym_or_raw_current_sym()
                     .map(|symbol| symbol.raw())
                     .unwrap_or(0);
+                toggle_launcher = app
+                    .shortcuts
+                    .meta
+                    .observe(code, state, modifiers, symbol, available);
                 if app.overview_active() {
                     app.shortcuts
                         .filter_overview(code, state, modifiers, symbol)
                 } else if let Some(source) = app.window_switcher_source() {
                     app.shortcuts
                         .filter_switcher(code, state, modifiers, symbol, source)
-                } else if canvas_map_focused {
+                } else if shell_panel_focused {
                     app.shortcuts
-                        .filter_canvas_map(code, state, modifiers, symbol, available)
+                        .filter_shell_panel(code, state, modifiers, symbol, available)
                 } else {
                     app.shortcuts
                         .filter(code, state, modifiers, symbol, available)
@@ -152,6 +185,9 @@ impl App {
             Some(Some(shortcut)) => self.run_shortcut(shortcut),
             Some(None) => {}
             None => self.record_focused_client_activity(ActivityReason::ClientInput),
+        }
+        if toggle_launcher && let Err(error) = self.toggle_launcher() {
+            tracing::debug!(%error, "search toggle unavailable");
         }
         // Observe XKB's aggregate Alt state, including either physical Alt key.
         // Releasing Shift, Tab, or one of two held Alt keys must keep the overlay.
@@ -174,8 +210,8 @@ impl App {
                 self.dismiss_window_switcher(true);
                 return;
             }
-            Shortcut::CanvasMapDismiss => {
-                self.dismiss_focused_canvas_map();
+            Shortcut::ShellPanelDismiss => {
+                self.dismiss_active_shell_panel();
                 return;
             }
             Shortcut::OverviewDismiss => {
@@ -201,7 +237,7 @@ impl App {
             | Shortcut::OverviewNext
             | Shortcut::OverviewPrevious
             | Shortcut::SwitcherCancel
-            | Shortcut::CanvasMapDismiss
+            | Shortcut::ShellPanelDismiss
             | Shortcut::Next
             | Shortcut::Previous => unreachable!(),
             Shortcut::Lock => ShellCommand::LockSession,
@@ -217,7 +253,6 @@ impl App {
             Shortcut::Right => ShellCommand::PanRight,
             Shortcut::Up => ShellCommand::PanUp,
             Shortcut::Down => ShellCommand::PanDown,
-            Shortcut::Reset => ShellCommand::ResetView,
             Shortcut::Fullscreen | Shortcut::Maximize => {
                 let Some(id) = self.focused_normal_window_id else {
                     return;
@@ -295,7 +330,6 @@ fn shortcut(modifiers: &ModifiersState, symbol: u32) -> Option<Shortcut> {
         keysyms::KEY_Right => Some(Shortcut::Right),
         keysyms::KEY_Up => Some(Shortcut::Up),
         keysyms::KEY_Down => Some(Shortcut::Down),
-        keysyms::KEY_0 => Some(Shortcut::Reset),
         keysyms::KEY_f => Some(Shortcut::Fullscreen),
         keysyms::KEY_m => Some(Shortcut::Maximize),
         _ => None,

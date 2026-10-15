@@ -4,15 +4,17 @@ use std::time::Duration;
 use chrono::Local;
 use hearthspace_ui_components as components;
 use xilem::{
-    WidgetView,
+    WidgetView, WindowView,
     core::{MessageProxy, NoElement, View},
-    masonry::layout::AsUnit,
+    masonry::{layout::AsUnit, properties::LineBreaking},
     style::Style,
-    view::{flex_row, task_raw},
+    view::{CrossAxisAlignment, FlexSpacer, flex_col, flex_row, task_raw},
 };
 
 use super::{
     command_client::send_command,
+    icons::{Icon, icon_button},
+    popup::{self, PopupKind},
     state::{ShellOutputInstance, ShellState},
 };
 
@@ -48,7 +50,7 @@ fn set_confirmation(state: &mut ShellState, output_key: &str, enabled: bool) {
         .find(|output| output.key() == output_key)
     {
         output.confirm_logout = enabled;
-        output.show_map = false;
+        output.show_power = true;
         output.launch_error = None;
     }
 }
@@ -57,7 +59,7 @@ fn confirm_logout(state: &mut ShellState, output_key: &str) {
     if !state
         .outputs
         .iter()
-        .any(|output| output.key() == output_key && output.confirm_logout)
+        .any(|output| output.key() == output_key && output.show_power && output.confirm_logout)
     {
         return;
     }
@@ -66,10 +68,28 @@ fn confirm_logout(state: &mut ShellState, output_key: &str) {
     }
 }
 
-pub(super) fn session_controls(
-    output: &ShellOutputInstance,
-    clock: String,
-) -> impl WidgetView<ShellState> + use<> {
+pub(super) fn power_button(output: &ShellOutputInstance) -> impl WidgetView<ShellState> + use<> {
+    let key = output.key().to_string();
+    icon_button(Icon::Power, "Power", output.show_power, move |state| {
+        state.toggle_power(&key)
+    })
+}
+
+pub(super) fn power_window(output: &ShellOutputInstance) -> WindowView<ShellState> {
+    let app_id = output.power_app_id();
+    let key = output.key().to_string();
+    let size = popup::size(output, PopupKind::Power, 300.0, 140.0);
+    popup::window(
+        output.power_window_id,
+        "Hearthspace Power",
+        app_id,
+        size,
+        power_panel(output),
+        move |state| state.dismiss_power(&key),
+    )
+}
+
+pub(super) fn power_panel(output: &ShellOutputInstance) -> impl WidgetView<ShellState> + use<> {
     let output_key = output.key().to_string();
     let cancel_key = output_key.clone();
     let lock_key = output_key.clone();
@@ -95,13 +115,42 @@ pub(super) fn session_controls(
     });
     let lock = (!confirming).then(|| {
         components::compact_action_button("Lock", move |state: &mut ShellState| {
-            state.dismiss_map(&lock_key);
-            if let Err(error) = send_command(&state.command_socket, "lock-session") {
-                state.finish_launch(&lock_key, Err(error));
-            }
+            let result = send_command(&state.command_socket, "lock-session");
+            state.finish_launch(&lock_key, result);
         })
     });
-    flex_row((components::muted_text(clock), lock, logout, cancel)).gap(8.0.px())
+    let close_key = output.key().to_string();
+    let close = icon_button(Icon::Close, "Close power menu", false, move |state| {
+        state.dismiss_launcher(&close_key)
+    });
+    let hint = confirming.then(|| {
+        components::field_label("Close your apps and end this session?")
+            .text_size(13.0)
+            .color(components::TEXT_MUTED)
+            .line_break_mode(LineBreaking::WordWrap)
+    });
+    let error = output
+        .launch_error
+        .clone()
+        .map(|error| components::field_label(error).line_break_mode(LineBreaking::WordWrap));
+    popup::panel(
+        output,
+        PopupKind::Power,
+        flex_col((
+            flex_row((
+                components::section_title("Power"),
+                FlexSpacer::Flex(1.0),
+                close,
+            )),
+            hint,
+            error,
+            lock,
+            logout,
+            cancel,
+        ))
+        .cross_axis_alignment(CrossAxisAlignment::Stretch)
+        .gap(8.0.px()),
+    )
 }
 
 #[cfg(test)]

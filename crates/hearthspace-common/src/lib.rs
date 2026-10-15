@@ -6,6 +6,8 @@ pub const SHELL_COMMAND_SOCKET_ENV: &str = "HEARTHSPACE_COMMAND_SOCKET";
 pub const SHELL_BAR_APP_ID: &str = "dev.hearthspace.shell-bar";
 pub const LAUNCHER_APP_ID: &str = "dev.hearthspace.launcher";
 pub const CANVAS_MAP_APP_ID: &str = "dev.hearthspace.canvas-map";
+pub const NOTIFICATIONS_APP_ID: &str = "dev.hearthspace.notifications-panel";
+pub const POWER_MENU_APP_ID: &str = "dev.hearthspace.power-menu";
 pub const SHELL_OUTPUT_WATCHER_APP_ID: &str = "dev.hearthspace.shell-output-watcher";
 pub const CONTROL_BAR_HEIGHT: i32 = 48;
 pub const LOG_FILE_ENV: &str = "HEARTHSPACE_LOG_FILE";
@@ -53,8 +55,36 @@ pub fn launcher_app_id_for_output(output_name: &str) -> String {
     shell_app_id_for_output(LAUNCHER_APP_ID, output_name)
 }
 
+pub fn launcher_app_id_for_request(output_name: Option<&str>, token: u64) -> String {
+    let base = output_name
+        .map(launcher_app_id_for_output)
+        .unwrap_or_else(|| LAUNCHER_APP_ID.to_string());
+    format!("{base}.request-{token}")
+}
+
+pub fn launcher_request_token_from_app_id(app_id: &str) -> Option<u64> {
+    let (base, token) = app_id.rsplit_once(".request-")?;
+    shell_output_name_from_app_id(LAUNCHER_APP_ID, base)?;
+    token.parse::<u64>().ok().filter(|token| *token > 0)
+}
+
 pub fn canvas_map_app_id_for_output(output_name: &str) -> String {
     shell_app_id_for_output(CANVAS_MAP_APP_ID, output_name)
+}
+
+pub fn notifications_app_id_for_output(output_name: &str) -> String {
+    shell_app_id_for_output(NOTIFICATIONS_APP_ID, output_name)
+}
+
+pub fn power_menu_app_id_for_output(output_name: &str) -> String {
+    shell_app_id_for_output(POWER_MENU_APP_ID, output_name)
+}
+
+/// Private compositor-to-shell datagrams share the command socket's namespace.
+pub fn shell_event_socket_path(command_socket: &std::path::Path) -> std::path::PathBuf {
+    let mut path = command_socket.as_os_str().to_os_string();
+    path.push(".events");
+    path.into()
 }
 
 pub fn shell_bar_output_name_from_app_id(app_id: &str) -> Option<Option<String>> {
@@ -62,11 +92,32 @@ pub fn shell_bar_output_name_from_app_id(app_id: &str) -> Option<Option<String>>
 }
 
 pub fn launcher_output_name_from_app_id(app_id: &str) -> Option<Option<String>> {
-    shell_output_name_from_app_id(LAUNCHER_APP_ID, app_id)
+    let base = if let Some((base, _)) = app_id.rsplit_once(".request-") {
+        launcher_request_token_from_app_id(app_id)?;
+        base
+    } else {
+        app_id
+    };
+    shell_output_name_from_app_id(LAUNCHER_APP_ID, base)
 }
 
 pub fn canvas_map_output_name_from_app_id(app_id: &str) -> Option<Option<String>> {
     shell_output_name_from_app_id(CANVAS_MAP_APP_ID, app_id)
+}
+
+pub fn notifications_output_name_from_app_id(app_id: &str) -> Option<Option<String>> {
+    shell_output_name_from_app_id(NOTIFICATIONS_APP_ID, app_id)
+}
+
+pub fn power_menu_output_name_from_app_id(app_id: &str) -> Option<Option<String>> {
+    shell_output_name_from_app_id(POWER_MENU_APP_ID, app_id)
+}
+
+pub fn shell_panel_output_name_from_app_id(app_id: &str) -> Option<Option<String>> {
+    launcher_output_name_from_app_id(app_id)
+        .or_else(|| canvas_map_output_name_from_app_id(app_id))
+        .or_else(|| notifications_output_name_from_app_id(app_id))
+        .or_else(|| power_menu_output_name_from_app_id(app_id))
 }
 
 fn shell_app_id_for_output(base: &str, output_name: &str) -> String {
@@ -176,5 +227,54 @@ mod tests {
             shell_bar_output_name_from_app_id("dev.hearthspace.shell-bar.output-not-hex"),
             None
         );
+    }
+
+    #[test]
+    fn every_shell_panel_has_a_distinct_output_namespace() {
+        let output = "card0/DP-1 🖥";
+        for (base, app_id) in [
+            (LAUNCHER_APP_ID, launcher_app_id_for_output(output)),
+            (CANVAS_MAP_APP_ID, canvas_map_app_id_for_output(output)),
+            (
+                NOTIFICATIONS_APP_ID,
+                notifications_app_id_for_output(output),
+            ),
+            (POWER_MENU_APP_ID, power_menu_app_id_for_output(output)),
+        ] {
+            assert_eq!(shell_panel_output_name_from_app_id(base), Some(None));
+            assert_eq!(
+                shell_panel_output_name_from_app_id(&app_id),
+                Some(Some(output.into()))
+            );
+            assert_eq!(shell_bar_output_name_from_app_id(&app_id), None);
+            assert_eq!(
+                shell_panel_output_name_from_app_id(&format!("{base}.output-ff")),
+                None
+            );
+        }
+        assert_eq!(shell_panel_output_name_from_app_id(SHELL_BAR_APP_ID), None);
+        assert_eq!(
+            shell_event_socket_path(std::path::Path::new("/tmp/control.sock")),
+            std::path::PathBuf::from("/tmp/control.sock.events")
+        );
+    }
+
+    #[test]
+    fn launcher_request_ids_preserve_output_and_reject_bad_tokens() {
+        for output in [None, Some("card0/DP-1")] {
+            let id = launcher_app_id_for_request(output, 42);
+            assert_eq!(
+                launcher_output_name_from_app_id(&id),
+                Some(output.map(str::to_owned))
+            );
+            assert_eq!(launcher_request_token_from_app_id(&id), Some(42));
+        }
+        assert_eq!(launcher_request_token_from_app_id(LAUNCHER_APP_ID), None);
+        for suffix in ["0", "-1", "a", "18446744073709551616", "1.request-2"] {
+            assert_eq!(
+                launcher_output_name_from_app_id(&format!("{LAUNCHER_APP_ID}.request-{suffix}")),
+                None
+            );
+        }
     }
 }

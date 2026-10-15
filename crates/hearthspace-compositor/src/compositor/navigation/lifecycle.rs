@@ -24,11 +24,12 @@ impl App {
         }
         self.windows[index].mapped = mapped;
         let id = self.windows[index].id;
-        if mapped && self.is_canvas_map(index) {
+        if mapped && self.is_shell_panel(index) {
             // Only the initial mapping requests focus; zoom updates and other
             // buffer commits must not steal it back from a newer user action.
-            if self.navigation_available() {
+            if self.navigation_available() && self.search_mapping_allowed(index) {
                 self.set_keyboard_focus_to_window(index, root.clone());
+                self.finish_pending_search(index);
             } else {
                 self.windows[index].surface.send_close();
             }
@@ -55,7 +56,8 @@ impl App {
                     .and_then(|root| self.window_index_for_surface(&root))
             })
         });
-        self.dismiss_canvas_maps_outside_focus(index);
+        self.cancel_search_outside_focus(index);
+        self.dismiss_shell_panels_outside_focus(index);
         self.focused_normal_window_id = index
             .filter(|index| self.is_navigable_window(*index))
             .map(|index| self.windows[index].id);

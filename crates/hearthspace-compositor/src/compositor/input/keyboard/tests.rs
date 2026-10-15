@@ -1,16 +1,47 @@
 use super::*;
 
 #[test]
+fn cancelled_search_keeps_preexisting_releases_and_suppresses_new_pairs() {
+    let mut shortcuts = KeyboardShortcuts::default();
+    let shift = 50_u32.into();
+    assert!(matches!(
+        shortcuts.discard_pending_key(shift, KeyState::Released, true),
+        FilterResult::Forward
+    ));
+    let a = 38_u32.into();
+    assert!(matches!(
+        shortcuts.discard_pending_key(a, KeyState::Pressed, false),
+        FilterResult::Intercept(())
+    ));
+    assert!(matches!(
+        shortcuts.filter(
+            a,
+            KeyState::Released,
+            &Default::default(),
+            keysyms::KEY_a,
+            true
+        ),
+        FilterResult::Intercept(None)
+    ));
+    // A shortcut press was already intercepted before opening the search.
+    shortcuts.intercepted.insert(shift);
+    assert!(matches!(
+        shortcuts.discard_pending_key(shift, KeyState::Released, true),
+        FilterResult::Intercept(())
+    ));
+}
+
+#[test]
 fn canvas_map_escape_closes_once_and_consumes_release_after_focus_changes() {
     let mut shortcuts = KeyboardShortcuts::default();
     let mods = ModifiersState::default();
     let key = 9_u32.into();
     assert!(matches!(
-        shortcuts.filter_canvas_map(key, KeyState::Pressed, &mods, keysyms::KEY_Escape, true),
-        FilterResult::Intercept(Some(Shortcut::CanvasMapDismiss))
+        shortcuts.filter_shell_panel(key, KeyState::Pressed, &mods, keysyms::KEY_Escape, true),
+        FilterResult::Intercept(Some(Shortcut::ShellPanelDismiss))
     ));
     assert!(matches!(
-        shortcuts.filter_canvas_map(key, KeyState::Pressed, &mods, keysyms::KEY_Escape, true),
+        shortcuts.filter_shell_panel(key, KeyState::Pressed, &mods, keysyms::KEY_Escape, true),
         FilterResult::Intercept(None)
     ));
     assert!(matches!(
@@ -22,7 +53,7 @@ fn canvas_map_escape_closes_once_and_consumes_release_after_focus_changes() {
         FilterResult::Forward
     ));
     assert!(matches!(
-        shortcuts.filter_canvas_map(key, KeyState::Pressed, &mods, keysyms::KEY_Escape, false),
+        shortcuts.filter_shell_panel(key, KeyState::Pressed, &mods, keysyms::KEY_Escape, false),
         FilterResult::Forward
     ));
 }
@@ -36,7 +67,7 @@ fn shortcuts_respect_modifiers_and_leave_application_keys_alone() {
         shortcut(&mods, keysyms::KEY_Return),
         Some(Shortcut::Terminal)
     );
-    assert_eq!(shortcut(&mods, keysyms::KEY_0), Some(Shortcut::Reset));
+    assert_eq!(shortcut(&mods, keysyms::KEY_0), None);
     assert_eq!(shortcut(&mods, keysyms::KEY_l), Some(Shortcut::Lock));
     assert_eq!(shortcut(&mods, keysyms::KEY_a), None);
     mods.ctrl = true;

@@ -13,6 +13,7 @@ from pathlib import Path
 from . import daily_checks as checks
 from .control import Control, ControlError, Deadline
 from .smoke import LAUNCHER, Smoke
+from .viewport_fixture import set_viewport
 
 
 class DailySmoke(Smoke):
@@ -76,7 +77,7 @@ class DailySmoke(Smoke):
         status = self.control.status()
         if status["backend"] != "native" or not status.get("shell_ready"):
             raise ControlError("daily smoke requires a ready native shell")
-        self.control.request("reset-view")
+        set_viewport(self, x=0, y=0, scale=1)
         self.record("ready", manifest=self.manifest, status=status)
         self.capture("initial")
 

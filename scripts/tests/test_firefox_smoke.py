@@ -170,12 +170,16 @@ class FirefoxEvidenceTests(unittest.TestCase):
             self.fail("maximized geometry never settled")
 
         smoke.until.side_effect = until
-        with patch.object(firefox_checks, "activate") as activate:
+        with (
+            patch.object(firefox_checks, "activate") as activate,
+            patch.object(firefox_checks, "set_viewport") as place,
+        ):
             result = firefox_checks.prepare_maximized(smoke)
         self.assertEqual(
             [call.args[0] for call in smoke.control.request.call_args_list],
-            ["reset-view", "focus-window 7"],
+            ["focus-window 7"],
         )
+        place.assert_called_once_with(smoke, x=0, y=0, scale=1)
         activate.assert_called_once_with(smoke, "Maximize")
         self.assertEqual(smoke.floating_before_max, self.after)
         self.assertEqual(result, self.before)
@@ -354,22 +358,27 @@ class FirefoxShellPointerTests(unittest.TestCase):
         self.assertIn("Zoom out", accessibility.call_args_list[1].args[2])
         self.assertEqual(accessibility.call_args.args[1], "find")
 
-    def test_distant_pinned_setup_resets_with_shell_focus_then_refocuses_browser(self):
+    def test_distant_pinned_setup_places_viewport_then_refocuses_browser(self):
         smoke = Mock(target=7)
         smoke.window.return_value = {"focused": True}
         smoke.until.side_effect = lambda _name, condition: condition()
         view = {"x": 0, "y": 0, "scale": 1}
-        with patch.object(firefox_shell, "settled", return_value=view):
-            self.assertEqual(firefox_shell.reset_pinned_view(smoke), view)
+        with (
+            patch.object(firefox_shell, "settled", return_value=view),
+            patch.object(firefox_shell, "set_viewport") as place,
+        ):
+            self.assertEqual(firefox_shell.prepare_pinned_view(smoke), view)
         self.assertEqual(
             [call.args[0] for call in smoke.control.request.call_args_list],
-            ["focus-launcher", "reset-view", "focus-window 7"],
+            ["focus-window 7"],
         )
+        place.assert_called_once_with(smoke, x=0, y=0, scale=1)
         with (
+            patch.object(firefox_shell, "set_viewport"),
             patch.object(firefox_shell, "settled", return_value=view | {"x": 100000}),
-            self.assertRaisesRegex(ControlError, "reset the distant viewport"),
+            self.assertRaisesRegex(ControlError, "place the distant viewport"),
         ):
-            firefox_shell.reset_pinned_view(smoke)
+            firefox_shell.prepare_pinned_view(smoke)
 
 
 class FirefoxTouchDeadlineTests(unittest.TestCase):

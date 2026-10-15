@@ -17,6 +17,7 @@ wayland-client = "0.31.15"
 xilem = { git = "https://github.com/linebender/xilem", rev = "271a27a6d4a930f7878d404f9014e3c50a3a9b88" }
 
 [dev-dependencies]
+accesskit_atspi_common = "0.18.1"
 masonry = { git = "https://github.com/linebender/xilem", rev = "271a27a6d4a930f7878d404f9014e3c50a3a9b88", features = ["testing"] }
 rstest = "0.27.0"
 tempfile = "3.27.0"

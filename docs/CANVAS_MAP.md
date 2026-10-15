@@ -1,6 +1,6 @@
 # Canvas map
 
-The map icon at the right edge of the shell bar opens a popover containing a
+The map icon beside the notification bell in the shell bar opens a popover containing a
 live, zoomed-out map of the canvas and icon buttons for zooming out and in. The
 percentage between the buttons reflects the current canvas zoom.
 
@@ -9,7 +9,7 @@ current view. A blue outline marks the visible area of the output whose map was
 opened; other outputs have muted outlines. The map starts with a wide canvas
 neighborhood and expands to include distant windows and viewports, retaining
 their relative positions and aspect ratio. It is an orientation aid rather than
-a window thumbnail preview; the Overview button still opens live previews.
+a window thumbnail preview; Super+O and overview gestures open live previews.
 
 Drag the blue viewport area with a mouse or touchscreen to pan the canvas.
 Its interior and outline both accept a drag. The map's projection stays fixed

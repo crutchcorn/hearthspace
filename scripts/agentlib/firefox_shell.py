@@ -5,6 +5,7 @@ from . import firefox_checks as checks
 from . import map_checks
 from .control import ControlError
 from .pinch_touchscreen import settled
+from .viewport_fixture import set_viewport
 
 button_center = map_checks.button_center
 
@@ -22,12 +23,10 @@ def click_zoom_out(smoke):
     map_checks.click(smoke, "Zoom out", on_press=focus_cleared)
 
 
-def reset_pinned_view(smoke):
-    # Reset centers a focused floating app and leaves a pinned app's offset
-    # unchanged. Focus the shell for an actual origin reset, then refocus the
-    # pinned browser without revealing its distant saved floating position.
-    smoke.control.request("focus-launcher")
-    smoke.control.request("reset-view")
+def prepare_pinned_view(smoke):
+    # Explicit viewport coordinates leave the pinned browser's distant saved
+    # floating position untouched. Refocusing must not reveal that position.
+    set_viewport(smoke, x=0, y=0, scale=1)
     smoke.control.request(f"focus-window {smoke.target}")
     smoke.until(
         "maximized Firefox focused before shell click",
@@ -35,7 +34,7 @@ def reset_pinned_view(smoke):
     )
     view = settled(smoke)
     if any(view[key] != value for key, value in (("x", 0), ("y", 0), ("scale", 1))):
-        raise ControlError("shell zoom setup failed to reset the distant viewport")
+        raise ControlError("shell zoom setup failed to place the distant viewport")
     return view
 
 
@@ -84,10 +83,10 @@ def run(smoke):
             and window["canvas_x"] == window["canvas_y"] == 100000
         ),
     )
-    # Focus reveals the real CSD Maximize control. Resetting the view afterwards
+    # Focus reveals the real CSD Maximize control. Placing the view afterwards
     # puts the saved floating location offscreen again while max stays pinned.
     before = checks.prepare_maximized(smoke)
-    before_view = reset_pinned_view(smoke)
+    before_view = prepare_pinned_view(smoke)
     smoke.record("shell-distant-maximized", window=before, viewport=before_view)
     image = smoke.capture("shell-zoom-before")
     click_zoom_out(smoke)

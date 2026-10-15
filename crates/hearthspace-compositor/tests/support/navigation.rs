@@ -309,7 +309,7 @@ fn navigation_moves_x11_without_doubling_its_global_position() {
     let id = windows[0]["id"].as_u64().unwrap();
     assert_eq!(windows[0]["client_type"], "x11");
     action(&compositor, format!("move-window {id} 400 200"));
-    action(&compositor, "reset-view");
+    action(&compositor, "pan-to 200 100");
     let windows = wait_windows(&compositor, |windows| {
         windows[0]["canvas_x"] == 400 && windows[0]["canvas_y"] == 200
     });

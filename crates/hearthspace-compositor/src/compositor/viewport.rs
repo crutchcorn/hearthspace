@@ -151,6 +151,16 @@ impl App {
         transform_screen_to_canvas(point, self.viewport_offset, self.viewport_scale)
     }
 
+    pub(super) fn zoom_viewport_to(&mut self, scale: f64) -> Result<(), String> {
+        if !scale.is_finite()
+            || !(crate::config::MIN_ZOOM..=crate::config::MAX_ZOOM).contains(&scale)
+        {
+            return Err("zoom must be between 0.5 and 2".into());
+        }
+        self.animate_zoom_around_viewport_center(scale / self.viewport_scale);
+        Ok(())
+    }
+
     pub(super) fn animate_zoom_around_viewport_center(&mut self, multiplier: f64) {
         debug!(multiplier, "zooming viewport around center");
         let primary_output = self.primary_output_logical_rect();

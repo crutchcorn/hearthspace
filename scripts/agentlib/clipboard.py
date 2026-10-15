@@ -10,6 +10,7 @@ from .clipboard_agent import run_agent_clipboard
 from .control import ControlError, Deadline
 from .input import Input
 from .primary import run_primary
+from .viewport_fixture import set_viewport
 
 
 def stop_client(process):
@@ -236,7 +237,7 @@ def run_clipboard(smoke, env, fixture):
         raise ControlError(
             "clipboard fixtures require an explicit private session environment"
         )
-    smoke.control.request("reset-view")
+    set_viewport(smoke, x=0, y=0, scale=1)
     smoke.until(
         "clipboard layout at normal zoom",
         lambda: smoke.control.status()["viewport"]["scale"] == 1.0,

@@ -57,6 +57,20 @@ def installed_data(directory):
 
 
 class NativeLoginTests(unittest.TestCase):
+    def test_native_preflight_requires_searchable_settings_binary(self):
+        with tempfile.TemporaryDirectory() as directory:
+            values = args(directory)
+            values.binary_dir.mkdir()
+            for name in common.BINARIES:
+                if name != "hearthspace-settings":
+                    executable = values.binary_dir / name
+                    executable.write_text("#!/bin/sh\nexit 0\n")
+                    executable.chmod(0o755)
+            with self.assertRaisesRegex(
+                RuntimeError, "missing executable .*hearthspace-settings"
+            ):
+                cli.build(values, Path(directory))
+
     def test_login_guard_is_opt_in_for_both_public_and_privileged_start(self):
         for command in ("start", "_start"):
             base = [command, "--session", "/tmp/native"]
@@ -232,6 +246,28 @@ class NativeLoginTests(unittest.TestCase):
                     self.assertEqual(environment.get("XDG_DATA_DIRS"), inherited)
                     self.assertEqual(environment["HEARTHSPACE_DEV"], "1")
                     self.assertEqual(environment["HEARTHSPACE_REPO_ROOT"], "/checkout")
+
+    def test_selected_binaries_precede_post_pam_path_for_native_and_login_sessions(
+        self,
+    ):
+        for login in (False, True):
+            for inherited in (None, "", "/pam/bin:/usr/bin"):
+                saved = state("/tmp/native-test") | {"login_session": login}
+                original = {"XDG_SESSION_ID": "108"}
+                if inherited is not None:
+                    original["PATH"] = inherited
+                with (
+                    self.subTest(login=login, inherited=inherited),
+                    patch.object(service, "load", return_value=saved),
+                    patch.dict(os.environ, original, clear=True),
+                    patch.object(service, "save"),
+                    patch.object(service.os, "execve") as execute,
+                ):
+                    service.exec_session("ignored")
+                self.assertEqual(
+                    execute.call_args.args[2]["PATH"],
+                    f"{saved['binary_dir']}:{inherited or '/usr/local/bin:/usr/bin:/bin'}",
+                )
 
     def test_recovery_accepts_removed_owned_session_without_adopting_foreign_login(
         self,

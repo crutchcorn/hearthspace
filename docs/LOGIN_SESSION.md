@@ -20,14 +20,15 @@ another desktop. User settings and application data are preserved.
 3. Open the session chooser (the gear button) and select **Hearthspace**.
 4. Enter your password normally on the laptop.
 
-The shell's **Log out** action returns to the login screen after confirmation.
+The shell's **Power → Log out** action returns to the login screen after
+confirmation.
 Choose **Ubuntu** there to return to GNOME. The installer does not change which
 desktop is selected by default; GDM manages your saved session selection.
 This host already has automatic login enabled. Its configuration is preserved;
 logging out allows you to make an explicit session selection.
 
-Super+L and the shell's **Lock** action start the distribution's swaylock. Its
-blue indicator remains visible while idle; typing shows password-entry feedback,
+Super+L and the shell's **Power → Lock** action start the distribution's swaylock.
+Its blue indicator remains visible while idle; typing shows password-entry feedback,
 keyboard layout, and Caps Lock state. Enter your normal account password and
 press Enter. Agents cannot enter or capture passwords or bypass authentication.
 See [session locking](SESSION_LOCK.md) and [power handling](POWER.md).

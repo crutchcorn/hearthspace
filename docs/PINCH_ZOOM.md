@@ -70,7 +70,7 @@ Adding a sixth contact cancels the gesture and suppresses the rest of the touch
 sequence. After the first finger lifts, the remaining contacts cannot become
 clicks, drags, or a new gesture until all fingers lift.
 
-Use the **Overview** toolbar button or Super+O when a supported pinch is
+Use Super+O when a supported pinch is
 unavailable. Inside overview, arrows or Tab/Shift+Tab select a preview,
 Enter activates it, and Escape dismisses it. Clicking or tapping a preview also
 activates it. See [window management](./WINDOW_MANAGEMENT.md#canvas-overview)

@@ -2375,6 +2375,7 @@ dependencies = [
  "clap",
  "ctrlc",
  "futures-util",
+ "gio",
  "hearthspace-common",
  "nix",
  "serde",
@@ -2414,6 +2415,7 @@ dependencies = [
 name = "hearthspace-shell"
 version = "0.1.0"
 dependencies = [
+ "accesskit_atspi_common",
  "chrono",
  "hearthspace-common",
  "hearthspace-ipc",

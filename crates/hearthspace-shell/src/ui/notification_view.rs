@@ -3,48 +3,29 @@ use xilem::{
     AnyWidgetView, WidgetView,
     masonry::{layout::AsUnit, parley::fontique::GenericFamily, properties::LineBreaking},
     style::Style,
-    view::{CrossAxisAlignment, FlexExt, flex_col, flex_row, label, sized_box},
+    view::{CrossAxisAlignment, FlexSpacer, flex_col, flex_row, label, sized_box},
 };
 
 use super::{
-    command_client::send_command,
+    icons::{Icon, icon_button},
     notifications::{self, Notification},
+    popup::{self, PopupKind},
     state::{ShellOutputInstance, ShellState},
 };
-
-pub(super) fn button_label(items: &[Notification]) -> String {
-    let active = items.iter().filter(|item| item.active).collect::<Vec<_>>();
-    let Some(newest) = active.first() else {
-        return "Notifications".into();
-    };
-    let single_line = newest
-        .summary
-        .split_whitespace()
-        .collect::<Vec<_>>()
-        .join(" ");
-    let mut summary = single_line.chars().take(10).collect::<String>();
-    if single_line.chars().count() > 10 {
-        summary.push('…');
-    }
-    format!("Notifications ({}) · {summary}", active.len())
-}
 
 pub(super) fn button(
     output: &ShellOutputInstance,
     items: &[Notification],
 ) -> impl WidgetView<ShellState> + use<> {
     let key = output.key().to_string();
-    components::compact_action_button(button_label(items), move |state: &mut ShellState| {
-        state.canvas_dragging = false;
-        if let Some(output) = state.outputs.iter_mut().find(|output| output.key() == key) {
-            output.show_notifications = !output.show_notifications;
-            output.show_map = false;
-            output.show_windows = false;
-            output.query.clear();
-            output.confirm_logout = false;
-        }
-        let _ = send_command(&state.command_socket, "focus-launcher");
-    })
+    icon_button(
+        Icon::Bell {
+            active: items.iter().any(|item| item.active),
+        },
+        "Notifications",
+        output.show_notifications,
+        move |state| state.toggle_notifications(&key),
+    )
 }
 
 pub(super) fn panel(
@@ -53,33 +34,34 @@ pub(super) fn panel(
     error: Option<String>,
 ) -> impl WidgetView<ShellState> + use<> {
     let key = output.key().to_string();
-    let close =
-        components::compact_action_button("Close notifications", move |state: &mut ShellState| {
-            state.dismiss_launcher(&key);
-            let _ = send_command(&state.command_socket, "focus-launcher");
-        });
+    let close = icon_button(Icon::Close, "Close notifications", false, move |state| {
+        state.dismiss_notifications(&key);
+    });
     let mut rows: Vec<Box<AnyWidgetView<ShellState>>> = Vec::new();
     if let Some(error) = error {
-        rows.push(components::field_label(error).boxed());
+        rows.push(
+            components::field_label(error)
+                .line_break_mode(LineBreaking::WordWrap)
+                .boxed(),
+        );
     }
     if items.is_empty() {
         rows.push(components::muted_text("No notifications yet").boxed());
     }
     rows.extend(items.into_iter().map(|item| notification_row(item).boxed()));
-    sized_box(
-        flex_col((
-            flex_row((components::section_title("Notifications"), close)).gap(4.0.px()),
-            components::scroll_area(
-                flex_col(rows)
-                    .cross_axis_alignment(CrossAxisAlignment::Stretch)
-                    .gap(8.0.px()),
-            )
-            .flex(1.0),
+    popup::panel_with_header(
+        output,
+        PopupKind::Notifications,
+        flex_row((
+            components::section_title("Notifications"),
+            FlexSpacer::Flex(1.0),
+            close,
         ))
-        .gap(8.0.px()),
+        .gap(4.0.px()),
+        flex_col(rows)
+            .cross_axis_alignment(CrossAxisAlignment::Stretch)
+            .gap(8.0.px()),
     )
-    .background_color(components::SURFACE)
-    .padding(8.0.px())
 }
 
 fn notification_row(item: Notification) -> impl WidgetView<ShellState> + use<> {
@@ -132,28 +114,4 @@ fn notification_row(item: Notification) -> impl WidgetView<ShellState> + use<> {
         components::SURFACE_SUBTLE
     })
     .padding(8.0.px())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn preview_counts_only_active_notifications_and_truncates_unicode_safely() {
-        let item = Notification {
-            id: 1,
-            app_name: "Chat".into(),
-            summary: "🌍".repeat(25),
-            body: String::new(),
-            actions: vec![],
-            urgency: 1,
-            active: true,
-        };
-        let mut closed = item.clone();
-        closed.id = 2;
-        closed.active = false;
-        let label = button_label(&[closed, item]);
-        assert_eq!(label, format!("Notifications (1) · {}…", "🌍".repeat(10)));
-        assert_eq!(button_label(&[]), "Notifications");
-    }
 }

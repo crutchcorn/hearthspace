@@ -1,8 +1,9 @@
 use std::path::PathBuf;
 
 use hearthspace_common::{
-    CANVAS_MAP_APP_ID, LAUNCHER_APP_ID, SHELL_BAR_APP_ID, canvas_map_app_id_for_output,
-    launcher_app_id_for_output, shell_bar_app_id_for_output,
+    CANVAS_MAP_APP_ID, LAUNCHER_APP_ID, NOTIFICATIONS_APP_ID, POWER_MENU_APP_ID, SHELL_BAR_APP_ID,
+    canvas_map_app_id_for_output, launcher_app_id_for_output, launcher_app_id_for_request,
+    notifications_app_id_for_output, power_menu_app_id_for_output, shell_bar_app_id_for_output,
 };
 use xilem::{AppState, WindowId};
 
@@ -16,6 +17,7 @@ use super::{
 /// Reactive state backing the shell view.
 pub(super) struct ShellState {
     pub(super) command_socket: PathBuf,
+    pub(super) shell_events: Option<std::sync::Arc<super::shell_events::ShellEvents>>,
     pub(super) catalog: AppCatalog,
     pub(super) windows: Vec<RunningWindow>,
     pub(super) windows_error: Option<String>,
@@ -34,9 +36,14 @@ pub(super) struct ShellState {
 
 #[derive(Debug)]
 pub(super) struct ShellOutputInstance {
+    pub(super) popup_measurements: [super::popup::PopupMeasurement; 4],
     pub(super) output_name: Option<String>,
     pub(super) query: String,
-    pub(super) show_windows: bool,
+    pub(super) selected_result: Option<super::search_selection::EntryId>,
+    pub(super) selected_result_index: usize,
+    pub(super) show_search: bool,
+    pub(super) search_request_token: Option<u64>,
+    pub(super) show_power: bool,
     pub(super) confirm_logout: bool,
     pub(super) show_notifications: bool,
     pub(super) show_map: bool,
@@ -44,6 +51,8 @@ pub(super) struct ShellOutputInstance {
     pub(super) bar_window_id: WindowId,
     pub(super) launcher_window_id: WindowId,
     pub(super) map_window_id: WindowId,
+    pub(super) notifications_window_id: WindowId,
+    pub(super) power_window_id: WindowId,
 }
 
 #[derive(Debug)]
@@ -61,6 +70,7 @@ impl ShellState {
     pub(super) fn new(command_socket: PathBuf, output_names: Vec<String>) -> Self {
         let mut state = Self {
             command_socket,
+            shell_events: None,
             catalog: AppCatalog::load(),
             windows: Vec::new(),
             windows_error: None,
@@ -108,38 +118,59 @@ impl ShellState {
     }
 
     pub(super) fn finish_launch(&mut self, output_key: &str, result: Result<(), String>) {
-        if let Some(output) = self
-            .outputs
-            .iter_mut()
-            .find(|output| output.key() == output_key)
-        {
-            match result {
-                Ok(()) => {
-                    self.canvas_dragging = false;
-                    output.query.clear();
-                    output.show_windows = false;
-                    output.show_notifications = false;
-                    output.show_map = false;
-                    output.launch_error = None;
+        match result {
+            Ok(()) => self.dismiss_launcher(output_key),
+            Err(error) => {
+                if let Some(output) = self
+                    .outputs
+                    .iter_mut()
+                    .find(|output| output.key() == output_key)
+                {
+                    output.launch_error = Some(error);
                 }
-                Err(error) => output.launch_error = Some(error),
             }
         }
     }
 
-    pub(super) fn toggle_windows(&mut self, output_key: &str) {
-        self.canvas_dragging = false;
-        if let Some(output) = self
+    /// Only one palette can own keyboard focus, including across outputs.
+    fn toggle_panel(&mut self, output_key: &str, panel: Panel) {
+        let open = self
             .outputs
-            .iter_mut()
-            .find(|output| output.key() == output_key)
+            .iter()
+            .any(|output| output.key() == output_key && !output.panel_is_open(panel));
+        self.dismiss_panels();
+        if open
+            && let Some(output) = self
+                .outputs
+                .iter_mut()
+                .find(|output| output.key() == output_key)
         {
-            output.show_windows = !output.show_windows;
-            output.show_map = false;
-            output.show_notifications = false;
-            output.query.clear();
-            output.launch_error = None;
+            match panel {
+                Panel::Search => output.show_search = true,
+                Panel::Notifications => output.show_notifications = true,
+                Panel::Map => output.show_map = true,
+                Panel::Power => output.show_power = true,
+            }
         }
+    }
+
+    pub(super) fn dismiss_panels(&mut self) {
+        self.canvas_dragging = false;
+        for output in &mut self.outputs {
+            output.dismiss_panels();
+        }
+    }
+
+    pub(super) fn toggle_search(&mut self, output_key: &str) {
+        self.toggle_panel(output_key, Panel::Search);
+    }
+
+    pub(super) fn toggle_notifications(&mut self, output_key: &str) {
+        self.toggle_panel(output_key, Panel::Notifications);
+    }
+
+    pub(super) fn toggle_power(&mut self, output_key: &str) {
+        self.toggle_panel(output_key, Panel::Power);
     }
 
     pub(super) fn dismiss_launcher(&mut self, output_key: &str) {
@@ -149,11 +180,43 @@ impl ShellState {
             .iter_mut()
             .find(|output| output.key() == output_key)
         {
-            output.show_windows = false;
-            output.show_map = false;
-            output.show_notifications = false;
-            output.confirm_logout = false;
+            output.dismiss_panels();
+        }
+    }
+
+    pub(super) fn dismiss_search(&mut self, output_key: &str) {
+        if let Some(output) = self
+            .outputs
+            .iter_mut()
+            .find(|output| output.key() == output_key && output.show_search)
+        {
+            output.show_search = false;
+            output.search_request_token = None;
             output.query.clear();
+            output.selected_result = None;
+            output.selected_result_index = 0;
+            output.launch_error = None;
+        }
+    }
+
+    pub(super) fn dismiss_notifications(&mut self, output_key: &str) {
+        if let Some(output) = self
+            .outputs
+            .iter_mut()
+            .find(|output| output.key() == output_key)
+        {
+            output.show_notifications = false;
+        }
+    }
+
+    pub(super) fn dismiss_power(&mut self, output_key: &str) {
+        if let Some(output) = self
+            .outputs
+            .iter_mut()
+            .find(|output| output.key() == output_key && output.show_power)
+        {
+            output.show_power = false;
+            output.confirm_logout = false;
             output.launch_error = None;
         }
     }
@@ -165,29 +228,22 @@ impl ShellState {
             .iter_mut()
             .find(|output| output.key() == output_key)
         {
+            if output.query != query {
+                output.selected_result = None;
+                output.selected_result_index = 0;
+            }
             output.query = query;
+            output.show_search = true;
             output.show_map = false;
+            output.show_power = false;
             output.show_notifications = false;
+            output.confirm_logout = false;
             output.launch_error = None;
         }
     }
 
     pub(super) fn toggle_map(&mut self, output_key: &str) {
-        self.canvas_dragging = false;
-        let open = self
-            .outputs
-            .iter()
-            .any(|output| output.key() == output_key && !output.show_map);
-        for output in &mut self.outputs {
-            output.show_map = open && output.key() == output_key;
-            if output.show_map {
-                output.query.clear();
-                output.show_windows = false;
-                output.show_notifications = false;
-                output.confirm_logout = false;
-                output.launch_error = None;
-            }
-        }
+        self.toggle_panel(output_key, Panel::Map);
         self.canvas_error = None;
     }
 
@@ -203,12 +259,25 @@ impl ShellState {
     }
 }
 
+#[derive(Clone, Copy)]
+enum Panel {
+    Search,
+    Notifications,
+    Map,
+    Power,
+}
+
 impl ShellOutputInstance {
     fn new(output_name: Option<String>) -> Self {
         Self {
+            popup_measurements: Default::default(),
             output_name,
             query: String::new(),
-            show_windows: false,
+            selected_result: None,
+            selected_result_index: 0,
+            show_search: false,
+            search_request_token: None,
+            show_power: false,
             confirm_logout: false,
             show_notifications: false,
             show_map: false,
@@ -216,7 +285,45 @@ impl ShellOutputInstance {
             bar_window_id: WindowId::next(),
             launcher_window_id: WindowId::next(),
             map_window_id: WindowId::next(),
+            notifications_window_id: WindowId::next(),
+            power_window_id: WindowId::next(),
         }
+    }
+
+    fn panel_is_open(&self, panel: Panel) -> bool {
+        match panel {
+            Panel::Search => self.show_search,
+            Panel::Notifications => self.show_notifications,
+            Panel::Map => self.show_map,
+            Panel::Power => self.show_power,
+        }
+    }
+
+    fn dismiss_panels(&mut self) {
+        self.show_search = false;
+        self.search_request_token = None;
+        self.show_notifications = false;
+        self.show_map = false;
+        self.show_power = false;
+        self.confirm_logout = false;
+        self.query.clear();
+        self.selected_result = None;
+        self.selected_result_index = 0;
+        self.launch_error = None;
+    }
+
+    pub(super) fn notifications_app_id(&self) -> String {
+        self.output_name
+            .as_deref()
+            .map(notifications_app_id_for_output)
+            .unwrap_or_else(|| NOTIFICATIONS_APP_ID.to_string())
+    }
+
+    pub(super) fn power_app_id(&self) -> String {
+        self.output_name
+            .as_deref()
+            .map(power_menu_app_id_for_output)
+            .unwrap_or_else(|| POWER_MENU_APP_ID.to_string())
     }
 
     pub(super) fn key(&self) -> &str {
@@ -231,6 +338,9 @@ impl ShellOutputInstance {
     }
 
     pub(super) fn launcher_app_id(&self) -> String {
+        if let Some(token) = self.search_request_token {
+            return launcher_app_id_for_request(self.output_name.as_deref(), token);
+        }
         self.output_name
             .as_deref()
             .map(launcher_app_id_for_output)
@@ -265,82 +375,5 @@ fn normalized_output_targets(output_names: Vec<String>) -> Vec<Option<String>> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn output_targets_fall_back_to_primary_when_no_outputs_are_known() {
-        assert_eq!(normalized_output_targets(Vec::new()), vec![None]);
-    }
-
-    #[test]
-    fn output_targets_keep_order_and_drop_duplicates() {
-        assert_eq!(
-            normalized_output_targets(vec![
-                "eDP-1".to_string(),
-                "HDMI-A-1".to_string(),
-                "eDP-1".to_string(),
-                String::new(),
-            ]),
-            vec![Some("eDP-1".to_string()), Some("HDMI-A-1".to_string())]
-        );
-    }
-
-    #[test]
-    fn shell_state_preserves_window_ids_and_query_across_output_updates() {
-        let mut state = ShellState::new(PathBuf::from("/tmp/socket"), vec!["eDP-1".to_string()]);
-        state.outputs[0].query = "term".to_string();
-        let bar_window_id = state.outputs[0].bar_window_id;
-
-        state.apply_output_names(vec!["eDP-1".to_string(), "HDMI-A-1".to_string()]);
-
-        assert_eq!(state.outputs[0].bar_window_id, bar_window_id);
-        assert_eq!(state.outputs[0].query, "term");
-        assert_eq!(state.outputs[1].output_name.as_deref(), Some("HDMI-A-1"));
-    }
-
-    #[test]
-    fn rejected_launch_preserves_query_and_shows_error_until_retry_or_edit() {
-        let mut state = ShellState::new(PathBuf::from("/tmp/socket"), vec!["eDP-1".into()]);
-        state.change_query("eDP-1", "editor".into());
-        state.finish_launch("eDP-1", Err("missing executable".into()));
-        assert_eq!(state.outputs[0].query, "editor");
-        assert_eq!(
-            state.outputs[0].launch_error.as_deref(),
-            Some("missing executable")
-        );
-        state.apply_output_names(vec!["eDP-1".into()]);
-        assert!(state.outputs[0].launch_error.is_some());
-        state.change_query("eDP-1", "terminal".into());
-        assert!(state.outputs[0].launch_error.is_none());
-        state.finish_launch("eDP-1", Ok(()));
-        assert!(state.outputs[0].query.is_empty());
-    }
-
-    #[test]
-    fn map_toggle_is_exclusive_and_other_shell_panels_dismiss_it() {
-        let mut state = ShellState::new("/unused".into(), vec!["eDP-1".into(), "HDMI-A-1".into()]);
-        state.outputs[0].show_notifications = true;
-        state.outputs[0].show_windows = true;
-        state.outputs[0].query = "notes".into();
-        state.toggle_map("eDP-1");
-        assert!(state.outputs[0].show_map);
-        assert!(!state.outputs[0].show_notifications);
-        assert!(!state.outputs[0].show_windows);
-        assert!(state.outputs[0].query.is_empty());
-        state.toggle_map("HDMI-A-1");
-        assert!(!state.outputs[0].show_map);
-        assert!(state.outputs[1].show_map);
-        state.toggle_map("HDMI-A-1");
-        assert!(!state.outputs[1].show_map);
-        state.toggle_map("eDP-1");
-        state.change_query("eDP-1", "editor".into());
-        assert!(!state.outputs[0].show_map);
-        state.toggle_map("eDP-1");
-        state.toggle_windows("eDP-1");
-        assert!(!state.outputs[0].show_map);
-        state.toggle_map("eDP-1");
-        state.dismiss_launcher("eDP-1");
-        assert!(!state.outputs[0].show_map);
-    }
-}
+#[path = "state_tests.rs"]
+mod tests;

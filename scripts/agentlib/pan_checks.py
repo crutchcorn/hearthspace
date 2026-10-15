@@ -8,6 +8,7 @@ from .firefox_assertions import fullscreen_at_output, marker_size, maximized_at_
 from .pinch_assertions import same_viewport, verify_zoom
 from .pinch_touchscreen import settled
 from .touchpad import TouchDevice
+from .viewport_fixture import set_viewport
 from .visual import marker_bounds
 
 CASES = [
@@ -31,7 +32,7 @@ CASES = [
 
 def prepare(smoke, case):
     smoke.control.request(f"restore-window {smoke.target}")
-    smoke.control.request("reset-view")
+    set_viewport(smoke, x=0, y=0, scale=1)
     smoke.until(
         "restored terminal client geometry",
         lambda: (

@@ -163,8 +163,8 @@ restore-window <id>
 focus-next-window
 focus-previous-window
 focus-launcher
-reset-view
 pan-to <canvas-x> <canvas-y>
+zoom-to <scale>
 lock-session
 quit
 ```
@@ -347,3 +347,6 @@ Use these rules when changing E2E tests or harness code:
 - Keep optional clients behind `test-apps`.
 - Update this document when changing headless flags, control-socket protocol,
   WayDriver adapter behavior, accessibility setup, or E2E test layout.
+
+The [compact shell acceptance](SHELL.md#acceptance) runs the same icon, search,
+notification and power-menu checks headlessly and on an owned native VT.

@@ -15,6 +15,9 @@ mod accessibility_diagnostics;
 #[path = "support/canvas_map.rs"]
 mod canvas_map;
 #[cfg(feature = "test-apps")]
+#[path = "support/canvas_map_client.rs"]
+mod canvas_map_client;
+#[cfg(feature = "test-apps")]
 #[path = "support/canvas_zoom.rs"]
 mod canvas_zoom;
 #[cfg(feature = "test-apps")]
@@ -30,11 +33,17 @@ mod navigation;
 #[path = "support/overview.rs"]
 mod overview;
 #[cfg(feature = "test-apps")]
+#[path = "support/search_replay.rs"]
+mod search_replay;
+#[cfg(feature = "test-apps")]
 #[path = "support/session_bus.rs"]
 mod session_bus;
 #[cfg(feature = "test-apps")]
 #[path = "support/session_lock.rs"]
 mod session_lock;
+#[cfg(feature = "test-apps")]
+#[path = "support/shell_panels.rs"]
+mod shell_panels;
 #[path = "support/window_bounds.rs"]
 mod window_bounds;
 #[cfg(feature = "test-apps")]

@@ -6,9 +6,7 @@ use hearthspace_common::{
 };
 use serde_json::{Value, json};
 
-#[path = "canvas_map_client.rs"]
-mod client;
-use client::MapClient;
+use super::canvas_map_client::MapClient;
 
 const GREEN: [u8; 4] = [0x66, 0xcc, 0, 0xff];
 

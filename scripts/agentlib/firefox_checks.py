@@ -11,6 +11,7 @@ from .firefox_touch import DeadlineTouchDevice
 from .input import Input
 from .pinch_assertions import same_viewport
 from .pinch_touchscreen import centroid, scaled, settled, to_device
+from .viewport_fixture import set_viewport
 from .visual import marker_bounds
 
 FIREFOX = "//*[@role='application' and contains(@name,'Firefox')]"
@@ -90,7 +91,7 @@ def launch(smoke):
 
 def prepare_maximized(smoke):
     # Each independent case starts at 1.0, clear of the minimum zoom limit.
-    smoke.control.request("reset-view")
+    set_viewport(smoke, x=0, y=0, scale=1)
     smoke.until(
         "unit canvas scale",
         lambda: abs(smoke.control.status()["viewport"]["scale"] - 1) < 1e-8,

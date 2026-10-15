@@ -22,6 +22,9 @@ use super::state::ShellState;
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(super) enum Icon {
     Map,
+    Search,
+    Bell { active: bool },
+    Power,
     ZoomIn,
     ZoomOut,
     Close,
@@ -29,13 +32,13 @@ pub(super) enum Icon {
 
 pub(super) fn icon_button<F: Fn(&mut ShellState) + Send + Sync + 'static>(
     icon: Icon,
-    name: &'static str,
+    name: &str,
     selected: bool,
     action: F,
 ) -> impl WidgetView<ShellState> + use<F> {
     let glyph = IconView {
         icon,
-        name,
+        name: name.to_string(),
         selected,
     };
     button(
@@ -57,7 +60,7 @@ pub(super) fn icon_button<F: Fn(&mut ShellState) + Send + Sync + 'static>(
 // text is a description and would leave these icon-only buttons unnamed.
 struct IconView {
     icon: Icon,
-    name: &'static str,
+    name: String,
     selected: bool,
 }
 impl ViewMarker for IconView {}
@@ -68,7 +71,7 @@ impl View<ShellState, (), ViewCtx> for IconView {
         (
             ctx.create_pod(IconWidget {
                 icon: self.icon,
-                name: self.name,
+                name: self.name.clone(),
                 selected: self.selected,
             }),
             (),
@@ -88,7 +91,7 @@ impl View<ShellState, (), ViewCtx> for IconView {
             element.ctx.request_render();
         }
         if self.name != previous.name {
-            element.widget.name = self.name;
+            element.widget.name = self.name.clone();
             element.ctx.request_accessibility_update();
         }
     }
@@ -106,7 +109,7 @@ impl View<ShellState, (), ViewCtx> for IconView {
 
 struct IconWidget {
     icon: Icon,
-    name: &'static str,
+    name: String,
     selected: bool,
 }
 impl Widget for IconWidget {
@@ -149,21 +152,51 @@ impl Widget for IconWidget {
                         .draw();
                 }
             }
-            Icon::ZoomIn | Icon::ZoomOut => {
+            Icon::Search | Icon::ZoomIn | Icon::ZoomOut => {
                 painter
                     .stroke(Circle::new((8.5, 8.5), 6.0), &stroke, color)
                     .draw();
                 painter
                     .stroke(Line::new((13.0, 13.0), (18.0, 18.0)), &stroke, color)
                     .draw();
-                painter
-                    .stroke(Line::new((5.5, 8.5), (11.5, 8.5)), &stroke, color)
-                    .draw();
+                if !matches!(self.icon, Icon::Search) {
+                    painter
+                        .stroke(Line::new((5.5, 8.5), (11.5, 8.5)), &stroke, color)
+                        .draw();
+                }
                 if matches!(self.icon, Icon::ZoomIn) {
                     painter
                         .stroke(Line::new((8.5, 5.5), (8.5, 11.5)), &stroke, color)
                         .draw();
                 }
+            }
+            Icon::Bell { active } => {
+                let mut path = BezPath::new();
+                path.move_to((3.0, 14.0));
+                path.curve_to((5.0, 12.0), (4.5, 10.0), (4.5, 8.0));
+                path.curve_to((4.5, 1.0), (15.5, 1.0), (15.5, 8.0));
+                path.curve_to((15.5, 10.0), (15.0, 12.0), (17.0, 14.0));
+                path.close_path();
+                painter.stroke(&path, &stroke, color).draw();
+                let mut clapper = BezPath::new();
+                clapper.move_to((7.5, 16.0));
+                clapper.curve_to((8.0, 19.0), (12.0, 19.0), (12.5, 16.0));
+                painter.stroke(&clapper, &stroke, color).draw();
+                if active {
+                    painter
+                        .fill(Circle::new((16.0, 4.0), 3.0), components::ACCENT)
+                        .draw();
+                }
+            }
+            Icon::Power => {
+                let mut path = BezPath::new();
+                path.move_to((5.0, 4.0));
+                path.curve_to((-1.0, 9.0), (3.0, 18.0), (10.0, 18.0));
+                path.curve_to((17.0, 18.0), (21.0, 9.0), (15.0, 4.0));
+                painter.stroke(&path, &stroke, color).draw();
+                painter
+                    .stroke(Line::new((10.0, 1.5), (10.0, 10.0)), &stroke, color)
+                    .draw();
             }
             Icon::Close => {
                 painter
@@ -179,12 +212,12 @@ impl Widget for IconWidget {
         Role::Image
     }
     fn accessibility(&mut self, _: &mut AccessCtx<'_>, _: &PropertiesRef<'_>, node: &mut Node) {
-        node.set_label(self.name);
+        node.set_label(self.name.clone());
     }
     fn children_ids(&self) -> ChildrenIds {
         ChildrenIds::new()
     }
     fn make_trace_span(&self, id: WidgetId) -> tracing::Span {
-        tracing::trace_span!("MapIcon", id = id.trace())
+        tracing::trace_span!("ShellIcon", id = id.trace())
     }
 }

@@ -13,6 +13,7 @@ from .accessibility import run_accessibility
 from .control import ControlError, Deadline
 from .input import Input
 from .text import clipboard_command, paste
+from .viewport_fixture import set_viewport
 
 UNICODE_TEXT = "Hearthspace café — こんにちは 🌍\nSecond line: naïve"
 
@@ -118,7 +119,15 @@ def selector(smoke):
     )
     expected_ids = {item["id"] for item in smoke.control.status()["windows"]}
     with Input(smoke.control) as inputs:
-        inputs.chord("super+space")
+        inputs.chord("super")
+    smoke.until(
+        "search overlay mapped",
+        lambda: any(
+            panel["kind"] == "search"
+            for panel in smoke.control.status().get("shell_panels", [])
+        ),
+    )
+    with Input(smoke.control) as inputs:
         inputs.type(smoke.marker)
     smoke.until(
         "running-window result in launcher",
@@ -163,7 +172,7 @@ def off_canvas(smoke):
     smoke.control.request(
         f"move-window {smoke.target} {original['canvas_x']} {original['canvas_y']}"
     )
-    smoke.control.request("reset-view")
+    set_viewport(smoke, x=0, y=0, scale=1)
     smoke.control.request(f"focus-window {smoke.target}")
 
 
@@ -232,24 +241,25 @@ def stalled_settings(smoke):
 
 
 def accessibility(smoke):
-    smoke.control.request("zoom-in")
-    smoke.until(
-        "changed viewport", lambda: smoke.control.status()["viewport"]["scale"] > 1.0
-    )
-    selector = "(//*[@role='button' and @name='Reset view'])[1]"
+    selector = "(//*[@role='button' and @name='Canvas map'])[1]"
     matches = smoke.until(
-        "semantic reset button", lambda: a11y(smoke, "find", selector)["elements"]
+        "semantic map button", lambda: a11y(smoke, "find", selector)["elements"]
     )
     if matches[0].get("role") != "Button":
         raise ControlError("shell button has no usable accessibility role")
+    a11y(smoke, "activate", selector)
+    zoom = "(//*[@role='button' and @name='Zoom out'])[1]"
+    smoke.until("semantic zoom button", lambda: a11y(smoke, "find", zoom)["elements"])
     snapshot = a11y(smoke, "snapshot")
     (smoke.artifacts / "accessibility.xml").write_text(snapshot["snapshot"])
-    a11y(smoke, "activate", selector)
+    before = smoke.control.status()["viewport"]["scale"]
+    a11y(smoke, "activate", zoom)
     smoke.until(
-        "semantic viewport reset",
-        lambda: smoke.control.status()["viewport"]["scale"] == 1.0,
+        "semantic viewport zoom",
+        lambda: smoke.control.status()["viewport"]["scale"] < before,
     )
-    smoke.capture("semantic-reset")
+    smoke.capture("semantic-map-zoom")
+    a11y(smoke, "activate", "//*[@role='button' and @name='Close canvas map']")
     smoke.record("semantic-action-verified", selector=selector, elements=matches)
 
 
@@ -262,16 +272,45 @@ def notifications(smoke):
         "XDG_RUNTIME_DIR": smoke.manifest["runtime_dir"],
     }
     env.pop("DBUS_SESSION_BUS_PID", None)
-    with (smoke.artifacts / "notify-send.log").open("w") as log:
+    private_dbus_client = getattr(smoke, "notification_via_dbus", False)
+    argv = (
+        [
+            "gdbus",
+            "call",
+            "--address",
+            env["DBUS_SESSION_BUS_ADDRESS"],
+            "--dest",
+            "org.freedesktop.Notifications",
+            "--object-path",
+            "/org/freedesktop/Notifications",
+            "--method",
+            "org.freedesktop.Notifications.Notify",
+            "--",
+            "Hearthspace Daily Smoke",
+            "0",
+            "",
+            title,
+            "Semantic dismissal acceptance",
+            "[]",
+            "{}",
+            "0",
+        ]
+        if private_dbus_client
+        else [
+            "notify-send",
+            "--app-name=Hearthspace Daily Smoke",
+            "--expire-time=0",
+            "--wait",
+            title,
+            "Semantic dismissal acceptance",
+        ]
+    )
+    client_log = smoke.artifacts / (
+        "notification-dbus.log" if private_dbus_client else "notify-send.log"
+    )
+    with client_log.open("w") as log:
         process = subprocess.Popen(
-            [
-                "notify-send",
-                "--app-name=Hearthspace Daily Smoke",
-                "--expire-time=0",
-                "--wait",
-                title,
-                "Semantic dismissal acceptance",
-            ],
+            argv,
             env=env,
             stdout=log,
             stderr=subprocess.STDOUT,
@@ -287,16 +326,27 @@ def notifications(smoke):
                     raise ControlError(f"notification query failed: {value}")
                 return value["notifications"]
 
-            item = smoke.until(
-                "private notification",
-                lambda: next(
+            def posted():
+                # A denied bus connection must fail immediately rather than
+                # spending the entire workflow budget waiting for a missing ID.
+                code = process.poll()
+                if code is not None and (code != 0 or not private_dbus_client):
+                    log.flush()
+                    raise ControlError(
+                        f"notification client exited {code} before delivery: {client_log.read_text().strip()}"
+                    )
+                return next(
                     (
                         item
                         for item in inbox()
                         if item["summary"] == title and item["active"]
                     ),
                     None,
-                ),
+                )
+
+            item = smoke.until(
+                "private notification",
+                posted,
             )
             active = [entry["id"] for entry in inbox() if entry["active"]]
             if active != [item["id"]]:
@@ -306,7 +356,7 @@ def notifications(smoke):
             a11y(
                 smoke,
                 "activate",
-                "(//*[@role='button' and starts-with(@name,'Notifications')])[1]",
+                "(//*[@role='button' and @name='Notifications'])[1]",
             )
             smoke.until(
                 "notification dismissal button",
@@ -329,7 +379,10 @@ def notifications(smoke):
             )
             if closed.get("close_reason") != 2:
                 raise ControlError("notification was not closed by user dismissal")
-            process.wait(timeout=smoke.control.deadline.remaining())
+            if process.wait(timeout=smoke.control.deadline.remaining()) != 0:
+                raise ControlError(
+                    f"notification client failed after dismissal: {client_log.read_text().strip()}"
+                )
             a11y(
                 smoke, "activate", "//*[@role='button' and @name='Close notifications']"
             )

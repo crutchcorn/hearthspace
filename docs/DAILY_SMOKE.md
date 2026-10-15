@@ -22,7 +22,7 @@ The workflow checks:
 
 - Super+Return launches and focuses Foot; typed commands work without a click.
 - Explicit clipboard paste delivers exact Unicode bytes into a saved file.
-- Super+Space finds a uniquely titled running terminal and selects its original
+- A Meta tap opens search and finds a uniquely titled running terminal and selects its original
   ID without starting another instance.
 - A window moved outside every output can be recovered by its stable ID.
 - Maximize, fullscreen, return to maximized, and restore report the expected state.
@@ -30,8 +30,8 @@ The workflow checks:
   frame IDs and the requested output identity.
 - An unfinished settings client does not hold up a healthy settings query or
   compositor control and presentation.
-- The private accessibility bus exposes a named button role and activating Reset
-  view changes the compositor viewport.
+- The private accessibility bus exposes named icon buttons; activating Canvas
+  map and its Zoom out control changes the compositor viewport.
 - With `--notifications`, a private notification is shown and dismissed through
   its accessibility action; the service reports user-dismissed history.
 
@@ -60,3 +60,6 @@ workflows are described in [native app acceptance](DAILY_APPS_TESTING.md).
 
 Use [physical suspend acceptance](POWER_TESTING.md) for sleep, locking, wake
 recovery, application preservation, and RTC/watchdog ownership.
+
+Use [compact shell acceptance](SHELL.md#acceptance) for immediate Meta typing,
+icon placement, notification panels, and power-menu confirmation cancellation.
