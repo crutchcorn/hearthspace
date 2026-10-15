@@ -217,3 +217,42 @@ fn interactive_requests_reject_non_left_button_grabs() {
     action(&compositor, "quit");
     wait_for_exit(&mut compositor.child);
 }
+
+#[test]
+fn redundant_restore_requests_acknowledge_configures_and_preserve_interactive_resize() {
+    let _guard = HEADLESS_TEST_LOCK.lock().unwrap();
+    let (mut compositor, mut client) = fixture();
+    let original = windows(&compositor);
+    let (configured, resizing) = client.configuration(0);
+    assert!(!resizing);
+    client.request_restore(0);
+    assert_eq!(client.configuration(0), (configured + 2, false));
+    assert_geometry(&compositor, &original, "redundant restore changed geometry");
+
+    let (point, serial) = press(&compositor, &mut client, 272);
+    client.request_resize(0, serial);
+    motion(&compositor, (point.0 + 40.0, point.1 + 24.0));
+    let (configured, resizing) = client.configuration(0);
+    assert!(resizing);
+    let held = windows(&compositor);
+    client.request_restore(0);
+    assert_eq!(
+        client.configuration(0),
+        (configured + 2, true),
+        "restore acknowledgment must retain pending resizing state"
+    );
+    assert_geometry(&compositor, &held, "restore interrupted an active resize");
+
+    motion(&compositor, (point.0 + 60.0, point.1 + 40.0));
+    client.sync();
+    let after = windows(&compositor);
+    let mut expected = geometry(&original[0]);
+    expected[2] += 60;
+    expected[3] += 40;
+    assert_eq!(geometry(&after[0]), expected);
+    action(&compositor, "pointer-button-up 272");
+    client.sync();
+    assert!(!client.configuration(0).1);
+    action(&compositor, "quit");
+    wait_for_exit(&mut compositor.child);
+}
