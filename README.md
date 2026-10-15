@@ -15,7 +15,7 @@ Hearthspace is an experimental Wayland compositor and shell built around an infi
 
 <div align="center">
 
-https://github.com/user-attachments/assets/3dc14df4-7025-42bb-8c22-c2d842776fd7
+https://github.com/user-attachments/assets/b3e8d3fc-f47c-4ad8-baff-7f79327cb5ad
 
 </div>
 
