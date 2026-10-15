@@ -72,7 +72,20 @@ SESSION_PROPERTIES = (
     "Type",
     "Class",
     "Desktop",
+    "Service",
 )
+
+
+def selected_gdm_session(pid, root=Path("/proc")):
+    # Read the supervisor's launch environment, never the shared user manager's.
+    # Bootstrap rewrites XDG_SESSION_DESKTOP but preserves GDM's own selection.
+    entries = (root / str(pid) / "environ").read_bytes().split(b"\0")
+    values = [
+        entry.removeprefix(b"GDMSESSION=")
+        for entry in entries
+        if entry.startswith(b"GDMSESSION=")
+    ]
+    return values[0].decode("utf-8", errors="replace") if len(values) == 1 else ""
 
 
 def verify_session(value, identity):
@@ -84,15 +97,30 @@ def verify_session(value, identity):
         "Type": "wayland",
         "Class": "user",
     }
+    for property_name, identity_name in (
+        ("Desktop", "desktop"),
+        ("Service", "service"),
+    ):
+        if identity_name in identity:
+            expected[property_name] = identity[identity_name]
     if any(value.get(key) != item for key, item in expected.items()) or not value.get(
         "Seat"
     ):
         raise RuntimeError(
             "login session ownership changed or is not a local Wayland login"
         )
-    if value.get("Desktop", "").lower() != "hearthspace":
+    desktop = value.get("Desktop", "")
+    # GDM opens PAM/logind before exporting its selected desktop, so Desktop
+    # can be empty. Only its preserved selection can establish this fallback.
+    gdm_login = (
+        desktop == ""
+        and value.get("Service") in ("gdm-password", "gdm-autologin")
+        and identity.get("gdm_session") == "hearthspace"
+    )
+    if desktop.lower() != "hearthspace" and not gdm_login:
         raise RuntimeError(
-            "cleanup ownership requires a Hearthspace login, not another desktop"
+            "cleanup ownership requires a Hearthspace login, not another desktop "
+            f"(logind Desktop={desktop!r}, Service={value.get('Service')!r})"
         )
     if not value.get("Leader", "").isdecimal() or int(value["Leader"]) == 0:
         raise RuntimeError("login session has no valid leader")
@@ -139,12 +167,23 @@ def establish(pid, start, runtime):
         "cgroup": cgroup,
     }
     value = properties("loginctl", session, SESSION_PROPERTIES)
+    identity["desktop"] = value.get("Desktop", "")
+    identity["service"] = value.get("Service", "")
+    if identity["desktop"] == "" and identity["service"] in (
+        "gdm-password",
+        "gdm-autologin",
+    ):
+        identity["gdm_session"] = selected_gdm_session(pid)
     verify_session(value, identity)
     identity["leader"] = value["Leader"]
     identity["seat"] = value["Seat"]
     leader = process_identity(int(value["Leader"]))
     identity["leader_start"] = leader[0] if leader else None
     identity["runtime_identity"] = runtime_identity(runtime, uid)
+    if not alive(identity):
+        raise RuntimeError(
+            "login supervisor identity changed while verifying ownership"
+        )
     return identity
 
 

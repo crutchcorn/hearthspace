@@ -52,6 +52,12 @@ separate cleanup guard tracks exact process and logind identities; when the
 supervisor ends, the guard terminates only that login scope, including detached
 descendants. It then removes the verified private runtime, safely detaching known
 portal mounts. Snap app scopes also retain their existing supervisor guard.
+GDM can leave logind's `Desktop` property empty because it opens PAM before
+exporting the selected desktop. In that case, the guard additionally requires a
+`gdm-password` or `gdm-autologin` session and the supervisor's original
+`GDMSESSION=hearthspace` launch environment. It records the desktop/service
+metadata and requires it to remain unchanged during cleanup; another desktop's
+selection is rejected even if Hearthspace has set its own `XDG_SESSION_DESKTOP`.
 The [logind session interface](https://www.freedesktop.org/software/systemd/man/latest/org.freedesktop.login1.html)
 provides the owning user's session termination. This mode is for the installed
 display-manager entry, not for launching a second desktop inside GNOME.
@@ -88,8 +94,8 @@ scripts/hearthspace-agent --session /tmp/hearthspace-installed-1 stop
 
 This validates the installed native session under the harness's PAM session;
 it does not substitute for selecting Hearthspace and authenticating through GDM.
-The user has deferred that local check. Real swaylock password unlock is also
-pending; the [manual unlock acceptance](POWER_TESTING.md) performs a bounded
+Real swaylock password unlock is also pending; the
+[manual unlock acceptance](POWER_TESTING.md) performs a bounded
 user-assisted check without synthetic password input or weakened locking.
 
 ### Development-host results (2026-10-14)
@@ -139,3 +145,22 @@ cause has not been established.
 
 Actual GDM authentication, visible lock feedback observed on the laptop, and real
 password unlock after wake remain pending the user's local testing.
+
+### GDM login regression (2026-10-15)
+
+On the ThinkPad T480s, selecting Hearthspace and authenticating through GDM
+reached the installed supervisor, then returned to the greeter after ten seconds.
+The journal showed that the cleanup guard rejected the login before the compositor
+started. The original check required logind's `Desktop=Hearthspace`, while GDM
+50.1 on this host leaves `Desktop` empty, including for ordinary Ubuntu logins.
+The GDM-specific selection check described above addresses this failure, with
+regressions covering startup, foreign-desktop rejection, process identity races,
+and cleanup after the supervisor exits. Successful desktop startup through GDM
+still requires a manual retry.
+
+Corrected release `9dedca6ea14d` is installed; its helper matches the reviewed
+source and installation hashes/modes/ownership were verified. Formatting, Clippy,
+workspace and release builds, 545 Rust tests, and 311 Python tests passed; eight
+opt-in headless Python tests were skipped. Ruff passed all 109 Python files and
+entrypoints. The live Ubuntu GDM session was rejected by a read-only ownership
+check. Validation logs are `/tmp/hearthspace-gdm-fix-*.log`.
