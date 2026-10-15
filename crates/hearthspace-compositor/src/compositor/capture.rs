@@ -40,14 +40,38 @@ pub(super) struct OutputMetadata {
 }
 
 struct Request {
+    id: u64,
     output: String,
     metadata: bool,
     sender: mpsc::Sender<ControlReply>,
     deadline: Instant,
 }
 
+impl Request {
+    fn elapsed_ms(&self) -> u128 {
+        self.deadline
+            .checked_sub(CAPTURE_TIMEOUT)
+            .unwrap()
+            .elapsed()
+            .as_millis()
+    }
+
+    fn expire(&self, phase: &'static str, frame_id: u64) -> bool {
+        if Instant::now() < self.deadline {
+            return true;
+        }
+        tracing::warn!(capture_id = self.id, output = %self.output, phase, frame_id,
+            elapsed_ms = self.elapsed_ms(), "capture request timed out");
+        let _ = self
+            .sender
+            .send(ControlReply::Err("capture presentation timed out".into()));
+        false
+    }
+}
+
 #[derive(Default)]
 pub(super) struct CaptureState {
+    next_request_id: u64,
     pending: Vec<Request>,
     staged: HashMap<String, Frame>,
     frames: HashMap<String, u64>,
@@ -86,7 +110,11 @@ impl CaptureState {
             return ControlReply::Err("too many pending captures".into());
         }
         let (sender, receiver) = mpsc::channel();
+        self.next_request_id = self.next_request_id.wrapping_add(1);
+        tracing::debug!(capture_id = self.next_request_id, %output,
+            frame_id = self.frame_id(&output), pending = count, "capture request accepted");
         self.pending.push(Request {
+            id: self.next_request_id,
             output,
             metadata,
             sender,
@@ -166,18 +194,18 @@ impl CaptureState {
                 self.fail(&name, "capture output disappeared");
             }
         }
-        let expire = |request: &Request| {
-            if Instant::now() < request.deadline {
-                return true;
-            }
-            let _ = request
-                .sender
-                .send(ControlReply::Err("capture presentation timed out".into()));
-            false
-        };
-        self.pending.retain(expire);
+        self.pending.retain(|request| {
+            request.expire(
+                "awaiting-render",
+                self.frames.get(&request.output).copied().unwrap_or(0),
+            )
+        });
         self.staged.retain(|_, frame| {
-            frame.requests.retain(expire);
+            let phase = frame.wait_phase();
+            let frame_id = frame.frame_id();
+            frame
+                .requests
+                .retain(|request| request.expire(phase, frame_id));
             !frame.requests.is_empty()
         });
         self.finish_frames();

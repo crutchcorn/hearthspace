@@ -32,6 +32,22 @@ pub(super) struct Frame {
     png: Png,
     cursor_source: &'static str,
     presentation: Option<&'static str>,
+    staged_at: Instant,
+}
+
+impl Frame {
+    pub(super) fn wait_phase(&self) -> &'static str {
+        match (self.png.bytes().is_some(), self.presentation.is_some()) {
+            (false, false) => "awaiting-png-and-page-flip",
+            (false, true) => "awaiting-png",
+            (true, false) => "awaiting-page-flip",
+            (true, true) => "reply-ready",
+        }
+    }
+
+    pub(super) fn frame_id(&self) -> u64 {
+        self.output.frame_id
+    }
 }
 
 #[cfg(test)]
@@ -65,7 +81,9 @@ impl CaptureState {
         if self.encoder.is_none() {
             self.encoder = Some(Encoder::new()?);
         }
-        let png = self.encoder.as_ref().unwrap().submit(size, pixels)?;
+        let span = tracing::debug_span!("capture_encoding", output = %output.name,
+            capture_id = self.pending.iter().find(|r| r.output == output.name).map(|r| r.id));
+        let png = span.in_scope(|| self.encoder.as_ref().unwrap().submit(size, pixels))?;
         self.stage_frame(output, Png::Encoding(png), cursor_source);
         Ok(())
     }
@@ -77,6 +95,7 @@ impl CaptureState {
                 return true;
             }
             requests.push(Request {
+                id: request.id,
                 output: request.output.clone(),
                 metadata: request.metadata,
                 sender: request.sender.clone(),
@@ -84,6 +103,11 @@ impl CaptureState {
             });
             false
         });
+        for request in &requests {
+            tracing::debug!(capture_id = request.id, output = %output.name,
+                frame_id = output.frame_id, elapsed_ms = request.elapsed_ms(),
+                "capture pixels staged after submission");
+        }
         self.staged.insert(
             output.name.clone(),
             Frame {
@@ -92,6 +116,7 @@ impl CaptureState {
                 png,
                 cursor_source,
                 presentation: None,
+                staged_at: Instant::now(),
             },
         );
     }
@@ -106,6 +131,13 @@ impl CaptureState {
             // belongs to these pixels, even when subsequent flips arrive.
             frame.output.frame_id = *counter;
             frame.presentation = Some(presentation);
+            tracing::debug!(
+                output = name,
+                frame_id = *counter,
+                staged_ms = frame.staged_at.elapsed().as_millis(),
+                png_ready = frame.png.bytes().is_some(),
+                "capture page flip confirmed"
+            );
         }
         self.finish_frames();
     }
@@ -115,7 +147,13 @@ impl CaptureState {
             #[cfg(any(feature = "udev", test))]
             if let Png::Encoding(receiver) = &frame.png {
                 match receiver.try_recv() {
-                    Ok(Ok(png)) => frame.png = Png::Encoded(png),
+                    Ok(Ok(png)) => {
+                        tracing::debug!(output = %frame.output.name,
+                            frame_id = frame.output.frame_id, bytes = png.bytes.len(),
+                            staged_ms = frame.staged_at.elapsed().as_millis(),
+                            presented = frame.presentation.is_some(), "capture PNG received");
+                        frame.png = Png::Encoded(png);
+                    }
                     Err(mpsc::TryRecvError::Empty) => return true,
                     result => {
                         let error = match result {
@@ -133,10 +171,7 @@ impl CaptureState {
                 return true;
             };
             for request in &frame.requests {
-                if Instant::now() >= request.deadline {
-                    let _ = request
-                        .sender
-                        .send(ControlReply::Err("capture presentation timed out".into()));
+                if !request.expire("reply-ready", frame.output.frame_id) {
                     continue;
                 }
                 let mut payload = Vec::new();
@@ -153,6 +188,9 @@ impl CaptureState {
                     payload.push(b'\n');
                 }
                 payload.extend_from_slice(png);
+                tracing::debug!(capture_id = request.id, output = %frame.output.name,
+                    frame_id = frame.output.frame_id, elapsed_ms = request.elapsed_ms(),
+                    "capture reply ready");
                 let _ = request.sender.send(ControlReply::Payload(payload));
             }
             false

@@ -25,6 +25,8 @@ impl Drop for Permit {
 }
 
 struct Job {
+    span: tracing::Span,
+    queued_at: std::time::Instant,
     size: Size<i32, Physical>,
     pixels: Vec<u8>,
     reply: mpsc::Sender<EncodingResult>,
@@ -51,7 +53,18 @@ impl Encoder {
             .name("capture-png".into())
             .spawn(move || {
                 while let Ok(job) = receiver.recv() {
+                    let _entered = job.span.enter();
+                    let started = std::time::Instant::now();
+                    tracing::debug!(
+                        queued_ms = job.queued_at.elapsed().as_millis(),
+                        "capture PNG encoding started"
+                    );
                     let result = encode(job.size, &job.pixels);
+                    tracing::debug!(
+                        encode_ms = started.elapsed().as_millis(),
+                        ok = result.is_ok(),
+                        "capture PNG encoding finished"
+                    );
                     drop(job.pixels);
                     let result = result.map(|bytes| EncodedPng {
                         bytes,
@@ -91,6 +104,8 @@ impl Encoder {
         let (reply, receiver) = mpsc::channel();
         self.sender
             .try_send(Job {
+                span: tracing::Span::current(),
+                queued_at: std::time::Instant::now(),
                 size,
                 pixels,
                 reply,
