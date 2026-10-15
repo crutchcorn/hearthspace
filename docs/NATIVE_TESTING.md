@@ -211,6 +211,15 @@ and verify rendered three-finger canvas panning, zoom and combined movement.
 Run `scripts/pan-smoke` and `scripts/pinch-smoke` separately from the smoke cases
 above.
 
+`scripts/touch-drag-smoke --session /tmp/hearthspace-touch-drag-1` tests one-finger
+window movement through the same uinput/libinput touchscreen path. It uses a
+fresh native Firefox profile and a decorated Foot terminal, checking continued
+movement, drop/repeat, client edge resizing, zoomed coordinates, second-contact
+cancellation and device removal. Window geometry and captured landmarks must
+agree. It requires the native Firefox package and touch-fixture dependencies
+documented in [contributing](../CONTRIBUTING.md), plus one output at least
+960×650 logical pixels. It owns and cleans up its VT session and temporary apps.
+
 For a capture timeout, use `--log-level
 'info,hearthspace_compositor::compositor::capture=debug'` when starting the owned
 session. Correlated capture IDs show request acceptance, pixel staging, PNG

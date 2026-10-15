@@ -402,3 +402,40 @@ Full Rust/E2E/AT-SPI, Clippy, build and 160 Python tests passed; logs are
 `/tmp/hearthspace-pan-{full-tests,clippy,build,python}-3.log`. Format/Ruff checks pass.
 `/tmp/hearthspace-pan-firefox-regression-1` also passed resize, maximize/restore,
 shell and gesture zoom, cancellation and fullscreen; its owned profile was removed.
+
+### Follow-up: touchscreen window dragging
+
+Firefox's asynchronous move request interrupted its own emulated touch pointer
+sequence, releasing the button and suppressing further finger motion. The old
+native touchscreen drag test covered only compositor-drawn terminal decorations.
+`/tmp/hearthspace-touch-drag-before-3` reproduces the Firefox failure: the move
+request immediately emits a release while the contact remains down. Earlier
+runs 1/2 exposed fixture sizing and budget issues: Foot rounds to character cells,
+and the complete terminal check needs more than the initially allotted 30 seconds.
+
+`9ab6c9c` preserves the originating touch sequence for client move/resize requests,
+uses Smithay's original press position to include motion preceding the request,
+and rejects stale, mismatched or overlapping requests. Three Wayland protocol
+regressions cover delayed move/resize, release, invalid requests and nonunit zoom.
+`07ae57b` adds `scripts/touch-drag-smoke` with real Firefox and Foot windows.
+
+The first fixed native run passed ordinary and zoomed dragging, but its zoomed
+resize check accepted an intermediate 802-pixel client buffer before the final
+800-pixel commit. `adec240` requires the final requested client width before
+checking release; the release assertion is unchanged. The failed run is retained
+at `/tmp/hearthspace-touch-drag-fixed-1`.
+
+All 412 Rust tests, Clippy, workspace build, format/Ruff checks and 170 Python
+tests pass. Logs are `/tmp/hearthspace-touch-drag-{full-tests,clippy,build}.log`
+and `/tmp/hearthspace-touch-drag-python-2.log`. All ten touchscreen pan/combined
+zoom/state cases pass at `/tmp/hearthspace-touch-drag-pan-1`.
+
+The final run, `/tmp/hearthspace-touch-drag-fixed-2`, passed 20 held-contact move
+checks, two Firefox resizes and 12 release checks across compositor decorations
+and Firefox at canvas scales 1.0/0.8, including second-contact cancellation and
+device removal. Geometry and visible landmarks agree in native page-flip
+captures. These tests use temporary uinput devices through libinput on the actual
+AMD Strix/amdgpu display, kernel 7.0.0-38-generic, eDP-1 2560×1600 at scale 2.
+`/tmp/hearthspace-touch-drag-proof.json` summarizes both final native runs.
+Both removed their private runtimes and restored tty3; the successful Firefox
+profile was deleted and both background T3 services remained active.

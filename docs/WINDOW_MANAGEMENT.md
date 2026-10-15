@@ -60,6 +60,19 @@ use the client's Wayland positioner constraints to flip, slide, or resize into
 the available output area. Active popup grabs retain input authority; window
 actions return an error until the popup is dismissed.
 
+## Touchscreen movement and resizing
+
+Drag a floating window's title bar with one finger to move it, then lift to drop
+it. This works with compositor decorations and application-drawn title bars,
+including Firefox's empty tab-strip area. Drag a resizable window's edge to
+resize it. Restore maximized windows first.
+
+Movement begins after eight logical pixels and includes that initial movement.
+The window follows the finger's screen distance at any canvas zoom. Adding a
+second contact ends the drag and suppresses that touch sequence until all fingers
+lift; touch cancellation or device removal also releases the window. Three-finger
+canvas navigation remains a separate gesture.
+
 ## Keyboard control
 
 | Shortcut | Action |
@@ -117,5 +130,8 @@ its artifact directory so tests do not alter the user's normal layout.
   per-window transform.
 - Keep saved canvas placement separate from output-pinned presentation.
 - Respect client grabs and keep focus activation synchronized with the seat.
+- Client move/resize requests continue the originating pointer grab, including
+  touchscreen pointer emulation. Validate the Wayland seat, button serial and
+  window; stale or overlapping requests must not restart an operation.
 - Exercise real Wayland and X11 clients at non-unit canvas zoom when changing
   window state, geometry, or transient placement.
