@@ -156,6 +156,7 @@ def launch(args):
             "startup_timeout": args.timeout,
             "log_level": args.log_level,
             "binary_dir": str(Path(args.binary_dir).resolve()),
+            "login_session": getattr(args, "login_session", False),
             "started_at": time.time(),
             "compositor": str(args.compositor.resolve()) if args.compositor else None,
         }
@@ -233,4 +234,6 @@ def exec_session(state_file):
     ]
     if state.get("compositor"):
         args.extend(["--compositor-binary", state["compositor"]])
+    if state.get("login_session", False):
+        args.append("--login-session")
     os.execve(args[0], args, env)
