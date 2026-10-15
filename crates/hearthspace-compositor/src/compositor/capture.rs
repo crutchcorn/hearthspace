@@ -319,6 +319,7 @@ impl CalloopData {
             "locked": false, "lock_confirmed": false,
             "recovery_ready": recovery_ready,
             "xwayland_display": xwayland_display,
+            "overview": self.state.overview_status(),
             "viewport": {
                 "x": self.state.viewport_offset.x,
                 "y": self.state.viewport_offset.y,

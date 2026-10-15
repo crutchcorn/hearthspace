@@ -28,6 +28,7 @@ impl App {
 
     pub(super) fn navigation_available(&self) -> bool {
         !self.session_locked()
+            && !self.overview_active()
             && !self.keyboard.is_grabbed()
             && !self.pointer.is_grabbed()
             && self.drag.is_none()
@@ -36,7 +37,7 @@ impl App {
 
     fn check_navigation_available(&self) -> Result<(), String> {
         self.navigation_available().then_some(()).ok_or_else(|| {
-            "window action unavailable during an input grab or interactive move/resize".into()
+            "window action unavailable during overview, an input grab, or interactive move/resize".into()
         })
     }
 

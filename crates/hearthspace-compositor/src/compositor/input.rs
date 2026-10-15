@@ -2,24 +2,25 @@
 
 use smithay::{
     backend::input::{
-        AbsolutePositionEvent, Axis, ButtonState, Device, Event, GestureBeginEvent,
-        GestureEndEvent, GesturePinchUpdateEvent, GestureSwipeUpdateEvent, InputBackend,
-        InputEvent, InputTime, KeyboardKeyEvent, PointerAxisEvent, PointerButtonEvent,
-        PointerMotionEvent, TouchEvent,
+        AbsolutePositionEvent, Axis, Device, Event, GestureBeginEvent, GestureEndEvent,
+        GesturePinchUpdateEvent, GestureSwipeUpdateEvent, InputBackend, InputEvent, InputTime,
+        KeyboardKeyEvent, PointerAxisEvent, PointerButtonEvent, PointerMotionEvent, TouchEvent,
     },
-    input::pointer::{AxisFrame, ButtonEvent},
-    utils::{Logical, Point, Rectangle, SERIAL_COUNTER},
+    input::pointer::AxisFrame,
+    utils::{Logical, Point, Rectangle},
 };
-use tracing::{debug, trace};
+use tracing::trace;
 
 use crate::config::WHEEL_SCROLL_PIXEL_EQUIVALENT;
 
-use super::{App, DragState, HitTarget, idle::ActivityReason};
+use super::{App, HitTarget, idle::ActivityReason};
 
+mod buttons;
 mod interactive;
 mod keyboard;
 #[cfg(feature = "winit")]
 mod nested;
+mod overview;
 mod pinch;
 mod pointer;
 mod recovery;
@@ -30,6 +31,7 @@ mod touch_tracker;
 pub(super) use keyboard::KeyboardShortcuts;
 #[cfg(feature = "winit")]
 pub(super) use nested::handle_winit_input;
+pub(super) use overview::OverviewInput;
 use pinch::PinchInput;
 pub(super) use pinch::PinchZoom;
 use pointer::relative_pointer_location;
@@ -127,145 +129,7 @@ pub(in crate::compositor) fn handle_input_event<B: InputBackend>(
             );
         }
         InputEvent::PointerButton { event } => {
-            if state.session_locked() {
-                state.deliver_lock_button(event.button_code(), event.state(), event.time());
-                return;
-            }
-            if event.state() == ButtonState::Pressed {
-                state.interrupt_pinch_zoom();
-            }
-            let time = event.time();
-            let is_left_button = event.button() == Some(smithay::backend::input::MouseButton::Left);
-            trace!(button = event.button_code(), state = ?event.state(), ?time, "pointer button input");
-
-            if is_left_button
-                && event.state() == ButtonState::Released
-                && (state.drag.is_some() || state.resize.is_some())
-            {
-                debug!("ending pointer drag/resize from button release");
-                state.drag = None;
-                state.finish_resize();
-                // Forward the release to the pointer so the implicit grab
-                // established by the originating press (e.g. a client-initiated
-                // `move_request`) is released. Swallowing it here would leave the
-                // grab stuck on the dragged window, misrouting all later pointer
-                // input to it.
-                let pointer = state.pointer.clone();
-                state.deliver_pointer_button(&ButtonEvent {
-                    serial: SERIAL_COUNTER.next_serial(),
-                    time,
-                    button: event.button_code(),
-                    state: event.state(),
-                });
-                pointer.frame(state);
-                return;
-            }
-
-            if is_left_button && event.state() == ButtonState::Pressed {
-                match state.hit_test(state.pointer_location) {
-                    Some(HitTarget::CloseButton { window_index }) => {
-                        debug!(
-                            window_id = state.windows[window_index].id,
-                            "close button clicked"
-                        );
-                        state.windows[window_index].surface.send_close();
-                        state.drag = None;
-                        return;
-                    }
-                    Some(HitTarget::TitleBar { window_index }) => {
-                        let window_index = state.raise_window(window_index);
-                        if let Some(surface) = state.windows[window_index].surface.wl_surface() {
-                            state.set_keyboard_focus_to_window(window_index, surface);
-                        }
-                        if state.window_uses_output_coordinates(window_index) {
-                            return;
-                        }
-                        state.drag = Some(DragState {
-                            window_id: state.windows[window_index].id,
-                            pointer_start: state.raw_pointer_location,
-                            window_start: state.windows[window_index].position,
-                        });
-                        debug!(
-                            window_id = state.windows[window_index].id,
-                            "started titlebar drag"
-                        );
-                        state.request_redraw();
-                        return;
-                    }
-                    Some(HitTarget::ResizeBorder {
-                        window_index,
-                        edges,
-                    }) => {
-                        let window_index = state.raise_window(window_index);
-                        if let Some(surface) = state.windows[window_index].surface.wl_surface() {
-                            state.set_keyboard_focus_to_window(window_index, surface);
-                        }
-                        debug!(
-                            window_id = state.windows[window_index].id,
-                            ?edges,
-                            "started resize from pointer press"
-                        );
-                        state.start_resize(window_index, edges);
-                        return;
-                    }
-                    Some(HitTarget::Client { window_index, .. }) => {
-                        let window_index = state.raise_window(window_index);
-                        if let Some(surface) = state.windows[window_index].surface.wl_surface() {
-                            state.set_keyboard_focus_to_window(window_index, surface);
-                        }
-                    }
-                    None => {
-                        debug!("clearing keyboard focus from pointer press on canvas");
-                        state.clear_keyboard_focus();
-                    }
-                }
-            } else if is_left_button
-                && event.state() == ButtonState::Released
-                && matches!(
-                    state.hit_test(state.pointer_location),
-                    Some(HitTarget::CloseButton { .. })
-                )
-            {
-                return;
-            }
-
-            let focus = match state.hit_test(state.pointer_location) {
-                Some(HitTarget::Client {
-                    window_index,
-                    surface,
-                    surface_location,
-                }) => {
-                    state.record_client_activity_for_window_index(
-                        window_index,
-                        ActivityReason::ClientInput,
-                    );
-                    Some((surface, surface_location))
-                }
-                _ => None,
-            };
-
-            match focus.clone() {
-                Some((surface, _)) => {
-                    if event.state() == ButtonState::Pressed
-                        && let Some(window_index) = state.window_index_for_surface(&surface)
-                    {
-                        state.set_keyboard_focus_to_window(window_index, surface);
-                    }
-                }
-                _ if is_left_button && event.state() == ButtonState::Pressed => {
-                    return;
-                }
-                _ => {}
-            }
-
-            let pointer = state.pointer.clone();
-            state.deliver_pointer_button(&ButtonEvent {
-                serial: SERIAL_COUNTER.next_serial(),
-                time,
-                button: event.button_code(),
-                state: event.state(),
-            });
-            pointer.frame(state);
+            state.handle_pointer_button(event.button_code(), event.state(), event.time());
         }
         InputEvent::PointerAxis { event } => {
             trace!(

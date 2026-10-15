@@ -39,6 +39,7 @@ impl App {
     }
 
     pub(super) fn arm_session_shield(&mut self) {
+        self.close_overview();
         self.reset_session_input();
         self.session_lock.previous_focus = self.focused_normal_window_id;
         self.clear_keyboard_focus();
