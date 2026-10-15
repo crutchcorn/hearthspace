@@ -15,6 +15,13 @@ native recovery on the GPD host. This does not establish all-day laptop behavior
       the user entered the password locally, confirmed visible lock feedback,
       typed an exact keyboard marker, and moved windows with both devices.
       See the [manual acceptance record](../docs/POWER_TESTING.md#real-gdm-login-and-password-unlock--2026-10-15).
+- [x] Optional system-battery percentage and charging state in the shell,
+      with low/critical notifications and no indicator without a battery or UPS.
+- [x] Graphical Suspend action using the native coordinator, independent of
+      battery presence and gated by logind capability and session readiness.
+      Passed native menu-triggered sleep/recovery on the GPD; isolated E2E
+      covers warnings and battery-free desktops. See the
+      [laptop controls acceptance](../docs/POWER_TESTING.md#laptop-controls--2026-10-15).
 
 ## Remaining hardware acceptance
 
@@ -38,9 +45,8 @@ presentation/input assertions, and owned-session cleanup for every run.
 
 - [ ] Automatic idle lock, display dimming/off, and optional idle suspend with
       application idle inhibitors and configurable AC/battery behavior.
-- [ ] Battery status and low/critical-battery notifications and policy.
-- [ ] Graphical suspend action and power settings, including an explicit policy
-      for the power button and lid behavior.
+- [ ] Configurable critical-battery actions and graphical power settings,
+      including an explicit policy for the power button and lid behavior.
 - [ ] Power profiles and hibernation, after host support and recovery are tested.
 
 The host currently owns automatic idle and power-button behavior. These items

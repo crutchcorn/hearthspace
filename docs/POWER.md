@@ -14,7 +14,46 @@ with an already closed lid do not trigger another suspend: a new open-to-closed
 transition is required. Power-button and automatic idle policy remain with the
 host configuration.
 
-For a manual suspend, run `systemctl suspend` in the desktop terminal. Normal
+## Battery status and warnings
+
+When a system battery is present, the shell bar shows its percentage and a
+battery icon; a lightning bolt indicates charging. Open the power menu for the
+full charging state. UPower supplies the combined reading for systems with
+multiple batteries. A UPS is identified as a UPS. Desktops and VMs without a
+system battery or UPS use no battery-indicator space and receive no battery warnings;
+peripheral batteries are not treated as the system supply. A missing UPower
+service or invalid reading also hides the indicator, and monitoring reconnects
+when the service becomes available.
+
+Low and critical warnings appear through Hearthspace's private notification
+service. UPower's configured warning levels are authoritative. Only when that
+level is unknown does Hearthspace use 20% for low and 5% for critical. Charging
+and external-power readings suppress warnings. Warnings are deduplicated until
+external power, charging, or meaningful charge recovery rearms them; critical
+warnings can escalate independently. Daemon reconnects retain this state.
+These warnings do not change the host's critical-battery action or initiate
+suspend, hibernation or shutdown.
+
+The [UPower display device](https://upower.freedesktop.org/docs/UPower.html)
+and [device properties](https://upower.freedesktop.org/docs/Device.html) define
+the aggregate, charging states and warning levels.
+
+## Suspend from the shell
+
+Choose **Power → Suspend** in a native managed session. This action is also
+available on desktops without batteries when logind permits suspend. The menu
+disables it with an explanation when sleep is unsupported, authorization is
+required, another session is active, or the desktop is not ready. Nested and
+headless sessions cannot suspend the host through this menu.
+
+The shell sends a bounded request through the supervisor's private
+`power-control.sock`. The supervisor rechecks the active session and sleep
+capability, presents the lock shield, and then requests noninteractive logind
+suspend. Repeated clicks do not queue multiple sleeps; an ambiguous timeout is
+not automatically retried. Request errors remain in the power menu. The socket
+uses the same private session directory as the compositor control socket.
+
+You can also run `systemctl suspend` in the desktop terminal. Normal
 logind suspend requests from other programs use the same lock preparation path.
 The coordinator holds a sleep **delay** inhibitor, immediately shields the
 compositor on `PrepareForSleep(true)`, and starts the distribution's `swaylock`.
