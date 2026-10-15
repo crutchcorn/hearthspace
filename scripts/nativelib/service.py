@@ -11,6 +11,7 @@ from contextlib import contextmanager
 from pathlib import Path
 
 from .common import ENTRY, ROOT, STATE_ROOT, active_vt, load, run, save, unit_info
+from .profile import isolated_environment
 
 
 @contextmanager
@@ -157,6 +158,7 @@ def launch(args):
             "log_level": args.log_level,
             "binary_dir": str(Path(args.binary_dir).resolve()),
             "login_session": getattr(args, "login_session", False),
+            "isolated_profile": getattr(args, "isolated_profile", False),
             "started_at": time.time(),
             "compositor": str(args.compositor.resolve()) if args.compositor else None,
         }
@@ -208,6 +210,7 @@ def exec_session(state_file):
     env["XDG_RUNTIME_DIR"] = state["runtime_dir"]
     env["WAYLAND_DISPLAY"] = state["wayland_display"]
     env["XDG_CURRENT_DESKTOP"] = "Hearthspace"
+    env.update(isolated_environment(state))
     # PAM may replace the service's original PATH. Restore the selected build
     # before the private bus starts so clients and activated services agree.
     inherited_path = env.get("PATH") or "/usr/local/bin:/usr/bin:/bin"

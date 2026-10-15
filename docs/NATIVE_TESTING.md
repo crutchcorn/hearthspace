@@ -52,6 +52,17 @@ paths, VT identity, process IDs, and output metadata. Readiness requires
 responsive control and settings sockets, a mapped shell surface, and a successful
 native capture.
 
+For a clean demo or settings test, add `start --isolated-profile`. This opt-in
+creates fresh `XDG_CONFIG_HOME`, `XDG_CACHE_HOME`, `XDG_DATA_HOME`, and
+`XDG_STATE_HOME` beneath the artifact directory's `profile/` before starting the
+private D-Bus session. Settings, compositor, and application profiles start fresh,
+including the default dotted background; the real user identity and `HOME` are
+preserved.
+The manifest records `isolated_profile`. Profiles remain with the run's other
+artifacts after cleanup; remove the artifact directory when they are no longer
+needed. The supervisor's runtime remains empty until startup and is removed on
+stop. Omit the flag to keep existing behavior.
+
 The watchdog is an absolute maximum session lifetime in seconds, independent of
 agent activity. Choose a lifetime long enough for the test. It deliberately ends
 the session even if the caller vanishes. Startup has a separate absolute deadline.

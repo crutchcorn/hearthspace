@@ -41,6 +41,11 @@ def parser():
             command.add_argument("--compositor", type=Path)
             command.add_argument("--log-level", default="info")
             command.add_argument(
+                "--isolated-profile",
+                action="store_true",
+                help="use fresh session settings and app profiles inside the artifact directory",
+            )
+            command.add_argument(
                 "--login-session",
                 action="store_true",
                 help="exercise the installed login cleanup guard in the owned PAM session",
@@ -168,6 +173,8 @@ def start(args):
         extra = ["--compositor", args.compositor.resolve()] if args.compositor else []
         if getattr(args, "login_session", False):
             extra.append("--login-session")
+        if getattr(args, "isolated_profile", False):
+            extra.append("--isolated-profile")
         state = privileged(
             "_start",
             [
