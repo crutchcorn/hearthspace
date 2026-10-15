@@ -161,11 +161,18 @@ bell, map, and power popovers.
 | Super+F | Toggle fullscreen |
 | Super+M | Toggle maximized state |
 | Super+L | Lock the native session |
+| Ctrl+Alt+F1–F12 | Switch to Linux TTY1–TTY12 in a native session |
 
 While overview is open, Escape dismisses it, arrows or Tab/Shift+Tab change its
 selection, and Enter activates the selected window. Super+L remains available.
 Outside overview, application shortcuts such as F11 continue to reach the client.
-Real and synthetic keyboard events share the same compositor shortcut policy.
+Real and synthetic keyboard events share the same compositor navigation policy.
+VT switching is a native keyboard binding, handled before application grabs,
+search, overview, and the lock screen. It preserves the running desktop and its
+lock state; switching back resumes it. On laptops whose function row defaults
+to media controls, hold Fn as well to send an F key. Nested and headless sessions
+do not switch the host's TTY. Agents can exercise the native binding through an
+owned uinput keyboard; control-socket key injection remains inside Hearthspace.
 
 ## Agent control
 

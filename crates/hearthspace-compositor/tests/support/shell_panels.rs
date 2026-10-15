@@ -295,6 +295,21 @@ fn search_bridge_preserves_early_typing_and_revokes_cancelled_requests() {
     assert!(!client.closed().contains(&direct));
     client.destroy(direct);
 
+    // Native VT loss uses the same input reset as locking. Modifiers queued
+    // before search maps must be drained before synthesizing held-key releases.
+    let before_resume = request();
+    action(&compositor, "key-down 29");
+    action(&compositor, "key-down 56");
+    action(&compositor, "session-resume");
+    assert!(
+        compositor
+            .send_text_command(&format!("shell-event-accept {before_resume}"))
+            .starts_with("err ")
+    );
+    // A stuck Ctrl or Alt in XKB would suppress this plain Super+O shortcut.
+    super::navigation::keys(&compositor, &[125, 24]);
+    assert_eq!(query(&compositor, "status")["overview"]["active"], true);
+    action(&compositor, "overview-off");
     let before_lock = request();
     action(&compositor, format!("shell-event-accept {before_lock}"));
     let socket = compositor
