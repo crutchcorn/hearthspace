@@ -5,9 +5,10 @@ popup contains brightness and volume sliders, percentages, the current audio
 output, and a mute/unmute button. It closes with Escape, its close button, or a
 click outside. Opening another shell popup closes it.
 
-Drag either slider with a pointer or touchscreen. Keyboard focus is visible;
-Tab moves between controls and arrow keys change a focused slider by one
-percentage point (Shift changes ten). Home and End select the limits.
+Drag either slider with a pointer or touchscreen. Keyboard navigation shows a
+complete outline inside the slider. Hover never adds an outline; clicking or
+dragging hides it. Tab moves between controls and arrow keys change a focused
+slider by one percentage point (Shift changes ten). Home and End select the limits.
 Brightness ranges from 1–100%, keeping the backlight on. Volume ranges from
 0–100%, without amplification; a positive volume adjustment also unmutes.
 Volume changes preserve the current channel balance and silent channels. When
@@ -18,8 +19,11 @@ Holding a level key repeats after a short delay; mute toggles once per press.
 Agent input accepts `brightness-up`, `brightness-down`, `volume-up`,
 `volume-down`, and `volume-mute` using the same input path.
 
-Confirmed adjustments show a bottom-center on-screen display (OSD) for about
-1.6 seconds. Further adjustments replace its value and restart the timeout.
+Confirmed hardware-key adjustments show a bottom-center on-screen display (OSD)
+for about 1.6 seconds. Further hardware-key adjustments replace its value and
+restart the timeout. Control-center sliders and mute update the popup only,
+including when operated with the keyboard. They never open, change or extend an
+existing OSD; any adjustment error is shown in the control center.
 The OSD shows the actual device reading or mute state; failures show an
 unavailable explanation. It neither takes focus nor intercepts pointer/touch
 input, and remains visible above fullscreen apps and the canvas overview.
@@ -126,3 +130,26 @@ This acceptance injected input through the compositor's normal key/pointer path;
 it did not press the physical Fn keys, inject touchscreen contacts, or play an
 audible test sound. Asymmetric channel balance, unplug/replacement races and
 missing hardware/services are covered by the isolated regressions and shell E2E.
+
+### Control-center feedback and slider focus follow-up
+
+Control-center adjustments now leave OSD contents and dismissal deadlines
+untouched, including delayed success/error responses after the popup closes.
+Slider regressions verify pointer interaction without an outline, keyboard focus
+across value updates, focus loss and disabled controls, and complete outline
+edges at 1×, 1.25×, 1.5×, 2× and 3× scales.
+
+Formatting, Ruff, workspace Clippy with warnings denied, and the full native/E2E
+workspace build passed. Ordinary Rust tests passed 679 tests; the strict Rust
+run passed 724. All 383 Python tests passed with E2E, required AT-SPI and the
+real tray-library fixture enabled. The 2× real-shell screenshots show no outline
+after pointer interaction, a complete keyboard outline, and no OSD from either
+slider input path or mute/unmute. Hardware-key OSD checks still pass.
+
+Logs and captures are retained in `/tmp/hearthspace-controls-focus-checks/`,
+including `evidence/shell/control-center/artifacts/`. This follow-up used isolated
+fixtures and headless rendering; it did not alter the host's brightness or audio,
+or switch away from GNOME.
+The optimized release `93ee61c7c33c` is installed; all 13 installed runtime/session
+files matched their recorded hashes, permissions and root ownership. The
+verification is retained as `installed-release.json` in the same check directory.
