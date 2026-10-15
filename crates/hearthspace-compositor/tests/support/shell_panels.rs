@@ -73,7 +73,15 @@ fn shell_panels_focus_hit_test_and_close_without_revealing_off_canvas_windows() 
         let width = geometry["width"].as_f64().unwrap();
         assert!(y >= 48.0 && y + f64::from(size.1) <= 800.0);
         if kind == "search" {
+            assert_eq!(width, 768.0, "search uses 60% of its logical output");
             assert_eq!(x + width / 2.0, 640.0, "search must be centered");
+            client.resize(panel, (360, 140));
+            let compact = bounds(&compositor, kind);
+            assert_eq!(compact["width"], 768, "content sizing must retain width");
+            assert_eq!(compact["height"], 140);
+            assert_eq!(compact["x"], geometry["x"]);
+            client.resize(panel, size);
+            assert_eq!(bounds(&compositor, kind), geometry);
         } else {
             assert_eq!(x + width, 1268.0, "dropdown must anchor on the right");
         }
@@ -156,12 +164,16 @@ fn search_and_dropdowns_fit_scaled_small_outputs_and_lock_hides_their_metadata()
     ] {
         let panel = client.add(app_id.into(), (500, 440), (0, 0), GREEN);
         let geometry = bounds(&compositor, kind);
-        assert_eq!(geometry["x"], 0);
+        let inset = if kind == "search" { 12 } else { 0 };
+        assert_eq!(geometry["x"], inset);
         assert_eq!(geometry["y"], 48);
-        assert_eq!(geometry["width"], 320);
+        assert_eq!(geometry["width"], 320 - 2 * inset);
         assert_eq!(geometry["height"], 192);
         click(&compositor, 100.0, 100.0);
-        assert_eq!(client.presses().last(), Some(&(panel, (100.0, 52.0))));
+        assert_eq!(
+            client.presses().last(),
+            Some(&(panel, (100.0 - f64::from(inset), 52.0)))
+        );
         let socket = compositor
             .runtime_dir
             .path()

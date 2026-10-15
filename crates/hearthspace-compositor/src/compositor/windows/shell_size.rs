@@ -102,12 +102,18 @@ mod tests {
     #[test]
     fn unconstrained_or_variable_size_hints_do_not_force_a_resize() {
         let output = (1280, 800).into();
-        assert_eq!(palette_size((0, 0).into(), (0, 0).into(), output, false), None);
+        assert_eq!(
+            palette_size((0, 0).into(), (0, 0).into(), output, false),
+            None
+        );
         assert_eq!(
             palette_size((360, 52).into(), (360, 440).into(), output, false),
             None
         );
-        assert_eq!(palette_size((0, 52).into(), (0, 52).into(), output, false), None);
+        assert_eq!(
+            palette_size((0, 52).into(), (0, 52).into(), output, false),
+            None
+        );
     }
 
     #[test]
@@ -130,7 +136,10 @@ mod tests {
     #[test]
     fn search_waits_for_measured_content_hints() {
         let output = (1280, 800).into();
-        assert_eq!(palette_size((0, 0).into(), (0, 0).into(), output, true), None);
+        assert_eq!(
+            palette_size((0, 0).into(), (0, 0).into(), output, true),
+            None
+        );
         assert_eq!(
             palette_size((360, 52).into(), (768, 440).into(), output, true),
             None
