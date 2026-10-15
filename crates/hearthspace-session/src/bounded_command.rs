@@ -101,11 +101,35 @@ mod tests {
     #[test]
     fn noisy_helpers_cannot_allocate_unbounded_output() {
         let error = output(
-            Command::new("/usr/bin/python3").args(["-c", "print('x' * 1000000)"]),
-            Instant::now() + Duration::from_secs(1),
+            &mut Command::new("/usr/bin/yes"),
+            // This exercises child I/O, not helper startup speed under CI load.
+            // The byte limit is also checked without scheduling below.
+            Instant::now() + Duration::from_secs(5),
             &AtomicBool::new(false),
         )
         .unwrap_err();
         assert_eq!(error.kind(), io::ErrorKind::InvalidData);
+    }
+
+    #[test]
+    fn output_limit_includes_bytes_from_previous_drains() {
+        let mut output = vec![b'x'; 64 * 1024 - 1];
+        drain(&mut io::repeat(b'y').take(1), &mut output).unwrap();
+        assert_eq!(output.len(), 64 * 1024);
+        assert_eq!(output.last(), Some(&b'y'));
+
+        let error = drain(&mut io::repeat(b'z').take(1), &mut output).unwrap_err();
+        assert_eq!(error.kind(), io::ErrorKind::InvalidData);
+        assert_eq!(output.len(), 64 * 1024);
+        assert_eq!(output.last(), Some(&b'y'));
+    }
+
+    #[test]
+    fn unbounded_reader_cannot_retain_more_than_the_output_limit() {
+        let mut output = Vec::new();
+        let error = drain(&mut io::repeat(b'x'), &mut output).unwrap_err();
+        assert_eq!(error.kind(), io::ErrorKind::InvalidData);
+        assert_eq!(output.len(), 64 * 1024);
+        assert!(output.iter().all(|&byte| byte == b'x'));
     }
 }

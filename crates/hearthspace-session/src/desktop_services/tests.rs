@@ -118,17 +118,28 @@ fn stopping_a_managed_helper_also_kills_its_stubborn_descendant() {
     }
 }
 
-#[test]
-fn failed_first_restart_does_not_discard_the_second_attempt() {
-    let fixture = Fixture::new("restart");
-    let attempts = fixture.0.join("attempts");
+struct RunningServices(DesktopServices);
+impl Drop for RunningServices {
+    fn drop(&mut self) {
+        self.0.shutdown();
+    }
+}
+
+fn restarting_service(ready: &Path) -> RunningServices {
     let spec = ProcessSpec {
-        name: "mock-service", program: "/usr/bin/python3".into(),
-        args: vec!["-c".into(), "import pathlib,sys,time\np=pathlib.Path(sys.argv[1])\nn=int(p.read_text())+1 if p.exists() else 1\np.write_text(str(n))\nif n == 1: sys.exit(7)\ntime.sleep(60)".into(), attempts.to_string_lossy().into_owned()],
-        envs: Vec::new(), env_removals: Vec::new(), current_dir: None,
+        name: "mock-service",
+        program: "/usr/bin/python3".into(),
+        args: vec![
+            "-c".into(),
+            "import os,pathlib,sys,time\npathlib.Path(sys.argv[1]).write_text(str(os.getpid())+'\\n')\ntime.sleep(60)".into(),
+            ready.to_string_lossy().into_owned(),
+        ],
+        envs: Vec::new(),
+        env_removals: Vec::new(),
+        current_dir: None,
     };
     // The original process has already exited; both restart attempts remain.
-    let mut services = DesktopServices {
+    RunningServices(DesktopServices {
         entries: vec![Entry {
             spec,
             bus_name: None,
@@ -137,16 +148,54 @@ fn failed_first_restart_does_not_discard_the_second_attempt() {
             restarts_left: 2,
         }],
         ..Default::default()
-    };
+    })
+}
+
+fn assert_second_restart_recovers(services: &mut DesktopServices, ready: &Path) {
+    assert!(services.entries[0].pid().is_none());
+    assert_eq!(services.entries[0].restarts_left, 1);
     let cancelled = AtomicBool::new(false);
-    let first_changed = services.poll(&cancelled);
-    let first_failed = services.entries[0].pid().is_none();
-    let remaining = services.entries[0].restarts_left;
-    let second_changed = services.poll(&cancelled);
-    let recovered = services.entries[0].pid().is_some();
-    services.shutdown();
-    assert!(first_changed && first_failed);
-    assert_eq!(remaining, 1);
-    assert!(second_changed && recovered);
-    assert_eq!(fs::read_to_string(attempts).unwrap(), "2");
+    assert!(services.poll(&cancelled));
+    let pid = services.entries[0].pid().expect("second restart was lost");
+    assert_eq!(services.entries[0].restarts_left, 0);
+
+    // A live process after the short startup grace period need not have run its
+    // Python code yet. Observe this particular child's publication before
+    // claiming recovery; a previous attempt's file must not satisfy readiness.
+    let expected = format!("{pid}\n");
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while fs::read_to_string(ready).ok().as_deref() != Some(expected.as_str()) {
+        assert!(services.entries[0].running().unwrap(), "helper exited");
+        assert!(Instant::now() < deadline, "helper never became ready");
+        thread::sleep(Duration::from_millis(5));
+    }
+    assert!(!services.poll(&cancelled));
+    assert_eq!(services.entries[0].pid(), Some(pid));
+}
+
+#[test]
+fn failed_first_restart_does_not_discard_the_second_attempt() {
+    let fixture = Fixture::new("restart");
+    let ready = fixture.0.join("ready");
+    let mut services = restarting_service(&ready);
+    let program = services.0.entries[0].spec.program.clone();
+    services.0.entries[0].spec.program = fixture.0.join("missing").to_string_lossy().into_owned();
+
+    // Failure is synchronous: this must not depend on Python starting and
+    // exiting within wait_ready's 100 ms survival check on a busy CI runner.
+    assert!(services.0.poll(&AtomicBool::new(false)));
+    services.0.entries[0].spec.program = program;
+    assert_second_restart_recovers(&mut services.0, &ready);
+}
+
+#[test]
+fn failed_restart_readiness_does_not_discard_the_second_attempt() {
+    let fixture = Fixture::new("restart-readiness");
+    let ready = fixture.0.join("ready");
+    let mut services = restarting_service(&ready);
+
+    // Exercise failure after spawn as well. Cancellation makes wait_ready fail
+    // regardless of when the child is scheduled, and must remove that child.
+    assert!(services.0.poll(&AtomicBool::new(true)));
+    assert_second_restart_recovers(&mut services.0, &ready);
 }
