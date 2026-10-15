@@ -319,6 +319,10 @@ agree. It requires the native Firefox package and touch-fixture dependencies
 documented in [contributing](../CONTRIBUTING.md), plus one output at least
 960×650 logical pixels. It owns and cleans up its VT session and temporary apps.
 
+[GTK touchscreen acceptance](GTK_TOUCH_TESTING.md) covers native GTK 3/4
+headerbar movement, release, repeated drags, canvas zoom, and content taps with
+`scripts/gtk-touch-smoke`.
+
 The [physical suspend acceptance test](POWER_TESTING.md) uses `scripts/power-smoke`
 with explicit opt-in, a checked RTC wake alarm, a protocol-owned test lock, and
 the independent native watchdog. It verifies lock presentation across real

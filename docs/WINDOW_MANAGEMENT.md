@@ -126,8 +126,8 @@ cancels the held switch.
 
 Drag a floating window's title bar with one finger to move it, then lift to drop
 it. This works with compositor decorations and application-drawn title bars,
-including Firefox's empty tab-strip area. Drag a resizable window's edge to
-resize it. Restore maximized windows first.
+including Firefox's empty tab-strip area and GTK headerbars such as Calculator's.
+Drag a resizable window's edge to resize it. Restore maximized windows first.
 
 Movement begins after eight logical pixels and includes that initial movement.
 The window follows the finger's screen distance at any canvas zoom. Adding a
