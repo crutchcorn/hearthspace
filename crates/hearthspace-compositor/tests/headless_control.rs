@@ -24,6 +24,9 @@ mod layout;
 #[path = "support/navigation.rs"]
 mod navigation;
 #[cfg(feature = "test-apps")]
+#[path = "support/overview.rs"]
+mod overview;
+#[cfg(feature = "test-apps")]
 #[path = "support/session_bus.rs"]
 mod session_bus;
 #[cfg(feature = "test-apps")]
