@@ -63,6 +63,10 @@ fn apply(state: &mut ShellState, update: Update) {
             }
         }
         Update::Finished(request, result, active) => {
+            // Hardware keys carry a compositor token. Control-center actions
+            // already show their result inline and must not open, replace, or
+            // extend an OSD, even if the panel closes before the result arrives.
+            let show_osd = active && request.token.is_some();
             let pending = state.controls.pending_mut(request.action.device());
             if pending.is_some_and(|(id, _)| id <= request.id) {
                 *pending = None;
@@ -76,7 +80,7 @@ fn apply(state: &mut ShellState, update: Update) {
                         }
                     }
                     *state.controls.error_mut(request.action.device()) = None;
-                    if active {
+                    if show_osd {
                         super::control_osd::show(
                             state,
                             &request.output,
@@ -88,7 +92,7 @@ fn apply(state: &mut ShellState, update: Update) {
                 Err(error) => {
                     *state.controls.error_mut(request.action.device()) = Some(error.clone());
                     // A delayed result must not reopen a surface after VT loss or locking.
-                    if active {
+                    if show_osd {
                         super::control_osd::show(
                             state,
                             &request.output,

@@ -69,6 +69,28 @@ def settled_audio(smoke):
     return previous
 
 
+def center_feedback(smoke, capture, *, focused_slider=None):
+    """Keep popup adjustments in the popup, with separate focus review captures."""
+    checks.opened(smoke, "controls", exclusive=True)
+    if focused_slider:
+        target = f"{selector(focused_slider, role='slider')}[@focused='true']"
+        smoke.until(
+            f"focused {focused_slider} slider",
+            lambda: a11y(smoke, "find", target)["elements"],
+        )
+    if smoke.control.status().get("control_osds"):
+        raise ControlError("control-center adjustment opened an OSD")
+    smoke.capture(capture)
+    if smoke.control.status().get("control_osds"):
+        raise ControlError("control-center adjustment mapped an OSD after presentation")
+    smoke.record(
+        "control-center-feedback",
+        capture=capture,
+        focused_slider=focused_slider,
+        osd=False,
+    )
+
+
 def osd(smoke, text, *, capture=None):
     smoke.until(
         "mapped passive control OSD", lambda: smoke.control.status().get("control_osds")
@@ -132,15 +154,16 @@ def run(smoke):
     )
     changed = settled_audio(smoke)
     smoke.until("dragged volume label", lambda: visible(smoke, f"{changed['volume']}%"))
+    center_feedback(smoke, "control-center-slider-pointer", focused_slider="Volume")
     with Input(smoke.control) as inputs:
         inputs.chord("right")
     after = audio(smoke, volume=changed["volume"] + 1, muted=False)
     balanced_channels(after)
     smoke.until(
-        "slider keyboard readback OSD",
-        lambda: visible(smoke, f"Volume {after['volume']}%"),
+        "slider keyboard readback label",
+        lambda: visible(smoke, f"{after['volume']}%"),
     )
-    smoke.capture("control-center-slider-input")
+    center_feedback(smoke, "control-center-slider-keyboard", focused_slider="Volume")
     smoke.record(
         "volume-slider-input",
         pointer=changed["volume"],
@@ -150,9 +173,11 @@ def run(smoke):
     checks.click(smoke, "Mute", "controls")
     audio(smoke, muted=True)
     smoke.until("muted control", lambda: visible(smoke, "Unmute", "button"))
-    smoke.capture("control-center-muted")
+    center_feedback(smoke, "control-center-muted")
     checks.click(smoke, "Unmute", "controls")
     audio(smoke, muted=False)
+    smoke.until("unmuted control", lambda: visible(smoke, "Mute", "button"))
+    center_feedback(smoke, "control-center-unmuted")
 
     peer.update(volume=40)
     smoke.until("external volume change reflected", lambda: visible(smoke, "40%"))
@@ -248,4 +273,5 @@ def run(smoke):
         missing_audio_disabled=True,
         default_output_recovered=True,
         channel_balance_preserved=True,
+        control_center_osd_suppressed=True,
     )

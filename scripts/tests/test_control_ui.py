@@ -182,6 +182,41 @@ class ControlFixtureTests(unittest.TestCase):
                 ):
                     control_ui.osd(smoke, "Volume 45%")
 
+    def test_center_feedback_rejects_immediate_and_late_osds(self):
+        for statuses in (
+            [{"control_osds": [{}]}],
+            [{"control_osds": []}, {"control_osds": [{}]}],
+        ):
+            with self.subTest(statuses=statuses):
+                smoke = Mock()
+                smoke.control.status.side_effect = statuses
+                with (
+                    patch.object(control_ui.checks, "opened"),
+                    self.assertRaisesRegex(ControlError, "adjustment.*OSD"),
+                ):
+                    control_ui.center_feedback(smoke, "pointer")
+
+    def test_center_feedback_verifies_slider_focus_and_captures_without_osd(self):
+        smoke = Mock()
+        smoke.control.status.return_value = {"control_osds": []}
+        smoke.until.side_effect = lambda _name, check: check()
+        with (
+            patch.object(control_ui.checks, "opened") as opened,
+            patch.object(control_ui, "a11y", return_value={"elements": [{}]}) as a11y,
+        ):
+            control_ui.center_feedback(smoke, "keyboard", focused_slider="Volume")
+        opened.assert_called_once_with(smoke, "controls", exclusive=True)
+        self.assertIn("@role='slider'", a11y.call_args.args[2])
+        self.assertIn("@name='Volume'", a11y.call_args.args[2])
+        self.assertIn("@focused='true'", a11y.call_args.args[2])
+        smoke.capture.assert_called_once_with("keyboard")
+        smoke.record.assert_called_once_with(
+            "control-center-feedback",
+            capture="keyboard",
+            focused_slider="Volume",
+            osd=False,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

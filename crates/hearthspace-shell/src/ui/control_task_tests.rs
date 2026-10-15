@@ -20,6 +20,12 @@ fn request(id: u64, action: Action) -> Request {
     }
 }
 
+fn hardware_key(id: u64, action: Action) -> Request {
+    let mut request = request(id, action);
+    request.token = Some((1 << 63) | id);
+    request
+}
+
 #[test]
 fn slider_updates_coalesce_without_losing_relative_keys() {
     let mut queue = VecDeque::new();
@@ -41,7 +47,7 @@ fn slider_updates_coalesce_without_losing_relative_keys() {
 }
 
 #[test]
-fn late_readback_preserves_newer_slider_intent_and_osd_waits_for_confirmation() {
+fn late_readback_preserves_newer_slider_intent_without_opening_an_osd() {
     let mut state = ShellState::new("/unused".into(), vec!["eDP-1".into()]);
     let (sender, mut receiver) = tokio::sync::mpsc::channel(32);
     state.controls.sender = Some(sender);
@@ -52,10 +58,99 @@ fn late_readback_preserves_newer_slider_intent_and_osd_waits_for_confirmation() 
     assert!(state.outputs[0].osd.is_none());
     apply(&mut state, Update::Finished(first, Ok(audio(40)), true));
     assert_eq!(state.controls.volume(), Some(80));
-    assert_eq!(state.outputs[0].osd.as_ref().unwrap().value, 40);
+    assert!(state.outputs[0].osd.is_none());
     apply(&mut state, Update::Finished(second, Ok(audio(80)), true));
     assert!(state.controls.volume_pending.is_none());
     assert_eq!(state.controls.volume(), Some(80));
+    assert!(state.outputs[0].osd.is_none());
+}
+
+#[test]
+fn control_center_successes_and_failures_leave_existing_osd_untouched() {
+    let mut state = ShellState::new("/unused".into(), vec!["eDP-1".into()]);
+    apply(
+        &mut state,
+        Update::Finished(hardware_key(1, Action::VolumeStep(5)), Ok(audio(40)), true),
+    );
+    let previous = state.outputs[0].osd.as_ref().unwrap().clone();
+    for action in [
+        Action::SetVolume(80),
+        Action::SetBrightness(70),
+        Action::ToggleMute,
+    ] {
+        let reading = match action {
+            Action::SetBrightness(_) => Reading::Brightness(BrightnessStatus {
+                percentage: 70,
+                device: "panel".into(),
+            }),
+            Action::ToggleMute => Reading::Audio(AudioStatus {
+                volume: 80,
+                muted: true,
+                output: "Speakers".into(),
+            }),
+            _ => audio(80),
+        };
+        for result in [Ok(reading), Err("Unavailable".into())] {
+            state.toggle_controls("eDP-1");
+            apply(
+                &mut state,
+                Update::Finished(request(2, action), result, true),
+            );
+            let current = state.outputs[0].osd.as_ref().unwrap();
+            assert_eq!(
+                (
+                    current.device,
+                    current.value,
+                    current.muted,
+                    &current.error,
+                    current.expires
+                ),
+                (
+                    previous.device,
+                    previous.value,
+                    previous.muted,
+                    &previous.error,
+                    previous.expires
+                ),
+                "panel state and result must not change or extend the hardware-key OSD"
+            );
+        }
+    }
+    control_osd::expire(&mut state, previous.expires);
+    assert!(state.outputs[0].osd.is_none());
+    apply(
+        &mut state,
+        Update::Finished(
+            request(3, Action::ToggleMute),
+            Err("Unavailable".into()),
+            true,
+        ),
+    );
+    assert_eq!(state.controls.volume_error.as_deref(), Some("Unavailable"));
+    assert!(state.outputs[0].osd.is_none());
+}
+
+#[test]
+fn hardware_key_failures_show_feedback_only_after_authorized_completion() {
+    let mut state = ShellState::new("/unused".into(), vec!["eDP-1".into()]);
+    let (sender, mut receiver) = tokio::sync::mpsc::channel(4);
+    state.controls.sender = Some(sender);
+    submit(&mut state, "eDP-1", Action::ToggleMute, Some(1 << 63));
+    let request = receiver.try_recv().unwrap();
+    assert!(state.outputs[0].osd.is_none());
+    apply(
+        &mut state,
+        Update::Finished(request.clone(), Err("Unavailable".into()), false),
+    );
+    assert!(state.outputs[0].osd.is_none());
+    apply(
+        &mut state,
+        Update::Finished(request, Err("Unavailable".into()), true),
+    );
+    assert_eq!(
+        state.outputs[0].osd.as_ref().unwrap().error.as_deref(),
+        Some("Unavailable")
+    );
 }
 
 #[test]
@@ -63,18 +158,22 @@ fn inactivity_clears_osds_and_late_results_do_not_reopen_them() {
     let mut state = ShellState::new("/unused".into(), vec!["eDP-1".into()]);
     apply(
         &mut state,
-        Update::Finished(request(1, Action::SetVolume(40)), Ok(audio(40)), true),
+        Update::Finished(hardware_key(1, Action::VolumeStep(5)), Ok(audio(40)), true),
     );
     assert!(state.outputs[0].osd.is_some());
     apply(&mut state, Update::Poll(Snapshot::default(), false));
     apply(
         &mut state,
-        Update::Finished(request(2, Action::SetVolume(80)), Ok(audio(80)), false),
+        Update::Finished(hardware_key(2, Action::VolumeStep(5)), Ok(audio(80)), false),
     );
     assert!(state.outputs[0].osd.is_none());
     apply(
         &mut state,
-        Update::Finished(request(3, Action::ToggleMute), Err("Locked".into()), false),
+        Update::Finished(
+            hardware_key(3, Action::ToggleMute),
+            Err("Locked".into()),
+            false,
+        ),
     );
     assert!(state.outputs[0].osd.is_none());
 }
@@ -105,9 +204,22 @@ fn osd_replaces_previous_device_restarts_timeout_and_preserves_open_panel() {
         percentage: 60,
         device: "panel".into(),
     }));
-    control_osd::show(&mut state, "eDP-1", Device::Volume, None);
+    apply(
+        &mut state,
+        Update::Finished(hardware_key(1, Action::VolumeStep(5)), Ok(audio(40)), true),
+    );
     let old = state.outputs[0].osd.as_ref().unwrap().expires;
-    control_osd::show(&mut state, "eDP-1", Device::Brightness, None);
+    apply(
+        &mut state,
+        Update::Finished(
+            hardware_key(2, Action::BrightnessStep(5)),
+            Ok(Reading::Brightness(BrightnessStatus {
+                percentage: 65,
+                device: "panel".into(),
+            })),
+            true,
+        ),
+    );
     assert!(state.outputs[0].show_controls);
     assert!(state.outputs[0].osd.as_ref().unwrap().expires >= old);
     assert_eq!(
