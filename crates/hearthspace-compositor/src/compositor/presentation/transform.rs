@@ -133,6 +133,9 @@ impl App {
         if !self.windows[index].mapped {
             return false;
         }
+        if self.windows[index].kind == super::super::ManagedWindowKind::ControlOsd {
+            return !self.session_locked();
+        }
         if self.windows[index].kind.is_shell_chrome() {
             return self.shell_visible_on_output(output);
         }

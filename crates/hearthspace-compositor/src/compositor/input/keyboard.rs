@@ -11,6 +11,7 @@ use crate::compositor::{
     App, idle::ActivityReason, shell_integration::ControlReply, switcher::SwitcherSource,
 };
 
+mod device_control;
 mod meta;
 mod switcher;
 
@@ -18,10 +19,12 @@ mod switcher;
 pub(in crate::compositor) struct KeyboardShortcuts {
     intercepted: HashSet<Keycode>,
     meta: meta::MetaTap,
+    device_repeat: Option<device_control::DeviceRepeat>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Shortcut {
+    DeviceControl(crate::compositor::shell_integration::device_control::DeviceControl),
     Lock,
     OverviewToggle,
     OverviewDismiss,
@@ -160,7 +163,12 @@ impl App {
                     .shortcuts
                     .meta
                     .observe(code, state, modifiers, symbol, available);
-                if app.overview_active() {
+                if let Some(result) =
+                    app.shortcuts
+                        .device_filter(code, state, symbol, !app.session_locked())
+                {
+                    result
+                } else if app.overview_active() {
                     app.shortcuts
                         .filter_overview(code, state, modifiers, symbol)
                 } else if let Some(source) = app.window_switcher_source() {
@@ -198,6 +206,12 @@ impl App {
 
     fn run_shortcut(&mut self, shortcut: Shortcut) {
         match shortcut {
+            Shortcut::DeviceControl(action) => {
+                if let Err(error) = self.send_device_control(action) {
+                    tracing::debug!(%error, "device control unavailable");
+                }
+                return;
+            }
             Shortcut::Next | Shortcut::Previous => {
                 if let Err(error) = self
                     .cycle_window_switcher(SwitcherSource::Keyboard, shortcut == Shortcut::Previous)
@@ -232,7 +246,8 @@ impl App {
         }
         let command = match shortcut {
             Shortcut::OverviewToggle => ShellCommand::OverviewToggle,
-            Shortcut::OverviewDismiss
+            Shortcut::DeviceControl(_)
+            | Shortcut::OverviewDismiss
             | Shortcut::OverviewActivate
             | Shortcut::OverviewNext
             | Shortcut::OverviewPrevious

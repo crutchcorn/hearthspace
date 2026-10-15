@@ -23,6 +23,22 @@ class RecordingControl:
 
 
 class InputTests(unittest.TestCase):
+    def test_device_control_key_names_use_paired_evdev_input(self):
+        for name, code in [
+            ("volume-up", 115),
+            ("volume-down", 114),
+            ("volume-mute", 113),
+            ("brightness-up", 225),
+            ("brightness-down", 224),
+        ]:
+            with self.subTest(name=name):
+                control = RecordingControl()
+                with Input(control) as inputs:
+                    inputs.chord(name)
+                self.assertEqual(
+                    control.commands, [f"key-down {code}", f"key-up {code}"]
+                )
+
     def test_chord_press_order_and_reverse_release_order(self):
         control = RecordingControl()
         with Input(control) as inputs:

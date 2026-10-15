@@ -185,6 +185,8 @@ enum ManagedWindowKind {
     Launcher,
     /// Invisible shell-owned surface that hosts the shell's output watcher task.
     ShellWatcher,
+    /// Passive hardware feedback: screen-space, never an input/focus target.
+    ControlOsd,
 }
 
 impl ManagedWindowKind {
@@ -192,7 +194,10 @@ impl ManagedWindowKind {
     /// which is rendered in screen space without server-side decorations rather
     /// than as a normal canvas window.
     fn is_shell_chrome(self) -> bool {
-        matches!(self, Self::ShellBar | Self::Launcher | Self::ShellWatcher)
+        matches!(
+            self,
+            Self::ShellBar | Self::Launcher | Self::ShellWatcher | Self::ControlOsd
+        )
     }
 }
 
@@ -273,6 +278,7 @@ struct App {
     focused_normal_window_id: Option<u64>,
     shortcuts: input::KeyboardShortcuts,
     search_request: shell_integration::search::SearchRequest,
+    control_events: shell_integration::device_control::ControlEvents,
     drag: Option<DragState>,
     resize: Option<ResizeState>,
     /// Cursor the compositor wants the host winit window to show. Updated from
@@ -629,6 +635,7 @@ pub(in crate::compositor) fn initialize_app(
         focused_normal_window_id: None,
         shortcuts: input::KeyboardShortcuts::default(),
         search_request: Default::default(),
+        control_events: Default::default(),
         drag: None,
         resize: None,
         cursor_icon: CursorIcon::Default,

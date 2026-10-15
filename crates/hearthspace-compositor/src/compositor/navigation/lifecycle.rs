@@ -24,7 +24,11 @@ impl App {
         }
         self.windows[index].mapped = mapped;
         let id = self.windows[index].id;
-        if mapped && self.is_shell_panel(index) {
+        if mapped && self.windows[index].kind == super::super::ManagedWindowKind::ControlOsd {
+            if self.session_locked() {
+                self.windows[index].surface.send_close();
+            }
+        } else if mapped && self.is_shell_panel(index) {
             // Only the initial mapping requests focus; zoom updates and other
             // buffer commits must not steal it back from a newer user action.
             if self.navigation_available() && self.search_mapping_allowed(index) {

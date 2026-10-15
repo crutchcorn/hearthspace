@@ -24,6 +24,9 @@ mod canvas_map_client;
 #[path = "support/canvas_zoom.rs"]
 mod canvas_zoom;
 #[cfg(feature = "test-apps")]
+#[path = "support/device_controls.rs"]
+mod device_controls;
+#[cfg(feature = "test-apps")]
 #[path = "support/interactive.rs"]
 mod interactive;
 #[cfg(feature = "test-apps")]

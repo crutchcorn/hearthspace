@@ -139,6 +139,10 @@ pub(in crate::compositor) fn run_event_loop(
             (Some(a), Some(b)) => Some(a.min(b)),
             (a, b) => a.or(b),
         };
+        let timeout = match (timeout, data.state.shortcuts.device_repeat_timeout()) {
+            (Some(a), Some(b)) => Some(a.min(b)),
+            (a, b) => a.or(b),
+        };
         event_loop.dispatch(timeout, data)?;
         data.maintain_captures();
 
@@ -154,6 +158,12 @@ pub(in crate::compositor) fn run_event_loop(
             break;
         }
 
+        if data.capture_active() && !data.state.session_locked() {
+            data.state.repeat_device_control();
+        } else {
+            data.state.shortcuts.cancel_device_repeat();
+            data.state.control_events.clear();
+        }
         data.process_pending_dmabuf_imports();
         data.state.maintain_session_lock();
         data.state.handle_idle_transitions();

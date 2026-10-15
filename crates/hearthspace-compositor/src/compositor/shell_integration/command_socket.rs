@@ -132,6 +132,13 @@ impl CalloopData {
             command = action.wire_name(),
             "running compositor control action"
         );
+        if let ShellCommand::AcceptShellEvent(token) = action
+            && token & super::device_control::CONTROL_TOKEN_BIT != 0
+            && (!self.running || !self.capture_active())
+        {
+            self.state.control_events.clear();
+            return ControlReply::Err("session is inactive".into());
+        }
         if action == ShellCommand::Quit {
             info!("quit control action requested; stopping compositor event loop");
             self.running = false;

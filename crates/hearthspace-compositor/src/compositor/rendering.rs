@@ -158,7 +158,9 @@ impl App {
         self.refresh_fractional_scales();
 
         if self.overview_active() {
-            return self.collect_overview_elements(renderer, output_rect);
+            let mut elements = self.control_osd_render_elements(renderer, output_rect);
+            elements.extend(self.collect_overview_elements(renderer, output_rect));
+            return elements;
         }
 
         let mut elements = Vec::new();
@@ -186,7 +188,9 @@ impl App {
             let scale = self.window_render_scale(index);
             let origins = match self.windows[index].kind {
                 ManagedWindowKind::ShellBar => self.shell_bar_screen_origins(index),
-                ManagedWindowKind::Launcher => self.launcher_screen_origins(index),
+                ManagedWindowKind::Launcher | ManagedWindowKind::ControlOsd => {
+                    self.launcher_screen_origins(index)
+                }
                 ManagedWindowKind::ShellWatcher => Vec::new(),
                 ManagedWindowKind::Normal => {
                     vec![self.surface_screen_origin(index)]
@@ -206,6 +210,29 @@ impl App {
             }
         }
 
+        elements
+    }
+
+    fn control_osd_render_elements(
+        &self,
+        renderer: &mut GlesRenderer,
+        output: Rectangle<i32, Logical>,
+    ) -> Vec<HearthspaceRenderElement> {
+        let mut elements = Vec::new();
+        for (index, window) in self.windows.iter().enumerate().rev() {
+            if window.kind != ManagedWindowKind::ControlOsd
+                || !self.window_visible_on_output(index, output)
+            {
+                continue;
+            }
+            for origin in self.launcher_screen_origins(index) {
+                for surface in self.window_render_elements_at(renderer, index, origin) {
+                    elements.push(HearthspaceRenderElement::from(
+                        RescaleRenderElement::from_element(surface, origin, 1.0),
+                    ));
+                }
+            }
+        }
         elements
     }
 
@@ -375,7 +402,9 @@ impl App {
         match self.windows[window_index].kind {
             ManagedWindowKind::Normal if self.window_uses_output_coordinates(window_index) => 1.0,
             ManagedWindowKind::Normal => self.viewport_scale,
-            ManagedWindowKind::ShellBar | ManagedWindowKind::Launcher => 1.0,
+            ManagedWindowKind::ShellBar
+            | ManagedWindowKind::Launcher
+            | ManagedWindowKind::ControlOsd => 1.0,
             ManagedWindowKind::ShellWatcher => 1.0,
         }
     }

@@ -231,7 +231,7 @@ impl CalloopData {
         }
     }
 
-    fn capture_active(&self) -> bool {
+    pub(in crate::compositor) fn capture_active(&self) -> bool {
         match &self.backend {
             #[cfg(feature = "udev")]
             Backend::Udev(backend) => backend.capture_active(),
@@ -306,7 +306,7 @@ impl CalloopData {
                 "version": 1, "backend": backend, "active": self.capture_active(),
                 "locked": true, "lock_confirmed": self.state.lock_confirmed(),
                 "recovery_ready": recovery_ready,
-                "windows": [], "outputs": [], "canvas_maps": [], "shell_panels": [],
+                "windows": [], "outputs": [], "canvas_maps": [], "shell_panels": [], "control_osds": [],
             }))
             .expect("serializable locked status");
         }
@@ -323,6 +323,7 @@ impl CalloopData {
             "window_switcher": self.state.window_switcher_status(),
             "canvas_maps": self.state.canvas_maps_status(),
             "shell_panels": self.state.shell_panels_status(),
+            "control_osds": self.state.control_osds_status(),
             "viewport": {
                 "x": self.state.viewport_offset.x,
                 "y": self.state.viewport_offset.y,
