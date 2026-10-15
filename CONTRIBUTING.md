@@ -53,24 +53,63 @@ so normal builds and CI do not require GStreamer:
 sudo apt-get install -y libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev
 ```
 
-### Optional Dependencies
+### Native Agent Testing
+
+The native automation harness and its host requirements are documented in
+[docs/NATIVE_TESTING.md](./docs/NATIVE_TESTING.md). In addition to the native
+build dependencies, it uses the Ubuntu systemd/logind login PAM stack and these
+runtime tools:
+
+```sh
+sudo apt-get install -y python3 dbus util-linux sudo foot at-spi2-core
+sudo -n true
+```
+
+The agent must be able to invoke sudo without an interactive password. Configure
+that through the machine administrator's sudo policy before unattended native
+tests; the harness does not change sudoers. This development machine's
+passwordless-sudo policy was restored for native automation. A persistent agent
+user service may also require `sudo loginctl enable-linger "$USER"`; disable it
+with `sudo loginctl disable-linger "$USER"` only when that service no longer needs
+to survive logout.
+
+Each run creates a transient `hearthspace-native-*.service`, a PAM/logind session,
+root-owned recovery records under `/run/hearthspace-native/`, and a private runtime
+under `/run/user/UID/hearthspace-native-ID/`. The unit switches to an unused VT,
+runs the desktop as the user, and has an independent maximum lifetime and cleanup
+hook. No persistent service units or PAM configuration are installed. Stop a run
+through the harness to restore its original VT and remove the private runtime;
+recovery records under `/run` disappear on reboot. User-selected artifact
+directories retain logs and screenshots until explicitly removed.
+
+The harness uses `dbus-run-session` and the supervisor's `--private-session-bus`
+option. That explicitly supplies `HEARTHSPACE_SESSION_BUS_ADDRESS` to children so
+app launch and AT-SPI stay on the Hearthspace bus. Normal nested sessions continue
+to exclude the host bus from shell-launched apps.
+
+Accessibility test buses must inherit the test's private `XDG_RUNTIME_DIR`, not
+the host runtime. Otherwise D-Bus activation can replace the host AT-SPI socket.
+During enablement, the existing host `at-spi-dbus-bus.service` was restarted to
+repair such a stale socket; the test fixtures now isolate bus activation as well
+as Wayland. This was a transient service restart, with no configuration change.
+
+### Optional Desktop Dependencies
 
 The settings app uses `rfd` for file selection. On Linux, `rfd` is built with
 its XDG Desktop Portal backend and falls back to `zenity` if the portal request
 fails. Hearthspace gives session children a private `XDG_RUNTIME_DIR` and strips
 the host `DBUS_SESSION_BUS_ADDRESS` from shell-launched apps so file pickers do
 not accidentally discover GNOME's session bus and open through GNOME's portal on
-another TTY. Until Hearthspace has its own session bus and portal backend setup,
-install `zenity` for the fallback path:
+another TTY. The native test harness supplies a private session bus, but a portal
+backend may still be unavailable. Install `zenity` for the fallback path:
 
 ```sh
 sudo apt-get install -y zenity
 ```
 
 The file chooser portal is an external desktop service, not code inside the
-Hearthspace compositor. If we later provide a Hearthspace-owned portal session,
-the compositor still needs to support the dialog window created by the portal
-backend.
+Hearthspace compositor. A private bus does not itself provide a portal backend;
+the compositor still needs to support the dialog window created by that backend.
 
 X11 app support is provided by Smithay's XWayland integration. Install the
 runtime when testing X11-only applications:

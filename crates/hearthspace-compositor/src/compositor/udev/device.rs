@@ -21,6 +21,7 @@ use tracing::{debug, error, info, warn};
 
 mod cursor;
 
+use super::event_cutoff::SurfaceEventCutoff;
 use cursor::{HardwareCursor, create_hardware_cursor};
 
 pub(super) struct UdevDevice {
@@ -53,6 +54,7 @@ pub(super) struct KmsOutputSurface {
     pub(super) damage_tracker: OutputDamageTracker,
     pub(super) frame_pending: bool,
     pub(super) frame_dirty: bool,
+    pub(super) event_cutoff: SurfaceEventCutoff,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -214,6 +216,9 @@ impl UdevDevice {
         targets: Vec<KmsOutputTarget>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         self.output_surfaces.clear();
+        // Dropping active surfaces completes their blocking DRM reset, but their
+        // flip events can remain queued until the next event-loop dispatch.
+        let event_cutoff = SurfaceEventCutoff::now();
         self.output_target = targets.first().cloned();
         self.hardware_cursor_initialized = false;
         self.hardware_cursor_crtc = None;
@@ -225,7 +230,12 @@ impl UdevDevice {
         }
 
         for target in targets {
-            match create_output_surface(&mut self.scanout_node, &self.render_node, target.clone()) {
+            match create_output_surface(
+                &mut self.scanout_node,
+                &self.render_node,
+                target.clone(),
+                event_cutoff,
+            ) {
                 Ok(surface) => self.output_surfaces.push(surface),
                 Err(error) => {
                     error!(connector = ?target.connector, crtc = ?target.crtc, %error, "failed to create KMS output surface");
@@ -266,6 +276,7 @@ fn create_output_surface(
     scanout_node: &mut ScanoutNode,
     render_node: &RenderNode,
     target: KmsOutputTarget,
+    event_cutoff: SurfaceEventCutoff,
 ) -> Result<KmsOutputSurface, Box<dyn std::error::Error>> {
     let surface = scanout_node.drm_device.create_surface(
         target.crtc,
@@ -296,6 +307,7 @@ fn create_output_surface(
         damage_tracker: OutputDamageTracker::new(target.output_size(), 1.0, Transform::Normal),
         frame_pending: false,
         frame_dirty: true,
+        event_cutoff,
         target,
         gbm_surface,
     })

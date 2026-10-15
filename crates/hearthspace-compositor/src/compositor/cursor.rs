@@ -26,6 +26,7 @@ pub(super) struct SoftwareCursor {
     pub(super) hotspot: (i32, i32),
 }
 
+#[derive(Clone)]
 pub(in crate::compositor) struct CursorImage {
     pub(in crate::compositor) width: u32,
     pub(in crate::compositor) height: u32,

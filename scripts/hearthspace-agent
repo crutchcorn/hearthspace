@@ -1,0 +1,7 @@
+#!/usr/bin/env python3
+"""Control an explicitly selected Hearthspace session."""
+
+from agentlib.cli import main
+
+if __name__ == "__main__":
+    raise SystemExit(main())

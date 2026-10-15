@@ -253,6 +253,27 @@ impl From<&OutputDescriptor> for OutputGeometry {
 }
 
 impl App {
+    pub(super) fn capture_outputs(&self) -> Vec<super::capture::OutputMetadata> {
+        self.outputs
+            .output_debug()
+            .into_iter()
+            .map(
+                |(name, location, size, logical, scale)| super::capture::OutputMetadata {
+                    name,
+                    width: size.w,
+                    height: size.h,
+                    scale,
+                    logical_x: location.x,
+                    logical_y: location.y,
+                    logical_width: logical.w,
+                    logical_height: logical.h,
+                    transform: "normal",
+                    frame_id: 0,
+                },
+            )
+            .collect()
+    }
+
     pub(super) fn output_size(&self) -> Size<i32, Physical> {
         self.outputs.primary.size
     }

@@ -8,6 +8,10 @@ use std::{
     time::{Duration, Instant},
 };
 
+#[cfg(feature = "test-apps")]
+#[path = "support/session_bus.rs"]
+mod session_bus;
+
 const WIDTH: u32 = 320;
 const HEIGHT: u32 = 240;
 #[cfg(feature = "test-apps")]
@@ -128,6 +132,8 @@ fn headless_control_socket_drives_input_screenshot_and_quit() {
 #[test]
 fn headless_control_socket_spawns_and_drives_real_gtk_client() {
     let _guard = HEADLESS_TEST_LOCK.lock().expect("headless test lock");
+    let _bus = session_bus::PrivateSessionBus::start().expect("private accessibility session");
+    async_io::block_on(session_bus::enable_accessibility()).expect("enable accessibility");
     let mut compositor = HeadlessCompositor::spawn_with_size("800x600");
     let first_stream = compositor.wait_for_socket();
     drop(first_stream);

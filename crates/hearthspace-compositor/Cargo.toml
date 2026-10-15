@@ -55,6 +55,8 @@ fontique = { version = "0.8.0", features = ["fontconfig-dlopen"] }
 # already, so this only fixes the version we link against.
 image = { version = "0.25", default-features = false }
 png = "0.18.1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
 smithay = { git = "https://github.com/Smithay/smithay", rev = "cb1eb2a3f48d95a7ea4b030159a2512ba667a2fb", default-features = false, features = ["desktop", "renderer_gl", "wayland_frontend"] }
 tracing = "0.1.41"
 tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }

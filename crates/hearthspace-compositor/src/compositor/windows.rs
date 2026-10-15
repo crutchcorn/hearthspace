@@ -425,7 +425,10 @@ impl App {
         )
     }
 
-    fn normal_window_screen_rect(&self, window_index: usize) -> Option<Rectangle<i32, Logical>> {
+    pub(super) fn normal_window_screen_rect(
+        &self,
+        window_index: usize,
+    ) -> Option<Rectangle<i32, Logical>> {
         if self.windows[window_index].kind != ManagedWindowKind::Normal {
             return None;
         }
@@ -628,7 +631,7 @@ impl App {
     }
 }
 
-fn window_app_id(surface: &ManagedSurface) -> Option<String> {
+pub(super) fn window_app_id(surface: &ManagedSurface) -> Option<String> {
     match surface {
         ManagedSurface::Xdg(surface) => toplevel_app_id(surface),
         #[cfg(feature = "xwayland")]

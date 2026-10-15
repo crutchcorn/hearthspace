@@ -1,8 +1,10 @@
 use std::time::Duration;
 
 mod device;
+mod event_cutoff;
 mod hotplug;
 mod input;
+mod rendering;
 
 use device::{
     KmsOutputTarget, UdevDevice, UdevDeviceInfo, create_udev_device, initial_device_list,
@@ -16,15 +18,14 @@ use smithay::{
         allocator::dmabuf::Dmabuf,
         drm::DrmEvent,
         libinput::{LibinputInputBackend, LibinputSessionInterface},
-        renderer::{Bind, ImportDma, damage::OutputDamageTracker},
+        renderer::{ImportDma, damage::OutputDamageTracker},
         session::{Event as SessionEvent, Session, libseat::LibSeatSession},
         udev::{UdevBackend, UdevEvent, primary_gpu},
     },
-    reexports::drm::control::crtc,
     reexports::{
         calloop::LoopHandle, calloop::RegistrationToken, input::Libinput, wayland_server::Display,
     },
-    utils::{Physical, Rectangle, Size, Transform},
+    utils::{Physical, Size, Transform},
 };
 use tracing::{debug, error, info, trace, warn};
 
@@ -156,6 +157,7 @@ pub fn run_udev(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> {
 
     handle.insert_source(session_notifier, |event, _, data| match event {
         SessionEvent::PauseSession => {
+            data.captures.invalidate("native session became inactive");
             if let Some(backend) = udev_backend_mut(data) {
                 backend.pause_session();
             }
@@ -194,6 +196,7 @@ pub fn run_udev(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> {
             data.state.request_redraw();
         }
         UdevEvent::Removed { device_id } => {
+            data.captures.invalidate("native display device removed");
             info!(device_id, "DRM device removed");
             let output_descriptors = if let Some(backend) = udev_backend_mut(data) {
                 backend.remove_device(device_id);
@@ -220,8 +223,8 @@ pub fn run_udev(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> {
         handle.insert_source(drm_notifier, |event, metadata, data| match event {
             DrmEvent::VBlank(crtc) => {
                 trace!(?crtc, ?metadata, "DRM vblank");
-                let submitted_frame = if let Some(backend) = udev_backend_mut(data) {
-                    match backend.frame_submitted(crtc) {
+                let submitted_frame = if let super::Backend::Udev(backend) = &mut data.backend {
+                    match backend.frame_submitted(crtc, metadata.as_ref(), &mut data.captures) {
                         Ok(result) => result,
                         Err(error) => {
                             error!(%error, "failed to mark native frame submitted");
@@ -291,6 +294,8 @@ fn udev_backend_mut(data: &mut super::CalloopData) -> Option<&mut UdevBackendSta
 }
 
 fn apply_connector_sync(data: &mut super::CalloopData, connector_sync: ConnectorSync) {
+    data.captures
+        .invalidate("native output configuration changed");
     let dh = data.display.handle();
     if let Some(primary) = connector_sync.primary {
         let size = primary.size;
@@ -359,118 +364,6 @@ impl UdevBackendState {
             // presented in software (composited into the scene).
             state.software_cursor_visible = true;
         }
-    }
-
-    pub(in crate::compositor) fn render_frame(
-        &mut self,
-        state: &mut super::App,
-        force_full_redraw: bool,
-    ) -> Result<bool, Box<dyn std::error::Error>> {
-        if self.drm_commits_paused {
-            debug!("skipping native render while DRM commits are paused");
-            self.frame_dirty = true;
-            if let Some(device) = &mut self.primary_device {
-                device.mark_all_surfaces_dirty();
-            }
-            return Ok(false);
-        }
-
-        let Some(device) = self.primary_device.as_mut() else {
-            return Err("udev backend has no primary DRM device".into());
-        };
-        if device.output_surfaces.is_empty() {
-            debug!("skipping native render because no KMS output surface is initialized");
-            self.frame_dirty = true;
-            return Ok(false);
-        }
-
-        let renderer = &mut device.render_node.renderer;
-        let mut submitted = false;
-        for output in &mut device.output_surfaces {
-            if output.frame_pending {
-                output.frame_dirty = true;
-                debug!(crtc = ?output.gbm_surface.crtc(), "native redraw requested while output page flip is pending; deferring until vblank");
-                continue;
-            }
-
-            let Some(view) = state.output_render_view(output.target.connector_name()) else {
-                output.frame_dirty = true;
-                warn!(
-                    connector = ?output.target.connector,
-                    name = output.target.connector_name(),
-                    "skipping native output render because no Wayland output view exists"
-                );
-                continue;
-            };
-
-            let (mut dmabuf, buffer_age) = output.gbm_surface.next_buffer()?;
-            let age = if force_full_redraw || state.software_cursor_visible {
-                0
-            } else {
-                usize::from(buffer_age)
-            };
-            let damage = {
-                let mut framebuffer = renderer.bind(&mut dmabuf)?;
-                state.render_frame_at(
-                    renderer,
-                    &mut framebuffer,
-                    &mut output.damage_tracker,
-                    age,
-                    Rectangle::new(view.location, view.size),
-                    view.scale,
-                )?
-            };
-            // Keep damage tracking for renderer-side redraw minimization, but do not
-            // forward damage clips to KMS yet. Some virtual DRM stacks reject
-            // FB_DAMAGE_CLIPS on page flip with EINVAL under client redraw load.
-            let _damage = damage;
-            output.gbm_surface.queue_buffer(None, None, ())?;
-            output.frame_pending = true;
-            output.frame_dirty = false;
-            submitted = true;
-            trace!(
-                crtc = ?output.gbm_surface.crtc(),
-                name = %view.name,
-                location = ?view.location,
-                age,
-                "queued native frame"
-            );
-        }
-
-        self.frame_pending = device.any_frame_pending();
-        self.frame_dirty = device.any_frame_dirty();
-        self.repaint_pending = self.frame_pending;
-        Ok(submitted)
-    }
-
-    pub(in crate::compositor) fn frame_submitted(
-        &mut self,
-        crtc: crtc::Handle,
-    ) -> Result<Option<bool>, Box<dyn std::error::Error>> {
-        let Some(device) = self.primary_device.as_mut() else {
-            return Ok(None);
-        };
-        let Some(output) = device
-            .output_surfaces
-            .iter_mut()
-            .find(|output| output.gbm_surface.crtc() == crtc)
-        else {
-            return Ok(None);
-        };
-        output.gbm_surface.frame_submitted()?;
-        output.frame_pending = false;
-        self.frame_pending = device.any_frame_pending();
-        self.repaint_pending = self.frame_pending;
-        self.frame_dirty = device.any_frame_dirty();
-        if self.frame_pending {
-            return Ok(None);
-        }
-
-        let should_redraw = self.frame_dirty;
-        if should_redraw {
-            debug!("native page flip completed with dirty state; scheduling next frame");
-        }
-        Ok(Some(should_redraw))
     }
 
     pub(in crate::compositor) fn import_dmabuf(

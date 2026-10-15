@@ -2,3 +2,5 @@ target/
 opencode.json
 AGENTS.md
 .DS_Store
+__pycache__/
+.ruff_cache/

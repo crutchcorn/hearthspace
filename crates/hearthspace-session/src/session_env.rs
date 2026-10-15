@@ -23,12 +23,34 @@ pub(crate) struct SessionEnv {
     pub(crate) vars: Vec<(String, String)>,
 }
 
-pub(crate) fn create_session_paths() -> Result<SessionPaths, Box<dyn std::error::Error>> {
-    let host_runtime_dir = env::var_os("XDG_RUNTIME_DIR").ok_or("XDG_RUNTIME_DIR is not set")?;
+pub(crate) fn create_session_paths(
+    requested: Option<&Path>,
+    private_session_bus: bool,
+) -> Result<SessionPaths, Box<dyn std::error::Error>> {
+    let host_runtime_dir = env::var_os(hearthspace_common::HOST_RUNTIME_DIR_ENV)
+        .or_else(|| env::var_os("XDG_RUNTIME_DIR"))
+        .ok_or("XDG_RUNTIME_DIR is not set")?;
     let host_runtime_dir = PathBuf::from(host_runtime_dir);
-    let session_dir = host_runtime_dir
-        .join("hearthspace")
-        .join(format!("session-{}", process::id()));
+    let session_dir = requested.map(Path::to_path_buf).unwrap_or_else(|| {
+        host_runtime_dir
+            .join("hearthspace")
+            .join(format!("session-{}", process::id()))
+    });
+    // dbus-run-session creates dbus-1/services before executing its child.
+    // Only its explicitly requested private bus directory may preexist.
+    if session_dir.exists() {
+        for entry in fs::read_dir(&session_dir)? {
+            let entry = entry?;
+            if !(private_session_bus
+                && entry.file_name() == "dbus-1"
+                && entry.file_type()?.is_dir())
+            {
+                return Err(
+                    format!("session directory must be empty: {}", session_dir.display()).into(),
+                );
+            }
+        }
+    }
     let applications_dir = session_dir.join("share/applications");
 
     fs::create_dir_all(&applications_dir)?;
@@ -96,6 +118,13 @@ pub(crate) fn create_session_env(
         ),
     ];
 
+    if args.private_session_bus {
+        let bus = env::var("DBUS_SESSION_BUS_ADDRESS")
+            .map_err(|_| "--private-session-bus requires dbus-run-session")?;
+        fs::write(paths.session_dir.join("session-bus.txt"), &bus)?;
+        vars.push(("HEARTHSPACE_SESSION_BUS_ADDRESS".to_string(), bus));
+    }
+
     if mode == RunMode::DevCargo {
         vars.push((hearthspace_common::DEV_ENV.to_string(), "1".to_string()));
         vars.push((
@@ -150,6 +179,12 @@ mod tests {
             ),
         };
         let args = Args {
+            backend: None,
+            session_dir: None,
+            binary_dir: None,
+            compositor_binary: None,
+            private_session_bus: false,
+            startup_timeout: 120,
             dev: false,
             installed: true,
             wayland_display: Some("hearthspace-test".to_string()),
@@ -182,6 +217,12 @@ mod tests {
             ),
         };
         let args = Args {
+            backend: None,
+            session_dir: None,
+            binary_dir: None,
+            compositor_binary: None,
+            private_session_bus: false,
+            startup_timeout: 120,
             dev: false,
             installed: true,
             wayland_display: None,

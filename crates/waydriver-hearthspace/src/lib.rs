@@ -7,16 +7,22 @@ use std::{
 
 use async_trait::async_trait;
 use tempfile::TempDir;
-use tokio::{
-    io::{AsyncReadExt, AsyncWriteExt},
-    net::UnixStream,
-    process::{Child, Command},
-};
+use tokio::process::{Child, Command};
 use tokio_util::sync::CancellationToken;
 use waydriver::{
     CaptureBackend, CompositorRuntime, Error, InputBackend, PipeWireStream, PointerAxis,
     PointerButton, Result, StreamToken, backend::cancellable_tail,
 };
+
+mod config;
+mod keymap;
+mod transport;
+
+pub mod accessibility;
+
+use config::{scale_to_integer, validate_resolution};
+use keymap::keysym_to_evdev;
+use transport::{send_text_command, take_screenshot, wait_for_socket};
 
 const WAYLAND_DISPLAY: &str = "wayland-99";
 const COMMAND_SOCKET: &str = "hearthspace-shell.sock";
@@ -28,6 +34,7 @@ const PRESS_RELEASE_DELAY: Duration = Duration::from_millis(20);
 pub struct HearthspaceState {
     id: String,
     runtime_dir: PathBuf,
+    command_socket: PathBuf,
 }
 
 impl HearthspaceState {
@@ -40,15 +47,25 @@ impl HearthspaceState {
     }
 
     pub fn command_socket_path(&self) -> PathBuf {
-        self.runtime_dir.join(COMMAND_SOCKET)
+        self.command_socket.clone()
     }
+}
+
+/// Whether the adapter may stop the compositor and remove its runtime files.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SessionOwnership {
+    Owned,
+    Attached,
 }
 
 pub struct HearthspaceCompositor {
     id: String,
     binary: PathBuf,
     start_shell: bool,
-    runtime_dir: TempDir,
+    runtime_dir: PathBuf,
+    owned_runtime: Option<TempDir>,
+    command_socket: PathBuf,
+    wayland_display: String,
     child: Option<Child>,
     state: Option<Arc<HearthspaceState>>,
 }
@@ -65,10 +82,51 @@ impl HearthspaceCompositor {
             id,
             binary: binary.into(),
             start_shell: false,
-            runtime_dir,
+            runtime_dir: runtime_dir.path().to_path_buf(),
+            command_socket: runtime_dir.path().join(COMMAND_SOCKET),
+            owned_runtime: Some(runtime_dir),
+            wayland_display: WAYLAND_DISPLAY.into(),
             child: None,
             state: None,
         })
+    }
+
+    /// Attach to an explicitly selected existing session. `start` checks its
+    /// control socket; `stop` only detaches. Dropping this adapter never kills
+    /// the external session or removes its files. Display configuration is owned
+    /// by that session, so `start` rejects resolution/scale overrides.
+    pub fn attach(
+        runtime_dir: impl Into<PathBuf>,
+        wayland_display: impl Into<String>,
+        command_socket: impl Into<PathBuf>,
+    ) -> Self {
+        Self {
+            id: uuid::Uuid::new_v4().to_string()[..8].to_string(),
+            binary: PathBuf::new(),
+            start_shell: false,
+            runtime_dir: runtime_dir.into(),
+            owned_runtime: None,
+            command_socket: command_socket.into(),
+            wayland_display: wayland_display.into(),
+            child: None,
+            state: None,
+        }
+    }
+
+    pub fn ownership(&self) -> SessionOwnership {
+        if self.owned_runtime.is_some() {
+            SessionOwnership::Owned
+        } else {
+            SessionOwnership::Attached
+        }
+    }
+
+    fn make_state(&mut self) {
+        self.state = Some(Arc::new(HearthspaceState {
+            id: self.id.clone(),
+            runtime_dir: self.runtime_dir.clone(),
+            command_socket: self.command_socket.clone(),
+        }));
     }
 
     pub fn with_shell(mut self) -> Self {
@@ -83,14 +141,22 @@ impl HearthspaceCompositor {
     }
 
     fn command_socket_path(&self) -> PathBuf {
-        self.runtime_dir.path().join(COMMAND_SOCKET)
+        self.command_socket.clone()
     }
 }
 
 #[async_trait]
 impl CompositorRuntime for HearthspaceCompositor {
     async fn start(&mut self, resolution: Option<&str>, scale: Option<f64>) -> Result<()> {
-        if self.child.is_some() {
+        if self.ownership() == SessionOwnership::Attached {
+            if resolution.is_some() || scale.is_some() {
+                return Err(Error::process("cannot reconfigure an attached session"));
+            }
+            send_text_command(&self.command_socket, "status").await?;
+            self.make_state();
+            return Ok(());
+        }
+        if self.state.is_some() {
             return Ok(());
         }
 
@@ -101,8 +167,8 @@ impl CompositorRuntime for HearthspaceCompositor {
         let mut command = Command::new(&self.binary);
         command
             .args(["--headless", "--headless-size", resolution])
-            .env("XDG_RUNTIME_DIR", self.runtime_dir.path())
-            .env("WAYLAND_DISPLAY", WAYLAND_DISPLAY)
+            .env("XDG_RUNTIME_DIR", &self.runtime_dir)
+            .env("WAYLAND_DISPLAY", &self.wayland_display)
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::null())
@@ -122,16 +188,19 @@ impl CompositorRuntime for HearthspaceCompositor {
         self.child = Some(child);
 
         let command_socket_path = self.command_socket_path();
-        wait_for_socket(self.child.as_mut(), &command_socket_path).await?;
-        self.state = Some(Arc::new(HearthspaceState {
-            id: self.id.clone(),
-            runtime_dir: self.runtime_dir.path().to_path_buf(),
-        }));
+        if let Err(error) = wait_for_socket(self.child.as_mut(), &command_socket_path).await {
+            if let Some(mut child) = self.child.take() {
+                let _ = child.kill().await;
+            }
+            return Err(error);
+        }
+        self.make_state();
 
         Ok(())
     }
 
     async fn stop(&mut self) -> Result<()> {
+        self.state = None;
         let Some(mut child) = self.child.take() else {
             return Ok(());
         };
@@ -154,7 +223,6 @@ impl CompositorRuntime for HearthspaceCompositor {
             }
         }
 
-        self.state = None;
         Ok(())
     }
 
@@ -163,11 +231,11 @@ impl CompositorRuntime for HearthspaceCompositor {
     }
 
     fn wayland_display(&self) -> &str {
-        WAYLAND_DISPLAY
+        &self.wayland_display
     }
 
     fn runtime_dir(&self) -> &Path {
-        self.runtime_dir.path()
+        &self.runtime_dir
     }
 }
 
@@ -292,241 +360,5 @@ impl CaptureBackend for HearthspaceCapture {
     }
 }
 
-async fn wait_for_socket(child: Option<&mut Child>, path: &Path) -> Result<()> {
-    let deadline = tokio::time::Instant::now() + Duration::from_secs(10);
-    let mut child = child;
-    let mut last_error = None;
-
-    while tokio::time::Instant::now() < deadline {
-        if let Some(child) = child.as_deref_mut()
-            && let Some(status) = child
-                .try_wait()
-                .map_err(|e| Error::process_with("poll hearthspace", e))?
-        {
-            return Err(Error::process(format!(
-                "hearthspace exited before accepting commands: {status}"
-            )));
-        }
-
-        match UnixStream::connect(path).await {
-            Ok(_) => return Ok(()),
-            Err(error) => last_error = Some(error),
-        }
-
-        tokio::time::sleep(Duration::from_millis(50)).await;
-    }
-
-    Err(Error::Timeout(format!(
-        "timed out connecting to {}: {:?}",
-        path.display(),
-        last_error
-    )))
-}
-
-async fn send_text_command(path: &Path, command: &str) -> Result<String> {
-    let mut stream = UnixStream::connect(path)
-        .await
-        .map_err(|e| Error::process_with("connect command socket", e))?;
-    stream
-        .write_all(format!("{command}\n").as_bytes())
-        .await
-        .map_err(|e| Error::process_with("write command", e))?;
-
-    let line = read_line(&mut stream).await?;
-    if line == "ok\n" || line.starts_with("ok ") {
-        Ok(line)
-    } else if let Some(message) = line.strip_prefix("err ") {
-        Err(Error::process(message.trim_end().to_string()))
-    } else {
-        Err(Error::process(format!("unexpected reply {line:?}")))
-    }
-}
-
-async fn take_screenshot(path: &Path) -> Result<Vec<u8>> {
-    let mut stream = UnixStream::connect(path)
-        .await
-        .map_err(|e| Error::screenshot_with("connect command socket", e))?;
-    stream
-        .write_all(b"screenshot\n")
-        .await
-        .map_err(|e| Error::screenshot_with("write command", e))?;
-
-    let header = read_line(&mut stream).await?;
-    let mut parts = header.split_whitespace();
-    match parts.next() {
-        Some("ok") => {}
-        Some("err") => {
-            let message = parts.collect::<Vec<_>>().join(" ");
-            return Err(Error::screenshot(message));
-        }
-        _ => return Err(Error::screenshot(format!("unexpected reply {header:?}"))),
-    }
-    let len = parts
-        .next()
-        .ok_or_else(|| Error::screenshot("missing screenshot byte length"))?
-        .parse::<usize>()
-        .map_err(|e| Error::screenshot_with("parse screenshot byte length", e))?;
-    if parts.next().is_some() {
-        return Err(Error::screenshot(format!("unexpected reply {header:?}")));
-    }
-
-    let mut payload = vec![0; len];
-    stream
-        .read_exact(&mut payload)
-        .await
-        .map_err(|e| Error::screenshot_with("read screenshot payload", e))?;
-    Ok(payload)
-}
-
-async fn read_line(stream: &mut UnixStream) -> Result<String> {
-    let mut bytes = Vec::new();
-    loop {
-        let mut byte = [0];
-        stream
-            .read_exact(&mut byte)
-            .await
-            .map_err(|e| Error::process_with("read reply", e))?;
-        bytes.push(byte[0]);
-        if byte[0] == b'\n' {
-            break;
-        }
-    }
-    String::from_utf8(bytes).map_err(|e| Error::process_with("decode reply", e))
-}
-
-fn validate_resolution(resolution: &str) -> Result<()> {
-    let Some((width, height)) = resolution
-        .split_once('x')
-        .or_else(|| resolution.split_once('X'))
-    else {
-        return Err(Error::process(format!(
-            "invalid resolution {resolution:?}; expected WIDTHxHEIGHT"
-        )));
-    };
-    for (label, value) in [("width", width), ("height", height)] {
-        let value = value
-            .parse::<i32>()
-            .map_err(|e| Error::process_with(format!("parse {label}"), e))?;
-        if value <= 0 {
-            return Err(Error::process(format!("{label} must be positive")));
-        }
-    }
-    Ok(())
-}
-
-fn scale_to_integer(scale: Option<f64>) -> Result<Option<i32>> {
-    let Some(scale) = scale else {
-        return Ok(None);
-    };
-    if !scale.is_finite() || scale <= 0.0 {
-        return Err(Error::process("scale must be a positive finite number"));
-    }
-    let rounded = scale.round();
-    if (scale - rounded).abs() > f64::EPSILON {
-        return Err(Error::process(format!(
-            "Hearthspace headless scale must be an integer, got {scale}"
-        )));
-    }
-    let scale =
-        i32::try_from(rounded as i64).map_err(|e| Error::process_with("convert scale", e))?;
-    Ok((scale != 1).then_some(scale))
-}
-
-fn keysym_to_evdev(keysym: u32) -> Result<u32> {
-    if let Ok(byte) = u8::try_from(keysym)
-        && let Some(keycode) = ascii_keysym_to_evdev(byte)
-    {
-        return Ok(keycode);
-    }
-
-    let keycode = match keysym {
-        0xff08 => 14,  // BackSpace
-        0xff09 => 15,  // Tab
-        0xff0d => 28,  // Return
-        0xff1b => 1,   // Escape
-        0xffe1 => 42,  // Shift_L
-        0xffe2 => 54,  // Shift_R
-        0xffe3 => 29,  // Control_L
-        0xffe4 => 97,  // Control_R
-        0xffe9 => 56,  // Alt_L
-        0xffea => 100, // Alt_R
-        _ => {
-            return Err(Error::process(format!(
-                "unsupported keysym 0x{keysym:x}; add a keysym-to-evdev mapping"
-            )));
-        }
-    };
-    Ok(keycode)
-}
-
-fn ascii_keysym_to_evdev(keysym: u8) -> Option<u32> {
-    Some(match keysym.to_ascii_lowercase() {
-        b'a' => 30,
-        b'b' => 48,
-        b'c' => 46,
-        b'd' => 32,
-        b'e' => 18,
-        b'f' => 33,
-        b'g' => 34,
-        b'h' => 35,
-        b'i' => 23,
-        b'j' => 36,
-        b'k' => 37,
-        b'l' => 38,
-        b'm' => 50,
-        b'n' => 49,
-        b'o' => 24,
-        b'p' => 25,
-        b'q' => 16,
-        b'r' => 19,
-        b's' => 31,
-        b't' => 20,
-        b'u' => 22,
-        b'v' => 47,
-        b'w' => 17,
-        b'x' => 45,
-        b'y' => 21,
-        b'z' => 44,
-        b'1' => 2,
-        b'2' => 3,
-        b'3' => 4,
-        b'4' => 5,
-        b'5' => 6,
-        b'6' => 7,
-        b'7' => 8,
-        b'8' => 9,
-        b'9' => 10,
-        b'0' => 11,
-        b' ' => 57,
-        _ => return None,
-    })
-}
-
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn scale_must_be_integer() {
-        assert_eq!(scale_to_integer(None).unwrap(), None);
-        assert_eq!(scale_to_integer(Some(1.0)).unwrap(), None);
-        assert_eq!(scale_to_integer(Some(2.0)).unwrap(), Some(2));
-        assert!(scale_to_integer(Some(1.5)).is_err());
-    }
-
-    #[test]
-    fn maps_common_keysyms_to_evdev() {
-        assert_eq!(keysym_to_evdev(b'a' as u32).unwrap(), 30);
-        assert_eq!(keysym_to_evdev(b'A' as u32).unwrap(), 30);
-        assert_eq!(keysym_to_evdev(0xff0d).unwrap(), 28);
-        assert!(keysym_to_evdev(0x2603).is_err());
-    }
-
-    #[test]
-    fn validates_resolution_shape() {
-        assert!(validate_resolution("800x600").is_ok());
-        assert!(validate_resolution("800X600").is_ok());
-        assert!(validate_resolution("800").is_err());
-        assert!(validate_resolution("0x600").is_err());
-    }
-}
+mod tests;

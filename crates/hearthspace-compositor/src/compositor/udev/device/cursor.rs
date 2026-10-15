@@ -21,6 +21,7 @@ use crate::compositor::{
 };
 
 pub(super) struct HardwareCursor {
+    image: CursorImage,
     buffer: dumbbuffer::DumbBuffer,
     hotspot: (i32, i32),
     icon: CursorIcon,
@@ -28,6 +29,26 @@ pub(super) struct HardwareCursor {
 }
 
 impl UdevDevice {
+    pub(in crate::compositor::udev) fn capture_cursor(
+        &self,
+        state: &App,
+    ) -> Option<(crtc::Handle, crate::compositor::capture::CursorOverlay)> {
+        if !state.cursor_visible || state.software_cursor_visible {
+            return None;
+        }
+        let cursor = self.hardware_cursor.as_ref()?;
+        let (x, y) = self.hardware_cursor_position?;
+        Some((
+            self.hardware_cursor_crtc?,
+            crate::compositor::capture::CursorOverlay {
+                image: cursor.image.clone(),
+                plane_size: cursor.buffer.size(),
+                x,
+                y,
+            },
+        ))
+    }
+
     pub(in crate::compositor::udev) fn update_hardware_cursor(&mut self, state: &mut App) {
         // Software presentation is required when a focused client is drawing its
         // own cursor surface, or when this device never obtained a usable
@@ -282,6 +303,7 @@ pub(super) fn create_hardware_cursor(scanout_node: &ScanoutNode) -> Option<Hardw
         "created DRM hardware cursor buffer"
     );
     Some(HardwareCursor {
+        image,
         buffer,
         hotspot,
         icon,
@@ -324,6 +346,7 @@ fn update_hardware_cursor_image(
         cmp::min(image.hotspot.1.max(0), height.saturating_sub(1) as i32),
     );
     cursor.icon = icon;
+    cursor.image = image;
     cursor.scale = scale.max(1);
     debug!(?icon, scale = cursor.scale, hotspot = ?cursor.hotspot, "updated DRM hardware cursor image");
 }

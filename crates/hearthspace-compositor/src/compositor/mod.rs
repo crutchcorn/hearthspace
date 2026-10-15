@@ -9,6 +9,7 @@ use std::{
 use crate::{RunOptions, config::*, geometry::CanvasPoint};
 use hearthspace_shell::app_catalog::AppCatalog;
 
+mod capture;
 mod client;
 mod cursor;
 mod handlers;
@@ -414,6 +415,7 @@ pub fn run_winit(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> 
     }
 
     let mut data = CalloopData {
+        captures: capture::CaptureState::default(),
         state,
         display,
         backend: Backend::Winit(Box::new(backend)),

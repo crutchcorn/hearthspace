@@ -1,5 +1,6 @@
 use std::{
     io::{self, Read, Write},
+    os::unix::process::CommandExt,
     path::PathBuf,
     process::{Child, Command, ExitStatus, Stdio},
     sync::{Arc, Mutex},
@@ -50,7 +51,12 @@ impl ManagedProcess {
         })
     }
 
+    pub(crate) fn pid(&self) -> u32 {
+        self.child.id()
+    }
+
     pub(crate) fn restart(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        kill_group(self);
         self.restarts += 1;
         record_output_activity(&self.output_activity);
         self.child = spawn_child(&self.spec, Arc::clone(&self.output_activity))?;
@@ -68,6 +74,7 @@ fn spawn_child(
         command.env_remove(key);
     }
     command
+        .process_group(0)
         .args(&spec.args)
         .envs(spec.envs.iter().map(|(key, value)| (key, value)))
         .stdin(Stdio::null())
@@ -146,15 +153,6 @@ fn record_output_activity(output_activity: &Arc<Mutex<Instant>>) {
     }
 }
 
-pub(crate) fn process_output_idle_duration(process: &Option<ManagedProcess>) -> Option<Duration> {
-    let process = process.as_ref()?;
-    let last_output = match process.output_activity.lock() {
-        Ok(activity) => *activity,
-        Err(error) => *error.into_inner(),
-    };
-    Some(Instant::now().duration_since(last_output))
-}
-
 pub(crate) fn poll_process(
     process: &mut Option<ManagedProcess>,
 ) -> Result<Option<ExitStatus>, Box<dyn std::error::Error>> {
@@ -168,9 +166,6 @@ pub(crate) fn terminate_process(process: &mut Option<ManagedProcess>) {
     let Some(process) = process else {
         return;
     };
-    if matches!(process.child.try_wait(), Ok(Some(_))) {
-        return;
-    }
     let Ok(raw_pid) = i32::try_from(process.child.id()) else {
         warn!(
             name = process.spec.name,
@@ -179,7 +174,7 @@ pub(crate) fn terminate_process(process: &mut Option<ManagedProcess>) {
         );
         return;
     };
-    match signal::kill(Pid::from_raw(raw_pid), signal::Signal::SIGTERM) {
+    match signal::killpg(Pid::from_raw(raw_pid), signal::Signal::SIGTERM) {
         Ok(()) => info!(name = process.spec.name, pid = raw_pid, "sent SIGTERM"),
         Err(error) => {
             warn!(name = process.spec.name, pid = raw_pid, %error, "failed to send SIGTERM")
@@ -196,6 +191,8 @@ pub(crate) fn wait_then_kill_process(process: &mut Option<ManagedProcess>) {
         match process.child.try_wait() {
             Ok(Some(status)) => {
                 info!(name = process.spec.name, %status, "process exited during shutdown");
+                // The leader can exit while grandchildren retain resources.
+                kill_group(process);
                 return;
             }
             Ok(None) => thread::sleep(Duration::from_millis(50)),
@@ -206,6 +203,7 @@ pub(crate) fn wait_then_kill_process(process: &mut Option<ManagedProcess>) {
         }
     }
 
+    kill_group(process);
     match process.child.kill() {
         Ok(()) => info!(
             name = process.spec.name,
@@ -216,4 +214,10 @@ pub(crate) fn wait_then_kill_process(process: &mut Option<ManagedProcess>) {
         }
     }
     let _ = process.child.wait();
+}
+
+fn kill_group(process: &ManagedProcess) {
+    if let Ok(pid) = i32::try_from(process.child.id()) {
+        let _ = signal::killpg(Pid::from_raw(pid), signal::Signal::SIGKILL);
+    }
 }

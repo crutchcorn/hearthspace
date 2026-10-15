@@ -1,32 +1,35 @@
 use std::{
     fs,
+    path::PathBuf,
     process::ExitStatus,
     sync::{
         Arc,
         atomic::{AtomicBool, Ordering},
     },
     thread,
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 use tracing::{info, warn};
 
 use crate::{
-    cli::{Args, RunMode},
+    cli::{Args, Backend, RunMode},
     compositor::{CompositorBackend, configure_compositor_environment, select_compositor_backend},
     dev_cargo::dev_cargo_args,
     process::{
-        ManagedProcess, ProcessSpec, poll_process, process_output_idle_duration, terminate_process,
-        wait_then_kill_process,
+        ManagedProcess, ProcessSpec, poll_process, terminate_process, wait_then_kill_process,
     },
     session_env::{SessionEnv, SessionPaths, repo_root},
     settingsd::settingsd_ping,
 };
 
-const STARTUP_OUTPUT_IDLE_TIMEOUT: Duration = Duration::from_secs(120);
-
 pub(crate) struct Supervisor {
     mode: RunMode,
+    backend: Option<Backend>,
+    binary_dir: Option<PathBuf>,
+    compositor_binary: Option<PathBuf>,
+    startup_deadline: Instant,
+    startup_timeout: Duration,
     paths: SessionPaths,
     session_env: SessionEnv,
     shutdown_requested: Arc<AtomicBool>,
@@ -42,9 +45,15 @@ impl Supervisor {
         paths: SessionPaths,
         session_env: SessionEnv,
         shutdown_requested: Arc<AtomicBool>,
+        args: &Args,
     ) -> Self {
         Self {
             mode,
+            backend: args.backend,
+            binary_dir: args.binary_dir.clone(),
+            compositor_binary: args.compositor_binary.clone(),
+            startup_timeout: Duration::from_secs(args.startup_timeout),
+            startup_deadline: Instant::now() + Duration::from_secs(args.startup_timeout),
             paths,
             session_env,
             shutdown_requested,
@@ -61,11 +70,16 @@ impl Supervisor {
     ) -> Result<(), Box<dyn std::error::Error>> {
         let spec = self.binary_spec("hearthspace-settingsd", &[], true);
         self.settingsd = Some(ManagedProcess::spawn(spec, max_restarts)?);
+        self.record_processes()?;
         Ok(())
     }
 
     pub(crate) fn start_compositor(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        let backend = select_compositor_backend();
+        let backend = match self.backend {
+            Some(Backend::Native) => CompositorBackend::NativeTty,
+            Some(Backend::Nested) => CompositorBackend::NestedWinit,
+            None => select_compositor_backend(),
+        };
         let backend_flag = match backend {
             CompositorBackend::NativeTty => "--tty",
             CompositorBackend::NestedWinit => "--winit",
@@ -77,6 +91,7 @@ impl Supervisor {
         );
         configure_compositor_environment(&mut spec, backend);
         self.compositor = Some(ManagedProcess::spawn(spec, 0)?);
+        self.record_processes()?;
         Ok(())
     }
 
@@ -86,6 +101,7 @@ impl Supervisor {
     ) -> Result<(), Box<dyn std::error::Error>> {
         let spec = self.binary_spec("hearthspace-shell", &[], true);
         self.shell = Some(ManagedProcess::spawn(spec, max_restarts)?);
+        self.record_processes()?;
         Ok(())
     }
 
@@ -115,22 +131,21 @@ impl Supervisor {
     pub(crate) fn wait_for_settingsd_ready(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         info!(socket = %self.paths.settings_socket.display(), "waiting for settingsd readiness");
         loop {
+            self.check_startup_deadline("settingsd")?;
             if let Some(status) = poll_process(&mut self.settingsd)? {
                 return Err(format!("settingsd exited before readiness: {status}").into());
             }
-            if settingsd_ping(&self.paths.settings_socket).is_ok() {
+            if settingsd_ping(
+                &self.paths.settings_socket,
+                self.startup_deadline,
+                &self.shutdown_requested,
+            )
+            .is_ok()
+            {
                 info!("settingsd ready");
                 return Ok(());
             }
-            if process_output_idle_duration(&self.settingsd)
-                .is_some_and(|idle| idle >= STARTUP_OUTPUT_IDLE_TIMEOUT)
-            {
-                return Err(format!(
-                    "timed out waiting for settingsd readiness after {}s without child output",
-                    STARTUP_OUTPUT_IDLE_TIMEOUT.as_secs()
-                )
-                .into());
-            }
+            self.check_startup_deadline("settingsd")?;
             thread::sleep(Duration::from_millis(50));
         }
     }
@@ -142,22 +157,22 @@ impl Supervisor {
             .join(&self.session_env.wayland_display);
         info!(socket = %socket.display(), "waiting for compositor readiness");
         loop {
+            self.check_startup_deadline("compositor")?;
             if let Some(status) = poll_process(&mut self.compositor)? {
                 return Err(format!("compositor exited before readiness: {status}").into());
             }
-            if socket.exists() {
+            if crate::readiness::connect_until(
+                &socket,
+                self.startup_deadline
+                    .min(Instant::now() + Duration::from_millis(250)),
+                &self.shutdown_requested,
+            )
+            .is_ok()
+            {
                 info!("compositor ready");
                 return Ok(());
             }
-            if process_output_idle_duration(&self.compositor)
-                .is_some_and(|idle| idle >= STARTUP_OUTPUT_IDLE_TIMEOUT)
-            {
-                return Err(format!(
-                    "timed out waiting for compositor readiness after {}s without child output",
-                    STARTUP_OUTPUT_IDLE_TIMEOUT.as_secs()
-                )
-                .into());
-            }
+            self.check_startup_deadline("compositor")?;
             thread::sleep(Duration::from_millis(50));
         }
     }
@@ -172,11 +187,16 @@ impl Supervisor {
 
             if let Some(status) = poll_process(&mut self.compositor)? {
                 info!(%status, "compositor exited; ending session");
-                return Ok(());
+                return if status.success() {
+                    Ok(())
+                } else {
+                    Err(format!("compositor failed: {status}").into())
+                };
             }
 
             if let Some(status) = poll_process(&mut self.settingsd)? {
                 if self.restart_process("settingsd", status)? {
+                    self.startup_deadline = Instant::now() + self.startup_timeout;
                     self.wait_for_settingsd_ready()?;
                 } else {
                     return Err(format!("settingsd exited: {status}").into());
@@ -221,6 +241,29 @@ impl Supervisor {
         }
     }
 
+    fn check_startup_deadline(&self, child: &str) -> Result<(), Box<dyn std::error::Error>> {
+        crate::readiness::check_startup_deadline(
+            self.startup_deadline,
+            self.shutdown_requested.load(Ordering::SeqCst),
+            child,
+        )
+    }
+
+    fn record_processes(&self) -> std::io::Result<()> {
+        let pid =
+            |process: &Option<ManagedProcess>| process.as_ref().map_or(0, ManagedProcess::pid);
+        fs::write(
+            self.paths.session_dir.join("processes.json"),
+            format!(
+                "{{\"supervisor\":{},\"settingsd\":{},\"compositor\":{},\"shell\":{}}}\n",
+                std::process::id(),
+                pid(&self.settingsd),
+                pid(&self.compositor),
+                pid(&self.shell),
+            ),
+        )
+    }
+
     fn restart_process(
         &mut self,
         name: &'static str,
@@ -239,6 +282,7 @@ impl Supervisor {
         }
         warn!(name, %status, restart = process.restarts + 1, max_restarts = process.max_restarts, "restarting process");
         process.restart()?;
+        self.record_processes()?;
         Ok(true)
     }
 
@@ -271,7 +315,16 @@ impl Supervisor {
             }
             RunMode::InstalledBinaries => ProcessSpec {
                 name: binary,
-                program: binary.to_string(),
+                program: if binary == "hearthspace-compositor" {
+                    self.compositor_binary.clone()
+                } else {
+                    None
+                }
+                .or_else(|| self.binary_dir.as_ref().map(|dir| dir.join(binary)))
+                .map_or_else(
+                    || binary.to_string(),
+                    |path| path.to_string_lossy().into_owned(),
+                ),
                 args: binary_args.iter().map(|arg| (*arg).to_string()).collect(),
                 envs,
                 env_removals: Vec::new(),

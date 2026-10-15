@@ -31,8 +31,8 @@ pub fn spawn_argv_with_env(
     command
         .args(args)
         .env("WAYLAND_DISPLAY", wayland_display)
-        .env_remove("DISPLAY")
-        .env_remove("DBUS_SESSION_BUS_ADDRESS");
+        .env_remove("DISPLAY");
+    configure_session_bus(&mut command, env::var_os("HEARTHSPACE_SESSION_BUS_ADDRESS"));
     for key in session_environment_keys() {
         if let Some(value) = env::var_os(key) {
             command.env(key, value);
@@ -45,6 +45,17 @@ pub fn spawn_argv_with_env(
         .spawn()
         .map(|_| ())
         .map_err(|error| format!("failed to spawn {program}: {error}"))
+}
+
+fn configure_session_bus(command: &mut Command, private_bus: Option<std::ffi::OsString>) {
+    // Host portal/accessibility services belong to the host desktop. Only the
+    // supervisor's explicit private-session bus may be inherited by launched apps.
+    command
+        .env_remove("DBUS_SESSION_BUS_ADDRESS")
+        .env_remove("DBUS_SESSION_BUS_PID");
+    if let Some(address) = private_bus {
+        command.env("DBUS_SESSION_BUS_ADDRESS", address);
+    }
 }
 
 pub(super) fn session_environment_keys() -> &'static [&'static str] {
@@ -71,4 +82,33 @@ fn resolve_launch_program(program: &str) -> PathBuf {
         .and_then(|current_exe| current_exe.parent().map(|parent| parent.join(program)))
         .filter(|candidate| candidate.exists())
         .unwrap_or_else(|| path.to_path_buf())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::ffi::OsStr;
+
+    #[test]
+    fn apps_use_only_an_explicit_private_bus() {
+        let mut command = Command::new("unused");
+        configure_session_bus(&mut command, None);
+        assert!(
+            command
+                .get_envs()
+                .any(|(key, value)| key == "DBUS_SESSION_BUS_ADDRESS" && value.is_none())
+        );
+        configure_session_bus(&mut command, Some("unix:path=/private/bus".into()));
+        assert!(
+            command
+                .get_envs()
+                .any(|(key, value)| key == "DBUS_SESSION_BUS_ADDRESS"
+                    && value == Some(OsStr::new("unix:path=/private/bus")))
+        );
+        assert!(
+            command
+                .get_envs()
+                .any(|(key, value)| key == "DBUS_SESSION_BUS_PID" && value.is_none())
+        );
+    }
 }
