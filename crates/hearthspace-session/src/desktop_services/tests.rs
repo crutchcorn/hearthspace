@@ -17,6 +17,13 @@ impl Drop for Fixture {
     }
 }
 
+struct RunningHelper(Entry);
+impl Drop for RunningHelper {
+    fn drop(&mut self) {
+        self.0.stop();
+    }
+}
+
 #[test]
 fn portal_configuration_and_activation_overrides_stay_inside_the_session() {
     let fixture = Fixture::new("configuration");
@@ -58,7 +65,9 @@ fn portal_configuration_and_activation_overrides_stay_inside_the_session() {
 fn stopping_a_managed_helper_also_kills_its_stubborn_descendant() {
     let fixture = Fixture::new("processes");
     let pid_file = fixture.0.join("descendant.pid");
-    let script = "import os,signal,sys,time\nif os.fork() == 0:\n signal.signal(signal.SIGTERM, signal.SIG_IGN)\n open(sys.argv[1], 'w').write(str(os.getpid()))\n time.sleep(60)\nelse:\n time.sleep(60)\n";
+    // Keep the publication window open deliberately: file creation is not a
+    // readiness signal, and stopping here used to read an empty/truncated PID.
+    let script = "import os,signal,sys,time\nif os.fork() == 0:\n signal.signal(signal.SIGTERM, signal.SIG_IGN)\n with open(sys.argv[1], 'w') as ready:\n  time.sleep(.05)\n  ready.write(str(os.getpid())+'\\n')\n time.sleep(60)\nelse:\n time.sleep(60)\n";
     let spec = ProcessSpec {
         name: "mock-service",
         program: "/usr/bin/python3".into(),
@@ -71,20 +80,29 @@ fn stopping_a_managed_helper_also_kills_its_stubborn_descendant() {
         env_removals: Vec::new(),
         current_dir: None,
     };
-    let mut entry = Entry {
+    let mut entry = RunningHelper(Entry {
         child: Some(ManagedProcess::spawn(spec.clone(), 0).unwrap()),
         spec,
         adopted: None,
         bus_name: None,
         restarts_left: 0,
-    };
+    });
     let deadline = Instant::now() + Duration::from_secs(2);
-    while !pid_file.exists() && Instant::now() < deadline {
+    let pid = loop {
+        if let Ok(contents) = fs::read_to_string(&pid_file)
+            && let Some(line) = contents.strip_suffix('\n')
+            && let Ok(pid) = line.parse::<u32>()
+            && pid > 0
+        {
+            break pid;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "helper never published a complete PID"
+        );
         thread::sleep(Duration::from_millis(5));
-    }
-    let pid = fs::read_to_string(&pid_file);
-    entry.stop();
-    let pid = pid.unwrap().parse::<u32>().unwrap();
+    };
+    entry.0.stop();
     let deadline = Instant::now() + Duration::from_secs(1);
     loop {
         let alive = fs::read_to_string(format!("/proc/{pid}/stat"))
