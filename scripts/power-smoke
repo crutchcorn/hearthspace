@@ -1,0 +1,7 @@
+#!/usr/bin/env python3
+"""Validate an explicitly authorized physical suspend with automatic RTC wake."""
+
+from agentlib.power import main
+
+if __name__ == "__main__":
+    raise SystemExit(main())
