@@ -90,6 +90,7 @@ impl App {
     ) {
         let keyboard = self.keyboard.clone();
         let available = self.navigation_available();
+        let previous_modifiers = keyboard.modifier_state();
         let intercepted = keyboard.input(
             self,
             code,
@@ -110,6 +111,12 @@ impl App {
                 }
             },
         );
+        // A modifier pressed in overview can remain held across dismissal.
+        // Its intercepted release must still clear the state sent on client
+        // keyboard enter, without forwarding an unmatched key release.
+        if intercepted.is_some() && keyboard.modifier_state() != previous_modifiers {
+            keyboard.advertise_modifier_state(self);
+        }
         match intercepted {
             Some(Some(shortcut)) => self.run_shortcut(shortcut),
             Some(None) => {}

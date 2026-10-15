@@ -277,11 +277,10 @@ fn session_lock_dismisses_overview_and_redacts_titles_and_selection() {
         .join(format!("hearthspace-test-{}", std::process::id()));
     let mut locker = lock_client::LockClient::connect(&socket);
     locker.wait_locked();
-    let locked = overview(&compositor, false);
+    let locked = query(&compositor, "status");
     assert_eq!(locked["locked"], true);
     assert!(locked["windows"].as_array().unwrap().is_empty());
-    assert!(locked["overview"]["items"].as_array().unwrap().is_empty());
-    assert!(locked["overview"]["selected_window_id"].is_null());
+    assert!(locked.get("overview").is_none());
     assert!(!locked.to_string().contains("Overview editor 0"));
     for command in [
         "overview-on".into(),
