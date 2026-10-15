@@ -85,6 +85,15 @@ impl App {
                 TouchAction::EndPinch { cancelled } => {
                     self.end_pinch_zoom(PinchInput::Touchscreen, &device, cancelled, time);
                 }
+                TouchAction::BeginOverview { fingers } => {
+                    self.start_overview_pinch(PinchInput::Touchscreen, device, fingers);
+                }
+                TouchAction::UpdateOverview { scale } => {
+                    self.update_overview_pinch(PinchInput::Touchscreen, &device, scale);
+                }
+                TouchAction::EndOverview { cancelled } => {
+                    self.end_overview_pinch(PinchInput::Touchscreen, &device, cancelled);
+                }
             }
         }
         self.dispatching_touch = was_dispatching;

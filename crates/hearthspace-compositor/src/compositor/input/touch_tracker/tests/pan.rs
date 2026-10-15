@@ -1,6 +1,6 @@
 use super::*;
 
-fn transform(tracker: &mut TouchTracker, scale: f64, translation: Position) {
+pub(super) fn transform(tracker: &mut TouchTracker, scale: f64, translation: Position) {
     let anchor = point(30.0, 20.0);
     for (id, position) in [
         (0, point(0.0, 0.0)),

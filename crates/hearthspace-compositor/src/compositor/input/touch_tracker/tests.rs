@@ -1,5 +1,6 @@
 use super::*;
 
+mod overview;
 mod pan;
 
 const DEVICE: &str = "screen";

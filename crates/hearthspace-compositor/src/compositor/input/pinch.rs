@@ -1,4 +1,4 @@
-//! Compositor-owned three-finger canvas navigation for indirect and direct touch.
+//! Compositor-owned canvas navigation and overview gestures for direct/indirect touch.
 use smithay::{
     backend::input::InputTime,
     utils::{Logical, Point},
@@ -9,12 +9,15 @@ use crate::geometry::CanvasPoint;
 
 use super::super::{App, presentation::RestoredMaximizedWindow};
 
+mod overview;
 mod transform;
+use overview::OverviewGesture;
 use transform::{finite_point, gesture_viewport};
 
 #[derive(Default)]
 pub(in crate::compositor) struct PinchZoom {
     gesture: Option<Gesture>,
+    overview: Option<OverviewGesture>,
 }
 
 struct Gesture {
@@ -38,7 +41,7 @@ pub(super) enum PinchInput {
 
 impl PinchZoom {
     pub(in crate::compositor) fn is_active(&self) -> bool {
-        self.gesture.is_some()
+        self.gesture.is_some() || self.overview.is_some()
     }
 
     fn begin(
@@ -163,12 +166,14 @@ impl PinchZoom {
     }
 
     fn cancel(&mut self) -> Option<(CanvasPoint, f64)> {
+        self.overview = None;
         self.gesture
             .take()
             .map(|gesture| (gesture.original_offset, gesture.scale))
     }
 
     pub(super) fn interrupt(&mut self) {
+        self.overview = None;
         self.gesture = None;
     }
 }
@@ -191,12 +196,15 @@ impl App {
         fingers: u32,
     ) {
         if !matches!(input, PinchInput::Touchpad | PinchInput::TouchpadSwipe)
-            || fingers != 3
             || self.touch_input.has_contacts()
         {
             return;
         }
-        self.start_pinch_zoom(input, device, self.pointer_location);
+        if fingers == 3 {
+            self.start_pinch_zoom(input, device, self.pointer_location);
+        } else {
+            self.start_overview_pinch(input, device, fingers);
+        }
     }
 
     pub(super) fn update_touchpad_gesture(
@@ -207,6 +215,9 @@ impl App {
         delta: Point<f64, Logical>,
         time: InputTime,
     ) {
+        if self.update_overview_pinch(input, device, scale) {
+            return;
+        }
         if let Some(translation) = self
             .pinch_zoom
             .accumulate_translation(input, device, scale, delta)
@@ -221,7 +232,7 @@ impl App {
         device: String,
         anchor: Point<f64, Logical>,
     ) {
-        if self.pinch_zoom.is_active() || self.pinch_blocked() {
+        if self.pinch_zoom.is_active() || self.pinch_blocked() || self.overview_active() {
             return;
         }
         self.advance_viewport_animation();
@@ -280,7 +291,7 @@ impl App {
         cancelled: bool,
         time: InputTime,
     ) {
-        if !self.pinch_zoom.accepts(input) {
+        if self.end_overview_pinch(input, device, cancelled) || !self.pinch_zoom.accepts(input) {
             return;
         }
         debug!(
