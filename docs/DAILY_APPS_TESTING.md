@@ -124,6 +124,43 @@ manifest, fixture copies, a `workspace` directory, and an ownership-checking
 
 ## Workflows and evidence
 
+### Automated Firefox window and zoom regression
+
+After building the native binaries, run this separately from other native/GPU
+work. It starts a fresh session with `--no-build` and always attempts owned
+session cleanup:
+
+```sh
+scripts/firefox-smoke --session "$(mktemp -d /tmp/hearthspace-firefox.XXXXXX)" --total-timeout 420
+```
+
+This fixture uses native `/usr/bin/firefox`, one active output, and its English
+**Restore Down**/**Maximize** controls. It types an explicit `--no-remote --profile`
+launch into the owned Foot terminal, inheriting the session's GTK settings.
+Only the fresh profile's optional **Continue**/**Not now** onboarding controls
+are dismissed. Browser profiles, desktop entries, and default associations
+outside the artifact directory are untouched.
+
+Assertions cover real CSD restore/maximize, pointer-edge resizing, shell zoom,
+three-finger touchpad and touchscreen zoom, fourth-contact cancellation, restored
+floating geometry after cancellation, and F11 fullscreen remaining fixed during
+canvas zoom. Shell zoom uses a pointer click at the observed accessible button
+bounds after putting the browser's saved floating position far offscreen. It
+must reveal the restored browser while preserving shell focus and the saved
+canvas position. Maximized/fullscreen baselines wait for the client's configured
+output geometry. Every independent zoom case resets to scale 1 to avoid hitting a
+zoom limit. A fixed green rectangle in `zoom.html` must visibly scale in captured
+pixels; viewport state changes alone cannot pass. Logs retain control results,
+libinput traces, PNGs with page-flip metadata, and failure accessibility snapshots.
+
+Successful runs remove their marker-owned browser profile only after verified
+session cleanup and no matching live profile process. Failed runs retain that
+profile for diagnosis. The normal 420-second aggregate budget reserves a separate
+45 seconds for native cleanup; each touch-worker reply also respects its step's
+deadline.
+
+### Interactive application checks
+
 Launch `dev.hearthspace.NativeFirefoxProbe.desktop` through the agent's `launch`
 command or the shell entry named **Hearthspace Native Firefox Probe**. Use the
 separate **Hearthspace Firefox Probe** entry for Snap scope acceptance. Preserve
