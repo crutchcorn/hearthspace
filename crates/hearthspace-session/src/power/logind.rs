@@ -149,6 +149,10 @@ impl Logind {
         bounded(self.manager.call("Suspend", &(false,))).await
     }
 
+    pub(crate) async fn can_suspend(&self) -> io::Result<String> {
+        bounded(self.manager.call("CanSuspend", &())).await
+    }
+
     pub(crate) async fn set_locked_hint(&self, locked: bool) -> io::Result<()> {
         bounded(self.session.call("SetLockedHint", &(locked,))).await
     }
