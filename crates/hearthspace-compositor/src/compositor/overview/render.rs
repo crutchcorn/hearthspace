@@ -101,10 +101,6 @@ impl App {
         elements
     }
 
-    #[expect(
-        clippy::too_many_arguments,
-        reason = "shared live cards use each modal view's cache and selection"
-    )]
     pub(in crate::compositor) fn collect_window_cards(
         &self,
         renderer: &mut GlesRenderer,
