@@ -74,18 +74,48 @@ impl Brightness {
         F: FnMut() -> Fut,
         Fut: std::future::Future<Output = Result<(), String>>,
     {
-        self.require_native()?;
         if percentage > 100 {
             return Err("Brightness must be between 1% and 100%.".into());
         }
+        self.change(|_| percentage, authorize).await
+    }
+
+    /// Derive a relative change from the same device that will receive it.
+    /// Hotplug during authorization must not transfer one panel's baseline to
+    /// another panel that becomes preferred before the write completes.
+    pub async fn step_guarded<F, Fut>(
+        &self,
+        step: i8,
+        authorize: F,
+    ) -> Result<BrightnessStatus, String>
+    where
+        F: FnMut() -> Fut,
+        Fut: std::future::Future<Output = Result<(), String>>,
+    {
+        self.change(
+            |current| (i16::from(current) + i16::from(step)).clamp(1, 100) as u8,
+            authorize,
+        )
+        .await
+    }
+
+    async fn change<F, Fut>(
+        &self,
+        percentage: impl FnOnce(u8) -> u8,
+        authorize: F,
+    ) -> Result<BrightnessStatus, String>
+    where
+        F: FnMut() -> Fut,
+        Fut: std::future::Future<Output = Result<(), String>>,
+    {
+        self.require_native()?;
         self.bounded(async {
             let device = sysfs::discover(&self.root)
                 .await?
                 .ok_or("No display brightness control is available.")?;
+            let level = device.level(percentage(device.status().percentage));
             let session = logind::Session::connect(self.system_address.as_deref()).await?;
-            session
-                .set_guarded(&device.name, device.level(percentage), authorize)
-                .await?;
+            session.set_guarded(&device.name, level, authorize).await?;
             // Read exactly the device that was changed, not a newly preferred
             // device which may have appeared during the D-Bus round trip.
             Ok(sysfs::read(&self.root, &device.name).await?.status())

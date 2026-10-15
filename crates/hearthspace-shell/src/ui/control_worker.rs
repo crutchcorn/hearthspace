@@ -7,7 +7,7 @@ use std::{
 
 use super::{
     command_client,
-    control_state::{Action, Reading, Request, Snapshot, stepped},
+    control_state::{Action, Reading, Request, Snapshot},
 };
 use crate::controls::{audio::AudioBackend, brightness::Brightness};
 
@@ -105,20 +105,6 @@ async fn adjust_inner(
     }
     let audio = AudioBackend::default();
     let brightness = Brightness::new(session.native);
-    // Resolve relative changes from a fresh reading, never an optimistic UI value.
-    let action = match request.action {
-        Action::VolumeStep(step) => {
-            Action::SetVolume(stepped(audio.status().await?.volume, step, 0))
-        }
-        Action::BrightnessStep(step) => {
-            let current = brightness
-                .read()
-                .await?
-                .ok_or_else(|| "This display has no adjustable backlight.".to_string())?;
-            Action::SetBrightness(stepped(current.percentage, step, 1))
-        }
-        action => action,
-    };
     let mut token = request.token;
     let guard = || {
         let mut authorization = request.clone();
@@ -129,7 +115,7 @@ async fn adjust_inner(
             Ok(())
         }
     };
-    match action {
+    match request.action {
         Action::SetVolume(value) => {
             let actual = audio
                 .set_volume_unmuted_guarded(value.min(100), guard)
@@ -144,7 +130,15 @@ async fn adjust_inner(
             let actual = brightness.set_guarded(value.clamp(1, 100), guard).await?;
             Ok(Reading::Brightness(actual))
         }
-        Action::VolumeStep(_) | Action::BrightnessStep(_) => unreachable!(),
+        // The backend derives the step from the same device it will change;
+        // rediscovering between a read and write can transfer the wrong level
+        // to a newly selected output or backlight.
+        Action::VolumeStep(step) => Ok(Reading::Audio(
+            audio.step_volume_unmuted_guarded(step, guard).await?,
+        )),
+        Action::BrightnessStep(step) => Ok(Reading::Brightness(
+            brightness.step_guarded(step, guard).await?,
+        )),
     }
 }
 

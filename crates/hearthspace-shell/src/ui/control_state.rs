@@ -117,7 +117,3 @@ impl Controls {
         }
     }
 }
-
-pub(super) fn stepped(value: u8, delta: i8, minimum: u8) -> u8 {
-    (i16::from(value) + i16::from(delta)).clamp(i16::from(minimum), 100) as u8
-}

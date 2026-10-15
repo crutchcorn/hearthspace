@@ -1,7 +1,4 @@
-use super::super::{
-    control_osd,
-    control_state::{Device, stepped},
-};
+use super::super::{control_osd, control_state::Device};
 use super::*;
 use crate::controls::{audio::AudioStatus, brightness::BrightnessStatus};
 
@@ -24,10 +21,7 @@ fn request(id: u64, action: Action) -> Request {
 }
 
 #[test]
-fn relative_adjustments_clamp_and_slider_updates_coalesce_without_losing_keys() {
-    assert_eq!(stepped(99, 5, 0), 100);
-    assert_eq!(stepped(2, -5, 1), 1);
-    assert_eq!(stepped(2, -5, 0), 0);
+fn slider_updates_coalesce_without_losing_relative_keys() {
     let mut queue = VecDeque::new();
     for (id, action) in [
         (1, Action::SetVolume(20)),

@@ -14,7 +14,7 @@ async fn volume_writes_are_bounded_and_mute_is_independent() {
     assert!(
         commands
             .iter()
-            .any(|args| args == &["--", "set-sink-volume", "speakers", "100%"])
+            .any(|args| args == &["--", "set-sink-volume", "speakers", "65536", "65536"])
     );
     assert!(
         !commands
@@ -40,8 +40,8 @@ async fn positive_slider_adjustment_unmutes_the_same_output() {
     assert_eq!(
         commands,
         [
-            ["--", "set-sink-volume", "speakers", "65%"],
-            ["--", "set-sink-mute", "speakers", "0"],
+            vec!["--", "set-sink-volume", "speakers", "42598", "42598"],
+            vec!["--", "set-sink-mute", "speakers", "0"],
         ]
     );
 }
@@ -200,7 +200,7 @@ async fn external_audio_routing_is_preserved_and_device_names_are_plain_argument
         fixture
             .commands()
             .iter()
-            .any(|args| args == &["--", "set-sink-volume", name, "35%"])
+            .any(|args| args == &["--", "set-sink-volume", name, "22938", "22938"])
     );
 }
 

@@ -7,6 +7,7 @@ pub(super) fn sink(name: &str, volume: u32, muted: bool) -> Value {
         "name": name,
         "description": "Speakers",
         "mute": muted,
+        "channel_map": "front-left,front-right",
         "volume": {
             "front-left": { "value": volume, "value_percent": "localized text" },
             "front-right": { "value": volume },

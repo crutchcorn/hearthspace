@@ -14,6 +14,8 @@ mod test_support;
 mod tests;
 #[cfg(test)]
 mod transport_tests;
+#[cfg(test)]
+mod volume_tests;
 
 /// The current default output, suitable for a 0–100% volume control.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -28,6 +30,11 @@ pub struct AudioStatus {
 pub struct AudioBackend {
     program: PathBuf,
     timeout: Duration,
+}
+
+enum Change {
+    Volume(u8),
+    Mute(&'static str),
 }
 
 impl Default for AudioBackend {
@@ -55,8 +62,8 @@ impl AudioBackend {
 
     /// Set a percentage without amplification. Mute remains a separate control.
     pub async fn set_volume(&self, volume: u8) -> Result<AudioStatus, String> {
-        let volume = format!("{}%", volume.min(100));
-        self.change(&[("set-sink-volume", &volume)]).await
+        self.change_guarded(&[Change::Volume(volume)], || async { Ok(()) })
+            .await
     }
 
     /// Slider and volume-key adjustments can unmute the same selected output.
@@ -74,15 +81,39 @@ impl AudioBackend {
     where
         F: Future<Output = Result<(), String>>,
     {
-        let value = format!("{}%", volume.min(100));
+        let before = self.output().await?;
+        self.volume_output_guarded(before, volume, guard).await
+    }
+
+    /// Calculate a key step and apply it to the same discovered output. A newly
+    /// selected default must never receive a level derived from its predecessor.
+    pub async fn step_volume_unmuted_guarded<F>(
+        &self,
+        step: i8,
+        guard: impl FnMut() -> F,
+    ) -> Result<AudioStatus, String>
+    where
+        F: Future<Output = Result<(), String>>,
+    {
+        let before = self.output().await?;
+        let volume = (i16::from(before.status.volume) + i16::from(step)).clamp(0, 100) as u8;
+        self.volume_output_guarded(before, volume, guard).await
+    }
+
+    async fn volume_output_guarded<F>(
+        &self,
+        before: model::Output,
+        volume: u8,
+        guard: impl FnMut() -> F,
+    ) -> Result<AudioStatus, String>
+    where
+        F: Future<Output = Result<(), String>>,
+    {
         if volume > 0 {
-            self.change_guarded(
-                &[("set-sink-volume", &value), ("set-sink-mute", "0")],
-                guard,
-            )
-            .await
+            self.change_output_guarded(before, &[Change::Volume(volume), Change::Mute("0")], guard)
+                .await
         } else {
-            self.change_guarded(&[("set-sink-volume", &value)], guard)
+            self.change_output_guarded(before, &[Change::Volume(volume)], guard)
                 .await
         }
     }
@@ -98,33 +129,48 @@ impl AudioBackend {
     where
         F: Future<Output = Result<(), String>>,
     {
-        self.change_guarded(&[("set-sink-mute", "toggle")], guard)
-            .await
+        self.change_guarded(&[Change::Mute("toggle")], guard).await
     }
 
     pub async fn set_muted(&self, muted: bool) -> Result<AudioStatus, String> {
-        self.change(&[("set-sink-mute", if muted { "1" } else { "0" })])
-            .await
-    }
-
-    async fn change(&self, changes: &[(&str, &str)]) -> Result<AudioStatus, String> {
-        self.change_guarded(changes, || async { Ok(()) }).await
+        self.change_guarded(&[Change::Mute(if muted { "1" } else { "0" })], || async {
+            Ok(())
+        })
+        .await
     }
 
     async fn change_guarded<F>(
         &self,
-        changes: &[(&str, &str)],
-        mut guard: impl FnMut() -> F,
+        changes: &[Change],
+        guard: impl FnMut() -> F,
     ) -> Result<AudioStatus, String>
     where
         F: Future<Output = Result<(), String>>,
     {
         let before = self.output().await?;
+        self.change_output_guarded(before, changes, guard).await
+    }
+
+    async fn change_output_guarded<F>(
+        &self,
+        before: model::Output,
+        changes: &[Change],
+        mut guard: impl FnMut() -> F,
+    ) -> Result<AudioStatus, String>
+    where
+        F: Future<Output = Result<(), String>>,
+    {
         // Pin this request to its freshly resolved device. End option parsing
         // before using a server-provided name as an ordinary argument.
-        for &(command, value) in changes {
+        for change in changes {
+            let (command, values) = match change {
+                Change::Volume(value) => ("set-sink-volume", before.scaled_volumes(*value)),
+                Change::Mute(value) => ("set-sink-mute", vec![value.to_string()]),
+            };
+            let mut args = vec!["--", command, &before.name];
+            args.extend(values.iter().map(String::as_str));
             guard().await?;
-            self.run(&["--", command, &before.name, value]).await?;
+            self.run(&args).await?;
         }
         let after = self.output().await?;
         if after.name != before.name {

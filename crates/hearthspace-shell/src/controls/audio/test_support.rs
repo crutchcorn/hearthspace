@@ -87,9 +87,12 @@ else:
         sys.stderr.write('Failure: No such entity\n')
         sys.exit(1)
     if args[0] == 'set-sink-volume':
-        value = round(int(args[2].removesuffix('%')) * 65536 / 100)
-        for channel in sink['volume'].values():
-            channel['value'] = value
+        names = sink['channel_map'].split(',')
+        values = [int(value) for value in args[2:]]
+        if len(values) != len(names):
+            sys.exit(2)
+        for name, value in zip(names, values):
+            sink['volume'][name]['value'] = value
     elif args[0] == 'set-sink-mute':
         sink['mute'] = not sink['mute'] if args[2] == 'toggle' else args[2] == '1'
     else:

@@ -33,6 +33,7 @@ class Fixture:
                     "default_sink": "fixture.output",
                     "description": "Fixture speakers",
                     "volume": 40,
+                    "raw_volumes": [13107, 26214],
                     "muted": False,
                     "events": str(self.events),
                 }
@@ -52,6 +53,9 @@ class Fixture:
             raise ValueError("unsupported audio fixture state")
         with locked(self.path) as state:
             state.update(changes)
+            if "volume" in changes:
+                maximum = round(changes["volume"] * 65536 / 100)
+                state["raw_volumes"] = [round(maximum / 2), maximum]
 
     def status(self):
         with locked(self.path) as state:
@@ -112,30 +116,49 @@ def respond(state, arguments):
     if arguments == ["--format=json", "list", "sinks"]:
         sinks = []
         if state["present"]:
-            value = round(state["volume"] * 65536 / 100)
             sinks.append(
                 {
                     "name": state["default_sink"],
                     "description": state["description"],
                     "mute": state["muted"],
-                    "volume": {"front-left": {"value": value}},
+                    "channel_map": "front-left,front-right",
+                    "volume": {
+                        name: {"value": value}
+                        for name, value in zip(
+                            ["front-left", "front-right"],
+                            state["raw_volumes"],
+                            strict=True,
+                        )
+                    },
                 }
             )
         return 0, json.dumps(sinks), ""
-    if len(arguments) != 4 or arguments[0] != "--":
+    if len(arguments) < 4 or arguments[0] != "--":
         return 2, "", "Unsupported private fixture request"
-    _, command, device, value = arguments
+    _, command, device, *values = arguments
     if not state["present"] or device != state["default_sink"]:
         return 1, "", "No such entity"
-    if command == "set-sink-volume" and value.endswith("%"):
+    if command == "set-sink-volume":
         try:
-            percentage = int(value[:-1])
+            if len(values) == 1 and values[0].endswith("%"):
+                percentage = int(values[0][:-1])
+                if not 0 <= percentage <= 100:
+                    raise ValueError("Invalid percentage")
+                raw = [round(percentage * 65536 / 100)] * 2
+            else:
+                raw = [int(value) for value in values]
+                if len(raw) != 2 or any(not 0 <= value <= 65536 for value in raw):
+                    raise ValueError("Invalid channel volumes")
         except ValueError:
             return 2, "", "Invalid fixture volume"
-        if not 0 <= percentage <= 100:
-            return 2, "", "Invalid fixture volume"
-        state["volume"] = percentage
-    elif command == "set-sink-mute" and value in ("toggle", "0", "1"):
+        state["raw_volumes"] = raw
+        state["volume"] = (max(raw) * 100 + 32768) // 65536
+    elif (
+        command == "set-sink-mute"
+        and len(values) == 1
+        and values[0] in ("toggle", "0", "1")
+    ):
+        value = values[0]
         state["muted"] = not state["muted"] if value == "toggle" else value == "1"
     else:
         return 2, "", "Unsupported private fixture mutation"

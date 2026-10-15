@@ -51,6 +51,7 @@ class ControlFixtureTests(unittest.TestCase):
                 )
                 sinks = json.loads(call("--format=json", "list", "sinks").stdout)
                 self.assertEqual(sinks[0]["description"], "Fixture speakers")
+                self.assertEqual(sinks[0]["channel_map"], "front-left,front-right")
                 self.assertEqual(
                     call("--", "set-sink-volume", "fixture.output", "73%").returncode, 0
                 )
@@ -121,12 +122,48 @@ class ControlFixtureTests(unittest.TestCase):
             ["--", "set-sink-volume", "owned", "-1%"],
             ["--", "set-sink-volume", "owned", "101%"],
             ["--", "set-sink-volume", "owned", "nan%"],
+            ["--", "set-sink-volume", "owned", "32768"],
+            ["--", "set-sink-volume", "owned", "-1", "32768"],
+            ["--", "set-sink-volume", "owned", "32768", "65537"],
+            ["--", "set-sink-volume", "owned", "32768", "32768", "32768"],
             ["--", "set-sink-mute", "owned", "invalid"],
         ):
             with self.subTest(arguments=arguments):
                 self.assertNotEqual(control_ui_fixture.respond(state, arguments)[0], 0)
                 self.assertEqual(state["volume"], 40)
                 self.assertFalse(state["muted"])
+
+    def test_fixture_preserves_channel_order_and_records_raw_volume_writes(self):
+        state = {
+            "service": True,
+            "present": True,
+            "default_sink": "owned",
+            "description": "Stereo",
+            "volume": 40,
+            "muted": False,
+            "raw_volumes": [13107, 26214],
+        }
+        self.assertEqual(
+            control_ui_fixture.respond(
+                state, ["--", "set-sink-volume", "owned", "16384", "32768"]
+            )[0],
+            0,
+        )
+        self.assertEqual(state["volume"], 50)
+        _, payload, _ = control_ui_fixture.respond(
+            state, ["--format=json", "list", "sinks"]
+        )
+        self.assertEqual(
+            json.loads(payload)[0]["volume"],
+            {
+                "front-left": {"value": 16384},
+                "front-right": {"value": 32768},
+            },
+        )
+        control_ui.balanced_channels(state)
+        state["raw_volumes"] = [32768, 32768]
+        with self.assertRaisesRegex(ControlError, "channel balance"):
+            control_ui.balanced_channels(state)
 
     def test_osd_checks_application_focus_and_panel_separation(self):
         smoke = Mock()

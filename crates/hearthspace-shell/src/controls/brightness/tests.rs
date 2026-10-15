@@ -232,3 +232,66 @@ async fn rejected_compositor_guard_after_discovery_never_reaches_the_write() {
         60
     );
 }
+
+#[tokio::test]
+async fn relative_change_pins_its_baseline_target_and_readback_across_hotplug() {
+    let dir = tempfile::tempdir().unwrap();
+    device(dir.path(), "original", "raw", 100, 60);
+    let bus = Bus::start();
+    let service = Logind::start(&bus, dir.path()).await;
+    let backend = bus.backend(dir.path());
+    let result = backend
+        .step_guarded(5, || async {
+            device(dir.path(), "preferred", "firmware", 100, 20);
+            Ok(())
+        })
+        .await
+        .unwrap();
+    assert_eq!(result.device, "original");
+    assert_eq!(result.percentage, 65);
+    assert_eq!(
+        service.state.lock().unwrap().requests,
+        vec![("backlight".into(), "original".into(), 65)]
+    );
+    let current = backend.read().await.unwrap().unwrap();
+    assert_eq!(current.device, "preferred");
+    assert_eq!(current.percentage, 20);
+}
+
+#[tokio::test]
+async fn relative_change_clamps_large_steps_and_never_transfers_to_a_replacement() {
+    let dir = tempfile::tempdir().unwrap();
+    device(dir.path(), "original", "raw", 100, 60);
+    let bus = Bus::start();
+    let _service = Logind::start(&bus, dir.path()).await;
+    let backend = bus.backend(dir.path());
+    assert_eq!(
+        backend
+            .step_guarded(i8::MAX, || async { Ok(()) })
+            .await
+            .unwrap()
+            .percentage,
+        100
+    );
+    assert_eq!(
+        backend
+            .step_guarded(i8::MIN, || async { Ok(()) })
+            .await
+            .unwrap()
+            .percentage,
+        1
+    );
+    assert!(
+        backend
+            .step_guarded(5, || async {
+                std::fs::remove_dir_all(dir.path().join("original")).unwrap();
+                device(dir.path(), "replacement", "firmware", 100, 30);
+                Ok(())
+            })
+            .await
+            .is_err()
+    );
+    let current = backend.read().await.unwrap().unwrap();
+    assert_eq!(current.device, "replacement");
+    assert_eq!(current.percentage, 30);
+}

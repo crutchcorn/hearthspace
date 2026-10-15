@@ -49,6 +49,14 @@ def audio(smoke, *, volume=None, muted=None):
     return smoke.until(f"audio {volume}% muted={muted}", matches)
 
 
+def balanced_channels(state):
+    left, right = state["raw_volumes"]
+    if right <= 0 or abs(left / right - 0.5) > 0.001:
+        raise ControlError(
+            "master volume adjustment changed the fixture's channel balance"
+        )
+
+
 def settled_audio(smoke):
     """Wait for the coalesced tail of a real drag before pressing an arrow."""
     previous = smoke.service_fixture.status()
@@ -127,13 +135,17 @@ def run(smoke):
     with Input(smoke.control) as inputs:
         inputs.chord("right")
     after = audio(smoke, volume=changed["volume"] + 1, muted=False)
+    balanced_channels(after)
     smoke.until(
         "slider keyboard readback OSD",
         lambda: visible(smoke, f"Volume {after['volume']}%"),
     )
     smoke.capture("control-center-slider-input")
     smoke.record(
-        "volume-slider-input", pointer=changed["volume"], keyboard=after["volume"]
+        "volume-slider-input",
+        pointer=changed["volume"],
+        keyboard=after["volume"],
+        raw_channels=after["raw_volumes"],
     )
     checks.click(smoke, "Mute", "controls")
     audio(smoke, muted=True)
@@ -151,7 +163,7 @@ def run(smoke):
 
     with Input(smoke.control) as inputs:
         inputs.chord("volume-up")
-    audio(smoke, volume=45, muted=False)
+    balanced_channels(audio(smoke, volume=45, muted=False))
     osd(smoke, "Volume 45%", capture="volume-up-osd")
     marker = Path(smoke.manifest["runtime_dir"]) / "osd-input"
     with Input(smoke.control) as inputs:
@@ -235,4 +247,5 @@ def run(smoke):
         osd_focus_preserved=True,
         missing_audio_disabled=True,
         default_output_recovered=True,
+        channel_balance_preserved=True,
     )
