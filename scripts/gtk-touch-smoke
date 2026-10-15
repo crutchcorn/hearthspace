@@ -1,0 +1,7 @@
+#!/usr/bin/env python3
+"""Validate GTK titlebar dragging and content taps on an owned native VT."""
+
+from agentlib.gtk_touch import main
+
+if __name__ == "__main__":
+    raise SystemExit(main())
