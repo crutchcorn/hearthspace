@@ -35,11 +35,18 @@ impl App {
             }
         } else if mapped && self.is_navigable_window(index) {
             self.position_transient(index);
-            self.restore_window_placement(index);
+            if !self.windows[index].initial_placement_done {
+                self.windows[index].initial_placement_done = true;
+                self.register_window_placement(index);
+                self.center_new_window(index);
+            }
             // An existing popup/drag owns input until it ends. A background app
             // mapping during that interaction must not break its grab.
             if self.navigation_available() {
-                let _ = self.focus_window(id);
+                // Mapping grants keyboard focus, but never navigates the canvas.
+                // Explicit selection (Alt-Tab, search, agent focus) still reveals.
+                let index = self.raise_window(index);
+                self.set_keyboard_focus_to_window(index, root.clone());
             }
         } else if !mapped && self.focused_normal_window_id == Some(id) {
             self.clear_keyboard_focus_for_surface(root);

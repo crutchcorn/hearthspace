@@ -23,7 +23,7 @@ fn client(compositor: &HeadlessCompositor) -> Editors {
 }
 
 #[test]
-fn layout_restart_restores_canvas_and_positions_without_relaunching_clients() {
+fn layout_restart_restores_viewport_but_new_windows_center_without_navigation() {
     let _guard = HEADLESS_TEST_LOCK.lock().unwrap();
     let saved = tempfile::tempdir().unwrap();
     let path = saved.path().join("layout.json");
@@ -34,8 +34,8 @@ fn layout_restart_restores_canvas_and_positions_without_relaunching_clients() {
         let _client = client(&compositor);
         let windows = wait_windows(&compositor, |windows| windows.len() == 1);
         let id = windows[0]["id"].as_u64().unwrap();
-        action(&compositor, format!("move-window {id} 2400 -1100"));
-        action(&compositor, format!("focus-window {id}"));
+        action(&compositor, format!("move-window {id} 9000 -9000"));
+        action(&compositor, "pan-to 2400 -1100");
         action(&compositor, "zoom-out");
         let deadline = Instant::now() + Duration::from_secs(5);
         loop {
@@ -64,8 +64,10 @@ fn layout_restart_restores_canvas_and_positions_without_relaunching_clients() {
     );
     let _client = client(&compositor);
     let windows = wait_windows(&compositor, |windows| windows.len() == 1);
-    assert_eq!(windows[0]["canvas_x"], 2400);
-    assert_eq!(windows[0]["canvas_y"], -1100);
+    super::window_placement::assert_centered(&windows[0], 1280.0, 800.0);
+    assert_ne!(windows[0]["canvas_x"], 9000);
+    assert_ne!(windows[0]["canvas_y"], -9000);
+    assert_eq!(query(&compositor, "status")["viewport"], viewport);
     assert_eq!(windows[0]["focused"], true);
     assert_eq!(windows[0]["visible"], true);
     action(&compositor, "quit");

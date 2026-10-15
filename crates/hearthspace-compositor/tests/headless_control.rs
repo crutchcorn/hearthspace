@@ -47,6 +47,9 @@ mod shell_panels;
 #[path = "support/window_bounds.rs"]
 mod window_bounds;
 #[cfg(feature = "test-apps")]
+#[path = "support/window_placement.rs"]
+mod window_placement;
+#[cfg(feature = "test-apps")]
 #[path = "support/window_states.rs"]
 mod window_states;
 #[cfg(feature = "test-apps")]

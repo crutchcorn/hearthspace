@@ -1,25 +1,18 @@
 use std::{fs, io, process::Command, sync::Arc};
 
 use hearthspace_shell::app_catalog::{reap_child, spawn_argv_with_options};
-use smithay::{
-    reexports::calloop::{Interest, Mode as CalloopMode, PostAction, generic::Generic},
-    utils::Point,
-};
+use smithay::reexports::calloop::{Interest, Mode as CalloopMode, PostAction, generic::Generic};
 use tracing::{debug, error, info, warn};
 use wayland_server::ListeningSocket;
 
 use super::{App, launch_environment::*};
 use crate::compositor::client::ClientState;
-use crate::{config::*, geometry::CanvasPoint};
+use crate::config::*;
 
 mod snap_scope;
 
 impl App {
-    fn prepare_spawn_position(&mut self) {
-        self.prepare_spawn_position_for_output(None);
-    }
-
-    fn prepare_spawn_position_for_output(&mut self, output_name: Option<&str>) {
+    fn prepare_spawn_output(&mut self, output_name: Option<&str>) {
         let resolved_output_name = match output_name {
             Some(name) if self.output_logical_rect_for_name(Some(name)).is_some() => {
                 Some(name.to_string())
@@ -27,32 +20,21 @@ impl App {
             Some(name) => {
                 warn!(
                     output_name = name,
-                    "launch output no longer exists; using primary output"
+                    "launch output no longer exists; using current output"
                 );
                 None
             }
             None => None,
         };
-        let output_rect = self
-            .output_logical_rect_for_name(resolved_output_name.as_deref())
-            .unwrap_or_else(|| self.primary_output_logical_rect());
-        let output_center = Point::from((
-            f64::from(output_rect.loc.x) + f64::from(output_rect.size.w) / 2.0,
-            f64::from(output_rect.loc.y) + f64::from(output_rect.size.h) / 2.0,
-        ));
-        let canvas_center = self.screen_to_canvas(output_center);
-        self.next_spawn_position = CanvasPoint {
-            x: canvas_center.x.round() as i32 - MIN_WINDOW_WIDTH / 2 + self.spawn_offset,
-            y: canvas_center.y.round() as i32 - 180 + self.spawn_offset,
-        };
+        // Actual client geometry is only available when its first buffer maps.
+        // Retain the output hint, then center that geometry in the current view.
         self.next_spawn_output_name = resolved_output_name;
-        self.spawn_offset = (self.spawn_offset + SPAWN_OFFSET_STEP) % SPAWN_OFFSET_WRAP;
     }
 
     pub(super) fn spawn_a11y_test(&mut self) -> Result<(), String> {
         #[cfg(feature = "test-apps")]
         {
-            self.prepare_spawn_position();
+            self.prepare_spawn_output(None);
 
             let current_exe = std::env::current_exe()
                 .map_err(|error| format!("failed to locate GTK test app: {error}"))?;
@@ -77,7 +59,7 @@ impl App {
     }
 
     pub(super) fn spawn_foot(&mut self) -> Result<(), String> {
-        self.prepare_spawn_position();
+        self.prepare_spawn_output(None);
 
         let child = Command::new("foot")
             .env(WAYLAND_DISPLAY_ENV, wayland_display_name())
@@ -129,7 +111,7 @@ impl App {
             .iter()
             .map(|(key, value)| (key.as_str(), value.as_str()))
             .collect::<Vec<_>>();
-        self.prepare_spawn_position_for_output(output_name);
+        self.prepare_spawn_output(output_name);
         spawn_argv_with_options(
             &command,
             &wayland_display,

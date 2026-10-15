@@ -35,9 +35,6 @@ pub const MIN_WINDOW_HEIGHT: i32 = 120;
 pub const RESIZE_HANDLE_OUTSET: i32 = 8;
 pub const RESIZE_HANDLE_INSET: i32 = 8;
 
-pub const SPAWN_OFFSET_STEP: i32 = 36;
-pub const SPAWN_OFFSET_WRAP: i32 = 180;
-
 pub const MIN_ZOOM: f64 = 0.5;
 pub const MAX_ZOOM: f64 = 2.0;
 pub const ZOOM_STEP: f64 = 1.25;
