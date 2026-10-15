@@ -2,6 +2,7 @@ pub mod app_catalog;
 pub mod battery;
 pub mod command;
 pub mod controls;
+pub mod favorites;
 pub mod tray;
 pub mod ui;
 
