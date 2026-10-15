@@ -8,6 +8,7 @@ import subprocess
 from pathlib import Path
 
 from . import power_evidence as verify
+from . import power_manual
 from .control import ControlError
 from .daily import DailySmoke
 from .daily_checks import terminal
@@ -36,11 +37,13 @@ class PowerSmoke(DailySmoke):
             raise ControlError("RTC wake delay must be between 15 and 45 seconds")
         if args.timeout < args.wake_after + 15:
             raise ControlError("step timeout must exceed RTC wake delay by 15 seconds")
+        power_manual.configure(args)
         args.captures, args.notifications = 3, False
         super().__init__(args)
         self.alarm = WakeAlarm(args.rtc, self.record)
         self.fixture = ROOT / "target/debug/examples/session-lock-fixture"
         self.locker = getattr(args, "locker", "fixture")
+        self.manual_unlock = args.manual_unlock
 
     def preflight(self):
         if self.locker == "fixture" and not self.fixture.is_file():
@@ -113,6 +116,15 @@ class PowerSmoke(DailySmoke):
             self.step("unlocked-before-sleep", PowerSmoke.unlocked)
             self.step("suspend-resume", PowerSmoke.suspend)
             self.step("automatic-swaylock", PowerSmoke.automatic_locker)
+            if self.manual_unlock:
+                power_manual.observe(self)
+                self.step("recovered-desktop", PowerSmoke.desktop)
+                self.record(
+                    "manual-unlock-acceptance",
+                    authenticated_unlock_tested=True,
+                    preserved_desktop_and_input=True,
+                    password_supplied_by_harness=False,
+                )
             return
         release = self.artifacts / "fixture-release"
         socket = Path(self.manifest["runtime_dir"]) / self.manifest["wayland_display"]
@@ -162,6 +174,7 @@ class PowerSmoke(DailySmoke):
             lambda: verify.owned_swaylocks(self.manifest["compositor_pid"]),
         )
         self.locked()
+        self.owned_lockers = lockers
         self.record(
             "automatic-swaylock-confirmed",
             lockers=lockers,
@@ -260,7 +273,7 @@ class PowerSmoke(DailySmoke):
 
     def desktop(self):
         self.until(
-            "owner fixture unlocked", lambda: not self.control.status()["locked"]
+            "owner unlocked", lambda: self.control.status().get("locked") is False
         )
         verify.preserved(self.window_before, self.window(self.target))
         self.preserved_processes()
@@ -310,10 +323,24 @@ def main():
     parser.add_argument("--session", type=Path, required=True)
     parser.add_argument("--allow-system-suspend", action="store_true")
     parser.add_argument("--locker", choices=("fixture", "swaylock"), default="fixture")
+    parser.add_argument(
+        "--manual-unlock",
+        action="store_true",
+        help="with --locker swaylock, wait for local user authentication and verify the restored desktop",
+    )
+    parser.add_argument(
+        "--unlock-timeout",
+        type=float,
+        help="manual unlock wait in seconds (default 300, maximum 900); requires --manual-unlock",
+    )
     parser.add_argument("--wake-after", type=int, default=45)
     parser.add_argument("--rtc", default="rtc0")
     parser.add_argument("--timeout", type=float, default=75)
-    parser.add_argument("--total-timeout", type=float, default=240)
+    parser.add_argument(
+        "--total-timeout",
+        type=float,
+        help="aggregate budget (default 240, plus unlock timeout in manual mode)",
+    )
     parser.add_argument("--log-level", default="info")
     args = parser.parse_args()
     try:

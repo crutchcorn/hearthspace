@@ -17,6 +17,7 @@ class AutomaticLockerTests(unittest.TestCase):
     def test_automatic_mode_never_launches_or_releases_the_test_fixture(self):
         smoke = object.__new__(PowerSmoke)
         smoke.locker = "swaylock"
+        smoke.manual_unlock = False
         smoke.connect = Mock(
             return_value={
                 "processes": {

@@ -61,9 +61,40 @@ The default `--locker fixture` follows the owner-unlock workflow above.
 owned swaylock process, then lets the real `PrepareForSleep` path launch the
 normal locker. After sleep it requires a swaylock child of the same compositor,
 with the same UID and cgroup, preserved core processes, and confirmed lock/input/
-output recovery. Capture remains denied. This mode never authenticates, releases
-the lock, or kills its locker; final cleanup stops the owned native session.
-Report this as automatic-lock acceptance with PAM unlock still untested.
+output recovery. Capture remains denied. Without `--manual-unlock`, this mode
+never waits for authentication, releases the lock, or kills its locker; final
+cleanup stops the owned native session. Report that run as automatic-lock
+acceptance with PAM unlock still untested.
+
+To include local password authentication, explicitly opt in while someone is
+present at the test machine:
+
+```sh
+scripts/power-smoke --session /tmp/hearthspace-power-manual-1 --allow-system-suspend --locker swaylock --manual-unlock --unlock-timeout 300 --total-timeout 600
+```
+
+After wake, wait for `manual-unlock-wait` in the test output, then type your
+password on the machine's physical keyboard and press Enter. Do not enter it in
+chat or pass it to a command. Then leave the input devices idle while the harness
+checks the restored desktop. Authenticating before the recorded wait cannot
+establish this test's locked-to-unlocked transition and will fail the attempt.
+The harness first confirms the real owned swaylock and its presented shield,
+then observes status and process identity only. It never types a password,
+signals the locker, sends an unlock command, or substitutes the test fixture.
+The same compositor must report an active, recovered, unlocked desktop and the
+original locker must exit before normal capture and input checks resume. The
+existing application identity, geometry, fresh-frame marker and exact typed-token
+checks then verify the restored desktop. A locker disappearing while the shield
+stays locked is a failure, not authentication evidence.
+
+`--manual-unlock` requires `--locker swaylock`. Its wait defaults to 300 seconds
+and accepts 1–900 seconds; `--unlock-timeout` without manual mode is rejected.
+The default total budget grows from 240 seconds to 240 plus the unlock wait.
+An explicit `--total-timeout` must reserve at least that sum. The human wait may
+exceed the ordinary per-step timeout, but remains within the aggregate deadline
+and reserves one normal step for post-unlock checks. Expiry follows normal owned
+session cleanup and records no successful manual-unlock acceptance. This mode
+is available for a later local run; its implementation alone is not PAM evidence.
 
 Normal and failure exits stop the owned native session and verify original-VT,
 scope, runtime, and background T3 service recovery. The RTC alarm is cleared only
