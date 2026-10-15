@@ -14,8 +14,9 @@ Open search with Meta, the search icon, or a one-finger downward touchscreen
 swipe starting on the top bar. Short taps still activate toolbar buttons;
 horizontal/upward swipes and multi-contact interruptions do not open search.
 The drawing icon at the right of the search input enables **Draw to launch**.
-The adjacent Settings icon opens the Settings app. Empty search does not list
-assigned apps. Typing searches applications and open windows as usual.
+The adjacent Settings icon opens the Settings app directly on its Search tab.
+Empty search does not list assigned apps. Typing searches applications and open
+windows as usual.
 
 Release the mouse button or lift your finger after drawing: a clear match launches
 the app immediately. An unrecognized or ambiguous shape keeps search open and

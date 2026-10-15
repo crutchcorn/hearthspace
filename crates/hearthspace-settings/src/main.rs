@@ -1,4 +1,5 @@
 mod actions;
+mod cli;
 mod favorites;
 mod favorites_search;
 mod favorites_view;
@@ -15,7 +16,14 @@ use ui::app_logic;
 use xilem::{EventLoop, WindowOptions, WindowOptionsExtLinux, Xilem, dpi::LogicalSize};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let state = initial_state();
+    let category = match cli::parse(std::env::args_os().skip(1))? {
+        cli::Startup::Page(category) => category,
+        cli::Startup::Help => {
+            println!("{}", cli::USAGE);
+            return Ok(());
+        }
+    };
+    let state = initial_state(category);
     let app = Xilem::new_simple(
         state,
         app_logic,

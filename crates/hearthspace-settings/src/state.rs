@@ -60,7 +60,7 @@ pub(crate) enum BackgroundPickerResponse {
     Failed(String),
 }
 
-pub(crate) fn initial_state() -> SettingsApp {
+pub(crate) fn initial_state(selected_category: SettingsCategory) -> SettingsApp {
     let (mut settings, mut status) = match client_get_settings() {
         Ok(settings) => (settings, "Connected to hearthspace-settingsd".to_string()),
         Err(error) => (
@@ -87,7 +87,7 @@ pub(crate) fn initial_state() -> SettingsApp {
         favorites: crate::favorites::FavoriteSettings::load(),
         settings,
         live_outputs,
-        selected_category: SettingsCategory::Display,
+        selected_category,
         selected_monitor_id,
         background_picker_request_sender: None,
         background_picker_pending: false,

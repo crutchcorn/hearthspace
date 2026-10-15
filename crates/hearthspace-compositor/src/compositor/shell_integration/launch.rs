@@ -75,6 +75,23 @@ impl App {
         app_id: &str,
         output_name: Option<&str>,
     ) -> Result<(), String> {
+        self.launch_app_with_arguments(app_id, output_name, &[])
+    }
+
+    pub(super) fn open_search_settings(&mut self, output_name: Option<&str>) -> Result<(), String> {
+        self.launch_app_with_arguments(
+            "dev.hearthspace.Settings.desktop",
+            output_name,
+            &["--page", "search"],
+        )
+    }
+
+    fn launch_app_with_arguments(
+        &mut self,
+        app_id: &str,
+        output_name: Option<&str>,
+        arguments: &[&str],
+    ) -> Result<(), String> {
         // Resolve current installed entries so new favorites work and removed apps cannot launch stale commands.
         self.app_catalog = AppCatalog::load();
         let app = self
@@ -87,7 +104,8 @@ impl App {
         {
             return Err(format!("unknown launch output: {name}"));
         }
-        let app_command = app.launch_argv()?;
+        let mut app_command = app.launch_argv()?;
+        app_command.extend(arguments.iter().map(|argument| (*argument).to_string()));
         let app_command = if let Some(instance) = &app.snap_instance_name {
             snap_scope::wrap(instance, app_command)?
         } else {

@@ -97,7 +97,10 @@ def draw(smoke, points):
 
 def configure(smoke):
     before = window_ids(smoke)
-    smoke.control.request("launch-app dev.hearthspace.Settings.desktop")
+    if not checks.panel(smoke, "search"):
+        checks.click(smoke, "Search")
+        checks.opened(smoke, "search")
+    checks.click(smoke, "Settings", "search")
     window = smoke.until(
         "owned Settings window",
         lambda: next(
@@ -112,7 +115,11 @@ def configure(smoke):
         ),
     )
     smoke.settings_id = window["id"]
-    settings_click(smoke, "Search")
+    smoke.until(
+        "Settings opened directly on Search",
+        lambda: settings_elements(smoke, "Gestures"),
+    )
+    smoke.record("search-settings-direct-page", page="Search")
     settings_click(smoke, "Find apps", role=None)
     with Input(smoke.control) as inputs:
         inputs.type(APP_NAME)

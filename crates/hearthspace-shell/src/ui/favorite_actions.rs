@@ -95,10 +95,9 @@ pub(super) fn manage(state: &mut ShellState, key: &str) {
         .iter()
         .find(|o| o.key() == key)
         .and_then(|o| o.output_name.clone());
-    let result = super::command_client::launch_app(
+    let result = send_command(
         &state.command_socket,
-        "dev.hearthspace.Settings.desktop",
-        name.as_deref(),
+        &crate::ShellCommand::OpenSearchSettings { output_name: name }.wire_name(),
     );
     state.finish_launch(key, result);
 }

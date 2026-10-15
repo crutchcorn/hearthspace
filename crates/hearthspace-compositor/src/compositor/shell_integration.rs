@@ -134,6 +134,9 @@ impl App {
                     .map_or_else(ControlReply::Err, |_| ControlReply::Ok);
             }
             ShellCommand::ListApps => return ControlReply::Payload(self.list_apps_json()),
+            ShellCommand::OpenSearchSettings { output_name } => {
+                return action_reply(self.open_search_settings(output_name.as_deref()));
+            }
             ShellCommand::LaunchAppOnOutput {
                 app_id,
                 output_name,
