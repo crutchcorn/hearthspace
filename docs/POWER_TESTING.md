@@ -122,6 +122,59 @@ with warnings denied, all-target native/E2E/test-app builds, Ruff, and diff chec
 also passed. Logs are `/tmp/hearthspace-power-final-{tests,python,clippy,build}.log`.
 
 Physical lid closure, a connected external monitor/dock, and real PAM password
-unlock were not exercised in this acceptance. Their implemented policy and
-protocol paths have isolated coverage; broader hardware and authentication
-claims require their own observed runs.
+unlock were not exercised in those two runs. The subsequent physical-lid test
+below covers lid closure; external-display policy and PAM unlock still require
+their own observed runs.
+
+### User-assisted physical lid closure — 2026-10-14/15
+
+`/tmp/hearthspace-lid-physical-2` exercised the physical switch on the same GPD
+hardware, with AC connected and no dock or external display. Hearthspace owned
+tty7 in logind session 108. A bounded local recorder ran outside that desktop,
+so evidence collection and cleanup survived the remote connection interruption.
+It never issued a suspend command: the user closed and reopened the lid.
+
+The recorder first proved the awake RTC interrupt, then armed a verified
+180-second fallback alarm with a 90-second window for the user to close the lid.
+These longer manual-test timings leave room for human coordination plus logind's
+30-second inhibitor delay; they do not change `power-smoke`'s unattended limits.
+The independent native watchdog was 660 seconds. The alarm was cleared after
+recovery, before its deadline, so this run does not establish RTC-triggered wake.
+
+Evidence establishes the complete lid-trigger sequence:
+
+- ACPI and logind reported open → closed while tty7 was active, AC was online,
+  and Hearthspace held its lid inhibitor.
+- Hearthspace logged `lid closed in active undocked session; preparing lock`.
+  The recorded D-Bus `Suspend(false)` sender, `:1.3390`, maps to this session's
+  supervisor PID 561837, followed by `PrepareForSleep(true)`.
+- Kernel suspend successes increased from 3 to 4, failures stayed at 0, and
+  `CLOCK_BOOTTIME - CLOCK_MONOTONIC` increased by **22.877 seconds**. Reopening
+  the lid and `PrepareForSleep(false)` were recorded on wake. AC briefly reported
+  offline after wake before returning online; it was online at lid closure.
+- The coordinator returned to `awake` with one sleep and one resume, its delay
+  inhibitor rearmed, `lock_confirmed=true`, `recovery_ready=true`, and no final
+  error. A transient control timeout cleared during recovery. Compositor status
+  independently confirmed recovery readiness, redacted windows, and refused
+  capture while locked. The core process identities survived, and the owned
+  swaylock child remained running.
+
+The user saw a dark screen with a cursor after reopening. This is consistent
+with the configured `swaylock --color 111318` without an idle-visible indicator;
+the observation alone does not prove authentication works. No manual unlock was
+observed during the recorder's 150-second window. This run therefore establishes
+physical lid-triggered sleep and protected native recovery, **not** PAM unlock
+or post-unlock application interaction. An obvious idle lock indicator remains
+a usability follow-up.
+
+The recorder then stopped its owned session: `cleanup.complete=true`, tty2
+restored, scope stopped, runtime removed, RTC alarm cleared, and both T3 services
+preserved with their original PIDs. Retained evidence includes
+`artifacts/physical-timeline.jsonl`, `artifacts/logind-events.log`,
+`artifacts/results.json`, the pre-sleep PNG/metadata, manifest, binary hashes,
+session log, and the temporary manual runner. No persistent host policy changed.
+
+An earlier attempt, `/tmp/hearthspace-lid-physical-1`, expired its 45-second
+close window without observing a lid closure. It recorded no sleep, cleared its
+120-second alarm, and completed cleanup. It is retained as an aborted attempt,
+not a failed suspend cycle.
