@@ -55,6 +55,20 @@ def sleep_sample(root=Path("/sys/power/suspend_stats")):
     }
 
 
+def safe_wake_delay(logind_property, wake_after):
+    parts = logind_property.split()
+    if len(parts) != 2 or parts[0] != "t" or not parts[1].isdecimal():
+        raise ControlError("invalid logind InhibitDelayMaxUSec property")
+    delay_usec = int(parts[1])
+    minimum = (delay_usec + 999_999) // 1_000_000 + 10
+    if wake_after < minimum:
+        raise ControlError(
+            f"RTC wake delay must be at least {minimum}s to outlast logind's "
+            "sleep inhibitors with a ten-second safety margin"
+        )
+    return {"logind_inhibit_delay_usec": delay_usec, "minimum_wake_seconds": minimum}
+
+
 def resumed(before, after):
     if after["success"] != before["success"] + 1:
         raise ControlError("expected exactly one completed kernel suspend cycle")

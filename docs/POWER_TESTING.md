@@ -12,9 +12,9 @@ Build the current native binaries and the lock owner fixture before taking a VT:
 ```sh
 cargo build --locked -p hearthspace-session -p hearthspace-compositor -p hearthspace-shell -p hearthspace-settingsd --features hearthspace-compositor/udev
 cargo build --locked -p hearthspace-compositor --example session-lock-fixture
-scripts/power-smoke --session /tmp/hearthspace-power-1 --allow-system-suspend --wake-after 20 --timeout 60 --total-timeout 240
+scripts/power-smoke --session /tmp/hearthspace-power-1 --allow-system-suspend --wake-after 45 --timeout 75 --total-timeout 240
 # A separate run proves the normal locker starts automatically from an unlocked desktop:
-scripts/power-smoke --session /tmp/hearthspace-power-swaylock-1 --allow-system-suspend --locker swaylock --wake-after 20 --timeout 60 --total-timeout 240
+scripts/power-smoke --session /tmp/hearthspace-power-swaylock-1 --allow-system-suspend --locker swaylock --wake-after 45 --timeout 75 --total-timeout 240
 ```
 
 Use a fresh artifact directory for every attempt. Acceptance currently requires
@@ -35,8 +35,13 @@ test lock, including rejection of a second locker. This fixture can release only
 its own lock; it cannot authenticate or unlock swaylock.
 
 Immediately before calling `systemctl suspend`, the test arms an RTC wake alarm
-and verifies the kernel's readback. The default alarm is twenty seconds away;
-logind delay inhibitors consume part of that interval. The test requires exactly
+and verifies the kernel's readback. The default alarm is forty-five seconds away;
+logind delay inhibitors consume part of that interval. Preflight reads logind's
+`InhibitDelayMaxUSec` and requires the wake delay to exceed its rounded-up maximum
+by at least ten seconds. The harness rejects shorter alarms before touching the
+RTC or taking a VT. Hosts with a delay over thirty-five seconds cannot meet this
+margin within the harness's forty-five-second maximum, so unattended testing
+aborts without changing system policy. The test requires exactly
 one successful kernel suspend cycle, no increased failure counter, and measurable
 suspended time from `CLOCK_BOOTTIME - CLOCK_MONOTONIC`. A command returning
 success or an already expired alarm does not establish that sleep occurred.
@@ -44,7 +49,7 @@ success or an already expired alarm does not establish that sleep occurred.
 After wake it requires the power coordinator to have processed both sleep and
 resume, reacquired its inhibitor, and confirmed a newly presented lock shield.
 Both coordinator and compositor must report `recovery_ready`, which requires
-restored physical input, newly presented outputs and no unresolved backend error.
+an available libinput source, newly presented outputs and no unresolved backend error.
 Locked status must redact windows and capture must remain denied. Only then does
 the fixture release its own lock. The same compositor, supervisor, settings
 service, shell, terminal identity and geometry must survive. Fresh native frames

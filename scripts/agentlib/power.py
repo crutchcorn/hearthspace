@@ -69,6 +69,17 @@ class PowerSmoke(DailySmoke):
         )
         if capability["stdout"].strip() != 's "yes"':
             raise ControlError("logind does not allow unattended suspend")
+        delay = command(
+            [
+                "busctl",
+                "get-property",
+                "org.freedesktop.login1",
+                "/org/freedesktop/login1",
+                "org.freedesktop.login1.Manager",
+                "InhibitDelayMaxUSec",
+            ]
+        )
+        wake_margin = verify.safe_wake_delay(delay["stdout"], self.args.wake_after)
         self.alarm.available()
         self.services_before = command(SERVICES)
         self.record(
@@ -79,6 +90,7 @@ class PowerSmoke(DailySmoke):
             suspend=verify.sleep_sample(),
             inhibitors=command(["systemd-inhibit", "--list", "--no-pager"]),
             background_services=self.services_before,
+            wake_margin=wake_margin,
         )
         self.alarm.prove_interrupt()
 
@@ -298,9 +310,9 @@ def main():
     parser.add_argument("--session", type=Path, required=True)
     parser.add_argument("--allow-system-suspend", action="store_true")
     parser.add_argument("--locker", choices=("fixture", "swaylock"), default="fixture")
-    parser.add_argument("--wake-after", type=int, default=20)
+    parser.add_argument("--wake-after", type=int, default=45)
     parser.add_argument("--rtc", default="rtc0")
-    parser.add_argument("--timeout", type=float, default=60)
+    parser.add_argument("--timeout", type=float, default=75)
     parser.add_argument("--total-timeout", type=float, default=240)
     parser.add_argument("--log-level", default="info")
     args = parser.parse_args()

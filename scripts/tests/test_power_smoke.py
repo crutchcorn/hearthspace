@@ -10,11 +10,52 @@ from unittest.mock import Mock, patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from agentlib import power_evidence as verify
 from agentlib.control import ControlError
-from agentlib.power import PowerSmoke
+from agentlib.power import PowerSmoke, main
 from agentlib.power_rtc import WakeAlarm
 
 
 class PowerEvidenceTests(unittest.TestCase):
+    def test_cli_defaults_allow_a_thirty_second_inhibitor_delay(self):
+        with (
+            patch.object(
+                sys,
+                "argv",
+                ["power-smoke", "--session", "/unused", "--allow-system-suspend"],
+            ),
+            patch("agentlib.power.PowerSmoke") as smoke,
+        ):
+            self.assertEqual(main(), 0)
+        args = smoke.call_args.args[0]
+        self.assertEqual(args.wake_after, 45)
+        self.assertEqual(args.timeout, 75)
+        verify.safe_wake_delay("t 30000000", args.wake_after)
+
+    def test_rtc_alarm_outlasts_the_full_logind_delay_plus_safety_margin(self):
+        self.assertEqual(
+            verify.safe_wake_delay("t 30000000\n", 45),
+            {"logind_inhibit_delay_usec": 30_000_000, "minimum_wake_seconds": 40},
+        )
+        verify.safe_wake_delay("t 30000000", 40)
+        verify.safe_wake_delay("t 30000001", 41)
+        for value, seconds in (
+            ("t 30000000", 39),
+            ("t 30000001", 40),
+            ("t 36000000", 45),
+        ):
+            with (
+                self.subTest(value=value, seconds=seconds),
+                self.assertRaisesRegex(ControlError, "outlast"),
+            ):
+                verify.safe_wake_delay(value, seconds)
+
+    def test_malformed_logind_delay_never_defaults_to_a_short_alarm(self):
+        for value in ("", "t", "t -1", "s 30000000", "t 3.0", "t 0 extra"):
+            with (
+                self.subTest(value=value),
+                self.assertRaisesRegex(ControlError, "invalid logind"),
+            ):
+                verify.safe_wake_delay(value, 45)
+
     def test_kernel_success_and_elapsed_suspend_are_both_required(self):
         before = {"success": 5, "fail": 1, "suspended_seconds": 100}
         after = {"success": 6, "fail": 1, "suspended_seconds": 120}
