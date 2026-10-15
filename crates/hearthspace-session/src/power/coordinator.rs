@@ -29,7 +29,7 @@ pub(super) async fn run(runtime: PathBuf, socket: PathBuf) {
             // Lost transport also loses our inhibitors. Shield an established
             // session before reconnecting; never silently continue unprotected.
             if status.connected {
-                let _ = control::command(&socket, "prepare-sleep").await;
+                let _ = control::command(&socket, "lock-shield").await;
             }
             status.error(error);
         }
@@ -88,9 +88,10 @@ async fn connected(
         // without claiming that a physical suspend was observed.
         status.phase = "recovering";
         status.lock_confirmed = false;
+        status.recovery_ready = false;
         cycle.recovering = Some(Instant::now() + Duration::from_secs(12));
         cycle.resume_accepted = false;
-        for command in ["prepare-sleep", "session-resume"] {
+        for command in ["lock-shield", "session-resume"] {
             match control::command(socket, command).await {
                 Ok(_) if command == "session-resume" => cycle.resume_accepted = true,
                 Ok(_) => {}
@@ -122,7 +123,7 @@ async fn connected(
                     snapshot.preparing_for_sleep = preparing;
                 }
                 Event::SessionLock => {
-                    if let Err(error) = control::command(socket, "prepare-sleep").await {
+                    if let Err(error) = control::command(socket, "lock-shield").await {
                         status.error(error);
                     }
                 }
@@ -169,6 +170,7 @@ impl Cycle {
             self.delay = Some(logind.take_sleep_delay().await?);
             self.recovering = Some(Instant::now() + Duration::from_secs(12));
             status.lock_confirmed = false;
+            status.recovery_ready = false;
             tracing::info!(
                 "PrepareForSleep(false): sleep delay rearmed; recovering display and input"
             );
@@ -220,7 +222,7 @@ impl Cycle {
         if closing && !self.sleeping {
             tracing::info!("lid closed in active undocked session; preparing lock");
             self.lid_request = Some(Instant::now() + Duration::from_secs(10));
-            if let Err(error) = control::command(socket, "prepare-sleep").await {
+            if let Err(error) = control::command(socket, "lock-shield").await {
                 status.error(error);
             }
         }
@@ -232,6 +234,7 @@ impl Cycle {
             }
         };
         status.lock_confirmed = control::confirmed(&compositor);
+        status.recovery_ready = compositor["recovery_ready"] == true;
         if let Some(deadline) = self.preparing {
             if status.lock_confirmed {
                 self.preparing = None;
@@ -252,6 +255,7 @@ impl Cycle {
                 self.recovering = Some(Instant::now() + Duration::from_secs(12));
                 status.phase = "recovering";
             } else if self.resume_accepted
+                && status.recovery_ready
                 && (status.lock_confirmed
                     || (compositor["active"] == true && compositor["locked"] == false))
             {
@@ -306,6 +310,7 @@ impl Cycle {
             && self.lid_request.is_none()
             && self.delay.is_some()
             && self.resume_accepted
+            && status.recovery_ready
             && (!snapshot.active || (self.lid.is_some() && compositor["active"] == true))
             && (compositor["locked"] == false || status.lock_confirmed)
             && self.hint == compositor["locked"].as_bool()

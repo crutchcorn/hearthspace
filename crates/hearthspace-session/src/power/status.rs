@@ -12,6 +12,7 @@ pub(super) struct Status {
     pub sleep_count: u64,
     pub resume_count: u64,
     pub lock_confirmed: bool,
+    pub recovery_ready: bool,
     pub session_id: String,
     pub last_error: Option<String>,
 }

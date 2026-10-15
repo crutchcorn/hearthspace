@@ -23,18 +23,16 @@ pub(crate) struct PowerManager {
 
 impl PowerManager {
     pub(crate) fn start(runtime: PathBuf, socket: PathBuf) -> io::Result<Self> {
+        // Fail startup if the worker cannot run instead of silently losing
+        // power coordination after telling the supervisor it started.
+        let executor = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()?;
         let stop = Arc::new(AtomicBool::new(false));
         let cancelled = stop.clone();
         let worker = thread::Builder::new()
             .name("session-power".into())
             .spawn(move || {
-                let runtime_executor = tokio::runtime::Builder::new_current_thread()
-                    .enable_all()
-                    .build();
-                let Ok(executor) = runtime_executor else {
-                    tracing::error!("could not start power coordinator runtime");
-                    return;
-                };
                 executor.block_on(async {
                     tokio::select! {
                         () = coordinator::run(runtime, socket) => {},

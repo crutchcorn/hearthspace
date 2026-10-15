@@ -229,7 +229,7 @@ async fn reconnect_refreshes_hardware_without_inventing_a_sleep_count() {
             assert_eq!(recovering["sleep_count"], 0);
             assert_eq!(recovering["resume_count"], 0);
             assert_eq!(recovering["sleep_inhibited"], true);
-            assert!(fixture.control.state.lock().unwrap().commands.starts_with(&["prepare-sleep".into(), "session-resume".into()]));
+            assert!(fixture.control.state.lock().unwrap().commands.starts_with(&["lock-shield".into(), "session-resume".into()]));
             fixture.control.state.lock().unwrap().confirmed = true;
             wait_status(runtime, "awake").await;
         } => {}
@@ -280,4 +280,28 @@ async fn authenticated_unlock_completes_only_an_acknowledged_resume() {
     );
     fixture.tick(&mut cycle, &snapshot, &mut status).await;
     assert_eq!(status.phase, "degraded");
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn a_presented_lock_cannot_hide_failed_input_recovery() {
+    let fixture = Fixture::new().await;
+    let mut cycle = fixture.cycle().await;
+    let mut status = Status::default();
+    let snapshot = fixture.logind.snapshot().await.unwrap();
+    cycle.recovering = Some(Instant::now() + Duration::from_secs(12));
+    {
+        let mut control = fixture.control.state.lock().unwrap();
+        control.locked = true;
+        control.confirmed = true;
+        control.recovery_failed = true;
+    }
+    fixture.tick(&mut cycle, &snapshot, &mut status).await;
+    assert!(status.lock_confirmed);
+    assert!(!status.recovery_ready);
+    assert!(cycle.recovering.is_some());
+    assert_ne!(status.phase, "awake");
+    fixture.control.state.lock().unwrap().recovery_failed = false;
+    fixture.tick(&mut cycle, &snapshot, &mut status).await;
+    assert!(status.recovery_ready);
+    assert_eq!(status.phase, "awake");
 }

@@ -15,6 +15,7 @@ pub(super) struct ControlState {
     pub locked: bool,
     pub confirmed: bool,
     pub fail_status: bool,
+    pub recovery_failed: bool,
 }
 
 pub(super) struct MockControl {
@@ -49,7 +50,7 @@ impl MockControl {
                     let mut state = server_state.lock().unwrap();
                     state.commands.push(command.into());
                     match command {
-                        "prepare-sleep" => {
+                        "prepare-sleep" | "lock-shield" => {
                             if !state.locked {
                                 state.confirmed = false;
                             }
@@ -66,6 +67,7 @@ impl MockControl {
                         "status" => {
                             let body = serde_json::to_vec(&serde_json::json!({
                                 "active": true,
+                                "recovery_ready": !state.recovery_failed,
                                 "locked": state.locked,
                                 "lock_confirmed": state.confirmed,
                             }))
