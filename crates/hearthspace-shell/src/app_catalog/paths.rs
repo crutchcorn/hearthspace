@@ -17,7 +17,9 @@ pub(super) fn xdg_data_dirs() -> Vec<PathBuf> {
             ]
         });
     dirs.extend(data_dirs);
-    dirs.push(source_tree_data_dir());
+    if env::var_os(hearthspace_common::DEV_ENV).is_some_and(|value| value == "1") {
+        dirs.push(source_tree_data_dir());
+    }
     dirs
 }
 
