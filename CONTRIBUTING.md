@@ -81,6 +81,59 @@ and therefore require GStreamer:
 sudo apt-get install -y libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev
 ```
 
+### Graphical Login Installation
+
+After installing the build dependencies and the native desktop runtime packages
+below, run the installer as your normal user:
+
+```sh
+scripts/install-session install
+```
+
+It checks runtime dependencies, builds the native release without sudo, then
+elevates only the installation step. It installs into `/usr/local`:
+
+- `bin/hearthspace-login`: the graphical-session entry point.
+- `share/wayland-sessions/hearthspace.desktop`: the GDM session chooser entry.
+- `lib/hearthspace/releases/CONTENT_HASH/`: a complete runtime containing the
+  session supervisor, compositor, shell, Settings, settings daemon, notifications,
+  accessibility CLI, app-scope guard, Python login guard, Settings desktop entry,
+  and icon. Wallpaper and cursors are embedded in the compositor.
+- `lib/hearthspace/current`: an atomically updated relative symlink to the
+  selected release; `install.json` records the exact owned files and hashes.
+
+GDM on the development host discovers `/usr/local/share/wayland-sessions`.
+No files under `/usr/share`, GDM/PAM configuration, system-wide default session,
+or automatic-login settings are changed. Existing Ubuntu/GNOME remains available.
+The launcher resolves one release before startup, so updates do not mix binaries
+in an existing session. Older releases remain installed until uninstall.
+
+The login guard runs as a transient `hearthspace-login-PID-START.service` in the
+existing systemd user manager. It records the supervisor's UID, PID/start time,
+exact logind session scope, leader, seat, and Hearthspace desktop identity.
+When the supervisor exits or crashes, it asks logind to terminate that recorded
+session and removes only the verified private runtime after the scope stops.
+logind authorizes the owning user; this requires no sudo or authentication-policy
+override. Background user services, including T3, are outside that login scope.
+Python 3, `systemd-run`, `systemctl`, `loginctl`, and `fusermount3` are runtime
+dependencies of this cleanup path. Startup fails if the guard cannot become ready.
+
+Re-run the same installer to update. For an already verified build, use
+`scripts/install-session install --no-build --binary-dir /absolute/build/bin`.
+`--destdir /absolute/staging` stages an installation without sudo for packaging
+tests; `--prefix` changes the final prefix. Do not run Cargo through sudo.
+
+Log out of Hearthspace before uninstalling from another desktop:
+
+```sh
+scripts/install-session uninstall
+```
+
+Removal verifies the ownership manifest and refuses modified tracked files.
+It preserves untracked files, user settings, application data, other desktops,
+and system policy.
+See [graphical login](docs/LOGIN_SESSION.md) for operation and acceptance details.
+
 ### Native Agent Testing
 
 The native automation harness and its host requirements are documented in

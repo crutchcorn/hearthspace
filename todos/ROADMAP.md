@@ -42,6 +42,9 @@ every application, GPU, or output combination has been validated.
 - [x] **Lid and suspend coordination** — lock-before-sleep, active-session lid
       policy, and bounded native wake recovery. See [power handling](../docs/POWER.md)
       and [hardware acceptance](../docs/POWER_TESTING.md).
+- [x] **Graphical login session integration** — installed native desktop entry,
+      bounded startup and owned-login cleanup. See [graphical login](../docs/LOGIN_SESSION.md)
+      for installation and the separate pending user-authentication acceptance.
 
 ## Known Rough Edges
 
@@ -57,7 +60,6 @@ every application, GPU, or output combination has been validated.
 
 ## Deferred Scope
 
-- [ ] **Full login-session desktop environment integration.**
 - [ ] **Minimization, workspaces, and richer task-management UI.** The existing
       shell bar and window selector cover basic launch and recovery.
 - [ ] **Automatic idle lock and broader power management.** Remaining hardware

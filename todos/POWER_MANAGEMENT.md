@@ -7,10 +7,12 @@ native recovery on the GPD host. This does not establish all-day laptop behavior
 
 ## Current work
 
-- [ ] Make the idle lock state visible and verify real password authentication
-      after wake, returning to the same applications with working keyboard,
-      touchpad, and touchscreen. The protocol fixture cannot establish PAM
-      authentication; the user must enter their password locally.
+- [x] Make the idle lock state visible with swaylock's persistent indicator,
+      keyboard layout, Caps Lock feedback, and failed-attempt count.
+- [ ] Verify real password authentication after wake, returning to the same
+      applications with working keyboard, touchpad, and touchscreen. The protocol
+      fixture cannot establish PAM authentication; the user must enter their
+      password locally.
 
 ## Remaining hardware acceptance
 

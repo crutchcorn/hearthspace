@@ -29,6 +29,12 @@ After [setting up the development dependencies](./CONTRIBUTING.md), start a full
 session with `cargo run -- --dev --no-watch-apps`. From a real Linux TTY this uses
 the native DRM/KMS backend; inside another desktop it opens a nested window.
 
+To choose Hearthspace at the graphical login screen, run
+`scripts/install-session install` as your normal user, then log out and select
+**Hearthspace** in the session chooser. The installer builds an optimized native
+release before requesting sudo. See [graphical login](./docs/LOGIN_SESSION.md)
+for installation, updates, removal, and the remaining local acceptance checks.
+
 Super+Return opens a terminal. Super+Space searches installed applications and
 running windows; Alt+Tab switches applications. Super+arrow keys pan the canvas,
 Super+0 resets the view, and Super+M / Super+F toggle maximize / fullscreen.

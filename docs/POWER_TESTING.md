@@ -195,8 +195,9 @@ with the configured `swaylock --color 111318` without an idle-visible indicator;
 the observation alone does not prove authentication works. No manual unlock was
 observed during the recorder's 150-second window. This run therefore establishes
 physical lid-triggered sleep and protected native recovery, **not** PAM unlock
-or post-unlock application interaction. An obvious idle lock indicator remains
-a usability follow-up.
+or post-unlock application interaction. A persistent idle indicator and password
+feedback have since been implemented; local visual and PAM-unlock acceptance
+remain pending the user's later test.
 
 The recorder then stopped its owned session: `cleanup.complete=true`, tty2
 restored, scope stopped, runtime removed, RTC alarm cleared, and both T3 services
