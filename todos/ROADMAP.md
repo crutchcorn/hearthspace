@@ -39,6 +39,10 @@ every application, GPU, or output combination has been validated.
       layout, and independently rendered connectors. The remaining hardware
       matrix is tracked in [NATIVE_BACKEND.md](./NATIVE_BACKEND.md).
 
+- [x] **Lid and suspend coordination** — lock-before-sleep, active-session lid
+      policy, and bounded native wake recovery. See [power handling](../docs/POWER.md)
+      and [hardware acceptance](../docs/POWER_TESTING.md).
+
 ## Known Rough Edges
 
 - [ ] **Optional desktop protocols** — several optional protocols are not
@@ -56,7 +60,7 @@ every application, GPU, or output combination has been validated.
 - [ ] **Full login-session desktop environment integration.**
 - [ ] **Minimization, workspaces, and richer task-management UI.** The existing
       shell bar and window selector cover basic launch and recovery.
-- [ ] **Automatic idle lock, suspend policy, and broader power management.**
+- [ ] **Automatic idle lock and broader power management.**
 - [ ] **Complex multi-monitor policy and multi-GPU rendering.** Existing output
       rendering/layout does not establish complete hotplug or driver coverage.
 - [ ] **Theming** beyond the current proof-of-concept shell UI.

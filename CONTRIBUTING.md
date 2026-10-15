@@ -246,6 +246,13 @@ are restarted at most twice after an unexpected exit and are stopped with their
 session. `--no-desktop-services` skips these helpers for isolated diagnostics;
 normal nested sessions also leave them disabled.
 
+Native sessions also coordinate logind lid/suspend and wake recovery. They use
+session-owned inhibitors and the packaged swaylock; no `/etc/systemd/logind.conf`,
+PAM, or persistent RTC changes are needed. `--no-desktop-services` disables this
+coordinator as well. See [power behavior](docs/POWER.md) and the opt-in
+[physical suspend test](docs/POWER_TESTING.md), which temporarily owns an otherwise
+unused RTC alarm and removes it after testing.
+
 The notification daemon is the workspace binary `hearthspace-notifications`;
 include it alongside the session, compositor, shell, and settings daemon when
 building or installing a native session. Its application protocol, shell control

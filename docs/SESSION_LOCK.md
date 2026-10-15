@@ -81,3 +81,9 @@ remain unchanged. See [contributing](../CONTRIBUTING.md) for installation and
 
 The protocol requirements are defined in
 [ext-session-lock-v1](https://wayland.app/protocols/ext-session-lock-v1).
+
+Sleep preparation arms an opaque shield before starting swaylock. A first locker
+may adopt that shield; an established owner can never be replaced after failure.
+VT and sleep recovery invalidate prior presentation evidence and require fresh
+locked page flips. See [lid and suspend handling](POWER.md) for coordinator policy
+and failure recovery.

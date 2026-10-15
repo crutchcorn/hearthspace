@@ -79,3 +79,49 @@ logind sleep/resume path with either an established test lock or the automatic
 real locker, depending on the selected mode. Swaylock authentication,
 physical lid-switch operation, external-monitor policy,
 and firmware wake behavior on other machines need separate evidence.
+
+## Acceptance record — 2026-10-14/15
+
+Final implementation was exercised on bare-metal GPD hardware, AMD Strix Radeon
+880M/890M (`1002:150e`, `amdgpu`), Ubuntu kernel `7.0.0-38-generic`, and one
+2560×1600 eDP-1 display at scale 2. The kernel exposes `s2idle`; logind's maximum
+inhibitor delay was 30 seconds. Both final runs used verified 45-second RTC alarms
+and independently bounded native sessions on tty7, returning to the original tty2.
+
+- `/tmp/hearthspace-power-swaylock-final`: passed automatic lock from an unlocked
+  desktop, 45.186 seconds of kernel-recorded suspend, confirmed lock and native
+  recovery readiness, owned real swaylock, preserved core process identities,
+  capture refusal, and complete cleanup. No password or PAM unlock was used.
+- `/tmp/hearthspace-power-fixture-final`: passed 44.479 seconds of recorded
+  suspend, fresh locked presentation and recovery readiness, owner-only unlock,
+  preserved terminal identity/geometry and core processes, visible green marker,
+  and exact typed-token output after wake. Native eDP-1 frame IDs advanced from
+  283 before sleep to 302 after wake and 344 after input. The retained PNGs were
+  inspected alongside these semantic assertions.
+
+Both manifests record `cleanup.complete=true`, stopped scopes, removed private
+runtimes, and restored tty2. `t3code.service` and `t3code-tailnet.service` remained
+active with their original PIDs. The test-owned RTC alarm was cleared. No global
+logind, PAM, sleep-service, or persistent RTC configuration was changed.
+
+Earlier attempts remain available: `/tmp/hearthspace-power-1` timed out before
+sleep because a transient startup control timeout left the status permanently
+marked degraded; healthy-state reconciliation and a regression fixed that bug.
+Its cleanup completed. `/tmp/hearthspace-power-2` then passed a 45.060-second
+fixture cycle, before the final recovery-readiness and sleep-latch changes. The
+user reported waking that run early; its kernel counters prove sleep/recovery,
+not the wake source. All three actual cycles incremented the kernel success
+counter without increasing its failure counter.
+
+Final full checks passed **438 Rust tests** and **196 Python tests**, including
+real headless clients, private D-Bus logind fixtures, transport deadlines, lid
+eligibility and stale-state rejection, inhibitor lifetimes, daemon replacement,
+missing/duplicate sleep signals, input/presentation recovery, failed locker
+startup, and authentication during pending sleep. Workspace formatting, Clippy
+with warnings denied, all-target native/E2E/test-app builds, Ruff, and diff checks
+also passed. Logs are `/tmp/hearthspace-power-final-{tests,python,clippy,build}.log`.
+
+Physical lid closure, a connected external monitor/dock, and real PAM password
+unlock were not exercised in this acceptance. Their implemented policy and
+protocol paths have isolated coverage; broader hardware and authentication
+claims require their own observed runs.

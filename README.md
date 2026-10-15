@@ -33,7 +33,8 @@ Super+Return opens a terminal. Super+Space searches installed applications and
 running windows; Alt+Tab switches applications. Super+arrow keys pan the canvas,
 Super+0 resets the view, and Super+M / Super+F toggle maximize / fullscreen.
 Slide three fingers to pan the canvas; pinch them to zoom. Native sessions provide
-notifications and manual locking; the shell offers confirmed logout. See [window management](./docs/WINDOW_MANAGEMENT.md)
+notifications, locking, and [lid/suspend recovery](./docs/POWER.md);
+the shell offers confirmed logout. See [window management](./docs/WINDOW_MANAGEMENT.md)
 for keyboard controls and [app compatibility](./docs/APPS.md) for profile and
 package behavior.
 
