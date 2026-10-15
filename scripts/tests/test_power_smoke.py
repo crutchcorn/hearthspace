@@ -35,6 +35,7 @@ class PowerEvidenceTests(unittest.TestCase):
             "connected": True,
             "sleep_inhibited": True,
             "lock_confirmed": True,
+            "recovery_ready": True,
             "active": True,
             "sleep_count": 4,
             "resume_count": 3,
@@ -46,6 +47,7 @@ class PowerEvidenceTests(unittest.TestCase):
             ("connected", False),
             ("sleep_inhibited", False),
             ("lock_confirmed", False),
+            ("recovery_ready", False),
             ("active", False),
             ("sleep_count", 3),
             ("resume_count", 2),
@@ -53,6 +55,12 @@ class PowerEvidenceTests(unittest.TestCase):
         ):
             with self.subTest(key=key), self.assertRaises(ControlError):
                 verify.recovered(before, after | {key: wrong})
+
+    def test_compositor_must_confirm_physical_input_and_presentation_recovery(self):
+        verify.recovery_ready({"recovery_ready": True})
+        for status in ({}, {"recovery_ready": False}, {"recovery_ready": "true"}):
+            with self.subTest(status=status), self.assertRaises(ControlError):
+                verify.recovery_ready(status)
 
     def test_locked_metadata_is_redacted_and_presentation_is_confirmed(self):
         status = {"locked": True, "lock_confirmed": True, "windows": []}

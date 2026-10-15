@@ -11,6 +11,42 @@ def process_identity(pid, root=Path("/proc")):
     return {"pid": pid, "start_ticks": int(stat[19])}
 
 
+def owned_swaylocks(compositor_pid, root=Path("/proc")):
+    compositor = root / str(compositor_pid)
+    cgroup = (compositor / "cgroup").read_text()
+    owner = compositor.stat().st_uid
+    found = []
+    for path in root.iterdir():
+        if not path.name.isdecimal():
+            continue
+        try:
+            if (path / "comm").read_text().strip() != "swaylock":
+                continue
+            status = dict(
+                line.split(":", 1)
+                for line in (path / "status").read_text().splitlines()
+            )
+            if (
+                int(status["PPid"]) != compositor_pid
+                or int(status["Uid"].split()[0]) != owner
+                or (path / "cgroup").read_text() != cgroup
+            ):
+                continue
+            found.append(
+                {
+                    **process_identity(int(path.name), root),
+                    "parent_pid": compositor_pid,
+                    "uid": owner,
+                    "comm": "swaylock",
+                    "cgroup": cgroup,
+                }
+            )
+        except (FileNotFoundError, PermissionError):
+            # Other host processes may exit or have unreadable /proc entries.
+            continue
+    return found
+
+
 def sleep_sample(root=Path("/sys/power/suspend_stats")):
     return {
         "success": int((root / "success").read_text()),
@@ -37,12 +73,18 @@ def locked(status):
         raise ControlError("locked status exposed application metadata")
 
 
+def recovery_ready(status):
+    if status.get("recovery_ready") is not True:
+        raise ControlError("physical input and output recovery is not ready")
+
+
 def recovered(before, after):
     expected = {
         "phase": "awake",
         "connected": True,
         "sleep_inhibited": True,
         "lock_confirmed": True,
+        "recovery_ready": True,
         "active": True,
         "sleep_count": before["sleep_count"] + 1,
         "resume_count": before["resume_count"] + 1,

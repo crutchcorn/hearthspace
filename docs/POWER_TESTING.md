@@ -13,6 +13,8 @@ Build the current native binaries and the lock owner fixture before taking a VT:
 cargo build --locked -p hearthspace-session -p hearthspace-compositor -p hearthspace-shell -p hearthspace-settingsd --features hearthspace-compositor/udev
 cargo build --locked -p hearthspace-compositor --example session-lock-fixture
 scripts/power-smoke --session /tmp/hearthspace-power-1 --allow-system-suspend --wake-after 20 --timeout 60 --total-timeout 240
+# A separate run proves the normal locker starts automatically from an unlocked desktop:
+scripts/power-smoke --session /tmp/hearthspace-power-swaylock-1 --allow-system-suspend --locker swaylock --wake-after 20 --timeout 60 --total-timeout 240
 ```
 
 Use a fresh artifact directory for every attempt. Acceptance currently requires
@@ -21,7 +23,7 @@ suspend capability, and readable `/sys/power/suspend_stats` counters. Ordinary
 regression tests never suspend the machine:
 
 ```sh
-python3 -m unittest discover -s scripts/tests -p test_power_smoke.py -v
+python3 -m unittest discover -s scripts/tests -p 'test_power*.py' -v
 ```
 
 The smoke test first waits for a three-second RTC interrupt **while the machine
@@ -41,11 +43,22 @@ success or an already expired alarm does not establish that sleep occurred.
 
 After wake it requires the power coordinator to have processed both sleep and
 resume, reacquired its inhibitor, and confirmed a newly presented lock shield.
+Both coordinator and compositor must report `recovery_ready`, which requires
+restored physical input, newly presented outputs and no unresolved backend error.
 Locked status must redact windows and capture must remain denied. Only then does
 the fixture release its own lock. The same compositor, supervisor, settings
 service, shell, terminal identity and geometry must survive. Fresh native frames
 must show the terminal's marker, and typing must produce an exact token in that
 same terminal.
+
+The default `--locker fixture` follows the owner-unlock workflow above.
+`--locker swaylock` instead verifies the desktop begins unlocked with no existing
+owned swaylock process, then lets the real `PrepareForSleep` path launch the
+normal locker. After sleep it requires a swaylock child of the same compositor,
+with the same UID and cgroup, preserved core processes, and confirmed lock/input/
+output recovery. Capture remains denied. This mode never authenticates, releases
+the lock, or kills its locker; final cleanup stops the owned native session.
+Report this as automatic-lock acceptance with PAM unlock still untested.
 
 Normal and failure exits stop the owned native session and verify original-VT,
 scope, runtime, and background T3 service recovery. The RTC alarm is cleared only
@@ -57,6 +70,7 @@ whose firmware fails to honor the RTC alarm.
 Retain `artifacts/results.json`, `lock-fixture.log`, PNG/JSON pairs, `session.log`,
 `session.json` and `binaries.json`. Report actual GPU, kernel, output scale and
 suspend mode, including all failed attempts. This acceptance proves the real
-logind sleep/resume path with an already established test lock. Automatic
-swaylock authentication, physical lid-switch operation, external-monitor policy,
+logind sleep/resume path with either an established test lock or the automatic
+real locker, depending on the selected mode. Swaylock authentication,
+physical lid-switch operation, external-monitor policy,
 and firmware wake behavior on other machines need separate evidence.

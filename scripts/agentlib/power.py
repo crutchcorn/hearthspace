@@ -3,6 +3,7 @@
 import argparse
 import json
 import shlex
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -39,12 +40,15 @@ class PowerSmoke(DailySmoke):
         super().__init__(args)
         self.alarm = WakeAlarm(args.rtc, self.record)
         self.fixture = ROOT / "target/debug/examples/session-lock-fixture"
+        self.locker = getattr(args, "locker", "fixture")
 
     def preflight(self):
-        if not self.fixture.is_file():
+        if self.locker == "fixture" and not self.fixture.is_file():
             raise ControlError(
                 "build the compositor session-lock-fixture example first"
             )
+        if self.locker == "swaylock" and shutil.which("swaylock") is None:
+            raise ControlError("automatic locker acceptance requires swaylock")
         command(["sudo", "-n", "true"])
         local = command(["timedatectl", "show", "--property=LocalRTC", "--value"])
         if local["stdout"].strip() != "no":
@@ -93,6 +97,11 @@ class PowerSmoke(DailySmoke):
         self.step("ready", DailySmoke.ready)
         self.step("power-ready", PowerSmoke.power_ready)
         self.step("preserved-app", PowerSmoke.application)
+        if self.locker == "swaylock":
+            self.step("unlocked-before-sleep", PowerSmoke.unlocked)
+            self.step("suspend-resume", PowerSmoke.suspend)
+            self.step("automatic-swaylock", PowerSmoke.automatic_locker)
+            return
         release = self.artifacts / "fixture-release"
         socket = Path(self.manifest["runtime_dir"]) / self.manifest["wayland_display"]
         with (self.artifacts / "lock-fixture.log").open("w") as log:
@@ -114,6 +123,39 @@ class PowerSmoke(DailySmoke):
                     process.kill()
                     process.wait(timeout=5)
                 self.alarm.clear()
+
+    def unlocked(self):
+        status = self.control.status()
+        if (
+            status.get("locked") is not False
+            or status.get("lock_confirmed") is not False
+        ):
+            raise ControlError(
+                "automatic swaylock test must begin from an unlocked desktop"
+            )
+        if verify.owned_swaylocks(self.manifest["compositor_pid"]):
+            raise ControlError("a swaylock process already exists in the owned session")
+        self.record("unlocked-before-sleep", status=status)
+
+    def preserved_processes(self):
+        for name, identity in self.processes_before.items():
+            if verify.process_identity(identity["pid"]) != identity:
+                raise ControlError(f"{name} process restarted during suspend")
+        self.record("processes-preserved", processes=self.processes_before)
+
+    def automatic_locker(self):
+        self.preserved_processes()
+        lockers = self.until(
+            "real swaylock child in the owned compositor session",
+            lambda: verify.owned_swaylocks(self.manifest["compositor_pid"]),
+        )
+        self.locked()
+        self.record(
+            "automatic-swaylock-confirmed",
+            lockers=lockers,
+            authenticated_unlock_tested=False,
+            cleanup="owned-native-session-stop",
+        )
 
     def power_ready(self):
         self.until(
@@ -200,6 +242,7 @@ class PowerSmoke(DailySmoke):
             "rearmed power coordinator and presented lock shield", recovery
         )
         self.locked()
+        verify.recovery_ready(self.control.status())
         self.record("power-recovered", state=state)
         self.alarm.clear()
 
@@ -208,10 +251,7 @@ class PowerSmoke(DailySmoke):
             "owner fixture unlocked", lambda: not self.control.status()["locked"]
         )
         verify.preserved(self.window_before, self.window(self.target))
-        for name, identity in self.processes_before.items():
-            if verify.process_identity(identity["pid"]) != identity:
-                raise ControlError(f"{name} process restarted during suspend")
-        self.record("processes-preserved", processes=self.processes_before)
+        self.preserved_processes()
         after_outputs = {item["name"] for item in self.control.status()["outputs"]}
         if after_outputs != self.frames_before.keys():
             raise ControlError("connected output set changed across suspend")
@@ -257,6 +297,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--session", type=Path, required=True)
     parser.add_argument("--allow-system-suspend", action="store_true")
+    parser.add_argument("--locker", choices=("fixture", "swaylock"), default="fixture")
     parser.add_argument("--wake-after", type=int, default=20)
     parser.add_argument("--rtc", default="rtc0")
     parser.add_argument("--timeout", type=float, default=60)
