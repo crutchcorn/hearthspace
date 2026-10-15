@@ -11,11 +11,11 @@
 
 <hr />
 
-Hearthspace is an experimental Wayland compositor and shell built around an infinite canvas for applications, remembered window placement, and agent control.
+Hearthspace is an experimental Wayland compositor and shell built around an infinite canvas for applications and agent control.
 
 <div align="center">
 
-https://github.com/user-attachments/assets/de48fb7e-0d4b-4aef-9380-fc27869ccbde
+https://github.com/user-attachments/assets/3dc14df4-7025-42bb-8c22-c2d842776fd7
 
 </div>
 
