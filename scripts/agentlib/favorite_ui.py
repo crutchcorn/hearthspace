@@ -1,4 +1,4 @@
-"""Favorites configured in Settings and drawn in an explicit search area."""
+"""App gestures configured in Settings and drawn in an explicit search area."""
 
 import contextlib
 import itertools
@@ -8,6 +8,7 @@ import time
 from pathlib import Path
 from types import SimpleNamespace
 
+from . import search_touch
 from . import shell_checks as checks
 from .control import ControlError
 from .daily_checks import a11y
@@ -27,6 +28,7 @@ def services(directory, _evidence, env, _deadline):
     applications = data / "applications"
     applications.mkdir(parents=True)
     config.mkdir()
+    search_touch.scroll_apps(applications)
     env.update(XDG_CONFIG_HOME=str(config), XDG_DATA_HOME=str(data))
     (applications / APP_ID).write_text(
         "[Desktop Entry]\nType=Application\n"
@@ -110,12 +112,11 @@ def configure(smoke):
         ),
     )
     smoke.settings_id = window["id"]
-    settings_click(smoke, "Favorites")
+    settings_click(smoke, "Search")
     settings_click(smoke, "Find apps", role=None)
     with Input(smoke.control) as inputs:
         inputs.type(APP_NAME)
-    settings_click(smoke, f"Add {APP_NAME} to favorites")
-    settings_click(smoke, f"Assign gesture for {APP_NAME}")
+    settings_click(smoke, f"Add gesture for {APP_NAME}")
     element = smoke.until(
         "Settings gesture drawing area",
         lambda: settings_elements(smoke, "Gesture drawing area"),
@@ -150,6 +151,9 @@ def configure(smoke):
         raise ControlError("favorites file is not private to its owner")
     smoke.record("favorite-persisted", path=str(path), app_id=APP_ID)
     smoke.capture("favorite-settings-saved")
+    if smoke.control.status()["backend"] == "native":
+        search_touch.recording_cancel(smoke)
+        search_touch.settings_scroll(smoke)
     smoke.control.request(f"close-window {smoke.settings_id}")
     smoke.until("Settings closed", lambda: smoke.window(smoke.settings_id) is None)
 
@@ -162,10 +166,9 @@ def launch_mode(smoke):
     if not checks.panel(smoke, "search"):
         checks.click(smoke, "Search")
         checks.opened(smoke, "search")
-    smoke.until(
-        "favorite reloaded from Settings",
-        lambda: checks.elements(smoke, f"Open: {APP_NAME}"),
-    )
+    if checks.elements(smoke, f"Open: {APP_NAME}"):
+        raise ControlError("empty search still lists assigned apps")
+    checks.elements(smoke, "Settings")
     checks.click(smoke, "Draw to launch", "search")
     state = smoke.until(
         "armed search drawing area",
@@ -175,6 +178,14 @@ def launch_mode(smoke):
                 "armed"
             )
             else None
+        ),
+    )
+    smoke.until(
+        "drawing readiness presented in the search UI",
+        lambda: checks.elements(
+            smoke,
+            "Lift your finger or release the button to launch a clear match.",
+            role=None,
         ),
     )
     panel = checks.opened(smoke, "search")
@@ -254,6 +265,8 @@ def touch_cases(smoke, rect):
 
 
 def run(smoke):
+    if smoke.control.status()["backend"] == "native":
+        search_touch.top_bar(smoke)
     configure(smoke)
     rect = launch_mode(smoke)
     before, viewport = window_ids(smoke), smoke.control.status()["viewport"]
