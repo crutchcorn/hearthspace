@@ -1,0 +1,7 @@
+#!/usr/bin/env python3
+"""Record presented native Hearthspace frames as a human-paced MP4."""
+
+from agentlib.recording import main
+
+if __name__ == "__main__":
+    raise SystemExit(main())

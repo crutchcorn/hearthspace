@@ -163,6 +163,29 @@ through the harness to restore its original VT and remove the private runtime;
 recovery records under `/run` disappear on reboot. User-selected artifact
 directories retain logs and screenshots until explicitly removed.
 
+#### Native screen recordings
+
+The native recorder uses FFmpeg to encode captured compositor frames into an
+H.264 MP4. Install its optional host dependency (including `ffprobe`) with:
+
+```sh
+sudo apt-get install -y --no-install-recommends ffmpeg
+```
+
+The physical development host uses Ubuntu's FFmpeg **8.0.1**. See
+[recording a native demo](./docs/NATIVE_RECORDING.md) for capture, pacing, and
+cleanup. This dependency is only needed for recording, not desktop operation.
+
+For GitHub preview checks in T3 Code on Ubuntu hosts whose AppArmor policy
+blocks Chrome's sandbox, the one-time host setup is:
+
+```sh
+sudo env "PATH=$PATH" t3 browser setup
+```
+
+This setup was applied on the development host to allow T3's sandboxed browser;
+it does not change Hearthspace's runtime or browser configuration.
+
 Native supervisor launches automatically create a private `dbus-run-session`
 before starting desktop components. The harness already supplies that bus and
 uses `--private-session-bus` to reuse it. Both routes explicitly provide
