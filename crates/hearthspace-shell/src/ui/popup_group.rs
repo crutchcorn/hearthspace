@@ -119,7 +119,16 @@ impl Widget for PopupGroup {
         _: LenReq,
         cross: Option<Length>,
     ) -> Length {
-        ctx.redirect_measurement(&mut self.inner, axis, cross)
+        let length = ctx.redirect_measurement(&mut self.inner, axis, cross);
+        // Portal compares intrinsic height before pixel snapping, while the
+        // resize observer reports the snapped layout height. Round upward at
+        // their shared boundary so a fractional remainder (e.g. 0.0625px)
+        // cannot create a scrollbar in a naturally sized popup.
+        if axis == Axis::Vertical {
+            Length::px(length.get().ceil())
+        } else {
+            length
+        }
     }
     fn layout(&mut self, ctx: &mut LayoutCtx<'_>, _: &PropertiesRef<'_>, size: Size) {
         ctx.run_layout(&mut self.inner, size);

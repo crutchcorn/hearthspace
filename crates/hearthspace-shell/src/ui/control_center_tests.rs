@@ -6,7 +6,7 @@ use crate::{
 use masonry::{
     accesskit::{Action as AccessAction, ActionData, ActionRequest, Role, TreeId},
     core::{
-        TextEvent, WidgetId,
+        TextEvent, WidgetId, WindowEvent,
         keyboard::{Key, NamedKey},
     },
 };
@@ -128,4 +128,121 @@ fn unavailable_devices_disable_slider_and_mute_without_fabricating_zero_readings
             .any(|text| text == "This display has no adjustable backlight.")
     );
     assert!(!text.iter().any(|text| text == "0%"));
+}
+
+#[test]
+fn available_controls_fit_their_measured_window_without_scrollbars() {
+    for scale in [1.0, 1.25, 1.5, 2.0, 3.0] {
+        let mut state = ShellState::new("/unused".into(), vec!["eDP-1".into()]);
+        state.controls.snapshot.audio = Ok(AudioStatus {
+            volume: 38,
+            muted: false,
+            output: "Ryzen HD Audio Controller Analog Stereo".into(),
+        });
+        state.controls.snapshot.brightness = Ok(Some(BrightnessStatus {
+            percentage: 60,
+            device: "panel".into(),
+        }));
+        let mut ui = Ui::new(state, view, (340, 240));
+        ui.harness.process_window_event(WindowEvent::Rescale(scale));
+        ui.harness.process_window_event(WindowEvent::Resize(
+            ((340.0 * scale) as u32, (240.0 * scale) as u32).into(),
+        ));
+        ui.dispatch(&view);
+        let normal = resize_to_measured(&mut ui, scale, &view);
+        assert!(normal < 240.0, "natural content must still shrink");
+        assert_natural_content_visible(&ui);
+
+        ui.state.controls.snapshot.audio.as_mut().unwrap().output =
+            "An unusually long audio output description. ".repeat(80);
+        ui.rebuild(&view);
+        ui.dispatch(&view);
+        assert_eq!(resize_to_measured(&mut ui, scale, &view), 400.0);
+        assert!(
+            ids(&ui.harness).into_iter().any(|id| {
+                ui.harness.access_node(id).is_some_and(|node| {
+                    node.role() == Role::ScrollView
+                        && node.scroll_y_max().is_some_and(|max| max > 0.0)
+                })
+            }),
+            "genuinely overflowing content must remain scrollable"
+        );
+
+        ui.state.controls.snapshot.audio.as_mut().unwrap().output =
+            "Ryzen HD Audio Controller Analog Stereo".into();
+        ui.rebuild(&view);
+        ui.dispatch(&view);
+        assert_eq!(resize_to_measured(&mut ui, scale, &view), normal);
+        assert_natural_content_visible(&ui);
+    }
+}
+
+fn resize_to_measured<V>(ui: &mut Ui<V>, scale: f64, build: &impl Fn(&ShellState) -> V) -> f64
+where
+    V: WidgetView<ShellState, Widget = masonry::widgets::SizedBox>,
+{
+    // The production window resizes to exactly this measured logical size.
+    let size = popup::size(&ui.state.outputs[0], PopupKind::Controls, 340.0, 240.0);
+    ui.harness.process_window_event(WindowEvent::Resize(
+        (
+            (size.width * scale).ceil() as u32,
+            (size.height * scale).ceil() as u32,
+        )
+            .into(),
+    ));
+    ui.dispatch(build);
+    assert_eq!(
+        popup::size(&ui.state.outputs[0], PopupKind::Controls, 340.0, 240.0),
+        size,
+        "measured window size must remain stable after applying it"
+    );
+    size.height
+}
+
+fn assert_natural_content_visible<V>(ui: &Ui<V>)
+where
+    V: WidgetView<ShellState, Widget = masonry::widgets::SizedBox>,
+{
+    let ids = ids(&ui.harness);
+    let viewport = ids
+        .iter()
+        .find_map(|&id| {
+            let node = ui.harness.access_node(id)?;
+            if node.role() != Role::ScrollView {
+                return None;
+            }
+            assert!(
+                node.scroll_y_max().is_none_or(|max| max <= 0.0),
+                "measured popup must not overflow by a fractional pixel"
+            );
+            node.bounding_box()
+        })
+        .unwrap();
+    for &id in &ids {
+        let widget = ui.harness.get_widget_with_id(id);
+        if widget.downcast::<masonry::widgets::ScrollBar>().is_some() {
+            assert!(
+                widget.ctx().is_stashed(),
+                "natural content must hide both scrollbars"
+            );
+        }
+    }
+    for expected in ["60%", "38%"] {
+        let bounds = ids
+            .iter()
+            .find_map(|&id| {
+                let node = ui.harness.access_node(id)?;
+                (node.value().as_deref() == Some(expected))
+                    .then(|| node.bounding_box())
+                    .flatten()
+            })
+            .unwrap_or_else(|| panic!("Missing percentage {expected}"));
+        assert!(
+            bounds.x0 >= viewport.x0
+                && bounds.x1 <= viewport.x1
+                && bounds.y0 >= viewport.y0
+                && bounds.y1 <= viewport.y1,
+            "percentage {expected} must be fully visible: {bounds:?} vs {viewport:?}"
+        );
+    }
 }
