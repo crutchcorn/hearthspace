@@ -17,19 +17,21 @@ def elements(smoke, name, *, role="button"):
     return a11y(smoke, "find", selector(name, role=role))["elements"]
 
 
-def panel(smoke, kind):
-    matches = [
-        item
-        for item in smoke.control.status().get("shell_panels", [])
-        if item["kind"] == kind
-    ]
+def panel(smoke, kind, *, exclusive=False):
+    panels = smoke.control.status().get("shell_panels", [])
+    matches = [item for item in panels if item["kind"] == kind]
     if len(matches) > 1:
         raise ControlError("shell acceptance needs one output and one matching panel")
+    if exclusive and len(panels) != 1:
+        return None
     return matches[0] if matches else None
 
 
-def opened(smoke, kind):
-    return smoke.until(f"{kind} panel mapped", lambda: panel(smoke, kind))
+def opened(smoke, kind, *, exclusive=False):
+    state = "mapped without other shell panels" if exclusive else "mapped"
+    return smoke.until(
+        f"{kind} panel {state}", lambda: panel(smoke, kind, exclusive=exclusive)
+    )
 
 
 def closed(smoke):

@@ -6,6 +6,7 @@ import json
 import sys
 import tempfile
 import unittest
+from functools import partial
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
@@ -13,6 +14,7 @@ from unittest.mock import Mock, patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from agentlib import daily_checks, shell_checks, shell_smoke
 from agentlib.control import ControlError
+from agentlib.smoke import Smoke
 from agentlib.viewport_fixture import set_viewport
 
 
@@ -157,6 +159,48 @@ class ShellEvidenceTests(unittest.TestCase):
         with self.assertRaisesRegex(ControlError, "one matching panel"):
             shell_checks.panel(smoke, "search")
 
+    def test_exclusive_panel_waits_for_previous_surface_teardown(self):
+        smoke = Mock()
+        smoke.until.side_effect = partial(Smoke.until, smoke)
+        notifications = {"kind": "notifications"}
+        power = {"kind": "power"}
+        smoke.control.status.side_effect = [
+            {"shell_panels": panels}
+            for panels in ([notifications], [notifications, power], [power])
+        ]
+        smoke.control.deadline.remaining.return_value = 1
+        with patch("agentlib.smoke.time.sleep") as sleep:
+            self.assertEqual(shell_checks.opened(smoke, "power", exclusive=True), power)
+        self.assertEqual(sleep.call_count, 2)
+        self.assertEqual(smoke.control.status.call_count, 3)
+
+    def test_exclusive_panel_deadline_rejects_overlap_and_missing_target(self):
+        power = {"kind": "power"}
+        for panels in (
+            [power, {"kind": "notifications"}],
+            [power, {"kind": "map"}],
+            [{"kind": "notifications"}],
+            [],
+        ):
+            with self.subTest(panels=panels):
+                smoke = Mock()
+                smoke.until.side_effect = partial(Smoke.until, smoke)
+                smoke.control.status.return_value = {"shell_panels": panels}
+                smoke.control.deadline.remaining.side_effect = [
+                    1,
+                    ControlError("deadline expired"),
+                ]
+                with (
+                    patch("agentlib.smoke.time.sleep") as sleep,
+                    self.assertRaisesRegex(
+                        ControlError,
+                        "timed out waiting for power panel mapped without other shell panels",
+                    ),
+                ):
+                    shell_checks.opened(smoke, "power", exclusive=True)
+                self.assertEqual(sleep.call_count, 1)
+                self.assertEqual(smoke.control.status.call_count, 2)
+
     def test_compact_bar_rejects_old_actions_and_nonadjacent_icons(self):
         icons = list(shell_checks.BAR_ICONS)
         for names, succeeds in [
@@ -209,7 +253,7 @@ class ShellEvidenceTests(unittest.TestCase):
         smoke.control.status.return_value = {"locked": False}
         with (
             patch.object(shell_smoke.checks, "click") as click,
-            patch.object(shell_smoke.checks, "opened"),
+            patch.object(shell_smoke.checks, "opened") as opened,
             patch.object(shell_smoke.checks, "closed"),
             patch.object(shell_smoke.checks, "elements", return_value=[]),
             patch.object(shell_smoke.checks, "panel", return_value=None),
@@ -222,6 +266,7 @@ class ShellEvidenceTests(unittest.TestCase):
         self.assertNotIn("Cancel", names)
         self.assertNotIn("Confirm log out", names)
         self.assertNotIn("Lock", names)
+        opened.assert_any_call(smoke, "power", exclusive=True)
         self.assertEqual(
             [call.args[1] for call in tab.call_args_list], ["Lock", "Cancel"]
         )
