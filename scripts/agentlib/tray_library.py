@@ -1,4 +1,4 @@
-"""Optional deployed Ayatana compatibility check on the owned display and bus."""
+"""Deployed Ayatana compatibility on the owned display and bus, required in CI."""
 
 import ctypes.util
 import json
@@ -114,6 +114,12 @@ def run(smoke):
     missing = [name for name in libraries if ctypes.util.find_library(name) is None]
     if missing:
         smoke.record("tray-library-unavailable", missing=missing)
+        if os.environ.get("HEARTHSPACE_REQUIRE_TRAY_LIBRARY") == "1":
+            raise ControlError(
+                "Ayatana compatibility is required by HEARTHSPACE_REQUIRE_TRAY_LIBRARY=1; "
+                f"missing shared libraries: {', '.join(missing)}. "
+                "Install GTK 3 and libayatana-appindicator3 before running acceptance."
+            )
         return
     script = Path(__file__).resolve().parents[1] / "tests/fixtures/ayatana_tray.py"
     actions = smoke.artifacts / "tray-ayatana-actions.jsonl"

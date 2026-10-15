@@ -15,11 +15,21 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
 
+    defaults:
+      run:
+        shell: bash
+
     env:
       CARGO_TERM_COLOR: always
       HEARTHSPACE_E2E: "1"
       HEARTHSPACE_REQUIRE_ATSPI: "1"
+      HEARTHSPACE_REQUIRE_TRAY_LIBRARY: "1"
       LIBGL_ALWAYS_SOFTWARE: "1"
+      TMPDIR: /tmp/hearthspace-e2e
+      HEARTHSPACE_SHELL_EVIDENCE: /tmp/hearthspace-e2e/evidence/shell
+      HEARTHSPACE_MAP_EVIDENCE: /tmp/hearthspace-e2e/evidence/map
+      HEARTHSPACE_TRAY_EVIDENCE: /tmp/hearthspace-e2e/evidence/tray
+      HEARTHSPACE_CLIPBOARD_EVIDENCE: /tmp/hearthspace-e2e/evidence/clipboard
 
     steps:
       - name: Checkout
@@ -27,13 +37,16 @@ jobs:
 
       - name: Install native dependencies
         run: |
+          mkdir -p "$TMPDIR"
           sudo apt-get update
           sudo apt-get install -y \
+            adwaita-icon-theme \
             at-spi2-core \
             build-essential \
             clang \
             dbus \
             foot \
+            libayatana-appindicator3-1 \
             libclang-dev \
             libdrm-dev \
             libegl1-mesa-dev \
@@ -43,6 +56,7 @@ jobs:
             libgstreamer-plugins-base1.0-dev \
             libgstreamer1.0-dev \
             libgtk-4-dev \
+            libgtk-3-0t64 \
             libinput-dev \
             libseat-dev \
             libsystemd-dev \
@@ -65,7 +79,22 @@ jobs:
 
       # Keep GPU workloads sequential, including within each Rust test binary.
       - name: Run Rust workspace and headless E2E tests
-        run: cargo test --locked --workspace --all-targets --features udev,e2e,test-apps -- --test-threads=1
+        run: cargo test --locked --workspace --all-targets --features udev,e2e,test-apps -- --test-threads=1 2>&1 | tee "$TMPDIR/rust-tests.log"
 
       - name: Run Python agent and cross-app clipboard regressions
-        run: python3 -m unittest discover -s scripts/tests -v
+        run: python3 -m unittest discover -s scripts/tests -v 2>&1 | tee "$TMPDIR/python-tests.log"
+
+      - name: Upload E2E evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: headless-e2e-evidence
+          retention-days: 7
+          include-hidden-files: true
+          path: |
+            /tmp/hearthspace-e2e/**/*.log
+            /tmp/hearthspace-e2e/**/*.json
+            /tmp/hearthspace-e2e/**/*.jsonl
+            /tmp/hearthspace-e2e/**/*.png
+            /tmp/hearthspace-e2e/**/*.xml
+            /tmp/hearthspace-e2e/**/*.txt

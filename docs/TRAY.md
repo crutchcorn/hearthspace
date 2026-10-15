@@ -72,8 +72,12 @@ starts `scripts/tests/fixtures/ayatana_tray.py`, which calls the deployed
 libraries directly. It checks a named-icon indicator and delivery from the
 exported menu back to GTK, then removes the owned app. The named-icon assertion
 rejects the generic fallback glyph and retains the exported SNI properties.
-Missing optional libraries
-are recorded explicitly; they do not silently turn into a compatibility pass.
+Missing optional libraries are recorded explicitly; they do not silently turn
+into a compatibility pass. Set `HEARTHSPACE_REQUIRE_TRAY_LIBRARY=1` to require
+this deployed-library check: missing GTK 3 or `libayatana-appindicator3` then
+fails acceptance with the missing library names. CI sets this flag and installs
+both libraries. Local and native runs keep the optional behavior unless the
+flag is set.
 
 The same workflow runs on an owned native VT:
 

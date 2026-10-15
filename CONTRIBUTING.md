@@ -799,6 +799,8 @@ in `~/.local/bin`. Their official Linux release archives were verified against
 the published SHA256 checksum files before installing the binaries. Cargo-deny
 replaced 0.19.9; Ruff's previously temporary binary was verified and installed
 on PATH. These are user installations, with no apt package changes.
+CI also runs Ruff 0.17.0 from an isolated Python virtual environment; its runner
+installs `python3-venv` rather than modifying the system Python environment.
 
 ```sh
 cargo deny check advisories bans sources --warn unmaintained
