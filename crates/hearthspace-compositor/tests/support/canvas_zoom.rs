@@ -62,15 +62,17 @@ fn wait_state(path: &Path, condition: impl Fn(&Value) -> bool) -> Value {
 fn wait_scale(compositor: &HeadlessCompositor, target: f64) {
     let deadline = Instant::now() + Duration::from_secs(5);
     loop {
-        let scale = query(compositor, "status")["viewport"]["scale"]
-            .as_f64()
-            .unwrap();
-        if (scale - target).abs() < 0.0001 {
+        let viewport = query(compositor, "status")["viewport"].clone();
+        let scale = viewport["scale"].as_f64().unwrap();
+        // Cubic easing gets close to the target before the animation finishes.
+        // A subsequent zoom during that tail can still change the scale and
+        // legitimately restore maximized windows, even near the zoom limit.
+        if viewport["animating"] == false && (scale - target).abs() < 0.0001 {
             return;
         }
         assert!(
             Instant::now() < deadline,
-            "expected scale {target}, got {scale}"
+            "expected settled scale {target}, got viewport {viewport}"
         );
         thread::sleep(Duration::from_millis(25));
     }
@@ -239,6 +241,12 @@ fn zoom_preserves_fullscreen_and_maximization_at_scale_limit() {
         action(&compositor, "zoom-out");
         wait_scale(&compositor, target);
     }
+    let at_limit = query(&compositor, "status")["viewport"].clone();
+    assert_eq!(
+        at_limit["animating"], false,
+        "zoom is still settling: {at_limit}"
+    );
+    assert_eq!(at_limit["scale"], 0.5);
     action(&compositor, format!("fullscreen-window {id} false"));
     wait_state(&state, |state| {
         state["fullscreen"] == false && state["maximized"] == true
