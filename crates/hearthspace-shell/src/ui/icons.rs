@@ -23,6 +23,8 @@ use super::state::ShellState;
 pub(super) enum Icon {
     Map,
     Search,
+    Draw,
+    Settings,
     Bell { active: bool },
     Power,
     Controls,
@@ -148,6 +150,39 @@ impl Widget for IconWidget {
             components::TEXT
         };
         match self.icon {
+            Icon::Draw => {
+                let mut path = BezPath::new();
+                path.move_to((3.0, 13.0));
+                path.line_to((13.0, 3.0));
+                path.quad_to((14.5, 1.5), (16.0, 3.0));
+                path.line_to((17.0, 4.0));
+                path.quad_to((18.5, 5.5), (17.0, 7.0));
+                path.line_to((7.0, 17.0));
+                path.line_to((2.0, 18.0));
+                path.close_path();
+                painter.stroke(&path, &stroke, color).draw();
+                painter
+                    .stroke(Line::new((11.5, 4.5), (15.5, 8.5)), &stroke, color)
+                    .draw();
+            }
+            Icon::Settings => {
+                let mut gear = BezPath::new();
+                for index in 0..32 {
+                    let angle = f64::from(index) * std::f64::consts::TAU / 32.0;
+                    let radius = if index % 4 < 2 { 8.5 } else { 6.5 };
+                    let point = (10.0 + radius * angle.cos(), 10.0 + radius * angle.sin());
+                    if index == 0 {
+                        gear.move_to(point);
+                    } else {
+                        gear.line_to(point);
+                    }
+                }
+                gear.close_path();
+                painter.stroke(&gear, &stroke, color).draw();
+                painter
+                    .stroke(Circle::new((10.0, 10.0), 2.8), &stroke, color)
+                    .draw();
+            }
             Icon::Controls => {
                 for (y, knob) in [(4.0, 7.0), (10.0, 13.0), (16.0, 7.0)] {
                     painter

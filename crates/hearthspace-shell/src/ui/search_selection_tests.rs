@@ -135,7 +135,7 @@ fn tab_focus_tracks_selection_and_clipboard_edit_keeps_native_editor_actions() {
     let mut ui = Ui::new(state(), view, (360, 280));
     let input = ui.harness.focused_widget_id().unwrap();
     // The scroll portal is also a normal keyboard focus stop.
-    for _ in 0..3 {
+    for _ in 0..5 {
         ui.harness
             .process_text_event(TextEvent::key_down(Key::Named(NamedKey::Tab)));
         ui.dispatch(&view);

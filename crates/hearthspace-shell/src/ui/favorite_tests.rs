@@ -39,7 +39,7 @@ fn view(
 }
 
 #[test]
-fn search_exposes_favorites_and_drawing_but_configuration_lives_in_settings() {
+fn search_hides_favorites_and_places_drawing_and_settings_inside_the_input() {
     let dir = tempfile::tempdir().unwrap();
     let mut state = state(dir.path());
     state.favorites.store.add("fixture.desktop").unwrap();
@@ -49,8 +49,22 @@ fn search_exposes_favorites_and_drawing_but_configuration_lives_in_settings() {
         .assign("fixture.desktop", &SHAPE)
         .unwrap();
     let mut ui = Ui::new(state, view, (768, 560));
-    ui.button("Open: Fixture App");
-    ui.button("Manage favorites");
+    assert!(launcher::results(&ui.state, &ui.state.outputs[0]).is_empty());
+    assert!(
+        !super::test_support::ids(&ui.harness).into_iter().any(|id| {
+            ui.harness
+                .access_node(id)
+                .is_some_and(|node| node.label().as_deref() == Some("Open: Fixture App"))
+        })
+    );
+    let editor = ui.harness.focused_widget_id().unwrap();
+    let bounds = |id| ui.harness.access_node(id).unwrap().bounding_box().unwrap();
+    let input = bounds(editor);
+    let draw = bounds(ui.button("Draw to launch"));
+    let settings = bounds(ui.button("Settings"));
+    assert!(draw.x0 >= input.x1 && settings.x0 >= draw.x1);
+    assert!(draw.y0 <= input.y1 && draw.y1 >= input.y0);
+    assert_eq!(settings.y0, draw.y0);
     ui.activate(ui.button("Draw to launch"));
     ui.dispatch(&view);
     assert_eq!(ui.state.outputs[0].drawing.mode, Mode::Launch);
@@ -128,7 +142,7 @@ fn missing_apps_and_unclear_strokes_do_not_launch_or_destroy_favorites() {
     assert_eq!(state.favorites.store.entries().len(), 1);
     actions::cancel(&mut state, "eDP-1");
     let ui = Ui::new(state, view, (768, 560));
-    ui.button("Manage favorites");
+    ui.button("Settings");
 }
 
 #[test]
@@ -153,15 +167,27 @@ fn closing_changing_query_and_switching_panels_cancel_drawing() {
 }
 
 #[test]
-fn empty_favorites_offer_settings_and_disable_drawing() {
+fn empty_gestures_keep_drawing_available_and_explain_where_to_assign_one() {
     let dir = tempfile::tempdir().unwrap();
     let state = state(dir.path());
-    let ui = Ui::new(state, view, (768, 560));
+    let mut ui = Ui::new(state, view, (768, 560));
     assert!(
-        ui.harness
+        !ui.harness
             .access_node(ui.button("Draw to launch"))
             .unwrap()
             .is_disabled()
     );
-    ui.button("Manage favorites");
+    ui.button("Settings");
+    ui.activate(ui.button("Draw to launch"));
+    ui.dispatch(&view);
+    assert!(super::test_support::ids(&ui.harness).into_iter().any(|id| {
+        ui.harness.access_node(id).is_some_and(|node| {
+            node.value().as_deref() == Some("Add an app gesture in Settings → Search → Gestures.")
+                || node.label().as_deref()
+                    == Some("Add an app gesture in Settings → Search → Gestures.")
+        })
+    }));
+    ui.activate(ui.button("Draw to launch"));
+    ui.dispatch(&view);
+    assert!(!ui.state.outputs[0].drawing.active());
 }

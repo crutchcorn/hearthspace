@@ -64,10 +64,10 @@ fn search_grows_for_results_and_shrinks_when_the_query_is_cleared() {
     let mut ui = Ui::new(state, search, (768, 560));
     let empty = size(&ui.state.outputs[0], PopupKind::Search, 768.0, 560.0);
     assert!(
-        empty.height < 220.0,
-        "empty search should fit its favorites controls and hint: {empty:?}"
+        empty.height < 180.0,
+        "empty search should fit its input actions and hint: {empty:?}"
     );
-    ui.button("Manage favorites");
+    ui.button("Settings");
     ui.button("Draw to launch");
     ui.state.change_query("eDP-1", "Notes".into());
     ui.rebuild(&search);
@@ -75,7 +75,7 @@ fn search_grows_for_results_and_shrinks_when_the_query_is_cleared() {
     let populated = size(&ui.state.outputs[0], PopupKind::Search, 768.0, 560.0);
     assert!(
         populated.height > empty.height,
-        "four results should grow beyond the favorites controls"
+        "four results should grow beyond the input actions"
     );
     assert!(populated.height < 360.0);
     ui.state.change_query("eDP-1", String::new());

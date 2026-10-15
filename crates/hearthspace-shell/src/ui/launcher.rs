@@ -3,7 +3,7 @@ use xilem::{
     AnyWidgetView, WidgetView,
     masonry::{layout::AsUnit, properties::LineBreaking},
     style::Style,
-    view::{CrossAxisAlignment, FlexExt, FlexSpacer, flex_col, flex_row, label, sized_box},
+    view::{CrossAxisAlignment, FlexSpacer, flex_col, flex_row, label, sized_box},
 };
 
 use super::{
@@ -44,14 +44,7 @@ pub(super) fn results(state: &ShellState, output: &ShellOutputInstance) -> Vec<E
         return Vec::new();
     }
     if query.is_empty() {
-        return state
-            .favorites
-            .store
-            .entries()
-            .iter()
-            .filter_map(|f| state.catalog.app_by_id(&f.app_id).cloned())
-            .map(|app| Entry::App(Box::new(app)))
-            .collect();
+        return Vec::new();
     }
     let mut windows = state
         .windows
@@ -107,51 +100,31 @@ pub(super) fn launcher_view(
     });
     let selected = super::search_selection::selected_index(output, &entries);
     let mut rows: Vec<Box<AnyWidgetView<ShellState>>> = if output.drawing.active() {
-        vec![super::favorite_view::drawing(output)]
+        vec![super::favorite_view::drawing(state, output)]
     } else {
-        let mut rows = if output.query.trim().is_empty() {
-            super::favorite_view::browse(state, output)
-        } else {
-            Vec::new()
-        };
-        for (index, entry) in entries.into_iter().enumerate() {
-            let shape = if output.query.trim().is_empty() {
-                match &entry {
-                    Entry::App(app) => state
-                        .favorites
-                        .store
-                        .entries()
-                        .iter()
-                        .find(|f| f.app_id == app.id)
-                        .and_then(|f| f.gesture.as_ref())
-                        .map(|g| super::gesture_pad::thumbnail(g.points().to_vec())),
-                    _ => None,
-                }
-            } else {
-                None
-            };
+        let mut rows: Vec<Box<AnyWidgetView<ShellState>>> = entries
+            .into_iter()
+            .enumerate()
+            .map(|(index, entry)| {
+                super::search_result::row(
+                    output,
+                    entry,
+                    Some(index) == selected,
+                    focus_target.clone(),
+                )
+                .boxed()
+            })
+            .collect();
+        if rows.is_empty() {
             rows.push(
-                flex_row((
-                    super::search_result::row(
-                        output,
-                        entry,
-                        Some(index) == selected,
-                        focus_target.clone(),
-                    )
-                    .flex(1.0),
-                    shape,
-                ))
-                .gap(8.0.px())
+                label(if output.query.trim().is_empty() {
+                    "Type to search apps and open windows, or draw a gesture to launch an app."
+                } else {
+                    "No matching apps or windows"
+                })
+                .line_break_mode(LineBreaking::WordWrap)
                 .boxed(),
             );
-        }
-        if output.query.trim().is_empty() {
-            rows.extend(super::favorite_view::missing(state));
-        }
-        if rows.is_empty() {
-            rows.push(label(if output.query.trim().is_empty() {
-                "Type to search apps and open windows. Add apps to favorites to assign gestures."
-            } else { "No matching apps or windows" }).line_break_mode(LineBreaking::WordWrap).boxed());
         }
         rows
     };
@@ -186,7 +159,7 @@ pub(super) fn launcher_view(
                     FlexSpacer::Flex(1.0),
                     close,
                 )),
-                (!output.drawing.active()).then_some(search),
+                search,
             ))
             .cross_axis_alignment(CrossAxisAlignment::Stretch)
             .gap(8.0.px()),

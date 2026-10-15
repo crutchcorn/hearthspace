@@ -108,7 +108,8 @@ fn launch(state: &mut ShellState, key: &str, id: &str, generation: u64, stroke: 
         feedback(
             state,
             key,
-            "This favorite is no longer installed. Update it in Settings → Favorites.".into(),
+            "This app is no longer installed. Update its gesture in Settings → Search → Gestures."
+                .into(),
         );
         return;
     }
