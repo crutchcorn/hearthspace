@@ -73,8 +73,14 @@ impl App {
                 TouchAction::BeginPinch { anchor } => {
                     self.start_pinch_zoom(PinchInput::Touchscreen, device, anchor);
                 }
-                TouchAction::UpdatePinch { scale } => {
-                    self.update_pinch_zoom(PinchInput::Touchscreen, &device, scale, time);
+                TouchAction::UpdatePinch { scale, translation } => {
+                    self.update_pinch_zoom(
+                        PinchInput::Touchscreen,
+                        &device,
+                        scale,
+                        translation,
+                        time,
+                    );
                 }
                 TouchAction::EndPinch { cancelled } => {
                     self.end_pinch_zoom(PinchInput::Touchscreen, &device, cancelled, time);

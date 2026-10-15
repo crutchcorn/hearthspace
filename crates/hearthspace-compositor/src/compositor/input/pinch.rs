@@ -1,13 +1,16 @@
-//! Compositor-owned three-finger zoom for indirect and direct touch input.
+//! Compositor-owned three-finger canvas navigation for indirect and direct touch.
 use smithay::{
     backend::input::InputTime,
     utils::{Logical, Point},
 };
 use tracing::{debug, trace};
 
-use crate::geometry::{CanvasPoint, zoom_around_screen_point};
+use crate::geometry::CanvasPoint;
 
 use super::super::{App, presentation::RestoredMaximizedWindow};
+
+mod transform;
+use transform::{finite_point, gesture_viewport};
 
 #[derive(Default)]
 pub(in crate::compositor) struct PinchZoom {
@@ -21,6 +24,7 @@ struct Gesture {
     original_offset: CanvasPoint,
     scale: f64,
     anchor: Point<f64, Logical>,
+    translation: Point<f64, Logical>,
     prepared: bool,
     restored: Vec<RestoredMaximizedWindow>,
 }
@@ -28,6 +32,7 @@ struct Gesture {
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(super) enum PinchInput {
     Touchpad,
+    TouchpadSwipe,
     Touchscreen,
 }
 
@@ -44,6 +49,9 @@ impl PinchZoom {
         scale: f64,
         anchor: Point<f64, Logical>,
     ) {
+        if !finite_point(anchor) || !scale.is_finite() || scale <= 0.0 {
+            return;
+        }
         self.gesture = Some(Gesture {
             input,
             device,
@@ -51,6 +59,7 @@ impl PinchZoom {
             original_offset: offset,
             scale,
             anchor,
+            translation: (0.0, 0.0).into(),
             prepared: false,
             restored: Vec::new(),
         });
@@ -62,27 +71,66 @@ impl PinchZoom {
             .is_some_and(|gesture| gesture.input == input)
     }
 
-    fn update(&self, device: &str, scale: f64) -> Option<(CanvasPoint, f64)> {
+    fn update(
+        &self,
+        device: &str,
+        scale: f64,
+        translation: Point<f64, Logical>,
+    ) -> Option<(CanvasPoint, f64)> {
         let gesture = self.gesture.as_ref()?;
-        if gesture.device != device || !scale.is_finite() || scale <= 0.0 {
+        if gesture.device != device {
             return None;
         }
-        // The backend scale is absolute since begin, not a per-event multiplier.
-        // Always use that snapshot, including at the limits, to avoid drift.
-        Some(zoom_around_screen_point(
+        // Both scale and translation are absolute since begin. Recompute from
+        // that snapshot and round once, so fractional motion is never lost.
+        gesture_viewport(
             gesture.offset,
             gesture.scale,
             gesture.anchor,
             scale,
-        ))
+            translation,
+        )
     }
 
-    fn needs_canvas_restore(&self, device: &str, factor: f64) -> bool {
+    fn accumulate_translation(
+        &mut self,
+        input: PinchInput,
+        device: &str,
+        scale: f64,
+        delta: Point<f64, Logical>,
+    ) -> Option<Point<f64, Logical>> {
+        let gesture = self.gesture.as_mut()?;
+        if !matches!(input, PinchInput::Touchpad | PinchInput::TouchpadSwipe)
+            || gesture.input != input
+            || gesture.device != device
+            || !finite_point(delta)
+        {
+            return None;
+        }
+        let translation = gesture.translation + delta;
+        // Reject the whole malformed update before mutating the accumulator.
+        gesture_viewport(
+            gesture.offset,
+            gesture.scale,
+            gesture.anchor,
+            scale,
+            translation,
+        )?;
+        gesture.translation = translation;
+        Some(translation)
+    }
+
+    fn needs_canvas_restore(
+        &self,
+        device: &str,
+        factor: f64,
+        translation: Point<f64, Logical>,
+    ) -> bool {
         self.gesture.as_ref().is_some_and(|gesture| {
             !gesture.prepared
                 && self
-                    .update(device, factor)
-                    .is_some_and(|(_, scale)| scale != gesture.scale)
+                    .update(device, factor, translation)
+                    .is_some_and(|viewport| viewport != (gesture.offset, gesture.scale))
         })
     }
 
@@ -136,11 +184,35 @@ impl App {
             || self.keyboard.is_grabbed()
     }
 
-    pub(super) fn begin_pinch_zoom(&mut self, device: String, fingers: u32) {
-        if fingers != 3 || self.touch_input.has_contacts() {
+    pub(super) fn begin_touchpad_gesture(
+        &mut self,
+        input: PinchInput,
+        device: String,
+        fingers: u32,
+    ) {
+        if !matches!(input, PinchInput::Touchpad | PinchInput::TouchpadSwipe)
+            || fingers != 3
+            || self.touch_input.has_contacts()
+        {
             return;
         }
-        self.start_pinch_zoom(PinchInput::Touchpad, device, self.pointer_location);
+        self.start_pinch_zoom(input, device, self.pointer_location);
+    }
+
+    pub(super) fn update_touchpad_gesture(
+        &mut self,
+        input: PinchInput,
+        device: &str,
+        scale: f64,
+        delta: Point<f64, Logical>,
+        time: InputTime,
+    ) {
+        if let Some(translation) = self
+            .pinch_zoom
+            .accumulate_translation(input, device, scale, delta)
+        {
+            self.update_pinch_zoom(input, device, scale, translation, time);
+        }
     }
 
     pub(super) fn start_pinch_zoom(
@@ -154,7 +226,7 @@ impl App {
         }
         self.advance_viewport_animation();
         self.viewport_animation = None;
-        debug!(%device, ?anchor, "starting canvas pinch zoom");
+        debug!(%device, ?anchor, "starting three-finger canvas gesture");
         self.pinch_zoom.begin(
             input,
             device,
@@ -171,6 +243,7 @@ impl App {
         input: PinchInput,
         device: &str,
         scale: f64,
+        translation: Point<f64, Logical>,
         time: InputTime,
     ) {
         if !self.pinch_zoom.accepts(input) {
@@ -182,7 +255,10 @@ impl App {
             self.interrupt_pinch_zoom();
             return;
         }
-        if self.pinch_zoom.needs_canvas_restore(device, scale) {
+        if self
+            .pinch_zoom
+            .needs_canvas_restore(device, scale, translation)
+        {
             // Presentation updates interrupt older input. Hold this gesture
             // locally while releasing maximization, then rebase only its zoom
             // anchor; cancellation still owns the original view and states.
@@ -191,8 +267,8 @@ impl App {
             pinch.prepare_canvas(self.viewport_offset, restored);
             self.pinch_zoom = pinch;
         }
-        if let Some((offset, scale)) = self.pinch_zoom.update(device, scale) {
-            trace!(%device, scale, "updating canvas pinch zoom");
+        if let Some((offset, scale)) = self.pinch_zoom.update(device, scale, translation) {
+            trace!(%device, scale, ?translation, "updating three-finger canvas gesture");
             self.apply_pinch_viewport(offset, scale, time);
         }
     }
@@ -212,7 +288,7 @@ impl App {
             cancelled,
             active = self.pinch_zoom.is_active(),
             blocked = self.pinch_blocked(),
-            "ending canvas pinch zoom"
+            "ending three-finger canvas gesture"
         );
         if self.pinch_blocked() {
             self.interrupt_pinch_zoom();
@@ -263,5 +339,7 @@ impl App {
     }
 }
 
+#[cfg(test)]
+mod pan_tests;
 #[cfg(test)]
 mod tests;

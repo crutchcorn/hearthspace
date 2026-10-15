@@ -18,7 +18,7 @@ pub(in crate::compositor) enum TouchAction {
     Release,
     Tap(Position),
     BeginPinch { anchor: Position },
-    UpdatePinch { scale: f64 },
+    UpdatePinch { scale: f64, translation: Position },
     EndPinch { cancelled: bool },
 }
 
@@ -34,6 +34,7 @@ enum Mode {
     Dragging,
     Multiple,
     Pinching {
+        anchor: Position,
         radius: f64,
     },
     Suppressed,
@@ -204,15 +205,18 @@ impl TouchTracker {
             Mode::Pending | Mode::Dragging => self.single_motion(),
             Mode::Multiple if self.contacts.len() == 3 => {
                 if let Some((anchor, radius)) = self.geometry() {
-                    self.mode = Mode::Pinching { radius };
+                    self.mode = Mode::Pinching { anchor, radius };
                     self.emit(TouchAction::BeginPinch { anchor });
                 }
             }
-            Mode::Pinching { radius } => {
-                if let Some((_, current)) = self.geometry() {
+            Mode::Pinching { anchor, radius } => {
+                if let Some((centroid, current)) = self.geometry() {
                     let scale = current / radius;
-                    if scale.is_finite() && scale > 0.0 {
-                        self.emit(TouchAction::UpdatePinch { scale });
+                    let translation = centroid - anchor;
+                    // Both values are absolute since the same three-contact
+                    // begin, so frame rate and direction changes cannot drift.
+                    if scale.is_finite() && scale > 0.0 && finite(translation) {
+                        self.emit(TouchAction::UpdatePinch { scale, translation });
                     }
                 }
             }

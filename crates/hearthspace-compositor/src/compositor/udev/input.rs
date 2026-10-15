@@ -53,10 +53,9 @@ pub(super) fn log_input_event(event: &InputEvent<LibinputInputBackend>) {
         | InputEvent::GesturePinchEnd { .. } => trace!("input pinch gesture event"),
         InputEvent::GestureSwipeBegin { .. }
         | InputEvent::GestureSwipeUpdate { .. }
-        | InputEvent::GestureSwipeEnd { .. }
-        | InputEvent::GestureHoldBegin { .. }
-        | InputEvent::GestureHoldEnd { .. } => {
-            debug!("input swipe/hold gesture has no compositor binding");
+        | InputEvent::GestureSwipeEnd { .. } => trace!("input swipe gesture event"),
+        InputEvent::GestureHoldBegin { .. } | InputEvent::GestureHoldEnd { .. } => {
+            trace!("input hold gesture has no compositor binding");
         }
         InputEvent::TouchDown { .. } => trace!("input touch down event"),
         InputEvent::TouchMotion { .. } => trace!("input touch motion event"),

@@ -18,11 +18,11 @@ fn updates_use_absolute_scale_from_the_initial_viewport() {
     );
 
     assert_eq!(
-        pinch.update(DEVICE, 1.5),
+        pinch.update(DEVICE, 1.5, (0.0, 0.0).into()),
         Some((CanvasPoint { x: 123, y: 163 }, 1.125))
     );
     assert_eq!(
-        pinch.update(DEVICE, 2.0),
+        pinch.update(DEVICE, 2.0, (0.0, 0.0).into()),
         Some((CanvasPoint { x: 203, y: 203 }, 1.5))
     );
 }
@@ -41,18 +41,18 @@ fn repeated_updates_and_return_to_one_do_not_accumulate_rounding() {
         anchor,
     );
 
-    let first = pinch.update(DEVICE, 1.3).unwrap();
+    let first = pinch.update(DEVICE, 1.3, (0.0, 0.0).into()).unwrap();
     let anchored_canvas_point = screen_to_canvas(anchor, initial_offset, initial_scale);
     for _ in 0..20 {
         for scale in [0.65, 1.37, 1.9, 0.93, 1.3] {
-            let (offset, viewport_scale) = pinch.update(DEVICE, scale).unwrap();
+            let (offset, viewport_scale) = pinch.update(DEVICE, scale, (0.0, 0.0).into()).unwrap();
             let after = screen_to_canvas(anchor, offset, viewport_scale);
             assert!((after.x - anchored_canvas_point.x).abs() <= 0.5);
             assert!((after.y - anchored_canvas_point.y).abs() <= 0.5);
         }
-        assert_eq!(pinch.update(DEVICE, 1.3), Some(first));
+        assert_eq!(pinch.update(DEVICE, 1.3, (0.0, 0.0).into()), Some(first));
         assert_eq!(
-            pinch.update(DEVICE, 1.0),
+            pinch.update(DEVICE, 1.0, (0.0, 0.0).into()),
             Some((initial_offset, initial_scale))
         );
     }
@@ -70,12 +70,21 @@ fn zoom_limits_do_not_replace_the_gesture_baseline() {
     );
 
     // Even finite factors whose product overflows remain bounded.
-    assert_eq!(pinch.update(DEVICE, f64::MAX).unwrap().1, MAX_ZOOM);
-    assert_eq!(pinch.update(DEVICE, 1.2).unwrap().1, 1.5);
-    assert_eq!(pinch.update(DEVICE, 0.1).unwrap().1, MIN_ZOOM);
-    assert_eq!(pinch.update(DEVICE, 0.6).unwrap().1, 0.75);
     assert_eq!(
-        pinch.update(DEVICE, 1.0),
+        pinch.update(DEVICE, f64::MAX, (0.0, 0.0).into()).unwrap().1,
+        MAX_ZOOM
+    );
+    assert_eq!(pinch.update(DEVICE, 1.2, (0.0, 0.0).into()).unwrap().1, 1.5);
+    assert_eq!(
+        pinch.update(DEVICE, 0.1, (0.0, 0.0).into()).unwrap().1,
+        MIN_ZOOM
+    );
+    assert_eq!(
+        pinch.update(DEVICE, 0.6, (0.0, 0.0).into()).unwrap().1,
+        0.75
+    );
+    assert_eq!(
+        pinch.update(DEVICE, 1.0, (0.0, 0.0).into()),
         Some((CanvasPoint { x: 20, y: -40 }, 1.25))
     );
 }
@@ -90,15 +99,15 @@ fn invalid_scales_leave_the_gesture_active_and_usable() {
         1.0,
         (300.0, 150.0).into(),
     );
-    let previous = pinch.update(DEVICE, 1.5);
+    let previous = pinch.update(DEVICE, 1.5, (0.0, 0.0).into());
 
     for invalid in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY, -2.0, -0.0, 0.0] {
-        assert_eq!(pinch.update(DEVICE, invalid), None);
+        assert_eq!(pinch.update(DEVICE, invalid, (0.0, 0.0).into()), None);
         assert!(pinch.is_active());
-        assert_eq!(pinch.update(DEVICE, 1.5), previous);
+        assert_eq!(pinch.update(DEVICE, 1.5, (0.0, 0.0).into()), previous);
     }
     assert_eq!(
-        pinch.update(DEVICE, 2.0),
+        pinch.update(DEVICE, 2.0, (0.0, 0.0).into()),
         Some((CanvasPoint { x: 154, y: 67 }, 2.0))
     );
 }
@@ -114,13 +123,13 @@ fn other_devices_cannot_update_or_finish_the_active_gesture() {
         initial.1,
         (123.5, 456.25).into(),
     );
-    let previous = pinch.update(DEVICE, 1.5);
+    let previous = pinch.update(DEVICE, 1.5, (0.0, 0.0).into());
 
-    assert_eq!(pinch.update("touchpad-b", 2.0), None);
+    assert_eq!(pinch.update("touchpad-b", 2.0, (0.0, 0.0).into()), None);
     for cancelled in [false, true] {
         assert_eq!(pinch.end("touchpad-b", cancelled), None);
         assert!(pinch.is_active());
-        assert_eq!(pinch.update(DEVICE, 1.5), previous);
+        assert_eq!(pinch.update(DEVICE, 1.5, (0.0, 0.0).into()), previous);
     }
     assert_eq!(pinch.end(DEVICE, true), Some(initial));
     assert!(!pinch.is_active());
@@ -136,11 +145,11 @@ fn normal_end_provides_no_rollback_and_rejects_late_updates() {
         1.0,
         (300.0, 150.0).into(),
     );
-    assert_eq!(pinch.update(DEVICE, 1.5).unwrap().1, 1.5);
+    assert_eq!(pinch.update(DEVICE, 1.5, (0.0, 0.0).into()).unwrap().1, 1.5);
 
     assert_eq!(pinch.end(DEVICE, false), None);
     assert!(!pinch.is_active());
-    assert_eq!(pinch.update(DEVICE, 2.0), None);
+    assert_eq!(pinch.update(DEVICE, 2.0, (0.0, 0.0).into()), None);
     assert_eq!(pinch.end(DEVICE, true), None);
     assert_eq!(pinch.cancel(), None);
 }
@@ -157,7 +166,7 @@ fn cancel_restores_the_exact_initial_viewport_once() {
             initial.1,
             (521.125, 75.75).into(),
         );
-        assert_ne!(pinch.update(DEVICE, 1.7), Some(initial));
+        assert_ne!(pinch.update(DEVICE, 1.7, (0.0, 0.0).into()), Some(initial));
 
         let rollback = if explicit_cancel {
             pinch.cancel()
@@ -166,7 +175,7 @@ fn cancel_restores_the_exact_initial_viewport_once() {
         };
         assert_eq!(rollback, Some(initial));
         assert!(!pinch.is_active());
-        assert_eq!(pinch.update(DEVICE, 1.5), None);
+        assert_eq!(pinch.update(DEVICE, 1.5, (0.0, 0.0).into()), None);
         assert_eq!(pinch.cancel(), None);
     }
 }
@@ -181,13 +190,13 @@ fn a_new_interaction_prevents_late_cancellation_from_rolling_back_the_view() {
         1.0,
         (300.0, 150.0).into(),
     );
-    let visible = pinch.update(DEVICE, 1.5).unwrap();
+    let visible = pinch.update(DEVICE, 1.5, (0.0, 0.0).into()).unwrap();
     // A popup grab or explicit navigation can interrupt without another pinch
     // update. Neither a delayed end nor session cancellation may undo its view.
     pinch.interrupt();
     assert_eq!(pinch.end(DEVICE, true), None);
     assert_eq!(pinch.cancel(), None);
-    assert_eq!(pinch.update(DEVICE, 2.0), None);
+    assert_eq!(pinch.update(DEVICE, 2.0, (0.0, 0.0).into()), None);
     pinch.begin(
         PinchInput::Touchpad,
         DEVICE.into(),
@@ -195,7 +204,7 @@ fn a_new_interaction_prevents_late_cancellation_from_rolling_back_the_view() {
         visible.1,
         (300.0, 150.0).into(),
     );
-    assert_eq!(pinch.update(DEVICE, 1.0), Some(visible));
+    assert_eq!(pinch.update(DEVICE, 1.0, (0.0, 0.0).into()), Some(visible));
 }
 
 #[test]
@@ -211,19 +220,19 @@ fn canvas_restore_waits_for_a_meaningful_scale_change_on_either_input() {
                 (300.0, 200.0).into(),
             );
             for factor in [1.0, 0.0, f64::NAN] {
-                assert!(!pinch.needs_canvas_restore(DEVICE, factor));
+                assert!(!pinch.needs_canvas_restore(DEVICE, factor, (0.0, 0.0).into()));
             }
-            assert!(!pinch.needs_canvas_restore("another-device", 1.2));
+            assert!(!pinch.needs_canvas_restore("another-device", 1.2, (0.0, 0.0).into()));
             if initial == MIN_ZOOM {
-                assert!(!pinch.needs_canvas_restore(DEVICE, 0.5));
+                assert!(!pinch.needs_canvas_restore(DEVICE, 0.5, (0.0, 0.0).into()));
             }
             if initial == MAX_ZOOM {
-                assert!(!pinch.needs_canvas_restore(DEVICE, 2.0));
+                assert!(!pinch.needs_canvas_restore(DEVICE, 2.0, (0.0, 0.0).into()));
             }
             let factor = if initial == MAX_ZOOM { 0.8 } else { 1.2 };
-            assert!(pinch.needs_canvas_restore(DEVICE, factor));
+            assert!(pinch.needs_canvas_restore(DEVICE, factor, (0.0, 0.0).into()));
             pinch.prepare_canvas(CanvasPoint { x: 10, y: -20 }, Vec::new());
-            assert!(!pinch.needs_canvas_restore(DEVICE, factor));
+            assert!(!pinch.needs_canvas_restore(DEVICE, factor, (0.0, 0.0).into()));
         }
     }
 }
@@ -238,7 +247,7 @@ fn revealed_window_rebases_anchor_without_replacing_cancellation_viewport() {
         pinch.begin(input, DEVICE.into(), original, 1.0, anchor);
         pinch.prepare_canvas(revealed, Vec::new());
         let before = screen_to_canvas(anchor, revealed, 1.0);
-        let (offset, scale) = pinch.update(DEVICE, 0.75).unwrap();
+        let (offset, scale) = pinch.update(DEVICE, 0.75, (0.0, 0.0).into()).unwrap();
         let after = screen_to_canvas(anchor, offset, scale);
         assert!((before.x - after.x).abs() <= 0.5);
         assert!((before.y - after.y).abs() <= 0.5);

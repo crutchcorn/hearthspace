@@ -3,8 +3,9 @@
 use smithay::{
     backend::input::{
         AbsolutePositionEvent, Axis, ButtonState, Device, Event, GestureBeginEvent,
-        GestureEndEvent, GesturePinchUpdateEvent, InputBackend, InputEvent, InputTime,
-        KeyboardKeyEvent, PointerAxisEvent, PointerButtonEvent, PointerMotionEvent, TouchEvent,
+        GestureEndEvent, GesturePinchUpdateEvent, GestureSwipeUpdateEvent, InputBackend,
+        InputEvent, InputTime, KeyboardKeyEvent, PointerAxisEvent, PointerButtonEvent,
+        PointerMotionEvent, TouchEvent,
     },
     input::pointer::{AxisFrame, ButtonEvent},
     utils::{Logical, Point, Rectangle, SERIAL_COUNTER},
@@ -40,21 +41,56 @@ pub(in crate::compositor) fn handle_input_event<B: InputBackend>(
         InputEvent::DeviceRemoved { device } => {
             state.remove_touch_device(&device.id());
             state.end_pinch_zoom(PinchInput::Touchpad, &device.id(), true, InputTime::now());
+            state.end_pinch_zoom(
+                PinchInput::TouchpadSwipe,
+                &device.id(),
+                true,
+                InputTime::now(),
+            );
         }
         InputEvent::GesturePinchBegin { event } => {
-            state.begin_pinch_zoom(event.device().id(), event.fingers());
+            state.begin_touchpad_gesture(
+                PinchInput::Touchpad,
+                event.device().id(),
+                event.fingers(),
+            );
         }
         InputEvent::GesturePinchUpdate { event } => {
-            state.update_pinch_zoom(
+            state.update_touchpad_gesture(
                 PinchInput::Touchpad,
                 &event.device().id(),
                 event.scale(),
+                event.delta(),
                 event.time(),
             );
         }
         InputEvent::GesturePinchEnd { event } => {
             state.end_pinch_zoom(
                 PinchInput::Touchpad,
+                &event.device().id(),
+                event.cancelled(),
+                event.time(),
+            );
+        }
+        InputEvent::GestureSwipeBegin { event } => {
+            state.begin_touchpad_gesture(
+                PinchInput::TouchpadSwipe,
+                event.device().id(),
+                event.fingers(),
+            );
+        }
+        InputEvent::GestureSwipeUpdate { event } => {
+            state.update_touchpad_gesture(
+                PinchInput::TouchpadSwipe,
+                &event.device().id(),
+                1.0,
+                event.delta(),
+                event.time(),
+            );
+        }
+        InputEvent::GestureSwipeEnd { event } => {
+            state.end_pinch_zoom(
+                PinchInput::TouchpadSwipe,
                 &event.device().id(),
                 event.cancelled(),
                 event.time(),

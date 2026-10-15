@@ -1,5 +1,7 @@
 use super::*;
 
+mod pan;
+
 const DEVICE: &str = "screen";
 
 fn slot(id: u32) -> TouchSlot {
@@ -42,7 +44,7 @@ fn begin(tracker: &mut TouchTracker) {
 }
 
 fn assert_scale(actions: Vec<TouchAction>, expected: f64) {
-    let [TouchAction::UpdatePinch { scale }] = actions.as_slice() else {
+    let [TouchAction::UpdatePinch { scale, .. }] = actions.as_slice() else {
         panic!("unexpected actions: {actions:?}");
     };
     assert!((scale - expected).abs() < 1e-12, "{scale} != {expected}");
