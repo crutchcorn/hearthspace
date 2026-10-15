@@ -1,22 +1,15 @@
 use std::path::PathBuf;
 
-use hearthspace_common::{
-    CANVAS_MAP_APP_ID, LAUNCHER_APP_ID, NOTIFICATIONS_APP_ID, POWER_MENU_APP_ID, SHELL_BAR_APP_ID,
-    canvas_map_app_id_for_output, launcher_app_id_for_output, launcher_app_id_for_request,
-    notifications_app_id_for_output, power_menu_app_id_for_output, shell_bar_app_id_for_output,
-};
 use xilem::{AppState, WindowId};
 
 use crate::app_catalog::AppCatalog;
 
-use super::{
-    constants::FALLBACK_OUTPUT_KEY, minimap::CanvasSnapshot, notifications::Notification,
-    window_catalog::RunningWindow,
-};
+use super::{minimap::CanvasSnapshot, notifications::Notification, window_catalog::RunningWindow};
 
 /// Reactive state backing the shell view.
 pub(super) struct ShellState {
     pub(super) command_socket: PathBuf,
+    pub(super) tray: super::tray_state::TrayState,
     pub(super) shell_events: Option<std::sync::Arc<super::shell_events::ShellEvents>>,
     pub(super) catalog: AppCatalog,
     pub(super) windows: Vec<RunningWindow>,
@@ -36,7 +29,8 @@ pub(super) struct ShellState {
 
 #[derive(Debug)]
 pub(super) struct ShellOutputInstance {
-    pub(super) popup_measurements: [super::popup::PopupMeasurement; 4],
+    pub(super) popup_measurements: [super::popup::PopupMeasurement; 5],
+    pub(super) tray: super::tray_state::TrayOutput,
     pub(super) output_name: Option<String>,
     pub(super) query: String,
     pub(super) selected_result: Option<super::search_selection::EntryId>,
@@ -70,6 +64,7 @@ impl ShellState {
     pub(super) fn new(command_socket: PathBuf, output_names: Vec<String>) -> Self {
         let mut state = Self {
             command_socket,
+            tray: Default::default(),
             shell_events: None,
             catalog: AppCatalog::load(),
             windows: Vec::new(),
@@ -232,6 +227,7 @@ impl ShellState {
                 output.selected_result = None;
                 output.selected_result_index = 0;
             }
+            output.tray.dismiss();
             output.query = query;
             output.show_search = true;
             output.show_map = false;
@@ -260,99 +256,11 @@ impl ShellState {
 }
 
 #[derive(Clone, Copy)]
-enum Panel {
+pub(super) enum Panel {
     Search,
     Notifications,
     Map,
     Power,
-}
-
-impl ShellOutputInstance {
-    fn new(output_name: Option<String>) -> Self {
-        Self {
-            popup_measurements: Default::default(),
-            output_name,
-            query: String::new(),
-            selected_result: None,
-            selected_result_index: 0,
-            show_search: false,
-            search_request_token: None,
-            show_power: false,
-            confirm_logout: false,
-            show_notifications: false,
-            show_map: false,
-            launch_error: None,
-            bar_window_id: WindowId::next(),
-            launcher_window_id: WindowId::next(),
-            map_window_id: WindowId::next(),
-            notifications_window_id: WindowId::next(),
-            power_window_id: WindowId::next(),
-        }
-    }
-
-    fn panel_is_open(&self, panel: Panel) -> bool {
-        match panel {
-            Panel::Search => self.show_search,
-            Panel::Notifications => self.show_notifications,
-            Panel::Map => self.show_map,
-            Panel::Power => self.show_power,
-        }
-    }
-
-    fn dismiss_panels(&mut self) {
-        self.show_search = false;
-        self.search_request_token = None;
-        self.show_notifications = false;
-        self.show_map = false;
-        self.show_power = false;
-        self.confirm_logout = false;
-        self.query.clear();
-        self.selected_result = None;
-        self.selected_result_index = 0;
-        self.launch_error = None;
-    }
-
-    pub(super) fn notifications_app_id(&self) -> String {
-        self.output_name
-            .as_deref()
-            .map(notifications_app_id_for_output)
-            .unwrap_or_else(|| NOTIFICATIONS_APP_ID.to_string())
-    }
-
-    pub(super) fn power_app_id(&self) -> String {
-        self.output_name
-            .as_deref()
-            .map(power_menu_app_id_for_output)
-            .unwrap_or_else(|| POWER_MENU_APP_ID.to_string())
-    }
-
-    pub(super) fn key(&self) -> &str {
-        self.output_name.as_deref().unwrap_or(FALLBACK_OUTPUT_KEY)
-    }
-
-    pub(super) fn bar_app_id(&self) -> String {
-        self.output_name
-            .as_deref()
-            .map(shell_bar_app_id_for_output)
-            .unwrap_or_else(|| SHELL_BAR_APP_ID.to_string())
-    }
-
-    pub(super) fn launcher_app_id(&self) -> String {
-        if let Some(token) = self.search_request_token {
-            return launcher_app_id_for_request(self.output_name.as_deref(), token);
-        }
-        self.output_name
-            .as_deref()
-            .map(launcher_app_id_for_output)
-            .unwrap_or_else(|| LAUNCHER_APP_ID.to_string())
-    }
-
-    pub(super) fn map_app_id(&self) -> String {
-        self.output_name
-            .as_deref()
-            .map(canvas_map_app_id_for_output)
-            .unwrap_or_else(|| CANVAS_MAP_APP_ID.to_string())
-    }
 }
 
 fn normalized_output_targets(output_names: Vec<String>) -> Vec<Option<String>> {

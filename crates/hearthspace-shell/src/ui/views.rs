@@ -6,7 +6,7 @@ use xilem::{
     dpi::LogicalSize,
     masonry::layout::AsUnit,
     style::Style,
-    view::{FlexExt, flex_row, label, sized_box},
+    view::{FlexExt, flex_row, label, resize_observer, sized_box},
     window,
 };
 
@@ -37,6 +37,7 @@ pub(super) fn app_logic(
     state: &mut ShellState,
 ) -> impl Iterator<Item = WindowView<ShellState>> + use<> {
     super::search_selection::reconcile(state);
+    super::tray_state::reconcile(state);
     let watcher = window(
         state.watcher_window_id,
         "Hearthspace Output Watcher",
@@ -57,7 +58,12 @@ pub(super) fn app_logic(
             output,
             state.clock.clone(),
             &state.notifications,
+            &state.tray,
         ));
+        if output.tray.open {
+            windows.push(super::tray_view::window(output, &state.tray));
+            continue;
+        }
         if output.show_map {
             windows.push(map_window(
                 output,
@@ -96,12 +102,13 @@ fn shell_bar_window(
     output: &ShellOutputInstance,
     clock: String,
     notifications: &[Notification],
+    tray: &super::tray_state::TrayState,
 ) -> WindowView<ShellState> {
     let bar_app_id = output.bar_app_id();
     window(
         output.bar_window_id,
         "Hearthspace Shell",
-        bar_view(output, clock, notifications),
+        bar_view(output, clock, notifications, tray),
     )
     .with_options(move |options| {
         options
@@ -153,35 +160,52 @@ fn launcher_window(
     )
 }
 
-fn bar_view(
+pub(super) fn bar_view(
     output: &ShellOutputInstance,
     clock: String,
     notifications: &[Notification],
+    tray: &super::tray_state::TrayState,
 ) -> impl WidgetView<ShellState> + use<> {
     let key = output.key().to_string();
     let search = icon_button(Icon::Search, "Search", output.show_search, move |state| {
         state.toggle_search(&key);
     });
-    sized_box(
-        flex_row((
-            label(clock)
+    let width_key = output.key().to_string();
+    resize_observer(
+        move |state: &mut ShellState, size| {
+            if size.width.is_finite()
+                && let Some(output) = state.outputs.iter_mut().find(|o| o.key() == width_key)
+            {
+                output.tray.bar_width = size.width;
+            }
+        },
+        sized_box(
+            flex_row((
+                label(
+                    tray.hovered
+                        .as_ref()
+                        .map(|(_, title)| title.clone())
+                        .unwrap_or(clock),
+                )
                 .text_size(13.0)
                 .text_alignment(xilem::TextAlign::End)
                 .color(components::TEXT_MUTED)
                 .line_break_mode(xilem::masonry::properties::LineBreaking::Clip)
                 .flex(1.0),
-            search,
-            notification_view::button(output, notifications),
-            map_button(output),
-            power_button(output),
-        ))
-        .gap(8.0.px()),
+                super::tray_view::strip(output, tray),
+                search,
+                notification_view::button(output, notifications),
+                map_button(output),
+                power_button(output),
+            ))
+            .gap(8.0.px()),
+        )
+        .background_color(components::SURFACE)
+        .padding(xilem::masonry::properties::Padding::from_vh(
+            7.0.px(),
+            SHELL_BAR_H_PAD.px(),
+        )),
     )
-    .background_color(components::SURFACE)
-    .padding(xilem::masonry::properties::Padding::from_vh(
-        7.0.px(),
-        SHELL_BAR_H_PAD.px(),
-    ))
 }
 
 fn output_watcher_view(map_open: bool) -> impl WidgetView<ShellState> + use<> {
@@ -191,7 +215,10 @@ fn output_watcher_view(map_open: bool) -> impl WidgetView<ShellState> + use<> {
             fork(window_catalog_task(), shell_events_task()),
         ),
         fork(
-            fork(clock_task(), notification_task()),
+            fork(
+                fork(clock_task(), notification_task()),
+                super::tray_task::task(),
+            ),
             map_open.then(canvas_task),
         ),
     ))
