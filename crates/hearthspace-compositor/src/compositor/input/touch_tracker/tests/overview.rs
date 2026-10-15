@@ -1,6 +1,6 @@
 use super::*;
 
-fn contacts(fingers: u32) -> Vec<Position> {
+pub(super) fn contacts(fingers: u32) -> Vec<Position> {
     (0..fingers)
         .map(|index| {
             let angle = std::f64::consts::TAU * f64::from(index) / f64::from(fingers);
@@ -9,7 +9,7 @@ fn contacts(fingers: u32) -> Vec<Position> {
         .collect()
 }
 
-fn begin_overview(tracker: &mut TouchTracker, fingers: u32) {
+pub(super) fn begin_overview(tracker: &mut TouchTracker, fingers: u32) {
     for (id, position) in contacts(fingers).into_iter().enumerate() {
         tracker.down(DEVICE, slot(id as u32), position);
     }
@@ -23,7 +23,7 @@ fn begin_overview(tracker: &mut TouchTracker, fingers: u32) {
 }
 
 fn transform_contacts(tracker: &mut TouchTracker, scale: f64, rotate: bool) {
-    let center = point(200.0, 200.0);
+    let (center, _) = tracker.geometry().unwrap();
     let positions: Vec<_> = tracker
         .contacts
         .iter()
@@ -34,7 +34,7 @@ fn transform_contacts(tracker: &mut TouchTracker, scale: f64, rotate: bool) {
             } else {
                 delta
             };
-            (slot, center + delta.upscale(scale) + point(90.0, -30.0))
+            (slot, center + delta.upscale(scale))
         })
         .collect();
     for (slot, position) in positions {
@@ -76,7 +76,7 @@ fn four_and_five_contacts_report_absolute_pinch_only() {
 }
 
 #[test]
-fn translation_and_rotation_never_request_an_overview_transition() {
+fn rotation_without_translation_never_requests_an_overview_transition() {
     for fingers in [4, 5] {
         let mut tracker = TouchTracker::default();
         begin_overview(&mut tracker, fingers);

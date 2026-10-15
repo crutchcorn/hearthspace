@@ -2,6 +2,7 @@ use super::*;
 
 mod overview;
 mod pan;
+mod switcher;
 
 const DEVICE: &str = "screen";
 
