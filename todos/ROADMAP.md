@@ -47,7 +47,8 @@ every application, GPU, or output combination has been validated.
       and [hardware acceptance](../docs/POWER_TESTING.md).
 - [x] **Graphical login session integration** — installed native desktop entry,
       bounded startup and owned-login cleanup. See [graphical login](../docs/LOGIN_SESSION.md)
-      for installation and the separate pending user-authentication acceptance.
+      for installation and the GPD's observed GDM login, post-suspend password
+      unlock and physical/agent input acceptance. Other hardware remains separate.
 
 ## Known Rough Edges
 

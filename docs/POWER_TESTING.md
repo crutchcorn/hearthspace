@@ -93,8 +93,8 @@ The default total budget grows from 240 seconds to 240 plus the unlock wait.
 An explicit `--total-timeout` must reserve at least that sum. The human wait may
 exceed the ordinary per-step timeout, but remains within the aggregate deadline
 and reserves one normal step for post-unlock checks. Expiry follows normal owned
-session cleanup and records no successful manual-unlock acceptance. This mode
-is available for a later local run; its implementation alone is not PAM evidence.
+session cleanup and records no successful manual-unlock acceptance. A successful
+run must observe local authentication; the implementation alone is not PAM evidence.
 
 Normal and failure exits stop the owned native session and verify original-VT,
 scope, runtime, and background T3 service recovery. The RTC alarm is cleared only
@@ -154,8 +154,8 @@ also passed. Logs are `/tmp/hearthspace-power-final-{tests,python,clippy,build}.
 
 Physical lid closure, a connected external monitor/dock, and real PAM password
 unlock were not exercised in those two runs. The subsequent physical-lid test
-below covers lid closure; external-display policy and PAM unlock still require
-their own observed runs.
+below covers lid closure, and the later GPD graphical-login acceptance covers
+PAM unlock. External-display policy still requires its own observed run.
 
 ### User-assisted physical lid closure — 2026-10-14/15
 
@@ -196,8 +196,8 @@ the observation alone does not prove authentication works. No manual unlock was
 observed during the recorder's 150-second window. This run therefore establishes
 physical lid-triggered sleep and protected native recovery, **not** PAM unlock
 or post-unlock application interaction. A persistent idle indicator and password
-feedback have since been implemented; local visual and PAM-unlock acceptance
-remain pending the user's later test.
+feedback were subsequently implemented and observed in the GPD manual acceptance
+below, alongside real PAM unlock.
 
 The recorder then stopped its owned session: `cleanup.complete=true`, tty2
 restored, scope stopped, runtime removed, RTC alarm cleared, and both T3 services
@@ -210,3 +210,58 @@ An earlier attempt, `/tmp/hearthspace-lid-physical-1`, expired its 45-second
 close window without observing a lid closure. It recorded no sleep, cleared its
 120-second alarm, and completed cleanup. It is retained as an aborted attempt,
 not a failed suspend cycle.
+
+### Real GDM login and password unlock — 2026-10-15
+
+The GPD passed user-assisted acceptance on AC with one internal 2560×1600 eDP-1
+display at scale 2, AMD Radeon 880M/890M with `amdgpu`, kernel
+`7.0.0-38-generic` and `s2idle`. Installed release `44e7eb81dec29` was built from
+`main` commit `f78b92f`. The user selected Hearthspace in GDM and authenticated
+locally. Live guard/process checks established the actual `gdm-password`
+Wayland login on seat0, tty2, session 22, with the installed executables.
+The observer attached to that login's verified private runtime and socket;
+it did not create a native harness session.
+
+Evidence is retained under `/tmp/hearthspace-manual-acceptance.qLS4S1`:
+
+- `power-1` proved an awake RTC interrupt, armed and verified a 45-second wake
+  alarm, and requested normal logind suspend. Kernel success increased from
+  0 to 1, failures stayed at 0, and measured suspended time was **45.066 seconds**.
+  The coordinator observed one sleep and resume, rearmed its inhibitor and
+  reported recovery readiness without a final error. Compositor status
+  independently confirmed the recovered lock, redacted application metadata
+  and refused capture. The original core processes and real swaylock survived.
+- Its 300-second unlock observation expired before remote orchestration returned
+  in time to signal the user. This remains recorded as an observer coordination
+  failure. It left the same desktop and original swaylock PID 257746 intact.
+  `unlock-1` then performed a bounded, read-only continuation against that exact
+  compositor and locker. No second suspend occurred and no locker was replaced,
+  killed or bypassed. After the wait signal, the user entered their password on
+  the laptop. The observer recorded the original locker exit and the same
+  compositor becoming active, unlocked and recovered.
+- Foot window 3 and Calculator window 4 retained their identities, titles and
+  geometry across suspend and authentication. Native eDP-1 frames advanced from
+  648 before sleep to 652 after unlock. The same terminal received the exact
+  agent-driven token `after-suspend-ok`, followed by physical keyboard input
+  `wake-ok\n`. The user confirmed both the blue idle lock indicator and visible
+  password-entry feedback; no password was sent to or captured by the agent.
+- Physical touchpad dragging moved Foot from canvas `(1306, 676)` to
+  `(1114, 678)`. Touchscreen dragging moved Calculator from `(1449, 605)` to
+  `(1628, 600)`, preserving both windows' identities and dimensions. The user
+  confirmed all three input devices worked. The final inspected native capture,
+  frame 1430, showed both moves, terminal markers and Calculator's result `42`.
+
+`acceptance-results.json` combines the login, suspend, unlock and input checks.
+`physical-input-result.json`, `user-observations.json`, `physical-input-passed.png`
+and its metadata retain the final assertions and visual evidence; `power-1` and
+`unlock-1` retain separate timelines, results and before/after native captures.
+Supervisor, compositor, settings service and shell PID/start identities survived,
+as did `t3code.service` and `t3code-tailnet.service`. The owned RTC alarm was
+cleared. No persistent host power, GDM or PAM policy changed, and the user's
+desktop was left active on tty2.
+
+This closes GPD acceptance for real graphical login, visible lock feedback,
+password unlock after suspend, and recovered agent/physical input. It does not
+extend coverage to external monitors/docks, battery-specific policy, repeated
+long-duration sleep, other machines or the pending ThinkPad GDM retry. Physical
+lid-switch evidence remains the separate earlier run above.

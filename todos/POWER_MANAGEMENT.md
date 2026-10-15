@@ -9,10 +9,12 @@ native recovery on the GPD host. This does not establish all-day laptop behavior
 
 - [x] Make the idle lock state visible with swaylock's persistent indicator,
       keyboard layout, Caps Lock feedback, and failed-attempt count.
-- [ ] Verify real password authentication after wake, returning to the same
-      applications with working keyboard, touchpad, and touchscreen. The protocol
-      fixture cannot establish PAM authentication; the user must enter their
-      password locally.
+- [x] Verify real password authentication after wake, returning to the same
+      applications with working keyboard, touchpad, and touchscreen. Passed on
+      2026-10-15 in the GPD's real GDM login, on AC with one internal display:
+      the user entered the password locally, confirmed visible lock feedback,
+      typed an exact keyboard marker, and moved windows with both devices.
+      See the [manual acceptance record](../docs/POWER_TESTING.md#real-gdm-login-and-password-unlock--2026-10-15).
 
 ## Remaining hardware acceptance
 

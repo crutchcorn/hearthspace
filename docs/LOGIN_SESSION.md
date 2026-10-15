@@ -94,9 +94,9 @@ scripts/hearthspace-agent --session /tmp/hearthspace-installed-1 stop
 
 This validates the installed native session under the harness's PAM session;
 it does not substitute for selecting Hearthspace and authenticating through GDM.
-Real swaylock password unlock is also pending; the
-[manual unlock acceptance](POWER_TESTING.md) performs a bounded
-user-assisted check without synthetic password input or weakened locking.
+Real GDM login and swaylock password unlock passed on the GPD on 2026-10-15;
+see the [manual acceptance record](POWER_TESTING.md#real-gdm-login-and-password-unlock--2026-10-15)
+for the observed hardware, preserved applications and physical input checks.
 
 ### Development-host results (2026-10-14)
 
@@ -143,8 +143,9 @@ case; its log is retained at `/tmp/hearthspace-login-final-python.log`. The norm
 host renderer passed the subsequent full suites; the renderer-specific failure's
 cause has not been established.
 
-Actual GDM authentication, visible lock feedback observed on the laptop, and real
-password unlock after wake remain pending the user's local testing.
+These earlier harness runs did not establish actual GDM authentication, visible
+lock feedback or real password unlock. The subsequent GPD manual run below
+covers those checks.
 
 ### GDM login regression (2026-10-15)
 
@@ -155,12 +156,35 @@ started. The original check required logind's `Desktop=Hearthspace`, while GDM
 50.1 on this host leaves `Desktop` empty, including for ordinary Ubuntu logins.
 The GDM-specific selection check described above addresses this failure, with
 regressions covering startup, foreign-desktop rejection, process identity races,
-and cleanup after the supervisor exits. Successful desktop startup through GDM
-still requires a manual retry.
+and cleanup after the supervisor exits. A successful manual retry on the
+ThinkPad T480s remains unverified; the GPD acceptance below is separate hardware.
 
-Corrected release `9dedca6ea14d` is installed; its helper matches the reviewed
+Corrected release `9dedca6ea14d` was installed; its helper matched the reviewed
 source and installation hashes/modes/ownership were verified. Formatting, Clippy,
 workspace and release builds, 545 Rust tests, and 311 Python tests passed; eight
 opt-in headless Python tests were skipped. Ruff passed all 109 Python files and
 entrypoints. The live Ubuntu GDM session was rejected by a read-only ownership
 check. Validation logs are `/tmp/hearthspace-gdm-fix-*.log`.
+
+### Real GDM login and password unlock — 2026-10-15
+
+The user selected **Hearthspace** in GDM and entered their password locally on
+the GPD. Installed release `44e7eb81dec29`, built from `main` commit `f78b92f`,
+started successfully on tty2. The guard and live process identities establish
+logind session 22, `Service=gdm-password`, `Seat=seat0` and
+`GDMSESSION=hearthspace`; logind's `Desktop` remained empty. The running core
+executables matched that installed release. This was the user's actual
+graphical login, with agents attached to its explicit private socket.
+
+The same login survived a 45.066-second suspend and local swaylock password
+unlock. The user confirmed the blue idle indicator, password-entry feedback,
+restored Calculator and terminal, and working physical keyboard, touchpad and
+touchscreen. Agents verified preserved core processes and window geometry,
+fresh native frames and exact terminal input. The initial unlock observer
+timed out before the remote agent could signal the user; a bounded continuation
+observed the same original locker authenticate, without another suspend.
+
+The [power acceptance record](POWER_TESTING.md#real-gdm-login-and-password-unlock--2026-10-15)
+contains detailed evidence and the retained timeout. The desktop remained active
+on tty2 with both background T3 services preserved. This run did not repeat
+logout, crash cleanup, external-display or other-machine testing.
