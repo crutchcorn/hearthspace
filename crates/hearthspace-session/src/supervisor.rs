@@ -22,6 +22,7 @@ use crate::{
 
 mod commands;
 mod notifications;
+mod startup;
 
 pub(crate) struct Supervisor {
     mode: RunMode,
@@ -151,7 +152,7 @@ impl Supervisor {
         let spec = self.binary_spec("hearthspace-shell", &[], true);
         self.shell = Some(ManagedProcess::spawn(spec, max_restarts)?);
         self.record_processes()?;
-        Ok(())
+        self.wait_for_desktop_ready()
     }
 
     pub(crate) fn start_desktop_services(&mut self) -> Result<(), Box<dyn std::error::Error>> {

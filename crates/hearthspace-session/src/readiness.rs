@@ -12,6 +12,8 @@ use nix::{
     sys::socket::{AddressFamily, SockFlag, SockType, UnixAddr, connect, socket},
 };
 
+pub(crate) mod desktop;
+
 /// AF_UNIX connect can block on a full listen backlog; nonblocking sockets keep
 /// that path within the same absolute startup budget as reads and child polling.
 pub(crate) fn connect_until(
