@@ -15,6 +15,27 @@ LOADER.exec_module(guard)
 
 
 class LoginGuardTests(unittest.TestCase):
+    def test_loginctl_properties_use_separate_options(self):
+        # loginctl accepts repeated -p options but silently ignores a comma list.
+        with patch.object(
+            guard, "command", return_value="Id=108\nUser=1000\n"
+        ) as command:
+            self.assertEqual(
+                guard.properties("loginctl", "108", ("Id", "User")),
+                {"Id": "108", "User": "1000"},
+            )
+        command.assert_called_once_with(
+            [
+                "loginctl",
+                "--no-ask-password",
+                "show-session",
+                "108",
+                "--property=Id",
+                "--property=User",
+            ],
+            missing_ok=False,
+        )
+
     def setUp(self):
         self.owner = {
             "pid": 42,

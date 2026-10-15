@@ -34,7 +34,7 @@ def properties(program, target, names):
             "--no-ask-password",
             "show-session" if program == "loginctl" else "show",
             target,
-            "--property=" + ",".join(names),
+            *("--property=" + name for name in names),
         ],
         missing_ok=program == "systemctl",
     )
