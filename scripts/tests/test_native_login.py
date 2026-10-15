@@ -46,6 +46,16 @@ def state(directory):
     }
 
 
+def installed_data(directory):
+    for relative in (
+        "applications/dev.hearthspace.Settings.desktop",
+        "icons/hicolor/scalable/apps/hearthspace.svg",
+    ):
+        resource = Path(directory) / "share" / relative
+        resource.parent.mkdir(parents=True, exist_ok=True)
+        resource.write_text("installed resource\n")
+
+
 class NativeLoginTests(unittest.TestCase):
     def test_login_guard_is_opt_in_for_both_public_and_privileged_start(self):
         for command in ("start", "_start"):
@@ -75,6 +85,30 @@ class NativeLoginTests(unittest.TestCase):
                 privileged.assert_not_called()
                 build.assert_not_called()
 
+    def test_missing_shared_data_fails_before_service_submission(self):
+        with tempfile.TemporaryDirectory() as directory:
+            values = args(directory, True)
+            values.binary_dir.mkdir()
+            helper = values.binary_dir / "hearthspace-login-guard"
+            helper.write_text("#!/usr/bin/python3\n")
+            helper.chmod(0o755)
+            installed_data(directory)
+            for relative in (
+                "applications/dev.hearthspace.Settings.desktop",
+                "icons/hicolor/scalable/apps/hearthspace.svg",
+            ):
+                resource = Path(directory) / "share" / relative
+                resource.unlink()
+                with (
+                    self.subTest(relative=relative),
+                    patch.object(cli, "preflight"),
+                    patch.object(cli, "privileged") as privileged,
+                    self.assertRaisesRegex(RuntimeError, "installed shared data"),
+                ):
+                    cli.start(values)
+                privileged.assert_not_called()
+                installed_data(directory)
+
     def test_installed_guard_provenance_is_recorded_only_in_login_mode(self):
         with tempfile.TemporaryDirectory() as directory:
             values = args(directory, True)
@@ -83,6 +117,7 @@ class NativeLoginTests(unittest.TestCase):
                 executable = values.binary_dir / name
                 executable.write_text("#!/bin/sh\nexit 1\n")
                 executable.chmod(0o755)
+            installed_data(directory)
             for enabled in (True, False):
                 values.login_session = enabled
                 cli.build(values, Path(directory))
@@ -164,6 +199,39 @@ class NativeLoginTests(unittest.TestCase):
             self.assertEqual(
                 command[command.index("--binary-dir") + 1], saved["binary_dir"]
             )
+
+    def test_login_environment_uses_release_data_and_disables_checkout_fallback(self):
+        for enabled in (False, True):
+            for inherited in (None, "", "/custom/share:/usr/share"):
+                saved = state("/tmp/native-test") | {"login_session": enabled}
+                original = {
+                    "XDG_SESSION_ID": "108",
+                    "HEARTHSPACE_DEV": "1",
+                    "HEARTHSPACE_REPO_ROOT": "/checkout",
+                }
+                if inherited is not None:
+                    original["XDG_DATA_DIRS"] = inherited
+                with (
+                    self.subTest(enabled=enabled, inherited=inherited),
+                    patch.object(service, "load", return_value=saved),
+                    patch.dict(os.environ, original, clear=True),
+                    patch.object(service, "save"),
+                    patch.object(service.os, "execve") as execute,
+                ):
+                    service.exec_session("ignored")
+                environment = execute.call_args.args[2]
+                if enabled:
+                    self.assertEqual(
+                        environment["XDG_DATA_DIRS"],
+                        "/tmp/installed/share:"
+                        + (inherited or "/usr/local/share:/usr/share"),
+                    )
+                    self.assertNotIn("HEARTHSPACE_DEV", environment)
+                    self.assertNotIn("HEARTHSPACE_REPO_ROOT", environment)
+                else:
+                    self.assertEqual(environment.get("XDG_DATA_DIRS"), inherited)
+                    self.assertEqual(environment["HEARTHSPACE_DEV"], "1")
+                    self.assertEqual(environment["HEARTHSPACE_REPO_ROOT"], "/checkout")
 
     def test_recovery_accepts_removed_owned_session_without_adopting_foreign_login(
         self,

@@ -208,6 +208,14 @@ def exec_session(state_file):
     env["XDG_RUNTIME_DIR"] = state["runtime_dir"]
     env["WAYLAND_DISPLAY"] = state["wayland_display"]
     env["XDG_CURRENT_DESKTOP"] = "Hearthspace"
+    if state.get("login_session", False):
+        # Match the installed launcher before starting the private bus, so the
+        # shell and activated services discover this exact release's assets.
+        share = Path(state["binary_dir"]).parent / "share"
+        inherited = env.get("XDG_DATA_DIRS") or "/usr/local/share:/usr/share"
+        env["XDG_DATA_DIRS"] = f"{share}:{inherited}"
+        env.pop("HEARTHSPACE_DEV", None)
+        env.pop("HEARTHSPACE_REPO_ROOT", None)
     supervisor = str(Path(state["binary_dir"]) / "hearthspace-session")
     args = [
         # PAM may grant CAP_WAKE_ALARM. Clear inherited/ambient grants before

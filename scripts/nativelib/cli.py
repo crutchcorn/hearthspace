@@ -67,6 +67,16 @@ def build(args, session):
                 "--login-session requires an executable installed cleanup helper: "
                 f"{helper}; use --no-build --binary-dir with an installed release"
             )
+        share = helper.parent.parent / "share"
+        for relative in (
+            "applications/dev.hearthspace.Settings.desktop",
+            "icons/hicolor/scalable/apps/hearthspace.svg",
+        ):
+            resource = share / relative
+            if not resource.is_file() or not os.access(resource, os.R_OK):
+                raise RuntimeError(
+                    f"--login-session requires installed shared data: {resource}"
+                )
         required += ("hearthspace-login-guard",)
     if not args.no_build:
         with (session / "build.log").open("w") as log:
