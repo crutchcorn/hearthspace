@@ -9,6 +9,7 @@ use crate::{
 };
 
 pub(crate) struct SettingsApp {
+    pub(crate) favorites: crate::favorites::FavoriteSettings,
     pub(crate) settings: Settings,
     pub(crate) live_outputs: Vec<LiveOutput>,
     pub(crate) selected_category: SettingsCategory,
@@ -23,6 +24,7 @@ pub(crate) struct SettingsApp {
 pub(crate) enum SettingsCategory {
     Display,
     Appearance,
+    Favorites,
     Advanced,
 }
 
@@ -31,6 +33,7 @@ impl SettingsCategory {
         match self {
             Self::Display => "Display",
             Self::Appearance => "Appearance",
+            Self::Favorites => "Favorites",
             Self::Advanced => "Advanced",
         }
     }
@@ -39,6 +42,7 @@ impl SettingsCategory {
         match self {
             Self::Display => "Monitor placement and scale",
             Self::Appearance => "Canvas background image and fit",
+            Self::Favorites => "Favorite apps and their launch gestures",
             Self::Advanced => "Diagnostics and configuration",
         }
     }
@@ -80,6 +84,7 @@ pub(crate) fn initial_state() -> SettingsApp {
     };
 
     SettingsApp {
+        favorites: crate::favorites::FavoriteSettings::load(),
         settings,
         live_outputs,
         selected_category: SettingsCategory::Display,
@@ -88,5 +93,15 @@ pub(crate) fn initial_state() -> SettingsApp {
         background_picker_pending: false,
         status,
         config_label,
+    }
+}
+
+impl SettingsApp {
+    pub(crate) fn select_category(&mut self, category: SettingsCategory) {
+        self.favorites.cancel();
+        if category == SettingsCategory::Favorites {
+            self.favorites.reload();
+        }
+        self.selected_category = category;
     }
 }
