@@ -355,9 +355,9 @@ impl App {
                     state.decoration_mode = Some(DecorationMode::ClientSide);
                 }
                 ManagedWindowKind::Launcher => {
-                    // The launcher sizes itself to its result list, so the
-                    // compositor leaves the size unset (client-driven) and only
-                    // enforces client-side decorations.
+                    // Content measurements arrive as fixed min/max hints. The
+                    // palette sizing path then applies the output bounds and
+                    // responsive search width.
                     state.decoration_mode = Some(DecorationMode::ClientSide);
                 }
                 ManagedWindowKind::ShellWatcher => {
