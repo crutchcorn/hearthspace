@@ -37,7 +37,7 @@ pub(super) fn click(compositor: &HeadlessCompositor, x: f64, y: f64) {
 
 #[test]
 fn shell_panels_focus_hit_test_and_close_without_revealing_off_canvas_windows() {
-    let _guard = HEADLESS_TEST_LOCK.lock().unwrap();
+    let _guard = headless_test_guard();
     let mut compositor = HeadlessCompositor::spawn_with_size("1280x800");
     drop(compositor.wait_for_socket());
     let output = query(&compositor, "status")["outputs"][0]["name"]
@@ -155,7 +155,7 @@ fn shell_panels_focus_hit_test_and_close_without_revealing_off_canvas_windows() 
 
 #[test]
 fn search_and_dropdowns_fit_scaled_small_outputs_and_lock_hides_their_metadata() {
-    let _guard = HEADLESS_TEST_LOCK.lock().unwrap();
+    let _guard = headless_test_guard();
     let mut compositor = HeadlessCompositor::spawn_with_options("640x480", None, None, 2);
     drop(compositor.wait_for_socket());
     let mut client = connect(&compositor);
@@ -199,7 +199,7 @@ fn search_and_dropdowns_fit_scaled_small_outputs_and_lock_hides_their_metadata()
 fn search_bridge_preserves_early_typing_and_revokes_cancelled_requests() {
     use std::os::unix::net::UnixDatagram;
 
-    let _guard = HEADLESS_TEST_LOCK.lock().unwrap();
+    let _guard = headless_test_guard();
     let mut compositor = HeadlessCompositor::spawn_with_size("1280x800");
     drop(compositor.wait_for_socket());
     let events = UnixDatagram::bind(hearthspace_common::shell_event_socket_path(

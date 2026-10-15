@@ -2,7 +2,7 @@ use super::*;
 
 #[test]
 fn shell_pointer_zoom_reveals_distant_app_without_stealing_shell_focus() {
-    let _guard = HEADLESS_TEST_LOCK.lock().unwrap();
+    let _guard = headless_test_guard();
     let mut compositor = HeadlessCompositor::spawn_with_size("1280x800");
     drop(compositor.wait_for_socket());
     let (_fixture, state) = maximized_fixture(&compositor, "distant-app", "wayland");

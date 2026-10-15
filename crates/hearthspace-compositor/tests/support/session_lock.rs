@@ -74,7 +74,7 @@ fn assert_locked(compositor: &HeadlessCompositor) {
 
 #[test]
 fn session_lock_blocks_agent_access_and_restores_focus_only_after_owner_unlocks() {
-    let _guard = HEADLESS_TEST_LOCK.lock().unwrap();
+    let _guard = headless_test_guard();
     let mut compositor = HeadlessCompositor::spawn_with_size("1280x800");
     drop(compositor.wait_for_socket());
     let (_editor, state_path) = editor(&compositor);
@@ -133,7 +133,7 @@ fn session_lock_blocks_agent_access_and_restores_focus_only_after_owner_unlocks(
 fn sleep_shield_survives_locker_launch_failure_and_admits_only_its_first_owner() {
     use super::interactive::client::InteractiveClient;
 
-    let _guard = HEADLESS_TEST_LOCK.lock().unwrap();
+    let _guard = headless_test_guard();
     let empty_path = tempfile::tempdir().unwrap();
     let mut compositor =
         HeadlessCompositor::spawn_with_layout_and_path("1280x800", None, Some(empty_path.path()));
@@ -200,7 +200,7 @@ fn sleep_shield_survives_locker_launch_failure_and_admits_only_its_first_owner()
 
 #[test]
 fn session_lock_client_disconnect_keeps_the_session_closed() {
-    let _guard = HEADLESS_TEST_LOCK.lock().unwrap();
+    let _guard = headless_test_guard();
     let mut compositor = HeadlessCompositor::spawn_with_size("800x600");
     drop(compositor.wait_for_socket());
     let socket = compositor
@@ -219,7 +219,7 @@ fn session_lock_client_disconnect_keeps_the_session_closed() {
 
 #[test]
 fn authentication_before_sleep_never_unlocks_the_resumed_desktop() {
-    let _guard = HEADLESS_TEST_LOCK.lock().unwrap();
+    let _guard = headless_test_guard();
     let empty_path = tempfile::tempdir().unwrap();
     let mut compositor =
         HeadlessCompositor::spawn_with_layout_and_path("1280x800", None, Some(empty_path.path()));
@@ -257,7 +257,7 @@ fn authentication_before_sleep_never_unlocks_the_resumed_desktop() {
 
 #[test]
 fn resume_preserves_live_locker_and_never_replaces_a_crashed_sleep_owner() {
-    let _guard = HEADLESS_TEST_LOCK.lock().unwrap();
+    let _guard = headless_test_guard();
     let empty_path = tempfile::tempdir().unwrap();
     let mut compositor =
         HeadlessCompositor::spawn_with_layout_and_path("800x600", None, Some(empty_path.path()));

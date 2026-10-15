@@ -91,7 +91,7 @@ fn press(
 
 #[test]
 fn interactive_client_move_resize_follow_pointer_and_stop_after_release_at_zoom() {
-    let _guard = HEADLESS_TEST_LOCK.lock().unwrap();
+    let _guard = headless_test_guard();
     let (mut compositor, mut client) = fixture();
     for scale in [1.0_f64, 0.8] {
         if scale < 1.0 {
@@ -160,7 +160,7 @@ fn interactive_client_move_resize_follow_pointer_and_stop_after_release_at_zoom(
 
 #[test]
 fn interactive_requests_reject_wrong_serial_wrong_window_and_released_grabs() {
-    let _guard = HEADLESS_TEST_LOCK.lock().unwrap();
+    let _guard = headless_test_guard();
     let (mut compositor, mut client) = fixture();
     for operation in [Operation::Move, Operation::Resize] {
         let before = windows(&compositor);
@@ -198,7 +198,7 @@ fn interactive_requests_reject_wrong_serial_wrong_window_and_released_grabs() {
 
 #[test]
 fn interactive_requests_reject_non_left_button_grabs() {
-    let _guard = HEADLESS_TEST_LOCK.lock().unwrap();
+    let _guard = headless_test_guard();
     let (mut compositor, mut client) = fixture();
     for operation in [Operation::Move, Operation::Resize] {
         let before = windows(&compositor);
@@ -220,7 +220,7 @@ fn interactive_requests_reject_non_left_button_grabs() {
 
 #[test]
 fn redundant_restore_requests_acknowledge_configures_and_preserve_interactive_resize() {
-    let _guard = HEADLESS_TEST_LOCK.lock().unwrap();
+    let _guard = headless_test_guard();
     let (mut compositor, mut client) = fixture();
     let original = windows(&compositor);
     let (configured, resizing) = client.configuration(0);

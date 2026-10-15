@@ -42,7 +42,7 @@ pub(super) fn assert_centered(window: &Value, width: f64, height: f64) {
 
 #[test]
 fn new_windows_center_at_current_pan_and_zoom_without_moving_viewport() {
-    let _guard = HEADLESS_TEST_LOCK.lock().unwrap();
+    let _guard = headless_test_guard();
     let mut compositor = HeadlessCompositor::spawn_with_size("1280x800");
     drop(compositor.wait_for_socket());
     let socket = compositor

@@ -115,7 +115,7 @@ fn wait_green_pixels(
 }
 
 fn run_zoom_restores_startup_maximized_apps(backend: &str) {
-    let _guard = HEADLESS_TEST_LOCK.lock().unwrap();
+    let _guard = headless_test_guard();
     let mut compositor = HeadlessCompositor::spawn_with_size("1280x800");
     drop(compositor.wait_for_socket());
     let (_first, state) = maximized_fixture(&compositor, "first", backend);
@@ -216,7 +216,7 @@ fn zoom_restores_startup_maximized_x11_apps_and_preserves_floating_input() {
 
 #[test]
 fn zoom_preserves_fullscreen_and_maximization_at_scale_limit() {
-    let _guard = HEADLESS_TEST_LOCK.lock().unwrap();
+    let _guard = headless_test_guard();
     let mut compositor = HeadlessCompositor::spawn_with_size("1280x800");
     drop(compositor.wait_for_socket());
     let (_fixture, state) = maximized_fixture(&compositor, "fullscreen", "wayland");
@@ -266,7 +266,7 @@ fn zoom_preserves_fullscreen_and_maximization_at_scale_limit() {
 
 #[test]
 fn zoom_reveals_a_focused_dialog_above_a_distant_maximized_parent() {
-    let _guard = HEADLESS_TEST_LOCK.lock().unwrap();
+    let _guard = headless_test_guard();
     let mut compositor = HeadlessCompositor::spawn_with_size("1280x800");
     drop(compositor.wait_for_socket());
     let (_fixture, state) = maximized_fixture(&compositor, "dialog-parent", "wayland");

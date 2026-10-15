@@ -53,7 +53,7 @@ fn assert_pixel(compositor: &HeadlessCompositor, x: usize, y: usize, green: bool
 
 #[test]
 fn canvas_map_stays_right_anchored_hit_testable_and_focused_while_zooming() {
-    let _guard = HEADLESS_TEST_LOCK.lock().unwrap();
+    let _guard = headless_test_guard();
     let mut compositor = HeadlessCompositor::spawn_with_size("1280x800");
     drop(compositor.wait_for_socket());
     let output = query(&compositor, "status")["outputs"][0]["name"]
@@ -220,7 +220,7 @@ fn canvas_map_stays_right_anchored_hit_testable_and_focused_while_zooming() {
 
 #[test]
 fn canvas_map_clamps_to_scaled_small_output_and_resizes_in_logical_pixels() {
-    let _guard = HEADLESS_TEST_LOCK.lock().unwrap();
+    let _guard = headless_test_guard();
     let mut compositor = HeadlessCompositor::spawn_with_options("640x480", None, None, 2);
     drop(compositor.wait_for_socket());
     let output = query(&compositor, "status")["outputs"][0]["name"]
@@ -254,7 +254,7 @@ fn canvas_map_clamps_to_scaled_small_output_and_resizes_in_logical_pixels() {
 
 #[test]
 fn absolute_map_pan_is_immediate_preserves_window_geometry_and_respects_modal_input() {
-    let _guard = HEADLESS_TEST_LOCK.lock().unwrap();
+    let _guard = headless_test_guard();
     let mut compositor = HeadlessCompositor::spawn_with_size("1280x800");
     drop(compositor.wait_for_socket());
     let mut client = connect(&compositor);

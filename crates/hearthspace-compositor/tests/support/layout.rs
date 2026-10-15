@@ -24,7 +24,7 @@ fn client(compositor: &HeadlessCompositor) -> Editors {
 
 #[test]
 fn layout_restart_restores_viewport_but_new_windows_center_without_navigation() {
-    let _guard = HEADLESS_TEST_LOCK.lock().unwrap();
+    let _guard = headless_test_guard();
     let saved = tempfile::tempdir().unwrap();
     let path = saved.path().join("layout.json");
     let viewport;

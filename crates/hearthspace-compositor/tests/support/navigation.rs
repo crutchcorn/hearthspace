@@ -104,7 +104,7 @@ fn wait_activation(compositor: &HeadlessCompositor, active: usize, count: usize)
 
 #[test]
 fn navigation_maps_focuses_cycles_reveals_resizes_and_closes_real_clients() {
-    let _guard = HEADLESS_TEST_LOCK.lock().expect("headless test lock");
+    let _guard = headless_test_guard();
     let mut compositor = HeadlessCompositor::spawn_with_size("1280x800");
     drop(compositor.wait_for_socket());
     let mut editors = Editors(Vec::new());
@@ -267,7 +267,7 @@ fn navigation_maps_focuses_cycles_reveals_resizes_and_closes_real_clients() {
 #[cfg(feature = "xwayland")]
 #[test]
 fn navigation_moves_x11_without_doubling_its_global_position() {
-    let _guard = HEADLESS_TEST_LOCK.lock().expect("headless test lock");
+    let _guard = headless_test_guard();
     let mut compositor = HeadlessCompositor::spawn_with_size("1280x800");
     drop(compositor.wait_for_socket());
     let deadline = Instant::now() + Duration::from_secs(10);

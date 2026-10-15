@@ -73,7 +73,7 @@ fn initial_events(compositor: &HeadlessCompositor, server_chrome: bool) -> Vec<E
 
 #[test]
 fn initial_window_bounds_precede_configure_and_leave_client_size_advisory() {
-    let _guard = HEADLESS_TEST_LOCK.lock().unwrap();
+    let _guard = headless_test_guard();
     let mut compositor = HeadlessCompositor::spawn_with_size("1280x800");
     drop(compositor.wait_for_socket());
     assert_eq!(
