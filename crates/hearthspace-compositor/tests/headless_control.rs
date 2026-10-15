@@ -37,6 +37,9 @@ mod window_bounds;
 #[cfg(feature = "test-apps")]
 #[path = "support/window_states.rs"]
 mod window_states;
+#[cfg(feature = "test-apps")]
+#[path = "support/window_switcher.rs"]
+mod window_switcher;
 
 const WIDTH: u32 = 320;
 const HEIGHT: u32 = 240;

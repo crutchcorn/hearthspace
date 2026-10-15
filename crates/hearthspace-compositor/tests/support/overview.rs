@@ -4,7 +4,11 @@ use super::session_lock::lock_client;
 use super::*;
 use serde_json::{Value, json};
 
-fn editor(compositor: &HeadlessCompositor, editors: &mut Editors, number: usize) -> (u64, PathBuf) {
+pub(super) fn editor(
+    compositor: &HeadlessCompositor,
+    editors: &mut Editors,
+    number: usize,
+) -> (u64, PathBuf) {
     let title = format!("Overview editor {number}");
     let input = compositor
         .runtime_dir
@@ -53,7 +57,7 @@ fn editor(compositor: &HeadlessCompositor, editors: &mut Editors, number: usize)
     (id, state)
 }
 
-fn wait_state(path: &Path, condition: impl Fn(&Value) -> bool) -> Value {
+pub(super) fn wait_state(path: &Path, condition: impl Fn(&Value) -> bool) -> Value {
     let deadline = Instant::now() + Duration::from_secs(5);
     loop {
         let state = std::fs::read(path)
