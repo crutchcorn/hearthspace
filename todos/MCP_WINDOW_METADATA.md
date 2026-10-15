@@ -1,8 +1,25 @@
 # Architecture Brief: MCP Window Metadata
 
+## Implementation status
+
+This is a proposed richer orchestration layer, not an implemented MCP server.
+The working interface is the compositor control socket and agent CLI: live
+window IDs/geometry/focus/state, app discovery, and private AT-SPI
+snapshot/find/activate operations. See [AI enablement](./AI_ENABLEMENT.md) and
+[native testing](../docs/NATIVE_TESTING.md). Window-to-accessibility association
+remains best effort; missing app semantics fall back to compositor metadata and
+visual interaction. Locking redacts normal metadata and blocks these operations.
+
+App-provided contextual broadcasts, process-file inspection, semantic grouping,
+and an MCP transport remain proposals. On-demand collection avoids a persistent
+index, but a result can still become stale immediately after collection; callers
+must re-observe state after actions.
+
+## Proposed design
+
 To power an infinite canvas desktop shell, the local AI orchestrator must be able to reason about what every open window actually contains ("group all the windows that are research project related").
 
-To do that, Hearthspace exposes window state to a **Model Context Protocol (MCP)** server. The orchestrator queries that server to get a real-time view of each window on the canvas.
+One possible frontend would expose window state through a **Model Context Protocol (MCP)** server. An orchestrator could query that server for a live view of each window on the canvas.
 
 All metadata in this system is gathered **dynamically, on demand**. There is no cache, no vector store, and no background ingestion. When the orchestrator asks about a window, Hearthspace queries it live at that moment. The activity/suspension state of a window is explicitly **out of scope** here — that is handled by the separate Window Activity Status system (see [WINDOW_ACTIVITY_STATUS.md](WINDOW_ACTIVITY_STATUS.md)).
 
@@ -22,7 +39,7 @@ When the orchestrator requests metadata for a window, Hearthspace gathers it fro
 
 * **Tier 2: Compositor Metadata**
   * **Mechanism:** Extract Wayland protocol properties (`xdg_toplevel.title`, `app_id`).
-  * **Expected Data:** High-level context ("Figma - Landing Page Design"). Always available.
+  * **Expected Data:** Stable compositor identity and geometry, plus client-supplied context such as "Figma - Landing Page Design". Titles and application IDs can be empty or change.
 
 * **Tier 3: Process Descriptor Inspection**
   * **Mechanism:** Scan the kernel's `/proc/[pid]/fd` for the window's underlying process.
@@ -36,6 +53,10 @@ An earlier design included a tier that screenshotted the window framebuffer and 
 
 ## 2. Query Execution (The Recall)
 
-When the user issues a prompt, the orchestrator queries the MCP server for the windows it cares about, merges the live tier data for each, and runs the semantic search against the prompt. Matching windows are then animated to a new cluster on the infinite canvas.
+In this proposal, an orchestrator would query the windows relevant to a prompt,
+merge the available live tier data, and use semantic search to suggest groups on
+the canvas. Grouping and automatic rearrangement are not implemented.
 
-Because everything is live, there is no freshness/staleness concern and no need to distinguish "cached" from "dynamic" windows — every query reflects the current state of every window.
+Live queries should record what they observed and revalidate targets before
+acting. Independent application updates prevent a cross-window query from being
+an atomic snapshot.

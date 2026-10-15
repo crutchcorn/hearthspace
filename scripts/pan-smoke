@@ -1,0 +1,6 @@
+#!/usr/bin/env python3
+"""Real native three-finger pan and pinch acceptance."""
+from agentlib.pan import main
+
+if __name__ == "__main__":
+    raise SystemExit(main())

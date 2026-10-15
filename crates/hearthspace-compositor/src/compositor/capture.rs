@@ -5,11 +5,12 @@ use std::{
     time::{Duration, Instant},
 };
 
-use super::{
-    App, CalloopData, ManagedWindowKind, runtime::Backend, shell_integration::ControlReply,
-};
+use super::{CalloopData, ManagedWindowKind, runtime::Backend, shell_integration::ControlReply};
 use serde::Serialize;
 
+#[cfg(any(feature = "udev", test))]
+mod encoding;
+mod frames;
 mod legacy;
 mod pixels;
 #[cfg(test)]
@@ -18,6 +19,8 @@ mod tests;
 #[cfg(feature = "udev")]
 pub(super) use pixels::CursorOverlay;
 pub(super) use pixels::{encode_png, read_pixels};
+
+use frames::Frame;
 
 const CAPTURE_TIMEOUT: Duration = Duration::from_secs(5);
 const MAX_REQUESTS: usize = 4;
@@ -37,28 +40,66 @@ pub(super) struct OutputMetadata {
 }
 
 struct Request {
+    id: u64,
     output: String,
     metadata: bool,
     sender: mpsc::Sender<ControlReply>,
     deadline: Instant,
 }
 
-struct Frame {
-    requests: Vec<Request>,
-    output: OutputMetadata,
-    png: Vec<u8>,
-    cursor_source: &'static str,
+impl Request {
+    fn elapsed_ms(&self) -> u128 {
+        self.deadline
+            .checked_sub(CAPTURE_TIMEOUT)
+            .unwrap()
+            .elapsed()
+            .as_millis()
+    }
+
+    fn expire(&self, phase: &'static str, frame_id: u64) -> bool {
+        if Instant::now() < self.deadline {
+            return true;
+        }
+        tracing::warn!(capture_id = self.id, output = %self.output, phase, frame_id,
+            elapsed_ms = self.elapsed_ms(), "capture request timed out");
+        let _ = self
+            .sender
+            .send(ControlReply::Err("capture presentation timed out".into()));
+        false
+    }
 }
 
 #[derive(Default)]
 pub(super) struct CaptureState {
+    next_request_id: u64,
     pending: Vec<Request>,
     staged: HashMap<String, Frame>,
     frames: HashMap<String, u64>,
+    #[cfg(any(feature = "udev", test))]
+    encoder: Option<encoding::Encoder>,
 }
 
 impl CaptureState {
-    fn request(&mut self, output: String, metadata: bool) -> ControlReply {
+    #[cfg(test)]
+    pub(in crate::compositor) fn with_test_encoder(
+        encode: impl FnMut(
+            smithay::utils::Size<i32, smithay::utils::Physical>,
+            &[u8],
+        ) -> Result<Vec<u8>, String>
+        + Send
+        + 'static,
+    ) -> Self {
+        Self {
+            encoder: Some(encoding::Encoder::with_encode(encode).unwrap()),
+            ..Self::default()
+        }
+    }
+
+    pub(in crate::compositor) fn request(
+        &mut self,
+        output: String,
+        metadata: bool,
+    ) -> ControlReply {
         let count = self.pending.len()
             + self
                 .staged
@@ -69,7 +110,11 @@ impl CaptureState {
             return ControlReply::Err("too many pending captures".into());
         }
         let (sender, receiver) = mpsc::channel();
+        self.next_request_id = self.next_request_id.wrapping_add(1);
+        tracing::debug!(capture_id = self.next_request_id, %output,
+            frame_id = self.frame_id(&output), pending = count, "capture request accepted");
         self.pending.push(Request {
+            id: self.next_request_id,
             output,
             metadata,
             sender,
@@ -79,82 +124,33 @@ impl CaptureState {
     }
 
     pub(super) fn timeout(&self) -> Option<Duration> {
-        self.pending
+        let deadline = self
+            .pending
             .iter()
             .chain(self.staged.values().flat_map(|f| f.requests.iter()))
             .map(|r| r.deadline.saturating_duration_since(Instant::now()))
-            .min()
+            .min();
+        // CPU encoding never occupies the event-loop thread. Poll completion
+        // with a bounded delay, including when a cancelled job owns a slot.
+        #[cfg(any(feature = "udev", test))]
+        if self.encoder.is_some() {
+            return deadline.map(|timeout| timeout.min(Duration::from_millis(10)));
+        }
+        deadline
     }
 
-    #[cfg(feature = "udev")]
+    #[cfg(any(feature = "udev", test))]
     pub(super) fn wanted(&self, name: &str) -> bool {
-        self.pending.iter().any(|request| request.output == name)
+        !self.staged.contains_key(name)
+            && self
+                .encoder
+                .as_ref()
+                .is_none_or(encoding::Encoder::available)
+            && self.pending.iter().any(|request| request.output == name)
     }
 
     pub(super) fn frame_id(&self, name: &str) -> u64 {
         self.frames.get(name).copied().unwrap_or(0)
-    }
-
-    pub(super) fn stage(
-        &mut self,
-        output: OutputMetadata,
-        png: Vec<u8>,
-        cursor_source: &'static str,
-    ) {
-        let mut requests = Vec::new();
-        self.pending.retain_mut(|request| {
-            if request.output != output.name {
-                return true;
-            }
-            // Moving a sender is unnecessary; cloning preserves receiver lifetime.
-            requests.push(Request {
-                output: request.output.clone(),
-                metadata: request.metadata,
-                sender: request.sender.clone(),
-                deadline: request.deadline,
-            });
-            false
-        });
-        self.staged.insert(
-            output.name.clone(),
-            Frame {
-                requests,
-                output,
-                png,
-                cursor_source,
-            },
-        );
-    }
-
-    pub(super) fn presented(&mut self, name: &str, presentation: &str) {
-        let counter = self.frames.entry(name.to_owned()).or_default();
-        *counter += 1;
-        if let Some(mut frame) = self.staged.remove(name) {
-            frame.output.frame_id = *counter;
-            for request in frame.requests {
-                if Instant::now() >= request.deadline {
-                    let _ = request
-                        .sender
-                        .send(ControlReply::Err("capture presentation timed out".into()));
-                    continue;
-                }
-                let mut payload = Vec::new();
-                if request.metadata {
-                    let mut metadata =
-                        serde_json::to_value(&frame.output).expect("serializable output");
-                    metadata["output"] = frame.output.name.clone().into();
-                    metadata["version"] = 1.into();
-                    metadata["cursor"] = "embedded".into();
-                    metadata["cursor_source"] = frame.cursor_source.into();
-                    metadata["cursor_sample"] = "render".into();
-                    metadata["presentation"] = presentation.into();
-                    payload = serde_json::to_vec(&metadata).expect("serializable capture metadata");
-                    payload.push(b'\n');
-                }
-                payload.extend_from_slice(&frame.png);
-                let _ = request.sender.send(ControlReply::Payload(payload));
-            }
-        }
     }
 
     pub(super) fn fail(&mut self, name: &str, message: &str) {
@@ -172,7 +168,6 @@ impl CaptureState {
         }
     }
 
-    #[cfg(feature = "udev")]
     pub(super) fn invalidate(&mut self, message: &str) {
         let names: Vec<_> = self
             .pending
@@ -185,7 +180,7 @@ impl CaptureState {
         }
     }
 
-    fn maintain(&mut self, outputs: &[OutputMetadata], active: bool) {
+    pub(in crate::compositor) fn maintain(&mut self, outputs: &[OutputMetadata], active: bool) {
         let names: Vec<_> = self
             .pending
             .iter()
@@ -199,27 +194,41 @@ impl CaptureState {
                 self.fail(&name, "capture output disappeared");
             }
         }
-        let expire = |request: &Request| {
-            if Instant::now() < request.deadline {
-                return true;
-            }
-            let _ = request
-                .sender
-                .send(ControlReply::Err("capture presentation timed out".into()));
-            false
-        };
-        self.pending.retain(expire);
+        self.pending.retain(|request| {
+            request.expire(
+                "awaiting-render",
+                self.frames.get(&request.output).copied().unwrap_or(0),
+            )
+        });
         self.staged.retain(|_, frame| {
-            frame.requests.retain(expire);
+            let phase = frame.wait_phase();
+            let frame_id = frame.frame_id();
+            frame
+                .requests
+                .retain(|request| request.expire(phase, frame_id));
             !frame.requests.is_empty()
         });
+        self.finish_frames();
     }
 }
 
 impl CalloopData {
     pub(super) fn maintain_captures(&mut self) {
+        if self.state.session_locked() {
+            self.captures.invalidate("session is locked");
+            return;
+        }
         self.captures
             .maintain(&self.state.capture_outputs(), self.capture_active());
+        #[cfg(feature = "udev")]
+        if self
+            .captures
+            .pending
+            .iter()
+            .any(|request| self.captures.wanted(&request.output))
+        {
+            self.state.request_redraw();
+        }
     }
 
     fn capture_active(&self) -> bool {
@@ -241,6 +250,9 @@ impl CalloopData {
     }
 
     pub(super) fn request_capture(&mut self, name: Option<&str>, metadata: bool) -> ControlReply {
+        if self.state.session_locked() {
+            return ControlReply::Err("session is locked".into());
+        }
         if !self.capture_active() {
             return ControlReply::Err("native session is inactive".into());
         }
@@ -282,29 +294,30 @@ impl CalloopData {
             Backend::Winit(_) => "nested",
             Backend::Headless(_) => "headless",
         };
+        if self.state.session_locked() {
+            return serde_json::to_vec(&serde_json::json!({
+                "version": 1, "backend": backend, "active": self.capture_active(),
+                "locked": true, "lock_confirmed": self.state.lock_confirmed(),
+                "windows": [], "outputs": [],
+            }))
+            .expect("serializable locked status");
+        }
         #[cfg(feature = "xwayland")]
         let xwayland_display = self.state.xdisplay.map(|number| format!(":{number}"));
         #[cfg(not(feature = "xwayland"))]
         let xwayland_display: Option<String> = None;
         serde_json::to_vec(&serde_json::json!({
             "version": 1, "backend": backend, "active": self.capture_active(), "outputs": outputs,
+            "locked": false, "lock_confirmed": false,
             "xwayland_display": xwayland_display,
+            "viewport": {
+                "x": self.state.viewport_offset.x,
+                "y": self.state.viewport_offset.y,
+                "scale": self.state.viewport_scale,
+                "pinch_active": self.state.pinch_zoom.is_active(),
+            },
             "shell_ready": self.state.windows.iter().any(|w| w.kind == ManagedWindowKind::ShellBar && w.content_bbox_size.w > 0),
             "windows": self.state.automation_windows(),
         })).expect("serializable automation status")
-    }
-}
-
-impl App {
-    fn automation_windows(&self) -> Vec<serde_json::Value> {
-        self.windows.iter().enumerate().filter_map(|(index, window)| {
-            let rect = self.normal_window_screen_rect(index)?;
-            Some(serde_json::json!({
-                "id": window.id, "title": super::windows::window_title(&window.surface),
-                "app_id": super::windows::window_app_id(&window.surface),
-                "x": rect.loc.x, "y": rect.loc.y, "width": rect.size.w, "height": rect.size.h,
-                "titlebar_height": if self.has_compositor_chrome(index) { self.title_bar_rect(index).size.h } else { 0 },
-            }))
-        }).collect()
     }
 }

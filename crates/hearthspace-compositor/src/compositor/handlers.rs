@@ -12,7 +12,7 @@ use smithay::{
         pointer::{CursorImageStatus, Focus},
     },
     reexports::{calloop::Interest, wayland_server::protocol::wl_seat},
-    utils::{Point, Serial, Size},
+    utils::{Serial, Size},
     wayland::{
         buffer::BufferHandler,
         compositor::{
@@ -24,7 +24,7 @@ use smithay::{
         fractional_scale::{FractionalScaleHandler, with_fractional_scale},
         output::OutputHandler,
         pointer_constraints::PointerConstraintsHandler,
-        selection::data_device::set_data_device_focus,
+        selection::{data_device::set_data_device_focus, primary_selection::set_primary_focus},
         shell::xdg::{
             PopupSurface, PositionerState, ToplevelSurface, XdgShellHandler, XdgShellState,
             decoration::XdgDecorationHandler,
@@ -43,8 +43,7 @@ use wayland_server::{
 };
 
 use super::{
-    App, ClientState, DragState, ManagedSurface, ManagedWindow, ManagedWindowKind,
-    WindowDecoration,
+    App, ClientState, ManagedSurface, ManagedWindow, ManagedWindowKind, WindowDecoration,
     focus::KeyboardFocusTarget,
     idle::ActivityReason,
     windows::{
@@ -58,6 +57,54 @@ impl BufferHandler for App {
 }
 
 impl XdgShellHandler for App {
+    fn maximize_request(&mut self, surface: ToplevelSurface) {
+        if !self
+            .xdg_window_id(&surface)
+            .is_some_and(|id| self.set_window_maximized(id, true).is_ok())
+            && surface.is_initial_configure_sent()
+        {
+            surface.send_configure();
+        }
+    }
+
+    fn unmaximize_request(&mut self, surface: ToplevelSurface) {
+        if !self
+            .xdg_window_id(&surface)
+            .is_some_and(|id| self.set_window_maximized(id, false).is_ok())
+            && surface.is_initial_configure_sent()
+        {
+            surface.send_configure();
+        }
+    }
+
+    fn fullscreen_request(
+        &mut self,
+        surface: ToplevelSurface,
+        output: Option<wayland_server::protocol::wl_output::WlOutput>,
+    ) {
+        let output = output
+            .as_ref()
+            .and_then(smithay::output::Output::from_resource)
+            .map(|output| output.name());
+        if !self
+            .xdg_window_id(&surface)
+            .is_some_and(|id| self.set_window_fullscreen(id, true, output).is_ok())
+            && surface.is_initial_configure_sent()
+        {
+            surface.send_configure();
+        }
+    }
+
+    fn unfullscreen_request(&mut self, surface: ToplevelSurface) {
+        if !self
+            .xdg_window_id(&surface)
+            .is_some_and(|id| self.set_window_fullscreen(id, false, None).is_ok())
+            && surface.is_initial_configure_sent()
+        {
+            surface.send_configure();
+        }
+    }
+
     fn xdg_shell_state(&mut self) -> &mut XdgShellState {
         &mut self.xdg_shell_state
     }
@@ -85,6 +132,8 @@ impl XdgShellHandler for App {
             decoration: decoration_for_new_window(kind),
             titlebar: None,
             content_bbox_size: Size::default(),
+            mapped: false,
+            presentation: Default::default(),
             advertised_fractional_scale: 0.0,
         });
         if kind == ManagedWindowKind::Normal {
@@ -109,13 +158,18 @@ impl XdgShellHandler for App {
         // the popup mispositioned the first time it opens.
         surface.with_pending_state(|state| {
             state.geometry = positioner.get_geometry();
+            state.positioner = positioner;
         });
+        self.unconstrain_popup(&surface);
         if let Err(err) = self.popups.track_popup(PopupKind::Xdg(surface)) {
             warn!(%err, "failed to track popup");
         }
     }
 
-    fn move_request(&mut self, surface: ToplevelSurface, _seat: wl_seat::WlSeat, _serial: Serial) {
+    fn move_request(&mut self, surface: ToplevelSurface, seat: wl_seat::WlSeat, serial: Serial) {
+        if self.session_locked() {
+            return;
+        }
         let Some(window_index) = self
             .windows
             .iter()
@@ -124,7 +178,10 @@ impl XdgShellHandler for App {
             return;
         };
 
-        if self.windows[window_index].kind != ManagedWindowKind::Normal {
+        if self.windows[window_index].kind != ManagedWindowKind::Normal
+            || self.window_uses_output_coordinates(window_index)
+            || !self.valid_window_pointer_request(window_index, &seat, serial)
+        {
             return;
         }
 
@@ -136,21 +193,19 @@ impl XdgShellHandler for App {
             window_id = self.windows[window_index].id,
             "client requested window move"
         );
-        self.drag = Some(DragState {
-            window_id: self.windows[window_index].id,
-            pointer_start: self.raw_pointer_location,
-            window_start: self.windows[window_index].position,
-        });
-        self.request_redraw();
+        self.start_client_window_move(window_index);
     }
 
     fn resize_request(
         &mut self,
         surface: ToplevelSurface,
-        _seat: wl_seat::WlSeat,
-        _serial: Serial,
+        seat: wl_seat::WlSeat,
+        serial: Serial,
         edges: xdg_toplevel::ResizeEdge,
     ) {
+        if self.session_locked() {
+            return;
+        }
         let edges = ResizeEdges::from(edges);
         if edges.is_empty() {
             return;
@@ -163,7 +218,10 @@ impl XdgShellHandler for App {
             return;
         };
 
-        if self.windows[window_index].kind != ManagedWindowKind::Normal {
+        if self.windows[window_index].kind != ManagedWindowKind::Normal
+            || self.window_uses_output_coordinates(window_index)
+            || !self.valid_window_pointer_request(window_index, &seat, serial)
+        {
             return;
         }
 
@@ -180,6 +238,9 @@ impl XdgShellHandler for App {
     }
 
     fn grab(&mut self, surface: PopupSurface, seat: wl_seat::WlSeat, serial: Serial) {
+        if self.session_locked() {
+            return;
+        }
         // Set up a popup grab so the menu behaves modally: keyboard and pointer
         // input route to the popup, and clicking elsewhere dismisses it.
         let Some(seat) = Seat::<Self>::from_resource(&seat) else {
@@ -203,6 +264,7 @@ impl XdgShellHandler for App {
                 return;
             }
             keyboard.set_focus(self, grab.current_grab(), serial);
+            self.interrupt_pinch_zoom();
             keyboard.set_grab(self, PopupKeyboardGrab::new(&grab), serial);
         }
 
@@ -214,8 +276,10 @@ impl XdgShellHandler for App {
                 grab.ungrab(PopupUngrabStrategy::All);
                 return;
             }
+            self.interrupt_pinch_zoom();
             pointer.set_grab(self, PopupPointerGrab::new(&grab), serial, Focus::Keep);
         }
+        self.popup_grab = Some(grab);
     }
 
     fn reposition_request(
@@ -228,10 +292,25 @@ impl XdgShellHandler for App {
             state.geometry = positioner.get_geometry();
             state.positioner = positioner;
         });
+        self.unconstrain_popup(&surface);
         surface.send_repositioned(token);
     }
 
+    fn parent_changed(&mut self, surface: ToplevelSurface) {
+        if let Some(index) = self
+            .windows
+            .iter()
+            .position(|window| window.surface.same_xdg(&surface))
+            && self.windows[index].mapped
+        {
+            self.position_transient(index);
+        }
+    }
+
     fn toplevel_destroyed(&mut self, surface: ToplevelSurface) {
+        let restore_focus = self.windows.iter().any(|window| {
+            window.surface.same_xdg(&surface) && self.focused_normal_window_id == Some(window.id)
+        });
         self.clear_keyboard_focus_for_surface(surface.wl_surface());
         if let Some(window) = self
             .windows
@@ -248,6 +327,9 @@ impl XdgShellHandler for App {
             .retain(|window| !window.surface.same_xdg(&surface));
         self.drag = None;
         self.resize = None;
+        if restore_focus {
+            self.restore_window_focus();
+        }
         self.request_redraw();
     }
 
@@ -421,6 +503,7 @@ impl CompositorHandler for App {
 
     fn commit(&mut self, surface: &WlSurface) {
         on_commit_buffer_handler::<Self>(surface);
+        self.configure_initial_toplevel(surface);
         self.popups.commit(surface);
         // Send the popup's initial configure on its first commit. xdg requires
         // the client to commit once (without a buffer) to request a configure;
@@ -433,6 +516,10 @@ impl CompositorHandler for App {
             warn!(%err, "failed to send initial popup configure");
         }
         self.refresh_window_content_bbox(surface);
+        self.configure_shell_palette_size(surface);
+        self.lock_surface_committed(surface);
+        self.finish_presentation_restore(surface);
+        self.refresh_window_mapping(surface);
         self.reanchor_resize(surface);
         if let Some(window_id) = self.managed_normal_window_id_for_surface(surface) {
             self.idle_daemon
@@ -464,7 +551,13 @@ impl SeatHandler for App {
     }
 
     fn focus_changed(&mut self, seat: &Seat<Self>, focused: Option<&KeyboardFocusTarget>) {
+        self.sync_window_activation(focused.map(KeyboardFocusTarget::surface));
         set_data_device_focus(
+            &self.display_handle,
+            seat,
+            focused.and_then(|focus| focus.surface().client()),
+        );
+        set_primary_focus(
             &self.display_handle,
             seat,
             focused.and_then(|focus| focus.surface().client()),
@@ -524,9 +617,7 @@ impl App {
 
     /// The scale of the output the window at `index` currently sits on.
     fn window_fractional_scale(&self, index: usize) -> f64 {
-        let position = self.windows[index].position;
-        let screen =
-            self.canvas_to_screen(Point::from((f64::from(position.x), f64::from(position.y))));
+        let screen = self.window_surface_screen_origin(index);
         f64::from(self.output_scale_at(screen).max(1))
     }
 

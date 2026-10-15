@@ -17,10 +17,6 @@ pub(super) fn search_apps(apps: &[DesktopApp], query: &str, limit: usize) -> Vec
             .then(left.id.cmp(&right.id))
     });
 
-    if scored.is_empty() {
-        return apps.iter().take(limit).cloned().collect();
-    }
-
     scored
         .into_iter()
         .take(limit)

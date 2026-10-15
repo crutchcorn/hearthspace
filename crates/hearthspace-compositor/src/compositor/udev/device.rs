@@ -53,6 +53,7 @@ pub(super) struct KmsOutputSurface {
     pub(super) gbm_surface: GbmBufferedSurface<GbmAllocator<DrmDeviceFd>, ()>,
     pub(super) damage_tracker: OutputDamageTracker,
     pub(super) frame_pending: bool,
+    pub(super) lock_frame_generation: Option<u64>,
     pub(super) frame_dirty: bool,
     pub(super) event_cutoff: SurfaceEventCutoff,
 }
@@ -306,6 +307,7 @@ fn create_output_surface(
     Ok(KmsOutputSurface {
         damage_tracker: OutputDamageTracker::new(target.output_size(), 1.0, Transform::Normal),
         frame_pending: false,
+        lock_frame_generation: None,
         frame_dirty: true,
         event_cutoff,
         target,

@@ -29,7 +29,7 @@ pub(crate) struct Args {
     #[arg(long, requires = "installed")]
     pub(crate) compositor_binary: Option<PathBuf>,
 
-    /// Export the dedicated dbus-run-session bus to launched applications.
+    /// Use an existing dedicated dbus-run-session bus (native sessions create one automatically).
     #[arg(long)]
     pub(crate) private_session_bus: bool,
 
@@ -56,6 +56,10 @@ pub(crate) struct Args {
     /// Do not restart settingsd if it exits.
     #[arg(long)]
     pub(crate) no_settingsd_restart: bool,
+
+    /// Skip native authentication, portal, and notification services (for diagnostics).
+    #[arg(long)]
+    pub(crate) no_desktop_services: bool,
 
     /// Set log level for session and children.
     #[arg(long, default_value = "info")]

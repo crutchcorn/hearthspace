@@ -32,6 +32,20 @@ impl SpawnTarget {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ShellCommand {
+    LockSession,
+    ListApps,
+    ListWindows,
+    FocusWindow(u64),
+    CloseWindow(u64),
+    MoveWindow { id: u64, x: i32, y: i32 },
+    ResizeWindow { id: u64, width: u32, height: u32 },
+    FocusNextWindow,
+    FocusPreviousWindow,
+    FocusLauncher,
+    ResetView,
+    FullscreenWindow { id: u64, enabled: bool },
+    MaximizeWindow { id: u64, enabled: bool },
+    RestoreWindow(u64),
     Spawn(SpawnTarget),
     LaunchApp(String),
     LaunchAppOnOutput { app_id: String, output_name: String },
@@ -70,6 +84,20 @@ impl ShellCommand {
 
     pub fn label(&self) -> &'static str {
         match self {
+            Self::LockSession => "LOCK",
+            Self::ListApps => "APPS",
+            Self::ListWindows => "WINDOWS",
+            Self::FocusWindow(_) => "FOCUS",
+            Self::CloseWindow(_) => "CLOSE",
+            Self::MoveWindow { .. } => "MOVE",
+            Self::ResizeWindow { .. } => "RESIZE",
+            Self::FocusNextWindow => "NEXT",
+            Self::FocusPreviousWindow => "PREVIOUS",
+            Self::FocusLauncher => "LAUNCHER",
+            Self::ResetView => "RESET",
+            Self::FullscreenWindow { .. } => "FULLSCREEN",
+            Self::MaximizeWindow { .. } => "MAXIMIZE",
+            Self::RestoreWindow(_) => "RESTORE",
             Self::Spawn(target) => target.label(),
             Self::LaunchApp(_) | Self::LaunchAppOnOutput { .. } => "APP",
             Self::PanLeft => "LEFT",
@@ -94,6 +122,22 @@ impl ShellCommand {
 
     pub fn wire_name(&self) -> String {
         match self {
+            Self::LockSession => "lock-session".into(),
+            Self::ListApps => "apps".into(),
+            Self::ListWindows => "windows".into(),
+            Self::FocusWindow(id) => format!("focus-window {id}"),
+            Self::CloseWindow(id) => format!("close-window {id}"),
+            Self::MoveWindow { id, x, y } => format!("move-window {id} {x} {y}"),
+            Self::ResizeWindow { id, width, height } => {
+                format!("resize-window {id} {width} {height}")
+            }
+            Self::FocusNextWindow => "focus-next-window".into(),
+            Self::FocusPreviousWindow => "focus-previous-window".into(),
+            Self::FocusLauncher => "focus-launcher".into(),
+            Self::ResetView => "reset-view".into(),
+            Self::FullscreenWindow { id, enabled } => format!("fullscreen-window {id} {enabled}"),
+            Self::MaximizeWindow { id, enabled } => format!("maximize-window {id} {enabled}"),
+            Self::RestoreWindow(id) => format!("restore-window {id}"),
             Self::Spawn(SpawnTarget::A11yTest) => "spawn a11y-test".to_string(),
             Self::Spawn(SpawnTarget::Foot) => "spawn foot".to_string(),
             Self::LaunchApp(app_id) => format!("launch-app {app_id}"),
@@ -145,7 +189,35 @@ impl ShellCommand {
         let mut parts = input.split_whitespace();
         let command = parts.next()?;
 
-        Some(match command {
+        let parsed = match command {
+            "lock-session" => Self::LockSession,
+            "apps" => Self::ListApps,
+            "windows" => Self::ListWindows,
+            "focus-window" => Self::FocusWindow(parts.next()?.parse().ok()?),
+            "close-window" => Self::CloseWindow(parts.next()?.parse().ok()?),
+            "move-window" => Self::MoveWindow {
+                id: parts.next()?.parse().ok()?,
+                x: parts.next()?.parse().ok()?,
+                y: parts.next()?.parse().ok()?,
+            },
+            "resize-window" => Self::ResizeWindow {
+                id: parts.next()?.parse().ok()?,
+                width: parts.next()?.parse().ok()?,
+                height: parts.next()?.parse().ok()?,
+            },
+            "focus-next-window" => Self::FocusNextWindow,
+            "focus-previous-window" => Self::FocusPreviousWindow,
+            "focus-launcher" => Self::FocusLauncher,
+            "reset-view" => Self::ResetView,
+            "fullscreen-window" => Self::FullscreenWindow {
+                id: parts.next()?.parse().ok()?,
+                enabled: parts.next()?.parse().ok()?,
+            },
+            "maximize-window" => Self::MaximizeWindow {
+                id: parts.next()?.parse().ok()?,
+                enabled: parts.next()?.parse().ok()?,
+            },
+            "restore-window" => Self::RestoreWindow(parts.next()?.parse().ok()?),
             "spawn" => Self::Spawn(SpawnTarget::parse(parts.next()?)?),
             "pan-left" => Self::PanLeft,
             "pan-right" => Self::PanRight,
@@ -174,7 +246,8 @@ impl ShellCommand {
             "screenshot" => Self::Screenshot,
             "quit" => Self::Quit,
             _ => return None,
-        })
+        };
+        parts.next().is_none().then_some(parsed)
     }
 }
 
@@ -229,69 +302,4 @@ fn hex_value(byte: u8) -> Option<u8> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn shell_commands_round_trip_wire_names() {
-        for command in ShellCommand::STATIC_COMMANDS {
-            assert_eq!(ShellCommand::parse(&command.wire_name()), Some(command));
-        }
-    }
-
-    #[test]
-    fn launch_app_parses_desktop_entry_id() {
-        assert_eq!(
-            ShellCommand::parse("launch-app org.gnome.Calculator.desktop"),
-            Some(ShellCommand::LaunchApp(
-                "org.gnome.Calculator.desktop".to_string()
-            ))
-        );
-    }
-
-    #[test]
-    fn launch_app_on_output_round_trips_output_name() {
-        let command = ShellCommand::LaunchAppOnOutput {
-            app_id: "org.gnome.Calculator.desktop".to_string(),
-            output_name: "HDMI-A-1".to_string(),
-        };
-
-        assert_eq!(ShellCommand::parse(&command.wire_name()), Some(command));
-    }
-
-    #[test]
-    fn waydriver_input_commands_parse() {
-        assert_eq!(
-            ShellCommand::parse("key-down 30"),
-            Some(ShellCommand::KeyDown(30))
-        );
-        assert_eq!(
-            ShellCommand::parse("key-up 0xff"),
-            Some(ShellCommand::KeyUp(255))
-        );
-        assert_eq!(
-            ShellCommand::parse("pointer-motion-abs 10.5 20"),
-            Some(ShellCommand::PointerMotionAbs { x: 10.5, y: 20.0 })
-        );
-        assert_eq!(
-            ShellCommand::parse("pointer-motion-rel -3 4.25"),
-            Some(ShellCommand::PointerMotionRel { dx: -3.0, dy: 4.25 })
-        );
-        assert_eq!(
-            ShellCommand::parse("pointer-button-down 272"),
-            Some(ShellCommand::PointerButtonDown(272))
-        );
-        assert_eq!(
-            ShellCommand::parse("axis 0 -120"),
-            Some(ShellCommand::Axis {
-                horizontal: 0.0,
-                vertical: -120.0,
-            })
-        );
-        assert_eq!(
-            ShellCommand::parse("screenshot"),
-            Some(ShellCommand::Screenshot)
-        );
-        assert_eq!(ShellCommand::parse("quit"), Some(ShellCommand::Quit));
-    }
-}
+mod tests;

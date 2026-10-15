@@ -110,10 +110,28 @@ through the harness to restore its original VT and remove the private runtime;
 recovery records under `/run` disappear on reboot. User-selected artifact
 directories retain logs and screenshots until explicitly removed.
 
-The harness uses `dbus-run-session` and the supervisor's `--private-session-bus`
-option. That explicitly supplies `HEARTHSPACE_SESSION_BUS_ADDRESS` to children so
-app launch and AT-SPI stay on the Hearthspace bus. Normal nested sessions continue
-to exclude the host bus from shell-launched apps.
+Native supervisor launches automatically create a private `dbus-run-session`
+before starting desktop components. The harness already supplies that bus and
+uses `--private-session-bus` to reuse it. Both routes explicitly provide
+`HEARTHSPACE_SESSION_BUS_ADDRESS` to children so app launch and AT-SPI stay on the
+Hearthspace bus. Before desktop startup, `dbus-update-activation-environment`
+updates only the private bus with Hearthspace's display, runtime, and settings
+sockets. It does not update the shared systemd user manager or the host desktop.
+The bootstrap clears host display/socket and accessibility overrides before
+creating its bus. Normal nested sessions continue to exclude the host bus from
+shell-launched apps; use a dedicated `dbus-run-session` with
+`--private-session-bus` when testing desktop service activation there.
+
+Private sessions share the user's existing audio service. Unless explicitly
+overridden, the supervisor exports `PULSE_SERVER=unix:$HOST_RUNTIME/pulse/native`
+and `PIPEWIRE_REMOTE=$HOST_RUNTIME/pipewire-0`, with `PIPEWIRE_RUNTIME_DIR` pointing
+to the original runtime directory. Here `$HOST_RUNTIME` is
+`HEARTHSPACE_HOST_XDG_RUNTIME_DIR`, or the inherited `XDG_RUNTIME_DIR` when no host
+override exists. Explicit PulseAudio/PipeWire server and runtime variables are
+preserved. This keeps audio clients connected while Wayland and desktop D-Bus
+remain private; it does not start another audio daemon. The endpoint variables
+follow the [PipeWire native protocol](https://docs.pipewire.org/page_module_protocol_native.html)
+and [PulseAudio server selection](https://wiki.freedesktop.org/www/Software/PulseAudio/FAQ/).
 
 Accessibility test buses must inherit the test's private `XDG_RUNTIME_DIR`, not
 the host runtime. Otherwise D-Bus activation can replace the host AT-SPI socket.
@@ -121,23 +139,171 @@ During enablement, the existing host `at-spi-dbus-bus.service` was restarted to
 repair such a stale socket; the test fixtures now isolate bus activation as well
 as Wayland. This was a transient service restart, with no configuration change.
 
+### Optional Native Pinch Testing
+
+The native pinch acceptance script creates temporary touchpads and touchscreens
+through Linux uinput, so gestures and raw touch frames pass through udev and
+libinput before reaching Hearthspace.
+Install its optional test dependencies (installed on the development host):
+
+```sh
+sudo apt-get install -y python3-evdev libinput-tools
+```
+
+Ubuntu also installs `python3-libevdev` and `python3-pyudev` as dependencies. The
+test uses noninteractive sudo to access `/dev/uinput`; it does not change device
+permissions, install udev rules, or leave a virtual device behind. The injector
+requires its owned native session's VT to be active and closes the device before
+the native harness restores the original VT. Build the native binaries first,
+then run this separately from other native or GPU tests:
+
+```sh
+cargo build --locked --workspace --all-targets --features udev,e2e,test-apps
+scripts/pinch-smoke --session "$(mktemp -d /tmp/hearthspace-pinch.XXXXXX)"
+scripts/pan-smoke --session "$(mktemp -d /tmp/hearthspace-pan.XXXXXX)"
+```
+
+The default tests both device types. Add `--device touchpad` or
+`--device touchscreen` for a focused run; each run still owns a fresh VT session.
+
+The session artifacts retain libinput's gesture trace, viewport/window assertions,
+and PNG/metadata pairs for three-finger zoom in/out, ignored two-finger gestures,
+fourth-finger cancellation, and device removal. Touchscreen cases additionally
+verify the initial touch chord cannot click the close button, completed gestures
+suppress remaining contacts, and single-finger taps/drags still work. Cancellation
+restores the initial view. Removal follows the recorded final event: cancellation
+or removal of an active gesture restores its initial view; a normal end/lift retains
+the completed zoom. The test requires the observed outcome and verifies that each
+virtual device disappears and no gesture remains active.
+
+The pan test checks left/right/up/down and diagonal translation, simultaneous
+pan and zoom, cancellation, and ignored two-finger input on both device types.
+It also checks that a pan restores maximized windows, cancellation re-maximizes
+them, and fullscreen content stays fixed. Assertions pair viewport and window
+geometry with the position and size of a rendered terminal marker. Touchpad
+expectations use independently recorded libinput center deltas; touchscreen
+expectations use the injected contact centroid. Both scripts accept `--device`
+and `--timeout` and clean up their owned session on failure. The pan script also
+accepts `--total-timeout` to bound its complete workflow.
+
 ### Optional Desktop Dependencies
+
+Native daily-use sessions use the distribution's MATE polkit authentication agent
+and GTK desktop portal backend. Install their runtime dependencies with:
+
+```sh
+sudo apt-get install -y mate-polkit xdg-desktop-portal xdg-desktop-portal-gtk fuse3
+```
+
+GTK window controls also use `gsettings-desktop-schemas` and
+`glib-compile-schemas` from `libglib2.0-bin` (both already present on this VM).
+The supervisor copies only the installed window-manager schema, its enums, and
+applicable defaults into its private runtime and compiles a Hearthspace-specific
+default that exposes maximize/restore and close buttons. GTK 3/4 `settings.ini`
+fallbacks also live there. Existing user settings and explicit
+`GSETTINGS_SCHEMA_DIR` overrides remain authoritative; no host configuration is
+written. Missing optional schemas or the compiler produce a warning and leave
+the session usable. See [window controls](docs/WINDOW_MANAGEMENT.md#coordinates-and-window-states).
+
+On the physical development host, `mate-polkit` and `mate-polkit-common` version
+`1.26.1-6` were installed; the portal packages and FUSE helper were already present.
+The earlier `policykit-1-gnome` (`0.105-8build1`) remains installed but is not used:
+its authentication dialog calls the X11-only `gdk_x11_get_server_time` on a Wayland
+window and crashes. MATE's agent checks the window backend before that call.
+No system authentication policy was changed.
+
+Ubuntu 26.04's `notify-send` AppArmor profile permits `Notify` and
+`GetServerInformation` but omits capability queries and response signals. This
+makes `notify-send --action` report unsupported actions and `--wait` miss closure.
+The repository supplies a narrow local protocol extension, installed on this host:
+
+```sh
+sudo install -m 0644 scripts/setup/notify-send.apparmor /etc/apparmor.d/local/notify-send
+sudo apparmor_parser -r /etc/apparmor.d/notify-send
+```
+
+Merge these rules with an existing local override instead of replacing it. The
+profile stays enforced; the extension allows only notification capability/close
+methods and action/closure signals on their standard session-bus object.
+
+Session locking uses the distribution's `swaylock` client and its packaged PAM
+configuration. Install it with `sudo apt-get install -y swaylock`. Version
+`1.8.4-1` was installed on the physical development host for this integration;
+`/etc/pam.d/swaylock` includes the existing login authentication policy. No PAM
+or password configuration was modified. The compositor handles screen isolation
+through `ext-session-lock-v1`; the locker handles authentication.
+
+For native audio validation, `pulseaudio-utils` and its `libpulsedsp` dependency
+(`1:17.0+dfsg1-2ubuntu4`) were also installed. `pactl info` verifies a launched
+application's PulseAudio-compatible connection; `pw-cli info 0` verifies its
+PipeWire connection. Installing these client utilities does not start a second
+audio server.
+
+The native supervisor starts the notification daemon, permission store, document
+portal, GTK portal backend, desktop portal, and polkit agent after Wayland is ready.
+The portal processes must acquire their private-bus names before the shell starts. Helpers
+are restarted at most twice after an unexpected exit and are stopped with their
+session. `--no-desktop-services` skips these helpers for isolated diagnostics;
+normal nested sessions also leave them disabled.
+
+The notification daemon is the workspace binary `hearthspace-notifications`;
+include it alongside the session, compositor, shell, and settings daemon when
+building or installing a native session. Its application protocol, shell control
+API, limits, and tests are documented in [Desktop notifications](docs/NOTIFICATIONS.md).
+
+Hearthspace supplies `hearthspace-portals.conf` in the session's data directory,
+selecting the GTK backend according to the standard
+[portal configuration lookup](https://flatpak.github.io/xdg-desktop-portal/docs/portals.conf.html).
+User portal configuration retains its normal precedence. Private runtime D-Bus
+service overrides prevent portals from being activated outside supervision.
+Existing portal owners may be adopted only when their executable, private bus,
+runtime directory, and process start identity match the owned session. The GTK
+chooser uses the local VFS; network filesystem browsing is not configured here.
+No shared user service environment or system-wide portal configuration is changed.
+
+Document grants and portal permissions are stored under
+`$XDG_DATA_HOME/hearthspace/portals` (defaulting to
+`~/.local/share/hearthspace/portals`). Harness runs that isolate app profiles store
+this state in their private runtime instead. Shutdown stops the helpers and
+detaches the `fuse.portal` mount at the owned runtime's `doc` directory and any
+`fuse.gvfsd-fuse` mount at its `gvfs` directory before removing that runtime.
+Nautilus can activate the latter through the private session bus. Independent
+native recovery performs the same checks after stopping the session scope,
+including after supervisor crashes. Other mounted filesystems beneath the runtime
+block recursive removal. The host desktop's document and GVfs mounts are preserved.
+
+`HEARTHSPACE_ISOLATE_APP_PROFILES=1`, set by the native harness, also gives portal
+helpers and D-Bus-activated applications private XDG configuration, cache, data,
+and state directories inside the owned runtime. Both these applications and
+isolated compositor launches use the keyfile GSettings backend, so a separately
+activated dconf service cannot redirect their writes to ordinary preferences.
+The settings daemon and Hearthspace Settings retain their authoritative paths.
+Ordinary native sessions leave application configuration and GSettings defaults
+unchanged. This isolates XDG-aware app preferences; it is not a filesystem sandbox.
+
+Hearthspace discards inherited ambient, inheritable, effective, and permitted
+Linux capabilities before starting the private bus or desktop processes. On this
+Ubuntu host, PAM grants `CAP_WAKE_ALARM`; passing it to GTK's Glycin image loader
+causes Bubblewrap to fail with `Unexpected capabilities but not setuid`. The
+native harness uses `/usr/bin/setpriv` (from `util-linux`) before `dbus-run-session`
+for the same reason. Keep the capability bounding set and normal sudo/polkit
+authentication intact; no system PAM policy or image-loader sandbox is disabled.
 
 The settings app uses `rfd` for file selection. On Linux, `rfd` is built with
 its XDG Desktop Portal backend and falls back to `zenity` if the portal request
 fails. Hearthspace gives session children a private `XDG_RUNTIME_DIR` and strips
 the host `DBUS_SESSION_BUS_ADDRESS` from shell-launched apps so file pickers do
 not accidentally discover GNOME's session bus and open through GNOME's portal on
-another TTY. The native test harness supplies a private session bus, but a portal
-backend may still be unavailable. Install `zenity` for the fallback path:
+another TTY. Native daily-use sessions provide the GTK portal backend; nested and
+diagnostic sessions may still need the fallback. Install `zenity` for that path:
 
 ```sh
 sudo apt-get install -y zenity
 ```
 
-The file chooser portal is an external desktop service, not code inside the
-Hearthspace compositor. A private bus does not itself provide a portal backend;
-the compositor still needs to support the dialog window created by that backend.
+The file chooser portal is an external desktop service. The compositor displays
+its dialog as an ordinary Wayland client, and the portal launches URI handlers on
+the same private desktop bus.
 
 X11 app support is provided by Smithay's XWayland integration. Install the
 runtime when testing X11-only applications:
@@ -169,6 +335,72 @@ magick assets/cursors/source/nwse-resize.svg assets/cursors/source/nwse-resize.p
 magick assets/cursors/source/nesw-resize.svg assets/cursors/source/nesw-resize.png
 (cd assets/cursors/source && xcursorgen ns-resize.cursor ../ns-resize && xcursorgen ew-resize.cursor ../ew-resize && xcursorgen nwse-resize.cursor ../nwse-resize && xcursorgen nesw-resize.cursor ../nesw-resize)
 ```
+
+### Native Firefox Package
+
+The physical development host also has Mozilla's official Firefox DEB for
+daily browser and portal testing. Snap expects its document portal at the
+canonical `/run/user/UID/doc`; Hearthspace's private portal uses a session-specific
+runtime. Catalog Snap launches have [owned tracking scopes](docs/SNAP_APPLICATIONS.md),
+but that does not resolve the document-portal path difference. The native DEB
+provides a browser without that Snap-specific path requirement and retains
+Firefox's normal content-process sandbox.
+
+The installation follows [Mozilla's Ubuntu instructions](https://support.mozilla.org/en-US/kb/install-firefox-linux).
+The key downloaded from `https://packages.mozilla.org/apt/repo-signing-key.gpg`
+was checked in a temporary GPG home before installation. Its primary fingerprint
+was `35BAA0B33E9EB396F59CA838C0BA5CE6DC6315A3`. Three new files were installed with
+mode `0644`:
+
+- `/etc/apt/keyrings/packages.mozilla.org.asc`: the verified signing key.
+- `/etc/apt/sources.list.d/mozilla.sources`:
+
+  ```deb822
+  Types: deb
+  URIs: https://packages.mozilla.org/apt
+  Suites: mozilla
+  Components: main
+  Signed-By: /etc/apt/keyrings/packages.mozilla.org.asc
+  ```
+
+- `/etc/apt/preferences.d/mozilla-firefox`:
+
+  ```text
+  Package: firefox firefox-l10n-*
+  Pin: origin packages.mozilla.org
+  Pin-Priority: 1000
+
+  Package: firefox
+  Pin: release o=Ubuntu
+  Pin-Priority: -1
+  ```
+
+The preference is limited to Firefox and its language packs. APT's normal
+repository-signature validation succeeded with the dedicated `Signed-By` key.
+After reviewing `apt-get -s install firefox`, the installation used:
+
+```sh
+sudo apt-get update
+sudo apt-get install -y --allow-downgrades firefox=158.0~build2
+```
+
+This replaced only Ubuntu's transitional `firefox` DEB (`1:1snap1-0ubuntu9.1`);
+its version epoch accounts for APT's downgrade label. The Firefox Snap
+(`149.0.2-1`, revision `8107`) remains installed. `/usr/bin/firefox` now resolves
+to `/usr/lib/firefox/firefox`, and `/snap/bin/firefox` still launches Snap.
+The corresponding desktop IDs are `firefox.desktop` and
+`firefox_firefox.desktop`. Future DEB updates come from the configured Mozilla
+repository; the version above records this host's installation.
+
+HTTP, HTTPS, and HTML defaults remained `google-chrome.desktop`, and the automatic
+`x-www-browser` selection remained `/usr/bin/google-chrome-stable`. Existing
+browser profiles were not opened or migrated. Native acceptance uses a new
+explicit `--profile` directory with `--no-remote`, plus temporary desktop entries
+removed after the owned session stops; see [application acceptance](docs/DAILY_APPS_TESTING.md).
+Preparing these temporary entries also regenerates
+`~/.local/share/applications/mimeinfo.cache` with `update-desktop-database`, which
+is regenerated again after their removal. Existing `mimeapps.list` files and
+browser defaults are preserved.
 
 ### Optional Test Apps
 
@@ -205,6 +437,7 @@ crates/hearthspace-session      session supervisor; root cargo run target
 crates/hearthspace-compositor   Smithay compositor; binary: hearthspace-compositor
 crates/hearthspace-shell        Xilem shell client; binary: hearthspace-shell
 crates/hearthspace-settingsd    settings daemon; binary: hearthspace-settingsd
+crates/hearthspace-notifications notification daemon; binary: hearthspace-notifications
 crates/hearthspace-settings     settings app; binary: hearthspace-settings
 crates/hearthspace-ui-storybook UI component gallery app; binary: hearthspace-ui-storybook
 crates/ui-components            shared Hearthspace Xilem UI components/theme
@@ -224,7 +457,7 @@ cargo run -- --dev --no-watch-apps
 cargo run -- --dev --dry-run --print-env
 ```
 
-The supervisor starts `hearthspace-settingsd`, `hearthspace-compositor --no-shell`, `hearthspace-shell`, and optionally a settings-app build watcher. It creates per-session sockets under `$XDG_RUNTIME_DIR/hearthspace/session-<pid>/` and passes them to child processes through environment variables.
+The supervisor starts `hearthspace-settingsd`, `hearthspace-compositor --no-shell`, `hearthspace-shell`, and optionally a settings-app build watcher. Native sessions also supervise notifications, portals, and authentication. It creates per-session sockets under `$XDG_RUNTIME_DIR/hearthspace/session-<pid>/` and passes them to child processes through environment variables.
 
 From a real Linux TTY/VT, the same dev-session command launches the full native session:
 

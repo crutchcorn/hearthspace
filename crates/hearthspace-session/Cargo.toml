@@ -1,15 +1,17 @@
 [package]
 name = "hearthspace-session"
+default-run = "hearthspace-session"
 version = "0.1.0"
 edition = "2024"
 rust-version = "1.99.0"
 license = "Apache-2.0"
 
 [dependencies]
+caps = "0.5.6"
 clap = { version = "4.6.7", features = ["derive"] }
 ctrlc = { version = "3.5.2", features = ["termination"] }
 hearthspace-common = { path = "../hearthspace-common" }
-nix = { version = "0.31.3", features = ["signal", "process", "socket"] }
+nix = { version = "0.31.3", features = ["signal", "process", "socket", "fs"] }
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
 which = "8.0.6"

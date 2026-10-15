@@ -1,5 +1,5 @@
 use super::UdevBackendState;
-use crate::compositor::capture::{CaptureState, encode_png, read_pixels};
+use crate::compositor::capture::{CaptureState, read_pixels};
 use smithay::{
     backend::{drm::DrmEventMetadata, renderer::Bind},
     reexports::drm::control::crtc,
@@ -23,6 +23,9 @@ impl UdevBackendState {
         force_full_redraw: bool,
         captures: &mut CaptureState,
     ) -> Result<bool, Box<dyn std::error::Error>> {
+        if state.session_locked() {
+            captures.invalidate("session is locked");
+        }
         if self.drm_commits_paused {
             debug!("skipping native render while DRM commits are paused");
             self.frame_dirty = true;
@@ -96,7 +99,7 @@ impl UdevBackendState {
                             .into_iter()
                             .find(|o| o.name == view.name)
                             .ok_or("capture output disappeared")?;
-                        Ok((metadata, encode_png(size, &pixels)?, cursor_source))
+                        Ok((metadata, size, pixels, cursor_source))
                     })();
                     match result {
                         Ok(frame) => capture = Some(frame),
@@ -115,9 +118,12 @@ impl UdevBackendState {
                 captures.fail(&view.name, &format!("native presentation failed: {error}"));
                 return Err(error.into());
             }
-            if let Some((metadata, png, cursor_source)) = capture {
-                captures.stage(metadata, png, cursor_source);
+            if let Some((metadata, size, pixels, cursor_source)) = capture
+                && let Err(error) = captures.stage_pixels(metadata, size, pixels, cursor_source)
+            {
+                captures.fail(&view.name, &format!("native encoding failed: {error}"));
             }
+            output.lock_frame_generation = state.lock_frame_generation();
             output.frame_pending = true;
             output.frame_dirty = false;
             submitted = true;
@@ -140,6 +146,7 @@ impl UdevBackendState {
         &mut self,
         crtc: crtc::Handle,
         metadata: Option<&DrmEventMetadata>,
+        state: &mut crate::compositor::App,
         captures: &mut CaptureState,
     ) -> Result<Option<bool>, Box<dyn std::error::Error>> {
         let Some(device) = self.primary_device.as_mut() else {
@@ -165,7 +172,14 @@ impl UdevBackendState {
             // Only acknowledge a frame that this surface actually submitted.
             return Ok(None);
         }
-        captures.presented(output.target.connector_name(), "page-flip");
+        if state.session_locked() {
+            captures.invalidate("session is locked");
+        } else {
+            captures.presented(output.target.connector_name(), "page-flip");
+        }
+        if let Some(generation) = output.lock_frame_generation.take() {
+            state.lock_frame_presented(output.target.connector_name(), generation);
+        }
         output.frame_pending = false;
         self.frame_pending = device.any_frame_pending();
         self.repaint_pending = self.frame_pending;

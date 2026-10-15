@@ -1,5 +1,7 @@
 use super::*;
 
+mod encoding;
+
 fn output(name: &str) -> OutputMetadata {
     OutputMetadata {
         name: name.into(),
@@ -101,4 +103,32 @@ fn bounds_requests_and_tolerates_disconnected_clients() {
     state.presented("DP-1", "page-flip");
     assert!(state.timeout().is_none());
     drop(request(&mut state, "DP-1", true));
+}
+
+#[test]
+fn session_lock_discards_pending_pixels_even_if_a_late_page_flip_arrives() {
+    let mut state = CaptureState::default();
+    let staged = request(&mut state, "DP-1", true);
+    state.stage(
+        output("DP-1"),
+        b"private desktop pixels".to_vec(),
+        "framebuffer",
+    );
+    let pending = request(&mut state, "HDMI-1", false);
+    state.invalidate("session is locked");
+    // The outstanding native presentation event is still valid for its DRM
+    // surface, but it must not release any pre-lock desktop capture.
+    state.presented("DP-1", "page-flip");
+    for receiver in [staged, pending] {
+        assert!(matches!(
+            receiver.try_recv().unwrap(),
+            ControlReply::Err(message) if message == "session is locked"
+        ));
+        assert!(matches!(
+            receiver.try_recv(),
+            Err(mpsc::TryRecvError::Disconnected)
+        ));
+    }
+    assert!(state.timeout().is_none());
+    assert!(state.staged.is_empty());
 }

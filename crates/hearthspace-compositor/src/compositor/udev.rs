@@ -1,5 +1,6 @@
 use std::time::Duration;
 
+mod connector_policy;
 mod device;
 mod event_cutoff;
 mod hotplug;
@@ -57,8 +58,8 @@ pub(super) struct UdevBackendState {
 
 #[derive(Default)]
 struct ConnectorSync {
-    descriptors: Vec<super::OutputDescriptor>,
-    primary: Option<super::OutputDescriptor>,
+    // None means a deferred rescan, not that all outputs disappeared.
+    descriptors: Option<Vec<super::OutputDescriptor>>,
 }
 
 pub fn run_udev(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> {
@@ -157,6 +158,7 @@ pub fn run_udev(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> {
 
     handle.insert_source(session_notifier, |event, _, data| match event {
         SessionEvent::PauseSession => {
+            data.state.cancel_input_gestures();
             data.captures.invalidate("native session became inactive");
             if let Some(backend) = udev_backend_mut(data) {
                 backend.pause_session();
@@ -224,7 +226,12 @@ pub fn run_udev(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> {
             DrmEvent::VBlank(crtc) => {
                 trace!(?crtc, ?metadata, "DRM vblank");
                 let submitted_frame = if let super::Backend::Udev(backend) = &mut data.backend {
-                    match backend.frame_submitted(crtc, metadata.as_ref(), &mut data.captures) {
+                    match backend.frame_submitted(
+                        crtc,
+                        metadata.as_ref(),
+                        &mut data.state,
+                        &mut data.captures,
+                    ) {
                         Ok(result) => result,
                         Err(error) => {
                             error!(%error, "failed to mark native frame submitted");
@@ -294,18 +301,15 @@ fn udev_backend_mut(data: &mut super::CalloopData) -> Option<&mut UdevBackendSta
 }
 
 fn apply_connector_sync(data: &mut super::CalloopData, connector_sync: ConnectorSync) {
+    let Some(descriptors) = connector_sync.descriptors else {
+        return;
+    };
     data.captures
         .invalidate("native output configuration changed");
     let dh = data.display.handle();
-    if let Some(primary) = connector_sync.primary {
-        let size = primary.size;
-        data.state.set_primary_output_descriptor(primary);
-        data.damage_tracker = OutputDamageTracker::new(size, 1.0, Transform::Normal);
-        data.full_redraw = 1;
-        data.state.configure_shell_bars();
-    }
-    data.state
-        .sync_connector_outputs(&dh, connector_sync.descriptors);
+    data.state.sync_connector_outputs(&dh, descriptors);
+    data.damage_tracker =
+        OutputDamageTracker::new(data.state.output_size(), 1.0, Transform::Normal);
     data.state.configure_shell_bars();
     data.state.reconcile_pointer_after_output_geometry_change();
     data.full_redraw = data.full_redraw.max(1);

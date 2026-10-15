@@ -15,13 +15,13 @@ use tracing::{info, warn};
 use crate::{
     cli::{Args, Backend, RunMode},
     compositor::{CompositorBackend, configure_compositor_environment, select_compositor_backend},
-    dev_cargo::dev_cargo_args,
-    process::{
-        ManagedProcess, ProcessSpec, poll_process, terminate_process, wait_then_kill_process,
-    },
-    session_env::{SessionEnv, SessionPaths, repo_root},
+    process::{ManagedProcess, poll_process, terminate_process, wait_then_kill_process},
+    session_env::{SessionEnv, SessionPaths},
     settingsd::settingsd_ping,
 };
+
+mod commands;
+mod notifications;
 
 pub(crate) struct Supervisor {
     mode: RunMode,
@@ -37,6 +37,9 @@ pub(crate) struct Supervisor {
     compositor: Option<ManagedProcess>,
     shell: Option<ManagedProcess>,
     watcher: Option<ManagedProcess>,
+    notifications: Option<ManagedProcess>,
+    desktop_services: crate::desktop_services::DesktopServices,
+    app_scopes: Option<crate::app_scopes::AppScopes>,
 }
 
 impl Supervisor {
@@ -61,7 +64,24 @@ impl Supervisor {
             compositor: None,
             shell: None,
             watcher: None,
+            notifications: None,
+            desktop_services: crate::desktop_services::DesktopServices::default(),
+            app_scopes: None,
         }
+    }
+
+    pub(crate) fn prepare_activation_environment(
+        &self,
+        private_session_bus: bool,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        if private_session_bus {
+            crate::session_bus::update_activation_environment(
+                &self.session_env,
+                self.startup_deadline,
+                &self.shutdown_requested,
+            )?;
+        }
+        Ok(())
     }
 
     pub(crate) fn start_settingsd(
@@ -84,6 +104,25 @@ impl Supervisor {
             CompositorBackend::NativeTty => "--tty",
             CompositorBackend::NestedWinit => "--winit",
         };
+        if backend == CompositorBackend::NativeTty
+            && self
+                .session_env
+                .vars
+                .iter()
+                .any(|(key, _)| key == "HEARTHSPACE_SESSION_BUS_ADDRESS")
+        {
+            self.app_scopes = crate::app_scopes::AppScopes::start(
+                &self.paths,
+                self.binary_dir.as_deref(),
+                self.startup_deadline,
+                &self.shutdown_requested,
+            )?;
+            if let Some(owner) = &self.app_scopes {
+                self.session_env
+                    .vars
+                    .push((crate::app_scopes::OWNER_ENV.into(), owner.unit().into()));
+            }
+        }
         let mut spec = self.binary_spec(
             "hearthspace-compositor",
             &[hearthspace_common::NO_SHELL_FLAG, backend_flag],
@@ -101,6 +140,17 @@ impl Supervisor {
     ) -> Result<(), Box<dyn std::error::Error>> {
         let spec = self.binary_spec("hearthspace-shell", &[], true);
         self.shell = Some(ManagedProcess::spawn(spec, max_restarts)?);
+        self.record_processes()?;
+        Ok(())
+    }
+
+    pub(crate) fn start_desktop_services(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        self.desktop_services.start(
+            &self.paths,
+            &self.session_env,
+            self.startup_deadline,
+            &self.shutdown_requested,
+        )?;
         self.record_processes()?;
         Ok(())
     }
@@ -209,36 +259,58 @@ impl Supervisor {
                 return Err(format!("shell exited: {status}").into());
             }
 
+            if let Some(status) = poll_process(&mut self.notifications)?
+                && !self.restart_process("notifications", status)?
+            {
+                warn!(%status, "notification service exhausted its restart budget");
+                self.notifications = None;
+                self.record_processes()?;
+            }
+
             if let Some(status) = poll_process(&mut self.watcher)? {
                 warn!(%status, "app watcher exited; continuing session");
                 self.watcher = None;
+            }
+
+            if self.desktop_services.poll(&self.shutdown_requested) {
+                self.record_processes()?;
             }
 
             thread::sleep(Duration::from_millis(100));
         }
     }
 
-    pub(crate) fn shutdown(&mut self) {
+    pub(crate) fn shutdown(&mut self) -> std::io::Result<()> {
         info!("shutting down Hearthspace session processes");
         terminate_process(&mut self.shell);
         terminate_process(&mut self.compositor);
         terminate_process(&mut self.settingsd);
         terminate_process(&mut self.watcher);
+        terminate_process(&mut self.notifications);
+
+        self.desktop_services.shutdown();
 
         wait_then_kill_process(&mut self.shell);
         wait_then_kill_process(&mut self.compositor);
         wait_then_kill_process(&mut self.settingsd);
         wait_then_kill_process(&mut self.watcher);
+        wait_then_kill_process(&mut self.notifications);
+
+        if let Some(owner) = &self.app_scopes {
+            owner.shutdown()?;
+        }
+
+        // Do not traverse/remove a still-mounted desktop filesystem on failure.
+        crate::portal_cleanup::unmount_runtime(&self.paths.session_dir)?;
 
         match fs::remove_dir_all(&self.paths.session_dir) {
             Ok(()) => {
                 info!(path = %self.paths.session_dir.display(), "removed session runtime directory")
             }
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-            Err(error) => {
-                warn!(path = %self.paths.session_dir.display(), %error, "failed to remove session runtime directory")
-            }
+            Err(error) => return Err(error),
         }
+        Ok(())
     }
 
     fn check_startup_deadline(&self, child: &str) -> Result<(), Box<dyn std::error::Error>> {
@@ -255,11 +327,13 @@ impl Supervisor {
         fs::write(
             self.paths.session_dir.join("processes.json"),
             format!(
-                "{{\"supervisor\":{},\"settingsd\":{},\"compositor\":{},\"shell\":{}}}\n",
+                "{{\"supervisor\":{},\"settingsd\":{},\"compositor\":{},\"shell\":{},\"notifications\":{}{}}}\n",
                 std::process::id(),
                 pid(&self.settingsd),
                 pid(&self.compositor),
                 pid(&self.shell),
+                pid(&self.notifications),
+                self.desktop_services.process_json_fields(),
             ),
         )
     }
@@ -272,6 +346,7 @@ impl Supervisor {
         let process = match name {
             "settingsd" => &mut self.settingsd,
             "shell" => &mut self.shell,
+            "notifications" => &mut self.notifications,
             _ => return Ok(false),
         };
         let Some(process) = process else {
@@ -284,111 +359,5 @@ impl Supervisor {
         process.restart()?;
         self.record_processes()?;
         Ok(true)
-    }
-
-    fn binary_spec(
-        &self,
-        binary: &'static str,
-        binary_args: &[&str],
-        include_client_wayland: bool,
-    ) -> ProcessSpec {
-        let mut envs = self.child_env(include_client_wayland);
-        if !include_client_wayland {
-            envs.push((
-                hearthspace_common::HEARTHSPACE_WAYLAND_DISPLAY_ENV.to_string(),
-                self.session_env.wayland_display.clone(),
-            ));
-        }
-
-        let current_dir = (self.mode == RunMode::DevCargo).then(repo_root);
-        match self.mode {
-            RunMode::DevCargo => {
-                let args = dev_cargo_args(binary, binary_args);
-                ProcessSpec {
-                    name: binary,
-                    program: "cargo".to_string(),
-                    args,
-                    envs,
-                    env_removals: Vec::new(),
-                    current_dir,
-                }
-            }
-            RunMode::InstalledBinaries => ProcessSpec {
-                name: binary,
-                program: if binary == "hearthspace-compositor" {
-                    self.compositor_binary.clone()
-                } else {
-                    None
-                }
-                .or_else(|| self.binary_dir.as_ref().map(|dir| dir.join(binary)))
-                .map_or_else(
-                    || binary.to_string(),
-                    |path| path.to_string_lossy().into_owned(),
-                ),
-                args: binary_args.iter().map(|arg| (*arg).to_string()).collect(),
-                envs,
-                env_removals: Vec::new(),
-                current_dir,
-            },
-        }
-    }
-
-    fn child_env(&self, include_client_wayland: bool) -> Vec<(String, String)> {
-        self.session_env
-            .vars
-            .iter()
-            .filter(|(key, _)| {
-                include_client_wayland || key != hearthspace_common::WAYLAND_DISPLAY_ENV
-            })
-            .cloned()
-            .collect()
-    }
-
-    fn watcher_spec(&self) -> Option<ProcessSpec> {
-        let envs = self.child_env(true);
-        let current_dir = Some(repo_root());
-        if which::which("cargo-watch").is_ok() {
-            return Some(ProcessSpec {
-                name: "settings-watch",
-                program: "cargo".to_string(),
-                args: vec![
-                    "watch".to_string(),
-                    "-w".to_string(),
-                    "crates/hearthspace-settings".to_string(),
-                    "-w".to_string(),
-                    "crates/hearthspace-ipc".to_string(),
-                    "-w".to_string(),
-                    "crates/hearthspace-common".to_string(),
-                    "-x".to_string(),
-                    "build -p hearthspace-settings".to_string(),
-                ],
-                envs,
-                env_removals: Vec::new(),
-                current_dir,
-            });
-        }
-        if which::which("watchexec").is_ok() {
-            return Some(ProcessSpec {
-                name: "settings-watch",
-                program: "watchexec".to_string(),
-                args: vec![
-                    "-w".to_string(),
-                    "crates/hearthspace-settings".to_string(),
-                    "-w".to_string(),
-                    "crates/hearthspace-ipc".to_string(),
-                    "-w".to_string(),
-                    "crates/hearthspace-common".to_string(),
-                    "--".to_string(),
-                    "cargo".to_string(),
-                    "build".to_string(),
-                    "-p".to_string(),
-                    "hearthspace-settings".to_string(),
-                ],
-                envs,
-                env_removals: Vec::new(),
-                current_dir,
-            });
-        }
-        None
     }
 }

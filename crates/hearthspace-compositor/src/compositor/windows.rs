@@ -3,7 +3,7 @@ use smithay::{
     utils::{Logical, Physical, Point, Rectangle, SERIAL_COUNTER, Size},
     wayland::{
         compositor::{TraversalAction, with_states, with_surface_tree_downward},
-        selection::data_device::set_data_device_focus,
+        selection::{data_device::set_data_device_focus, primary_selection::set_primary_focus},
         shell::xdg::{ToplevelSurface, XdgToplevelSurfaceData},
     },
 };
@@ -17,9 +17,11 @@ use wayland_server::protocol::wl_surface::{self, WlSurface};
 use crate::{accessibility::ManagedWindowAccessibilityInfo, config::*, geometry::CanvasPoint};
 use hearthspace_common::{launcher_output_name_from_app_id, shell_bar_output_name_from_app_id};
 
+mod bounds;
 mod geometry;
 mod hit_testing;
 mod ordering;
+mod shell_size;
 
 pub(super) use geometry::{ResizeEdges, resize_cursor_icon};
 use ordering::normal_insert_index_for_kinds;
@@ -44,14 +46,18 @@ fn configure_server_side_decoration(toplevel: &ToplevelSurface) {
     toplevel.with_pending_state(|state| {
         state.decoration_mode = Some(DecorationMode::ServerSide);
     });
-    toplevel.send_configure();
+    if toplevel.is_initial_configure_sent() {
+        toplevel.send_configure();
+    }
 }
 
 fn configure_client_side_decoration(toplevel: &ToplevelSurface) {
     toplevel.with_pending_state(|state| {
         state.decoration_mode = Some(DecorationMode::ClientSide);
     });
-    toplevel.send_configure();
+    if toplevel.is_initial_configure_sent() {
+        toplevel.send_configure();
+    }
 }
 
 pub(super) fn window_kind_for_toplevel(surface: &ToplevelSurface) -> ManagedWindowKind {
@@ -138,18 +144,25 @@ pub(super) fn decoration_for_new_window(kind: ManagedWindowKind) -> WindowDecora
 
 impl App {
     pub(super) fn set_keyboard_focus_to_window(&mut self, window_index: usize, surface: WlSurface) {
+        if self.session_locked() {
+            return;
+        }
         debug!(window_id = self.windows[window_index].id, kind = ?self.windows[window_index].kind, "setting keyboard focus to window");
-        self.focused_normal_window_id = (self.windows[window_index].kind
-            == ManagedWindowKind::Normal)
-            .then_some(self.windows[window_index].id);
         let focus = KeyboardFocusTarget::for_window(&self.windows[window_index].surface, surface);
         let keyboard = self.keyboard.clone();
+        let previous = keyboard.current_focus();
         keyboard.set_focus(self, Some(focus), SERIAL_COUNTER.next_serial());
+        let current = keyboard.current_focus();
+        // X11 may request activation before its first buffer maps. Smithay
+        // skips focus_changed when the target stays the same, so refresh the
+        // mapped/activated bookkeeping even on that transition.
+        if current == previous {
+            self.sync_window_activation(current.as_ref().map(KeyboardFocusTarget::surface));
+        }
     }
 
     pub(super) fn clear_keyboard_focus(&mut self) {
         debug!("clearing keyboard focus");
-        self.focused_normal_window_id = None;
         let keyboard = self.keyboard.clone();
         keyboard.set_focus(
             self,
@@ -160,7 +173,9 @@ impl App {
         // not when clearing focus. A grab may defer the keyboard change, so
         // revoke clipboard focus only once the keyboard is actually unfocused.
         if keyboard.current_focus().is_none() {
+            self.sync_window_activation(None);
             set_data_device_focus(&self.display_handle, &self._seat, None);
+            set_primary_focus(&self.display_handle, &self._seat, None);
         }
     }
 
@@ -169,6 +184,9 @@ impl App {
         window_index: usize,
         reason: ActivityReason,
     ) {
+        if self.session_locked() {
+            return;
+        }
         let Some(window) = self.windows.get(window_index) else {
             return;
         };
@@ -262,10 +280,24 @@ impl App {
             return window_index;
         }
 
-        let window = self.windows.remove(window_index);
-        let window_id = window.id;
+        let window_id = self.windows[window_index].id;
+        let children: Vec<_> = self
+            .windows
+            .iter()
+            .enumerate()
+            .filter(|(index, _)| self.transient_descendant_of(*index, window_id))
+            .map(|(_, window)| window.id)
+            .collect();
+        let mut family = vec![self.windows.remove(window_index)];
+        for child in children {
+            if let Some(index) = self.windows.iter().position(|window| window.id == child) {
+                family.push(self.windows.remove(index));
+            }
+        }
         let insert_index = self.normal_insert_index();
-        self.windows.insert(insert_index, window);
+        for (offset, window) in family.into_iter().enumerate() {
+            self.windows.insert(insert_index + offset, window);
+        }
         debug!(
             window_id,
             from_index = window_index,
@@ -287,10 +319,20 @@ impl App {
         shell_output_name: Option<&str>,
     ) {
         trace!(?kind, "configuring xdg toplevel");
+        let normal_bounds = (kind == ManagedWindowKind::Normal)
+            .then(|| self.normal_toplevel_bounds(surface))
+            .flatten();
         surface.with_pending_state(|state| {
             state
                 .capabilities
-                .replace(std::iter::empty::<xdg_toplevel::WmCapabilities>());
+                .replace(if kind == ManagedWindowKind::Normal {
+                    vec![
+                        xdg_toplevel::WmCapabilities::Maximize,
+                        xdg_toplevel::WmCapabilities::Fullscreen,
+                    ]
+                } else {
+                    Vec::new()
+                });
             match kind {
                 ManagedWindowKind::ShellBar => {
                     let width = self
@@ -317,16 +359,18 @@ impl App {
                     state.bounds = Some((1, 1).into());
                     state.decoration_mode = Some(DecorationMode::ClientSide);
                 }
-                ManagedWindowKind::Normal => {
-                    state.states.set(xdg_toplevel::State::Activated);
-                }
+                ManagedWindowKind::Normal => state.bounds = normal_bounds,
             }
         });
-        surface.send_configure();
+        // The initial empty wl_surface.commit establishes the client's parent,
+        // decoration and size hints before its first configure is sent.
+        if surface.is_initial_configure_sent() {
+            surface.send_configure();
+        }
     }
 
     #[cfg_attr(not(feature = "winit"), allow(dead_code))]
-    pub(super) fn configure_shell_bars(&self) {
+    pub(super) fn configure_shell_bars(&mut self) {
         for window in &self.windows {
             if window.kind.is_shell_chrome()
                 && let Some(surface) = window.surface.wl_surface()
@@ -339,6 +383,8 @@ impl App {
                 self.configure_toplevel(surface, window.kind, window.shell_output_name.as_deref());
             }
         }
+        self.reconcile_window_presentations();
+        self.reconfigure_lock_outputs();
     }
 
     pub(super) fn request_redraw(&mut self) {
@@ -370,6 +416,10 @@ impl App {
     }
 
     pub(super) fn title_bar_rect(&self, window_index: usize) -> Rectangle<i32, Logical> {
+        if self.window_uses_output_coordinates(window_index) {
+            let rect = self.window_screen_bounds(window_index);
+            return Rectangle::new(rect.loc, (rect.size.w, TITLE_BAR_HEIGHT).into());
+        }
         let canvas_rect = self.title_bar_canvas_rect(window_index);
         let origin = self
             .canvas_to_screen(canvas_rect.loc.to_f64())
@@ -393,7 +443,7 @@ impl App {
         close_button_canvas_rect_for(self.title_bar_canvas_rect(window_index))
     }
 
-    fn content_canvas_origin(&self, window_index: usize) -> Point<i32, Logical> {
+    pub(super) fn content_canvas_origin(&self, window_index: usize) -> Point<i32, Logical> {
         content_canvas_origin_for(
             self.windows[window_index].position,
             self.has_compositor_chrome(window_index),
@@ -404,13 +454,14 @@ impl App {
         let window = &self.windows[window_index];
         window.kind == ManagedWindowKind::Normal
             && window.decoration == WindowDecoration::ServerSide
+            && !window.presentation.fullscreen
     }
 
     /// The window's interactive size: the xdg window geometry size when the
     /// client has set one (client-side-decorated apps inset their visible window
     /// from the surface bounds with shadow margins), falling back to the
     /// surface-tree bounding box otherwise.
-    fn window_geometry_size(&self, window_index: usize) -> Size<i32, Logical> {
+    pub(super) fn window_geometry_size(&self, window_index: usize) -> Size<i32, Logical> {
         let window = &self.windows[window_index];
         self.window_surface_geometry_size(window_index)
             .filter(|size| size.w > 0 && size.h > 0)
@@ -421,7 +472,7 @@ impl App {
     /// server-side title bar when present. For client-side-decorated windows the
     /// rect tracks the *visible* window geometry (excluding shadow margins) so
     /// resize handles land on the visible edge rather than out in the shadow.
-    fn window_canvas_rect(&self, window_index: usize) -> Rectangle<i32, Logical> {
+    pub(super) fn window_canvas_rect(&self, window_index: usize) -> Rectangle<i32, Logical> {
         let window = &self.windows[window_index];
         if self.has_compositor_chrome(window_index) {
             return window_canvas_rect_for(window.position, window.content_bbox_size, true);
@@ -438,31 +489,27 @@ impl App {
         &self,
         window_index: usize,
     ) -> Option<Rectangle<i32, Logical>> {
-        if self.windows[window_index].kind != ManagedWindowKind::Normal {
+        if self.windows[window_index].kind != ManagedWindowKind::Normal
+            || !self.windows[window_index].mapped
+        {
             return None;
         }
 
-        let canvas_rect = self.window_canvas_rect(window_index);
-        if canvas_rect.size.w <= 0 || canvas_rect.size.h <= 0 {
+        let rect = self.window_screen_bounds(window_index);
+        if rect.size.w <= 0 || rect.size.h <= 0 {
             return None;
         }
-
-        let origin = self
-            .canvas_to_screen(canvas_rect.loc.to_f64())
-            .to_i32_round();
-        Some(Rectangle::new(
-            origin,
-            (
-                (f64::from(canvas_rect.size.w) * self.viewport_scale).round() as i32,
-                (f64::from(canvas_rect.size.h) * self.viewport_scale).round() as i32,
-            )
-                .into(),
-        ))
+        Some(rect)
     }
 
     /// Begin an interactive resize of `window_index` along `edges`, capturing the
     /// window's starting geometry so motion deltas can be resolved against it.
     pub(super) fn start_resize(&mut self, window_index: usize, edges: ResizeEdges) {
+        if self.window_uses_output_coordinates(window_index) {
+            return;
+        }
+        self.prepare_window_pointer_operation();
+        let pointer_start = self.window_pointer_start(window_index);
         let initial_content_size = self.window_geometry_size(window_index);
         let window = &self.windows[window_index];
         debug!(
@@ -474,10 +521,13 @@ impl App {
         self.resize = Some(ResizeState {
             window_id: window.id,
             edges,
-            pointer_start: self.raw_pointer_location,
+            pointer_start,
             initial_position: window.position,
             initial_content_size,
         });
+        if pointer_start != self.raw_pointer_location {
+            self.update_resize(self.raw_pointer_location);
+        }
         self.request_redraw();
     }
 
@@ -510,6 +560,7 @@ impl App {
             ManagedSurface::Xdg(surface) => {
                 surface.with_pending_state(|state| {
                     state.states.set(xdg_toplevel::State::Resizing);
+                    state.bounds = None;
                     state.size = Some(size);
                 });
                 surface.send_configure();
@@ -570,7 +621,7 @@ impl App {
         self.windows[window_index].position = new_position;
     }
     fn content_screen_origin(&self, window_index: usize) -> Point<i32, Physical> {
-        self.canvas_to_screen(self.content_canvas_origin(window_index).to_f64())
+        self.window_surface_screen_origin(window_index)
             .to_i32_round()
             .to_physical(1)
     }
@@ -627,7 +678,9 @@ impl App {
         match &self.windows[window_index].surface {
             ManagedSurface::Xdg(surface) => toplevel_geometry_loc(surface.wl_surface()),
             #[cfg(feature = "xwayland")]
-            ManagedSurface::X11(surface) => surface.geometry().loc,
+            // X11 geometry is in root-window coordinates. It is not an inset
+            // within the wl_surface as xdg window geometry is.
+            ManagedSurface::X11(_) => Point::from((0, 0)),
         }
     }
 

@@ -67,6 +67,16 @@ def service_command(state):
         "WorkingDirectory": str(ROOT),
         "UnsetEnvironment": "DISPLAY WAYLAND_DISPLAY WAYLAND_SOCKET DBUS_SESSION_BUS_ADDRESS DBUS_SESSION_BUS_PID",
         "ExecStartPre": "+" + property_command(["/usr/bin/chvt", state["vt"]]),
+        "ExecStop": "+"
+        + property_command(
+            [
+                "/usr/bin/python3",
+                ENTRY,
+                "_graceful-stop",
+                "--state",
+                state["state_file"],
+            ]
+        ),
         "ExecStopPost": "+"
         + property_command(
             ["/usr/bin/python3", ENTRY, "_recover", "--state", state["state_file"]]
@@ -83,6 +93,8 @@ def service_command(state):
         "PATH": f"{state['binary_dir']}:/usr/local/bin:/usr/bin:/bin",
         "HOME": state["home"],
         "LANG": "C.UTF-8",
+        "HEARTHSPACE_ISOLATE_APP_PROFILES": "1",
+        "HEARTHSPACE_LAYOUT_PATH": f"{state['session_dir']}/layout.json",
     }.items():
         args.append(f"--setenv={key}={value}")
     args.extend(["/usr/bin/python3", ENTRY, "_exec", "--state", state["state_file"]])
@@ -197,6 +209,11 @@ def exec_session(state_file):
     env["XDG_CURRENT_DESKTOP"] = "Hearthspace"
     supervisor = str(Path(state["binary_dir"]) / "hearthspace-session")
     args = [
+        # PAM may grant CAP_WAKE_ALARM. Clear inherited/ambient grants before
+        # exec so the private bus and sandboxed GTK loaders are ordinary users.
+        "/usr/bin/setpriv",
+        "--ambient-caps=-all",
+        "--inh-caps=-all",
         "/usr/bin/dbus-run-session",
         "--",
         supervisor,

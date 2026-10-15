@@ -5,9 +5,9 @@ use tracing::{debug, error, info, warn};
 
 use super::{
     ConnectorSync, UdevBackendState,
+    connector_policy::targets_need_rebuild,
     device::{
-        KmsOutputTarget, UdevDevice, UdevDeviceInfo, create_udev_device, current_device_list,
-        log_device_list,
+        UdevDevice, UdevDeviceInfo, create_udev_device, current_device_list, log_device_list,
     },
     insert_libinput_source,
 };
@@ -74,10 +74,6 @@ impl UdevBackendState {
         }
 
         device.output_targets = device.connected_output_targets();
-        let primary = device
-            .output_targets
-            .first()
-            .map(KmsOutputTarget::output_descriptor);
         if let Err(error) = device.rebuild_output_surfaces(device.output_targets.clone()) {
             error!(%error, "failed to rebuild KMS output surfaces after session activation");
         }
@@ -95,8 +91,7 @@ impl UdevBackendState {
         );
 
         ConnectorSync {
-            descriptors: device.output_descriptors(),
-            primary,
+            descriptors: Some(device.output_descriptors()),
         }
     }
 
@@ -121,7 +116,9 @@ impl UdevBackendState {
 
     pub(super) fn handle_device_changed(&mut self, device_id: u64) -> ConnectorSync {
         self.connector_rescan_pending = true;
-        if !self.session_active || self.drm_commits_paused {
+        // A disconnected last monitor pauses commits, but the active seat
+        // must still rescan to discover its replacement. Only VT pause defers.
+        if !self.session_active {
             debug!(
                 device_id,
                 "deferring DRM device change while native session is paused"
@@ -142,27 +139,28 @@ impl UdevBackendState {
                 "changed DRM device is not the selected primary device"
             );
             return ConnectorSync {
-                descriptors: device.output_descriptors(),
-                primary: None,
+                descriptors: Some(device.output_descriptors()),
             };
         }
 
         let previous_target = device.output_target.clone();
         let next_targets = device.connected_output_targets();
         let next_target = next_targets.first().cloned();
-        if previous_target == next_target && device.output_targets == next_targets {
+        if !targets_need_rebuild(
+            &device.output_targets,
+            &next_targets,
+            device.output_surfaces.len() == next_targets.len(),
+        ) {
             debug!("primary DRM connector state re-scanned; selected output is unchanged");
             self.connector_rescan_pending = false;
             device.output_targets = next_targets;
             return ConnectorSync {
-                descriptors: device.output_descriptors(),
-                primary: None,
+                descriptors: Some(device.output_descriptors()),
             };
         }
 
         info!(previous_target = ?previous_target, next_target = ?next_target, "DRM connector selection changed; rebuilding KMS output surfaces");
         device.output_targets = next_targets;
-        let primary = next_target.as_ref().map(KmsOutputTarget::output_descriptor);
         if let Err(error) = device.rebuild_output_surfaces(device.output_targets.clone()) {
             error!(%error, "failed to rebuild KMS output surfaces");
         }
@@ -175,8 +173,7 @@ impl UdevBackendState {
         self.repaint_pending = self.kms_devices_active;
 
         ConnectorSync {
-            descriptors: device.output_descriptors(),
-            primary,
+            descriptors: Some(device.output_descriptors()),
         }
     }
 

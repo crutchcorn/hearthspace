@@ -1,118 +1,9 @@
-use std::{
-    env, io,
-    io::{Read, Write},
-    net::Shutdown,
-    os::unix::net::UnixStream,
-    path::PathBuf,
-    str::FromStr,
-};
+use std::{env, io, path::PathBuf, time::Duration};
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Settings {
-    pub test: bool,
-    pub background_mode: BackgroundMode,
-    pub background_image_path: Option<String>,
-    pub monitors: Vec<MonitorConfig>,
-}
+pub mod transport;
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub enum BackgroundMode {
-    #[default]
-    RepeatWithCanvas,
-    Stretch,
-    Contains,
-    Cover,
-}
-
-impl BackgroundMode {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::RepeatWithCanvas => "repeat-with-canvas",
-            Self::Stretch => "stretch",
-            Self::Contains => "contains",
-            Self::Cover => "cover",
-        }
-    }
-
-    pub fn from_legacy_moves_with_canvas(value: bool) -> Self {
-        if value {
-            Self::RepeatWithCanvas
-        } else {
-            Self::Cover
-        }
-    }
-}
-
-impl std::fmt::Display for BackgroundMode {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        formatter.write_str(self.as_str())
-    }
-}
-
-impl FromStr for BackgroundMode {
-    type Err = String;
-
-    fn from_str(value: &str) -> Result<Self, Self::Err> {
-        match value {
-            "repeat-with-canvas" => Ok(Self::RepeatWithCanvas),
-            "stretch" => Ok(Self::Stretch),
-            "contains" => Ok(Self::Contains),
-            "cover" => Ok(Self::Cover),
-            _ => Err(format!("invalid background mode: {value:?}")),
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct MonitorConfig {
-    pub id: String,
-    pub name: String,
-    pub width: i32,
-    pub height: i32,
-    pub scale: i32,
-    pub x: i32,
-    pub y: i32,
-}
-
-impl Default for Settings {
-    fn default() -> Self {
-        Self {
-            test: false,
-            background_mode: BackgroundMode::default(),
-            background_image_path: None,
-            monitors: vec![
-                MonitorConfig {
-                    id: "primary".to_string(),
-                    name: "Primary".to_string(),
-                    width: 1920,
-                    height: 1080,
-                    scale: 1,
-                    x: 0,
-                    y: 0,
-                },
-                MonitorConfig {
-                    id: "secondary".to_string(),
-                    name: "Secondary".to_string(),
-                    width: 1920,
-                    height: 1080,
-                    scale: 1,
-                    x: 1920,
-                    y: 0,
-                },
-            ],
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum SettingsRequest {
-    Get,
-    SetTest(bool),
-    SetBackgroundMode(BackgroundMode),
-    SetBackgroundImagePath(Option<String>),
-    SetMonitorPosition { id: String, x: i32, y: i32 },
-    SetMonitorScale { id: String, scale: i32 },
-}
+mod model;
+pub use model::{BackgroundMode, MonitorConfig, Settings, SettingsRequest};
 
 pub fn settings_socket_path() -> io::Result<PathBuf> {
     if let Some(socket_path) = env::var_os(hearthspace_common::SETTINGS_SOCKET_ENV) {
@@ -125,7 +16,9 @@ pub fn settings_socket_path() -> io::Result<PathBuf> {
 }
 
 pub fn client_get_settings() -> io::Result<Settings> {
-    send_settings_request("get\n")
+    // Native refresh runs on the compositor thread: an unavailable daemon must
+    // fail soft without a long input/rendering stall.
+    send_settings_request_with_timeout("get\n", Duration::from_millis(50))
 }
 
 pub fn client_set_test(test: bool) -> io::Result<Settings> {
@@ -220,12 +113,11 @@ pub fn error_response(error: impl std::fmt::Display) -> String {
 }
 
 fn send_settings_request(request: &str) -> io::Result<Settings> {
-    let mut stream = UnixStream::connect(settings_socket_path()?)?;
-    stream.write_all(request.as_bytes())?;
-    stream.shutdown(Shutdown::Write)?;
+    send_settings_request_with_timeout(request, Duration::from_millis(500))
+}
 
-    let mut response = String::new();
-    stream.read_to_string(&mut response)?;
+fn send_settings_request_with_timeout(request: &str, timeout: Duration) -> io::Result<Settings> {
+    let response = transport::request_line(&settings_socket_path()?, request, timeout)?;
     parse_settings_response(&response)
 }
 
@@ -439,105 +331,4 @@ fn parse_bool(value: &str) -> Result<bool, String> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn parses_ipc_requests() {
-        assert_eq!(parse_settings_request("get\n"), Ok(SettingsRequest::Get));
-        assert_eq!(
-            parse_settings_request("set test true\n"),
-            Ok(SettingsRequest::SetTest(true))
-        );
-        assert_eq!(
-            parse_settings_request("set background-mode cover\n"),
-            Ok(SettingsRequest::SetBackgroundMode(BackgroundMode::Cover))
-        );
-        assert_eq!(
-            parse_settings_request("set background-moves-with-canvas false\n"),
-            Ok(SettingsRequest::SetBackgroundMode(BackgroundMode::Cover))
-        );
-        assert_eq!(
-            parse_settings_request("set background-image-path %2Ftmp%2Fwallpaper.png\n"),
-            Ok(SettingsRequest::SetBackgroundImagePath(Some(
-                "/tmp/wallpaper.png".to_string()
-            )))
-        );
-        assert_eq!(
-            parse_settings_request("set background-image-path default\n"),
-            Ok(SettingsRequest::SetBackgroundImagePath(None))
-        );
-        assert_eq!(
-            parse_settings_request("set monitor primary 120 -40\n"),
-            Ok(SettingsRequest::SetMonitorPosition {
-                id: "primary".to_string(),
-                x: 120,
-                y: -40,
-            })
-        );
-        assert_eq!(
-            parse_settings_request("set monitor-scale primary 2\n"),
-            Ok(SettingsRequest::SetMonitorScale {
-                id: "primary".to_string(),
-                scale: 2,
-            })
-        );
-    }
-
-    #[test]
-    fn parses_ipc_response() {
-        assert_eq!(
-            parse_settings_response(
-                "ok test true background-mode contains background-image-path %2Ftmp%2Fwallpaper.png monitor primary 1920 1080 2 120 -40 Primary monitor secondary 1280 720 1 2040 0 Secondary%20Display\n"
-            )
-            .unwrap(),
-            Settings {
-                test: true,
-                background_mode: BackgroundMode::Contains,
-                background_image_path: Some("/tmp/wallpaper.png".to_string()),
-                monitors: vec![
-                    MonitorConfig {
-                        id: "primary".to_string(),
-                        name: "Primary".to_string(),
-                        width: 1920,
-                        height: 1080,
-                        scale: 2,
-                        x: 120,
-                        y: -40,
-                    },
-                    MonitorConfig {
-                        id: "secondary".to_string(),
-                        name: "Secondary Display".to_string(),
-                        width: 1280,
-                        height: 720,
-                        scale: 1,
-                        x: 2040,
-                        y: 0,
-                    },
-                ],
-            }
-        );
-    }
-
-    #[test]
-    fn parses_legacy_ipc_response_with_background_moves_with_canvas() {
-        assert_eq!(
-            parse_settings_response(
-                "ok test true background-moves-with-canvas false background-image-path %2Ftmp%2Fwallpaper.png monitor primary 1920 1080 2 120 -40 Primary\n"
-            )
-            .unwrap()
-            .background_mode,
-            BackgroundMode::Cover
-        );
-    }
-
-    #[test]
-    fn parses_legacy_ipc_response_with_default_background_setting() {
-        assert_eq!(
-            parse_settings_response("ok test true monitor primary 1920 1080 1 0 0 Primary\n")
-                .unwrap()
-                .background_mode,
-            Settings::default().background_mode
-        );
-    }
-}
+mod tests;

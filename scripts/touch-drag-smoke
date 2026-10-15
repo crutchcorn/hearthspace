@@ -1,0 +1,7 @@
+#!/usr/bin/env python3
+"""Validate touchscreen moves and resizes of real native desktop windows."""
+
+from agentlib.touch_drag import main
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -27,6 +27,24 @@ pub(crate) fn create_session_paths(
     requested: Option<&Path>,
     private_session_bus: bool,
 ) -> Result<SessionPaths, Box<dyn std::error::Error>> {
+    let (host_runtime_dir, session_dir) = runtime_directories(requested)?;
+    prepare_session_directory(&session_dir, private_session_bus)?;
+    let applications_dir = session_dir.join("share/applications");
+    fs::create_dir_all(&applications_dir)?;
+
+    Ok(SessionPaths {
+        host_runtime_dir,
+        settings_socket: session_dir.join("settings.sock"),
+        session_socket: session_dir.join("session.sock"),
+        shell_command_socket: session_dir.join("shell-command.sock"),
+        session_dir,
+        applications_dir,
+    })
+}
+
+pub(crate) fn runtime_directories(
+    requested: Option<&Path>,
+) -> Result<(PathBuf, PathBuf), Box<dyn std::error::Error>> {
     let host_runtime_dir = env::var_os(hearthspace_common::HOST_RUNTIME_DIR_ENV)
         .or_else(|| env::var_os("XDG_RUNTIME_DIR"))
         .ok_or("XDG_RUNTIME_DIR is not set")?;
@@ -36,10 +54,20 @@ pub(crate) fn create_session_paths(
             .join("hearthspace")
             .join(format!("session-{}", process::id()))
     });
+    if !host_runtime_dir.is_absolute() || !session_dir.is_absolute() {
+        return Err("host and session runtime directories must be absolute paths".into());
+    }
+    Ok((host_runtime_dir, session_dir))
+}
+
+pub(crate) fn prepare_session_directory(
+    session_dir: &Path,
+    private_session_bus: bool,
+) -> Result<(), Box<dyn std::error::Error>> {
     // dbus-run-session creates dbus-1/services before executing its child.
     // Only its explicitly requested private bus directory may preexist.
     if session_dir.exists() {
-        for entry in fs::read_dir(&session_dir)? {
+        for entry in fs::read_dir(session_dir)? {
             let entry = entry?;
             if !(private_session_bus
                 && entry.file_name() == "dbus-1"
@@ -51,19 +79,9 @@ pub(crate) fn create_session_paths(
             }
         }
     }
-    let applications_dir = session_dir.join("share/applications");
-
-    fs::create_dir_all(&applications_dir)?;
-    fs::set_permissions(&session_dir, fs::Permissions::from_mode(0o700))?;
-
-    Ok(SessionPaths {
-        host_runtime_dir,
-        settings_socket: session_dir.join("settings.sock"),
-        session_socket: session_dir.join("session.sock"),
-        shell_command_socket: session_dir.join("shell-command.sock"),
-        session_dir,
-        applications_dir,
-    })
+    fs::create_dir_all(session_dir)?;
+    fs::set_permissions(session_dir, fs::Permissions::from_mode(0o700))?;
+    Ok(())
 }
 
 pub(crate) fn create_session_env(
@@ -83,6 +101,11 @@ pub(crate) fn create_session_env(
     let mut vars = vec![
         ("XDG_RUNTIME_DIR".to_string(), session_dir.clone()),
         ("WAYLAND_DISPLAY".to_string(), wayland_display.clone()),
+        ("XDG_SESSION_TYPE".to_string(), "wayland".to_string()),
+        (
+            "XDG_SESSION_DESKTOP".to_string(),
+            hearthspace_common::CURRENT_DESKTOP.to_string(),
+        ),
         (
             "XDG_CURRENT_DESKTOP".to_string(),
             hearthspace_common::CURRENT_DESKTOP.to_string(),
@@ -97,7 +120,7 @@ pub(crate) fn create_session_env(
         ),
         (
             hearthspace_common::HOST_RUNTIME_DIR_ENV.to_string(),
-            host_runtime_dir,
+            host_runtime_dir.clone(),
         ),
         (
             hearthspace_common::SETTINGS_SOCKET_ENV.to_string(),
@@ -117,6 +140,12 @@ pub(crate) fn create_session_env(
             xdg_data_dirs(&path_to_string(&paths.session_dir.join("share"))?)?,
         ),
     ];
+
+    vars.extend(crate::audio_env::audio_environment(&host_runtime_dir));
+    vars.push((
+        "XDG_CONFIG_DIRS".into(),
+        crate::gtk_defaults::config_dirs(&paths.session_dir)?,
+    ));
 
     if args.private_session_bus {
         let bus = env::var("DBUS_SESSION_BUS_ADDRESS")
@@ -192,6 +221,7 @@ mod tests {
             no_watch_apps: false,
             no_shell_restart: false,
             no_settingsd_restart: false,
+            no_desktop_services: false,
             log_level: "info".to_string(),
             print_env: false,
             dry_run: false,
@@ -230,6 +260,7 @@ mod tests {
             no_watch_apps: false,
             no_shell_restart: false,
             no_settingsd_restart: false,
+            no_desktop_services: false,
             log_level: "info".to_string(),
             print_env: false,
             dry_run: false,

@@ -9,7 +9,9 @@ import termios
 import time
 from pathlib import Path
 
+from .app_scopes import cleanup_app_scopes
 from .common import STATE_ROOT, active_vt, load, run, save, unit_info
+from .portal_cleanup import cleanup_runtime_mounts
 from .service import allocation_lock
 
 
@@ -142,24 +144,34 @@ def recover(state_file, lock=True):
     except (OSError, RuntimeError, subprocess.TimeoutExpired) as error:
         errors.append(str(error))
     runtime = Path(state["runtime_dir"])
-    if cleanup.get("session_scope_stopped"):
+    try:
+        cleanup["app_scopes_stopped"] = cleanup_app_scopes(state, deadline)
+    except (OSError, RuntimeError, subprocess.TimeoutExpired) as error:
+        errors.append(str(error))
+    if cleanup.get("session_scope_stopped") and cleanup.get("app_scopes_stopped"):
         try:
             if (
                 runtime.parent != Path(f"/run/user/{state['uid']}")
                 or runtime.name != f"hearthspace-native-{state['id']}"
             ):
                 raise RuntimeError("refusing unexpected runtime directory")
+            cleanup_runtime_mounts(runtime, timeout=budget(deadline, 2))
             shutil.rmtree(runtime, ignore_errors=False) if runtime.exists() else None
             cleanup["runtime_removed"] = not runtime.exists()
             with open("/dev/tty0", "rb", buffering=0) as tty:
                 fcntl.ioctl(
                     tty, 0x5608, state["vt"]
                 )  # VT_DISALLOCATE; never the original VT.
-        except OSError as error:
+        except (OSError, RuntimeError, subprocess.TimeoutExpired) as error:
             errors.append(str(error))
     cleanup["complete"] = not errors and all(
         cleanup.get(key)
-        for key in ("vt_restored", "session_scope_stopped", "runtime_removed")
+        for key in (
+            "vt_restored",
+            "session_scope_stopped",
+            "app_scopes_stopped",
+            "runtime_removed",
+        )
     )
     cleanup["errors"] = errors
     state.update(

@@ -1,0 +1,13 @@
+# Additional freedesktop notification protocol operations for Ubuntu 26.04's
+# notify-send profile. Keep its existing confinement and standard Notify rule.
+dbus (send)
+    bus=session
+    path=/org/freedesktop/Notifications
+    interface=org.freedesktop.Notifications
+    member={GetCapabilities,CloseNotification},
+
+dbus (receive)
+    bus=session
+    path=/org/freedesktop/Notifications
+    interface=org.freedesktop.Notifications
+    member={NotificationClosed,ActionInvoked,ActivationToken},

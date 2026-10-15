@@ -34,12 +34,19 @@ class HeadlessIntegrationTests(unittest.TestCase):
         cls.directory = tempfile.TemporaryDirectory(prefix="hs-agent-e2e-")
         cls.runtime = Path(cls.directory.name)
         cls.socket = cls.runtime / "control.sock"
+        apps = cls.runtime / "share/applications"
+        apps.mkdir(parents=True)
+        (apps / "missing-program.desktop").write_text(
+            "[Desktop Entry]\nType=Application\nName=Missing program fixture\n"
+            "Exec=/hearthspace-no-such-program\n"
+        )
         cls.log = (cls.runtime / "compositor.log").open("w+")
         env = {
             **os.environ,
             "XDG_RUNTIME_DIR": str(cls.runtime),
             "WAYLAND_DISPLAY": "wayland-test",
             "HEARTHSPACE_COMMAND_SOCKET": str(cls.socket),
+            "XDG_DATA_DIRS": str(cls.runtime / "share"),
         }
         binary = os.environ.get(
             "HEARTHSPACE_BINARY", str(ROOT / "target/debug/hearthspace")
@@ -101,6 +108,24 @@ class HeadlessIntegrationTests(unittest.TestCase):
         self.assertGreater(moved["frame_id"], first["frame_id"])
         self.assertNotEqual(moved_png, png)
         self.assertEqual(pixel_to_logical(800, 600, first), (400, 300))
+
+    def test_catalog_and_launch_failures_are_observable(self):
+        control = Control(self.socket, Deadline(5))
+        apps = control.query("apps")["apps"]
+        self.assertIn("missing-program.desktop", [app["id"] for app in apps])
+        for command, message in [
+            ("launch-app nonexistent-id.desktop", "unknown desktop application"),
+            ("launch-app missing-program.desktop", "failed to spawn"),
+            (
+                f"launch-app-on-output {b'missing-output'.hex()} missing-program.desktop",
+                "unknown launch output",
+            ),
+        ]:
+            with (
+                self.subTest(command=command),
+                self.assertRaisesRegex(ControlError, message),
+            ):
+                control.request(command)
 
     def test_cli_saves_metadata_and_reports_bad_output(self):
         destination = self.runtime / "agent.png"

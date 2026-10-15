@@ -1,9 +1,6 @@
 use smithay::{
     backend::input::{Axis, ButtonState, InputTime, KeyState},
-    input::{
-        keyboard::FilterResult,
-        pointer::{AxisFrame, ButtonEvent, MotionEvent},
-    },
+    input::pointer::{AxisFrame, ButtonEvent, MotionEvent},
     utils::{Logical, Point, Rectangle, SERIAL_COUNTER},
 };
 use tracing::{debug, trace};
@@ -16,15 +13,10 @@ use crate::compositor::{
 impl App {
     pub(in crate::compositor) fn synthesize_key(&mut self, evdev_keycode: u32, state: KeyState) {
         trace!(evdev_keycode, ?state, "synthesizing key input");
-        self.record_focused_client_activity(ActivityReason::ClientInput);
-        let keyboard = self.keyboard.clone();
-        keyboard.input::<(), _>(
-            self,
+        self.handle_keyboard_input(
             evdev_keycode.saturating_add(8).into(),
             state,
-            SERIAL_COUNTER.next_serial(),
             InputTime::now(),
-            |_, _, _| FilterResult::Forward,
         );
     }
 
@@ -52,7 +44,14 @@ impl App {
         button: u32,
         state: ButtonState,
     ) {
+        if self.session_locked() {
+            self.deliver_lock_button(button, state, InputTime::now());
+            return;
+        }
         trace!(button, ?state, "synthesizing pointer button");
+        if state == ButtonState::Pressed {
+            self.interrupt_pinch_zoom();
+        }
         let time = InputTime::now();
         let is_left_button = button == 0x110;
 
@@ -92,6 +91,9 @@ impl App {
                     let window_index = self.raise_window(window_index);
                     if let Some(surface) = self.windows[window_index].surface.wl_surface() {
                         self.set_keyboard_focus_to_window(window_index, surface);
+                    }
+                    if self.window_uses_output_coordinates(window_index) {
+                        return;
                     }
                     self.drag = Some(DragState {
                         window_id: self.windows[window_index].id,
@@ -227,6 +229,10 @@ impl App {
             self.request_redraw();
         }
 
+        if self.session_locked() {
+            self.lock_pointer_motion(time);
+            return;
+        }
         if let Some(drag) = self.drag.as_ref() {
             let delta = self.raw_pointer_location - drag.pointer_start;
             let new_position = crate::geometry::CanvasPoint {
@@ -293,6 +299,8 @@ impl App {
     }
 
     pub(in crate::compositor) fn reconcile_pointer_after_output_geometry_change(&mut self) {
+        // The old screen anchor is no longer meaningful after output changes.
+        self.interrupt_pinch_zoom();
         let output_rects = self.output_logical_rects();
         let previous_location = self.pointer_location;
         self.pointer_location = if self.pointer_location == Point::from((0.0, 0.0)) {
@@ -305,6 +313,10 @@ impl App {
             self.request_redraw();
         }
 
+        if self.session_locked() {
+            self.lock_pointer_motion(InputTime::now());
+            return;
+        }
         let hit = self.hit_test(self.pointer_location);
         if !matches!(hit, Some(HitTarget::Client { .. })) {
             self.cursor_surface = None;

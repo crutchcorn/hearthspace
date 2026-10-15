@@ -4,7 +4,7 @@ use smithay::{
 };
 
 use crate::{
-    config::{CONTROL_BAR_HEIGHT, RESIZE_HANDLE_INSET, RESIZE_HANDLE_OUTSET},
+    config::{RESIZE_HANDLE_INSET, RESIZE_HANDLE_OUTSET},
     geometry::rect_contains,
 };
 
@@ -16,10 +16,19 @@ impl App {
         &self,
         location: Point<f64, Logical>,
     ) -> Option<HitTarget> {
+        if self.session_locked() {
+            return None;
+        }
         // Shell chrome (the bar and the launcher palette) is drawn in screen
         // space above the canvas, so it is hit-tested first using each surface's
         // own screen-space origin.
         for (window_index, window) in self.windows.iter().enumerate().rev() {
+            let output = self
+                .output_logical_rect_for_name(window.shell_output_name.as_deref())
+                .unwrap_or_else(|| self.primary_output_logical_rect());
+            if !window.mapped || !self.shell_visible_on_output(output) {
+                continue;
+            }
             match window.kind {
                 ManagedWindowKind::ShellBar => {
                     if let Some(origin) = self.shell_bar_logical_origin(window_index)
@@ -44,18 +53,17 @@ impl App {
             }
         }
 
-        if location.y < f64::from(CONTROL_BAR_HEIGHT) {
-            return None;
-        }
-
-        let canvas_location = self.screen_to_canvas(location);
-
         for (window_index, window) in self.windows.iter().enumerate().rev() {
-            if window.kind != ManagedWindowKind::Normal {
+            if window.kind != ManagedWindowKind::Normal || !window.mapped {
                 continue;
             }
-
-            let content_origin = self.content_canvas_origin(window_index);
+            if self
+                .window_presentation_output(window_index)
+                .is_some_and(|output| !output.contains(location.to_i32_round()))
+            {
+                continue;
+            }
+            let local = self.window_screen_to_surface(window_index, location);
 
             // Popups (menus) sit above this window's content and chrome, so
             // they are hit-tested first. Their location comes from the popup's
@@ -65,16 +73,15 @@ impl App {
             };
             let geometry_loc = self.window_surface_geometry_loc(window_index);
             for (popup, popup_offset) in PopupManager::popups_for_surface(&root) {
-                let popup_origin =
-                    content_origin + geometry_loc + popup_offset - popup.geometry().loc;
+                let popup_origin = geometry_loc + popup_offset - popup.geometry().loc;
                 let hit = under_from_surface_tree(
                     popup.wl_surface(),
-                    canvas_location,
+                    local,
                     popup_origin,
                     WindowSurfaceType::ALL,
                 );
                 if let Some((surface, surface_location)) = hit {
-                    let relative_surface_location = canvas_location - surface_location.to_f64();
+                    let relative_surface_location = local - surface_location.to_f64();
                     let pointer_focus_origin = location - relative_surface_location;
                     return Some(HitTarget::Client {
                         window_index,
@@ -85,11 +92,20 @@ impl App {
             }
 
             if self.has_compositor_chrome(window_index) {
-                if rect_contains(self.close_button_canvas_rect(window_index), canvas_location) {
+                let titlebar = self.title_bar_rect(window_index);
+                let canvas_titlebar = self.title_bar_canvas_rect(window_index);
+                let scale = self.window_render_scale(window_index);
+                let chrome_location = Point::from((
+                    f64::from(canvas_titlebar.loc.x)
+                        + (location.x - f64::from(titlebar.loc.x)) / scale,
+                    f64::from(canvas_titlebar.loc.y)
+                        + (location.y - f64::from(titlebar.loc.y)) / scale,
+                ));
+                if rect_contains(self.close_button_canvas_rect(window_index), chrome_location) {
                     return Some(HitTarget::CloseButton { window_index });
                 }
 
-                if rect_contains(self.title_bar_canvas_rect(window_index), canvas_location) {
+                if rect_contains(titlebar, location) {
                     return Some(HitTarget::TitleBar { window_index });
                 }
             }
@@ -99,32 +115,36 @@ impl App {
             // is grabbable for resizing. This applies to both server- and
             // client-side-decorated windows; for the latter `window_canvas_rect`
             // tracks the visible geometry so the band sits on the real edge.
-            let window_rect = self.window_canvas_rect(window_index);
-            if let Some(edges) = resize_edges_at(
-                window_rect,
-                canvas_location,
-                RESIZE_HANDLE_OUTSET,
-                RESIZE_HANDLE_INSET,
-            ) {
+            let window_rect = self.window_screen_bounds(window_index);
+            if !self.window_uses_output_coordinates(window_index)
+                && let Some(edges) = resize_edges_at(
+                    window_rect,
+                    location,
+                    (f64::from(RESIZE_HANDLE_OUTSET) * self.window_render_scale(window_index))
+                        .round() as i32,
+                    (f64::from(RESIZE_HANDLE_INSET) * self.window_render_scale(window_index))
+                        .round() as i32,
+                )
+            {
                 return Some(HitTarget::ResizeBorder {
                     window_index,
                     edges,
                 });
             }
 
-            if let Some((surface, surface_location)) = under_from_surface_tree(
-                &root,
-                canvas_location,
-                content_origin,
-                WindowSurfaceType::ALL,
-            ) {
-                let relative_surface_location = canvas_location - surface_location.to_f64();
+            if let Some((surface, surface_location)) =
+                under_from_surface_tree(&root, local, Point::from((0, 0)), WindowSurfaceType::ALL)
+            {
+                let relative_surface_location = local - surface_location.to_f64();
                 let pointer_focus_origin = location - relative_surface_location;
                 return Some(HitTarget::Client {
                     window_index,
                     surface,
                     surface_location: pointer_focus_origin,
                 });
+            }
+            if window.presentation.fullscreen {
+                return None;
             }
         }
 

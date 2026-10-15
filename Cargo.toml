@@ -4,6 +4,7 @@ members = [
     "crates/hearthspace-compositor",
     "crates/hearthspace-common",
     "crates/hearthspace-ipc",
+    "crates/hearthspace-notifications",
     "crates/hearthspace-session",
     "crates/hearthspace-settings",
     "crates/hearthspace-settingsd",

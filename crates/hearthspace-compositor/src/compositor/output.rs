@@ -8,10 +8,10 @@ use wayland_server::{DisplayHandle, backend::GlobalId, protocol::wl_surface::WlS
 use super::App;
 
 mod layout;
+#[cfg(feature = "udev")]
+mod native;
 
 pub(in crate::compositor) use layout::OutputLayout;
-#[cfg(feature = "udev")]
-use layout::secondary_descriptors_for_layout;
 use layout::{OutputGeometry, output_locations_for_layout};
 
 pub(in crate::compositor) struct OutputSet {
@@ -24,6 +24,7 @@ pub(in crate::compositor) struct OutputRecord {
     #[cfg_attr(not(feature = "udev"), allow(dead_code))]
     name: String,
     output: Output,
+    advertised: bool,
     #[cfg_attr(not(feature = "udev"), allow(dead_code))]
     global_id: GlobalId,
     pub(in crate::compositor) size: Size<i32, Physical>,
@@ -78,48 +79,10 @@ impl OutputSet {
         true
     }
 
-    #[cfg(feature = "udev")]
-    fn sync_secondary_outputs(&mut self, dh: &DisplayHandle, descriptors: Vec<OutputDescriptor>) {
-        let mut existing = std::mem::take(&mut self.secondary);
-        let descriptors = secondary_descriptors_for_layout(descriptors, &self.primary.name);
-        let plan = output_locations_for_layout(
-            OutputGeometry::from(&self.primary),
-            descriptors.iter().map(OutputGeometry::from).collect(),
-            &self.layout,
-        );
-        self.primary
-            .set_scale_and_location(plan.primary_scale, plan.primary);
-        let mut next_secondary = Vec::with_capacity(descriptors.len());
-
-        for mut descriptor in descriptors {
-            let location = plan.secondary_location(&descriptor.name);
-            descriptor.scale = plan
-                .secondary_scale(&descriptor.name)
-                .unwrap_or(descriptor.scale);
-            let output = if let Some(index) = existing
-                .iter()
-                .position(|output| output.name == descriptor.name)
-            {
-                let mut output = existing.remove(index);
-                output.update(descriptor, location);
-                output
-            } else {
-                let output = create_output_record(dh, descriptor, location);
-                tracing::info!(name = %output.name, ?location, "advertising newly connected Wayland output");
-                output
-            };
-            next_secondary.push(output);
-        }
-
-        for removed in existing {
-            tracing::info!(name = %removed.name, "disabling disconnected Wayland output");
-            dh.disable_global::<App>(removed.global_id);
-        }
-
-        self.secondary = next_secondary;
-    }
-
     fn apply_layout_to_existing_outputs(&mut self) {
+        if !self.primary.advertised {
+            return;
+        }
         let plan = output_locations_for_layout(
             OutputGeometry::from(&self.primary),
             self.secondary.iter().map(OutputGeometry::from).collect(),
@@ -134,9 +97,14 @@ impl OutputSet {
         debug!(outputs = ?self.output_debug(), "applied logical output layout");
     }
 
-    fn output_debug(&self) -> Vec<OutputDebugEntry> {
+    fn active_outputs(&self) -> impl Iterator<Item = &OutputRecord> {
         std::iter::once(&self.primary)
             .chain(self.secondary.iter())
+            .filter(|output| output.advertised)
+    }
+
+    fn output_debug(&self) -> Vec<OutputDebugEntry> {
+        self.active_outputs()
             .map(|output| {
                 (
                     output.name.clone(),
@@ -160,26 +128,21 @@ impl OutputSet {
     }
 
     fn logical_rects(&self) -> Vec<Rectangle<i32, Logical>> {
-        std::iter::once(&self.primary)
-            .chain(self.secondary.iter())
+        self.active_outputs()
             .map(OutputRecord::logical_rect)
             .collect()
     }
 
     fn minimum_client_logical_width(&self) -> i32 {
-        std::iter::once(&self.primary)
-            .chain(self.secondary.iter())
+        self.active_outputs()
             .map(|output| output.client_logical_size().w)
             .min()
             .unwrap_or(1)
     }
 
     fn output_for_name(&self, name: Option<&str>) -> Option<&OutputRecord> {
-        match name {
-            None => Some(&self.primary),
-            Some(name) if self.primary.name == name => Some(&self.primary),
-            Some(name) => self.secondary.iter().find(|output| output.name == name),
-        }
+        let name = name.unwrap_or(&self.primary.name);
+        self.active_outputs().find(|output| output.name == name)
     }
 }
 
@@ -320,8 +283,8 @@ impl App {
     /// screen space), falling back to the primary output's scale. Used to pick
     /// the preferred fractional scale advertised to a surface's clients.
     pub(super) fn output_scale_at(&self, point: Point<f64, Logical>) -> i32 {
-        std::iter::once(&self.outputs.primary)
-            .chain(self.outputs.secondary.iter())
+        self.outputs
+            .active_outputs()
             .find(|output| point_in_rect(point, output.logical_rect()))
             .map(|output| output.scale.max(1))
             .unwrap_or_else(|| self.primary_output_scale())
@@ -333,19 +296,8 @@ impl App {
 
     #[cfg(feature = "udev")]
     pub(in crate::compositor) fn output_render_view(&self, name: &str) -> Option<OutputRenderView> {
-        if self.outputs.primary.name == name {
-            return Some(OutputRenderView {
-                name: self.outputs.primary.name.clone(),
-                location: self.outputs.primary.location,
-                size: self.outputs.primary.logical_size(),
-                scale: self.outputs.primary.scale.max(1),
-            });
-        }
-
         self.outputs
-            .secondary
-            .iter()
-            .find(|output| output.name == name)
+            .output_for_name(Some(name))
             .map(|output| OutputRenderView {
                 name: output.name.clone(),
                 location: output.location,
@@ -365,29 +317,6 @@ impl App {
             size,
             self.outputs.primary.scale,
         );
-    }
-
-    #[cfg(feature = "udev")]
-    pub(in crate::compositor) fn set_primary_output_descriptor(
-        &mut self,
-        mut descriptor: OutputDescriptor,
-    ) {
-        if self.outputs.primary.name != descriptor.name {
-            tracing::info!(
-                wayland_name = %self.outputs.primary.name,
-                kms_name = %descriptor.name,
-                "retargeting primary KMS output while keeping the existing Wayland output global"
-            );
-        }
-        descriptor.scale = self
-            .outputs
-            .layout
-            .scale_for(&descriptor.name, "primary")
-            .unwrap_or(descriptor.scale);
-        self.outputs
-            .primary
-            .update(descriptor, self.outputs.primary.location);
-        self.outputs.apply_layout_to_existing_outputs();
     }
 
     pub(super) fn enter_output(&self, surface: &WlSurface, name: Option<&str>) {
@@ -410,7 +339,7 @@ impl App {
         rect: Rectangle<i32, Logical>,
     ) {
         for output in std::iter::once(&self.outputs.primary).chain(self.outputs.secondary.iter()) {
-            if rectangles_overlap(rect, output.logical_rect()) {
+            if output.advertised && rectangles_overlap(rect, output.logical_rect()) {
                 output.output.enter(surface);
             } else {
                 output.output.leave(surface);
@@ -427,15 +356,6 @@ impl App {
         for output in &mut self.outputs.secondary {
             output.output.cleanup();
         }
-    }
-
-    #[cfg(feature = "udev")]
-    pub(in crate::compositor) fn sync_connector_outputs(
-        &mut self,
-        dh: &DisplayHandle,
-        descriptors: Vec<OutputDescriptor>,
-    ) {
-        self.outputs.sync_secondary_outputs(dh, descriptors);
     }
 }
 
@@ -503,6 +423,7 @@ fn create_output_record(
     OutputRecord {
         name,
         output,
+        advertised: true,
         global_id,
         size,
         scale,

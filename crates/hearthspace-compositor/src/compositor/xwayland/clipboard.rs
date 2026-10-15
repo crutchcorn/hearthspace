@@ -8,12 +8,20 @@ use smithay::{
             current_data_device_selection_userdata, request_data_device_client_selection,
             set_data_device_selection,
         },
+        primary_selection::{
+            SelectionRequestError as PrimarySelectionRequestError, clear_primary_selection,
+            current_primary_selection_userdata, request_primary_client_selection,
+            set_primary_selection,
+        },
     },
     xwayland::xwm::XwmId,
 };
 use tracing::warn;
 
-use crate::compositor::{App, ManagedSurface, clipboard::ClipboardSource};
+use crate::compositor::{
+    App, ManagedSurface,
+    clipboard::{ClipboardSource, SelectionData},
+};
 
 impl App {
     pub(super) fn xwm_has_keyboard_focus(&self, xwm: XwmId) -> bool {
@@ -39,21 +47,53 @@ impl App {
     ) {
         // Recheck focus when the actual transfer begins, not just when XWM
         // validates the request. No application payload passes through here.
-        if target != SelectionTarget::Clipboard || !self.xwm_has_keyboard_focus(xwm) {
+        if !self.xwm_has_keyboard_focus(xwm) {
             return;
         }
-        match request_data_device_client_selection(&self._seat, mime_type, fd) {
+        let text = match target {
+            SelectionTarget::Clipboard => current_data_device_selection_userdata(&self._seat),
+            SelectionTarget::Primary => current_primary_selection_userdata(&self._seat),
+        }
+        .and_then(|source| match &*source {
+            SelectionData::Text(bytes) => Some(bytes.clone()),
+            SelectionData::X11(_) => None,
+        });
+        if let Some(text) = text {
+            self.send_selection_text(text, &mime_type, fd);
+            return;
+        }
+        let result = match target {
+            SelectionTarget::Clipboard => {
+                request_data_device_client_selection(&self._seat, mime_type, fd).map_err(|error| {
+                    (
+                        matches!(error, SelectionRequestError::NoSelection),
+                        error.to_string(),
+                    )
+                })
+            }
+            SelectionTarget::Primary => {
+                request_primary_client_selection(&self._seat, mime_type, fd).map_err(|error| {
+                    (
+                        matches!(error, PrimarySelectionRequestError::NoSelection),
+                        error.to_string(),
+                    )
+                })
+            }
+        };
+        match result {
             Ok(()) => {}
-            Err(SelectionRequestError::NoSelection) => {
+            Err((true, _)) => {
                 // Smithay clears a dead Wayland source without calling
                 // SelectionHandler::new_selection. Release its X11 proxy too.
                 if let Some(xwm) = self.xwm.as_mut()
                     && let Err(error) = xwm.new_selection(target, None)
                 {
-                    warn!(%error, "failed to clear expired Wayland clipboard in XWayland");
+                    warn!(%error, ?target, "failed to clear expired Wayland selection in XWayland");
                 }
             }
-            Err(error) => warn!(%error, "failed to transfer Wayland clipboard to X11"),
+            Err((_, error)) => {
+                warn!(%error, ?target, "failed to transfer Wayland selection to X11")
+            }
         }
     }
 
@@ -63,25 +103,42 @@ impl App {
         target: SelectionTarget,
         mime_types: Vec<String>,
     ) {
-        if target == SelectionTarget::Clipboard
-            && self.xdisplay.is_some()
-            && self.xwm.as_ref().is_some_and(|current| current.id() == xwm)
-        {
-            set_data_device_selection(
-                &self.display_handle,
-                &self._seat,
-                mime_types,
-                ClipboardSource::new(xwm),
-            );
+        if self.xdisplay.is_some() && self.xwm.as_ref().is_some_and(|current| current.id() == xwm) {
+            match target {
+                SelectionTarget::Clipboard => set_data_device_selection(
+                    &self.display_handle,
+                    &self._seat,
+                    mime_types,
+                    SelectionData::X11(ClipboardSource::new(xwm)),
+                ),
+                SelectionTarget::Primary => set_primary_selection(
+                    &self.display_handle,
+                    &self._seat,
+                    mime_types,
+                    SelectionData::X11(ClipboardSource::new(xwm)),
+                ),
+            }
         }
     }
 
-    pub(super) fn clear_x11_clipboard(&mut self, xwm: XwmId) {
+    pub(super) fn clear_x11_selection(&mut self, xwm: XwmId, target: SelectionTarget) {
         // A late X11 clear must not erase a more recent native Wayland copy.
-        let owned = current_data_device_selection_userdata(&self._seat)
-            .is_some_and(|source| source.xwm == xwm);
+        let current = match target {
+            SelectionTarget::Clipboard => current_data_device_selection_userdata(&self._seat),
+            SelectionTarget::Primary => current_primary_selection_userdata(&self._seat),
+        };
+        let owned = current.is_some_and(
+            |source| matches!(&*source, SelectionData::X11(source) if source.xwm == xwm),
+        );
         if owned {
-            clear_data_device_selection(&self.display_handle, &self._seat);
+            match target {
+                SelectionTarget::Clipboard => {
+                    clear_data_device_selection(&self.display_handle, &self._seat)
+                }
+                SelectionTarget::Primary => {
+                    clear_primary_selection(&self.display_handle, &self._seat)
+                }
+            }
         }
     }
 
@@ -90,7 +147,8 @@ impl App {
         {
             return;
         }
-        self.clear_x11_clipboard(xwm);
+        self.clear_x11_selection(xwm, SelectionTarget::Clipboard);
+        self.clear_x11_selection(xwm, SelectionTarget::Primary);
         if self.xwm_has_keyboard_focus(xwm) {
             self.clear_keyboard_focus();
         }

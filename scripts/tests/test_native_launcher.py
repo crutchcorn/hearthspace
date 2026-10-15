@@ -78,6 +78,9 @@ class NativeServiceTests(unittest.TestCase):
         )
         self.assertIn("=+/usr/bin/python3", cleanup)
         self.assertIn("_recover --state", cleanup)
+        graceful = next(arg for arg in args if arg.startswith("--property=ExecStop="))
+        self.assertIn("=+/usr/bin/python3", graceful)
+        self.assertIn("_graceful-stop --state", graceful)
         self.assertIn("--setenv=LIBSEAT_BACKEND=logind", args)
         self.assertIn("--no-block", args)
         self.assertNotIn("tty-force", " ".join(map(str, args)))
@@ -113,6 +116,15 @@ class NativeServiceTests(unittest.TestCase):
             ):
                 service.exec_session("ignored")
             env = execute.call_args.args[2]
+            self.assertEqual(
+                execute.call_args.args[1][:4],
+                [
+                    "/usr/bin/setpriv",
+                    "--ambient-caps=-all",
+                    "--inh-caps=-all",
+                    "/usr/bin/dbus-run-session",
+                ],
+            )
             self.assertEqual(env["XDG_RUNTIME_DIR"], saved["runtime_dir"])
             self.assertEqual(env["WAYLAND_DISPLAY"], saved["wayland_display"])
             self.assertEqual(env["HEARTHSPACE_HOST_XDG_RUNTIME_DIR"], "/run/user/1000")
@@ -216,6 +228,9 @@ class NativeServiceTests(unittest.TestCase):
                 patch.object(recovery, "owned_sessions", return_value=[])
             )
             stack.enter_context(patch.object(recovery, "run"))
+            stack.enter_context(
+                patch.object(recovery, "cleanup_app_scopes", return_value=True)
+            )
             stack.enter_context(patch.object(recovery, "load", return_value={}))
             stack.enter_context(patch.object(recovery, "save"))
             stack.enter_context(patch.object(Path, "chmod"))

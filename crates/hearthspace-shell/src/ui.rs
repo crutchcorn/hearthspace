@@ -13,9 +13,15 @@ use xilem::{EventLoop, Xilem};
 
 mod command_client;
 mod constants;
+mod launcher;
+mod notification_view;
+mod notifications;
 mod output_watcher;
+mod search_focus;
+mod session_controls;
 mod state;
 mod views;
+mod window_catalog;
 
 use output_watcher::initial_wayland_output_names;
 use state::ShellState;

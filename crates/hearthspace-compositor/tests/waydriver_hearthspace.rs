@@ -83,18 +83,18 @@ async fn run_shell_ui_xpath_check() -> Result<(), Box<dyn std::error::Error>> {
     session.set_default_timeout(e2e_timeout());
 
     let check_result = async {
-        let pan_left = session.locate("//*[@name='LEFT']").first();
-        let name = pan_left.name().await?;
-        if name.as_deref() != Some("LEFT") {
+        let reset_view = session.locate("//*[@name='Reset view']").first();
+        let name = reset_view.name().await?;
+        if name.as_deref() != Some("Reset view") {
             return Err(std::io::Error::other(format!(
-                "expected LEFT shell control, got {name:?}"
+                "expected Reset view shell control, got {name:?}"
             ))
             .into());
         }
-        let bounds = pan_left.bounds().await?;
+        let bounds = reset_view.bounds().await?;
         if bounds.width <= 0 || bounds.height <= 0 {
             return Err(std::io::Error::other(format!(
-                "LEFT shell control has invalid bounds {bounds:?}"
+                "Reset view shell control has invalid bounds {bounds:?}"
             ))
             .into());
         }

@@ -157,6 +157,7 @@ pub(in crate::compositor) fn run_event_loop(
         }
 
         data.process_pending_dmabuf_imports();
+        data.state.maintain_session_lock();
         data.state.handle_idle_transitions();
         data.state.advance_viewport_animation();
         data.apply_cursor_icon();
@@ -173,10 +174,12 @@ pub(in crate::compositor) fn run_event_loop(
         if let Err(error) = data.display.flush_clients() {
             error!(%error, "failed to flush Wayland clients");
         }
-        data.state.popups.cleanup();
+        data.state.cleanup_popups();
         data.state.cleanup_outputs();
+        data.state.remember_layout();
     }
 
+    data.state.save_layout();
     info!("compositor event loop exited");
     Ok(())
 }
@@ -341,6 +344,11 @@ impl CalloopData {
             }
         };
 
+        if send_callbacks_now && let Some(generation) = self.state.lock_frame_generation() {
+            for output in self.state.capture_outputs() {
+                self.state.lock_frame_presented(&output.name, generation);
+            }
+        }
         if send_callbacks_now && let Err(error) = self.send_frame_callbacks() {
             warn!(%error, "failed to send frame callbacks");
         }
@@ -351,6 +359,12 @@ impl CalloopData {
     pub(in crate::compositor) fn send_frame_callbacks(
         &mut self,
     ) -> Result<(), Box<dyn std::error::Error>> {
+        if self.state.session_locked() {
+            self.state
+                .send_lock_frame_callbacks(self.start_time.elapsed().as_millis() as u32);
+            self.display.flush_clients()?;
+            return Ok(());
+        }
         for window in &self.state.windows {
             let Some(root) = window.surface.wl_surface() else {
                 continue;

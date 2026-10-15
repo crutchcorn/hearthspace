@@ -9,6 +9,9 @@ use std::time::Duration;
 
 use waydriver::{Error, Result, atspi};
 
+#[path = "accessibility_roles.rs"]
+mod roles;
+
 pub use waydriver::atspi::ElementInfo;
 
 pub struct SessionAccessibility {
@@ -55,12 +58,13 @@ impl SessionAccessibility {
     pub async fn snapshot(&self, timeout: Duration) -> Result<String> {
         tokio::time::timeout(timeout, async {
             let connection = atspi::connect_a11y(&self.session_bus_address).await?;
-            atspi::snapshot_tree(
+            let snapshot = atspi::snapshot_tree(
                 &connection,
                 "org.a11y.atspi.Registry",
                 "/org/a11y/atspi/accessible/root",
             )
-            .await
+            .await?;
+            roles::resolve_numeric_roles(&connection, &snapshot).await
         })
         .await
         .map_err(|_| Error::Timeout("AT-SPI snapshot deadline exceeded".into()))?
@@ -81,6 +85,7 @@ impl SessionAccessibility {
                 "/org/a11y/atspi/accessible/root",
             )
             .await?;
+            let snapshot = roles::resolve_numeric_roles(&connection, &snapshot).await?;
             let element = unique_match(&snapshot, xpath)?;
             atspi::do_action_on(&connection, xpath, &element.ref_.0, &element.ref_.1).await
         })

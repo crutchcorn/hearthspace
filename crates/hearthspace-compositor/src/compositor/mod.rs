@@ -17,10 +17,14 @@ mod focus;
 mod handlers;
 mod idle;
 mod input;
+mod layout;
 mod masonry_titlebar;
+mod navigation;
 mod output;
+mod presentation;
 mod rendering;
 mod runtime;
+mod session_lock;
 mod shell_integration;
 #[cfg(feature = "udev")]
 mod udev;
@@ -30,7 +34,7 @@ mod windows;
 mod xwayland;
 
 use idle::{IdleTransition, WindowIdleDaemon};
-#[cfg(any(feature = "winit", feature = "udev"))]
+#[cfg(feature = "udev")]
 pub(in crate::compositor) use input::handle_input_event;
 #[cfg(feature = "udev")]
 pub(in crate::compositor) use output::{OutputDescriptor, create_output_with_properties};
@@ -52,7 +56,6 @@ pub use udev::run_udev;
 use calloop::signals::{Signal, Signals};
 use client::ClientState;
 use cursor::{CursorIcon, SoftwareCursor};
-use smithay::backend::input::TouchSlot;
 #[cfg(feature = "winit")]
 use smithay::backend::winit::{self, WinitEvent};
 #[cfg(feature = "winit")]
@@ -78,7 +81,7 @@ use smithay::{
         dmabuf::{DmabufFeedbackBuilder, DmabufGlobal, DmabufState, ImportNotifier},
         fractional_scale::FractionalScaleManagerState,
         output::OutputManagerState,
-        selection::data_device::DataDeviceState,
+        selection::{data_device::DataDeviceState, primary_selection::PrimarySelectionState},
         shell::xdg::{ToplevelSurface, XdgShellState, decoration::XdgDecorationState},
         shm::ShmState,
         socket::ListeningSocketSource,
@@ -107,6 +110,8 @@ struct ManagedWindow {
     /// Bounding-box size of the window's surface tree, cached on commit so the
     /// per-frame rendering and hit-testing paths don't re-walk the tree.
     content_bbox_size: Size<i32, Logical>,
+    mapped: bool,
+    presentation: presentation::WindowPresentation,
     /// Fractional scale most recently advertised to this window's surface tree.
     /// Compared each frame so the preferred scale is only re-sent when the
     /// window moves onto an output with a different scale (e.g. dragged across
@@ -244,16 +249,21 @@ struct App {
     shm_state: ShmState,
     seat_state: SeatState<Self>,
     data_device_state: DataDeviceState,
+    primary_selection_state: PrimarySelectionState,
+    session_lock: session_lock::LockState,
     _seat: Seat<Self>,
     pointer: PointerHandle<Self>,
     keyboard: KeyboardHandle<Self>,
     viewport_offset: CanvasPoint,
+    layout_store: layout::LayoutStore,
     viewport_scale: f64,
     viewport_animation: Option<ViewportAnimation>,
+    pinch_zoom: input::PinchZoom,
     windows: Vec<ManagedWindow>,
     next_window_id: u64,
     idle_daemon: WindowIdleDaemon,
     focused_normal_window_id: Option<u64>,
+    shortcuts: input::KeyboardShortcuts,
     drag: Option<DragState>,
     resize: Option<ResizeState>,
     /// Cursor the compositor wants the host winit window to show. Updated from
@@ -272,7 +282,9 @@ struct App {
     snap_wayland_socket_paths: HashSet<std::path::PathBuf>,
     pointer_location: Point<f64, Logical>,
     raw_pointer_location: Point<f64, Logical>,
-    active_touch_slot: Option<TouchSlot>,
+    touch_input: input::TouchTracker,
+    dispatching_touch: bool,
+    touch_pointer_pressed: bool,
     scroll_zooms_without_super: bool,
     outputs: OutputSet,
     app_catalog: AppCatalog,
@@ -282,6 +294,7 @@ struct App {
     pending_dmabuf_imports: Vec<(Dmabuf, ImportNotifier)>,
     loop_handle: LoopHandle<'static, CalloopData>,
     popups: PopupManager,
+    popup_grab: Option<smithay::desktop::PopupGrab<App>>,
     background_mode: hearthspace_ipc::BackgroundMode,
     background_image_path: Option<String>,
     /// Cached texture for the repeated background image tile.
@@ -402,13 +415,14 @@ pub fn run_winit(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> 
                 data.state.request_redraw();
             }
         }
-        WinitEvent::Input(event) => handle_input_event(&mut data.state, event),
+        WinitEvent::Input(event) => input::handle_winit_input(&mut data.state, event),
         WinitEvent::Redraw => data.state.request_redraw(),
         WinitEvent::CloseRequested => {
             info!("winit close requested; stopping compositor event loop");
             data.running = false;
         }
-        WinitEvent::Focus(_) => {}
+        WinitEvent::Focus(false) => data.state.cancel_input_gestures(),
+        WinitEvent::Focus(true) => {}
     })?;
 
     let wayland_display = crate::config::wayland_display_name();
@@ -558,12 +572,20 @@ pub(in crate::compositor) fn initialize_app(
     };
     let output_layout = OutputLayout::from_monitors(settings.monitors.clone());
 
+    let layout_store = layout::LayoutStore::from_environment(matches!(
+        crate::selected_backend(options.backend),
+        crate::BackendSelection::Udev
+    ));
+    let (viewport_offset, viewport_scale) = layout_store.viewport();
     let app = App {
         display_handle: dh.clone(),
         compositor_state,
         xdg_shell_state: XdgShellState::new_with_capabilities::<App>(
             &dh,
-            std::iter::empty::<xdg_toplevel::WmCapabilities>(),
+            [
+                xdg_toplevel::WmCapabilities::Maximize,
+                xdg_toplevel::WmCapabilities::Fullscreen,
+            ],
         ),
         _xdg_decoration_state: xdg_decoration_state,
         _output_manager_state: output_manager_state,
@@ -574,16 +596,27 @@ pub(in crate::compositor) fn initialize_app(
         shm_state,
         seat_state,
         data_device_state: DataDeviceState::new::<App>(&dh),
+        primary_selection_state: PrimarySelectionState::new::<App>(&dh),
+        session_lock: session_lock::LockState::new(
+            &dh,
+            !matches!(
+                crate::selected_backend(options.backend),
+                crate::BackendSelection::Winit
+            ),
+        ),
         _seat: seat,
         pointer,
         keyboard,
-        viewport_offset: CanvasPoint { x: 0, y: 0 },
-        viewport_scale: 1.0,
+        viewport_offset,
+        viewport_scale,
+        layout_store,
         viewport_animation: None,
+        pinch_zoom: input::PinchZoom::default(),
         windows: Vec::new(),
         next_window_id: 1,
         idle_daemon: WindowIdleDaemon::new(WINDOW_IDLE_THRESHOLDS),
         focused_normal_window_id: None,
+        shortcuts: input::KeyboardShortcuts::default(),
         drag: None,
         resize: None,
         cursor_icon: CursorIcon::Default,
@@ -595,7 +628,9 @@ pub(in crate::compositor) fn initialize_app(
         snap_wayland_socket_paths: HashSet::new(),
         pointer_location: (0.0, 0.0).into(),
         raw_pointer_location: (0.0, 0.0).into(),
-        active_touch_slot: None,
+        touch_input: input::TouchTracker::default(),
+        dispatching_touch: false,
+        touch_pointer_pressed: false,
         scroll_zooms_without_super: options.scroll_zooms_without_super,
         outputs: OutputSet::new(primary_output, output_layout),
         app_catalog,
@@ -605,6 +640,7 @@ pub(in crate::compositor) fn initialize_app(
         pending_dmabuf_imports: Vec::new(),
         loop_handle: handle.clone(),
         popups: PopupManager::default(),
+        popup_grab: None,
         background_mode: settings.background_mode,
         background_image_path: settings.background_image_path,
         background_image_tile: None,

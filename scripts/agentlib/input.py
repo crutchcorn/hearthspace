@@ -73,6 +73,13 @@ def text_keys(text):
     return result
 
 
+def chord_keys(names):
+    codes = [keycode(name) for name in names.split("+")]
+    if len(set(codes)) != len(codes):
+        raise ControlError("key chord cannot repeat a key")
+    return codes
+
+
 class Input:
     def __init__(self, control):
         self.control = control
@@ -110,9 +117,7 @@ class Input:
         self.control.request(f"pointer-motion-abs {x} {y}")
 
     def chord(self, names):
-        codes = [keycode(name) for name in names.split("+")]
-        if len(set(codes)) != len(codes):
-            raise ControlError("key chord cannot repeat a key")
+        codes = chord_keys(names)
         for code in codes:
             self.down("key", code)
         for code in reversed(codes):

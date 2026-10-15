@@ -1,12 +1,21 @@
 use clap::Parser;
 use tracing::info;
 
+mod app_scopes;
+mod audio_env;
+mod bounded_command;
 mod cli;
 mod compositor;
 mod desktop_entries;
+mod desktop_services;
 mod dev_cargo;
+mod gtk_defaults;
+mod portal_cleanup;
+mod privileges;
 mod process;
+mod profile_env;
 mod readiness;
+mod session_bus;
 mod session_env;
 mod settingsd;
 mod signals;
@@ -19,12 +28,19 @@ use signals::install_signal_handler;
 use supervisor::Supervisor;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    privileges::clear_inherited()?;
     let args = Args::parse();
     initialize_tracing(&args.log_level);
 
+    session_bus::bootstrap_native_session(&args)?;
+
     let mode = resolve_mode(&args);
     let paths = create_session_paths(args.session_dir.as_deref(), args.private_session_bus)?;
+    if desktop_services::enabled(&args) {
+        desktop_services::prepare(&paths)?;
+    }
     let session_env = create_session_env(&args, mode, &paths)?;
+    gtk_defaults::prepare(&paths.session_dir, &session_env);
 
     if mode == RunMode::DevCargo {
         generate_dev_desktop_entries(&paths)?;
@@ -47,17 +63,23 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut supervisor = Supervisor::new(mode, paths, session_env, shutdown_requested, &args);
 
     let monitor_result = (|| {
+        supervisor.prepare_activation_environment(args.private_session_bus)?;
         supervisor.start_settingsd(if args.no_settingsd_restart { 0 } else { 3 })?;
         supervisor.wait_for_settingsd_ready()?;
         supervisor.start_compositor()?;
         supervisor.wait_for_compositor_ready()?;
+        if desktop_services::enabled(&args) {
+            supervisor.start_notifications()?;
+            supervisor.start_desktop_services()?;
+        }
         supervisor.start_shell(if args.no_shell_restart { 0 } else { 3 })?;
         supervisor.start_app_watcher_if_available(&args)?;
 
         supervisor.monitor_until_exit()
     })();
-    supervisor.shutdown();
-    monitor_result
+    let cleanup_result = supervisor.shutdown();
+    monitor_result?;
+    cleanup_result.map_err(Into::into)
 }
 
 fn initialize_tracing(log_level: &str) {

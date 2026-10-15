@@ -8,6 +8,7 @@ license = "Apache-2.0"
 [dependencies]
 hearthspace-common = { path = "../hearthspace-common" }
 hearthspace-ipc = { path = "../hearthspace-ipc" }
+nix = { version = "0.31.3", features = ["poll"] }
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
 

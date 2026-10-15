@@ -7,12 +7,20 @@ use xilem::{AppState, WindowId};
 
 use crate::app_catalog::AppCatalog;
 
-use super::constants::FALLBACK_OUTPUT_KEY;
+use super::{
+    constants::FALLBACK_OUTPUT_KEY, notifications::Notification, window_catalog::RunningWindow,
+};
 
 /// Reactive state backing the shell view.
 pub(super) struct ShellState {
     pub(super) command_socket: PathBuf,
     pub(super) catalog: AppCatalog,
+    pub(super) windows: Vec<RunningWindow>,
+    pub(super) windows_error: Option<String>,
+    pub(super) clock: String,
+    pub(super) notifications_socket: Option<PathBuf>,
+    pub(super) notifications: Vec<Notification>,
+    pub(super) notifications_error: Option<String>,
     pub(super) outputs: Vec<ShellOutputInstance>,
     pub(super) watcher_window_id: WindowId,
     running: bool,
@@ -22,6 +30,10 @@ pub(super) struct ShellState {
 pub(super) struct ShellOutputInstance {
     pub(super) output_name: Option<String>,
     pub(super) query: String,
+    pub(super) show_windows: bool,
+    pub(super) confirm_logout: bool,
+    pub(super) show_notifications: bool,
+    pub(super) launch_error: Option<String>,
     pub(super) bar_window_id: WindowId,
     pub(super) launcher_window_id: WindowId,
 }
@@ -42,6 +54,13 @@ impl ShellState {
         let mut state = Self {
             command_socket,
             catalog: AppCatalog::load(),
+            windows: Vec::new(),
+            windows_error: None,
+            clock: super::session_controls::current_clock(),
+            notifications_socket: std::env::var_os("XDG_RUNTIME_DIR")
+                .map(|dir| PathBuf::from(dir).join("hearthspace-notifications.sock")),
+            notifications: Vec::new(),
+            notifications_error: None,
             outputs: Vec::new(),
             watcher_window_id: WindowId::next(),
             running: true,
@@ -73,11 +92,61 @@ impl ShellState {
         self.outputs = outputs;
     }
 
-    pub(super) fn output_query_mut(&mut self, output_key: &str) -> Option<&mut String> {
-        self.outputs
+    pub(super) fn finish_launch(&mut self, output_key: &str, result: Result<(), String>) {
+        if let Some(output) = self
+            .outputs
             .iter_mut()
             .find(|output| output.key() == output_key)
-            .map(|output| &mut output.query)
+        {
+            match result {
+                Ok(()) => {
+                    output.query.clear();
+                    output.show_windows = false;
+                    output.show_notifications = false;
+                    output.launch_error = None;
+                }
+                Err(error) => output.launch_error = Some(error),
+            }
+        }
+    }
+
+    pub(super) fn toggle_windows(&mut self, output_key: &str) {
+        if let Some(output) = self
+            .outputs
+            .iter_mut()
+            .find(|output| output.key() == output_key)
+        {
+            output.show_windows = !output.show_windows;
+            output.show_notifications = false;
+            output.query.clear();
+            output.launch_error = None;
+        }
+    }
+
+    pub(super) fn dismiss_launcher(&mut self, output_key: &str) {
+        if let Some(output) = self
+            .outputs
+            .iter_mut()
+            .find(|output| output.key() == output_key)
+        {
+            output.show_windows = false;
+            output.show_notifications = false;
+            output.confirm_logout = false;
+            output.query.clear();
+            output.launch_error = None;
+        }
+    }
+
+    pub(super) fn change_query(&mut self, output_key: &str, query: String) {
+        if let Some(output) = self
+            .outputs
+            .iter_mut()
+            .find(|output| output.key() == output_key)
+        {
+            output.query = query;
+            output.show_notifications = false;
+            output.launch_error = None;
+        }
     }
 }
 
@@ -86,6 +155,10 @@ impl ShellOutputInstance {
         Self {
             output_name,
             query: String::new(),
+            show_windows: false,
+            confirm_logout: false,
+            show_notifications: false,
+            launch_error: None,
             bar_window_id: WindowId::next(),
             launcher_window_id: WindowId::next(),
         }
@@ -162,5 +235,23 @@ mod tests {
         assert_eq!(state.outputs[0].bar_window_id, bar_window_id);
         assert_eq!(state.outputs[0].query, "term");
         assert_eq!(state.outputs[1].output_name.as_deref(), Some("HDMI-A-1"));
+    }
+
+    #[test]
+    fn rejected_launch_preserves_query_and_shows_error_until_retry_or_edit() {
+        let mut state = ShellState::new(PathBuf::from("/tmp/socket"), vec!["eDP-1".into()]);
+        state.change_query("eDP-1", "editor".into());
+        state.finish_launch("eDP-1", Err("missing executable".into()));
+        assert_eq!(state.outputs[0].query, "editor");
+        assert_eq!(
+            state.outputs[0].launch_error.as_deref(),
+            Some("missing executable")
+        );
+        state.apply_output_names(vec!["eDP-1".into()]);
+        assert!(state.outputs[0].launch_error.is_some());
+        state.change_query("eDP-1", "terminal".into());
+        assert!(state.outputs[0].launch_error.is_none());
+        state.finish_launch("eDP-1", Ok(()));
+        assert!(state.outputs[0].query.is_empty());
     }
 }

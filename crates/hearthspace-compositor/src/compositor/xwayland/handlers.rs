@@ -15,7 +15,7 @@ use smithay::{
 use tracing::{debug, warn};
 use wayland_server::{Resource, protocol::wl_surface::WlSurface};
 
-use crate::compositor::{App, DragState, WindowDecoration, windows::ResizeEdges};
+use crate::compositor::{App, WindowDecoration, windows::ResizeEdges};
 
 impl XWaylandShellHandler for App {
     fn xwayland_shell_state(&mut self) -> &mut XWaylandShellState {
@@ -37,6 +37,30 @@ impl XWaylandShellHandler for App {
 impl DndGrabHandler for App {}
 
 impl XwmHandler for App {
+    fn maximize_request(&mut self, _xwm: XwmId, window: X11Surface) {
+        if let Some(index) = self.window_index_for_x11(&window) {
+            let _ = self.set_window_maximized(self.windows[index].id, true);
+        }
+    }
+
+    fn unmaximize_request(&mut self, _xwm: XwmId, window: X11Surface) {
+        if let Some(index) = self.window_index_for_x11(&window) {
+            let _ = self.set_window_maximized(self.windows[index].id, false);
+        }
+    }
+
+    fn fullscreen_request(&mut self, _xwm: XwmId, window: X11Surface) {
+        if let Some(index) = self.window_index_for_x11(&window) {
+            let _ = self.set_window_fullscreen(self.windows[index].id, true, None);
+        }
+    }
+
+    fn unfullscreen_request(&mut self, _xwm: XwmId, window: X11Surface) {
+        if let Some(index) = self.window_index_for_x11(&window) {
+            let _ = self.set_window_fullscreen(self.windows[index].id, false, None);
+        }
+    }
+
     fn xwm_state(&mut self, _xwm: XwmId) -> &mut X11Wm {
         self.xwm.as_mut().expect("XWM callback without X11Wm")
     }
@@ -153,24 +177,39 @@ impl XwmHandler for App {
         _button: u32,
         resize_edge: X11ResizeEdge,
     ) {
+        if self.session_locked() {
+            return;
+        }
         let Some(index) = self.window_index_for_x11(&window) else {
             return;
         };
+        if self.window_uses_output_coordinates(index)
+            || self.drag.is_some()
+            || self.resize.is_some()
+            || !self.pointer_grab_targets_window(index)
+        {
+            return;
+        }
         let index = self.raise_window(index);
         self.start_resize(index, ResizeEdges::from(resize_edge));
     }
 
     fn move_request(&mut self, _xwm: XwmId, window: X11Surface, _button: u32) {
+        if self.session_locked() {
+            return;
+        }
         let Some(index) = self.window_index_for_x11(&window) else {
             return;
         };
+        if self.window_uses_output_coordinates(index)
+            || self.drag.is_some()
+            || self.resize.is_some()
+            || !self.pointer_grab_targets_window(index)
+        {
+            return;
+        }
         let index = self.raise_window(index);
-        self.drag = Some(DragState {
-            window_id: self.windows[index].id,
-            pointer_start: self.raw_pointer_location,
-            window_start: self.windows[index].position,
-        });
-        self.request_redraw();
+        self.start_client_window_move(index);
     }
 
     fn active_window_request(
@@ -183,8 +222,8 @@ impl XwmHandler for App {
         self.focus_x11_window(&window);
     }
 
-    fn allow_selection_access(&mut self, xwm: XwmId, selection: SelectionTarget) -> bool {
-        selection == SelectionTarget::Clipboard && self.xwm_has_keyboard_focus(xwm)
+    fn allow_selection_access(&mut self, xwm: XwmId, _selection: SelectionTarget) -> bool {
+        self.xwm_has_keyboard_focus(xwm)
     }
 
     fn send_selection(
@@ -202,9 +241,7 @@ impl XwmHandler for App {
     }
 
     fn cleared_selection(&mut self, xwm: XwmId, selection: SelectionTarget) {
-        if selection == SelectionTarget::Clipboard {
-            self.clear_x11_clipboard(xwm);
-        }
+        self.clear_x11_selection(xwm, selection);
     }
 
     fn disconnected(&mut self, xwm: XwmId) {

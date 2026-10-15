@@ -40,7 +40,7 @@ def parser():
             command.add_argument("--no-build", action="store_true")
             command.add_argument("--compositor", type=Path)
             command.add_argument("--log-level", default="info")
-    for name in ("_exec", "_recover", "_stop"):
+    for name in ("_exec", "_recover", "_stop", "_graceful-stop"):
         command = commands.add_parser(name)
         command.add_argument("--state", required=True, type=Path)
     return result
@@ -70,6 +70,10 @@ def build(args, session):
                 "hearthspace-shell",
                 "-p",
                 "hearthspace-settingsd",
+                "-p",
+                "waydriver-hearthspace",
+                "-p",
+                "hearthspace-notifications",
                 "--features",
                 "hearthspace-compositor/udev",
             ]
@@ -208,6 +212,10 @@ def dispatch(args):
         from .service import exec_session
 
         return exec_session(args.state)
+    if args.command == "_graceful-stop":
+        from .graceful_stop import request_stop
+
+        return request_stop(args.state)
     if args.command == "_recover":
         from .recovery import recover
 

@@ -909,6 +909,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "caps"
+version = "0.5.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fd1ddba47aba30b6a889298ad0109c3b8dcb0e8fc993b459daa7067d46f865e0"
+dependencies = [
+ "libc",
+]
+
+[[package]]
 name = "cc"
 version = "1.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -951,6 +960,17 @@ dependencies = [
  "cfg-if",
  "cpufeatures",
  "rand_core 0.10.1",
+]
+
+[[package]]
+name = "chrono"
+version = "0.4.45"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1aa79e62e7697b8e29b513a68abacf485adcd1fe8284a4316c5ae868e6633327"
+dependencies = [
+ "iana-time-zone",
+ "num-traits",
+ "windows-link",
 ]
 
 [[package]]
@@ -2316,6 +2336,7 @@ dependencies = [
  "tracing-subscriber",
  "waydriver",
  "waydriver-hearthspace",
+ "wayland-client",
  "wayland-protocols",
  "wayland-server",
  "xcursor",
@@ -2327,12 +2348,30 @@ name = "hearthspace-ipc"
 version = "0.1.0"
 dependencies = [
  "hearthspace-common",
+ "nix",
+ "tempfile",
+]
+
+[[package]]
+name = "hearthspace-notifications"
+version = "0.1.0"
+dependencies = [
+ "ctrlc",
+ "futures-lite",
+ "hearthspace-ipc",
+ "nix",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "zbus",
 ]
 
 [[package]]
 name = "hearthspace-session"
 version = "0.1.0"
 dependencies = [
+ "caps",
  "clap",
  "ctrlc",
  "hearthspace-common",
@@ -2360,6 +2399,7 @@ version = "0.1.0"
 dependencies = [
  "hearthspace-common",
  "hearthspace-ipc",
+ "nix",
  "tempfile",
  "tracing",
  "tracing-subscriber",
@@ -2369,9 +2409,13 @@ dependencies = [
 name = "hearthspace-shell"
 version = "0.1.0"
 dependencies = [
+ "chrono",
  "hearthspace-common",
+ "hearthspace-ipc",
  "hearthspace-ui-components",
+ "masonry",
  "rstest",
+ "serde_json",
  "tempfile",
  "tracing",
  "tracing-subscriber",
@@ -2424,6 +2468,30 @@ name = "hexf-parse"
 version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "dfa686283ad6dd069f105e5ab091b04c62850d3e4cf5d67debad1933f55023df"
+
+[[package]]
+name = "iana-time-zone"
+version = "0.1.65"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e31bc9ad994ba00e440a8aa5c9ef0ec67d5cb5e5cb0cc7f8b744a35b389cc470"
+dependencies = [
+ "android_system_properties",
+ "core-foundation-sys",
+ "iana-time-zone-haiku",
+ "js-sys",
+ "log",
+ "wasm-bindgen",
+ "windows-core",
+]
+
+[[package]]
+name = "iana-time-zone-haiku"
+version = "0.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f31827a206f56af32e590ba56d5d2d085f558508192593743f16b2306495269f"
+dependencies = [
+ "cc",
+]
 
 [[package]]
 name = "icu_collections"
@@ -6029,6 +6097,9 @@ name = "waydriver-hearthspace"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "atspi 0.30.0",
+ "quick-xml",
+ "serde_json",
  "tempfile",
  "tokio",
  "tokio-util",

@@ -1,0 +1,23 @@
+[package]
+name = "hearthspace-notifications"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.99.0"
+license = "Apache-2.0"
+
+[dependencies]
+ctrlc = { version = "3.5.2", features = ["termination"] }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+tokio = { version = "1.53.3", features = ["macros", "rt", "time"] }
+# Keep the workspace's D-Bus transport usable outside a Tokio runtime too.
+zbus = { version = "5.19.0", default-features = false, features = ["async-io"] }
+
+[dev-dependencies]
+futures-lite = "2.6.1"
+hearthspace-ipc = { path = "../hearthspace-ipc" }
+nix = { version = "0.31.3", features = ["signal", "process"] }
+tempfile = "3.27.0"
+
+[lints]
+workspace = true
