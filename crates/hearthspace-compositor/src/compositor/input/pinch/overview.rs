@@ -51,6 +51,15 @@ impl OverviewGesture {
 }
 
 impl App {
+    pub(in crate::compositor) fn interrupt_overview_pinch(&mut self) {
+        // An idempotent overview dismissal is also used during session reset.
+        // Preserve a three-finger gesture so reset can still roll it back.
+        if self.pinch_zoom.interrupt_overview() && !self.dispatching_touch {
+            let actions = self.touch_input.interrupt();
+            self.apply_touch_actions(actions, InputTime::now());
+        }
+    }
+
     pub(in crate::compositor::input) fn start_overview_pinch(
         &mut self,
         input: PinchInput,

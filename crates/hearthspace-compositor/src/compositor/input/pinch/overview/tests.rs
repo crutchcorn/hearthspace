@@ -75,8 +75,10 @@ fn other_devices_inputs_and_invalid_scales_cannot_change_the_candidate() {
 #[test]
 fn shared_cancellation_and_interruption_discard_overview_without_viewport_rollback() {
     for interrupt in [false, true] {
-        let mut pinch = PinchZoom::default();
-        pinch.overview = OverviewGesture::begin(PinchInput::Touchpad, "device".into(), 4);
+        let mut pinch = PinchZoom {
+            overview: OverviewGesture::begin(PinchInput::Touchpad, "device".into(), 4),
+            ..Default::default()
+        };
         pinch
             .overview
             .as_mut()
@@ -90,5 +92,43 @@ fn shared_cancellation_and_interruption_discard_overview_without_viewport_rollba
         }
         assert!(!pinch.is_active());
         assert!(pinch.overview.is_none());
+    }
+}
+
+#[test]
+fn overview_only_interruption_preserves_three_finger_cancellation_snapshot() {
+    let mut pinch = PinchZoom::default();
+    let initial = (crate::geometry::CanvasPoint { x: -45, y: 97 }, 0.75);
+    pinch.begin(
+        PinchInput::Touchscreen,
+        "screen".into(),
+        initial.0,
+        initial.1,
+        (320.0, 180.0).into(),
+    );
+    let visible = pinch.update("screen", 0.7, (100.0, -20.0).into());
+    assert_ne!(visible, Some(initial));
+    assert!(!pinch.interrupt_overview());
+    assert!(pinch.is_active());
+    assert_eq!(pinch.update("screen", 0.7, (100.0, -20.0).into()), visible);
+    assert_eq!(pinch.cancel(), Some(initial));
+}
+
+#[test]
+fn overview_only_interruption_discards_the_candidate_once() {
+    for input in [PinchInput::Touchpad, PinchInput::Touchscreen] {
+        let mut pinch = PinchZoom {
+            overview: OverviewGesture::begin(input, "device".into(), 5),
+            ..Default::default()
+        };
+        pinch
+            .overview
+            .as_mut()
+            .unwrap()
+            .update(input, "device", 0.5);
+        assert!(pinch.interrupt_overview());
+        assert!(!pinch.is_active());
+        assert!(!pinch.interrupt_overview());
+        assert_eq!(pinch.cancel(), None);
     }
 }
