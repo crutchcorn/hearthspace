@@ -4,11 +4,11 @@ use xilem::masonry::{
     accesskit::{Node, Role},
     core::{
         AccessCtx, AccessEvent, ChildrenIds, EventCtx, LayoutCtx, MeasureCtx, PaintCtx,
-        PointerEvent, PropertiesMut, PropertiesRef, RegisterCtx, TextEvent, Update, UpdateCtx,
-        Widget,
+        PointerEvent, PrePaintProps, PropertiesMut, PropertiesRef, RegisterCtx, TextEvent, Update,
+        UpdateCtx, Widget, paint_background, paint_box_shadow, pointer::PointerButton,
     },
     imaging::Painter,
-    kurbo::{Axis, Size},
+    kurbo::{Axis, Size, Stroke},
     layout::{AsUnit, LenReq, Length},
     properties::{BorderColor, ThumbColor, ThumbRadius, TrackColor, TrackThickness},
     widgets::{Slider, SliderMoved},
@@ -43,6 +43,8 @@ impl View<ShellState, (), ViewCtx> for ControlSlider {
                 let mut pod = ctx.create_pod(NamedSlider {
                     name: self.name,
                     inner: self.slider(),
+                    keyboard_focus: false,
+                    pointer_focus_pending: false,
                 });
                 pod.new_widget = pod.new_widget.with_props((
                     TrackThickness(4.0.px()),
@@ -115,6 +117,10 @@ impl View<ShellState, (), ViewCtx> for ControlSlider {
 pub(super) struct NamedSlider {
     name: &'static str,
     inner: Slider,
+    // Masonry currently exposes focus, but not input modality. Keep this outside
+    // `inner`, which the view replaces when the backend reports a new value.
+    keyboard_focus: bool,
+    pointer_focus_pending: bool,
 }
 
 impl Widget for NamedSlider {
@@ -131,6 +137,14 @@ impl Widget for NamedSlider {
         props: &mut PropertiesMut<'_>,
         event: &PointerEvent,
     ) {
+        if let PointerEvent::Down(down) = event
+            && !ctx.is_disabled()
+        {
+            self.keyboard_focus = false;
+            self.pointer_focus_pending = matches!(down.button, Some(PointerButton::Primary) | None)
+                && !ctx.is_focus_target();
+            ctx.request_paint_only();
+        }
         self.inner.on_pointer_event(ctx, props, event);
     }
     fn on_text_event(
@@ -139,6 +153,18 @@ impl Widget for NamedSlider {
         props: &mut PropertiesMut<'_>,
         event: &TextEvent,
     ) {
+        if let TextEvent::Keyboard(key) = event
+            && key.state.is_down()
+            && ctx.is_focus_target()
+            && !ctx.is_disabled()
+        {
+            self.keyboard_focus = true;
+            self.pointer_focus_pending = false;
+            ctx.request_paint_only();
+        }
+        if matches!(event, TextEvent::WindowFocusChange(_)) {
+            ctx.request_paint_only();
+        }
         self.inner.on_text_event(ctx, props, event);
     }
     fn on_access_event(
@@ -147,9 +173,26 @@ impl Widget for NamedSlider {
         props: &mut PropertiesMut<'_>,
         event: &AccessEvent,
     ) {
+        if event.action == xilem::masonry::accesskit::Action::Focus && !ctx.is_disabled() {
+            self.keyboard_focus = true;
+            self.pointer_focus_pending = false;
+            ctx.request_paint_only();
+        }
         self.inner.on_access_event(ctx, props, event);
     }
     fn update(&mut self, ctx: &mut UpdateCtx<'_>, props: &mut PropertiesMut<'_>, event: &Update) {
+        match event {
+            Update::FocusChanged(focused) => {
+                self.keyboard_focus = *focused && !self.pointer_focus_pending;
+                self.pointer_focus_pending = false;
+            }
+            Update::DisabledChanged(true) | Update::StashedChanged(true) => {
+                self.keyboard_focus = false;
+                self.pointer_focus_pending = false;
+                ctx.request_paint_only();
+            }
+            _ => {}
+        }
         self.inner.update(ctx, props, event);
     }
     fn property_changed(&mut self, ctx: &mut UpdateCtx<'_>, property: std::any::TypeId) {
@@ -175,6 +218,24 @@ impl Widget for NamedSlider {
         painter: &mut Painter<'_>,
     ) {
         self.inner.paint(ctx, props, painter);
+        if self.keyboard_focus
+            && ctx.is_focus_target()
+            && ctx.is_window_focused()
+            && !ctx.is_disabled()
+        {
+            // Upstream also outlines hovered/pointer-focused sliders, and its
+            // positive inset expands outside the clipped popup. Keep our stroke
+            // fully inside the widget (kurbo's negative inset shrinks), painting
+            // after the track so it cannot cover the ring's left/right edges.
+            let color = props.get::<BorderColor>(ctx.property_cache()).color;
+            painter
+                .stroke(
+                    ctx.border_box().inset(-2.0).to_rounded_rect(4.0),
+                    &Stroke::new(2.0),
+                    color,
+                )
+                .draw();
+        }
     }
     fn pre_paint(
         &mut self,
@@ -182,7 +243,10 @@ impl Widget for NamedSlider {
         props: &PropertiesRef<'_>,
         painter: &mut Painter<'_>,
     ) {
-        self.inner.pre_paint(ctx, props, painter);
+        let bbox = ctx.border_box();
+        let p = PrePaintProps::fetch(props, ctx.property_cache());
+        paint_box_shadow(painter, bbox, p.box_shadow, p.corner_radius);
+        paint_background(painter, bbox, p.background, p.border_width, p.corner_radius);
     }
     fn accessibility_role(&self) -> Role {
         self.inner.accessibility_role()
@@ -200,3 +264,7 @@ impl Widget for NamedSlider {
         self.inner.children_ids()
     }
 }
+
+#[cfg(test)]
+#[path = "control_slider_tests.rs"]
+mod tests;
