@@ -1,18 +1,17 @@
 //! Right-hand canvas navigation popover, rendered as ordinary shell UI.
 use hearthspace_ui_components as components;
 use xilem::{
-    WidgetView, WindowOptionsExtLinux, WindowView,
-    dpi::LogicalSize,
+    WidgetView, WindowView,
     masonry::layout::AsUnit,
     style::Style,
     view::{CrossAxisAlignment, FlexSpacer, flex_col, flex_row, sized_box},
-    window,
 };
 
 use super::{
     command_client::send_command,
     icons::{Icon, icon_button},
     minimap::{CanvasSnapshot, minimap_view},
+    popup::{self, PopupKind},
     state::{ShellOutputInstance, ShellState},
 };
 
@@ -33,22 +32,15 @@ pub(super) fn map_window(
 ) -> WindowView<ShellState> {
     let app_id = output.map_app_id();
     let key = output.key().to_string();
-    let size = LogicalSize::new(340.0, 336.0);
-    window(
+    let size = popup::size(output, PopupKind::Map, 340.0, 336.0);
+    popup::window(
         output.map_window_id,
         "Hearthspace Canvas Map",
+        app_id,
+        size,
         panel(output, snapshot, error),
+        move |state| state.dismiss_map(&key),
     )
-    .with_options(move |options| {
-        options
-            .with_name(&app_id, &app_id)
-            .with_decorations(false)
-            .with_resizable(false)
-            .with_initial_inner_size(size)
-            .with_min_inner_size(size)
-            .with_max_inner_size(size)
-            .on_close(move |state| state.dismiss_map(&key))
-    })
 }
 
 fn panel(
@@ -76,7 +68,9 @@ fn panel(
     } else {
         "Drag the blue area to move your view"
     };
-    sized_box(components::scroll_area(
+    popup::panel(
+        output,
+        PopupKind::Map,
         flex_col((
             flex_row((
                 components::section_title("Canvas map"),
@@ -89,11 +83,7 @@ fn panel(
         ))
         .cross_axis_alignment(CrossAxisAlignment::Stretch)
         .gap(8.0.px()),
-    ))
-    .padding(12.0.px())
-    .background_color(components::SURFACE)
-    .border(components::BORDER, 1.0.px())
-    .corner_radius(10.0.px())
+    )
 }
 
 fn zoom_button(

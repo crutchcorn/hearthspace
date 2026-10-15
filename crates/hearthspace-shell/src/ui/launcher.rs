@@ -1,22 +1,16 @@
 use hearthspace_ui_components as components;
 use xilem::{
     AnyWidgetView, WidgetView,
-    masonry::{
-        layout::{AsUnit, Dim},
-        parley::fontique::GenericFamily,
-        properties::LineBreaking,
-    },
+    masonry::{layout::AsUnit, properties::LineBreaking},
     style::Style,
-    view::{
-        CrossAxisAlignment, FlexExt, FlexSpacer, button, flex_col, flex_row, sized_box, text_input,
-    },
+    view::{CrossAxisAlignment, FlexSpacer, flex_col, flex_row, sized_box},
 };
 
 use super::{
     command_client::{launch_app, send_command},
-    constants::{MAX_RESULTS, SEARCH_BOX_HEIGHT},
+    constants::MAX_RESULTS,
     icons::{Icon, icon_button},
-    search_focus::{FocusTarget, focus_on_activation, track_search},
+    search_focus::{FocusTarget, focus_on_activation},
     state::{ShellOutputInstance, ShellState},
     window_catalog::RunningWindow,
 };
@@ -29,7 +23,14 @@ pub(super) enum Entry {
 }
 
 impl Entry {
-    fn label(&self) -> String {
+    pub(super) fn id(&self) -> super::search_selection::EntryId {
+        match self {
+            Self::Window(window) => super::search_selection::EntryId::Window(window.id),
+            Self::App(app) => super::search_selection::EntryId::App(app.id.clone()),
+        }
+    }
+
+    pub(super) fn label(&self) -> String {
         match self {
             Self::Window(window) => window.label(),
             Self::App(app) => format!("Open: {}", app.name),
@@ -88,28 +89,18 @@ pub(super) fn launcher_view(
     windows_error: Option<String>,
 ) -> impl WidgetView<ShellState, Widget = super::search_focus::SearchFocus> + use<> {
     let focus_target = FocusTarget::default();
-    let search = search_input(output, focus_target.clone());
+    let search = super::search_input::input(output, focus_target.clone());
     let close_key = output.key().to_string();
     let close = icon_button(Icon::Close, "Close search", false, move |state| {
         state.dismiss_search(&close_key)
     });
-    let key = output.key().to_string();
-    let output_name = output.output_name.clone();
+    let selected = super::search_selection::selected_index(output, &entries);
     let mut rows: Vec<Box<AnyWidgetView<ShellState>>> = entries
         .into_iter()
-        .map(|entry| {
-            let key = key.clone();
-            let output_name = output_name.clone();
-            button(
-                components::field_label(entry.label())
-                    .text_size(16.0)
-                    .line_break_mode(LineBreaking::Clip)
-                    .width(Dim::Stretch),
-                move |state: &mut ShellState| {
-                    select(state, &key, output_name.as_deref(), &entry);
-                },
-            )
-            .boxed()
+        .enumerate()
+        .map(|(index, entry)| {
+            super::search_result::row(output, entry, Some(index) == selected, focus_target.clone())
+                .boxed()
         })
         .collect();
     if rows.is_empty() {
@@ -135,7 +126,9 @@ pub(super) fn launcher_view(
         );
     }
     focus_on_activation(
-        sized_box(
+        super::popup::panel_with_header(
+            output,
+            super::popup::PopupKind::Search,
             flex_col((
                 flex_row((
                     components::section_title("Search"),
@@ -143,53 +136,15 @@ pub(super) fn launcher_view(
                     close,
                 )),
                 search,
-                components::scroll_area(
-                    flex_col(rows)
-                        .cross_axis_alignment(CrossAxisAlignment::Stretch)
-                        .gap(4.0.px()),
-                )
-                .flex(1.0),
             ))
             .cross_axis_alignment(CrossAxisAlignment::Stretch)
             .gap(8.0.px()),
-        )
-        .background_color(components::SURFACE)
-        .padding(12.0.px())
-        .border(components::BORDER, 1.0.px())
-        .corner_radius(10.0.px()),
+            flex_col(rows)
+                .cross_axis_alignment(CrossAxisAlignment::Stretch)
+                .gap(4.0.px()),
+        ),
         focus_target,
     )
-}
-
-fn search_input(
-    output: &ShellOutputInstance,
-    focus_target: FocusTarget,
-) -> impl WidgetView<ShellState> + use<> {
-    let key = output.key().to_string();
-    let submit_key = key.clone();
-    let cancel_key = key.clone();
-    let output_name = output.output_name.clone();
-    let search = text_input(
-        output.query.clone(),
-        move |state: &mut ShellState, value: String| {
-            state.change_query(&key, value);
-        },
-    )
-    .placeholder("Search apps and windows...")
-    .font(GenericFamily::SystemUi)
-    .on_enter(move |state: &mut ShellState, value: String| {
-        state.change_query(&submit_key, value);
-        let entry = state
-            .outputs
-            .iter()
-            .find(|output| output.key() == submit_key)
-            .and_then(|output| results(state, output).into_iter().next());
-        if let Some(entry) = entry {
-            select(state, &submit_key, output_name.as_deref(), &entry);
-        }
-    })
-    .on_cancel(move |state: &mut ShellState, _| state.dismiss_search(&cancel_key));
-    sized_box(track_search(search, focus_target)).fixed_height(SEARCH_BOX_HEIGHT.px())
 }
 
 #[cfg(test)]

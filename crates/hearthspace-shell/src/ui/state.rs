@@ -36,8 +36,11 @@ pub(super) struct ShellState {
 
 #[derive(Debug)]
 pub(super) struct ShellOutputInstance {
+    pub(super) popup_measurements: [super::popup::PopupMeasurement; 4],
     pub(super) output_name: Option<String>,
     pub(super) query: String,
+    pub(super) selected_result: Option<super::search_selection::EntryId>,
+    pub(super) selected_result_index: usize,
     pub(super) show_search: bool,
     pub(super) search_request_token: Option<u64>,
     pub(super) show_power: bool,
@@ -190,6 +193,8 @@ impl ShellState {
             output.show_search = false;
             output.search_request_token = None;
             output.query.clear();
+            output.selected_result = None;
+            output.selected_result_index = 0;
             output.launch_error = None;
         }
     }
@@ -223,6 +228,10 @@ impl ShellState {
             .iter_mut()
             .find(|output| output.key() == output_key)
         {
+            if output.query != query {
+                output.selected_result = None;
+                output.selected_result_index = 0;
+            }
             output.query = query;
             output.show_search = true;
             output.show_map = false;
@@ -261,8 +270,11 @@ enum Panel {
 impl ShellOutputInstance {
     fn new(output_name: Option<String>) -> Self {
         Self {
+            popup_measurements: Default::default(),
             output_name,
             query: String::new(),
+            selected_result: None,
+            selected_result_index: 0,
             show_search: false,
             search_request_token: None,
             show_power: false,
@@ -295,6 +307,8 @@ impl ShellOutputInstance {
         self.show_power = false;
         self.confirm_logout = false;
         self.query.clear();
+        self.selected_result = None;
+        self.selected_result_index = 0;
         self.launch_error = None;
     }
 

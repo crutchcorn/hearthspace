@@ -4,18 +4,17 @@ use std::time::Duration;
 use chrono::Local;
 use hearthspace_ui_components as components;
 use xilem::{
-    WidgetView, WindowOptionsExtLinux, WindowView,
+    WidgetView, WindowView,
     core::{MessageProxy, NoElement, View},
-    dpi::LogicalSize,
-    masonry::layout::AsUnit,
+    masonry::{layout::AsUnit, properties::LineBreaking},
     style::Style,
-    view::{CrossAxisAlignment, FlexSpacer, flex_col, flex_row, sized_box, task_raw},
-    window,
+    view::{CrossAxisAlignment, FlexSpacer, flex_col, flex_row, task_raw},
 };
 
 use super::{
     command_client::send_command,
     icons::{Icon, icon_button},
+    popup::{self, PopupKind},
     state::{ShellOutputInstance, ShellState},
 };
 
@@ -79,29 +78,15 @@ pub(super) fn power_button(output: &ShellOutputInstance) -> impl WidgetView<Shel
 pub(super) fn power_window(output: &ShellOutputInstance) -> WindowView<ShellState> {
     let app_id = output.power_app_id();
     let key = output.key().to_string();
-    let size = LogicalSize::new(
-        300.0,
-        if output.launch_error.is_some() {
-            300.0
-        } else {
-            230.0
-        },
-    );
-    window(
+    let size = popup::size(output, PopupKind::Power, 300.0, 140.0);
+    popup::window(
         output.power_window_id,
         "Hearthspace Power",
+        app_id,
+        size,
         power_panel(output),
+        move |state| state.dismiss_power(&key),
     )
-    .with_options(move |options| {
-        options
-            .with_name(&app_id, &app_id)
-            .with_decorations(false)
-            .with_resizable(false)
-            .with_initial_inner_size(size)
-            .with_min_inner_size(size)
-            .with_max_inner_size(size)
-            .on_close(move |state| state.dismiss_power(&key))
-    })
 }
 
 pub(super) fn power_panel(output: &ShellOutputInstance) -> impl WidgetView<ShellState> + use<> {
@@ -138,9 +123,19 @@ pub(super) fn power_panel(output: &ShellOutputInstance) -> impl WidgetView<Shell
     let close = icon_button(Icon::Close, "Close power menu", false, move |state| {
         state.dismiss_launcher(&close_key)
     });
-    let hint = confirming.then(|| components::muted_text("Close your apps and end this session?"));
-    let error = output.launch_error.clone().map(components::field_label);
-    sized_box(components::scroll_area(
+    let hint = confirming.then(|| {
+        components::field_label("Close your apps and end this session?")
+            .text_size(13.0)
+            .color(components::TEXT_MUTED)
+            .line_break_mode(LineBreaking::WordWrap)
+    });
+    let error = output
+        .launch_error
+        .clone()
+        .map(|error| components::field_label(error).line_break_mode(LineBreaking::WordWrap));
+    popup::panel(
+        output,
+        PopupKind::Power,
         flex_col((
             flex_row((
                 components::section_title("Power"),
@@ -155,11 +150,7 @@ pub(super) fn power_panel(output: &ShellOutputInstance) -> impl WidgetView<Shell
         ))
         .cross_axis_alignment(CrossAxisAlignment::Stretch)
         .gap(8.0.px()),
-    ))
-    .padding(12.0.px())
-    .background_color(components::SURFACE)
-    .border(components::BORDER, 1.0.px())
-    .corner_radius(10.0.px())
+    )
 }
 
 #[cfg(test)]

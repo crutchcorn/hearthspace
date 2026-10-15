@@ -19,71 +19,13 @@ use xilem::{
         kurbo::{Axis, Point, Size},
         layout::{LenReq, Length},
         properties::Dimensions,
-        widgets::{TextAction, TextInput},
+        widgets::TextAction,
     },
 };
 
 use super::state::ShellState;
 
 pub(super) type FocusTarget = Arc<Mutex<Option<WidgetId>>>;
-
-pub(super) fn track_search<V>(inner: V, target: FocusTarget) -> TrackedSearch<V> {
-    TrackedSearch { inner, target }
-}
-
-pub(super) struct TrackedSearch<V> {
-    inner: V,
-    target: FocusTarget,
-}
-
-impl<V> ViewMarker for TrackedSearch<V> {}
-
-impl<V> View<ShellState, (), ViewCtx> for TrackedSearch<V>
-where
-    V: WidgetView<ShellState, Widget = TextInput>,
-{
-    type Element = Pod<TextInput>;
-    type ViewState = V::ViewState;
-
-    fn build(&self, ctx: &mut ViewCtx, state: &mut ShellState) -> (Self::Element, Self::ViewState) {
-        let (element, view_state) = self.inner.build(ctx, state);
-        *self.target.lock().unwrap() = Some(element.new_widget.widget.area_pod().id());
-        (element, view_state)
-    }
-
-    fn rebuild(
-        &self,
-        prev: &Self,
-        view_state: &mut Self::ViewState,
-        ctx: &mut ViewCtx,
-        element: Mut<'_, Self::Element>,
-        state: &mut ShellState,
-    ) {
-        *self.target.lock().unwrap() = Some(element.widget.area_pod().id());
-        self.inner
-            .rebuild(&prev.inner, view_state, ctx, element, state);
-    }
-
-    fn teardown(
-        &self,
-        view_state: &mut Self::ViewState,
-        ctx: &mut ViewCtx,
-        element: Mut<'_, Self::Element>,
-    ) {
-        *self.target.lock().unwrap() = None;
-        self.inner.teardown(view_state, ctx, element);
-    }
-
-    fn message(
-        &self,
-        view_state: &mut Self::ViewState,
-        message: &mut MessageCtx,
-        element: Mut<'_, Self::Element>,
-        state: &mut ShellState,
-    ) -> MessageResult<()> {
-        self.inner.message(view_state, message, element, state)
-    }
-}
 
 pub(super) fn focus_on_activation<V>(inner: V, target: FocusTarget) -> FocusOnActivation<V> {
     FocusOnActivation { inner, target }
@@ -297,7 +239,7 @@ mod tests {
     use masonry::{
         testing::TestHarness,
         theme::default_property_set,
-        widgets::{Button, Flex, TextArea},
+        widgets::{Button, Flex, TextArea, TextInput},
     };
 
     #[test]

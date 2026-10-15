@@ -152,7 +152,7 @@ fn search_header_and_field_stay_in_bounds_when_results_scroll() {
             .find(|id| {
                 ui.harness
                     .get_widget_with_id(*id)
-                    .downcast::<masonry::widgets::TextInput>()
+                    .downcast::<crate::ui::search_editor::SearchEditor>()
                     .is_some()
             })
             .unwrap();

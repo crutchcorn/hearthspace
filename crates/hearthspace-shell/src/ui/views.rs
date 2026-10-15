@@ -19,6 +19,7 @@ use super::{
     notification_view,
     notifications::{Notification, notification_task},
     output_watcher::output_watcher_task,
+    popup::{self, PopupKind},
     session_controls::{clock_task, power_button, power_window},
     shell_events::shell_events_task,
     state::{ShellOutputInstance, ShellState},
@@ -35,6 +36,7 @@ mod toolbar_tests;
 pub(super) fn app_logic(
     state: &mut ShellState,
 ) -> impl Iterator<Item = WindowView<ShellState>> + use<> {
+    super::search_selection::reconcile(state);
     let watcher = window(
         state.watcher_window_id,
         "Hearthspace Output Watcher",
@@ -118,22 +120,15 @@ fn notification_window(
 ) -> WindowView<ShellState> {
     let app_id = output.notifications_app_id();
     let key = output.key().to_string();
-    let size = LogicalSize::new(f64::from(super::constants::LAUNCHER_WIDTH), 440.0);
-    window(
+    let size = popup::size(output, PopupKind::Notifications, 360.0, 100.0);
+    popup::window(
         output.notifications_window_id,
         "Hearthspace Notifications",
+        app_id,
+        size,
         notification_view::panel(output, notifications, error),
+        move |state| state.dismiss_notifications(&key),
     )
-    .with_options(move |options| {
-        options
-            .with_name(&app_id, &app_id)
-            .with_decorations(false)
-            .with_resizable(false)
-            .with_initial_inner_size(size)
-            .with_min_inner_size(size)
-            .with_max_inner_size(size)
-            .on_close(move |state| state.dismiss_notifications(&key))
-    })
 }
 
 fn launcher_window(
@@ -147,23 +142,15 @@ fn launcher_window(
     if output.launch_error.is_some() || windows_error.is_some() {
         size.height += 100.0;
     }
-    window(
+    let size = popup::size(output, PopupKind::Search, size.width, size.height);
+    popup::window(
         output.launcher_window_id,
         "Hearthspace Launcher",
+        launcher_app_id,
+        size,
         launcher::launcher_view(output, results, windows_error),
+        move |state| state.dismiss_search(&key),
     )
-    .with_options(move |options| {
-        options
-            .with_name(&launcher_app_id, &launcher_app_id)
-            .with_decorations(false)
-            .with_resizable(false)
-            // Winit replaces nonresizable min/max hints with the initial size
-            // while creating the window, before reactive hint updates apply.
-            .with_initial_inner_size(size)
-            .with_min_inner_size(size)
-            .with_max_inner_size(size)
-            .on_close(move |state| state.dismiss_search(&key))
-    })
 }
 
 fn bar_view(

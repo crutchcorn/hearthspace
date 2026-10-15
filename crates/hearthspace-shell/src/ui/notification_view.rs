@@ -3,12 +3,13 @@ use xilem::{
     AnyWidgetView, WidgetView,
     masonry::{layout::AsUnit, parley::fontique::GenericFamily, properties::LineBreaking},
     style::Style,
-    view::{CrossAxisAlignment, FlexExt, FlexSpacer, flex_col, flex_row, label, sized_box},
+    view::{CrossAxisAlignment, FlexSpacer, flex_col, flex_row, label, sized_box},
 };
 
 use super::{
     icons::{Icon, icon_button},
     notifications::{self, Notification},
+    popup::{self, PopupKind},
     state::{ShellOutputInstance, ShellState},
 };
 
@@ -38,33 +39,29 @@ pub(super) fn panel(
     });
     let mut rows: Vec<Box<AnyWidgetView<ShellState>>> = Vec::new();
     if let Some(error) = error {
-        rows.push(components::field_label(error).boxed());
+        rows.push(
+            components::field_label(error)
+                .line_break_mode(LineBreaking::WordWrap)
+                .boxed(),
+        );
     }
     if items.is_empty() {
         rows.push(components::muted_text("No notifications yet").boxed());
     }
     rows.extend(items.into_iter().map(|item| notification_row(item).boxed()));
-    sized_box(
-        flex_col((
-            flex_row((
-                components::section_title("Notifications"),
-                FlexSpacer::Flex(1.0),
-                close,
-            ))
-            .gap(4.0.px()),
-            components::scroll_area(
-                flex_col(rows)
-                    .cross_axis_alignment(CrossAxisAlignment::Stretch)
-                    .gap(8.0.px()),
-            )
-            .flex(1.0),
+    popup::panel_with_header(
+        output,
+        PopupKind::Notifications,
+        flex_row((
+            components::section_title("Notifications"),
+            FlexSpacer::Flex(1.0),
+            close,
         ))
-        .gap(8.0.px()),
+        .gap(4.0.px()),
+        flex_col(rows)
+            .cross_axis_alignment(CrossAxisAlignment::Stretch)
+            .gap(8.0.px()),
     )
-    .background_color(components::SURFACE)
-    .padding(12.0.px())
-    .border(components::BORDER, 1.0.px())
-    .corner_radius(10.0.px())
 }
 
 fn notification_row(item: Notification) -> impl WidgetView<ShellState> + use<> {

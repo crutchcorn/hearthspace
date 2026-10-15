@@ -142,16 +142,17 @@ fn launcher_creation_options_fit_results_headers_and_errors() {
             &state.outputs[0],
             results,
             catalog_error.then(|| "Catalog unavailable".into()),
-        )
-        .with_base_color(xilem::Color::BLACK);
+        );
         let runtime = xilem::tokio::runtime::Builder::new_current_thread()
             .build()
             .unwrap();
         let mut ctx = ViewCtx::new(Arc::new(NoMessages), Arc::new(runtime));
         let (window, _) = view.build(&mut ctx, &mut state);
+        assert_eq!(window.0.base_color, xilem::Color::TRANSPARENT);
         let attrs = window.0.attributes;
-        let expected = Some(xilem::dpi::LogicalSize::new(360.0, height).into());
+        let expected = Some(xilem::dpi::LogicalSize::new(768.0, height).into());
         assert!(!attrs.resizable);
+        assert!(attrs.transparent);
         assert_eq!(
             attrs.inner_size, expected,
             "initial size for {count} results"
