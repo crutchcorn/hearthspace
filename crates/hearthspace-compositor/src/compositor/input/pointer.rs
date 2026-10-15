@@ -72,7 +72,11 @@ impl App {
         pointer.frame(self);
     }
 
-    pub(super) fn apply_pointer_motion(&mut self, location: Point<f64, Logical>, time: InputTime) {
+    pub(in crate::compositor) fn apply_pointer_motion(
+        &mut self,
+        location: Point<f64, Logical>,
+        time: InputTime,
+    ) {
         let previous_location = self.pointer_location;
         let output_rects = self.output_logical_rects();
         let previous_output = rect_index_containing_point(previous_location, &output_rects);
