@@ -178,6 +178,7 @@ def install(bundle, root, prefix):
         directories(destination.parent)
         new_release = not destination.exists()
         stage = None
+        completed = False
         backups = {
             name: ((root / name).read_bytes() if (root / name).exists() else None)
             for name in stable
@@ -226,6 +227,7 @@ def install(bundle, root, prefix):
                 json.dumps(manifest, sort_keys=True, indent=2).encode(),
                 0o644,
             )
+            completed = True
         except BaseException:
             if previous["current"]:
                 replace_current(root, previous["current"])
@@ -242,6 +244,14 @@ def install(bundle, root, prefix):
         finally:
             if stage is not None:
                 shutil.rmtree(stage)
+            if not completed and previous["current"] is None:
+                # A failed first install has no ownership manifest. Remove the
+                # empty container only after staging cleanup so retry sees just
+                # our lock, rather than mistaking it for an unowned installation.
+                try:
+                    destination.parent.rmdir()
+                except OSError:
+                    pass  # Preserve any unexpected files for inspection.
     return destination
 
 

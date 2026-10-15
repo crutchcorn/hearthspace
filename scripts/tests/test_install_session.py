@@ -157,6 +157,45 @@ class InstallSessionTests(unittest.TestCase):
         self.assertEqual(list(old.parent.iterdir()), [old])
         transaction.installed(self.prefix, self.prefix)
 
+    def test_failed_first_install_rolls_back_and_allows_a_clean_retry(self):
+        for failure in ("copy", "entry", "manifest"):
+            with self.subTest(failure=failure):
+                self.prefix = self.directory / f"first-install-{failure}"
+                bundle = self.bundle()
+                original_write = transaction.atomic_write
+                failed = False
+
+                def write(
+                    path,
+                    content,
+                    mode,
+                    *,
+                    failure=failure,
+                    original_write=original_write,
+                ):
+                    nonlocal failed
+                    target = layout.SESSION if failure == "entry" else layout.MANIFEST
+                    if not failed and path == self.prefix / target:
+                        failed = True
+                        raise OSError("injected first install failure")
+                    return original_write(path, content, mode)
+
+                if failure == "copy":
+                    fault = patch.object(
+                        transaction.shutil,
+                        "copyfile",
+                        side_effect=OSError("injected first install failure"),
+                    )
+                else:
+                    fault = patch.object(transaction, "atomic_write", side_effect=write)
+                with fault, self.assertRaisesRegex(OSError, "first install failure"):
+                    transaction.install(bundle, self.prefix, self.prefix)
+                self.assertFalse((self.prefix / layout.CURRENT).is_symlink())
+                self.assertFalse((self.prefix / layout.BASE / "releases").exists())
+                release = transaction.install(bundle, self.prefix, self.prefix)
+                self.assertEqual((self.prefix / layout.CURRENT).resolve(), release)
+                transaction.installed(self.prefix, self.prefix)
+
     def test_uninstall_removes_only_owned_files_and_preserves_foreign_content(self):
         release = self.install()
         unrelated = self.prefix / "share/wayland-sessions/ubuntu.desktop"
