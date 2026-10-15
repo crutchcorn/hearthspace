@@ -181,8 +181,13 @@ fn initial_arm_retries_after_mapping_then_stops_after_success() {
     state.outputs[0].drawing.armed = false;
     bounds(&mut state, "eDP-1", 42, [10.0, 20.0, 400.0, 300.0]);
     assert!(!state.outputs[0].drawing.armed);
+    assert_eq!(
+        state.outputs[0].drawing.message.as_deref(),
+        Some("Preparing drawing area...")
+    );
     retry(&mut state);
     assert!(state.outputs[0].drawing.armed);
+    assert!(state.outputs[0].drawing.message.is_none());
     retry(&mut state);
     assert_eq!(state.outputs[0].drawing.arm_attempts, 2);
     server.join().unwrap();

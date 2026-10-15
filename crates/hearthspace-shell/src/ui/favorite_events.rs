@@ -136,11 +136,11 @@ pub(super) fn bounds(state: &mut ShellState, key: &str, generation: u64, rect: [
         ),
     );
     output.drawing.armed = result.is_ok();
-    output.drawing.message = result.err().map(|e| {
+    output.drawing.message = result.err().map(|_| {
         if output.drawing.arm_attempts >= 8 || Instant::now() >= deadline {
             UNAVAILABLE.into()
         } else {
-            format!("Drawing input is unavailable: {e}")
+            "Preparing drawing area...".into()
         }
     });
 }
