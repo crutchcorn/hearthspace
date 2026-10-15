@@ -8,6 +8,7 @@ pub const LAUNCHER_APP_ID: &str = "dev.hearthspace.launcher";
 pub const CANVAS_MAP_APP_ID: &str = "dev.hearthspace.canvas-map";
 pub const NOTIFICATIONS_APP_ID: &str = "dev.hearthspace.notifications-panel";
 pub const POWER_MENU_APP_ID: &str = "dev.hearthspace.power-menu";
+pub const TRAY_MENU_APP_ID: &str = "dev.hearthspace.tray-menu";
 pub const SHELL_OUTPUT_WATCHER_APP_ID: &str = "dev.hearthspace.shell-output-watcher";
 pub const CONTROL_BAR_HEIGHT: i32 = 48;
 pub const LOG_FILE_ENV: &str = "HEARTHSPACE_LOG_FILE";
@@ -80,6 +81,10 @@ pub fn power_menu_app_id_for_output(output_name: &str) -> String {
     shell_app_id_for_output(POWER_MENU_APP_ID, output_name)
 }
 
+pub fn tray_menu_app_id_for_output(output_name: &str) -> String {
+    shell_app_id_for_output(TRAY_MENU_APP_ID, output_name)
+}
+
 /// Private compositor-to-shell datagrams share the command socket's namespace.
 pub fn shell_event_socket_path(command_socket: &std::path::Path) -> std::path::PathBuf {
     let mut path = command_socket.as_os_str().to_os_string();
@@ -113,11 +118,16 @@ pub fn power_menu_output_name_from_app_id(app_id: &str) -> Option<Option<String>
     shell_output_name_from_app_id(POWER_MENU_APP_ID, app_id)
 }
 
+pub fn tray_menu_output_name_from_app_id(app_id: &str) -> Option<Option<String>> {
+    shell_output_name_from_app_id(TRAY_MENU_APP_ID, app_id)
+}
+
 pub fn shell_panel_output_name_from_app_id(app_id: &str) -> Option<Option<String>> {
     launcher_output_name_from_app_id(app_id)
         .or_else(|| canvas_map_output_name_from_app_id(app_id))
         .or_else(|| notifications_output_name_from_app_id(app_id))
         .or_else(|| power_menu_output_name_from_app_id(app_id))
+        .or_else(|| tray_menu_output_name_from_app_id(app_id))
 }
 
 fn shell_app_id_for_output(base: &str, output_name: &str) -> String {
@@ -240,6 +250,7 @@ mod tests {
                 notifications_app_id_for_output(output),
             ),
             (POWER_MENU_APP_ID, power_menu_app_id_for_output(output)),
+            (TRAY_MENU_APP_ID, tray_menu_app_id_for_output(output)),
         ] {
             assert_eq!(shell_panel_output_name_from_app_id(base), Some(None));
             assert_eq!(

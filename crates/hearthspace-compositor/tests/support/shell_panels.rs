@@ -3,7 +3,8 @@ use super::canvas_map_client::MapClient;
 use super::navigation::{action, query};
 use super::*;
 use hearthspace_common::{
-    LAUNCHER_APP_ID, NOTIFICATIONS_APP_ID, POWER_MENU_APP_ID, shell_bar_app_id_for_output,
+    LAUNCHER_APP_ID, NOTIFICATIONS_APP_ID, POWER_MENU_APP_ID, TRAY_MENU_APP_ID,
+    shell_bar_app_id_for_output,
 };
 use serde_json::Value;
 
@@ -64,6 +65,7 @@ fn shell_panels_focus_hit_test_and_close_without_revealing_off_canvas_windows() 
         (LAUNCHER_APP_ID, "search", (500, 360)),
         (NOTIFICATIONS_APP_ID, "notifications", (360, 440)),
         (POWER_MENU_APP_ID, "power", (240, 160)),
+        (TRAY_MENU_APP_ID, "tray", (320, 180)),
     ] {
         let panel = client.add(app_id.into(), size, (8, 6), GREEN);
         assert_eq!(client.focus(), Some(panel), "{kind} initial focus");
@@ -161,6 +163,7 @@ fn search_and_dropdowns_fit_scaled_small_outputs_and_lock_hides_their_metadata()
         (LAUNCHER_APP_ID, "search"),
         (NOTIFICATIONS_APP_ID, "notifications"),
         (POWER_MENU_APP_ID, "power"),
+        (TRAY_MENU_APP_ID, "tray"),
     ] {
         let panel = client.add(app_id.into(), (500, 440), (0, 0), GREEN);
         let geometry = bounds(&compositor, kind);
