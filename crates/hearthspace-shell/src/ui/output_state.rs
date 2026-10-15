@@ -20,6 +20,8 @@ impl ShellOutputInstance {
             show_search: false,
             search_request_token: None,
             show_power: false,
+            show_controls: false,
+            osd: None,
             confirm_logout: false,
             show_notifications: false,
             show_map: false,
@@ -29,6 +31,8 @@ impl ShellOutputInstance {
             map_window_id: WindowId::next(),
             notifications_window_id: WindowId::next(),
             power_window_id: WindowId::next(),
+            controls_window_id: WindowId::next(),
+            osd_window_id: WindowId::next(),
             tray: Default::default(),
         }
     }
@@ -39,6 +43,7 @@ impl ShellOutputInstance {
             Panel::Notifications => self.show_notifications,
             Panel::Map => self.show_map,
             Panel::Power => self.show_power,
+            Panel::Controls => self.show_controls,
         }
     }
 
@@ -49,6 +54,7 @@ impl ShellOutputInstance {
         self.show_notifications = false;
         self.show_map = false;
         self.show_power = false;
+        self.show_controls = false;
         self.confirm_logout = false;
         self.query.clear();
         self.selected_result = None;

@@ -12,6 +12,7 @@ pub(super) struct ShellState {
     pub(super) tray: super::tray_state::TrayState,
     pub(super) battery: Option<crate::battery::BatteryStatus>,
     pub(super) power: super::power_task::PowerState,
+    pub(super) controls: super::control_state::Controls,
     pub(super) shell_events: Option<std::sync::Arc<super::shell_events::ShellEvents>>,
     pub(super) catalog: AppCatalog,
     pub(super) windows: Vec<RunningWindow>,
@@ -31,7 +32,7 @@ pub(super) struct ShellState {
 
 #[derive(Debug)]
 pub(super) struct ShellOutputInstance {
-    pub(super) popup_measurements: [super::popup::PopupMeasurement; 5],
+    pub(super) popup_measurements: [super::popup::PopupMeasurement; 6],
     pub(super) tray: super::tray_state::TrayOutput,
     pub(super) output_name: Option<String>,
     pub(super) query: String,
@@ -40,6 +41,8 @@ pub(super) struct ShellOutputInstance {
     pub(super) show_search: bool,
     pub(super) search_request_token: Option<u64>,
     pub(super) show_power: bool,
+    pub(super) show_controls: bool,
+    pub(super) osd: Option<super::control_osd::Osd>,
     pub(super) confirm_logout: bool,
     pub(super) show_notifications: bool,
     pub(super) show_map: bool,
@@ -49,6 +52,8 @@ pub(super) struct ShellOutputInstance {
     pub(super) map_window_id: WindowId,
     pub(super) notifications_window_id: WindowId,
     pub(super) power_window_id: WindowId,
+    pub(super) controls_window_id: WindowId,
+    pub(super) osd_window_id: WindowId,
 }
 
 #[derive(Debug)]
@@ -69,6 +74,7 @@ impl ShellState {
             tray: Default::default(),
             battery: None,
             power: Default::default(),
+            controls: Default::default(),
             shell_events: None,
             catalog: AppCatalog::load(),
             windows: Vec::new(),
@@ -149,6 +155,7 @@ impl ShellState {
                 Panel::Notifications => output.show_notifications = true,
                 Panel::Map => output.show_map = true,
                 Panel::Power => output.show_power = true,
+                Panel::Controls => output.show_controls = true,
             }
         }
     }
@@ -170,6 +177,20 @@ impl ShellState {
 
     pub(super) fn toggle_power(&mut self, output_key: &str) {
         self.toggle_panel(output_key, Panel::Power);
+    }
+
+    pub(super) fn toggle_controls(&mut self, output_key: &str) {
+        self.toggle_panel(output_key, Panel::Controls);
+    }
+
+    pub(super) fn dismiss_controls(&mut self, output_key: &str) {
+        if let Some(output) = self
+            .outputs
+            .iter_mut()
+            .find(|output| output.key() == output_key)
+        {
+            output.show_controls = false;
+        }
     }
 
     pub(super) fn dismiss_launcher(&mut self, output_key: &str) {
@@ -237,6 +258,7 @@ impl ShellState {
             output.show_map = false;
             output.show_power = false;
             output.show_notifications = false;
+            output.show_controls = false;
             output.confirm_logout = false;
             output.launch_error = None;
         }
@@ -265,6 +287,7 @@ pub(super) enum Panel {
     Notifications,
     Map,
     Power,
+    Controls,
 }
 
 fn normalized_output_targets(output_names: Vec<String>) -> Vec<Option<String>> {

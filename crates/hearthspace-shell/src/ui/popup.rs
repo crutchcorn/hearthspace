@@ -21,6 +21,7 @@ pub(super) enum PopupKind {
     Notifications,
     Power,
     Tray,
+    Controls,
 }
 
 impl PopupKind {
@@ -31,6 +32,7 @@ impl PopupKind {
             Self::Notifications => "Notifications",
             Self::Power => "Session controls",
             Self::Tray => "Application tray menu",
+            Self::Controls => "Brightness and volume controls",
         }
     }
     fn index(self) -> usize {
@@ -40,7 +42,7 @@ impl PopupKind {
         match self {
             Self::Search | Self::Tray => 560.0,
             Self::Notifications => 440.0,
-            Self::Map | Self::Power => 400.0,
+            Self::Map | Self::Power | Self::Controls => 400.0,
         }
     }
 }

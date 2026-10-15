@@ -25,6 +25,9 @@ pub(super) enum Icon {
     Search,
     Bell { active: bool },
     Power,
+    Controls,
+    Brightness,
+    Volume { muted: bool },
     ZoomIn,
     ZoomOut,
     Close,
@@ -145,6 +148,64 @@ impl Widget for IconWidget {
             components::TEXT
         };
         match self.icon {
+            Icon::Controls => {
+                for (y, knob) in [(4.0, 7.0), (10.0, 13.0), (16.0, 7.0)] {
+                    painter
+                        .stroke(Line::new((2.0, y), (18.0, y)), &stroke, color)
+                        .draw();
+                    painter
+                        .fill(Circle::new((knob, y), 2.5), components::SURFACE)
+                        .draw();
+                    painter
+                        .stroke(Circle::new((knob, y), 2.5), &stroke, color)
+                        .draw();
+                }
+            }
+            Icon::Brightness => {
+                painter
+                    .stroke(Circle::new((10.0, 10.0), 4.0), &stroke, color)
+                    .draw();
+                for n in 0..8 {
+                    let angle = f64::from(n) * std::f64::consts::FRAC_PI_4;
+                    let (sin, cos) = angle.sin_cos();
+                    painter
+                        .stroke(
+                            Line::new(
+                                (10.0 + 7.0 * cos, 10.0 + 7.0 * sin),
+                                (10.0 + 9.0 * cos, 10.0 + 9.0 * sin),
+                            ),
+                            &stroke,
+                            color,
+                        )
+                        .draw();
+                }
+            }
+            Icon::Volume { muted } => {
+                let mut path = BezPath::new();
+                path.move_to((2.0, 7.0));
+                path.line_to((6.0, 7.0));
+                path.line_to((10.0, 3.0));
+                path.line_to((10.0, 17.0));
+                path.line_to((6.0, 13.0));
+                path.line_to((2.0, 13.0));
+                path.close_path();
+                painter.stroke(&path, &stroke, color).draw();
+                if muted {
+                    painter
+                        .stroke(Line::new((14.0, 7.0), (19.0, 13.0)), &stroke, color)
+                        .draw();
+                    painter
+                        .stroke(Line::new((19.0, 7.0), (14.0, 13.0)), &stroke, color)
+                        .draw();
+                } else {
+                    for (x, y) in [(13.0, 6.0), (16.0, 3.0)] {
+                        let mut wave = BezPath::new();
+                        wave.move_to((x, y));
+                        wave.curve_to((x + 4.0, 10.0), (x + 4.0, 10.0), (x, 20.0 - y));
+                        painter.stroke(&wave, &stroke, color).draw();
+                    }
+                }
+            }
             Icon::Battery {
                 percentage,
                 charging,

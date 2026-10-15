@@ -154,7 +154,13 @@ fn battery_updates_are_accessible_and_removal_removes_indicator() {
         ui.state.battery.as_ref().unwrap().state_label()
     );
     assert!(labels(&ui).contains(&expected));
-    for name in ["Search", "Notifications", "Canvas map", "Power"] {
+    for name in [
+        "Search",
+        "Notifications",
+        "Canvas map",
+        "Control center",
+        "Power",
+    ] {
         let bounds = ui
             .harness
             .access_node(ui.button(name))

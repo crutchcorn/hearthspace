@@ -41,7 +41,10 @@ pub(super) fn app_logic(
     let watcher = window(
         state.watcher_window_id,
         "Hearthspace Output Watcher",
-        output_watcher_view(state.outputs.iter().any(|output| output.show_map)),
+        output_watcher_view(
+            state.outputs.iter().any(|output| output.show_map),
+            state.outputs.iter().any(|output| output.osd.is_some()),
+        ),
     )
     .with_options(|options| {
         options
@@ -61,6 +64,13 @@ pub(super) fn app_logic(
             &state.tray,
             state.battery.as_ref(),
         ));
+        if let Some(osd) = &output.osd {
+            windows.push(super::control_osd::window(output, osd));
+        }
+        if output.show_controls {
+            windows.push(super::control_center::window(output, &state.controls));
+            continue;
+        }
         if output.tray.open {
             windows.push(super::tray_view::window(output, &state.tray));
             continue;
@@ -195,11 +205,12 @@ pub(super) fn bar_view(
                 .color(components::TEXT_MUTED)
                 .line_break_mode(xilem::masonry::properties::LineBreaking::Clip)
                 .flex(1.0),
-                super::tray_view::strip(output, tray, if battery.is_some() { 64.0 } else { 0.0 }),
+                super::tray_view::strip(output, tray, if battery.is_some() { 106.0 } else { 42.0 }),
                 super::battery_view::indicator(battery),
                 search,
                 notification_view::button(output, notifications),
                 map_button(output),
+                super::control_center::toolbar_button(output),
                 power_button(output),
             ))
             .gap(8.0.px()),
@@ -212,7 +223,7 @@ pub(super) fn bar_view(
     )
 }
 
-fn output_watcher_view(map_open: bool) -> impl WidgetView<ShellState> + use<> {
+fn output_watcher_view(map_open: bool, osd_open: bool) -> impl WidgetView<ShellState> + use<> {
     sized_box(fork(
         fork(
             fork(label(""), output_watcher_task()),
@@ -224,7 +235,13 @@ fn output_watcher_view(map_open: bool) -> impl WidgetView<ShellState> + use<> {
                     fork(clock_task(), notification_task()),
                     fork(super::battery_view::task(), super::power_task::task()),
                 ),
-                super::tray_task::task(),
+                fork(
+                    super::tray_task::task(),
+                    fork(
+                        super::control_task::task(),
+                        osd_open.then(super::control_osd::task),
+                    ),
+                ),
             ),
             map_open.then(canvas_task),
         ),

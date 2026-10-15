@@ -308,6 +308,7 @@ fn overflow_keeps_every_control_visible_and_empty_tray_adds_no_button() {
             "Search",
             "Notifications",
             "Canvas map",
+            "Control center",
             "Power",
         ] {
             let bounds = ui
@@ -330,7 +331,7 @@ fn overflow_keeps_every_control_visible_and_empty_tray_adds_no_button() {
                 })
             })
             .count();
-        assert_eq!(icons, tray_state::capacity(width as f64));
+        assert_eq!(icons, tray_state::capacity(width as f64 - 42.0));
         ui.state.tray.snapshot.items.clear();
         ui.rebuild(&bar);
         ui.dispatch(&bar);
@@ -342,7 +343,7 @@ fn overflow_keeps_every_control_visible_and_empty_tray_adds_no_button() {
                     .access_node(*id)
                     .is_some_and(|node| node.role() == Role::Button))
                 .count(),
-            4
+            5
         );
     }
 }
