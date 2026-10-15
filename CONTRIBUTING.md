@@ -373,6 +373,14 @@ application's PulseAudio-compatible connection; `pw-cli info 0` verifies its
 PipeWire connection. Installing these client utilities does not start a second
 audio server.
 
+The shell's volume control also uses `pactl` from `pulseaudio-utils` (version 16
+or newer for JSON output). Install it with `sudo apt-get install -y pulseaudio-utils`
+if it is missing. PipeWire's PulseAudio service and PulseAudio are both supported;
+missing utilities, servers, or outputs leave the control unavailable. Brightness
+uses kernel backlight readings and logind's existing active-session permissions,
+without new groups, udev rules, setuid helpers, or password prompts. See
+[control center](docs/CONTROL_CENTER.md).
+
 The native supervisor starts the notification daemon, permission store, document
 portal, GTK portal backend, desktop portal, and polkit agent after Wayland is ready.
 The portal processes must acquire their private-bus names before the shell starts. Helpers
