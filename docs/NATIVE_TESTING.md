@@ -219,6 +219,22 @@ temporary windows include overlapping, off-canvas and fullscreen content.
 Five-contact touchpad gestures are a documented libinput backend limitation and
 are recorded separately from passing cases.
 
+`scripts/window-switcher-smoke --session /tmp/hearthspace-window-switcher-1`
+checks held Alt+Tab/Alt+Shift+Tab and left/right swipes with four touchpad contacts
+and four/five touchscreen contacts. It observes intermediate viewport positions
+during the 180 ms pan, verifies the selected client's focus and colored live
+preview pixels, and captures the revealed window after release. Input ownership,
+Escape rollback, stale gesture events, and a touchscreen contact held across Alt
+release are checked too. Independent libinput traces establish the delivered
+gesture type, direction, and contact count. Run it separately from headless GPU
+tests; it owns and cleans up its native session and temporary input devices.
+
+Unlocked `status.window_switcher` reports `active`, `source` (`keyboard` or
+`gesture`), `selected_window_id`, the stable `window_ids`, output, and visible
+preview `items`. The compact strip can show a subset when many windows are open.
+Use `viewport.animating: false` to wait for a completed focus pan. The held input
+must still be released separately; a settled viewport does not close the overlay.
+
 Agents can use `scripts/hearthspace-agent --session PATH overview on` (also
 `off`/`toggle`) and `overview-select WINDOW_ID`. Unlocked `status` includes an
 `overview` object with `active`, `animating`, `selected_window_id`, `output` and thumbnail

@@ -89,6 +89,33 @@ these interactions do not reach the applications behind the previews. Canvas
 pan and zoom are suspended. Overview cannot open during a move, resize, popup
 grab, or session lock. Locking or losing the active native VT dismisses it.
 
+## Held window switcher
+
+Alt+Tab opens a compact strip of live window previews and selects the next
+application. Keep Alt held and press Tab again to continue; add Shift to move
+backward. The strip stays open until Alt is released. Escape cancels switching
+and restores the previous focus and canvas view.
+
+Swipe four fingers left on a native touchpad, or four/five on a touchscreen,
+to select the next window. Swipe right to select the previous window. The same
+strip remains open while the gesture is held. Continued movement steps through
+additional windows, and reversing direction moves back. Lift to keep the chosen
+window. See [canvas gestures](./PINCH_ZOOM.md) for recognition thresholds and the
+native backend's five-finger touchpad limitation.
+
+Each selection focuses and raises the application immediately, then pans the
+canvas to it over 180 ms with easing. A new selection starts from the currently
+displayed position, including during an unfinished pan. The canvas remains
+visible behind the strip; zoom, window positions, sizes, and presentation states
+are preserved. Fullscreen and maximized windows remain pinned to their outputs.
+
+The order stays fixed for the held interaction, with wrapping at either end.
+Closed windows are removed, and the selected preview stays visible when there
+are more windows than fit across the output. Typing, clicks, and scrolling are
+consumed while the strip is open. The keyboard and gesture cannot take over each
+other's active switcher. Locking or losing the native VT dismisses it and clears
+the held input state.
+
 ## Touchscreen movement and resizing
 
 Drag a floating window's title bar with one finger to move it, then lift to drop
@@ -109,7 +136,7 @@ canvas navigation and four-/five-finger overview pinches are separate gestures.
 | Super+Return | Open a terminal |
 | Super+Space | Focus launcher search |
 | Super+O | Toggle canvas overview |
-| Alt+Tab / Alt+Shift+Tab | Focus the next / previous application |
+| Alt+Tab / Alt+Shift+Tab | Select next / previous application; hold Alt for previews |
 | Alt+F4 | Request that the focused application close |
 | Super+arrow keys | Pan the canvas |
 | Super+0 | Reset zoom and reveal the focused window |
@@ -136,6 +163,11 @@ Use `scripts/hearthspace-agent --session SESSION overview on` to open overview;
 includes an `overview` object containing its active state, selected window ID,
 output, and preview/card rectangles in logical screen coordinates. Read that
 state again after windows close or outputs change before acting on a preview.
+
+Unlocked status also includes `window_switcher` with its active input source,
+selected window ID, output, and preview rectangles. `viewport.animating` lets
+agents wait for the smooth focus pan to finish. Both window overlays are omitted
+from status while the session is locked.
 
 Window metadata distinguishes canvas position, screen geometry, client content
 size, focus, and presentation state. The `visible` field describes intersection

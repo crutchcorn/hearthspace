@@ -36,9 +36,13 @@ release before requesting sudo. See [graphical login](./docs/LOGIN_SESSION.md)
 for installation, updates, removal, and the remaining local acceptance checks.
 
 Super+Return opens a terminal. Super+Space searches installed applications and
-running windows; Alt+Tab switches applications. Super+arrow keys pan the canvas,
+running windows; Alt+Tab switches applications with live window previews until
+Alt is released. Alt+Shift+Tab moves backward. Super+arrow keys pan the canvas,
 Super+0 resets the view, and Super+M / Super+F toggle maximize / fullscreen.
-Slide three fingers to pan the canvas; pinch them to zoom. Pinch inward to open
+Slide three fingers to pan the canvas; pinch them to zoom. Swipe four fingers
+left/right on a touchpad, or four/five on a touchscreen, to switch windows with
+the same previews until you lift. Selection smoothly pans to the focused window.
+Pinch inward to open
 the live window overview, or outward to dismiss it: use four fingers on a native
 touchpad, or four/five on a touchscreen. The native libinput backend does not
 emit five-finger touchpad gestures. Lift your fingers to finish the gesture. The
