@@ -29,6 +29,7 @@ impl App {
     pub(super) fn navigation_available(&self) -> bool {
         !self.session_locked()
             && !self.overview_active()
+            && !self.window_switcher_active()
             && !self.keyboard.is_grabbed()
             && !self.pointer.is_grabbed()
             && self.drag.is_none()
@@ -37,7 +38,7 @@ impl App {
 
     fn check_navigation_available(&self) -> Result<(), String> {
         self.navigation_available().then_some(()).ok_or_else(|| {
-            "window action unavailable during overview, an input grab, or interactive move/resize".into()
+            "window action unavailable during overview, window switching, an input grab, or interactive move/resize".into()
         })
     }
 
@@ -81,6 +82,27 @@ impl App {
         let id = cycle_target(&ids, self.focused_normal_window_id, reverse)
             .ok_or_else(|| "no mapped application windows".to_string())?;
         self.focus_window(id)
+    }
+
+    pub(super) fn focus_switcher_window(&mut self, id: u64) -> Result<(), String> {
+        let index = self.navigation_window_index(id)?;
+        self.advance_viewport_animation();
+        let output = self
+            .window_switcher_active()
+            .then(|| self.window_switcher_output());
+        if let Some(target) = self.window_reveal_offset(index, true, output) {
+            self.start_owned_viewport_animation(target, self.viewport_scale);
+        } else {
+            // Output-pinned windows need no canvas travel. Stop any previous
+            // selection's pan at its current position instead of finishing it.
+            self.viewport_animation = None;
+        }
+        let index = self.raise_window(index);
+        if let Some(surface) = self.windows[index].surface.wl_surface() {
+            self.set_keyboard_focus_to_window(index, surface);
+        }
+        self.request_redraw();
+        Ok(())
     }
 
     pub(super) fn close_window(&mut self, id: u64) -> Result<(), String> {
@@ -196,27 +218,40 @@ impl App {
     }
 
     fn reveal_window(&mut self, index: usize, center: bool) {
+        if let Some(target) = self.window_reveal_offset(index, center, None) {
+            self.viewport_animation = None;
+            self.viewport_offset = target;
+        }
+    }
+
+    fn window_reveal_offset(
+        &self,
+        index: usize,
+        center: bool,
+        target_output: Option<Rectangle<i32, Logical>>,
+    ) -> Option<CanvasPoint> {
         if self.window_uses_output_coordinates(index) || self.windows[index].presentation.restoring
         {
-            return;
+            return None;
         }
         let canvas = self.window_canvas_rect(index);
         let outputs = self.output_logical_rects();
         let usable: Vec<_> = outputs.iter().copied().map(usable_output).collect();
-        let Some(screen) = self.normal_window_screen_rect(index) else {
-            return;
-        };
+        let screen = self.normal_window_screen_rect(index)?;
         if !center && usable.iter().any(|output| output.contains_rect(screen)) {
-            return;
+            return None;
         }
-        let target = usable
-            .iter()
-            .zip(&outputs)
-            .find(|(_, output)| output.contains(self.pointer_location.to_i32_round()))
-            .map(|(usable, _)| *usable)
+        let target = target_output
+            .map(usable_output)
+            .or_else(|| {
+                usable
+                    .iter()
+                    .zip(&outputs)
+                    .find(|(_, output)| output.contains(self.pointer_location.to_i32_round()))
+                    .map(|(usable, _)| *usable)
+            })
             .unwrap_or_else(|| usable_output(self.primary_output_logical_rect()));
-        self.viewport_animation = None;
-        self.viewport_offset = reveal_offset(canvas, target, self.viewport_scale);
+        Some(reveal_offset(canvas, target, self.viewport_scale))
     }
 }
 
@@ -255,7 +290,7 @@ pub(super) fn reveal_offset(
     }
 }
 
-fn cycle_target(ids: &[u64], current: Option<u64>, reverse: bool) -> Option<u64> {
+pub(super) fn cycle_target(ids: &[u64], current: Option<u64>, reverse: bool) -> Option<u64> {
     if ids.is_empty() {
         return None;
     }

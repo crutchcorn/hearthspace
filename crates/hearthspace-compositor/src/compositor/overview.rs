@@ -12,8 +12,8 @@ use smithay::{
 use super::{App, ViewportAnimation, windows::window_title};
 
 mod labels;
-mod layout;
-mod render;
+pub(super) mod layout;
+pub(super) mod render;
 
 const APPEAR_DURATION: Duration = Duration::from_millis(200);
 
@@ -53,6 +53,9 @@ impl App {
     pub(super) fn open_overview(&mut self) -> Result<(), String> {
         if self.session_locked() {
             return Err("overview unavailable while the session is locked".into());
+        }
+        if self.window_switcher_active() {
+            return Err("overview unavailable during window switching".into());
         }
         if self.overview_active() {
             self.interrupt_overview_pinch();

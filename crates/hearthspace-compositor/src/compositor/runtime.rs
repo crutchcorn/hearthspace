@@ -159,6 +159,7 @@ pub(in crate::compositor) fn run_event_loop(
         data.state.handle_idle_transitions();
         data.state.advance_viewport_animation();
         data.state.advance_overview_animation();
+        data.state.reconcile_window_switcher();
         data.apply_cursor_icon();
         data.update_native_hardware_cursor();
 

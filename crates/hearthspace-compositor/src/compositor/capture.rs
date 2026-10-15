@@ -320,10 +320,12 @@ impl CalloopData {
             "recovery_ready": recovery_ready,
             "xwayland_display": xwayland_display,
             "overview": self.state.overview_status(),
+            "window_switcher": self.state.window_switcher_status(),
             "viewport": {
                 "x": self.state.viewport_offset.x,
                 "y": self.state.viewport_offset.y,
                 "scale": self.state.viewport_scale,
+                "animating": self.state.viewport_animation.is_some(),
                 "pinch_active": self.state.pinch_zoom.is_active(),
             },
             "shell_ready": self.state.windows.iter().any(|w| w.kind == ManagedWindowKind::ShellBar && w.content_bbox_size.w > 0),

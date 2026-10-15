@@ -5,12 +5,12 @@ pub(super) const HEADER_HEIGHT: i32 = 88;
 pub(super) const LABEL_HEIGHT: i32 = 32;
 
 #[derive(Debug, Clone)]
-pub(super) struct Item {
-    pub(super) id: u64,
-    pub(super) rect: Rectangle<i32, Logical>,
-    pub(super) preview: Rectangle<i32, Logical>,
-    pub(super) label: Rectangle<i32, Logical>,
-    pub(super) scale: f64,
+pub(in crate::compositor) struct Item {
+    pub(in crate::compositor) id: u64,
+    pub(in crate::compositor) rect: Rectangle<i32, Logical>,
+    pub(in crate::compositor) preview: Rectangle<i32, Logical>,
+    pub(in crate::compositor) label: Rectangle<i32, Logical>,
+    pub(in crate::compositor) scale: f64,
 }
 
 pub(super) fn arrange(
@@ -55,39 +55,49 @@ pub(super) fn arrange(
                     .into(),
                 (card_w, card_h).into(),
             );
-            let inset = 12.min(card_w / 8).min(card_h / 8);
-            let label_h = LABEL_HEIGHT.min((card_h / 4).max(1));
-            let available = Size::<i32, Logical>::from((
-                (card_w - inset * 2).max(1),
-                (card_h - inset * 2 - label_h).max(1),
-            ));
-            let scale = (f64::from(available.w) / f64::from(size.w.max(1)))
-                .min(f64::from(available.h) / f64::from(size.h.max(1)))
-                .min(1.0);
-            let preview_size = Size::from((
-                ((f64::from(size.w.max(1)) * scale).floor() as i32).max(1),
-                ((f64::from(size.h.max(1)) * scale).floor() as i32).max(1),
-            ));
-            let preview = Rectangle::new(
-                rect.loc
-                    + Point::from((
-                        (card_w - preview_size.w) / 2,
-                        inset + (available.h - preview_size.h) / 2,
-                    )),
-                preview_size,
-            );
-            Item {
-                id: *id,
-                rect,
-                preview,
-                label: Rectangle::new(
-                    rect.loc + Point::from((inset, card_h - inset - label_h)),
-                    (available.w, label_h).into(),
-                ),
-                scale,
-            }
+            card(*id, rect, *size)
         })
         .collect()
+}
+
+pub(in crate::compositor) fn card(
+    id: u64,
+    rect: Rectangle<i32, Logical>,
+    size: Size<i32, Logical>,
+) -> Item {
+    let card_w = rect.size.w;
+    let card_h = rect.size.h;
+    let inset = 12.min(card_w / 8).min(card_h / 8);
+    let label_h = LABEL_HEIGHT.min((card_h / 4).max(1));
+    let available = Size::<i32, Logical>::from((
+        (card_w - inset * 2).max(1),
+        (card_h - inset * 2 - label_h).max(1),
+    ));
+    let scale = (f64::from(available.w) / f64::from(size.w.max(1)))
+        .min(f64::from(available.h) / f64::from(size.h.max(1)))
+        .min(1.0);
+    let preview_size = Size::from((
+        ((f64::from(size.w.max(1)) * scale).floor() as i32).max(1),
+        ((f64::from(size.h.max(1)) * scale).floor() as i32).max(1),
+    ));
+    let preview = Rectangle::new(
+        rect.loc
+            + Point::from((
+                (card_w - preview_size.w) / 2,
+                inset + (available.h - preview_size.h) / 2,
+            )),
+        preview_size,
+    );
+    Item {
+        id,
+        rect,
+        preview,
+        label: Rectangle::new(
+            rect.loc + Point::from((inset, card_h - inset - label_h)),
+            (available.w, label_h).into(),
+        ),
+        scale,
+    }
 }
 
 #[cfg(test)]

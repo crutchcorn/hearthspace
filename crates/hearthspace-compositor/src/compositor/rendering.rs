@@ -166,6 +166,8 @@ impl App {
             elements.push(element);
         }
 
+        elements.extend(self.collect_window_switcher_elements(renderer, output_rect));
+
         for index in order::render_order(self.windows.iter().map(|window| window.kind)) {
             if !self.window_visible_on_output(index, output_rect) {
                 continue;
