@@ -84,7 +84,9 @@ def gesture(smoke, kind, fingers, *, outward=False, small=False, cancel=False):
         raise ControlError("overview gesture started in the wrong state")
     smoke.capture(f"{name}-before")
     path = smoke.artifacts / f"libinput-{name}.log"
-    ratio = (1.06 if outward else 0.94) if small else (1.5 if outward else 0.6)
+    # Clear libinput's physical motion threshold while remaining short of
+    # Hearthspace's 0.8/1.25 overview activation thresholds.
+    ratio = (1.24 if outward else 0.85) if small else (1.5 if outward else 0.6)
     with (
         path.open("w") as log,
         TouchDevice(
@@ -102,11 +104,21 @@ def gesture(smoke, kind, fingers, *, outward=False, small=False, cancel=False):
         preserved(before, held)
         smoke.capture(f"{name}-held")
         if cancel:
-            overview_input.cancel(device, state)
+            overview_input.cancel(
+                device, state, trace_path=path, deadline=smoke.control.deadline
+            )
+            if kind == "touchpad":
+                smoke.until(
+                    "compositor received touchpad cancellation",
+                    lambda: not smoke.control.status()["viewport"]["pinch_active"],
+                )
         device.request("end")
         smoke.until(
             "overview gesture ending",
-            lambda: smoke.control.status()["overview"]["active"] == expected,
+            lambda: (
+                (state := smoke.control.status()["overview"])["active"] == expected
+                and not state["animating"]
+            ),
         )
         capture = smoke.capture(f"{name}-after")
         after = smoke.control.status()
@@ -134,6 +146,10 @@ def gesture(smoke, kind, fingers, *, outward=False, small=False, cancel=False):
 
 def selection(smoke, kind):
     smoke.control.request("overview-on")
+    smoke.until(
+        "overview thumbnails finished appearing",
+        lambda: not smoke.control.status()["overview"]["animating"],
+    )
     status = smoke.control.status()
     image = smoke.capture(f"{kind}-selection-overview")
     presented(status, image, smoke.targets)
