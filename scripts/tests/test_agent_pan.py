@@ -9,9 +9,10 @@ import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import Mock, call, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from agentlib import pan_input
 from agentlib.control import ControlError
 from agentlib.gesture_trace import gesture
 from agentlib.pan import PanSmoke
@@ -70,6 +71,31 @@ class GestureTraceTests(unittest.TestCase):
 
 
 class PanFixtureTests(unittest.TestCase):
+    def test_combined_touchpad_input_establishes_pinch_before_translation(self):
+        for fingers in (2, 3):
+            with self.subTest(fingers=fingers):
+                device = Mock(kind="touchpad")
+                pan_input.move(
+                    None,
+                    device,
+                    {"ratio": 0.75, "delta": (60, 40)},
+                    {"fingers": fingers},
+                )
+                self.assertEqual(
+                    device.request.call_args_list,
+                    [
+                        call("move", distance=720, translation=[0, 0]),
+                        call("move", distance=675, translation=[120, 80]),
+                    ],
+                )
+
+    def test_pure_touchpad_pan_keeps_spread_without_a_pinch_prelude(self):
+        device = Mock(kind="touchpad")
+        pan_input.move(None, device, {"delta": (80, 0)}, {"fingers": 3})
+        device.request.assert_called_once_with(
+            "move", distance=900, translation=[160, 0]
+        )
+
     def test_uniform_translation_preserves_each_finger_offset_and_radius(self):
         original = contact_positions(900, 3)
         translated = contact_positions(900, 3, (120, -80))

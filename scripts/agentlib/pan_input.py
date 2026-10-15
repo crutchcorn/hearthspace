@@ -36,6 +36,11 @@ def move(smoke, device, case, state):
     ratio = case.get("ratio", 1)
     dx, dy = case["delta"]
     if device.kind == "touchpad":
+        if ratio != 1:
+            # Establish libinput's pinch classification before translation makes
+            # every contact travel together (which correctly starts a swipe).
+            # Both phases belong to the same uninterrupted contact sequence.
+            device.request("move", distance=720, translation=[0, 0])
         device.request("move", distance=900 * ratio, translation=[dx * 2, dy * 2])
         return
     raw = scaled(state["points"], ratio)
