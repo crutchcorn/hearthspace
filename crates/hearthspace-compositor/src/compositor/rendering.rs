@@ -6,9 +6,10 @@ use smithay::{
             Kind,
             memory::MemoryRenderBufferRenderElement,
             render_elements,
+            solid::SolidColorRenderElement,
             surface::{WaylandSurfaceRenderElement, render_elements_from_surface_tree},
             texture::TextureRenderElement,
-            utils::{Relocate, RelocateRenderElement, RescaleRenderElement},
+            utils::{CropRenderElement, Relocate, RelocateRenderElement, RescaleRenderElement},
         },
         gles::GlesRenderer,
     },
@@ -38,6 +39,8 @@ render_elements! {
     Surface = RescaleRenderElement<WaylandSurfaceRenderElement<GlesRenderer>>,
     Memory = MemoryRenderBufferRenderElement<GlesRenderer>,
     Texture = TextureRenderElement<GlesTexture>,
+    OverviewSurface = CropRenderElement<RescaleRenderElement<WaylandSurfaceRenderElement<GlesRenderer>>>,
+    Solid = SolidColorRenderElement,
 }
 
 render_elements! {
@@ -110,7 +113,9 @@ impl App {
         // Background tiles are wallpaper pixels, not client logical pixels, so
         // they opt out of monitor DPI scaling while still being translated into
         // this output's framebuffer-local coordinate space.
-        let tiles = if self.session_locked() || self.fullscreen_on_output(output_rect) {
+        let tiles = if self.session_locked()
+            || (!self.overview_active() && self.fullscreen_on_output(output_rect))
+        {
             Vec::new()
         } else {
             self.background_image_elements(renderer, output_rect, output_scale)
@@ -151,6 +156,10 @@ impl App {
         }
         self.refresh_normal_window_outputs();
         self.refresh_fractional_scales();
+
+        if self.overview_active() {
+            return self.collect_overview_elements(renderer, output_rect);
+        }
 
         let mut elements = Vec::new();
         for element in self.software_cursor_elements(renderer, output_rect) {
@@ -209,7 +218,7 @@ impl App {
     /// native scale; the surrounding [`render_frame_at`](Self::render_frame_at)
     /// rescales the whole scene by the output scale, so the cursor scales with
     /// monitor DPI and its hotspot always lands on the logical pointer position.
-    fn software_cursor_elements(
+    pub(super) fn software_cursor_elements(
         &mut self,
         renderer: &mut GlesRenderer,
         output_rect: Rectangle<i32, Logical>,

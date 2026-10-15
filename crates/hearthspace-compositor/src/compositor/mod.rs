@@ -21,6 +21,7 @@ mod layout;
 mod masonry_titlebar;
 mod navigation;
 mod output;
+mod overview;
 mod presentation;
 mod rendering;
 mod runtime;
@@ -259,6 +260,8 @@ struct App {
     layout_store: layout::LayoutStore,
     viewport_scale: f64,
     viewport_animation: Option<ViewportAnimation>,
+    overview: overview::Overview,
+    overview_input: input::OverviewInput,
     pinch_zoom: input::PinchZoom,
     windows: Vec<ManagedWindow>,
     next_window_id: u64,
@@ -613,6 +616,8 @@ pub(in crate::compositor) fn initialize_app(
         viewport_scale,
         layout_store,
         viewport_animation: None,
+        overview: overview::Overview::default(),
+        overview_input: input::OverviewInput::default(),
         pinch_zoom: input::PinchZoom::default(),
         windows: Vec::new(),
         next_window_id: 1,
