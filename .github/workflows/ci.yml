@@ -23,7 +23,8 @@ jobs:
             libwayland-dev wayland-protocols libinput-dev \
             libxkbcommon-dev libxkbcommon-x11-dev libudev-dev \
             libseat-dev libgbm-dev libegl1-mesa-dev libgles2-mesa-dev \
-            libdrm-dev libsystemd-dev libgtk-4-dev
+            libdrm-dev libsystemd-dev libgtk-4-dev \
+            libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev python3 dbus
 
       - name: Set up Rust
         uses: ./.github/actions/setup-rust
@@ -32,10 +33,17 @@ jobs:
         run: cargo fmt --all --check
 
       - name: Clippy
-        run: cargo clippy --all-targets -- -D warnings
+        run: cargo clippy --locked --workspace --all-targets --features udev,e2e,test-apps -- -D warnings
 
-      - name: Test
-        run: cargo test --all-targets
+      - name: Build all workspace targets
+        run: cargo build --locked --workspace --all-targets --features udev,e2e,test-apps
+
+      # Rendering/accessibility integration tests run in the E2E workflow.
+      - name: Test workspace
+        run: cargo test --locked --workspace --all-targets --features udev,test-apps
+
+      - name: Test agent helpers
+        run: python3 -m unittest discover -s scripts/tests -v
 
   deny:
     name: Dependency advisories and bans
@@ -52,6 +60,6 @@ jobs:
       - name: cargo-deny
         uses: EmbarkStudios/cargo-deny-action@bb137d7af7e4fb67e5f82a49c4fce4fad40782fe # v2.0.20
         with:
-          rust-version: 1.93.1
+          rust-version: 1.99.0
           command: check advisories bans sources
           command-arguments: "--warn unmaintained"

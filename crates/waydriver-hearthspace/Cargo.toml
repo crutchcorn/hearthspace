@@ -2,16 +2,16 @@
 name = "waydriver-hearthspace"
 version = "0.1.0"
 edition = "2024"
-rust-version = "1.93.1"
+rust-version = "1.99.0"
 license = "Apache-2.0"
 
 [dependencies]
-async-trait = "0.1"
-tempfile = "3"
-tokio = { version = "1", features = ["io-util", "net", "process", "time"] }
-tokio-util = "0.7"
-uuid = { version = "1", features = ["v4"] }
-waydriver = "0.3.9"
+async-trait = "0.1.92"
+tempfile = "3.27.0"
+tokio = { version = "1.53.3", features = ["io-util", "net", "process", "time"] }
+tokio-util = "0.7.20"
+uuid = { version = "1.28.0", features = ["v4"] }
+waydriver = "0.3.10"
 # Match the compositor's runtime-independent AT-SPI executor. Enabling zbus's
 # Tokio feature globally would break its existing async_io::block_on callers.
-zbus = { version = "5", default-features = false, features = ["async-io"] }
+zbus = { version = "5.19.0", default-features = false, features = ["async-io"] }

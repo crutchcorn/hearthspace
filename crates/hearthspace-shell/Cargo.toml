@@ -2,20 +2,20 @@
 name = "hearthspace-shell"
 version = "0.1.0"
 edition = "2024"
-rust-version = "1.93.1"
+rust-version = "1.99.0"
 license = "Apache-2.0"
 
 [dependencies]
 hearthspace-common = { path = "../hearthspace-common" }
 hearthspace-ui-components = { path = "../ui-components" }
-tracing = "0.1.41"
-tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
-wayland-client = "0.31.14"
-xilem = { git = "https://github.com/linebender/xilem", rev = "c5950bcb03d4f3d187a20d1159f6aa276fd056bf" }
+tracing = "0.1.44"
+tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
+wayland-client = "0.31.15"
+xilem = { git = "https://github.com/linebender/xilem", rev = "271a27a6d4a930f7878d404f9014e3c50a3a9b88" }
 
 [dev-dependencies]
-rstest = "0.26"
-tempfile = "3"
+rstest = "0.27.0"
+tempfile = "3.27.0"
 
 [lints.rust]
 unsafe_op_in_unsafe_fn = "deny"

@@ -320,8 +320,8 @@ fn parse_settings_response_parts(
         background_image_path,
         monitors: Vec::new(),
     };
-    let chunks = rest.chunks_exact(8);
-    if !chunks.remainder().is_empty() {
+    let (chunks, remainder) = rest.as_chunks::<8>();
+    if !remainder.is_empty() {
         return Err(io::Error::new(
             io::ErrorKind::InvalidData,
             "invalid settingsd response monitor field count",

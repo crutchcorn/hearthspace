@@ -2,7 +2,7 @@
 name = "hearthspace-settings"
 version = "0.1.0"
 edition = "2024"
-rust-version = "1.93.1"
+rust-version = "1.99.0"
 license = "Apache-2.0"
 
 [dependencies]
@@ -10,8 +10,8 @@ hearthspace-common = { path = "../hearthspace-common" }
 hearthspace-ipc = { path = "../hearthspace-ipc" }
 hearthspace-ui-components = { path = "../ui-components" }
 rfd = { version = "0.17.2", features = ["xdg-portal"] }
-wayland-client = "0.31.14"
-xilem = { git = "https://github.com/linebender/xilem", rev = "c5950bcb03d4f3d187a20d1159f6aa276fd056bf" }
+wayland-client = "0.31.15"
+xilem = { git = "https://github.com/linebender/xilem", rev = "271a27a6d4a930f7878d404f9014e3c50a3a9b88" }
 
 [lints.rust]
 unsafe_op_in_unsafe_fn = "deny"

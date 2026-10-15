@@ -1,5 +1,6 @@
 use atspi::{
-    AccessibilityConnection, ObjectRefOwned, connection::P2P, proxy::accessible::AccessibleProxy,
+    AccessibilityConnection, ObjectRefOwned,
+    proxy::accessible::{AccessibleProxy, ObjectRefExt},
 };
 use tracing::error;
 
@@ -48,10 +49,12 @@ pub async fn accessibility_tree_contains_term(
         }
         visited += 1;
 
-        let Ok(proxy) = connection.object_as_accessible(&object).await else {
+        // Preserve the application's unique bus name as well as its object path;
+        // GTK exposes its shared accessibility bus, not an application P2P server.
+        let Ok(proxy) = object.as_accessible_proxy(connection.connection()).await else {
             continue;
         };
-        let summary = summarize_accessible(&proxy, object).await;
+        let summary = summarize_accessible(&proxy, &object).await;
         if !is_desktop_shell_root(&summary) && accessible_matches_term(&summary, term) {
             return Ok(true);
         }
@@ -91,8 +94,11 @@ async fn log_accessibility_tree_async(
 
     let mut application_summaries = Vec::new();
     for application in applications {
-        if let Ok(proxy) = connection.object_as_accessible(&application).await {
-            application_summaries.push(summarize_accessible(&proxy, application).await);
+        if let Ok(proxy) = application
+            .as_accessible_proxy(connection.connection())
+            .await
+        {
+            application_summaries.push(summarize_accessible(&proxy, &application).await);
         }
     }
 
@@ -180,11 +186,11 @@ async fn accessible_tree_contains_window_match(
         }
         visited += 1;
 
-        let Ok(proxy) = connection.object_as_accessible(&object).await else {
+        let Ok(proxy) = object.as_accessible_proxy(connection.connection()).await else {
             continue;
         };
 
-        let summary = summarize_accessible(&proxy, object).await;
+        let summary = summarize_accessible(&proxy, &object).await;
         if accessible_matches_window(&summary, window) {
             return true;
         }
@@ -199,10 +205,10 @@ async fn accessible_tree_contains_window_match(
 
 async fn summarize_accessible(
     proxy: &AccessibleProxy<'_>,
-    object: ObjectRefOwned,
+    object: &ObjectRefOwned,
 ) -> AccessibleNodeSummary {
     AccessibleNodeSummary {
-        object,
+        object: object.clone(),
         role: proxy.get_role_name().await.unwrap_or_default(),
         name: proxy.name().await.unwrap_or_default(),
         description: proxy.description().await.unwrap_or_default(),
@@ -252,7 +258,7 @@ async fn log_accessible_ref(
             break;
         }
 
-        let proxy = match connection.object_as_accessible(&object).await {
+        let proxy = match object.as_accessible_proxy(connection.connection()).await {
             Ok(proxy) => proxy,
             Err(error) => {
                 println!("{}<unavailable {:?}: {}>", indent(depth), object, error);

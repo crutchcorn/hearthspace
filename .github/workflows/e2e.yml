@@ -1,6 +1,9 @@
 name: E2E Tests
 
 on:
+  push:
+    branches: [main]
+  pull_request:
   workflow_dispatch:
 
 permissions:
@@ -14,6 +17,9 @@ jobs:
 
     env:
       CARGO_TERM_COLOR: always
+      HEARTHSPACE_E2E: "1"
+      HEARTHSPACE_REQUIRE_ATSPI: "1"
+      LIBGL_ALWAYS_SOFTWARE: "1"
 
     steps:
       - name: Checkout
@@ -27,10 +33,12 @@ jobs:
             build-essential \
             clang \
             dbus \
+            foot \
             libclang-dev \
             libdrm-dev \
             libegl1-mesa-dev \
             libgbm-dev \
+            libgl1-mesa-dri \
             libgles2-mesa-dev \
             libgstreamer-plugins-base1.0-dev \
             libgstreamer1.0-dev \
@@ -42,15 +50,22 @@ jobs:
             libwayland-dev \
             libxkbcommon-dev \
             libxkbcommon-x11-dev \
+            mesa-vulkan-drivers \
             pkg-config \
+            python3 \
             wayland-protocols \
-            wayland-utils
+            wayland-utils \
+            xwayland
 
       - name: Set up Rust
         uses: ./.github/actions/setup-rust
 
-      - name: Run headless control E2E tests
-        run: cargo test --features e2e,test-apps --test headless_control
+      - name: Build workspace binaries and test targets
+        run: cargo build --locked --workspace --all-targets --features udev,e2e,test-apps
 
-      - name: Run WayDriver E2E tests
-        run: cargo test --features e2e,test-apps --test waydriver_hearthspace
+      # Keep GPU workloads sequential, including within each Rust test binary.
+      - name: Run Rust workspace and headless E2E tests
+        run: cargo test --locked --workspace --all-targets --features udev,e2e,test-apps -- --test-threads=1
+
+      - name: Run Python agent and cross-app clipboard regressions
+        run: python3 -m unittest discover -s scripts/tests -v

@@ -3,6 +3,7 @@ use smithay::{
     utils::{Logical, Physical, Point, Rectangle, SERIAL_COUNTER, Size},
     wayland::{
         compositor::{TraversalAction, with_states, with_surface_tree_downward},
+        selection::data_device::set_data_device_focus,
         shell::xdg::{ToplevelSurface, XdgToplevelSurfaceData},
     },
 };
@@ -30,6 +31,7 @@ use geometry::{
 
 use super::{
     App, ManagedSurface, ManagedWindow, ManagedWindowKind, ResizeState, WindowDecoration,
+    focus::KeyboardFocusTarget,
     idle::ActivityReason,
     rendering::{toplevel_geometry_loc, toplevel_geometry_size},
 };
@@ -140,8 +142,9 @@ impl App {
         self.focused_normal_window_id = (self.windows[window_index].kind
             == ManagedWindowKind::Normal)
             .then_some(self.windows[window_index].id);
+        let focus = KeyboardFocusTarget::for_window(&self.windows[window_index].surface, surface);
         let keyboard = self.keyboard.clone();
-        keyboard.set_focus(self, Some(surface), SERIAL_COUNTER.next_serial());
+        keyboard.set_focus(self, Some(focus), SERIAL_COUNTER.next_serial());
     }
 
     pub(super) fn clear_keyboard_focus(&mut self) {
@@ -150,9 +153,15 @@ impl App {
         let keyboard = self.keyboard.clone();
         keyboard.set_focus(
             self,
-            Option::<WlSurface>::None,
+            Option::<KeyboardFocusTarget>::None,
             SERIAL_COUNTER.next_serial(),
         );
+        // This Smithay revision calls focus_changed only for a new surface,
+        // not when clearing focus. A grab may defer the keyboard change, so
+        // revoke clipboard focus only once the keyboard is actually unfocused.
+        if keyboard.current_focus().is_none() {
+            set_data_device_focus(&self.display_handle, &self._seat, None);
+        }
     }
 
     pub(super) fn record_client_activity_for_window_index(

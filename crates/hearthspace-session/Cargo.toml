@@ -2,17 +2,17 @@
 name = "hearthspace-session"
 version = "0.1.0"
 edition = "2024"
-rust-version = "1.93.1"
+rust-version = "1.99.0"
 license = "Apache-2.0"
 
 [dependencies]
-clap = { version = "4", features = ["derive"] }
-ctrlc = { version = "3", features = ["termination"] }
+clap = { version = "4.6.7", features = ["derive"] }
+ctrlc = { version = "3.5.2", features = ["termination"] }
 hearthspace-common = { path = "../hearthspace-common" }
-nix = { version = "0.30", features = ["signal", "process", "socket"] }
-tracing = "0.1.41"
-tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
-which = "8"
+nix = { version = "0.31.3", features = ["signal", "process", "socket"] }
+tracing = "0.1.44"
+tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
+which = "8.0.6"
 
 [lints]
 workspace = true

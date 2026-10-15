@@ -78,6 +78,11 @@ Add `test-apps` when exercising the optional GTK client. Pure transport,
 coordinate mapping, input cleanup, and timeout tests belong below the native
 suite so they do not require a display device or a VT switch.
 
+The [clipboard regression](CLIPBOARD.md#regression-workflow) runs GTK editors on
+both Wayland and XWayland and checks exact pasted text through ordinary keyboard
+shortcuts. Its Python headless test shares the same assertions with the native
+clipboard smoke command.
+
 ## Native Validation
 
 The native suite is opt-in because it temporarily takes an unused VT and a real

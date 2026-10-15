@@ -1,0 +1,4 @@
+#!/usr/bin/env python3
+from agentlib.clipboard_native import main
+
+raise SystemExit(main())

@@ -1,7 +1,5 @@
 use std::time::Instant;
 
-#[cfg(feature = "xwayland")]
-use smithay::input::SeatState;
 use smithay::{
     backend::renderer::{
         Bind, ImportDma,
@@ -50,8 +48,6 @@ pub(in crate::compositor) struct CalloopData {
     // (`state.cursor_icon`) is only pushed to the backend when it changes.
     pub(in crate::compositor) applied_cursor: CursorIcon,
     pub(in crate::compositor) applied_cursor_visible: bool,
-    #[cfg(feature = "xwayland")]
-    pub(in crate::compositor) xwayland_seat_state: SeatState<CalloopData>,
 }
 
 pub(in crate::compositor) fn create_headless_calloop_data(
@@ -79,8 +75,6 @@ pub(in crate::compositor) fn create_headless_calloop_data(
         full_redraw: 1,
         applied_cursor: CursorIcon::Default,
         applied_cursor_visible: true,
-        #[cfg(feature = "xwayland")]
-        xwayland_seat_state: SeatState::new(),
     }
 }
 
@@ -110,8 +104,6 @@ pub(in crate::compositor) fn create_calloop_data(
         full_redraw: 1,
         applied_cursor: CursorIcon::Default,
         applied_cursor_visible: true,
-        #[cfg(feature = "xwayland")]
-        xwayland_seat_state: SeatState::new(),
     }
 }
 

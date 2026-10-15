@@ -11,7 +11,9 @@ use hearthspace_shell::app_catalog::AppCatalog;
 
 mod capture;
 mod client;
+mod clipboard;
 mod cursor;
+mod focus;
 mod handlers;
 mod idle;
 mod input;
@@ -224,6 +226,7 @@ enum HitTarget {
 }
 
 struct App {
+    display_handle: DisplayHandle,
     compositor_state: CompositorState,
     xdg_shell_state: XdgShellState,
     _xdg_decoration_state: XdgDecorationState,
@@ -426,8 +429,6 @@ pub fn run_winit(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> 
         full_redraw: 1,
         applied_cursor: CursorIcon::Default,
         applied_cursor_visible: true,
-        #[cfg(feature = "xwayland")]
-        xwayland_seat_state: SeatState::new(),
     };
 
     run_event_loop(event_loop, &mut data)
@@ -558,6 +559,7 @@ pub(in crate::compositor) fn initialize_app(
     let output_layout = OutputLayout::from_monitors(settings.monitors.clone());
 
     let app = App {
+        display_handle: dh.clone(),
         compositor_state,
         xdg_shell_state: XdgShellState::new_with_capabilities::<App>(
             &dh,

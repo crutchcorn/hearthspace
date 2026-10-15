@@ -1,5 +1,5 @@
 use smithay::{
-    backend::input::{Axis, ButtonState, KeyState},
+    backend::input::{Axis, ButtonState, InputTime, KeyState},
     input::{
         keyboard::FilterResult,
         pointer::{AxisFrame, ButtonEvent, MotionEvent},
@@ -23,7 +23,7 @@ impl App {
             evdev_keycode.saturating_add(8).into(),
             state,
             SERIAL_COUNTER.next_serial(),
-            event_time_msec(),
+            InputTime::now(),
             |_, _, _| FilterResult::Forward,
         );
     }
@@ -33,7 +33,7 @@ impl App {
         location: Point<f64, Logical>,
     ) {
         trace!(?location, "synthesizing absolute pointer motion");
-        self.apply_pointer_motion(location, event_time_msec());
+        self.apply_pointer_motion(location, InputTime::now());
     }
 
     pub(in crate::compositor) fn synthesize_pointer_motion_rel(
@@ -43,7 +43,7 @@ impl App {
         trace!(?delta, "synthesizing relative pointer motion");
         self.apply_pointer_motion(
             relative_pointer_location(self.raw_pointer_location, delta),
-            event_time_msec(),
+            InputTime::now(),
         );
     }
 
@@ -53,7 +53,7 @@ impl App {
         state: ButtonState,
     ) {
         trace!(button, ?state, "synthesizing pointer button");
-        let time = event_time_msec();
+        let time = InputTime::now();
         let is_left_button = button == 0x110;
 
         if is_left_button
@@ -191,7 +191,7 @@ impl App {
             self.record_client_activity_for_window_index(window_index, ActivityReason::ClientInput);
         }
 
-        let time = event_time_msec();
+        let time = InputTime::now();
         let mut frame = AxisFrame::new(time);
         frame = add_synthetic_axis_to_frame(frame, Axis::Horizontal, horizontal);
         frame = add_synthetic_axis_to_frame(frame, Axis::Vertical, vertical);
@@ -201,7 +201,7 @@ impl App {
         pointer.frame(self);
     }
 
-    pub(super) fn apply_pointer_motion(&mut self, location: Point<f64, Logical>, time: u32) {
+    pub(super) fn apply_pointer_motion(&mut self, location: Point<f64, Logical>, time: InputTime) {
         let previous_location = self.pointer_location;
         let output_rects = self.output_logical_rects();
         let previous_output = rect_index_containing_point(previous_location, &output_rects);
@@ -328,7 +328,7 @@ impl App {
             &MotionEvent {
                 location: self.pointer_location,
                 serial: SERIAL_COUNTER.next_serial(),
-                time: event_time_msec(),
+                time: InputTime::now(),
             },
         );
         pointer.frame(self);
@@ -461,13 +461,6 @@ pub(super) fn relative_pointer_location(
     delta: Point<f64, Logical>,
 ) -> Point<f64, Logical> {
     raw_location + delta
-}
-
-fn event_time_msec() -> u32 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|duration| duration.as_millis() as u32)
-        .unwrap_or_default()
 }
 
 #[cfg(test)]

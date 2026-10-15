@@ -33,21 +33,49 @@ I develop Hearthspace on Ubuntu 26.04 LTS, and I run it in a nested Wayland comp
 
 As such, while my CPU, GPU, and RAM are all quite spec'd up, the VM is not a perfect representation of a real Linux system. Native DRM/KMS testing currently runs through a virtual Parallels/virgl stack, so real-hardware validation is still required for GPU, KMS, hotplug, and VT behavior. I also cannot test Wayland gestures reliably in the VM, so I have to run with `--scroll-zooms` to test zooming the canvas using the scroll wheel without a modifier key.
 
+Agent-driven native tests also run on a physical GPD host with AMD Strix
+Radeon 880M/890M graphics, the `amdgpu` driver, and Linux `7.0.0-38-generic`.
+The Rust 1.99/dependency upgrade passed desktop and clipboard acceptance there
+on `eDP-1` at 2560×1600 with scale 2, using a spare VT and restoring the original
+desktop after each run. See [Native Testing](./docs/NATIVE_TESTING.md).
+
 ### Required Packages
 
 I develop Hearthspace on Ubuntu 26.04 LTS, and the following packages are required to build and run the compositor and shell:
 
 ```sh
-sudo apt-get install -y build-essential cargo rustc rustfmt pkg-config clang libclang-dev libwayland-dev wayland-protocols wayland-utils libinput-dev libxkbcommon-dev libxkbcommon-x11-dev libudev-dev libseat-dev libgbm-dev libegl1-mesa-dev libgles2-mesa-dev libdrm-dev libsystemd-dev
+sudo apt-get install -y build-essential pkg-config clang libclang-dev libwayland-dev wayland-protocols wayland-utils libinput-dev libxkbcommon-dev libxkbcommon-x11-dev libudev-dev libseat-dev libgbm-dev libegl1-mesa-dev libgles2-mesa-dev libdrm-dev libsystemd-dev
 ```
+
+### Rust Toolchain
+
+Use [rustup](https://rust-lang.org/tools/install/) for Rust. The repository's
+`rust-toolchain.toml` pins Rust **1.99.0** and installs Clippy, rustfmt,
+rust-analyzer, and the standard-library sources. CI uses the same pin.
+Ubuntu's Rust packages can be older than the project and its Xilem dependency.
+
+On the development host, rustup was updated to **1.29.1** and its user-wide
+default changed to **1.99.0** with:
+
+```sh
+rustup toolchain install 1.99.0 --profile minimal --component clippy,rustfmt,rust-analyzer,rust-src
+rustup default 1.99.0
+```
+
+The existing `~/.profile` and `~/.bashrc` source `~/.cargo/env`, putting rustup's
+commands ahead of `/usr/bin`. Distro-managed Rust packages remain installed;
+normal user commands now use the rustup toolchain, including outside this
+checkout. No system package files were overwritten. Verify with `rustc
+--version`, `cargo --version`, and `rustup show`.
 
 #### E2E Testing Dependencies
 
 For E2E testing, the WayDriver adapter depends on the published `waydriver` crate, which
 links GStreamer even when the Hearthspace backend overrides screenshot capture.
 Install the development packages before building tests that include
-`waydriver-hearthspace`. Those crates are gated behind the Cargo feature `e2e`,
-so normal builds and CI do not require GStreamer:
+`waydriver-hearthspace`. The compositor gates its adapter behind the Cargo
+feature `e2e`; full workspace checks and CI also build the adapter crate itself
+and therefore require GStreamer:
 
 ```sh
 sudo apt-get install -y libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev
@@ -160,6 +188,11 @@ cargo test -p hearthspace-compositor --features test-apps
 ```
 
 Without `test-apps`, `--gtk-test-app` and the shell `A11yTest` action report that the binary must be rebuilt with `--features test-apps`.
+
+The same feature builds `hearthspace-clipboard-test`, a GTK editor used to verify
+copy/paste between Wayland and XWayland. It requires the GTK headers and Xwayland
+runtime listed above. See [clipboard regression testing](./docs/CLIPBOARD.md)
+for the headless test and native VT workflow.
 
 ### Workspace Packages
 
@@ -379,7 +412,11 @@ with AT-SPI only while screen-reader status is active.
 See [docs/E2E_TESTING.md](./docs/E2E_TESTING.md) for the evergreen technical
 architecture of the headless and WayDriver E2E harness.
 
-### Xilem Git Dependency
+### Compositor and UI Git Dependencies
+
+Smithay is pinned directly to upstream commit
+`5c2ba4132556a08abc70ae1771d275ec2cfc031f`, which includes the X11 INCR header
+fix needed for large clipboard transfers. No vendored Smithay copy is required.
 
 The shell UI, settings app, UI storybook, and shared UI components are built
 with [Xilem](https://github.com/linebender/xilem). We depend on upstream Xilem
@@ -390,9 +427,14 @@ Wayland `app_id` / X11 `WM_CLASS`.
 Keep these dependencies pinned to an explicit commit until intentionally
 updating Xilem and rerunning the full workspace checks.
 
+The direct Naga 28 and Fontique 0.8 dependencies intentionally match the versions
+used by this Xilem revision. They enable required features in the existing
+dependency graph; independently moving them to newer major versions would
+introduce separate copies and leave the required features disabled.
+
 ```toml
-masonry = { git = "https://github.com/linebender/xilem", rev = "c5950bcb03d4f3d187a20d1159f6aa276fd056bf", features = ["testing"] }
-xilem = { git = "https://github.com/linebender/xilem", rev = "c5950bcb03d4f3d187a20d1159f6aa276fd056bf" }
+masonry = { git = "https://github.com/linebender/xilem", rev = "271a27a6d4a930f7878d404f9014e3c50a3a9b88", features = ["testing"] }
+xilem = { git = "https://github.com/linebender/xilem", rev = "271a27a6d4a930f7878d404f9014e3c50a3a9b88" }
 ```
 
 No local Xilem clone is required for normal development; Cargo fetches the git
@@ -401,10 +443,24 @@ for source search when working through Xilem/Masonry behavior or API questions.
 
 ### Linting
 
-`cargo clippy` is run as part of CI (`.github/workflows/ci.yml`) and locally. On the development VM, clippy is provided by the apt package rather than `rustup`:
+Clippy and rustfmt come from the pinned rustup toolchain. Run:
 
 ```sh
-sudo apt-get install -y rust-clippy
+cargo fmt --all --check
+cargo clippy --workspace --all-targets --features udev,e2e,test-apps -- -D warnings
+```
+
+The development host also has [cargo-deny 0.20.2](https://github.com/EmbarkStudios/cargo-deny/releases/tag/0.20.2)
+in `~/.cargo/bin` and [Ruff 0.17.0](https://github.com/astral-sh/ruff/releases/tag/0.17.0)
+in `~/.local/bin`. Their official Linux release archives were verified against
+the published SHA256 checksum files before installing the binaries. Cargo-deny
+replaced 0.19.9; Ruff's previously temporary binary was verified and installed
+on PATH. These are user installations, with no apt package changes.
+
+```sh
+cargo deny check advisories bans sources --warn unmaintained
+ruff check scripts
+ruff format --check scripts
 ```
 
 ### Verified Versions
@@ -412,9 +468,9 @@ sudo apt-get install -y rust-clippy
 The development VM currently has:
 
 ```text
-rustc: 1.93.1
-cargo: 1.93.1
-rustfmt: 1.8.0
+rustc: 1.99.0
+cargo: 1.99.0
+rustfmt: 1.10.0-stable
 clang: 21.1.8
 wayland-server: 1.24.0
 wayland-protocols: 1.47

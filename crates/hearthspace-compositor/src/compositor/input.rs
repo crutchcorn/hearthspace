@@ -2,7 +2,7 @@
 
 use smithay::{
     backend::input::{
-        AbsolutePositionEvent, Axis, ButtonState, Event, InputBackend, InputEvent,
+        AbsolutePositionEvent, Axis, ButtonState, Event, InputBackend, InputEvent, InputTime,
         KeyboardKeyEvent, PointerAxisEvent, PointerButtonEvent, PointerMotionEvent, TouchEvent,
     },
     input::{
@@ -28,8 +28,8 @@ pub(in crate::compositor) fn handle_input_event<B: InputBackend>(
 ) {
     match event {
         InputEvent::Keyboard { event } => {
-            let time = event.time_msec();
-            trace!(key_code = ?event.key_code(), state = ?event.state(), time, "keyboard input");
+            let time = event.time();
+            trace!(key_code = ?event.key_code(), state = ?event.state(), ?time, "keyboard input");
             state.record_focused_client_activity(ActivityReason::ClientInput);
             let keyboard = state.keyboard.clone();
             keyboard.input::<(), _>(
@@ -42,13 +42,13 @@ pub(in crate::compositor) fn handle_input_event<B: InputBackend>(
             );
         }
         InputEvent::PointerMotionAbsolute { event } => {
-            let time = event.time_msec();
+            let time = event.time();
             let location = event.position_transformed(state.output_logical_size());
-            trace!(?location, time, "absolute pointer motion input");
+            trace!(?location, ?time, "absolute pointer motion input");
             state.apply_pointer_motion(location, time);
         }
         InputEvent::PointerMotion { event } => {
-            trace!(delta = ?event.delta(), time = event.time_msec(), "relative pointer motion input");
+            trace!(delta = ?event.delta(), time = ?event.time(), "relative pointer motion input");
             // libinput reports accelerated relative deltas already in the
             // compositor's logical coordinate space, so they are applied
             // directly to the logical pointer location (as Smithay's reference
@@ -61,13 +61,13 @@ pub(in crate::compositor) fn handle_input_event<B: InputBackend>(
             // routed.
             state.apply_pointer_motion(
                 relative_pointer_location(state.raw_pointer_location, event.delta()),
-                event.time_msec(),
+                event.time(),
             );
         }
         InputEvent::PointerButton { event } => {
-            let time = event.time_msec();
+            let time = event.time();
             let is_left_button = event.button() == Some(smithay::backend::input::MouseButton::Left);
-            trace!(button = event.button_code(), state = ?event.state(), time, "pointer button input");
+            trace!(button = event.button_code(), state = ?event.state(), ?time, "pointer button input");
 
             if is_left_button
                 && event.state() == ButtonState::Released
@@ -220,16 +220,16 @@ pub(in crate::compositor) fn handle_input_event<B: InputBackend>(
                 );
             }
 
-            let time = event.time_msec();
+            let time = event.time();
             let pointer = state.pointer.clone();
             pointer.axis(state, axis_frame_from_event(&event, time));
             pointer.frame(state);
         }
         InputEvent::TouchDown { event } => {
             let slot = event.slot();
-            let time = event.time_msec();
+            let time = event.time();
             if state.active_touch_slot.is_some() {
-                trace!(?slot, time, "ignoring additional touch contact");
+                trace!(?slot, ?time, "ignoring additional touch contact");
                 return;
             }
 
@@ -238,16 +238,16 @@ pub(in crate::compositor) fn handle_input_event<B: InputBackend>(
                 event.position_transformed(primary_output.size),
                 primary_output,
             );
-            trace!(?slot, ?location, time, "single-touch down input");
+            trace!(?slot, ?location, ?time, "single-touch down input");
             state.active_touch_slot = Some(slot);
             state.apply_pointer_motion(location, time);
             state.synthesize_pointer_button(0x110, ButtonState::Pressed);
         }
         InputEvent::TouchMotion { event } => {
             let slot = event.slot();
-            let time = event.time_msec();
+            let time = event.time();
             if state.active_touch_slot != Some(slot) {
-                trace!(?slot, time, "ignoring inactive touch motion");
+                trace!(?slot, ?time, "ignoring inactive touch motion");
                 return;
             }
 
@@ -256,30 +256,30 @@ pub(in crate::compositor) fn handle_input_event<B: InputBackend>(
                 event.position_transformed(primary_output.size),
                 primary_output,
             );
-            trace!(?slot, ?location, time, "single-touch motion input");
+            trace!(?slot, ?location, ?time, "single-touch motion input");
             state.apply_pointer_motion(location, time);
         }
         InputEvent::TouchUp { event } => {
             let slot = event.slot();
-            let time = event.time_msec();
+            let time = event.time();
             if state.active_touch_slot != Some(slot) {
-                trace!(?slot, time, "ignoring inactive touch up");
+                trace!(?slot, ?time, "ignoring inactive touch up");
                 return;
             }
 
-            trace!(?slot, time, "single-touch up input");
+            trace!(?slot, ?time, "single-touch up input");
             state.synthesize_pointer_button(0x110, ButtonState::Released);
             state.active_touch_slot = None;
         }
         InputEvent::TouchCancel { event } => {
             let slot = event.slot();
-            let time = event.time_msec();
+            let time = event.time();
             if state.active_touch_slot != Some(slot) {
-                trace!(?slot, time, "ignoring inactive touch cancel");
+                trace!(?slot, ?time, "ignoring inactive touch cancel");
                 return;
             }
 
-            debug!(?slot, time, "single-touch input cancelled");
+            debug!(?slot, ?time, "single-touch input cancelled");
             state.synthesize_pointer_button(0x110, ButtonState::Released);
             state.active_touch_slot = None;
         }
@@ -297,7 +297,7 @@ fn touch_location_in_primary_output(
 
 fn axis_frame_from_event<B: InputBackend>(
     event: &impl PointerAxisEvent<B>,
-    time: u32,
+    time: InputTime,
 ) -> AxisFrame {
     let mut frame = AxisFrame::new(time)
         .source(event.source())

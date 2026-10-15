@@ -211,7 +211,9 @@ fn hex_decode_to_string(input: &str) -> Option<String> {
 
     let bytes = input
         .as_bytes()
-        .chunks_exact(2)
+        .as_chunks::<2>()
+        .0
+        .iter()
         .map(|pair| Some(hex_value(pair[0])? << 4 | hex_value(pair[1])?))
         .collect::<Option<Vec<_>>>()?;
     String::from_utf8(bytes).ok()
