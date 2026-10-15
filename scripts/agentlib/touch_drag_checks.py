@@ -176,7 +176,7 @@ def resize(smoke, device, name):
             def follows_contact(requested=requested):
                 after = smoke.window(smoke.target)
                 try:
-                    verify.resized(before, after, requested)
+                    verify.resized(before, after, requested, view["scale"])
                 except ControlError:
                     return None
                 return after

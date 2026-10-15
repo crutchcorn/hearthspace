@@ -19,6 +19,7 @@ class TouchDragEvidenceTests(unittest.TestCase):
             "y": 30,
             "width": 180,
             "height": 150,
+            "content_width": 180,
             "canvas_x": 100,
             "canvas_y": 75,
             "mapped": True,
@@ -93,7 +94,7 @@ class TouchDragEvidenceTests(unittest.TestCase):
                 verify.viewport_unchanged(before, before | change)
 
     def test_resize_requires_final_distance_and_untouched_edges(self):
-        resized = self.before | {"width": 120}
+        resized = self.before | {"width": 120, "content_width": 120}
         verify.resized(self.before, resized, 60)
         for wrong in (
             self.before | {"width": 170},
@@ -102,6 +103,25 @@ class TouchDragEvidenceTests(unittest.TestCase):
         ):
             with self.subTest(wrong=wrong), self.assertRaises(ControlError):
                 verify.resized(self.before, wrong, 60)
+
+    def test_zoomed_resize_waits_for_exact_final_client_commit(self):
+        before = self.before | {"width": 720, "content_width": 900}
+        final = before | {"width": 640, "content_width": 800}
+        verify.resized(before, final, 80, 0.8)
+        for width, content in ((642, 802), (641, 801), (639, 799)):
+            intermediate = before | {"width": width, "content_width": content}
+            with (
+                self.subTest(content=content),
+                self.assertRaisesRegex(ControlError, "final touchscreen resize width"),
+            ):
+                verify.resized(before, intermediate, 80, 0.8)
+
+    def test_resize_half_canvas_pixel_rounds_away_from_zero(self):
+        before = self.before | {"width": 1800, "content_width": 900}
+        final = before | {"width": 1722, "content_width": 861}
+        verify.resized(before, final, 77, 2)
+        with self.assertRaisesRegex(ControlError, "final touchscreen resize width"):
+            verify.resized(before, final | {"width": 1724, "content_width": 862}, 77, 2)
 
     def test_resize_requires_new_pixels_in_vacated_strip(self):
         resized = self.before | {"width": 120}

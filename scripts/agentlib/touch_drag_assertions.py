@@ -1,5 +1,7 @@
 """State and pixel assertions for touch-owned move/resize pointer grabs."""
 
+import math
+
 from .control import ControlError
 from .firefox_assertions import restored
 from .pinch_assertions import same_viewport
@@ -47,9 +49,18 @@ def move_pixels(before, after, image, captured):
     return {"marker_bounds": marker}
 
 
-def resized(before, after, amount):
+def resized(before, after, amount, scale=1):
     if not restored(after) or abs(before["width"] - after["width"] - amount) > 3:
         raise ControlError("touchscreen did not resize Firefox by its screen distance")
+    # The last motion can still be waiting for a client configure commit. Screen
+    # rounding tolerances must not accept an intermediate buffer as the final
+    # resize: subsequent commits would then look like a grab surviving release.
+    # The positive shrink amount rounds halfway away from zero, as Rust does.
+    expected_width = before["content_width"] - math.floor(amount / scale + 0.5)
+    if after["content_width"] != expected_width:
+        raise ControlError(
+            "Firefox has not committed the final touchscreen resize width"
+        )
     if any(abs(before[key] - after[key]) > 1 for key in ("x", "y", "height")):
         raise ControlError("touchscreen right-edge resize changed another edge")
 
