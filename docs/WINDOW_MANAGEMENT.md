@@ -12,11 +12,17 @@ zooming change the view of that window. Pointer input uses the inverse of the
 same transform used to render it.
 
 A maximized or fullscreen window belongs to one output and uses that output's
-logical coordinates at native scale. Canvas zoom does not shrink the window or
-change its input coordinates. Maximized windows reserve space for the shell bar
+logical coordinates at native scale. Deliberate canvas zoom restores maximized
+windows to their floating size and position so they follow the canvas again;
+fullscreen windows remain pinned. A cancelled pinch restores the prior view and
+maximization. Maximized windows reserve space for the shell bar
 and any compositor title bar. Fullscreen windows cover the output and suppress
 those decorations. A smaller fullscreen client buffer is centered against an
 opaque black background.
+
+Zoom reveals a restored app or its focused dialog if its saved position is
+outside the view. When a shell button owns focus, it reveals the topmost restored
+app on that output while keeping focus on the shell.
 
 Entering either state preserves the floating position and content size.
 Fullscreen may be layered over maximized state: leaving fullscreen returns to
@@ -27,6 +33,12 @@ size.
 
 Output changes reconfigure pinned windows. If their output disappears, they
 move to the primary output. Their saved canvas position remains intact.
+
+The session supplies GTK defaults that expose maximize/restore and close controls
+in application title bars, including Firefox. Existing user button-layout
+preferences take precedence. These defaults live only in the owned session
+runtime and are inherited by directly launched and portal-activated applications.
+They do not add unsupported minimize behavior or modify another desktop's settings.
 
 ## Focus, dialogs, and recovery
 

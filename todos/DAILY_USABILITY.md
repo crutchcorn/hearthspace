@@ -287,3 +287,85 @@ Final `cargo fmt --all --check`, Ruff check/format, and `git diff --check` passe
 An independent acceptance review found no remaining blocker for the scope above.
 The daily-use milestone is complete; the original tty2 and both background T3
 services are restored and no test session remains active.
+
+### Follow-up: Firefox restore controls and visible canvas zoom
+
+The user's native-TTY report exposed a gap in the acceptance above: Firefox can
+start maximized while GTK's default button layout offers only Close. The previous
+zoom checks used floating windows, so they did not catch canvas changes being
+hidden behind an output-pinned maximized browser.
+
+`/tmp/hearthspace-firefox-zoom-before` reproduces both problems with a fresh owned
+Firefox profile. Shell zoom changed the viewport to 0.8 while Firefox remained
+1280×752. Super+M restored it, after which pointer resizing and touchpad zoom
+worked. The subsequent touchscreen probe reached the minimum scale of 0.5; its
+ratio assertion was invalid at that limit, so it is retained as a failed test,
+not evidence of a missed touchscreen gesture.
+
+The session now supplies runtime-local GTK/GSettings maximize/restore defaults,
+preserving existing user preferences. An actual canvas zoom restores maximized
+windows to their saved floating geometry before scaling. Fullscreen stays pinned,
+unchanged/clamped gestures leave maximization alone, and cancellation restores
+both the original viewport and maximization. Client configure completion does
+not steal focus or interrupt an ongoing gesture.
+
+The new `scripts/firefox-smoke` exercises real Firefox CSD controls, pointer edge
+resizing, a fixed-size rendered marker, both three-contact libinput paths,
+fourth-contact cancellation, saved floating geometry, and F11 fullscreen. It
+uses a fresh marker-owned profile, removes it only after successful session and
+process cleanup, and retains failed-run evidence. The first attempt,
+`/tmp/hearthspace-firefox-zoom-after-1`, exposed a test race between the maximized
+state flag and the client's configure commit. The test now waits for the actual
+output geometry. `/tmp/hearthspace-firefox-zoom-after-2` passed all steps: the
+320-pixel marker became 256 pixels with shell zoom, 226 with touchpad pinch, and
+208 with touchscreen pinch; fullscreen retained 320. Both cancellation cases
+restored the original viewport, maximized bounds, and subsequent floating size.
+
+These native checks use owned uinput devices through real libinput and DRM/KMS
+on the AMD Radeon 890M machine, kernel 7.0.0-38-generic, eDP-1 at 2560×1600 and
+scale 2. They do not claim physical-finger/firmware coverage. The physical
+touchpad advertises four touch slots and the touchscreen ten. Each completed
+run restored tty2 and removed its owned runtime without touching the user's
+Firefox profile.
+
+The wider floating-window pinch check at
+`/tmp/hearthspace-firefox-pinch-regression` failed after a successful pinch-out
+with the compositor's five-second capture deadline. No concurrent GPU suite was
+running; the retained log cannot distinguish presentation from encoding delay,
+so its cause remains unproven. The trace-enabled `-2` attempt progressed past
+that capture but an external touchscreen contact overlapped the later virtual
+touchpad pinch begin (01:43:13.201842–13.301333 UTC, begin at 13.282227).
+The mixed-device guard correctly ignored that gesture. This attempt was
+interrupted through its exact owned runner PID and cleanup completed. Neither
+attempt is counted as a full pinch acceptance pass.
+
+The user subsequently confirmed testing the physical devices during those runs
+and paused for the final acceptance. This explains the overlapping touchscreen
+input; it does not establish the cause of the earlier capture timeout.
+
+Independent review also caught shell focus clearing the normal-app focus ID:
+clicking Zoom out could restore a distant maximized app outside the view. The
+zoom path now reveals the topmost restored app on the shell's output without
+stealing focus. `/tmp/hearthspace-firefox-zoom-after-3` passed the complete
+Firefox workflow with a real pointer click on the Xilem button, Firefox's saved
+position at (100000,100000), retained shell focus, and matching rendered marker
+scaling. Both pinch types, cancellation/restoration, and fullscreen passed again;
+the owned Firefox profile and runtime were removed and tty2 restored.
+
+Final source validation passed the full workspace Rust suite with E2E and
+required AT-SPI, Clippy with warnings denied, and the all-target native build
+(`/tmp/hearthspace-firefox-zoom-{full-tests,clippy,native-build}-4.log`). All 147
+Python tests passed with E2E and required AT-SPI
+(`/tmp/hearthspace-firefox-zoom-python-3.log`), including 16 Firefox harness
+regressions. Formatting, Ruff and diff checks passed. An existing service test's
+empty PID-file publication race was also made deterministic and fixed, with
+cleanup guaranteed on assertion failure.
+
+With the physical devices idle, the complete wider regression passed at
+`/tmp/hearthspace-firefox-pinch-regression-3`: touchpad and touchscreen zoom
+in/out with rendered-marker checks, two-finger rejection, drag suppression,
+fourth-contact cancellation, device removal, and correct single-tap behavior
+after suppressed multi-touch input. No capture timeout recurred in this run or
+the final Firefox run. Cleanup completed and restored tty2; both background T3
+services remained active. The earlier capture timeout remains documented rather
+than being treated as a diagnosed or fixed fault.
