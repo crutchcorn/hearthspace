@@ -62,6 +62,10 @@ actions return an error until the popup is dismissed.
 
 ## Canvas overview
 
+The right-hand map icon opens the [canvas map](CANVAS_MAP.md), with a live
+zoomed-out minimap and icon zoom controls. Drag its blue viewport area to move
+around the canvas without changing the zoom level or window positions.
+
 Overview presents live previews of the session's application windows in a grid,
 including windows outside the current canvas view. It opens on the output under
 the pointer. The grid is temporary: window positions, sizes, fullscreen and

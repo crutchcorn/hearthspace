@@ -14,7 +14,7 @@ from unittest.mock import Mock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from agentlib import firefox_assertions as assertions
-from agentlib import firefox_checks, firefox_profile, firefox_shell
+from agentlib import firefox_checks, firefox_profile, firefox_shell, map_checks
 from agentlib.control import ControlError, Deadline
 from agentlib.firefox import FirefoxSmoke
 from agentlib.firefox_touch import DeadlineTouchDevice
@@ -315,7 +315,12 @@ class FirefoxShellPointerTests(unittest.TestCase):
 
     def test_shell_pointer_focus_changes_before_button_release(self):
         smoke = Mock(target=7)
-        smoke.control.status.return_value = {"outputs": [self.output]}
+        self.output["name"] = "test"
+        surface = {"output": "test", "x": 948, "y": 110, "width": 320, "height": 310}
+        smoke.control.status.return_value = {
+            "outputs": [self.output],
+            "canvas_maps": [surface],
+        }
         smoke.until.side_effect = lambda _name, condition: condition()
         events = []
         smoke.window.side_effect = lambda _target: (
@@ -323,18 +328,30 @@ class FirefoxShellPointerTests(unittest.TestCase):
         )
         with (
             patch.object(
-                firefox_shell,
+                map_checks,
                 "a11y",
-                return_value={"elements": [{"bounds": self.bounds}]},
+                side_effect=[
+                    {"elements": [{"bounds": self.bounds}]},
+                    {
+                        "elements": [
+                            {"bounds": {"x": 20, "y": 500, "width": 80, "height": 60}}
+                        ]
+                    },
+                ],
             ) as accessibility,
-            patch.object(firefox_shell, "Input") as input_type,
+            patch.object(map_checks, "Input") as input_type,
         ):
             inputs = input_type.return_value.__enter__.return_value
             inputs.down.side_effect = lambda *_: events.append("down")
             inputs.up.side_effect = lambda *_: events.append("up")
             firefox_shell.click_zoom_out(smoke)
-            inputs.motion.assert_called_once_with(634.5, 74)
-        self.assertEqual(events, ["down", "focus-observed", "focus-observed", "up"])
+            self.assertEqual(
+                [call.args for call in inputs.motion.call_args_list],
+                [(634.5, 74), (978, 375)],
+            )
+        self.assertEqual(events, ["down", "focus-observed", "focus-observed", "up"] * 2)
+        self.assertIn("Canvas map", accessibility.call_args_list[0].args[2])
+        self.assertIn("Zoom out", accessibility.call_args_list[1].args[2])
         self.assertEqual(accessibility.call_args.args[1], "find")
 
     def test_distant_pinned_setup_resets_with_shell_focus_then_refocuses_browser(self):

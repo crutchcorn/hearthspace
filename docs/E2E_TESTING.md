@@ -164,6 +164,7 @@ focus-next-window
 focus-previous-window
 focus-launcher
 reset-view
+pan-to <canvas-x> <canvas-y>
 lock-session
 quit
 ```
