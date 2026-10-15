@@ -115,6 +115,24 @@ impl App {
         );
     }
 
+    /// Direct manipulation follows the pointer immediately, at the current
+    /// zoom. Its own one-finger touch/pointer grab must remain alive.
+    pub(super) fn pan_viewport_to(&mut self, x: i32, y: i32) -> Result<(), String> {
+        if !(-1_000_000..=1_000_000).contains(&x) || !(-1_000_000..=1_000_000).contains(&y) {
+            return Err("canvas coordinates must be between -1000000 and 1000000".into());
+        }
+        if self.pinch_zoom.is_active() {
+            self.interrupt_pinch_zoom();
+        }
+        self.viewport_animation = None;
+        self.viewport_offset = CanvasPoint { x, y };
+        let raw = self.raw_pointer_location;
+        self.apply_pointer_motion(self.pointer_location, InputTime::now());
+        self.raw_pointer_location = raw;
+        self.request_redraw();
+        Ok(())
+    }
+
     pub(super) fn horizontal_pan_step(&self) -> i32 {
         (f64::from(self.primary_output_logical_rect().size.w) / 2.0 / self.viewport_scale).round()
             as i32

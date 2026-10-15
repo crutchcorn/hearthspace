@@ -253,3 +253,89 @@ fn canvas_map_clamps_to_scaled_small_output_and_resizes_in_logical_pixels() {
     action(&compositor, "quit");
     wait_for_exit(&mut compositor.child);
 }
+
+#[test]
+fn absolute_map_pan_is_immediate_preserves_window_geometry_and_respects_modal_input() {
+    let _guard = HEADLESS_TEST_LOCK.lock().unwrap();
+    let mut compositor = HeadlessCompositor::spawn_with_size("1280x800");
+    drop(compositor.wait_for_socket());
+    let mut client = connect(&compositor);
+    client.add(
+        "dev.hearthspace.MapPanTest".into(),
+        (240, 160),
+        (0, 0),
+        [0xff, 0, 0, 0xff],
+    );
+    let map = client.add(CANVAS_MAP_APP_ID.into(), (340, 336), (0, 0), GREEN);
+    action(&compositor, "zoom-out");
+    wait_animation(&compositor);
+    let window = query(&compositor, "windows")["windows"][0].clone();
+    let bounds = map_bounds(&compositor);
+    // The actual widget holds its normal implicit pointer grab throughout drag.
+    action(&compositor, "pointer-motion-abs 1000 100");
+    action(&compositor, "pointer-button-down 272");
+    action(&compositor, "pan-right");
+    for (x, y) in [(1234, -567), (1320, -690), (1_000_000, -1_000_000)] {
+        action(&compositor, format!("pan-to {x} {y}"));
+        let status = query(&compositor, "status");
+        assert_eq!(status["viewport"]["x"], x);
+        assert_eq!(status["viewport"]["y"], y);
+        assert_eq!(status["viewport"]["scale"], 0.8);
+        assert_eq!(status["viewport"]["animating"], false);
+        assert_eq!(map_bounds(&compositor), bounds);
+        let after = &status["windows"][0];
+        for key in [
+            "canvas_x",
+            "canvas_y",
+            "content_width",
+            "content_height",
+            "maximized",
+            "fullscreen",
+        ] {
+            assert_eq!(after[key], window[key], "pan changed window {key}");
+        }
+        assert_eq!(client.focus(), Some(map));
+        assert!(client.closed().is_empty());
+    }
+    action(&compositor, "pointer-button-up 272");
+    let viewport = query(&compositor, "status")["viewport"].clone();
+    for invalid in ["pan-to 1000001 0", "pan-to 0 -1000001"] {
+        assert!(
+            compositor
+                .send_text_command(invalid)
+                .starts_with("err canvas coordinates")
+        );
+        assert_eq!(query(&compositor, "status")["viewport"], viewport);
+    }
+    action(&compositor, "overview-on");
+    assert!(
+        compositor
+            .send_text_command("pan-to 0 0")
+            .starts_with("err dismiss the window overlay")
+    );
+    client.destroy(map);
+    action(&compositor, "overview-off");
+    action(&compositor, "key-down 56");
+    action(&compositor, "key-down 15");
+    assert!(
+        compositor
+            .send_text_command("pan-to 0 0")
+            .starts_with("err dismiss the window overlay")
+    );
+    action(&compositor, "key-up 15");
+    action(&compositor, "key-up 56");
+    let socket = compositor
+        .runtime_dir
+        .path()
+        .join(format!("hearthspace-test-{}", std::process::id()));
+    let mut locker = super::session_lock::lock_client::LockClient::connect(&socket);
+    locker.wait_locked();
+    assert!(
+        compositor
+            .send_text_command("pan-to 0 0")
+            .starts_with("err session is locked")
+    );
+    locker.unlock();
+    action(&compositor, "quit");
+    wait_for_exit(&mut compositor.child);
+}
