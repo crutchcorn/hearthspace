@@ -68,17 +68,19 @@ the pointer. The grid is temporary: window positions, sizes, fullscreen and
 maximized states, and the canvas viewport remain intact. Selecting a preview
 returns to the canvas, focuses that window, and reveals it if needed.
 
-Open overview with the **Overview** toolbar button, Super+O, or a four- or
-five-finger inward pinch on a native touchpad or touchscreen. Finish the pinch
-by lifting your fingers. An outward pinch with the same finger counts dismisses
-it. Three fingers continue to pan and zoom the canvas outside overview; they do
-not open or dismiss it. See [canvas gestures](./PINCH_ZOOM.md) for thresholds,
-contact transitions, and cancellation.
+Open overview with the **Overview** toolbar button, Super+O, or an inward pinch:
+use four fingers on a native touchpad, or four/five on a touchscreen. Finish the
+pinch by lifting your fingers. An outward pinch with the same supported counts
+dismisses it. The native libinput backend does not emit five-finger touchpad
+gestures; [backend availability](./PINCH_ZOOM.md#backend-availability) explains
+that boundary. Three fingers continue to pan and zoom the canvas outside
+overview; they do not open or dismiss it. See [canvas gestures](./PINCH_ZOOM.md)
+for thresholds, contact transitions, and cancellation.
 
 Click or tap a preview to activate its window. Arrow keys, Tab, and Shift+Tab
 move the selection; Enter activates it. Left/Up and Shift+Tab choose the previous
 preview, while Right/Down and Tab choose the next, wrapping through the grid.
-Escape, Super+O, an outward four- or five-finger pinch, or a click/tap on the
+Escape, Super+O, an outward pinch with a supported count, or a click/tap on the
 background dismisses overview and restores the previous focus. A drag across a
 preview does not activate it.
 
