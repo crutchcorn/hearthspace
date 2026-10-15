@@ -5,12 +5,16 @@ use std::{cell::RefCell, path::PathBuf, rc::Rc};
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let path = PathBuf::from(std::env::args().nth(1).ok_or("snapshot path required")?);
     let shell_bar = std::env::var_os("HEARTHSPACE_WINDOW_TEST_SHELL_BAR").is_some();
+    let app_id = if shell_bar {
+        hearthspace_compositor::config::SHELL_BAR_APP_ID
+    } else {
+        "dev.hearthspace.WindowTest"
+    };
+    // GTK 4.14 falls back to the program name for xdg_toplevel.app_id when
+    // no session bus is available, as on CI. Keep that identity explicit too.
+    glib::set_prgname(Some(app_id));
     let app = gtk::Application::builder()
-        .application_id(if shell_bar {
-            hearthspace_compositor::config::SHELL_BAR_APP_ID
-        } else {
-            "dev.hearthspace.WindowTest"
-        })
+        .application_id(app_id)
         .flags(gio::ApplicationFlags::NON_UNIQUE)
         .build();
     app.connect_activate(move |app| {

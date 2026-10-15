@@ -76,8 +76,8 @@ fn wait_scale(compositor: &HeadlessCompositor, target: f64) {
     }
 }
 
-fn green_pixels(compositor: &HeadlessCompositor) -> usize {
-    let decoder = png::Decoder::new(std::io::Cursor::new(compositor.take_screenshot()));
+fn green_pixels(screenshot: &[u8]) -> usize {
+    let decoder = png::Decoder::new(std::io::Cursor::new(screenshot));
     let mut reader = decoder.read_info().unwrap();
     let mut bytes = vec![0; reader.output_buffer_size().unwrap()];
     let info = reader.next_frame(&mut bytes).unwrap();
@@ -85,6 +85,31 @@ fn green_pixels(compositor: &HeadlessCompositor) -> usize {
         .chunks_exact(info.color_type.samples())
         .filter(|pixel| pixel[..3] == [0, 204, 102])
         .count()
+}
+
+fn wait_green_pixels(
+    compositor: &HeadlessCompositor,
+    phase: &str,
+    condition: impl Fn(usize) -> bool,
+) -> usize {
+    let deadline = Instant::now() + Duration::from_secs(10);
+    loop {
+        let screenshot = compositor.take_screenshot();
+        let pixels = green_pixels(&screenshot);
+        if condition(pixels) {
+            return pixels;
+        }
+        if Instant::now() >= deadline {
+            let path = compositor.runtime_dir.path().join(format!("{phase}.png"));
+            std::fs::write(&path, screenshot).unwrap();
+            panic!(
+                "{phase}: rendered fixture did not reach its expected size; \
+                 {pixels} green pixels, screenshot: {}",
+                path.display()
+            );
+        }
+        thread::sleep(Duration::from_millis(25));
+    }
 }
 
 fn run_zoom_restores_startup_maximized_apps(backend: &str) {
@@ -98,7 +123,11 @@ fn run_zoom_restores_startup_maximized_apps(backend: &str) {
         .clone();
     wait_state(&state, |state| state["maximized"] == true);
     let id = first["id"].as_u64().unwrap();
-    let before_pixels = green_pixels(&compositor);
+    // GTK reports its maximized state before the corresponding buffer arrives,
+    // especially through XWayland/software rendering. Require the green editor
+    // to visibly fill most of the output before using it as our baseline.
+    let before_pixels =
+        wait_green_pixels(&compositor, "maximized", |pixels| pixels > 1280 * 800 / 2);
 
     action(&compositor, "zoom-out");
     wait_scale(&compositor, 0.8);
@@ -116,10 +145,11 @@ fn run_zoom_restores_startup_maximized_apps(backend: &str) {
     assert_eq!(floating["canvas_x"], first["canvas_x"]);
     assert_eq!(floating["canvas_y"], first["canvas_y"]);
     assert!(floating["width"].as_i64().unwrap() < 1280);
-    assert!(
-        green_pixels(&compositor) < before_pixels / 2,
-        "rendered app did not shrink"
-    );
+    // State/configure acknowledgement likewise precedes the restored buffer.
+    // A missing app must not satisfy the shrink check merely by drawing nothing.
+    wait_green_pixels(&compositor, "restored", |pixels| {
+        pixels > 0 && pixels < before_pixels / 2
+    });
     let center_x = floating["x"].as_f64().unwrap() + floating["width"].as_f64().unwrap() / 2.0;
     let center_y = floating["y"].as_f64().unwrap() + floating["height"].as_f64().unwrap() / 2.0;
     action(
