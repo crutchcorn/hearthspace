@@ -191,3 +191,86 @@ fn empty_gestures_keep_drawing_available_and_explain_where_to_assign_one() {
     ui.dispatch(&view);
     assert!(!ui.state.outputs[0].drawing.active());
 }
+
+#[test]
+fn one_finger_scrolls_real_search_rows_without_launching_or_changing_query() {
+    use super::window_catalog::RunningWindow;
+    use masonry::core::{
+        PointerButtonEvent, PointerEvent, PointerInfo, PointerState, PointerType, PointerUpdate,
+        pointer::PointerId,
+    };
+    let dir = tempfile::tempdir().unwrap();
+    let mut state = state(dir.path());
+    state.windows = (1..=4)
+        .map(|id| RunningWindow {
+            id,
+            title: format!("Notes {id}"),
+            app_id: "notes".into(),
+            focused: false,
+        })
+        .collect();
+    state.change_query("eDP-1", "Notes".into());
+    let mut ui = Ui::new(state, view, (768, 210));
+    let first = ui.button("Window: Notes 1");
+    let second = ui.button("Window: Notes 2");
+    let before = ui
+        .harness
+        .access_node(first)
+        .unwrap()
+        .bounding_box()
+        .unwrap();
+    let start = ui
+        .harness
+        .access_node(second)
+        .unwrap()
+        .bounding_box()
+        .unwrap();
+    let pointer = PointerInfo {
+        pointer_id: Some(PointerId::PRIMARY),
+        persistent_device_id: None,
+        pointer_type: PointerType::Touch,
+    };
+    let origin = PointerState {
+        position: ((start.x0 + start.x1) / 2.0, (start.y0 + start.y1) / 2.0).into(),
+        pressure: 0.5,
+        ..Default::default()
+    };
+    let end = PointerState {
+        position: (origin.position.x, origin.position.y - 44.0).into(),
+        ..origin.clone()
+    };
+    for event in [
+        PointerEvent::Down(PointerButtonEvent {
+            pointer,
+            state: origin,
+            button: None,
+        }),
+        PointerEvent::Move(PointerUpdate {
+            pointer,
+            current: end.clone(),
+            coalesced: vec![],
+            predicted: vec![],
+        }),
+        PointerEvent::Up(PointerButtonEvent {
+            pointer,
+            state: end,
+            button: None,
+        }),
+    ] {
+        ui.harness.process_pointer_event(event);
+        ui.dispatch(&view);
+    }
+    let after = ui
+        .harness
+        .access_node(first)
+        .unwrap()
+        .bounding_box()
+        .unwrap();
+    assert!(
+        after.y0 < before.y0 - 20.0,
+        "result did not scroll: {before:?} -> {after:?}"
+    );
+    assert!(ui.state.outputs[0].show_search);
+    assert!(ui.state.outputs[0].launch_error.is_none());
+    assert_eq!(ui.state.outputs[0].query, "Notes");
+}
