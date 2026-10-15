@@ -15,7 +15,7 @@ use smithay::{
 use tracing::{debug, warn};
 use wayland_server::{Resource, protocol::wl_surface::WlSurface};
 
-use crate::compositor::{App, DragState, WindowDecoration, windows::ResizeEdges};
+use crate::compositor::{App, WindowDecoration, windows::ResizeEdges};
 
 impl XWaylandShellHandler for App {
     fn xwayland_shell_state(&mut self) -> &mut XWaylandShellState {
@@ -183,7 +183,11 @@ impl XwmHandler for App {
         let Some(index) = self.window_index_for_x11(&window) else {
             return;
         };
-        if self.window_uses_output_coordinates(index) {
+        if self.window_uses_output_coordinates(index)
+            || self.drag.is_some()
+            || self.resize.is_some()
+            || !self.pointer_grab_targets_window(index)
+        {
             return;
         }
         let index = self.raise_window(index);
@@ -197,17 +201,15 @@ impl XwmHandler for App {
         let Some(index) = self.window_index_for_x11(&window) else {
             return;
         };
-        if self.window_uses_output_coordinates(index) {
+        if self.window_uses_output_coordinates(index)
+            || self.drag.is_some()
+            || self.resize.is_some()
+            || !self.pointer_grab_targets_window(index)
+        {
             return;
         }
         let index = self.raise_window(index);
-        self.interrupt_pinch_zoom();
-        self.drag = Some(DragState {
-            window_id: self.windows[index].id,
-            pointer_start: self.raw_pointer_location,
-            window_start: self.windows[index].position,
-        });
-        self.request_redraw();
+        self.start_client_window_move(index);
     }
 
     fn active_window_request(

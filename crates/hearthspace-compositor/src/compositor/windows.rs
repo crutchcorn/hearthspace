@@ -508,7 +508,8 @@ impl App {
         if self.window_uses_output_coordinates(window_index) {
             return;
         }
-        self.interrupt_pinch_zoom();
+        self.prepare_window_pointer_operation();
+        let pointer_start = self.window_pointer_start(window_index);
         let initial_content_size = self.window_geometry_size(window_index);
         let window = &self.windows[window_index];
         debug!(
@@ -520,10 +521,13 @@ impl App {
         self.resize = Some(ResizeState {
             window_id: window.id,
             edges,
-            pointer_start: self.raw_pointer_location,
+            pointer_start,
             initial_position: window.position,
             initial_content_size,
         });
+        if pointer_start != self.raw_pointer_location {
+            self.update_resize(self.raw_pointer_location);
+        }
         self.request_redraw();
     }
 

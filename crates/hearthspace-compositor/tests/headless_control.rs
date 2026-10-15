@@ -15,6 +15,9 @@ mod accessibility_diagnostics;
 #[path = "support/canvas_zoom.rs"]
 mod canvas_zoom;
 #[cfg(feature = "test-apps")]
+#[path = "support/interactive.rs"]
+mod interactive;
+#[cfg(feature = "test-apps")]
 #[path = "support/layout.rs"]
 mod layout;
 #[cfg(feature = "test-apps")]

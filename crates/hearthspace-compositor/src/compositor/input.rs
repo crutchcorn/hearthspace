@@ -16,6 +16,7 @@ use crate::config::WHEEL_SCROLL_PIXEL_EQUIVALENT;
 
 use super::{App, DragState, HitTarget, idle::ActivityReason};
 
+mod interactive;
 mod keyboard;
 #[cfg(feature = "winit")]
 mod nested;

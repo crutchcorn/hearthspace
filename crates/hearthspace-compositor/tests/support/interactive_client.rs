@@ -1,0 +1,246 @@
+//! Minimal CSD client for testing real, asynchronously delivered move/resize requests.
+use std::{fs::File, io::Write, os::fd::AsFd, os::unix::net::UnixStream, path::Path};
+
+use wayland_client::{
+    Connection, Dispatch, EventQueue, QueueHandle, WEnum, delegate_noop,
+    protocol::{
+        wl_buffer, wl_compositor, wl_pointer, wl_registry, wl_seat, wl_shm, wl_shm_pool, wl_surface,
+    },
+};
+use wayland_protocols::xdg::shell::client::{xdg_surface, xdg_toplevel, xdg_wm_base};
+
+struct Window {
+    surface: wl_surface::WlSurface,
+    toplevel: xdg_toplevel::XdgToplevel,
+    size: (i32, i32),
+}
+
+#[derive(Default)]
+struct State {
+    compositor: Option<wl_compositor::WlCompositor>,
+    shm: Option<wl_shm::WlShm>,
+    wm_base: Option<xdg_wm_base::XdgWmBase>,
+    seat: Option<wl_seat::WlSeat>,
+    pointer: Option<wl_pointer::WlPointer>,
+    windows: Vec<Window>,
+    buffers: Vec<(File, wl_buffer::WlBuffer)>,
+    press_serial: Option<u32>,
+}
+
+pub(super) struct InteractiveClient {
+    queue: EventQueue<State>,
+    state: State,
+    _connection: Connection,
+}
+
+impl InteractiveClient {
+    pub(super) fn connect(socket: &Path) -> Self {
+        let connection = Connection::from_socket(UnixStream::connect(socket).unwrap()).unwrap();
+        let mut queue = connection.new_event_queue();
+        let handle = queue.handle();
+        let _registry = connection.display().get_registry(&handle, ());
+        let mut state = State::default();
+        queue.roundtrip(&mut state).unwrap();
+        for number in 0..2 {
+            let surface = state
+                .compositor
+                .as_ref()
+                .unwrap()
+                .create_surface(&handle, ());
+            let xdg_surface = state
+                .wm_base
+                .as_ref()
+                .unwrap()
+                .get_xdg_surface(&surface, &handle, number);
+            let toplevel = xdg_surface.get_toplevel(&handle, number);
+            toplevel.set_app_id("dev.hearthspace.InteractiveTest".into());
+            toplevel.set_title(format!("Interactive fixture {number}"));
+            state.windows.push(Window {
+                surface: surface.clone(),
+                toplevel,
+                size: (240, 160),
+            });
+            surface.commit();
+        }
+        let mut client = Self {
+            queue,
+            state,
+            _connection: connection,
+        };
+        client.sync();
+        client
+    }
+
+    /// Two barriers also process commits queued while dispatching configure events.
+    pub(super) fn sync(&mut self) {
+        self.queue.roundtrip(&mut self.state).unwrap();
+        self.queue.roundtrip(&mut self.state).unwrap();
+    }
+
+    pub(super) fn press_serial(&mut self) -> u32 {
+        self.sync();
+        self.state
+            .press_serial
+            .expect("client received pointer press")
+    }
+
+    pub(super) fn request_move(&mut self, window: usize, serial: u32) {
+        self.state.windows[window]
+            .toplevel
+            ._move(self.state.seat.as_ref().unwrap(), serial);
+        self.sync();
+    }
+
+    pub(super) fn request_resize(&mut self, window: usize, serial: u32) {
+        self.state.windows[window].toplevel.resize(
+            self.state.seat.as_ref().unwrap(),
+            serial,
+            xdg_toplevel::ResizeEdge::BottomRight,
+        );
+        self.sync();
+    }
+}
+
+impl State {
+    fn commit_buffer(&mut self, number: usize, handle: &QueueHandle<Self>) {
+        let window = &self.windows[number];
+        let (width, height) = window.size;
+        assert!(width > 0 && height > 0 && width <= 4096 && height <= 4096);
+        let size = width as usize * height as usize * 4;
+        let mut file = tempfile::tempfile().unwrap();
+        file.set_len(size as u64).unwrap();
+        file.write_all(&[0x66, 0xcc, 0x00, 0xff].repeat(width as usize * height as usize))
+            .unwrap();
+        let pool = self
+            .shm
+            .as_ref()
+            .unwrap()
+            .create_pool(file.as_fd(), size as i32, handle, ());
+        let buffer = pool.create_buffer(
+            0,
+            width,
+            height,
+            width * 4,
+            wl_shm::Format::Argb8888,
+            handle,
+            (),
+        );
+        window.surface.attach(Some(&buffer), 0, 0);
+        window.surface.damage_buffer(0, 0, width, height);
+        window.surface.commit();
+        pool.destroy();
+        self.buffers.push((file, buffer));
+    }
+}
+
+impl Dispatch<wl_registry::WlRegistry, ()> for State {
+    fn event(
+        state: &mut Self,
+        registry: &wl_registry::WlRegistry,
+        event: wl_registry::Event,
+        _: &(),
+        _: &Connection,
+        handle: &QueueHandle<Self>,
+    ) {
+        if let wl_registry::Event::Global {
+            name,
+            interface,
+            version,
+        } = event
+        {
+            match interface.as_str() {
+                "wl_compositor" => {
+                    state.compositor = Some(registry.bind(name, version.min(4), handle, ()))
+                }
+                "wl_shm" => state.shm = Some(registry.bind(name, 1, handle, ())),
+                "xdg_wm_base" => {
+                    state.wm_base = Some(registry.bind(name, version.min(6), handle, ()))
+                }
+                "wl_seat" => {
+                    let seat: wl_seat::WlSeat = registry.bind(name, version.min(7), handle, ());
+                    state.pointer = Some(seat.get_pointer(handle, ()));
+                    state.seat = Some(seat);
+                }
+                _ => {}
+            }
+        }
+    }
+}
+
+impl Dispatch<wl_pointer::WlPointer, ()> for State {
+    fn event(
+        state: &mut Self,
+        _: &wl_pointer::WlPointer,
+        event: wl_pointer::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        if let wl_pointer::Event::Button {
+            serial,
+            state: WEnum::Value(wl_pointer::ButtonState::Pressed),
+            ..
+        } = event
+        {
+            state.press_serial = Some(serial);
+        }
+    }
+}
+
+impl Dispatch<xdg_wm_base::XdgWmBase, ()> for State {
+    fn event(
+        _: &mut Self,
+        object: &xdg_wm_base::XdgWmBase,
+        event: xdg_wm_base::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        if let xdg_wm_base::Event::Ping { serial } = event {
+            object.pong(serial);
+        }
+    }
+}
+
+impl Dispatch<xdg_toplevel::XdgToplevel, usize> for State {
+    fn event(
+        state: &mut Self,
+        _: &xdg_toplevel::XdgToplevel,
+        event: xdg_toplevel::Event,
+        number: &usize,
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        if let xdg_toplevel::Event::Configure { width, height, .. } = event {
+            if width > 0 {
+                state.windows[*number].size.0 = width;
+            }
+            if height > 0 {
+                state.windows[*number].size.1 = height;
+            }
+        }
+    }
+}
+
+impl Dispatch<xdg_surface::XdgSurface, usize> for State {
+    fn event(
+        state: &mut Self,
+        surface: &xdg_surface::XdgSurface,
+        event: xdg_surface::Event,
+        number: &usize,
+        _: &Connection,
+        handle: &QueueHandle<Self>,
+    ) {
+        if let xdg_surface::Event::Configure { serial } = event {
+            surface.ack_configure(serial);
+            state.commit_buffer(*number, handle);
+        }
+    }
+}
+
+delegate_noop!(State: ignore wl_compositor::WlCompositor);
+delegate_noop!(State: ignore wl_shm::WlShm);
+delegate_noop!(State: ignore wl_shm_pool::WlShmPool);
+delegate_noop!(State: ignore wl_buffer::WlBuffer);
+delegate_noop!(State: ignore wl_surface::WlSurface);
+delegate_noop!(State: ignore wl_seat::WlSeat);

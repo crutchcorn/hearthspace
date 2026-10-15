@@ -168,7 +168,7 @@ impl PinchZoom {
             .map(|gesture| (gesture.original_offset, gesture.scale))
     }
 
-    fn interrupt(&mut self) {
+    pub(super) fn interrupt(&mut self) {
         self.gesture = None;
     }
 }

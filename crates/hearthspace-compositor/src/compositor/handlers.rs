@@ -43,8 +43,7 @@ use wayland_server::{
 };
 
 use super::{
-    App, ClientState, DragState, ManagedSurface, ManagedWindow, ManagedWindowKind,
-    WindowDecoration,
+    App, ClientState, ManagedSurface, ManagedWindow, ManagedWindowKind, WindowDecoration,
     focus::KeyboardFocusTarget,
     idle::ActivityReason,
     windows::{
@@ -167,7 +166,7 @@ impl XdgShellHandler for App {
         }
     }
 
-    fn move_request(&mut self, surface: ToplevelSurface, _seat: wl_seat::WlSeat, _serial: Serial) {
+    fn move_request(&mut self, surface: ToplevelSurface, seat: wl_seat::WlSeat, serial: Serial) {
         if self.session_locked() {
             return;
         }
@@ -181,6 +180,7 @@ impl XdgShellHandler for App {
 
         if self.windows[window_index].kind != ManagedWindowKind::Normal
             || self.window_uses_output_coordinates(window_index)
+            || !self.valid_window_pointer_request(window_index, &seat, serial)
         {
             return;
         }
@@ -193,20 +193,14 @@ impl XdgShellHandler for App {
             window_id = self.windows[window_index].id,
             "client requested window move"
         );
-        self.interrupt_pinch_zoom();
-        self.drag = Some(DragState {
-            window_id: self.windows[window_index].id,
-            pointer_start: self.raw_pointer_location,
-            window_start: self.windows[window_index].position,
-        });
-        self.request_redraw();
+        self.start_client_window_move(window_index);
     }
 
     fn resize_request(
         &mut self,
         surface: ToplevelSurface,
-        _seat: wl_seat::WlSeat,
-        _serial: Serial,
+        seat: wl_seat::WlSeat,
+        serial: Serial,
         edges: xdg_toplevel::ResizeEdge,
     ) {
         if self.session_locked() {
@@ -226,6 +220,7 @@ impl XdgShellHandler for App {
 
         if self.windows[window_index].kind != ManagedWindowKind::Normal
             || self.window_uses_output_coordinates(window_index)
+            || !self.valid_window_pointer_request(window_index, &seat, serial)
         {
             return;
         }
