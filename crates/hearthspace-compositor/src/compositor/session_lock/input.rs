@@ -37,15 +37,12 @@ impl App {
             self.focus_lock_surface_at(self.pointer_location);
         }
         let pointer = self.pointer.clone();
-        pointer.button(
-            self,
-            &ButtonEvent {
-                serial: SERIAL_COUNTER.next_serial(),
-                time,
-                button,
-                state,
-            },
-        );
+        self.deliver_pointer_button(&ButtonEvent {
+            serial: SERIAL_COUNTER.next_serial(),
+            time,
+            button,
+            state,
+        });
         pointer.frame(self);
     }
 
