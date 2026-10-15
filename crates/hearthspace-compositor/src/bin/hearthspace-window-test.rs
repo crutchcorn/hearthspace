@@ -119,7 +119,9 @@ fn build(app: &gtk::Application, path: PathBuf) {
     window.set_child(Some(&editor));
     let dialog = Rc::new(RefCell::new(None::<gtk::Window>));
     let popover = gtk::Popover::new();
-    popover.set_parent(&editor);
+    // Register the popup with TextView's child lifecycle. Setting only its
+    // parent leaves GTK 4.14 unable to remove it when the window closes.
+    editor.add_overlay(&popover, 0, 0);
     let dismiss = gtk::Button::with_label("Dismiss popup");
     dismiss.set_size_request(240, 160);
     dismiss.add_css_class("fixture-popup");
