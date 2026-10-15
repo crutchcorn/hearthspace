@@ -239,6 +239,43 @@ expectations use the injected contact centroid. Both scripts accept `--device`
 and `--timeout` and clean up their owned session on failure. The pan script also
 accepts `--total-timeout` to bound its complete workflow.
 
+Canvas overview acceptance uses the same prerequisites:
+
+```sh
+scripts/overview-smoke --session "$(mktemp -d /tmp/hearthspace-overview.XXXXXX)"
+```
+
+It checks four-finger touchpad and four/five-finger touchscreen inward/outward
+gestures, subthreshold and cancelled
+gestures, live thumbnail pixels, unchanged canvas/window geometry, and pointer
+and touchscreen selection. `--device touchpad` or `--device touchscreen` selects
+one device type. Libinput currently suppresses five-contact touchpad gestures;
+the test records this backend limitation rather than reporting it as a pass.
+Keep the physical input devices idle during native acceptance.
+
+### Recovering a black host login screen
+
+If SSH still works, inspect the active session before assuming the laptop is
+suspended. `cat /sys/class/tty/tty0/active` and `loginctl list-sessions` identify
+the active VT and existing desktop sessions. Check the native harness manifest
+first; recover an active harness through its own `stop` command.
+
+On the physical development host, GDM once remained black on tty1 with Mutter's
+`PowerSaveMode` set to `3` and resume/device-reclaim warnings in its journal.
+The existing GNOME session on tty2 remained alive and locked. Turning the active
+greeter's display power back on and running `sudo loginctl activate 2` restored
+display and input without restarting GDM or closing applications. Session IDs
+are dynamic: select the existing desktop's ID from `loginctl`, not the literal
+`2` on another boot. Activation does not unlock the desktop.
+
+For GNOME, the owning session bus exposes `PowerSaveMode` on
+`org.gnome.Mutter.DisplayConfig`, object `/org/gnome/Mutter/DisplayConfig`,
+interface `org.gnome.Mutter.DisplayConfig`; setting its `i` property to `0`
+requests display-on. Use the actual session owner's bus and runtime directory.
+This is a transient recovery, not a power-policy or authentication change.
+The observed incident did not establish why GDM lost input. Native cleanup had
+finished seven minutes earlier, with no later harness cleanup activity.
+
 ### Optional Desktop Dependencies
 
 Native daily-use sessions use the distribution's MATE polkit authentication agent

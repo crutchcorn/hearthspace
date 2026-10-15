@@ -211,6 +211,53 @@ and verify rendered three-finger canvas panning, zoom and combined movement.
 Run `scripts/pan-smoke` and `scripts/pinch-smoke` separately from the smoke cases
 above.
 
+`scripts/overview-smoke --session /tmp/hearthspace-overview-1` checks four-contact
+touchpad and four/five-contact touchscreen inward and outward pinches. It pairs independent
+libinput traces with live thumbnail captures, checks cancellation and unchanged
+window/canvas geometry, then selects windows by pointer and touchscreen. Its
+temporary windows include overlapping, off-canvas and fullscreen content.
+Five-contact touchpad gestures are a documented libinput backend limitation and
+are recorded separately from passing cases.
+
+Agents can use `scripts/hearthspace-agent --session PATH overview on` (also
+`off`/`toggle`) and `overview-select WINDOW_ID`. Unlocked `status` includes an
+`overview` object with `active`, `animating`, `selected_window_id`, `output` and thumbnail
+`items`. Card and preview bounds use global output-logical coordinates. Selection
+exits overview and reveals the window; dismissal preserves the canvas view.
+Wait for `animating: false` before asserting exact thumbnail colors, then capture
+a fresh presented frame.
+
+Overview acceptance on 2026-10-14 passed on the physical GPD laptop, AMD Radeon
+890M (`amdgpu`), kernel `7.0.0-38-generic`, eDP-1 at 2560×1600 and scale 2.
+`/tmp/hearthspace-overview-native-5` retains the complete successful run: native
+page-flip captures, independent libinput traces, unchanged viewport/presentation
+assertions, all three distinct client markers in their previews, and pointer/touch
+selection. Inputs came from temporary uinput devices through the native input
+backend. This is single-output acceptance, not a manual physical-finger test.
+
+Earlier `hearthspace-overview-native-1` through `-4` and
+`hearthspace-overview-touchscreen-1` remain under `/tmp` as failed attempts.
+They exposed fixture movement below libinput's recognition threshold, captures
+during the appearance fade, and a four-to-five-contact cancellation that libinput
+did not report as cancelled. The final test uses four-to-three contacts and waits
+for independently observed cancellation. `/tmp/hearthspace-overview-touchscreen-2`
+also passed independently. All these runs restored tty2 and removed their owned
+sessions and runtimes, including failures.
+
+`/tmp/hearthspace-overview-pinch-regression-2` passed the existing three-finger
+touchpad/touchscreen zoom, two-finger rejection, cancellation, removal, and
+single-finger drag/tap checks. Its first attempt was interrupted after identifying
+an obsolete assertion that expected no recognizer after a fourth contact; the
+updated check requires restoration of the original three-finger canvas transform
+and no overview opening from a subthreshold four-finger movement.
+
+The final workspace checks passed: 484 Rust tests with E2E/accessibility enabled,
+259 Python tests with E2E enabled, rustfmt, Clippy with warnings denied, Ruff, and
+the full native/test-target build. `scripts/install-session install` built and
+installed optimized release `178a39a6fa45`; its installed compositor, shell and
+session hashes match `target/release`. GNOME remained active on tty2 with display
+power on, and the background T3/remote services remained running.
+
 `scripts/touch-drag-smoke --session /tmp/hearthspace-touch-drag-1` tests one-finger
 window movement through the same uinput/libinput touchscreen path. It uses a
 fresh native Firefox profile and a decorated Foot terminal, checking continued
