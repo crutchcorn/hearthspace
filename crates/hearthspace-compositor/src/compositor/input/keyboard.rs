@@ -7,7 +7,11 @@ use smithay::{
     utils::SERIAL_COUNTER,
 };
 
-use crate::compositor::{App, idle::ActivityReason, shell_integration::ControlReply};
+use crate::compositor::{
+    App, idle::ActivityReason, shell_integration::ControlReply, switcher::SwitcherSource,
+};
+
+mod switcher;
 
 #[derive(Default)]
 pub(in crate::compositor) struct KeyboardShortcuts {
@@ -22,6 +26,7 @@ enum Shortcut {
     OverviewActivate,
     OverviewNext,
     OverviewPrevious,
+    SwitcherCancel,
     Terminal,
     Launcher,
     Next,
@@ -105,13 +110,16 @@ impl App {
                 if app.overview_active() {
                     app.shortcuts
                         .filter_overview(code, state, modifiers, symbol)
+                } else if let Some(source) = app.window_switcher_source() {
+                    app.shortcuts
+                        .filter_switcher(code, state, modifiers, symbol, source)
                 } else {
                     app.shortcuts
                         .filter(code, state, modifiers, symbol, available)
                 }
             },
         );
-        // A modifier pressed in overview can remain held across dismissal.
+        // A modifier pressed in a modal overlay can remain held across dismissal.
         // Its intercepted release must still clear the state sent on client
         // keyboard enter, without forwarding an unmatched key release.
         if intercepted.is_some() && keyboard.modifier_state() != previous_modifiers {
@@ -122,10 +130,27 @@ impl App {
             Some(None) => {}
             None => self.record_focused_client_activity(ActivityReason::ClientInput),
         }
+        // Observe XKB's aggregate Alt state, including either physical Alt key.
+        // Releasing Shift, Tab, or one of two held Alt keys must keep the overlay.
+        if previous_modifiers.alt && !keyboard.modifier_state().alt {
+            self.finish_window_switcher(SwitcherSource::Keyboard, false);
+        }
     }
 
     fn run_shortcut(&mut self, shortcut: Shortcut) {
         match shortcut {
+            Shortcut::Next | Shortcut::Previous => {
+                if let Err(error) = self
+                    .cycle_window_switcher(SwitcherSource::Keyboard, shortcut == Shortcut::Previous)
+                {
+                    tracing::debug!(%error, "window switching unavailable");
+                }
+                return;
+            }
+            Shortcut::SwitcherCancel => {
+                self.dismiss_window_switcher(true);
+                return;
+            }
             Shortcut::OverviewDismiss => {
                 self.close_overview();
                 return;
@@ -147,12 +172,13 @@ impl App {
             Shortcut::OverviewDismiss
             | Shortcut::OverviewActivate
             | Shortcut::OverviewNext
-            | Shortcut::OverviewPrevious => unreachable!(),
+            | Shortcut::OverviewPrevious
+            | Shortcut::SwitcherCancel
+            | Shortcut::Next
+            | Shortcut::Previous => unreachable!(),
             Shortcut::Lock => ShellCommand::LockSession,
             Shortcut::Terminal => ShellCommand::Spawn(SpawnTarget::Foot),
             Shortcut::Launcher => ShellCommand::FocusLauncher,
-            Shortcut::Next => ShellCommand::FocusNextWindow,
-            Shortcut::Previous => ShellCommand::FocusPreviousWindow,
             Shortcut::Close => {
                 let Some(id) = self.focused_normal_window_id else {
                     return;

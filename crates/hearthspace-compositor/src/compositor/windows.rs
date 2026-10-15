@@ -144,7 +144,11 @@ pub(super) fn decoration_for_new_window(kind: ManagedWindowKind) -> WindowDecora
 
 impl App {
     pub(super) fn set_keyboard_focus_to_window(&mut self, window_index: usize, surface: WlSurface) {
-        if self.session_locked() || self.overview_active() {
+        if self.session_locked()
+            || self.overview_active()
+            || (self.window_switcher_active()
+                && self.window_switcher_selected_id() != Some(self.windows[window_index].id))
+        {
             return;
         }
         debug!(window_id = self.windows[window_index].id, kind = ?self.windows[window_index].kind, "setting keyboard focus to window");

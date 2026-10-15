@@ -60,7 +60,7 @@ impl App {
         debug!(%command, "running app control action");
         self.advance_viewport_animation();
 
-        if self.overview_active()
+        if (self.overview_active() || self.window_switcher_active())
             && matches!(
                 action,
                 ShellCommand::PanLeft
@@ -71,7 +71,9 @@ impl App {
                     | ShellCommand::ZoomOut
             )
         {
-            return ControlReply::Err("dismiss overview before changing the canvas view".into());
+            return ControlReply::Err(
+                "dismiss the window overlay before changing the canvas view".into(),
+            );
         }
 
         match action {
