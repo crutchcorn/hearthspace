@@ -37,8 +37,12 @@ def move(device, state, ratio):
 def cancel(device, state, *, trace_path=None, deadline=None):
     if state["fingers"] != 4:
         raise ControlError("overview cancellation fixture requires four contacts")
-    extra = {"point": centroid(state["moved"])} if device.kind == "touchscreen" else {}
-    device.request("add-finger", **extra)
+    if device.kind == "touchpad":
+        # Stay within libinput's supported motion-gesture finger counts. Five
+        # active touches can suppress the count-change cancellation itself.
+        device.request("lift")
+    else:
+        device.request("add-finger", point=centroid(state["moved"]))
     if device.kind == "touchpad" and trace_path is not None:
         local = Deadline(3)
         while True:

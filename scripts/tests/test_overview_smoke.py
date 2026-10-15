@@ -215,11 +215,26 @@ class OverviewInputTests(unittest.TestCase):
             overview_input.cancel(device, {"fingers": 4}, trace_path=path)
         self.assertEqual(path.read_text.call_count, 2)
         sleep.assert_called_once()
-        device.request.assert_called_once_with("add-finger")
+        device.request.assert_called_once_with("lift")
         path.read_text.side_effect = None
         path.read_text.return_value = active + " event17 GESTURE_PINCH_END +3s 4\n"
         with self.assertRaisesRegex(ControlError, "ended normally"):
             overview_input.cancel(device, {"fingers": 4}, trace_path=path)
+
+    def test_four_contact_cancel_proof_survives_following_three_contact_end(self):
+        path = Mock()
+        path.read_text.return_value = (
+            " event17 GESTURE_PINCH_BEGIN +1s 4\n"
+            " event17 GESTURE_PINCH_UPDATE +2s 4 0/0 (0/0 unaccelerated) 0.6 @ 0\n"
+            " event17 GESTURE_PINCH_END +3s 4 cancelled\n"
+            " event17 GESTURE_HOLD_BEGIN +4s 3\n"
+            " event17 GESTURE_HOLD_END +5s 3\n"
+        )
+        proof = overview_input.trace_proof(
+            path, "touchpad", 4, cancelled=True, ratio=0.6
+        )
+        self.assertTrue(proof["cancelled"])
+        self.assertEqual(proof["fingers"], 4)
 
     def test_touchpad_cancel_respects_aggregate_deadline(self):
         path = Mock()
