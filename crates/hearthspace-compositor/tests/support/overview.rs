@@ -1,12 +1,8 @@
 //! Exercise the overview against real clients, including modal input isolation.
 use super::navigation::{Editors, action, keys, query, wait_windows};
+use super::session_lock::lock_client;
 use super::*;
 use serde_json::{Value, json};
-
-// Share the real protocol fixture; these tests only need its basic lock lifecycle.
-#[allow(dead_code)]
-#[path = "lock_client.rs"]
-mod lock_client;
 
 fn editor(compositor: &HeadlessCompositor, editors: &mut Editors, number: usize) -> (u64, PathBuf) {
     let title = format!("Overview editor {number}");

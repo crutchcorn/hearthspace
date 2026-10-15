@@ -3,7 +3,7 @@ use super::*;
 use serde_json::Value;
 
 #[path = "lock_client.rs"]
-mod lock_client;
+pub(super) mod lock_client;
 
 fn editor(compositor: &HeadlessCompositor) -> (Editors, PathBuf) {
     let input = compositor.runtime_dir.path().join("private-editor.txt");
