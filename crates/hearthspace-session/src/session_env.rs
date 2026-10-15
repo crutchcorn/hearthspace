@@ -142,6 +142,10 @@ pub(crate) fn create_session_env(
     ];
 
     vars.extend(crate::audio_env::audio_environment(&host_runtime_dir));
+    vars.push((
+        "XDG_CONFIG_DIRS".into(),
+        crate::gtk_defaults::config_dirs(&paths.session_dir)?,
+    ));
 
     if args.private_session_bus {
         let bus = env::var("DBUS_SESSION_BUS_ADDRESS")

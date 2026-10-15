@@ -9,6 +9,7 @@ mod compositor;
 mod desktop_entries;
 mod desktop_services;
 mod dev_cargo;
+mod gtk_defaults;
 mod portal_cleanup;
 mod privileges;
 mod process;
@@ -39,6 +40,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         desktop_services::prepare(&paths)?;
     }
     let session_env = create_session_env(&args, mode, &paths)?;
+    gtk_defaults::prepare(&paths.session_dir, &session_env);
 
     if mode == RunMode::DevCargo {
         generate_dev_desktop_entries(&paths)?;

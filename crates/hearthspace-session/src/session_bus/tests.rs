@@ -58,6 +58,11 @@ fn activation_updates_only_the_private_bus_with_session_values() {
                 ("XDG_RUNTIME_DIR".into(), "/private/runtime".into()),
                 ("WAYLAND_DISPLAY".into(), "wayland-99".into()),
                 (
+                    "XDG_CONFIG_DIRS".into(),
+                    "/private/desktop-config:/etc/xdg".into(),
+                ),
+                ("XDG_DATA_DIRS".into(), "/private/share:/usr/share".into()),
+                (
                     "HEARTHSPACE_SESSION_BUS_ADDRESS".into(),
                     "unix:path=/private/bus".into(),
                 ),
@@ -78,6 +83,13 @@ fn activation_updates_only_the_private_bus_with_session_values() {
     );
     assert_eq!(variables[OsStr::new("DISPLAY")], Some(OsStr::new("")));
     assert!(!variables.contains_key(OsStr::new("WAYLAND_SOCKET")));
+    for (key, value) in [
+        ("XDG_CONFIG_DIRS", "/private/desktop-config:/etc/xdg"),
+        ("XDG_DATA_DIRS", "/private/share:/usr/share"),
+    ] {
+        assert!(args.contains(&OsStr::new(key)));
+        assert_eq!(variables[OsStr::new(key)], Some(OsStr::new(value)));
+    }
 }
 
 #[test]

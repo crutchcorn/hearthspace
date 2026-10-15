@@ -184,6 +184,16 @@ and GTK desktop portal backend. Install their runtime dependencies with:
 sudo apt-get install -y mate-polkit xdg-desktop-portal xdg-desktop-portal-gtk fuse3
 ```
 
+GTK window controls also use `gsettings-desktop-schemas` and
+`glib-compile-schemas` from `libglib2.0-bin` (both already present on this VM).
+The supervisor copies only the installed window-manager schema, its enums, and
+applicable defaults into its private runtime and compiles a Hearthspace-specific
+default that exposes maximize/restore and close buttons. GTK 3/4 `settings.ini`
+fallbacks also live there. Existing user settings and explicit
+`GSETTINGS_SCHEMA_DIR` overrides remain authoritative; no host configuration is
+written. Missing optional schemas or the compiler produce a warning and leave
+the session usable. See [window controls](docs/WINDOW_MANAGEMENT.md#coordinates-and-window-states).
+
 On the physical development host, `mate-polkit` and `mate-polkit-common` version
 `1.26.1-6` were installed; the portal packages and FUSE helper were already present.
 The earlier `policykit-1-gnome` (`0.105-8build1`) remains installed but is not used:
