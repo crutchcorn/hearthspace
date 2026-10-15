@@ -13,7 +13,7 @@ use xilem::{
     masonry::core::keyboard::{Key, NamedKey},
 };
 
-use super::{Entry, ShellState, bar_view, launcher_window};
+use super::{Entry, ShellState, launcher, launcher_window};
 use crate::ui::window_catalog::RunningWindow;
 
 #[derive(Debug)]
@@ -34,7 +34,7 @@ impl RawProxy for NoMessages {
 }
 
 #[test]
-fn keyboard_enter_routes_through_rebuilt_bar_and_focuses_matching_window() {
+fn search_overlay_focuses_input_and_enter_activates_matching_window() {
     let dir = tempfile::tempdir().unwrap();
     let socket = dir.path().join("control.sock");
     let listener = UnixListener::bind(&socket).unwrap();
@@ -65,7 +65,11 @@ fn keyboard_enter_routes_through_rebuilt_bar_and_focuses_matching_window() {
         .build()
         .unwrap();
     let mut ctx = ViewCtx::new(Arc::new(NoMessages), Arc::new(runtime));
-    let mut view = bar_view(&state.outputs[0], state.clock.clone(), &[]);
+    let mut view = launcher::launcher_view(
+        &state.outputs[0],
+        launcher::results(&state, &state.outputs[0]),
+        None,
+    );
     let (root, mut view_state) = view.build(&mut ctx, &mut state);
     let mut harness = TestHarness::create(
         hearthspace_ui_components::hearthspace_light_properties(),
@@ -92,7 +96,11 @@ fn keyboard_enter_routes_through_rebuilt_bar_and_focuses_matching_window() {
             ));
             let (environment, _, _) = message.finish();
             *ctx.environment() = environment;
-            let next = bar_view(&state.outputs[0], state.clock.clone(), &[]);
+            let next = launcher::launcher_view(
+                &state.outputs[0],
+                launcher::results(&state, &state.outputs[0]),
+                None,
+            );
             harness.edit_root_widget(|root| {
                 next.rebuild(&view, &mut view_state, &mut ctx, root, &mut state);
             });
@@ -110,16 +118,15 @@ fn launcher_creation_options_fit_results_headers_and_errors() {
     // Build the real Xilem WindowView into its Winit creation attributes. A
     // nonresizable Wayland window starts with min=max=initial size, so checking
     // only our desired min/max hints would miss a clipped first presentation.
-    for (count, show_windows, launch_error, catalog_error, height) in [
-        (0, false, false, false, 52.0),
-        (1, false, false, false, 52.0),
-        (4, false, false, false, 172.0),
-        (4, true, false, false, 212.0),
-        (4, false, true, false, 272.0),
-        (4, false, false, true, 272.0),
+    for (count, launch_error, catalog_error, height) in [
+        (0, false, false, 144.0),
+        (1, false, false, 144.0),
+        (4, false, false, 264.0),
+        (4, true, false, 364.0),
+        (4, false, true, 364.0),
     ] {
         let mut state = ShellState::new("/unused".into(), vec!["eDP-1".into()]);
-        state.outputs[0].show_windows = show_windows;
+        state.outputs[0].show_search = true;
         state.outputs[0].launch_error = launch_error.then(|| "Launch failed".into());
         let results = (0..count)
             .map(|id| {

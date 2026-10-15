@@ -13,6 +13,7 @@ use crate::config::*;
 mod command_socket;
 mod launch;
 mod launch_environment;
+pub(in crate::compositor) mod search;
 
 pub(in crate::compositor) use command_socket::{
     ControlReply, accept_command_connections, command_socket_path, remove_stale_socket,
@@ -70,6 +71,7 @@ impl App {
                     | ShellCommand::PanTo { .. }
                     | ShellCommand::ZoomIn
                     | ShellCommand::ZoomOut
+                    | ShellCommand::ZoomTo(_)
             )
         {
             return ControlReply::Err(
@@ -102,7 +104,9 @@ impl App {
                 return action_reply(self.cycle_window_focus(true));
             }
             ShellCommand::FocusLauncher => return action_reply(self.focus_launcher()),
-            ShellCommand::ResetView => return action_reply(self.reset_view()),
+            ShellCommand::AcceptShellEvent(token) => {
+                return action_reply(self.accept_shell_event(token));
+            }
             ShellCommand::FullscreenWindow { id, enabled } => {
                 return action_reply(self.user_window_presentation(id, Some(enabled), None));
             }
@@ -143,6 +147,7 @@ impl App {
             ShellCommand::PanTo { x, y } => return action_reply(self.pan_viewport_to(x, y)),
             ShellCommand::ZoomIn => self.animate_zoom_around_viewport_center(ZOOM_STEP),
             ShellCommand::ZoomOut => self.animate_zoom_around_viewport_center(1.0 / ZOOM_STEP),
+            ShellCommand::ZoomTo(scale) => return action_reply(self.zoom_viewport_to(scale)),
             ShellCommand::ReloadSettings => self.reload_settings(),
             ShellCommand::LogAccessibilityTree => {
                 crate::accessibility::log_accessibility_tree(self.accessibility_window_snapshot())

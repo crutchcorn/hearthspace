@@ -21,7 +21,8 @@ fn window_commands_round_trip_without_ignoring_extra_arguments() {
         ShellCommand::FocusNextWindow,
         ShellCommand::FocusPreviousWindow,
         ShellCommand::FocusLauncher,
-        ShellCommand::ResetView,
+        ShellCommand::AcceptShellEvent(42),
+        ShellCommand::ZoomTo(1.25),
         ShellCommand::PanTo { x: -1024, y: 256 },
         ShellCommand::FullscreenWindow {
             id: 17,
@@ -39,6 +40,7 @@ fn window_commands_round_trip_without_ignoring_extra_arguments() {
     }
     for invalid in [
         "focus-window -1",
+        "reset-view",
         "move-window 1 2",
         "resize-window 1 -1 90",
         "pan-to",

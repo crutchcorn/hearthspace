@@ -14,6 +14,10 @@ impl App {
         state: ButtonState,
         time: InputTime,
     ) {
+        self.shortcuts.cancel_meta_tap();
+        if state == ButtonState::Pressed {
+            self.cancel_pending_search();
+        }
         if self.session_locked() {
             self.deliver_lock_button(button, state, time);
             return;
@@ -25,7 +29,7 @@ impl App {
         if state == ButtonState::Pressed {
             self.interrupt_pinch_zoom();
             // Close-button and background presses do not always change focus.
-            self.dismiss_canvas_maps_outside_pointer();
+            self.dismiss_shell_panels_outside_pointer();
         }
         let is_left_button = button == 0x110;
 

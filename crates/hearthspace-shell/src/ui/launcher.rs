@@ -1,14 +1,22 @@
 use hearthspace_ui_components as components;
 use xilem::{
     AnyWidgetView, WidgetView,
-    masonry::layout::AsUnit,
+    masonry::{
+        layout::{AsUnit, Dim},
+        parley::fontique::GenericFamily,
+        properties::LineBreaking,
+    },
     style::Style,
-    view::{CrossAxisAlignment, flex_col, sized_box},
+    view::{
+        CrossAxisAlignment, FlexExt, FlexSpacer, button, flex_col, flex_row, sized_box, text_input,
+    },
 };
 
 use super::{
     command_client::{launch_app, send_command},
-    constants::{LAUNCHER_ITEM_WIDTH, MAX_RESULTS},
+    constants::{MAX_RESULTS, SEARCH_BOX_HEIGHT},
+    icons::{Icon, icon_button},
+    search_focus::{FocusTarget, focus_on_activation, track_search},
     state::{ShellOutputInstance, ShellState},
     window_catalog::RunningWindow,
 };
@@ -31,7 +39,7 @@ impl Entry {
 
 pub(super) fn results(state: &ShellState, output: &ShellOutputInstance) -> Vec<Entry> {
     let query = output.query.trim();
-    if query.is_empty() && !output.show_windows {
+    if query.is_empty() {
         return Vec::new();
     }
     let mut windows = state
@@ -78,7 +86,13 @@ pub(super) fn launcher_view(
     output: &ShellOutputInstance,
     entries: Vec<Entry>,
     windows_error: Option<String>,
-) -> impl WidgetView<ShellState> + use<> {
+) -> impl WidgetView<ShellState, Widget = super::search_focus::SearchFocus> + use<> {
+    let focus_target = FocusTarget::default();
+    let search = search_input(output, focus_target.clone());
+    let close_key = output.key().to_string();
+    let close = icon_button(Icon::Close, "Close search", false, move |state| {
+        state.dismiss_search(&close_key)
+    });
     let key = output.key().to_string();
     let output_name = output.output_name.clone();
     let mut rows: Vec<Box<AnyWidgetView<ShellState>>> = entries
@@ -86,9 +100,11 @@ pub(super) fn launcher_view(
         .map(|entry| {
             let key = key.clone();
             let output_name = output_name.clone();
-            components::launcher_item(
-                entry.label(),
-                LAUNCHER_ITEM_WIDTH,
+            button(
+                components::field_label(entry.label())
+                    .text_size(16.0)
+                    .line_break_mode(LineBreaking::Clip)
+                    .width(Dim::Stretch),
                 move |state: &mut ShellState| {
                     select(state, &key, output_name.as_deref(), &entry);
                 },
@@ -99,34 +115,81 @@ pub(super) fn launcher_view(
     if rows.is_empty() {
         rows.push(
             components::muted_text(if output.query.trim().is_empty() {
-                "No running windows"
+                "Type to search apps and open windows"
             } else {
                 "No matching apps or windows"
             })
             .boxed(),
         );
     }
-    if output.show_windows && output.query.trim().is_empty() {
-        rows.push(components::muted_text("Type a title or app name to find more windows.").boxed());
-    }
     if let Some(error) = output.launch_error.as_ref().or(windows_error.as_ref()) {
         rows.insert(
             0,
-            sized_box(components::field_label(format!(
-                "Could not complete the request: {error}"
-            )))
+            sized_box(
+                components::field_label(format!("Could not complete the request: {error}"))
+                    .line_break_mode(LineBreaking::WordWrap),
+            )
             .background_color(components::DANGER_SUBTLE)
             .padding(8.0.px())
             .boxed(),
         );
     }
-    sized_box(
-        flex_col(rows)
+    focus_on_activation(
+        sized_box(
+            flex_col((
+                flex_row((
+                    components::section_title("Search"),
+                    FlexSpacer::Flex(1.0),
+                    close,
+                )),
+                search,
+                components::scroll_area(
+                    flex_col(rows)
+                        .cross_axis_alignment(CrossAxisAlignment::Stretch)
+                        .gap(4.0.px()),
+                )
+                .flex(1.0),
+            ))
             .cross_axis_alignment(CrossAxisAlignment::Stretch)
-            .gap(4.0.px()),
+            .gap(8.0.px()),
+        )
+        .background_color(components::SURFACE)
+        .padding(12.0.px())
+        .border(components::BORDER, 1.0.px())
+        .corner_radius(10.0.px()),
+        focus_target,
     )
-    .background_color(components::SURFACE)
-    .padding(6.0.px())
+}
+
+fn search_input(
+    output: &ShellOutputInstance,
+    focus_target: FocusTarget,
+) -> impl WidgetView<ShellState> + use<> {
+    let key = output.key().to_string();
+    let submit_key = key.clone();
+    let cancel_key = key.clone();
+    let output_name = output.output_name.clone();
+    let search = text_input(
+        output.query.clone(),
+        move |state: &mut ShellState, value: String| {
+            state.change_query(&key, value);
+        },
+    )
+    .placeholder("Search apps and windows...")
+    .font(GenericFamily::SystemUi)
+    .on_enter(move |state: &mut ShellState, value: String| {
+        state.change_query(&submit_key, value);
+        let entry = state
+            .outputs
+            .iter()
+            .find(|output| output.key() == submit_key)
+            .and_then(|output| results(state, output).into_iter().next());
+        if let Some(entry) = entry {
+            select(state, &submit_key, output_name.as_deref(), &entry);
+        }
+    })
+    .on_cancel(move |state: &mut ShellState, _| state.dismiss_search(&cancel_key));
+    sized_box(track_search(search, focus_target)).fixed_height(SEARCH_BOX_HEIGHT.px())
 }
 
 #[cfg(test)]
@@ -165,14 +228,11 @@ mod tests {
     }
 
     #[test]
-    fn windows_button_lists_running_windows_with_the_focused_window_first() {
+    fn empty_search_does_not_list_running_windows() {
         let mut state = state();
         assert!(results(&state, &state.outputs[0]).is_empty());
-        state.outputs[0].show_windows = true;
-        let entries = results(&state, &state.outputs[0]);
-        assert!(
-            matches!(entries.as_slice(), [Entry::Window(first), Entry::Window(second)] if first.id == 43 && second.id == 42)
-        );
+        state.toggle_search("eDP-1");
+        assert!(results(&state, &state.outputs[0]).is_empty());
     }
 
     #[test]
@@ -192,11 +252,11 @@ mod tests {
                 stream.write_all(reply.as_bytes()).unwrap();
             });
             state.outputs[0].query = "Research".into();
-            state.outputs[0].show_windows = true;
+            state.outputs[0].show_search = true;
             let entry = Entry::Window(state.windows[0].clone());
             select(&mut state, "eDP-1", Some("eDP-1"), &entry);
             assert_eq!(state.outputs[0].query.is_empty(), accepted);
-            assert_eq!(!state.outputs[0].show_windows, accepted);
+            assert_eq!(!state.outputs[0].show_search, accepted);
             assert_eq!(state.outputs[0].launch_error.is_none(), accepted);
             server.join().unwrap();
         }

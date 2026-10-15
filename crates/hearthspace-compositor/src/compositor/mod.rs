@@ -270,6 +270,7 @@ struct App {
     idle_daemon: WindowIdleDaemon,
     focused_normal_window_id: Option<u64>,
     shortcuts: input::KeyboardShortcuts,
+    search_request: shell_integration::search::SearchRequest,
     drag: Option<DragState>,
     resize: Option<ResizeState>,
     /// Cursor the compositor wants the host winit window to show. Updated from
@@ -627,6 +628,7 @@ pub(in crate::compositor) fn initialize_app(
         idle_daemon: WindowIdleDaemon::new(WINDOW_IDLE_THRESHOLDS),
         focused_normal_window_id: None,
         shortcuts: input::KeyboardShortcuts::default(),
+        search_request: Default::default(),
         drag: None,
         resize: None,
         cursor_icon: CursorIcon::Default,

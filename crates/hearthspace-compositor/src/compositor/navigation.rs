@@ -36,7 +36,7 @@ impl App {
             && self.resize.is_none()
     }
 
-    fn check_navigation_available(&self) -> Result<(), String> {
+    pub(in crate::compositor) fn check_navigation_available(&self) -> Result<(), String> {
         self.navigation_available().then_some(()).ok_or_else(|| {
             "window action unavailable during overview, window switching, an input grab, or interactive move/resize".into()
         })
@@ -161,57 +161,6 @@ impl App {
                     )))
                     .map_err(|error| format!("X11 resize failed: {error}"))?;
             }
-        }
-        self.request_redraw();
-        Ok(())
-    }
-
-    pub(super) fn focus_launcher(&mut self) -> Result<(), String> {
-        self.check_navigation_available()?;
-        let target_output = self
-            .capture_outputs()
-            .into_iter()
-            .find(|output| {
-                Rectangle::new(
-                    (output.logical_x, output.logical_y).into(),
-                    (output.logical_width, output.logical_height).into(),
-                )
-                .contains(self.pointer_location.to_i32_round())
-            })
-            .map(|output| output.name);
-        let index = self
-            .windows
-            .iter()
-            .position(|window| {
-                window.kind == ManagedWindowKind::ShellBar
-                    && window.mapped
-                    && window.shell_output_name == target_output
-            })
-            .or_else(|| {
-                self.windows
-                    .iter()
-                    .position(|window| window.kind == ManagedWindowKind::ShellBar && window.mapped)
-            })
-            .ok_or_else(|| "application launcher is not ready".to_string())?;
-        if let Some(surface) = self.windows[index].surface.wl_surface() {
-            self.clear_keyboard_focus();
-            self.set_keyboard_focus_to_window(index, surface);
-        }
-        Ok(())
-    }
-
-    pub(super) fn reset_view(&mut self) -> Result<(), String> {
-        self.check_navigation_available()?;
-        self.interrupt_pinch_zoom();
-        self.viewport_animation = None;
-        self.viewport_scale = 1.0;
-        if let Some(index) = self
-            .focused_normal_window_id
-            .and_then(|id| self.navigation_window_index(id).ok())
-        {
-            self.reveal_window(index, true);
-        } else {
-            self.viewport_offset = CanvasPoint { x: 0, y: 0 };
         }
         self.request_redraw();
         Ok(())

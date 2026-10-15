@@ -14,7 +14,7 @@ use tracing::trace;
 
 use crate::config::WHEEL_SCROLL_PIXEL_EQUIVALENT;
 
-use super::{App, HitTarget, idle::ActivityReason, switcher::SwitcherSource};
+use super::{App, HitTarget, idle::ActivityReason};
 
 mod buttons;
 mod interactive;
@@ -44,12 +44,10 @@ pub(in crate::compositor) fn handle_input_event<B: InputBackend>(
 ) {
     match event {
         InputEvent::DeviceRemoved { device } => {
-            if device.has_capability(DeviceCapability::Keyboard)
-                && state.window_switcher_source() == Some(SwitcherSource::Keyboard)
-            {
+            if device.has_capability(DeviceCapability::Keyboard) {
                 // Key state is shared across physical and agent keyboards. A
-                // removed keyboard cannot deliver its held Alt release, so
-                // conservatively cancel switching and release the whole chord.
+                // removed keyboard cannot finish a held Meta/Alt chord. Cancel
+                // bare-key actions before releasing all held input state.
                 state.reset_session_input();
             }
             state.remove_touch_device(&device.id());
@@ -62,6 +60,7 @@ pub(in crate::compositor) fn handle_input_event<B: InputBackend>(
             );
         }
         InputEvent::GesturePinchBegin { event } => {
+            state.shortcuts.cancel_meta_tap();
             state.begin_touchpad_gesture(
                 PinchInput::Touchpad,
                 event.device().id(),
@@ -86,6 +85,7 @@ pub(in crate::compositor) fn handle_input_event<B: InputBackend>(
             );
         }
         InputEvent::GestureSwipeBegin { event } => {
+            state.shortcuts.cancel_meta_tap();
             state.begin_touchpad_gesture(
                 PinchInput::TouchpadSwipe,
                 event.device().id(),

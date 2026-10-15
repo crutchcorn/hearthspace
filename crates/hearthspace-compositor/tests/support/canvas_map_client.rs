@@ -33,6 +33,7 @@ struct State {
     presses: Vec<(usize, (f64, f64))>,
     closed: Vec<usize>,
     keys: Vec<u32>,
+    enter_keys: Vec<u32>,
 }
 
 pub(super) struct MapClient {
@@ -133,6 +134,11 @@ impl MapClient {
     pub(super) fn keys(&mut self) -> &[u32] {
         self.sync();
         &self.state.keys
+    }
+
+    pub(super) fn enter_keys(&mut self) -> &[u32] {
+        self.sync();
+        &self.state.enter_keys
     }
 }
 
@@ -262,7 +268,13 @@ impl Dispatch<wl_keyboard::WlKeyboard, ()> for State {
         _: &QueueHandle<Self>,
     ) {
         match event {
-            wl_keyboard::Event::Enter { surface, .. } => {
+            wl_keyboard::Event::Enter { surface, keys, .. } => {
+                state.enter_keys = keys
+                    .as_chunks::<4>()
+                    .0
+                    .iter()
+                    .map(|bytes| u32::from_ne_bytes(*bytes))
+                    .collect();
                 state.focus = state
                     .windows
                     .iter()

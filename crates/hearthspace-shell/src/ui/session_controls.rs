@@ -4,15 +4,18 @@ use std::time::Duration;
 use chrono::Local;
 use hearthspace_ui_components as components;
 use xilem::{
-    WidgetView,
+    WidgetView, WindowOptionsExtLinux, WindowView,
     core::{MessageProxy, NoElement, View},
+    dpi::LogicalSize,
     masonry::layout::AsUnit,
     style::Style,
-    view::{flex_row, task_raw},
+    view::{CrossAxisAlignment, FlexSpacer, flex_col, flex_row, sized_box, task_raw},
+    window,
 };
 
 use super::{
     command_client::send_command,
+    icons::{Icon, icon_button},
     state::{ShellOutputInstance, ShellState},
 };
 
@@ -48,7 +51,7 @@ fn set_confirmation(state: &mut ShellState, output_key: &str, enabled: bool) {
         .find(|output| output.key() == output_key)
     {
         output.confirm_logout = enabled;
-        output.show_map = false;
+        output.show_power = true;
         output.launch_error = None;
     }
 }
@@ -57,7 +60,7 @@ fn confirm_logout(state: &mut ShellState, output_key: &str) {
     if !state
         .outputs
         .iter()
-        .any(|output| output.key() == output_key && output.confirm_logout)
+        .any(|output| output.key() == output_key && output.show_power && output.confirm_logout)
     {
         return;
     }
@@ -66,10 +69,42 @@ fn confirm_logout(state: &mut ShellState, output_key: &str) {
     }
 }
 
-pub(super) fn session_controls(
-    output: &ShellOutputInstance,
-    clock: String,
-) -> impl WidgetView<ShellState> + use<> {
+pub(super) fn power_button(output: &ShellOutputInstance) -> impl WidgetView<ShellState> + use<> {
+    let key = output.key().to_string();
+    icon_button(Icon::Power, "Power", output.show_power, move |state| {
+        state.toggle_power(&key)
+    })
+}
+
+pub(super) fn power_window(output: &ShellOutputInstance) -> WindowView<ShellState> {
+    let app_id = output.power_app_id();
+    let key = output.key().to_string();
+    let size = LogicalSize::new(
+        300.0,
+        if output.launch_error.is_some() {
+            300.0
+        } else {
+            230.0
+        },
+    );
+    window(
+        output.power_window_id,
+        "Hearthspace Power",
+        power_panel(output),
+    )
+    .with_options(move |options| {
+        options
+            .with_name(&app_id, &app_id)
+            .with_decorations(false)
+            .with_resizable(false)
+            .with_initial_inner_size(size)
+            .with_min_inner_size(size)
+            .with_max_inner_size(size)
+            .on_close(move |state| state.dismiss_power(&key))
+    })
+}
+
+pub(super) fn power_panel(output: &ShellOutputInstance) -> impl WidgetView<ShellState> + use<> {
     let output_key = output.key().to_string();
     let cancel_key = output_key.clone();
     let lock_key = output_key.clone();
@@ -95,13 +130,36 @@ pub(super) fn session_controls(
     });
     let lock = (!confirming).then(|| {
         components::compact_action_button("Lock", move |state: &mut ShellState| {
-            state.dismiss_map(&lock_key);
-            if let Err(error) = send_command(&state.command_socket, "lock-session") {
-                state.finish_launch(&lock_key, Err(error));
-            }
+            let result = send_command(&state.command_socket, "lock-session");
+            state.finish_launch(&lock_key, result);
         })
     });
-    flex_row((components::muted_text(clock), lock, logout, cancel)).gap(8.0.px())
+    let close_key = output.key().to_string();
+    let close = icon_button(Icon::Close, "Close power menu", false, move |state| {
+        state.dismiss_launcher(&close_key)
+    });
+    let hint = confirming.then(|| components::muted_text("Close your apps and end this session?"));
+    let error = output.launch_error.clone().map(components::field_label);
+    sized_box(components::scroll_area(
+        flex_col((
+            flex_row((
+                components::section_title("Power"),
+                FlexSpacer::Flex(1.0),
+                close,
+            )),
+            hint,
+            error,
+            lock,
+            logout,
+            cancel,
+        ))
+        .cross_axis_alignment(CrossAxisAlignment::Stretch)
+        .gap(8.0.px()),
+    ))
+    .padding(12.0.px())
+    .background_color(components::SURFACE)
+    .border(components::BORDER, 1.0.px())
+    .corner_radius(10.0.px())
 }
 
 #[cfg(test)]

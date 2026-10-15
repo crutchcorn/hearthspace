@@ -9,16 +9,8 @@ pub(super) const LAUNCHER_WIDTH: i32 = 360;
 /// contents.
 const LAUNCHER_ROW_HEIGHT: f64 = 40.0;
 /// Vertical padding added around the launcher result list.
-const LAUNCHER_PADDING: f64 = 12.0;
+const LAUNCHER_PADDING: f64 = 104.0;
 
-/// Horizontal padding inside each launcher result button.
-pub(super) const LAUNCHER_ITEM_H_PAD: f64 = 14.0;
-/// Width of a launcher result label. Sized so each row spans the dropdown width
-/// once the button adds [`LAUNCHER_ITEM_H_PAD`] of padding on each side.
-pub(super) const LAUNCHER_ITEM_WIDTH: f64 = LAUNCHER_WIDTH as f64 - 2.0 * LAUNCHER_ITEM_H_PAD;
-
-/// Maximum width of the search field.
-pub(super) const SEARCH_BOX_WIDTH: f64 = 280.0;
 /// Fixed height of the search field.
 pub(super) const SEARCH_BOX_HEIGHT: f64 = 34.0;
 /// Horizontal inset between the bar's contents and the screen edges.

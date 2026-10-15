@@ -15,16 +15,13 @@ use wayland_protocols::xdg::{
 use wayland_server::protocol::wl_surface::{self, WlSurface};
 
 use crate::{accessibility::ManagedWindowAccessibilityInfo, config::*, geometry::CanvasPoint};
-use hearthspace_common::{
-    canvas_map_output_name_from_app_id, launcher_output_name_from_app_id,
-    shell_bar_output_name_from_app_id,
-};
+use hearthspace_common::{shell_bar_output_name_from_app_id, shell_panel_output_name_from_app_id};
 
 mod bounds;
-mod canvas_map;
 mod geometry;
 mod hit_testing;
 mod ordering;
+mod shell_panels;
 mod shell_position;
 mod shell_size;
 
@@ -76,9 +73,7 @@ pub(super) fn window_kind_for_toplevel(surface: &ToplevelSurface) -> ManagedWind
     }
     if app_id
         .as_deref()
-        .and_then(|id| {
-            launcher_output_name_from_app_id(id).or_else(|| canvas_map_output_name_from_app_id(id))
-        })
+        .and_then(shell_panel_output_name_from_app_id)
         .is_some()
     {
         return ManagedWindowKind::Launcher;
@@ -92,8 +87,7 @@ pub(super) fn window_kind_for_toplevel(surface: &ToplevelSurface) -> ManagedWind
 pub(super) fn shell_output_name_for_toplevel(surface: &ToplevelSurface) -> Option<String> {
     let app_id = toplevel_app_id(surface)?;
     shell_bar_output_name_from_app_id(&app_id)
-        .or_else(|| launcher_output_name_from_app_id(&app_id))
-        .or_else(|| canvas_map_output_name_from_app_id(&app_id))
+        .or_else(|| shell_panel_output_name_from_app_id(&app_id))
         .flatten()
 }
 

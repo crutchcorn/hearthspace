@@ -23,7 +23,10 @@ mod notifications;
 mod output_watcher;
 mod search_focus;
 mod session_controls;
+mod shell_events;
 mod state;
+#[cfg(test)]
+mod test_support;
 mod views;
 mod window_catalog;
 
@@ -41,7 +44,9 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
         error!(%error, "failed to read initial Wayland outputs; using primary shell fallback");
         Vec::new()
     });
-    let state = ShellState::new(command_socket, output_names);
+    let events = shell_events::ShellEvents::bind(&command_socket)?;
+    let mut state = ShellState::new(command_socket, output_names);
+    state.shell_events = Some(events);
 
     let app = Xilem::new(state, app_logic)
         .with_default_properties(hearthspace_ui_components::hearthspace_light_properties())

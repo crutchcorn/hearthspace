@@ -193,7 +193,7 @@ impl Widget for SearchFocus {
         if matches!(event, Update::WidgetAdded) {
             // Xilem installs a focus fallback only for windows present at startup.
             // Initialize our internal focus through Masonry's action pass so a
-            // newly hotplugged bar also receives keyboard and activation events.
+            // newly opened search also receives keyboard and activation events.
             ctx.mutate_child_later(&mut self.inner, |mut child| {
                 child
                     .ctx
@@ -233,7 +233,7 @@ impl Widget for SearchFocus {
             && event.key == Key::Named(NamedKey::Escape)
             && let Some(target) = *self.target.lock().unwrap()
         {
-            // Escape must also dismiss shell panels when a toolbar button has
+            // Escape must also dismiss search when a result or close button has
             // keyboard focus. Reuse the search view's existing cancel callback.
             ctx.mutate_later(target, |mut search| {
                 search
