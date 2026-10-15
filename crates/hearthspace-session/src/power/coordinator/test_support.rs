@@ -130,6 +130,7 @@ impl Fixture {
             sleeping: false,
             preparing: None,
             recovering: None,
+            resume_accepted: true,
             lid_request: None,
             hint: None,
         }

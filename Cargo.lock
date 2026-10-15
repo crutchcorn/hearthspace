@@ -2374,11 +2374,16 @@ dependencies = [
  "caps",
  "clap",
  "ctrlc",
+ "futures-util",
  "hearthspace-common",
  "nix",
+ "serde",
+ "serde_json",
+ "tokio",
  "tracing",
  "tracing-subscriber",
  "which",
+ "zbus",
 ]
 
 [[package]]

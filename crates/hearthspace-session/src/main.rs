@@ -11,6 +11,7 @@ mod desktop_services;
 mod dev_cargo;
 mod gtk_defaults;
 mod portal_cleanup;
+mod power;
 mod privileges;
 mod process;
 mod profile_env;
@@ -69,6 +70,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         supervisor.start_compositor()?;
         supervisor.wait_for_compositor_ready()?;
         if desktop_services::enabled(&args) {
+            supervisor.start_power()?;
             supervisor.start_notifications()?;
             supervisor.start_desktop_services()?;
         }

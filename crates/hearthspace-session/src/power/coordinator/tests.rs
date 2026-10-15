@@ -235,3 +235,49 @@ async fn reconnect_refreshes_hardware_without_inventing_a_sleep_count() {
         } => {}
     }
 }
+
+#[tokio::test(flavor = "current_thread")]
+async fn authenticated_unlock_completes_only_an_acknowledged_resume() {
+    let fixture = Fixture::new().await;
+    let mut cycle = fixture.cycle().await;
+    let mut status = Status::default();
+    let snapshot = fixture.logind.snapshot().await.unwrap();
+    cycle
+        .sleep_event(
+            true,
+            &snapshot,
+            &fixture.logind,
+            &fixture.control.path,
+            &mut status,
+        )
+        .await
+        .unwrap();
+    cycle
+        .sleep_event(
+            false,
+            &snapshot,
+            &fixture.logind,
+            &fixture.control.path,
+            &mut status,
+        )
+        .await
+        .unwrap();
+    fixture.control.state.lock().unwrap().locked = false;
+    fixture.tick(&mut cycle, &snapshot, &mut status).await;
+    assert_eq!(status.phase, "awake");
+    assert!(
+        !status.lock_confirmed,
+        "unlock is not evidence of a presented lock"
+    );
+    assert!(cycle.recovering.is_none());
+
+    cycle.recovering = Some(Instant::now());
+    cycle.resume_accepted = false;
+    fixture.tick(&mut cycle, &snapshot, &mut status).await;
+    assert_eq!(
+        status.phase, "degraded",
+        "failed resume must not be cleared by old status"
+    );
+    fixture.tick(&mut cycle, &snapshot, &mut status).await;
+    assert_eq!(status.phase, "degraded");
+}

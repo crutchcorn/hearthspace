@@ -40,6 +40,7 @@ pub(crate) struct Supervisor {
     notifications: Option<ManagedProcess>,
     desktop_services: crate::desktop_services::DesktopServices,
     app_scopes: Option<crate::app_scopes::AppScopes>,
+    power: Option<crate::power::PowerManager>,
 }
 
 impl Supervisor {
@@ -67,6 +68,7 @@ impl Supervisor {
             notifications: None,
             desktop_services: crate::desktop_services::DesktopServices::default(),
             app_scopes: None,
+            power: None,
         }
     }
 
@@ -131,6 +133,14 @@ impl Supervisor {
         configure_compositor_environment(&mut spec, backend);
         self.compositor = Some(ManagedProcess::spawn(spec, 0)?);
         self.record_processes()?;
+        Ok(())
+    }
+
+    pub(crate) fn start_power(&mut self) -> std::io::Result<()> {
+        self.power = Some(crate::power::PowerManager::start(
+            self.paths.session_dir.clone(),
+            self.paths.shell_command_socket.clone(),
+        )?);
         Ok(())
     }
 
@@ -282,6 +292,7 @@ impl Supervisor {
 
     pub(crate) fn shutdown(&mut self) -> std::io::Result<()> {
         info!("shutting down Hearthspace session processes");
+        self.power.take();
         terminate_process(&mut self.shell);
         terminate_process(&mut self.compositor);
         terminate_process(&mut self.settingsd);

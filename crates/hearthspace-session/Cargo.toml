@@ -9,6 +9,11 @@ license = "Apache-2.0"
 [dependencies]
 caps = "0.5.6"
 clap = { version = "4.6.7", features = ["derive"] }
+futures-util = "0.3.34"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+tokio = { version = "1.53.3", features = ["macros", "rt", "time", "net", "io-util"] }
+zbus = { version = "5.19.0", default-features = false, features = ["async-io"] }
 ctrlc = { version = "3.5.2", features = ["termination"] }
 hearthspace-common = { path = "../hearthspace-common" }
 nix = { version = "0.31.3", features = ["signal", "process", "socket", "fs"] }
