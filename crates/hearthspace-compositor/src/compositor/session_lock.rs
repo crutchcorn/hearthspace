@@ -33,6 +33,7 @@ pub(super) struct LockState {
     ready_surfaces: Vec<WlSurface>,
     previous_focus: Option<u64>,
     awaiting_locker: bool,
+    sleep_prepared: bool,
 }
 
 impl LockState {
@@ -47,6 +48,7 @@ impl LockState {
             ready_surfaces: Vec::new(),
             previous_focus: None,
             awaiting_locker: false,
+            sleep_prepared: false,
         }
     }
 }
@@ -60,8 +62,8 @@ impl SessionLockHandler for App {
         if !self.session_lock.supported
             || (self.session_locked() && !self.session_lock.awaiting_locker)
         {
-            // Only a shield that has never had an owner accepts its first locker.
-            // Losing an established owner never permits takeover.
+            // A fresh shield or an owner that authenticated during sleep
+            // preparation may accept a locker. Disconnect/crash never may.
             return;
         }
         if !self.session_locked() {
@@ -75,6 +77,7 @@ impl SessionLockHandler for App {
     }
 
     fn unlock(&mut self) {
+        self.reset_session_input();
         self.pointer
             .clone()
             .unset_grab(self, SERIAL_COUNTER.next_serial(), InputTime::now());
@@ -89,14 +92,23 @@ impl SessionLockHandler for App {
             },
         );
         self.pointer.clone().frame(self);
-        self.session_lock.barrier.unlock();
-        self.session_lock.awaiting_locker = false;
         self.session_lock.pending = None;
         self.session_lock.owner = None;
         self.session_lock.surfaces.clear();
         self.session_lock.ready_surfaces.clear();
         self.clear_keyboard_focus();
         self.cursor_surface = None;
+        if self.session_lock.sleep_prepared {
+            // Authentication completed before the pending sleep. The owner is
+            // leaving explicitly, but the desktop must remain isolated until
+            // a locker authenticates again after resume.
+            self.session_lock.awaiting_locker = true;
+            self.cursor_visible = false;
+            self.request_redraw();
+            return;
+        }
+        self.session_lock.barrier.unlock();
+        self.session_lock.awaiting_locker = false;
         self.cursor_visible = true;
         if self
             .session_lock

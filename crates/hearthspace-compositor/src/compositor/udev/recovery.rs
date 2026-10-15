@@ -139,36 +139,6 @@ pub(super) fn activate_session(data: &mut CalloopData) {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn slow_driver_calls_consume_the_absolute_recovery_budget() {
-        let started = Instant::now();
-        let mut budget = RecoveryBudget::new(started);
-        assert!(budget.next_attempt(started + Duration::from_millis(2_700)));
-        assert!(!budget.next_attempt(started + Duration::from_millis(5_400)));
-    }
-
-    #[test]
-    fn initial_activation_can_exhaust_the_deadline_without_further_rebuilds() {
-        let started = Instant::now();
-        let mut budget = RecoveryBudget::new(started);
-        assert!(!budget.next_attempt(started + RECOVERY_BUDGET));
-    }
-
-    #[test]
-    fn retry_count_also_bounds_attempts_if_time_does_not_advance() {
-        let started = Instant::now();
-        let mut budget = RecoveryBudget::new(started);
-        for _ in 0..RECOVERY_ATTEMPTS {
-            assert!(budget.next_attempt(started));
-        }
-        assert!(!budget.next_attempt(started));
-    }
-}
-
 pub(super) fn insert_drm_source(
     handle: &LoopHandle<'static, CalloopData>,
     notifier: DrmDeviceNotifier,
@@ -205,4 +175,34 @@ pub(super) fn insert_drm_source(
             DrmEvent::Error(error) => error!(%error, "DRM event error"),
         })?,
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn slow_driver_calls_consume_the_absolute_recovery_budget() {
+        let started = Instant::now();
+        let mut budget = RecoveryBudget::new(started);
+        assert!(budget.next_attempt(started + Duration::from_millis(2_700)));
+        assert!(!budget.next_attempt(started + Duration::from_millis(5_400)));
+    }
+
+    #[test]
+    fn initial_activation_can_exhaust_the_deadline_without_further_rebuilds() {
+        let started = Instant::now();
+        let mut budget = RecoveryBudget::new(started);
+        assert!(!budget.next_attempt(started + RECOVERY_BUDGET));
+    }
+
+    #[test]
+    fn retry_count_also_bounds_attempts_if_time_does_not_advance() {
+        let started = Instant::now();
+        let mut budget = RecoveryBudget::new(started);
+        for _ in 0..RECOVERY_ATTEMPTS {
+            assert!(budget.next_attempt(started));
+        }
+        assert!(!budget.next_attempt(started));
+    }
 }
