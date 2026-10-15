@@ -27,9 +27,12 @@ pub(in crate::compositor) fn handle_winit_input(state: &mut App, event: InputEve
                 state.output_size(),
                 state.primary_output_logical_rect(),
             );
-            state
-                .touch_input
-                .motion(&event.device().id(), event.slot(), location);
+            if !state.favorite_touch_motion(&event.device().id(), event.slot(), location) {
+                state.motion_ui_touch(&event.device().id(), event.slot(), location, event.time());
+                state
+                    .touch_input
+                    .motion(&event.device().id(), event.slot(), location);
+            }
         }
         other => handle_input_event(state, other),
     }

@@ -72,6 +72,7 @@ impl App {
         });
         self.cancel_search_outside_focus(index);
         self.favorite_focus_changed(index.map(|index| self.windows[index].id));
+        self.ui_touch_focus_changed(index.map(|index| self.windows[index].id));
         self.dismiss_shell_panels_outside_focus(index);
         self.focused_normal_window_id = index
             .filter(|index| self.is_navigable_window(*index))

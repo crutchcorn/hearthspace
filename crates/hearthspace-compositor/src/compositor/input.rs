@@ -29,6 +29,7 @@ mod recovery;
 mod scroll;
 mod touch;
 mod touch_tracker;
+mod ui_touch;
 
 pub(super) use favorite_drawing::FavoriteDrawing;
 pub(super) use keyboard::KeyboardShortcuts;
@@ -39,6 +40,7 @@ use pinch::PinchInput;
 pub(super) use pinch::PinchZoom;
 use pointer::relative_pointer_location;
 pub(super) use touch_tracker::TouchTracker;
+pub(super) use ui_touch::UiTouch;
 
 pub(in crate::compositor) fn handle_input_event<B: InputBackend>(
     state: &mut App,
@@ -181,6 +183,7 @@ pub(in crate::compositor) fn handle_input_event<B: InputBackend>(
             let location =
                 touch_location_in_primary_output(event.position_transformed(output.size), output);
             if !state.favorite_touch_motion(&event.device().id(), event.slot(), location) {
+                state.motion_ui_touch(&event.device().id(), event.slot(), location, event.time());
                 state
                     .touch_input
                     .motion(&event.device().id(), event.slot(), location);
@@ -188,11 +191,13 @@ pub(in crate::compositor) fn handle_input_event<B: InputBackend>(
         }
         InputEvent::TouchUp { event } => {
             if !state.favorite_touch_up(&event.device().id(), event.slot(), false) {
+                state.end_ui_touch(&event.device().id(), event.slot(), false, event.time());
                 state.touch_input.up(&event.device().id(), event.slot());
             }
         }
         InputEvent::TouchCancel { event } => {
             state.favorite_touch_up(&event.device().id(), event.slot(), true);
+            state.end_ui_touch(&event.device().id(), event.slot(), true, event.time());
             state.touch_input.cancel(&event.device().id(), event.slot());
             state.flush_touch_frame(&event.device().id(), event.time());
         }

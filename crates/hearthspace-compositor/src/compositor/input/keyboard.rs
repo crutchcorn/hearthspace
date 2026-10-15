@@ -228,6 +228,7 @@ impl App {
                 // Revoke before the asynchronous close reaches the shell: a
                 // held drawing button may be released in the same input batch.
                 self.clear_favorite_drawing();
+                self.cancel_ui_touch();
                 self.dismiss_active_shell_panel();
                 return;
             }
