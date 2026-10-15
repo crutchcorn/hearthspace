@@ -1,7 +1,7 @@
 mod actions;
 mod favorites;
-mod favorites_view;
 mod favorites_search;
+mod favorites_view;
 mod monitor_layout_view;
 mod monitor_layout_widget;
 mod monitors;

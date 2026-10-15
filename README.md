@@ -57,6 +57,12 @@ search. See [the compact shell](./docs/SHELL.md) and
 [app compatibility](./docs/APPS.md) for profile and
 package behavior.
 
+Add favorite apps and assign drawn shortcuts in **Settings → Favorites**.
+Favorites appear in empty search. Choose **Draw to launch**, then click and drag
+with a mouse or trackpad, or draw with one finger on the touchscreen; a clear
+match launches immediately on release. See [favorite apps](./docs/FAVORITE_APPS.md)
+for assignment and recognition details.
+
 Agents can start an owned native session on a spare VT, inspect apps and stable
 window IDs, send input or Unicode paste, and verify screenshots or accessibility
 state through `scripts/hearthspace-agent`. Follow [native testing](./docs/NATIVE_TESTING.md)

@@ -178,7 +178,7 @@ def panels(smoke, output):
     smoke.until("opaque dark popup backdrop presented", presented)
     background = Frame(smoke.capture("shell-popup-background", output["name"]))
     for kind, button, last_name in (
-        ("search", "Search", "Type to search apps and open windows"),
+        ("search", "Search", "Add apps and assign gestures in Settings → Favorites."),
         ("notifications", "Notifications", "No notifications yet"),
         ("power", "Power", "Log out"),
         ("map", "Canvas map", "Zoom in"),
