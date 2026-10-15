@@ -114,7 +114,9 @@ Closed windows are removed, and the selected preview stays visible when there
 are more windows than fit across the output. Typing, clicks, and scrolling are
 consumed while the strip is open. The keyboard and gesture cannot take over each
 other's active switcher. Locking or losing the native VT dismisses it and clears
-the held input state.
+the held input state. Unplugging the keyboard cannot leave Alt or its overlay
+stuck; a backend-synthesized release keeps the selection, otherwise removal
+cancels the held switch.
 
 ## Touchscreen movement and resizing
 

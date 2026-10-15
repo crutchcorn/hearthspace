@@ -225,7 +225,9 @@ and four/five touchscreen contacts. It observes intermediate viewport positions
 during the 180 ms pan, verifies the selected client's focus and colored live
 preview pixels, and captures the revealed window after release. Input ownership,
 Escape rollback, stale gesture events, and a touchscreen contact held across Alt
-release are checked too. Independent libinput traces establish the delivered
+release are checked too. A temporary keyboard is unplugged with Alt held; the
+test checks overlay cleanup and types a file-writing command to prove modifier
+recovery. Independent libinput traces establish the delivered
 gesture type, direction, and contact count. Run it separately from headless GPU
 tests; it owns and cleans up its native session and temporary input devices.
 
@@ -273,6 +275,39 @@ the full native/test-target build. `scripts/install-session install` built and
 installed optimized release `178a39a6fa45`; its installed compositor, shell and
 session hashes match `target/release`. GNOME remained active on tty2 with display
 power on, and the background T3/remote services remained running.
+
+Window-switcher acceptance on the same physical laptop passed in
+`/tmp/hearthspace-window-switcher-native-2`: held Alt+Tab and reverse selection,
+four-contact touchpad swipes, four/five-contact touchscreen swipes in both
+directions, intermediate animated viewport positions, live preview pixel proof,
+released-window captures, Escape rollback, and input ownership. A touchscreen
+contact held across Alt release did not click the revealed client's close button.
+The keyboard-unplug trace shows libinput synthesizing Alt release before device
+removal; the selected window remained focused, the overlay closed, and a typed
+file-writing command proved modifier recovery. The native fixture uses temporary
+uinput devices and does not establish physical finger feel or multi-output behavior.
+
+`/tmp/hearthspace-window-switcher-native-1` also passed before the text alpha fix
+and keyboard-unplug fixture were added. Final screenshots in the second run
+verify clean text blending. `/tmp/hearthspace-window-switcher-overview-regression-1`
+passed the existing overview pinch, cancellation, and pointer/touch selection
+checks on both device types.
+
+`/tmp/hearthspace-window-switcher-pan-regression-2` passed three-finger cardinal
+and diagonal panning, combined zoom, cancellation, ignored two-contact input,
+maximized-window restoration, and fullscreen preservation on both device types.
+The first pan run was deliberately interrupted after review found its obsolete
+requirement that every recognizer stop after a fourth contact. The corrected test
+requires the original canvas transform and no open overlay while allowing a fresh
+many-finger candidate. Both attempts retain their evidence and completed cleanup.
+All runs restored tty2 and removed their owned sessions, app scopes, and runtimes.
+
+The optimized session release `6f679aab710b` is installed; compositor, shell, and
+session hashes match `target/release`. Final host checks show GNOME on tty2,
+Mutter display power on, and both background T3 services active.
+Final switcher checks passed: 513 Rust tests with E2E/accessibility enabled,
+269 Python tests with E2E enabled, rustfmt, Clippy with warnings denied, Ruff, and
+the full native/test-target build.
 
 `scripts/touch-drag-smoke --session /tmp/hearthspace-touch-drag-1` tests one-finger
 window movement through the same uinput/libinput touchscreen path. It uses a

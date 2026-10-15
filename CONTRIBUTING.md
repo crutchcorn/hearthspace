@@ -253,6 +253,19 @@ one device type. Libinput currently suppresses five-contact touchpad gestures;
 the test records this backend limitation rather than reporting it as a pass.
 Keep the physical input devices idle during native acceptance.
 
+Held window-switcher acceptance uses those same installed dependencies and
+temporary uinput permissions:
+
+```sh
+scripts/window-switcher-smoke --session "$(mktemp -d /tmp/hearthspace-window-switcher.XXXXXX)"
+```
+
+It checks Alt+Tab/Alt+Shift+Tab, left/right four-contact touchpad and four/five-contact
+touchscreen swipes, live previews over the animated canvas, cancellation, input
+ownership, and keyboard unplug recovery. Its bounded keyboard worker records
+libinput key events only from its own temporary device. No extra packages, udev
+rules, or persistent input devices are required.
+
 ### Recovering a black host login screen
 
 If SSH still works, inspect the active session before assuming the laptop is
