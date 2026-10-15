@@ -59,6 +59,7 @@ pub(super) fn app_logic(
             state.clock.clone(),
             &state.notifications,
             &state.tray,
+            state.battery.as_ref(),
         ));
         if output.tray.open {
             windows.push(super::tray_view::window(output, &state.tray));
@@ -82,7 +83,7 @@ pub(super) fn app_logic(
         }
 
         if output.show_power {
-            windows.push(power_window(output));
+            windows.push(power_window(output, &state.power, state.battery.as_ref()));
             continue;
         }
         let results = launcher::results(state, output);
@@ -103,12 +104,13 @@ fn shell_bar_window(
     clock: String,
     notifications: &[Notification],
     tray: &super::tray_state::TrayState,
+    battery: Option<&crate::battery::BatteryStatus>,
 ) -> WindowView<ShellState> {
     let bar_app_id = output.bar_app_id();
     window(
         output.bar_window_id,
         "Hearthspace Shell",
-        bar_view(output, clock, notifications, tray),
+        bar_view(output, clock, notifications, tray, battery),
     )
     .with_options(move |options| {
         options
@@ -165,6 +167,7 @@ pub(super) fn bar_view(
     clock: String,
     notifications: &[Notification],
     tray: &super::tray_state::TrayState,
+    battery: Option<&crate::battery::BatteryStatus>,
 ) -> impl WidgetView<ShellState> + use<> {
     let key = output.key().to_string();
     let search = icon_button(Icon::Search, "Search", output.show_search, move |state| {
@@ -192,7 +195,8 @@ pub(super) fn bar_view(
                 .color(components::TEXT_MUTED)
                 .line_break_mode(xilem::masonry::properties::LineBreaking::Clip)
                 .flex(1.0),
-                super::tray_view::strip(output, tray),
+                super::tray_view::strip(output, tray, if battery.is_some() { 64.0 } else { 0.0 }),
+                super::battery_view::indicator(battery),
                 search,
                 notification_view::button(output, notifications),
                 map_button(output),
@@ -216,7 +220,10 @@ fn output_watcher_view(map_open: bool) -> impl WidgetView<ShellState> + use<> {
         ),
         fork(
             fork(
-                fork(clock_task(), notification_task()),
+                fork(
+                    fork(clock_task(), notification_task()),
+                    fork(super::battery_view::task(), super::power_task::task()),
+                ),
                 super::tray_task::task(),
             ),
             map_open.then(canvas_task),

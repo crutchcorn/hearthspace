@@ -17,10 +17,11 @@ use xilem::{
 pub(super) fn strip(
     output: &ShellOutputInstance,
     state: &TrayState,
+    reserved_width: f64,
 ) -> Option<impl WidgetView<ShellState> + use<>> {
     tray_state::visible(&state.snapshot).next()?;
     let icons = tray_state::visible(&state.snapshot)
-        .take(tray_state::capacity(output.tray.bar_width))
+        .take(tray_state::capacity(output.tray.bar_width - reserved_width))
         .map(|item| tray_button::icon(output.key(), item))
         .collect::<Vec<_>>();
     let mut drawer = tray_button::text(

@@ -10,6 +10,8 @@ use super::{minimap::CanvasSnapshot, notifications::Notification, window_catalog
 pub(super) struct ShellState {
     pub(super) command_socket: PathBuf,
     pub(super) tray: super::tray_state::TrayState,
+    pub(super) battery: Option<crate::battery::BatteryStatus>,
+    pub(super) power: super::power_task::PowerState,
     pub(super) shell_events: Option<std::sync::Arc<super::shell_events::ShellEvents>>,
     pub(super) catalog: AppCatalog,
     pub(super) windows: Vec<RunningWindow>,
@@ -65,6 +67,8 @@ impl ShellState {
         let mut state = Self {
             command_socket,
             tray: Default::default(),
+            battery: None,
+            power: Default::default(),
             shell_events: None,
             catalog: AppCatalog::load(),
             windows: Vec::new(),

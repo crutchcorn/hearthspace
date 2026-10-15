@@ -296,6 +296,7 @@ fn overflow_keeps_every_control_visible_and_empty_tray_adds_no_button() {
             state.clock.clone(),
             &state.notifications,
             &state.tray,
+            state.battery.as_ref(),
         ))
     }
     for width in [320, 480, 800] {

@@ -11,6 +11,7 @@ use hearthspace_common::SHELL_COMMAND_SOCKET_ENV;
 use tracing::{error, info};
 use xilem::{EventLoop, Xilem};
 
+mod battery_view;
 mod canvas_map;
 mod canvas_task;
 mod command_client;
@@ -24,6 +25,7 @@ mod output_state;
 mod output_watcher;
 mod popup;
 mod popup_group;
+mod power_task;
 mod search_editor;
 mod search_focus;
 mod search_input;

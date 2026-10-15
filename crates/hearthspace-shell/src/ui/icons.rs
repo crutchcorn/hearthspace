@@ -10,7 +10,7 @@ use xilem::{
             RegisterCtx, Widget, WidgetId,
         },
         imaging::Painter,
-        kurbo::{Axis, BezPath, Circle, Line, Size, Stroke},
+        kurbo::{Axis, BezPath, Circle, Line, Rect, Size, Stroke},
         layout::{AsUnit, LenReq, Length},
     },
     style::Style,
@@ -28,6 +28,17 @@ pub(super) enum Icon {
     ZoomIn,
     ZoomOut,
     Close,
+    Battery { percentage: u8, charging: bool },
+}
+
+pub(super) fn glyph(icon: Icon, name: String) -> impl WidgetView<ShellState> + use<> {
+    sized_box(IconView {
+        icon,
+        name,
+        selected: false,
+    })
+    .fixed_width(20.0.px())
+    .fixed_height(20.0.px())
 }
 
 pub(super) fn icon_button<F: Fn(&mut ShellState) + Send + Sync + 'static>(
@@ -134,6 +145,31 @@ impl Widget for IconWidget {
             components::TEXT
         };
         match self.icon {
+            Icon::Battery {
+                percentage,
+                charging,
+            } => {
+                painter
+                    .stroke(Rect::new(1.0, 5.0, 17.0, 15.0), &stroke, color)
+                    .draw();
+                painter.fill(Rect::new(18.0, 8.0, 20.0, 12.0), color).draw();
+                if charging {
+                    let mut bolt = BezPath::new();
+                    bolt.move_to((10.0, 6.5));
+                    bolt.line_to((6.0, 10.5));
+                    bolt.line_to((9.0, 10.5));
+                    bolt.line_to((8.0, 13.5));
+                    bolt.line_to((12.0, 9.5));
+                    bolt.line_to((9.0, 9.5));
+                    bolt.close_path();
+                    painter.fill(&bolt, color).draw();
+                } else if percentage > 0 {
+                    let width = 12.0 * f64::from(percentage.min(100)) / 100.0;
+                    painter
+                        .fill(Rect::new(3.0, 7.0, 3.0 + width, 13.0), color)
+                        .draw();
+                }
+            }
             Icon::Map => {
                 let mut path = BezPath::new();
                 path.move_to((2.0, 4.5));

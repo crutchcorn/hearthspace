@@ -15,13 +15,18 @@ fn bar(
         state.clock.clone(),
         &state.notifications,
         &state.tray,
+        state.battery.as_ref(),
     ))
 }
 
 fn power(
     state: &ShellState,
 ) -> impl WidgetView<ShellState, Widget = masonry::widgets::SizedBox> + use<> {
-    sized_box(power_panel(&state.outputs[0]))
+    sized_box(power_panel(
+        &state.outputs[0],
+        &state.power,
+        state.battery.as_ref(),
+    ))
 }
 
 fn search(
