@@ -17,9 +17,9 @@ every application, GPU, or output combination has been validated.
 - [x] **AI enablement** — native screenshots, reliable control transport, a VT
       session launcher with recovery, and agent CLI/smoke tests are implemented.
       See the [native-control skill](../.agents/skills/hearthspace-native-control/SKILL.md).
-- [x] **Pinch-gesture zoom** — three-finger touchpad and touchscreen pinches zoom
-      the canvas, alongside shell buttons and `Super`-modified scroll.
-      See [Pinch Zoom](../docs/PINCH_ZOOM.md) for behavior and native testing.
+- [x] **Three-finger navigation** — touchpad and touchscreen gestures pan in any
+      direction and zoom, including combined movement during a pinch.
+      See [Pan and Zoom](../docs/PINCH_ZOOM.md) for behavior and native testing.
 - [x] **Window navigation and recovery** — keyboard launch/cycling/close,
       focus activation, stable window actions, and off-canvas recovery.
 - [x] **Standard window states** — Wayland and XWayland maximize, fullscreen,

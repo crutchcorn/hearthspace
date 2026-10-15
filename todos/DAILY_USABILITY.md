@@ -369,3 +369,36 @@ after suppressed multi-touch input. No capture timeout recurred in this run or
 the final Firefox run. Cleanup completed and restored tty2; both background T3
 services remained active. The earlier capture timeout remains documented rather
 than being treated as a diagnosed or fixed fault.
+
+### Follow-up: three-finger canvas panning
+
+Touchpad swipes and pinch-center movement now pan in every direction; touchscreen
+navigation uses the three-contact centroid. Panning can accompany zoom, including
+at zoom limits, and cancellation restores the original view and maximized state.
+Eleven core and eight touchscreen regressions cover translation, combined motion,
+fractional accumulation, reversal, isolation, invalid data and cancellation.
+
+`/tmp/hearthspace-pan-pinch-regression-1` passed the complete existing native pinch
+workflow. New pan runs 1 and 2 hit capture timeouts. Twenty idle captures passed
+at `/tmp/hearthspace-pan-capture-probe-1`; run 3 passed all touchpad directions but
+exposed a fixture classified as a swipe. The combined fixture now establishes a
+pinch before adding translation. Run 4's capture diagnostics identified PNG
+encoding taking 4,981 ms after a prompt page flip, exceeding the five-second
+deadline. Earlier uninstrumented timeouts retain their original uncertainty.
+
+The fastest lossless PNG preset reduces a measured 2560×1600 capture from
+1,245–1,262 ms to 266 ms, increasing size from 1.65 MB to 2.34 MB with identical
+decoded pixels. An additional mixed-RGBA round-trip regression preserves alpha,
+row boundaries and exact content. Deadlines and memory bounds remain unchanged.
+Benchmark evidence: `/tmp/hearthspace-pan-png-benchmark-before.log`.
+
+`/tmp/hearthspace-pan-native-5` passed all 20 pan/combined/state cases across both
+device types: 80 encoded captures, at most 315 ms each, without a timeout.
+Evidence includes exact marker translation/scaling, cancellation, maximized
+restoration and fixed fullscreen content. `/tmp/hearthspace-pan-native-proof.json`
+summarizes the run on bare-metal AMD Strix/amdgpu, kernel 7.0.0-38-generic,
+eDP-1 at 2560×1600 and scale 2. Cleanup removed the runtime and restored tty3.
+Full Rust/E2E/AT-SPI, Clippy, build and 160 Python tests passed; logs are
+`/tmp/hearthspace-pan-{full-tests,clippy,build,python}-3.log`. Format/Ruff checks pass.
+`/tmp/hearthspace-pan-firefox-regression-1` also passed resize, maximize/restore,
+shell and gesture zoom, cancellation and fullscreen; its owned profile was removed.

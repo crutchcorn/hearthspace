@@ -160,6 +160,7 @@ then run this separately from other native or GPU tests:
 ```sh
 cargo build --locked --workspace --all-targets --features udev,e2e,test-apps
 scripts/pinch-smoke --session "$(mktemp -d /tmp/hearthspace-pinch.XXXXXX)"
+scripts/pan-smoke --session "$(mktemp -d /tmp/hearthspace-pan.XXXXXX)"
 ```
 
 The default tests both device types. Add `--device touchpad` or
@@ -174,6 +175,16 @@ restores the initial view. Removal follows the recorded final event: cancellatio
 or removal of an active gesture restores its initial view; a normal end/lift retains
 the completed zoom. The test requires the observed outcome and verifies that each
 virtual device disappears and no gesture remains active.
+
+The pan test checks left/right/up/down and diagonal translation, simultaneous
+pan and zoom, cancellation, and ignored two-finger input on both device types.
+It also checks that a pan restores maximized windows, cancellation re-maximizes
+them, and fullscreen content stays fixed. Assertions pair viewport and window
+geometry with the position and size of a rendered terminal marker. Touchpad
+expectations use independently recorded libinput center deltas; touchscreen
+expectations use the injected contact centroid. Both scripts accept `--device`
+and `--timeout` and clean up their owned session on failure. The pan script also
+accepts `--total-timeout` to bound its complete workflow.
 
 ### Optional Desktop Dependencies
 

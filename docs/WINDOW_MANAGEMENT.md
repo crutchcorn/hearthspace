@@ -12,17 +12,17 @@ zooming change the view of that window. Pointer input uses the inverse of the
 same transform used to render it.
 
 A maximized or fullscreen window belongs to one output and uses that output's
-logical coordinates at native scale. Deliberate canvas zoom restores maximized
-windows to their floating size and position so they follow the canvas again;
-fullscreen windows remain pinned. A cancelled pinch restores the prior view and
-maximization. Maximized windows reserve space for the shell bar
-and any compositor title bar. Fullscreen windows cover the output and suppress
+logical coordinates at native scale. Deliberate canvas zoom or a three-finger pan
+restores maximized windows to their floating size and position so they follow
+the canvas again; fullscreen windows remain pinned. A cancelled three-finger
+gesture restores the prior view and maximization. Maximized windows reserve space
+for the shell bar and any compositor title bar. Fullscreen windows cover the output and suppress
 those decorations. A smaller fullscreen client buffer is centered against an
 opaque black background.
 
-Zoom reveals a restored app or its focused dialog if its saved position is
-outside the view. When a shell button owns focus, it reveals the topmost restored
-app on that output while keeping focus on the shell.
+Canvas gestures and zoom reveal a restored app or its focused dialog if its saved
+position is outside the view. When a shell button owns focus, it reveals the
+topmost restored app on that output while keeping focus on the shell.
 
 Entering either state preserves the floating position and content size.
 Fullscreen may be layered over maximized state: leaving fullscreen returns to

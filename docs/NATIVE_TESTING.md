@@ -205,10 +205,18 @@ A preflight failure, such as missing sudo access, fails the test. Run native
 validation separately from GPU-intensive headless suites so concurrent workload
 does not obscure capture and presentation failures.
 
-The [pinch zoom acceptance test](../CONTRIBUTING.md#optional-native-pinch-testing)
-uses temporary uinput touchpad and touchscreen devices to exercise libinput input
-and verify rendered three-finger canvas zoom. Run it separately from the smoke
-cases above.
+The [gesture acceptance tests](../CONTRIBUTING.md#optional-native-pinch-testing)
+use temporary uinput touchpad and touchscreen devices to exercise libinput input
+and verify rendered three-finger canvas panning, zoom and combined movement.
+Run `scripts/pan-smoke` and `scripts/pinch-smoke` separately from the smoke cases
+above.
+
+For a capture timeout, use `--log-level
+'info,hearthspace_compositor::compositor::capture=debug'` when starting the owned
+session. Correlated capture IDs show request acceptance, pixel staging, PNG
+encoding time, page-flip confirmation and reply delivery. Timeout warnings name
+the unfinished phase. PNG encoding uses the fastest lossless preset; the capture
+deadline and bounded encoding queue still apply.
 
 Run automated regressions without taking a VT:
 
