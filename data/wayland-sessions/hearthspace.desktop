@@ -1,0 +1,8 @@
+[Desktop Entry]
+Name=Hearthspace
+Comment=An infinite canvas desktop
+Exec=/usr/local/bin/hearthspace-login
+TryExec=/usr/local/bin/hearthspace-login
+Type=Application
+DesktopNames=Hearthspace;
+X-GDM-SessionRegisters=false

@@ -283,6 +283,13 @@ impl CalloopData {
     }
 
     fn automation_status(&self) -> Vec<u8> {
+        // Presentation alone cannot establish wake readiness: native input
+        // recreation must also succeed. This boolean reveals no locked content.
+        let recovery_ready = match &self.backend {
+            #[cfg(feature = "udev")]
+            Backend::Udev(backend) => backend.recovery_complete(),
+            _ => true,
+        };
         let mut outputs = self.state.capture_outputs();
         for output in &mut outputs {
             output.frame_id = self.captures.frame_id(&output.name);
@@ -298,6 +305,7 @@ impl CalloopData {
             return serde_json::to_vec(&serde_json::json!({
                 "version": 1, "backend": backend, "active": self.capture_active(),
                 "locked": true, "lock_confirmed": self.state.lock_confirmed(),
+                "recovery_ready": recovery_ready,
                 "windows": [], "outputs": [],
             }))
             .expect("serializable locked status");
@@ -309,7 +317,9 @@ impl CalloopData {
         serde_json::to_vec(&serde_json::json!({
             "version": 1, "backend": backend, "active": self.capture_active(), "outputs": outputs,
             "locked": false, "lock_confirmed": false,
+            "recovery_ready": recovery_ready,
             "xwayland_display": xwayland_display,
+            "overview": self.state.overview_status(),
             "viewport": {
                 "x": self.state.viewport_offset.x,
                 "y": self.state.viewport_offset.y,

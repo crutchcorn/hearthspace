@@ -27,7 +27,7 @@ struct State {
     finished: bool,
 }
 
-pub(super) struct LockClient {
+pub(crate) struct LockClient {
     queue: EventQueue<State>,
     state: State,
     lock: ext_session_lock_v1::ExtSessionLockV1,
@@ -36,7 +36,7 @@ pub(super) struct LockClient {
 }
 
 impl LockClient {
-    pub(super) fn connect(socket: &Path) -> Self {
+    pub(crate) fn connect(socket: &Path) -> Self {
         let connection = Connection::from_socket(UnixStream::connect(socket).unwrap()).unwrap();
         let mut queue = connection.new_event_queue();
         let handle = queue.handle();
@@ -69,7 +69,7 @@ impl LockClient {
         }
     }
 
-    pub(super) fn wait_locked(&mut self) {
+    pub(crate) fn wait_locked(&mut self) {
         let deadline = Instant::now() + Duration::from_secs(5);
         while !self.state.locked {
             self.queue.roundtrip(&mut self.state).unwrap();
@@ -82,7 +82,7 @@ impl LockClient {
         }
     }
 
-    pub(super) fn unlock(mut self) {
+    pub(crate) fn unlock(mut self) {
         self.lock.unlock_and_destroy();
         self.queue.roundtrip(&mut self.state).unwrap();
     }

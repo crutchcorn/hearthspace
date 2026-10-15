@@ -40,6 +40,11 @@ def parser():
             command.add_argument("--no-build", action="store_true")
             command.add_argument("--compositor", type=Path)
             command.add_argument("--log-level", default="info")
+            command.add_argument(
+                "--login-session",
+                action="store_true",
+                help="exercise the installed login cleanup guard in the owned PAM session",
+            )
     for name in ("_exec", "_recover", "_stop", "_graceful-stop"):
         command = commands.add_parser(name)
         command.add_argument("--state", required=True, type=Path)
@@ -54,6 +59,25 @@ def privileged(command, args, timeout=40):
 
 
 def build(args, session):
+    required = BINARIES
+    if getattr(args, "login_session", False):
+        helper = args.binary_dir.resolve() / "hearthspace-login-guard"
+        if not helper.is_file() or not os.access(helper, os.X_OK):
+            raise RuntimeError(
+                "--login-session requires an executable installed cleanup helper: "
+                f"{helper}; use --no-build --binary-dir with an installed release"
+            )
+        share = helper.parent.parent / "share"
+        for relative in (
+            "applications/dev.hearthspace.Settings.desktop",
+            "icons/hicolor/scalable/apps/hearthspace.svg",
+        ):
+            resource = share / relative
+            if not resource.is_file() or not os.access(resource, os.R_OK):
+                raise RuntimeError(
+                    f"--login-session requires installed shared data: {resource}"
+                )
+        required += ("hearthspace-login-guard",)
     if not args.no_build:
         with (session / "build.log").open("w") as log:
             command = [
@@ -91,7 +115,7 @@ def build(args, session):
             if result.returncode:
                 raise RuntimeError(f"native build failed; see {session / 'build.log'}")
     binaries = {}
-    for name in BINARIES:
+    for name in required:
         path = args.binary_dir.resolve() / name
         if not path.is_file() or not os.access(path, os.X_OK):
             raise RuntimeError(f"missing executable {path}; build before switching VTs")
@@ -140,6 +164,8 @@ def start(args):
     state = None
     try:
         extra = ["--compositor", args.compositor.resolve()] if args.compositor else []
+        if getattr(args, "login_session", False):
+            extra.append("--login-session")
         state = privileged(
             "_start",
             [

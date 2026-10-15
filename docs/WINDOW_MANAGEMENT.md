@@ -60,6 +60,33 @@ use the client's Wayland positioner constraints to flip, slide, or resize into
 the available output area. Active popup grabs retain input authority; window
 actions return an error until the popup is dismissed.
 
+## Canvas overview
+
+Overview presents live previews of the session's application windows in a grid,
+including windows outside the current canvas view. It opens on the output under
+the pointer. The grid is temporary: window positions, sizes, fullscreen and
+maximized states, and the canvas viewport remain intact. Selecting a preview
+returns to the canvas, focuses that window, and reveals it if needed.
+
+Open overview with the **Overview** toolbar button, Super+O, or a four- or
+five-finger inward pinch on a native touchpad or touchscreen. Finish the pinch
+by lifting your fingers. An outward pinch with the same finger counts dismisses
+it. Three fingers continue to pan and zoom the canvas outside overview; they do
+not open or dismiss it. See [canvas gestures](./PINCH_ZOOM.md) for thresholds,
+contact transitions, and cancellation.
+
+Click or tap a preview to activate its window. Arrow keys, Tab, and Shift+Tab
+move the selection; Enter activates it. Left/Up and Shift+Tab choose the previous
+preview, while Right/Down and Tab choose the next, wrapping through the grid.
+Escape, Super+O, an outward four- or five-finger pinch, or a click/tap on the
+background dismisses overview and restores the previous focus. A drag across a
+preview does not activate it.
+
+Overview owns keyboard, pointer, scrolling, and touch input while it is open;
+these interactions do not reach the applications behind the previews. Canvas
+pan and zoom are suspended. Overview cannot open during a move, resize, popup
+grab, or session lock. Locking or losing the active native VT dismisses it.
+
 ## Touchscreen movement and resizing
 
 Drag a floating window's title bar with one finger to move it, then lift to drop
@@ -71,7 +98,7 @@ Movement begins after eight logical pixels and includes that initial movement.
 The window follows the finger's screen distance at any canvas zoom. Adding a
 second contact ends the drag and suppresses that touch sequence until all fingers
 lift; touch cancellation or device removal also releases the window. Three-finger
-canvas navigation remains a separate gesture.
+canvas navigation and four-/five-finger overview pinches are separate gestures.
 
 ## Keyboard control
 
@@ -79,6 +106,7 @@ canvas navigation remains a separate gesture.
 | --- | --- |
 | Super+Return | Open a terminal |
 | Super+Space | Focus launcher search |
+| Super+O | Toggle canvas overview |
 | Alt+Tab / Alt+Shift+Tab | Focus the next / previous application |
 | Alt+F4 | Request that the focused application close |
 | Super+arrow keys | Pan the canvas |
@@ -87,8 +115,10 @@ canvas navigation remains a separate gesture.
 | Super+M | Toggle maximized state |
 | Super+L | Lock the native session |
 
-Application shortcuts such as F11 continue to reach the client. Real and
-synthetic keyboard events share the same compositor shortcut policy.
+While overview is open, Escape dismisses it, arrows or Tab/Shift+Tab change its
+selection, and Enter activates the selected window. Super+L remains available.
+Outside overview, application shortcuts such as F11 continue to reach the client.
+Real and synthetic keyboard events share the same compositor shortcut policy.
 
 ## Agent control
 
@@ -97,6 +127,13 @@ for the current session. The `focus`, `close`, `move`, `resize`, `fullscreen`,
 `maximize`, and `restore` actions target those IDs. `move` takes canvas
 coordinates; `resize` takes client content dimensions in logical pixels.
 Fullscreen and maximized windows must be restored before moving or resizing.
+
+Use `scripts/hearthspace-agent --session SESSION overview on` to open overview;
+`off` dismisses it and `toggle` switches it. With overview open,
+`overview-select WINDOW_ID` activates one of its previews. The compositor status
+includes an `overview` object containing its active state, selected window ID,
+output, and preview/card rectangles in logical screen coordinates. Read that
+state again after windows close or outputs change before acting on a preview.
 
 Window metadata distinguishes canvas position, screen geometry, client content
 size, focus, and presentation state. The `visible` field describes intersection

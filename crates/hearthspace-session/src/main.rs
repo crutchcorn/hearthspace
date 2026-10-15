@@ -10,7 +10,9 @@ mod desktop_entries;
 mod desktop_services;
 mod dev_cargo;
 mod gtk_defaults;
+mod login_session;
 mod portal_cleanup;
+mod power;
 mod privileges;
 mod process;
 mod profile_env;
@@ -30,6 +32,7 @@ use supervisor::Supervisor;
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     privileges::clear_inherited()?;
     let args = Args::parse();
+    login_session::validate(&args)?;
     initialize_tracing(&args.log_level);
 
     session_bus::bootstrap_native_session(&args)?;
@@ -63,12 +66,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut supervisor = Supervisor::new(mode, paths, session_env, shutdown_requested, &args);
 
     let monitor_result = (|| {
+        if args.login_session {
+            supervisor.start_login_guard(&args)?;
+        }
         supervisor.prepare_activation_environment(args.private_session_bus)?;
         supervisor.start_settingsd(if args.no_settingsd_restart { 0 } else { 3 })?;
         supervisor.wait_for_settingsd_ready()?;
         supervisor.start_compositor()?;
         supervisor.wait_for_compositor_ready()?;
         if desktop_services::enabled(&args) {
+            supervisor.start_power()?;
             supervisor.start_notifications()?;
             supervisor.start_desktop_services()?;
         }

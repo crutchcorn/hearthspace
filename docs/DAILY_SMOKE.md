@@ -57,3 +57,6 @@ Run cross-application Wayland/X11 clipboard acceptance separately with
 Foot. Browser, editor, file-manager, suspend/resume, hotplug, and physical gesture
 checks remain separate acceptance work. Browser, editor, and file-manager
 workflows are described in [native app acceptance](DAILY_APPS_TESTING.md).
+
+Use [physical suspend acceptance](POWER_TESTING.md) for sleep, locking, wake
+recovery, application preservation, and RTC/watchdog ownership.

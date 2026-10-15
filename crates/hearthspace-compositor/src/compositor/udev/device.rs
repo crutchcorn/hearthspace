@@ -53,6 +53,7 @@ pub(super) struct KmsOutputSurface {
     pub(super) gbm_surface: GbmBufferedSurface<GbmAllocator<DrmDeviceFd>, ()>,
     pub(super) damage_tracker: OutputDamageTracker,
     pub(super) frame_pending: bool,
+    pub(super) presented_once: bool,
     pub(super) lock_frame_generation: Option<u64>,
     pub(super) frame_dirty: bool,
     pub(super) event_cutoff: SurfaceEventCutoff,
@@ -115,11 +116,10 @@ impl UdevDevice {
             .collect()
     }
 
-    pub(super) fn connected_output_targets(&self) -> Vec<KmsOutputTarget> {
-        let Ok(resources) = self.scanout_node.drm_device.resource_handles() else {
-            error!(path = %self.path.display(), "failed to query DRM resource handles");
-            return Vec::new();
-        };
+    pub(super) fn connected_output_targets(
+        &self,
+    ) -> Result<Vec<KmsOutputTarget>, Box<dyn std::error::Error>> {
+        let resources = self.scanout_node.drm_device.resource_handles()?;
 
         let crtcs = resources.crtcs();
         debug!(
@@ -132,14 +132,10 @@ impl UdevDevice {
         let mut targets = Vec::new();
         let mut used_crtcs = Vec::new();
         for connector_handle in resources.connectors() {
-            let Ok(info) = self
+            let info = self
                 .scanout_node
                 .drm_device
-                .get_connector(*connector_handle, true)
-            else {
-                warn!(connector = ?connector_handle, "failed to query DRM connector");
-                continue;
-            };
+                .get_connector(*connector_handle, true)?;
             let connected = info.state() == connector::State::Connected;
             debug!(
                 connector = ?connector_handle,
@@ -209,7 +205,7 @@ impl UdevDevice {
         } else {
             warn!("no connected DRM connector with a usable CRTC was found");
         }
-        targets
+        Ok(targets)
     }
 
     pub(super) fn rebuild_output_surfaces(
@@ -230,6 +226,7 @@ impl UdevDevice {
             return Ok(());
         }
 
+        let expected_surfaces = targets.len();
         for target in targets {
             match create_output_surface(
                 &mut self.scanout_node,
@@ -244,8 +241,8 @@ impl UdevDevice {
             }
         }
 
-        if self.output_surfaces.is_empty() {
-            return Err("failed to create any KMS output surfaces".into());
+        if self.output_surfaces.len() != expected_surfaces {
+            return Err("failed to create all KMS output surfaces".into());
         }
         Ok(())
     }
@@ -307,6 +304,7 @@ fn create_output_surface(
     Ok(KmsOutputSurface {
         damage_tracker: OutputDamageTracker::new(target.output_size(), 1.0, Transform::Normal),
         frame_pending: false,
+        presented_once: false,
         lock_frame_generation: None,
         frame_dirty: true,
         event_cutoff,
@@ -346,7 +344,7 @@ pub(super) fn create_udev_device(
         hardware_cursor_position: None,
     };
     device.hardware_cursor = create_hardware_cursor(&device.scanout_node);
-    device.output_targets = device.connected_output_targets();
+    device.output_targets = device.connected_output_targets()?;
     device.rebuild_output_surfaces(device.output_targets.clone())?;
     Ok((device, notifier))
 }

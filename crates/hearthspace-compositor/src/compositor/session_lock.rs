@@ -2,7 +2,7 @@
 //! the lock client owns authentication. Losing the client never unlocks.
 use smithay::{
     backend::input::InputTime,
-    desktop::{PopupUngrabStrategy, WindowSurfaceType, utils::under_from_surface_tree},
+    desktop::{WindowSurfaceType, utils::under_from_surface_tree},
     input::pointer::MotionEvent,
     output::Output,
     utils::{Logical, Point, Rectangle, SERIAL_COUNTER},
@@ -20,6 +20,7 @@ use super::{App, focus::KeyboardFocusTarget};
 
 mod barrier;
 mod input;
+mod power;
 mod surfaces;
 
 pub(super) struct LockState {
@@ -31,6 +32,8 @@ pub(super) struct LockState {
     surfaces: Vec<(String, LockSurface)>,
     ready_surfaces: Vec<WlSurface>,
     previous_focus: Option<u64>,
+    awaiting_locker: bool,
+    sleep_prepared: bool,
 }
 
 impl LockState {
@@ -44,6 +47,8 @@ impl LockState {
             surfaces: Vec::new(),
             ready_surfaces: Vec::new(),
             previous_focus: None,
+            awaiting_locker: false,
+            sleep_prepared: false,
         }
     }
 }
@@ -54,40 +59,17 @@ impl SessionLockHandler for App {
     }
 
     fn lock(&mut self, confirmation: SessionLocker) {
-        if !self.session_lock.supported || self.session_locked() {
-            // No takeover after a crashed locker: only the original lock
-            // object can authenticate and release this session.
+        if !self.session_lock.supported
+            || (self.session_locked() && !self.session_lock.awaiting_locker)
+        {
+            // A fresh shield or an owner that authenticated during sleep
+            // preparation may accept a locker. Disconnect/crash never may.
             return;
         }
-        self.cancel_input_gestures();
-        self.interrupt_pinch_zoom();
-        self.viewport_animation = None;
-        self.drag = None;
-        self.resize = None;
-        if let Some(mut grab) = self.popup_grab.take() {
-            grab.ungrab(PopupUngrabStrategy::All);
+        if !self.session_locked() {
+            self.arm_session_shield();
         }
-        self.pointer
-            .clone()
-            .unset_grab(self, SERIAL_COUNTER.next_serial(), InputTime::now());
-        self.keyboard.clone().unset_grab(self);
-        self.session_lock.previous_focus = self.focused_normal_window_id;
-        self.clear_keyboard_focus();
-        self.pointer.clone().motion(
-            self,
-            None,
-            &MotionEvent {
-                location: self.pointer_location,
-                serial: SERIAL_COUNTER.next_serial(),
-                time: InputTime::now(),
-            },
-        );
-        self.pointer.clone().frame(self);
-        self.cursor_surface = None;
-        self.cursor_icon = super::cursor::CursorIcon::Default;
-        self.cursor_visible = false;
-        let outputs = self.capture_outputs().into_iter().map(|output| output.name);
-        self.session_lock.barrier.begin(outputs);
+        self.session_lock.awaiting_locker = false;
         self.session_lock.owner = Some(confirmation.ext_session_lock().clone());
         self.session_lock.pending = Some(confirmation);
         self.confirm_session_lock_if_presented();
@@ -95,6 +77,7 @@ impl SessionLockHandler for App {
     }
 
     fn unlock(&mut self) {
+        self.reset_session_input();
         self.pointer
             .clone()
             .unset_grab(self, SERIAL_COUNTER.next_serial(), InputTime::now());
@@ -109,13 +92,23 @@ impl SessionLockHandler for App {
             },
         );
         self.pointer.clone().frame(self);
-        self.session_lock.barrier.unlock();
         self.session_lock.pending = None;
         self.session_lock.owner = None;
         self.session_lock.surfaces.clear();
         self.session_lock.ready_surfaces.clear();
         self.clear_keyboard_focus();
         self.cursor_surface = None;
+        if self.session_lock.sleep_prepared {
+            // Authentication completed before the pending sleep. The owner is
+            // leaving explicitly, but the desktop must remain isolated until
+            // a locker authenticates again after resume.
+            self.session_lock.awaiting_locker = true;
+            self.cursor_visible = false;
+            self.request_redraw();
+            return;
+        }
+        self.session_lock.barrier.unlock();
+        self.session_lock.awaiting_locker = false;
         self.cursor_visible = true;
         if self
             .session_lock

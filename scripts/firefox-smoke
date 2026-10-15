@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Validate native Firefox controls and three-finger canvas zoom."""
+
 from agentlib.firefox import main
 
 if __name__ == "__main__":

@@ -29,11 +29,22 @@ After [setting up the development dependencies](./CONTRIBUTING.md), start a full
 session with `cargo run -- --dev --no-watch-apps`. From a real Linux TTY this uses
 the native DRM/KMS backend; inside another desktop it opens a nested window.
 
+To choose Hearthspace at the graphical login screen, run
+`scripts/install-session install` as your normal user, then log out and select
+**Hearthspace** in the session chooser. The installer builds an optimized native
+release before requesting sudo. See [graphical login](./docs/LOGIN_SESSION.md)
+for installation, updates, removal, and the remaining local acceptance checks.
+
 Super+Return opens a terminal. Super+Space searches installed applications and
 running windows; Alt+Tab switches applications. Super+arrow keys pan the canvas,
 Super+0 resets the view, and Super+M / Super+F toggle maximize / fullscreen.
-Slide three fingers to pan the canvas; pinch them to zoom. Native sessions provide
-notifications and manual locking; the shell offers confirmed logout. See [window management](./docs/WINDOW_MANAGEMENT.md)
+Slide three fingers to pan the canvas; pinch them to zoom. Pinch four or five
+fingers inward to open the live window overview, or outward to dismiss it, on a
+native touchpad or touchscreen. Lift your fingers to finish the gesture. The
+**Overview** toolbar button and Super+O also open it; click or tap a preview to
+focus that window, or press Escape to return. Native sessions provide
+notifications, locking, and [lid/suspend recovery](./docs/POWER.md);
+the shell offers confirmed logout. See [window management](./docs/WINDOW_MANAGEMENT.md)
 for keyboard controls and [app compatibility](./docs/APPS.md) for profile and
 package behavior.
 

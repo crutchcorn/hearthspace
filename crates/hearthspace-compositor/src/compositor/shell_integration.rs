@@ -60,7 +60,30 @@ impl App {
         debug!(%command, "running app control action");
         self.advance_viewport_animation();
 
+        if self.overview_active()
+            && matches!(
+                action,
+                ShellCommand::PanLeft
+                    | ShellCommand::PanRight
+                    | ShellCommand::PanUp
+                    | ShellCommand::PanDown
+                    | ShellCommand::ZoomIn
+                    | ShellCommand::ZoomOut
+            )
+        {
+            return ControlReply::Err("dismiss overview before changing the canvas view".into());
+        }
+
         match action {
+            ShellCommand::OverviewOn => return action_reply(self.open_overview()),
+            ShellCommand::OverviewOff => {
+                self.close_overview();
+                return ControlReply::Ok;
+            }
+            ShellCommand::OverviewToggle => return action_reply(self.toggle_overview()),
+            ShellCommand::OverviewSelect(id) => {
+                return action_reply(self.select_overview_window(id));
+            }
             ShellCommand::LockSession => return action_reply(self.launch_session_locker()),
             ShellCommand::ListWindows => return ControlReply::Payload(self.window_list_json()),
             ShellCommand::FocusWindow(id) => return action_reply(self.focus_window(id)),

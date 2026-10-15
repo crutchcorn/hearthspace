@@ -220,6 +220,12 @@ agree. It requires the native Firefox package and touch-fixture dependencies
 documented in [contributing](../CONTRIBUTING.md), plus one output at least
 960×650 logical pixels. It owns and cleans up its VT session and temporary apps.
 
+The [physical suspend acceptance test](POWER_TESTING.md) uses `scripts/power-smoke`
+with explicit opt-in, a checked RTC wake alarm, a protocol-owned test lock, and
+the independent native watchdog. It verifies lock presentation across real
+sleep/resume, preserved applications, post-resume input and page flips, and
+original-VT recovery. Read its prerequisites before attempting physical sleep.
+
 For a capture timeout, use `--log-level
 'info,hearthspace_compositor::compositor::capture=debug'` when starting the owned
 session. Correlated capture IDs show request acceptance, pixel staging, PNG

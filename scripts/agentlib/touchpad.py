@@ -20,6 +20,8 @@ def contact_positions(width, fingers, translation=(0, 0)):
     # A stationary contact below the two moving fingers is correctly classified
     # by libinput as a resting thumb. Keep the third contact above them and move
     # every contact during a three-finger pinch so its finger count stays three.
+    if fingers not in range(1, 6):
+        raise ControlError("touchpad requires 1–5 contacts")
     if len(translation) != 2 or not all(math.isfinite(value) for value in translation):
         raise ControlError("touchpad translation must contain two finite coordinates")
     points = [
@@ -27,16 +29,17 @@ def contact_positions(width, fingers, translation=(0, 0)):
         (1000 + width / 2, 650),
         (1000, 650 - width / 3),
         (1000 - width / 4, 650 - width / 6),
+        (1000 + width / 4, 650 - width / 6),
     ][:fingers]
     return [(x + translation[0], y + translation[1]) for x, y in points]
 
 
 def checked_points(values):
-    if not 1 <= len(values) <= 4 or any(
+    if not 1 <= len(values) <= 5 or any(
         len(point) != 2 or not 0 <= point[0] <= 2000 or not 0 <= point[1] <= 1400
         for point in values
     ):
-        raise ControlError("touchscreen requires 1–4 points within its absolute range")
+        raise ControlError("touchscreen requires 1–5 points within its absolute range")
     return [[round(x), round(y)] for x, y in values]
 
 
@@ -151,7 +154,7 @@ def worker(session, kind):
         (e.ABS_Y, AbsInfo(0, 0, 1400, 0, 0, 20)),
         (e.ABS_MT_POSITION_X, AbsInfo(0, 0, 2000, 0, 0, 20)),
         (e.ABS_MT_POSITION_Y, AbsInfo(0, 0, 1400, 0, 0, 20)),
-        (e.ABS_MT_SLOT, AbsInfo(0, 0, 3, 0, 0, 0)),
+        (e.ABS_MT_SLOT, AbsInfo(0, 0, 4, 0, 0, 0)),
         (e.ABS_MT_TRACKING_ID, AbsInfo(0, 0, 65535, 0, 0, 0)),
     ]
     counts = (
@@ -160,6 +163,7 @@ def worker(session, kind):
             e.BTN_TOOL_DOUBLETAP,
             e.BTN_TOOL_TRIPLETAP,
             e.BTN_TOOL_QUADTAP,
+            e.BTN_TOOL_QUINTTAP,
         ]
         if kind == "touchpad"
         else []
@@ -230,7 +234,7 @@ def worker(session, kind):
                 request = json.loads(line)
                 operation = request["operation"]
                 if operation == "begin":
-                    if fingers or request["fingers"] not in (1, 2, 3, 4):
+                    if fingers or request["fingers"] not in (1, 2, 3, 4, 5):
                         raise ControlError("invalid touchpad begin")
                     fingers = request["fingers"]
                     if counts:
@@ -297,7 +301,7 @@ def worker(session, kind):
                         time.sleep(0.01)
                     distance = target
                 elif operation == "add-finger":
-                    if not 1 <= fingers <= 3 or (counts and fingers != 3):
+                    if not 1 <= fingers <= 4 or (counts and fingers not in (3, 4)):
                         raise ControlError("invalid contact count when adding a finger")
                     if not counts:
                         touch_points = checked_points([*touch_points, request["point"]])

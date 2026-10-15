@@ -37,15 +37,12 @@ impl App {
             self.focus_lock_surface_at(self.pointer_location);
         }
         let pointer = self.pointer.clone();
-        pointer.button(
-            self,
-            &ButtonEvent {
-                serial: SERIAL_COUNTER.next_serial(),
-                time,
-                button,
-                state,
-            },
-        );
+        self.deliver_pointer_button(&ButtonEvent {
+            serial: SERIAL_COUNTER.next_serial(),
+            time,
+            button,
+            state,
+        });
         pointer.frame(self);
     }
 
@@ -54,8 +51,20 @@ impl App {
             return Err("session locking requires the native or headless backend".into());
         }
         let child = std::process::Command::new("swaylock")
-            .arg("--color")
-            .arg("111318")
+            // Show a clear idle target as soon as locking finishes, instead of
+            // requiring an unseen first keypress to reveal the password UI.
+            .args([
+                "--color",
+                "111318",
+                "--indicator-idle-visible",
+                "--indicator-radius",
+                "72",
+                "--ring-color",
+                "8bb8e8",
+                "--show-keyboard-layout",
+                "--indicator-caps-lock",
+                "--show-failed-attempts",
+            ])
             .env(
                 crate::config::WAYLAND_DISPLAY_ENV,
                 crate::config::wayland_display_name(),

@@ -199,6 +199,7 @@ fn bar_view(
         });
 
     let command_buttons: Vec<Box<AnyWidgetView<ShellState>>> = [
+        ("Overview", ShellCommand::OverviewToggle),
         ("Reset view", ShellCommand::ResetView),
         ("Zoom out", ShellCommand::ZoomOut),
         ("Zoom in", ShellCommand::ZoomIn),

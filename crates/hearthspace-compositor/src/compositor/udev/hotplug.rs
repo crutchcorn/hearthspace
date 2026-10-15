@@ -10,6 +10,7 @@ use super::{
         UdevDevice, UdevDeviceInfo, create_udev_device, current_device_list, log_device_list,
     },
     insert_libinput_source,
+    recovery::insert_drm_source,
 };
 
 impl UdevBackendState {
@@ -20,6 +21,8 @@ impl UdevBackendState {
         self.repaint_pending = false;
         self.frame_pending = false;
         self.frame_dirty = true;
+        self.emergency_exit_ctrl_pressed = false;
+        self.emergency_exit_alt_pressed = false;
         if let Some(token) = self.input_source.take() {
             self.loop_handle.remove(token);
             info!("native libinput source removed for session pause");
@@ -34,7 +37,10 @@ impl UdevBackendState {
 
     pub(super) fn activate_session(&mut self) -> ConnectorSync {
         self.session_active = true;
+        self.kms_devices_active = false;
+        self.drm_commits_paused = true;
         self.connector_rescan_pending = true;
+        self.recovery_needed = true;
 
         if self.primary_device.is_none()
             && let Err(error) = self.open_primary_device()
@@ -56,6 +62,7 @@ impl UdevBackendState {
 
         if let Err(error) = self.rescan_devices() {
             error!(%error, "failed to re-scan DRM devices after session activation");
+            return ConnectorSync::default();
         }
 
         let Some(device) = self.primary_device.as_mut() else {
@@ -68,19 +75,32 @@ impl UdevBackendState {
             return ConnectorSync::default();
         };
 
-        device.active = true;
         if let Err(error) = device.scanout_node.drm_device.activate(true) {
             error!(%error, "failed to reactivate primary DRM device after session activation");
+            return ConnectorSync::default();
         }
+        device.active = true;
 
-        device.output_targets = device.connected_output_targets();
-        if let Err(error) = device.rebuild_output_surfaces(device.output_targets.clone()) {
-            error!(%error, "failed to rebuild KMS output surfaces after session activation");
-        }
+        let targets = match device.connected_output_targets() {
+            Ok(targets) => targets,
+            Err(error) => {
+                error!(%error, "failed to discover native outputs after session activation");
+                return ConnectorSync::default();
+            }
+        };
+        device.output_targets = targets;
+        let complete = match device.rebuild_output_surfaces(device.output_targets.clone()) {
+            Ok(()) => true,
+            Err(error) => {
+                error!(%error, "failed to rebuild KMS output surfaces after session activation");
+                false
+            }
+        };
 
         self.kms_devices_active = device.has_output_surfaces();
         self.drm_commits_paused = !self.kms_devices_active;
-        self.connector_rescan_pending = false;
+        self.recovery_needed = !complete || self.input_source.is_none();
+        self.connector_rescan_pending = self.recovery_needed;
         self.repaint_pending = self.kms_devices_active;
         self.frame_pending = false;
         self.frame_dirty = true;
@@ -144,7 +164,13 @@ impl UdevBackendState {
         }
 
         let previous_target = device.output_target.clone();
-        let next_targets = device.connected_output_targets();
+        let next_targets = match device.connected_output_targets() {
+            Ok(targets) => targets,
+            Err(error) => {
+                error!(%error, "failed to discover changed native outputs");
+                return ConnectorSync::default();
+            }
+        };
         let next_target = next_targets.first().cloned();
         if !targets_need_rebuild(
             &device.output_targets,
@@ -191,6 +217,9 @@ impl UdevBackendState {
             .as_ref()
             .is_some_and(|device| device.path == removed.path)
         {
+            if let Some(token) = self.drm_source.take() {
+                self.loop_handle.remove(token);
+            }
             self.primary_device = None;
             self.kms_devices_active = false;
             self.repaint_pending = false;
@@ -209,7 +238,8 @@ impl UdevBackendState {
         let Some(path) = primary_gpu(&self.seat_name)? else {
             return Ok(());
         };
-        let (device, _notifier) = create_udev_device(&mut self.session, path, self.session_active)?;
+        let (device, notifier) = create_udev_device(&mut self.session, path, self.session_active)?;
+        self.drm_source = Some(insert_drm_source(&self.loop_handle, notifier)?);
         self.primary_device = Some(device);
         Ok(())
     }

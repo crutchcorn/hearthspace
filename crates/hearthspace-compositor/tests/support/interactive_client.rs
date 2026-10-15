@@ -25,16 +25,17 @@ struct State {
     windows: Vec<Window>,
     buffers: Vec<(File, wl_buffer::WlBuffer)>,
     press_serial: Option<u32>,
+    released_buttons: Vec<u32>,
 }
 
-pub(super) struct InteractiveClient {
+pub(crate) struct InteractiveClient {
     queue: EventQueue<State>,
     state: State,
     _connection: Connection,
 }
 
 impl InteractiveClient {
-    pub(super) fn connect(socket: &Path) -> Self {
+    pub(crate) fn connect(socket: &Path) -> Self {
         let connection = Connection::from_socket(UnixStream::connect(socket).unwrap()).unwrap();
         let mut queue = connection.new_event_queue();
         let handle = queue.handle();
@@ -82,6 +83,11 @@ impl InteractiveClient {
         self.state
             .press_serial
             .expect("client received pointer press")
+    }
+
+    pub(crate) fn released_buttons(&mut self) -> &[u32] {
+        self.sync();
+        &self.state.released_buttons
     }
 
     pub(super) fn request_move(&mut self, window: usize, serial: u32) {
@@ -176,13 +182,18 @@ impl Dispatch<wl_pointer::WlPointer, ()> for State {
         _: &Connection,
         _: &QueueHandle<Self>,
     ) {
-        if let wl_pointer::Event::Button {
-            serial,
-            state: WEnum::Value(wl_pointer::ButtonState::Pressed),
-            ..
-        } = event
-        {
-            state.press_serial = Some(serial);
+        match event {
+            wl_pointer::Event::Button {
+                serial,
+                state: WEnum::Value(wl_pointer::ButtonState::Pressed),
+                ..
+            } => state.press_serial = Some(serial),
+            wl_pointer::Event::Button {
+                button,
+                state: WEnum::Value(wl_pointer::ButtonState::Released),
+                ..
+            } => state.released_buttons.push(button),
+            _ => {}
         }
     }
 }

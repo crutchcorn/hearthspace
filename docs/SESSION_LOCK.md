@@ -12,6 +12,18 @@ isolation begins when the compositor receives the protocol lock request. Locking
 is confirmed only after an opaque lock frame has been presented on every output.
 Agent status reports these separately as `locked` and `lock_confirmed`.
 
+Swaylock displays a centered blue indicator on the dark background immediately,
+including while idle. Type your account password and press Enter to unlock;
+the indicator responds to typing without displaying the password. The keyboard
+layout appears while typing, Caps Lock has an indicator, and failed authentication
+attempts show a count. These are the distribution locker's existing UI features;
+authentication continues to use its unchanged PAM policy.
+
+An opaque screen without that indicator can still be the compositor's protective
+fallback while the locker starts or if it fails. It does not prove the password
+UI is ready. Agents cannot capture the locked screen or supply the password;
+visible feedback and real PAM unlock must be checked with local input.
+
 Native outputs attach a lock generation to each queued frame. Only a matching
 DRM page-flip completion satisfies the presentation barrier. A normal desktop
 frame queued before the lock request cannot satisfy it. Outputs added during
@@ -81,3 +93,9 @@ remain unchanged. See [contributing](../CONTRIBUTING.md) for installation and
 
 The protocol requirements are defined in
 [ext-session-lock-v1](https://wayland.app/protocols/ext-session-lock-v1).
+
+Sleep preparation arms an opaque shield before starting swaylock. A first locker
+may adopt that shield; an established owner can never be replaced after failure.
+VT and sleep recovery invalidate prior presentation evidence and require fresh
+locked page flips. See [lid and suspend handling](POWER.md) for coordinator policy
+and failure recovery.

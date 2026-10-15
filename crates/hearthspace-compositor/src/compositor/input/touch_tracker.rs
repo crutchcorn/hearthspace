@@ -20,6 +20,9 @@ pub(in crate::compositor) enum TouchAction {
     BeginPinch { anchor: Position },
     UpdatePinch { scale: f64, translation: Position },
     EndPinch { cancelled: bool },
+    BeginOverview { fingers: u32 },
+    UpdateOverview { scale: f64 },
+    EndOverview { cancelled: bool },
 }
 
 struct Contact {
@@ -35,6 +38,9 @@ enum Mode {
     Multiple,
     Pinching {
         anchor: Position,
+        radius: f64,
+    },
+    Overview {
         radius: f64,
     },
     Suppressed,
@@ -86,13 +92,21 @@ impl TouchTracker {
                 self.mode = Mode::Suppressed;
             }
             Mode::Pinching { .. } => {
+                // Direct touch reports contacts separately. Restore any temporary
+                // three-finger canvas transform before recognizing four fingers.
                 self.emit(TouchAction::EndPinch { cancelled: true });
-                self.mode = Mode::Suppressed;
+                self.mode = Mode::Multiple;
+            }
+            Mode::Overview { .. } => {
+                // Adding a fifth finger changes the centroid/radius even when
+                // no finger moves. Rebase rather than treating that as a pinch.
+                self.emit(TouchAction::EndOverview { cancelled: true });
+                self.mode = Mode::Multiple;
             }
             _ => {}
         }
-        // Remember a fourth contact even if it disappears before the frame.
-        if self.contacts.len() > 3 {
+        // Remember unsupported counts even if they disappear before the frame.
+        if self.contacts.len() > 5 {
             self.mode = Mode::Suppressed;
         }
     }
@@ -119,10 +133,10 @@ impl TouchTracker {
         if self.dirty
             && matches!(
                 self.mode,
-                Mode::Pending | Mode::Dragging | Mode::Pinching { .. }
+                Mode::Pending | Mode::Dragging | Mode::Pinching { .. } | Mode::Overview { .. }
             )
         {
-            // An up may share a frame with the final motion of all three contacts.
+            // An up may share a frame with the final motion of all contacts.
             self.recognize();
         }
         let contact = self.contacts.remove(&slot).unwrap();
@@ -132,6 +146,7 @@ impl TouchTracker {
             }
             Mode::Dragging => self.emit(TouchAction::Release),
             Mode::Pinching { .. } => self.emit(TouchAction::EndPinch { cancelled: false }),
+            Mode::Overview { .. } => self.emit(TouchAction::EndOverview { cancelled: false }),
             _ => {}
         }
         self.mode = Mode::Suppressed;
@@ -144,6 +159,7 @@ impl TouchTracker {
         {
             return;
         }
+        self.cancel_pending_overview(device);
         self.stop(true);
         if i32::from(slot) < 0 {
             self.contacts.clear();
@@ -203,10 +219,17 @@ impl TouchTracker {
         }
         match self.mode {
             Mode::Pending | Mode::Dragging => self.single_motion(),
-            Mode::Multiple if self.contacts.len() == 3 => {
+            Mode::Multiple if (3..=5).contains(&self.contacts.len()) => {
                 if let Some((anchor, radius)) = self.geometry() {
-                    self.mode = Mode::Pinching { anchor, radius };
-                    self.emit(TouchAction::BeginPinch { anchor });
+                    if self.contacts.len() == 3 {
+                        self.mode = Mode::Pinching { anchor, radius };
+                        self.emit(TouchAction::BeginPinch { anchor });
+                    } else {
+                        self.mode = Mode::Overview { radius };
+                        self.emit(TouchAction::BeginOverview {
+                            fingers: self.contacts.len() as u32,
+                        });
+                    }
                 }
             }
             Mode::Pinching { anchor, radius } => {
@@ -217,6 +240,14 @@ impl TouchTracker {
                     // begin, so frame rate and direction changes cannot drift.
                     if scale.is_finite() && scale > 0.0 && finite(translation) {
                         self.emit(TouchAction::UpdatePinch { scale, translation });
+                    }
+                }
+            }
+            Mode::Overview { radius } => {
+                if let Some((_, current)) = self.geometry() {
+                    let scale = current / radius;
+                    if scale.is_finite() && scale > 0.0 {
+                        self.emit(TouchAction::UpdateOverview { scale });
                     }
                 }
             }
@@ -244,7 +275,7 @@ impl TouchTracker {
     }
 
     fn geometry(&self) -> Option<(Position, f64)> {
-        if self.contacts.len() != 3
+        if !(3..=5).contains(&self.contacts.len())
             || self
                 .contacts
                 .values()
@@ -252,18 +283,19 @@ impl TouchTracker {
         {
             return None;
         }
+        let count = self.contacts.len() as f64;
         let anchor = self
             .contacts
             .values()
             .fold(Position::from((0.0, 0.0)), |sum, contact| {
-                sum + Point::from((contact.position.x / 3.0, contact.position.y / 3.0))
+                sum + Point::from((contact.position.x / count, contact.position.y / count))
             });
         let radius = (self
             .contacts
             .values()
             .map(|contact| {
                 let delta = contact.position - anchor;
-                (delta.x * delta.x + delta.y * delta.y) / 3.0
+                (delta.x * delta.x + delta.y * delta.y) / count
             })
             .sum::<f64>())
         .sqrt();
@@ -274,6 +306,7 @@ impl TouchTracker {
         match self.mode {
             Mode::Dragging => self.emit(TouchAction::Release),
             Mode::Pinching { .. } if cancelled => self.emit(TouchAction::EndPinch { cancelled }),
+            Mode::Overview { .. } => self.emit(TouchAction::EndOverview { cancelled: true }),
             _ => {}
         }
         self.mode = Mode::Suppressed;
@@ -289,21 +322,42 @@ impl TouchTracker {
     }
 
     fn discard_pending_input(&mut self) {
-        self.pending.retain(|(_, action)| {
-            matches!(action, TouchAction::Release | TouchAction::EndPinch { .. })
-        });
+        self.pending
+            .retain_mut(|(_, action)| retain_cleanup(action));
     }
 
     fn discard_pending_input_for(&mut self, device: &str) {
-        self.pending.retain(|(owner, action)| {
-            owner != device || matches!(action, TouchAction::Release | TouchAction::EndPinch { .. })
-        });
+        self.pending
+            .retain_mut(|(owner, action)| owner != device || retain_cleanup(action));
+    }
+
+    fn cancel_pending_overview(&mut self, device: &str) {
+        for (owner, action) in &mut self.pending {
+            if owner == device
+                && let TouchAction::EndOverview { cancelled } = action
+            {
+                *cancelled = true;
+            }
+        }
     }
 
     fn emit(&mut self, action: TouchAction) {
         if let Some(device) = &self.device {
             self.pending.push((device.clone(), action));
         }
+    }
+}
+
+fn retain_cleanup(action: &mut TouchAction) -> bool {
+    match action {
+        TouchAction::Release | TouchAction::EndPinch { .. } => true,
+        TouchAction::EndOverview { cancelled } => {
+            // Lock/VT loss/device removal must not commit an end queued earlier
+            // in the same input frame, even if all fingers already lifted.
+            *cancelled = true;
+            true
+        }
+        _ => false,
     }
 }
 

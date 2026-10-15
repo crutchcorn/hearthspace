@@ -46,7 +46,7 @@ class TouchCoordinatesTests(unittest.TestCase):
     def test_virtual_device_rejects_invalid_contacts_before_injection(self):
         for points in (
             [],
-            [[1, 2]] * 5,
+            [[1, 2]] * 6,
             [[math.nan, 0]],
             [[0, math.inf]],
             [[2001, 0]],
@@ -60,6 +60,16 @@ class TouchCoordinatesTests(unittest.TestCase):
         points = contact_positions(900, 4)
         self.assertEqual(len(set(points)), 4)
         self.assertTrue(all(0 < x < 2000 and 0 < y < 1400 for x, y in points))
+
+    def test_five_contacts_fit_both_devices_and_all_move_during_a_pinch(self):
+        before, after = contact_positions(900, 5), contact_positions(550, 5)
+        self.assertEqual(len(set(before)), 5)
+        self.assertEqual(len(checked_points(before)), 5)
+        self.assertEqual(len(checked_points(after)), 5)
+        self.assertTrue(all(old != new for old, new in zip(before, after)))
+        for count in (0, 6):
+            with self.subTest(count=count), self.assertRaises(ControlError):
+                contact_positions(900, count)
 
 
 class TouchRemovalTests(unittest.TestCase):

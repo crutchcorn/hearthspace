@@ -15,6 +15,9 @@ review also covered cursor behavior, live window metadata, accessibility, and
 window activity. Destructive idle reclamation and speculative AI features do not
 help this milestone; retain application data and prioritize reliable interaction.
 
+Lid/suspend implementation and its separate physical acceptance are documented in
+[power handling](../docs/POWER.md) and [power tests](../docs/POWER_TESTING.md).
+
 ## Acceptance
 
 - [x] Keyboard launch, forward/reverse window switching, close, canvas navigation,

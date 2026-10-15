@@ -17,6 +17,11 @@ pub(in crate::compositor) struct KeyboardShortcuts {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Shortcut {
     Lock,
+    OverviewToggle,
+    OverviewDismiss,
+    OverviewActivate,
+    OverviewNext,
+    OverviewPrevious,
     Terminal,
     Launcher,
     Next,
@@ -32,6 +37,20 @@ enum Shortcut {
 }
 
 impl KeyboardShortcuts {
+    fn filter_overview(
+        &mut self,
+        code: Keycode,
+        state: KeyState,
+        modifiers: &ModifiersState,
+        symbol: u32,
+    ) -> FilterResult<Option<Shortcut>> {
+        if state == KeyState::Released || self.intercepted.contains(&code) {
+            return self.filter(code, state, modifiers, symbol, false);
+        }
+        self.intercepted.insert(code);
+        FilterResult::Intercept(overview_shortcut(modifiers, symbol))
+    }
+
     fn filter(
         &mut self,
         code: Keycode,
@@ -82,8 +101,13 @@ impl App {
                     .raw_latin_sym_or_raw_current_sym()
                     .map(|symbol| symbol.raw())
                     .unwrap_or(0);
-                app.shortcuts
-                    .filter(code, state, modifiers, symbol, available)
+                if app.overview_active() {
+                    app.shortcuts
+                        .filter_overview(code, state, modifiers, symbol)
+                } else {
+                    app.shortcuts
+                        .filter(code, state, modifiers, symbol, available)
+                }
             },
         );
         match intercepted {
@@ -94,7 +118,29 @@ impl App {
     }
 
     fn run_shortcut(&mut self, shortcut: Shortcut) {
+        match shortcut {
+            Shortcut::OverviewDismiss => {
+                self.close_overview();
+                return;
+            }
+            Shortcut::OverviewActivate => {
+                if let Err(error) = self.overview_activate_selected() {
+                    tracing::debug!(%error, "overview selection unavailable");
+                }
+                return;
+            }
+            Shortcut::OverviewNext | Shortcut::OverviewPrevious => {
+                self.overview_selection_cycle(shortcut == Shortcut::OverviewNext);
+                return;
+            }
+            _ => {}
+        }
         let command = match shortcut {
+            Shortcut::OverviewToggle => ShellCommand::OverviewToggle,
+            Shortcut::OverviewDismiss
+            | Shortcut::OverviewActivate
+            | Shortcut::OverviewNext
+            | Shortcut::OverviewPrevious => unreachable!(),
             Shortcut::Lock => ShellCommand::LockSession,
             Shortcut::Terminal => ShellCommand::Spawn(SpawnTarget::Foot),
             Shortcut::Launcher => ShellCommand::FocusLauncher,
@@ -137,6 +183,30 @@ impl App {
     }
 }
 
+fn overview_shortcut(modifiers: &ModifiersState, symbol: u32) -> Option<Shortcut> {
+    if matches!(
+        shortcut(modifiers, symbol),
+        Some(Shortcut::Lock | Shortcut::OverviewToggle)
+    ) {
+        return shortcut(modifiers, symbol);
+    }
+    if modifiers.ctrl || modifiers.alt || modifiers.logo {
+        return None;
+    }
+    match symbol {
+        keysyms::KEY_Escape => Some(Shortcut::OverviewDismiss),
+        keysyms::KEY_Return | keysyms::KEY_KP_Enter => Some(Shortcut::OverviewActivate),
+        keysyms::KEY_Tab | keysyms::KEY_ISO_Left_Tab => Some(if modifiers.shift {
+            Shortcut::OverviewPrevious
+        } else {
+            Shortcut::OverviewNext
+        }),
+        keysyms::KEY_Left | keysyms::KEY_Up => Some(Shortcut::OverviewPrevious),
+        keysyms::KEY_Right | keysyms::KEY_Down => Some(Shortcut::OverviewNext),
+        _ => None,
+    }
+}
+
 fn shortcut(modifiers: &ModifiersState, symbol: u32) -> Option<Shortcut> {
     if modifiers.ctrl {
         return None;
@@ -156,6 +226,7 @@ fn shortcut(modifiers: &ModifiersState, symbol: u32) -> Option<Shortcut> {
         return None;
     }
     match symbol {
+        keysyms::KEY_o => Some(Shortcut::OverviewToggle),
         keysyms::KEY_l => Some(Shortcut::Lock),
         keysyms::KEY_Return => Some(Shortcut::Terminal),
         keysyms::KEY_space => Some(Shortcut::Launcher),
@@ -171,96 +242,4 @@ fn shortcut(modifiers: &ModifiersState, symbol: u32) -> Option<Shortcut> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn shortcuts_respect_modifiers_and_leave_application_keys_alone() {
-        let mut mods = ModifiersState::default();
-        assert_eq!(shortcut(&mods, keysyms::KEY_Return), None);
-        mods.logo = true;
-        assert_eq!(
-            shortcut(&mods, keysyms::KEY_Return),
-            Some(Shortcut::Terminal)
-        );
-        assert_eq!(shortcut(&mods, keysyms::KEY_0), Some(Shortcut::Reset));
-        assert_eq!(shortcut(&mods, keysyms::KEY_l), Some(Shortcut::Lock));
-        assert_eq!(shortcut(&mods, keysyms::KEY_a), None);
-        mods.ctrl = true;
-        assert_eq!(shortcut(&mods, keysyms::KEY_Return), None);
-        mods = ModifiersState {
-            alt: true,
-            ..Default::default()
-        };
-        assert_eq!(shortcut(&mods, keysyms::KEY_Tab), Some(Shortcut::Next));
-        mods.shift = true;
-        assert_eq!(shortcut(&mods, keysyms::KEY_Tab), Some(Shortcut::Previous));
-    }
-
-    #[test]
-    fn release_is_consumed_after_modifier_released_and_repeats_do_not_retrigger() {
-        let mut shortcuts = KeyboardShortcuts::default();
-        let mods = ModifiersState {
-            logo: true,
-            ..Default::default()
-        };
-        let key = 36_u32.into();
-        assert!(matches!(
-            shortcuts.filter(key, KeyState::Pressed, &mods, keysyms::KEY_Return, true),
-            FilterResult::Intercept(Some(Shortcut::Terminal))
-        ));
-        assert!(matches!(
-            shortcuts.filter(key, KeyState::Pressed, &mods, keysyms::KEY_Return, true),
-            FilterResult::Intercept(None)
-        ));
-        assert!(matches!(
-            shortcuts.filter(
-                key,
-                KeyState::Released,
-                &ModifiersState::default(),
-                keysyms::KEY_Return,
-                false
-            ),
-            FilterResult::Intercept(None)
-        ));
-        assert!(matches!(
-            shortcuts.filter(
-                key,
-                KeyState::Pressed,
-                &ModifiersState::default(),
-                keysyms::KEY_Return,
-                true
-            ),
-            FilterResult::Forward
-        ));
-    }
-
-    #[test]
-    fn popup_grabs_keep_shortcuts_and_their_releases() {
-        let mut shortcuts = KeyboardShortcuts::default();
-        let mods = ModifiersState {
-            alt: true,
-            ..Default::default()
-        };
-        assert!(matches!(
-            shortcuts.filter(
-                23_u32.into(),
-                KeyState::Pressed,
-                &mods,
-                keysyms::KEY_Tab,
-                false
-            ),
-            FilterResult::Forward
-        ));
-        assert!(matches!(
-            shortcuts.filter(
-                23_u32.into(),
-                KeyState::Released,
-                &mods,
-                keysyms::KEY_Tab,
-                true
-            ),
-            FilterResult::Forward
-        ));
-    }
-}
+mod tests;

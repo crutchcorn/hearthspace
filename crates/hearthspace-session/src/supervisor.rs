@@ -22,6 +22,7 @@ use crate::{
 
 mod commands;
 mod notifications;
+mod startup;
 
 pub(crate) struct Supervisor {
     mode: RunMode,
@@ -40,6 +41,7 @@ pub(crate) struct Supervisor {
     notifications: Option<ManagedProcess>,
     desktop_services: crate::desktop_services::DesktopServices,
     app_scopes: Option<crate::app_scopes::AppScopes>,
+    power: Option<crate::power::PowerManager>,
 }
 
 impl Supervisor {
@@ -67,6 +69,7 @@ impl Supervisor {
             notifications: None,
             desktop_services: crate::desktop_services::DesktopServices::default(),
             app_scopes: None,
+            power: None,
         }
     }
 
@@ -82,6 +85,10 @@ impl Supervisor {
             )?;
         }
         Ok(())
+    }
+
+    pub(crate) fn start_login_guard(&self, args: &Args) -> std::io::Result<()> {
+        crate::login_session::start_guard(args, &self.paths, &self.shutdown_requested)
     }
 
     pub(crate) fn start_settingsd(
@@ -134,6 +141,14 @@ impl Supervisor {
         Ok(())
     }
 
+    pub(crate) fn start_power(&mut self) -> std::io::Result<()> {
+        self.power = Some(crate::power::PowerManager::start(
+            self.paths.session_dir.clone(),
+            self.paths.shell_command_socket.clone(),
+        )?);
+        Ok(())
+    }
+
     pub(crate) fn start_shell(
         &mut self,
         max_restarts: usize,
@@ -141,7 +156,7 @@ impl Supervisor {
         let spec = self.binary_spec("hearthspace-shell", &[], true);
         self.shell = Some(ManagedProcess::spawn(spec, max_restarts)?);
         self.record_processes()?;
-        Ok(())
+        self.wait_for_desktop_ready()
     }
 
     pub(crate) fn start_desktop_services(&mut self) -> Result<(), Box<dyn std::error::Error>> {
@@ -282,6 +297,7 @@ impl Supervisor {
 
     pub(crate) fn shutdown(&mut self) -> std::io::Result<()> {
         info!("shutting down Hearthspace session processes");
+        self.power.take();
         terminate_process(&mut self.shell);
         terminate_process(&mut self.compositor);
         terminate_process(&mut self.settingsd);

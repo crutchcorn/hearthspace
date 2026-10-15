@@ -179,6 +179,9 @@ impl App {
     }
 
     fn focus_x11_window(&mut self, window: &X11Surface) {
+        if !self.navigation_available() {
+            return;
+        }
         let Some(window_index) = self.window_index_for_x11(window) else {
             return;
         };

@@ -24,6 +24,9 @@ mod layout;
 #[path = "support/navigation.rs"]
 mod navigation;
 #[cfg(feature = "test-apps")]
+#[path = "support/overview.rs"]
+mod overview;
+#[cfg(feature = "test-apps")]
 #[path = "support/session_bus.rs"]
 mod session_bus;
 #[cfg(feature = "test-apps")]
@@ -60,6 +63,10 @@ impl HeadlessCompositor {
     }
 
     fn spawn_with_layout(size: &str, layout: Option<&Path>) -> Self {
+        Self::spawn_with_layout_and_path(size, layout, None)
+    }
+
+    fn spawn_with_layout_and_path(size: &str, layout: Option<&Path>, path: Option<&Path>) -> Self {
         let runtime_dir = tempfile::tempdir().expect("create headless runtime dir");
         let command_socket_path = runtime_dir.path().join("command.sock");
         let wayland_display = format!("hearthspace-test-{}", std::process::id());
@@ -71,6 +78,9 @@ impl HeadlessCompositor {
             .env_remove("HEARTHSPACE_LAYOUT_PATH");
         if let Some(path) = layout {
             command.env("HEARTHSPACE_LAYOUT_PATH", path);
+        }
+        if let Some(path) = path {
+            command.env("PATH", path);
         }
         let child = command
             .env("XDG_RUNTIME_DIR", runtime_dir.path())
