@@ -65,6 +65,36 @@ class GtkTouchEvidenceTests(unittest.TestCase):
                 self.before, self.after, self.image, self.window(self.after, stale=True)
             )
 
+    def test_output_scale_bounds_one_coherent_rounding_adjustment(self):
+        self.metadata |= {"width": 1240, "height": 1040, "scale": 2}
+
+        def striped(window):
+            x, y = window["x"], window["y"]
+            # One-physical-pixel stripes expose rounding errors that wide solid
+            # rectangles can hide. Every feature shares the same translation.
+            shapes = [((x, y, x + 300, y + 310), (242, 242, 242))]
+            shapes.extend(
+                (
+                    (x + 15, y + 70 + row / 2, x + 285, y + 70 + (row + 1) / 2),
+                    tuple(
+                        25 + row * coefficient % 211 for coefficient in (53, 97, 139)
+                    ),
+                )
+                for row in range(440)
+            )
+            return capture(self.metadata, shapes)
+
+        image = striped(self.before)
+        # Native status rounded the logical Y displacement to -35, while the
+        # rendered surface moved -36: two physical pixels apart at output scale2.
+        actual = self.after | {"y": self.after["y"] - 1}
+        proof = translated(self.before, self.after, image, striped(actual))
+        self.assertEqual(proof["geometry_rounding_adjustment"], [0, -2])
+        self.assertGreater(proof["translated_fraction"], 0.98)
+        outside = self.after | {"y": self.after["y"] - 5}
+        with self.assertRaisesRegex(ControlError, "content did not follow"):
+            translated(self.before, self.after, image, striped(outside))
+
     def test_local_bounds_use_canvas_scale_not_output_dpi(self):
         window = {"x": -200, "y": 150, "content_width": 600, "content_height": 400}
         self.assertEqual(local_center((120, 180, 100, 40), window, 0.8), (-64, 310))

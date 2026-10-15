@@ -1,5 +1,7 @@
 """Rendered GTK content must follow a held touchscreen drag, not just geometry."""
 
+import math
+
 from .control import ControlError
 from .shell_presentation import Frame, compatible, difference
 from .visual import pixel_rect
@@ -25,13 +27,13 @@ def translated(before, after, image, captured):
             ),
         ),
     )
-    matched = total = 0
+    features = []
     stride = max(2, round(scale * 2))
     for y in range(top, bottom - 3, stride):
         for x in range(left, right - 3, stride):
             value = old.rgb(x, y)
             # Only distinctive edges count; a blank background cannot prove a
-            # translation. A one-pixel neighborhood tolerates canvas rounding.
+            # translation.
             if (
                 max(
                     difference(value, old.rgb(x + 3, y)),
@@ -40,12 +42,31 @@ def translated(before, after, image, captured):
                 < 25
             ):
                 continue
-            total += 1
-            matched += any(
-                difference(value, new.rgb(x + dx + ox, y + dy + oy)) <= 20
-                for ox in (-1, 0, 1)
-                for oy in (-1, 0, 1)
-            )
+            features.append((x, y, value))
+    # Status rounds coordinates to logical pixels, while rendering rounds the
+    # transformed surface origin separately. On a scale-2 output these can
+    # differ by two physical pixels. Find one coherent translation for all
+    # content, bounded to one output-logical pixel around the reported delta;
+    # independently matching each feature to a neighbor could hide distortion.
+    radius = math.ceil(scale)
+    candidates = [
+        (ox, oy)
+        for ox in range(-radius, radius + 1)
+        for oy in range(-radius, radius + 1)
+    ]
+    candidates.sort(key=lambda offset: abs(offset[0]) + abs(offset[1]))
+    matched, adjustment = -1, (0, 0)
+    for ox, oy in candidates:
+        count = sum(
+            difference(value, new.rgb(x + dx + ox, y + dy + oy)) <= 20
+            for x, y, value in features
+        )
+        if count > matched:
+            matched, adjustment = count, (ox, oy)
+        if count == len(features):
+            break
+    dx, dy = dx + adjustment[0], dy + adjustment[1]
+    total = len(features)
     fraction = matched / total if total else 0
     if total < 30 or fraction < 0.78:
         raise ControlError(
@@ -66,5 +87,7 @@ def translated(before, after, image, captured):
     return {
         "content_edge_samples": total,
         "translated_fraction": fraction,
+        "rendered_pixel_delta": [dx, dy],
+        "geometry_rounding_adjustment": list(adjustment),
         "vacated_changed_fraction": changed / vacated,
     }
