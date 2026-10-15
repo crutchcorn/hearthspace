@@ -47,12 +47,17 @@ class ShellEvidenceTests(unittest.TestCase):
             patch.object(shell_smoke.checks, "click") as click,
             patch.object(shell_smoke.checks, "opened"),
             patch.object(shell_smoke.checks, "closed"),
-            patch.object(shell_smoke, "Input"),
+            patch.object(shell_smoke.shell_search, "selected") as selected,
+            patch.object(shell_smoke, "Input") as input_type,
         ):
             shell_smoke.launch_settings(smoke)
         self.assertEqual(
             [call.args[1] for call in click.call_args_list],
-            ["Search", "Open: Hearthspace Settings"],
+            ["Search"],
+        )
+        selected.assert_called_once_with(smoke, "Open: Hearthspace Settings")
+        input_type.return_value.__enter__.return_value.chord.assert_called_once_with(
+            "enter"
         )
         smoke.control.request.assert_called_once_with("close-window 9")
         smoke.record.assert_called_once_with(

@@ -5,12 +5,19 @@ Canvas map, and Power. Search, notifications, the map and the power menu each
 open a separate overlay or popover. Opening one closes the previous panel.
 Escape, the close icon, an outside click, or clicking
 the active toolbar icon dismisses it.
+Panels have rounded transparent corners and shrink to fit their content. Long
+lists scroll within the available height; search keeps its heading and input
+visible above the results. Search uses 60% of the output's logical width, with a
+360-pixel minimum where space permits, capped to leave 12-pixel side margins
+on small displays.
 
 Tap Meta (also called Super or the Windows key) to toggle the search overlay.
 The action occurs when the key is released. Using Meta in a shortcut, such as
 Super+Return, Super+L or Super+arrow, does not toggle search afterward.
 Super+Space opens search, as does the Search icon. Typing searches application
-names and running-window titles or app IDs; Enter activates the first result.
+names and running-window titles or app IDs. The first result is selected initially;
+Up and Down move the visible selection, and Enter activates that result. The
+search field retains typing focus while the selection moves.
 Selecting a running window focuses its existing ID and brings it into view.
 An empty query shows a typing hint. Hearthspace Settings is available through
 search. Prebuilt sessions register its desktop entry in their private runtime,
@@ -34,6 +41,8 @@ Buttons retain descriptive accessible names despite showing icons: `Search`,
 `Notifications`, `Canvas map`, and `Power`. Close controls are named `Close
 search`, `Close notifications`, `Close canvas map`, and `Close power menu`.
 The power choices are `Lock`, `Log out`, `Confirm log out`, and `Cancel`.
+Search rows retain button roles and the names `Open: APP NAME` or `Window:
+WINDOW TITLE`; the current result exposes the accessibility `selected` state.
 
 Unlocked `status.shell_panels` lists visible panel bounds as `kind`, `output`,
 `x`, `y`, `width`, and `height`. Kinds are `search`, `notifications`, `map`, and
@@ -62,7 +71,9 @@ method with `gdbus`; native acceptance uses `notify-send`. This avoids changing
 Ubuntu's `notify-send` AppArmor policy for the temporary headless bus path.
 `HEARTHSPACE_SHELL_EVIDENCE=/tmp/hearthspace-shell-headless-1`
 retains its screenshots, status and semantic observations outside temporary
-runtime cleanup. Choose a fresh evidence directory for each attempt.
+runtime cleanup. The main workflow uses a 2560×1600 output at scale 2. A second
+800×600 output at scale 1 checks popup geometry and pixels, storing evidence in
+the `small-output` subdirectory. Choose a fresh evidence directory for each attempt.
 
 The same assertions run on real hardware through the existing native harness:
 
@@ -75,10 +86,16 @@ and [native testing](NATIVE_TESTING.md) for seat ownership and recovery. The
 workflow starts only an owned spare-VT session and restores its recorded original
 VT. It checks icon ordering and removed controls; Meta release immediately
 followed by typing, including exact accessible text and no leakage to the prior
-terminal; running-window selection; Settings search, launch and close; notifications; and power
+terminal; Up/Down result selection and Enter activation of a running window and
+Settings; pointer selection; Settings close; notifications; and power
 confirmation cancellation. It uses Tab to focus Lock without activating it, then
 focuses Cancel and presses Enter to dismiss the logout confirmation. It never
-confirms logout. Screenshots and cleanup evidence are retained on failure.
+confirms logout. It first launches an owned dark terminal backdrop, maximizes it
+below the bar, and compares every popup corner against its captured background.
+It verifies a visible popup interior and measures
+the gap below the final accessible content. Search highlight assertions require
+both the old and new rows to change visibly. Screenshots and cleanup evidence are
+retained on failure. The backdrop is closed before the application workflows.
 
 ### Hardware evidence, 2026-10-15
 
@@ -121,3 +138,44 @@ Release `69c4718835bb` was installed with `scripts/install-session install`.
 Installed compositor, shell, session and Settings hashes match the optimized
 build. Existing sessions keep their running binaries; log out and log back in
 to load the new bar.
+
+### Popup and search evidence, 2026-10-15
+
+The popup changes passed all 584 Rust tests and 314 Python tests, with native,
+E2E, test-app and required accessibility checks enabled. The full workspace
+build, warnings-denied Clippy, Rustfmt, Ruff lint and formatting also passed.
+`/tmp/hearthspace-popup-headless-final` retains the headless acceptance and its
+`small-output` case. Search measured 768 logical pixels wide on a 1280-pixel
+output and 480 on an 800-pixel output. All four popup corners matched the dark
+backdrop, with opaque interior pixels checked independently. Content had a
+13-pixel bottom gap; clearing the search shrank it from 326 to 128 pixels high.
+Up/Down visibly moved the selected row, and Enter focused the selected existing
+window without changing the set of open windows.
+
+The first headless attempt, `/tmp/hearthspace-popup-headless-1`, could not prove
+transparency against its white backdrop; the fixture now supplies an owned dark
+terminal. The second attempt exposed an AccessKit interface-removal failure
+when clearing results after the popup grew. A semantic group around each
+scrollable popup body fixes the accessible hierarchy. Regression tests now feed
+the changing trees through the real AT-SPI adapter, including result removal.
+`/tmp/hearthspace-popup-headless-2` retains that failure; subsequent runs passed.
+
+Native acceptance used the same physical GPD laptop, AMD Radeon 890M (`amdgpu`),
+kernel `7.0.0-38-generic`, and eDP-1 at 2560×1600 with scale 2. Both owned sessions
+used TTY7 and restored the user's existing Hearthspace session on TTY3.
+`/tmp/hearthspace-popup-native-1` passed the complete shell workflow, including
+rounded-corner pixel checks, content sizing, visible arrow-key selection,
+search clearing, Enter activation, Settings launch, notifications and logout
+cancellation. `/tmp/hearthspace-popup-map-native-1` passed live minimap updates,
+both zoom buttons, pointer dragging and temporary-uinput touchscreen dragging.
+These are automated native tests, not manual physical-finger acceptance.
+
+Both runs retain page-flip screenshots and semantic observations. Cleanup
+reported all steps complete with no errors; both services are inactive with
+`Result=success`, no main process or cgroup, and their runtimes removed. TTY3
+was confirmed active after each run.
+
+Release `752a8d9aad4c` was installed with `scripts/install-session install`.
+All eight installed executables match both the optimized build and installation
+manifest hashes. The user's running session was preserved; log out and back in
+to load these popup and search changes.

@@ -6,7 +6,7 @@ import shlex
 import subprocess
 from pathlib import Path
 
-from . import daily_checks
+from . import daily_checks, shell_presentation, shell_search
 from . import shell_checks as checks
 from .control import ControlError
 from .daily import DailySmoke
@@ -63,7 +63,9 @@ def launch_settings(smoke):
     checks.opened(smoke, "search")
     with Input(smoke.control) as inputs:
         inputs.type("Hearthspace Settings")
-    checks.click(smoke, "Open: Hearthspace Settings", "search")
+    shell_search.selected(smoke, "Open: Hearthspace Settings")
+    with Input(smoke.control) as inputs:
+        inputs.chord("enter")
     checks.closed(smoke)
     window = smoke.until(
         "Settings launched from search",
@@ -112,6 +114,14 @@ def pointer_panels(smoke):
         "pointer-opened search result",
         lambda: checks.elements(smoke, f"Window: {smoke.marker}"),
     )
+    checks.click(smoke, f"Window: {smoke.marker}", "search")
+    checks.closed(smoke)
+    smoke.until(
+        "pointer result restores application focus",
+        lambda: smoke.window(smoke.target)["focused"],
+    )
+    checks.click(smoke, "Search")
+    checks.opened(smoke, "search")
     checks.click(smoke, "Close search", "search")
     checks.closed(smoke)
     checks.click(smoke, "Notifications")
@@ -149,10 +159,12 @@ def pointer_panels(smoke):
 def run(smoke):
     checks.bar(smoke)
     smoke.capture("compact-shell-bar")
+    shell_presentation.run(smoke)
     daily_checks.terminal(smoke)
     if checks.panel(smoke, "search"):
         raise ControlError("Super+Enter incorrectly toggled search on Meta release")
     keyboard_search(smoke)
+    shell_search.run(smoke)
     launch_settings(smoke)
     pointer_panels(smoke)
     daily_checks.notifications(smoke)

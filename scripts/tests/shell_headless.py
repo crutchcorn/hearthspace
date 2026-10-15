@@ -67,7 +67,9 @@ def shell_bus_command(directory, address):
     return command
 
 
-def run_shell_session(test, directory, evidence, workflow, marker):
+def run_shell_session(
+    test, directory, evidence, workflow, marker, *, size=(2560, 1600), scale=2
+):
     test.assertFalse(
         (evidence / "session.json").exists(), "use fresh evidence directory"
     )
@@ -102,6 +104,7 @@ def run_shell_session(test, directory, evidence, workflow, marker):
                 "command_socket": str(socket),
                 "binary_dir": str(binary.parent),
                 "runtime_dir": str(directory),
+                "wayland_display": env["WAYLAND_DISPLAY"],
             }
         )
     )
@@ -126,9 +129,9 @@ def run_shell_session(test, directory, evidence, workflow, marker):
                 "--headless",
                 "--no-shell",
                 "--headless-size",
-                "2560x1600",
+                f"{size[0]}x{size[1]}",
                 "--headless-scale",
-                "2",
+                str(scale),
             ],
             env=env,
             stdout=log,
