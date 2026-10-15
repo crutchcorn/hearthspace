@@ -62,8 +62,9 @@ pub(in crate::compositor) fn encode_png(
         let mut encoder = png::Encoder::new(&mut bytes, width as u32, height as u32);
         encoder.set_color(png::ColorType::Rgba);
         encoder.set_depth(png::BitDepth::Eight);
-        // Keep agent round trips short, including on slower CPU-only workers.
-        encoder.set_compression(png::Compression::Fast);
+        // Avoid adaptive row-filter evaluation: the fastest preset remains
+        // lossless and trades a larger PNG for shorter agent round trips.
+        encoder.set_compression(png::Compression::Fastest);
         let mut writer = encoder.write_header()?;
         writer.write_image_data(pixels)?;
     }
@@ -129,6 +130,41 @@ mod tests {
         let mut result = vec![0; reader.output_buffer_size().unwrap()];
         reader.next_frame(&mut result).unwrap();
         assert_eq!(result, pixels);
+    }
+
+    #[test]
+    fn fast_png_preserves_mixed_rgba_rows_exactly() {
+        // Odd dimensions exercise row boundaries. Include gradients, noise,
+        // repeated rows, transparency and sharp edges rather than only solids.
+        let (width, height) = (513, 257);
+        let mut pixels = Vec::with_capacity(width * height * 4);
+        let mut noise = 0x6d2b_79f5_u32;
+        for y in 0..height {
+            for x in 0..width {
+                noise ^= noise << 13;
+                noise ^= noise >> 17;
+                noise ^= noise << 5;
+                let rgba = match (y / 17) % 4 {
+                    0 => [x as u8, (x / 2) as u8, (x / 8) as u8, (x % 256) as u8],
+                    1 => noise.to_le_bytes(),
+                    2 if (x / 7 + y / 5) % 2 == 0 => [255, 0, 173, 0],
+                    2 => [0, 255, 41, 255],
+                    _ => [17, 83, 191, 200],
+                };
+                pixels.extend_from_slice(&rgba);
+            }
+        }
+        let png = encode_png((width as i32, height as i32).into(), &pixels).unwrap();
+        let mut reader = png::Decoder::new(std::io::Cursor::new(png))
+            .read_info()
+            .unwrap();
+        let info = reader.info();
+        assert_eq!((info.width, info.height), (width as u32, height as u32));
+        assert_eq!(info.color_type, png::ColorType::Rgba);
+        assert_eq!(info.bit_depth, png::BitDepth::Eight);
+        let mut decoded = vec![0; reader.output_buffer_size().unwrap()];
+        let frame = reader.next_frame(&mut decoded).unwrap();
+        assert_eq!(&decoded[..frame.buffer_size()], pixels.as_slice());
     }
 
     #[cfg(feature = "udev")]
