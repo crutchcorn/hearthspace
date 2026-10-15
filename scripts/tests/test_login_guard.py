@@ -3,6 +3,7 @@
 import importlib.machinery
 import importlib.util
 import subprocess
+import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -47,6 +48,8 @@ class LoginGuardTests(unittest.TestCase):
             "leader_start": "122",
             "seat": "seat0",
             "cgroup": "/user.slice/user-1000.slice/session-108.scope",
+            "desktop": "Hearthspace",
+            "service": "login",
         }
         self.properties = {
             "Id": "108",
@@ -58,6 +61,7 @@ class LoginGuardTests(unittest.TestCase):
             "Type": "wayland",
             "Class": "user",
             "Desktop": "Hearthspace",
+            "Service": "login",
         }
 
     def test_scope_resolution_cannot_fall_back_to_active_or_user_manager_session(self):
@@ -86,6 +90,8 @@ class LoginGuardTests(unittest.TestCase):
             ("Remote", "yes"),
             ("Type", "x11"),
             ("Class", "manager"),
+            ("Desktop", ""),
+            ("Service", "gdm-password"),
         ):
             with self.subTest(key=key), self.assertRaises(RuntimeError):
                 guard.verify_session(self.properties | {key: value}, self.owner)
@@ -106,7 +112,123 @@ class LoginGuardTests(unittest.TestCase):
         for desktop in ("GNOME", "ubuntu", "", "Hearthspace:GNOME"):
             with self.subTest(desktop=desktop), self.assertRaises(RuntimeError):
                 guard.verify_session(self.properties | {"Desktop": desktop}, self.owner)
-        guard.verify_session(self.properties | {"Desktop": "hearthspace"}, self.owner)
+        guard.verify_session(
+            self.properties | {"Desktop": "hearthspace"},
+            self.owner | {"desktop": "hearthspace"},
+        )
+
+    def test_gdm_without_logind_desktop_requires_its_original_session_selection(self):
+        for service in ("gdm-password", "gdm-autologin"):
+            value = self.properties | {"Desktop": "", "Service": service}
+            owner = self.owner | {
+                "desktop": "",
+                "service": service,
+                "gdm_session": "hearthspace",
+            }
+            with self.subTest(service=service):
+                guard.verify_session(value, owner)
+            for selected in (None, "", "ubuntu", "Hearthspace", "hearthspace:GNOME"):
+                with self.subTest(selected=selected), self.assertRaises(RuntimeError):
+                    guard.verify_session(value, owner | {"gdm_session": selected})
+        for service in ("login", "gdm-launch-environment", "", "other"):
+            with self.subTest(service=service), self.assertRaises(RuntimeError):
+                guard.verify_session(
+                    self.properties | {"Desktop": "", "Service": service},
+                    self.owner
+                    | {"desktop": "", "service": service, "gdm_session": "hearthspace"},
+                )
+
+    def test_gdm_selection_never_overrides_a_foreign_logind_desktop(self):
+        for desktop in ("GNOME", "ubuntu", "Hearthspace:GNOME"):
+            with self.subTest(desktop=desktop), self.assertRaises(RuntimeError):
+                guard.verify_session(
+                    self.properties | {"Desktop": desktop, "Service": "gdm-password"},
+                    self.owner
+                    | {
+                        "desktop": desktop,
+                        "service": "gdm-password",
+                        "gdm_session": "hearthspace",
+                    },
+                )
+
+    def test_gdm_selection_is_read_from_the_requested_process_without_ambiguity(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            process = root / "42"
+            process.mkdir()
+            for contents, expected in (
+                (b"UNRELATED=other\0GDMSESSION=hearthspace\0", "hearthspace"),
+                (b"GDMSESSION=ubuntu\0XDG_SESSION_DESKTOP=Hearthspace\0", "ubuntu"),
+                (b"XDG_SESSION_DESKTOP=Hearthspace\0", ""),
+                (b"GDMSESSION=hearthspace\0GDMSESSION=ubuntu\0", ""),
+            ):
+                (process / "environ").write_bytes(contents)
+                with self.subTest(contents=contents):
+                    self.assertEqual(guard.selected_gdm_session(42, root), expected)
+            with self.assertRaises(FileNotFoundError):
+                guard.selected_gdm_session(43, root)
+
+    def test_establish_pins_gdm_metadata_and_rechecks_the_supervisor_identity(self):
+        actual = ("123", "0::" + self.owner["cgroup"] + "\n", 1000)
+        value = self.properties | {"Desktop": "", "Service": "gdm-password"}
+        runtime = Path("/run/user/1000/hearthspace/session-42")
+        for final, accepted in (
+            (actual, True),
+            (None, False),
+            (("124", actual[1], 1000), False),
+        ):
+            with (
+                patch.object(guard.os, "getuid", return_value=1000),
+                patch.object(
+                    guard, "process_identity", side_effect=[actual, None, final]
+                ),
+                patch.object(Path, "read_text", return_value="0::/user-manager\n"),
+                patch.object(guard, "properties", return_value=value),
+                patch.object(
+                    guard, "selected_gdm_session", return_value="hearthspace"
+                ) as selection,
+                patch.object(guard, "runtime_identity", return_value=(1, 2)),
+                self.subTest(final=final),
+            ):
+                if accepted:
+                    identity = guard.establish(42, "123", runtime)
+                    self.assertEqual(identity["desktop"], "")
+                    self.assertEqual(identity["service"], "gdm-password")
+                    self.assertEqual(identity["gdm_session"], "hearthspace")
+                    selection.assert_called_once_with(42)
+                else:
+                    with self.assertRaisesRegex(RuntimeError, "supervisor.*changed"):
+                        guard.establish(42, "123", runtime)
+
+    def test_gdm_cleanup_revalidates_recorded_metadata_without_a_live_supervisor(self):
+        value = self.properties | {"Desktop": "", "Service": "gdm-password"}
+        owner = self.owner | {
+            "desktop": "",
+            "service": "gdm-password",
+            "gdm_session": "hearthspace",
+        }
+        with (
+            patch.object(guard, "scope_stopped", side_effect=[False, True]),
+            patch.object(guard, "properties", return_value=value),
+            patch.object(guard, "process_identity", return_value=None),
+            patch.object(guard, "selected_gdm_session") as selection,
+            patch.object(guard, "command") as command,
+        ):
+            guard.terminate(owner)
+        selection.assert_not_called()
+        command.assert_called_once_with(
+            ["loginctl", "--no-ask-password", "terminate-session", "108"]
+        )
+        for changed in ({"Desktop": "Hearthspace"}, {"Service": "gdm-autologin"}):
+            with (
+                patch.object(guard, "scope_stopped", return_value=False),
+                patch.object(guard, "properties", return_value=value | changed),
+                patch.object(guard, "command") as command,
+                self.subTest(changed=changed),
+                self.assertRaises(RuntimeError),
+            ):
+                guard.terminate(owner)
+            command.assert_not_called()
 
     def test_missing_scope_is_a_completed_stop_even_with_systemctl_exit_one(self):
         output = subprocess.CompletedProcess(
