@@ -1,6 +1,8 @@
 """Four/five-contact input and independent libinput evidence for overview."""
 
-from .control import ControlError
+import time
+
+from .control import ControlError, Deadline
 from .gesture_trace import gesture
 from .pinch_touchscreen import centroid, scaled
 from .touchpad import checked_points, contact_positions
@@ -32,11 +34,25 @@ def move(device, state, ratio):
         device.request("move", points=state["moved"])
 
 
-def cancel(device, state):
+def cancel(device, state, *, trace_path=None, deadline=None):
     if state["fingers"] != 4:
         raise ControlError("overview cancellation fixture requires four contacts")
     extra = {"point": centroid(state["moved"])} if device.kind == "touchscreen" else {}
     device.request("add-finger", **extra)
+    if device.kind == "touchpad" and trace_path is not None:
+        local = Deadline(3)
+        while True:
+            proof = gesture(trace_path.read_text(), "PINCH", state["fingers"])
+            if proof["ended"]:
+                if not proof["cancelled"]:
+                    raise ControlError(
+                        "overview pinch ended normally before cancellation"
+                    )
+                return
+            remaining = local.remaining()
+            if deadline is not None:
+                remaining = min(remaining, deadline.remaining())
+            time.sleep(min(0.02, remaining))
 
 
 def trace_proof(path, kind, fingers, *, cancelled=False, ratio=None):

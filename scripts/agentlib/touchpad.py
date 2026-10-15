@@ -314,7 +314,10 @@ def worker(session, kind):
                         device.write(e.EV_KEY, counts[fingers - 1], 1)
                     positions(distance, translation)
                     device.syn()
-                    time.sleep(0.1 if counts else 0.02)
+                    # libinput debounces finger-count changes for 100 ms. Leave
+                    # time for both readers to dispatch cancellation before an
+                    # immediately following end lifts all remaining contacts.
+                    time.sleep(0.2 if counts else 0.02)
                 elif operation == "lift":
                     if counts or not fingers:
                         raise ControlError(

@@ -200,6 +200,43 @@ class OverviewInputTests(unittest.TestCase):
         with self.assertRaises(ControlError):
             overview_input.cancel(device, {"fingers": 5})
 
+    def test_touchpad_cancel_waits_for_observed_cancel_before_caller_can_end(self):
+        device = Mock(kind="touchpad")
+        path = Mock()
+        active = (
+            " event17 GESTURE_PINCH_BEGIN +1s 4\n"
+            " event17 GESTURE_PINCH_UPDATE +2s 4 0/0 (0/0 unaccelerated) 0.6 @ 0\n"
+        )
+        path.read_text.side_effect = [
+            active,
+            active + " event17 GESTURE_PINCH_END +3s 4 cancelled\n",
+        ]
+        with patch("agentlib.overview_input.time.sleep") as sleep:
+            overview_input.cancel(device, {"fingers": 4}, trace_path=path)
+        self.assertEqual(path.read_text.call_count, 2)
+        sleep.assert_called_once()
+        device.request.assert_called_once_with("add-finger")
+        path.read_text.side_effect = None
+        path.read_text.return_value = active + " event17 GESTURE_PINCH_END +3s 4\n"
+        with self.assertRaisesRegex(ControlError, "ended normally"):
+            overview_input.cancel(device, {"fingers": 4}, trace_path=path)
+
+    def test_touchpad_cancel_respects_aggregate_deadline(self):
+        path = Mock()
+        path.read_text.return_value = (
+            " event17 GESTURE_PINCH_BEGIN +1s 4\n"
+            " event17 GESTURE_PINCH_UPDATE +2s 4 0/0 (0/0 unaccelerated) 0.6 @ 0\n"
+        )
+        deadline = Mock()
+        deadline.remaining.side_effect = ControlError("operation deadline exceeded")
+        with self.assertRaisesRegex(ControlError, "deadline exceeded"):
+            overview_input.cancel(
+                Mock(kind="touchpad"),
+                {"fingers": 4},
+                trace_path=path,
+                deadline=deadline,
+            )
+
     def test_touch_trace_requires_exact_four_or_five_contact_count(self):
         for fingers in (4, 5):
             trace = "".join(f" event5 TOUCH_DOWN +1s {i}\n" for i in range(fingers))
