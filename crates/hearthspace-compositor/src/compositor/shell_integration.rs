@@ -60,18 +60,21 @@ impl App {
         debug!(%command, "running app control action");
         self.advance_viewport_animation();
 
-        if self.overview_active()
+        if (self.overview_active() || self.window_switcher_active())
             && matches!(
                 action,
                 ShellCommand::PanLeft
                     | ShellCommand::PanRight
                     | ShellCommand::PanUp
                     | ShellCommand::PanDown
+                    | ShellCommand::PanTo { .. }
                     | ShellCommand::ZoomIn
                     | ShellCommand::ZoomOut
             )
         {
-            return ControlReply::Err("dismiss overview before changing the canvas view".into());
+            return ControlReply::Err(
+                "dismiss the window overlay before changing the canvas view".into(),
+            );
         }
 
         match action {
@@ -137,6 +140,7 @@ impl App {
             ShellCommand::PanRight => self.pan_viewport_by(self.horizontal_pan_step(), 0),
             ShellCommand::PanUp => self.pan_viewport_by(0, -self.vertical_pan_step()),
             ShellCommand::PanDown => self.pan_viewport_by(0, self.vertical_pan_step()),
+            ShellCommand::PanTo { x, y } => return action_reply(self.pan_viewport_to(x, y)),
             ShellCommand::ZoomIn => self.animate_zoom_around_viewport_center(ZOOM_STEP),
             ShellCommand::ZoomOut => self.animate_zoom_around_viewport_center(1.0 / ZOOM_STEP),
             ShellCommand::ReloadSettings => self.reload_settings(),

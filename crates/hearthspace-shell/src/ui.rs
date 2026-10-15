@@ -11,9 +11,13 @@ use hearthspace_common::SHELL_COMMAND_SOCKET_ENV;
 use tracing::{error, info};
 use xilem::{EventLoop, Xilem};
 
+mod canvas_map;
+mod canvas_task;
 mod command_client;
 mod constants;
+mod icons;
 mod launcher;
+mod minimap;
 mod notification_view;
 mod notifications;
 mod output_watcher;

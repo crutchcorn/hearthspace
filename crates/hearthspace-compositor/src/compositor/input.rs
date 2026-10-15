@@ -2,9 +2,10 @@
 
 use smithay::{
     backend::input::{
-        AbsolutePositionEvent, Axis, Device, Event, GestureBeginEvent, GestureEndEvent,
-        GesturePinchUpdateEvent, GestureSwipeUpdateEvent, InputBackend, InputEvent, InputTime,
-        KeyboardKeyEvent, PointerAxisEvent, PointerButtonEvent, PointerMotionEvent, TouchEvent,
+        AbsolutePositionEvent, Axis, Device, DeviceCapability, Event, GestureBeginEvent,
+        GestureEndEvent, GesturePinchUpdateEvent, GestureSwipeUpdateEvent, InputBackend,
+        InputEvent, InputTime, KeyboardKeyEvent, PointerAxisEvent, PointerButtonEvent,
+        PointerMotionEvent, TouchEvent,
     },
     input::pointer::AxisFrame,
     utils::{Logical, Point, Rectangle},
@@ -13,7 +14,7 @@ use tracing::trace;
 
 use crate::config::WHEEL_SCROLL_PIXEL_EQUIVALENT;
 
-use super::{App, HitTarget, idle::ActivityReason};
+use super::{App, HitTarget, idle::ActivityReason, switcher::SwitcherSource};
 
 mod buttons;
 mod interactive;
@@ -43,6 +44,14 @@ pub(in crate::compositor) fn handle_input_event<B: InputBackend>(
 ) {
     match event {
         InputEvent::DeviceRemoved { device } => {
+            if device.has_capability(DeviceCapability::Keyboard)
+                && state.window_switcher_source() == Some(SwitcherSource::Keyboard)
+            {
+                // Key state is shared across physical and agent keyboards. A
+                // removed keyboard cannot deliver its held Alt release, so
+                // conservatively cancel switching and release the whole chord.
+                state.reset_session_input();
+            }
             state.remove_touch_device(&device.id());
             state.end_pinch_zoom(PinchInput::Touchpad, &device.id(), true, InputTime::now());
             state.end_pinch_zoom(

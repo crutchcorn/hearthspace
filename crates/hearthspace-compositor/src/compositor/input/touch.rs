@@ -20,11 +20,17 @@ impl App {
             // Deliver its queued end/release before starting the next one.
             let actions = self.touch_input.frame_all();
             self.apply_touch_actions(actions, time);
-            self.interrupt_pinch_zoom();
+            if !self.window_switcher_active() {
+                self.interrupt_pinch_zoom();
+            }
         }
         self.touch_input.down(device, slot, location);
-        // Do not let a new direct-touch sequence take over an existing grab.
-        if first && self.pinch_blocked() && !self.session_locked() {
+        // An existing switcher owns the whole chord. Suppress even a pending
+        // tap so lifting after Alt is released cannot click the revealed app.
+        if first
+            && (self.pinch_blocked() || self.window_switcher_active())
+            && !self.session_locked()
+        {
             let actions = self.touch_input.interrupt();
             self.apply_touch_actions(actions, time);
         }
@@ -93,6 +99,19 @@ impl App {
                 }
                 TouchAction::EndOverview { cancelled } => {
                     self.end_overview_pinch(PinchInput::Touchscreen, &device, cancelled);
+                }
+                TouchAction::BeginSwitcher { fingers } => {
+                    self.start_window_switcher_swipe(PinchInput::Touchscreen, device, fingers);
+                }
+                TouchAction::UpdateSwitcher { translation } => {
+                    self.update_window_switcher_swipe(
+                        PinchInput::Touchscreen,
+                        &device,
+                        translation,
+                    );
+                }
+                TouchAction::EndSwitcher { cancelled } => {
+                    self.end_window_switcher_swipe(PinchInput::Touchscreen, &device, cancelled);
                 }
             }
         }

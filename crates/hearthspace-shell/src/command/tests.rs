@@ -22,6 +22,7 @@ fn window_commands_round_trip_without_ignoring_extra_arguments() {
         ShellCommand::FocusPreviousWindow,
         ShellCommand::FocusLauncher,
         ShellCommand::ResetView,
+        ShellCommand::PanTo { x: -1024, y: 256 },
         ShellCommand::FullscreenWindow {
             id: 17,
             enabled: true,
@@ -40,6 +41,11 @@ fn window_commands_round_trip_without_ignoring_extra_arguments() {
         "focus-window -1",
         "move-window 1 2",
         "resize-window 1 -1 90",
+        "pan-to",
+        "pan-to 10",
+        "pan-to 10.5 20",
+        "pan-to NaN 20",
+        "pan-to 2147483648 20",
     ] {
         assert_eq!(ShellCommand::parse(invalid), None);
     }

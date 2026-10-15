@@ -1,6 +1,6 @@
 use smithay::{
     desktop::utils::bbox_from_surface_tree,
-    utils::{Logical, Physical, Point, Rectangle, SERIAL_COUNTER, Size},
+    utils::{Logical, Point, Rectangle, SERIAL_COUNTER, Size},
     wayland::{
         compositor::{TraversalAction, with_states, with_surface_tree_downward},
         selection::{data_device::set_data_device_focus, primary_selection::set_primary_focus},
@@ -15,12 +15,17 @@ use wayland_protocols::xdg::{
 use wayland_server::protocol::wl_surface::{self, WlSurface};
 
 use crate::{accessibility::ManagedWindowAccessibilityInfo, config::*, geometry::CanvasPoint};
-use hearthspace_common::{launcher_output_name_from_app_id, shell_bar_output_name_from_app_id};
+use hearthspace_common::{
+    canvas_map_output_name_from_app_id, launcher_output_name_from_app_id,
+    shell_bar_output_name_from_app_id,
+};
 
 mod bounds;
+mod canvas_map;
 mod geometry;
 mod hit_testing;
 mod ordering;
+mod shell_position;
 mod shell_size;
 
 pub(super) use geometry::{ResizeEdges, resize_cursor_icon};
@@ -71,7 +76,9 @@ pub(super) fn window_kind_for_toplevel(surface: &ToplevelSurface) -> ManagedWind
     }
     if app_id
         .as_deref()
-        .and_then(launcher_output_name_from_app_id)
+        .and_then(|id| {
+            launcher_output_name_from_app_id(id).or_else(|| canvas_map_output_name_from_app_id(id))
+        })
         .is_some()
     {
         return ManagedWindowKind::Launcher;
@@ -86,6 +93,7 @@ pub(super) fn shell_output_name_for_toplevel(surface: &ToplevelSurface) -> Optio
     let app_id = toplevel_app_id(surface)?;
     shell_bar_output_name_from_app_id(&app_id)
         .or_else(|| launcher_output_name_from_app_id(&app_id))
+        .or_else(|| canvas_map_output_name_from_app_id(&app_id))
         .flatten()
 }
 
@@ -144,7 +152,11 @@ pub(super) fn decoration_for_new_window(kind: ManagedWindowKind) -> WindowDecora
 
 impl App {
     pub(super) fn set_keyboard_focus_to_window(&mut self, window_index: usize, surface: WlSurface) {
-        if self.session_locked() || self.overview_active() {
+        if self.session_locked()
+            || self.overview_active()
+            || (self.window_switcher_active()
+                && self.window_switcher_selected_id() != Some(self.windows[window_index].id))
+        {
             return;
         }
         debug!(window_id = self.windows[window_index].id, kind = ?self.windows[window_index].kind, "setting keyboard focus to window");
@@ -381,6 +393,11 @@ impl App {
                 && let Some(surface) = window.surface.xdg_toplevel()
             {
                 self.configure_toplevel(surface, window.kind, window.shell_output_name.as_deref());
+            }
+            if window.kind == ManagedWindowKind::Launcher
+                && let Some(surface) = window.surface.wl_surface()
+            {
+                self.configure_shell_palette_size(&surface);
             }
         }
         self.reconcile_window_presentations();
@@ -620,60 +637,6 @@ impl App {
         );
         self.windows[window_index].position = new_position;
     }
-    fn content_screen_origin(&self, window_index: usize) -> Point<i32, Physical> {
-        self.window_surface_screen_origin(window_index)
-            .to_i32_round()
-            .to_physical(1)
-    }
-
-    fn shell_bar_screen_origin(&self, window_index: usize) -> Option<Point<i32, Physical>> {
-        self.shell_bar_logical_origin(window_index)
-            .map(|origin| origin.to_physical(1))
-    }
-
-    pub(super) fn shell_bar_screen_origins(
-        &self,
-        window_index: usize,
-    ) -> Vec<Point<i32, Physical>> {
-        self.shell_bar_screen_origin(window_index)
-            .into_iter()
-            .collect()
-    }
-
-    pub(super) fn launcher_screen_origins(&self, window_index: usize) -> Vec<Point<i32, Physical>> {
-        self.launcher_logical_origin(window_index)
-            .map(|origin| origin.to_physical(1))
-            .into_iter()
-            .collect()
-    }
-
-    fn shell_bar_logical_origin(&self, window_index: usize) -> Option<Point<i32, Logical>> {
-        let output_name = self.windows[window_index].shell_output_name.as_deref();
-        self.output_logical_rect_for_name(output_name)
-            .map(|rect| rect.loc)
-    }
-
-    /// Logical screen-space origin of a launcher palette: pinned below its
-    /// output's shell bar.
-    fn launcher_logical_origin(&self, window_index: usize) -> Option<Point<i32, Logical>> {
-        self.shell_bar_logical_origin(window_index)
-            .map(launcher_logical_origin_for_shell_bar)
-    }
-
-    pub(super) fn surface_screen_origin(&self, window_index: usize) -> Point<i32, Physical> {
-        match self.windows[window_index].kind {
-            ManagedWindowKind::Normal => self.content_screen_origin(window_index),
-            ManagedWindowKind::ShellBar => self
-                .shell_bar_screen_origin(window_index)
-                .unwrap_or_else(|| Point::from((0, 0))),
-            ManagedWindowKind::ShellWatcher => Point::from((0, 0)),
-            ManagedWindowKind::Launcher => self
-                .launcher_logical_origin(window_index)
-                .unwrap_or_else(|| Point::from((0, CONTROL_BAR_HEIGHT)))
-                .to_physical(1),
-        }
-    }
-
     pub(super) fn window_surface_geometry_loc(&self, window_index: usize) -> Point<i32, Logical> {
         match &self.windows[window_index].surface {
             ManagedSurface::Xdg(surface) => toplevel_geometry_loc(surface.wl_surface()),
@@ -704,10 +667,6 @@ pub(super) fn window_app_id(surface: &ManagedSurface) -> Option<String> {
     }
 }
 
-fn launcher_logical_origin_for_shell_bar(origin: Point<i32, Logical>) -> Point<i32, Logical> {
-    Point::from((origin.x, origin.y + CONTROL_BAR_HEIGHT))
-}
-
 fn surface_tree_contains(root: &wl_surface::WlSurface, target: &wl_surface::WlSurface) -> bool {
     let mut contains = false;
     with_surface_tree_downward(
@@ -725,29 +684,4 @@ fn surface_tree_contains(root: &wl_surface::WlSurface, target: &wl_surface::WlSu
         |_, _, &()| true,
     );
     contains
-}
-
-#[cfg(test)]
-mod tests {
-    use smithay::utils::{Logical, Point, Rectangle};
-
-    use super::launcher_logical_origin_for_shell_bar;
-
-    #[test]
-    fn launcher_origin_sits_below_its_output_shell_bar() {
-        let output = Rectangle::<i32, Logical>::new((1280, 120).into(), (1024, 768).into());
-
-        assert_eq!(
-            launcher_logical_origin_for_shell_bar(output.loc),
-            Point::from((1280, 168))
-        );
-    }
-
-    #[test]
-    fn launcher_origin_uses_logical_bar_height_on_scaled_outputs() {
-        assert_eq!(
-            launcher_logical_origin_for_shell_bar(Point::from((0, 10))),
-            Point::from((0, 58))
-        );
-    }
 }

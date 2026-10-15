@@ -4,7 +4,11 @@ use super::session_lock::lock_client;
 use super::*;
 use serde_json::{Value, json};
 
-fn editor(compositor: &HeadlessCompositor, editors: &mut Editors, number: usize) -> (u64, PathBuf) {
+pub(super) fn editor(
+    compositor: &HeadlessCompositor,
+    editors: &mut Editors,
+    number: usize,
+) -> (u64, PathBuf) {
     let title = format!("Overview editor {number}");
     let input = compositor
         .runtime_dir
@@ -53,7 +57,7 @@ fn editor(compositor: &HeadlessCompositor, editors: &mut Editors, number: usize)
     (id, state)
 }
 
-fn wait_state(path: &Path, condition: impl Fn(&Value) -> bool) -> Value {
+pub(super) fn wait_state(path: &Path, condition: impl Fn(&Value) -> bool) -> Value {
     let deadline = Instant::now() + Duration::from_secs(5);
     loop {
         let state = std::fs::read(path)
@@ -277,11 +281,10 @@ fn session_lock_dismisses_overview_and_redacts_titles_and_selection() {
         .join(format!("hearthspace-test-{}", std::process::id()));
     let mut locker = lock_client::LockClient::connect(&socket);
     locker.wait_locked();
-    let locked = overview(&compositor, false);
+    let locked = query(&compositor, "status");
     assert_eq!(locked["locked"], true);
     assert!(locked["windows"].as_array().unwrap().is_empty());
-    assert!(locked["overview"]["items"].as_array().unwrap().is_empty());
-    assert!(locked["overview"]["selected_window_id"].is_null());
+    assert!(locked.get("overview").is_none());
     assert!(!locked.to_string().contains("Overview editor 0"));
     for command in [
         "overview-on".into(),

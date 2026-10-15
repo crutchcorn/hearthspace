@@ -1,5 +1,5 @@
 //! Modal overview input never reaches the applications behind its previews.
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use smithay::{
     backend::input::{ButtonState, InputTime},
@@ -14,6 +14,7 @@ type Position = Point<f64, Logical>;
 #[derive(Default)]
 pub(in crate::compositor) struct OverviewInput {
     buttons: HashMap<u32, (Option<u64>, Position)>,
+    switcher_buttons: HashSet<u32>,
 }
 
 #[derive(Debug, PartialEq)]
@@ -56,11 +57,29 @@ impl OverviewInput {
 
     pub(super) fn clear(&mut self) {
         self.buttons.clear();
+        self.switcher_buttons.clear();
+    }
+
+    fn consume_switcher_button(&mut self, button: u32, state: ButtonState, active: bool) -> bool {
+        if state == ButtonState::Released && self.switcher_buttons.remove(&button) {
+            return true;
+        }
+        if active && state == ButtonState::Pressed {
+            self.switcher_buttons.insert(button);
+        }
+        active
     }
 }
 
 impl App {
     pub(super) fn handle_overview_button(&mut self, button: u32, state: ButtonState) -> bool {
+        let switching = self.window_switcher_active();
+        if self
+            .overview_input
+            .consume_switcher_button(button, state, switching)
+        {
+            return true;
+        }
         let target = self.overview_window_at(self.pointer_location);
         let active = self.overview_active();
         match self
@@ -83,10 +102,12 @@ impl App {
     }
 
     pub(super) fn overview_pointer_motion(&mut self, time: InputTime) -> bool {
-        if !self.overview_active() {
+        if !self.overview_active() && !self.window_switcher_active() {
             return false;
         }
-        self.overview_hover(self.pointer_location);
+        if self.overview_active() {
+            self.overview_hover(self.pointer_location);
+        }
         self.cursor_icon = CursorIcon::Default;
         self.cursor_surface = None;
         let pointer = self.pointer.clone();
@@ -107,6 +128,17 @@ impl App {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn switcher_consumes_buttons_until_release_even_after_alt_or_fingers_lift() {
+        let mut input = OverviewInput::default();
+        assert!(input.consume_switcher_button(0x110, ButtonState::Pressed, true));
+        assert!(input.consume_switcher_button(0x110, ButtonState::Released, false));
+        assert!(!input.consume_switcher_button(0x110, ButtonState::Pressed, false));
+        assert!(input.consume_switcher_button(0x111, ButtonState::Released, true));
+        input.clear();
+        assert!(!input.consume_switcher_button(0x111, ButtonState::Released, false));
+    }
 
     #[test]
     fn selection_requires_a_matching_click_and_never_leaks_its_release() {

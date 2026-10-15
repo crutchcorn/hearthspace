@@ -306,7 +306,7 @@ impl CalloopData {
                 "version": 1, "backend": backend, "active": self.capture_active(),
                 "locked": true, "lock_confirmed": self.state.lock_confirmed(),
                 "recovery_ready": recovery_ready,
-                "windows": [], "outputs": [],
+                "windows": [], "outputs": [], "canvas_maps": [],
             }))
             .expect("serializable locked status");
         }
@@ -320,10 +320,13 @@ impl CalloopData {
             "recovery_ready": recovery_ready,
             "xwayland_display": xwayland_display,
             "overview": self.state.overview_status(),
+            "window_switcher": self.state.window_switcher_status(),
+            "canvas_maps": self.state.canvas_maps_status(),
             "viewport": {
                 "x": self.state.viewport_offset.x,
                 "y": self.state.viewport_offset.y,
                 "scale": self.state.viewport_scale,
+                "animating": self.state.viewport_animation.is_some(),
                 "pinch_active": self.state.pinch_zoom.is_active(),
             },
             "shell_ready": self.state.windows.iter().any(|w| w.kind == ManagedWindowKind::ShellBar && w.content_bbox_size.w > 0),

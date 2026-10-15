@@ -19,6 +19,7 @@ impl App {
     }
 
     pub(in crate::compositor) fn reset_session_input(&mut self) {
+        self.reset_window_switcher();
         self.close_overview();
         self.overview_input.clear();
         self.cancel_input_gestures();

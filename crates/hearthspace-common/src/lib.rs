@@ -5,6 +5,7 @@ pub const SHELL_COMMAND_SOCKET_NAME: &str = "hearthspace-shell.sock";
 pub const SHELL_COMMAND_SOCKET_ENV: &str = "HEARTHSPACE_COMMAND_SOCKET";
 pub const SHELL_BAR_APP_ID: &str = "dev.hearthspace.shell-bar";
 pub const LAUNCHER_APP_ID: &str = "dev.hearthspace.launcher";
+pub const CANVAS_MAP_APP_ID: &str = "dev.hearthspace.canvas-map";
 pub const SHELL_OUTPUT_WATCHER_APP_ID: &str = "dev.hearthspace.shell-output-watcher";
 pub const CONTROL_BAR_HEIGHT: i32 = 48;
 pub const LOG_FILE_ENV: &str = "HEARTHSPACE_LOG_FILE";
@@ -52,12 +53,20 @@ pub fn launcher_app_id_for_output(output_name: &str) -> String {
     shell_app_id_for_output(LAUNCHER_APP_ID, output_name)
 }
 
+pub fn canvas_map_app_id_for_output(output_name: &str) -> String {
+    shell_app_id_for_output(CANVAS_MAP_APP_ID, output_name)
+}
+
 pub fn shell_bar_output_name_from_app_id(app_id: &str) -> Option<Option<String>> {
     shell_output_name_from_app_id(SHELL_BAR_APP_ID, app_id)
 }
 
 pub fn launcher_output_name_from_app_id(app_id: &str) -> Option<Option<String>> {
     shell_output_name_from_app_id(LAUNCHER_APP_ID, app_id)
+}
+
+pub fn canvas_map_output_name_from_app_id(app_id: &str) -> Option<Option<String>> {
+    shell_output_name_from_app_id(CANVAS_MAP_APP_ID, app_id)
 }
 
 fn shell_app_id_for_output(base: &str, output_name: &str) -> String {
@@ -140,6 +149,24 @@ mod tests {
         assert_eq!(
             launcher_output_name_from_app_id(LAUNCHER_APP_ID),
             Some(None)
+        );
+        assert_eq!(
+            canvas_map_output_name_from_app_id(CANVAS_MAP_APP_ID),
+            Some(None)
+        );
+    }
+
+    #[test]
+    fn canvas_map_app_id_round_trips_and_rejects_unrelated_or_invalid_ids() {
+        let app_id = canvas_map_app_id_for_output("card0/Virtual Display");
+        assert_eq!(
+            canvas_map_output_name_from_app_id(&app_id),
+            Some(Some("card0/Virtual Display".to_string()))
+        );
+        assert_eq!(canvas_map_output_name_from_app_id(LAUNCHER_APP_ID), None);
+        assert_eq!(
+            canvas_map_output_name_from_app_id("dev.hearthspace.canvas-map.output-ff"),
+            None
         );
     }
 

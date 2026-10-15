@@ -24,6 +24,8 @@ impl App {
         trace!(button, ?state, "pointer button input");
         if state == ButtonState::Pressed {
             self.interrupt_pinch_zoom();
+            // Close-button and background presses do not always change focus.
+            self.dismiss_canvas_maps_outside_pointer();
         }
         let is_left_button = button == 0x110;
 

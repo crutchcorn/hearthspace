@@ -13,6 +13,8 @@ use xilem::{
 use crate::ShellCommand;
 
 use super::{
+    canvas_map::{map_button, map_window},
+    canvas_task::canvas_task,
     command_client::{launch_app, send_command},
     constants::{SEARCH_BOX_HEIGHT, SEARCH_BOX_WIDTH, SHELL_BAR_H_PAD, launcher_size},
     launcher::{self, Entry},
@@ -35,7 +37,7 @@ pub(super) fn app_logic(
     let watcher = window(
         state.watcher_window_id,
         "Hearthspace Output Watcher",
-        output_watcher_view(),
+        output_watcher_view(state.outputs.iter().any(|output| output.show_map)),
     )
     .with_options(|options| {
         options
@@ -53,6 +55,14 @@ pub(super) fn app_logic(
             state.clock.clone(),
             &state.notifications,
         ));
+        if output.show_map {
+            windows.push(map_window(
+                output,
+                state.canvas.as_ref(),
+                state.canvas_error.as_deref(),
+            ));
+            continue;
+        }
         if output.show_notifications {
             windows.push(notification_window(
                 output,
@@ -201,13 +211,13 @@ fn bar_view(
     let command_buttons: Vec<Box<AnyWidgetView<ShellState>>> = [
         ("Overview", ShellCommand::OverviewToggle),
         ("Reset view", ShellCommand::ResetView),
-        ("Zoom out", ShellCommand::ZoomOut),
-        ("Zoom in", ShellCommand::ZoomIn),
     ]
     .into_iter()
     .filter(|_| !output.confirm_logout)
     .map(|(label, command)| {
+        let key = output.key().to_string();
         components::compact_action_button(label, move |state: &mut ShellState| {
+            state.dismiss_map(&key);
             let _ = send_command(&state.command_socket, &command.wire_name());
         })
         .boxed()
@@ -217,6 +227,7 @@ fn bar_view(
     let settings_output = output.output_name.clone();
     let settings_button = (!output.confirm_logout).then(|| {
         components::compact_action_button("Settings", move |state: &mut ShellState| {
+            state.dismiss_map(&settings_key);
             let result = launch_app(
                 &state.command_socket,
                 "dev.hearthspace.Settings.desktop",
@@ -239,6 +250,7 @@ fn bar_view(
                 (!output.confirm_logout).then(|| notification_view::button(output, notifications)),
                 FlexSpacer::Flex(1.0),
                 session_controls(output, clock),
+                (!output.confirm_logout).then(|| map_button(output)),
                 FlexSpacer::Fixed(SHELL_BAR_H_PAD.px()),
             ))
             .gap(8.0.px()),
@@ -249,13 +261,16 @@ fn bar_view(
     )
 }
 
-fn output_watcher_view() -> impl WidgetView<ShellState> + use<> {
+fn output_watcher_view(map_open: bool) -> impl WidgetView<ShellState> + use<> {
     sized_box(fork(
         fork(
             fork(label(""), output_watcher_task()),
             window_catalog_task(),
         ),
-        fork(clock_task(), notification_task()),
+        fork(
+            fork(clock_task(), notification_task()),
+            map_open.then(canvas_task),
+        ),
     ))
     .fixed_width(1.0.px())
     .fixed_height(1.0.px())

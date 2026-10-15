@@ -35,8 +35,10 @@ pub(super) fn button(
 ) -> impl WidgetView<ShellState> + use<> {
     let key = output.key().to_string();
     components::compact_action_button(button_label(items), move |state: &mut ShellState| {
+        state.canvas_dragging = false;
         if let Some(output) = state.outputs.iter_mut().find(|output| output.key() == key) {
             output.show_notifications = !output.show_notifications;
+            output.show_map = false;
             output.show_windows = false;
             output.query.clear();
             output.confirm_logout = false;

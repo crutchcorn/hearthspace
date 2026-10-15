@@ -24,7 +24,15 @@ impl App {
         }
         self.windows[index].mapped = mapped;
         let id = self.windows[index].id;
-        if mapped && self.is_navigable_window(index) {
+        if mapped && self.is_canvas_map(index) {
+            // Only the initial mapping requests focus; zoom updates and other
+            // buffer commits must not steal it back from a newer user action.
+            if self.navigation_available() {
+                self.set_keyboard_focus_to_window(index, root.clone());
+            } else {
+                self.windows[index].surface.send_close();
+            }
+        } else if mapped && self.is_navigable_window(index) {
             self.position_transient(index);
             self.restore_window_placement(index);
             // An existing popup/drag owns input until it ends. A background app
@@ -47,6 +55,7 @@ impl App {
                     .and_then(|root| self.window_index_for_surface(&root))
             })
         });
+        self.dismiss_canvas_maps_outside_focus(index);
         self.focused_normal_window_id = index
             .filter(|index| self.is_navigable_window(*index))
             .map(|index| self.windows[index].id);

@@ -205,8 +205,8 @@ def acceptance(smoke, window):
             fourth = centroid(moved)
             device.request("add-finger", point=fourth)
             smoke.until(
-                "fourth contact cancels touchscreen pinch",
-                lambda: not smoke.control.status()["viewport"]["pinch_active"],
+                "fourth contact restores the three-finger canvas transform",
+                lambda: same_viewport(before, smoke.control.status()["viewport"]),
             )
             device.request("move", points=scaled([*moved, fourth], 1.05))
             device.request("end")
@@ -215,6 +215,8 @@ def acceptance(smoke, window):
                 raise ControlError(
                     "fourth touchscreen contact did not restore the starting view"
                 )
+            if smoke.control.status()["overview"]["active"]:
+                raise ControlError("subthreshold fourth-contact motion opened overview")
             unchanged_window(smoke, window)
             smoke.capture("touchscreen-cancel-restored")
             smoke.record(

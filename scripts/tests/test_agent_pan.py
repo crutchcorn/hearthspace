@@ -16,7 +16,12 @@ from agentlib import pan_input
 from agentlib.control import ControlError
 from agentlib.gesture_trace import gesture
 from agentlib.pan import PanSmoke
-from agentlib.pan_checks import expected_direction, pinned_marker, unchanged
+from agentlib.pan_checks import (
+    expected_direction,
+    pan_cancelled,
+    pinned_marker,
+    unchanged,
+)
 from agentlib.pinch_assertions import verify_zoom
 from agentlib.touchpad import checked_points, contact_positions
 from test_agent_visual import window_capture
@@ -71,6 +76,22 @@ class GestureTraceTests(unittest.TestCase):
 
 
 class PanFixtureTests(unittest.TestCase):
+    def test_fourth_contact_may_recognize_without_leaving_a_transform_or_overlay(self):
+        before = {"x": 12, "y": -50, "scale": 0.75, "pinch_active": False}
+        status = {
+            "viewport": before | {"pinch_active": True},
+            "overview": {"active": False},
+            "window_switcher": {"active": False},
+        }
+        self.assertTrue(pan_cancelled(before, status))
+        self.assertFalse(
+            pan_cancelled(before, status | {"viewport": before | {"x": 13}})
+        )
+        for overlay in ("overview", "window_switcher"):
+            self.assertFalse(
+                pan_cancelled(before, status | {overlay: {"active": True}})
+            )
+
     def test_combined_touchpad_input_establishes_pinch_before_translation(self):
         for fingers in (2, 3):
             with self.subTest(fingers=fingers):

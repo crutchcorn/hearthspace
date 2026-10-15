@@ -12,8 +12,8 @@ use smithay::{
 use super::{App, ViewportAnimation, windows::window_title};
 
 mod labels;
-mod layout;
-mod render;
+pub(super) mod layout;
+pub(super) mod render;
 
 const APPEAR_DURATION: Duration = Duration::from_millis(200);
 
@@ -53,6 +53,9 @@ impl App {
     pub(super) fn open_overview(&mut self) -> Result<(), String> {
         if self.session_locked() {
             return Err("overview unavailable while the session is locked".into());
+        }
+        if self.window_switcher_active() {
+            return Err("overview unavailable during window switching".into());
         }
         if self.overview_active() {
             self.interrupt_overview_pinch();
@@ -230,7 +233,7 @@ impl App {
                 "preview_x":item.preview.loc.x,"preview_y":item.preview.loc.y,
                 "preview_width":item.preview.size.w,"preview_height":item.preview.size.h,"scale":item.scale})
         }).collect();
-        json!({"active":self.overview_active(),
+        json!({"active":self.overview_active(), "animating":self.overview_animating(),
             "selected_window_id":self.overview.session.as_ref().and_then(|session| session.selected),
             "output":self.overview.session.as_ref().and_then(|_| self.capture_outputs().into_iter().find(|output| {
                 Rectangle::new((output.logical_x, output.logical_y).into(), (output.logical_width, output.logical_height).into()) == self.overview_output()

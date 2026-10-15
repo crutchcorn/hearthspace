@@ -314,21 +314,29 @@ def worker(session, kind):
                         device.write(e.EV_KEY, counts[fingers - 1], 1)
                     positions(distance, translation)
                     device.syn()
-                    time.sleep(0.1 if counts else 0.02)
+                    # libinput debounces finger-count changes for 100 ms. Leave
+                    # time for both readers to dispatch cancellation before an
+                    # immediately following end lifts all remaining contacts.
+                    time.sleep(0.2 if counts else 0.02)
                 elif operation == "lift":
-                    if counts or not fingers:
-                        raise ControlError(
-                            "individual lift requires touchscreen contacts"
-                        )
+                    if not fingers:
+                        raise ControlError("individual lift requires active contacts")
+                    if counts:
+                        device.write(e.EV_KEY, counts[fingers - 1], 0)
                     fingers -= 1
                     device.write(e.EV_ABS, e.ABS_MT_SLOT, fingers)
                     device.write(e.EV_ABS, e.ABS_MT_TRACKING_ID, -1)
-                    touch_points.pop()
+                    if counts and fingers:
+                        device.write(e.EV_KEY, counts[fingers - 1], 1)
+                    if not counts:
+                        touch_points.pop()
                     if fingers:
                         positions(distance, translation)
                     else:
                         device.write(e.EV_KEY, e.BTN_TOUCH, 0)
                     device.syn()
+                    if counts:
+                        time.sleep(0.2)
                 elif operation == "end":
                     for slot in range(fingers):
                         device.write(e.EV_ABS, e.ABS_MT_SLOT, slot)

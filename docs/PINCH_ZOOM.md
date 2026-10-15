@@ -1,8 +1,12 @@
 # Canvas Gestures
 
-Three fingers navigate the canvas. Four or five fingers open or dismiss a
-[temporary overview of live windows](./WINDOW_MANAGEMENT.md#canvas-overview).
+Three fingers navigate the canvas. Four fingers on native touchpads, or four/five
+on touchscreens, pinch to open or dismiss a
+[temporary overview of live windows](./WINDOW_MANAGEMENT.md#canvas-overview), or
+swipe left/right to [switch windows](./WINDOW_MANAGEMENT.md#held-window-switcher).
 These gestures work without modifiers and do not change application content.
+Five-finger touchpad gestures are unavailable through the native libinput backend;
+see [backend availability](#backend-availability).
 
 ## Three-Finger Pan and Zoom
 
@@ -41,17 +45,19 @@ maximized; a pan at the zoom limit restores them.
 
 ## Four- and Five-Finger Overview
 
-Place four or five fingers on the touchpad or touchscreen, bring them together,
-and lift to open overview. Spread four or five fingers and lift to dismiss it.
-Inward means a final spread of at most 80% of the starting spread; outward means
-at least 125%. Only the final spread on a normal gesture end commits the action.
-Crossing a threshold and returning to the middle before lifting does nothing,
+Place four fingers on a native touchpad, or four/five on a touchscreen, bring
+them together, and lift to open overview. Spread the same supported number of
+fingers and lift to dismiss it. Inward means a final spread of at most 80% of the
+starting spread; outward means at least 125%. For touchpads, libinput establishes
+that baseline after enough motion to recognize a pinch. Touchscreens use the
+initial geometry at the supported contact count. Only the final spread on a
+normal gesture end commits the action. Crossing a threshold and returning to the middle before lifting does nothing,
 as does a cancelled gesture. At most one transition occurs per completed pinch.
 
 These pinches do not pan or zoom the canvas. Parallel motion and rotation do not
-change the overview state. Exactly four or five fingers are supported; three
-remain reserved for canvas navigation, and other counts do not open overview.
-Four-/five-finger touchpad swipes also leave overview unchanged. While overview
+change the overview state. Four-finger touchpad pinches and four-/five-finger
+touchscreen pinches control overview; three remain reserved for canvas navigation.
+Horizontal swipes switch windows outside overview. While overview
 is open, three-finger navigation and scrolling cannot move the underlying canvas.
 
 Touchscreen contacts often arrive in separate frames. Adding a fourth contact
@@ -64,16 +70,53 @@ Adding a sixth contact cancels the gesture and suppresses the rest of the touch
 sequence. After the first finger lifts, the remaining contacts cannot become
 clicks, drags, or a new gesture until all fingers lift.
 
-Use the **Overview** toolbar button or Super+O when a device cannot report four
-or five contacts. Inside overview, arrows or Tab/Shift+Tab select a preview,
+Use the **Overview** toolbar button or Super+O when a supported pinch is
+unavailable. Inside overview, arrows or Tab/Shift+Tab select a preview,
 Enter activates it, and Escape dismisses it. Clicking or tapping a preview also
 activates it. See [window management](./WINDOW_MANAGEMENT.md#canvas-overview)
 for the complete controls and preserved window state.
 
+## Four- and Five-Finger Window Switching
+
+Slide four fingers left/right on a native touchpad, or four/five on a
+touchscreen, to select the next/previous window. A compact strip of live previews
+stays open until the gesture ends. Each selection focuses its window and pans
+the canvas to it with a quick 180 ms eased animation. Continued swiping steps
+through more windows; reversing direction moves back. Lift to keep the selected
+window, or press Escape to cancel and restore the previous focus and view.
+
+Recognition starts after 32 logical pixels of horizontal movement, with
+horizontal distance at least 1.5 times vertical distance. Further selections are
+96 pixels apart; reversal requires 48 pixels back across the last selection
+threshold. This prevents small tremors from changing the selected window.
+A predominantly vertical movement claims no switching action for that sequence.
+
+Touchscreens distinguish swipes from overview pinches using both center movement
+and spread. An approximately 8% spread change claims pinch recognition; a
+horizontal movement meeting the swipe threshold claims switching. Once claimed,
+the gesture keeps its meaning until it ends. Place all intended fingers before
+moving: adding a fifth finger rebases the candidate and cancels a switch already
+in progress. Remaining contacts after the first lift cannot start another action.
+
+An active overview, input grab, move, resize, or keyboard-owned switcher prevents
+starting a swipe. A cancelled swipe restores the previous focus and view. Device
+removal, lock, or VT loss clears the interaction, so late events cannot reopen it.
+Keyboard input, pointer clicks, and scrolling do not reach applications while
+the switcher is held.
+
 ## Backend Availability
 
+Native touchpad gestures come from libinput through Smithay. The installed
+libinput 1.31.1 backend only processes gestures with at most four active contacts;
+its [gesture state processing](https://gitlab.freedesktop.org/libinput/libinput/-/blob/1.31.1/src/evdev-mt-touchpad-gestures.c)
+explicitly excludes five. Hearthspace therefore supports four-finger overview
+pinches and window-switching swipes on this native touchpad path. Its compositor
+policy can accept five-finger gestures from a backend that supplies them, but this does not enable
+five-finger touchpad recognition in libinput. Touchscreens supply raw contacts,
+so Hearthspace can recognize both four- and five-finger pinches and swipes there.
+
 The pinned Smithay/winit backend only delivers two-finger touchpad pinch events
-and no touchpad swipe events, so three-finger navigation and four-/five-finger
+and no touchpad swipe events, so three-finger navigation and four-finger
 overview pinches on touchpads require the native backend. Nested touchscreen
 events use the same recognizer, with an adapter for winit's unframed physical
 coordinates. Nested X11 does not supply touchpad pinch events.
@@ -145,5 +188,7 @@ native presentation, use the optional
 They create temporary virtual touchpad and touchscreen devices and exercise the
 normal libinput path. `scripts/pan-smoke` checks visible translation and combined
 scaling; `scripts/pinch-smoke` checks zoom, contact arbitration and device removal.
+`scripts/overview-smoke` checks four-finger touchpad and four-/five-finger
+touchscreen overview gestures, recording the five-finger libinput limit separately.
 These tests validate the input and rendering pipeline, without emulating a
 person's physical finger feel on the hardware.

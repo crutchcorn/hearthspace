@@ -10,6 +10,8 @@ type Position = Point<f64, Logical>;
 type Actions = Vec<(String, TouchAction)>;
 const DRAG_THRESHOLD: f64 = 8.0;
 
+mod recognition;
+
 #[derive(Debug, PartialEq)]
 pub(in crate::compositor) enum TouchAction {
     Hover(Position),
@@ -23,6 +25,9 @@ pub(in crate::compositor) enum TouchAction {
     BeginOverview { fingers: u32 },
     UpdateOverview { scale: f64 },
     EndOverview { cancelled: bool },
+    BeginSwitcher { fingers: u32 },
+    UpdateSwitcher { translation: Position },
+    EndSwitcher { cancelled: bool },
 }
 
 struct Contact {
@@ -41,7 +46,12 @@ enum Mode {
         radius: f64,
     },
     Overview {
+        anchor: Position,
         radius: f64,
+        pinching: bool,
+    },
+    Switching {
+        anchor: Position,
     },
     Suppressed,
 }
@@ -97,6 +107,10 @@ impl TouchTracker {
                 self.emit(TouchAction::EndPinch { cancelled: true });
                 self.mode = Mode::Multiple;
             }
+            Mode::Switching { .. } => {
+                self.emit(TouchAction::EndSwitcher { cancelled: true });
+                self.mode = Mode::Multiple;
+            }
             Mode::Overview { .. } => {
                 // Adding a fifth finger changes the centroid/radius even when
                 // no finger moves. Rebase rather than treating that as a pinch.
@@ -133,7 +147,11 @@ impl TouchTracker {
         if self.dirty
             && matches!(
                 self.mode,
-                Mode::Pending | Mode::Dragging | Mode::Pinching { .. } | Mode::Overview { .. }
+                Mode::Pending
+                    | Mode::Dragging
+                    | Mode::Pinching { .. }
+                    | Mode::Overview { .. }
+                    | Mode::Switching { .. }
             )
         {
             // An up may share a frame with the final motion of all contacts.
@@ -147,6 +165,7 @@ impl TouchTracker {
             Mode::Dragging => self.emit(TouchAction::Release),
             Mode::Pinching { .. } => self.emit(TouchAction::EndPinch { cancelled: false }),
             Mode::Overview { .. } => self.emit(TouchAction::EndOverview { cancelled: false }),
+            Mode::Switching { .. } => self.emit(TouchAction::EndSwitcher { cancelled: false }),
             _ => {}
         }
         self.mode = Mode::Suppressed;
@@ -159,7 +178,7 @@ impl TouchTracker {
         {
             return;
         }
-        self.cancel_pending_overview(device);
+        self.cancel_pending_chord(device);
         self.stop(true);
         if i32::from(slot) < 0 {
             self.contacts.clear();
@@ -211,48 +230,6 @@ impl TouchTracker {
             self.finish_empty();
         }
         self.frame(device)
-    }
-
-    fn recognize(&mut self) {
-        if !std::mem::take(&mut self.dirty) {
-            return;
-        }
-        match self.mode {
-            Mode::Pending | Mode::Dragging => self.single_motion(),
-            Mode::Multiple if (3..=5).contains(&self.contacts.len()) => {
-                if let Some((anchor, radius)) = self.geometry() {
-                    if self.contacts.len() == 3 {
-                        self.mode = Mode::Pinching { anchor, radius };
-                        self.emit(TouchAction::BeginPinch { anchor });
-                    } else {
-                        self.mode = Mode::Overview { radius };
-                        self.emit(TouchAction::BeginOverview {
-                            fingers: self.contacts.len() as u32,
-                        });
-                    }
-                }
-            }
-            Mode::Pinching { anchor, radius } => {
-                if let Some((centroid, current)) = self.geometry() {
-                    let scale = current / radius;
-                    let translation = centroid - anchor;
-                    // Both values are absolute since the same three-contact
-                    // begin, so frame rate and direction changes cannot drift.
-                    if scale.is_finite() && scale > 0.0 && finite(translation) {
-                        self.emit(TouchAction::UpdatePinch { scale, translation });
-                    }
-                }
-            }
-            Mode::Overview { radius } => {
-                if let Some((_, current)) = self.geometry() {
-                    let scale = current / radius;
-                    if scale.is_finite() && scale > 0.0 {
-                        self.emit(TouchAction::UpdateOverview { scale });
-                    }
-                }
-            }
-            _ => {}
-        }
     }
 
     fn single_motion(&mut self) {
@@ -307,6 +284,7 @@ impl TouchTracker {
             Mode::Dragging => self.emit(TouchAction::Release),
             Mode::Pinching { .. } if cancelled => self.emit(TouchAction::EndPinch { cancelled }),
             Mode::Overview { .. } => self.emit(TouchAction::EndOverview { cancelled: true }),
+            Mode::Switching { .. } => self.emit(TouchAction::EndSwitcher { cancelled: true }),
             _ => {}
         }
         self.mode = Mode::Suppressed;
@@ -331,10 +309,11 @@ impl TouchTracker {
             .retain_mut(|(owner, action)| owner != device || retain_cleanup(action));
     }
 
-    fn cancel_pending_overview(&mut self, device: &str) {
+    fn cancel_pending_chord(&mut self, device: &str) {
         for (owner, action) in &mut self.pending {
             if owner == device
-                && let TouchAction::EndOverview { cancelled } = action
+                && let TouchAction::EndOverview { cancelled }
+                | TouchAction::EndSwitcher { cancelled } = action
             {
                 *cancelled = true;
             }
@@ -351,7 +330,7 @@ impl TouchTracker {
 fn retain_cleanup(action: &mut TouchAction) -> bool {
     match action {
         TouchAction::Release | TouchAction::EndPinch { .. } => true,
-        TouchAction::EndOverview { cancelled } => {
+        TouchAction::EndOverview { cancelled } | TouchAction::EndSwitcher { cancelled } => {
             // Lock/VT loss/device removal must not commit an end queued earlier
             // in the same input frame, even if all fingers already lifted.
             *cancelled = true;

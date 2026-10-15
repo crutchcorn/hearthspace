@@ -77,26 +77,30 @@ async fn attach_discovers_shell_on_private_bus_and_preserves_the_desktop() {
     assert_eq!(adapter.ownership(), SessionOwnership::Attached);
     let accessibility = SessionAccessibility::new(&address).unwrap();
     accessibility.enable(Duration::from_secs(5)).await.unwrap();
-    let selector = "//Button[@name='Zoom in' and @focusable='true']";
-    loop {
-        let matches = accessibility
-            .find(selector, Duration::from_secs(5))
+    for selector in [
+        "//Button[@name='Canvas map' and @focusable='true']",
+        "//Button[@name='Zoom in' and @focusable='true']",
+    ] {
+        loop {
+            let matches = accessibility
+                .find(selector, Duration::from_secs(5))
+                .await
+                .unwrap();
+            if !matches.is_empty() {
+                assert_eq!(matches.len(), 1);
+                break;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "shell accessibility startup timed out: {selector}"
+            );
+            sleep(Duration::from_millis(50)).await;
+        }
+        accessibility
+            .activate(selector, Duration::from_secs(5))
             .await
             .unwrap();
-        if !matches.is_empty() {
-            assert_eq!(matches.len(), 1);
-            break;
-        }
-        assert!(
-            Instant::now() < deadline,
-            "shell accessibility startup timed out"
-        );
-        sleep(Duration::from_millis(50)).await;
     }
-    accessibility
-        .activate(selector, Duration::from_secs(5))
-        .await
-        .unwrap();
     timeout(Duration::from_secs(5), async {
         loop {
             let mut stream = tokio::net::UnixStream::connect(&socket).await.unwrap();

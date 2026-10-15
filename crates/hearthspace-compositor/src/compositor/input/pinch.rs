@@ -10,14 +10,17 @@ use crate::geometry::CanvasPoint;
 use super::super::{App, presentation::RestoredMaximizedWindow};
 
 mod overview;
+mod switcher;
 mod transform;
 use overview::OverviewGesture;
+use switcher::SwitcherGesture;
 use transform::{finite_point, gesture_viewport};
 
 #[derive(Default)]
 pub(in crate::compositor) struct PinchZoom {
     gesture: Option<Gesture>,
     overview: Option<OverviewGesture>,
+    switcher: Option<SwitcherGesture>,
 }
 
 struct Gesture {
@@ -41,7 +44,7 @@ pub(super) enum PinchInput {
 
 impl PinchZoom {
     pub(in crate::compositor) fn is_active(&self) -> bool {
-        self.gesture.is_some() || self.overview.is_some()
+        self.gesture.is_some() || self.overview.is_some() || self.switcher.is_some()
     }
 
     fn begin(
@@ -167,6 +170,7 @@ impl PinchZoom {
 
     fn cancel(&mut self) -> Option<(CanvasPoint, f64)> {
         self.overview = None;
+        self.switcher = None;
         self.gesture
             .take()
             .map(|gesture| (gesture.original_offset, gesture.scale))
@@ -178,6 +182,7 @@ impl PinchZoom {
 
     pub(super) fn interrupt(&mut self) {
         self.overview = None;
+        self.switcher = None;
         self.gesture = None;
     }
 }
@@ -206,6 +211,8 @@ impl App {
         }
         if fingers == 3 {
             self.start_pinch_zoom(input, device, self.pointer_location);
+        } else if input == PinchInput::TouchpadSwipe {
+            self.start_window_switcher_swipe(input, device, fingers);
         } else {
             self.start_overview_pinch(input, device, fingers);
         }
@@ -219,6 +226,9 @@ impl App {
         delta: Point<f64, Logical>,
         time: InputTime,
     ) {
+        if self.update_touchpad_switcher_swipe(input, device, delta) {
+            return;
+        }
         if self.update_overview_pinch(input, device, scale) {
             return;
         }
@@ -236,7 +246,11 @@ impl App {
         device: String,
         anchor: Point<f64, Logical>,
     ) {
-        if self.pinch_zoom.is_active() || self.pinch_blocked() || self.overview_active() {
+        if self.pinch_zoom.is_active()
+            || self.pinch_blocked()
+            || self.overview_active()
+            || self.window_switcher_active()
+        {
             return;
         }
         self.advance_viewport_animation();
@@ -295,7 +309,10 @@ impl App {
         cancelled: bool,
         time: InputTime,
     ) {
-        if self.end_overview_pinch(input, device, cancelled) || !self.pinch_zoom.accepts(input) {
+        if self.end_window_switcher_swipe(input, device, cancelled)
+            || self.end_overview_pinch(input, device, cancelled)
+            || !self.pinch_zoom.accepts(input)
+        {
             return;
         }
         debug!(
@@ -321,6 +338,7 @@ impl App {
     }
 
     pub(in crate::compositor) fn cancel_pinch_zoom(&mut self) {
+        self.cancel_window_switcher_swipe();
         if self.pinch_blocked() {
             self.interrupt_pinch_zoom();
             return;
@@ -333,6 +351,7 @@ impl App {
     }
 
     pub(in crate::compositor) fn interrupt_pinch_zoom(&mut self) {
+        self.cancel_window_switcher_swipe();
         self.pinch_zoom.interrupt();
         if !self.dispatching_touch {
             let actions = self.touch_input.interrupt();

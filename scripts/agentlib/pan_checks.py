@@ -77,6 +77,16 @@ def unchanged(before, after):
         )
 
 
+def pan_cancelled(before, status):
+    # A fourth contact can start a many-finger candidate after rolling back
+    # the three-finger transform. That candidate must not open either overlay.
+    return (
+        same_viewport(before, status["viewport"])
+        and not status["overview"]["active"]
+        and not status["window_switcher"]["active"]
+    )
+
+
 def expected_direction(case, observed):
     for requested, actual in zip(case["delta"], observed["translation"]):
         if requested and (actual * requested <= 0 or abs(actual) < 10):
@@ -199,9 +209,10 @@ def run(smoke, kind, case):
             check_active(smoke, case, state, observed, before, window, image, active)
             if case.get("cancel"):
                 pan_input.cancel(device, state)
+
                 smoke.until(
-                    "fourth contact cancels pan",
-                    lambda: not smoke.control.status()["viewport"]["pinch_active"],
+                    "fourth contact restores the three-finger canvas transform",
+                    lambda: pan_cancelled(before, smoke.control.status()),
                 )
             device.request("end")
             after = settled(smoke)

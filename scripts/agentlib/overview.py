@@ -34,7 +34,14 @@ class OverviewSmoke(DailySmoke):
         for kind in ("touchpad", "touchscreen"):
             if self.args.device not in (kind, "both"):
                 continue
-            for fingers in (4, 5):
+            if kind == "touchpad":
+                self.record(
+                    "backend-limit",
+                    device=kind,
+                    fingers=5,
+                    reason="libinput does not emit five-contact motion gestures",
+                )
+            for fingers in (4,) if kind == "touchpad" else (4, 5):
                 for outward, small, cancel in (
                     (False, True, False),
                     *([(False, False, True)] if fingers == 4 else []),

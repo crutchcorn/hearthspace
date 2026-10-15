@@ -28,12 +28,13 @@ impl LabelBuffer {
 
     pub(super) fn new(text: String, size: Size<i32, Logical>, font_size: u32) -> Self {
         let image = rasterize(&text, size, font_size);
+        let pixels = premultiplied_pixels(image);
         Self {
             text,
             size,
             font_size,
             buffer: MemoryRenderBuffer::from_slice(
-                &image.into_raw(),
+                &pixels,
                 Fourcc::Abgr8888,
                 (size.w.max(1), size.h.max(1)),
                 1,
@@ -42,6 +43,19 @@ impl LabelBuffer {
             ),
         }
     }
+}
+
+fn premultiplied_pixels(image: image::RgbaImage) -> Vec<u8> {
+    // Masonry's imaging renderer returns straight-alpha RGBA. Smithay blends
+    // memory textures as premultiplied RGBA, including antialiased glyph edges.
+    let mut pixels = image.into_raw();
+    for pixel in pixels.as_chunks_mut::<4>().0 {
+        let alpha = u16::from(pixel[3]);
+        for channel in &mut pixel[..3] {
+            *channel = ((u16::from(*channel) * alpha + 127) / 255) as u8;
+        }
+    }
+    pixels
 }
 
 fn rasterize(text: &str, size: Size<i32, Logical>, font_size: u32) -> image::RgbaImage {
@@ -77,5 +91,23 @@ mod tests {
         assert_eq!(image.dimensions(), (260, 32));
         assert!(image.pixels().filter(|pixel| pixel.0[3] > 100).count() > 100);
         assert_eq!(image.get_pixel(259, 31).0[3], 0);
+    }
+
+    #[test]
+    fn uploaded_glyph_edges_obey_premultiplied_alpha() {
+        let image = rasterize("Window switcher", (260, 32).into(), 14);
+        assert!(
+            image.pixels().any(|pixel| {
+                let [red, _, _, alpha] = pixel.0;
+                alpha > 0 && alpha < 255 && red > alpha
+            }),
+            "the source must exercise straight-alpha antialiased edges"
+        );
+        let expected_alpha: Vec<_> = image.pixels().map(|pixel| pixel.0[3]).collect();
+        let pixels = premultiplied_pixels(image);
+        for (pixel, alpha) in pixels.as_chunks::<4>().0.iter().zip(expected_alpha) {
+            assert_eq!(pixel[3], alpha);
+            assert!(pixel[..3].iter().all(|channel| *channel <= alpha));
+        }
     }
 }

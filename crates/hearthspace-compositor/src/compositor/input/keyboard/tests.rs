@@ -1,6 +1,33 @@
 use super::*;
 
 #[test]
+fn canvas_map_escape_closes_once_and_consumes_release_after_focus_changes() {
+    let mut shortcuts = KeyboardShortcuts::default();
+    let mods = ModifiersState::default();
+    let key = 9_u32.into();
+    assert!(matches!(
+        shortcuts.filter_canvas_map(key, KeyState::Pressed, &mods, keysyms::KEY_Escape, true),
+        FilterResult::Intercept(Some(Shortcut::CanvasMapDismiss))
+    ));
+    assert!(matches!(
+        shortcuts.filter_canvas_map(key, KeyState::Pressed, &mods, keysyms::KEY_Escape, true),
+        FilterResult::Intercept(None)
+    ));
+    assert!(matches!(
+        shortcuts.filter(key, KeyState::Released, &mods, keysyms::KEY_Escape, true),
+        FilterResult::Intercept(None)
+    ));
+    assert!(matches!(
+        shortcuts.filter(key, KeyState::Pressed, &mods, keysyms::KEY_Escape, true),
+        FilterResult::Forward
+    ));
+    assert!(matches!(
+        shortcuts.filter_canvas_map(key, KeyState::Pressed, &mods, keysyms::KEY_Escape, false),
+        FilterResult::Forward
+    ));
+}
+
+#[test]
 fn shortcuts_respect_modifiers_and_leave_application_keys_alone() {
     let mut mods = ModifiersState::default();
     assert_eq!(shortcut(&mods, keysyms::KEY_Return), None);

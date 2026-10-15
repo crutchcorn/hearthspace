@@ -1,52 +1,25 @@
 """Click the real shell while a maximized browser has distant saved geometry."""
 
-import math
-
 from . import firefox_assertions as verify
 from . import firefox_checks as checks
+from . import map_checks
 from .control import ControlError
-from .daily_checks import a11y
-from .input import BUTTONS, Input
 from .pinch_touchscreen import settled
 
-
-def button_center(bounds, output):
-    # AccessKit's Wayland shell extents use physical surface pixels. Agent
-    # pointer input uses compositor-global logical coordinates instead.
-    if not bounds or any(
-        not math.isfinite(bounds.get(key, float("nan")))
-        for key in ("x", "y", "width", "height")
-    ):
-        raise ControlError("shell button has no finite observed bounds")
-    if bounds["width"] <= 0 or bounds["height"] <= 0:
-        raise ControlError("shell button has empty observed bounds")
-    x = (bounds["x"] + bounds["width"] / 2) / output["scale"]
-    y = (bounds["y"] + bounds["height"] / 2) / output["scale"]
-    if not (0 <= x < output["logical_width"] and 0 <= y < 48):
-        raise ControlError("observed button center lies outside the shell control bar")
-    return x + output["logical_x"], y + output["logical_y"]
+button_center = map_checks.button_center
 
 
 def click_zoom_out(smoke):
-    target = checks.selector("Zoom out", checks.SHELL)
-    elements = smoke.until(
-        "observed shell Zoom out button",
-        lambda: a11y(smoke, "find", target)["elements"],
-    )
-    output = smoke.control.status()["outputs"][0]
-    point = button_center(elements[0].get("bounds"), output)
-    smoke.record(
-        "shell-pointer-target", selector=target, elements=elements, point=point
-    )
-    with Input(smoke.control) as inputs:
-        inputs.motion(*point)
-        inputs.down("pointer-button", BUTTONS["left"])
+    def focus_cleared():
         smoke.until(
             "shell pointer press clears Firefox focus",
             lambda: not smoke.window(smoke.target).get("focused"),
         )
         smoke.record("shell-pointer-focused", window=smoke.window(smoke.target))
-        inputs.up("pointer-button", BUTTONS["left"])
+
+    map_checks.click(smoke, "Canvas map", on_press=focus_cleared)
+    map_checks.opened(smoke)
+    map_checks.click(smoke, "Zoom out", on_press=focus_cleared)
 
 
 def reset_pinned_view(smoke):
@@ -64,6 +37,39 @@ def reset_pinned_view(smoke):
     if any(view[key] != value for key, value in (("x", 0), ("y", 0), ("scale", 1))):
         raise ControlError("shell zoom setup failed to reset the distant viewport")
     return view
+
+
+def close_map_preserving_view(smoke):
+    before_view = settled(smoke)
+    before = smoke.window(smoke.target)
+    if (
+        not before
+        or before.get("focused")
+        or before["canvas_x"] != 100000
+        or before["canvas_y"] != 100000
+    ):
+        raise ControlError(
+            "open canvas map lost focus or changed saved Firefox position"
+        )
+    smoke.record("shell-map-holds-focus", window=before, viewport=before_view)
+    map_checks.close(smoke)
+    smoke.until(
+        "closing canvas map restores Firefox keyboard focus",
+        lambda: (window := smoke.window(smoke.target)) and window.get("focused"),
+    )
+    after_view = settled(smoke)
+    after = smoke.window(smoke.target)
+    if any(after_view[key] != before_view[key] for key in ("x", "y", "scale")):
+        raise ControlError("closing canvas map panned or zoomed to Firefox")
+    if (
+        not after
+        or not after.get("focused")
+        or any(after[key] != before[key] for key in ("canvas_x", "canvas_y"))
+    ):
+        raise ControlError(
+            "closing canvas map lost Firefox focus or its saved position"
+        )
+    smoke.record("shell-map-close-restores-focus", window=after, viewport=after_view)
 
 
 def run(smoke):
@@ -89,12 +95,5 @@ def run(smoke):
         "shell reduced canvas scale",
         lambda: smoke.control.status()["viewport"]["scale"] < 0.95,
     )
+    close_map_preserving_view(smoke)
     checks.zoom_result(smoke, "shell-zoom", before_view, before, image)
-    after = smoke.window(smoke.target)
-    if (
-        after.get("focused")
-        or after["canvas_x"] != 100000
-        or after["canvas_y"] != 100000
-    ):
-        raise ControlError("shell zoom stole focus or changed saved floating position")
-    smoke.record("shell-focus-and-saved-position-preserved", window=after)
