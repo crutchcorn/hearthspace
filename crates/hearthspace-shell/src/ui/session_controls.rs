@@ -41,12 +41,14 @@ pub(super) fn clock_task() -> impl View<ShellState, (), xilem::ViewCtx, Element 
 }
 
 fn set_confirmation(state: &mut ShellState, output_key: &str, enabled: bool) {
+    state.canvas_dragging = false;
     if let Some(output) = state
         .outputs
         .iter_mut()
         .find(|output| output.key() == output_key)
     {
         output.confirm_logout = enabled;
+        output.show_map = false;
         output.launch_error = None;
     }
 }
@@ -93,6 +95,7 @@ pub(super) fn session_controls(
     });
     let lock = (!confirming).then(|| {
         components::compact_action_button("Lock", move |state: &mut ShellState| {
+            state.dismiss_map(&lock_key);
             if let Err(error) = send_command(&state.command_socket, "lock-session") {
                 state.finish_launch(&lock_key, Err(error));
             }

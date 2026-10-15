@@ -51,6 +51,11 @@ pub(super) fn query_windows(command_socket: &Path) -> Result<Vec<u8>, String> {
         .map_err(|error| format!("Window list unavailable: {error}"))
 }
 
+pub(super) fn query_canvas(command_socket: &Path) -> Result<Vec<u8>, String> {
+    query_payload(command_socket, "status", Duration::from_millis(750))
+        .map_err(|error| format!("Canvas map unavailable: {error}"))
+}
+
 fn query_payload(
     command_socket: &Path,
     command: &str,

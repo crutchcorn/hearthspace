@@ -1,14 +1,16 @@
 use std::path::PathBuf;
 
 use hearthspace_common::{
-    LAUNCHER_APP_ID, SHELL_BAR_APP_ID, launcher_app_id_for_output, shell_bar_app_id_for_output,
+    CANVAS_MAP_APP_ID, LAUNCHER_APP_ID, SHELL_BAR_APP_ID, canvas_map_app_id_for_output,
+    launcher_app_id_for_output, shell_bar_app_id_for_output,
 };
 use xilem::{AppState, WindowId};
 
 use crate::app_catalog::AppCatalog;
 
 use super::{
-    constants::FALLBACK_OUTPUT_KEY, notifications::Notification, window_catalog::RunningWindow,
+    constants::FALLBACK_OUTPUT_KEY, minimap::CanvasSnapshot, notifications::Notification,
+    window_catalog::RunningWindow,
 };
 
 /// Reactive state backing the shell view.
@@ -17,6 +19,10 @@ pub(super) struct ShellState {
     pub(super) catalog: AppCatalog,
     pub(super) windows: Vec<RunningWindow>,
     pub(super) windows_error: Option<String>,
+    pub(super) canvas: Option<CanvasSnapshot>,
+    pub(super) canvas_error: Option<String>,
+    pub(super) canvas_dragging: bool,
+    pub(super) canvas_revision: std::sync::Arc<std::sync::atomic::AtomicU64>,
     pub(super) clock: String,
     pub(super) notifications_socket: Option<PathBuf>,
     pub(super) notifications: Vec<Notification>,
@@ -33,9 +39,11 @@ pub(super) struct ShellOutputInstance {
     pub(super) show_windows: bool,
     pub(super) confirm_logout: bool,
     pub(super) show_notifications: bool,
+    pub(super) show_map: bool,
     pub(super) launch_error: Option<String>,
     pub(super) bar_window_id: WindowId,
     pub(super) launcher_window_id: WindowId,
+    pub(super) map_window_id: WindowId,
 }
 
 #[derive(Debug)]
@@ -56,6 +64,10 @@ impl ShellState {
             catalog: AppCatalog::load(),
             windows: Vec::new(),
             windows_error: None,
+            canvas: None,
+            canvas_error: None,
+            canvas_dragging: false,
+            canvas_revision: Default::default(),
             clock: super::session_controls::current_clock(),
             notifications_socket: std::env::var_os("XDG_RUNTIME_DIR")
                 .map(|dir| PathBuf::from(dir).join("hearthspace-notifications.sock")),
@@ -90,6 +102,9 @@ impl ShellState {
         }
 
         self.outputs = outputs;
+        if !self.outputs.iter().any(|output| output.show_map) {
+            self.canvas_dragging = false;
+        }
     }
 
     pub(super) fn finish_launch(&mut self, output_key: &str, result: Result<(), String>) {
@@ -100,9 +115,11 @@ impl ShellState {
         {
             match result {
                 Ok(()) => {
+                    self.canvas_dragging = false;
                     output.query.clear();
                     output.show_windows = false;
                     output.show_notifications = false;
+                    output.show_map = false;
                     output.launch_error = None;
                 }
                 Err(error) => output.launch_error = Some(error),
@@ -111,12 +128,14 @@ impl ShellState {
     }
 
     pub(super) fn toggle_windows(&mut self, output_key: &str) {
+        self.canvas_dragging = false;
         if let Some(output) = self
             .outputs
             .iter_mut()
             .find(|output| output.key() == output_key)
         {
             output.show_windows = !output.show_windows;
+            output.show_map = false;
             output.show_notifications = false;
             output.query.clear();
             output.launch_error = None;
@@ -124,12 +143,14 @@ impl ShellState {
     }
 
     pub(super) fn dismiss_launcher(&mut self, output_key: &str) {
+        self.canvas_dragging = false;
         if let Some(output) = self
             .outputs
             .iter_mut()
             .find(|output| output.key() == output_key)
         {
             output.show_windows = false;
+            output.show_map = false;
             output.show_notifications = false;
             output.confirm_logout = false;
             output.query.clear();
@@ -138,14 +159,46 @@ impl ShellState {
     }
 
     pub(super) fn change_query(&mut self, output_key: &str, query: String) {
+        self.canvas_dragging = false;
         if let Some(output) = self
             .outputs
             .iter_mut()
             .find(|output| output.key() == output_key)
         {
             output.query = query;
+            output.show_map = false;
             output.show_notifications = false;
             output.launch_error = None;
+        }
+    }
+
+    pub(super) fn toggle_map(&mut self, output_key: &str) {
+        self.canvas_dragging = false;
+        let open = self
+            .outputs
+            .iter()
+            .any(|output| output.key() == output_key && !output.show_map);
+        for output in &mut self.outputs {
+            output.show_map = open && output.key() == output_key;
+            if output.show_map {
+                output.query.clear();
+                output.show_windows = false;
+                output.show_notifications = false;
+                output.confirm_logout = false;
+                output.launch_error = None;
+            }
+        }
+        self.canvas_error = None;
+    }
+
+    pub(super) fn dismiss_map(&mut self, output_key: &str) {
+        self.canvas_dragging = false;
+        if let Some(output) = self
+            .outputs
+            .iter_mut()
+            .find(|output| output.key() == output_key)
+        {
+            output.show_map = false;
         }
     }
 }
@@ -158,9 +211,11 @@ impl ShellOutputInstance {
             show_windows: false,
             confirm_logout: false,
             show_notifications: false,
+            show_map: false,
             launch_error: None,
             bar_window_id: WindowId::next(),
             launcher_window_id: WindowId::next(),
+            map_window_id: WindowId::next(),
         }
     }
 
@@ -180,6 +235,13 @@ impl ShellOutputInstance {
             .as_deref()
             .map(launcher_app_id_for_output)
             .unwrap_or_else(|| LAUNCHER_APP_ID.to_string())
+    }
+
+    pub(super) fn map_app_id(&self) -> String {
+        self.output_name
+            .as_deref()
+            .map(canvas_map_app_id_for_output)
+            .unwrap_or_else(|| CANVAS_MAP_APP_ID.to_string())
     }
 }
 
@@ -253,5 +315,32 @@ mod tests {
         assert!(state.outputs[0].launch_error.is_none());
         state.finish_launch("eDP-1", Ok(()));
         assert!(state.outputs[0].query.is_empty());
+    }
+
+    #[test]
+    fn map_toggle_is_exclusive_and_other_shell_panels_dismiss_it() {
+        let mut state = ShellState::new("/unused".into(), vec!["eDP-1".into(), "HDMI-A-1".into()]);
+        state.outputs[0].show_notifications = true;
+        state.outputs[0].show_windows = true;
+        state.outputs[0].query = "notes".into();
+        state.toggle_map("eDP-1");
+        assert!(state.outputs[0].show_map);
+        assert!(!state.outputs[0].show_notifications);
+        assert!(!state.outputs[0].show_windows);
+        assert!(state.outputs[0].query.is_empty());
+        state.toggle_map("HDMI-A-1");
+        assert!(!state.outputs[0].show_map);
+        assert!(state.outputs[1].show_map);
+        state.toggle_map("HDMI-A-1");
+        assert!(!state.outputs[1].show_map);
+        state.toggle_map("eDP-1");
+        state.change_query("eDP-1", "editor".into());
+        assert!(!state.outputs[0].show_map);
+        state.toggle_map("eDP-1");
+        state.toggle_windows("eDP-1");
+        assert!(!state.outputs[0].show_map);
+        state.toggle_map("eDP-1");
+        state.dismiss_launcher("eDP-1");
+        assert!(!state.outputs[0].show_map);
     }
 }

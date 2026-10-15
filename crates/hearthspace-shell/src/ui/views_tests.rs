@@ -84,7 +84,12 @@ fn keyboard_enter_routes_through_rebuilt_bar_and_focuses_matching_window() {
             let result = harness.edit_root_widget(|root| {
                 view.message(&mut view_state, &mut message, root, &mut state)
             });
-            assert!(matches!(result, MessageResult::Action(())));
+            // Canvas icons request their first draw after layout; those
+            // messages must pass through the same view tree as text actions.
+            assert!(matches!(
+                result,
+                MessageResult::Action(()) | MessageResult::RequestRebuild
+            ));
             let (environment, _, _) = message.finish();
             *ctx.environment() = environment;
             let next = bar_view(&state.outputs[0], state.clock.clone(), &[]);
