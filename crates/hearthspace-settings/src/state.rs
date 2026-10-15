@@ -24,7 +24,7 @@ pub(crate) struct SettingsApp {
 pub(crate) enum SettingsCategory {
     Display,
     Appearance,
-    Favorites,
+    Search,
     Advanced,
 }
 
@@ -33,7 +33,7 @@ impl SettingsCategory {
         match self {
             Self::Display => "Display",
             Self::Appearance => "Appearance",
-            Self::Favorites => "Favorites",
+            Self::Search => "Search",
             Self::Advanced => "Advanced",
         }
     }
@@ -42,7 +42,7 @@ impl SettingsCategory {
         match self {
             Self::Display => "Monitor placement and scale",
             Self::Appearance => "Canvas background image and fit",
-            Self::Favorites => "Favorite apps and their launch gestures",
+            Self::Search => "Search and app launch gestures",
             Self::Advanced => "Diagnostics and configuration",
         }
     }
@@ -99,7 +99,7 @@ pub(crate) fn initial_state() -> SettingsApp {
 impl SettingsApp {
     pub(crate) fn select_category(&mut self, category: SettingsCategory) {
         self.favorites.cancel();
-        if category == SettingsCategory::Favorites {
+        if category == SettingsCategory::Search {
             self.favorites.reload();
         }
         self.selected_category = category;

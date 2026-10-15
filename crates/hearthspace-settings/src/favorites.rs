@@ -1,4 +1,5 @@
-//! Settings owns favorite editing. Recording never launches an application.
+//! Settings owns app gesture editing. Recording never launches an application.
+//! The legacy favorites store remains the compatible persistence format.
 use hearthspace_shell::{
     app_catalog::AppCatalog,
     favorites::{Favorite, FavoriteError, FavoriteStore, Gesture, Point},
@@ -31,7 +32,7 @@ impl FavoriteSettings {
     ) -> Self {
         let (store, message) = match store {
             Ok(store) => (Some(store), None),
-            Err(error) => (None, Some(format!("Favorites are unavailable: {error}"))),
+            Err(error) => (None, Some(format!("Gestures are unavailable: {error}"))),
         };
         Self {
             store,
@@ -49,11 +50,11 @@ impl FavoriteSettings {
         match FavoriteStore::load_default() {
             Ok(store) => {
                 self.store = Some(store);
-                self.message = Some("Favorites reloaded.".into());
+                self.message = Some("Gestures reloaded.".into());
             }
             Err(error) => {
                 self.store = None;
-                self.message = Some(format!("Favorites are unavailable: {error}"));
+                self.message = Some(format!("Gestures are unavailable: {error}"));
             }
         }
     }
@@ -62,27 +63,20 @@ impl FavoriteSettings {
         self.store.as_ref().map_or(&[], FavoriteStore::entries)
     }
 
+    /// Old entries with no gesture have no visible meaning in Settings.
+    pub fn assigned(&self) -> impl Iterator<Item = &Favorite> {
+        self.entries()
+            .iter()
+            .filter(|entry| entry.gesture.is_some())
+    }
+
     pub fn name(&self, id: &str) -> String {
         self.catalog
             .app_by_id(id)
             .map_or_else(|| id.to_owned(), |app| app.name.clone())
     }
 
-    pub fn add(&mut self, id: &str) {
-        if self.catalog.app_by_id(id).is_none() {
-            self.message = Some("This app is no longer installed. Reload the app list.".into());
-            return;
-        }
-        let name = self.name(id);
-        if let Some(store) = &mut self.store {
-            self.message = Some(match store.add(id) {
-                Ok(()) => format!("Added {name} to favorites."),
-                Err(error) => error.to_string(),
-            });
-        }
-    }
-
-    pub fn remove(&mut self, id: &str) {
+    pub fn remove_gesture(&mut self, id: &str) {
         let name = self.name(id);
         if let Some(store) = &mut self.store {
             match store.remove(id) {
@@ -94,28 +88,19 @@ impl FavoriteSettings {
                     {
                         self.cancel();
                     }
-                    self.message = Some(format!("Removed {name} from favorites."));
+                    self.message = Some(format!("Removed the gesture for {name}."));
                 }
                 Err(error) => self.message = Some(error.to_string()),
             }
         }
     }
 
-    pub fn clear(&mut self, id: &str) {
-        let name = self.name(id);
-        if let Some(store) = &mut self.store {
-            self.message = Some(match store.clear_gesture(id) {
-                Ok(()) => format!("Removed the gesture for {name}."),
-                Err(error) => error.to_string(),
-            });
-        }
-    }
-
     pub fn start(&mut self, id: &str) {
-        if self.catalog.app_by_id(id).is_none()
-            || !self.entries().iter().any(|entry| entry.app_id == id)
-        {
-            self.message = Some("Choose an installed favorite app first.".into());
+        if self.store.is_none() {
+            return;
+        }
+        if self.catalog.app_by_id(id).is_none() {
+            self.message = Some("Choose an installed app first.".into());
             return;
         }
         self.generation = self.generation.wrapping_add(1).max(1);
@@ -173,11 +158,11 @@ impl FavoriteSettings {
         let Some(store) = &mut self.store else {
             return;
         };
-        match store.assign(&id, &recording.points) {
+        match store.set_gesture(&id, &recording.points) {
             Ok(()) => {
                 self.cancel();
                 self.message = Some(format!(
-                    "Saved the gesture for {name}. Open search and choose Draw to launch."
+                    "Saved the gesture for {name}. Draw it in search to launch the app."
                 ));
             }
             Err(error) => self.message = Some(error.to_string()),

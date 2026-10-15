@@ -22,46 +22,37 @@ pub(crate) fn view(state: &SettingsApp) -> Box<AnyWidgetView<SettingsApp>> {
         browsing(state)
     };
     flex_col((
-        note("Favorite apps appear in search. Assign a shape here, then draw it in search to launch its app immediately."),
-        state.favorites.message.as_ref().map(|message| components::field_label(message.clone()).line_break_mode(LineBreaking::WordWrap)),
+        components::section_title("Gestures"),
+        note("Assign a shape to an app, then draw it in search to launch the app immediately."),
+        state.favorites.message.as_ref().map(|message| {
+            components::field_label(message.clone()).line_break_mode(LineBreaking::WordWrap)
+        }),
         content,
-    )).cross_axis_alignment(CrossAxisAlignment::Stretch).gap(12.0.px()).boxed()
+    ))
+    .cross_axis_alignment(CrossAxisAlignment::Stretch)
+    .gap(12.0.px())
+    .boxed()
 }
 
 fn browsing(state: &SettingsApp) -> Box<AnyWidgetView<SettingsApp>> {
     let favorites = &state.favorites;
     let saved: Vec<_> = favorites
-        .entries()
-        .iter()
+        .assigned()
         .map(|favorite| {
             let id = favorite.app_id.clone();
             let name = favorites.name(&id);
             let installed = favorites.catalog.app_by_id(&id).is_some();
             let assign_id = id.clone();
             let remove_id = id.clone();
-            let clear_id = id.clone();
             let shape = favorite
                 .gesture
                 .as_ref()
                 .map(|gesture| thumbnail::<SettingsApp>(gesture.points().to_vec()));
-            let assign_label = format!(
-                "{} gesture for {name}",
-                if favorite.gesture.is_some() {
-                    "Change"
-                } else {
-                    "Assign"
-                }
-            );
-            let clear = favorite.gesture.is_some().then(|| {
-                button(label("Remove gesture"), move |state: &mut SettingsApp| {
-                    state.favorites.clear(&clear_id)
-                })
-            });
+            let assign_label = format!("Change gesture for {name}");
             components::settings_section(
                 name.clone(),
                 flex_col((
-                    (!installed)
-                        .then(|| note("No longer installed. You can remove this favorite.")),
+                    (!installed).then(|| note("No longer installed. You can remove this gesture.")),
                     flex_row((
                         shape,
                         flex_col((
@@ -69,10 +60,11 @@ fn browsing(state: &SettingsApp) -> Box<AnyWidgetView<SettingsApp>> {
                                 state.favorites.start(&assign_id)
                             })
                             .disabled(!installed),
-                            clear,
                             button(
-                                label(format!("Remove {name} from favorites")),
-                                move |state: &mut SettingsApp| state.favorites.remove(&remove_id),
+                                label(format!("Remove gesture for {name}")),
+                                move |state: &mut SettingsApp| {
+                                    state.favorites.remove_gesture(&remove_id)
+                                },
                             ),
                         ))
                         .cross_axis_alignment(CrossAxisAlignment::Start)
@@ -91,15 +83,14 @@ fn browsing(state: &SettingsApp) -> Box<AnyWidgetView<SettingsApp>> {
         .into_iter()
         .filter(|app| {
             !favorites
-                .entries()
-                .iter()
+                .assigned()
                 .any(|favorite| favorite.app_id == app.id)
         })
         .map(|app| {
             let id = app.id;
             button(
-                label(format!("Add {} to favorites", app.name)),
-                move |state: &mut SettingsApp| state.favorites.add(&id),
+                label(format!("Add gesture for {}", app.name)),
+                move |state: &mut SettingsApp| state.favorites.start(&id),
             )
             .disabled(favorites.store.is_none())
             .boxed()
@@ -108,11 +99,11 @@ fn browsing(state: &SettingsApp) -> Box<AnyWidgetView<SettingsApp>> {
     let empty = apps.is_empty();
     flex_col((
         button(
-            label("Reload favorites and apps"),
+            label("Reload gestures and apps"),
             |state: &mut SettingsApp| state.favorites.reload(),
         ),
         saved,
-        components::section_title("Add favorite apps"),
+        components::section_title("Add gestures"),
         crate::favorites_search::input(&favorites.query),
         empty.then(|| note("No more matching apps. Try a different search.")),
         flex_col(apps)

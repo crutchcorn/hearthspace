@@ -21,7 +21,7 @@ fn state() -> (tempfile::TempDir, SettingsApp) {
             favorites,
             settings: Settings::default(),
             live_outputs: vec![],
-            selected_category: SettingsCategory::Favorites,
+            selected_category: SettingsCategory::Search,
             selected_monitor_id: None,
             background_picker_request_sender: None,
             background_picker_pending: false,
@@ -67,22 +67,19 @@ where
 }
 
 #[test]
-fn accessible_add_assign_draw_and_save_updates_the_real_store_only_after_save() {
+fn accessible_add_gesture_draw_and_save_updates_the_real_store_only_after_save() {
     let (dir, state) = state();
     let mut ui = Ui::new(state, view, (760, 700));
-    let add = ui.button("Add Alpha to favorites");
+    let add = ui.button("Add gesture for Alpha");
     ui.activate(add);
     ui.dispatch(&view);
-    let assign = ui.button("Assign gesture for Alpha");
-    ui.activate(assign);
-    ui.dispatch(&view);
     let path = dir.path().join("favorites.json");
-    let original = std::fs::read(&path).unwrap();
+    assert!(!path.exists());
     let save = ui.button("Save gesture");
     assert!(ui.harness.access_node(save).unwrap().is_disabled());
     draw(&mut ui, &[[30.0, 40.0], [90.0, 130.0], [150.0, 40.0]]);
     ui.dispatch(&view);
-    assert_eq!(std::fs::read(&path).unwrap(), original);
+    assert!(!path.exists());
     let save = ui.button("Save gesture");
     assert!(!ui.harness.access_node(save).unwrap().is_disabled());
     ui.activate(save);
@@ -102,11 +99,8 @@ fn named_search_filters_apps_and_the_recording_preview_can_be_redrawn() {
     ui.harness.keyboard_type_chars("Beta");
     ui.dispatch(&view);
     assert_eq!(ui.state.favorites.query, "Beta");
-    let add = ui.button("Add Beta to favorites");
+    let add = ui.button("Add gesture for Beta");
     ui.activate(add);
-    ui.dispatch(&view);
-    let assign = ui.button("Assign gesture for Beta");
-    ui.activate(assign);
     ui.dispatch(&view);
     draw(&mut ui, &[[30.0, 40.0], [90.0, 130.0], [150.0, 40.0]]);
     ui.dispatch(&view);
@@ -141,13 +135,12 @@ fn named_search_filters_apps_and_the_recording_preview_can_be_redrawn() {
     ui.activate(cancel);
     ui.dispatch(&view);
     assert!(ui.state.favorites.recording.is_none());
-    assert!(ui.state.favorites.entries()[0].gesture.is_none());
+    assert!(ui.state.favorites.entries().is_empty());
 }
 
 #[test]
 fn switching_settings_categories_cancels_recording_and_late_completion() {
     let (_dir, mut state) = state();
-    state.favorites.add("Alpha.desktop");
     state.favorites.start("Alpha.desktop");
     let generation = state.favorites.recording.as_ref().unwrap().generation;
     state.select_category(SettingsCategory::Display);
@@ -157,5 +150,58 @@ fn switching_settings_categories_cancels_recording_and_late_completion() {
         crate::favorites::tests::shape(),
     );
     assert!(state.favorites.recording.is_none());
-    assert!(state.favorites.entries()[0].gesture.is_none());
+    assert!(state.favorites.entries().is_empty());
+}
+
+#[test]
+fn search_category_has_only_gesture_controls_and_hides_legacy_empty_entries() {
+    let (_dir, mut state) = state();
+    state
+        .favorites
+        .store
+        .as_mut()
+        .unwrap()
+        .add("Alpha.desktop")
+        .unwrap();
+    assert_eq!(SettingsCategory::Search.label(), "Search");
+    let ui = Ui::new(state, view, (760, 700));
+    ui.button("Add gesture for Alpha");
+    let mut labels = Vec::new();
+    for id in support::ids(&ui.harness) {
+        if let Some(node) = ui.harness.access_node(id) {
+            labels.extend(node.label());
+            labels.extend(node.value());
+        }
+    }
+    assert!(labels.iter().any(|label| label == "Gestures"));
+    assert!(
+        !labels
+            .iter()
+            .any(|label| label.to_lowercase().contains("favorite"))
+    );
+    assert!(!labels.iter().any(|label| label == "Change gesture for Alpha" || label == "Remove gesture for Alpha"));
+}
+
+#[test]
+fn remove_gesture_button_deletes_assignment_and_reoffers_add_gesture() {
+    let (dir, mut state) = state();
+    state
+        .favorites
+        .store
+        .as_mut()
+        .unwrap()
+        .set_gesture("Alpha.desktop", &crate::favorites::tests::shape())
+        .unwrap();
+    let mut ui = Ui::new(state, view, (760, 700));
+    let remove = ui.button("Remove gesture for Alpha");
+    ui.activate(remove);
+    ui.dispatch(&view);
+    ui.button("Add gesture for Alpha");
+    assert!(ui.state.favorites.entries().is_empty());
+    assert!(
+        hearthspace_shell::favorites::FavoriteStore::load(dir.path().join("favorites.json"))
+            .unwrap()
+            .entries()
+            .is_empty()
+    );
 }

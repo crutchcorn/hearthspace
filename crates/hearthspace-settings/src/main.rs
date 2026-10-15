@@ -12,7 +12,7 @@ mod wayland_outputs;
 
 use state::initial_state;
 use ui::app_logic;
-use xilem::{EventLoop, WindowOptions, Xilem, dpi::LogicalSize};
+use xilem::{EventLoop, WindowOptions, WindowOptionsExtLinux, Xilem, dpi::LogicalSize};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let state = initial_state();
@@ -20,6 +20,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         state,
         app_logic,
         WindowOptions::new("Hearthspace Settings")
+            .with_name("dev.hearthspace.Settings", "dev.hearthspace.Settings")
             .with_initial_inner_size(LogicalSize::new(980.0, 720.0))
             .with_min_inner_size(LogicalSize::new(780.0, 600.0)),
     )
