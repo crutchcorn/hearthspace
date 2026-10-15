@@ -9,6 +9,7 @@ import time
 from pathlib import Path
 
 from .control import ControlError, save_capture
+from .gesture_trace import gesture
 from .input import Input
 from .pinch_assertions import same_viewport, verify_removal, verify_zoom
 from .pinch_touchscreen import acceptance as touchscreen_acceptance
@@ -51,6 +52,8 @@ def zoom(smoke, device, name, anchor, start, end):
     before = smoke.control.status()["viewport"]
     before_window = smoke.window()
     before_image = smoke.capture(f"{name}-before")
+    trace_path = smoke.artifacts / "libinput.log"
+    trace_start = trace_path.stat().st_size
     device.request("begin", fingers=3, distance=start)
     device.request("move", distance=end)
 
@@ -73,8 +76,18 @@ def zoom(smoke, device, name, anchor, start, end):
         after = current
     after_image = smoke.capture(f"{name}-active")
     after_window = smoke.window()
+    observed = gesture(trace_path.read_text()[trace_start:], "PINCH")
+    if abs(observed["scale"] - after["scale"] / before["scale"]) > 0.015:
+        raise ControlError("libinput trace scale disagrees with the applied pinch")
     assertions = verify_zoom(
-        before, after, anchor, before_window, after_window, before_image, after_image
+        before,
+        after,
+        anchor,
+        before_window,
+        after_window,
+        before_image,
+        after_image,
+        translation=observed["translation"],
     )
     device.request("end")
     smoke.until(
@@ -83,7 +96,14 @@ def zoom(smoke, device, name, anchor, start, end):
     settled = smoke.control.status()["viewport"]
     if not same_viewport(after, settled):
         raise ControlError("normal pinch end changed the displayed transform")
-    smoke.record(name, before=before, after=settled, anchor=anchor, **assertions)
+    smoke.record(
+        name,
+        before=before,
+        after=settled,
+        anchor=anchor,
+        libinput=observed,
+        **assertions,
+    )
 
 
 def acceptance(smoke):

@@ -2,6 +2,7 @@
 
 import argparse
 import json
+import math
 import os
 import selectors
 import signal
@@ -15,16 +16,19 @@ from .control import ControlError
 ENTRY = Path(__file__).resolve().parents[1] / "pinch-smoke"
 
 
-def contact_positions(width, fingers):
+def contact_positions(width, fingers, translation=(0, 0)):
     # A stationary contact below the two moving fingers is correctly classified
     # by libinput as a resting thumb. Keep the third contact above them and move
     # every contact during a three-finger pinch so its finger count stays three.
-    return [
+    if len(translation) != 2 or not all(math.isfinite(value) for value in translation):
+        raise ControlError("touchpad translation must contain two finite coordinates")
+    points = [
         (1000 - width / 2, 650),
         (1000 + width / 2, 650),
         (1000, 650 - width / 3),
         (1000 - width / 4, 650 - width / 6),
     ][:fingers]
+    return [(x + translation[0], y + translation[1]) for x, y in points]
 
 
 def checked_points(values):
@@ -37,11 +41,12 @@ def checked_points(values):
 
 
 class TouchDevice:
-    def __init__(self, session, log, kind="touchpad"):
+    def __init__(self, session, log, kind="touchpad", deadline=None):
         self.session = session
         self.log = log
         self.kind = kind
         self.process = None
+        self.deadline = deadline
 
     def __enter__(self):
         self.process = subprocess.Popen(
@@ -66,14 +71,23 @@ class TouchDevice:
             raise
 
     def receive(self):
+        end = time.monotonic() + 15
+        data = bytearray()
         with selectors.DefaultSelector() as selector:
             selector.register(self.process.stdout, selectors.EVENT_READ)
-            if not selector.select(15):
-                raise ControlError("virtual touch device timed out")
-        line = self.process.stdout.readline()
-        if not line:
-            raise ControlError("virtual touch device exited; inspect its retained log")
-        result = json.loads(line)
+            while not data.endswith(b"\n"):
+                remaining = end - time.monotonic()
+                if self.deadline is not None:
+                    remaining = min(remaining, self.deadline.remaining())
+                if remaining <= 0 or not selector.select(remaining):
+                    raise ControlError("virtual touch device timed out")
+                byte = os.read(self.process.stdout.fileno(), 1)
+                if not byte:
+                    raise ControlError("virtual touch device exited before reply")
+                data.extend(byte)
+                if len(data) > 65536:
+                    raise ControlError("oversized virtual touch device reply")
+        result = json.loads(data)
         if not result.get("ok"):
             raise ControlError(result.get("error", "virtual touch device failed"))
         return result
@@ -196,9 +210,14 @@ def worker(session, kind):
             )
             fingers, distance, tracking = 0, 0, 0
             touch_points = []
+            translation = (0, 0)
 
-            def positions(width):
-                points = contact_positions(width, fingers) if counts else touch_points
+            def positions(width, offset):
+                points = (
+                    contact_positions(width, fingers, offset)
+                    if counts
+                    else touch_points
+                )
                 for slot, (x, y) in enumerate(points):
                     device.write(e.EV_ABS, e.ABS_MT_SLOT, slot)
                     device.write(e.EV_ABS, e.ABS_MT_POSITION_X, round(x))
@@ -220,6 +239,10 @@ def worker(session, kind):
                             raise ControlError(
                                 "touchpad distance must be in [200, 1600]"
                             )
+                        translation = request.get("translation", (0, 0))
+                        checked_points(
+                            contact_positions(distance, fingers, translation)
+                        )
                     else:
                         touch_points = checked_points(request["points"])
                         if len(touch_points) != fingers:
@@ -233,7 +256,7 @@ def worker(session, kind):
                     device.write(e.EV_KEY, e.BTN_TOUCH, 1)
                     if counts:
                         device.write(e.EV_KEY, counts[fingers - 1], 1)
-                    positions(distance)
+                    positions(distance, translation)
                     device.syn()
                     time.sleep(0.06 if counts else 0.02)
                 elif operation == "move":
@@ -244,6 +267,11 @@ def worker(session, kind):
                     if counts:
                         if not 200 <= target <= 1600:
                             raise ControlError("invalid touchpad move")
+                        old_translation = translation
+                        target_translation = request.get("translation", translation)
+                        checked_points(
+                            contact_positions(target, fingers, target_translation)
+                        )
                     else:
                         new_points = checked_points(request["points"])
                         if len(new_points) != fingers:
@@ -257,7 +285,14 @@ def worker(session, kind):
                                 [a + (b - a) * step / 40 for a, b in zip(old, new)]
                                 for old, new in zip(old_points, new_points)
                             ]
-                        positions(distance + (target - distance) * step / 40)
+                        else:
+                            translation = [
+                                old + (new - old) * step / 40
+                                for old, new in zip(old_translation, target_translation)
+                            ]
+                        positions(
+                            distance + (target - distance) * step / 40, translation
+                        )
                         device.syn()
                         time.sleep(0.01)
                     distance = target
@@ -273,7 +308,7 @@ def worker(session, kind):
                     if counts:
                         device.write(e.EV_KEY, counts[fingers - 2], 0)
                         device.write(e.EV_KEY, counts[fingers - 1], 1)
-                    positions(distance)
+                    positions(distance, translation)
                     device.syn()
                     time.sleep(0.1 if counts else 0.02)
                 elif operation == "lift":
@@ -286,7 +321,7 @@ def worker(session, kind):
                     device.write(e.EV_ABS, e.ABS_MT_TRACKING_ID, -1)
                     touch_points.pop()
                     if fingers:
-                        positions(distance)
+                        positions(distance, translation)
                     else:
                         device.write(e.EV_KEY, e.BTN_TOUCH, 0)
                     device.syn()

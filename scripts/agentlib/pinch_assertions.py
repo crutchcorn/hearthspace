@@ -7,18 +7,33 @@ from .visual import marker_bounds
 
 
 def verify_zoom(
-    before, after, anchor, before_window, after_window, before_image, after_image
+    before,
+    after,
+    anchor,
+    before_window,
+    after_window,
+    before_image,
+    after_image,
+    *,
+    translation=(0, 0),
 ):
     ratio = after["scale"] / before["scale"]
-    for axis, coordinate in zip(("x", "y"), anchor):
+    for axis, coordinate, delta in zip(("x", "y"), anchor, translation):
         old_canvas = coordinate / before["scale"] + before[axis]
-        new_canvas = coordinate / after["scale"] + after[axis]
+        new_canvas = (coordinate + delta) / after["scale"] + after[axis]
         if abs(new_canvas - old_canvas) > 1.1:
             raise ControlError(
-                "pinch moved the canvas point beneath its initial pointer anchor"
+                "gesture anchor did not follow the observed contact translation"
             )
-    if abs(after_window["width"] - before_window["width"] * ratio) > 2:
+    if any(
+        abs(after_window[key] - before_window[key] * ratio) > 2
+        for key in ("width", "height")
+    ):
         raise ControlError("window geometry did not follow the pinch scale")
+    for axis, coordinate, delta in zip(("x", "y"), anchor, translation):
+        expected = (before_window[axis] - coordinate) * ratio + coordinate + delta
+        if abs(after_window[axis] - expected) > 2:
+            raise ControlError("window geometry did not follow gesture translation")
     old_bounds = marker_bounds(before_image, before_window)
     new_bounds = marker_bounds(after_image, after_window)
     for start, end in ((0, 2), (1, 3)):
@@ -28,10 +43,21 @@ def verify_zoom(
             raise ControlError(
                 "presented terminal marker did not scale with the viewport"
             )
+    for index, (old, new) in enumerate(zip(old_bounds, new_bounds)):
+        axis = index % 2
+        origin = "logical_x" if axis == 0 else "logical_y"
+        old_logical = old / before_image[0]["scale"] + before_image[0][origin]
+        new_logical = new / after_image[0]["scale"] + after_image[0][origin]
+        expected = (
+            (old_logical - anchor[axis]) * ratio + anchor[axis] + translation[axis]
+        )
+        if abs(new_logical - expected) > 2:
+            raise ControlError("presented marker did not follow gesture translation")
     return {
         "scale_ratio": ratio,
         "before_marker": old_bounds,
         "after_marker": new_bounds,
+        "translation": translation,
     }
 
 
