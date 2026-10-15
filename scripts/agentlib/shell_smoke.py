@@ -128,9 +128,9 @@ def pointer_panels(smoke):
     checks.opened(smoke, "notifications")
     smoke.capture("bell-notifications")
     checks.click(smoke, "Power")
-    checks.opened(smoke, "power")
-    if checks.panel(smoke, "notifications"):
-        raise ControlError("opening Power left Notifications open")
+    # Mapping the replacement and destroying the previous Wayland surface are
+    # separate events. Require both to finish within the existing deadline.
+    checks.opened(smoke, "power", exclusive=True)
     smoke.until("nested Lock option", lambda: checks.elements(smoke, "Lock"))
     checks.tab_to(smoke, "Lock")
     smoke.capture("power-options")

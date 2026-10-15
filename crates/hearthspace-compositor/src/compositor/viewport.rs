@@ -10,8 +10,7 @@ use crate::{
     config::VIEWPORT_ANIMATION_DURATION,
     geometry::{
         CanvasPoint, canvas_to_screen as transform_canvas_to_screen, ease_out_cubic,
-        interpolate_canvas_point, interpolate_f64, screen_to_canvas as transform_screen_to_canvas,
-        zoom_around_screen_point,
+        interpolate_canvas_point, interpolate_f64, zoom_around_screen_point,
     },
 };
 
@@ -145,10 +144,6 @@ impl App {
 
     pub(super) fn canvas_to_screen(&self, point: Point<f64, Logical>) -> Point<f64, Logical> {
         transform_canvas_to_screen(point, self.viewport_offset, self.viewport_scale)
-    }
-
-    pub(super) fn screen_to_canvas(&self, point: Point<f64, Logical>) -> Point<f64, Logical> {
-        transform_screen_to_canvas(point, self.viewport_offset, self.viewport_scale)
     }
 
     pub(super) fn zoom_viewport_to(&mut self, scale: f64) -> Result<(), String> {

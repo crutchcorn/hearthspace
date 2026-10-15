@@ -95,7 +95,7 @@ impl App {
                 y: geometry.loc.y,
             }
         } else {
-            position_for_new_window(ManagedWindowKind::Normal, self.next_spawn_position)
+            position_for_new_window(ManagedWindowKind::Normal, self.viewport_offset)
         };
         let decoration = if window.is_decorated() || override_redirect {
             WindowDecoration::ClientSide
@@ -111,6 +111,7 @@ impl App {
             override_redirect,
             "new X11 window"
         );
+        let spawn_output_name = self.next_spawn_output_name.take();
         self.windows.push(ManagedWindow {
             id,
             surface: ManagedSurface::X11(Box::new(window.clone())),
@@ -121,11 +122,12 @@ impl App {
             titlebar: None,
             content_bbox_size: geometry.size,
             mapped: false,
+            initial_placement_done: false,
+            initial_output_name: spawn_output_name.clone(),
             presentation: Default::default(),
             advertised_fractional_scale: 0.0,
         });
         self.idle_daemon.register_window(id);
-        let spawn_output_name = self.next_spawn_output_name.take();
         self.enter_output(&wl_surface, spawn_output_name.as_deref());
         self.refresh_window_content_bbox(&wl_surface);
         if !override_redirect {

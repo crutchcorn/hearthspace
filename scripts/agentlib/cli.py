@@ -72,6 +72,11 @@ def parser():
     start.add_argument("--watchdog", type=int, default=300)
     start.add_argument("--no-build", action="store_true")
     start.add_argument(
+        "--isolated-profile",
+        action="store_true",
+        help="use fresh session settings and application profiles",
+    )
+    start.add_argument(
         "--log-level", default="info", help="compositor/session tracing filter"
     )
     sub.add_parser("status")
@@ -224,6 +229,8 @@ def run_launcher(args):
         )
         if args.no_build:
             command.append("--no-build")
+        if getattr(args, "isolated_profile", False):
+            command.append("--isolated-profile")
     # The launcher owns an independent watchdog, including cleanup if its caller
     # disappears. Permit its bounded cleanup window after its startup deadline.
     # Native launcher's pre-VT build has a separate 30-minute absolute deadline.

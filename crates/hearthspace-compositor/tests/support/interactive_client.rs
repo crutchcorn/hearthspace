@@ -13,6 +13,8 @@ struct Window {
     surface: wl_surface::WlSurface,
     toplevel: xdg_toplevel::XdgToplevel,
     size: (i32, i32),
+    configure_count: usize,
+    resizing: bool,
 }
 
 #[derive(Default)]
@@ -60,6 +62,8 @@ impl InteractiveClient {
                 surface: surface.clone(),
                 toplevel,
                 size: (240, 160),
+                configure_count: 0,
+                resizing: false,
             });
             surface.commit();
         }
@@ -104,6 +108,18 @@ impl InteractiveClient {
             xdg_toplevel::ResizeEdge::BottomRight,
         );
         self.sync();
+    }
+
+    pub(super) fn request_restore(&mut self, window: usize) {
+        self.state.windows[window].toplevel.unset_fullscreen();
+        self.state.windows[window].toplevel.unset_maximized();
+        self.sync();
+    }
+
+    pub(super) fn configuration(&mut self, window: usize) -> (usize, bool) {
+        self.sync();
+        let window = &self.state.windows[window];
+        (window.configure_count, window.resizing)
     }
 }
 
@@ -222,7 +238,16 @@ impl Dispatch<xdg_toplevel::XdgToplevel, usize> for State {
         _: &Connection,
         _: &QueueHandle<Self>,
     ) {
-        if let xdg_toplevel::Event::Configure { width, height, .. } = event {
+        if let xdg_toplevel::Event::Configure {
+            width,
+            height,
+            states,
+        } = event
+        {
+            state.windows[*number].resizing =
+                states.as_chunks::<4>().0.iter().any(|bytes| {
+                    u32::from_ne_bytes(*bytes) == xdg_toplevel::State::Resizing as u32
+                });
             if width > 0 {
                 state.windows[*number].size.0 = width;
             }
@@ -244,6 +269,7 @@ impl Dispatch<xdg_surface::XdgSurface, usize> for State {
     ) {
         if let xdg_surface::Event::Configure { serial } = event {
             surface.ack_configure(serial);
+            state.windows[*number].configure_count += 1;
             state.commit_buffer(*number, handle);
         }
     }

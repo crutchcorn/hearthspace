@@ -11,6 +11,13 @@ A floating window has a canvas position and a client content size. Panning and
 zooming change the view of that window. Pointer input uses the inverse of the
 same transform used to render it.
 
+New application windows open centered in the current output's usable view and
+receive keyboard focus without moving the canvas. The actual window geometry,
+canvas zoom, and shell bar determine placement. A window larger than the usable
+view starts at its top-left so its controls remain reachable. Dialogs stay
+centered on their parents. Alt-Tab, search selection, and explicit focus actions
+still navigate to existing windows.
+
 A maximized or fullscreen window belongs to one output and uses that output's
 logical coordinates at native scale. Deliberate canvas zoom or a three-finger pan
 restores maximized windows to their floating size and position so they follow
@@ -126,8 +133,8 @@ cancels the held switch.
 
 Drag a floating window's title bar with one finger to move it, then lift to drop
 it. This works with compositor decorations and application-drawn title bars,
-including Firefox's empty tab-strip area. Drag a resizable window's edge to
-resize it. Restore maximized windows first.
+including Firefox's empty tab-strip area and GTK headerbars such as Calculator's.
+Drag a resizable window's edge to resize it. Restore maximized windows first.
 
 Movement begins after eight logical pixels and includes that initial movement.
 The window follows the finger's screen distance at any canvas zoom. Adding a
@@ -192,11 +199,12 @@ workflows, and [size units](./SIZE_UNITS.md) for output scale and logical pixels
 ## Remembered layout
 
 Native sessions save the viewport and ordinary window canvas positions on a
-normal exit, including logout or SIGTERM. A new session restores the viewport;
-when you open applications, their windows reuse remembered positions in opening
-order (up to eight windows per application). Transient dialogs keep following
-their parents. Application settings remain responsible for window content and
-size; Hearthspace does not reopen apps or save their titles, documents, or text.
+normal exit, including logout or SIGTERM. A new session restores the viewport.
+Opening an application creates a centered window in that view; stored application
+positions do not move newly opened windows offscreen or navigate the canvas.
+Transient dialogs keep following their parents. Application settings remain
+responsible for window content and size; Hearthspace does not reopen apps or save
+their titles, documents, or text.
 
 The private file is `$XDG_STATE_HOME/hearthspace/layout.json`, falling back to
 `~/.local/state/hearthspace/layout.json`. It retains at most 128 placements.

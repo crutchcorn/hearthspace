@@ -126,13 +126,15 @@ impl XdgShellHandler for App {
         self.windows.push(ManagedWindow {
             id,
             surface: ManagedSurface::Xdg(surface.clone()),
-            position: position_for_new_window(kind, self.next_spawn_position),
+            position: position_for_new_window(kind, self.viewport_offset),
             kind,
             shell_output_name: shell_output_name.clone(),
             decoration: decoration_for_new_window(kind),
             titlebar: None,
             content_bbox_size: Size::default(),
             mapped: false,
+            initial_placement_done: false,
+            initial_output_name: spawn_output_name.clone(),
             presentation: Default::default(),
             advertised_fractional_scale: 0.0,
         });

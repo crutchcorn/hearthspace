@@ -96,7 +96,7 @@ fn layout(status: &Value) -> Value {
 
 #[test]
 fn overview_keys_are_modal_and_dismissal_restores_real_client_input() {
-    let _guard = HEADLESS_TEST_LOCK.lock().unwrap();
+    let _guard = headless_test_guard();
     let mut compositor = HeadlessCompositor::spawn_with_size("1280x800");
     drop(compositor.wait_for_socket());
     let mut editors = Editors(Vec::new());
@@ -177,7 +177,7 @@ fn overview_keys_are_modal_and_dismissal_restores_real_client_input() {
 
 #[test]
 fn overview_preserves_presentation_tracks_closed_clients_and_selects_off_canvas() {
-    let _guard = HEADLESS_TEST_LOCK.lock().unwrap();
+    let _guard = headless_test_guard();
     let mut compositor = HeadlessCompositor::spawn_with_size("1280x800");
     drop(compositor.wait_for_socket());
     let mut editors = Editors(Vec::new());
@@ -265,7 +265,7 @@ fn overview_preserves_presentation_tracks_closed_clients_and_selects_off_canvas(
 
 #[test]
 fn session_lock_dismisses_overview_and_redacts_titles_and_selection() {
-    let _guard = HEADLESS_TEST_LOCK.lock().unwrap();
+    let _guard = headless_test_guard();
     let mut compositor = HeadlessCompositor::spawn_with_size("800x600");
     drop(compositor.wait_for_socket());
     let mut editors = Editors(Vec::new());

@@ -34,6 +34,9 @@ impl App {
         let parent = self.transient_parent_index(index).unwrap_or(index);
         let anchor = self.presentation_anchor(index);
         let output = self.window_presentation_output(index).or_else(|| {
+            if !self.windows[parent].initial_placement_done {
+                return Some(self.initial_window_output(parent));
+            }
             let position = self.windows[parent].position;
             let point = self
                 .canvas_to_screen(Point::from((f64::from(position.x), f64::from(position.y))))

@@ -7,14 +7,21 @@ license = "Apache-2.0"
 
 [dependencies]
 chrono = { version = "0.4.45", default-features = false, features = ["clock"] }
+freedesktop-icons = "0.4.0"
+futures-util = "0.3.34"
 hearthspace-common = { path = "../hearthspace-common" }
 hearthspace-ipc = { path = "../hearthspace-ipc" }
 hearthspace-ui-components = { path = "../ui-components" }
+image = { version = "0.25.10", default-features = false, features = ["png"] }
+resvg = { version = "0.47.0", default-features = false }
+serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.154"
+tokio = { version = "1.53.3", features = ["macros", "rt", "sync", "time"] }
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
 wayland-client = "0.31.15"
 xilem = { git = "https://github.com/linebender/xilem", rev = "271a27a6d4a930f7878d404f9014e3c50a3a9b88" }
+zbus = { version = "5.19.0", default-features = false, features = ["async-io"] }
 
 [dev-dependencies]
 accesskit_atspi_common = "0.18.1"

@@ -2,7 +2,7 @@ use super::*;
 
 #[test]
 fn shell_pointer_zoom_reveals_distant_app_without_stealing_shell_focus() {
-    let _guard = HEADLESS_TEST_LOCK.lock().unwrap();
+    let _guard = headless_test_guard();
     let mut compositor = HeadlessCompositor::spawn_with_size("1280x800");
     drop(compositor.wait_for_socket());
     let (_fixture, state) = maximized_fixture(&compositor, "distant-app", "wayland");
@@ -30,12 +30,16 @@ fn shell_pointer_zoom_reveals_distant_app_without_stealing_shell_focus() {
                 format!("hearthspace-test-{}", std::process::id()),
             )
             .env("GDK_BACKEND", "wayland")
+            .env("GTK_A11Y", "none")
+            .env("WAYLAND_DEBUG", "1")
             .env("HEARTHSPACE_WINDOW_TEST_SHELL_BAR", "1")
             .env(
                 "HEARTHSPACE_COMMAND_SOCKET",
                 &compositor.command_socket_path,
             )
             .env_remove("DISPLAY")
+            .env_remove("DBUS_SESSION_BUS_ADDRESS")
+            .env_remove("AT_SPI_BUS_ADDRESS")
             .stdin(Stdio::null())
             .stdout(log.try_clone().unwrap())
             .stderr(log)
@@ -43,6 +47,18 @@ fn shell_pointer_zoom_reveals_distant_app_without_stealing_shell_focus() {
             .unwrap(),
     ]);
     wait_state(&bar_state, |state| state["mapped"] == true);
+    // Reproduce CI without a desktop bus. Inspect the real protocol identity:
+    // correctly classified shell surfaces are absent from normal-window IPC.
+    let trace = std::fs::read_to_string(bar_state.with_extension("log")).unwrap();
+    let sent_app_id = trace
+        .lines()
+        .rev()
+        .find_map(|line| line.split_once(".set_app_id(").map(|(_, value)| value));
+    assert_eq!(
+        sent_app_id,
+        Some(format!("\"{}\")", hearthspace_compositor::config::SHELL_BAR_APP_ID).as_str()),
+        "mapped GTK shell fixture sent the wrong app ID without a session bus: {trace}"
+    );
     let deadline = Instant::now() + Duration::from_secs(10);
     loop {
         let status = query(&compositor, "status");
@@ -107,10 +123,7 @@ fn shell_pointer_zoom_reveals_distant_app_without_stealing_shell_focus() {
         .clone();
     assert_eq!(window["canvas_x"], 7000);
     assert_eq!(window["canvas_y"], -3000);
-    assert!(
-        green_pixels(&compositor) > 50_000,
-        "restored app was not rendered in the viewport"
-    );
+    wait_green_pixels(&compositor, "shell-zoom-restored", |pixels| pixels > 50_000);
     assert_eq!(
         wait_state(&bar_state, |state| state["clicked"] == true)["active"],
         true

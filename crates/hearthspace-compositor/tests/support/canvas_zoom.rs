@@ -62,22 +62,24 @@ fn wait_state(path: &Path, condition: impl Fn(&Value) -> bool) -> Value {
 fn wait_scale(compositor: &HeadlessCompositor, target: f64) {
     let deadline = Instant::now() + Duration::from_secs(5);
     loop {
-        let scale = query(compositor, "status")["viewport"]["scale"]
-            .as_f64()
-            .unwrap();
-        if (scale - target).abs() < 0.0001 {
+        let viewport = query(compositor, "status")["viewport"].clone();
+        let scale = viewport["scale"].as_f64().unwrap();
+        // Cubic easing gets close to the target before the animation finishes.
+        // A subsequent zoom during that tail can still change the scale and
+        // legitimately restore maximized windows, even near the zoom limit.
+        if viewport["animating"] == false && (scale - target).abs() < 0.0001 {
             return;
         }
         assert!(
             Instant::now() < deadline,
-            "expected scale {target}, got {scale}"
+            "expected settled scale {target}, got viewport {viewport}"
         );
         thread::sleep(Duration::from_millis(25));
     }
 }
 
-fn green_pixels(compositor: &HeadlessCompositor) -> usize {
-    let decoder = png::Decoder::new(std::io::Cursor::new(compositor.take_screenshot()));
+fn green_pixels(screenshot: &[u8]) -> usize {
+    let decoder = png::Decoder::new(std::io::Cursor::new(screenshot));
     let mut reader = decoder.read_info().unwrap();
     let mut bytes = vec![0; reader.output_buffer_size().unwrap()];
     let info = reader.next_frame(&mut bytes).unwrap();
@@ -87,8 +89,33 @@ fn green_pixels(compositor: &HeadlessCompositor) -> usize {
         .count()
 }
 
+fn wait_green_pixels(
+    compositor: &HeadlessCompositor,
+    phase: &str,
+    condition: impl Fn(usize) -> bool,
+) -> usize {
+    let deadline = Instant::now() + Duration::from_secs(10);
+    loop {
+        let screenshot = compositor.take_screenshot();
+        let pixels = green_pixels(&screenshot);
+        if condition(pixels) {
+            return pixels;
+        }
+        if Instant::now() >= deadline {
+            let path = compositor.runtime_dir.path().join(format!("{phase}.png"));
+            std::fs::write(&path, screenshot).unwrap();
+            panic!(
+                "{phase}: rendered fixture did not reach its expected size; \
+                 {pixels} green pixels, screenshot: {}",
+                path.display()
+            );
+        }
+        thread::sleep(Duration::from_millis(25));
+    }
+}
+
 fn run_zoom_restores_startup_maximized_apps(backend: &str) {
-    let _guard = HEADLESS_TEST_LOCK.lock().unwrap();
+    let _guard = headless_test_guard();
     let mut compositor = HeadlessCompositor::spawn_with_size("1280x800");
     drop(compositor.wait_for_socket());
     let (_first, state) = maximized_fixture(&compositor, "first", backend);
@@ -98,7 +125,11 @@ fn run_zoom_restores_startup_maximized_apps(backend: &str) {
         .clone();
     wait_state(&state, |state| state["maximized"] == true);
     let id = first["id"].as_u64().unwrap();
-    let before_pixels = green_pixels(&compositor);
+    // GTK reports its maximized state before the corresponding buffer arrives,
+    // especially through XWayland/software rendering. Require the green editor
+    // to visibly fill most of the output before using it as our baseline.
+    let before_pixels =
+        wait_green_pixels(&compositor, "maximized", |pixels| pixels > 1280 * 800 / 2);
 
     action(&compositor, "zoom-out");
     wait_scale(&compositor, 0.8);
@@ -116,10 +147,11 @@ fn run_zoom_restores_startup_maximized_apps(backend: &str) {
     assert_eq!(floating["canvas_x"], first["canvas_x"]);
     assert_eq!(floating["canvas_y"], first["canvas_y"]);
     assert!(floating["width"].as_i64().unwrap() < 1280);
-    assert!(
-        green_pixels(&compositor) < before_pixels / 2,
-        "rendered app did not shrink"
-    );
+    // State/configure acknowledgement likewise precedes the restored buffer.
+    // A missing app must not satisfy the shrink check merely by drawing nothing.
+    wait_green_pixels(&compositor, "restored", |pixels| {
+        pixels > 0 && pixels < before_pixels / 2
+    });
     let center_x = floating["x"].as_f64().unwrap() + floating["width"].as_f64().unwrap() / 2.0;
     let center_y = floating["y"].as_f64().unwrap() + floating["height"].as_f64().unwrap() / 2.0;
     action(
@@ -184,7 +216,7 @@ fn zoom_restores_startup_maximized_x11_apps_and_preserves_floating_input() {
 
 #[test]
 fn zoom_preserves_fullscreen_and_maximization_at_scale_limit() {
-    let _guard = HEADLESS_TEST_LOCK.lock().unwrap();
+    let _guard = headless_test_guard();
     let mut compositor = HeadlessCompositor::spawn_with_size("1280x800");
     drop(compositor.wait_for_socket());
     let (_fixture, state) = maximized_fixture(&compositor, "fullscreen", "wayland");
@@ -209,6 +241,12 @@ fn zoom_preserves_fullscreen_and_maximization_at_scale_limit() {
         action(&compositor, "zoom-out");
         wait_scale(&compositor, target);
     }
+    let at_limit = query(&compositor, "status")["viewport"].clone();
+    assert_eq!(
+        at_limit["animating"], false,
+        "zoom is still settling: {at_limit}"
+    );
+    assert_eq!(at_limit["scale"], 0.5);
     action(&compositor, format!("fullscreen-window {id} false"));
     wait_state(&state, |state| {
         state["fullscreen"] == false && state["maximized"] == true
@@ -228,7 +266,7 @@ fn zoom_preserves_fullscreen_and_maximization_at_scale_limit() {
 
 #[test]
 fn zoom_reveals_a_focused_dialog_above_a_distant_maximized_parent() {
-    let _guard = HEADLESS_TEST_LOCK.lock().unwrap();
+    let _guard = headless_test_guard();
     let mut compositor = HeadlessCompositor::spawn_with_size("1280x800");
     drop(compositor.wait_for_socket());
     let (_fixture, state) = maximized_fixture(&compositor, "dialog-parent", "wayland");

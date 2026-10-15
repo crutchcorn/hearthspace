@@ -9,7 +9,7 @@ const GREEN: [u8; 4] = [0x66, 0xcc, 0, 0xff];
 fn repeated_search_activation_preserves_accepted_request_and_early_typing() {
     use std::{io::ErrorKind, os::unix::net::UnixDatagram};
 
-    let _guard = HEADLESS_TEST_LOCK.lock().unwrap();
+    let _guard = headless_test_guard();
     let mut compositor = HeadlessCompositor::spawn_with_size("1280x800");
     drop(compositor.wait_for_socket());
     let events = UnixDatagram::bind(hearthspace_common::shell_event_socket_path(
@@ -82,7 +82,7 @@ fn repeated_search_activation_preserves_accepted_request_and_early_typing() {
 fn search_replay_finishes_key_pairs_after_buffered_shortcut_changes_focus() {
     use std::os::unix::net::UnixDatagram;
 
-    let _guard = HEADLESS_TEST_LOCK.lock().unwrap();
+    let _guard = headless_test_guard();
     let mut compositor = HeadlessCompositor::spawn_with_size("1280x800");
     drop(compositor.wait_for_socket());
     let events = UnixDatagram::bind(hearthspace_common::shell_event_socket_path(

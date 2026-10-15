@@ -110,6 +110,15 @@ impl MapClient {
         self.sync();
     }
 
+    pub(super) fn repaint_with_size(&mut self, number: usize, size: (i32, i32)) {
+        let window = &mut self.state.windows[number];
+        window.size = size;
+        window.toplevel.set_min_size(size.0, size.1);
+        window.toplevel.set_max_size(size.0, size.1);
+        self.state.commit_buffer(number, &self.queue.handle());
+        self.sync();
+    }
+
     pub(super) fn destroy(&mut self, number: usize) {
         let window = &mut self.state.windows[number];
         window.alive = false;

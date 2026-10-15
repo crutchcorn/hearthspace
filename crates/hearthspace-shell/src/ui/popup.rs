@@ -20,6 +20,7 @@ pub(super) enum PopupKind {
     Map,
     Notifications,
     Power,
+    Tray,
 }
 
 impl PopupKind {
@@ -29,6 +30,7 @@ impl PopupKind {
             Self::Map => "Canvas map controls",
             Self::Notifications => "Notifications",
             Self::Power => "Session controls",
+            Self::Tray => "Application tray menu",
         }
     }
     fn index(self) -> usize {
@@ -36,7 +38,7 @@ impl PopupKind {
     }
     fn height_cap(self) -> f64 {
         match self {
-            Self::Search => 560.0,
+            Self::Search | Self::Tray => 560.0,
             Self::Notifications => 440.0,
             Self::Map | Self::Power => 400.0,
         }

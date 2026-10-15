@@ -8,6 +8,9 @@ use std::{
     time::{Duration, Instant},
 };
 
+#[path = "support/serialization.rs"]
+mod serialization;
+
 #[cfg(feature = "test-apps")]
 #[path = "support/accessibility.rs"]
 mod accessibility_diagnostics;
@@ -47,6 +50,9 @@ mod shell_panels;
 #[path = "support/window_bounds.rs"]
 mod window_bounds;
 #[cfg(feature = "test-apps")]
+#[path = "support/window_placement.rs"]
+mod window_placement;
+#[cfg(feature = "test-apps")]
 #[path = "support/window_states.rs"]
 mod window_states;
 #[cfg(feature = "test-apps")]
@@ -61,6 +67,10 @@ const CLIENT_WIDTH: u32 = 800;
 const CLIENT_HEIGHT: u32 = 600;
 
 static HEADLESS_TEST_LOCK: Mutex<()> = Mutex::new(());
+
+fn headless_test_guard() -> std::sync::MutexGuard<'static, ()> {
+    serialization::lock_after_cleanup(&HEADLESS_TEST_LOCK)
+}
 
 struct HeadlessCompositor {
     child: Child,
@@ -181,7 +191,7 @@ impl Drop for HeadlessCompositor {
 
 #[test]
 fn headless_control_socket_drives_input_screenshot_and_quit() {
-    let _guard = HEADLESS_TEST_LOCK.lock().expect("headless test lock");
+    let _guard = headless_test_guard();
     let mut compositor = HeadlessCompositor::spawn();
     let first_stream = compositor.wait_for_socket();
     drop(first_stream);
@@ -213,7 +223,7 @@ fn headless_control_socket_drives_input_screenshot_and_quit() {
 #[cfg(feature = "test-apps")]
 #[test]
 fn headless_control_socket_spawns_and_drives_real_gtk_client() {
-    let _guard = HEADLESS_TEST_LOCK.lock().expect("headless test lock");
+    let _guard = headless_test_guard();
     let _bus = session_bus::PrivateSessionBus::start().expect("private accessibility session");
     async_io::block_on(session_bus::enable_accessibility()).expect("enable accessibility");
     let mut compositor = HeadlessCompositor::spawn_with_size("800x600");

@@ -113,6 +113,8 @@ struct ManagedWindow {
     /// per-frame rendering and hit-testing paths don't re-walk the tree.
     content_bbox_size: Size<i32, Logical>,
     mapped: bool,
+    initial_placement_done: bool,
+    initial_output_name: Option<String>,
     presentation: presentation::WindowPresentation,
     /// Fractional scale most recently advertised to this window's surface tree.
     /// Compared each frame so the preferred scale is only re-sent when the
@@ -283,9 +285,7 @@ struct App {
     /// When present it takes precedence over `cursor_icon` and is presented as a
     /// software cursor with the client-supplied hotspot.
     cursor_surface: Option<WlSurface>,
-    next_spawn_position: CanvasPoint,
     next_spawn_output_name: Option<String>,
-    spawn_offset: i32,
     snap_wayland_socket_paths: HashSet<std::path::PathBuf>,
     pointer_location: Point<f64, Logical>,
     raw_pointer_location: Point<f64, Logical>,
@@ -634,9 +634,7 @@ pub(in crate::compositor) fn initialize_app(
         cursor_icon: CursorIcon::Default,
         cursor_visible: true,
         cursor_surface: None,
-        next_spawn_position: CanvasPoint { x: 80, y: 96 },
         next_spawn_output_name: None,
-        spawn_offset: 0,
         snap_wayland_socket_paths: HashSet::new(),
         pointer_location: (0.0, 0.0).into(),
         raw_pointer_location: (0.0, 0.0).into(),

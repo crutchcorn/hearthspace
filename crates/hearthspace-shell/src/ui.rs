@@ -20,6 +20,7 @@ mod launcher;
 mod minimap;
 mod notification_view;
 mod notifications;
+mod output_state;
 mod output_watcher;
 mod popup;
 mod popup_group;
@@ -33,6 +34,13 @@ mod shell_events;
 mod state;
 #[cfg(test)]
 mod test_support;
+mod tray_button;
+mod tray_icon_loader;
+mod tray_paint;
+mod tray_state;
+mod tray_task;
+mod tray_view;
+mod tray_widget;
 mod views;
 mod window_catalog;
 
@@ -60,3 +68,6 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     app.run_in(EventLoop::with_user_event())?;
     Ok(())
 }
+
+#[cfg(test)]
+mod tray_tests;

@@ -85,6 +85,26 @@ both Wayland and XWayland and checks exact pasted text through ordinary keyboard
 shortcuts. Its Python headless test shares the same assertions with the native
 clipboard smoke command.
 
+## CI Coverage and Evidence
+
+CI runs the ordinary workspace and Python tests separately from the full E2E
+configuration. The E2E job enables `udev,e2e,test-apps`, runs Rust tests one at a
+time, and sets `HEARTHSPACE_E2E=1`, `HEARTHSPACE_REQUIRE_ATSPI=1`,
+`HEARTHSPACE_REQUIRE_TRAY_LIBRARY=1`, and `LIBGL_ALWAYS_SOFTWARE=1` for both Rust
+and Python. Required accessibility or deployed Ayatana libraries cannot silently
+skip their coverage. Native VT/device tests remain a separate hardware workflow.
+
+GTK fixtures must work without an inherited desktop session bus. The shell-bar
+fixture sets an explicit program-name fallback and verifies its outgoing Wayland
+app ID with the host bus removed. Render checks wait for visible client pixels;
+mapped/maximized state alone does not establish that a buffer has been painted.
+
+The E2E job owns `/tmp/hearthspace-e2e` and uploads `headless-e2e-evidence` for
+seven days on both success and failure. It includes test logs, Python workflow
+screenshots/accessibility snapshots, and retained Rust failure directories.
+Artifacts are limited to test-created log, JSON, PNG, XML, and text files;
+ordinary session sockets and the host desktop are excluded.
+
 ## Native Validation
 
 The native suite is opt-in because it temporarily takes an unused VT and a real

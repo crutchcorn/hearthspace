@@ -10,6 +10,7 @@ use crate::{config::CONTROL_BAR_HEIGHT, geometry::CanvasPoint};
 
 mod lifecycle;
 mod metadata;
+mod placement;
 mod popups;
 #[cfg(test)]
 mod tests;

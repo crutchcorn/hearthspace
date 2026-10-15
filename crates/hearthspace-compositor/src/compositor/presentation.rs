@@ -31,6 +31,19 @@ impl WindowPresentation {
         self.maximized || self.fullscreen
     }
 
+    fn changes_for_request(
+        &self,
+        fullscreen: Option<bool>,
+        maximized: Option<bool>,
+        output: &str,
+    ) -> bool {
+        let fullscreen = fullscreen.unwrap_or(self.fullscreen);
+        let maximized = maximized.unwrap_or(self.maximized);
+        fullscreen != self.fullscreen
+            || maximized != self.maximized
+            || ((fullscreen || maximized) && self.output.as_deref() != Some(output))
+    }
+
     fn update(
         &mut self,
         fullscreen: Option<bool>,
@@ -121,8 +134,23 @@ impl App {
         {
             return Err("cannot change state during an interactive move or resize".into());
         }
-        self.interrupt_pinch_zoom();
         let target = self.presentation_output_for_window(index, output.as_deref());
+        if !self.windows[index]
+            .presentation
+            .changes_for_request(fullscreen, maximized, &target)
+        {
+            // GTK sends unset_fullscreen before requesting a titlebar move,
+            // including for floating windows. Acknowledge the request without
+            // releasing its touch-emulated pointer grab or resetting pending
+            // geometry/state belonging to another configure.
+            if let ManagedSurface::Xdg(surface) = &self.windows[index].surface
+                && surface.is_initial_configure_sent()
+            {
+                surface.send_configure();
+            }
+            return Ok(());
+        }
+        self.interrupt_pinch_zoom();
         let size = self.window_geometry_size(index);
         let state = &mut self.windows[index].presentation;
         state.update(fullscreen, maximized, size);

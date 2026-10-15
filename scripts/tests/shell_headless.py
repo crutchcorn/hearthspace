@@ -85,6 +85,7 @@ def run_shell_session(
         "HEARTHSPACE_WAYLAND_DISPLAY": "wayland-map",
         "WAYLAND_DISPLAY": "wayland-map",
         "DBUS_SESSION_BUS_ADDRESS": address,
+        "HEARTHSPACE_SESSION_BUS_ADDRESS": address,
         "GSETTINGS_BACKEND": "memory",
         "XDG_CURRENT_DESKTOP": "Hearthspace",
         "XDG_DATA_DIRS": f"{ROOT / 'data'}:{os.environ.get('XDG_DATA_DIRS', '/usr/local/share:/usr/share')}",

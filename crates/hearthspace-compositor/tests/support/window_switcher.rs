@@ -49,7 +49,7 @@ fn offset(status: &Value) -> (i64, i64) {
 
 #[test]
 fn held_alt_tab_keeps_preview_modal_until_release_and_preserves_modifier_pairing() {
-    let _guard = HEADLESS_TEST_LOCK.lock().unwrap();
+    let _guard = headless_test_guard();
     let mut compositor = HeadlessCompositor::spawn_with_size("1280x800");
     drop(compositor.wait_for_socket());
     let mut editors = Editors(Vec::new());
@@ -119,7 +119,7 @@ fn held_alt_tab_keeps_preview_modal_until_release_and_preserves_modifier_pairing
 
 #[test]
 fn held_switching_animates_retargets_from_the_current_view_and_escape_restores_it() {
-    let _guard = HEADLESS_TEST_LOCK.lock().unwrap();
+    let _guard = headless_test_guard();
     let mut compositor = HeadlessCompositor::spawn_with_size("1280x800");
     drop(compositor.wait_for_socket());
     let mut editors = Editors(Vec::new());
@@ -201,7 +201,7 @@ fn held_switching_animates_retargets_from_the_current_view_and_escape_restores_i
 
 #[test]
 fn switcher_reconciles_closed_selection_and_lock_hides_all_switcher_state() {
-    let _guard = HEADLESS_TEST_LOCK.lock().unwrap();
+    let _guard = headless_test_guard();
     let mut compositor = HeadlessCompositor::spawn_with_size("800x600");
     drop(compositor.wait_for_socket());
     let mut editors = Editors(Vec::new());

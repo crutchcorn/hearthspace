@@ -220,7 +220,7 @@ impl LayoutStore {
 }
 
 impl App {
-    pub(super) fn restore_window_placement(&mut self, index: usize) {
+    pub(super) fn register_window_placement(&mut self, index: usize) {
         if self.transient_parent_index(index).is_some() {
             return;
         }
@@ -229,19 +229,9 @@ impl App {
         let Some(app_id) = window_app_id(&window.surface) else {
             return;
         };
-        if let Some(point) = self.layout_store.claim(id, app_id) {
-            #[cfg(feature = "xwayland")]
-            if let super::ManagedSurface::X11(surface) = &self.windows[index].surface
-                && let Err(error) = surface.configure(Some(smithay::utils::Rectangle::new(
-                    (point.x, point.y).into(),
-                    surface.geometry().size,
-                )))
-            {
-                tracing::warn!(%error, "could not restore X11 window placement");
-                return;
-            }
-            self.windows[index].position = point;
-        }
+        // Keep spatial bookkeeping, but opening an application is a new window,
+        // not an instruction to navigate to its remembered offscreen location.
+        let _ = self.layout_store.claim(id, app_id);
     }
 
     pub(super) fn remember_layout(&mut self) {

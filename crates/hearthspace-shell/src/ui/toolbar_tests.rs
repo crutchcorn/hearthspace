@@ -14,6 +14,7 @@ fn bar(
         &state.outputs[0],
         state.clock.clone(),
         &state.notifications,
+        &state.tray,
     ))
 }
 

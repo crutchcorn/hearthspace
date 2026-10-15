@@ -24,13 +24,20 @@ jobs:
             libxkbcommon-dev libxkbcommon-x11-dev libudev-dev \
             libseat-dev libgbm-dev libegl1-mesa-dev libgles2-mesa-dev \
             libdrm-dev libsystemd-dev libgtk-4-dev \
-            libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev python3 dbus
+            libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev python3 python3-venv dbus
 
       - name: Set up Rust
         uses: ./.github/actions/setup-rust
 
       - name: Check formatting
         run: cargo fmt --all --check
+
+      - name: Check Python formatting and lint
+        run: |
+          python3 -m venv "$RUNNER_TEMP/ruff"
+          "$RUNNER_TEMP/ruff/bin/pip" install ruff==0.17.0
+          "$RUNNER_TEMP/ruff/bin/ruff" check scripts
+          "$RUNNER_TEMP/ruff/bin/ruff" format --check scripts
 
       - name: Clippy
         run: cargo clippy --locked --workspace --all-targets --features udev,e2e,test-apps -- -D warnings

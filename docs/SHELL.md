@@ -1,8 +1,10 @@
 # Shell controls
 
-The shell bar displays the clock and four compact icons: Search, Notifications,
-Canvas map, and Power. Search, notifications, the map and the power menu each
-open a separate overlay or popover. Opening one closes the previous panel.
+The shell bar displays application tray icons, the clock, and four desktop
+controls: Search, Notifications, Canvas map, and Power. Tray icons appear only
+while apps publish them; see [application tray](TRAY.md) for menus and input.
+Search, notifications, the map and the power menu each open a separate overlay
+or popover. Opening one closes the previous panel.
 Escape, the close icon, an outside click, or clicking
 the active toolbar icon dismisses it.
 Panels have rounded transparent corners and shrink to fit their content. Long
@@ -45,9 +47,9 @@ Search rows retain button roles and the names `Open: APP NAME` or `Window:
 WINDOW TITLE`; the current result exposes the accessibility `selected` state.
 
 Unlocked `status.shell_panels` lists visible panel bounds as `kind`, `output`,
-`x`, `y`, `width`, and `height`. Kinds are `search`, `notifications`, `map`, and
-`power`. Bounds use global logical output coordinates. AccessKit bounds are
-physical and local to each surface, so pointer automation combines both with
+`x`, `y`, `width`, and `height`. Kinds are `search`, `notifications`, `map`,
+`power`, and `tray`. Bounds use global logical output coordinates. AccessKit
+bounds are physical and local to each surface, so pointer automation combines both with
 the output scale. Shell panels never enter the normal `windows` list.
 
 `focus-launcher` explicitly opens search while a synthetic bare Meta tap toggles

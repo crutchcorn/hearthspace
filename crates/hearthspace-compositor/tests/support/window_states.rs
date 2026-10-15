@@ -109,7 +109,7 @@ fn wait_for_complete_popup(compositor: &HeadlessCompositor) {
 }
 
 fn run_window_states(backend: &str) {
-    let _guard = HEADLESS_TEST_LOCK.lock().unwrap();
+    let _guard = headless_test_guard();
     let mut compositor = HeadlessCompositor::spawn_with_size("1280x800");
     drop(compositor.wait_for_socket());
     let state_path = compositor.runtime_dir.path().join("window-state.json");
@@ -261,7 +261,7 @@ fn window_states_wayland_maximize_fullscreen_restore_and_dialogs() {
 
 #[test]
 fn window_bounds_wayland_oversized_initial_window_and_dialog_fit_output() {
-    let _guard = HEADLESS_TEST_LOCK.lock().unwrap();
+    let _guard = headless_test_guard();
     let mut compositor = HeadlessCompositor::spawn_with_size("1280x800");
     drop(compositor.wait_for_socket());
     let state_path = compositor.runtime_dir.path().join("window-state.json");

@@ -26,6 +26,9 @@ every application, GPU, or output combination has been validated.
       restore, and reachable transient dialogs at non-unit canvas zoom.
 - [x] **Search and running-window selection** — the shell bar launches installed
       apps and searches live windows; agents can query both catalogs.
+- [x] **Application tray** — session-local StatusNotifier/AppIndicator icons,
+      accessible menus, and application click/scroll actions. See
+      [application tray](../docs/TRAY.md) for compatibility and acceptance.
 - [x] **Selection interoperability** — ordinary clipboard and primary selection
       bridge Wayland/XWayland; explicit agent clipboard/paste accepts Unicode.
       See [clipboard coverage](../docs/CLIPBOARD.md) for transfer limitations.
