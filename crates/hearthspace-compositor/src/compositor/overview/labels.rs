@@ -49,7 +49,7 @@ fn premultiplied_pixels(image: image::RgbaImage) -> Vec<u8> {
     // Masonry's imaging renderer returns straight-alpha RGBA. Smithay blends
     // memory textures as premultiplied RGBA, including antialiased glyph edges.
     let mut pixels = image.into_raw();
-    for pixel in pixels.chunks_exact_mut(4) {
+    for pixel in pixels.as_chunks_mut::<4>().0 {
         let alpha = u16::from(pixel[3]);
         for channel in &mut pixel[..3] {
             *channel = ((u16::from(*channel) * alpha + 127) / 255) as u8;
@@ -105,7 +105,7 @@ mod tests {
         );
         let expected_alpha: Vec<_> = image.pixels().map(|pixel| pixel.0[3]).collect();
         let pixels = premultiplied_pixels(image);
-        for (pixel, alpha) in pixels.chunks_exact(4).zip(expected_alpha) {
+        for (pixel, alpha) in pixels.as_chunks::<4>().0.iter().zip(expected_alpha) {
             assert_eq!(pixel[3], alpha);
             assert!(pixel[..3].iter().all(|channel| *channel <= alpha));
         }
