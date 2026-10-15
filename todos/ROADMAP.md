@@ -60,7 +60,8 @@ every application, GPU, or output combination has been validated.
 - [ ] **Full login-session desktop environment integration.**
 - [ ] **Minimization, workspaces, and richer task-management UI.** The existing
       shell bar and window selector cover basic launch and recovery.
-- [ ] **Automatic idle lock and broader power management.**
+- [ ] **Automatic idle lock and broader power management.** Remaining hardware
+      acceptance and feature scope are tracked in [power management](POWER_MANAGEMENT.md).
 - [ ] **Complex multi-monitor policy and multi-GPU rendering.** Existing output
       rendering/layout does not establish complete hotplug or driver coverage.
 - [ ] **Theming** beyond the current proof-of-concept shell UI.
