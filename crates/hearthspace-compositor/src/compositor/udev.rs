@@ -5,6 +5,7 @@ mod device;
 mod event_cutoff;
 mod hotplug;
 mod input;
+mod recovery;
 mod rendering;
 
 use device::{
@@ -17,7 +18,6 @@ use smithay::{
     backend::{
         allocator::Buffer,
         allocator::dmabuf::Dmabuf,
-        drm::DrmEvent,
         libinput::{LibinputInputBackend, LibinputSessionInterface},
         renderer::{ImportDma, damage::OutputDamageTracker},
         session::{Event as SessionEvent, Session, libseat::LibSeatSession},
@@ -28,7 +28,7 @@ use smithay::{
     },
     utils::{Physical, Size, Transform},
 };
-use tracing::{debug, error, info, trace, warn};
+use tracing::{debug, info, trace, warn};
 
 use crate::{
     RunOptions,
@@ -43,6 +43,9 @@ pub(super) struct UdevBackendState {
     // device. `devices` below is discovery state for hotplug logging only.
     loop_handle: LoopHandle<'static, super::CalloopData>,
     input_source: Option<RegistrationToken>,
+    drm_source: Option<RegistrationToken>,
+    recovery_source: Option<RegistrationToken>,
+    recovery_needed: bool,
     primary_device: Option<UdevDevice>,
     devices: Vec<UdevDeviceInfo>,
     kms_devices_active: bool,
@@ -158,18 +161,15 @@ pub fn run_udev(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> {
 
     handle.insert_source(session_notifier, |event, _, data| match event {
         SessionEvent::PauseSession => {
-            data.state.cancel_input_gestures();
+            data.state.reset_session_input();
+            data.state.invalidate_lock_presentation();
             data.captures.invalidate("native session became inactive");
             if let Some(backend) = udev_backend_mut(data) {
                 backend.pause_session();
             }
         }
         SessionEvent::ActivateSession => {
-            let connector_sync = udev_backend_mut(data)
-                .map(|backend| backend.activate_session())
-                .unwrap_or_default();
-            apply_connector_sync(data, connector_sync);
-            data.state.request_redraw();
+            recovery::activate_session(data);
         }
     })?;
 
@@ -221,38 +221,9 @@ pub fn run_udev(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> {
         &seat_name,
     )?);
 
-    if let Some(drm_notifier) = drm_notifier {
-        handle.insert_source(drm_notifier, |event, metadata, data| match event {
-            DrmEvent::VBlank(crtc) => {
-                trace!(?crtc, ?metadata, "DRM vblank");
-                let submitted_frame = if let super::Backend::Udev(backend) = &mut data.backend {
-                    match backend.frame_submitted(
-                        crtc,
-                        metadata.as_ref(),
-                        &mut data.state,
-                        &mut data.captures,
-                    ) {
-                        Ok(result) => result,
-                        Err(error) => {
-                            error!(%error, "failed to mark native frame submitted");
-                            None
-                        }
-                    }
-                } else {
-                    None
-                };
-                if let Some(should_redraw) = submitted_frame {
-                    if let Err(error) = data.send_frame_callbacks() {
-                        warn!(%error, "failed to send native frame callbacks");
-                    }
-                    if should_redraw || data.state.viewport_animation.is_some() {
-                        data.state.request_redraw();
-                    }
-                }
-            }
-            DrmEvent::Error(error) => error!(%error, "DRM event error"),
-        })?;
-    }
+    let drm_source = drm_notifier
+        .map(|notifier| recovery::insert_drm_source(&handle, notifier))
+        .transpose()?;
 
     let kms_devices_active = primary_device
         .as_ref()
@@ -264,6 +235,9 @@ pub fn run_udev(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> {
         session_active,
         loop_handle: handle.clone(),
         input_source,
+        drm_source,
+        recovery_source: None,
+        recovery_needed: false,
         kms_devices_active,
         drm_commits_paused: !session_active || !kms_devices_active,
         connector_rescan_pending: false,

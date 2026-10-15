@@ -93,8 +93,22 @@ pub(in crate::compositor) enum ControlReply {
 
 impl CalloopData {
     fn run_command_text(&mut self, text: &str) -> ControlReply {
-        if self.state.session_locked() && text != "status" && text != "quit" {
+        if self.state.session_locked()
+            && !matches!(text, "status" | "quit" | "prepare-sleep" | "session-resume")
+        {
             return ControlReply::Err("session is locked".into());
+        }
+        if text == "session-resume" {
+            #[cfg(feature = "udev")]
+            return self.resume_native_session();
+            #[cfg(not(feature = "udev"))]
+            return ControlReply::Err("session-resume requires the native backend".into());
+        }
+        if text == "prepare-sleep" {
+            return match self.state.prepare_for_sleep() {
+                Ok(()) => ControlReply::Ok,
+                Err(error) => ControlReply::Err(error),
+            };
         }
         if text == "clipboard-set" {
             return self.state.set_clipboard_text("");

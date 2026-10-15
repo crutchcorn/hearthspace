@@ -24,6 +24,15 @@ impl PresentationBarrier {
         self.active.then_some(self.generation)
     }
 
+    /// KMS state can be lost across a seat handoff or system sleep. Preserve
+    /// ownership/isolation, but require fresh flips from the rebuilt surfaces.
+    pub(super) fn invalidate(&mut self) {
+        if self.active {
+            self.generation = self.generation.wrapping_add(1);
+            self.presented.clear();
+        }
+    }
+
     pub(super) fn update_outputs(&mut self, outputs: impl IntoIterator<Item = String>) {
         self.outputs = outputs.into_iter().collect();
         self.presented.retain(|name| self.outputs.contains(name));
@@ -68,6 +77,28 @@ mod tests {
         barrier.presented("internal", first);
         assert!(!barrier.ready(), "a previous lock's delayed event is stale");
         barrier.presented("internal", second);
+        assert!(barrier.ready());
+    }
+
+    #[test]
+    fn resume_requires_new_frames_without_releasing_the_lock() {
+        let mut barrier = PresentationBarrier::default();
+        barrier.invalidate();
+        assert_eq!(barrier.generation(), None);
+        let original = barrier.begin(["internal".into(), "external".into()]);
+        barrier.presented("internal", original);
+        barrier.presented("external", original);
+        assert!(barrier.ready());
+        barrier.invalidate();
+        let resumed = barrier.generation().expect("resume must keep isolation");
+        assert_ne!(original, resumed);
+        assert!(!barrier.ready());
+        barrier.presented("internal", original);
+        barrier.presented("external", original);
+        assert!(!barrier.ready(), "pre-suspend flips are stale");
+        barrier.presented("internal", resumed);
+        assert!(!barrier.ready());
+        barrier.presented("external", resumed);
         assert!(barrier.ready());
     }
 

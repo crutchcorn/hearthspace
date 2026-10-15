@@ -4,7 +4,7 @@ use super::*;
 use serde_json::Value;
 
 #[path = "interactive_client.rs"]
-mod client;
+pub(super) mod client;
 use client::InteractiveClient;
 
 #[derive(Clone, Copy, Debug)]

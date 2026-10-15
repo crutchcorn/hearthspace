@@ -63,15 +63,12 @@ impl App {
             self.drag = None;
             self.finish_resize();
             let pointer = self.pointer.clone();
-            pointer.button(
-                self,
-                &ButtonEvent {
-                    serial: SERIAL_COUNTER.next_serial(),
-                    time,
-                    button,
-                    state,
-                },
-            );
+            self.deliver_pointer_button(&ButtonEvent {
+                serial: SERIAL_COUNTER.next_serial(),
+                time,
+                button,
+                state,
+            });
             pointer.frame(self);
             return;
         }
@@ -172,15 +169,12 @@ impl App {
         }
 
         let pointer = self.pointer.clone();
-        pointer.button(
-            self,
-            &ButtonEvent {
-                serial: SERIAL_COUNTER.next_serial(),
-                time,
-                button,
-                state,
-            },
-        );
+        self.deliver_pointer_button(&ButtonEvent {
+            serial: SERIAL_COUNTER.next_serial(),
+            time,
+            button,
+            state,
+        });
         pointer.frame(self);
     }
 

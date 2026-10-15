@@ -93,6 +93,9 @@ fn session_lock_blocks_agent_access_and_restores_focus_only_after_owner_unlocks(
         .runtime_dir
         .path()
         .join(format!("hearthspace-test-{}", std::process::id()));
+    // Releasing this physical key while asleep/inactive would not reach the
+    // compositor. Lock preparation must clear it before the locker takes focus.
+    action(&compositor, "key-down 42");
     let mut locker = lock_client::LockClient::connect(&socket);
     locker.wait_locked();
     assert_locked(&compositor);
@@ -112,7 +115,7 @@ fn session_lock_blocks_agent_access_and_restores_focus_only_after_owner_unlocks(
     while !snapshot(&state_path)["text"]
         .as_str()
         .unwrap()
-        .contains('b')
+        .ends_with('b')
     {
         assert!(
             Instant::now() < deadline,
@@ -121,6 +124,75 @@ fn session_lock_blocks_agent_access_and_restores_focus_only_after_owner_unlocks(
         thread::sleep(Duration::from_millis(25));
     }
     assert!(compositor.take_screenshot().starts_with(b"\x89PNG"));
+    action(&compositor, "quit");
+    wait_for_exit(&mut compositor.child);
+}
+
+#[test]
+fn sleep_shield_survives_locker_launch_failure_and_admits_only_its_first_owner() {
+    use super::interactive::client::InteractiveClient;
+
+    let _guard = HEADLESS_TEST_LOCK.lock().unwrap();
+    let empty_path = tempfile::tempdir().unwrap();
+    let mut compositor =
+        HeadlessCompositor::spawn_with_layout_and_path("1280x800", None, Some(empty_path.path()));
+    drop(compositor.wait_for_socket());
+    let socket = compositor
+        .runtime_dir
+        .path()
+        .join(format!("hearthspace-test-{}", std::process::id(),));
+    let mut client = InteractiveClient::connect(&socket);
+    let windows = wait_windows(&compositor, |windows| windows.len() == 2);
+    let window = &windows[1];
+    action(
+        &compositor,
+        format!(
+            "pointer-motion-abs {} {}",
+            window["x"].as_f64().unwrap() + 30.0,
+            window["y"].as_f64().unwrap() + 30.0,
+        ),
+    );
+    action(&compositor, "pointer-button-down 272");
+    assert!(client.released_buttons().is_empty());
+    let response = compositor.send_text_command("prepare-sleep");
+    assert!(
+        response.starts_with("err failed to launch swaylock"),
+        "{response}"
+    );
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while query(&compositor, "status")["lock_confirmed"] != true {
+        assert!(Instant::now() < deadline, "opaque shield did not present");
+        thread::sleep(Duration::from_millis(20));
+    }
+    assert_locked(&compositor);
+    assert_eq!(
+        client.released_buttons(),
+        &[272],
+        "held button must release before isolation"
+    );
+
+    let mut owner = lock_client::LockClient::connect(&socket);
+    owner.wait_locked();
+    let mut competing = lock_client::LockClient::connect(&socket);
+    competing.wait_rejected();
+    drop(competing);
+    action(&compositor, "prepare-sleep");
+    assert_locked(&compositor);
+    owner.unlock();
+    wait_windows(&compositor, |windows| windows.len() == 2);
+    assert!(compositor.take_screenshot().starts_with(b"\x89PNG"));
+
+    assert!(
+        compositor
+            .send_text_command("prepare-sleep")
+            .starts_with("err failed to launch swaylock")
+    );
+    let mut owner = lock_client::LockClient::connect(&socket);
+    owner.wait_locked();
+    drop(owner);
+    let mut replacement = lock_client::LockClient::connect(&socket);
+    replacement.wait_rejected();
+    assert_locked(&compositor);
     action(&compositor, "quit");
     wait_for_exit(&mut compositor.child);
 }

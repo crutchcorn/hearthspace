@@ -22,6 +22,7 @@ mod keyboard;
 mod nested;
 mod pinch;
 mod pointer;
+mod recovery;
 mod scroll;
 mod touch;
 mod touch_tracker;
@@ -150,15 +151,12 @@ pub(in crate::compositor) fn handle_input_event<B: InputBackend>(
                 // grab stuck on the dragged window, misrouting all later pointer
                 // input to it.
                 let pointer = state.pointer.clone();
-                pointer.button(
-                    state,
-                    &ButtonEvent {
-                        serial: SERIAL_COUNTER.next_serial(),
-                        time,
-                        button: event.button_code(),
-                        state: event.state(),
-                    },
-                );
+                state.deliver_pointer_button(&ButtonEvent {
+                    serial: SERIAL_COUNTER.next_serial(),
+                    time,
+                    button: event.button_code(),
+                    state: event.state(),
+                });
                 pointer.frame(state);
                 return;
             }
@@ -261,15 +259,12 @@ pub(in crate::compositor) fn handle_input_event<B: InputBackend>(
             }
 
             let pointer = state.pointer.clone();
-            pointer.button(
-                state,
-                &ButtonEvent {
-                    serial: SERIAL_COUNTER.next_serial(),
-                    time,
-                    button: event.button_code(),
-                    state: event.state(),
-                },
-            );
+            state.deliver_pointer_button(&ButtonEvent {
+                serial: SERIAL_COUNTER.next_serial(),
+                time,
+                button: event.button_code(),
+                state: event.state(),
+            });
             pointer.frame(state);
         }
         InputEvent::PointerAxis { event } => {

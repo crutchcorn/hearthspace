@@ -172,6 +172,7 @@ impl UdevBackendState {
             // Only acknowledge a frame that this surface actually submitted.
             return Ok(None);
         }
+        output.presented_once = true;
         if state.session_locked() {
             captures.invalidate("session is locked");
         } else {
