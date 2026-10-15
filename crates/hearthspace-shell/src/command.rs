@@ -32,6 +32,10 @@ impl SpawnTarget {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ShellCommand {
+    OverviewOn,
+    OverviewOff,
+    OverviewToggle,
+    OverviewSelect(u64),
     LockSession,
     ListApps,
     ListWindows,
@@ -84,6 +88,8 @@ impl ShellCommand {
 
     pub fn label(&self) -> &'static str {
         match self {
+            Self::OverviewOn | Self::OverviewOff | Self::OverviewToggle => "OVERVIEW",
+            Self::OverviewSelect(_) => "SELECT",
             Self::LockSession => "LOCK",
             Self::ListApps => "APPS",
             Self::ListWindows => "WINDOWS",
@@ -122,6 +128,10 @@ impl ShellCommand {
 
     pub fn wire_name(&self) -> String {
         match self {
+            Self::OverviewOn => "overview-on".into(),
+            Self::OverviewOff => "overview-off".into(),
+            Self::OverviewToggle => "overview-toggle".into(),
+            Self::OverviewSelect(id) => format!("overview-select {id}"),
             Self::LockSession => "lock-session".into(),
             Self::ListApps => "apps".into(),
             Self::ListWindows => "windows".into(),
@@ -190,6 +200,16 @@ impl ShellCommand {
         let command = parts.next()?;
 
         let parsed = match command {
+            "overview-on" => Self::OverviewOn,
+            "overview-off" => Self::OverviewOff,
+            "overview-toggle" => Self::OverviewToggle,
+            "overview-select" => {
+                let id = parts.next()?.parse().ok()?;
+                if id == 0 {
+                    return None;
+                }
+                Self::OverviewSelect(id)
+            }
             "lock-session" => Self::LockSession,
             "apps" => Self::ListApps,
             "windows" => Self::ListWindows,
