@@ -72,7 +72,7 @@ the pointer. The grid is temporary: window positions, sizes, fullscreen and
 maximized states, and the canvas viewport remain intact. Selecting a preview
 returns to the canvas, focuses that window, and reveals it if needed.
 
-Open overview with the **Overview** toolbar button, Super+O, or an inward pinch:
+Open overview with Super+O or an inward pinch:
 use four fingers on a native touchpad, or four/five on a touchscreen. Finish the
 pinch by lifting your fingers. An outward pinch with the same supported counts
 dismisses it. The native libinput backend does not emit five-finger touchpad
@@ -137,15 +137,20 @@ canvas navigation and four-/five-finger overview pinches are separate gestures.
 
 ## Keyboard control
 
+Search is a separate overlay opened by the search icon or a Meta tap. It searches
+applications and running windows by title or app ID; an empty query shows a hint.
+Settings remains discoverable there. [Shell controls](SHELL.md) describes the
+bell, map, and power popovers.
+
 | Shortcut | Action |
 | --- | --- |
 | Super+Return | Open a terminal |
-| Super+Space | Focus launcher search |
+| Meta / Super tap | Toggle search overlay |
+| Super+Space | Open search overlay |
 | Super+O | Toggle canvas overview |
 | Alt+Tab / Alt+Shift+Tab | Select next / previous application; hold Alt for previews |
 | Alt+F4 | Request that the focused application close |
 | Super+arrow keys | Pan the canvas |
-| Super+0 | Reset zoom and reveal the focused window |
 | Super+F | Toggle fullscreen |
 | Super+M | Toggle maximized state |
 | Super+L | Lock the native session |

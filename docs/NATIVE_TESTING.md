@@ -96,8 +96,9 @@ scripts/hearthspace-agent --session /tmp/hearthspace-run-1 click 400 360 --units
 ```
 
 Replace the example window ID with one returned by `windows`. Use
-`focus-next`, `focus-previous`, `focus-launcher`, and `reset-view` for navigation
-without an ID. `fullscreen ID --off` and `maximize ID --off` leave one state;
+`focus-next`, `focus-previous`, and `focus-launcher` for navigation without an ID.
+`key super` toggles search; `focus-launcher` explicitly opens it.
+`fullscreen ID --off` and `maximize ID --off` leave one state;
 `restore ID` clears both. Launch replies confirm that a process started, so wait
 for its mapped window and application-specific readiness before typing.
 
@@ -180,7 +181,7 @@ resolve it with the recorded session's `stop` command first.
 Build before invoking the smoke suite, which deliberately uses `--no-build`:
 
 ```sh
-cargo build -p hearthspace-session -p hearthspace-compositor -p hearthspace-shell -p hearthspace-settingsd --features hearthspace-compositor/udev
+cargo build --locked --workspace --all-targets --features udev,e2e,test-apps
 scripts/native-smoke --session /tmp/hearthspace-smoke-success --case success --timeout 90
 scripts/native-smoke --session /tmp/hearthspace-smoke-startup --case startup-failure
 scripts/native-smoke --session /tmp/hearthspace-smoke-crash --case compositor-failure

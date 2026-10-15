@@ -23,7 +23,6 @@ class WindowCommandTests(unittest.TestCase):
             (("focus-next",), "focus-next-window"),
             (("focus-previous",), "focus-previous-window"),
             (("focus-launcher",), "focus-launcher"),
-            (("reset-view",), "reset-view"),
             (("fullscreen", "42"), "fullscreen-window 42 true"),
             (("fullscreen", "42", "--off"), "fullscreen-window 42 false"),
             (("maximize", "42"), "maximize-window 42 true"),
@@ -40,6 +39,7 @@ class WindowCommandTests(unittest.TestCase):
 
     def test_invalid_ids_coordinates_and_sizes_fail_before_connecting(self):
         for args in [
+            ("reset-view",),
             ("focus", "0"),
             ("focus", str(1 << 64)),
             ("resize", "1", "0", "400"),

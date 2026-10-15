@@ -9,12 +9,12 @@ from .control import ControlError
 from .input import Input
 from .pinch_touchscreen import from_device, settled, to_device
 from .touchpad import TouchDevice
+from .viewport_fixture import set_viewport
 from .visual import marker_bounds
 
 
 def prepare(smoke, *, zoom, firefox):
-    smoke.control.request("focus-launcher")
-    smoke.control.request("reset-view")
+    set_viewport(smoke, x=0, y=0, scale=1)
     settled(smoke)
     smoke.control.request(f"focus-window {smoke.target}")
     if firefox and firefox_assertions.maximized(smoke.window(smoke.target)):
@@ -43,8 +43,7 @@ def prepare(smoke, *, zoom, firefox):
             and 0 <= height - window["content_height"] <= tolerance
         ),
     )
-    smoke.control.request("focus-launcher")
-    smoke.control.request("reset-view")
+    set_viewport(smoke, x=0, y=0, scale=1)
     settled(smoke)
     smoke.control.request(
         f"move-window {smoke.target} {smoke.output['logical_x'] + 100} "
