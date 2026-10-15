@@ -1,6 +1,6 @@
 //! Native wake recovery is explicit: system sleep does not necessarily cause a
 //! libseat deactivate/activate pair. Never infer success from receiving a signal.
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use smithay::{
     backend::{
@@ -19,15 +19,46 @@ use crate::compositor::{CalloopData, shell_integration::ControlReply};
 
 const RECOVERY_INTERVAL: Duration = Duration::from_millis(250);
 const RECOVERY_ATTEMPTS: u8 = 20;
+const RECOVERY_BUDGET: Duration = Duration::from_secs(5);
+
+/// Driver calls are synchronous and cannot be interrupted, but a slow attempt
+/// must consume the wall-clock budget rather than start another five seconds
+/// of retries. The deadline starts before the initial activation.
+struct RecoveryBudget {
+    deadline: Instant,
+    remaining: u8,
+}
+
+impl RecoveryBudget {
+    fn new(started: Instant) -> Self {
+        Self {
+            deadline: started + RECOVERY_BUDGET,
+            remaining: RECOVERY_ATTEMPTS,
+        }
+    }
+
+    fn next_attempt(&mut self, now: Instant) -> bool {
+        if now >= self.deadline || self.remaining == 0 {
+            return false;
+        }
+        self.remaining -= 1;
+        true
+    }
+}
 
 impl UdevBackendState {
-    fn recovery_complete(&self) -> bool {
-        !self.recovery_needed
+    pub(in crate::compositor) fn recovery_complete(&self) -> bool {
+        self.session_active
+            && self.session.is_active()
+            && self.input_source.is_some()
+            && !self.recovery_needed
             && self.primary_device.as_ref().is_some_and(|device| {
-                device
-                    .output_surfaces
-                    .iter()
-                    .all(|output| output.presented_once)
+                device.output_surfaces.len() == device.output_targets.len()
+                    && (device.output_targets.is_empty() || !self.drm_commits_paused)
+                    && device
+                        .output_surfaces
+                        .iter()
+                        .all(|output| output.presented_once)
             })
     }
 }
@@ -51,6 +82,7 @@ impl CalloopData {
 }
 
 pub(super) fn activate_session(data: &mut CalloopData) {
+    let mut budget = RecoveryBudget::new(Instant::now());
     data.state.reset_session_input();
     data.state.invalidate_lock_presentation();
     data.captures.invalidate("native session is recovering");
@@ -69,14 +101,13 @@ pub(super) fn activate_session(data: &mut CalloopData) {
         return;
     }
 
-    let mut remaining = RECOVERY_ATTEMPTS;
     match handle.insert_source(
         Timer::from_duration(RECOVERY_INTERVAL),
         move |_, _, data| {
             let Some(backend) = udev_backend_mut(data) else {
                 return TimeoutAction::Drop;
             };
-            if !backend.session_active {
+            if !backend.session_active || !backend.session.is_active() {
                 backend.recovery_source = None;
                 return TimeoutAction::Drop;
             }
@@ -85,7 +116,7 @@ pub(super) fn activate_session(data: &mut CalloopData) {
                 info!("native session recovery presented on every output");
                 return TimeoutAction::Drop;
             }
-            if remaining == 0 {
+            if !budget.next_attempt(Instant::now()) {
                 backend.recovery_source = None;
                 error!("native session recovery exhausted its bounded retries");
                 return TimeoutAction::Drop;
@@ -93,7 +124,6 @@ pub(super) fn activate_session(data: &mut CalloopData) {
             // Setup success alone is insufficient: a failed first render or a
             // missing page flip must retry too, without depending on new input.
             let sync = backend.activate_session();
-            remaining -= 1;
             data.state.invalidate_lock_presentation();
             apply_connector_sync(data, sync);
             data.state.request_redraw();
@@ -106,6 +136,36 @@ pub(super) fn activate_session(data: &mut CalloopData) {
             }
         }
         Err(error) => error!(%error, "failed to schedule native session recovery"),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn slow_driver_calls_consume_the_absolute_recovery_budget() {
+        let started = Instant::now();
+        let mut budget = RecoveryBudget::new(started);
+        assert!(budget.next_attempt(started + Duration::from_millis(2_700)));
+        assert!(!budget.next_attempt(started + Duration::from_millis(5_400)));
+    }
+
+    #[test]
+    fn initial_activation_can_exhaust_the_deadline_without_further_rebuilds() {
+        let started = Instant::now();
+        let mut budget = RecoveryBudget::new(started);
+        assert!(!budget.next_attempt(started + RECOVERY_BUDGET));
+    }
+
+    #[test]
+    fn retry_count_also_bounds_attempts_if_time_does_not_advance() {
+        let started = Instant::now();
+        let mut budget = RecoveryBudget::new(started);
+        for _ in 0..RECOVERY_ATTEMPTS {
+            assert!(budget.next_attempt(started));
+        }
+        assert!(!budget.next_attempt(started));
     }
 }
 
