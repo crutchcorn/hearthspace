@@ -12,6 +12,9 @@ use std::{
 #[path = "support/accessibility.rs"]
 mod accessibility_diagnostics;
 #[cfg(feature = "test-apps")]
+#[path = "support/canvas_map.rs"]
+mod canvas_map;
+#[cfg(feature = "test-apps")]
 #[path = "support/canvas_zoom.rs"]
 mod canvas_zoom;
 #[cfg(feature = "test-apps")]
@@ -70,6 +73,15 @@ impl HeadlessCompositor {
     }
 
     fn spawn_with_layout_and_path(size: &str, layout: Option<&Path>, path: Option<&Path>) -> Self {
+        Self::spawn_with_options(size, layout, path, 1)
+    }
+
+    fn spawn_with_options(
+        size: &str,
+        layout: Option<&Path>,
+        path: Option<&Path>,
+        scale: i32,
+    ) -> Self {
         let runtime_dir = tempfile::tempdir().expect("create headless runtime dir");
         let command_socket_path = runtime_dir.path().join("command.sock");
         let wayland_display = format!("hearthspace-test-{}", std::process::id());
@@ -78,6 +90,7 @@ impl HeadlessCompositor {
         let mut command = Command::new(env!("CARGO_BIN_EXE_hearthspace"));
         command
             .args(["--headless", "--no-shell", "--headless-size", size])
+            .arg(format!("--headless-scale={scale}"))
             .env_remove("HEARTHSPACE_LAYOUT_PATH");
         if let Some(path) = layout {
             command.env("HEARTHSPACE_LAYOUT_PATH", path);

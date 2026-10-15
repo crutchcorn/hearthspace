@@ -306,7 +306,7 @@ impl CalloopData {
                 "version": 1, "backend": backend, "active": self.capture_active(),
                 "locked": true, "lock_confirmed": self.state.lock_confirmed(),
                 "recovery_ready": recovery_ready,
-                "windows": [], "outputs": [],
+                "windows": [], "outputs": [], "canvas_maps": [],
             }))
             .expect("serializable locked status");
         }
@@ -321,6 +321,7 @@ impl CalloopData {
             "xwayland_display": xwayland_display,
             "overview": self.state.overview_status(),
             "window_switcher": self.state.window_switcher_status(),
+            "canvas_maps": self.state.canvas_maps_status(),
             "viewport": {
                 "x": self.state.viewport_offset.x,
                 "y": self.state.viewport_offset.y,

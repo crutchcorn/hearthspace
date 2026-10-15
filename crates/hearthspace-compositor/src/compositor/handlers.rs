@@ -308,6 +308,9 @@ impl XdgShellHandler for App {
     }
 
     fn toplevel_destroyed(&mut self, surface: ToplevelSurface) {
+        let restore_map_focus = self
+            .focused_canvas_map_index()
+            .is_some_and(|index| self.windows[index].surface.same_xdg(&surface));
         let restore_focus = self.windows.iter().any(|window| {
             window.surface.same_xdg(&surface) && self.focused_normal_window_id == Some(window.id)
         });
@@ -327,7 +330,9 @@ impl XdgShellHandler for App {
             .retain(|window| !window.surface.same_xdg(&surface));
         self.drag = None;
         self.resize = None;
-        if restore_focus {
+        if restore_map_focus {
+            self.restore_focus_after_canvas_map();
+        } else if restore_focus {
             self.restore_window_focus();
         }
         self.request_redraw();

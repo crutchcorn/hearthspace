@@ -27,6 +27,7 @@ enum Shortcut {
     OverviewNext,
     OverviewPrevious,
     SwitcherCancel,
+    CanvasMapDismiss,
     Terminal,
     Launcher,
     Next,
@@ -42,6 +43,24 @@ enum Shortcut {
 }
 
 impl KeyboardShortcuts {
+    fn filter_canvas_map(
+        &mut self,
+        code: Keycode,
+        state: KeyState,
+        modifiers: &ModifiersState,
+        symbol: u32,
+        available: bool,
+    ) -> FilterResult<Option<Shortcut>> {
+        if available && symbol == keysyms::KEY_Escape && state == KeyState::Pressed {
+            return FilterResult::Intercept(
+                self.intercepted
+                    .insert(code)
+                    .then_some(Shortcut::CanvasMapDismiss),
+            );
+        }
+        self.filter(code, state, modifiers, symbol, available)
+    }
+
     fn filter_overview(
         &mut self,
         code: Keycode,
@@ -95,6 +114,7 @@ impl App {
     ) {
         let keyboard = self.keyboard.clone();
         let available = self.navigation_available();
+        let canvas_map_focused = self.focused_canvas_map_index().is_some();
         let previous_modifiers = keyboard.modifier_state();
         let intercepted = keyboard.input(
             self,
@@ -113,6 +133,9 @@ impl App {
                 } else if let Some(source) = app.window_switcher_source() {
                     app.shortcuts
                         .filter_switcher(code, state, modifiers, symbol, source)
+                } else if canvas_map_focused {
+                    app.shortcuts
+                        .filter_canvas_map(code, state, modifiers, symbol, available)
                 } else {
                     app.shortcuts
                         .filter(code, state, modifiers, symbol, available)
@@ -151,6 +174,10 @@ impl App {
                 self.dismiss_window_switcher(true);
                 return;
             }
+            Shortcut::CanvasMapDismiss => {
+                self.dismiss_focused_canvas_map();
+                return;
+            }
             Shortcut::OverviewDismiss => {
                 self.close_overview();
                 return;
@@ -174,6 +201,7 @@ impl App {
             | Shortcut::OverviewNext
             | Shortcut::OverviewPrevious
             | Shortcut::SwitcherCancel
+            | Shortcut::CanvasMapDismiss
             | Shortcut::Next
             | Shortcut::Previous => unreachable!(),
             Shortcut::Lock => ShellCommand::LockSession,

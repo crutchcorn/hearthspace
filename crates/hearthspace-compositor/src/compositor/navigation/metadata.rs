@@ -36,6 +36,7 @@ impl App {
                 "mapped": window.mapped, "visible": !visible_outputs.is_empty(), "outputs": visible_outputs,
                 "focused": self.focused_normal_window_id == Some(window.id), "client_type": client_type,
                 "fullscreen": window.presentation.fullscreen, "maximized": window.presentation.maximized,
+                "output_coordinates": self.window_uses_output_coordinates(index),
                 "presentation_output": window.presentation.output,
             }))
         }).collect()
