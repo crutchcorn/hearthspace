@@ -2375,6 +2375,7 @@ dependencies = [
  "clap",
  "ctrlc",
  "futures-util",
+ "gio",
  "hearthspace-common",
  "nix",
  "serde",

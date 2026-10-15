@@ -208,6 +208,10 @@ def exec_session(state_file):
     env["XDG_RUNTIME_DIR"] = state["runtime_dir"]
     env["WAYLAND_DISPLAY"] = state["wayland_display"]
     env["XDG_CURRENT_DESKTOP"] = "Hearthspace"
+    # PAM may replace the service's original PATH. Restore the selected build
+    # before the private bus starts so clients and activated services agree.
+    inherited_path = env.get("PATH") or "/usr/local/bin:/usr/bin:/bin"
+    env["PATH"] = f"{state['binary_dir']}:{inherited_path}"
     if state.get("login_session", False):
         # Match the installed launcher before starting the private bus, so the
         # shell and activated services discover this exact release's assets.

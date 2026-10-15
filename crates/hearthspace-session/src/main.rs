@@ -23,8 +23,8 @@ mod settingsd;
 mod signals;
 mod supervisor;
 
-use cli::{Args, RunMode, resolve_mode};
-use desktop_entries::generate_dev_desktop_entries;
+use cli::{Args, resolve_mode};
+use desktop_entries::generate_desktop_entries;
 use session_env::{create_session_env, create_session_paths};
 use signals::install_signal_handler;
 use supervisor::Supervisor;
@@ -45,9 +45,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let session_env = create_session_env(&args, mode, &paths)?;
     gtk_defaults::prepare(&paths.session_dir, &session_env);
 
-    if mode == RunMode::DevCargo {
-        generate_dev_desktop_entries(&paths)?;
-    }
+    generate_desktop_entries(&paths, mode, args.binary_dir.as_deref())?;
 
     info!(?mode, session_dir = %paths.session_dir.display(), "prepared Hearthspace session");
     info!(wayland_display = %session_env.wayland_display, "prepared Wayland display");

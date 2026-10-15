@@ -93,6 +93,8 @@ def build(args, session):
                 "-p",
                 "hearthspace-shell",
                 "-p",
+                "hearthspace-settings",
+                "-p",
                 "hearthspace-settingsd",
                 "-p",
                 "waydriver-hearthspace",
