@@ -147,6 +147,7 @@ impl App {
             .map(|(index, _)| index)
         {
             if toggle {
+                self.clear_favorite_drawing();
                 self.windows[index].surface.send_close();
             } else if let Some(surface) = self.windows[index].surface.wl_surface() {
                 self.set_keyboard_focus_to_window(index, surface);

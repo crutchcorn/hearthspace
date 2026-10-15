@@ -12,6 +12,7 @@ use crate::config::*;
 
 mod command_socket;
 pub(in crate::compositor) mod device_control;
+mod favorite_drawing;
 mod launch;
 mod launch_environment;
 pub(in crate::compositor) mod search;

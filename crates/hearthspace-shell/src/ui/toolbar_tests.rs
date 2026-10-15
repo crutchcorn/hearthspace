@@ -33,6 +33,7 @@ fn search(
     state: &ShellState,
 ) -> impl WidgetView<ShellState, Widget = masonry::widgets::SizedBox> + use<> {
     sized_box(launcher::launcher_view(
+        state,
         &state.outputs[0],
         launcher::results(state, &state.outputs[0]),
         None,

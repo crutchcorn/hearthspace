@@ -18,6 +18,14 @@ impl App {
         if state == ButtonState::Pressed {
             self.cancel_pending_search();
         }
+        if self.favorite_pointer_button(button, state) {
+            if state == ButtonState::Released {
+                // Captured motion bypassed Wayland hover. Reconcile its final
+                // position before the next wheel/button event reaches a client.
+                self.apply_pointer_motion(self.pointer_location, time);
+            }
+            return;
+        }
         if self.session_locked() {
             self.deliver_lock_button(button, state, time);
             return;

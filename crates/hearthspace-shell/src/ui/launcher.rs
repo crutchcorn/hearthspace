@@ -3,7 +3,7 @@ use xilem::{
     AnyWidgetView, WidgetView,
     masonry::{layout::AsUnit, properties::LineBreaking},
     style::Style,
-    view::{CrossAxisAlignment, FlexSpacer, flex_col, flex_row, sized_box},
+    view::{CrossAxisAlignment, FlexExt, FlexSpacer, flex_col, flex_row, label, sized_box},
 };
 
 use super::{
@@ -40,8 +40,18 @@ impl Entry {
 
 pub(super) fn results(state: &ShellState, output: &ShellOutputInstance) -> Vec<Entry> {
     let query = output.query.trim();
-    if query.is_empty() {
+    if output.drawing.active() {
         return Vec::new();
+    }
+    if query.is_empty() {
+        return state
+            .favorites
+            .store
+            .entries()
+            .iter()
+            .filter_map(|f| state.catalog.app_by_id(&f.app_id).cloned())
+            .map(|app| Entry::App(Box::new(app)))
+            .collect();
     }
     let mut windows = state
         .windows
@@ -84,6 +94,7 @@ pub(super) fn select(
 }
 
 pub(super) fn launcher_view(
+    state: &ShellState,
     output: &ShellOutputInstance,
     entries: Vec<Entry>,
     windows_error: Option<String>,
@@ -95,22 +106,62 @@ pub(super) fn launcher_view(
         state.dismiss_search(&close_key)
     });
     let selected = super::search_selection::selected_index(output, &entries);
-    let mut rows: Vec<Box<AnyWidgetView<ShellState>>> = entries
-        .into_iter()
-        .enumerate()
-        .map(|(index, entry)| {
-            super::search_result::row(output, entry, Some(index) == selected, focus_target.clone())
-                .boxed()
-        })
-        .collect();
-    if rows.is_empty() {
-        rows.push(
-            components::muted_text(if output.query.trim().is_empty() {
-                "Type to search apps and open windows"
+    let mut rows: Vec<Box<AnyWidgetView<ShellState>>> = if output.drawing.active() {
+        vec![super::favorite_view::drawing(output)]
+    } else {
+        let mut rows = if output.query.trim().is_empty() {
+            super::favorite_view::browse(state, output)
+        } else {
+            Vec::new()
+        };
+        for (index, entry) in entries.into_iter().enumerate() {
+            let shape = if output.query.trim().is_empty() {
+                match &entry {
+                    Entry::App(app) => state
+                        .favorites
+                        .store
+                        .entries()
+                        .iter()
+                        .find(|f| f.app_id == app.id)
+                        .and_then(|f| f.gesture.as_ref())
+                        .map(|g| super::gesture_pad::thumbnail(g.points().to_vec())),
+                    _ => None,
+                }
             } else {
-                "No matching apps or windows"
-            })
-            .boxed(),
+                None
+            };
+            rows.push(
+                flex_row((
+                    super::search_result::row(
+                        output,
+                        entry,
+                        Some(index) == selected,
+                        focus_target.clone(),
+                    )
+                    .flex(1.0),
+                    shape,
+                ))
+                .gap(8.0.px())
+                .boxed(),
+            );
+        }
+        if output.query.trim().is_empty() {
+            rows.extend(super::favorite_view::missing(state));
+        }
+        if rows.is_empty() {
+            rows.push(label(if output.query.trim().is_empty() {
+                "Type to search apps and open windows. Add apps to favorites to assign gestures."
+            } else { "No matching apps or windows" }).line_break_mode(LineBreaking::WordWrap).boxed());
+        }
+        rows
+    };
+    if !output.drawing.active()
+        && let Some(message) = &output.drawing.message
+    {
+        rows.push(
+            label(message.clone())
+                .line_break_mode(LineBreaking::WordWrap)
+                .boxed(),
         );
     }
     if let Some(error) = output.launch_error.as_ref().or(windows_error.as_ref()) {
@@ -135,7 +186,7 @@ pub(super) fn launcher_view(
                     FlexSpacer::Flex(1.0),
                     close,
                 )),
-                search,
+                (!output.drawing.active()).then_some(search),
             ))
             .cross_axis_alignment(CrossAxisAlignment::Stretch)
             .gap(8.0.px()),

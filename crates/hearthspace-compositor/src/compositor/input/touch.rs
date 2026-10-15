@@ -15,6 +15,9 @@ impl App {
         time: InputTime,
     ) {
         self.shortcuts.cancel_meta_tap();
+        if self.favorite_touch_down(device, slot, location) {
+            return;
+        }
         let first = !self.touch_input.has_contacts();
         if first {
             // A previous sequence can have lifted in this same input frame.

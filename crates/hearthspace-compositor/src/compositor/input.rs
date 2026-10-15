@@ -17,6 +17,7 @@ use crate::config::WHEEL_SCROLL_PIXEL_EQUIVALENT;
 use super::{App, HitTarget, idle::ActivityReason};
 
 mod buttons;
+mod favorite_drawing;
 mod interactive;
 mod keyboard;
 #[cfg(feature = "winit")]
@@ -29,6 +30,7 @@ mod scroll;
 mod touch;
 mod touch_tracker;
 
+pub(super) use favorite_drawing::FavoriteDrawing;
 pub(super) use keyboard::KeyboardShortcuts;
 #[cfg(feature = "winit")]
 pub(super) use nested::handle_winit_input;
@@ -44,6 +46,10 @@ pub(in crate::compositor) fn handle_input_event<B: InputBackend>(
 ) {
     match event {
         InputEvent::DeviceRemoved { device } => {
+            state.favorite_device_removed(&device.id());
+            if device.has_capability(DeviceCapability::Pointer) {
+                state.favorite_pointer_removed();
+            }
             if device.has_capability(DeviceCapability::Keyboard) {
                 // Key state is shared across physical and agent keyboards. A
                 // removed keyboard cannot finish a held Meta/Alt chord. Cancel
@@ -174,12 +180,19 @@ pub(in crate::compositor) fn handle_input_event<B: InputBackend>(
             let output = state.primary_output_logical_rect();
             let location =
                 touch_location_in_primary_output(event.position_transformed(output.size), output);
-            state
-                .touch_input
-                .motion(&event.device().id(), event.slot(), location);
+            if !state.favorite_touch_motion(&event.device().id(), event.slot(), location) {
+                state
+                    .touch_input
+                    .motion(&event.device().id(), event.slot(), location);
+            }
         }
-        InputEvent::TouchUp { event } => state.touch_input.up(&event.device().id(), event.slot()),
+        InputEvent::TouchUp { event } => {
+            if !state.favorite_touch_up(&event.device().id(), event.slot(), false) {
+                state.touch_input.up(&event.device().id(), event.slot());
+            }
+        }
         InputEvent::TouchCancel { event } => {
+            state.favorite_touch_up(&event.device().id(), event.slot(), true);
             state.touch_input.cancel(&event.device().id(), event.slot());
             state.flush_touch_frame(&event.device().id(), event.time());
         }

@@ -39,6 +39,7 @@ fn state() -> ShellState {
 }
 fn view(state: &ShellState) -> impl WidgetView<ShellState, Widget = SizedBox> + use<> {
     sized_box(launcher::launcher_view(
+        state,
         &state.outputs[0],
         launcher::results(state, &state.outputs[0]),
         None,

@@ -1,6 +1,6 @@
 use std::{fs, io, process::Command, sync::Arc};
 
-use hearthspace_shell::app_catalog::{reap_child, spawn_argv_with_options};
+use hearthspace_shell::app_catalog::{AppCatalog, reap_child, spawn_argv_with_options};
 use smithay::reexports::calloop::{Interest, Mode as CalloopMode, PostAction, generic::Generic};
 use tracing::{debug, error, info, warn};
 use wayland_server::ListeningSocket;
@@ -70,11 +70,13 @@ impl App {
         Ok(())
     }
 
-    pub(super) fn launch_app(
+    pub(in crate::compositor) fn launch_app(
         &mut self,
         app_id: &str,
         output_name: Option<&str>,
     ) -> Result<(), String> {
+        // Resolve current installed entries so new favorites work and removed apps cannot launch stale commands.
+        self.app_catalog = AppCatalog::load();
         let app = self
             .app_catalog
             .app_by_id(app_id)

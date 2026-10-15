@@ -125,6 +125,9 @@ impl CalloopData {
         if let Some(reply) = self.run_automation_command(text) {
             return reply;
         }
+        if let Some(reply) = self.run_favorite_drawing_command(text) {
+            return reply;
+        }
         let Some(action) = ShellCommand::parse(text) else {
             return ControlReply::Err("invalid command".into());
         };

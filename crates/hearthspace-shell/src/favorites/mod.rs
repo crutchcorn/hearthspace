@@ -72,6 +72,20 @@ impl FavoriteStore {
         &self.entries
     }
 
+    /// Observe changes from Settings without rewriting anything. Malformed or
+    /// unreadable replacements leave the last successfully loaded favorites intact.
+    pub fn reload_if_changed(&mut self) -> Result<bool, FavoriteError> {
+        let Some(path) = &self.path else {
+            return Ok(false);
+        };
+        let updated = Self::load(path.clone())?;
+        if updated.disk_contents == self.disk_contents {
+            return Ok(false);
+        }
+        *self = updated;
+        Ok(true)
+    }
+
     pub fn add(&mut self, app_id: &str) -> Result<(), FavoriteError> {
         validate_id(app_id)?;
         if self.entries.iter().any(|entry| entry.app_id == app_id) {

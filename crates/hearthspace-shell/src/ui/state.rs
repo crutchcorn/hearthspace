@@ -15,6 +15,7 @@ pub(super) struct ShellState {
     pub(super) controls: super::control_state::Controls,
     pub(super) shell_events: Option<std::sync::Arc<super::shell_events::ShellEvents>>,
     pub(super) catalog: AppCatalog,
+    pub(super) favorites: super::favorite_state::Favorites,
     pub(super) windows: Vec<RunningWindow>,
     pub(super) windows_error: Option<String>,
     pub(super) canvas: Option<CanvasSnapshot>,
@@ -36,6 +37,7 @@ pub(super) struct ShellOutputInstance {
     pub(super) tray: super::tray_state::TrayOutput,
     pub(super) output_name: Option<String>,
     pub(super) query: String,
+    pub(super) drawing: super::favorite_state::Drawing,
     pub(super) selected_result: Option<super::search_selection::EntryId>,
     pub(super) selected_result_index: usize,
     pub(super) show_search: bool,
@@ -77,6 +79,7 @@ impl ShellState {
             controls: Default::default(),
             shell_events: None,
             catalog: AppCatalog::load(),
+            favorites: Default::default(),
             windows: Vec::new(),
             windows_error: None,
             canvas: None,
@@ -161,6 +164,7 @@ impl ShellState {
     }
 
     pub(super) fn dismiss_panels(&mut self) {
+        super::favorite_actions::cancel_all(self);
         self.canvas_dragging = false;
         for output in &mut self.outputs {
             output.dismiss_panels();
@@ -168,6 +172,10 @@ impl ShellState {
     }
 
     pub(super) fn toggle_search(&mut self, output_key: &str) {
+        if self.favorites.tracks_installed_apps {
+            self.catalog = AppCatalog::load();
+        }
+        super::favorite_events::reload(self);
         self.toggle_panel(output_key, Panel::Search);
     }
 
@@ -194,6 +202,7 @@ impl ShellState {
     }
 
     pub(super) fn dismiss_launcher(&mut self, output_key: &str) {
+        super::favorite_actions::cancel(self, output_key);
         self.canvas_dragging = false;
         if let Some(output) = self
             .outputs
@@ -205,6 +214,7 @@ impl ShellState {
     }
 
     pub(super) fn dismiss_search(&mut self, output_key: &str) {
+        super::favorite_actions::cancel(self, output_key);
         if let Some(output) = self
             .outputs
             .iter_mut()
@@ -242,6 +252,7 @@ impl ShellState {
     }
 
     pub(super) fn change_query(&mut self, output_key: &str, query: String) {
+        super::favorite_actions::cancel(self, output_key);
         self.canvas_dragging = false;
         if let Some(output) = self
             .outputs

@@ -219,3 +219,30 @@ fn stale_store_cannot_overwrite_another_shells_changes_or_a_deleted_file() {
     assert!(other.add("terminal.desktop").is_err());
     assert!(!path.exists());
 }
+
+#[test]
+fn reload_observes_settings_edits_but_preserves_known_data_on_parse_errors() {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("favorites.json");
+    let mut settings = FavoriteStore::load(&path).unwrap();
+    settings.add("editor.desktop").unwrap();
+    let mut shell = FavoriteStore::load(&path).unwrap();
+    assert!(!shell.reload_if_changed().unwrap());
+    settings.add("browser.desktop").unwrap();
+    assert!(shell.reload_if_changed().unwrap());
+    assert_eq!(shell.entries(), settings.entries());
+    assert!(!shell.reload_if_changed().unwrap());
+    std::fs::write(&path, "malformed replacement").unwrap();
+    assert!(shell.reload_if_changed().is_err());
+    assert_eq!(shell.entries(), settings.entries());
+    assert_eq!(
+        std::fs::read_to_string(&path).unwrap(),
+        "malformed replacement"
+    );
+    std::fs::remove_file(&path).unwrap();
+    assert!(shell.reload_if_changed().unwrap());
+    assert!(shell.entries().is_empty());
+    let mut memory = populated();
+    assert!(!memory.reload_if_changed().unwrap());
+    assert_eq!(memory.entries().len(), 1);
+}

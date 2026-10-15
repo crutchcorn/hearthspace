@@ -19,6 +19,7 @@ impl App {
     }
 
     pub(in crate::compositor) fn reset_session_input(&mut self) {
+        self.reset_favorite_input();
         self.control_events.clear();
         self.shortcuts.cancel_device_repeat();
         self.dismiss_control_osds();

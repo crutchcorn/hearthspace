@@ -2,6 +2,7 @@
 //! again before it can open UI, so queued requests cannot survive lock or VT loss.
 use std::{
     io,
+    os::fd::{AsFd, BorrowedFd},
     os::unix::{fs::FileTypeExt, fs::MetadataExt, fs::PermissionsExt, net::UnixDatagram},
     path::{Path, PathBuf},
     sync::Arc,
@@ -9,6 +10,10 @@ use std::{
 };
 
 use hearthspace_common::shell_event_socket_path;
+use tokio::{
+    io::{Interest, unix::AsyncFd},
+    time::{Instant, MissedTickBehavior, interval_at},
+};
 use xilem::{
     core::{MessageProxy, NoElement, View},
     view::task_raw,
@@ -44,29 +49,49 @@ impl ShellEvents {
         Ok(Arc::new(events))
     }
 
-    fn pending(&self) -> Vec<ShellRequest> {
+    #[cfg(test)]
+    fn pending(&self) -> Vec<Event> {
+        self.drain().unwrap().0
+    }
+
+    /// The second result is true only after recv reports WouldBlock. Hitting
+    /// the batch limit must retain readiness so a queued tail is read promptly.
+    fn drain(&self) -> io::Result<(Vec<Event>, bool)> {
         // Read one extra byte so truncated oversized datagrams are rejected.
         let mut bytes = [0; 4097];
-        let mut pending: Vec<ShellRequest> = Vec::new();
+        let mut pending: Vec<Event> = Vec::new();
         for _ in 0..32 {
             match self.socket.recv(&mut bytes) {
                 Ok(length) => {
-                    if let Some(request) = parse_request(&bytes[..length]) {
-                        if request.control.is_none() {
-                            pending.retain(|previous| previous.control.is_some());
+                    if let Some(request) = parse_event(&bytes[..length]) {
+                        if matches!(&request, Event::Request(request) if request.control.is_none())
+                        {
+                            pending.retain(|previous| {
+                                !matches!(previous,
+                                Event::Request(request) if request.control.is_none())
+                            });
                         }
                         pending.push(request);
                     }
                 }
-                Err(error) if error.kind() == io::ErrorKind::WouldBlock => break,
-                Err(error) => {
-                    tracing::warn!(%error, "shell event receive failed");
-                    break;
+                Err(error) if error.kind() == io::ErrorKind::WouldBlock => {
+                    return Ok((pending, true));
                 }
+                Err(error) if error.kind() == io::ErrorKind::Interrupted => continue,
+                Err(error) => return Err(error),
             }
         }
-        pending
+        Ok((pending, false))
     }
+}
+
+async fn receive(events: &ShellEvents, socket: &AsyncFd<BorrowedFd<'_>>) -> io::Result<Vec<Event>> {
+    let mut ready = socket.readable().await?;
+    let (pending, drained) = events.drain()?;
+    if drained {
+        ready.clear_ready();
+    }
+    Ok(pending)
 }
 
 fn remove_stale_socket(path: &Path) -> io::Result<()> {
@@ -114,6 +139,29 @@ struct ShellRequest {
     output: Option<String>,
 }
 
+#[derive(Clone, Debug, PartialEq)]
+enum Event {
+    Request(ShellRequest),
+    Gesture(super::favorite_events::GestureEvent),
+    RetryDrawing,
+    ReloadFavorites,
+}
+
+fn parse_event(bytes: &[u8]) -> Option<Event> {
+    if bytes.len() > 4096 {
+        return None;
+    }
+    let value: serde_json::Value = serde_json::from_slice(bytes).ok()?;
+    if value["version"].as_u64()? != 1 {
+        return None;
+    }
+    if value["action"].as_str()? == "favorite-gesture" {
+        super::favorite_events::parse(&value).map(Event::Gesture)
+    } else {
+        parse_request(bytes).map(Event::Request)
+    }
+}
+
 fn parse_request(bytes: &[u8]) -> Option<ShellRequest> {
     if bytes.len() > 4096 {
         return None;
@@ -156,23 +204,61 @@ fn parse_request(bytes: &[u8]) -> Option<ShellRequest> {
 pub(super) fn shell_events_task()
 -> impl View<ShellState, (), xilem::ViewCtx, Element = NoElement> + use<> {
     task_raw(
-        |proxy: MessageProxy<ShellRequest>, state: &mut ShellState| {
+        |proxy: MessageProxy<Event>, state: &mut ShellState| {
             let events = state.shell_events.clone();
             async move {
                 let Some(events) = events else {
                     return;
                 };
+                // SAFETY: events owns a stable, open descriptor for this entire
+                // task. This local registration is never forgotten or moved out,
+                // and is dropped before the Arc owning the socket on every exit.
+                let registration = unsafe {
+                    AsyncFd::register_with_interest(events.socket.as_fd(), Interest::READABLE)
+                };
+                let socket = match registration {
+                    Ok(socket) => socket,
+                    Err(error) => {
+                        tracing::warn!(%error, "cannot register shell event socket readiness");
+                        return;
+                    }
+                };
+                let retry_period = Duration::from_millis(250);
+                let reload_period = Duration::from_secs(1);
+                let mut retry = interval_at(Instant::now() + retry_period, retry_period);
+                let mut reload = interval_at(Instant::now() + reload_period, reload_period);
+                retry.set_missed_tick_behavior(MissedTickBehavior::Skip);
+                reload.set_missed_tick_behavior(MissedTickBehavior::Skip);
                 loop {
-                    for request in events.pending() {
-                        if proxy.message(request).is_err() {
-                            return;
+                    tokio::select! {
+                        pending = receive(&events, &socket) => {
+                            let pending = match pending {
+                                Ok(pending) => pending,
+                                Err(error) => {
+                                    tracing::warn!(%error, "shell event socket readiness failed");
+                                    return;
+                                }
+                            };
+                            for request in pending {
+                                if proxy.message(request).is_err() { return; }
+                            }
+                        }
+                        _ = retry.tick() => {
+                            if proxy.message(Event::RetryDrawing).is_err() { return; }
+                        }
+                        _ = reload.tick() => {
+                            if proxy.message(Event::ReloadFavorites).is_err() { return; }
                         }
                     }
-                    xilem::tokio::time::sleep(Duration::from_millis(25)).await;
                 }
             }
         },
-        apply_request,
+        |state, event| match event {
+            Event::Request(request) => apply_request(state, request),
+            Event::Gesture(event) => super::favorite_events::apply(state, event),
+            Event::RetryDrawing => super::favorite_events::retry(state),
+            Event::ReloadFavorites => super::favorite_events::reload(state),
+        },
     )
 }
 

@@ -66,6 +66,7 @@ fn search_overlay_focuses_input_and_enter_activates_matching_window() {
         .unwrap();
     let mut ctx = ViewCtx::new(Arc::new(NoMessages), Arc::new(runtime));
     let mut view = launcher::launcher_view(
+        &state,
         &state.outputs[0],
         launcher::results(&state, &state.outputs[0]),
         None,
@@ -97,6 +98,7 @@ fn search_overlay_focuses_input_and_enter_activates_matching_window() {
             let (environment, _, _) = message.finish();
             *ctx.environment() = environment;
             let next = launcher::launcher_view(
+                &state,
                 &state.outputs[0],
                 launcher::results(&state, &state.outputs[0]),
                 None,
@@ -139,6 +141,7 @@ fn launcher_creation_options_fit_results_headers_and_errors() {
             })
             .collect();
         let view = launcher_window(
+            &state,
             &state.outputs[0],
             results,
             catalog_error.then(|| "Catalog unavailable".into()),
