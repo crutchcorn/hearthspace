@@ -87,6 +87,10 @@ impl Supervisor {
         Ok(())
     }
 
+    pub(crate) fn start_login_guard(&self, args: &Args) -> std::io::Result<()> {
+        crate::login_session::start_guard(args, &self.paths, &self.shutdown_requested)
+    }
+
     pub(crate) fn start_settingsd(
         &mut self,
         max_restarts: usize,

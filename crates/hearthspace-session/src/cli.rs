@@ -13,6 +13,10 @@ pub(crate) struct Args {
     #[arg(long, conflicts_with = "dev")]
     pub(crate) installed: bool,
 
+    /// Own a complete display-manager login and clean up its scope on exit.
+    #[arg(long, requires = "installed")]
+    pub(crate) login_session: bool,
+
     /// Select a backend explicitly instead of detecting the host desktop.
     #[arg(long, value_enum)]
     pub(crate) backend: Option<Backend>,

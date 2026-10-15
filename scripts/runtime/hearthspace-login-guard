@@ -1,0 +1,262 @@
+#!/usr/bin/python3
+"""End only the verified graphical login after its supervisor exits or crashes."""
+
+import json
+import os
+import re
+import shutil
+import stat
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+
+def command(argv, *, missing_ok=False):
+    result = subprocess.run(
+        argv,
+        check=False,
+        stdin=subprocess.DEVNULL,
+        capture_output=True,
+        text=True,
+        timeout=5,
+    )
+    missing = missing_ok and "LoadState=not-found" in result.stdout.splitlines()
+    if result.returncode and not missing:
+        raise RuntimeError(f"{argv[0]} failed: {result.stderr.strip()}")
+    return result.stdout
+
+
+def properties(program, target, names):
+    text = command(
+        [
+            program,
+            "--no-ask-password",
+            "show-session" if program == "loginctl" else "show",
+            target,
+            "--property=" + ",".join(names),
+        ],
+        missing_ok=program == "systemctl",
+    )
+    return dict(line.split("=", 1) for line in text.splitlines() if "=" in line)
+
+
+def process_identity(pid, root=Path("/proc")):
+    path = root / str(pid)
+    try:
+        fields = (path / "stat").read_text().rsplit(")", 1)[1].split()
+        if fields[0] in ("Z", "X", "x"):
+            return None
+        return fields[19], (path / "cgroup").read_text(), path.stat().st_uid
+    except (FileNotFoundError, ProcessLookupError):
+        return None
+
+
+def login_scope(cgroup, uid):
+    match = re.fullmatch(
+        rf"0::(/user\.slice/user-{uid}\.slice/(session-([A-Za-z0-9]+)\.scope))\n?",
+        cgroup,
+    )
+    if match is None:
+        raise RuntimeError("supervisor is not in its own logind session scope")
+    return match.group(3), match.group(2), match.group(1)
+
+
+SESSION_PROPERTIES = (
+    "Id",
+    "User",
+    "Scope",
+    "Leader",
+    "Remote",
+    "Seat",
+    "Type",
+    "Class",
+    "Desktop",
+)
+
+
+def verify_session(value, identity):
+    expected = {
+        "Id": identity["session"],
+        "User": str(identity["uid"]),
+        "Scope": identity["scope"],
+        "Remote": "no",
+        "Type": "wayland",
+        "Class": "user",
+    }
+    if any(value.get(key) != item for key, item in expected.items()) or not value.get(
+        "Seat"
+    ):
+        raise RuntimeError(
+            "login session ownership changed or is not a local Wayland login"
+        )
+    if value.get("Desktop", "").lower() != "hearthspace":
+        raise RuntimeError(
+            "cleanup ownership requires a Hearthspace login, not another desktop"
+        )
+    if not value.get("Leader", "").isdecimal() or int(value["Leader"]) == 0:
+        raise RuntimeError("login session has no valid leader")
+    if "leader" in identity and value["Leader"] != identity["leader"]:
+        raise RuntimeError("login session leader changed")
+    if "seat" in identity and value["Seat"] != identity["seat"]:
+        raise RuntimeError("login session seat changed")
+
+
+def runtime_identity(runtime, uid):
+    host = Path(f"/run/user/{uid}")
+    normal = runtime.parent == host / "hearthspace" and re.fullmatch(
+        r"session-[0-9]+", runtime.name
+    )
+    harness = runtime.parent == host and re.fullmatch(
+        r"hearthspace-native-[a-f0-9]+", runtime.name
+    )
+    if not (normal or harness) or runtime.resolve() != runtime:
+        raise RuntimeError("not a private Hearthspace login runtime")
+    meta = runtime.lstat()
+    if not stat.S_ISDIR(meta.st_mode) or meta.st_uid != uid or meta.st_mode & 0o077:
+        raise RuntimeError(
+            "login runtime must be a private directory owned by the user"
+        )
+    return meta.st_dev, meta.st_ino
+
+
+def establish(pid, start, runtime):
+    uid = os.getuid()
+    actual = process_identity(pid)
+    if actual is None or actual[0] != start or actual[2] != uid:
+        raise RuntimeError(
+            "login supervisor identity is stale or belongs to another user"
+        )
+    session, scope, cgroup = login_scope(actual[1], uid)
+    if f"0::{cgroup}\n" == Path("/proc/self/cgroup").read_text():
+        raise RuntimeError("cleanup guard must run outside the login session")
+    identity = {
+        "pid": pid,
+        "start": start,
+        "uid": uid,
+        "session": session,
+        "scope": scope,
+        "cgroup": cgroup,
+    }
+    value = properties("loginctl", session, SESSION_PROPERTIES)
+    verify_session(value, identity)
+    identity["leader"] = value["Leader"]
+    identity["seat"] = value["Seat"]
+    leader = process_identity(int(value["Leader"]))
+    identity["leader_start"] = leader[0] if leader else None
+    identity["runtime_identity"] = runtime_identity(runtime, uid)
+    return identity
+
+
+def alive(identity):
+    actual = process_identity(identity["pid"])
+    return actual is not None and actual == (
+        identity["start"],
+        f"0::{identity['cgroup']}\n",
+        identity["uid"],
+    )
+
+
+def scope_stopped(scope):
+    value = properties("systemctl", scope, ("LoadState", "ActiveState"))
+    return value.get("LoadState") == "not-found" or value.get("ActiveState") in (
+        "inactive",
+        "failed",
+    )
+
+
+def terminate(identity):
+    if scope_stopped(identity["scope"]):
+        return
+    try:
+        value = properties("loginctl", identity["session"], SESSION_PROPERTIES)
+    except RuntimeError:
+        # GDM may have completed normal teardown between these two queries.
+        if scope_stopped(identity["scope"]):
+            return
+        raise
+    verify_session(value, identity)
+    leader = process_identity(int(identity["leader"]))
+    if (
+        leader
+        and identity["leader_start"] is not None
+        and leader[0] != identity["leader_start"]
+    ):
+        raise RuntimeError("login leader PID was reused; refusing session termination")
+    # logind authorizes the owning UID. Never ask for authentication or choose
+    # whichever session happens to be active now.
+    try:
+        command(
+            ["loginctl", "--no-ask-password", "terminate-session", identity["session"]]
+        )
+    except RuntimeError:
+        if scope_stopped(identity["scope"]):
+            return
+        raise
+    deadline = time.monotonic() + 100  # logind scope stop may use the host's 90s limit.
+    while not scope_stopped(identity["scope"]):
+        if time.monotonic() >= deadline:
+            raise RuntimeError("owned login scope did not stop; runtime retained")
+        time.sleep(0.2)
+
+
+def mounted_paths(runtime):
+    paths = []
+    for line in Path("/proc/self/mountinfo").read_text().splitlines():
+        fields, filesystem = line.split(" - ", 1)
+        target = Path(
+            re.sub(
+                r"\\([0-7]{3})", lambda match: chr(int(match[1], 8)), fields.split()[4]
+            )
+        )
+        if target.is_relative_to(runtime):
+            paths.append((target, filesystem.split()[0]))
+    return paths
+
+
+def cleanup_runtime(runtime, identity):
+    if not runtime.exists():
+        return
+    if runtime_identity(runtime, identity["uid"]) != tuple(
+        identity["runtime_identity"]
+    ):
+        raise RuntimeError("runtime directory was replaced; refusing removal")
+    mounts = mounted_paths(runtime)
+    allowed = {(runtime / "doc", "fuse.portal"), (runtime / "gvfs", "fuse.gvfsd-fuse")}
+    if any(mount not in allowed for mount in mounts):
+        raise RuntimeError("unknown mount inside login runtime; refusing removal")
+    for target, _ in mounts:
+        command(["fusermount3", "-u", "-z", "--", str(target)])
+    if mounted_paths(runtime):
+        raise RuntimeError("login runtime is still mounted; refusing removal")
+    shutil.rmtree(runtime)
+
+
+def run(argv):
+    if len(argv) != 3 or not argv[0].isdecimal() or not argv[1].isdecimal():
+        raise RuntimeError("expected supervisor PID, start ticks, and private runtime")
+    pid, start, runtime = int(argv[0]), argv[1], Path(argv[2])
+    if pid <= 0:
+        raise RuntimeError("invalid supervisor PID")
+    identity = establish(pid, start, runtime)
+    ready = runtime / "login-guard-ready.json"
+    temporary = ready.with_suffix(".tmp")
+    temporary.write_text(json.dumps(identity) + "\n")
+    temporary.replace(ready)
+    print(json.dumps(dict(event="guard-ready", **identity)), flush=True)
+    while alive(identity):
+        time.sleep(0.1)
+    terminate(identity)
+    cleanup_runtime(runtime, identity)
+    print(
+        json.dumps({"event": "login-cleaned", "session": identity["session"]}),
+        flush=True,
+    )
+
+
+if __name__ == "__main__":
+    try:
+        run(sys.argv[1:])
+    except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as error:
+        print(f"hearthspace-login-guard: {error}", file=sys.stderr, flush=True)
+        sys.exit(1)
