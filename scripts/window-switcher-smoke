@@ -1,4 +1,11 @@
 #!/usr/bin/env python3
+import sys
+
+if "--keyboard" in sys.argv:
+    from agentlib.keyboard_device import worker_main
+
+    raise SystemExit(worker_main(sys.argv[1:]))
+
 from agentlib.window_switcher_smoke import main
 
 raise SystemExit(main())

@@ -9,6 +9,7 @@ from pathlib import Path
 from . import window_switcher_smoke_checks as checks
 from .control import ControlError
 from .daily import DailySmoke
+from .window_switcher_keyboard import unplug
 
 
 class WindowSwitcherSmoke(DailySmoke):
@@ -32,6 +33,7 @@ class WindowSwitcherSmoke(DailySmoke):
         self.step("ready", DailySmoke.ready)
         self.step("switcher-fixtures", checks.fixtures)
         self.step("held-alt-tab", checks.keyboard)
+        self.step("keyboard-unplug", unplug)
         for kind in ("touchpad", "touchscreen"):
             if self.args.device not in (kind, "both"):
                 continue
