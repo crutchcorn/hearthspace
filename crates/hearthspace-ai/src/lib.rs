@@ -5,6 +5,7 @@
 //! Ollama; Hugging Face is contacted solely for an explicit model install.
 
 mod decision;
+mod decision_request;
 mod download;
 mod http;
 mod model;

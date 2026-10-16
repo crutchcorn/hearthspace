@@ -229,3 +229,30 @@ fn context_budget_rejects_oversized_state_before_inference() {
         .unwrap_err();
     assert!(error.to_string().contains("input limit"));
 }
+
+#[test]
+fn decision_wire_format_preserves_instruction_order_and_escapes_titles() {
+    let (endpoint, requests, server) = mock(vec![answer(0.58)]);
+    let title = "Hearthspace \"documentation\" - Firefox";
+    DecisionClient::new(&endpoint)
+        .unwrap()
+        .gather(
+            &["Hearthspace editor".into(), "Hearthspace issues".into()],
+            &[candidate(1, title)],
+            &AtomicBool::new(false),
+            |_, _| {},
+        )
+        .unwrap();
+    server.join().unwrap();
+    let requests = requests.lock().unwrap();
+    // Compare the actual transmitted bytes: reparsing into Value would sort
+    // the fields and conceal the regression that changed live D1 decisions.
+    let wire = std::str::from_utf8(&requests[0].1).unwrap();
+    assert!(wire.contains("\"instructions\":{\"task\":"));
+    assert!(wire.find("\"task\":").unwrap() < wire.find("\"candidate_window_title\":").unwrap());
+    let decoded: Value = serde_json::from_slice(&requests[0].1).unwrap();
+    assert_eq!(
+        decoded["questions"]["relevant"]["instructions"]["candidate_window_title"],
+        title
+    );
+}

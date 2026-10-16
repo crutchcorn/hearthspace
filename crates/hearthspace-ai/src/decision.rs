@@ -8,7 +8,7 @@ use anyhow::{Context, Result, bail};
 use reqwest::Method;
 use serde_json::{Value, json};
 
-use crate::{MODEL_NAME, http::Ollama, model_files};
+use crate::{decision_request::relevance_request, http::Ollama, model_files};
 
 const TITLE_LIMIT: usize = 512;
 const GROUP_LIMIT: usize = 64;
@@ -90,7 +90,8 @@ impl DecisionClient {
                 bail!("Gather timed out; try a smaller group of windows");
             }
             if !candidate.title.trim().is_empty() {
-                let request = relevance_request(&state, &bounded_title(&candidate.title));
+                let title = bounded_title(&candidate.title);
+                let request = relevance_request(&state, &title);
                 let response = self.ollama.json(Method::POST, "/v1/systemone", Some(&request),
                     remaining.min(Duration::from_secs(60)))
                     .context("D1 decision failed; install D1 in Settings and use an Ollama version with /v1/systemone support")?;
@@ -109,19 +110,6 @@ impl DecisionClient {
 
 fn bounded_title(title: &str) -> String {
     title.chars().take(TITLE_LIMIT).collect()
-}
-
-fn relevance_request(state: &Value, title: &str) -> Value {
-    json!({
-        "model": MODEL_NAME, "keep_alive": 300, "state": state,
-        "questions": {"relevant": {
-            "type": "noul",
-            "instructions": {
-                "task": "Does this candidate relate to at least one selected window through a shared project, topic, or task? Shared application names alone do not count.",
-                "candidate_window_title": title
-            }
-        }}
-    })
 }
 
 fn relevance_probability(response: &Value) -> Result<f64> {

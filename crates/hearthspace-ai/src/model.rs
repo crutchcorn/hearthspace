@@ -92,7 +92,9 @@ impl ModelManager {
                 code if code.is_success() => status.installed = true,
                 _ => bail!("Ollama could not inspect D1: {value}"),
             }
-            let running = self.ollama.json(Method::GET, "/api/ps", None, QUICK)?;
+            let running = self
+                .ollama
+                .json(Method::GET, "/api/ps", None::<&Value>, QUICK)?;
             status.warm = running["models"].as_array().is_some_and(|models| {
                 models
                     .iter()
@@ -269,7 +271,9 @@ impl ModelManager {
             if remaining.is_zero() {
                 bail!("D1 is still in use; retry after gathering finishes");
             }
-            let running = self.ollama.json(Method::GET, "/api/ps", None, remaining)?;
+            let running = self
+                .ollama
+                .json(Method::GET, "/api/ps", None::<&Value>, remaining)?;
             let models = running["models"]
                 .as_array()
                 .context("Ollama returned no running-model list")?;

@@ -2,6 +2,7 @@ use std::{io::Read, net::IpAddr, time::Duration};
 
 use anyhow::{Context, Result, bail};
 use reqwest::{Method, StatusCode, Url, blocking::Client};
+use serde::Serialize;
 use serde_json::Value;
 
 #[derive(Clone)]
@@ -49,11 +50,11 @@ impl Ollama {
         })
     }
 
-    pub fn request(
+    pub fn request<T: Serialize + ?Sized>(
         &self,
         method: Method,
         path: &str,
-        body: Option<&Value>,
+        body: Option<&T>,
         timeout: Duration,
     ) -> Result<(StatusCode, Value)> {
         let mut request = self
@@ -88,11 +89,11 @@ impl Ollama {
         Ok((status, value))
     }
 
-    pub fn json(
+    pub fn json<T: Serialize + ?Sized>(
         &self,
         method: Method,
         path: &str,
-        body: Option<&Value>,
+        body: Option<&T>,
         timeout: Duration,
     ) -> Result<Value> {
         let (status, value) = self.request(method, path, body, timeout)?;
