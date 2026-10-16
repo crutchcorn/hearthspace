@@ -29,6 +29,10 @@ After [setting up the development dependencies](./CONTRIBUTING.md), start a full
 session with `cargo run -- --dev --no-watch-apps`. From a real Linux TTY this uses
 the native DRM/KMS backend; inside another desktop it opens a nested window.
 
+To control the physical development desktop remotely, install WayVNC and start
+with `cargo run -- --dev --no-watch-apps --vnc` from a Linux TTY. Connect a VNC
+viewer through SSH as described in [remote desktop setup](./docs/REMOTE_DESKTOP.md).
+
 To choose Hearthspace at the graphical login screen, run
 `scripts/install-session install` as your normal user, then log out and select
 **Hearthspace** in the session chooser. The installer builds an optimized native

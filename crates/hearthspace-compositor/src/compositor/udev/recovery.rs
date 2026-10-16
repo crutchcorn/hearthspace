@@ -97,6 +97,8 @@ impl CalloopData {
 
 pub(super) fn activate_session(data: &mut CalloopData) {
     let mut budget = RecoveryBudget::new(Instant::now());
+    data.state.set_remote_input_active(false);
+    data.state.remote_capture.stop();
     data.state.reset_session_input();
     data.state.invalidate_lock_presentation();
     data.captures.invalidate("native session is recovering");

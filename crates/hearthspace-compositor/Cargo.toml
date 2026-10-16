@@ -79,6 +79,8 @@ xcursor = "0.3.11"
 
 [dev-dependencies]
 wayland-client = "0.31.15"
+wayland-protocols-misc = { version = "0.3.12", features = ["client"] }
+wayland-protocols-wlr = { version = "0.3.12", features = ["client"] }
 wayland-protocols = { version = "0.32.13", features = ["client"] }
 proptest = "1.12.0"
 rstest = "0.27.0"

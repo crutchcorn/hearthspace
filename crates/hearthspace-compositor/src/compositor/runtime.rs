@@ -141,6 +141,10 @@ pub(in crate::compositor) fn run_event_loop(
             (Some(a), Some(b)) => Some(a.min(b)),
             (a, b) => a.or(b),
         };
+        let timeout = match (timeout, data.state.remote_capture.timeout()) {
+            (Some(a), Some(b)) => Some(a.min(b)),
+            (a, b) => a.or(b),
+        };
         let timeout = match (timeout, data.state.shortcuts.device_repeat_timeout()) {
             (Some(a), Some(b)) => Some(a.min(b)),
             (a, b) => a.or(b),

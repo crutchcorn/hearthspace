@@ -23,6 +23,7 @@ use crate::{
 mod commands;
 mod notifications;
 mod startup;
+mod wayvnc;
 
 pub(crate) struct Supervisor {
     mode: RunMode,
@@ -43,6 +44,8 @@ pub(crate) struct Supervisor {
     app_scopes: Option<crate::app_scopes::AppScopes>,
     power: Option<crate::power::PowerManager>,
     ai: Option<crate::ai::SessionModel>,
+    wayvnc_config: Option<crate::wayvnc::Configuration>,
+    wayvnc: Option<ManagedProcess>,
 }
 
 impl Supervisor {
@@ -52,6 +55,7 @@ impl Supervisor {
         session_env: SessionEnv,
         shutdown_requested: Arc<AtomicBool>,
         args: &Args,
+        wayvnc_config: Option<crate::wayvnc::Configuration>,
     ) -> Self {
         Self {
             mode,
@@ -72,6 +76,8 @@ impl Supervisor {
             app_scopes: None,
             power: None,
             ai: None,
+            wayvnc_config,
+            wayvnc: None,
         }
     }
 
@@ -132,11 +138,11 @@ impl Supervisor {
                     .push((crate::app_scopes::OWNER_ENV.into(), owner.unit().into()));
             }
         }
-        let mut spec = self.binary_spec(
-            "hearthspace-compositor",
-            &[hearthspace_common::NO_SHELL_FLAG, backend_flag],
-            false,
-        );
+        let mut compositor_args = vec![hearthspace_common::NO_SHELL_FLAG, backend_flag];
+        if self.wayvnc_config.is_some() {
+            compositor_args.push("--remote-desktop");
+        }
+        let mut spec = self.binary_spec("hearthspace-compositor", &compositor_args, false);
         configure_compositor_environment(&mut spec, backend);
         self.compositor = Some(ManagedProcess::spawn(spec, 0)?);
         self.record_processes()?;
@@ -294,6 +300,7 @@ impl Supervisor {
             if self.desktop_services.poll(&self.shutdown_requested) {
                 self.record_processes()?;
             }
+            self.poll_wayvnc();
 
             thread::sleep(Duration::from_millis(100));
         }
@@ -303,6 +310,7 @@ impl Supervisor {
         info!("shutting down Hearthspace session processes");
         self.ai.take();
         self.power.take();
+        terminate_process(&mut self.wayvnc);
         terminate_process(&mut self.shell);
         terminate_process(&mut self.compositor);
         terminate_process(&mut self.settingsd);
@@ -311,6 +319,7 @@ impl Supervisor {
 
         self.desktop_services.shutdown();
 
+        wait_then_kill_process(&mut self.wayvnc);
         wait_then_kill_process(&mut self.shell);
         wait_then_kill_process(&mut self.compositor);
         wait_then_kill_process(&mut self.settingsd);
@@ -339,23 +348,6 @@ impl Supervisor {
             self.startup_deadline,
             self.shutdown_requested.load(Ordering::SeqCst),
             child,
-        )
-    }
-
-    fn record_processes(&self) -> std::io::Result<()> {
-        let pid =
-            |process: &Option<ManagedProcess>| process.as_ref().map_or(0, ManagedProcess::pid);
-        fs::write(
-            self.paths.session_dir.join("processes.json"),
-            format!(
-                "{{\"supervisor\":{},\"settingsd\":{},\"compositor\":{},\"shell\":{},\"notifications\":{}{}}}\n",
-                std::process::id(),
-                pid(&self.settingsd),
-                pid(&self.compositor),
-                pid(&self.shell),
-                pid(&self.notifications),
-                self.desktop_services.process_json_fields(),
-            ),
         )
     }
 

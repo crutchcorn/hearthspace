@@ -22,7 +22,7 @@ class LauncherWrapperTests(unittest.TestCase):
             )
             with (
                 self.subTest(no_build=no_build),
-                patch("agentlib.cli.subprocess.run") as run,
+                patch("agentlib.native.subprocess.run") as run,
             ):
                 run.return_value = SimpleNamespace(
                     returncode=0, stdout=json.dumps({"ok": True})

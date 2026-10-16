@@ -3,7 +3,7 @@ use std::collections::HashSet;
 use hearthspace_shell::{ShellCommand, SpawnTarget};
 use smithay::{
     backend::input::{InputTime, KeyState},
-    input::keyboard::{FilterResult, Keycode, ModifiersState, keysyms},
+    input::keyboard::{FilterResult, KeyboardSource, Keycode, ModifiersState, keysyms},
     utils::SERIAL_COUNTER,
 };
 
@@ -142,7 +142,19 @@ impl App {
         state: KeyState,
         time: InputTime,
     ) {
-        if self.buffer_pending_search_key(code, state, time) {
+        self.handle_keyboard_input_from_source(KeyboardSource::MAIN, code, state, time);
+    }
+
+    pub(in crate::compositor) fn handle_keyboard_input_from_source(
+        &mut self,
+        source: KeyboardSource,
+        code: Keycode,
+        state: KeyState,
+        time: InputTime,
+    ) {
+        if !self.activate_keyboard_source(source)
+            || self.buffer_pending_search_key(source, code, state, time)
+        {
             return;
         }
         let keyboard = self.keyboard.clone();
@@ -151,7 +163,8 @@ impl App {
         let shell_panel_focused = self.active_shell_panel_index().is_some();
         let group_visible = self.group_keyboard_visible();
         let previous_modifiers = keyboard.modifier_state();
-        let intercepted = keyboard.input(
+        let intercepted = keyboard.input_from_source(
+            source,
             self,
             code,
             state,

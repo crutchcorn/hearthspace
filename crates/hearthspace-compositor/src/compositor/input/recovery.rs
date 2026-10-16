@@ -35,6 +35,7 @@ impl App {
         self.drag = None;
         self.finish_resize();
         let time = InputTime::now();
+        self.reset_remote_input();
         // Deliver releases to the existing focus/grab before dismissing it.
         // Shortcut releases use the normal filter so intercepted presses cannot
         // leak an unmatched release to the client.
@@ -49,6 +50,7 @@ impl App {
                 state: ButtonState::Released,
             });
         }
+        self.clear_pointer_sources();
         self.pointer.clone().frame(self);
         if let Some(mut grab) = self.popup_grab.take() {
             grab.ungrab(PopupUngrabStrategy::All);

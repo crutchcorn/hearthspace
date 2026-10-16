@@ -91,7 +91,7 @@ def service_command(state):
         "XDG_SEAT": "seat0",
         "XDG_VTNR": state["vt"],
         "LIBSEAT_BACKEND": "logind",
-        "PATH": f"{state['binary_dir']}:/usr/local/bin:/usr/bin:/bin",
+        "PATH": f"{state['binary_dir']}:{state.get('dev_path') or '/usr/local/bin:/usr/bin:/bin'}",
         "HOME": state["home"],
         "LANG": "C.UTF-8",
         "HEARTHSPACE_ISOLATE_APP_PROFILES": "1",
@@ -159,6 +159,10 @@ def launch(args):
             "binary_dir": str(Path(args.binary_dir).resolve()),
             "login_session": getattr(args, "login_session", False),
             "isolated_profile": getattr(args, "isolated_profile", False),
+            "dev": getattr(args, "dev", False),
+            "dev_path": getattr(args, "dev_path", None),
+            "vnc": getattr(args, "vnc", False),
+            "vnc_port": getattr(args, "vnc_port", None) or 5900,
             "started_at": time.time(),
             "compositor": str(args.compositor.resolve()) if args.compositor else None,
         }
@@ -213,8 +217,12 @@ def exec_session(state_file):
     env.update(isolated_environment(state))
     # PAM may replace the service's original PATH. Restore the selected build
     # before the private bus starts so clients and activated services agree.
-    inherited_path = env.get("PATH") or "/usr/local/bin:/usr/bin:/bin"
+    inherited_path = (
+        state.get("dev_path") if state.get("dev") else env.get("PATH")
+    ) or "/usr/local/bin:/usr/bin:/bin"
     env["PATH"] = f"{state['binary_dir']}:{inherited_path}"
+    if state.get("dev"):
+        env["CARGO_TARGET_DIR"] = str(ROOT / "target")
     if state.get("login_session", False):
         # Match the installed launcher before starting the private bus, so the
         # shell and activated services discover this exact release's assets.
@@ -233,13 +241,11 @@ def exec_session(state_file):
         "/usr/bin/dbus-run-session",
         "--",
         supervisor,
-        "--installed",
+        "--dev" if state.get("dev") else "--installed",
         "--backend",
         "native",
         "--session-dir",
         state["runtime_dir"],
-        "--binary-dir",
-        state["binary_dir"],
         "--startup-timeout",
         str(max(1, int(state["startup_timeout"]))),
         "--log-level",
@@ -247,6 +253,10 @@ def exec_session(state_file):
         "--no-watch-apps",
         "--private-session-bus",
     ]
+    if not state.get("dev"):
+        args.extend(["--binary-dir", state["binary_dir"]])
+    if state.get("vnc"):
+        args.extend(["--vnc", "--vnc-port", str(state["vnc_port"])])
     if state.get("compositor"):
         args.extend(["--compositor-binary", state["compositor"]])
     if state.get("login_session", False):

@@ -6,7 +6,7 @@ use super::*;
 fn fullscreen_group_visibility_matches_pointer_and_keyboard_input() {
     let _guard = headless_test_guard();
     let mut compositor =
-        HeadlessCompositor::spawn_with_command("1280x800", None, None, 1, |command| {
+        HeadlessCompositor::spawn_with_command("1280x800", None, None, 1, false, |command| {
             command.env("HEARTHSPACE_OLLAMA_URL", "http://127.0.0.1:1");
         });
     drop(compositor.wait_for_socket());

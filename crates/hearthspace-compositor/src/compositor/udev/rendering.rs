@@ -3,9 +3,12 @@ use std::time::Instant;
 use super::{UdevBackendState, event_cutoff::SurfaceEvent};
 use crate::compositor::capture::{CaptureState, read_pixels};
 use smithay::{
-    backend::{drm::DrmEventMetadata, renderer::Bind},
+    backend::{
+        drm::{DrmEventMetadata, DrmEventTime},
+        renderer::{Bind, damage::OutputDamageTracker},
+    },
     reexports::drm::control::crtc,
-    utils::Rectangle,
+    utils::{Clock, Monotonic, Rectangle, Transform},
 };
 use tracing::{debug, trace, warn};
 
@@ -27,8 +30,10 @@ impl UdevBackendState {
     ) -> Result<bool, Box<dyn std::error::Error>> {
         if state.session_locked() {
             captures.invalidate("session is locked");
+            state.remote_capture.stop();
         }
         if self.drm_commits_paused {
+            state.remote_capture.stop();
             debug!("skipping native render while DRM commits are paused");
             self.frame_dirty = true;
             if let Some(device) = &mut self.primary_device {
@@ -75,20 +80,51 @@ impl UdevBackendState {
             let mut capture = None;
             let damage = {
                 let mut framebuffer = renderer.bind(&mut dmabuf)?;
+                // When scanout contains a software cursor, obtain a cursor-free
+                // scene first for sessions that did not request PaintCursors.
+                // The real scanout render below is always restored in full.
+                let clean = if state.software_cursor_visible
+                    && state.remote_capture.wants_cursorless(&view.name)
+                {
+                    let size = output.target.output_size();
+                    let mut scratch =
+                        OutputDamageTracker::new(size, f64::from(view.scale), Transform::Normal);
+                    let visible = std::mem::replace(&mut state.software_cursor_visible, false);
+                    let rendered = state.render_frame_at(
+                        renderer,
+                        &mut framebuffer,
+                        &mut scratch,
+                        0,
+                        Rectangle::new(view.location, view.size),
+                        view.scale,
+                    );
+                    state.software_cursor_visible = visible;
+                    match rendered.and_then(|_| read_pixels(renderer, &framebuffer, size, false)) {
+                        Ok(pixels) => Some(pixels),
+                        Err(error) => {
+                            warn!(%error, "cursor-free remote readback failed");
+                            state.remote_capture.fail_output(&view.name);
+                            None
+                        }
+                    }
+                } else {
+                    None
+                };
                 let damage = state.render_frame_at(
                     renderer,
                     &mut framebuffer,
                     &mut output.damage_tracker,
-                    age,
+                    if clean.is_some() { 0 } else { age },
                     Rectangle::new(view.location, view.size),
                     view.scale,
                 )?;
-                if captures.wanted(&view.name) {
+                if captures.wanted(&view.name) || state.remote_capture.wanted(&view.name) {
                     let result = (|| -> Result<_, Box<dyn std::error::Error>> {
                         let size = output.target.output_size();
                         // Native GBM rows already follow scanout's top-down order.
                         // Nested EGL surfaces use Flipped180 and need a row reversal.
                         let mut pixels = read_pixels(renderer, &framebuffer, size, false)?;
+                        let plain = clean.unwrap_or_else(|| pixels.clone());
                         let mut cursor_source = "framebuffer";
                         if let Some((crtc, cursor)) = &cursor
                             && *crtc == output.gbm_surface.crtc()
@@ -101,12 +137,13 @@ impl UdevBackendState {
                             .into_iter()
                             .find(|o| o.name == view.name)
                             .ok_or("capture output disappeared")?;
-                        Ok((metadata, size, pixels, cursor_source))
+                        Ok((metadata, size, plain, pixels, cursor_source))
                     })();
                     match result {
                         Ok(frame) => capture = Some(frame),
                         Err(error) => {
-                            captures.fail(&view.name, &format!("native readback failed: {error}"))
+                            captures.fail(&view.name, &format!("native readback failed: {error}"));
+                            state.remote_capture.fail_output(&view.name);
                         }
                     }
                 }
@@ -118,12 +155,20 @@ impl UdevBackendState {
             let _damage = damage;
             if let Err(error) = output.gbm_surface.queue_buffer(None, None, ()) {
                 captures.fail(&view.name, &format!("native presentation failed: {error}"));
+                state.remote_capture.fail_output(&view.name);
                 return Err(error.into());
             }
-            if let Some((metadata, size, pixels, cursor_source)) = capture
-                && let Err(error) = captures.stage_pixels(metadata, size, pixels, cursor_source)
-            {
-                captures.fail(&view.name, &format!("native encoding failed: {error}"));
+            if let Some((metadata, size, plain, pixels, cursor_source)) = capture {
+                if state.remote_capture.wanted(&view.name) {
+                    state
+                        .remote_capture
+                        .stage(&view.name, size, plain, Some(pixels.clone()));
+                }
+                if captures.wanted(&view.name)
+                    && let Err(error) = captures.stage_pixels(metadata, size, pixels, cursor_source)
+                {
+                    captures.fail(&view.name, &format!("native encoding failed: {error}"));
+                }
             }
             output.lock_frame_generation = state.lock_frame_generation();
             output.frame_pending = true;
@@ -179,6 +224,9 @@ impl UdevBackendState {
             return Ok(None);
         }
         if event == SurfaceEvent::Untimed {
+            state
+                .remote_capture
+                .fail_output(output.target.connector_name());
             // A modeset completion without a timestamp can unblock the GBM
             // queue, but cannot prove this generation reached the display.
             // Discard its readback and lock marker; verify a fresh normal flip.
@@ -203,8 +251,22 @@ impl UdevBackendState {
         output.presented_once = true;
         if state.session_locked() {
             captures.invalidate("session is locked");
+            state.remote_capture.stop();
         } else {
             captures.presented(output.target.connector_name(), "page-flip");
+            if self.session_active && !self.drm_commits_paused {
+                let timestamp = match metadata.map(|m| m.time) {
+                    Some(DrmEventTime::Monotonic(time)) => time,
+                    // The protocol requires CLOCK_MONOTONIC even on old DRM
+                    // drivers reporting CLOCK_REALTIME page-flip timestamps.
+                    _ => Clock::<Monotonic>::new().now().into(),
+                };
+                state
+                    .remote_capture
+                    .presented(output.target.connector_name(), timestamp);
+            } else {
+                state.remote_capture.stop();
+            }
         }
         if let Some(generation) = output.lock_frame_generation.take() {
             state.lock_frame_presented(output.target.connector_name(), generation);

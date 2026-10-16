@@ -2,6 +2,24 @@ use super::*;
 use crate::{dev_cargo::dev_cargo_args, process::ProcessSpec, session_env::repo_root};
 
 impl Supervisor {
+    pub(super) fn record_processes(&self) -> std::io::Result<()> {
+        let pid =
+            |process: &Option<ManagedProcess>| process.as_ref().map_or(0, ManagedProcess::pid);
+        fs::write(
+            self.paths.session_dir.join("processes.json"),
+            format!(
+                "{{\"supervisor\":{},\"settingsd\":{},\"compositor\":{},\"shell\":{},\"notifications\":{},\"wayvnc\":{}{}}}\n",
+                std::process::id(),
+                pid(&self.settingsd),
+                pid(&self.compositor),
+                pid(&self.shell),
+                pid(&self.notifications),
+                pid(&self.wayvnc),
+                self.desktop_services.process_json_fields(),
+            ),
+        )
+    }
+
     pub(super) fn binary_spec(
         &self,
         binary: &'static str,
@@ -49,7 +67,7 @@ impl Supervisor {
         }
     }
 
-    fn child_env(&self, include_client_wayland: bool) -> Vec<(String, String)> {
+    pub(super) fn child_env(&self, include_client_wayland: bool) -> Vec<(String, String)> {
         self.session_env
             .vars
             .iter()

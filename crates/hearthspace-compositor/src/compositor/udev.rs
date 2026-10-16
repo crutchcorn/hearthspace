@@ -160,6 +160,8 @@ pub fn run_udev(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> {
 
     handle.insert_source(session_notifier, |event, _, data| match event {
         SessionEvent::PauseSession => {
+            data.state.set_remote_input_active(false);
+            data.state.remote_capture.stop();
             data.state.reset_session_input();
             data.state.invalidate_lock_presentation();
             data.captures.invalidate("native session became inactive");
@@ -174,6 +176,7 @@ pub fn run_udev(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> {
 
     handle.insert_source(udev_backend, |event, _, data| match event {
         UdevEvent::Added { device_id, path } => {
+            data.state.remote_capture.stop();
             info!(device_id, path = %path.display(), "DRM device added");
             let output_descriptors = if let Some(backend) = udev_backend_mut(data) {
                 backend.add_or_update_device(device_id, path);
@@ -197,6 +200,8 @@ pub fn run_udev(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> {
             data.state.request_redraw();
         }
         UdevEvent::Removed { device_id } => {
+            data.state.set_remote_input_active(false);
+            data.state.remote_capture.stop();
             data.captures.invalidate("native display device removed");
             info!(device_id, "DRM device removed");
             let output_descriptors = if let Some(backend) = udev_backend_mut(data) {
@@ -277,6 +282,7 @@ fn apply_connector_sync(data: &mut super::CalloopData, connector_sync: Connector
     let Some(descriptors) = connector_sync.descriptors else {
         return;
     };
+    data.state.remote_capture.stop();
     data.captures
         .invalidate("native output configuration changed");
     let dh = data.display.handle();

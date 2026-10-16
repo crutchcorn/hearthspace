@@ -2536,6 +2536,8 @@ dependencies = [
  "waydriver-hearthspace",
  "wayland-client",
  "wayland-protocols",
+ "wayland-protocols-misc",
+ "wayland-protocols-wlr",
  "wayland-server",
  "xcursor",
  "xilem",

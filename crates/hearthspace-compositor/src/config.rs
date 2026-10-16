@@ -10,6 +10,7 @@ pub const SHELL_FLAG: &str = "--shell";
 pub const HEADLESS_FLAG: &str = "--headless";
 pub const TTY_FLAG: &str = "--tty";
 pub const WINIT_FLAG: &str = "--winit";
+pub const REMOTE_DESKTOP_FLAG: &str = "--remote-desktop";
 pub const GTK_TEST_APP_ID: &str = "dev.hearthspace.A11yTest";
 pub const GTK_TEST_APP_TITLE: &str = "Hearthspace Research Demo";
 pub const GTK_CLIENT_CONFIG_DIR_NAME: &str = "hearthspace-gtk-client-config";

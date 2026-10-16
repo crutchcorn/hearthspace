@@ -14,6 +14,20 @@ impl App {
         state: ButtonState,
         time: InputTime,
     ) {
+        self.handle_pointer_button_from_source(
+            super::remote::PointerSource::Local,
+            button,
+            state,
+            time,
+        );
+    }
+
+    pub(in crate::compositor::input) fn handle_pointer_button_policy(
+        &mut self,
+        button: u32,
+        state: ButtonState,
+        time: InputTime,
+    ) {
         self.shortcuts.cancel_meta_tap();
         if state == ButtonState::Pressed {
             self.cancel_pending_search();

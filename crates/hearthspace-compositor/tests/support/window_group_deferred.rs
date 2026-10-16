@@ -7,7 +7,7 @@ fn gather_completion_waits_for_group_drag_and_clear_discards_deferred_results() 
     let _guard = headless_test_guard();
     let server = mock::MockOllama::start();
     let mut compositor =
-        HeadlessCompositor::spawn_with_command("1280x800", None, None, 1, |command| {
+        HeadlessCompositor::spawn_with_command("1280x800", None, None, 1, false, |command| {
             command.env("HEARTHSPACE_OLLAMA_URL", &server.url);
         });
     drop(compositor.wait_for_socket());
@@ -69,7 +69,7 @@ fn gather_completion_waits_for_candidate_client_move_and_resize() {
     let _guard = headless_test_guard();
     let server = mock::MockOllama::start();
     let mut compositor =
-        HeadlessCompositor::spawn_with_command("1280x800", None, None, 1, |command| {
+        HeadlessCompositor::spawn_with_command("1280x800", None, None, 1, false, |command| {
             command.env("HEARTHSPACE_OLLAMA_URL", &server.url);
         });
     drop(compositor.wait_for_socket());

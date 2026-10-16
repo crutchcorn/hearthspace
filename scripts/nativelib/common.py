@@ -174,6 +174,10 @@ def wait_ready(state, timeout):
                 or metadata.get("presentation") != "page-flip"
             ):
                 raise RuntimeError("native capture has no successfully presented frame")
+            if state.get("vnc"):
+                # WayVNC starts after shell presentation. Its failure is optional:
+                # return its recorded error without tearing down the physical desktop.
+                state["wayvnc"] = load(Path(state["runtime_dir"]) / "wayvnc.json")
             session = Path(state["session_dir"])
             (session / "ready.png").write_bytes(png)
             save(session / "ready.json", metadata)

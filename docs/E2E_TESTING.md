@@ -72,6 +72,8 @@ Headless mode is the right E2E default because it is:
 Run headless regressions with the `e2e` feature:
 
 ```sh
+export LIBGL_ALWAYS_SOFTWARE=1 GSK_RENDERER=cairo
+export VK_DRIVER_FILES=/usr/share/vulkan/icd.d/lvp_icd.json
 cargo test -p hearthspace-compositor --features e2e --test headless_control
 cargo test -p hearthspace-compositor --features e2e --test waydriver_hearthspace
 ```
@@ -90,9 +92,22 @@ clipboard smoke command.
 CI runs the ordinary workspace and Python tests separately from the full E2E
 configuration. The E2E job enables `udev,e2e,test-apps`, runs Rust tests one at a
 time, and sets `HEARTHSPACE_E2E=1`, `HEARTHSPACE_REQUIRE_ATSPI=1`,
-`HEARTHSPACE_REQUIRE_TRAY_LIBRARY=1`, and `LIBGL_ALWAYS_SOFTWARE=1` for both Rust
-and Python. Required accessibility or deployed Ayatana libraries cannot silently
-skip their coverage. Native VT/device tests remain a separate hardware workflow.
+`HEARTHSPACE_REQUIRE_TRAY_LIBRARY=1`, `LIBGL_ALWAYS_SOFTWARE=1`,
+`GSK_RENDERER=cairo`, and `VK_DRIVER_FILES` pointing to Mesa's Lavapipe ICD for
+both Rust and Python. Required accessibility or deployed
+Ayatana libraries cannot silently skip their coverage. Native VT/device tests
+remain a separate hardware workflow.
+
+`GSK_RENDERER=cairo` keeps GTK fixtures on software-rendered shared-memory
+buffers while the compositor uses Mesa's software GLES renderer. Setting only
+`LIBGL_ALWAYS_SOFTWARE=1` can leave GTK using Vulkan and submitting DMA-BUFs that
+this software compositor cannot import reliably. The shell also uses Vulkan;
+`VK_DRIVER_FILES` keeps it on the software device. The path above is provided
+by Ubuntu 26.04's `mesa-vulkan-drivers`; adjust it to your installed Lavapipe ICD
+on other distributions. Use these settings for local headless suites, including
+on machines with a physical GPU. They do not change the renderer used by normal
+native desktop sessions; native GPU and DMA-BUF validation remains part of the
+hardware workflow.
 
 GTK fixtures must work without an inherited desktop session bus. The shell-bar
 fixture sets an explicit program-name fallback and verifies its outgoing Wayland

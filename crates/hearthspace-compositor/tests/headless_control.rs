@@ -41,6 +41,9 @@ mod navigation;
 #[path = "support/overview.rs"]
 mod overview;
 #[cfg(feature = "test-apps")]
+#[path = "support/remote_input.rs"]
+mod remote_input;
+#[cfg(feature = "test-apps")]
 #[path = "support/search_replay.rs"]
 mod search_replay;
 #[cfg(feature = "test-apps")]
@@ -109,7 +112,17 @@ impl HeadlessCompositor {
         path: Option<&Path>,
         scale: i32,
     ) -> Self {
-        Self::spawn_with_command(size, layout, path, scale, |_| {})
+        Self::spawn_with_remote_options(size, layout, path, scale, false)
+    }
+
+    fn spawn_with_remote_options(
+        size: &str,
+        layout: Option<&Path>,
+        path: Option<&Path>,
+        scale: i32,
+        remote_desktop: bool,
+    ) -> Self {
+        Self::spawn_with_command(size, layout, path, scale, remote_desktop, |_| {})
     }
 
     fn spawn_with_command(
@@ -117,6 +130,7 @@ impl HeadlessCompositor {
         layout: Option<&Path>,
         path: Option<&Path>,
         scale: i32,
+        remote_desktop: bool,
         configure: impl FnOnce(&mut Command),
     ) -> Self {
         let runtime_dir = tempfile::tempdir().expect("create headless runtime dir");
@@ -132,6 +146,9 @@ impl HeadlessCompositor {
             // decision server must never contend with the user's live session.
             .env("XDG_CACHE_HOME", runtime_dir.path().join("cache"))
             .env_remove("HEARTHSPACE_LAYOUT_PATH");
+        if remote_desktop {
+            command.arg("--remote-desktop");
+        }
         if let Some(path) = layout {
             command.env("HEARTHSPACE_LAYOUT_PATH", path);
         }
