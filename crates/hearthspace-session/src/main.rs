@@ -1,6 +1,7 @@
 use clap::Parser;
 use tracing::info;
 
+mod ai;
 mod app_scopes;
 mod audio_env;
 mod bounded_command;
@@ -22,6 +23,7 @@ mod session_env;
 mod settingsd;
 mod signals;
 mod supervisor;
+mod wayvnc;
 
 use cli::{Args, resolve_mode};
 use desktop_entries::generate_desktop_entries;
@@ -34,6 +36,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = Args::parse();
     login_session::validate(&args)?;
     initialize_tracing(&args.log_level);
+
+    let wayvnc = wayvnc::prepare(&args)?;
 
     session_bus::bootstrap_native_session(&args)?;
 
@@ -61,7 +65,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let shutdown_requested = install_signal_handler()?;
-    let mut supervisor = Supervisor::new(mode, paths, session_env, shutdown_requested, &args);
+    let mut supervisor =
+        Supervisor::new(mode, paths, session_env, shutdown_requested, &args, wayvnc);
 
     let monitor_result = (|| {
         if args.login_session {
@@ -78,6 +83,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             supervisor.start_desktop_services()?;
         }
         supervisor.start_shell(if args.no_shell_restart { 0 } else { 3 })?;
+        supervisor.start_wayvnc();
         supervisor.start_app_watcher_if_available(&args)?;
 
         supervisor.monitor_until_exit()

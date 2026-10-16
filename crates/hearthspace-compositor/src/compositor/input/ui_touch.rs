@@ -13,12 +13,15 @@ use crate::compositor::{
     App, HitTarget, ManagedWindowKind, idle::ActivityReason, windows::window_app_id,
 };
 
+mod groups;
 mod model;
 use model::{BarAction, BarSwipe};
 
 type Position = Point<f64, Logical>;
 
 enum Target {
+    Group,
+    GroupCancelled,
     Client(WlSurface),
     Bar(BarSwipe),
     Cancelled,
@@ -47,7 +50,11 @@ impl UiTouch {
 
     fn cancel(&mut self) -> bool {
         let client = matches!(self.target, Target::Client(_));
-        self.target = Target::Cancelled;
+        self.target = if matches!(self.target, Target::Group | Target::GroupCancelled) {
+            Target::GroupCancelled
+        } else {
+            Target::Cancelled
+        };
         client
     }
 
@@ -103,6 +110,9 @@ impl App {
             // A client receives wl_touch.cancel before the existing tracker
             // recognizes any multi-finger canvas gesture.
             self.cancel_ui_touch();
+            return;
+        }
+        if self.begin_group_ui_touch(device, slot, location, time) {
             return;
         }
         if !self.navigation_available() {
@@ -182,6 +192,10 @@ impl App {
         else {
             return;
         };
+        if matches!(touch.target, Target::Group) {
+            self.motion_group_ui_touch(location, time);
+            return;
+        }
         if !location.x.is_finite()
             || !location.y.is_finite()
             || !touch.output.contains(location.to_i32_round())
@@ -204,7 +218,7 @@ impl App {
                     },
                 );
             }
-            Target::Cancelled => (),
+            Target::Group | Target::GroupCancelled | Target::Cancelled => (),
         }
     }
 
@@ -229,6 +243,7 @@ impl App {
         }
         let origin = touch.origin;
         match &touch.target {
+            Target::Group => self.finish_group_ui_touch(time),
             Target::Client(_) => self.touch.clone().up(
                 self,
                 &UpEvent {
@@ -251,7 +266,7 @@ impl App {
                 }
                 BarAction::Cancel => (),
             },
-            Target::Cancelled => (),
+            Target::GroupCancelled | Target::Cancelled => (),
         }
         if let Some(touch) = self.ui_touch.as_mut() {
             touch.target = Target::Cancelled;
@@ -259,6 +274,9 @@ impl App {
     }
 
     pub(in crate::compositor) fn cancel_ui_touch(&mut self) {
+        if self.group_touch_owns_input() {
+            self.finish_group_pointer_sequence(true);
+        }
         if let Some(touch) = self.ui_touch.as_mut()
             && touch.cancel()
         {
@@ -267,6 +285,11 @@ impl App {
     }
 
     pub(in crate::compositor) fn maintain_ui_touch(&mut self) {
+        // Group movement changes its members' geometry by design. Ownership
+        // lasts until release/cancel even if the group is cleared meanwhile.
+        if self.group_touch_suppresses_gestures() {
+            return;
+        }
         if let Some(touch) = self.ui_touch.as_ref() {
             let geometry = self
                 .windows
@@ -286,11 +309,10 @@ impl App {
 
     pub(in crate::compositor) fn ui_touch_focus_changed(&mut self, window: Option<u64>) {
         // Called under Smithay's keyboard lock; do not query keyboard state here.
-        if self
-            .ui_touch
-            .as_ref()
-            .is_some_and(|touch| Some(touch.window) != window)
-        {
+        if self.ui_touch.as_ref().is_some_and(|touch| {
+            !matches!(touch.target, Target::Group | Target::GroupCancelled)
+                && Some(touch.window) != window
+        }) {
             self.cancel_ui_touch();
         }
     }

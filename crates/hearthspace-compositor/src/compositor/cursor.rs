@@ -5,18 +5,7 @@ use smithay::{
 };
 use xcursor::parser::parse_xcursor;
 
-#[cfg(feature = "winit")]
 pub(crate) use cursor_icon::CursorIcon;
-
-#[cfg(not(feature = "winit"))]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum CursorIcon {
-    Default,
-    NsResize,
-    EwResize,
-    NwseResize,
-    NeswResize,
-}
 
 pub(super) struct SoftwareCursor {
     /// The named shape this buffer was rasterized for, so the render path can
@@ -94,7 +83,6 @@ pub(in crate::compositor) fn cursor_image_for_icon_at_size(
         CursorIcon::EwResize => cursor_image_from_xcursor(EW_RESIZE_CURSOR, desired_size),
         CursorIcon::NwseResize => cursor_image_from_xcursor(NWSE_RESIZE_CURSOR, desired_size),
         CursorIcon::NeswResize => cursor_image_from_xcursor(NESW_RESIZE_CURSOR, desired_size),
-        #[cfg(feature = "winit")]
         _ => cursor_image_from_xcursor(DEFAULT_CURSOR, desired_size),
     }
 }

@@ -216,6 +216,13 @@ impl From<&OutputDescriptor> for OutputGeometry {
 }
 
 impl App {
+    pub(super) fn capture_output_handles(&self) -> Vec<Output> {
+        self.outputs
+            .active_outputs()
+            .map(|record| record.output.clone())
+            .collect()
+    }
+
     pub(super) fn capture_outputs(&self) -> Vec<super::capture::OutputMetadata> {
         self.outputs
             .output_debug()

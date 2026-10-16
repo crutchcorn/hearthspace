@@ -97,6 +97,8 @@ impl CalloopData {
 
 pub(super) fn activate_session(data: &mut CalloopData) {
     let mut budget = RecoveryBudget::new(Instant::now());
+    data.state.set_remote_input_active(false);
+    data.state.remote_capture.stop();
     data.state.reset_session_input();
     data.state.invalidate_lock_presentation();
     data.captures.invalidate("native session is recovering");
@@ -186,7 +188,10 @@ pub(super) fn insert_drm_source(
                     if let Err(error) = data.send_frame_callbacks() {
                         warn!(%error, "failed to send native frame callbacks");
                     }
-                    if should_redraw || data.state.viewport_animation.is_some() {
+                    if should_redraw
+                        || data.state.viewport_animation.is_some()
+                        || data.state.group_animating()
+                    {
                         data.state.request_redraw();
                     }
                 }

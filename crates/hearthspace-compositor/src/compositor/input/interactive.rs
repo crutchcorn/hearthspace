@@ -61,6 +61,7 @@ impl App {
     }
 
     pub(in crate::compositor) fn start_client_window_move(&mut self, window_index: usize) {
+        self.cancel_group_window_motion(self.windows[window_index].id);
         self.prepare_window_pointer_operation();
         self.drag = Some(DragState {
             window_id: self.windows[window_index].id,

@@ -9,6 +9,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     debug!(?args, "parsed compositor arguments");
 
     let options = hearthspace_compositor::RunOptions {
+        remote_desktop: args
+            .iter()
+            .any(|arg| arg == hearthspace_compositor::config::REMOTE_DESKTOP_FLAG),
         scroll_zooms_without_super: args
             .iter()
             .any(|arg| arg == hearthspace_compositor::config::SCROLL_ZOOMS_FLAG),

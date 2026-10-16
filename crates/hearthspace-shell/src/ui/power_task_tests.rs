@@ -34,6 +34,7 @@ fn bar(
         &state.notifications,
         &state.tray,
         state.battery.as_ref(),
+        &state.window_group,
     ))
 }
 

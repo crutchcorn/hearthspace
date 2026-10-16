@@ -9,6 +9,7 @@ use crate::{
 };
 
 pub(crate) struct SettingsApp {
+    pub(crate) ai: crate::ai::AiSettings,
     pub(crate) favorites: crate::favorites::FavoriteSettings,
     pub(crate) settings: Settings,
     pub(crate) live_outputs: Vec<LiveOutput>,
@@ -25,6 +26,7 @@ pub(crate) enum SettingsCategory {
     Display,
     Appearance,
     Search,
+    Ai,
     Advanced,
 }
 
@@ -34,6 +36,7 @@ impl SettingsCategory {
             Self::Display => "Display",
             Self::Appearance => "Appearance",
             Self::Search => "Search",
+            Self::Ai => "AI",
             Self::Advanced => "Advanced",
         }
     }
@@ -43,6 +46,7 @@ impl SettingsCategory {
             Self::Display => "Monitor placement and scale",
             Self::Appearance => "Canvas background image and fit",
             Self::Search => "Search and app launch gestures",
+            Self::Ai => "Local AI for gathering related windows",
             Self::Advanced => "Diagnostics and configuration",
         }
     }
@@ -84,6 +88,7 @@ pub(crate) fn initial_state(selected_category: SettingsCategory) -> SettingsApp 
     };
 
     SettingsApp {
+        ai: crate::ai::AiSettings::default(),
         favorites: crate::favorites::FavoriteSettings::load(),
         settings,
         live_outputs,
@@ -101,6 +106,9 @@ impl SettingsApp {
         self.favorites.cancel();
         if category == SettingsCategory::Search {
             self.favorites.reload();
+        }
+        if category == SettingsCategory::Ai {
+            self.ai.request(crate::ai::Operation::Refresh);
         }
         self.selected_category = category;
     }

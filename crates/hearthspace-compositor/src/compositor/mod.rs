@@ -31,6 +31,7 @@ mod switcher;
 #[cfg(feature = "udev")]
 mod udev;
 mod viewport;
+mod window_group;
 mod windows;
 #[cfg(feature = "xwayland")]
 mod xwayland;
@@ -262,6 +263,8 @@ struct App {
     data_device_state: DataDeviceState,
     primary_selection_state: PrimarySelectionState,
     session_lock: session_lock::LockState,
+    remote_input: input::RemoteInput,
+    remote_capture: capture::protocol::RemoteCaptureState,
     _seat: Seat<Self>,
     pointer: PointerHandle<Self>,
     touch: TouchHandle<Self>,
@@ -274,6 +277,7 @@ struct App {
     viewport_animation: Option<ViewportAnimation>,
     overview: overview::Overview,
     window_switcher: switcher::WindowSwitcher,
+    window_group: window_group::WindowGroup,
     overview_input: input::OverviewInput,
     pinch_zoom: input::PinchZoom,
     windows: Vec<ManagedWindow>,
@@ -616,6 +620,8 @@ pub(in crate::compositor) fn initialize_app(
         seat_state,
         data_device_state: DataDeviceState::new::<App>(&dh),
         primary_selection_state: PrimarySelectionState::new::<App>(&dh),
+        remote_input: input::RemoteInput::new(&dh, options.remote_desktop),
+        remote_capture: capture::protocol::RemoteCaptureState::new(&dh, options.remote_desktop),
         session_lock: session_lock::LockState::new(
             &dh,
             !matches!(
@@ -635,6 +641,7 @@ pub(in crate::compositor) fn initialize_app(
         viewport_animation: None,
         overview: overview::Overview::default(),
         window_switcher: switcher::WindowSwitcher::default(),
+        window_group: window_group::WindowGroup::default(),
         overview_input: input::OverviewInput::default(),
         pinch_zoom: input::PinchZoom::default(),
         windows: Vec::new(),
@@ -733,6 +740,8 @@ fn register_common_event_sources(
     handle.insert_source(
         Generic::new(display_fd, Interest::READ, CalloopMode::Level),
         |_, _, data| {
+            let active = data.capture_active();
+            data.state.set_remote_input_active(active);
             let CalloopData { state, display, .. } = data;
             if let Err(error) = display.dispatch_clients(state) {
                 error!(%error, "failed to dispatch Wayland clients");

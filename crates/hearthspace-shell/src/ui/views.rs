@@ -63,6 +63,7 @@ pub(super) fn app_logic(
             &state.notifications,
             &state.tray,
             state.battery.as_ref(),
+            &state.window_group,
         ));
         if let Some(osd) = &output.osd {
             windows.push(super::control_osd::window(output, osd));
@@ -116,12 +117,13 @@ fn shell_bar_window(
     notifications: &[Notification],
     tray: &super::tray_state::TrayState,
     battery: Option<&crate::battery::BatteryStatus>,
+    group: &super::window_group::GroupState,
 ) -> WindowView<ShellState> {
     let bar_app_id = output.bar_app_id();
     window(
         output.bar_window_id,
         "Hearthspace Shell",
-        bar_view(output, clock, notifications, tray, battery),
+        bar_view(output, clock, notifications, tray, battery, group),
     )
     .with_options(move |options| {
         options
@@ -180,12 +182,17 @@ pub(super) fn bar_view(
     notifications: &[Notification],
     tray: &super::tray_state::TrayState,
     battery: Option<&crate::battery::BatteryStatus>,
+    group: &super::window_group::GroupState,
 ) -> impl WidgetView<ShellState> + use<> {
     let key = output.key().to_string();
     let search = icon_button(Icon::Search, "Search", output.show_search, move |state| {
         state.toggle_search(&key);
     });
     let width_key = output.key().to_string();
+    // On very small outputs retain the battery's accessible percentage while
+    // making room for both the app tray and all desktop controls.
+    let compact_battery = output.tray.bar_width <= 360.0
+        && super::tray_state::visible(&tray.snapshot).next().is_some();
     resize_observer(
         move |state: &mut ShellState, size| {
             if size.width.is_finite()
@@ -200,6 +207,7 @@ pub(super) fn bar_view(
                     tray.hovered
                         .as_ref()
                         .map(|(_, title)| title.clone())
+                        .or_else(|| group.hint())
                         .unwrap_or(clock),
                 )
                 .text_size(13.0)
@@ -207,15 +215,16 @@ pub(super) fn bar_view(
                 .color(components::TEXT_MUTED)
                 .line_break_mode(xilem::masonry::properties::LineBreaking::Clip)
                 .flex(1.0),
-                super::tray_view::strip(output, tray, if battery.is_some() { 106.0 } else { 42.0 }),
-                super::battery_view::indicator(battery),
+                super::tray_view::strip(output, tray, if battery.is_some() { 148.0 } else { 84.0 }),
+                super::battery_view::indicator(battery, compact_battery),
+                super::window_group::button(group),
                 search,
                 notification_view::button(output, notifications),
                 map_button(output),
                 super::control_center::toolbar_button(output),
                 power_button(output),
             ))
-            .gap(8.0.px()),
+            .gap((if compact_battery { 5.0 } else { 6.0 }).px()),
         )
         .background_color(components::SURFACE)
         .padding(xilem::masonry::properties::Padding::from_vh(
@@ -229,7 +238,10 @@ fn output_watcher_view(map_open: bool, osd_open: bool) -> impl WidgetView<ShellS
     sized_box(fork(
         fork(
             fork(label(""), output_watcher_task()),
-            fork(window_catalog_task(), shell_events_task()),
+            fork(
+                fork(window_catalog_task(), shell_events_task()),
+                super::window_group::task(),
+            ),
         ),
         fork(
             fork(

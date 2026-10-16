@@ -113,6 +113,9 @@ impl App {
         if self.overview_pointer_motion(time) {
             return;
         }
+        if self.group_pointer_motion(time) {
+            return;
+        }
         if let Some(drag) = self.drag.as_ref() {
             let delta = self.raw_pointer_location - drag.pointer_start;
             let new_position = crate::geometry::CanvasPoint {

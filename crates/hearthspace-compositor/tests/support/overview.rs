@@ -41,9 +41,9 @@ pub(super) fn editor(
             .unwrap(),
     );
     let windows = wait_windows(compositor, |windows| {
-        windows
-            .iter()
-            .any(|window| window["title"] == title && window["focused"] == true)
+        windows.iter().any(|window| {
+            window["title"] == title && window["mapped"] == true && window["focused"] == true
+        })
     });
     let id = windows
         .iter()

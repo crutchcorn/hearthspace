@@ -1,4 +1,7 @@
 mod actions;
+mod ai;
+mod ai_view;
+mod ai_worker;
 mod cli;
 mod favorites;
 mod favorites_search;
@@ -10,6 +13,10 @@ mod settings_backend;
 mod state;
 mod ui;
 mod wayland_outputs;
+
+#[cfg(test)]
+#[path = "favorites_view/test_support.rs"]
+mod test_support;
 
 use state::initial_state;
 use ui::app_logic;

@@ -15,6 +15,9 @@ impl App {
         time: InputTime,
     ) {
         self.shortcuts.cancel_meta_tap();
+        if !self.touch_input.has_contacts() && !self.group_touch_blocked() {
+            self.dismiss_group_outside_press(location, true);
+        }
         if self.favorite_touch_down(device, slot, location) {
             return;
         }
@@ -33,7 +36,9 @@ impl App {
         // An existing switcher owns the whole chord. Suppress even a pending
         // tap so lifting after Alt is released cannot click the revealed app.
         if first
-            && (self.pinch_blocked() || self.window_switcher_active())
+            && (self.group_touch_suppresses_gestures()
+                || self.pinch_blocked()
+                || self.window_switcher_active())
             && !self.session_locked()
         {
             let actions = self.touch_input.interrupt();
@@ -53,6 +58,7 @@ impl App {
     }
 
     pub(in crate::compositor) fn cancel_input_gestures(&mut self) {
+        self.cancel_group_gesture();
         self.shortcuts.cancel_meta_tap();
         self.cancel_ui_touch();
         self.cancel_pending_search();

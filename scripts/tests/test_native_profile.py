@@ -12,6 +12,7 @@ from unittest.mock import Mock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from agentlib import cli as agent_cli
+from agentlib import native as agent_native
 from nativelib import cli, profile, service
 
 
@@ -64,7 +65,7 @@ class NativeProfileTests(unittest.TestCase):
             args = agent_cli.parser().parse_args(
                 ["--session", "/tmp/native-profile", "start", "--no-build", *flags]
             )
-            with patch.object(agent_cli.subprocess, "run") as run:
+            with patch.object(agent_native.subprocess, "run") as run:
                 run.return_value = SimpleNamespace(returncode=0, stdout='{"ok":true}')
                 self.assertTrue(agent_cli.run_launcher(args)["ok"])
             self.assertEqual("--isolated-profile" in run.call_args.args[0], enabled)

@@ -194,6 +194,7 @@ impl App {
         }
         self.drag.is_some()
             || self.resize.is_some()
+            || self.group_interaction_active()
             || self.pointer.is_grabbed()
             || self.keyboard.is_grabbed()
     }

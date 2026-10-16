@@ -1,7 +1,6 @@
 """Public CLI builds before touching VTs; private commands run through sudo/systemd."""
 
 import argparse
-import hashlib
 import json
 import os
 import shutil
@@ -10,8 +9,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+from .build import build
 from .common import (
-    BINARIES,
     ENTRY,
     ROOT,
     control,
@@ -38,6 +37,19 @@ def parser():
                 "--binary-dir", type=Path, default=ROOT / "target/debug"
             )
             command.add_argument("--no-build", action="store_true")
+            command.add_argument(
+                "--dev",
+                action="store_true",
+                help="run development children through Cargo",
+            )
+            command.add_argument(
+                "--vnc",
+                action="store_true",
+                help="share the physical dev desktop through localhost WayVNC",
+            )
+            command.add_argument("--vnc-port", type=int)
+            if name == "_start":
+                command.add_argument("--dev-path", help=argparse.SUPPRESS)
             command.add_argument("--compositor", type=Path)
             command.add_argument("--log-level", default="info")
             command.add_argument(
@@ -63,80 +75,6 @@ def privileged(command, args, timeout=40):
     return json.loads(result.stdout)
 
 
-def build(args, session):
-    required = BINARIES
-    if getattr(args, "login_session", False):
-        helper = args.binary_dir.resolve() / "hearthspace-login-guard"
-        if not helper.is_file() or not os.access(helper, os.X_OK):
-            raise RuntimeError(
-                "--login-session requires an executable installed cleanup helper: "
-                f"{helper}; use --no-build --binary-dir with an installed release"
-            )
-        share = helper.parent.parent / "share"
-        for relative in (
-            "applications/dev.hearthspace.Settings.desktop",
-            "icons/hicolor/scalable/apps/hearthspace.svg",
-        ):
-            resource = share / relative
-            if not resource.is_file() or not os.access(resource, os.R_OK):
-                raise RuntimeError(
-                    f"--login-session requires installed shared data: {resource}"
-                )
-        required += ("hearthspace-login-guard",)
-    if not args.no_build:
-        with (session / "build.log").open("w") as log:
-            command = [
-                "cargo",
-                "build",
-                "--locked",
-                "--target-dir",
-                str(ROOT / "target"),
-                "-p",
-                "hearthspace-session",
-                "-p",
-                "hearthspace-compositor",
-                "-p",
-                "hearthspace-shell",
-                "-p",
-                "hearthspace-settings",
-                "-p",
-                "hearthspace-settingsd",
-                "-p",
-                "waydriver-hearthspace",
-                "-p",
-                "hearthspace-notifications",
-                "--features",
-                "hearthspace-compositor/udev",
-            ]
-            # Pin the artifact path even if the caller sets CARGO_TARGET_DIR.
-            if args.binary_dir.resolve() != ROOT / "target/debug":
-                raise ValueError("a custom --binary-dir requires --no-build")
-            result = subprocess.run(
-                command,
-                check=False,
-                cwd=ROOT,
-                stdout=log,
-                stderr=subprocess.STDOUT,
-                timeout=1800,
-            )
-            if result.returncode:
-                raise RuntimeError(f"native build failed; see {session / 'build.log'}")
-    binaries = {}
-    for name in required:
-        path = args.binary_dir.resolve() / name
-        if not path.is_file() or not os.access(path, os.X_OK):
-            raise RuntimeError(f"missing executable {path}; build before switching VTs")
-        # Retain exact binary provenance even when the caller explicitly skips building.
-        with path.open("rb") as binary_file:
-            digest = hashlib.file_digest(binary_file, "sha256").hexdigest()
-        binaries[name] = {
-            "path": str(path),
-            "sha256": digest,
-            "mtime": path.stat().st_mtime,
-        }
-    save(session / "binaries.json", binaries)
-
-
 def preflight():
     for command in (
         "sudo",
@@ -159,6 +97,7 @@ def preflight():
 def start(args):
     if not 1 <= args.timeout <= 600 or not 1 <= args.watchdog <= 86400:
         raise ValueError("timeout must be 1–600s; watchdog must be 1–86400s")
+    validate_development(args)
     session = args.session.resolve()
     session.mkdir(parents=True, exist_ok=True, mode=0o700)
     if (session / "session.json").exists():
@@ -175,6 +114,10 @@ def start(args):
             extra.append("--login-session")
         if getattr(args, "isolated_profile", False):
             extra.append("--isolated-profile")
+        if getattr(args, "dev", False):
+            extra.extend(["--dev", "--dev-path", os.environ.get("PATH", os.defpath)])
+        if getattr(args, "vnc", False):
+            extra.extend(["--vnc", "--vnc-port", str(args.vnc_port or 5900)])
         state = privileged(
             "_start",
             [
@@ -215,9 +158,34 @@ def start(args):
         raise
 
 
+def validate_development(args):
+    dev = getattr(args, "dev", False)
+    vnc = getattr(args, "vnc", False)
+    port = getattr(args, "vnc_port", None)
+    if vnc and not dev:
+        raise ValueError("--vnc requires --dev")
+    if port is not None and (not vnc or not 1 <= port <= 65535):
+        raise ValueError("--vnc-port requires --vnc and a port between 1 and 65535")
+    if dev:
+        if getattr(args, "login_session", False) or args.compositor:
+            raise ValueError("--dev conflicts with --login-session and --compositor")
+        if args.binary_dir.resolve() != ROOT / "target/debug":
+            raise ValueError("--dev requires the checkout's default --binary-dir")
+        if shutil.which("cargo") is None:
+            raise RuntimeError("--dev requires cargo on the launching user's PATH")
+    if vnc and shutil.which("wayvnc") is None:
+        raise RuntimeError("--vnc requires WayVNC; install wayvnc before starting")
+
+
 def status(session, timeout=2):
     state = load(session / "session.json")
     state["service"] = unit_info(state["unit"])
+    if state.get("vnc"):
+        try:
+            state["wayvnc"] = load(Path(state["runtime_dir"]) / "wayvnc.json")
+            state["processes"] = load(Path(state["runtime_dir"]) / "processes.json")
+        except (OSError, ValueError) as error:
+            state["wayvnc"] = {"ready": False, "error": str(error)}
     try:
         state["compositor"] = json.loads(
             control(state["command_socket"], "status", timeout)

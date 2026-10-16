@@ -14,9 +14,30 @@ impl App {
         state: ButtonState,
         time: InputTime,
     ) {
+        self.handle_pointer_button_from_source(
+            super::remote::PointerSource::Local,
+            button,
+            state,
+            time,
+        );
+    }
+
+    pub(in crate::compositor::input) fn handle_pointer_button_policy(
+        &mut self,
+        button: u32,
+        state: ButtonState,
+        time: InputTime,
+    ) {
         self.shortcuts.cancel_meta_tap();
         if state == ButtonState::Pressed {
             self.cancel_pending_search();
+            let group_was_active = self.group_active();
+            self.dismiss_group_outside_press(self.pointer_location, button == 0x110);
+            if group_was_active && !self.group_active() {
+                // Selection hover may have deliberately removed client focus.
+                // Reconcile it before forwarding the outside press unchanged.
+                self.apply_pointer_motion(self.pointer_location, time);
+            }
         }
         if self.favorite_pointer_button(button, state) {
             if state == ButtonState::Released {
@@ -28,6 +49,10 @@ impl App {
         }
         if self.session_locked() {
             self.deliver_lock_button(button, state, time);
+            return;
+        }
+        if self.group_pointer_button(button, state) {
+            self.apply_pointer_motion(self.pointer_location, time);
             return;
         }
         if self.handle_overview_button(button, state) {
@@ -73,6 +98,7 @@ impl App {
                     return;
                 }
                 Some(HitTarget::TitleBar { window_index }) => {
+                    self.cancel_group_window_motion(self.windows[window_index].id);
                     let window_index = self.raise_window(window_index);
                     if let Some(surface) = self.windows[window_index].surface.wl_surface() {
                         self.set_keyboard_focus_to_window(window_index, surface);

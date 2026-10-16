@@ -8,7 +8,7 @@ use std::{
 use hearthspace_common::{launcher_request_token_from_app_id, shell_event_socket_path};
 use smithay::{
     backend::input::{InputTime, KeyState},
-    input::keyboard::Keycode,
+    input::keyboard::{KeyboardSource, Keycode},
     utils::Rectangle,
 };
 
@@ -19,6 +19,8 @@ const REQUEST_LIFETIME: Duration = Duration::from_secs(1);
 const MAX_PENDING_KEYS: usize = 64;
 
 pub(in crate::compositor) struct PendingKey {
+    pub source: KeyboardSource,
+    pub modifiers: Option<[u32; 4]>,
     pub code: Keycode,
     pub state: KeyState,
     pub time: InputTime,
@@ -66,7 +68,14 @@ impl SearchRequest {
             .unwrap_or_default()
     }
 
-    fn push_key(&mut self, code: Keycode, state: KeyState, time: InputTime) -> bool {
+    fn push_key(
+        &mut self,
+        source: KeyboardSource,
+        modifiers: Option<[u32; 4]>,
+        code: Keycode,
+        state: KeyState,
+        time: InputTime,
+    ) -> bool {
         let Some(pending) = self.pending.as_mut() else {
             return false;
         };
@@ -75,6 +84,8 @@ impl SearchRequest {
         }
         let finish_existing = state == KeyState::Released && pending.held_before.remove(&code);
         pending.keys.push(PendingKey {
+            source,
+            modifiers,
             code,
             state,
             time,
@@ -202,6 +213,7 @@ impl App {
     /// already held when a command opened search.
     pub(in crate::compositor) fn buffer_pending_search_key(
         &mut self,
+        source: KeyboardSource,
         code: Keycode,
         state: KeyState,
         time: InputTime,
@@ -213,7 +225,11 @@ impl App {
             self.cancel_pending_search();
             return false;
         }
-        if !self.search_request.push_key(code, state, time) {
+        let modifiers = self.remote_key_modifiers(source);
+        if !self
+            .search_request
+            .push_key(source, modifiers, code, state, time)
+        {
             self.cancel_pending_search();
             return false;
         }
@@ -267,20 +283,23 @@ impl App {
             if !self.navigation_available() || self.focused_shell_panel_index() != Some(index) {
                 // Earlier replay may already have forwarded this press before
                 // a shortcut moved focus. Preserve its matching release.
-                if key.state == KeyState::Released && replayed.remove(&key.code) {
+                if key.state == KeyState::Released && replayed.remove(&(key.source, key.code)) {
                     key.finish_existing = true;
                 }
                 self.discard_search_key(key);
             } else {
                 match key.state {
                     KeyState::Pressed => {
-                        replayed.insert(key.code);
+                        replayed.insert((key.source, key.code));
                     }
                     KeyState::Released => {
-                        replayed.remove(&key.code);
+                        replayed.remove(&(key.source, key.code));
                     }
                 }
-                self.handle_keyboard_input(key.code, key.state, key.time);
+                if let Some(modifiers) = key.modifiers {
+                    self.apply_remote_modifiers(key.source, modifiers);
+                }
+                self.handle_keyboard_input_from_source(key.source, key.code, key.state, key.time);
             }
         }
     }
@@ -292,9 +311,13 @@ impl App {
     }
 
     fn discard_search_key(&mut self, key: PendingKey) {
+        if !self.activate_keyboard_source(key.source) {
+            return;
+        }
         let keyboard = self.keyboard.clone();
         let previous_modifiers = keyboard.modifier_state();
-        keyboard.input(
+        keyboard.input_from_source(
+            key.source,
             self,
             key.code,
             key.state,
@@ -332,64 +355,4 @@ impl App {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn search_acknowledgement_requires_current_unexpired_token_once() {
-        let mut request = SearchRequest::default();
-        assert!(request.accept(1).is_err());
-        request.pending = Some(Pending {
-            token: 4,
-            expires: Instant::now() + REQUEST_LIFETIME,
-            accepted: false,
-            output: None,
-            keys: Vec::new(),
-            held_before: HashSet::new(),
-        });
-        assert!(request.accept(3).is_err());
-        assert!(request.accept(4).is_ok());
-        assert!(request.accept(4).is_err());
-        request.pending.as_mut().unwrap().expires = Instant::now() - REQUEST_LIFETIME;
-        assert!(request.accept(4).is_err());
-        request.take_keys();
-        assert!(request.accept(4).is_err());
-    }
-
-    #[test]
-    fn pending_keys_preserve_modifier_order_and_bound_memory() {
-        let shift = 50_u32.into();
-        let a = 38_u32.into();
-        let time = InputTime::now();
-        let mut request = SearchRequest {
-            sequence: 1,
-            pending: Some(Pending {
-                token: 1,
-                expires: Instant::now() + REQUEST_LIFETIME,
-                accepted: false,
-                output: None,
-                keys: Vec::new(),
-                held_before: HashSet::from([shift]),
-            }),
-        };
-        // Shift was already held when search opened. Its release stays behind
-        // the first typed letter; it can be paired if creation is cancelled.
-        assert!(request.push_key(a, KeyState::Pressed, time));
-        assert!(request.push_key(a, KeyState::Released, time));
-        assert!(request.push_key(shift, KeyState::Released, time));
-        assert!(request.push_key(shift, KeyState::Pressed, time));
-        assert!(request.push_key(shift, KeyState::Released, time));
-        for _ in 5..MAX_PENDING_KEYS {
-            assert!(request.push_key(a, KeyState::Pressed, time));
-        }
-        assert!(!request.push_key(a, KeyState::Pressed, time));
-        let keys = request.take_keys();
-        assert_eq!(keys.len(), MAX_PENDING_KEYS);
-        assert_eq!(keys[0].code, a);
-        assert_eq!(keys[1].code, a);
-        assert_eq!(keys[2].code, shift);
-        assert!(keys[2].finish_existing);
-        assert!(!keys[4].finish_existing);
-        assert!(request.take_keys().is_empty());
-    }
-}
+mod tests;

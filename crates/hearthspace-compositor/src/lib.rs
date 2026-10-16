@@ -20,6 +20,8 @@ pub enum BackendSelection {
 #[derive(Debug, Clone, Copy)]
 pub struct RunOptions {
     pub scroll_zooms_without_super: bool,
+    /// Expose capture and virtual input protocols to local remote-desktop clients.
+    pub remote_desktop: bool,
     pub backend: BackendSelection,
     pub headless_output_size: Option<(i32, i32)>,
     pub headless_output_scale: Option<i32>,
@@ -31,6 +33,7 @@ impl Default for RunOptions {
     fn default() -> Self {
         Self {
             scroll_zooms_without_super: false,
+            remote_desktop: false,
             backend: BackendSelection::Auto,
             headless_output_size: None,
             headless_output_scale: None,

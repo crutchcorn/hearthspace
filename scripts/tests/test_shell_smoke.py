@@ -210,7 +210,14 @@ class ShellEvidenceTests(unittest.TestCase):
             (icons + ["Extra action"], False),
             (icons + ["Search"], False),
             (
-                ["Search", "Canvas map", "Notifications", "Control center", "Power"],
+                [
+                    "Select window group",
+                    "Search",
+                    "Canvas map",
+                    "Notifications",
+                    "Control center",
+                    "Power",
+                ],
                 False,
             ),
         ]:

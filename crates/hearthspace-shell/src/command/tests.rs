@@ -6,6 +6,10 @@ fn window_commands_round_trip_without_ignoring_extra_arguments() {
         ShellCommand::LockSession,
         ShellCommand::ListApps,
         ShellCommand::ListWindows,
+        ShellCommand::GroupSelectionToggle,
+        ShellCommand::GroupClear,
+        ShellCommand::GroupGather,
+        ShellCommand::GroupStatus,
         ShellCommand::FocusWindow(17),
         ShellCommand::CloseWindow(17),
         ShellCommand::MoveWindow {

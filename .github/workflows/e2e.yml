@@ -12,7 +12,8 @@ permissions:
 jobs:
   e2e:
     name: Headless E2E
-    runs-on: ubuntu-latest
+    # WayVNC >= 0.9 provides ext-image-copy-capture; 24.04 ships 0.7.
+    runs-on: ubuntu-26.04
     timeout-minutes: 45
 
     defaults:
@@ -25,11 +26,16 @@ jobs:
       HEARTHSPACE_REQUIRE_ATSPI: "1"
       HEARTHSPACE_REQUIRE_TRAY_LIBRARY: "1"
       LIBGL_ALWAYS_SOFTWARE: "1"
+      # Keep the Vulkan shell on the same software device as compositor GLES.
+      VK_DRIVER_FILES: /usr/share/vulkan/icd.d/lvp_icd.json
+      # Keep GTK fixtures on SHM when the compositor uses software GLES.
+      GSK_RENDERER: cairo
       TMPDIR: /tmp/hearthspace-e2e
       HEARTHSPACE_SHELL_EVIDENCE: /tmp/hearthspace-e2e/evidence/shell
       HEARTHSPACE_MAP_EVIDENCE: /tmp/hearthspace-e2e/evidence/map
       HEARTHSPACE_TRAY_EVIDENCE: /tmp/hearthspace-e2e/evidence/tray
       HEARTHSPACE_CLIPBOARD_EVIDENCE: /tmp/hearthspace-e2e/evidence/clipboard
+      HEARTHSPACE_VNC_EVIDENCE: /tmp/hearthspace-e2e/evidence/vnc
 
     steps:
       - name: Checkout
@@ -69,6 +75,7 @@ jobs:
             python3 \
             wayland-protocols \
             wayland-utils \
+            wayvnc \
             xwayland
 
       - name: Set up Rust

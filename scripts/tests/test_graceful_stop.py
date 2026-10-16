@@ -1,6 +1,7 @@
 """Native stop waits for persistence without signalling unrelated processes."""
 
 import os
+import select
 import signal
 import subprocess
 import sys
@@ -66,15 +67,20 @@ class GracefulStopTests(unittest.TestCase):
                     wrapper.wait()
 
     def test_process_identity_requires_executable_uid_arguments_and_parent(self):
+        code = "import time; print('ready', flush=True); time.sleep(30)"
         with subprocess.Popen(
-            [sys.executable, "-c", "import time; time.sleep(30)"]
+            [sys.executable, "-c", code], stdout=subprocess.PIPE, text=True
         ) as child:
             try:
+                # Popen can return while exec still exposes an empty /proc
+                # cmdline. Inspect identity only after the child is initialized.
+                self.assertTrue(select.select([child.stdout], [], [], 5)[0])
+                self.assertEqual(child.stdout.readline().strip(), "ready")
                 valid = {
                     "pid": child.pid,
                     "uid": os.getuid(),
                     "executable": Path(sys.executable),
-                    "arguments": ["-c", "import time; time.sleep(30)"],
+                    "arguments": ["-c", code],
                     "parent": os.getpid(),
                 }
                 self.assertTrue(graceful_stop.process_matches(**valid))

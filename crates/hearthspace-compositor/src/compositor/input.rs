@@ -26,6 +26,7 @@ mod overview;
 mod pinch;
 mod pointer;
 mod recovery;
+mod remote;
 mod scroll;
 mod touch;
 mod touch_tracker;
@@ -39,6 +40,7 @@ pub(super) use overview::OverviewInput;
 use pinch::PinchInput;
 pub(super) use pinch::PinchZoom;
 use pointer::relative_pointer_location;
+pub(super) use remote::RemoteInput;
 pub(super) use touch_tracker::TouchTracker;
 pub(super) use ui_touch::UiTouch;
 

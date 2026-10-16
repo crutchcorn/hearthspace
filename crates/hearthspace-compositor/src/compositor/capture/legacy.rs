@@ -9,6 +9,14 @@ impl CalloopData {
     pub(in crate::compositor) fn screenshot_png(
         &mut self,
     ) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+        let pixels = self.screenshot_pixels(true)?;
+        encode_png(self.state.output_size(), &pixels)
+    }
+
+    pub(super) fn screenshot_pixels(
+        &mut self,
+        draw_cursor: bool,
+    ) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
         self.process_pending_dmabuf_imports();
         let Self { state, backend, .. } = self;
         let size = state.output_size();
@@ -17,7 +25,8 @@ impl CalloopData {
             #[cfg(feature = "winit")]
             Backend::Winit(backend) => {
                 let (renderer, mut framebuffer) = backend.bind()?;
-                let software_cursor = std::mem::replace(&mut state.software_cursor_visible, true);
+                let software_cursor =
+                    std::mem::replace(&mut state.software_cursor_visible, draw_cursor);
                 let rendered = state.render_frame(renderer, &mut framebuffer, &mut damage, 0);
                 state.software_cursor_visible = software_cursor;
                 rendered?;
@@ -25,7 +34,12 @@ impl CalloopData {
             }
             Backend::Headless(backend) => {
                 let mut framebuffer = backend.renderer.bind(&mut backend.buffer)?;
-                state.render_frame(&mut backend.renderer, &mut framebuffer, &mut damage, 0)?;
+                let software_cursor =
+                    std::mem::replace(&mut state.software_cursor_visible, draw_cursor);
+                let rendered =
+                    state.render_frame(&mut backend.renderer, &mut framebuffer, &mut damage, 0);
+                state.software_cursor_visible = software_cursor;
+                rendered?;
                 read_pixels(&mut backend.renderer, &framebuffer, size, true)?
             }
             #[cfg(feature = "udev")]
@@ -33,6 +47,6 @@ impl CalloopData {
                 return Err("native captures require the asynchronous presentation path".into());
             }
         };
-        encode_png(size, &pixels)
+        Ok(pixels)
     }
 }

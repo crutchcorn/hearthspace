@@ -13,6 +13,8 @@ mod encoding;
 mod frames;
 mod legacy;
 mod pixels;
+pub(in crate::compositor) mod protocol;
+mod remote_render;
 #[cfg(test)]
 mod tests;
 
@@ -214,6 +216,8 @@ impl CaptureState {
 
 impl CalloopData {
     pub(super) fn maintain_captures(&mut self) {
+        self.state.maintain_remote_capture(self.capture_active());
+        self.capture_remote_offscreen();
         if self.state.session_locked() {
             self.captures.invalidate("session is locked");
             return;
@@ -321,6 +325,7 @@ impl CalloopData {
             "xwayland_display": xwayland_display,
             "overview": self.state.overview_status(),
             "window_switcher": self.state.window_switcher_status(),
+            "window_group": self.state.group_status(),
             "canvas_maps": self.state.canvas_maps_status(),
             "shell_panels": self.state.shell_panels_status(),
             "control_osds": self.state.control_osds_status(),

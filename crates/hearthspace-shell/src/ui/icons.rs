@@ -22,6 +22,7 @@ use super::state::ShellState;
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(super) enum Icon {
     Map,
+    SelectGroup,
     Search,
     Draw,
     Settings,
@@ -150,6 +151,30 @@ impl Widget for IconWidget {
             components::TEXT
         };
         match self.icon {
+            Icon::SelectGroup => {
+                // Four selection corners around overlapping window outlines.
+                for (x, y, dx, dy) in [
+                    (1.0, 1.0, 4.0, 4.0),
+                    (19.0, 1.0, -4.0, 4.0),
+                    (1.0, 19.0, 4.0, -4.0),
+                    (19.0, 19.0, -4.0, -4.0),
+                ] {
+                    let mut path = BezPath::new();
+                    path.move_to((x + dx, y));
+                    path.line_to((x, y));
+                    path.line_to((x, y + dy));
+                    painter.stroke(&path, &stroke, color).draw();
+                }
+                painter
+                    .stroke(Rect::new(5.0, 5.0, 12.0, 12.0), &stroke, color)
+                    .draw();
+                painter
+                    .fill(Rect::new(8.0, 8.0, 15.0, 15.0), components::SURFACE)
+                    .draw();
+                painter
+                    .stroke(Rect::new(8.0, 8.0, 15.0, 15.0), &stroke, color)
+                    .draw();
+            }
             Icon::Draw => {
                 let mut path = BezPath::new();
                 path.move_to((3.0, 13.0));

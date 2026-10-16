@@ -27,6 +27,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let headless_output_scale = parse_headless_output_scale(&args)?;
         let exit_after = parse_exit_after(&args)?;
         let options = hearthspace_compositor::RunOptions {
+            remote_desktop: args
+                .iter()
+                .any(|arg| arg == hearthspace_compositor::config::REMOTE_DESKTOP_FLAG),
             scroll_zooms_without_super: args
                 .iter()
                 .any(|arg| arg == hearthspace_compositor::config::SCROLL_ZOOMS_FLAG),

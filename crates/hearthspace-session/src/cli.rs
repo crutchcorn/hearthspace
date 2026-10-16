@@ -9,6 +9,14 @@ pub(crate) struct Args {
     #[arg(long, conflicts_with = "installed")]
     pub(crate) dev: bool,
 
+    /// Share the physical development desktop through WayVNC on localhost.
+    #[arg(long, requires = "dev", conflicts_with = "installed")]
+    pub(crate) vnc: bool,
+
+    /// Local TCP port for WayVNC; connect remotely through an SSH tunnel.
+    #[arg(long, requires = "vnc", default_value_t = 5900, value_parser = clap::value_parser!(u16).range(1..))]
+    pub(crate) vnc_port: u16,
+
     /// Run installed child binaries directly.
     #[arg(long, conflicts_with = "dev")]
     pub(crate) installed: bool,

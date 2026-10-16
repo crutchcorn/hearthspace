@@ -35,6 +35,7 @@ impl App {
             && !self.pointer.is_grabbed()
             && self.drag.is_none()
             && self.resize.is_none()
+            && !self.group_interaction_active()
     }
 
     pub(in crate::compositor) fn check_navigation_available(&self) -> Result<(), String> {
@@ -125,6 +126,7 @@ impl App {
         if self.window_uses_output_coordinates(index) {
             return Err("restore the parent window before moving its dialog".into());
         }
+        self.cancel_group_window_motion(id);
         self.interrupt_pinch_zoom();
         let window = &mut self.windows[index];
         #[cfg(feature = "xwayland")]

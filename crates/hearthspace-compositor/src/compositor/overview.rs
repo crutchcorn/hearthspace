@@ -11,7 +11,7 @@ use smithay::{
 
 use super::{App, ViewportAnimation, windows::window_title};
 
-mod labels;
+pub(super) mod labels;
 pub(super) mod layout;
 pub(super) mod render;
 

@@ -14,19 +14,28 @@ use smithay::{
     utils::{Logical, Size, Transform},
 };
 
-pub(super) struct LabelBuffer {
+pub(in crate::compositor) struct LabelBuffer {
     pub(super) text: String,
     pub(super) size: Size<i32, Logical>,
     pub(super) font_size: u32,
-    pub(super) buffer: MemoryRenderBuffer,
+    pub(in crate::compositor) buffer: MemoryRenderBuffer,
 }
 
 impl LabelBuffer {
-    pub(super) fn matches(&self, text: &str, size: Size<i32, Logical>, font_size: u32) -> bool {
+    pub(in crate::compositor) fn matches(
+        &self,
+        text: &str,
+        size: Size<i32, Logical>,
+        font_size: u32,
+    ) -> bool {
         self.text == text && self.size == size && self.font_size == font_size
     }
 
-    pub(super) fn new(text: String, size: Size<i32, Logical>, font_size: u32) -> Self {
+    pub(in crate::compositor) fn new(
+        text: String,
+        size: Size<i32, Logical>,
+        font_size: u32,
+    ) -> Self {
         let image = rasterize(&text, size, font_size);
         let pixels = premultiplied_pixels(image);
         Self {

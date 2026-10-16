@@ -3,7 +3,6 @@
 import argparse
 import json
 import signal
-import subprocess
 import sys
 from pathlib import Path
 
@@ -11,9 +10,9 @@ from .accessibility import run_accessibility
 from .control import Control, ControlError, Deadline, pixel_to_logical, save_capture
 from .input import Input
 from .lock import lock_session
+from .native import run_launcher
 from .text import clipboard_command, paste
 
-LAUNCHER = Path(__file__).resolve().parents[1] / "hearthspace-native"
 WINDOW_COMMANDS = {
     "focus": "focus-window",
     "close": "close-window",
@@ -71,6 +70,15 @@ def parser():
     start = sub.add_parser("start", help="start a native session on a spare VT")
     start.add_argument("--watchdog", type=int, default=300)
     start.add_argument("--no-build", action="store_true")
+    start.add_argument(
+        "--dev", action="store_true", help="run development children through Cargo"
+    )
+    start.add_argument(
+        "--vnc",
+        action="store_true",
+        help="share the physical dev desktop through localhost WayVNC",
+    )
+    start.add_argument("--vnc-port", type=int)
     start.add_argument(
         "--isolated-profile",
         action="store_true",
@@ -210,48 +218,6 @@ def target_socket(args):
         return args.socket
     manifest = json.loads((args.session / "session.json").read_text())
     return Path(manifest["command_socket"])
-
-
-def run_launcher(args):
-    if args.session is None:
-        raise ControlError("start and stop require --session")
-    command = [
-        str(LAUNCHER),
-        args.command,
-        "--session",
-        str(args.session),
-    ]
-    if args.command != "status":
-        command.extend(["--timeout", str(args.timeout)])
-    if args.command == "start":
-        command.extend(
-            ["--watchdog", str(args.watchdog), "--log-level", args.log_level]
-        )
-        if args.no_build:
-            command.append("--no-build")
-        if getattr(args, "isolated_profile", False):
-            command.append("--isolated-profile")
-    # The launcher owns an independent watchdog, including cleanup if its caller
-    # disappears. Permit its bounded cleanup window after its startup deadline.
-    # Native launcher's pre-VT build has a separate 30-minute absolute deadline.
-    build_budget = 1800 if args.command == "start" and not args.no_build else 0
-    try:
-        result = subprocess.run(
-            command,
-            check=False,
-            capture_output=True,
-            text=True,
-            timeout=args.timeout + build_budget + 30,
-        )
-    except subprocess.TimeoutExpired as error:
-        raise ControlError(
-            "native launcher timed out; watchdog retains recovery ownership"
-        ) from error
-    if result.returncode:
-        raise ControlError(
-            result.stderr.strip() or result.stdout.strip() or "native launcher failed"
-        )
-    return json.loads(result.stdout)
 
 
 def action(args, control):

@@ -1,0 +1,244 @@
+use std::collections::HashMap;
+
+use smithay::{
+    backend::input::{
+        AbsolutePositionEvent, ButtonState, Event, InputEvent, InputTime, PointerButtonEvent,
+    },
+    input::Seat,
+    utils::{Logical, Point, Rectangle, Transform},
+    wayland::virtual_pointer::{
+        VirtualPointerBackend, VirtualPointerDevice, VirtualPointerHandler,
+    },
+};
+
+use crate::compositor::{App, input::handle_input_event};
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(in crate::compositor::input) enum PointerSource {
+    Local,
+    Remote(VirtualPointerDevice),
+}
+
+/// One logical button remains held until the last contributing device releases.
+#[derive(Default)]
+pub(super) struct ButtonSources(HashMap<u32, Vec<PointerSource>>);
+
+impl ButtonSources {
+    pub(super) fn transition(
+        &mut self,
+        source: PointerSource,
+        button: u32,
+        state: ButtonState,
+    ) -> bool {
+        match state {
+            ButtonState::Pressed => {
+                let held = self.0.entry(button).or_default();
+                if held.contains(&source) {
+                    return false;
+                }
+                held.push(source);
+                held.len() == 1
+            }
+            ButtonState::Released => {
+                let Some(held) = self.0.get_mut(&button) else {
+                    return false;
+                };
+                held.retain(|candidate| candidate != &source);
+                let released = held.is_empty();
+                if held.is_empty() {
+                    self.0.remove(&button);
+                }
+                released
+            }
+        }
+    }
+
+    fn remove_remote(&mut self, device: Option<&VirtualPointerDevice>) -> Vec<u32> {
+        let mut released = Vec::new();
+        self.0.retain(|button, sources| {
+            sources.retain(|source| match source {
+                PointerSource::Local => true,
+                PointerSource::Remote(candidate) => {
+                    device.is_some_and(|device| device != candidate)
+                }
+            });
+            if sources.is_empty() {
+                released.push(*button);
+            }
+            !sources.is_empty()
+        });
+        released
+    }
+}
+
+impl VirtualPointerHandler for App {
+    fn process_virtual_pointer_event(&mut self, event: InputEvent<VirtualPointerBackend>) {
+        if let InputEvent::DeviceAdded { device } = &event {
+            if self.remote_pointer_seat(device) {
+                self.remote_input
+                    .pointers
+                    .insert(device.clone(), device.output().map(|output| output.name()));
+            }
+            return;
+        }
+        if let InputEvent::DeviceRemoved { device } = &event {
+            self.release_remote_pointer(Some(device));
+            self.remote_input.pointers.remove(device);
+            return;
+        }
+        if !self.remote_input_available() {
+            self.release_remote_pointer_buttons();
+            return;
+        }
+        match event {
+            InputEvent::PointerMotionAbsolute { event } => {
+                let device = event.device();
+                let Some(output_name) = self.remote_input.pointers.get(&device) else {
+                    return;
+                };
+                let (rect, transform) = if let Some(name) = output_name {
+                    let Some(rect) = self.output_logical_rect_for_name(Some(name)) else {
+                        return;
+                    };
+                    let Some(output) = device.output() else {
+                        return;
+                    };
+                    (rect, output.current_transform())
+                } else {
+                    let Some(rect) = layout_bounds(&self.output_logical_rects()) else {
+                        return;
+                    };
+                    (rect, Transform::Normal)
+                };
+                let location = absolute_location((event.x(), event.y()).into(), rect, transform);
+                self.apply_pointer_motion(location, event.time());
+            }
+            InputEvent::PointerButton { event } => {
+                if self.remote_input.pointers.contains_key(&event.device()) {
+                    self.handle_pointer_button_from_source(
+                        PointerSource::Remote(event.device()),
+                        event.button_code(),
+                        event.state(),
+                        event.time(),
+                    );
+                }
+            }
+            InputEvent::PointerMotion { event }
+                if self.remote_input.pointers.contains_key(&event.device()) =>
+            {
+                handle_input_event(
+                    self,
+                    InputEvent::<VirtualPointerBackend>::PointerMotion { event },
+                );
+            }
+            InputEvent::PointerAxis { event }
+                if self.remote_input.pointers.contains_key(&event.device()) =>
+            {
+                handle_input_event(
+                    self,
+                    InputEvent::<VirtualPointerBackend>::PointerAxis { event },
+                );
+            }
+            _ => {}
+        }
+    }
+}
+
+impl App {
+    fn remote_pointer_seat(&self, device: &VirtualPointerDevice) -> bool {
+        self.remote_input.enabled
+            && device
+                .wl_seat()
+                .is_none_or(|seat| Seat::<App>::from_resource(seat).as_ref() == Some(&self._seat))
+    }
+
+    pub(in crate::compositor::input) fn handle_pointer_button_from_source(
+        &mut self,
+        source: PointerSource,
+        button: u32,
+        state: ButtonState,
+        time: InputTime,
+    ) {
+        if self.remote_input.buttons.transition(source, button, state) {
+            self.handle_pointer_button_policy(button, state, time);
+        }
+    }
+
+    pub(super) fn release_remote_pointer_buttons(&mut self) {
+        self.release_remote_pointer(None);
+    }
+
+    fn release_remote_pointer(&mut self, device: Option<&VirtualPointerDevice>) {
+        let released = self.remote_input.buttons.remove_remote(device);
+        if !released.is_empty() {
+            self.favorite_pointer_removed();
+            for button in released {
+                self.handle_pointer_button_policy(button, ButtonState::Released, InputTime::now());
+            }
+        }
+    }
+
+    pub(in crate::compositor::input) fn clear_pointer_sources(&mut self) {
+        self.remote_input.buttons.0.clear();
+    }
+}
+
+fn absolute_location(
+    normalized: Point<f64, Logical>,
+    rect: Rectangle<i32, Logical>,
+    transform: Transform,
+) -> Point<f64, Logical> {
+    let normalized = transform.transform_point_in(normalized, &(1.0, 1.0).into());
+    let coordinate = |value: f64, size: i32| {
+        (value.clamp(0.0, 1.0) * f64::from(size)).min(f64::from(size) - 0.000_001)
+    };
+    rect.loc.to_f64()
+        + Point::from((
+            coordinate(normalized.x, rect.size.w),
+            coordinate(normalized.y, rect.size.h),
+        ))
+}
+
+fn layout_bounds(rectangles: &[Rectangle<i32, Logical>]) -> Option<Rectangle<i32, Logical>> {
+    let mut bounds = *rectangles.first()?;
+    for rectangle in &rectangles[1..] {
+        bounds = bounds.merge(*rectangle);
+    }
+    Some(bounds)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn absolute_input_uses_output_logical_extent_and_origin() {
+        let rect = Rectangle::new((1920, 300).into(), (1280, 720).into());
+        assert_eq!(
+            absolute_location((0.5, 0.25).into(), rect, Transform::Normal),
+            (2560.0, 480.0).into()
+        );
+        let edge = absolute_location((1.0, 1.0).into(), rect, Transform::Normal);
+        assert!(edge.x < 3200.0 && edge.y < 1020.0);
+    }
+
+    #[test]
+    fn rotated_absolute_input_tracks_display_orientation() {
+        let rect = Rectangle::new((0, 0).into(), (600, 800).into());
+        let point = absolute_location((0.25, 0.75).into(), rect, Transform::_90);
+        assert_eq!(point, (150.0, 200.0).into());
+    }
+
+    #[test]
+    fn whole_layout_includes_negative_output_origins() {
+        let rects = [
+            Rectangle::new((-1280, 100).into(), (1280, 720).into()),
+            Rectangle::new((0, 0).into(), (1920, 1080).into()),
+        ];
+        assert_eq!(
+            layout_bounds(&rects),
+            Some(Rectangle::new((-1280, 0).into(), (3200, 1080).into()))
+        );
+        assert!(layout_bounds(&[]).is_none());
+    }
+}

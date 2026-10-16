@@ -36,6 +36,10 @@ pub enum ShellCommand {
     OverviewOff,
     OverviewToggle,
     OverviewSelect(u64),
+    GroupSelectionToggle,
+    GroupClear,
+    GroupGather,
+    GroupStatus,
     LockSession,
     ListApps,
     ListWindows,
@@ -93,6 +97,10 @@ impl ShellCommand {
         match self {
             Self::OverviewOn | Self::OverviewOff | Self::OverviewToggle => "OVERVIEW",
             Self::OverviewSelect(_) => "SELECT",
+            Self::GroupSelectionToggle => "SELECT GROUP",
+            Self::GroupClear => "CLEAR GROUP",
+            Self::GroupGather => "GATHER",
+            Self::GroupStatus => "GROUP",
             Self::LockSession => "LOCK",
             Self::ListApps => "APPS",
             Self::ListWindows => "WINDOWS",
@@ -138,6 +146,10 @@ impl ShellCommand {
             Self::OverviewOff => "overview-off".into(),
             Self::OverviewToggle => "overview-toggle".into(),
             Self::OverviewSelect(id) => format!("overview-select {id}"),
+            Self::GroupSelectionToggle => "group-selection-toggle".into(),
+            Self::GroupClear => "group-clear".into(),
+            Self::GroupGather => "group-gather".into(),
+            Self::GroupStatus => "group-status".into(),
             Self::LockSession => "lock-session".into(),
             Self::ListApps => "apps".into(),
             Self::ListWindows => "windows".into(),
@@ -227,6 +239,10 @@ impl ShellCommand {
             "overview-on" => Self::OverviewOn,
             "overview-off" => Self::OverviewOff,
             "overview-toggle" => Self::OverviewToggle,
+            "group-selection-toggle" => Self::GroupSelectionToggle,
+            "group-clear" => Self::GroupClear,
+            "group-gather" => Self::GroupGather,
+            "group-status" => Self::GroupStatus,
             "overview-select" => {
                 let id = parts.next()?.parse().ok()?;
                 if id == 0 {

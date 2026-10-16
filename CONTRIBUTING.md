@@ -163,6 +163,40 @@ through the harness to restore its original VT and remove the private runtime;
 recovery records under `/run` disappear on reboot. User-selected artifact
 directories retain logs and screenshots until explicitly removed.
 
+#### Remote development with WayVNC
+
+WayVNC 0.9 or newer is required for image-copy-capture support. On Ubuntu 26.04,
+install the optional VNC server on the Hearthspace machine:
+
+```sh
+sudo apt-get install -y --no-install-recommends wayvnc
+```
+
+The physical development host uses Ubuntu's WayVNC **0.9.1-1build1**, with its
+`libaml0t64`, `libneatvnc0`, and `libturbojpeg0` dependencies. SSH was already
+enabled on this host; on another host, install `openssh-server` and enable
+`ssh` if needed. The setup requires no firewall rule for VNC, persistent VNC
+service, or system authentication changes.
+
+Start a native session from a Linux TTY with:
+
+```sh
+cargo run -- --dev --no-watch-apps --vnc
+```
+
+From a background service or SSH connection, use the owned native launcher:
+
+```sh
+remote_run=$(mktemp -d /tmp/hearthspace-remote.XXXXXX)
+scripts/hearthspace-agent --session "$remote_run" --timeout 300 start --dev --vnc --watchdog 28800
+```
+
+This builds before taking a spare VT and runs the development session for at
+most eight hours. Retain the printed session path. Stop it with
+`scripts/hearthspace-agent --session "$remote_run" --timeout 30 stop` to restore
+the original desktop. See [remote desktop](./docs/REMOTE_DESKTOP.md) for
+connection instructions, protocol support, and validation.
+
 #### Native screen recordings
 
 The native recorder uses FFmpeg to encode captured compositor frames into an
@@ -822,6 +856,29 @@ xilem = { git = "https://github.com/linebender/xilem", rev = "271a27a6d4a930f787
 No local Xilem clone is required for normal development; Cargo fetches the git
 dependency automatically. A local clone at `~/git/linebender/xilem` is useful
 for source search when working through Xilem/Masonry behavior or API questions.
+
+### Optional local AI for window groups
+
+Window grouping itself needs no model. **Gather similar windows** uses an
+already-installed local Ollama service with the D1 `POST /v1/systemone` API.
+The development host has Ollama **0.40.5**; Hearthspace does not install or
+reconfigure its service. Older Ollama releases without the decision endpoint
+must be updated separately. Ordinary `/api/chat` support is insufficient.
+
+Use **Settings → AI → Download D1 model** to opt in. The Rust `hf-hub` client
+downloads `LiquidAI/d1-3B-GGUF/d1-3B-Q4_K_M.gguf`, then imports it as the dedicated
+Ollama model `hearthspace-d1:latest`. Download files and preferences live under
+`$XDG_CACHE_HOME/hearthspace/ai` (normally `~/.cache/hearthspace/ai`); Ollama also
+stores an imported copy in its configured model directory. **Delete D1 model**
+removes the managed copy and download, preserving unrelated models. No systemd,
+login, firewall, or privilege-policy changes are required by this feature.
+
+The default endpoint is `http://127.0.0.1:11434`. Set
+`HEARTHSPACE_OLLAMA_URL=http://127.0.0.1:PORT` before starting the desktop to use
+another local runtime or a mock server. Remote addresses, HTTP proxies and
+redirects are rejected for title processing. Automated tests use local mock
+servers and require no model download. See [window groups](docs/WINDOW_GROUPS.md)
+for interaction, cancellation, and model lifecycle details.
 
 ### Linting
 
