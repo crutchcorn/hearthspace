@@ -1,4 +1,7 @@
 use super::{
+    favorite_actions,
+    favorite_state::Mode,
+    icons::{Icon, icon_button},
     search_editor::{SearchEditor, SelectionStep},
     search_focus::FocusTarget,
     search_selection,
@@ -14,23 +17,44 @@ use xilem::{
         widgets::TextAction,
     },
     style::Style,
+    view::{FlexExt, flex_row, sized_box},
 };
 
 pub(super) fn input(
     output: &ShellOutputInstance,
     target: FocusTarget,
 ) -> impl WidgetView<ShellState> + use<> {
-    SearchInput {
+    let draw_key = output.key().to_owned();
+    let settings_key = draw_key.clone();
+    let active = output.drawing.active();
+    let editor = SearchInput {
         key: output.key().to_string(),
         text: output.query.clone(),
         target,
     }
     .height(34.0.px())
     .color(components::TEXT)
+    .padding(Padding::from_vh(6.0.px(), 10.0.px()));
+    sized_box(
+        flex_row((
+            editor.flex(1.0),
+            icon_button(Icon::Draw, "Draw to launch", active, move |state| {
+                if active {
+                    favorite_actions::cancel(state, &draw_key);
+                } else {
+                    favorite_actions::start(state, &draw_key, Mode::Launch);
+                }
+            }),
+            icon_button(Icon::Settings, "Settings", false, move |state| {
+                favorite_actions::manage(state, &settings_key)
+            }),
+        ))
+        .gap(2.0.px()),
+    )
     .background_color(components::SURFACE)
     .border(components::BORDER, 1.0.px())
     .corner_radius(5.0.px())
-    .padding(Padding::from_vh(6.0.px(), 10.0.px()))
+    .padding(2.0.px())
 }
 
 struct SearchInput {

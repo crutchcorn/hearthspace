@@ -5,6 +5,7 @@ mod device;
 mod event_cutoff;
 mod hotplug;
 mod input;
+mod native_shortcuts;
 mod recovery;
 mod rendering;
 
@@ -12,23 +13,21 @@ use device::{
     KmsOutputTarget, UdevDevice, UdevDeviceInfo, create_udev_device, initial_device_list,
     log_device_list,
 };
-use input::log_input_event;
+use input::insert_libinput_source;
+use native_shortcuts::NativeShortcuts;
 
 use smithay::{
     backend::{
         allocator::Buffer,
         allocator::dmabuf::Dmabuf,
-        libinput::{LibinputInputBackend, LibinputSessionInterface},
         renderer::{ImportDma, damage::OutputDamageTracker},
         session::{Event as SessionEvent, Session, libseat::LibSeatSession},
         udev::{UdevBackend, UdevEvent, primary_gpu},
     },
-    reexports::{
-        calloop::LoopHandle, calloop::RegistrationToken, input::Libinput, wayland_server::Display,
-    },
+    reexports::{calloop::LoopHandle, calloop::RegistrationToken, wayland_server::Display},
     utils::{Physical, Size, Transform},
 };
-use tracing::{debug, info, trace, warn};
+use tracing::{debug, info, warn};
 
 use crate::{
     RunOptions,
@@ -45,6 +44,7 @@ pub(super) struct UdevBackendState {
     input_source: Option<RegistrationToken>,
     drm_source: Option<RegistrationToken>,
     recovery_source: Option<RegistrationToken>,
+    recovery_progress_at: Option<std::time::Instant>,
     recovery_needed: bool,
     primary_device: Option<UdevDevice>,
     devices: Vec<UdevDeviceInfo>,
@@ -55,8 +55,7 @@ pub(super) struct UdevBackendState {
     frame_pending: bool,
     frame_dirty: bool,
     input_event_count: u64,
-    emergency_exit_ctrl_pressed: bool,
-    emergency_exit_alt_pressed: bool,
+    native_shortcuts: NativeShortcuts,
 }
 
 #[derive(Default)]
@@ -237,6 +236,7 @@ pub fn run_udev(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> {
         input_source,
         drm_source,
         recovery_source: None,
+        recovery_progress_at: None,
         recovery_needed: false,
         kms_devices_active,
         drm_commits_paused: !session_active || !kms_devices_active,
@@ -247,8 +247,7 @@ pub fn run_udev(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> {
         primary_device,
         devices,
         input_event_count: 0,
-        emergency_exit_ctrl_pressed: false,
-        emergency_exit_alt_pressed: false,
+        native_shortcuts: NativeShortcuts::default(),
     };
     backend.log_summary();
     let mut data = super::create_calloop_data(
@@ -287,47 +286,6 @@ fn apply_connector_sync(data: &mut super::CalloopData, connector_sync: Connector
     data.state.configure_shell_bars();
     data.state.reconcile_pointer_after_output_geometry_change();
     data.full_redraw = data.full_redraw.max(1);
-}
-
-fn create_libinput_backend(
-    session: LibSeatSession,
-    seat_name: &str,
-) -> Result<LibinputInputBackend, Box<dyn std::error::Error>> {
-    let mut libinput_context = Libinput::new_with_udev(LibinputSessionInterface::from(session));
-    libinput_context
-        .udev_assign_seat(seat_name)
-        .map_err(|()| format!("failed to assign libinput to seat {seat_name}"))?;
-    Ok(LibinputInputBackend::new(libinput_context))
-}
-
-fn insert_libinput_source(
-    handle: &LoopHandle<'static, super::CalloopData>,
-    session: LibSeatSession,
-    seat_name: &str,
-) -> Result<RegistrationToken, Box<dyn std::error::Error>> {
-    let libinput_backend = create_libinput_backend(session, seat_name)?;
-    let token = handle.insert_source(libinput_backend, |event, _, data| {
-        {
-            let Some(backend) = udev_backend_mut(data) else {
-                return;
-            };
-            if !backend.session_active {
-                trace!("input event ignored while native session is paused");
-                return;
-            }
-            backend.input_event_count += 1;
-            log_input_event(&event);
-            if backend.handle_emergency_exit_chord(&event) {
-                info!("native emergency exit chord pressed; stopping compositor event loop");
-                data.running = false;
-                return;
-            }
-        }
-
-        super::handle_input_event(&mut data.state, event);
-    })?;
-    info!(seat = seat_name, "native libinput source registered");
-    Ok(token)
 }
 
 impl UdevBackendState {

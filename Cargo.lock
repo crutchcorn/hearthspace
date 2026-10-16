@@ -2439,8 +2439,11 @@ version = "0.1.0"
 dependencies = [
  "hearthspace-common",
  "hearthspace-ipc",
+ "hearthspace-shell",
  "hearthspace-ui-components",
+ "masonry",
  "rfd",
+ "tempfile",
  "wayland-client",
  "xilem",
 ]
@@ -2487,6 +2490,7 @@ dependencies = [
 name = "hearthspace-ui-components"
 version = "0.1.0"
 dependencies = [
+ "masonry",
  "xilem",
 ]
 

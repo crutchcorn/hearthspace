@@ -324,6 +324,7 @@ impl CalloopData {
             "canvas_maps": self.state.canvas_maps_status(),
             "shell_panels": self.state.shell_panels_status(),
             "control_osds": self.state.control_osds_status(),
+            "favorite_gesture": self.state.favorite_drawing.status(),
             "viewport": {
                 "x": self.state.viewport_offset.x,
                 "y": self.state.viewport_offset.y,

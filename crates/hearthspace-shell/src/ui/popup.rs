@@ -5,7 +5,7 @@ use xilem::{
     dpi::LogicalSize,
     masonry::{kurbo::Size, layout::AsUnit},
     style::Style,
-    view::{CrossAxisAlignment, FlexExt, flex_col, portal, resize_observer, sized_box},
+    view::{CrossAxisAlignment, FlexExt, flex_col, resize_observer, sized_box},
 };
 
 use super::state::{ShellOutputInstance, ShellState};
@@ -141,7 +141,7 @@ pub(super) fn panel<V: WidgetView<ShellState>>(
     // A non-filling portal measures natural content height independently of
     // its current window height, so short content can shrink after a long list.
     frame(
-        portal(super::popup_group::group(
+        components::touch_portal(super::popup_group::group(
             kind.group_label(),
             observed(output, kind, false, content),
         ))
@@ -159,7 +159,7 @@ pub(super) fn panel_with_header<H: WidgetView<ShellState>, V: WidgetView<ShellSt
     frame(
         flex_col((
             observed(output, kind, true, header),
-            portal(super::popup_group::group(
+            components::touch_portal(super::popup_group::group(
                 kind.group_label(),
                 observed(output, kind, false, content),
             ))

@@ -70,7 +70,9 @@ use smithay::{
         renderer::{ImportDma, Offscreen, element::Id, gles::GlesRenderer},
     },
     desktop::PopupManager,
-    input::{Seat, SeatState, keyboard::KeyboardHandle, pointer::PointerHandle},
+    input::{
+        Seat, SeatState, keyboard::KeyboardHandle, pointer::PointerHandle, touch::TouchHandle,
+    },
     reexports::{
         calloop::{
             EventLoop, Interest, LoopHandle, Mode as CalloopMode, PostAction, generic::Generic,
@@ -262,6 +264,8 @@ struct App {
     session_lock: session_lock::LockState,
     _seat: Seat<Self>,
     pointer: PointerHandle<Self>,
+    touch: TouchHandle<Self>,
+    ui_touch: Option<input::UiTouch>,
     pressed_pointer_buttons: HashSet<u32>,
     keyboard: KeyboardHandle<Self>,
     viewport_offset: CanvasPoint,
@@ -279,6 +283,7 @@ struct App {
     shortcuts: input::KeyboardShortcuts,
     search_request: shell_integration::search::SearchRequest,
     control_events: shell_integration::device_control::ControlEvents,
+    favorite_drawing: input::FavoriteDrawing,
     drag: Option<DragState>,
     resize: Option<ResizeState>,
     /// Cursor the compositor wants the host winit window to show. Updated from
@@ -565,6 +570,7 @@ pub(in crate::compositor) fn initialize_app(
         KEYBOARD_REPEAT_RATE,
     )?;
     let pointer = seat.add_pointer();
+    let touch = seat.add_touch();
 
     let event_loop: EventLoop<CalloopData> = EventLoop::try_new()?;
     let handle = event_loop.handle();
@@ -619,6 +625,8 @@ pub(in crate::compositor) fn initialize_app(
         ),
         _seat: seat,
         pointer,
+        touch,
+        ui_touch: None,
         pressed_pointer_buttons: HashSet::new(),
         keyboard,
         viewport_offset,
@@ -636,6 +644,7 @@ pub(in crate::compositor) fn initialize_app(
         shortcuts: input::KeyboardShortcuts::default(),
         search_request: Default::default(),
         control_events: Default::default(),
+        favorite_drawing: Default::default(),
         drag: None,
         resize: None,
         cursor_icon: CursorIcon::Default,

@@ -53,6 +53,7 @@ pub enum ShellCommand {
     Spawn(SpawnTarget),
     LaunchApp(String),
     LaunchAppOnOutput { app_id: String, output_name: String },
+    OpenSearchSettings { output_name: Option<String> },
     PanLeft,
     PanRight,
     PanUp,
@@ -108,6 +109,7 @@ impl ShellCommand {
             Self::RestoreWindow(_) => "RESTORE",
             Self::Spawn(target) => target.label(),
             Self::LaunchApp(_) | Self::LaunchAppOnOutput { .. } => "APP",
+            Self::OpenSearchSettings { .. } => "SETTINGS",
             Self::PanLeft => "LEFT",
             Self::PanRight => "RIGHT",
             Self::PanUp => "UP",
@@ -159,6 +161,10 @@ impl ShellCommand {
                 app_id,
                 output_name,
             } => format!("launch-app-on-output {} {app_id}", hex_encode(output_name)),
+            Self::OpenSearchSettings { output_name } => match output_name {
+                Some(name) => format!("open-search-settings {}", hex_encode(name)),
+                None => "open-search-settings".into(),
+            },
             Self::PanLeft => "pan-left".to_string(),
             Self::PanRight => "pan-right".to_string(),
             Self::PanUp => "pan-up".to_string(),
@@ -206,6 +212,18 @@ impl ShellCommand {
         let command = parts.next()?;
 
         let parsed = match command {
+            "open-search-settings" => Self::OpenSearchSettings {
+                output_name: match parts.next() {
+                    Some(encoded) => {
+                        let name = hex_decode_to_string(encoded)?;
+                        if name.is_empty() {
+                            return None;
+                        }
+                        Some(name)
+                    }
+                    None => None,
+                },
+            },
             "overview-on" => Self::OverviewOn,
             "overview-off" => Self::OverviewOff,
             "overview-toggle" => Self::OverviewToggle,

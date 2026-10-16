@@ -23,7 +23,10 @@ fn device_events_preserve_key_order_and_reject_unknown_actions_or_search_tokens(
     assert_eq!(
         pending
             .iter()
-            .map(|request| request.control.unwrap())
+            .map(|event| match event {
+                Event::Request(request) => request.control.unwrap(),
+                _ => panic!("expected device request"),
+            })
             .collect::<Vec<_>>(),
         [
             super::super::control_state::Action::VolumeStep(5),
@@ -167,8 +170,90 @@ fn listener_drains_to_latest_valid_request_and_cleans_up() {
         sender.send_to(bytes.as_bytes(), &path).unwrap();
     }
     sender.send_to(b"bad json", &path).unwrap();
-    assert_eq!(events.pending().last().unwrap().token, 2);
+    assert!(matches!(events.pending().last(), Some(Event::Request(request)) if request.token == 2));
     assert!(events.pending().is_empty());
     drop(events);
     assert!(!path.exists());
+}
+
+#[test]
+fn search_coalescing_never_drops_or_reorders_gesture_packets() {
+    let dir = tempfile::tempdir().unwrap();
+    let command = dir.path().join("control.sock");
+    let events = ShellEvents::bind(&command).unwrap();
+    let path = shell_event_socket_path(&command);
+    let sender = UnixDatagram::unbound().unwrap();
+    let search =
+        |token| serde_json::json!({"version":1,"action":"open-search","token":token,"output":null});
+    let gesture = |sequence, phase| {
+        serde_json::json!({"version":1,"action":"favorite-gesture",
+        "generation":42,"stroke":7,"sequence":sequence,"phase":phase,"x":20,"y":20,"output":null})
+    };
+    for value in [
+        search(1),
+        gesture(0, "begin"),
+        gesture(1, "update"),
+        search(2),
+        gesture(2, "end"),
+    ] {
+        sender
+            .send_to(&serde_json::to_vec(&value).unwrap(), &path)
+            .unwrap();
+    }
+    let pending = events.pending();
+    assert_eq!(pending.len(), 4);
+    assert!(matches!(&pending[0], Event::Gesture(event) if event.sequence == 0));
+    assert!(matches!(&pending[1], Event::Gesture(event) if event.sequence == 1));
+    assert!(matches!(&pending[2], Event::Request(request) if request.token == 2));
+    assert!(matches!(&pending[3], Event::Gesture(event) if event.sequence == 2));
+    assert!(parse_event(br#"{"version":2,"action":"favorite-gesture"}"#).is_none());
+    assert!(parse_event(&vec![b' '; 4097]).is_none());
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn async_readiness_keeps_a_bounded_batches_tail_and_rearms_after_would_block() {
+    // A connected pair can queue more than the unconnected filesystem socket's
+    // small datagram limit. Preload >32 packets to exercise the batch boundary.
+    let dir = tempfile::tempdir().unwrap();
+    let (sender, socket) = UnixDatagram::pair().unwrap();
+    sender.set_nonblocking(true).unwrap();
+    socket.set_nonblocking(true).unwrap();
+    let events = ShellEvents {
+        socket,
+        path: dir.path().join("not-bound.sock"),
+        identity: (0, 0),
+    };
+    let payload = |sequence| {
+        serde_json::to_vec(&serde_json::json!({"version":1,
+        "action":"favorite-gesture","generation":42,"stroke":7,"sequence":sequence,
+        "phase":"update","x":20,"y":20,"output":null}))
+        .unwrap()
+    };
+    for sequence in 0..64 {
+        sender.send(&payload(sequence)).unwrap();
+    }
+    // SAFETY: events owns this stable descriptor until after the local
+    // registration is dropped; the test never moves or forgets either value.
+    let socket =
+        unsafe { AsyncFd::register_with_interest(events.socket.as_fd(), Interest::READABLE) }
+            .unwrap();
+    for batch in 0..2 {
+        let pending = tokio::time::timeout(Duration::from_secs(2), receive(&events, &socket))
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(pending.len(), 32);
+        for (index, event) in pending.iter().enumerate() {
+            assert!(
+                matches!(event, Event::Gesture(event) if event.sequence == batch * 32 + index as u64)
+            );
+        }
+    }
+    assert!(receive(&events, &socket).await.unwrap().is_empty());
+    sender.send(&payload(64)).unwrap();
+    let pending = tokio::time::timeout(Duration::from_secs(2), receive(&events, &socket))
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(matches!(pending.as_slice(), [Event::Gesture(event)] if event.sequence == 64));
 }

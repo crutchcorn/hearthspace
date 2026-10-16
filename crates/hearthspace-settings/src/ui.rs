@@ -81,21 +81,26 @@ fn sidebar_view(state: &SettingsApp) -> impl WidgetView<SettingsApp> + use<> {
                 SettingsCategory::Display.label(),
                 selected_category == SettingsCategory::Display,
                 |state: &mut SettingsApp| {
-                    state.selected_category = SettingsCategory::Display;
+                    state.select_category(SettingsCategory::Display);
                 },
             ),
             components::sidebar_item(
                 SettingsCategory::Appearance.label(),
                 selected_category == SettingsCategory::Appearance,
                 |state: &mut SettingsApp| {
-                    state.selected_category = SettingsCategory::Appearance;
+                    state.select_category(SettingsCategory::Appearance);
                 },
+            ),
+            components::sidebar_item(
+                SettingsCategory::Search.label(),
+                selected_category == SettingsCategory::Search,
+                |state: &mut SettingsApp| state.select_category(SettingsCategory::Search),
             ),
             components::sidebar_item(
                 SettingsCategory::Advanced.label(),
                 selected_category == SettingsCategory::Advanced,
                 |state: &mut SettingsApp| {
-                    state.selected_category = SettingsCategory::Advanced;
+                    state.select_category(SettingsCategory::Advanced);
                 },
             ),
         ))
@@ -123,6 +128,7 @@ fn selected_category_view(state: &SettingsApp) -> Box<AnyWidgetView<SettingsApp>
     match state.selected_category {
         SettingsCategory::Display => display_settings_view(state),
         SettingsCategory::Appearance => appearance_settings_view(state),
+        SettingsCategory::Search => crate::favorites_view::view(state),
         SettingsCategory::Advanced => advanced_settings_view(state),
     }
 }

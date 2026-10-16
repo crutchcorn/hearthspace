@@ -15,6 +15,7 @@ impl ShellOutputInstance {
             popup_measurements: Default::default(),
             output_name,
             query: String::new(),
+            drawing: Default::default(),
             selected_result: None,
             selected_result_index: 0,
             show_search: false,
@@ -49,6 +50,7 @@ impl ShellOutputInstance {
 
     pub(super) fn dismiss_panels(&mut self) {
         self.tray.dismiss();
+        self.drawing = Default::default();
         self.show_search = false;
         self.search_request_token = None;
         self.show_notifications = false;

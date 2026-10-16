@@ -42,6 +42,7 @@ fn search(
     state: &ShellState,
 ) -> impl WidgetView<ShellState, Widget = masonry::widgets::SizedBox> + use<> {
     sized_box(launcher::launcher_view(
+        state,
         &state.outputs[0],
         launcher::results(state, &state.outputs[0]),
         None,
@@ -64,13 +65,18 @@ fn search_grows_for_results_and_shrinks_when_the_query_is_cleared() {
     let empty = size(&ui.state.outputs[0], PopupKind::Search, 768.0, 560.0);
     assert!(
         empty.height < 180.0,
-        "empty search should fit its hint: {empty:?}"
+        "empty search should fit its input actions and hint: {empty:?}"
     );
+    ui.button("Settings");
+    ui.button("Draw to launch");
     ui.state.change_query("eDP-1", "Notes".into());
     ui.rebuild(&search);
     ui.dispatch(&search);
     let populated = size(&ui.state.outputs[0], PopupKind::Search, 768.0, 560.0);
-    assert!(populated.height >= empty.height + 100.0);
+    assert!(
+        populated.height > empty.height,
+        "four results should grow beyond the input actions"
+    );
     assert!(populated.height < 360.0);
     ui.state.change_query("eDP-1", String::new());
     ui.rebuild(&search);

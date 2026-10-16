@@ -15,6 +15,9 @@ impl App {
         time: InputTime,
     ) {
         self.shortcuts.cancel_meta_tap();
+        if self.favorite_touch_down(device, slot, location) {
+            return;
+        }
         let first = !self.touch_input.has_contacts();
         if first {
             // A previous sequence can have lifted in this same input frame.
@@ -25,6 +28,7 @@ impl App {
                 self.interrupt_pinch_zoom();
             }
         }
+        self.begin_ui_touch(device, slot, location, time, first);
         self.touch_input.down(device, slot, location);
         // An existing switcher owns the whole chord. Suppress even a pending
         // tap so lifting after Alt is released cannot click the revealed app.
@@ -43,12 +47,14 @@ impl App {
     }
 
     pub(super) fn remove_touch_device(&mut self, device: &str) {
+        self.end_ui_touch(device, None.into(), true, InputTime::now());
         let actions = self.touch_input.remove_device(device);
         self.apply_touch_actions(actions, InputTime::now());
     }
 
     pub(in crate::compositor) fn cancel_input_gestures(&mut self) {
         self.shortcuts.cancel_meta_tap();
+        self.cancel_ui_touch();
         self.cancel_pending_search();
         let actions = self.touch_input.reset();
         self.apply_touch_actions(actions, InputTime::now());
@@ -63,6 +69,9 @@ impl App {
         let was_dispatching = self.dispatching_touch;
         self.dispatching_touch = true;
         for (device, action) in actions {
+            if self.suppress_ui_touch_pointer(&device, &action) {
+                continue;
+            }
             match action {
                 TouchAction::Hover(location) | TouchAction::Motion(location) => {
                     self.apply_pointer_motion(location, time);
@@ -119,9 +128,10 @@ impl App {
             }
         }
         self.dispatching_touch = was_dispatching;
+        self.finish_ui_touch_frame();
     }
 
-    fn touch_pointer_button(&mut self, state: ButtonState) {
+    pub(super) fn touch_pointer_button(&mut self, state: ButtonState) {
         // Cleanup may discard a queued press. Do not release another input
         // source's button unless this touchscreen actually delivered its press.
         if state == ButtonState::Released && !self.touch_pointer_pressed {

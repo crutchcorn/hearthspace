@@ -3,7 +3,7 @@ use xilem::{
     AnyWidgetView, WidgetView,
     masonry::{layout::AsUnit, properties::LineBreaking},
     style::Style,
-    view::{CrossAxisAlignment, FlexSpacer, flex_col, flex_row, sized_box},
+    view::{CrossAxisAlignment, FlexSpacer, flex_col, flex_row, label, sized_box},
 };
 
 use super::{
@@ -40,6 +40,9 @@ impl Entry {
 
 pub(super) fn results(state: &ShellState, output: &ShellOutputInstance) -> Vec<Entry> {
     let query = output.query.trim();
+    if output.drawing.active() {
+        return Vec::new();
+    }
     if query.is_empty() {
         return Vec::new();
     }
@@ -84,6 +87,7 @@ pub(super) fn select(
 }
 
 pub(super) fn launcher_view(
+    state: &ShellState,
     output: &ShellOutputInstance,
     entries: Vec<Entry>,
     windows_error: Option<String>,
@@ -95,22 +99,42 @@ pub(super) fn launcher_view(
         state.dismiss_search(&close_key)
     });
     let selected = super::search_selection::selected_index(output, &entries);
-    let mut rows: Vec<Box<AnyWidgetView<ShellState>>> = entries
-        .into_iter()
-        .enumerate()
-        .map(|(index, entry)| {
-            super::search_result::row(output, entry, Some(index) == selected, focus_target.clone())
+    let mut rows: Vec<Box<AnyWidgetView<ShellState>>> = if output.drawing.active() {
+        vec![super::favorite_view::drawing(state, output)]
+    } else {
+        let mut rows: Vec<Box<AnyWidgetView<ShellState>>> = entries
+            .into_iter()
+            .enumerate()
+            .map(|(index, entry)| {
+                super::search_result::row(
+                    output,
+                    entry,
+                    Some(index) == selected,
+                    focus_target.clone(),
+                )
                 .boxed()
-        })
-        .collect();
-    if rows.is_empty() {
-        rows.push(
-            components::muted_text(if output.query.trim().is_empty() {
-                "Type to search apps and open windows"
-            } else {
-                "No matching apps or windows"
             })
-            .boxed(),
+            .collect();
+        if rows.is_empty() {
+            rows.push(
+                label(if output.query.trim().is_empty() {
+                    "Type to search apps and open windows, or draw a gesture to launch an app."
+                } else {
+                    "No matching apps or windows"
+                })
+                .line_break_mode(LineBreaking::WordWrap)
+                .boxed(),
+            );
+        }
+        rows
+    };
+    if !output.drawing.active()
+        && let Some(message) = &output.drawing.message
+    {
+        rows.push(
+            label(message.clone())
+                .line_break_mode(LineBreaking::WordWrap)
+                .boxed(),
         );
     }
     if let Some(error) = output.launch_error.as_ref().or(windows_error.as_ref()) {

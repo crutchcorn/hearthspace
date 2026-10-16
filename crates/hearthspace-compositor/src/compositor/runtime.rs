@@ -160,7 +160,11 @@ pub(in crate::compositor) fn run_event_loop(
 
         if data.capture_active() && !data.state.session_locked() {
             data.state.repeat_device_control();
+            data.state.maintain_favorite_drawing();
+            data.state.maintain_ui_touch();
         } else {
+            data.state.clear_favorite_drawing();
+            data.state.cancel_ui_touch();
             data.state.shortcuts.cancel_device_repeat();
             data.state.control_events.clear();
         }

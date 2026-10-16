@@ -99,6 +99,7 @@ pub(super) fn app_logic(
         let results = launcher::results(state, output);
         if output.show_search {
             windows.push(launcher_window(
+                state,
                 output,
                 results,
                 state.windows_error.clone(),
@@ -151,6 +152,7 @@ fn notification_window(
 }
 
 fn launcher_window(
+    state: &ShellState,
     output: &ShellOutputInstance,
     results: Vec<Entry>,
     windows_error: Option<String>,
@@ -167,7 +169,7 @@ fn launcher_window(
         "Hearthspace Launcher",
         launcher_app_id,
         size,
-        launcher::launcher_view(output, results, windows_error),
+        launcher::launcher_view(state, output, results, windows_error),
         move |state| state.dismiss_search(&key),
     )
 }
