@@ -27,9 +27,9 @@ fn gather_completion_waits_for_group_drag_and_clear_discards_deferred_results() 
             request["questions"]["relevant"]["instructions"]["candidate_window_title"],
             "Overview editor 1"
         );
-        let toolbar = group(&compositor)["toolbar"].clone();
-        let x = toolbar["x"].as_f64().unwrap() + 20.0;
-        let y = toolbar["y"].as_f64().unwrap() + 20.0;
+        let member = window(&compositor, seed);
+        let x = member["x"].as_f64().unwrap() + 30.0;
+        let y = member["y"].as_f64().unwrap() + 60.0;
         action(&compositor, format!("pointer-motion-abs {x} {y}"));
         action(&compositor, "pointer-button-down 272");
         action(
@@ -65,7 +65,7 @@ fn gather_completion_waits_for_group_drag_and_clear_discards_deferred_results() 
 }
 
 #[test]
-fn gather_completion_waits_for_candidate_client_move_and_resize() {
+fn outside_client_move_or_resize_cancels_gather_without_stealing_client_input() {
     let _guard = headless_test_guard();
     let server = mock::MockOllama::start();
     let mut compositor =
@@ -103,10 +103,12 @@ fn gather_completion_waits_for_candidate_client_move_and_resize() {
             client.request_move(1, serial);
         }
         server.reply(0.99);
-        wait_group(&compositor, |status| status["waiting_for_drag"] == true);
+        let cleared = group(&compositor);
+        assert_eq!(cleared["selected"], json!([]));
+        assert_eq!(cleared["gathering"], false);
         action(&compositor, "pointer-motion-abs 720 420");
         client.sync();
-        assert_eq!(group(&compositor)["selected"], json!([seed]));
+        assert_eq!(group(&compositor)["selected"], json!([]));
         let moving = window(&compositor, candidate);
         assert_eq!(moving["canvas_x"], if resize { 650 } else { 690 });
         assert_eq!(moving["canvas_y"], if resize { 350 } else { 370 });
@@ -118,8 +120,12 @@ fn gather_completion_waits_for_candidate_client_move_and_resize() {
         let completed = wait_group(&compositor, |status| {
             status["gathering"] == false && status["animating"] == false
         });
-        assert_eq!(completed["selected"], json!([seed, candidate]));
-        action(&compositor, "group-clear");
+        assert_eq!(completed["selected"], json!([]));
+        server.no_request();
+        assert_eq!(
+            window(&compositor, candidate)["canvas_x"],
+            if resize { 650 } else { 690 }
+        );
     }
     action(&compositor, "quit");
     wait_for_exit(&mut compositor.child);

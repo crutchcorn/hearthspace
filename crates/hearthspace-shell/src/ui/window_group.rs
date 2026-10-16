@@ -27,7 +27,7 @@ impl GroupState {
         } else if self.gathering {
             Some("Gathering similar windows…".into())
         } else if self.selecting {
-            Some("Click or drag to select · Enter done · Esc clear".into())
+            Some("Draw a lasso · Release to select · Esc cancel".into())
         } else if self.selected == 1 {
             Some("1 window grouped".into())
         } else if self.selected > 0 {
@@ -146,7 +146,7 @@ mod tests {
         .unwrap();
         assert!(group.selecting);
         assert_eq!(group.selected, 2);
-        assert!(group.hint().unwrap().starts_with("Click or drag"));
+        assert!(group.hint().unwrap().starts_with("Draw a lasso"));
         group.gathering = true;
         assert_eq!(group.hint().as_deref(), Some("Gathering similar windows…"));
         group.error = Some("Install D1 in Settings".into());

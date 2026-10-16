@@ -89,6 +89,11 @@ impl InteractiveClient {
             .expect("client received pointer press")
     }
 
+    pub(crate) fn received_pointer_press(&mut self) -> bool {
+        self.sync();
+        self.state.press_serial.is_some()
+    }
+
     pub(crate) fn released_buttons(&mut self) -> &[u32] {
         self.sync();
         &self.state.released_buttons

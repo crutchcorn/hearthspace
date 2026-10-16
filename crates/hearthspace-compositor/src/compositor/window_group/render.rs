@@ -13,10 +13,10 @@ use smithay::{
     utils::{Logical, Rectangle},
 };
 
-use super::{
-    App, Gesture,
-    model::{ACTION_WIDTH, selection_rect},
-};
+use super::{App, Gesture};
+
+mod lasso;
+mod shapes;
 use crate::{
     compositor::{
         navigation::usable_output, overview::labels::LabelBuffer,
@@ -30,6 +30,8 @@ pub(super) struct Cache {
     solids: BTreeMap<(u64, u8), SolidColorBuffer>,
     labels: BTreeMap<u8, LabelBuffer>,
     animation_epoch: Option<Instant>,
+    action: Option<shapes::ActionBuffer>,
+    lassos: BTreeMap<(i32, i32), lasso::LassoBuffer>,
 }
 
 impl App {
@@ -50,174 +52,38 @@ impl App {
         });
         let usable = usable_output(output);
         let accent = Color32F::new(0.46, 0.67, 1.0, 1.0);
-        if output == self.group_output() {
-            let rect = self.group_toolbar_rect();
-            let selected = self.window_group.selected.len();
-            let noun = if selected == 1 { "window" } else { "windows" };
+        if output == self.group_output()
+            && !self.window_group.selecting
+            && !self.window_group.selected.is_empty()
+        {
+            let rect = self.group_action_rect();
+            let hover = rect_contains(rect, self.pointer_location);
             let gathering = self.window_group.pending.is_some();
-            let label = if selected == 0 {
-                "Click or drag to select windows".into()
-            } else if self.window_group.deferred_gather.is_some() {
-                format!("{selected} {noun} · Release to gather")
-            } else if gathering {
-                format!("{selected} {noun} · Gathering…")
-            } else {
-                format!("{selected} {noun} · Drag to move")
-            };
-            let body_width = if selected == 0 {
-                rect.size.w
-            } else {
-                (rect.size.w - ACTION_WIDTH * 2).max(1)
-            };
-            cache.label(
-                renderer,
-                &mut elements,
-                0,
-                label,
-                Rectangle::new(
-                    (rect.loc.x + 12, rect.loc.y + 6).into(),
-                    ((body_width - 20).max(1), 30).into(),
-                ),
-                14,
-            );
-            if selected > 0 {
-                let gather = Rectangle::new(
-                    (rect.loc.x + rect.size.w - ACTION_WIDTH * 2, rect.loc.y).into(),
-                    (ACTION_WIDTH, rect.size.h).into(),
-                );
-                let clear = Rectangle::new(
-                    (rect.loc.x + rect.size.w - ACTION_WIDTH, rect.loc.y).into(),
-                    (ACTION_WIDTH, rect.size.h).into(),
-                );
-                // Two offset window outlines are the gather action's icon.
-                cache.outline(
-                    &mut elements,
-                    0,
-                    20,
-                    Rectangle::new(
-                        (gather.loc.x + 12, gather.loc.y + 11).into(),
-                        (16, 16).into(),
-                    ),
-                    2,
-                    accent,
-                    usable,
-                );
-                cache.outline(
-                    &mut elements,
-                    0,
-                    24,
-                    Rectangle::new(
-                        (gather.loc.x + 18, gather.loc.y + 17).into(),
-                        (16, 16).into(),
-                    ),
-                    2,
-                    accent,
-                    usable,
-                );
-                cache.label(
-                    renderer,
-                    &mut elements,
-                    1,
-                    "×".into(),
-                    Rectangle::new((clear.loc.x + 13, clear.loc.y + 6).into(), (24, 30).into()),
-                    24,
-                );
-                for (key, button) in [(30, gather), (31, clear)] {
-                    if rect_contains(button, self.pointer_location) {
-                        cache.solid(
-                            &mut elements,
-                            (0, key),
-                            button,
-                            Color32F::new(0.14, 0.21, 0.34, 1.0),
-                        );
-                    }
-                }
-                if rect_contains(gather, self.pointer_location)
-                    || rect_contains(clear, self.pointer_location)
-                {
-                    let text = if rect_contains(gather, self.pointer_location) {
-                        "Gather similar windows (AI)"
-                    } else {
-                        "Clear window group (Esc)"
-                    };
-                    let tooltip = Rectangle::new(
-                        (
-                            rect.loc.x,
-                            (rect.loc.y + rect.size.h + 6).min(usable.loc.y + usable.size.h - 28),
-                        )
-                            .into(),
-                        (rect.size.w, 28).into(),
-                    );
-                    cache.label(renderer, &mut elements, 2, text.into(), tooltip, 13);
-                    cache.solid(
-                        &mut elements,
-                        (0, 32),
-                        tooltip,
-                        Color32F::new(0.04, 0.06, 0.10, 0.96),
-                    );
-                }
-            }
-            if gathering {
+            let phase = if gathering {
                 let epoch = cache.animation_epoch.get_or_insert_with(Instant::now);
-                let phase = epoch.elapsed().as_secs_f64() % 1.2 / 1.2;
-                let length = (body_width / 3).max(1);
-                let x = rect.loc.x + ((body_width - length) as f64 * phase) as i32;
-                cache.solid(
-                    &mut elements,
-                    (0, 35),
-                    Rectangle::new((x, rect.loc.y + rect.size.h - 4).into(), (length, 3).into()),
-                    accent,
-                );
+                Some(((epoch.elapsed().as_secs_f64() % 1.2) / 1.2 * 40.0) as u8)
             } else {
                 cache.animation_epoch = None;
-            }
+                None
+            };
+            cache.action(renderer, &mut elements, rect, hover, phase);
             if let Some(error) = &self.window_group.error {
-                let message = Rectangle::new(
-                    (
-                        rect.loc.x,
-                        (rect.loc.y + rect.size.h + 8).min(usable.loc.y + usable.size.h - 30),
-                    )
-                        .into(),
-                    (rect.size.w, 30).into(),
-                );
-                cache.label(renderer, &mut elements, 3, error.clone(), message, 12);
-                cache.solid(
-                    &mut elements,
-                    (0, 36),
-                    message,
-                    Color32F::new(0.20, 0.07, 0.08, 0.97),
-                );
+                cache.message(renderer, &mut elements, rect, usable, error, true);
+            } else if hover {
+                let help = if self.window_group.deferred_gather.is_some() {
+                    "Release to gather"
+                } else if gathering {
+                    "Gathering similar windows…"
+                } else {
+                    "Gather similar windows (AI)"
+                };
+                cache.message(renderer, &mut elements, rect, usable, help, false);
             }
-            cache.outline(
-                &mut elements,
-                0,
-                40,
-                rect,
-                1,
-                Color32F::new(0.28, 0.39, 0.56, 1.0),
-                usable,
-            );
-            cache.solid(
-                &mut elements,
-                (0, 44),
-                rect,
-                Color32F::new(0.045, 0.065, 0.105, 0.98),
-            );
         }
-        if let Some(Gesture::Select {
-            origin, current, ..
-        }) = &self.window_group.gesture
-        {
-            let rect = selection_rect(*origin, *current);
-            cache.outline(&mut elements, 0, 50, rect, 2, accent, usable);
-            if let Some(rect) = rect.intersection(usable) {
-                cache.solid(
-                    &mut elements,
-                    (0, 54),
-                    rect,
-                    Color32F::new(0.06, 0.10, 0.19, 0.18),
-                );
-            }
+        if let Some(Gesture::Select { lasso }) = &self.window_group.gesture {
+            cache.lasso(renderer, &mut elements, lasso.points(), usable);
+        } else {
+            cache.lassos.clear();
         }
         for (index, window) in self.windows.iter().enumerate() {
             if !self.group_window_eligible(index) {
@@ -341,5 +207,169 @@ impl Cache {
         ) {
             elements.push(element.into());
         }
+    }
+}
+
+impl Cache {
+    fn action(
+        &mut self,
+        renderer: &mut GlesRenderer,
+        elements: &mut Vec<HearthspaceRenderElement>,
+        rect: Rectangle<i32, Logical>,
+        hover: bool,
+        phase: Option<u8>,
+    ) {
+        if !self
+            .action
+            .as_ref()
+            .is_some_and(|action| action.matches(rect.size, hover, phase))
+        {
+            self.action = Some(shapes::ActionBuffer::new(rect.size, hover, phase));
+        }
+        if let Ok(element) = MemoryRenderBufferRenderElement::from_buffer(
+            renderer,
+            rect.loc.to_physical(1).to_f64(),
+            &self.action.as_ref().unwrap().buffer,
+            None,
+            None,
+            None,
+            Kind::Unspecified,
+        ) {
+            elements.push(element.into());
+        }
+    }
+
+    fn lasso(
+        &mut self,
+        renderer: &mut GlesRenderer,
+        elements: &mut Vec<HearthspaceRenderElement>,
+        points: &[smithay::utils::Point<f64, Logical>],
+        clip: Rectangle<i32, Logical>,
+    ) {
+        let key = (clip.loc.x, clip.loc.y);
+        if !self
+            .lassos
+            .get(&key)
+            .is_some_and(|lasso| lasso.matches(points, clip))
+        {
+            let Some(buffer) = lasso::LassoBuffer::new(points, clip) else {
+                self.lassos.remove(&key);
+                return;
+            };
+            self.lassos.insert(key, buffer);
+        }
+        let lasso = &self.lassos[&key];
+        if let Ok(element) = MemoryRenderBufferRenderElement::from_buffer(
+            renderer,
+            lasso.rect.loc.to_physical(1).to_f64(),
+            &lasso.buffer,
+            None,
+            Some(Rectangle::from_size(lasso.pixel_size.to_f64())),
+            Some(lasso.rect.size),
+            Kind::Unspecified,
+        ) {
+            elements.push(element.into());
+        }
+    }
+
+    fn message(
+        &mut self,
+        renderer: &mut GlesRenderer,
+        elements: &mut Vec<HearthspaceRenderElement>,
+        anchor: Rectangle<i32, Logical>,
+        output: Rectangle<i32, Logical>,
+        text: &str,
+        error: bool,
+    ) {
+        let width = (if error { 360 } else { 240 }).min(output.size.w.max(1));
+        let padding = 8.min(width / 4);
+        let lines = wrap_message(text, ((width - padding * 2).max(7) / 7) as usize);
+        let height = (lines.len() as i32 * 18 + 12).min(output.size.h.max(1));
+        let x = anchor
+            .loc
+            .x
+            .clamp(output.loc.x, output.loc.x + output.size.w - width);
+        let below = anchor.loc.y + anchor.size.h + 8;
+        let y = if below + height <= output.loc.y + output.size.h {
+            below
+        } else {
+            anchor.loc.y - height - 8
+        }
+        .clamp(output.loc.y, output.loc.y + output.size.h - height);
+        let message = Rectangle::new((x, y).into(), (width, height).into());
+        for (index, line) in lines.into_iter().enumerate() {
+            let row_y = y + 6 + index as i32 * 18;
+            if row_y + 18 > y + height {
+                break;
+            }
+            self.label(
+                renderer,
+                elements,
+                16 + index as u8,
+                line,
+                Rectangle::new(
+                    (x + padding, row_y).into(),
+                    ((width - padding * 2).max(1), 18).into(),
+                ),
+                12,
+            );
+        }
+        self.solid(
+            elements,
+            (0, 36),
+            message,
+            if error {
+                Color32F::new(0.20, 0.07, 0.08, 0.98)
+            } else {
+                Color32F::new(0.04, 0.06, 0.10, 0.98)
+            },
+        );
+    }
+}
+
+fn wrap_message(text: &str, columns: usize) -> Vec<String> {
+    let mut lines = vec![String::new()];
+    for word in text.split_whitespace() {
+        for chunk in word.chars().collect::<Vec<_>>().chunks(columns.max(1)) {
+            let line = lines.last_mut().unwrap();
+            if line.chars().count() + chunk.len() + usize::from(!line.is_empty()) > columns {
+                if lines.len() >= 8 {
+                    let last = lines.last_mut().unwrap();
+                    if last.chars().count() >= columns {
+                        last.pop();
+                    }
+                    last.push('…');
+                    return lines;
+                }
+                lines.push(String::new());
+            }
+            let line = lines.last_mut().unwrap();
+            if !line.is_empty() {
+                line.push(' ');
+            }
+            line.extend(chunk);
+        }
+    }
+    lines
+}
+
+#[cfg(test)]
+mod tests {
+    use super::wrap_message;
+
+    #[test]
+    fn model_errors_wrap_without_overflowing_or_unbounded_layout() {
+        let lines = wrap_message(
+            "Ollama unavailable. Start Ollama, then retry Gather similar windows.",
+            20,
+        );
+        assert!(lines.len() > 1 && lines.iter().all(|line| line.chars().count() <= 20));
+        assert_eq!(
+            lines.join(" "),
+            "Ollama unavailable. Start Ollama, then retry Gather similar windows."
+        );
+        let long = wrap_message(&"x".repeat(1000), 20);
+        assert_eq!(long.len(), 8);
+        assert!(long.last().unwrap().ends_with('…'));
     }
 }

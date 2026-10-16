@@ -69,6 +69,7 @@ png = "0.18.1"
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.154"
 smithay = { git = "https://github.com/Smithay/smithay", rev = "5c2ba4132556a08abc70ae1771d275ec2cfc031f", default-features = false, features = ["desktop", "renderer_gl", "wayland_frontend"] }
+tiny-skia = "0.12.0"
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
 wayland-protocols = { version = "0.32.13", features = ["server"] }

@@ -14,50 +14,33 @@ fn fullscreen_group_visibility_matches_pointer_and_keyboard_input() {
     let (seed, seed_state) = editor(&compositor, &mut editors, 0);
     let (full, full_state) = editor(&compositor, &mut editors, 1);
     select_by_keyboard(&compositor, seed);
-    action(&compositor, "group-selection-toggle");
-    let covered = window(&compositor, seed);
-    action(&compositor, format!("maximize-window {full} true"));
-    wait_windows(&compositor, |windows| {
-        windows
-            .iter()
-            .any(|window| window["id"] == full && window["content_width"] == 1280)
-    });
-    // Selection must respect the actual topmost hit, rather than reaching an
-    // eligible floating window through an ineligible maximized application.
-    click(
-        &compositor,
-        covered["x"].as_f64().unwrap() + 40.0,
-        covered["y"].as_f64().unwrap() + 80.0,
-    );
-    assert_eq!(group(&compositor)["selected"], json!([seed]));
+    let button = group(&compositor)["gather_button"].clone();
     action(&compositor, format!("fullscreen-window {full} true"));
     wait_windows(&compositor, |windows| {
         windows
             .iter()
             .any(|window| window["id"] == full && window["content_height"] == 800)
     });
-    let toolbar = group(&compositor)["toolbar"].clone();
-    let y = toolbar["y"].as_f64().unwrap() + 20.0;
-    // Both hidden action rectangles now belong to the fullscreen client.
-    click(&compositor, toolbar["gather_x"].as_f64().unwrap() + 20.0, y);
+    // Hidden group chrome must not remain an invisible input target.
     click(
         &compositor,
-        toolbar["x"].as_f64().unwrap() + toolbar["width"].as_f64().unwrap() - 20.0,
-        y,
+        button["x"].as_f64().unwrap() + 20.0,
+        button["y"].as_f64().unwrap() + 20.0,
     );
     for code in [30, 57, 34, 1] {
         keys(&compositor, &[code]);
     } // A, Space, G, Escape.
     wait_state(&full_state, |state| state["text"] == "a g");
     let hidden = group(&compositor);
-    assert_eq!(hidden["selected"], json!([seed]));
-    assert_eq!(hidden["selecting"], true);
+    assert_eq!(hidden["selected"], json!([]));
+    assert_eq!(hidden["selecting"], false);
     assert_eq!(hidden["gathering"], false);
     assert_eq!(hidden["error"], Value::Null);
 
     // Raising a floating app exposes the canvas controls even with a fullscreen
     // window behind it. Selection shortcuts become modal again immediately.
-    action(&compositor, format!("focus-window {seed}"));
+    select_by_keyboard(&compositor, seed);
+    action(&compositor, "group-selection-toggle");
     keys(&compositor, &[30]);
     keys(&compositor, &[28]);
     keys(&compositor, &[48]);
@@ -95,15 +78,10 @@ fn fullscreen_during_owned_group_drag_keeps_release_paired() {
     }
     assert_eq!(group(&compositor)["selected"], json!([seed, full]));
     action(&compositor, format!("focus-window {full}"));
-    let toolbar = group(&compositor)["toolbar"].clone();
-    action(
-        &compositor,
-        format!(
-            "pointer-motion-abs {} {}",
-            toolbar["x"].as_i64().unwrap() + 20,
-            toolbar["y"].as_i64().unwrap() + 20
-        ),
-    );
+    let member = window(&compositor, full);
+    let x = member["x"].as_f64().unwrap() + 30.0;
+    let y = member["y"].as_f64().unwrap() + 60.0;
+    action(&compositor, format!("pointer-motion-abs {x} {y}"));
     action(&compositor, "pointer-button-down 272");
     client.request_fullscreen(1);
     action(&compositor, "pointer-motion-abs 300 300");
@@ -112,14 +90,10 @@ fn fullscreen_during_owned_group_drag_keeps_release_paired() {
         client.released_buttons().is_empty(),
         "a compositor-owned press must not leak its release into the fullscreen client"
     );
-    click(
-        &compositor,
-        toolbar["x"].as_f64().unwrap() + 20.0,
-        toolbar["y"].as_f64().unwrap() + 20.0,
-    );
+    click(&compositor, x, y);
     assert!(client.press_serial() > 0);
     assert_eq!(client.released_buttons(), &[272]);
-    assert_eq!(group(&compositor)["selected"], json!([seed]));
+    assert_eq!(group(&compositor)["selected"], json!([]));
     action(&compositor, "quit");
     wait_for_exit(&mut compositor.child);
 }

@@ -7,8 +7,10 @@ use smithay::utils::{Logical, Rectangle};
 use super::{App, navigation::usable_output};
 use model::{Flight, Gesture};
 
+mod action_layout;
 mod gather;
 mod input;
+mod lasso;
 mod model;
 mod render;
 mod visibility;
@@ -209,7 +211,7 @@ impl App {
             .unwrap_or_else(|| self.primary_output_logical_rect())
     }
 
-    fn group_toolbar_rect(&self) -> Rectangle<i32, Logical> {
+    fn group_action_rect(&self) -> Rectangle<i32, Logical> {
         let bounds = self
             .windows
             .iter()
@@ -217,20 +219,28 @@ impl App {
             .filter(|(_, window)| self.window_group.selected.contains(&window.id))
             .map(|(index, _)| self.window_screen_bounds(index))
             .reduce(|a, b| a.merge(b));
-        model::toolbar_rect(bounds, usable_output(self.group_output()))
+        action_layout::action_rect(bounds, usable_output(self.group_output()))
     }
 
     pub(super) fn group_status(&self) -> Value {
-        let toolbar = self.group_toolbar_rect();
+        let action = self.group_action_rect();
+        let lasso = match &self.window_group.gesture {
+            Some(Gesture::Select { lasso }) => Some(
+                lasso
+                    .points()
+                    .iter()
+                    .map(|point| json!({"x":point.x, "y":point.y}))
+                    .collect::<Vec<_>>(),
+            ),
+            _ => None,
+        };
         json!({"version":1, "selecting":self.window_group.selecting,
             "selected":self.window_group.selected, "gathering":self.window_group.pending.is_some(),
             "waiting_for_drag":self.window_group.deferred_gather.is_some(),
             "error":self.window_group.error, "animating":!self.window_group.flights.is_empty(),
-            "keyboard_target":self.window_group.keyboard_target,
-            "toolbar": self.group_active().then(|| json!({"x":toolbar.loc.x,"y":toolbar.loc.y,
-                "width":toolbar.size.w,"height":toolbar.size.h,
-                "gather_x":toolbar.loc.x + toolbar.size.w - model::ACTION_WIDTH * 2,
-                "gather_y":toolbar.loc.y}))})
+            "keyboard_target":self.window_group.keyboard_target, "lasso":lasso,
+            "gather_button": (!self.window_group.selecting && !self.window_group.selected.is_empty()).then(|| json!({
+                "x":action.loc.x,"y":action.loc.y,"width":action.size.w,"height":action.size.h}))})
     }
 
     pub(super) fn group_status_json(&self) -> Vec<u8> {

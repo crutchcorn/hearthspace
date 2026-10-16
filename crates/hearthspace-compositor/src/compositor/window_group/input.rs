@@ -1,12 +1,12 @@
 use smithay::{
     backend::input::{ButtonState, InputTime},
     input::pointer::MotionEvent,
-    utils::SERIAL_COUNTER,
+    utils::{Logical, Point, SERIAL_COUNTER},
 };
 
 use super::{
     App, Gesture,
-    model::{ACTION_WIDTH, moved_position, selection_rect},
+    model::{Lasso, moved_position},
 };
 use crate::{
     compositor::{HitTarget, ManagedWindowKind, cursor::CursorIcon},
@@ -24,96 +24,145 @@ impl App {
         button: u32,
         state: ButtonState,
     ) -> bool {
+        if state == ButtonState::Pressed {
+            self.dismiss_group_outside_press(self.pointer_location, button == 0x110);
+        }
         if button != 0x110 {
             return false;
         }
-        if state == ButtonState::Pressed && self.window_group.gesture.is_none() {
-            self.window_group.pointer_held = false;
+        if !self.dispatching_touch && self.group_touch_owns_input() {
+            self.cancel_ui_touch();
         }
         if state == ButtonState::Released && self.window_group.pointer_held {
-            self.window_group.pointer_held = false;
-            if !self.group_pointer_visible() {
-                self.window_group.gesture = None;
-            }
-            if let Some(Gesture::Select {
-                origin,
-                current,
-                base,
-            }) = self.window_group.gesture.take()
-            {
-                let delta = current - origin;
-                if delta.x.hypot(delta.y) < 5.0 {
-                    let mut selection = base;
-                    if let Some(id) = self.group_window_under_pointer() {
-                        if !selection.remove(&id) {
-                            selection.insert(id);
-                        }
-                        self.window_group.keyboard_target = Some(id);
-                    }
-                    self.window_group.replace_selection(selection);
-                }
-            }
-            self.request_redraw();
+            self.finish_group_pointer_sequence(!self.group_pointer_visible());
             return true;
         }
-        if state != ButtonState::Pressed || !self.group_pointer_visible() || self.group_hits_shell()
-        {
+        if state != ButtonState::Pressed || !self.group_active() {
             return false;
         }
-        let toolbar = self.group_toolbar_rect();
-        if rect_contains(toolbar, self.pointer_location) && !self.window_group.selected.is_empty() {
-            self.window_group.pointer_held = true;
-            self.interrupt_pinch_zoom();
-            let x = self.pointer_location.x - f64::from(toolbar.loc.x);
-            if x >= f64::from(toolbar.size.w - ACTION_WIDTH) {
-                self.clear_window_group();
-            } else if x >= f64::from(toolbar.size.w - ACTION_WIDTH * 2) {
-                if self.window_group.pending.is_none()
-                    && let Err(error) = self.start_group_gather()
-                {
-                    self.window_group.error = Some(error);
-                }
-            } else {
-                self.viewport_animation = None;
-                self.window_group.flights.clear();
-                self.window_group.gesture = Some(Gesture::Drag {
-                    origin: self.raw_pointer_location,
-                    scale: self.viewport_scale,
-                    positions: self
-                        .windows
-                        .iter()
-                        .filter(|window| self.window_group.selected.contains(&window.id))
-                        .map(|window| (window.id, window.position))
-                        .collect(),
-                });
-                let ids: Vec<_> = self.window_group.selected.iter().copied().collect();
-                for id in ids {
-                    if let Some(index) = self.windows.iter().position(|window| window.id == id) {
-                        self.raise_window(index);
-                    }
-                }
-            }
-            self.request_redraw();
-            return true;
+        if !self.group_pointer_visible() {
+            self.clear_window_group();
+            return false;
         }
-        if !self.window_group.selecting || self.pointer.is_grabbed() {
+        if self.pointer.is_grabbed() {
+            return false;
+        }
+        // Real hit order matters: a covered member cannot steal a press from
+        // an unrelated window, shell panel, or popup in front of the group.
+        let shell = self.group_hits_shell();
+        let selected = self
+            .group_window_under_pointer()
+            .is_some_and(|id| self.window_group.selected.contains(&id));
+        let gather = !shell
+            && !self.window_group.selecting
+            && !self.window_group.selected.is_empty()
+            && rect_contains(self.group_action_rect(), self.pointer_location);
+        if shell || (!self.window_group.selecting && !selected && !gather) {
+            self.clear_window_group();
             return false;
         }
         self.interrupt_pinch_zoom();
         self.viewport_animation = None;
         self.window_group.pointer_held = true;
         self.follow_group_pointer_output();
-        self.window_group.gesture = Some(Gesture::Select {
-            origin: self.pointer_location,
-            current: self.pointer_location,
-            base: self.window_group.selected.clone(),
-        });
+        if self.window_group.selecting {
+            self.window_group.replace_selection(Default::default());
+            self.window_group.gesture = Some(Gesture::Select {
+                lasso: Lasso::new(self.pointer_location),
+            });
+        } else if gather {
+            if self.window_group.pending.is_none()
+                && let Err(error) = self.start_group_gather()
+            {
+                self.window_group.error = Some(error);
+            }
+        } else {
+            self.window_group.flights.clear();
+            self.window_group.gesture = Some(Gesture::Drag {
+                origin: self.raw_pointer_location,
+                scale: self.viewport_scale,
+                positions: self
+                    .windows
+                    .iter()
+                    .filter(|window| self.window_group.selected.contains(&window.id))
+                    .map(|window| (window.id, window.position))
+                    .collect(),
+            });
+            let ids: Vec<_> = self.window_group.selected.iter().copied().collect();
+            for id in ids {
+                if let Some(index) = self.windows.iter().position(|window| window.id == id) {
+                    self.raise_window(index);
+                }
+            }
+        }
         self.request_redraw();
         true
     }
 
+    /// Touch cancellation must abort before its tracker emits a normal release.
+    pub(in crate::compositor) fn finish_group_pointer_sequence(&mut self, cancelled: bool) {
+        self.window_group.pointer_held = false;
+        let was_lasso = matches!(
+            self.window_group.gesture.take(),
+            Some(Gesture::Select { .. })
+        );
+        if self.window_group.selecting {
+            self.window_group.selecting = false;
+            if cancelled || !was_lasso {
+                self.window_group.replace_selection(Default::default());
+            }
+        }
+        self.request_redraw();
+    }
+
+    pub(in crate::compositor) fn group_has_pointer_capture(&self) -> bool {
+        self.window_group.pointer_held
+    }
+
+    pub(in crate::compositor) fn group_touch_blocked(&self) -> bool {
+        self.group_has_pointer_capture()
+            || self.drag.is_some()
+            || self.resize.is_some()
+            || self.pointer.is_grabbed()
+            || self.keyboard.is_grabbed()
+    }
+
+    /// Run before specialized shell/favorite delivery, including native touch.
+    pub(in crate::compositor) fn dismiss_group_outside_press(
+        &mut self,
+        location: Point<f64, Logical>,
+        primary: bool,
+    ) {
+        if !self.group_active() {
+            return;
+        }
+        let visible = self
+            .output_logical_rects()
+            .into_iter()
+            .find(|output| output.contains(location.to_i32_round()))
+            .is_some_and(|output| self.group_visible_on_output(output));
+        let shell = matches!(self.hit_test(location), Some(HitTarget::Client { window_index, .. })
+            if self.windows[window_index].kind != ManagedWindowKind::Normal);
+        if visible && self.window_group.selecting && primary && !shell {
+            return;
+        }
+        let selected = self
+            .group_window_at(location)
+            .is_some_and(|id| self.window_group.selected.contains(&id));
+        let gather = !self.window_group.selecting
+            && !self.window_group.selected.is_empty()
+            && rect_contains(self.group_action_rect(), location);
+        if !visible || shell || (!selected && !gather) {
+            self.clear_window_group();
+        }
+    }
+
     fn group_window_under_pointer(&self) -> Option<u64> {
-        let index = match self.hit_test(self.pointer_location)? {
+        self.group_window_at(self.pointer_location)
+    }
+
+    fn group_window_at(&self, location: Point<f64, Logical>) -> Option<u64> {
+        let index = match self.hit_test(location)? {
             HitTarget::Client { window_index, .. }
             | HitTarget::CloseButton { window_index }
             | HitTarget::TitleBar { window_index }
@@ -124,40 +173,39 @@ impl App {
     }
 
     pub(in crate::compositor) fn group_pointer_motion(&mut self, time: InputTime) -> bool {
+        if !self.dispatching_touch && self.group_touch_owns_input() {
+            self.cancel_ui_touch();
+        }
         if !self.group_pointer_visible() {
             if self.window_group.pointer_held {
-                self.cancel_group_gesture();
+                self.finish_group_pointer_sequence(true);
+                // The owner still owes a release after the overlay disappears.
+                self.window_group.pointer_held = true;
                 self.cursor_icon = CursorIcon::Default;
                 return self.group_captured_pointer_motion(time);
             }
             return false;
         }
+        if self.pointer.is_grabbed() && !self.window_group.pointer_held {
+            return false;
+        }
         self.request_redraw();
         if let Some(gesture) = self.window_group.gesture.take() {
             self.window_group.gesture = Some(match gesture {
-                Gesture::Select { origin, base, .. } => {
-                    let current = self.pointer_location;
-                    let delta = current - origin;
-                    if delta.x.hypot(delta.y) >= 5.0 {
-                        let rect = selection_rect(origin, current);
-                        let mut selected = base.clone();
-                        selected.extend(
-                            self.windows
-                                .iter()
-                                .enumerate()
-                                .filter(|(index, _)| {
-                                    self.group_window_eligible(*index)
-                                        && self.window_screen_bounds(*index).overlaps(rect)
-                                })
-                                .map(|(_, window)| window.id),
-                        );
-                        self.window_group.replace_selection(selected);
-                    }
-                    Gesture::Select {
-                        origin,
-                        current,
-                        base,
-                    }
+                Gesture::Select { mut lasso } => {
+                    lasso.push(self.pointer_location);
+                    let selected = self
+                        .windows
+                        .iter()
+                        .enumerate()
+                        .filter(|(index, _)| {
+                            self.group_window_eligible(*index)
+                                && lasso.selects(self.window_screen_bounds(*index))
+                        })
+                        .map(|(_, window)| window.id)
+                        .collect();
+                    self.window_group.replace_selection(selected);
+                    Gesture::Select { lasso }
                 }
                 Gesture::Drag {
                     origin,
@@ -185,7 +233,10 @@ impl App {
             });
         } else if self.group_hits_shell()
             || !(self.window_group.selecting
-                || rect_contains(self.group_toolbar_rect(), self.pointer_location))
+                || rect_contains(self.group_action_rect(), self.pointer_location)
+                || self
+                    .group_window_under_pointer()
+                    .is_some_and(|id| self.window_group.selected.contains(&id)))
         {
             return false;
         }
@@ -194,6 +245,8 @@ impl App {
             CursorIcon::Grabbing
         } else if self.window_group.selecting {
             CursorIcon::Crosshair
+        } else if rect_contains(self.group_action_rect(), self.pointer_location) {
+            CursorIcon::Pointer
         } else {
             CursorIcon::Grab
         };

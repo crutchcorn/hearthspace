@@ -1,23 +1,16 @@
 //! Deterministic group selection, movement and animation geometry.
-use std::{
-    collections::BTreeSet,
-    time::{Duration, Instant},
-};
+use std::time::{Duration, Instant};
 
 use smithay::utils::{Logical, Point, Rectangle, Size};
 
 use crate::geometry::{CanvasPoint, ease_out_cubic, interpolate_canvas_point};
 
-pub(super) const TOOLBAR_WIDTH: i32 = 360;
-pub(super) const TOOLBAR_HEIGHT: i32 = 44;
-pub(super) const ACTION_WIDTH: i32 = 44;
+pub(super) use super::lasso::Lasso;
 const FLIGHT_DURATION: Duration = Duration::from_millis(440);
 
 pub(super) enum Gesture {
     Select {
-        origin: Point<f64, Logical>,
-        current: Point<f64, Logical>,
-        base: BTreeSet<u64>,
+        lasso: Lasso,
     },
     Drag {
         origin: Point<f64, Logical>,
@@ -44,20 +37,6 @@ impl Flight {
     }
 }
 
-pub(super) fn selection_rect(
-    a: Point<f64, Logical>,
-    b: Point<f64, Logical>,
-) -> Rectangle<i32, Logical> {
-    Rectangle::new(
-        (a.x.min(b.x).floor() as i32, a.y.min(b.y).floor() as i32).into(),
-        (
-            (a.x - b.x).abs().ceil() as i32 + 1,
-            (a.y - b.y).abs().ceil() as i32 + 1,
-        )
-            .into(),
-    )
-}
-
 pub(super) fn moved_position(
     start: CanvasPoint,
     delta: Point<f64, Logical>,
@@ -71,37 +50,6 @@ pub(super) fn moved_position(
             .round()
             .clamp(-1_000_000.0, 1_000_000.0) as i32,
     }
-}
-
-pub(super) fn toolbar_rect(
-    bounds: Option<Rectangle<i32, Logical>>,
-    output: Rectangle<i32, Logical>,
-) -> Rectangle<i32, Logical> {
-    let width = TOOLBAR_WIDTH.min(output.size.w.max(1));
-    let height = TOOLBAR_HEIGHT.min(output.size.h.max(1));
-    let anchor = bounds
-        .map(|rect| {
-            (
-                rect.loc.x + (rect.size.w - width) / 2,
-                rect.loc.y - height - 10,
-            )
-        })
-        .unwrap_or((
-            output.loc.x + (output.size.w - width) / 2,
-            output.loc.y + 12,
-        ));
-    Rectangle::new(
-        (
-            anchor
-                .0
-                .clamp(output.loc.x, output.loc.x + output.size.w - width),
-            anchor
-                .1
-                .clamp(output.loc.y, output.loc.y + output.size.h - height),
-        )
-            .into(),
-        (width, height).into(),
-    )
 }
 
 /// A diagonal fan keeps every gathered title bar reachable, even for oversized
@@ -131,14 +79,7 @@ pub(super) fn gather_target(
 #[cfg(test)]
 mod tests {
     use super::*;
-    #[test]
-    fn toolbar_is_clamped_on_negative_secondary_output() {
-        let output = Rectangle::new((-900, 32).into(), (900, 600).into());
-        let bounds = Rectangle::new((-1300, -600).into(), (500, 400).into());
-        assert!(output.contains_rect(toolbar_rect(Some(bounds), output)));
-        let tiny = Rectangle::new((50, 60).into(), (180, 30).into());
-        assert!(tiny.contains_rect(toolbar_rect(None, tiny)));
-    }
+    use std::collections::BTreeSet;
     #[test]
     fn group_motion_preserves_offsets_at_zoom_and_clamps_coordinates() {
         let delta = (90.0, -36.0).into();

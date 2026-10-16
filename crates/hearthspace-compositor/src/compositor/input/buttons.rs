@@ -31,6 +31,13 @@ impl App {
         self.shortcuts.cancel_meta_tap();
         if state == ButtonState::Pressed {
             self.cancel_pending_search();
+            let group_was_active = self.group_active();
+            self.dismiss_group_outside_press(self.pointer_location, button == 0x110);
+            if group_was_active && !self.group_active() {
+                // Selection hover may have deliberately removed client focus.
+                // Reconcile it before forwarding the outside press unchanged.
+                self.apply_pointer_motion(self.pointer_location, time);
+            }
         }
         if self.favorite_pointer_button(button, state) {
             if state == ButtonState::Released {

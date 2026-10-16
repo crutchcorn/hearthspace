@@ -7,6 +7,8 @@ use serde_json::{Value, json};
 
 #[path = "window_group_deferred.rs"]
 mod deferred;
+#[path = "window_group_lasso.rs"]
+mod lasso;
 #[path = "window_group_mock.rs"]
 mod mock;
 #[path = "window_group_visibility.rs"]
@@ -55,28 +57,29 @@ fn wait_group(compositor: &HeadlessCompositor, predicate: impl Fn(&Value) -> boo
     }
 }
 
+fn draw_lasso(compositor: &HeadlessCompositor, points: &[(f64, f64)]) {
+    let &(x, y) = points.first().unwrap();
+    action(compositor, format!("pointer-motion-abs {x} {y}"));
+    action(compositor, "pointer-button-down 272");
+    for &(x, y) in &points[1..] {
+        action(compositor, format!("pointer-motion-abs {x} {y}"));
+    }
+    action(compositor, "pointer-button-up 272");
+}
+
 #[test]
-fn window_group_selects_click_and_marquee_moves_at_zoom_and_clears_on_lock() {
+fn window_group_concave_lasso_moves_members_at_zoom_and_clears_on_lock() {
     let _guard = headless_test_guard();
     let mut compositor = HeadlessCompositor::spawn_with_size("1280x800");
     drop(compositor.wait_for_socket());
     let mut editors = Editors(Vec::new());
     let (first, _) = editor(&compositor, &mut editors, 0);
     let (second, _) = editor(&compositor, &mut editors, 1);
-    let (_, third_state) = editor(&compositor, &mut editors, 2);
-    for (id, x) in [(first, 100), (second, 650)] {
-        action(&compositor, format!("resize-window {id} 320 240"));
-        action(&compositor, format!("move-window {id} {x} 180"));
+    let (third, third_state) = editor(&compositor, &mut editors, 2);
+    for (id, x, y) in [(first, 100, 200), (second, 800, 200), (third, 440, 370)] {
+        action(&compositor, format!("resize-window {id} 240 190"));
+        action(&compositor, format!("move-window {id} {x} {y}"));
     }
-    let third = query(&compositor, "windows")["windows"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .find(|w| w["id"] != first && w["id"] != second)
-        .unwrap()["id"]
-        .as_u64()
-        .unwrap();
-    action(&compositor, format!("move-window {third} 5000 5000"));
     action(&compositor, "pan-to 0 0");
     action(&compositor, "zoom-to 0.8");
     let deadline = Instant::now() + Duration::from_secs(5);
@@ -85,38 +88,33 @@ fn window_group_selects_click_and_marquee_moves_at_zoom_and_clears_on_lock() {
         thread::sleep(Duration::from_millis(20));
     }
     action(&compositor, "pan-to 0 0");
-    // The test uses the compositor's actual transformed client rectangles.
     action(&compositor, "group-selection-toggle");
-    let a = window(&compositor, first);
-    click(
-        &compositor,
-        a["x"].as_f64().unwrap() + 50.0,
-        a["y"].as_f64().unwrap() + 80.0,
-    );
-    assert_eq!(group(&compositor)["selected"], json!([first]));
-    let b = window(&compositor, second);
-    let x = b["x"].as_f64().unwrap();
-    let y = b["y"].as_f64().unwrap();
-    action(
-        &compositor,
-        format!("pointer-motion-abs {} {}", x - 8.0, y - 8.0),
-    );
-    action(&compositor, "pointer-button-down 272");
-    action(
-        &compositor,
-        format!("pointer-motion-abs {} {}", x + 120.0, y + 120.0),
-    );
-    action(&compositor, "pointer-button-up 272");
+    keys(&compositor, &[30]); // Armed selection must not type A in the editor.
+    // Concave shape surrounds left/right windows but excludes the third even
+    // though it lies entirely inside the lasso's bounding rectangle.
+    let points = [
+        (60.0, 140.0),
+        (1100.0, 140.0),
+        (1100.0, 680.0),
+        (740.0, 680.0),
+        (740.0, 280.0),
+        (380.0, 280.0),
+        (380.0, 680.0),
+        (60.0, 680.0),
+    ]
+    .map(|(x, y)| (x * 0.8, y * 0.8));
+    draw_lasso(&compositor, &points);
     assert_eq!(group(&compositor)["selected"], json!([first, second]));
-    keys(&compositor, &[30]); // Modal selection must not type A in the third editor.
-    keys(&compositor, &[28]);
-    assert_eq!(group(&compositor)["selecting"], false);
-    keys(&compositor, &[48]);
+    assert_eq!(
+        group(&compositor)["selecting"],
+        false,
+        "release finishes selection"
+    );
+    keys(&compositor, &[48]); // No Enter is needed before normal keyboard input.
     wait_state(&third_state, |state| state["text"] == "b");
-    let toolbar = group(&compositor)["toolbar"].clone();
-    let x = toolbar["x"].as_f64().unwrap() + 20.0;
-    let y = toolbar["y"].as_f64().unwrap() + 20.0;
     let before = [window(&compositor, first), window(&compositor, second)];
+    let x = before[0]["x"].as_f64().unwrap() + 30.0;
+    let y = before[0]["y"].as_f64().unwrap() + 60.0;
     action(&compositor, format!("pointer-motion-abs {x} {y}"));
     action(&compositor, "pointer-button-down 272");
     action(
@@ -136,18 +134,19 @@ fn window_group_selects_click_and_marquee_moves_at_zoom_and_clears_on_lock() {
             60
         );
     }
+    assert_eq!(window(&compositor, third)["canvas_x"], 440);
+    assert_eq!(window(&compositor, third)["canvas_y"], 370);
     assert_eq!(query(&compositor, "status")["viewport"]["scale"], 0.8);
-    // A closed member is removed without disturbing the surviving group.
     editors.0[1].kill().unwrap();
     editors.0[1].wait().unwrap();
     wait_group(&compositor, |status| status["selected"] == json!([first]));
-    let toolbar = group(&compositor)["toolbar"].clone();
+    let item = window(&compositor, first);
     action(
         &compositor,
         format!(
             "pointer-motion-abs {} {}",
-            toolbar["x"].as_i64().unwrap() + 20,
-            toolbar["y"].as_i64().unwrap() + 20
+            item["x"].as_f64().unwrap() + 30.0,
+            item["y"].as_f64().unwrap() + 60.0
         ),
     );
     action(&compositor, "pointer-button-down 272");
@@ -166,7 +165,6 @@ fn window_group_selects_click_and_marquee_moves_at_zoom_and_clears_on_lock() {
     locker.unlock();
     assert_eq!(group(&compositor)["selected"], json!([]));
     // Losing the captured release at lock must not eat the next client's up.
-    let item = window(&compositor, first);
     click(
         &compositor,
         item["x"].as_f64().unwrap() + 50.0,
@@ -257,7 +255,12 @@ fn window_group_escape_cancels_stale_results_and_unavailable_model_keeps_layout(
     let (second, _) = editor(&compositor, &mut editors, 1);
     select_by_keyboard(&compositor, first);
     action(&compositor, format!("move-window {second} 9000 9000"));
-    action(&compositor, "group-gather");
+    let button = group(&compositor)["gather_button"].clone();
+    click(
+        &compositor,
+        button["x"].as_f64().unwrap() + 22.0,
+        button["y"].as_f64().unwrap() + 22.0,
+    );
     server.request(&compositor);
     action(&compositor, "pointer-motion-abs 10 10");
     let loading = compositor.take_screenshot();
