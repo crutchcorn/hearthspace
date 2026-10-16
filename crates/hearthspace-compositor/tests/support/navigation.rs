@@ -2,6 +2,9 @@
 use super::*;
 use serde_json::Value;
 
+#[path = "navigation_close.rs"]
+mod close;
+
 pub(super) struct Editors(pub(super) Vec<Child>);
 
 impl Drop for Editors {

@@ -51,14 +51,16 @@ They do not add unsupported minimize behavior or modify another desktop's settin
 
 A newly mapped application receives focus. Activation follows actual keyboard
 focus, including menus associated with that application. Closing or unmapping
-the focused window returns focus to a surviving application. Shell chrome and
-X11 override-redirect surfaces do not participate in normal window cycling.
+the focused window returns focus to a surviving application while preserving
+the canvas position and zoom, even if that application is offscreen. Shell
+chrome and X11 override-redirect surfaces do not participate in normal window
+cycling.
 
-Focusing an offscreen floating window reveals it by moving the viewport. Its
-canvas position is unchanged. Focusing another application can raise it above a
-fullscreen window; returning to the fullscreen application raises its dialog
-family with it. Activating the launcher exposes the shell bar even during
-fullscreen.
+Explicitly focusing an offscreen floating window reveals it by moving the
+viewport. Its canvas position is unchanged. Focusing another application can
+raise it above a fullscreen window; returning to the fullscreen application
+raises its dialog family with it. Activating the launcher exposes the shell bar
+even during fullscreen.
 
 Transient dialogs open near their parent. A dialog of an output-pinned window
 inherits the output and native scale, including through a chain of dialogs.

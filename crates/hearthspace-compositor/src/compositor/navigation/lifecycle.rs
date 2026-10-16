@@ -119,9 +119,15 @@ impl App {
             .enumerate()
             .rev()
             .find(|(index, _)| self.is_navigable_window(*index))
-            .map(|(_, window)| window.id);
-        if let Some(id) = target {
-            let _ = self.focus_window(id);
+            .map(|(index, _)| index);
+        if let Some(index) = target {
+            // Closing or unmapping a window hands off keyboard focus without
+            // navigating to an offscreen successor. Preserve the current view
+            // and any user-owned viewport animation during automatic recovery.
+            let index = self.raise_window(index);
+            if let Some(surface) = self.windows[index].surface.wl_surface() {
+                self.set_keyboard_focus_to_window(index, surface);
+            }
         } else {
             self.clear_keyboard_focus();
         }

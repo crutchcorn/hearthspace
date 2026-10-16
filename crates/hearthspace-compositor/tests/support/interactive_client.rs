@@ -15,6 +15,7 @@ struct Window {
     size: (i32, i32),
     configure_count: usize,
     resizing: bool,
+    mapped: bool,
 }
 
 #[derive(Default)]
@@ -64,6 +65,7 @@ impl InteractiveClient {
                 size: (240, 160),
                 configure_count: 0,
                 resizing: false,
+                mapped: true,
             });
             surface.commit();
         }
@@ -92,6 +94,14 @@ impl InteractiveClient {
     pub(crate) fn received_pointer_press(&mut self) -> bool {
         self.sync();
         self.state.press_serial.is_some()
+    }
+
+    pub(crate) fn unmap(&mut self, window: usize) {
+        let window = &mut self.state.windows[window];
+        window.mapped = false;
+        window.surface.attach(None, 0, 0);
+        window.surface.commit();
+        self.sync();
     }
 
     pub(crate) fn released_buttons(&mut self) -> &[u32] {
@@ -280,7 +290,9 @@ impl Dispatch<xdg_surface::XdgSurface, usize> for State {
         if let xdg_surface::Event::Configure { serial } = event {
             surface.ack_configure(serial);
             state.windows[*number].configure_count += 1;
-            state.commit_buffer(*number, handle);
+            if state.windows[*number].mapped {
+                state.commit_buffer(*number, handle);
+            }
         }
     }
 }
