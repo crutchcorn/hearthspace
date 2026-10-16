@@ -186,7 +186,10 @@ pub(super) fn insert_drm_source(
                     if let Err(error) = data.send_frame_callbacks() {
                         warn!(%error, "failed to send native frame callbacks");
                     }
-                    if should_redraw || data.state.viewport_animation.is_some() {
+                    if should_redraw
+                        || data.state.viewport_animation.is_some()
+                        || data.state.group_animating()
+                    {
                         data.state.request_redraw();
                     }
                 }

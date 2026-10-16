@@ -12,6 +12,7 @@ use crate::compositor::{
 };
 
 mod device_control;
+mod groups;
 mod meta;
 mod switcher;
 
@@ -24,6 +25,7 @@ pub(in crate::compositor) struct KeyboardShortcuts {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Shortcut {
+    Group(groups::Action),
     DeviceControl(crate::compositor::shell_integration::device_control::DeviceControl),
     Lock,
     OverviewToggle,
@@ -147,6 +149,7 @@ impl App {
         let available = self.navigation_available();
         let mut toggle_launcher = false;
         let shell_panel_focused = self.active_shell_panel_index().is_some();
+        let group_visible = self.group_keyboard_visible();
         let previous_modifiers = keyboard.modifier_state();
         let intercepted = keyboard.input(
             self,
@@ -177,6 +180,10 @@ impl App {
                 } else if shell_panel_focused {
                     app.shortcuts
                         .filter_shell_panel(code, state, modifiers, symbol, available)
+                } else if group_visible {
+                    let selecting = app.group_selection_active();
+                    app.shortcuts
+                        .filter_group(code, state, modifiers, symbol, available, selecting)
                 } else {
                     app.shortcuts
                         .filter(code, state, modifiers, symbol, available)
@@ -206,6 +213,10 @@ impl App {
 
     fn run_shortcut(&mut self, shortcut: Shortcut) {
         match shortcut {
+            Shortcut::Group(action) => {
+                self.run_group_shortcut(action);
+                return;
+            }
             Shortcut::DeviceControl(action) => {
                 if let Err(error) = self.send_device_control(action) {
                     tracing::debug!(%error, "device control unavailable");
@@ -251,6 +262,7 @@ impl App {
         let command = match shortcut {
             Shortcut::OverviewToggle => ShellCommand::OverviewToggle,
             Shortcut::DeviceControl(_)
+            | Shortcut::Group(_)
             | Shortcut::OverviewDismiss
             | Shortcut::OverviewActivate
             | Shortcut::OverviewNext
@@ -342,6 +354,7 @@ fn shortcut(modifiers: &ModifiersState, symbol: u32) -> Option<Shortcut> {
     }
     match symbol {
         keysyms::KEY_o => Some(Shortcut::OverviewToggle),
+        keysyms::KEY_g => Some(Shortcut::Group(groups::Action::Toggle)),
         keysyms::KEY_l => Some(Shortcut::Lock),
         keysyms::KEY_Return => Some(Shortcut::Terminal),
         keysyms::KEY_space => Some(Shortcut::Launcher),

@@ -16,6 +16,7 @@ fn bar(
         &state.notifications,
         &state.tray,
         state.battery.as_ref(),
+        &state.window_group,
     ))
 }
 
@@ -54,9 +55,17 @@ fn bar_icons_are_named_visible_on_small_outputs_and_toggle_exclusive_panels() {
             .collect::<Vec<_>>();
         assert_eq!(
             buttons.len(),
-            5,
-            "the five compact icon buttons should remain"
+            6,
+            "the six compact icon buttons should remain"
         );
+        let group = ui.button("Select window group");
+        let bounds = ui
+            .harness
+            .access_node(group)
+            .unwrap()
+            .bounding_box()
+            .unwrap();
+        assert!(bounds.x0 >= 0.0 && bounds.x1 <= f64::from(width));
         for removed in [
             "Overview",
             "Settings",
@@ -132,6 +141,45 @@ fn power_dropdown_keeps_confirmation_inside_and_cancel_does_not_end_session() {
     ui.activate(ui.button("Close power menu"));
     ui.dispatch(&power);
     assert!(!ui.state.outputs[0].show_power);
+}
+
+#[test]
+fn group_control_fits_small_output_with_battery_and_application_tray() {
+    use crate::battery::{BatteryKind, BatteryState, BatteryStatus};
+    let mut state = ShellState::new("/unused".into(), vec!["eDP-1".into()]);
+    state.battery = Some(BatteryStatus {
+        percentage: 57,
+        state: BatteryState::Discharging,
+        kind: BatteryKind::Battery,
+        on_battery: true,
+        warning: None,
+    });
+    state.tray.snapshot.items = vec![crate::ui::tray_tests::item(1)];
+    let ui = Ui::new(state, bar, (320, 48));
+    for name in [
+        "Application tray",
+        "Select window group",
+        "Search",
+        "Notifications",
+        "Canvas map",
+        "Control center",
+        "Power",
+    ] {
+        let bounds = ui
+            .harness
+            .access_node(ui.button(name))
+            .unwrap()
+            .bounding_box()
+            .unwrap();
+        assert!(bounds.x0 >= 0.0 && bounds.x1 <= 320.0, "{name}: {bounds:?}");
+    }
+    assert!(
+        ids(&ui.harness)
+            .iter()
+            .any(|id| ui.harness.access_node(*id).is_some_and(|node| node
+                .label()
+                .is_some_and(|label| label.contains("Battery") && label.contains("57%"))))
+    );
 }
 
 #[test]

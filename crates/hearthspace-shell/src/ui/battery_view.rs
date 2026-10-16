@@ -16,6 +16,7 @@ use super::{
 
 pub(super) fn indicator(
     battery: Option<&BatteryStatus>,
+    compact: bool,
 ) -> Option<impl WidgetView<ShellState> + use<>> {
     let battery = battery?;
     Some(
@@ -25,11 +26,17 @@ pub(super) fn indicator(
                     percentage: battery.percentage,
                     charging: battery.is_charging(),
                 },
-                format!("{}: {}", battery.kind.label(), battery.state_label()),
+                if compact {
+                    battery.accessible_label()
+                } else {
+                    format!("{}: {}", battery.kind.label(), battery.state_label())
+                },
             ),
-            label(format!("{}%", battery.percentage))
-                .text_size(13.0)
-                .color(components::TEXT),
+            (!compact).then(|| {
+                label(format!("{}%", battery.percentage))
+                    .text_size(13.0)
+                    .color(components::TEXT)
+            }),
         ))
         .gap(4.0.px()),
     )

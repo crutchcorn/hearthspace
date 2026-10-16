@@ -30,6 +30,10 @@ impl App {
             self.deliver_lock_button(button, state, time);
             return;
         }
+        if self.group_pointer_button(button, state) {
+            self.apply_pointer_motion(self.pointer_location, time);
+            return;
+        }
         if self.handle_overview_button(button, state) {
             return;
         }
@@ -73,6 +77,7 @@ impl App {
                     return;
                 }
                 Some(HitTarget::TitleBar { window_index }) => {
+                    self.cancel_group_window_motion(self.windows[window_index].id);
                     let window_index = self.raise_window(window_index);
                     if let Some(surface) = self.windows[window_index].surface.wl_surface() {
                         self.set_keyboard_focus_to_window(window_index, surface);

@@ -55,6 +55,9 @@ mod shell_panels;
 #[path = "support/window_bounds.rs"]
 mod window_bounds;
 #[cfg(feature = "test-apps")]
+#[path = "support/window_group.rs"]
+mod window_group;
+#[cfg(feature = "test-apps")]
 #[path = "support/window_placement.rs"]
 mod window_placement;
 #[cfg(feature = "test-apps")]
@@ -106,6 +109,16 @@ impl HeadlessCompositor {
         path: Option<&Path>,
         scale: i32,
     ) -> Self {
+        Self::spawn_with_command(size, layout, path, scale, |_| {})
+    }
+
+    fn spawn_with_command(
+        size: &str,
+        layout: Option<&Path>,
+        path: Option<&Path>,
+        scale: i32,
+        configure: impl FnOnce(&mut Command),
+    ) -> Self {
         let runtime_dir = tempfile::tempdir().expect("create headless runtime dir");
         let command_socket_path = runtime_dir.path().join("command.sock");
         let wayland_display = format!("hearthspace-test-{}", std::process::id());
@@ -115,6 +128,9 @@ impl HeadlessCompositor {
         command
             .args(["--headless", "--no-shell", "--headless-size", size])
             .arg(format!("--headless-scale={scale}"))
+            // Model operations use a process-independent cache lock. A mock
+            // decision server must never contend with the user's live session.
+            .env("XDG_CACHE_HOME", runtime_dir.path().join("cache"))
             .env_remove("HEARTHSPACE_LAYOUT_PATH");
         if let Some(path) = layout {
             command.env("HEARTHSPACE_LAYOUT_PATH", path);
@@ -122,6 +138,7 @@ impl HeadlessCompositor {
         if let Some(path) = path {
             command.env("PATH", path);
         }
+        configure(&mut command);
         let child = command
             .env("XDG_RUNTIME_DIR", runtime_dir.path())
             .env("HEARTHSPACE_COMMAND_SOCKET", &command_socket_path)
@@ -140,14 +157,24 @@ impl HeadlessCompositor {
     }
 
     fn wait_for_socket(&mut self) -> UnixStream {
-        startup::wait_for_socket(&mut self.child, &self.command_socket_path).unwrap_or_else(
-            |error| {
+        let stream = startup::wait_for_socket(&mut self.child, &self.command_socket_path)
+            .unwrap_or_else(|error| {
                 panic!(
                     "headless startup failed for {}: {error}",
                     self.command_socket_path.display()
                 )
-            },
-        )
+            });
+        // The control listener is created before Wayland. Real protocol clients
+        // must not race the later Wayland socket creation after this returns.
+        let wayland_socket = self
+            .runtime_dir
+            .path()
+            .join(format!("hearthspace-test-{}", std::process::id()));
+        drop(
+            startup::wait_for_socket(&mut self.child, &wayland_socket)
+                .expect("headless Wayland socket readiness"),
+        );
+        stream
     }
 
     fn send_text_command(&self, command: &str) -> String {

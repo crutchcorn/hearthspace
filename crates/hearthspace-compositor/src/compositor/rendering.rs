@@ -170,7 +170,11 @@ impl App {
 
         elements.extend(self.collect_window_switcher_elements(renderer, output_rect));
 
+        let mut group_elements = Some(self.collect_group_elements(renderer, output_rect));
         for index in order::render_order(self.windows.iter().map(|window| window.kind)) {
+            if self.windows[index].kind == ManagedWindowKind::Normal {
+                elements.extend(group_elements.take().unwrap_or_default());
+            }
             if !self.window_visible_on_output(index, output_rect) {
                 continue;
             }
@@ -210,6 +214,7 @@ impl App {
             }
         }
 
+        elements.extend(group_elements.take().unwrap_or_default());
         elements
     }
 

@@ -2514,6 +2514,7 @@ dependencies = [
  "cursor-icon",
  "fontique",
  "gtk4",
+ "hearthspace-ai",
  "hearthspace-common",
  "hearthspace-ipc",
  "hearthspace-shell",

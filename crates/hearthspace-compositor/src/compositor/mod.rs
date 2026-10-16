@@ -31,6 +31,7 @@ mod switcher;
 #[cfg(feature = "udev")]
 mod udev;
 mod viewport;
+mod window_group;
 mod windows;
 #[cfg(feature = "xwayland")]
 mod xwayland;
@@ -274,6 +275,7 @@ struct App {
     viewport_animation: Option<ViewportAnimation>,
     overview: overview::Overview,
     window_switcher: switcher::WindowSwitcher,
+    window_group: window_group::WindowGroup,
     overview_input: input::OverviewInput,
     pinch_zoom: input::PinchZoom,
     windows: Vec<ManagedWindow>,
@@ -635,6 +637,7 @@ pub(in crate::compositor) fn initialize_app(
         viewport_animation: None,
         overview: overview::Overview::default(),
         window_switcher: switcher::WindowSwitcher::default(),
+        window_group: window_group::WindowGroup::default(),
         overview_input: input::OverviewInput::default(),
         pinch_zoom: input::PinchZoom::default(),
         windows: Vec::new(),

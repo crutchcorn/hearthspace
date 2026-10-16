@@ -321,6 +321,7 @@ impl CalloopData {
             "xwayland_display": xwayland_display,
             "overview": self.state.overview_status(),
             "window_switcher": self.state.window_switcher_status(),
+            "window_group": self.state.group_status(),
             "canvas_maps": self.state.canvas_maps_status(),
             "shell_panels": self.state.shell_panels_status(),
             "control_osds": self.state.control_osds_status(),

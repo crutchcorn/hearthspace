@@ -19,6 +19,7 @@ impl App {
     }
 
     pub(in crate::compositor) fn reset_session_input(&mut self) {
+        self.reset_window_group_input();
         self.reset_favorite_input();
         // Drain queued search modifiers before releasing held keys; otherwise
         // recovery can buffer its own releases or replay a chord on return.

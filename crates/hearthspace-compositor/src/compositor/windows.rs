@@ -539,6 +539,7 @@ impl App {
         if self.window_uses_output_coordinates(window_index) {
             return;
         }
+        self.cancel_group_window_motion(self.windows[window_index].id);
         self.prepare_window_pointer_operation();
         let pointer_start = self.window_pointer_start(window_index);
         let initial_content_size = self.window_geometry_size(window_index);

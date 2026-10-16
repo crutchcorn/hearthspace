@@ -9,6 +9,7 @@ use super::{App, ManagedSurface, ManagedWindowKind, WindowDecoration};
 use crate::config::{CONTROL_BAR_HEIGHT, TITLE_BAR_HEIGHT};
 
 mod canvas_zoom;
+mod groups;
 #[cfg(test)]
 mod tests;
 mod transform;

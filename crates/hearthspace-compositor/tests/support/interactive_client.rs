@@ -77,12 +77,12 @@ impl InteractiveClient {
     }
 
     /// Two barriers also process commits queued while dispatching configure events.
-    pub(super) fn sync(&mut self) {
+    pub(crate) fn sync(&mut self) {
         self.queue.roundtrip(&mut self.state).unwrap();
         self.queue.roundtrip(&mut self.state).unwrap();
     }
 
-    pub(super) fn press_serial(&mut self) -> u32 {
+    pub(crate) fn press_serial(&mut self) -> u32 {
         self.sync();
         self.state
             .press_serial
@@ -94,14 +94,14 @@ impl InteractiveClient {
         &self.state.released_buttons
     }
 
-    pub(super) fn request_move(&mut self, window: usize, serial: u32) {
+    pub(crate) fn request_move(&mut self, window: usize, serial: u32) {
         self.state.windows[window]
             .toplevel
             ._move(self.state.seat.as_ref().unwrap(), serial);
         self.sync();
     }
 
-    pub(super) fn request_resize(&mut self, window: usize, serial: u32) {
+    pub(crate) fn request_resize(&mut self, window: usize, serial: u32) {
         self.state.windows[window].toplevel.resize(
             self.state.seat.as_ref().unwrap(),
             serial,
@@ -113,6 +113,11 @@ impl InteractiveClient {
     pub(super) fn request_restore(&mut self, window: usize) {
         self.state.windows[window].toplevel.unset_fullscreen();
         self.state.windows[window].toplevel.unset_maximized();
+        self.sync();
+    }
+
+    pub(crate) fn request_fullscreen(&mut self, window: usize) {
+        self.state.windows[window].toplevel.set_fullscreen(None);
         self.sync();
     }
 

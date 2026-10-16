@@ -53,6 +53,7 @@ impl App {
     }
 
     pub(in crate::compositor) fn cancel_input_gestures(&mut self) {
+        self.cancel_group_gesture();
         self.shortcuts.cancel_meta_tap();
         self.cancel_ui_touch();
         self.cancel_pending_search();

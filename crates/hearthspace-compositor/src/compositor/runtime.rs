@@ -123,8 +123,10 @@ pub(in crate::compositor) fn run_event_loop(
         let animation_timeout = (!data.uses_vblank_animation_pacing())
             .then_some(())
             .and_then(|()| {
-                (data.state.viewport_animation.is_some() || data.state.overview_animating())
-                    .then_some(ANIMATION_FRAME_INTERVAL)
+                (data.state.viewport_animation.is_some()
+                    || data.state.overview_animating()
+                    || data.state.group_animating())
+                .then_some(ANIMATION_FRAME_INTERVAL)
             });
         let exit_timeout = data
             .exit_at
@@ -173,6 +175,7 @@ pub(in crate::compositor) fn run_event_loop(
         data.state.handle_idle_transitions();
         data.state.advance_viewport_animation();
         data.state.advance_overview_animation();
+        data.state.maintain_window_group();
         data.state.reconcile_window_switcher();
         data.apply_cursor_icon();
         data.update_native_hardware_cursor();

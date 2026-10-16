@@ -63,7 +63,9 @@ impl App {
         debug!(%command, "running app control action");
         self.advance_viewport_animation();
 
-        if (self.overview_active() || self.window_switcher_active())
+        if (self.overview_active()
+            || self.window_switcher_active()
+            || self.group_interaction_active())
             && matches!(
                 action,
                 ShellCommand::PanLeft
@@ -82,6 +84,15 @@ impl App {
         }
 
         match action {
+            ShellCommand::GroupSelectionToggle => {
+                return action_reply(self.toggle_group_selection());
+            }
+            ShellCommand::GroupClear => {
+                self.clear_window_group();
+                return ControlReply::Ok;
+            }
+            ShellCommand::GroupGather => return action_reply(self.start_group_gather()),
+            ShellCommand::GroupStatus => return ControlReply::Payload(self.group_status_json()),
             ShellCommand::OverviewOn => return action_reply(self.open_overview()),
             ShellCommand::OverviewOff => {
                 self.close_overview();

@@ -9,7 +9,14 @@ from .daily_checks import a11y
 from .input import Input
 from .map_checks import SHELL, button_center, selector
 
-BAR_ICONS = ("Search", "Notifications", "Canvas map", "Control center", "Power")
+BAR_ICONS = (
+    "Select window group",
+    "Search",
+    "Notifications",
+    "Canvas map",
+    "Control center",
+    "Power",
+)
 REMOVED = ("Overview", "Reset view", "Windows", "Settings", "Lock", "Log out")
 
 
@@ -86,7 +93,7 @@ def bar(smoke):
     ordered = [
         item["name"] for item in sorted(buttons, key=lambda item: item["bounds"]["x"])
     ]
-    first = ordered.index("Search")
+    first = ordered.index(BAR_ICONS[0])
     if tuple(ordered[first : first + len(BAR_ICONS)]) != BAR_ICONS:
         raise ControlError(f"shell icon ordering/adjacency changed: {ordered}")
     editable = a11y(smoke, "find", f"{SHELL}//*[@showing='true' and @editable='true']")

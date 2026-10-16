@@ -823,6 +823,29 @@ No local Xilem clone is required for normal development; Cargo fetches the git
 dependency automatically. A local clone at `~/git/linebender/xilem` is useful
 for source search when working through Xilem/Masonry behavior or API questions.
 
+### Optional local AI for window groups
+
+Window grouping itself needs no model. **Gather similar windows** uses an
+already-installed local Ollama service with the D1 `POST /v1/systemone` API.
+The development host has Ollama **0.40.5**; Hearthspace does not install or
+reconfigure its service. Older Ollama releases without the decision endpoint
+must be updated separately. Ordinary `/api/chat` support is insufficient.
+
+Use **Settings → AI → Download D1 model** to opt in. The Rust `hf-hub` client
+downloads `LiquidAI/d1-3B-GGUF/d1-3B-Q4_K_M.gguf`, then imports it as the dedicated
+Ollama model `hearthspace-d1:latest`. Download files and preferences live under
+`$XDG_CACHE_HOME/hearthspace/ai` (normally `~/.cache/hearthspace/ai`); Ollama also
+stores an imported copy in its configured model directory. **Delete D1 model**
+removes the managed copy and download, preserving unrelated models. No systemd,
+login, firewall, or privilege-policy changes are required by this feature.
+
+The default endpoint is `http://127.0.0.1:11434`. Set
+`HEARTHSPACE_OLLAMA_URL=http://127.0.0.1:PORT` before starting the desktop to use
+another local runtime or a mock server. Remote addresses, HTTP proxies and
+redirects are rejected for title processing. Automated tests use local mock
+servers and require no model download. See [window groups](docs/WINDOW_GROUPS.md)
+for interaction, cancellation, and model lifecycle details.
+
 ### Linting
 
 Clippy and rustfmt come from the pinned rustup toolchain. Run:
