@@ -9,8 +9,7 @@ use masonry::{
 };
 use xilem::{WidgetView, view::sized_box};
 
-#[path = "test_support.rs"]
-mod support;
+use crate::test_support as support;
 use support::Ui;
 
 fn state() -> (tempfile::TempDir, SettingsApp) {
@@ -18,6 +17,7 @@ fn state() -> (tempfile::TempDir, SettingsApp) {
     (
         dir,
         SettingsApp {
+            ai: crate::ai::AiSettings::default(),
             favorites,
             settings: Settings::default(),
             live_outputs: vec![],

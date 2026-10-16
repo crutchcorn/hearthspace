@@ -42,6 +42,7 @@ pub(crate) struct Supervisor {
     desktop_services: crate::desktop_services::DesktopServices,
     app_scopes: Option<crate::app_scopes::AppScopes>,
     power: Option<crate::power::PowerManager>,
+    ai: Option<crate::ai::SessionModel>,
 }
 
 impl Supervisor {
@@ -70,6 +71,7 @@ impl Supervisor {
             desktop_services: crate::desktop_services::DesktopServices::default(),
             app_scopes: None,
             power: None,
+            ai: None,
         }
     }
 
@@ -156,7 +158,9 @@ impl Supervisor {
         let spec = self.binary_spec("hearthspace-shell", &[], true);
         self.shell = Some(ManagedProcess::spawn(spec, max_restarts)?);
         self.record_processes()?;
-        self.wait_for_desktop_ready()
+        self.wait_for_desktop_ready()?;
+        self.ai = crate::ai::SessionModel::start();
+        Ok(())
     }
 
     pub(crate) fn start_desktop_services(&mut self) -> Result<(), Box<dyn std::error::Error>> {
@@ -297,6 +301,7 @@ impl Supervisor {
 
     pub(crate) fn shutdown(&mut self) -> std::io::Result<()> {
         info!("shutting down Hearthspace session processes");
+        self.ai.take();
         self.power.take();
         terminate_process(&mut self.shell);
         terminate_process(&mut self.compositor);

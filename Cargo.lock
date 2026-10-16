@@ -2574,6 +2574,7 @@ dependencies = [
  "ctrlc",
  "futures-util",
  "gio",
+ "hearthspace-ai",
  "hearthspace-common",
  "nix",
  "serde",
@@ -2589,6 +2590,7 @@ dependencies = [
 name = "hearthspace-settings"
 version = "0.1.0"
 dependencies = [
+ "hearthspace-ai",
  "hearthspace-common",
  "hearthspace-ipc",
  "hearthspace-shell",

@@ -4,7 +4,7 @@ use crate::state::SettingsCategory;
 
 pub(crate) const USAGE: &str = "Usage: hearthspace-settings [--page PAGE]
 
-Pages: display (default), appearance, search, advanced
+Pages: display (default), appearance, search, ai, advanced
 Options: --help, -h";
 
 #[derive(Debug, Eq, PartialEq)]
@@ -45,6 +45,7 @@ fn parse_page(page: &str) -> Result<SettingsCategory, String> {
         "display" => Ok(SettingsCategory::Display),
         "appearance" => Ok(SettingsCategory::Appearance),
         "search" => Ok(SettingsCategory::Search),
+        "ai" => Ok(SettingsCategory::Ai),
         "advanced" => Ok(SettingsCategory::Advanced),
         _ => Err(format!("Unknown settings page: {page:?}.\n{USAGE}")),
     }
@@ -69,6 +70,7 @@ mod tests {
             ("display", SettingsCategory::Display),
             ("appearance", SettingsCategory::Appearance),
             ("search", SettingsCategory::Search),
+            ("ai", SettingsCategory::Ai),
             ("advanced", SettingsCategory::Advanced),
         ] {
             assert_eq!(arguments(&["--page", name]), Ok(Startup::Page(category)));

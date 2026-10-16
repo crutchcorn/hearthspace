@@ -30,7 +30,7 @@ pub(crate) fn app_logic(state: &mut SettingsApp) -> impl WidgetView<SettingsApp>
     );
 
     fork(
-        content,
+        fork(content, crate::ai_worker::worker_view()),
         worker(
             |proxy, mut rx| async move {
                 while let Some(BackgroundPickerRequest::PickFile) = rx.recv().await {
@@ -97,6 +97,11 @@ fn sidebar_view(state: &SettingsApp) -> impl WidgetView<SettingsApp> + use<> {
                 |state: &mut SettingsApp| state.select_category(SettingsCategory::Search),
             ),
             components::sidebar_item(
+                SettingsCategory::Ai.label(),
+                selected_category == SettingsCategory::Ai,
+                |state: &mut SettingsApp| state.select_category(SettingsCategory::Ai),
+            ),
+            components::sidebar_item(
                 SettingsCategory::Advanced.label(),
                 selected_category == SettingsCategory::Advanced,
                 |state: &mut SettingsApp| {
@@ -129,6 +134,7 @@ fn selected_category_view(state: &SettingsApp) -> Box<AnyWidgetView<SettingsApp>
         SettingsCategory::Display => display_settings_view(state),
         SettingsCategory::Appearance => appearance_settings_view(state),
         SettingsCategory::Search => crate::favorites_view::view(state),
+        SettingsCategory::Ai => crate::ai_view::view(state),
         SettingsCategory::Advanced => advanced_settings_view(state),
     }
 }
