@@ -314,6 +314,14 @@ finished seven minutes earlier, with no later harness cleanup activity.
 
 ### Optional Desktop Dependencies
 
+Battery status and low/critical warnings use the system UPower service. Ubuntu
+Desktop normally includes it; on a minimal installation, install it with
+`sudo apt-get install -y upower`. It remains optional: systems without UPower or
+a system battery or UPS show no battery indicator. Suspend uses the native session's
+existing logind integration and does not require UPower. Hearthspace does not
+modify UPower thresholds, logind/PAM policy, or the host's critical-power action.
+See [power controls](docs/POWER.md).
+
 Native daily-use sessions use the distribution's MATE polkit authentication agent
 and GTK desktop portal backend. Install their runtime dependencies with:
 
@@ -364,6 +372,14 @@ For native audio validation, `pulseaudio-utils` and its `libpulsedsp` dependency
 application's PulseAudio-compatible connection; `pw-cli info 0` verifies its
 PipeWire connection. Installing these client utilities does not start a second
 audio server.
+
+The shell's volume control also uses `pactl` from `pulseaudio-utils` (version 16
+or newer for JSON output). Install it with `sudo apt-get install -y pulseaudio-utils`
+if it is missing. PipeWire's PulseAudio service and PulseAudio are both supported;
+missing utilities, servers, or outputs leave the control unavailable. Brightness
+uses kernel backlight readings and logind's existing active-session permissions,
+without new groups, udev rules, setuid helpers, or password prompts. See
+[control center](docs/CONTROL_CENTER.md).
 
 The native supervisor starts the notification daemon, permission store, document
 portal, GTK portal backend, desktop portal, and polkit agent after Wayland is ready.

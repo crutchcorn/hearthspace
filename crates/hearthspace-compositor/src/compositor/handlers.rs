@@ -325,14 +325,27 @@ impl XdgShellHandler for App {
         {
             info!(window_id = window.id, kind = ?window.kind, "xdg toplevel destroyed");
             self.idle_daemon.unregister_window(window.id);
+            // A passive OSD expiring must not interrupt a drag of another app.
+            if self
+                .drag
+                .as_ref()
+                .is_some_and(|drag| drag.window_id == window.id)
+            {
+                self.drag = None;
+            }
+            if self
+                .resize
+                .as_ref()
+                .is_some_and(|resize| resize.window_id == window.id)
+            {
+                self.resize = None;
+            }
             if self.focused_normal_window_id == Some(window.id) {
                 self.focused_normal_window_id = None;
             }
         }
         self.windows
             .retain(|window| !window.surface.same_xdg(&surface));
-        self.drag = None;
-        self.resize = None;
         if restore_panel_focus {
             self.restore_focus_after_shell_panel();
         } else if restore_focus {
@@ -378,7 +391,8 @@ impl XdgShellHandler for App {
                 ManagedWindowKind::Normal => self.normal_insert_index(),
                 ManagedWindowKind::ShellBar
                 | ManagedWindowKind::Launcher
-                | ManagedWindowKind::ShellWatcher => self.windows.len(),
+                | ManagedWindowKind::ShellWatcher
+                | ManagedWindowKind::ControlOsd => self.windows.len(),
             };
             let wl_surface = window.surface.wl_surface();
             self.windows.insert(insert_index, window);

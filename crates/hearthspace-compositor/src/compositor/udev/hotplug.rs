@@ -21,8 +21,7 @@ impl UdevBackendState {
         self.repaint_pending = false;
         self.frame_pending = false;
         self.frame_dirty = true;
-        self.emergency_exit_ctrl_pressed = false;
-        self.emergency_exit_alt_pressed = false;
+        self.native_shortcuts.clear();
         if let Some(token) = self.input_source.take() {
             self.loop_handle.remove(token);
             info!("native libinput source removed for session pause");
@@ -49,6 +48,9 @@ impl UdevBackendState {
         }
 
         if self.input_source.is_none() {
+            // Recovery may retry while input is already live. Only a new
+            // source starts a new key lifetime; keep suppression across retries.
+            self.native_shortcuts.clear();
             match insert_libinput_source(&self.loop_handle, self.session.clone(), &self.seat_name) {
                 Ok(token) => {
                     self.input_source = Some(token);

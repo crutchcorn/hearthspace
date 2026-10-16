@@ -93,8 +93,8 @@ The default total budget grows from 240 seconds to 240 plus the unlock wait.
 An explicit `--total-timeout` must reserve at least that sum. The human wait may
 exceed the ordinary per-step timeout, but remains within the aggregate deadline
 and reserves one normal step for post-unlock checks. Expiry follows normal owned
-session cleanup and records no successful manual-unlock acceptance. This mode
-is available for a later local run; its implementation alone is not PAM evidence.
+session cleanup and records no successful manual-unlock acceptance. A successful
+run must observe local authentication; the implementation alone is not PAM evidence.
 
 Normal and failure exits stop the owned native session and verify original-VT,
 scope, runtime, and background T3 service recovery. The RTC alarm is cleared only
@@ -154,8 +154,8 @@ also passed. Logs are `/tmp/hearthspace-power-final-{tests,python,clippy,build}.
 
 Physical lid closure, a connected external monitor/dock, and real PAM password
 unlock were not exercised in those two runs. The subsequent physical-lid test
-below covers lid closure; external-display policy and PAM unlock still require
-their own observed runs.
+below covers lid closure, and the later GPD graphical-login acceptance covers
+PAM unlock. External-display policy still requires its own observed run.
 
 ### User-assisted physical lid closure — 2026-10-14/15
 
@@ -196,8 +196,8 @@ the observation alone does not prove authentication works. No manual unlock was
 observed during the recorder's 150-second window. This run therefore establishes
 physical lid-triggered sleep and protected native recovery, **not** PAM unlock
 or post-unlock application interaction. A persistent idle indicator and password
-feedback have since been implemented; local visual and PAM-unlock acceptance
-remain pending the user's later test.
+feedback were subsequently implemented and observed in the GPD manual acceptance
+below, alongside real PAM unlock.
 
 The recorder then stopped its owned session: `cleanup.complete=true`, tty2
 restored, scope stopped, runtime removed, RTC alarm cleared, and both T3 services
@@ -210,3 +210,105 @@ An earlier attempt, `/tmp/hearthspace-lid-physical-1`, expired its 45-second
 close window without observing a lid closure. It recorded no sleep, cleared its
 120-second alarm, and completed cleanup. It is retained as an aborted attempt,
 not a failed suspend cycle.
+
+### Real GDM login and password unlock — 2026-10-15
+
+The GPD passed user-assisted acceptance on AC with one internal 2560×1600 eDP-1
+display at scale 2, AMD Radeon 880M/890M with `amdgpu`, kernel
+`7.0.0-38-generic` and `s2idle`. Installed release `44e7eb81dec29` was built from
+`main` commit `f78b92f`. The user selected Hearthspace in GDM and authenticated
+locally. Live guard/process checks established the actual `gdm-password`
+Wayland login on seat0, tty2, session 22, with the installed executables.
+The observer attached to that login's verified private runtime and socket;
+it did not create a native harness session.
+
+Evidence is retained under `/tmp/hearthspace-manual-acceptance.qLS4S1`:
+
+- `power-1` proved an awake RTC interrupt, armed and verified a 45-second wake
+  alarm, and requested normal logind suspend. Kernel success increased from
+  0 to 1, failures stayed at 0, and measured suspended time was **45.066 seconds**.
+  The coordinator observed one sleep and resume, rearmed its inhibitor and
+  reported recovery readiness without a final error. Compositor status
+  independently confirmed the recovered lock, redacted application metadata
+  and refused capture. The original core processes and real swaylock survived.
+- Its 300-second unlock observation expired before remote orchestration returned
+  in time to signal the user. This remains recorded as an observer coordination
+  failure. It left the same desktop and original swaylock PID 257746 intact.
+  `unlock-1` then performed a bounded, read-only continuation against that exact
+  compositor and locker. No second suspend occurred and no locker was replaced,
+  killed or bypassed. After the wait signal, the user entered their password on
+  the laptop. The observer recorded the original locker exit and the same
+  compositor becoming active, unlocked and recovered.
+- Foot window 3 and Calculator window 4 retained their identities, titles and
+  geometry across suspend and authentication. Native eDP-1 frames advanced from
+  648 before sleep to 652 after unlock. The same terminal received the exact
+  agent-driven token `after-suspend-ok`, followed by physical keyboard input
+  `wake-ok\n`. The user confirmed both the blue idle lock indicator and visible
+  password-entry feedback; no password was sent to or captured by the agent.
+- Physical touchpad dragging moved Foot from canvas `(1306, 676)` to
+  `(1114, 678)`. Touchscreen dragging moved Calculator from `(1449, 605)` to
+  `(1628, 600)`, preserving both windows' identities and dimensions. The user
+  confirmed all three input devices worked. The final inspected native capture,
+  frame 1430, showed both moves, terminal markers and Calculator's result `42`.
+
+`acceptance-results.json` combines the login, suspend, unlock and input checks.
+`physical-input-result.json`, `user-observations.json`, `physical-input-passed.png`
+and its metadata retain the final assertions and visual evidence; `power-1` and
+`unlock-1` retain separate timelines, results and before/after native captures.
+Supervisor, compositor, settings service and shell PID/start identities survived,
+as did `t3code.service` and `t3code-tailnet.service`. The owned RTC alarm was
+cleared. No persistent host power, GDM or PAM policy changed, and the user's
+desktop was left active on tty2.
+
+This closes GPD acceptance for real graphical login, visible lock feedback,
+password unlock after suspend, and recovered agent/physical input. It does not
+extend coverage to external monitors/docks, battery-specific policy, repeated
+long-duration sleep, other machines or the pending ThinkPad GDM retry. Physical
+lid-switch evidence remains the separate earlier run above.
+
+### Laptop controls — 2026-10-15
+
+Installed release `17633e31fc346` was built from `d37a72c` on
+`features/laptop-power`. All installed executable hashes, owners and modes were
+checked against the build/source and installation manifest. The same GPD,
+`amdgpu`, kernel `7.0.0-38-generic`, internal 2560×1600 output at scale 2 and
+`s2idle` were used, with AC connected and the battery fully charged.
+
+`/tmp/hearthspace-laptop-menu-native-1` passed on owned tty7, session 27.
+The temporary bounded runner is retained in `artifacts/menu-native-runner.py`.
+It used the installed release and the native harness with a 660-second watchdog.
+Private accessibility assertions matched the real UPower reading: the bar showed
+100%, and the power menu showed “Battery: 100%, Fully charged” with an enabled
+Suspend action. Both native page-flip PNG/metadata pairs were visually inspected
+before proceeding (`baseline` frame 32 and `menu` frame 39).
+
+The runner armed a verified 45-second RTC wake alarm and activated the observed
+**Power → Suspend** button through private AT-SPI; it did not call a separate
+suspend command. Kernel success increased from 1 to 2, failures stayed at 0,
+and measured suspended time was **44.932 seconds**. The coordinator recorded one
+sleep and resume, rearmed its inhibitor, confirmed the presented lock and native
+recovery readiness, and had no final error. Core process identities survived;
+the real owned swaylock remained active and locked capture was denied.
+
+Cleanup stopped only the owned test session, removed its runtime and app scopes,
+cleared its RTC alarm and restored the user's GNOME session 26 on tty2.
+`cleanup.complete=true`; both T3 services retained their PID/start identities.
+This run establishes native menu-triggered suspend and protected recovery. It
+does not repeat the earlier manual PAM unlock or physically drain the battery.
+
+Isolated full-shell E2E exercises charging, low and critical notifications,
+deduplication, charging suppression, battery removal, Suspend on a battery-free
+desktop, and an unavailable action with its explanation. It uses a private fake
+UPower service and mock coordinator, so CI never suspends the host. Evidence and
+inspected screenshots are in `/tmp/hearthspace-power-ui-acceptance-2/power-controls`.
+The earlier `-1` attempt is retained: mixed software GL and hardware Vulkan
+failed a DMA-BUF import before acceptance. The passing run explicitly selected
+software GL and lavapipe for both renderers; it does not establish a driver fix.
+
+Full checks passed formatting, Ruff, Clippy with warnings denied, all-target
+native/E2E/test-app builds, **612 ordinary Rust tests**, **654 strict Rust/E2E
+tests**, and **374 strict Python/E2E tests with no skips**. Ordinary Python also
+passed with its ten opt-in skips. Logs, installed-binary verification and fresh
+full-suite evidence are under `/tmp/hearthspace-laptop-checks`. Power UI coverage
+runs with the normal `HEARTHSPACE_E2E=1` Python suite described in
+[E2E testing](E2E_TESTING.md). No global power, UPower, logind or PAM policy changed.

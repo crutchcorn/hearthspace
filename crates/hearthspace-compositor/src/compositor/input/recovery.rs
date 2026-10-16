@@ -19,6 +19,13 @@ impl App {
     }
 
     pub(in crate::compositor) fn reset_session_input(&mut self) {
+        self.reset_favorite_input();
+        // Drain queued search modifiers before releasing held keys; otherwise
+        // recovery can buffer its own releases or replay a chord on return.
+        self.cancel_pending_search();
+        self.control_events.clear();
+        self.shortcuts.cancel_device_repeat();
+        self.dismiss_control_osds();
         self.reset_window_switcher();
         self.close_overview();
         self.overview_input.clear();

@@ -1,4 +1,6 @@
-use super::UdevBackendState;
+use std::time::Instant;
+
+use super::{UdevBackendState, event_cutoff::SurfaceEvent};
 use crate::compositor::capture::{CaptureState, read_pixels};
 use smithay::{
     backend::{drm::DrmEventMetadata, renderer::Bind},
@@ -159,7 +161,11 @@ impl UdevBackendState {
         else {
             return Ok(None);
         };
-        if !output.event_cutoff.accepts(metadata) {
+        if !output.frame_pending {
+            return Ok(None);
+        }
+        let event = output.event_cutoff.classify(metadata);
+        if event == SurfaceEvent::Stale {
             trace!(
                 ?crtc,
                 ?metadata,
@@ -170,6 +176,28 @@ impl UdevBackendState {
         if output.gbm_surface.frame_submitted()?.is_none() {
             // A late event can outlive its surface after output reconfiguration.
             // Only acknowledge a frame that this surface actually submitted.
+            return Ok(None);
+        }
+        if event == SurfaceEvent::Untimed {
+            // A modeset completion without a timestamp can unblock the GBM
+            // queue, but cannot prove this generation reached the display.
+            // Discard its readback and lock marker; verify a fresh normal flip.
+            captures.fail(
+                output.target.connector_name(),
+                "native presentation timestamp unavailable; retry capture",
+            );
+            output.lock_frame_generation = None;
+            output.frame_pending = false;
+            output.frame_dirty = true;
+            self.frame_pending = device.any_frame_pending();
+            self.repaint_pending = self.frame_pending;
+            self.frame_dirty = device.any_frame_dirty();
+            self.recovery_progress_at = Some(Instant::now());
+            state.request_redraw();
+            debug!(
+                ?crtc,
+                "untimed native modeset completed; requesting a verified page flip"
+            );
             return Ok(None);
         }
         output.presented_once = true;

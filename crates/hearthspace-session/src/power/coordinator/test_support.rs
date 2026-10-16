@@ -16,6 +16,8 @@ pub(super) struct ControlState {
     pub confirmed: bool,
     pub fail_status: bool,
     pub recovery_failed: bool,
+    pub inactive: bool,
+    pub fail_lock: bool,
 }
 
 pub(super) struct MockControl {
@@ -50,6 +52,9 @@ impl MockControl {
                     let mut state = server_state.lock().unwrap();
                     state.commands.push(command.into());
                     match command {
+                        "lock-shield" if state.fail_lock => {
+                            b"error injected lock failure\n".to_vec()
+                        }
                         "prepare-sleep" | "lock-shield" => {
                             if !state.locked {
                                 state.confirmed = false;
@@ -66,7 +71,7 @@ impl MockControl {
                         }
                         "status" => {
                             let body = serde_json::to_vec(&serde_json::json!({
-                                "active": true,
+                                "active": !state.inactive,
                                 "recovery_ready": !state.recovery_failed,
                                 "locked": state.locked,
                                 "lock_confirmed": state.confirmed,
@@ -135,7 +140,15 @@ impl Fixture {
             resume_accepted: true,
             lid_request: None,
             hint: None,
+            manual: Manual::default(),
         }
+    }
+
+    pub async fn release_logind_name(&self) {
+        self._service
+            .release_name("org.freedesktop.login1")
+            .await
+            .unwrap();
     }
 
     pub async fn tick(&self, cycle: &mut Cycle, snapshot: &Snapshot, status: &mut Status) {

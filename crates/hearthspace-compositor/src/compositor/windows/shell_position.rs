@@ -58,6 +58,9 @@ impl App {
             self.window_surface_geometry_loc(window_index),
             self.window_geometry_size(window_index),
         );
+        if window.kind == ManagedWindowKind::ControlOsd {
+            return Some(osd_surface_origin(output, geometry));
+        }
         Some(shell_panel_surface_origin(
             output,
             geometry,
@@ -75,7 +78,7 @@ impl App {
                 .shell_bar_screen_origin(window_index)
                 .unwrap_or_else(|| Point::from((0, 0))),
             ManagedWindowKind::ShellWatcher => Point::from((0, 0)),
-            ManagedWindowKind::Launcher => self
+            ManagedWindowKind::Launcher | ManagedWindowKind::ControlOsd => self
                 .launcher_logical_origin(window_index)
                 .unwrap_or_else(|| Point::from((0, CONTROL_BAR_HEIGHT)))
                 .to_physical(1),
@@ -110,11 +113,39 @@ fn shell_panel_surface_origin(
     Point::from((x, y)) - geometry.loc
 }
 
+/// Feedback stays centered near the bottom in output-logical coordinates.
+fn osd_surface_origin(
+    output: Rectangle<i32, Logical>,
+    geometry: Rectangle<i32, Logical>,
+) -> Point<i32, Logical> {
+    let x = output
+        .loc
+        .x
+        .saturating_add((output.size.w - geometry.size.w).max(0) / 2);
+    let y = output
+        .loc
+        .y
+        .saturating_add(output.size.h)
+        .saturating_sub(geometry.size.h)
+        .saturating_sub(48)
+        .max(output.loc.y);
+    Point::from((x, y)) - geometry.loc
+}
+
 #[cfg(test)]
 mod tests {
     use smithay::utils::{Logical, Point, Rectangle};
 
-    use super::shell_panel_surface_origin;
+    use super::{osd_surface_origin, shell_panel_surface_origin};
+
+    #[test]
+    fn osd_centers_on_scaled_offset_outputs_and_clamps_small_outputs() {
+        let output = Rectangle::new((-1280, 120).into(), (1280, 800).into());
+        let geometry = Rectangle::new((8, 6).into(), (300, 90).into());
+        assert_eq!(osd_surface_origin(output, geometry), (-798, 776).into());
+        let small = Rectangle::new((120, -100).into(), (200, 100).into());
+        assert_eq!(osd_surface_origin(small, geometry), (112, -106).into());
+    }
 
     #[test]
     fn map_origin_tracks_output_position_actual_size_and_geometry_inset() {

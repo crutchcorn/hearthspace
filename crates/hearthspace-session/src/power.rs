@@ -10,6 +10,7 @@ use std::{
     time::Duration,
 };
 
+mod api;
 mod control;
 mod coordinator;
 mod logind;
@@ -30,12 +31,21 @@ impl PowerManager {
             .build()?;
         let stop = Arc::new(AtomicBool::new(false));
         let cancelled = stop.clone();
+        let (server, shared, requests) = api::Server::bind(&runtime, &socket)?;
         let worker = thread::Builder::new()
             .name("session-power".into())
             .spawn(move || {
                 executor.block_on(async {
                     tokio::select! {
-                        () = coordinator::run(runtime, socket) => {},
+                        () = coordinator::run(runtime, socket, shared, requests) => {},
+                        () = async {
+                            if let Err(error) = server.run().await {
+                                tracing::error!(%error, "power control endpoint stopped");
+                            }
+                            // Losing the optional shell endpoint must never
+                            // release the established sleep delay or lid policy.
+                            std::future::pending::<()>().await;
+                        } => {},
                         () = async {
                             while !cancelled.load(Ordering::SeqCst) {
                                 tokio::time::sleep(Duration::from_millis(50)).await;

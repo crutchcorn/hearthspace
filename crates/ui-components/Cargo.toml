@@ -8,6 +8,9 @@ license = "Apache-2.0"
 [dependencies]
 xilem = { git = "https://github.com/linebender/xilem", rev = "271a27a6d4a930f7878d404f9014e3c50a3a9b88" }
 
+[dev-dependencies]
+masonry = { git = "https://github.com/linebender/xilem", rev = "271a27a6d4a930f7878d404f9014e3c50a3a9b88", features = ["testing"] }
+
 [lints.rust]
 unsafe_op_in_unsafe_fn = "deny"
 

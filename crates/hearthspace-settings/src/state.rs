@@ -9,6 +9,7 @@ use crate::{
 };
 
 pub(crate) struct SettingsApp {
+    pub(crate) favorites: crate::favorites::FavoriteSettings,
     pub(crate) settings: Settings,
     pub(crate) live_outputs: Vec<LiveOutput>,
     pub(crate) selected_category: SettingsCategory,
@@ -23,6 +24,7 @@ pub(crate) struct SettingsApp {
 pub(crate) enum SettingsCategory {
     Display,
     Appearance,
+    Search,
     Advanced,
 }
 
@@ -31,6 +33,7 @@ impl SettingsCategory {
         match self {
             Self::Display => "Display",
             Self::Appearance => "Appearance",
+            Self::Search => "Search",
             Self::Advanced => "Advanced",
         }
     }
@@ -39,6 +42,7 @@ impl SettingsCategory {
         match self {
             Self::Display => "Monitor placement and scale",
             Self::Appearance => "Canvas background image and fit",
+            Self::Search => "Search and app launch gestures",
             Self::Advanced => "Diagnostics and configuration",
         }
     }
@@ -56,7 +60,7 @@ pub(crate) enum BackgroundPickerResponse {
     Failed(String),
 }
 
-pub(crate) fn initial_state() -> SettingsApp {
+pub(crate) fn initial_state(selected_category: SettingsCategory) -> SettingsApp {
     let (mut settings, mut status) = match client_get_settings() {
         Ok(settings) => (settings, "Connected to hearthspace-settingsd".to_string()),
         Err(error) => (
@@ -80,13 +84,24 @@ pub(crate) fn initial_state() -> SettingsApp {
     };
 
     SettingsApp {
+        favorites: crate::favorites::FavoriteSettings::load(),
         settings,
         live_outputs,
-        selected_category: SettingsCategory::Display,
+        selected_category,
         selected_monitor_id,
         background_picker_request_sender: None,
         background_picker_pending: false,
         status,
         config_label,
+    }
+}
+
+impl SettingsApp {
+    pub(crate) fn select_category(&mut self, category: SettingsCategory) {
+        self.favorites.cancel();
+        if category == SettingsCategory::Search {
+            self.favorites.reload();
+        }
+        self.selected_category = category;
     }
 }

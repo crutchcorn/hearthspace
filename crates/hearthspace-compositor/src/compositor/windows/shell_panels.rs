@@ -4,9 +4,9 @@
 //! this palette in the existing shell layer while using standard keyboard
 //! focus and xdg_toplevel.close events for its lifetime.
 use hearthspace_common::{
-    canvas_map_output_name_from_app_id, launcher_output_name_from_app_id,
-    notifications_output_name_from_app_id, power_menu_output_name_from_app_id,
-    tray_menu_output_name_from_app_id,
+    canvas_map_output_name_from_app_id, control_center_output_name_from_app_id,
+    launcher_output_name_from_app_id, notifications_output_name_from_app_id,
+    power_menu_output_name_from_app_id, tray_menu_output_name_from_app_id,
 };
 use serde_json::{Value, json};
 
@@ -152,6 +152,8 @@ impl App {
                     "notifications"
                 } else if power_menu_output_name_from_app_id(&app_id).is_some() {
                     "power"
+                } else if control_center_output_name_from_app_id(&app_id).is_some() {
+                    "controls"
                 } else if tray_menu_output_name_from_app_id(&app_id).is_some() {
                     "tray"
                 } else {

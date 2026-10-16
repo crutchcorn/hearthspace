@@ -8,13 +8,22 @@ use std::{
 use tokio::time::Instant;
 
 use super::{
+    api::{Reply, Request, Shared},
     control,
     logind::{Event, Logind, Snapshot},
     policy::{LidPolicy, LidState},
     status::{Status, external_display},
 };
 
-pub(super) async fn run(runtime: PathBuf, socket: PathBuf) {
+mod manual;
+use manual::Manual;
+
+pub(super) async fn run(
+    runtime: PathBuf,
+    socket: PathBuf,
+    shared: Shared,
+    mut requests: tokio::sync::mpsc::Receiver<Request>,
+) {
     let mut status = Status {
         phase: "connecting",
         ..Status::default()
@@ -22,7 +31,17 @@ pub(super) async fn run(runtime: PathBuf, socket: PathBuf) {
     loop {
         status.save(&runtime);
         let result = match Logind::connect().await {
-            Ok(mut logind) => connected(&mut logind, &runtime, &socket, &mut status).await,
+            Ok(mut logind) => {
+                connected(
+                    &mut logind,
+                    &runtime,
+                    &socket,
+                    &mut status,
+                    &shared,
+                    &mut requests,
+                )
+                .await
+            }
             Err(error) => Err(error),
         };
         if let Err(error) = result {
@@ -33,6 +52,8 @@ pub(super) async fn run(runtime: PathBuf, socket: PathBuf) {
             }
             status.error(error);
         }
+        shared.update(Reply::unavailable("Power service is disconnected"));
+        while requests.try_recv().is_ok() {}
         status.connected = false;
         status.sleep_inhibited = false;
         status.lid_owned = false;
@@ -51,6 +72,7 @@ struct Cycle {
     resume_accepted: bool,
     lid_request: Option<Instant>,
     hint: Option<bool>,
+    manual: Manual,
 }
 
 async fn connected(
@@ -58,6 +80,8 @@ async fn connected(
     runtime: &Path,
     socket: &Path,
     status: &mut Status,
+    shared: &Shared,
+    requests: &mut tokio::sync::mpsc::Receiver<Request>,
 ) -> io::Result<()> {
     let first = logind.snapshot().await?;
     if !first.local_seat {
@@ -75,6 +99,7 @@ async fn connected(
         resume_accepted: true,
         lid_request: None,
         hint: None,
+        manual: Manual::default(),
     };
     cycle.policy.reset();
     let reconnecting = !status.session_id.is_empty();
@@ -116,7 +141,11 @@ async fn connected(
         status.sleep_inhibited = cycle.delay.is_some();
         status.lid_owned = cycle.lid.is_some();
         status.save(runtime);
+        shared.update(cycle.manual_capability(logind, &snapshot, status).await);
         tokio::select! {
+            Some(request) = requests.recv() => {
+                cycle.request_suspend(request, logind, socket, status).await;
+            },
             event = logind.next_event() => match event? {
                 Event::PrepareForSleep(preparing) => {
                     cycle.sleep_event(preparing, &snapshot, logind, socket, status).await?;
@@ -148,6 +177,7 @@ impl Cycle {
             return Ok(());
         }
         self.sleeping = preparing;
+        self.manual.sleep_event();
         self.lid_request = None;
         if preparing {
             status.sleep_count += 1;
@@ -219,7 +249,7 @@ impl Cycle {
             external_display: external(),
             controls_lid: self.lid.is_some(),
         });
-        if closing && !self.sleeping {
+        if closing && !self.sleeping && !self.manual.busy() {
             tracing::info!("lid closed in active undocked session; preparing lock");
             self.lid_request = Some(Instant::now() + Duration::from_secs(10));
             if let Err(error) = control::command(socket, "lock-shield").await {
@@ -268,6 +298,8 @@ impl Cycle {
                 status.error("resume presentation timed out; session remains shielded");
             }
         }
+        self.tick_manual(snapshot, logind, socket, status, &compositor)
+            .await;
         if let Some(deadline) = self.lid_request {
             // Recheck eligibility after the asynchronous lock presentation.
             if Instant::now() >= deadline {
@@ -308,6 +340,7 @@ impl Cycle {
             && self.preparing.is_none()
             && self.recovering.is_none()
             && self.lid_request.is_none()
+            && !self.manual.busy()
             && self.delay.is_some()
             && self.resume_accepted
             && status.recovery_ready

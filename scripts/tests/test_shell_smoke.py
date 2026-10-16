@@ -209,7 +209,10 @@ class ShellEvidenceTests(unittest.TestCase):
             (icons + ["Overview"], False),
             (icons + ["Extra action"], False),
             (icons + ["Search"], False),
-            (["Search", "Canvas map", "Notifications", "Power"], False),
+            (
+                ["Search", "Canvas map", "Notifications", "Control center", "Power"],
+                False,
+            ),
         ]:
             with self.subTest(names=names):
                 smoke = Mock()

@@ -11,10 +11,24 @@ use hearthspace_common::SHELL_COMMAND_SOCKET_ENV;
 use tracing::{error, info};
 use xilem::{EventLoop, Xilem};
 
+mod battery_view;
 mod canvas_map;
 mod canvas_task;
 mod command_client;
 mod constants;
+mod control_center;
+mod control_osd;
+mod control_slider;
+mod control_state;
+mod control_task;
+mod control_worker;
+mod favorite_actions;
+mod favorite_events;
+mod favorite_state;
+#[cfg(test)]
+mod favorite_tests;
+mod favorite_view;
+use crate::gesture_pad;
 mod icons;
 mod launcher;
 mod minimap;
@@ -24,6 +38,7 @@ mod output_state;
 mod output_watcher;
 mod popup;
 mod popup_group;
+mod power_task;
 mod search_editor;
 mod search_focus;
 mod search_input;
@@ -61,6 +76,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     let events = shell_events::ShellEvents::bind(&command_socket)?;
     let mut state = ShellState::new(command_socket, output_names);
     state.shell_events = Some(events);
+    state.favorites = favorite_state::Favorites::load();
 
     let app = Xilem::new(state, app_logic)
         .with_default_properties(hearthspace_ui_components::hearthspace_light_properties())

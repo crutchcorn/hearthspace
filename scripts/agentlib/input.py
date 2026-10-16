@@ -34,6 +34,11 @@ KEYS.update(
         "pageup": 104,
         "pagedown": 109,
         "insert": 110,
+        "volume-up": 115,
+        "volume-down": 114,
+        "volume-mute": 113,
+        "brightness-up": 225,
+        "brightness-down": 224,
     }
 )
 KEYS.update({f"f{i}": 58 + i for i in range(1, 11)})

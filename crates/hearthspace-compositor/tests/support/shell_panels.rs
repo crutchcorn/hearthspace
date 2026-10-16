@@ -3,8 +3,8 @@ use super::canvas_map_client::MapClient;
 use super::navigation::{action, query};
 use super::*;
 use hearthspace_common::{
-    LAUNCHER_APP_ID, NOTIFICATIONS_APP_ID, POWER_MENU_APP_ID, TRAY_MENU_APP_ID,
-    shell_bar_app_id_for_output,
+    CONTROL_CENTER_APP_ID, LAUNCHER_APP_ID, NOTIFICATIONS_APP_ID, POWER_MENU_APP_ID,
+    TRAY_MENU_APP_ID, shell_bar_app_id_for_output,
 };
 use serde_json::Value;
 
@@ -66,6 +66,7 @@ fn shell_panels_focus_hit_test_and_close_without_revealing_off_canvas_windows() 
         (NOTIFICATIONS_APP_ID, "notifications", (360, 440)),
         (POWER_MENU_APP_ID, "power", (240, 160)),
         (TRAY_MENU_APP_ID, "tray", (320, 180)),
+        (CONTROL_CENTER_APP_ID, "controls", (340, 250)),
     ] {
         let panel = client.add(app_id.into(), size, (8, 6), GREEN);
         assert_eq!(client.focus(), Some(panel), "{kind} initial focus");
@@ -164,6 +165,7 @@ fn search_and_dropdowns_fit_scaled_small_outputs_and_lock_hides_their_metadata()
         (NOTIFICATIONS_APP_ID, "notifications"),
         (POWER_MENU_APP_ID, "power"),
         (TRAY_MENU_APP_ID, "tray"),
+        (CONTROL_CENTER_APP_ID, "controls"),
     ] {
         let panel = client.add(app_id.into(), (500, 440), (0, 0), GREEN);
         let geometry = bounds(&compositor, kind);
@@ -293,6 +295,21 @@ fn search_bridge_preserves_early_typing_and_revokes_cancelled_requests() {
     assert!(!client.closed().contains(&direct));
     client.destroy(direct);
 
+    // Native VT loss uses the same input reset as locking. Modifiers queued
+    // before search maps must be drained before synthesizing held-key releases.
+    let before_resume = request();
+    action(&compositor, "key-down 29");
+    action(&compositor, "key-down 56");
+    action(&compositor, "session-resume");
+    assert!(
+        compositor
+            .send_text_command(&format!("shell-event-accept {before_resume}"))
+            .starts_with("err ")
+    );
+    // A stuck Ctrl or Alt in XKB would suppress this plain Super+O shortcut.
+    super::navigation::keys(&compositor, &[125, 24]);
+    assert_eq!(query(&compositor, "status")["overview"]["active"], true);
+    action(&compositor, "overview-off");
     let before_lock = request();
     action(&compositor, format!("shell-event-accept {before_lock}"));
     let socket = compositor

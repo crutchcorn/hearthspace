@@ -15,19 +15,25 @@ fn bar(
         state.clock.clone(),
         &state.notifications,
         &state.tray,
+        state.battery.as_ref(),
     ))
 }
 
 fn power(
     state: &ShellState,
 ) -> impl WidgetView<ShellState, Widget = masonry::widgets::SizedBox> + use<> {
-    sized_box(power_panel(&state.outputs[0]))
+    sized_box(power_panel(
+        &state.outputs[0],
+        &state.power,
+        state.battery.as_ref(),
+    ))
 }
 
 fn search(
     state: &ShellState,
 ) -> impl WidgetView<ShellState, Widget = masonry::widgets::SizedBox> + use<> {
     sized_box(launcher::launcher_view(
+        state,
         &state.outputs[0],
         launcher::results(state, &state.outputs[0]),
         None,
@@ -46,7 +52,11 @@ fn bar_icons_are_named_visible_on_small_outputs_and_toggle_exclusive_panels() {
                 (node.role() == Role::Button).then(|| node.label().unwrap())
             })
             .collect::<Vec<_>>();
-        assert_eq!(buttons.len(), 4, "only the four icon buttons should remain");
+        assert_eq!(
+            buttons.len(),
+            5,
+            "the five compact icon buttons should remain"
+        );
         for removed in [
             "Overview",
             "Settings",
@@ -57,7 +67,13 @@ fn bar_icons_are_named_visible_on_small_outputs_and_toggle_exclusive_panels() {
         ] {
             assert!(!buttons.iter().any(|name| name == removed));
         }
-        for name in ["Search", "Notifications", "Canvas map", "Power"] {
+        for name in [
+            "Search",
+            "Notifications",
+            "Canvas map",
+            "Control center",
+            "Power",
+        ] {
             let id = ui.button(name);
             let bounds = ui.harness.access_node(id).unwrap().bounding_box().unwrap();
             assert!(
@@ -73,7 +89,8 @@ fn bar_icons_are_named_visible_on_small_outputs_and_toggle_exclusive_panels() {
                     output.show_search,
                     output.show_notifications,
                     output.show_map,
-                    output.show_power
+                    output.show_power,
+                    output.show_controls
                 ]
                 .into_iter()
                 .filter(|open| *open)
@@ -85,6 +102,7 @@ fn bar_icons_are_named_visible_on_small_outputs_and_toggle_exclusive_panels() {
                 "Notifications" => output.show_notifications,
                 "Canvas map" => output.show_map,
                 "Power" => output.show_power,
+                "Control center" => output.show_controls,
                 _ => unreachable!(),
             });
         }

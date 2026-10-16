@@ -41,7 +41,7 @@ impl AppCatalog {
         Self::load_from_data_dirs(paths::xdg_data_dirs())
     }
 
-    fn load_from_data_dirs(data_dirs: Vec<PathBuf>) -> Self {
+    pub fn load_from_data_dirs(data_dirs: Vec<PathBuf>) -> Self {
         let data_dir_count = data_dirs.len();
         let mut apps = Vec::new();
         let mut seen_ids = HashSet::new();

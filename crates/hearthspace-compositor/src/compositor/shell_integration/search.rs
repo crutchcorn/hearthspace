@@ -147,13 +147,17 @@ impl App {
             .map(|(index, _)| index)
         {
             if toggle {
+                self.clear_favorite_drawing();
+                self.cancel_ui_touch();
                 self.windows[index].surface.send_close();
             } else if let Some(surface) = self.windows[index].surface.wl_surface() {
                 self.set_keyboard_focus_to_window(index, surface);
             }
             return Ok(());
         }
-        self.search_request.sequence = self.search_request.sequence.wrapping_add(1).max(1);
+        self.search_request.sequence = (self.search_request.sequence.wrapping_add(1)
+            & !super::device_control::CONTROL_TOKEN_BIT)
+            .max(1);
         let token = self.search_request.sequence;
         let event = serde_json::to_vec(&serde_json::json!({
             "version": 1, "action": "open-search", "output": output, "token": token,
@@ -187,6 +191,9 @@ impl App {
     }
 
     pub(in crate::compositor) fn accept_shell_event(&mut self, token: u64) -> Result<(), String> {
+        if token & super::device_control::CONTROL_TOKEN_BIT != 0 {
+            return self.control_events.accept(token);
+        }
         self.check_navigation_available()?;
         self.search_request.accept(token)
     }

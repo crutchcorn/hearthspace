@@ -8,7 +8,7 @@ use xilem::{
     core::{MessageProxy, NoElement, View},
     masonry::{layout::AsUnit, properties::LineBreaking},
     style::Style,
-    view::{CrossAxisAlignment, FlexSpacer, flex_col, flex_row, task_raw},
+    view::{CrossAxisAlignment, FlexSpacer, button, flex_col, flex_row, label, task_raw},
 };
 
 use super::{
@@ -75,7 +75,11 @@ pub(super) fn power_button(output: &ShellOutputInstance) -> impl WidgetView<Shel
     })
 }
 
-pub(super) fn power_window(output: &ShellOutputInstance) -> WindowView<ShellState> {
+pub(super) fn power_window(
+    output: &ShellOutputInstance,
+    power: &super::power_task::PowerState,
+    battery: Option<&crate::battery::BatteryStatus>,
+) -> WindowView<ShellState> {
     let app_id = output.power_app_id();
     let key = output.key().to_string();
     let size = popup::size(output, PopupKind::Power, 300.0, 140.0);
@@ -84,16 +88,59 @@ pub(super) fn power_window(output: &ShellOutputInstance) -> WindowView<ShellStat
         "Hearthspace Power",
         app_id,
         size,
-        power_panel(output),
+        power_panel(output, power, battery),
         move |state| state.dismiss_power(&key),
     )
 }
 
-pub(super) fn power_panel(output: &ShellOutputInstance) -> impl WidgetView<ShellState> + use<> {
+pub(super) fn power_panel(
+    output: &ShellOutputInstance,
+    power: &super::power_task::PowerState,
+    battery: Option<&crate::battery::BatteryStatus>,
+) -> impl WidgetView<ShellState> + use<> {
     let output_key = output.key().to_string();
     let cancel_key = output_key.clone();
     let lock_key = output_key.clone();
     let confirming = output.confirm_logout;
+    let suspend_key = output.key().to_string();
+    let available = power.can_suspend();
+    let suspend = (!confirming).then(|| {
+        button(
+            label(if power.busy() {
+                "Suspending…"
+            } else {
+                "Suspend"
+            })
+            .text_size(13.0)
+            .text_alignment(xilem::TextAlign::Center)
+            .color(if available {
+                components::TEXT
+            } else {
+                components::TEXT_MUTED
+            }),
+            move |state: &mut ShellState| super::power_task::suspend(state, &suspend_key),
+        )
+        .disabled(!available)
+        .background_color(components::SURFACE_SUBTLE)
+        .border(components::BORDER, 1.0.px())
+        .corner_radius(6.0.px())
+        .padding(xilem::masonry::properties::Padding::from_vh(
+            5.0.px(),
+            9.0.px(),
+        ))
+    });
+    let unavailable = (!confirming && !power.status.available && !power.busy()).then(|| {
+        label(
+            power
+                .status
+                .error
+                .clone()
+                .unwrap_or_else(|| "Suspend is unavailable in this session.".into()),
+        )
+        .text_size(13.0)
+        .color(components::TEXT_MUTED)
+        .line_break_mode(LineBreaking::WordWrap)
+    });
     let logout = components::compact_action_button(
         if confirming {
             "Confirm log out"
@@ -144,7 +191,10 @@ pub(super) fn power_panel(output: &ShellOutputInstance) -> impl WidgetView<Shell
             )),
             hint,
             error,
+            super::battery_view::detail(battery),
             lock,
+            suspend,
+            unavailable,
             logout,
             cancel,
         ))

@@ -81,6 +81,28 @@ fn launch_app_on_output_round_trips_output_name() {
 }
 
 #[test]
+fn search_settings_command_preserves_output_and_rejects_malformed_arguments() {
+    for output_name in [
+        None,
+        Some("HDMI-A-1".into()),
+        Some("Virtual output 2".into()),
+    ] {
+        let command = ShellCommand::OpenSearchSettings { output_name };
+        let wire = command.wire_name();
+        assert_eq!(ShellCommand::parse(&wire), Some(command));
+        assert_eq!(ShellCommand::parse(&format!("{wire} extra")), None);
+    }
+    for invalid in [
+        "open-search-settings 1",
+        "open-search-settings gg",
+        "open-search-settings ff",
+        "open-search-settings --page search",
+    ] {
+        assert_eq!(ShellCommand::parse(invalid), None);
+    }
+}
+
+#[test]
 fn waydriver_input_commands_parse() {
     assert_eq!(
         ShellCommand::parse("key-down 30"),

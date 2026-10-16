@@ -103,6 +103,13 @@ fn interactive_client_move_resize_follow_pointer_and_stop_after_release_at_zoom(
             }
         }
         for operation in [Operation::Move, Operation::Resize] {
+            let mut overlays = super::shell_panels::connect(&compositor);
+            let osd = overlays.add(
+                hearthspace_common::CONTROL_OSD_APP_ID.into(),
+                (300, 90),
+                (0, 0),
+                [0x66, 0xcc, 0, 0xff],
+            );
             let before = windows(&compositor);
             let (point, serial) = press(&compositor, &mut client, 272);
             let first = match operation {
@@ -125,6 +132,9 @@ fn interactive_client_move_resize_follow_pointer_and_stop_after_release_at_zoom(
                 expected_at(20.0, 8.0),
                 "delayed {operation:?} did not catch up at scale {scale}",
             );
+            // Transient feedback disappearing during the drag must not cancel
+            // the active application's move/resize or its implicit grab.
+            overlays.destroy(osd);
             // Repeated or conflicting requests from this same held button must
             // neither restart the baseline nor replace the existing operation.
             for overlapping in [Operation::Move, Operation::Resize] {

@@ -20,6 +20,14 @@ use crate::compositor::{CalloopData, shell_integration::ControlReply};
 const RECOVERY_INTERVAL: Duration = Duration::from_millis(250);
 const RECOVERY_ATTEMPTS: u8 = 20;
 const RECOVERY_BUDGET: Duration = Duration::from_secs(5);
+const CONFIRMATION_GRACE: Duration = Duration::from_millis(500);
+
+#[derive(Debug, PartialEq, Eq)]
+enum RecoveryStep {
+    Wait,
+    Rebuild,
+    Exhausted,
+}
 
 /// Driver calls are synchronous and cannot be interrupted, but a slow attempt
 /// must consume the wall-clock budget rather than start another five seconds
@@ -37,12 +45,18 @@ impl RecoveryBudget {
         }
     }
 
-    fn next_attempt(&mut self, now: Instant) -> bool {
+    fn next_step(&mut self, now: Instant, progress: Option<Instant>) -> RecoveryStep {
         if now >= self.deadline || self.remaining == 0 {
-            return false;
+            return RecoveryStep::Exhausted;
+        }
+        // A blocking modeset can make the timer overdue before its completion
+        // event arrives. Give the follow-up frame a fresh dispatch opportunity
+        // instead of immediately destroying the surface that just progressed.
+        if progress.is_some_and(|at| now.saturating_duration_since(at) < CONFIRMATION_GRACE) {
+            return RecoveryStep::Wait;
         }
         self.remaining -= 1;
-        true
+        RecoveryStep::Rebuild
     }
 }
 
@@ -92,6 +106,7 @@ pub(super) fn activate_session(data: &mut CalloopData) {
     if let Some(token) = backend.recovery_source.take() {
         backend.loop_handle.remove(token);
     }
+    backend.recovery_progress_at = None;
     let connector_sync = backend.activate_session();
     let retry = !backend.recovery_complete();
     let handle = backend.loop_handle.clone();
@@ -116,10 +131,14 @@ pub(super) fn activate_session(data: &mut CalloopData) {
                 info!("native session recovery presented on every output");
                 return TimeoutAction::Drop;
             }
-            if !budget.next_attempt(Instant::now()) {
-                backend.recovery_source = None;
-                error!("native session recovery exhausted its bounded retries");
-                return TimeoutAction::Drop;
+            match budget.next_step(Instant::now(), backend.recovery_progress_at) {
+                RecoveryStep::Wait => return TimeoutAction::ToDuration(RECOVERY_INTERVAL),
+                RecoveryStep::Exhausted => {
+                    backend.recovery_source = None;
+                    error!("native session recovery exhausted its bounded retries");
+                    return TimeoutAction::Drop;
+                }
+                RecoveryStep::Rebuild => {}
             }
             // Setup success alone is insufficient: a failed first render or a
             // missing page flip must retry too, without depending on new input.
@@ -185,15 +204,24 @@ mod tests {
     fn slow_driver_calls_consume_the_absolute_recovery_budget() {
         let started = Instant::now();
         let mut budget = RecoveryBudget::new(started);
-        assert!(budget.next_attempt(started + Duration::from_millis(2_700)));
-        assert!(!budget.next_attempt(started + Duration::from_millis(5_400)));
+        assert_eq!(
+            budget.next_step(started + Duration::from_millis(2_700), None),
+            RecoveryStep::Rebuild
+        );
+        assert_eq!(
+            budget.next_step(started + Duration::from_millis(5_400), None),
+            RecoveryStep::Exhausted
+        );
     }
 
     #[test]
     fn initial_activation_can_exhaust_the_deadline_without_further_rebuilds() {
         let started = Instant::now();
         let mut budget = RecoveryBudget::new(started);
-        assert!(!budget.next_attempt(started + RECOVERY_BUDGET));
+        assert_eq!(
+            budget.next_step(started + RECOVERY_BUDGET, None),
+            RecoveryStep::Exhausted
+        );
     }
 
     #[test]
@@ -201,8 +229,40 @@ mod tests {
         let started = Instant::now();
         let mut budget = RecoveryBudget::new(started);
         for _ in 0..RECOVERY_ATTEMPTS {
-            assert!(budget.next_attempt(started));
+            assert_eq!(budget.next_step(started, None), RecoveryStep::Rebuild);
         }
-        assert!(!budget.next_attempt(started));
+        assert_eq!(budget.next_step(started, None), RecoveryStep::Exhausted);
+    }
+
+    #[test]
+    fn slow_modeset_completion_gives_its_confirmation_frame_time_to_present() {
+        let started = Instant::now();
+        let mut budget = RecoveryBudget::new(started);
+        let progress = started + Duration::from_millis(1_200);
+        assert_eq!(
+            budget.next_step(progress, Some(progress)),
+            RecoveryStep::Wait
+        );
+        assert_eq!(
+            budget.next_step(progress + RECOVERY_INTERVAL, Some(progress)),
+            RecoveryStep::Wait
+        );
+        assert_eq!(budget.remaining, RECOVERY_ATTEMPTS);
+        // A missing follow-up event must still lead to a rebuild.
+        assert_eq!(
+            budget.next_step(progress + CONFIRMATION_GRACE, Some(progress)),
+            RecoveryStep::Rebuild
+        );
+    }
+
+    #[test]
+    fn confirmation_progress_cannot_extend_the_absolute_budget() {
+        let started = Instant::now();
+        let mut budget = RecoveryBudget::new(started);
+        let deadline = started + RECOVERY_BUDGET;
+        assert_eq!(
+            budget.next_step(deadline, Some(deadline)),
+            RecoveryStep::Exhausted
+        );
     }
 }

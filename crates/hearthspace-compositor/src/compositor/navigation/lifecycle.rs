@@ -24,7 +24,14 @@ impl App {
         }
         self.windows[index].mapped = mapped;
         let id = self.windows[index].id;
-        if mapped && self.is_shell_panel(index) {
+        if !mapped {
+            self.favorite_window_unmapped(id);
+        }
+        if mapped && self.windows[index].kind == super::super::ManagedWindowKind::ControlOsd {
+            if self.session_locked() {
+                self.windows[index].surface.send_close();
+            }
+        } else if mapped && self.is_shell_panel(index) {
             // Only the initial mapping requests focus; zoom updates and other
             // buffer commits must not steal it back from a newer user action.
             if self.navigation_available() && self.search_mapping_allowed(index) {
@@ -64,6 +71,8 @@ impl App {
             })
         });
         self.cancel_search_outside_focus(index);
+        self.favorite_focus_changed(index.map(|index| self.windows[index].id));
+        self.ui_touch_focus_changed(index.map(|index| self.windows[index].id));
         self.dismiss_shell_panels_outside_focus(index);
         self.focused_normal_window_id = index
             .filter(|index| self.is_navigable_window(*index))

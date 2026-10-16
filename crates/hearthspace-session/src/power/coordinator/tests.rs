@@ -189,8 +189,10 @@ async fn property_reconciliation_handles_missing_sleep_and_resume_signals() {
     let mut fixture = Fixture::new().await;
     let mut status = Status::default();
     let runtime = fixture.control.path.parent().unwrap();
+    let shared = Shared::new();
+    let (_sender, mut requests) = tokio::sync::mpsc::channel(1);
     tokio::select! {
-        result = connected(&mut fixture.logind, runtime, &fixture.control.path, &mut status) => {
+        result = connected(&mut fixture.logind, runtime, &fixture.control.path, &mut status, &shared, &mut requests) => {
             panic!("coordinator ended early: {result:?}");
         }
         () = async {
@@ -220,8 +222,10 @@ async fn reconnect_refreshes_hardware_without_inventing_a_sleep_count() {
         ..Status::default()
     };
     let runtime = fixture.control.path.parent().unwrap();
+    let shared = Shared::new();
+    let (_sender, mut requests) = tokio::sync::mpsc::channel(1);
     tokio::select! {
-        result = connected(&mut fixture.logind, runtime, &fixture.control.path, &mut status) => {
+        result = connected(&mut fixture.logind, runtime, &fixture.control.path, &mut status, &shared, &mut requests) => {
             panic!("coordinator ended early: {result:?}");
         }
         () = async {
@@ -305,3 +309,6 @@ async fn a_presented_lock_cannot_hide_failed_input_recovery() {
     assert!(status.recovery_ready);
     assert_eq!(status.phase, "awake");
 }
+
+#[path = "manual_tests.rs"]
+mod manual_tests;

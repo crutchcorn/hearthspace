@@ -80,7 +80,12 @@ def run(smoke):
     with Input(smoke.control) as inputs:
         inputs.chord("ctrl+a")
         inputs.chord("backspace")
-    empty, gap = fitted(smoke, "search", "Type to search apps and open windows", output)
+    empty, gap = fitted(
+        smoke,
+        "search",
+        "Type to search apps and open windows, or draw a gesture to launch an app.",
+        output,
+    )
     if empty["height"] >= surface["height"]:
         raise ControlError("clearing search did not shrink its populated popup")
     smoke.capture("search-cleared-compact")

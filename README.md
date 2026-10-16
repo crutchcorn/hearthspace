@@ -57,6 +57,14 @@ search. See [the compact shell](./docs/SHELL.md) and
 [app compatibility](./docs/APPS.md) for profile and
 package behavior.
 
+Assign app shortcuts in **Settings → Search → Gestures**. Open search with Meta,
+the search icon, or a downward touchscreen swipe from the top bar. The drawing
+icon at the right of the search field enables **Draw to launch**; the adjacent
+Settings icon opens its Search tab. Click and drag with a mouse or trackpad, or draw
+with one touchscreen finger; a clear match launches immediately on release.
+Use one finger to scroll Settings and search results outside the drawing area.
+See [search gestures](./docs/FAVORITE_APPS.md) for assignment and recognition details.
+
 Agents can start an owned native session on a spare VT, inspect apps and stable
 window IDs, send input or Unicode paste, and verify screenshots or accessibility
 state through `scripts/hearthspace-agent`. Follow [native testing](./docs/NATIVE_TESTING.md)

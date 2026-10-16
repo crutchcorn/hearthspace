@@ -10,8 +10,12 @@ use super::{minimap::CanvasSnapshot, notifications::Notification, window_catalog
 pub(super) struct ShellState {
     pub(super) command_socket: PathBuf,
     pub(super) tray: super::tray_state::TrayState,
+    pub(super) battery: Option<crate::battery::BatteryStatus>,
+    pub(super) power: super::power_task::PowerState,
+    pub(super) controls: super::control_state::Controls,
     pub(super) shell_events: Option<std::sync::Arc<super::shell_events::ShellEvents>>,
     pub(super) catalog: AppCatalog,
+    pub(super) favorites: super::favorite_state::Favorites,
     pub(super) windows: Vec<RunningWindow>,
     pub(super) windows_error: Option<String>,
     pub(super) canvas: Option<CanvasSnapshot>,
@@ -29,15 +33,18 @@ pub(super) struct ShellState {
 
 #[derive(Debug)]
 pub(super) struct ShellOutputInstance {
-    pub(super) popup_measurements: [super::popup::PopupMeasurement; 5],
+    pub(super) popup_measurements: [super::popup::PopupMeasurement; 6],
     pub(super) tray: super::tray_state::TrayOutput,
     pub(super) output_name: Option<String>,
     pub(super) query: String,
+    pub(super) drawing: super::favorite_state::Drawing,
     pub(super) selected_result: Option<super::search_selection::EntryId>,
     pub(super) selected_result_index: usize,
     pub(super) show_search: bool,
     pub(super) search_request_token: Option<u64>,
     pub(super) show_power: bool,
+    pub(super) show_controls: bool,
+    pub(super) osd: Option<super::control_osd::Osd>,
     pub(super) confirm_logout: bool,
     pub(super) show_notifications: bool,
     pub(super) show_map: bool,
@@ -47,6 +54,8 @@ pub(super) struct ShellOutputInstance {
     pub(super) map_window_id: WindowId,
     pub(super) notifications_window_id: WindowId,
     pub(super) power_window_id: WindowId,
+    pub(super) controls_window_id: WindowId,
+    pub(super) osd_window_id: WindowId,
 }
 
 #[derive(Debug)]
@@ -65,8 +74,12 @@ impl ShellState {
         let mut state = Self {
             command_socket,
             tray: Default::default(),
+            battery: None,
+            power: Default::default(),
+            controls: Default::default(),
             shell_events: None,
             catalog: AppCatalog::load(),
+            favorites: Default::default(),
             windows: Vec::new(),
             windows_error: None,
             canvas: None,
@@ -145,11 +158,13 @@ impl ShellState {
                 Panel::Notifications => output.show_notifications = true,
                 Panel::Map => output.show_map = true,
                 Panel::Power => output.show_power = true,
+                Panel::Controls => output.show_controls = true,
             }
         }
     }
 
     pub(super) fn dismiss_panels(&mut self) {
+        super::favorite_actions::cancel_all(self);
         self.canvas_dragging = false;
         for output in &mut self.outputs {
             output.dismiss_panels();
@@ -157,6 +172,10 @@ impl ShellState {
     }
 
     pub(super) fn toggle_search(&mut self, output_key: &str) {
+        if self.favorites.tracks_installed_apps {
+            self.catalog = AppCatalog::load();
+        }
+        super::favorite_events::reload(self);
         self.toggle_panel(output_key, Panel::Search);
     }
 
@@ -168,7 +187,22 @@ impl ShellState {
         self.toggle_panel(output_key, Panel::Power);
     }
 
+    pub(super) fn toggle_controls(&mut self, output_key: &str) {
+        self.toggle_panel(output_key, Panel::Controls);
+    }
+
+    pub(super) fn dismiss_controls(&mut self, output_key: &str) {
+        if let Some(output) = self
+            .outputs
+            .iter_mut()
+            .find(|output| output.key() == output_key)
+        {
+            output.show_controls = false;
+        }
+    }
+
     pub(super) fn dismiss_launcher(&mut self, output_key: &str) {
+        super::favorite_actions::cancel(self, output_key);
         self.canvas_dragging = false;
         if let Some(output) = self
             .outputs
@@ -180,6 +214,7 @@ impl ShellState {
     }
 
     pub(super) fn dismiss_search(&mut self, output_key: &str) {
+        super::favorite_actions::cancel(self, output_key);
         if let Some(output) = self
             .outputs
             .iter_mut()
@@ -217,6 +252,7 @@ impl ShellState {
     }
 
     pub(super) fn change_query(&mut self, output_key: &str, query: String) {
+        super::favorite_actions::cancel(self, output_key);
         self.canvas_dragging = false;
         if let Some(output) = self
             .outputs
@@ -233,6 +269,7 @@ impl ShellState {
             output.show_map = false;
             output.show_power = false;
             output.show_notifications = false;
+            output.show_controls = false;
             output.confirm_logout = false;
             output.launch_error = None;
         }
@@ -261,6 +298,7 @@ pub(super) enum Panel {
     Notifications,
     Map,
     Power,
+    Controls,
 }
 
 fn normalized_output_targets(output_names: Vec<String>) -> Vec<Option<String>> {

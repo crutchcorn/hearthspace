@@ -102,6 +102,10 @@ impl App {
             self.request_redraw();
         }
 
+        if self.favorite_pointer_motion() {
+            return;
+        }
+
         if self.session_locked() {
             self.lock_pointer_motion(time);
             return;

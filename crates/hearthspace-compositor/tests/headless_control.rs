@@ -10,6 +10,8 @@ use std::{
 
 #[path = "support/serialization.rs"]
 mod serialization;
+#[path = "support/startup.rs"]
+mod startup;
 
 #[cfg(feature = "test-apps")]
 #[path = "support/accessibility.rs"]
@@ -23,6 +25,9 @@ mod canvas_map_client;
 #[cfg(feature = "test-apps")]
 #[path = "support/canvas_zoom.rs"]
 mod canvas_zoom;
+#[cfg(feature = "test-apps")]
+#[path = "support/device_controls.rs"]
+mod device_controls;
 #[cfg(feature = "test-apps")]
 #[path = "support/interactive.rs"]
 mod interactive;
@@ -135,27 +140,14 @@ impl HeadlessCompositor {
     }
 
     fn wait_for_socket(&mut self) -> UnixStream {
-        let deadline = Instant::now() + Duration::from_secs(10);
-        let mut last_error = None;
-
-        while Instant::now() < deadline {
-            if let Some(status) = self.child.try_wait().expect("poll compositor") {
-                panic!("headless Hearthspace exited before accepting commands: {status}");
-            }
-
-            match UnixStream::connect(&self.command_socket_path) {
-                Ok(stream) => return stream,
-                Err(error) => last_error = Some(error),
-            }
-
-            thread::sleep(Duration::from_millis(50));
-        }
-
-        panic!(
-            "timed out connecting to {}: {:?}",
-            self.command_socket_path.display(),
-            last_error
-        );
+        startup::wait_for_socket(&mut self.child, &self.command_socket_path).unwrap_or_else(
+            |error| {
+                panic!(
+                    "headless startup failed for {}: {error}",
+                    self.command_socket_path.display()
+                )
+            },
+        )
     }
 
     fn send_text_command(&self, command: &str) -> String {

@@ -1,41 +1,78 @@
-use smithay::backend::{
-    input::{InputEvent, KeyState, KeyboardKeyEvent},
-    libinput::LibinputInputBackend,
+use smithay::{
+    backend::{
+        input::{Device, Event, InputEvent, KeyboardKeyEvent},
+        libinput::{LibinputInputBackend, LibinputSessionInterface},
+        session::{Session, libseat::LibSeatSession},
+    },
+    reexports::{
+        calloop::{LoopHandle, RegistrationToken},
+        input::Libinput,
+    },
 };
-use tracing::{debug, trace};
+use tracing::{debug, info, trace, warn};
 
-use super::UdevBackendState;
+use super::{UdevBackendState, native_shortcuts::NativeAction, udev_backend_mut};
+use crate::compositor::{CalloopData, handle_input_event};
 
 impl UdevBackendState {
-    pub(super) fn handle_emergency_exit_chord(
-        &mut self,
-        event: &InputEvent<LibinputInputBackend>,
-    ) -> bool {
-        const KEY_ESC: u32 = 1 + 8;
-        const KEY_BACKSPACE: u32 = 14 + 8;
-        const KEY_LEFTCTRL: u32 = 29 + 8;
-        const KEY_LEFTALT: u32 = 56 + 8;
-        const KEY_RIGHTCTRL: u32 = 97 + 8;
-        const KEY_RIGHTALT: u32 = 100 + 8;
-
-        let InputEvent::Keyboard { event } = event else {
-            return false;
-        };
-        let keycode: u32 = event.key_code().into();
-        let pressed = event.state() == KeyState::Pressed;
-        match keycode {
-            KEY_LEFTCTRL | KEY_RIGHTCTRL => self.emergency_exit_ctrl_pressed = pressed,
-            KEY_LEFTALT | KEY_RIGHTALT => self.emergency_exit_alt_pressed = pressed,
-            KEY_BACKSPACE | KEY_ESC if pressed => {
-                return self.emergency_exit_ctrl_pressed && self.emergency_exit_alt_pressed;
+    fn native_shortcut(&mut self, event: &InputEvent<LibinputInputBackend>) -> NativeAction {
+        match event {
+            InputEvent::Keyboard { event } => self.native_shortcuts.key(
+                &event.device().id(),
+                event.key_code().into(),
+                event.state(),
+            ),
+            InputEvent::DeviceRemoved { device } => {
+                self.native_shortcuts.remove_device(&device.id());
+                NativeAction::Forward
             }
-            _ => {}
+            _ => NativeAction::Forward,
         }
-        false
     }
 }
 
-pub(super) fn log_input_event(event: &InputEvent<LibinputInputBackend>) {
+pub(super) fn insert_libinput_source(
+    handle: &LoopHandle<'static, CalloopData>,
+    session: LibSeatSession,
+    seat_name: &str,
+) -> Result<RegistrationToken, Box<dyn std::error::Error>> {
+    let mut context = Libinput::new_with_udev(LibinputSessionInterface::from(session));
+    context
+        .udev_assign_seat(seat_name)
+        .map_err(|()| format!("failed to assign libinput to seat {seat_name}"))?;
+    let token = handle.insert_source(LibinputInputBackend::new(context), |event, _, data| {
+        let Some(backend) = udev_backend_mut(data) else {
+            return;
+        };
+        if !backend.session_active {
+            trace!("input event ignored while native session is paused");
+            return;
+        }
+        backend.input_event_count += 1;
+        log_input_event(&event);
+        // Recovery shortcuts must bypass search's pending-key buffer, shell
+        // overlays, client grabs, and the lock screen. Only native events reach
+        // this path; nested/headless input cannot switch the host's VT.
+        match backend.native_shortcut(&event) {
+            NativeAction::Forward => handle_input_event(&mut data.state, event),
+            NativeAction::Consume => {}
+            NativeAction::SwitchVt(vt) => {
+                info!(vt, "native virtual terminal switch requested");
+                if let Err(error) = backend.session.change_vt(vt) {
+                    warn!(vt, %error, "native virtual terminal switch failed");
+                }
+            }
+            NativeAction::Exit => {
+                info!("native emergency exit chord pressed; stopping compositor event loop");
+                data.running = false;
+            }
+        }
+    })?;
+    info!(seat = seat_name, "native libinput source registered");
+    Ok(token)
+}
+
+fn log_input_event(event: &InputEvent<LibinputInputBackend>) {
     match event {
         InputEvent::DeviceAdded { device } => {
             debug!(name = ?device.name(), "input device added");

@@ -15,8 +15,10 @@ use super::window_app_id;
 impl App {
     pub(in crate::compositor) fn configure_shell_palette_size(&self, root: &WlSurface) {
         let Some(window) = self.windows.iter().find(|window| {
-            window.kind == ManagedWindowKind::Launcher
-                && window.surface.wl_surface().as_ref() == Some(root)
+            matches!(
+                window.kind,
+                ManagedWindowKind::Launcher | ManagedWindowKind::ControlOsd
+            ) && window.surface.wl_surface().as_ref() == Some(root)
         }) else {
             return;
         };

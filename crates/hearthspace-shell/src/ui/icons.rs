@@ -10,7 +10,7 @@ use xilem::{
             RegisterCtx, Widget, WidgetId,
         },
         imaging::Painter,
-        kurbo::{Axis, BezPath, Circle, Line, Size, Stroke},
+        kurbo::{Axis, BezPath, Circle, Line, Rect, Size, Stroke},
         layout::{AsUnit, LenReq, Length},
     },
     style::Style,
@@ -23,11 +23,27 @@ use super::state::ShellState;
 pub(super) enum Icon {
     Map,
     Search,
+    Draw,
+    Settings,
     Bell { active: bool },
     Power,
+    Controls,
+    Brightness,
+    Volume { muted: bool },
     ZoomIn,
     ZoomOut,
     Close,
+    Battery { percentage: u8, charging: bool },
+}
+
+pub(super) fn glyph(icon: Icon, name: String) -> impl WidgetView<ShellState> + use<> {
+    sized_box(IconView {
+        icon,
+        name,
+        selected: false,
+    })
+    .fixed_width(20.0.px())
+    .fixed_height(20.0.px())
 }
 
 pub(super) fn icon_button<F: Fn(&mut ShellState) + Send + Sync + 'static>(
@@ -134,6 +150,122 @@ impl Widget for IconWidget {
             components::TEXT
         };
         match self.icon {
+            Icon::Draw => {
+                let mut path = BezPath::new();
+                path.move_to((3.0, 13.0));
+                path.line_to((13.0, 3.0));
+                path.quad_to((14.5, 1.5), (16.0, 3.0));
+                path.line_to((17.0, 4.0));
+                path.quad_to((18.5, 5.5), (17.0, 7.0));
+                path.line_to((7.0, 17.0));
+                path.line_to((2.0, 18.0));
+                path.close_path();
+                painter.stroke(&path, &stroke, color).draw();
+                painter
+                    .stroke(Line::new((11.5, 4.5), (15.5, 8.5)), &stroke, color)
+                    .draw();
+            }
+            Icon::Settings => {
+                let mut gear = BezPath::new();
+                for index in 0..32 {
+                    let angle = f64::from(index) * std::f64::consts::TAU / 32.0;
+                    let radius = if index % 4 < 2 { 8.5 } else { 6.5 };
+                    let point = (10.0 + radius * angle.cos(), 10.0 + radius * angle.sin());
+                    if index == 0 {
+                        gear.move_to(point);
+                    } else {
+                        gear.line_to(point);
+                    }
+                }
+                gear.close_path();
+                painter.stroke(&gear, &stroke, color).draw();
+                painter
+                    .stroke(Circle::new((10.0, 10.0), 2.8), &stroke, color)
+                    .draw();
+            }
+            Icon::Controls => {
+                for (y, knob) in [(4.0, 7.0), (10.0, 13.0), (16.0, 7.0)] {
+                    painter
+                        .stroke(Line::new((2.0, y), (18.0, y)), &stroke, color)
+                        .draw();
+                    painter
+                        .fill(Circle::new((knob, y), 2.5), components::SURFACE)
+                        .draw();
+                    painter
+                        .stroke(Circle::new((knob, y), 2.5), &stroke, color)
+                        .draw();
+                }
+            }
+            Icon::Brightness => {
+                painter
+                    .stroke(Circle::new((10.0, 10.0), 4.0), &stroke, color)
+                    .draw();
+                for n in 0..8 {
+                    let angle = f64::from(n) * std::f64::consts::FRAC_PI_4;
+                    let (sin, cos) = angle.sin_cos();
+                    painter
+                        .stroke(
+                            Line::new(
+                                (10.0 + 7.0 * cos, 10.0 + 7.0 * sin),
+                                (10.0 + 9.0 * cos, 10.0 + 9.0 * sin),
+                            ),
+                            &stroke,
+                            color,
+                        )
+                        .draw();
+                }
+            }
+            Icon::Volume { muted } => {
+                let mut path = BezPath::new();
+                path.move_to((2.0, 7.0));
+                path.line_to((6.0, 7.0));
+                path.line_to((10.0, 3.0));
+                path.line_to((10.0, 17.0));
+                path.line_to((6.0, 13.0));
+                path.line_to((2.0, 13.0));
+                path.close_path();
+                painter.stroke(&path, &stroke, color).draw();
+                if muted {
+                    painter
+                        .stroke(Line::new((14.0, 7.0), (19.0, 13.0)), &stroke, color)
+                        .draw();
+                    painter
+                        .stroke(Line::new((19.0, 7.0), (14.0, 13.0)), &stroke, color)
+                        .draw();
+                } else {
+                    for (x, y) in [(13.0, 6.0), (16.0, 3.0)] {
+                        let mut wave = BezPath::new();
+                        wave.move_to((x, y));
+                        wave.curve_to((x + 4.0, 10.0), (x + 4.0, 10.0), (x, 20.0 - y));
+                        painter.stroke(&wave, &stroke, color).draw();
+                    }
+                }
+            }
+            Icon::Battery {
+                percentage,
+                charging,
+            } => {
+                painter
+                    .stroke(Rect::new(1.0, 5.0, 17.0, 15.0), &stroke, color)
+                    .draw();
+                painter.fill(Rect::new(18.0, 8.0, 20.0, 12.0), color).draw();
+                if charging {
+                    let mut bolt = BezPath::new();
+                    bolt.move_to((10.0, 6.5));
+                    bolt.line_to((6.0, 10.5));
+                    bolt.line_to((9.0, 10.5));
+                    bolt.line_to((8.0, 13.5));
+                    bolt.line_to((12.0, 9.5));
+                    bolt.line_to((9.0, 9.5));
+                    bolt.close_path();
+                    painter.fill(&bolt, color).draw();
+                } else if percentage > 0 {
+                    let width = 12.0 * f64::from(percentage.min(100)) / 100.0;
+                    painter
+                        .fill(Rect::new(3.0, 7.0, 3.0 + width, 13.0), color)
+                        .draw();
+                }
+            }
             Icon::Map => {
                 let mut path = BezPath::new();
                 path.move_to((2.0, 4.5));

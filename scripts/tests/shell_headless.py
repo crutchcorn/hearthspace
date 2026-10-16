@@ -68,7 +68,15 @@ def shell_bus_command(directory, address):
 
 
 def run_shell_session(
-    test, directory, evidence, workflow, marker, *, size=(2560, 1600), scale=2
+    test,
+    directory,
+    evidence,
+    workflow,
+    marker,
+    *,
+    size=(2560, 1600),
+    scale=2,
+    services=None,
 ):
     test.assertFalse(
         (evidence / "session.json").exists(), "use fresh evidence directory"
@@ -85,6 +93,9 @@ def run_shell_session(
         "HEARTHSPACE_WAYLAND_DISPLAY": "wayland-map",
         "WAYLAND_DISPLAY": "wayland-map",
         "DBUS_SESSION_BUS_ADDRESS": address,
+        # Battery and other system-service reads must also stay on the owned
+        # bus. Tests never observe or invoke the host's UPower/logind services.
+        "DBUS_SYSTEM_BUS_ADDRESS": address,
         "HEARTHSPACE_SESSION_BUS_ADDRESS": address,
         "GSETTINGS_BACKEND": "memory",
         "XDG_CURRENT_DESKTOP": "Hearthspace",
@@ -123,6 +134,11 @@ def run_shell_session(
         while not (directory / "bus").exists():
             test.assertIsNone(bus.poll(), "private bus exited")
             time.sleep(min(0.02, deadline.remaining()))
+        service_fixture = (
+            cleanup.enter_context(services(directory, evidence, env, deadline))
+            if services
+            else None
+        )
         log = cleanup.enter_context((evidence / "compositor.log").open("w"))
         compositor = subprocess.Popen(
             [
@@ -146,6 +162,7 @@ def run_shell_session(
         smoke.control = Control(socket, deadline)
         smoke.marker = marker
         smoke.manifest = json.loads((evidence / "session.json").read_text())
+        smoke.service_fixture = service_fixture
         smoke.failure_evidence = lambda label: failure_evidence(smoke, label)
         # Ubuntu confines notify-send to standard runtime bus paths. Exercise
         # the same Notify protocol directly on this owned /tmp test bus, without

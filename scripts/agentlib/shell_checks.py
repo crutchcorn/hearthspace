@@ -9,7 +9,7 @@ from .daily_checks import a11y
 from .input import Input
 from .map_checks import SHELL, button_center, selector
 
-BAR_ICONS = ("Search", "Notifications", "Canvas map", "Power")
+BAR_ICONS = ("Search", "Notifications", "Canvas map", "Control center", "Power")
 REMOVED = ("Overview", "Reset view", "Windows", "Settings", "Lock", "Log out")
 
 

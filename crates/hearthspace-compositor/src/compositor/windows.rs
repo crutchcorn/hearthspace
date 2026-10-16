@@ -15,9 +15,13 @@ use wayland_protocols::xdg::{
 use wayland_server::protocol::wl_surface::{self, WlSurface};
 
 use crate::{accessibility::ManagedWindowAccessibilityInfo, config::*, geometry::CanvasPoint};
-use hearthspace_common::{shell_bar_output_name_from_app_id, shell_panel_output_name_from_app_id};
+use hearthspace_common::{
+    control_osd_output_name_from_app_id, shell_bar_output_name_from_app_id,
+    shell_panel_output_name_from_app_id,
+};
 
 mod bounds;
+mod control_osd;
 mod geometry;
 mod hit_testing;
 mod ordering;
@@ -78,6 +82,13 @@ pub(super) fn window_kind_for_toplevel(surface: &ToplevelSurface) -> ManagedWind
     {
         return ManagedWindowKind::Launcher;
     }
+    if app_id
+        .as_deref()
+        .and_then(control_osd_output_name_from_app_id)
+        .is_some()
+    {
+        return ManagedWindowKind::ControlOsd;
+    }
     if app_id.as_deref() == Some(SHELL_OUTPUT_WATCHER_APP_ID) {
         return ManagedWindowKind::ShellWatcher;
     }
@@ -88,6 +99,7 @@ pub(super) fn shell_output_name_for_toplevel(surface: &ToplevelSurface) -> Optio
     let app_id = toplevel_app_id(surface)?;
     shell_bar_output_name_from_app_id(&app_id)
         .or_else(|| shell_panel_output_name_from_app_id(&app_id))
+        .or_else(|| control_osd_output_name_from_app_id(&app_id))
         .flatten()
 }
 
@@ -127,7 +139,9 @@ pub(super) fn position_for_new_window(
     match kind {
         ManagedWindowKind::Normal => fallback,
         ManagedWindowKind::ShellBar => CanvasPoint { x: 0, y: 0 },
-        ManagedWindowKind::ShellWatcher => CanvasPoint { x: 0, y: 0 },
+        ManagedWindowKind::ShellWatcher | ManagedWindowKind::ControlOsd => {
+            CanvasPoint { x: 0, y: 0 }
+        }
         ManagedWindowKind::Launcher => CanvasPoint {
             x: 0,
             y: CONTROL_BAR_HEIGHT,
@@ -140,13 +154,17 @@ pub(super) fn decoration_for_new_window(kind: ManagedWindowKind) -> WindowDecora
         ManagedWindowKind::Normal
         | ManagedWindowKind::ShellBar
         | ManagedWindowKind::Launcher
-        | ManagedWindowKind::ShellWatcher => WindowDecoration::ClientSide,
+        | ManagedWindowKind::ShellWatcher
+        | ManagedWindowKind::ControlOsd => WindowDecoration::ClientSide,
     }
 }
 
 impl App {
     pub(super) fn set_keyboard_focus_to_window(&mut self, window_index: usize, surface: WlSurface) {
-        if self.session_locked()
+        if matches!(
+            self.windows[window_index].kind,
+            ManagedWindowKind::ControlOsd | ManagedWindowKind::ShellWatcher
+        ) || self.session_locked()
             || self.overview_active()
             || (self.window_switcher_active()
                 && self.window_switcher_selected_id() != Some(self.windows[window_index].id))
@@ -354,7 +372,7 @@ impl App {
                     state.bounds = Some((width, CONTROL_BAR_HEIGHT).into());
                     state.decoration_mode = Some(DecorationMode::ClientSide);
                 }
-                ManagedWindowKind::Launcher => {
+                ManagedWindowKind::Launcher | ManagedWindowKind::ControlOsd => {
                     // Content measurements arrive as fixed min/max hints. The
                     // palette sizing path then applies the output bounds and
                     // responsive search width.
@@ -388,8 +406,10 @@ impl App {
             {
                 self.configure_toplevel(surface, window.kind, window.shell_output_name.as_deref());
             }
-            if window.kind == ManagedWindowKind::Launcher
-                && let Some(surface) = window.surface.wl_surface()
+            if matches!(
+                window.kind,
+                ManagedWindowKind::Launcher | ManagedWindowKind::ControlOsd
+            ) && let Some(surface) = window.surface.wl_surface()
             {
                 self.configure_shell_palette_size(&surface);
             }

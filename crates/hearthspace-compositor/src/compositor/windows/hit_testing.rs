@@ -48,7 +48,7 @@ impl App {
                         return Some(target);
                     }
                 }
-                ManagedWindowKind::ShellWatcher => continue,
+                ManagedWindowKind::ShellWatcher | ManagedWindowKind::ControlOsd => continue,
                 ManagedWindowKind::Normal => continue,
             }
         }

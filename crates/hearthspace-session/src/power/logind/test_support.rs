@@ -55,6 +55,8 @@ pub(in crate::power) struct State {
     pub(in crate::power) preparing: bool,
     pub(in crate::power) locked: bool,
     pub(in crate::power) slow_suspend: bool,
+    pub(in crate::power) fail_suspend: bool,
+    pub(in crate::power) can_suspend: Option<&'static str>,
     pub(in crate::power) suspend_calls: Vec<bool>,
     pub(in crate::power) inhibitors: Vec<(String, String, UnixStream)>,
 }
@@ -104,15 +106,25 @@ impl Manager {
         OwnedFd::from(write).into()
     }
 
-    async fn suspend(&self, interactive: bool) {
+    fn can_suspend(&self) -> String {
+        self.0.lock().unwrap().can_suspend.unwrap_or("yes").into()
+    }
+
+    async fn suspend(&self, interactive: bool) -> zbus::fdo::Result<()> {
         let slow = {
             let mut state = self.0.lock().unwrap();
             state.suspend_calls.push(interactive);
+            if state.fail_suspend {
+                return Err(zbus::fdo::Error::AccessDenied(
+                    "injected suspend denial".into(),
+                ));
+            }
             state.slow_suspend
         };
         if slow {
             std::future::pending::<()>().await;
         }
+        Ok(())
     }
 }
 

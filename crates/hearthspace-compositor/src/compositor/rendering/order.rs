@@ -3,9 +3,11 @@ use crate::compositor::ManagedWindowKind;
 /// Shell surfaces form a separate top layer. Never let an unrelated normal
 /// window's mapping order put the bar below a fullscreen rendering cutoff.
 pub(super) fn render_order(kinds: impl IntoIterator<Item = ManagedWindowKind>) -> Vec<usize> {
-    let (mut shell, mut normal) = (Vec::new(), Vec::new());
+    let (mut osd, mut shell, mut normal) = (Vec::new(), Vec::new(), Vec::new());
     for (index, kind) in kinds.into_iter().enumerate() {
-        if kind.is_shell_chrome() {
+        if kind == ManagedWindowKind::ControlOsd {
+            osd.push(index);
+        } else if kind.is_shell_chrome() {
             shell.push(index);
         } else {
             normal.push(index);
@@ -13,13 +15,24 @@ pub(super) fn render_order(kinds: impl IntoIterator<Item = ManagedWindowKind>) -
     }
     shell.reverse();
     normal.reverse();
-    shell.extend(normal);
-    shell
+    osd.reverse();
+    osd.extend(shell);
+    osd.extend(normal);
+    osd
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn osd_feedback_stays_above_other_shell_surfaces() {
+        use ManagedWindowKind::{ControlOsd, Launcher, Normal, ShellBar};
+        assert_eq!(
+            render_order([Normal, ControlOsd, ShellBar, Launcher]),
+            [1, 3, 2, 0]
+        );
+    }
 
     #[test]
     fn interleaved_shell_survives_a_fullscreen_cutoff() {
