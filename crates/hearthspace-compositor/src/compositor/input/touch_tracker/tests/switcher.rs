@@ -9,18 +9,50 @@ fn transform(tracker: &mut TouchTracker, fingers: u32, scale: f64, translation: 
     }
 }
 
+// Centroid/radius arithmetic varies slightly with contact iteration order.
+// Match the entire action sequence exactly except for calculated coordinates.
+fn assert_gesture_actions(actual: Vec<TouchAction>, expected: Vec<TouchAction>) {
+    assert_eq!(actual.len(), expected.len(), "{actual:?}");
+    for (actual, expected) in actual.iter().zip(&expected) {
+        match (actual, expected) {
+            (
+                TouchAction::UpdateSwitcher {
+                    translation: actual,
+                },
+                TouchAction::UpdateSwitcher {
+                    translation: expected,
+                },
+            ) => {
+                assert!(
+                    (actual.x - expected.x).abs() < 1e-12,
+                    "{actual:?} != {expected:?}"
+                );
+                assert!(
+                    (actual.y - expected.y).abs() < 1e-12,
+                    "{actual:?} != {expected:?}"
+                );
+            }
+            (
+                TouchAction::UpdateOverview { scale: actual },
+                TouchAction::UpdateOverview { scale: expected },
+            ) => assert!((actual - expected).abs() < 1e-12, "{actual} != {expected}"),
+            _ => assert_eq!(actual, expected),
+        }
+    }
+}
+
 fn begin_swipe(tracker: &mut TouchTracker, fingers: u32) {
     begin_overview(tracker, fingers);
     transform(tracker, fingers, 1.0, point(-40.0, 0.0));
-    assert_eq!(
+    assert_gesture_actions(
         frame(tracker),
         vec![
             TouchAction::EndOverview { cancelled: true },
             TouchAction::BeginSwitcher { fingers },
             TouchAction::UpdateSwitcher {
-                translation: point(-40.0, 0.0)
+                translation: point(-40.0, 0.0),
             },
-        ]
+        ],
     );
 }
 
@@ -31,11 +63,11 @@ fn four_and_five_finger_swipes_use_absolute_centroid_translation() {
         begin_swipe(&mut tracker, fingers);
         for x in [-120.0, 50.0, -30.0] {
             transform(&mut tracker, fingers, 1.0, point(x, 0.0));
-            assert_eq!(
+            assert_gesture_actions(
                 frame(&mut tracker),
                 vec![TouchAction::UpdateSwitcher {
-                    translation: point(x, 0.0)
-                }]
+                    translation: point(x, 0.0),
+                }],
             );
         }
         tracker.up(DEVICE, slot(0));
@@ -66,18 +98,18 @@ fn first_meaningful_intent_locks_pinch_or_swipe() {
             [TouchAction::UpdateOverview { .. }]
         ));
         transform(&mut tracker, fingers, 1.0, point(-200.0, 0.0));
-        assert_eq!(
+        assert_gesture_actions(
             frame(&mut tracker),
-            vec![TouchAction::UpdateOverview { scale: 1.0 }]
+            vec![TouchAction::UpdateOverview { scale: 1.0 }],
         );
         let mut tracker = TouchTracker::default();
         begin_swipe(&mut tracker, fingers);
         transform(&mut tracker, fingers, 0.5, point(-80.0, 0.0));
-        assert_eq!(
+        assert_gesture_actions(
             frame(&mut tracker),
             vec![TouchAction::UpdateSwitcher {
-                translation: point(-80.0, 0.0)
-            }]
+                translation: point(-80.0, 0.0),
+            }],
         );
     }
 }
@@ -87,9 +119,9 @@ fn jitter_and_vertical_motion_cannot_accidentally_switch_windows() {
     let mut tracker = TouchTracker::default();
     begin_overview(&mut tracker, 4);
     transform(&mut tracker, 4, 1.0, point(-31.0, 10.0));
-    assert_eq!(
+    assert_gesture_actions(
         frame(&mut tracker),
-        vec![TouchAction::UpdateOverview { scale: 1.0 }]
+        vec![TouchAction::UpdateOverview { scale: 1.0 }],
     );
     transform(&mut tracker, 4, 1.0, point(20.0, 50.0));
     assert_eq!(
@@ -120,15 +152,15 @@ fn fifth_contact_cancels_swipe_and_rebases_without_placement_motion() {
     for (id, position) in positions {
         tracker.motion(DEVICE, id, position + point(-40.0, 0.0));
     }
-    assert_eq!(
+    assert_gesture_actions(
         frame(&mut tracker),
         vec![
             TouchAction::EndOverview { cancelled: true },
             TouchAction::BeginSwitcher { fingers: 5 },
             TouchAction::UpdateSwitcher {
-                translation: point(-40.0, 0.0)
+                translation: point(-40.0, 0.0),
             },
-        ]
+        ],
     );
 }
 
@@ -190,14 +222,14 @@ fn final_swipe_motion_precedes_end_in_same_frame() {
     begin_swipe(&mut tracker, 4);
     transform(&mut tracker, 4, 1.0, point(-130.0, 0.0));
     tracker.up(DEVICE, slot(0));
-    assert_eq!(
+    assert_gesture_actions(
         frame(&mut tracker),
         vec![
             TouchAction::UpdateSwitcher {
-                translation: point(-130.0, 0.0)
+                translation: point(-130.0, 0.0),
             },
             TouchAction::EndSwitcher { cancelled: false },
-        ]
+        ],
     );
 }
 
