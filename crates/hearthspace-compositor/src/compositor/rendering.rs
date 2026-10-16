@@ -170,10 +170,10 @@ impl App {
 
         elements.extend(self.collect_window_switcher_elements(renderer, output_rect));
 
-        let mut group_elements = Some(self.collect_group_elements(renderer, output_rect));
+        let mut group_elements = self.collect_group_elements(renderer, output_rect);
         for index in order::render_order(self.windows.iter().map(|window| window.kind)) {
             if self.windows[index].kind == ManagedWindowKind::Normal {
-                elements.extend(group_elements.take().unwrap_or_default());
+                elements.append(&mut group_elements.overlay);
             }
             if !self.window_visible_on_output(index, output_rect) {
                 continue;
@@ -181,6 +181,12 @@ impl App {
             // Popups (e.g. menus) render above their window's content and chrome.
             for popup in self.popup_render_elements(renderer, index) {
                 elements.push(popup);
+            }
+
+            // Selection is part of this window's chrome: higher windows and
+            // this window's popups must cover its outline in the same stack.
+            if let Some(outline) = group_elements.outlines.remove(&self.windows[index].id) {
+                elements.extend(outline);
             }
 
             // Masonry-rasterized title bar (background, title, close button)
@@ -214,7 +220,7 @@ impl App {
             }
         }
 
-        elements.extend(group_elements.take().unwrap_or_default());
+        elements.append(&mut group_elements.overlay);
         elements
     }
 

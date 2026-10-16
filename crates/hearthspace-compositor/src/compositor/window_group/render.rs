@@ -26,6 +26,12 @@ use crate::{
 };
 
 #[derive(Default)]
+pub(in crate::compositor) struct GroupRenderElements {
+    pub overlay: Vec<HearthspaceRenderElement>,
+    pub outlines: BTreeMap<u64, Vec<HearthspaceRenderElement>>,
+}
+
+#[derive(Default)]
 pub(super) struct Cache {
     solids: BTreeMap<(u64, u8), SolidColorBuffer>,
     labels: BTreeMap<u8, LabelBuffer>,
@@ -39,8 +45,8 @@ impl App {
         &mut self,
         renderer: &mut GlesRenderer,
         output: Rectangle<i32, Logical>,
-    ) -> Vec<HearthspaceRenderElement> {
-        let mut elements = Vec::new();
+    ) -> GroupRenderElements {
+        let mut elements = GroupRenderElements::default();
         if !self.group_visible_on_output(output) {
             return elements;
         }
@@ -66,9 +72,9 @@ impl App {
                 cache.animation_epoch = None;
                 None
             };
-            cache.action(renderer, &mut elements, rect, hover, phase);
+            cache.action(renderer, &mut elements.overlay, rect, hover, phase);
             if let Some(error) = &self.window_group.error {
-                cache.message(renderer, &mut elements, rect, usable, error, true);
+                cache.message(renderer, &mut elements.overlay, rect, usable, error, true);
             } else if hover {
                 let help = if self.window_group.deferred_gather.is_some() {
                     "Release to gather"
@@ -77,11 +83,11 @@ impl App {
                 } else {
                     "Gather similar windows (AI)"
                 };
-                cache.message(renderer, &mut elements, rect, usable, help, false);
+                cache.message(renderer, &mut elements.overlay, rect, usable, help, false);
             }
         }
         if let Some(Gesture::Select { lasso }) = &self.window_group.gesture {
-            cache.lasso(renderer, &mut elements, lasso.points(), usable);
+            cache.lasso(renderer, &mut elements.overlay, lasso.points(), usable);
         } else {
             cache.lassos.clear();
         }
@@ -99,7 +105,7 @@ impl App {
                     accent
                 };
                 cache.outline(
-                    &mut elements,
+                    elements.outlines.entry(window.id).or_default(),
                     window.id,
                     0,
                     self.window_screen_bounds(index),

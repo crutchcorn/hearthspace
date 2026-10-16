@@ -11,6 +11,8 @@ mod deferred;
 mod lasso;
 #[path = "window_group_mock.rs"]
 mod mock;
+#[path = "window_group_stacking.rs"]
+mod stacking;
 #[path = "window_group_visibility.rs"]
 mod visibility;
 
