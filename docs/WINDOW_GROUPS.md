@@ -1,19 +1,27 @@
 # Window groups
 
-Use **Select window group** in the system tray, or **Super+G**, to select open
-windows on the canvas. Click windows to toggle membership, or drag across the
-canvas to select a region. **Tab** and **Shift+Tab** choose a window with the
-keyboard; **Space** toggles its selection. **Enter** finishes selection, **G**
-gathers while selecting, and **Escape** clears the group and cancels any pending
-gathering.
+Use **Select window group** in the system tray, or **Super+G**, then draw a
+freeform lasso around windows on the canvas. Windows inside or crossed by the
+enclosed shape are selected. Releasing the pointer or lifting your finger
+finishes selection immediately; the last point connects to the first. Drawing
+a new lasso replaces the previous group. A tap or a line with no enclosed area
+finishes without selecting windows.
 
-The group has a floating toolbar. Drag its handle to move the selected windows
-together while preserving their relative positions. The overlapping-window
-button, **Gather similar windows**, searches other open windows for related
-titles. A moving highlight shows that the decision model is working. Related
-windows fly from their original locations to staggered positions on the current
-output and join the group. Groups are temporary canvas selections, not saved
-workspaces.
+Drag any selected window, including its content, to move the whole group while
+preserving the windows' relative positions. While grouped, these gestures move
+windows rather than interacting with their contents. Click or touch outside the
+selected windows to clear the group and resume normal interaction. **Escape**
+also clears it and cancels any pending gathering.
+
+The floating overlapping-window button beside the group, **Gather similar
+windows**, searches other open windows for related titles. Its moving highlight
+shows that the decision model is working. Related windows fly from their
+original locations to staggered positions on the current output and join the
+group. Groups are temporary canvas selections, not saved workspaces.
+
+Keyboard selection remains available: after **Super+G**, **Tab** and
+**Shift+Tab** choose a window, **Space** toggles its selection, **Enter** finishes,
+and **G** gathers while selecting.
 
 ## Optional local model
 
@@ -74,5 +82,6 @@ extension.
 
 The private control socket accepts `group-selection-toggle`, `group-clear`,
 `group-gather`, and `group-status`. Status includes selected IDs, selection and
-gathering flags, errors, and the floating toolbar's logical bounds. These
-commands follow the same session-lock restrictions as other desktop commands.
+gathering flags, errors, and the floating button's logical bounds
+(`gather_button`). These commands follow the same session-lock restrictions as
+other desktop commands.

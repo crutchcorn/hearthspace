@@ -106,7 +106,9 @@ fn selected_client_content_drags_the_group_and_outside_clicks_reach_the_client()
         "selected content must not receive a group drag or click"
     );
     assert!(client.released_buttons().is_empty());
-    click(&compositor, 20.0, 700.0);
+    // Empty space between members is outside the group, even though it lies
+    // inside the group's overall bounds.
+    click(&compositor, 500.0, 280.0);
     assert_eq!(group(&compositor)["selected"], json!([]));
     assert_eq!(group(&compositor)["gather_button"], Value::Null);
     select_by_keyboard(&compositor, first);
