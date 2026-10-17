@@ -1,3 +1,10 @@
+mod shell_corners;
+
+pub use shell_corners::{
+    SHELL_CORNER_CLEARANCE, SHELL_CORNER_MARGIN, ShellCorner, shell_corner_app_id,
+    shell_corner_from_app_id,
+};
+
 pub const WAYLAND_DISPLAY_NAME: &str = "wayland-99";
 pub const WAYLAND_DISPLAY_ENV: &str = "WAYLAND_DISPLAY";
 pub const HEARTHSPACE_WAYLAND_DISPLAY_ENV: &str = "HEARTHSPACE_WAYLAND_DISPLAY";
@@ -104,6 +111,7 @@ pub fn shell_event_socket_path(command_socket: &std::path::Path) -> std::path::P
 
 pub fn shell_bar_output_name_from_app_id(app_id: &str) -> Option<Option<String>> {
     shell_output_name_from_app_id(SHELL_BAR_APP_ID, app_id)
+        .or_else(|| shell_corners::output_name_from_app_id(app_id))
 }
 
 pub fn launcher_output_name_from_app_id(app_id: &str) -> Option<Option<String>> {
