@@ -60,9 +60,12 @@ impl App {
                 .output_logical_rect_for_name(window.shell_output_name.as_deref())
                 .is_some_and(|rect| self.has_shell_corners(rect))
         {
+            // Keep the popup's own controls exposed. On short outputs it may
+            // cover the opposite corner so its header cannot consume all of
+            // the scrollable content area.
             size.h = size
                 .h
-                .min(output.h.saturating_sub(2 * SHELL_CORNER_CLEARANCE).max(1));
+                .min(output.h.saturating_sub(SHELL_CORNER_CLEARANCE).max(1));
         }
         let changed = surface.with_pending_state(|state| {
             if state.size == Some(size) {

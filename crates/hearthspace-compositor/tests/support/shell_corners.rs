@@ -159,8 +159,19 @@ fn scaled_small_corners_resize_without_overlapping_and_ignore_unknown_outputs() 
     );
     let panel = client.add(LAUNCHER_APP_ID.into(), (500, 500), (0, 0), COLOR);
     let bounds = query(&compositor, "status")["shell_panels"][0].clone();
-    assert_eq!(bounds["y"], 72);
-    assert_eq!(bounds["height"], 96);
+    assert_eq!(bounds["y"], 0);
+    assert_eq!(bounds["height"], 168);
+    client.resize(panel, (500, 160));
+    let bounds = query(&compositor, "status")["shell_panels"][0].clone();
+    assert_eq!(bounds["y"], 8);
+    assert_eq!(bounds["height"], 160);
+    assert_eq!(
+        bounds["y"].as_i64().unwrap() + bounds["height"].as_i64().unwrap(),
+        corner_bounds(&compositor, "apps")["y"].as_i64().unwrap() - 12,
+        "the app list leaves its own corner exposed"
+    );
+    click(&compositor, 100.0, 150.0);
+    assert_eq!(client.presses().last(), Some(&(panel, (88.0, 142.0))));
     client.destroy(panel);
     action(&compositor, "quit");
     wait_for_exit(&mut compositor.child);

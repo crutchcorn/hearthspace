@@ -35,6 +35,7 @@ impl App {
             output: self.primary_output_logical_rect(),
             origin: location,
             local: location,
+            apps_identity: None,
             target: if blocked {
                 Target::GroupCancelled
             } else {
@@ -88,6 +89,7 @@ mod tests {
             output: Rectangle::new((0, 0).into(), (1280, 800).into()),
             origin: (12.0, 18.0).into(),
             local: (12.0, 18.0).into(),
+            apps_identity: None,
             target: Target::Group,
         }
     }
