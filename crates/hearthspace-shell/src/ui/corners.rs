@@ -6,7 +6,7 @@ use xilem::{
     dpi::LogicalSize,
     masonry::{layout::AsUnit, properties::LineBreaking},
     style::Style,
-    view::{FlexExt, flex_row, label, resize_observer, sized_box},
+    view::{FlexExt, MainAxisAlignment, flex_row, label, resize_observer, sized_box},
 };
 
 use super::{
@@ -17,6 +17,9 @@ use super::{
 const PADDING: f64 = 6.0;
 const FRAME: f64 = 2.0 * (PADDING + 1.0);
 const APPS_BUTTON: f64 = 38.0;
+
+#[path = "corner_measure.rs"]
+mod measure;
 
 pub(super) fn windows(
     state: &ShellState,
@@ -32,7 +35,7 @@ pub(super) fn windows(
         corner_window(
             output,
             ShellCorner::System,
-            system_width(state),
+            system_width(state, output),
             system_view(state, output),
         ),
         corner_window(
@@ -44,7 +47,7 @@ pub(super) fn windows(
         corner_window(
             output,
             ShellCorner::Apps,
-            (FRAME + APPS_BUTTON + super::dock::desired_width(state)).max(48.0),
+            apps_width(state),
             apps_view(state, output),
         ),
     ]
@@ -115,7 +118,11 @@ pub(super) fn notifications_view(
         output,
         ShellCorner::Notifications,
         "Notifications",
-        super::notification_view::button(output, &state.notifications),
+        flex_row((super::notification_view::button(
+            output,
+            &state.notifications,
+        ),))
+        .main_axis_alignment(MainAxisAlignment::Center),
     )
 }
 
@@ -131,11 +138,15 @@ pub(super) fn canvas_view(
             super::canvas_map::map_button(output),
             super::window_group::button(&state.window_group),
         ))
+        .main_axis_alignment(MainAxisAlignment::Center)
         .gap(6.0.px()),
     )
 }
 
-fn system_width(state: &ShellState) -> f64 {
+fn system_width(state: &ShellState, output: &ShellOutputInstance) -> f64 {
+    if let Some(width) = output.system_content_width {
+        return width + FRAME;
+    }
     let items = super::tray_state::visible(&state.tray.snapshot).count();
     250.0
         + if state.battery.is_some() { 64.0 } else { 0.0 }
@@ -150,37 +161,41 @@ pub(super) fn system_view(
     state: &ShellState,
     output: &ShellOutputInstance,
 ) -> impl WidgetView<ShellState> + use<> {
-    let compact = output.corner_widths[1] < 300.0;
-    let reserved = if state.battery.is_some() && !compact {
-        286.0
-    } else {
-        242.0
-    };
+    let compact = output.corner_widths[1] < 220.0;
+    let items = super::tray_state::visible(&state.tray.snapshot)
+        .count()
+        .min(8);
+    let reserved = system_width(state, output) - items as f64 * 38.0;
+    let visible = super::tray_state::capacity(output.tray.bar_width - reserved).min(items);
     frame(
         output,
         ShellCorner::System,
         "System tray",
-        flex_row((
-            label(
-                state
-                    .tray
-                    .hovered
-                    .as_ref()
-                    .map(|(_, title)| title.clone())
-                    .or_else(|| state.window_group.hint())
-                    .unwrap_or_else(|| state.clock.clone()),
-            )
-            .text_size(13.0)
-            .text_alignment(xilem::TextAlign::End)
-            .color(components::TEXT_MUTED)
-            .line_break_mode(LineBreaking::Clip)
-            .flex(1.0),
-            super::tray_view::strip(output, &state.tray, reserved),
-            super::battery_view::indicator(state.battery.as_ref(), compact),
-            super::control_center::toolbar_button(output),
-            super::session_controls::power_button(output),
-        ))
-        .gap(6.0.px()),
+        measure::content(
+            output,
+            (items - visible) as f64 * 38.0,
+            flex_row((
+                label(
+                    state
+                        .tray
+                        .hovered
+                        .as_ref()
+                        .map(|(_, title)| title.clone())
+                        .or_else(|| state.window_group.hint())
+                        .unwrap_or_else(|| state.clock.clone()),
+                )
+                .text_size(13.0)
+                .text_alignment(xilem::TextAlign::End)
+                .color(components::TEXT_MUTED)
+                .line_break_mode(LineBreaking::Clip)
+                .flex(1.0),
+                super::tray_view::strip(output, &state.tray, reserved),
+                super::battery_view::indicator(state.battery.as_ref(), compact),
+                super::control_center::toolbar_button(output),
+                super::session_controls::power_button(output),
+            ))
+            .gap(6.0.px()),
+        ),
     )
 }
 
@@ -189,22 +204,34 @@ pub(super) fn apps_view(
     output: &ShellOutputInstance,
 ) -> impl WidgetView<ShellState> + use<> {
     let key = output.key().to_string();
+    let has_apps = !state.windows.is_empty();
     frame(
         output,
         ShellCorner::Apps,
         "Running apps and Apps List",
         flex_row((
-            super::dock::view(
-                state,
-                output,
-                (output.corner_widths[3] - FRAME - APPS_BUTTON).max(0.0),
-            ),
+            has_apps.then(|| {
+                super::dock::view(
+                    state,
+                    output,
+                    (output.corner_widths[3] - FRAME - APPS_BUTTON).max(0.0),
+                )
+            }),
             icon_button(Icon::Apps, "Apps List", output.show_search, move |state| {
                 state.toggle_search(&key);
             }),
         ))
+        .main_axis_alignment(MainAxisAlignment::Center)
         .gap(4.0.px()),
     )
+}
+
+fn apps_width(state: &ShellState) -> f64 {
+    if state.windows.is_empty() {
+        48.0
+    } else {
+        FRAME + APPS_BUTTON + super::dock::desired_width(state)
+    }
 }
 
 #[cfg(test)]

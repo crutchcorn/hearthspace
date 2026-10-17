@@ -29,6 +29,7 @@ impl ShellOutputInstance {
             launch_error: None,
             corner_window_ids: std::array::from_fn(|_| WindowId::next()),
             corner_widths: [48.0, 320.0, 88.0, 320.0],
+            system_content_width: None,
             dock_page: 0,
             launcher_window_id: WindowId::next(),
             map_window_id: WindowId::next(),

@@ -53,6 +53,7 @@ pub(super) struct ShellOutputInstance {
     pub(super) launch_error: Option<String>,
     pub(super) corner_window_ids: [WindowId; 4],
     pub(super) corner_widths: [f64; 4],
+    pub(super) system_content_width: Option<f64>,
     pub(super) dock_page: usize,
     pub(super) launcher_window_id: WindowId,
     pub(super) map_window_id: WindowId,

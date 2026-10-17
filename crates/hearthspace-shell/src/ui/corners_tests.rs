@@ -128,3 +128,71 @@ fn narrow_system_corner_keeps_tray_battery_and_controls_reachable() {
         );
     }
 }
+
+#[test]
+fn corner_controls_remain_centered_when_the_surface_has_extra_width() {
+    let ui = Ui::new(state(), notifications, (64, 48));
+    let bounds = ui
+        .harness
+        .access_node(ui.button("Notifications"))
+        .unwrap()
+        .bounding_box()
+        .unwrap();
+    assert_eq!((bounds.x0 + bounds.x1) / 2.0, 32.0);
+
+    let ui = Ui::new(state(), canvas, (108, 48));
+    let left = ui
+        .harness
+        .access_node(ui.button("Canvas map"))
+        .unwrap()
+        .bounding_box()
+        .unwrap();
+    let right = ui
+        .harness
+        .access_node(ui.button("Select window group"))
+        .unwrap()
+        .bounding_box()
+        .unwrap();
+    assert_eq!((left.x0 + right.x1) / 2.0, 54.0);
+
+    let ui = Ui::new(state(), apps, (64, 48));
+    let bounds = ui
+        .harness
+        .access_node(ui.button("Apps List"))
+        .unwrap()
+        .bounding_box()
+        .unwrap();
+    assert_eq!((bounds.x0 + bounds.x1) / 2.0, 32.0);
+    assert_eq!(
+        apps_width(&ui.state),
+        48.0,
+        "an empty dock must not reserve a gap"
+    );
+}
+
+#[test]
+fn system_corner_requests_only_its_content_width_and_updates_for_tray_items() {
+    let mut state = state();
+    state.clock = "Sat Oct 17 02:38".into();
+    let mut ui = Ui::new(state, system, (250, 48));
+    let empty_width = system_width(&ui.state, &ui.state.outputs[0]);
+    assert!(empty_width < 220.0, "spare clock width: {empty_width}");
+    ui.state.tray.snapshot.items = vec![crate::ui::tray_tests::item(1)];
+    ui.rebuild(&system);
+    ui.dispatch(&system);
+    let populated_width = system_width(&ui.state, &ui.state.outputs[0]);
+    assert!(
+        (populated_width - empty_width - 78.0).abs() <= 1.0,
+        "one icon + drawer + intervening gaps: {empty_width} -> {populated_width}"
+    );
+    ui.harness
+        .process_window_event(masonry::core::WindowEvent::Resize(
+            (populated_width as u32, 48).into(),
+        ));
+    ui.dispatch(&system);
+    ui.button("App 1");
+    ui.state.tray.snapshot.items.clear();
+    ui.rebuild(&system);
+    ui.dispatch(&system);
+    assert_eq!(system_width(&ui.state, &ui.state.outputs[0]), empty_width);
+}
