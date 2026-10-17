@@ -35,6 +35,7 @@ enum Shortcut {
     OverviewPrevious,
     SwitcherCancel,
     ShellPanelDismiss,
+    ShellCornerCycle { reverse: bool },
     Terminal,
     Launcher,
     Next,
@@ -160,7 +161,8 @@ impl App {
         let keyboard = self.keyboard.clone();
         let available = self.navigation_available();
         let mut toggle_launcher = false;
-        let shell_panel_focused = self.active_shell_panel_index().is_some();
+        let shell_panel_focused = self.active_shell_panel_index().is_some()
+            || self.focused_shell_corner_index().is_some();
         let group_visible = self.group_keyboard_visible();
         let previous_modifiers = keyboard.modifier_state();
         let intercepted = keyboard.input_from_source(
@@ -253,7 +255,15 @@ impl App {
                 // held drawing button may be released in the same input batch.
                 self.clear_favorite_drawing();
                 self.cancel_ui_touch();
-                self.dismiss_active_shell_panel();
+                if self.active_shell_panel_index().is_some() {
+                    self.dismiss_active_shell_panel();
+                } else {
+                    self.restore_focus_after_shell_panel();
+                }
+                return;
+            }
+            Shortcut::ShellCornerCycle { reverse } => {
+                self.cycle_shell_corner(reverse);
                 return;
             }
             Shortcut::OverviewDismiss => {
@@ -282,6 +292,7 @@ impl App {
             | Shortcut::OverviewPrevious
             | Shortcut::SwitcherCancel
             | Shortcut::ShellPanelDismiss
+            | Shortcut::ShellCornerCycle { .. }
             | Shortcut::Next
             | Shortcut::Previous => unreachable!(),
             Shortcut::Lock => ShellCommand::LockSession,
@@ -361,6 +372,11 @@ fn shortcut(modifiers: &ModifiersState, symbol: u32) -> Option<Shortcut> {
             keysyms::KEY_F4 if !modifiers.shift => Some(Shortcut::Close),
             _ => None,
         };
+    }
+    if modifiers.logo && !modifiers.alt && symbol == keysyms::KEY_F6 {
+        return Some(Shortcut::ShellCornerCycle {
+            reverse: modifiers.shift,
+        });
     }
     if !modifiers.logo || modifiers.alt || modifiers.shift {
         return None;

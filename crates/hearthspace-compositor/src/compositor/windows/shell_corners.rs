@@ -9,6 +9,64 @@ use super::window_app_id;
 use crate::compositor::{App, ManagedWindowKind};
 
 impl App {
+    pub(in crate::compositor) fn focused_shell_corner_index(&self) -> Option<usize> {
+        let focus = self.keyboard.current_focus()?;
+        let index = self.window_index_for_surface(focus.surface())?;
+        self.shell_corner(index).map(|_| index)
+    }
+
+    pub(in crate::compositor) fn cycle_shell_corner(&mut self, reverse: bool) {
+        if !self.navigation_available() {
+            return;
+        }
+        let output = self
+            .output_logical_rects()
+            .into_iter()
+            .find(|output| output.contains(self.pointer_location.to_i32_round()))
+            .unwrap_or_else(|| self.primary_output_logical_rect());
+        if !self.shell_visible_on_output(output) {
+            return;
+        }
+        let mut corners: Vec<_> = self
+            .windows
+            .iter()
+            .enumerate()
+            .filter_map(|(index, window)| {
+                let corner = self.shell_corner(index)?;
+                (window.mapped
+                    && self.output_logical_rect_for_name(window.shell_output_name.as_deref())
+                        == Some(output))
+                .then_some((
+                    match corner {
+                        ShellCorner::Notifications => 0,
+                        ShellCorner::System => 1,
+                        ShellCorner::Canvas => 2,
+                        ShellCorner::Apps => 3,
+                    },
+                    index,
+                ))
+            })
+            .collect();
+        corners.sort_unstable_by_key(|(order, _)| *order);
+        if corners.is_empty() {
+            return;
+        }
+        let focused = self.focused_shell_corner_index();
+        let current = corners
+            .iter()
+            .position(|(_, index)| Some(*index) == focused);
+        let next = match current {
+            Some(index) if reverse => (index + corners.len() - 1) % corners.len(),
+            Some(index) => (index + 1) % corners.len(),
+            None if reverse => corners.len() - 1,
+            None => 0,
+        };
+        let index = corners[next].1;
+        if let Some(surface) = self.windows[index].surface.wl_surface() {
+            self.set_keyboard_focus_to_window(index, surface);
+        }
+    }
+
     pub(in crate::compositor) fn shell_corners_status(&self) -> Vec<serde_json::Value> {
         self.windows
             .iter()

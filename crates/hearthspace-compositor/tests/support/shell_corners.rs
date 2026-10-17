@@ -21,6 +21,76 @@ fn corner_bounds(compositor: &HeadlessCompositor, corner: &str) -> Value {
 }
 
 #[test]
+fn keyboard_cycles_corners_and_escape_restores_apps_without_moving_the_canvas() {
+    use super::navigation::keys;
+
+    let _guard = headless_test_guard();
+    let mut compositor = HeadlessCompositor::spawn_with_size("1280x800");
+    drop(compositor.wait_for_socket());
+    let mut client = connect(&compositor);
+    let normal = client.add(
+        "dev.hearthspace.KeyboardCornerTest".into(),
+        (240, 160),
+        (0, 0),
+        COLOR,
+    );
+    let mut corners = Vec::new();
+    for corner in [
+        ShellCorner::Notifications,
+        ShellCorner::System,
+        ShellCorner::Canvas,
+        ShellCorner::Apps,
+    ] {
+        corners.push(client.add(shell_corner_app_id(corner, None), (48, 48), (0, 0), COLOR));
+    }
+    action(&compositor, "pan-to 9000 -7000");
+    let viewport = query(&compositor, "status")["viewport"].clone();
+    for expected in corners.iter().chain(corners.first()) {
+        keys(&compositor, &[125, 64]); // Super+F6
+        assert_eq!(client.focus(), Some(*expected));
+    }
+    keys(&compositor, &[125, 42, 64]); // Super+Shift+F6 wraps backwards.
+    assert_eq!(client.focus(), corners.last().copied());
+    keys(&compositor, &[1]);
+    assert_eq!(client.focus(), Some(normal));
+    assert!(
+        client.closed().is_empty(),
+        "Escape never closes persistent shell controls"
+    );
+    assert_eq!(query(&compositor, "status")["viewport"], viewport);
+    keys(&compositor, &[125, 42, 64]);
+    assert_eq!(
+        client.focus(),
+        corners.last().copied(),
+        "reverse starts at Apps from an app"
+    );
+    keys(&compositor, &[1]);
+
+    let panel = client.add(NOTIFICATIONS_APP_ID.into(), (360, 160), (0, 0), COLOR);
+    keys(&compositor, &[125, 64]);
+    assert_eq!(client.focus(), corners.first().copied());
+    assert!(
+        !client.closed().contains(&panel),
+        "corner traversal retains the panel focus group"
+    );
+    keys(&compositor, &[1]);
+    assert!(
+        client.closed().contains(&panel),
+        "Escape prioritizes closing an open panel"
+    );
+    client.destroy(panel);
+    assert_eq!(client.focus(), Some(normal));
+    assert_eq!(query(&compositor, "status")["viewport"], viewport);
+    assert!(!client.keys().contains(&64), "F6 must not reach clients");
+    assert!(
+        !client.keys().contains(&1),
+        "Escape release must not leak after restoring app focus"
+    );
+    action(&compositor, "quit");
+    wait_for_exit(&mut compositor.child);
+}
+
+#[test]
 fn four_corners_pin_controls_panels_and_maximized_work_area() {
     let _guard = headless_test_guard();
     let mut compositor = HeadlessCompositor::spawn_with_size("1280x800");
