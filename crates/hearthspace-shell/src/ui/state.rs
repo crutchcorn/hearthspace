@@ -10,6 +10,7 @@ use super::{minimap::CanvasSnapshot, notifications::Notification, window_catalog
 pub(super) struct ShellState {
     pub(super) command_socket: PathBuf,
     pub(super) tray: super::tray_state::TrayState,
+    pub(super) dock: super::dock::State,
     pub(super) battery: Option<crate::battery::BatteryStatus>,
     pub(super) power: super::power_task::PowerState,
     pub(super) controls: super::control_state::Controls,
@@ -50,7 +51,9 @@ pub(super) struct ShellOutputInstance {
     pub(super) show_notifications: bool,
     pub(super) show_map: bool,
     pub(super) launch_error: Option<String>,
-    pub(super) bar_window_id: WindowId,
+    pub(super) corner_window_ids: [WindowId; 4],
+    pub(super) corner_widths: [f64; 4],
+    pub(super) dock_page: usize,
     pub(super) launcher_window_id: WindowId,
     pub(super) map_window_id: WindowId,
     pub(super) notifications_window_id: WindowId,
@@ -75,6 +78,7 @@ impl ShellState {
         let mut state = Self {
             command_socket,
             tray: Default::default(),
+            dock: Default::default(),
             battery: None,
             power: Default::default(),
             controls: Default::default(),

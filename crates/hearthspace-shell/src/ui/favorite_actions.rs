@@ -78,7 +78,7 @@ pub(super) fn complete(
         Ok(Recognition::NoMatch) => feedback(
             state,
             key,
-            "No matching gesture. Try again, or return to search.".into(),
+            "No matching gesture. Try again, or return to Apps List.".into(),
         ),
         Ok(Recognition::Ambiguous) => feedback(
             state,

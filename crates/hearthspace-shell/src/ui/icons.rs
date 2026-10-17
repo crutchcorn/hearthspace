@@ -21,9 +21,9 @@ use super::state::ShellState;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(super) enum Icon {
+    Apps,
     Map,
     SelectGroup,
-    Search,
     Draw,
     Settings,
     Bell { active: bool },
@@ -64,7 +64,7 @@ pub(super) fn icon_button<F: Fn(&mut ShellState) + Send + Sync + 'static>(
             .fixed_height(20.0.px()),
         action,
     )
-    .padding(7.0.px())
+    .padding(6.0.px())
     .corner_radius(6.0.px())
     .background_color(if selected {
         components::ACCENT_SUBTLE
@@ -151,6 +151,13 @@ impl Widget for IconWidget {
             components::TEXT
         };
         match self.icon {
+            Icon::Apps => {
+                for y in [3.0, 10.0, 17.0] {
+                    for x in [3.0, 10.0, 17.0] {
+                        painter.fill(Circle::new((x, y), 1.8), color).draw();
+                    }
+                }
+            }
             Icon::SelectGroup => {
                 // Four selection corners around overlapping window outlines.
                 for (x, y, dx, dy) in [
@@ -309,18 +316,16 @@ impl Widget for IconWidget {
                         .draw();
                 }
             }
-            Icon::Search | Icon::ZoomIn | Icon::ZoomOut => {
+            Icon::ZoomIn | Icon::ZoomOut => {
                 painter
                     .stroke(Circle::new((8.5, 8.5), 6.0), &stroke, color)
                     .draw();
                 painter
                     .stroke(Line::new((13.0, 13.0), (18.0, 18.0)), &stroke, color)
                     .draw();
-                if !matches!(self.icon, Icon::Search) {
-                    painter
-                        .stroke(Line::new((5.5, 8.5), (11.5, 8.5)), &stroke, color)
-                        .draw();
-                }
+                painter
+                    .stroke(Line::new((5.5, 8.5), (11.5, 8.5)), &stroke, color)
+                    .draw();
                 if matches!(self.icon, Icon::ZoomIn) {
                     painter
                         .stroke(Line::new((8.5, 5.5), (8.5, 11.5)), &stroke, color)

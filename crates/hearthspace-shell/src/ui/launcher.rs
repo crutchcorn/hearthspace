@@ -44,7 +44,13 @@ pub(super) fn results(state: &ShellState, output: &ShellOutputInstance) -> Vec<E
         return Vec::new();
     }
     if query.is_empty() {
-        return Vec::new();
+        return state
+            .catalog
+            .apps()
+            .iter()
+            .cloned()
+            .map(|app| Entry::App(Box::new(app)))
+            .collect();
     }
     let mut windows = state
         .windows
@@ -58,15 +64,13 @@ pub(super) fn results(state: &ShellState, output: &ShellOutputInstance) -> Vec<E
         .take(MAX_RESULTS)
         .map(Entry::Window)
         .collect::<Vec<_>>();
-    if !query.is_empty() {
-        results.extend(
-            state
-                .catalog
-                .search(query, MAX_RESULTS)
-                .into_iter()
-                .map(|app| Entry::App(Box::new(app))),
-        );
-    }
+    results.extend(
+        state
+            .catalog
+            .search(query, MAX_RESULTS)
+            .into_iter()
+            .map(|app| Entry::App(Box::new(app))),
+    );
     results
 }
 
@@ -95,7 +99,7 @@ pub(super) fn launcher_view(
     let focus_target = FocusTarget::default();
     let search = super::search_input::input(output, focus_target.clone());
     let close_key = output.key().to_string();
-    let close = icon_button(Icon::Close, "Close search", false, move |state| {
+    let close = icon_button(Icon::Close, "Close apps list", false, move |state| {
         state.dismiss_search(&close_key)
     });
     let selected = super::search_selection::selected_index(output, &entries);
@@ -118,7 +122,7 @@ pub(super) fn launcher_view(
         if rows.is_empty() {
             rows.push(
                 label(if output.query.trim().is_empty() {
-                    "Type to search apps and open windows, or draw a gesture to launch an app."
+                    "No installed apps found"
                 } else {
                     "No matching apps or windows"
                 })
@@ -155,7 +159,7 @@ pub(super) fn launcher_view(
             super::popup::PopupKind::Search,
             flex_col((
                 flex_row((
-                    components::section_title("Search"),
+                    components::section_title("Apps List"),
                     FlexSpacer::Flex(1.0),
                     close,
                 )),

@@ -34,7 +34,10 @@ pub fn hearthspace_light_properties() -> DefaultProperties {
     let mut properties = default_property_set();
 
     properties.insert::<Button, _>(Background::Color(Color::TRANSPARENT));
-    properties.insert::<Button, _>(BorderWidth { width: 0.0.px() });
+    properties.insert::<Button, _>(BorderWidth { width: 1.0.px() });
+    properties.insert::<Button, _>(BorderColor {
+        color: Color::TRANSPARENT,
+    });
     properties.insert::<Button, _>(CornerRadius { radius: 6.0.px() });
     properties.insert::<Button, _>(ContentColor::new(TEXT));
     properties.insert::<Button, _>(Padding::from_vh(7.0.px(), 10.0.px()));
@@ -47,6 +50,10 @@ pub fn hearthspace_light_properties() -> DefaultProperties {
         stack.push_layer(
             Selector::new().with_active(true),
             Background::Color(BUTTON_ACTIVE),
+        );
+        stack.push_layer(
+            Selector::new().with_focused(true),
+            BorderColor { color: ACCENT },
         );
         properties.insert_stack::<Button>(stack);
     }

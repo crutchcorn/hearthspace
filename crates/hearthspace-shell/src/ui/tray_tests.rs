@@ -291,28 +291,13 @@ fn overflow_keeps_every_control_visible_and_empty_tray_adds_no_button() {
     fn bar(
         state: &ShellState,
     ) -> impl WidgetView<ShellState, Widget = masonry::widgets::SizedBox> + use<> {
-        sized_box(super::views::bar_view(
-            &state.outputs[0],
-            state.clock.clone(),
-            &state.notifications,
-            &state.tray,
-            state.battery.as_ref(),
-            &state.window_group,
-        ))
+        sized_box(crate::ui::corners::system_view(state, &state.outputs[0]))
     }
     for width in [320, 480, 800] {
         let mut state = state();
         state.tray.snapshot.items = (1..=20).map(item).collect();
         let mut ui = Ui::new(state, bar, (width, 48));
-        for label in [
-            "Application tray",
-            "Select window group",
-            "Search",
-            "Notifications",
-            "Canvas map",
-            "Control center",
-            "Power",
-        ] {
+        for label in ["Application tray", "Control center", "Power"] {
             let bounds = ui
                 .harness
                 .access_node(name(&ui, label))
@@ -333,7 +318,7 @@ fn overflow_keeps_every_control_visible_and_empty_tray_adds_no_button() {
                 })
             })
             .count();
-        assert_eq!(icons, tray_state::capacity(width as f64 - 84.0));
+        assert_eq!(icons, tray_state::capacity(width as f64 - 242.0));
         ui.state.tray.snapshot.items.clear();
         ui.rebuild(&bar);
         ui.dispatch(&bar);
@@ -345,7 +330,7 @@ fn overflow_keeps_every_control_visible_and_empty_tray_adds_no_button() {
                     .access_node(*id)
                     .is_some_and(|node| node.role() == Role::Button))
                 .count(),
-            6
+            2
         );
     }
 }

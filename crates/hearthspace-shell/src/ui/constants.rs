@@ -11,9 +11,6 @@ const LAUNCHER_ROW_HEIGHT: f64 = 40.0;
 /// Vertical padding added around the launcher result list.
 const LAUNCHER_PADDING: f64 = 104.0;
 
-/// Horizontal inset between the bar's contents and the screen edges.
-pub(super) const SHELL_BAR_H_PAD: f64 = 16.0;
-
 pub(super) const FALLBACK_OUTPUT_KEY: &str = "";
 
 /// Inner size of the launcher dropdown for a given number of results. The

@@ -4,7 +4,6 @@ use crate::{
     ui::{
         session_controls,
         test_support::{Ui, ids},
-        views,
     },
 };
 use masonry::accesskit::Role;
@@ -28,14 +27,7 @@ fn power(
 fn bar(
     state: &ShellState,
 ) -> impl WidgetView<ShellState, Widget = masonry::widgets::SizedBox> + use<> {
-    sized_box(views::bar_view(
-        &state.outputs[0],
-        state.clock.clone(),
-        &state.notifications,
-        &state.tray,
-        state.battery.as_ref(),
-        &state.window_group,
-    ))
+    sized_box(crate::ui::corners::system_view(state, &state.outputs[0]))
 }
 
 fn battery(state: BatteryState) -> BatteryStatus {
@@ -155,13 +147,7 @@ fn battery_updates_are_accessible_and_removal_removes_indicator() {
         ui.state.battery.as_ref().unwrap().state_label()
     );
     assert!(labels(&ui).contains(&expected));
-    for name in [
-        "Search",
-        "Notifications",
-        "Canvas map",
-        "Control center",
-        "Power",
-    ] {
+    for name in ["Control center", "Power"] {
         let bounds = ui
             .harness
             .access_node(ui.button(name))

@@ -37,6 +37,6 @@ pub(super) fn drawing(
             on_bounds: super::favorite_events::bounds,
         }).height(220.0.px()),
         sized_box(label(output.drawing.message.clone().unwrap_or_else(|| "Lift your finger or release the button to launch a clear match.".into())).text_size(13.0).color(components::TEXT_MUTED).line_break_mode(LineBreaking::WordWrap)).height(52.0.px()),
-        button(label("Back to search"), move |state: &mut ShellState| actions::cancel(state, &cancel_key)),
+        button(label("Back to apps list"), move |state: &mut ShellState| actions::cancel(state, &cancel_key)),
     )).cross_axis_alignment(CrossAxisAlignment::Stretch).gap(8.0.px()).boxed()
 }

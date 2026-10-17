@@ -27,7 +27,7 @@ pub(super) enum PopupKind {
 impl PopupKind {
     fn group_label(self) -> &'static str {
         match self {
-            Self::Search => "Search results",
+            Self::Search => "Apps and windows",
             Self::Map => "Canvas map controls",
             Self::Notifications => "Notifications",
             Self::Power => "Session controls",

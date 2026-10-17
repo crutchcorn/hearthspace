@@ -21,6 +21,8 @@ use xilem::{WidgetView, view::sized_box};
 
 #[path = "search_accessibility_tests.rs"]
 mod accessibility;
+#[path = "apps_list_tests.rs"]
+mod apps_list;
 
 fn state() -> ShellState {
     let mut state = ShellState::new("/unused".into(), vec!["eDP-1".into()]);
@@ -176,7 +178,7 @@ fn long_queries_keep_search_header_and_results_inside_the_panel() {
         .unwrap();
     let close_bounds = ui
         .harness
-        .access_node(ui.button("Close search"))
+        .access_node(ui.button("Close apps list"))
         .unwrap()
         .bounding_box()
         .unwrap();

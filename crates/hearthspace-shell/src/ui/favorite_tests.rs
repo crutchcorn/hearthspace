@@ -39,7 +39,7 @@ fn view(
 }
 
 #[test]
-fn search_hides_favorites_and_places_drawing_and_settings_inside_the_input() {
+fn apps_list_browses_assigned_apps_and_keeps_gesture_actions_inside_the_input() {
     let dir = tempfile::tempdir().unwrap();
     let mut state = state(dir.path());
     state.favorites.store.add("fixture.desktop").unwrap();
@@ -49,14 +49,8 @@ fn search_hides_favorites_and_places_drawing_and_settings_inside_the_input() {
         .assign("fixture.desktop", &SHAPE)
         .unwrap();
     let mut ui = Ui::new(state, view, (768, 560));
-    assert!(launcher::results(&ui.state, &ui.state.outputs[0]).is_empty());
-    assert!(
-        !super::test_support::ids(&ui.harness).into_iter().any(|id| {
-            ui.harness
-                .access_node(id)
-                .is_some_and(|node| node.label().as_deref() == Some("Open: Fixture App"))
-        })
-    );
+    assert_eq!(launcher::results(&ui.state, &ui.state.outputs[0]).len(), 1);
+    ui.button("Open: Fixture App");
     let editor = ui.harness.focused_widget_id().unwrap();
     let bounds = |id| ui.harness.access_node(id).unwrap().bounding_box().unwrap();
     let input = bounds(editor);
@@ -69,9 +63,10 @@ fn search_hides_favorites_and_places_drawing_and_settings_inside_the_input() {
     ui.dispatch(&view);
     assert_eq!(ui.state.outputs[0].drawing.mode, Mode::Launch);
     assert!(launcher::results(&ui.state, &ui.state.outputs[0]).is_empty());
-    ui.activate(ui.button("Back to search"));
+    ui.activate(ui.button("Back to apps list"));
     ui.dispatch(&view);
     assert_eq!(ui.state.outputs[0].drawing.mode, Mode::Browse);
+    ui.button("Open: Fixture App");
 }
 
 #[test]

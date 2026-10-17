@@ -1,4 +1,3 @@
-use masonry::accesskit::Role;
 use xilem::{WidgetView, view::sized_box};
 
 use super::*;
@@ -6,19 +5,6 @@ use crate::ui::{
     session_controls::power_panel,
     test_support::{Ui, ids},
 };
-
-fn bar(
-    state: &ShellState,
-) -> impl WidgetView<ShellState, Widget = masonry::widgets::SizedBox> + use<> {
-    sized_box(bar_view(
-        &state.outputs[0],
-        state.clock.clone(),
-        &state.notifications,
-        &state.tray,
-        state.battery.as_ref(),
-        &state.window_group,
-    ))
-}
 
 fn power(
     state: &ShellState,
@@ -39,86 +25,6 @@ fn search(
         launcher::results(state, &state.outputs[0]),
         None,
     ))
-}
-
-#[test]
-fn bar_icons_are_named_visible_on_small_outputs_and_toggle_exclusive_panels() {
-    for width in [320, 800] {
-        let state = ShellState::new("/unused".into(), vec!["eDP-1".into()]);
-        let mut ui = Ui::new(state, bar, (width, 48));
-        let buttons = ids(&ui.harness)
-            .into_iter()
-            .filter_map(|id| {
-                let node = ui.harness.access_node(id)?;
-                (node.role() == Role::Button).then(|| node.label().unwrap())
-            })
-            .collect::<Vec<_>>();
-        assert_eq!(
-            buttons.len(),
-            6,
-            "the six compact icon buttons should remain"
-        );
-        let group = ui.button("Select window group");
-        let bounds = ui
-            .harness
-            .access_node(group)
-            .unwrap()
-            .bounding_box()
-            .unwrap();
-        assert!(bounds.x0 >= 0.0 && bounds.x1 <= f64::from(width));
-        for removed in [
-            "Overview",
-            "Settings",
-            "Windows",
-            "Reset view",
-            "Lock",
-            "Log out",
-        ] {
-            assert!(!buttons.iter().any(|name| name == removed));
-        }
-        for name in [
-            "Search",
-            "Notifications",
-            "Canvas map",
-            "Control center",
-            "Power",
-        ] {
-            let id = ui.button(name);
-            let bounds = ui.harness.access_node(id).unwrap().bounding_box().unwrap();
-            assert!(
-                bounds.x0 >= 0.0 && bounds.x1 <= f64::from(width),
-                "{name} at width {width}: {bounds:?}"
-            );
-            // Real pointer activation catches clipping that accessibility bypasses.
-            ui.harness.mouse_click_on(id, None);
-            ui.dispatch(&bar);
-            let output = &ui.state.outputs[0];
-            assert_eq!(
-                [
-                    output.show_search,
-                    output.show_notifications,
-                    output.show_map,
-                    output.show_power,
-                    output.show_controls
-                ]
-                .into_iter()
-                .filter(|open| *open)
-                .count(),
-                1
-            );
-            assert!(match name {
-                "Search" => output.show_search,
-                "Notifications" => output.show_notifications,
-                "Canvas map" => output.show_map,
-                "Power" => output.show_power,
-                "Control center" => output.show_controls,
-                _ => unreachable!(),
-            });
-        }
-        ui.harness.mouse_click_on(ui.button("Power"), None);
-        ui.dispatch(&bar);
-        assert!(!ui.state.outputs[0].show_power);
-    }
 }
 
 #[test]
@@ -144,51 +50,12 @@ fn power_dropdown_keeps_confirmation_inside_and_cancel_does_not_end_session() {
 }
 
 #[test]
-fn group_control_fits_small_output_with_battery_and_application_tray() {
-    use crate::battery::{BatteryKind, BatteryState, BatteryStatus};
-    let mut state = ShellState::new("/unused".into(), vec!["eDP-1".into()]);
-    state.battery = Some(BatteryStatus {
-        percentage: 57,
-        state: BatteryState::Discharging,
-        kind: BatteryKind::Battery,
-        on_battery: true,
-        warning: None,
-    });
-    state.tray.snapshot.items = vec![crate::ui::tray_tests::item(1)];
-    let ui = Ui::new(state, bar, (320, 48));
-    for name in [
-        "Application tray",
-        "Select window group",
-        "Search",
-        "Notifications",
-        "Canvas map",
-        "Control center",
-        "Power",
-    ] {
-        let bounds = ui
-            .harness
-            .access_node(ui.button(name))
-            .unwrap()
-            .bounding_box()
-            .unwrap();
-        assert!(bounds.x0 >= 0.0 && bounds.x1 <= 320.0, "{name}: {bounds:?}");
-    }
-    assert!(
-        ids(&ui.harness)
-            .iter()
-            .any(|id| ui.harness.access_node(*id).is_some_and(|node| node
-                .label()
-                .is_some_and(|label| label.contains("Battery") && label.contains("57%"))))
-    );
-}
-
-#[test]
 fn empty_search_opens_with_focus_and_escape_closes_without_a_command() {
     let mut state = ShellState::new("/unused".into(), vec!["eDP-1".into()]);
     state.toggle_search("eDP-1");
     let mut ui = Ui::new(state, search, (360, 144));
     assert!(ui.harness.focused_widget_id().is_some());
-    ui.harness.focus_on(Some(ui.button("Close search")));
+    ui.harness.focus_on(Some(ui.button("Close apps list")));
     ui.harness
         .process_text_event(masonry::core::TextEvent::key_down(
             masonry::core::keyboard::Key::Named(masonry::core::keyboard::NamedKey::Escape),
@@ -231,7 +98,7 @@ fn search_header_and_field_stay_in_bounds_when_results_scroll() {
                 .transform_rect_bbox(widget.ctx().border_box())
         };
         let input_before = bounds(&ui);
-        let close = ui.button("Close search");
+        let close = ui.button("Close apps list");
         let close_before = ui
             .harness
             .access_node(close)

@@ -3,9 +3,9 @@ use super::{
     state::{Panel, ShellOutputInstance},
 };
 use hearthspace_common::{
-    CANVAS_MAP_APP_ID, LAUNCHER_APP_ID, NOTIFICATIONS_APP_ID, POWER_MENU_APP_ID, SHELL_BAR_APP_ID,
+    CANVAS_MAP_APP_ID, LAUNCHER_APP_ID, NOTIFICATIONS_APP_ID, POWER_MENU_APP_ID,
     canvas_map_app_id_for_output, launcher_app_id_for_output, launcher_app_id_for_request,
-    notifications_app_id_for_output, power_menu_app_id_for_output, shell_bar_app_id_for_output,
+    notifications_app_id_for_output, power_menu_app_id_for_output,
 };
 use xilem::WindowId;
 
@@ -27,7 +27,9 @@ impl ShellOutputInstance {
             show_notifications: false,
             show_map: false,
             launch_error: None,
-            bar_window_id: WindowId::next(),
+            corner_window_ids: std::array::from_fn(|_| WindowId::next()),
+            corner_widths: [48.0, 320.0, 88.0, 320.0],
+            dock_page: 0,
             launcher_window_id: WindowId::next(),
             map_window_id: WindowId::next(),
             notifications_window_id: WindowId::next(),
@@ -80,13 +82,6 @@ impl ShellOutputInstance {
 
     pub(super) fn key(&self) -> &str {
         self.output_name.as_deref().unwrap_or(FALLBACK_OUTPUT_KEY)
-    }
-
-    pub(super) fn bar_app_id(&self) -> String {
-        self.output_name
-            .as_deref()
-            .map(shell_bar_app_id_for_output)
-            .unwrap_or_else(|| SHELL_BAR_APP_ID.to_string())
     }
 
     pub(super) fn launcher_app_id(&self) -> String {

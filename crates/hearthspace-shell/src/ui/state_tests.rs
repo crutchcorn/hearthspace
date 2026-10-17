@@ -22,11 +22,11 @@ fn output_targets_keep_order_and_drop_duplicates() {
 fn shell_state_preserves_window_ids_and_query_across_output_updates() {
     let mut state = ShellState::new(PathBuf::from("/tmp/socket"), vec!["eDP-1".to_string()]);
     state.outputs[0].query = "term".to_string();
-    let bar_window_id = state.outputs[0].bar_window_id;
+    let corner_window_ids = state.outputs[0].corner_window_ids;
 
     state.apply_output_names(vec!["eDP-1".to_string(), "HDMI-A-1".to_string()]);
 
-    assert_eq!(state.outputs[0].bar_window_id, bar_window_id);
+    assert_eq!(state.outputs[0].corner_window_ids, corner_window_ids);
     assert_eq!(state.outputs[0].query, "term");
     assert_eq!(state.outputs[1].output_name.as_deref(), Some("HDMI-A-1"));
 }
