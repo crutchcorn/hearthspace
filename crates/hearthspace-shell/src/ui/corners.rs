@@ -161,7 +161,11 @@ pub(super) fn system_view(
     state: &ShellState,
     output: &ShellOutputInstance,
 ) -> impl WidgetView<ShellState> + use<> {
-    let compact = output.corner_widths[1] < 220.0;
+    // A self-sized corner may be narrow simply because its clock is short.
+    // Only collapse the percentage while its full preferred width is clipped
+    // by the output (or is still waiting for the resize configure).
+    let compact =
+        state.battery.is_some() && output.corner_widths[1] + 0.5 < system_width(state, output);
     let items = super::tray_state::visible(&state.tray.snapshot)
         .count()
         .min(8);
@@ -174,7 +178,7 @@ pub(super) fn system_view(
         measure::content(
             output,
             (items - visible) as f64 * 38.0,
-            state.tray.hovered.is_none() && state.window_group.hint().is_none(),
+            !compact && state.tray.hovered.is_none() && state.window_group.hint().is_none(),
             flex_row((
                 label(
                     state
@@ -241,3 +245,7 @@ fn apps_width(state: &ShellState) -> f64 {
 #[cfg(test)]
 #[path = "corners_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "corners_battery_tests.rs"]
+mod battery_tests;

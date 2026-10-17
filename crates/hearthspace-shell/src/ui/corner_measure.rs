@@ -165,8 +165,9 @@ impl Widget for MeasureContent {
         ctx.redirect_measurement(&mut self.inner, axis, cross)
     }
     fn layout(&mut self, ctx: &mut LayoutCtx<'_>, _: &PropertiesRef<'_>, size: Size) {
-        // Hover feedback shares the clock's allotted space. Measuring it would
-        // resize the surface and remove icons while their configure is pending.
+        // Hover feedback shares the clock's allotted space. Compact battery
+        // content must likewise retain its full preferred width, or a resize
+        // configure could permanently latch the smaller presentation.
         let width = self.measure_width.then(|| {
             let natural = ctx.compute_size(&mut self.inner, SizeDef::MAX, size.into());
             (natural.width + self.hidden_width).ceil()
