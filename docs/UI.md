@@ -17,7 +17,7 @@ Hearthspace UI should be described in two coordinate spaces.
 
 Screen-space UI is fixed to the visible output or nested compositor window:
 
-- Top toolbar.
+- Four corner shell controls.
 - Debug overlay.
 - Command palette.
 - Lock screen.
@@ -119,9 +119,9 @@ Normal app window
 - Canvas-space
 - User movable
 
-Shell toolbar
+Shell corner controls
 - Screen-space
-- Fixed above the canvas
+- Fixed at the four output corners
 
 Canvas note/editor
 - Canvas-space

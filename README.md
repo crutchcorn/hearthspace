@@ -40,7 +40,8 @@ release before requesting sudo. See [graphical login](./docs/LOGIN_SESSION.md)
 for installation, updates, removal, and the remaining local acceptance checks.
 
 Super+Return opens a terminal. Tap Meta (Super), press Super+Space, or click the
-search icon to search installed applications and running windows. Alt+Tab switches
+Apps List button to browse installed applications or search apps and running
+windows. Alt+Tab switches
 applications with live window previews until Alt is released. Alt+Shift+Tab moves
 backward. Super+arrow keys pan the canvas,
 and Super+M / Super+F toggle maximize / fullscreen.
@@ -56,13 +57,19 @@ focus that window, or press Escape to return. Native sessions provide
 notifications, locking, and [lid/suspend recovery](./docs/POWER.md);
 the bell icon opens notifications, the map icon opens the canvas minimap, and
 the power menu contains Lock and confirmed Log out. Settings is available in
-search. See [the compact shell](./docs/SHELL.md) and
+Apps List. See [the four-corner shell](./docs/SHELL.md) and
 [window management](./docs/WINDOW_MANAGEMENT.md) for keyboard controls and
 [app compatibility](./docs/APPS.md) for profile and
 package behavior.
 
-Assign app shortcuts in **Settings → Search → Gestures**. Open search with Meta,
-the search icon, or a downward touchscreen swipe from the top bar. The drawing
+The desktop keeps awareness above and actions below: notifications at the top
+left, system tray and clock at the top right, canvas tools at the bottom left,
+and the running-app dock with Apps List at the bottom right. Click a dock icon
+to reveal an app on the canvas; click again to cycle through its windows.
+Super+F6 moves keyboard focus between the corners; add Shift to move backward.
+
+Assign app shortcuts in **Settings → Search → Gestures**. Open Apps List with Meta,
+the Apps List button, or an upward touchscreen swipe from the dock. The drawing
 icon at the right of the search field enables **Draw to launch**; the adjacent
 Settings icon opens its Search tab. Click and drag with a mouse or trackpad, or draw
 with one touchscreen finger; a clear match launches immediately on release.
