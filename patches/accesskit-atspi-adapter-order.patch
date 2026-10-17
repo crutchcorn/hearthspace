@@ -1,0 +1,6 @@
+--- a/src/context.rs
++++ b/src/context.rs
+@@ -114 +114,2 @@
+-        self.adapters.push((id, Arc::clone(context)));
++        let index = self.adapter_index(id).unwrap_or_else(|index| index);
++        self.adapters.insert(index, (id, Arc::clone(context)));
