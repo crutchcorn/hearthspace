@@ -2,7 +2,7 @@
 use crate::compositor::{App, DragState, HitTarget, idle::ActivityReason};
 use smithay::{
     backend::input::{ButtonState, InputTime},
-    input::pointer::ButtonEvent,
+    input::pointer::{ButtonEvent, MotionEvent},
     utils::SERIAL_COUNTER,
 };
 use tracing::{debug, trace};
@@ -183,6 +183,20 @@ impl App {
         }
 
         let pointer = self.pointer.clone();
+        if state == ButtonState::Pressed {
+            // A corner can resize and move under a stationary pointer. Refresh
+            // Smithay's surface origin before the press establishes its grab.
+            // Existing grabs keep their owner and release coordinates.
+            pointer.motion(
+                self,
+                focus,
+                &MotionEvent {
+                    location: self.pointer_location,
+                    serial: SERIAL_COUNTER.next_serial(),
+                    time,
+                },
+            );
+        }
         self.deliver_pointer_button(&ButtonEvent {
             serial: SERIAL_COUNTER.next_serial(),
             time,

@@ -21,6 +21,40 @@ fn corner_bounds(compositor: &HeadlessCompositor, corner: &str) -> Value {
 }
 
 #[test]
+fn stationary_pointer_click_uses_resized_corner_geometry_and_preserves_held_release() {
+    let _guard = headless_test_guard();
+    let mut compositor = HeadlessCompositor::spawn_with_options("2560x1600", None, None, 2);
+    drop(compositor.wait_for_socket());
+    let mut client = connect(&compositor);
+    let apps = client.add(
+        shell_corner_app_id(ShellCorner::Apps, None),
+        (124, 48),
+        (0, 0),
+        COLOR,
+    );
+    action(&compositor, "pointer-motion-abs 1244 764");
+    client.resize(apps, (86, 48));
+    assert_eq!(corner_bounds(&compositor, "apps")["x"], 1182);
+    action(&compositor, "pointer-button-down 272");
+    action(&compositor, "pointer-button-up 272");
+    assert_eq!(client.presses().last(), Some(&(apps, (62.0, 24.0))));
+
+    // A press owns its matching release even if its corner moves meanwhile.
+    client.resize(apps, (124, 48));
+    action(&compositor, "pointer-button-down 272");
+    assert_eq!(client.presses().last(), Some(&(apps, (100.0, 24.0))));
+    client.resize(apps, (86, 48));
+    action(&compositor, "pointer-button-up 272");
+    assert_eq!(client.releases().last(), Some(&(apps, (100.0, 24.0))));
+    action(&compositor, "pointer-button-down 272");
+    action(&compositor, "pointer-button-up 272");
+    assert_eq!(client.presses().last(), Some(&(apps, (62.0, 24.0))));
+    assert_eq!(client.releases().len(), 3);
+    action(&compositor, "quit");
+    wait_for_exit(&mut compositor.child);
+}
+
+#[test]
 fn keyboard_cycles_corners_and_escape_restores_apps_without_moving_the_canvas() {
     use super::navigation::keys;
 
