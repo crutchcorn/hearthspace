@@ -174,6 +174,7 @@ pub(super) fn system_view(
         measure::content(
             output,
             (items - visible) as f64 * 38.0,
+            state.tray.hovered.is_none() && state.window_group.hint().is_none(),
             flex_row((
                 label(
                     state
@@ -182,7 +183,10 @@ pub(super) fn system_view(
                         .as_ref()
                         .map(|(_, title)| title.clone())
                         .or_else(|| state.window_group.hint())
-                        .unwrap_or_else(|| state.clock.clone()),
+                        .unwrap_or_else(|| state.clock.clone())
+                        .split_whitespace()
+                        .collect::<Vec<_>>()
+                        .join(" "),
                 )
                 .text_size(13.0)
                 .text_alignment(xilem::TextAlign::End)

@@ -19,11 +19,13 @@ use xilem::{
 pub(super) fn content<V: WidgetView<ShellState>>(
     output: &ShellOutputInstance,
     hidden_width: f64,
+    measure_width: bool,
     inner: V,
 ) -> MeasureView<V> {
     MeasureView {
         key: output.key().into(),
         hidden_width,
+        measure_width,
         inner,
     }
 }
@@ -31,6 +33,7 @@ pub(super) fn content<V: WidgetView<ShellState>>(
 pub(super) struct MeasureView<V> {
     key: String,
     hidden_width: f64,
+    measure_width: bool,
     inner: V,
 }
 const CONTENT: ViewId = ViewId::new(0);
@@ -45,6 +48,7 @@ impl<V: WidgetView<ShellState>> View<ShellState, (), ViewCtx> for MeasureView<V>
                 ctx.create_pod(MeasureContent {
                     inner: inner.new_widget.erased().to_pod(),
                     hidden_width: self.hidden_width,
+                    measure_width: self.measure_width,
                     width: None,
                 })
             }),
@@ -61,6 +65,10 @@ impl<V: WidgetView<ShellState>> View<ShellState, (), ViewCtx> for MeasureView<V>
     ) {
         if self.hidden_width != previous.hidden_width {
             element.widget.hidden_width = self.hidden_width;
+            element.ctx.request_layout();
+        }
+        if self.measure_width != previous.measure_width {
+            element.widget.measure_width = self.measure_width;
             element.ctx.request_layout();
         }
         ctx.with_id(CONTENT, |ctx| {
@@ -138,6 +146,7 @@ pub(super) struct PreferredWidth(f64);
 pub(super) struct MeasureContent {
     inner: WidgetPod<dyn Widget>,
     hidden_width: f64,
+    measure_width: bool,
     width: Option<f64>,
 }
 impl Widget for MeasureContent {
@@ -156,12 +165,18 @@ impl Widget for MeasureContent {
         ctx.redirect_measurement(&mut self.inner, axis, cross)
     }
     fn layout(&mut self, ctx: &mut LayoutCtx<'_>, _: &PropertiesRef<'_>, size: Size) {
-        let natural = ctx.compute_size(&mut self.inner, SizeDef::MAX, size.into());
-        let width = (natural.width + self.hidden_width).ceil();
+        // Hover feedback shares the clock's allotted space. Measuring it would
+        // resize the surface and remove icons while their configure is pending.
+        let width = self.measure_width.then(|| {
+            let natural = ctx.compute_size(&mut self.inner, SizeDef::MAX, size.into());
+            (natural.width + self.hidden_width).ceil()
+        });
         ctx.run_layout(&mut self.inner, size);
         ctx.place_child(&mut self.inner, Point::ORIGIN);
         ctx.derive_baselines(&self.inner);
-        if self.width != Some(width) {
+        if let Some(width) = width
+            && self.width != Some(width)
+        {
             self.width = Some(width);
             ctx.submit_action::<PreferredWidth>(PreferredWidth(width));
         }

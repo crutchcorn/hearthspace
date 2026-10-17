@@ -196,3 +196,85 @@ fn system_corner_requests_only_its_content_width_and_updates_for_tray_items() {
     ui.dispatch(&system);
     assert_eq!(system_width(&ui.state, &ui.state.outputs[0]), empty_width);
 }
+
+#[test]
+fn hover_feedback_preserves_system_width_and_tray_button_identity() {
+    let mut state = state();
+    state.tray.snapshot.items = vec![crate::ui::tray_tests::item(1)];
+    let mut ui = Ui::new(state, system, (320, 48));
+    let width = system_width(&ui.state, &ui.state.outputs[0]);
+    ui.harness
+        .process_window_event(masonry::core::WindowEvent::Resize(
+            (width as u32, 48).into(),
+        ));
+    ui.dispatch(&system);
+    let button = ui.button("App 1");
+    let bounds = ui.harness.access_node(button).unwrap().bounding_box();
+    ui.state.tray.hovered = Some((
+        ui.state.tray.snapshot.items[0].key.clone(),
+        "Synchronization status with a very long application description\nA second detail line"
+            .into(),
+    ));
+    ui.rebuild(&system);
+    ui.dispatch(&system);
+    assert_eq!(
+        system_width(&ui.state, &ui.state.outputs[0]),
+        width,
+        "hover must not request a resize that removes the pointer target before configure"
+    );
+    assert_eq!(ui.button("App 1"), button);
+    assert_eq!(
+        ui.harness.access_node(button).unwrap().bounding_box(),
+        bounds
+    );
+    ui.state.clock = "A permanently longer clock presentation after a preference change".into();
+    ui.state.tray.hovered = None;
+    ui.rebuild(&system);
+    ui.dispatch(&system);
+    assert!(
+        system_width(&ui.state, &ui.state.outputs[0]) > width,
+        "permanent content changes must be measured after hover ends"
+    );
+}
+
+#[test]
+fn multiline_tray_tooltip_does_not_move_or_remove_a_pointer_activation_target() {
+    let mut state = state();
+    let mut item = crate::ui::tray_tests::item(1);
+    item.item_is_menu = true;
+    item.tooltip =
+        "Synchronization status with a long description\nMore detail for assistive technology"
+            .into();
+    let description = item.tooltip.clone();
+    let key = item.key.clone();
+    state.tray.snapshot.items = vec![item];
+    let mut ui = Ui::new(state, system, (320, 48));
+    let width = system_width(&ui.state, &ui.state.outputs[0]);
+    ui.harness
+        .process_window_event(masonry::core::WindowEvent::Resize(
+            (width as u32, 48).into(),
+        ));
+    ui.dispatch(&system);
+    let button = ui.button("App 1");
+    let bounds = ui
+        .harness
+        .access_node(button)
+        .unwrap()
+        .bounding_box()
+        .unwrap();
+    ui.harness.mouse_move_to(button);
+    ui.dispatch(&system);
+    assert_eq!(ui.button("App 1"), button);
+    let node = ui.harness.access_node(button).unwrap();
+    assert_eq!(node.bounding_box(), Some(bounds));
+    assert_eq!(node.description().as_deref(), Some(description.as_str()));
+    assert_eq!(system_width(&ui.state, &ui.state.outputs[0]), width);
+    ui.harness
+        .mouse_button_press(Some(masonry::core::PointerButton::Primary));
+    ui.dispatch(&system);
+    ui.harness
+        .mouse_button_release(Some(masonry::core::PointerButton::Primary));
+    ui.dispatch(&system);
+    assert!(ui.state.outputs[0].tray.open);
+    assert_eq!(ui.state.outputs[0].tray.item.as_ref(), Some(&key));
+}
