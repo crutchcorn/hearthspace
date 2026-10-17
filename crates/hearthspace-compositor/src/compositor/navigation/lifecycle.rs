@@ -23,6 +23,9 @@ impl App {
             return;
         }
         self.windows[index].mapped = mapped;
+        if self.shell_corner(index).is_some() {
+            self.reconcile_window_presentations();
+        }
         let id = self.windows[index].id;
         if !mapped {
             self.favorite_window_unmapped(id);

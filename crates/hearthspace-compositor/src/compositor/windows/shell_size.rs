@@ -1,6 +1,8 @@
 //! Shell palettes request their measured content height through xdg constraints.
 //! Search width follows its output; other palettes retain their requested width.
-use hearthspace_common::launcher_output_name_from_app_id;
+use hearthspace_common::{
+    SHELL_CORNER_CLEARANCE, launcher_output_name_from_app_id, shell_corner_from_app_id,
+};
 use smithay::{
     utils::{Logical, Size},
     wayland::{compositor::with_states, shell::xdg::SurfaceCachedState},
@@ -17,7 +19,9 @@ impl App {
         let Some(window) = self.windows.iter().find(|window| {
             matches!(
                 window.kind,
-                ManagedWindowKind::Launcher | ManagedWindowKind::ControlOsd
+                ManagedWindowKind::ShellBar
+                    | ManagedWindowKind::Launcher
+                    | ManagedWindowKind::ControlOsd
             ) && window.surface.wl_surface().as_ref() == Some(root)
         }) else {
             return;
@@ -32,16 +36,34 @@ impl App {
         else {
             return;
         };
-        let hints = with_states(root, |states| {
-            *states.cached_state.get::<SurfaceCachedState>().current()
-        });
-        let search = window_app_id(&window.surface)
+        let app_id = window_app_id(&window.surface);
+        let corner = app_id.as_deref().and_then(shell_corner_from_app_id);
+        if window.kind == ManagedWindowKind::ShellBar && corner.is_none() {
+            return;
+        }
+        let Some(requested) = fixed_size(root) else {
+            return;
+        };
+        let search = app_id
             .as_deref()
             .and_then(launcher_output_name_from_app_id)
             .is_some();
-        let Some(size) = palette_size(hints.min_size, hints.max_size, output, search) else {
+        let Some(mut size) = corner
+            .map(|corner| super::shell_corners::corner_size(corner, Some(requested), output))
+            .or_else(|| palette_size(requested, requested, output, search))
+        else {
             return;
         };
+        if corner.is_none()
+            && window.kind != ManagedWindowKind::ControlOsd
+            && self
+                .output_logical_rect_for_name(window.shell_output_name.as_deref())
+                .is_some_and(|rect| self.has_shell_corners(rect))
+        {
+            size.h = size
+                .h
+                .min(output.h.saturating_sub(2 * SHELL_CORNER_CLEARANCE).max(1));
+        }
         let changed = surface.with_pending_state(|state| {
             if state.size == Some(size) {
                 return false;
@@ -53,6 +75,14 @@ impl App {
             surface.send_configure();
         }
     }
+}
+
+pub(super) fn fixed_size(root: &WlSurface) -> Option<Size<i32, Logical>> {
+    let hints = with_states(root, |states| {
+        *states.cached_state.get::<SurfaceCachedState>().current()
+    });
+    (hints.min_size == hints.max_size && hints.min_size.w > 0 && hints.min_size.h > 0)
+        .then_some(hints.min_size)
 }
 
 fn palette_size(

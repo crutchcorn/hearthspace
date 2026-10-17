@@ -188,13 +188,17 @@ impl App {
         }
         let canvas = self.window_canvas_rect(index);
         let outputs = self.output_logical_rects();
-        let usable: Vec<_> = outputs.iter().copied().map(usable_output).collect();
+        let usable: Vec<_> = outputs
+            .iter()
+            .copied()
+            .map(|output| self.usable_output(output))
+            .collect();
         let screen = self.normal_window_screen_rect(index)?;
         if !center && usable.iter().any(|output| output.contains_rect(screen)) {
             return None;
         }
         let target = target_output
-            .map(usable_output)
+            .map(|output| self.usable_output(output))
             .or_else(|| {
                 usable
                     .iter()
@@ -202,7 +206,7 @@ impl App {
                     .find(|(_, output)| output.contains(self.pointer_location.to_i32_round()))
                     .map(|(usable, _)| *usable)
             })
-            .unwrap_or_else(|| usable_output(self.primary_output_logical_rect()));
+            .unwrap_or_else(|| self.usable_output(self.primary_output_logical_rect()));
         Some(reveal_offset(canvas, target, self.viewport_scale))
     }
 }

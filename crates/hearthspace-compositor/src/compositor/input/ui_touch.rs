@@ -170,7 +170,11 @@ impl App {
             origin: location,
             local,
             target: if bar {
-                Target::Bar(BarSwipe::new(location, Instant::now()))
+                Target::Bar(BarSwipe::new(
+                    location,
+                    Instant::now(),
+                    self.shell_corner(window_index),
+                ))
             } else {
                 Target::Client(surface)
             },
@@ -256,7 +260,7 @@ impl App {
                 BarAction::OpenSearch => {
                     self.apply_pointer_motion(origin, time);
                     if let Err(error) = self.focus_launcher() {
-                        tracing::debug!(%error, "top bar swipe could not open search");
+                        tracing::debug!(%error, "shell swipe could not open apps list");
                     }
                 }
                 BarAction::Tap => {

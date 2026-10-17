@@ -2,6 +2,7 @@
 use smithay::utils::{Logical, Point, Rectangle};
 
 use super::super::App;
+#[cfg(test)]
 use super::usable_output;
 use crate::geometry::CanvasPoint;
 
@@ -30,7 +31,7 @@ impl App {
         let point = centered_position(
             self.window_canvas_rect(index),
             self.windows[index].position,
-            usable_output(self.initial_window_output(index)),
+            self.usable_output(self.initial_window_output(index)),
             self.viewport_offset,
             self.viewport_scale,
         );

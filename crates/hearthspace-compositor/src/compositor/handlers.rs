@@ -310,6 +310,9 @@ impl XdgShellHandler for App {
     }
 
     fn toplevel_destroyed(&mut self, surface: ToplevelSurface) {
+        let corner = self
+            .window_index_for_surface(surface.wl_surface())
+            .is_some_and(|index| self.shell_corner(index).is_some());
         let restore_panel_focus = !self.pending_search_reserves_focus()
             && self
                 .active_shell_panel_index()
@@ -346,6 +349,9 @@ impl XdgShellHandler for App {
         }
         self.windows
             .retain(|window| !window.surface.same_xdg(&surface));
+        if corner {
+            self.reconcile_window_presentations();
+        }
         if restore_panel_focus {
             self.restore_focus_after_shell_panel();
         } else if restore_focus {

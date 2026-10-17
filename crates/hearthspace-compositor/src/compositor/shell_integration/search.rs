@@ -124,16 +124,24 @@ impl App {
         let bar = self
             .windows
             .iter()
-            .position(|window| {
+            .enumerate()
+            .filter(|(index, window)| {
                 window.kind == ManagedWindowKind::ShellBar
                     && window.mapped
-                    && window.shell_output_name == target_output
+                    && self
+                        .shell_corner(*index)
+                        .is_none_or(|corner| corner == hearthspace_common::ShellCorner::Apps)
+                    && self
+                        .output_logical_rect_for_name(window.shell_output_name.as_deref())
+                        .is_some()
             })
-            .or_else(|| {
-                self.windows
-                    .iter()
-                    .position(|window| window.kind == ManagedWindowKind::ShellBar && window.mapped)
+            .min_by_key(|(index, window)| {
+                (
+                    window.shell_output_name != target_output,
+                    self.shell_corner(*index).is_none(),
+                )
             })
+            .map(|(index, _)| index)
             .ok_or_else(|| "application launcher is not ready".to_string())?;
         let output = self.windows[bar].shell_output_name.clone();
         // Repeated activation while the shell is building its window must not

@@ -53,6 +53,9 @@ mod session_bus;
 #[path = "support/session_lock.rs"]
 mod session_lock;
 #[cfg(feature = "test-apps")]
+#[path = "support/shell_corners.rs"]
+mod shell_corners;
+#[cfg(feature = "test-apps")]
 #[path = "support/shell_panels.rs"]
 mod shell_panels;
 #[path = "support/window_bounds.rs"]

@@ -9,7 +9,7 @@ fn session() -> UiTouch {
         output: Rectangle::new((0, 0).into(), (1000, 800).into()),
         origin: (100.0, 80.0).into(),
         local: (20.0, 15.0).into(),
-        target: Target::Bar(BarSwipe::new((100.0, 80.0).into(), Instant::now())),
+        target: Target::Bar(BarSwipe::new((100.0, 80.0).into(), Instant::now(), None)),
     }
 }
 

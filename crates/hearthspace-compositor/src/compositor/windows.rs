@@ -25,6 +25,7 @@ mod control_osd;
 mod geometry;
 mod hit_testing;
 mod ordering;
+mod shell_corners;
 mod shell_panels;
 mod shell_position;
 mod shell_size;
@@ -346,6 +347,23 @@ impl App {
         let normal_bounds = (kind == ManagedWindowKind::Normal)
             .then(|| self.normal_toplevel_bounds(surface))
             .flatten();
+        let bar_size = (kind == ManagedWindowKind::ShellBar).then(|| {
+            let output = self
+                .output_client_logical_size_for_name(shell_output_name)
+                .unwrap_or_else(|| (self.minimum_output_client_logical_width(), 800).into());
+            let corner = toplevel_app_id(surface)
+                .as_deref()
+                .and_then(hearthspace_common::shell_corner_from_app_id);
+            corner
+                .map(|corner| {
+                    shell_corners::corner_size(
+                        corner,
+                        shell_size::fixed_size(surface.wl_surface()),
+                        output,
+                    )
+                })
+                .unwrap_or_else(|| (output.w, CONTROL_BAR_HEIGHT).into())
+        });
         surface.with_pending_state(|state| {
             state
                 .capabilities
@@ -359,17 +377,8 @@ impl App {
                 });
             match kind {
                 ManagedWindowKind::ShellBar => {
-                    let width = self
-                        .output_client_logical_size_for_name(shell_output_name)
-                        .map(|size| size.w)
-                        .unwrap_or_else(|| self.minimum_output_client_logical_width());
-                    trace!(
-                        width,
-                        ?shell_output_name,
-                        "configuring shell bar to output width"
-                    );
-                    state.size = Some((width, CONTROL_BAR_HEIGHT).into());
-                    state.bounds = Some((width, CONTROL_BAR_HEIGHT).into());
+                    state.size = bar_size;
+                    state.bounds = bar_size;
                     state.decoration_mode = Some(DecorationMode::ClientSide);
                 }
                 ManagedWindowKind::Launcher | ManagedWindowKind::ControlOsd => {
@@ -408,7 +417,9 @@ impl App {
             }
             if matches!(
                 window.kind,
-                ManagedWindowKind::Launcher | ManagedWindowKind::ControlOsd
+                ManagedWindowKind::ShellBar
+                    | ManagedWindowKind::Launcher
+                    | ManagedWindowKind::ControlOsd
             ) && let Some(surface) = window.surface.wl_surface()
             {
                 self.configure_shell_palette_size(&surface);

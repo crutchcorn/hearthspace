@@ -5,10 +5,7 @@ use smithay::{
 };
 
 use super::super::{App, ManagedSurface};
-use crate::{
-    config::{CONTROL_BAR_HEIGHT, TITLE_BAR_HEIGHT},
-    geometry::CanvasPoint,
-};
+use crate::{config::TITLE_BAR_HEIGHT, geometry::CanvasPoint};
 
 impl App {
     pub(in crate::compositor) fn transient_descendant_of(
@@ -73,8 +70,7 @@ impl App {
         let parent = self.presentation_anchor(index)?;
         let mut output = self.presentation_output_rect(parent)?;
         if !self.windows[parent].presentation.fullscreen {
-            output.loc.y += CONTROL_BAR_HEIGHT;
-            output.size.h = (output.size.h - CONTROL_BAR_HEIGHT).max(1);
+            output = self.usable_output(output);
         }
         let size = self.window_geometry_size(index);
         let chrome = if self.has_compositor_chrome(index) {
@@ -116,8 +112,7 @@ impl App {
             .presentation_anchor(index)
             .is_some_and(|anchor| self.windows[anchor].presentation.fullscreen)
         {
-            output.loc.y += CONTROL_BAR_HEIGHT;
-            output.size.h = (output.size.h - CONTROL_BAR_HEIGHT).max(1);
+            output = self.usable_output(output);
         }
         let mut origin = self
             .window_screen_to_surface(index, output.loc.to_f64())
