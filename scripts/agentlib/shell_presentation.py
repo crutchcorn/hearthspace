@@ -4,6 +4,7 @@ import math
 
 from . import shell_checks as checks
 from .control import ControlError
+from .firefox_assertions import corner_inset
 from .input import Input
 from .png import pixels
 from .shell_backdrop import COLOR, backdrop
@@ -147,10 +148,12 @@ def park_pointer(smoke, output):
 
 def dark_background(frame, output):
     # Verify the actual committed backdrop, not merely its maximize state.
+    inset = corner_inset(output)
+    height = max(1, output["logical_height"] - 2 * inset)
     for fx in (0.1, 0.5, 0.9):
         for fy in (0.1, 0.5, 0.9):
             x = round(fx * frame.width)
-            y = round((48 + (output["logical_height"] - 48) * fy) * output["scale"])
+            y = round((inset + height * fy) * output["scale"])
             if difference(frame.rgb(x, y), COLOR) > 2:
                 return False
     return True
@@ -180,8 +183,8 @@ def panels(smoke, output):
     for kind, button, last_name in (
         (
             "search",
-            "Search",
-            "Type to search apps and open windows, or draw a gesture to launch an app.",
+            "Apps List",
+            "Open: Hearthspace Settings",
         ),
         ("notifications", "Notifications", "No notifications yet"),
         ("power", "Power", "Log out"),
@@ -189,6 +192,11 @@ def panels(smoke, output):
     ):
         checks.click(smoke, button)
         checks.opened(smoke, kind)
+        if kind == "search":
+            # The initial list contains every installed app and can scroll.
+            # Use a specific result to verify content-driven popup sizing.
+            with Input(smoke.control) as inputs:
+                inputs.type("Hearthspace Settings")
         surface, gap = fitted(smoke, kind, last_name, output)
         if kind == "search":
             search_width(surface, output)

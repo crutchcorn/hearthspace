@@ -37,19 +37,19 @@ class BackdropTests(unittest.TestCase):
         self.assertNotIn("AT_SPI_BUS_ADDRESS", env)
         self.assertNotIn("DBUS_SESSION_BUS_PID", env)
 
-    def test_pixel_readiness_requires_dark_opaque_backdrop_below_bar(self):
+    def test_pixel_readiness_samples_workarea_between_top_and_bottom_corners(self):
         metadata = {
             "width": 320,
-            "height": 240,
+            "height": 480,
             "scale": 2,
             "logical_x": -20,
             "logical_y": 10,
         }
-        output = {"logical_height": 120, "scale": 2}
-        dark = capture(metadata, [((-20, 58, 140, 130), shell_backdrop.COLOR)])
+        output = {"logical_height": 240, "scale": 2}
+        dark = capture(metadata, [((-20, 82, 140, 178), shell_backdrop.COLOR)])
         self.assertTrue(dark_background(Frame(dark), output))
         self.assertFalse(dark_background(Frame(capture(metadata, [])), output))
-        partial = capture(metadata, [((-20, 58, 50, 130), shell_backdrop.COLOR)])
+        partial = capture(metadata, [((-20, 82, 50, 178), shell_backdrop.COLOR)])
         self.assertFalse(dark_background(Frame(partial), output))
 
     def test_backdrop_maximizes_then_closes_only_the_new_owned_id(self):

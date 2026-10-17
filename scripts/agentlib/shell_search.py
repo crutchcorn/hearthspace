@@ -79,19 +79,31 @@ def run(smoke):
         captures.append(capture)
     with Input(smoke.control) as inputs:
         inputs.chord("ctrl+a")
-        inputs.chord("backspace")
+        inputs.type("HEARTHSPACE-NO-SUCH-INSTALLED-APP")
     empty, gap = fitted(
         smoke,
         "search",
-        "Type to search apps and open windows, or draw a gesture to launch an app.",
+        "No matching apps or windows",
         output,
     )
     if empty["height"] >= surface["height"]:
-        raise ControlError("clearing search did not shrink its populated popup")
-    smoke.capture("search-cleared-compact")
+        raise ControlError("an unmatched search did not shrink its populated popup")
+    smoke.capture("apps-unmatched-compact")
     smoke.record(
         "search-content-shrinks", populated=surface, empty=empty, content_bottom_gap=gap
     )
+    with Input(smoke.control) as inputs:
+        inputs.chord("ctrl+a")
+        inputs.chord("backspace")
+    smoke.until(
+        "clearing the query restores installed apps",
+        lambda: a11y(smoke, "find", RESULTS + "[starts-with(@name,'Open: ')]")[
+            "elements"
+        ],
+    )
+    if checks.query_text(smoke) != "":
+        raise ControlError("clearing Apps List did not retain its empty focused editor")
+    smoke.capture("apps-cleared-browsing")
     with Input(smoke.control) as inputs:
         inputs.type("foot")
     selected(smoke, names[0])

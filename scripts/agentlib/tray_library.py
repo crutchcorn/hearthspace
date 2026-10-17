@@ -10,6 +10,7 @@ from pathlib import Path
 
 from . import shell_checks, tray_checks
 from .control import ControlError
+from .map_checks import corner_surface
 from .shell_presentation import Frame, park_pointer
 
 TITLE = "Ayatana tray fixture"
@@ -72,13 +73,7 @@ def properties(smoke):
     raise ControlError("Ayatana tray item was not present on the owned watcher")
 
 
-def central_ink(frame, bounds):
-    surface = {
-        "x": frame.metadata["logical_x"],
-        "y": frame.metadata["logical_y"],
-        "width": frame.width / frame.metadata["scale"],
-        "height": 48,
-    }
+def central_ink(frame, bounds, surface):
     left, top, right, bottom = frame.rect(surface, bounds)
     center = (left + right) // 2
     half = max(1, (right - left) // 20)
@@ -101,7 +96,8 @@ def presented(smoke):
         if not observed:
             return None
         frame = Frame(smoke.control.capture(output["name"]))
-        count = central_ink(frame, observed[0]["bounds"])
+        surface = corner_surface(smoke.control.status(), "system")
+        count = central_ink(frame, observed[0]["bounds"], surface)
         return count if count >= 6 * output["scale"] ** 2 else None
 
     count = smoke.until("Ayatana named glyph rendered instead of fallback dots", ready)

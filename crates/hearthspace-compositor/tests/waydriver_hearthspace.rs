@@ -83,18 +83,18 @@ async fn run_shell_ui_xpath_check() -> Result<(), Box<dyn std::error::Error>> {
     session.set_default_timeout(e2e_timeout());
 
     let check_result = async {
-        let search = session.locate("//*[@name='Search']").first();
+        let search = session.locate("//*[@name='Apps List']").first();
         let name = search.name().await?;
-        if name.as_deref() != Some("Search") {
+        if name.as_deref() != Some("Apps List") {
             return Err(std::io::Error::other(format!(
-                "expected Search shell control, got {name:?}"
+                "expected Apps List shell control, got {name:?}"
             ))
             .into());
         }
         let bounds = search.bounds().await?;
         if bounds.width <= 0 || bounds.height <= 0 {
             return Err(std::io::Error::other(format!(
-                "Search shell control has invalid bounds {bounds:?}"
+                "Apps List shell control has invalid bounds {bounds:?}"
             ))
             .into());
         }

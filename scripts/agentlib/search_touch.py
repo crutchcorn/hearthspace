@@ -6,7 +6,7 @@ from pathlib import Path
 from . import shell_checks as checks
 from .control import ControlError
 from .input import Input
-from .map_checks import button_center
+from .map_checks import button_center, corner_surface
 from .pinch_touchscreen import to_device
 from .touchpad import TouchDevice
 
@@ -46,29 +46,32 @@ def stroke(device, output, start, end):
         device.request("end")
 
 
-def top_bar(smoke):
+def apps_corner(smoke):
     checks.closed(smoke)
-    output = smoke.control.status()["outputs"][0]
-    smoke.capture("search-before-top-bar-swipe")
-    search = smoke.until("search icon", lambda: checks.elements(smoke, "Search"))[0]
-    start = button_center(search["bounds"], output)
+    status = smoke.control.status()
+    output = status["outputs"][0]
+    smoke.capture("apps-before-dock-swipe")
+    search = smoke.until("Apps List icon", lambda: checks.elements(smoke, "Apps List"))[
+        0
+    ]
+    start = button_center(search["bounds"], output, corner_surface(status, "apps"))
     before = smoke.control.status()["viewport"]
-    with touchscreen(smoke, "top-bar") as device:
+    with touchscreen(smoke, "apps-corner") as device:
         stroke(device, output, start, (start[0] - 90, start[1]))
         checks.closed(smoke)
-        stroke(device, output, start, (start[0] + 5, start[1] + 110))
+        stroke(device, output, start, (start[0] + 5, start[1] - 110))
         checks.opened(smoke, "search")
-        # Opening is idempotent; another downward swipe must not close search.
-        stroke(device, output, start, (start[0], start[1] + 110))
+        # Opening is idempotent; another upward swipe must not close the list.
+        stroke(device, output, start, (start[0], start[1] - 110))
         checks.opened(smoke, "search")
         device.request("begin", fingers=1, points=to_device([start], output))
         device.request("end")
         checks.closed(smoke)
     after = smoke.control.status()["viewport"]
     if any(before[key] != after[key] for key in ("x", "y", "scale")):
-        raise ControlError("top-bar swipe unexpectedly moved the canvas")
-    smoke.capture("search-top-bar-tap-restored")
-    smoke.record("search-top-bar-swipe", rejected_sideways=True, tap_preserved=True)
+        raise ControlError("Apps List swipe unexpectedly moved the canvas")
+    smoke.capture("apps-dock-tap-restored")
+    smoke.record("apps-corner-swipe", rejected_sideways=True, tap_preserved=True)
 
 
 def settings_scroll(smoke):

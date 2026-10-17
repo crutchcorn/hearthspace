@@ -4,7 +4,7 @@ from . import shell_checks as checks
 from .control import ControlError
 from .daily_checks import a11y
 from .input import Input
-from .map_checks import SHELL, button_center
+from .map_checks import SHELL, button_center, corner_surface
 from .shell_presentation import Frame, park_pointer
 
 TITLE = "Hearthspace Tray Fixture"
@@ -28,10 +28,11 @@ def disappeared(smoke):
 
 def point(smoke, name=TITLE, *, menu=False):
     observed = smoke.until(f"visible tray {name}", lambda: visible(smoke, name))[0]
-    outputs = smoke.control.status()["outputs"]
+    status = smoke.control.status()
+    outputs = status["outputs"]
     if len(outputs) != 1:
         raise ControlError("tray acceptance requires one active output")
-    surface = checks.opened(smoke, "tray") if menu else None
+    surface = checks.opened(smoke, "tray") if menu else corner_surface(status, "system")
     return button_center(observed.get("bounds"), outputs[0], surface)
 
 
@@ -52,13 +53,7 @@ def dismiss(smoke):
     checks.closed(smoke)
 
 
-def color_pixels(frame, bounds, color):
-    surface = {
-        "x": frame.metadata["logical_x"],
-        "y": frame.metadata["logical_y"],
-        "width": frame.width / frame.metadata["scale"],
-        "height": 48,
-    }
+def color_pixels(frame, bounds, color, surface):
     left, top, right, bottom = frame.rect(surface, bounds)
     # The button's focus ring and attention dot use the same blue hue as this
     # fixture. Only app pixels in its center can prove an icon-content update.
@@ -83,7 +78,8 @@ def presented(smoke, color):
     def matches():
         observed = icon(smoke)
         frame = Frame(smoke.control.capture(output["name"]))
-        count = color_pixels(frame, observed["bounds"], color)
+        surface = corner_surface(smoke.control.status(), "system")
+        count = color_pixels(frame, observed["bounds"], color, surface)
         return (observed, count) if count > 20 else None
 
     observed, count = smoke.until(f"{color} tray icon pixels presented", matches)

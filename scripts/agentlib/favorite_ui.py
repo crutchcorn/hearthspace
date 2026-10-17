@@ -13,7 +13,7 @@ from . import shell_checks as checks
 from .control import ControlError
 from .daily_checks import a11y
 from .input import Input
-from .map_checks import button_center
+from .map_checks import SHELL, button_center
 
 APP_ID = "hearthspace-favorite-fixture.desktop"
 APP_NAME = "Hearthspace Favorite Fixture"
@@ -98,7 +98,7 @@ def draw(smoke, points):
 def configure(smoke):
     before = window_ids(smoke)
     if not checks.panel(smoke, "search"):
-        checks.click(smoke, "Search")
+        checks.click(smoke, "Apps List")
         checks.opened(smoke, "search")
     checks.click(smoke, "Settings", "search")
     window = smoke.until(
@@ -171,10 +171,14 @@ def window_ids(smoke):
 
 def launch_mode(smoke):
     if not checks.panel(smoke, "search"):
-        checks.click(smoke, "Search")
+        checks.click(smoke, "Apps List")
         checks.opened(smoke, "search")
-    if checks.elements(smoke, f"Open: {APP_NAME}"):
-        raise ControlError("empty search still lists assigned apps")
+    smoke.until(
+        "assigned app remains browsable in Apps List",
+        lambda: a11y(
+            smoke, "find", f"{SHELL}//*[@role='button' and @name='Open: {APP_NAME}']"
+        )["elements"],
+    )
     checks.elements(smoke, "Settings")
     checks.click(smoke, "Draw to launch", "search")
     state = smoke.until(
@@ -273,7 +277,7 @@ def touch_cases(smoke, rect):
 
 def run(smoke):
     if smoke.control.status()["backend"] == "native":
-        search_touch.top_bar(smoke)
+        search_touch.apps_corner(smoke)
     configure(smoke)
     rect = launch_mode(smoke)
     before, viewport = window_ids(smoke), smoke.control.status()["viewport"]
@@ -290,7 +294,7 @@ def run(smoke):
     smoke.until(
         "unassigned shape feedback",
         lambda: checks.elements(
-            smoke, "No matching gesture. Try again, or return to search.", role=None
+            smoke, "No matching gesture. Try again, or return to Apps List.", role=None
         ),
     )
     no_launch(smoke, before, viewport, "unassigned circle")
@@ -299,9 +303,9 @@ def run(smoke):
     points = l_shape(rect)
     draw(smoke, [points[0], (x - 8, points[0][1]), *points[1:]])
     no_launch(smoke, before, viewport, "stroke leaves drawing area")
-    checks.click(smoke, "Back to search", "search")
+    checks.click(smoke, "Back to apps list", "search")
     smoke.until(
-        "drawing capture disarmed after Back to search",
+        "drawing capture disarmed after Back to apps list",
         lambda: not smoke.control.status().get("favorite_gesture", {}).get("armed"),
     )
     no_launch(smoke, before, viewport, "drawing mode closed")

@@ -65,7 +65,7 @@ def backdrop(smoke, output):
             target = window["id"]
             smoke.control.request(f"maximize-window {target} true")
             smoke.until(
-                "popup backdrop covers output below bar without decorations",
+                "popup backdrop fills workarea between corners without decorations",
                 lambda: (
                     maximized_at_output(current := smoke.window(target), [output])
                     and current.get("titlebar_height") == 0

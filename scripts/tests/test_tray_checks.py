@@ -20,11 +20,21 @@ class TrayEvidenceTests(unittest.TestCase):
         frame.rgb.side_effect = lambda x, y: (
             (30, 30, 30) if x < 15 or x > 25 else (255, 255, 255)
         )
-        self.assertEqual(tray_library.central_ink(frame, {}), 0)
+        self.assertEqual(
+            tray_library.central_ink(
+                frame, {}, {"x": 700, "y": 12, "width": 100, "height": 48}
+            ),
+            0,
+        )
         frame.rgb.side_effect = lambda x, y: (
             (30, 30, 30) if 18 <= x <= 21 and 12 <= y <= 28 else (255, 255, 255)
         )
-        self.assertGreater(tray_library.central_ink(frame, {}), 6)
+        self.assertGreater(
+            tray_library.central_ink(
+                frame, {}, {"x": 700, "y": 12, "width": 100, "height": 48}
+            ),
+            6,
+        )
 
     def test_blue_focus_ring_cannot_satisfy_app_icon_update(self):
         frame = Mock(width=100)
@@ -33,8 +43,8 @@ class TrayEvidenceTests(unittest.TestCase):
         frame.rgb.side_effect = lambda x, y: (
             (32, 96, 224) if x < 4 or y < 4 or x > 35 or y > 35 else (224, 48, 32)
         )
-        self.assertEqual(tray_checks.color_pixels(frame, {}, "blue"), 0)
-        self.assertEqual(tray_checks.color_pixels(frame, {}, "red"), 400)
+        self.assertEqual(tray_checks.color_pixels(frame, {}, "blue", {}), 0)
+        self.assertEqual(tray_checks.color_pixels(frame, {}, "red", {}), 400)
 
     def test_pixel_proof_counts_only_the_observed_app_icon_rectangle(self):
         frame = Mock(width=100)
@@ -44,8 +54,8 @@ class TrayEvidenceTests(unittest.TestCase):
             (224, 48, 32) if (x, y) == (10, 10) else (32, 96, 224)
         )
         bounds = {"x": 10, "y": 10, "width": 2, "height": 2}
-        self.assertEqual(tray_checks.color_pixels(frame, bounds, "red"), 1)
-        self.assertEqual(tray_checks.color_pixels(frame, bounds, "blue"), 3)
+        self.assertEqual(tray_checks.color_pixels(frame, bounds, "red", {}), 1)
+        self.assertEqual(tray_checks.color_pixels(frame, bounds, "blue", {}), 3)
         self.assertEqual(frame.rgb.call_count, 8)
 
     def test_incomplete_action_log_is_not_accepted_as_delivery(self):
