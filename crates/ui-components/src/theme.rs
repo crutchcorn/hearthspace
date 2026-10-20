@@ -1,6 +1,5 @@
-//! Orange/light materials from hearthspace-ui-experiments/src/index.css.
-//! Translucent tokens are separate from opaque backing colors so composition
-//! remains the caller's choice. Other accent choices do not change this theme.
+//! Compatibility constants for the default orange/light palette.
+//! Live interfaces should use Palette or themed native widget properties.
 use xilem::Color;
 
 pub const APP_BACKGROUND: Color = Color::from_rgb8(0xe5, 0xe9, 0xe3);

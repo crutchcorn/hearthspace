@@ -1,12 +1,17 @@
 //! Settings materials, independent of the shell's translucent contrast theme.
 use xilem::{Color, WidgetView};
 
+mod compatibility;
 mod focus;
 mod paint;
 mod view;
-mod widget;
+pub(crate) mod widget;
+pub use compatibility::{edge_light, glass_edge, paint_button, paint_surface};
 pub use focus::FocusIndicator;
-pub use paint::{dot_pattern, edge_light, glass_edge, paint_button, paint_surface, shadow};
+pub use paint::{
+    dot_pattern, edge_light_with_palette, glass_edge_with_palette, paint_button_with_palette,
+    paint_surface_with_palette, shadow,
+};
 pub use view::MaterialView;
 
 /// Reference muted ink for Settings; shell glass keeps its stronger ink.

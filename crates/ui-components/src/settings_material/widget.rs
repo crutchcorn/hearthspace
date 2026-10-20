@@ -1,10 +1,12 @@
-use super::{FocusIndicator, Interaction, Material, paint_button, paint_surface};
+use super::{
+    FocusIndicator, Interaction, Material, paint_button_with_palette, paint_surface_with_palette,
+};
 use xilem::masonry::{
     accesskit::{Node, Role},
     core::{
         AccessCtx, ChildrenIds, EventCtx, LayoutCtx, MeasureCtx, NewWidget, NoAction, PaintCtx,
         PointerEvent, PropertiesMut, PropertiesRef, RegisterCtx, TextEvent, Update, UpdateCtx,
-        Widget, WidgetMut, WidgetPod,
+        UsesProperty, Widget, WidgetMut, WidgetPod,
     },
     imaging::Painter,
     kurbo::{Axis, Point, Size},
@@ -36,6 +38,8 @@ impl MaterialWidget {
         this.ctx.get_mut(&mut this.widget.child)
     }
 }
+
+impl UsesProperty<crate::Palette> for MaterialWidget {}
 
 impl Widget for MaterialWidget {
     type Action = NoAction;
@@ -94,9 +98,18 @@ impl Widget for MaterialWidget {
         ctx.derive_baselines(&self.child);
         ctx.set_paint_insets(24.0);
     }
-    fn paint(&mut self, ctx: &mut PaintCtx<'_>, _: &PropertiesRef<'_>, painter: &mut Painter<'_>) {
+    fn property_changed(&mut self, ctx: &mut UpdateCtx<'_>, property_type: std::any::TypeId) {
+        crate::Palette::prop_changed(ctx, property_type);
+    }
+    fn paint(
+        &mut self,
+        ctx: &mut PaintCtx<'_>,
+        props: &PropertiesRef<'_>,
+        painter: &mut Painter<'_>,
+    ) {
+        let palette = *props.get::<crate::Palette>(ctx.property_cache());
         match self.material {
-            Material::Button(kind, selected) => paint_button(
+            Material::Button(kind, selected) => paint_button_with_palette(
                 painter,
                 ctx.border_box(),
                 self.material.radius(),
@@ -108,10 +121,15 @@ impl Widget for MaterialWidget {
                     focused: ctx.has_focus_target() && self.focus.visible(),
                     disabled: ctx.is_disabled() || self.child_disabled,
                 },
+                &palette,
             ),
-            Material::Surface(kind) => {
-                paint_surface(painter, ctx.border_box(), self.material.radius(), kind)
-            }
+            Material::Surface(kind) => paint_surface_with_palette(
+                painter,
+                ctx.border_box(),
+                self.material.radius(),
+                kind,
+                &palette,
+            ),
         }
     }
     fn accessibility_role(&self) -> Role {

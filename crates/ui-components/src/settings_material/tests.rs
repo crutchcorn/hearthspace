@@ -134,3 +134,37 @@ fn reference_material_does_not_change_shell_button_properties() {
         crate::FOCUS_RING_ON_GLASS,
     );
 }
+
+#[test]
+fn live_palette_repaints_material_and_keeps_native_focus_and_identity() {
+    use crate::{Palette, PropertyStyle, hearthspace_properties};
+    use hearthspace_common::{AccentColor, Appearance, ColorMode};
+    let runtime = xilem::tokio::runtime::Builder::new_current_thread()
+        .build()
+        .unwrap();
+    let mut ctx = ViewCtx::new(Arc::new(NoMessages), Arc::new(runtime));
+    let mut state = false;
+    let (root, _) = view(true, false).build(&mut ctx, &mut state);
+    let mut harness = TestHarness::create_with_size(
+        hearthspace_properties(Palette::default(), PropertyStyle::Opaque),
+        root.new_widget,
+        (160, 58),
+    );
+    harness.press_tab_key(false);
+    let button = harness.focused_widget_id().unwrap();
+    let bounds = harness.access_node(button).unwrap().bounding_box();
+    let before = harness.render();
+    let next = Palette::new(Appearance {
+        color_mode: ColorMode::Dark,
+        accent_color: AccentColor::Teal,
+    });
+    harness.set_default_properties(Arc::new(hearthspace_properties(
+        next,
+        PropertyStyle::Opaque,
+    )));
+    assert_ne!(before, harness.render());
+    assert_eq!(harness.focused_widget_id(), Some(button));
+    assert_eq!(harness.access_node(button).unwrap().bounding_box(), bounds);
+    harness.process_text_event(TextEvent::key_up(Key::Named(NamedKey::Enter)));
+    assert_eq!(harness.pop_action::<ButtonPress>().unwrap().1, button);
+}

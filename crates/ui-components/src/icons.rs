@@ -8,11 +8,12 @@ use xilem::{
         accesskit::{Node, Role},
         core::{
             AccessCtx, ChildrenIds, LayoutCtx, MeasureCtx, NoAction, PaintCtx, PropertiesRef,
-            RegisterCtx, Widget,
+            RegisterCtx, UpdateCtx, UsesProperty, Widget,
         },
         imaging::Painter,
         kurbo::{Affine, Axis, Cap, Join, Size, Stroke},
         layout::{AsUnit, LenReq, Length},
+        properties::ContentColor,
     },
 };
 
@@ -32,7 +33,7 @@ pub fn icon(kind: Icon, size: f64) -> IconView {
         } else {
             24.0
         },
-        color: crate::TEXT,
+        color: None,
         name: None,
         filled: false,
     }
@@ -42,7 +43,7 @@ pub fn icon(kind: Icon, size: f64) -> IconView {
 pub struct IconView {
     kind: Icon,
     size: f64,
-    color: Color,
+    color: Option<Color>,
     name: Option<String>,
     filled: bool,
 }
@@ -57,7 +58,7 @@ impl IconView {
     }
 
     pub fn color(mut self, color: Color) -> Self {
-        self.color = color;
+        self.color = Some(color);
         self
     }
 
@@ -124,6 +125,8 @@ pub struct IconWidget {
     geometry: Geometry,
 }
 
+impl UsesProperty<ContentColor> for IconWidget {}
+
 impl Widget for IconWidget {
     type Action = NoAction;
 
@@ -142,7 +145,22 @@ impl Widget for IconWidget {
 
     fn layout(&mut self, _: &mut LayoutCtx<'_>, _: &PropertiesRef<'_>, _: Size) {}
 
-    fn paint(&mut self, ctx: &mut PaintCtx<'_>, _: &PropertiesRef<'_>, painter: &mut Painter<'_>) {
+    fn property_changed(&mut self, ctx: &mut UpdateCtx<'_>, property_type: std::any::TypeId) {
+        if property_type == std::any::TypeId::of::<ContentColor>() {
+            ctx.request_paint_only();
+        }
+    }
+
+    fn paint(
+        &mut self,
+        ctx: &mut PaintCtx<'_>,
+        props: &PropertiesRef<'_>,
+        painter: &mut Painter<'_>,
+    ) {
+        let color = self
+            .view
+            .color
+            .unwrap_or_else(|| props.get::<ContentColor>(ctx.property_cache()).color);
         let bounds = ctx.content_box();
         let size = bounds.width().min(bounds.height());
         let transform = Affine::translate((
@@ -156,13 +174,13 @@ impl Widget for IconWidget {
         for part in &self.geometry.0 {
             if let Some(rule) = part.fill {
                 painter
-                    .fill(&part.path, self.view.color)
+                    .fill(&part.path, color)
                     .fill_rule(rule)
                     .transform(transform)
                     .draw();
             } else {
                 painter
-                    .stroke(&part.path, &stroke, self.view.color)
+                    .stroke(&part.path, &stroke, color)
                     .transform(transform)
                     .draw();
             }

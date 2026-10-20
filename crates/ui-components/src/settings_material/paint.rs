@@ -1,4 +1,5 @@
 use super::{Interaction, SettingsButton, SettingsSurface};
+use crate::Palette;
 use xilem::{
     Color,
     masonry::{
@@ -86,11 +87,16 @@ pub fn shadow(
 }
 
 /// The reference's top-left ellipse, fading to transparent at 40%.
-pub fn edge_light(painter: &mut Painter<'_>, rect: Rect, radius: f64) {
+pub fn edge_light_with_palette(
+    painter: &mut Painter<'_>,
+    rect: Rect,
+    radius: f64,
+    palette: &Palette,
+) {
     let gradient = Gradient::new_radial((0.0, 0.0), 1.0).with_stops([
-        (0.0, crate::ACCENT.with_alpha(0.05)),
-        (0.4, crate::ACCENT.with_alpha(0.0)),
-        (1.0, crate::ACCENT.with_alpha(0.0)),
+        (0.0, palette.edge_light),
+        (0.4, palette.edge_light.with_alpha(0.0)),
+        (1.0, palette.edge_light.with_alpha(0.0)),
     ]);
     painter.with_fill_clip(rect.to_rounded_rect(radius), |painter| {
         painter
@@ -107,14 +113,21 @@ pub fn edge_light(painter: &mut Painter<'_>, rect: Rect, radius: f64) {
 }
 
 /// Inset one-pixel glass highlights, clipped to the rounded material.
-pub fn glass_edge(painter: &mut Painter<'_>, rect: Rect, radius: f64, active: bool) {
+pub fn glass_edge_with_palette(
+    painter: &mut Painter<'_>,
+    rect: Rect,
+    radius: f64,
+    active: bool,
+    palette: &Palette,
+) {
     let shape = rect.inset(-1.0).to_rounded_rect((radius - 1.0).max(0.0));
-    let top = if active { 199 } else { 133 };
+    let top = if active {
+        palette.glass_edge_active_top
+    } else {
+        palette.glass_edge_top
+    };
     painter.with_fill_clip(shape, |painter| {
-        for (offset, color) in [
-            (1.0, Color::from_rgba8(255, 255, 255, top)),
-            (-1.0, Color::from_rgba8(0x49, 0x63, 0x5b, 10)),
-        ] {
+        for (offset, color) in [(1.0, top), (-1.0, palette.glass_edge_bottom)] {
             let hole = shape + xilem::masonry::kurbo::Vec2::new(0.0, offset);
             let edge = BezPath::from_iter(
                 rect.path_elements(0.1)
@@ -125,22 +138,24 @@ pub fn glass_edge(painter: &mut Painter<'_>, rect: Rect, radius: f64, active: bo
     });
     if active {
         painter
-            .stroke(
-                shape,
-                &Stroke::new(1.0),
-                Color::from_rgba8(255, 255, 255, 48),
-            )
+            .stroke(shape, &Stroke::new(1.0), palette.glass_edge_active_border)
             .draw();
     }
 }
 
-pub fn paint_surface(painter: &mut Painter<'_>, rect: Rect, radius: f64, kind: SettingsSurface) {
+pub fn paint_surface_with_palette(
+    painter: &mut Painter<'_>,
+    rect: Rect,
+    radius: f64,
+    kind: SettingsSurface,
+    palette: &Palette,
+) {
     if kind == SettingsSurface::Raised {
         shadow(
             painter,
             rect,
             radius,
-            Color::from_rgba8(0x35, 0x4e, 0x3b, 43),
+            palette.panel_shadow,
             (0.0, 24.0),
             72.0,
             -22.0,
@@ -149,41 +164,40 @@ pub fn paint_surface(painter: &mut Painter<'_>, rect: Rect, radius: f64, kind: S
             painter,
             rect,
             radius,
-            crate::ACCENT.with_alpha(0.16),
+            palette.panel_accent_shadow,
             (0.0, 6.0),
             24.0,
             -8.0,
         );
     }
     let (fill, border) = match kind {
-        SettingsSurface::Control => (crate::SURFACE_CONTROL, crate::BORDER),
-        SettingsSurface::Subtle => (crate::SURFACE_SUBTLE, crate::BORDER),
-        SettingsSurface::Raised => (crate::CHROME_RAISED, crate::CHROME_BORDER),
+        SettingsSurface::Control => (palette.surface_control, palette.border),
+        SettingsSurface::Subtle => (palette.surface_subtle, palette.border),
+        SettingsSurface::Raised => (palette.chrome_raised, palette.chrome_border),
     };
     let shape = rect.inset(-0.5).to_rounded_rect(radius);
     if kind == SettingsSurface::Raised {
         // Masonry layers cannot backdrop-filter siblings already painted by the
         // client. Approximate the blurred window tint with an opaque backing,
         // then retain the reference glass fill and edge lighting on top.
-        painter
-            .fill(shape, Color::from_rgb8(0xef, 0xf0, 0xeb))
-            .draw();
+        painter.fill(shape, palette.popup_backing).draw();
     }
     painter.fill(shape, fill).draw();
     if kind == SettingsSurface::Raised {
-        edge_light(painter, rect, radius);
+        edge_light_with_palette(painter, rect, radius, palette);
     }
     painter.stroke(shape, &Stroke::new(1.0), border).draw();
-    glass_edge(painter, rect, radius, false);
+    glass_edge_with_palette(painter, rect, radius, false, palette);
 }
 
-pub fn paint_button(
+pub fn paint_button_with_palette(
     painter: &mut Painter<'_>,
     rect: Rect,
     radius: f64,
     kind: SettingsButton,
     selected: bool,
     interaction: Interaction,
+    palette: &Palette,
 ) {
     let emphasized = !interaction.disabled && (interaction.hovered || interaction.active);
     let glow = emphasized || selected || (kind == SettingsButton::Primary && !interaction.disabled);
@@ -192,47 +206,47 @@ pub fn paint_button(
             painter,
             rect,
             radius,
-            crate::ACCENT.with_alpha(0.14),
+            palette.control_shadow,
             (0.0, 6.0),
-            22.0,
+            if palette.dark { 24.0 } else { 22.0 },
             -5.0,
         );
     }
     let mut fill = match kind {
         SettingsButton::Bare | SettingsButton::Outline => Color::TRANSPARENT,
-        _ => crate::SURFACE_CONTROL,
+        _ => palette.surface_control,
     };
     let mut border = match kind {
         SettingsButton::Bare => Color::TRANSPARENT,
-        SettingsButton::Card => crate::CHROME_BORDER,
-        _ => crate::BORDER,
+        SettingsButton::Card => palette.chrome_border,
+        _ => palette.border,
     };
     if emphasized {
-        fill = crate::BUTTON_HOVER;
+        fill = palette.button_hover;
         border = if kind == SettingsButton::Bare {
-            crate::CHROME_BORDER
+            palette.chrome_border
         } else {
-            crate::ACCENT_BORDER
+            palette.accent_border
         };
     }
     if selected {
-        fill = crate::ACCENT_SOFT;
+        fill = palette.accent_soft;
         border = if kind == SettingsButton::Card {
-            crate::ACCENT
+            palette.accent
         } else {
-            crate::ACCENT_BORDER
+            palette.accent_border
         };
     }
     if kind == SettingsButton::Primary && !interaction.disabled {
         fill = if emphasized {
-            Color::from_rgb8(0xed, 0x80, 0x50)
+            palette.accent_hover
         } else {
-            crate::ACCENT
+            palette.accent
         };
-        border = crate::ACCENT_BORDER;
+        border = palette.accent_border;
     }
     if kind == SettingsButton::Primary && interaction.disabled {
-        border = crate::CHROME_BORDER;
+        border = palette.chrome_border;
     }
     let shape = rect.inset(-0.5).to_rounded_rect(radius);
     painter.fill(shape, fill).draw();
@@ -241,24 +255,21 @@ pub fn paint_button(
             rect.center(),
             (rect.width().max(rect.height()) / 2.0) as f32,
         )
-        .with_stops([
-            (0.0, Color::TRANSPARENT),
-            (1.0, crate::ACCENT.with_alpha(0.04)),
-        ]);
+        .with_stops([(0.0, Color::TRANSPARENT), (1.0, palette.control_inset_glow)]);
         painter.fill(shape, &wash).draw();
     }
     painter.stroke(shape, &Stroke::new(1.0), border).draw();
     if (kind != SettingsButton::Bare || emphasized || selected)
         && !(kind == SettingsButton::Primary && interaction.disabled)
     {
-        glass_edge(painter, rect, radius, emphasized || selected);
+        glass_edge_with_palette(painter, rect, radius, emphasized || selected, palette);
     }
     if interaction.focused && !interaction.disabled {
         painter
             .stroke(
                 rect.inflate(3.0, 3.0).to_rounded_rect(radius + 3.0),
                 &Stroke::new(2.0),
-                crate::FOCUS_RING,
+                palette.focus_ring,
             )
             .draw();
     }

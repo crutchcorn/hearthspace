@@ -115,76 +115,80 @@ impl<State: 'static, Action: 'static, V: WidgetView<State, Action>> View<State, 
     }
 }
 
-pub(crate) fn properties(properties: &mut DefaultProperties, focus_ring: xilem::Color) {
+pub(crate) fn properties(
+    properties: &mut DefaultProperties,
+    palette: &crate::Palette,
+    focus_ring: xilem::Color,
+) {
     let mut stack = PropertyStack::new();
     stack.push_layer(
         Selector::classes(&[CONTROL]),
         (
-            Background::Color(crate::SURFACE_CONTROL),
+            Background::Color(palette.surface_control),
             BorderColor {
-                color: crate::BORDER,
+                color: palette.border,
             },
         ),
     );
     stack.push_layer(
         Selector::classes(&[SUBTLE]),
         (
-            Background::Color(crate::SURFACE_SUBTLE),
+            Background::Color(palette.surface_subtle),
             BorderColor {
-                color: crate::BORDER,
+                color: palette.border,
             },
         ),
     );
     stack.push_layer(
         Selector::new().with_hovered(true),
-        Background::Color(crate::BUTTON_HOVER),
+        Background::Color(palette.button_hover),
     );
     stack.push_layer(
         Selector::classes(&[crate::TRANSLUCENT_FOCUS_CLASS]).with_hovered(true),
-        Background::Color(crate::RAISED_BUTTON_HOVER),
+        Background::Color(palette.raised_button_hover),
     );
     stack.push_layer(
         Selector::classes(&[SELECTED]),
         (
-            Background::Color(crate::ACCENT_SOFT),
+            Background::Color(palette.accent_soft),
             BorderColor {
-                color: crate::ACCENT_BORDER,
+                color: palette.accent_border,
             },
         ),
     );
     stack.push_layer(
         Selector::classes(&[CONTROL, SELECTED]),
         BorderColor {
-            color: crate::ACCENT_STRONG,
+            color: palette.accent_strong,
         },
     );
     stack.push_layer(
         Selector::new().with_active(true),
-        Background::Color(crate::BUTTON_ACTIVE),
+        Background::Color(palette.button_active),
     );
     stack.push_layer(
         Selector::classes(&[PRIMARY]),
         (
-            Background::Color(crate::ACCENT_STRONG),
+            Background::Color(palette.accent_strong),
             BorderColor {
-                color: crate::ACCENT_STRONG,
+                color: palette.accent_strong,
             },
         ),
     );
     stack.push_layer(
         Selector::classes(&[PRIMARY]).with_hovered(true),
-        Background::Color(crate::ACCENT_STRONG.with_alpha(0.9)),
+        Background::Color(palette.accent_strong.with_alpha(0.9)),
     );
     stack.push_layer(
         Selector::classes(&[PRIMARY]).with_active(true),
-        Background::Color(crate::ACCENT_STRONG),
+        Background::Color(palette.accent_strong),
     );
     stack.push_layer(
         Selector::classes(&[PRIMARY]).with_disabled(true),
         (
-            Background::Color(crate::SURFACE_CONTROL),
+            Background::Color(palette.surface_control),
             BorderColor {
-                color: crate::BORDER,
+                color: palette.border,
             },
         ),
     );
@@ -197,7 +201,7 @@ pub(crate) fn properties(properties: &mut DefaultProperties, focus_ring: xilem::
             .with_focused(true)
             .with_disabled(false),
         BorderColor {
-            color: crate::FOCUS_RING_ON_ACCENT,
+            color: palette.focus_ring_on_accent,
         },
     );
     properties.insert_stack::<Button>(stack);
