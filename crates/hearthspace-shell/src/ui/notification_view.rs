@@ -1,7 +1,11 @@
 use hearthspace_ui_components as components;
 use xilem::{
     AnyWidgetView, WidgetView,
-    masonry::{layout::AsUnit, parley::fontique::GenericFamily, properties::LineBreaking},
+    masonry::{
+        layout::AsUnit,
+        parley::fontique::GenericFamily,
+        properties::{Dimensions, LineBreaking, Padding},
+    },
     style::Style,
     view::{CrossAxisAlignment, FlexExt, FlexSpacer, flex_col, flex_row, label, sized_box},
 };
@@ -19,28 +23,64 @@ pub(super) fn button(
 ) -> impl WidgetView<ShellState> + use<> {
     let key = output.key().to_string();
     let count = items.iter().filter(|item| item.active).count();
-    flex_row((
-        icon_button(
-            Icon::Bell {
-                active: items.iter().any(|item| item.active),
-            },
-            "Notifications",
-            output.show_notifications,
+    // The corner contributes 4px padding and a 1px border on each side.
+    let width = (output.corner_widths[0] - 10.0).clamp(
+        0.0,
+        f64::from(hearthspace_common::NOTIFICATION_CORNER_WIDTH) - 10.0,
+    );
+    let padding_budget = (width - 20.0).max(0.0);
+    let left = 10.0_f64.min(padding_budget / 2.0);
+    let right = 16.0_f64.min(padding_budget - left);
+    let content_width = (width - left - right - 2.0).max(0.0);
+    let icon_size = content_width.min(18.0);
+    let remaining = (content_width - icon_size).max(0.0);
+    let gap = remaining.min(9.0);
+    let color = if count > 0 || output.show_notifications {
+        components::ACCENT_STRONG
+    } else {
+        components::TEXT_MUTED
+    };
+    components::button_surface(
+        xilem::view::button(
+            flex_row((
+                components::icons::icon(
+                    if count > 0 {
+                        components::icons::Icon::BellUnread
+                    } else {
+                        components::icons::Icon::Bell
+                    },
+                    icon_size,
+                )
+                .label("Notifications")
+                .color(color),
+                // A named group exposes the changing status separately from
+                // the button's stable name, supplied by the bell above.
+                super::popup_group::group(
+                    "Notification status",
+                    label(if count == 0 {
+                        "All clear".into()
+                    } else {
+                        format!("{count} new")
+                    })
+                    .text_size(13.0)
+                    .color(color)
+                    .width((remaining - gap).px())
+                    .line_break_mode(LineBreaking::Clip),
+                ),
+            ))
+            .gap(gap.px()),
             move |state| state.toggle_notifications(&key),
-        ),
-        label(if count == 0 {
-            "All clear".into()
-        } else {
-            format!("{count} new")
+        )
+        .dims(Dimensions::fixed(width.px(), 44.0.px()))
+        .padding(Padding {
+            left: left.px(),
+            right: right.px(),
+            ..Padding::ZERO
         })
-        .text_size(12.0)
-        .color(if count > 0 {
-            components::ACCENT_STRONG
-        } else {
-            components::TEXT_MUTED
-        }),
-    ))
-    .gap(2.0.px())
+        .corner_radius(components::RADIUS_CONTROL.px()),
+        components::ButtonSurface::Bare,
+        output.show_notifications,
+    )
 }
 
 pub(super) fn panel(
@@ -173,3 +213,7 @@ fn notification_row(item: Notification) -> impl WidgetView<ShellState> + use<> {
     })
     .padding(20.0.px())
 }
+
+#[cfg(test)]
+#[path = "notification_button_tests.rs"]
+mod button_tests;

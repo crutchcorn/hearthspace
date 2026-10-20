@@ -35,7 +35,7 @@ fn state() -> ShellState {
 
 #[test]
 fn notification_and_canvas_controls_open_their_own_panels() {
-    let mut ui = Ui::new(state(), notifications, (108, 54));
+    let mut ui = Ui::new(state(), notifications, (116, 54));
     ui.harness.mouse_click_on(ui.button("Notifications"), None);
     ui.dispatch(&notifications);
     assert!(ui.state.outputs[0].show_notifications);
@@ -167,9 +167,14 @@ fn translucent_corners_keep_idle_buttons_clear_and_focus_contrasting() {
                 .process_text_event(TextEvent::WindowFocusChange(true));
         }
     }
-    check(state(), notifications, 108, &["Notifications"]);
+    check(state(), notifications, 116, &["Notifications"]);
     check(state(), canvas, 102, &["Canvas map", "Select window group"]);
-    check(state(), system, 300, &["Control center", "Power"]);
+    check(
+        state(),
+        system,
+        300,
+        &["Brightness settings", "Sound settings", "Power"],
+    );
     let mut dock = state();
     dock.catalog = Default::default();
     dock.windows = vec![super::super::window_catalog::RunningWindow {
@@ -225,7 +230,12 @@ fn narrow_system_corner_keeps_tray_battery_and_controls_reachable() {
     });
     state.tray.snapshot.items = (1..=20).map(crate::ui::tray_tests::item).collect();
     let mut ui = Ui::new(state, system, (236, 54));
-    for name in ["Application tray", "Control center", "Power"] {
+    for name in [
+        "Application tray",
+        "Brightness settings",
+        "Sound settings",
+        "Power",
+    ] {
         let button = ui.button(name);
         let bounds = ui
             .harness
@@ -259,16 +269,7 @@ fn corner_controls_remain_centered_when_the_surface_has_extra_width() {
         .unwrap()
         .bounding_box()
         .unwrap();
-    let status = ids(&ui.harness)
-        .into_iter()
-        .find_map(|id| {
-            let node = ui.harness.access_node(id)?;
-            (node.value().as_deref() == Some("All clear"))
-                .then(|| node.bounding_box())
-                .flatten()
-        })
-        .unwrap();
-    assert!(((bounds.x0 + status.x1) / 2.0 - 64.0).abs() < 1.0);
+    assert!(((bounds.x0 + bounds.x1) / 2.0 - 64.0).abs() < 1.0);
 
     let ui = Ui::new(state(), canvas, (108, 54));
     let left = ui

@@ -293,11 +293,16 @@ fn overflow_keeps_every_control_visible_and_empty_tray_adds_no_button() {
     ) -> impl WidgetView<ShellState, Widget = masonry::widgets::SizedBox> + use<> {
         sized_box(crate::ui::corners::system_view(state, &state.outputs[0]))
     }
-    for (width, visible_icons) in [(320, 4), (480, 4), (800, 8)] {
+    for (width, visible_icons) in [(320, 3), (480, 4), (800, 8)] {
         let mut state = state();
         state.tray.snapshot.items = (1..=20).map(item).collect();
         let mut ui = Ui::new(state, bar, (width, 54));
-        for label in ["Application tray", "Control center", "Power"] {
+        for label in [
+            "Application tray",
+            "Brightness settings",
+            "Sound settings",
+            "Power",
+        ] {
             let bounds = ui
                 .harness
                 .access_node(name(&ui, label))

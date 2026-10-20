@@ -2,8 +2,8 @@
 
 Four independent shell surfaces anchor to each output's corners:
 
-- **Top left — Notifications:** the bell opens notifications; its dot indicates active notifications.
-- **Top right — System tray:** application tray icons, clock/calendar, Wi-Fi, sound, battery when available, Control center, and Power. Tray icons appear only while apps publish them; see [application tray](TRAY.md).
+- **Top left — Notifications:** one button combines the bell with “All clear” or the number of new notifications and opens the notification panel.
+- **Top right — System tray:** application tray icons, clock/calendar, Wi-Fi, brightness, sound, battery when available, and Power. Tray icons appear only while apps publish them; see [application tray](TRAY.md).
 - **Bottom left — Canvas tools:** the [canvas map](CANVAS_MAP.md) and window-group selection.
 - **Bottom right — App dock and Apps List:** running apps and the installed-app browser.
 
@@ -46,16 +46,19 @@ Overview gestures, Super+O, and Alt+Tab remain available. Settings, Lock and Log
 out are reached through Apps List and Power rather than standalone corner buttons.
 
 Wi-Fi shows the network tray handoff until a network-management backend is
-available; it does not invent nearby networks or connection state. Sound and
-battery dropdowns use the existing hardware readings. Control center retains
-brightness/audio controls and shortcuts to every status dropdown when a narrow
-output needs to collapse the tray. Missing hardware has an explicit unavailable
-state. The clock dropdown shows the current month.
+available; it does not invent nearby networks or connection state. Brightness,
+sound, and battery dropdowns use the existing hardware readings. Open Sound,
+then **Brightness and sound controls**, to reach the combined controls and
+shortcuts to every status dropdown. Narrow outputs retain Sound and Power while
+hiding the clock and Wi-Fi buttons; brightness and battery remain when space
+allows. Missing hardware has an explicit unavailable state. The clock dropdown
+shows the current month.
 
 ## Agent control
 
 Buttons retain descriptive accessible names despite showing icons: `Apps List`,
-`Notifications`, `Canvas map`, `Select window group`, `Control center`, and `Power`.
+`Notifications`, `Canvas map`, `Select window group`, `Wi-Fi settings`,
+`Brightness settings`, `Sound settings`, `Date and time`, and `Power`.
 Close controls include `Close apps list`, `Close notifications`, `Close canvas map`,
 and `Close power menu`. Dock names include the app, window count, active state,
 and next window when cycling.

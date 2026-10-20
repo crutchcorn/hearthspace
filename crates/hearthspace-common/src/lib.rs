@@ -1,8 +1,8 @@
 mod shell_corners;
 
 pub use shell_corners::{
-    SHELL_CORNER_CLEARANCE, SHELL_CORNER_MARGIN, SHELL_CORNER_RADIUS, ShellCorner,
-    shell_corner_app_id, shell_corner_from_app_id,
+    NOTIFICATION_CORNER_WIDTH, SHELL_CORNER_CLEARANCE, SHELL_CORNER_MARGIN, SHELL_CORNER_RADIUS,
+    ShellCorner, shell_corner_app_id, shell_corner_from_app_id,
 };
 
 pub const WAYLAND_DISPLAY_NAME: &str = "wayland-99";

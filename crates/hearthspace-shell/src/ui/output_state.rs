@@ -31,7 +31,12 @@ impl ShellOutputInstance {
             show_map: false,
             launch_error: None,
             corner_window_ids: std::array::from_fn(|_| WindowId::next()),
-            corner_widths: [108.0, 320.0, 102.0, 320.0],
+            corner_widths: [
+                f64::from(hearthspace_common::NOTIFICATION_CORNER_WIDTH),
+                320.0,
+                102.0,
+                320.0,
+            ],
             dock_page: 0,
             launcher_window_id: WindowId::next(),
             map_window_id: WindowId::next(),
@@ -49,7 +54,6 @@ impl ShellOutputInstance {
             Panel::Notifications => self.show_notifications,
             Panel::Map => self.show_map,
             Panel::Power => self.show_power,
-            Panel::Controls => self.show_controls,
         }
     }
 

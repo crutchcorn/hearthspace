@@ -14,15 +14,24 @@ BAR_ICONS = (
     "Apps List",
     "Notifications",
     "Canvas map",
-    "Control center",
+    "Brightness settings",
+    "Sound settings",
     "Power",
 )
-REMOVED = ("Overview", "Reset view", "Windows", "Settings", "Lock", "Log out")
+REMOVED = (
+    "Overview",
+    "Reset view",
+    "Windows",
+    "Settings",
+    "Lock",
+    "Log out",
+    "Control center",
+)
 CONTROL_CORNERS = {
     "Notifications": "notifications",
-    "Control center": "system",
     "Power": "system",
     "Wi-Fi settings": "system",
+    "Brightness settings": "system",
     "Sound settings": "system",
     "Battery status": "system",
     "Date and time": "system",

@@ -1,4 +1,4 @@
-"""Control center, real slider input and passive volume OSD acceptance."""
+"""Brightness and audio dropdowns, real slider input and passive OSD acceptance."""
 
 import shlex
 import time
@@ -121,11 +121,53 @@ def dismissed(smoke):
     smoke.record("osd-automatically-dismissed", elapsed=time.monotonic() - start)
 
 
+def open_controls(smoke):
+    """Reach the existing brightness/audio panel through the direct Sound button."""
+    checks.click(smoke, "Sound settings")
+    checks.opened(smoke, "controls", exclusive=True)
+    if checks.elements(smoke, "Control center"):
+        raise ControlError("Control center still appears as a standalone tray button")
+    checks.click(smoke, "Brightness and sound controls", "controls")
+    checks.opened(smoke, "controls", exclusive=True)
+    smoke.until(
+        "brightness and volume controls",
+        lambda: visible(smoke, "Brightness and volume controls", "group"),
+    )
+    smoke.record("control-center-opened-via-sound")
+
+
+def brightness_dropdown(smoke):
+    checks.click(smoke, "Brightness settings")
+    checks.opened(smoke, "controls", exclusive=True)
+    smoke.until(
+        "dedicated brightness dropdown",
+        lambda: visible(smoke, "Brightness", "group"),
+    )
+    smoke.until(
+        "native-only brightness explanation",
+        lambda: visible(
+            smoke, "Brightness is available in a native Hearthspace session."
+        ),
+    )
+    brightness = slider(smoke, "Brightness", disabled=True)
+    before = smoke.service_fixture.mutations()
+    with Input(smoke.control) as inputs:
+        inputs.click(*slider_point(smoke, brightness))
+    if smoke.service_fixture.mutations() != before:
+        raise ControlError("disabled brightness dropdown slider changed audio")
+    smoke.capture("brightness-dropdown-unavailable")
+    with Input(smoke.control) as inputs:
+        inputs.chord("esc")
+    checks.closed(smoke)
+    smoke.until("application focus restored", lambda: focused(smoke, smoke.target))
+    smoke.record("brightness-dropdown-verified", unavailable=True, disabled=True)
+
+
 def run(smoke):
     peer = smoke.service_fixture
     terminal(smoke)
-    checks.click(smoke, "Control center")
-    checks.opened(smoke, "controls")
+    brightness_dropdown(smoke)
+    open_controls(smoke)
     smoke.until("initial audio level", lambda: visible(smoke, "40%"))
     smoke.until("default output name", lambda: visible(smoke, "Fixture speakers"))
     smoke.until(
@@ -220,8 +262,7 @@ def run(smoke):
         raise ControlError("brightness key changed audio")
 
     peer.update(present=False)
-    checks.click(smoke, "Control center")
-    checks.opened(smoke, "controls")
+    open_controls(smoke)
     smoke.until(
         "missing output explanation",
         lambda: visible(smoke, "No audio output is available."),
@@ -247,8 +288,7 @@ def run(smoke):
         description="Fixture headphones",
         volume=25,
     )
-    checks.click(smoke, "Control center")
-    checks.opened(smoke, "controls")
+    open_controls(smoke)
     smoke.until(
         "replacement default audio output", lambda: visible(smoke, "Fixture headphones")
     )

@@ -150,7 +150,7 @@ fn battery_updates_are_accessible_and_removal_removes_indicator() {
     );
     let expected = ui.state.battery.as_ref().unwrap().accessible_label();
     assert!(labels(&ui).contains(&expected));
-    for name in ["Control center", "Power"] {
+    for name in ["Sound settings", "Power"] {
         let bounds = ui
             .harness
             .access_node(ui.button(name))

@@ -19,16 +19,6 @@ use xilem::{
     view::{CrossAxisAlignment, FlexExt, FlexSpacer, button, flex_col, flex_row, label, sized_box},
 };
 
-pub(super) fn toolbar_button(output: &ShellOutputInstance) -> impl WidgetView<ShellState> + use<> {
-    let key = output.key().to_string();
-    icon_button(
-        Icon::Controls,
-        "Control center",
-        output.show_controls,
-        move |state| state.toggle_controls(&key),
-    )
-}
-
 pub(super) fn window(output: &ShellOutputInstance, controls: &Controls) -> WindowView<ShellState> {
     let app_id = output
         .output_name

@@ -24,6 +24,7 @@ pub(super) enum Kind {
     Controls,
     Wifi,
     Sound,
+    Brightness,
     Battery,
     Clock,
 }
@@ -34,6 +35,7 @@ impl Kind {
             Self::Controls => "Control center",
             Self::Wifi => "Wi-Fi",
             Self::Sound => "Sound",
+            Self::Brightness => "Brightness",
             Self::Battery => "Battery",
             Self::Clock => "Date and time",
         }
@@ -154,6 +156,7 @@ pub(super) fn panel(
         Kind::Controls => return super::control_center::panel(output, &state.controls).boxed(),
         Kind::Wifi => wifi().boxed(),
         Kind::Sound => sound(state, output).boxed(),
+        Kind::Brightness => brightness(state, output).boxed(),
         Kind::Battery => battery(state).boxed(),
         Kind::Clock => calendar::view().boxed(),
     };
@@ -241,8 +244,58 @@ fn sound(state: &ShellState, output: &ShellOutputInstance) -> impl WidgetView<Sh
         components::compact_action_button(
             "Brightness and sound controls",
             move |state: &mut ShellState| {
-                state.toggle_quick_panel(&more_key, Kind::Controls);
+                state.toggle_controls(&more_key);
             },
+        ),
+    ))
+    .cross_axis_alignment(CrossAxisAlignment::Stretch)
+    .gap(16.0.px())
+}
+
+fn brightness(
+    state: &ShellState,
+    output: &ShellOutputInstance,
+) -> impl WidgetView<ShellState> + use<> {
+    let value = state.controls.brightness();
+    let available = value.is_some() && state.controls.sender.is_some();
+    let reason = state.controls.brightness_error.clone().or_else(|| {
+        match &state.controls.snapshot.brightness {
+            Err(error) => Some(error.clone()),
+            Ok(None) => Some("This display has no adjustable backlight.".into()),
+            Ok(Some(_)) if state.controls.sender.is_none() => {
+                Some("Brightness controls are unavailable.".into())
+            }
+            Ok(Some(_)) => None,
+        }
+    });
+    let more_key = output.key().to_string();
+    flex_col((
+        heading(
+            "Brightness",
+            value.map_or("—".into(), |value| format!("{value}%")),
+        ),
+        flex_row((
+            components::icons::icon(components::icons::Icon::Sun, 16.0)
+                .color(components::TEXT_MUTED),
+            sized_box(ControlSlider {
+                name: "Brightness",
+                output: output.key().into(),
+                minimum: 1,
+                value: value.unwrap_or(1),
+                enabled: available,
+            })
+            .height(28.0.px())
+            .flex(1.0),
+            components::icons::icon(components::icons::Icon::Sun, 22.0).color(components::TEXT),
+        ))
+        .gap(12.0.px()),
+        label(reason.unwrap_or_else(|| "Adjust the display backlight.".into()))
+            .text_size(13.0)
+            .color(components::TEXT_MUTED)
+            .line_break_mode(LineBreaking::WordWrap),
+        components::compact_action_button(
+            "Brightness and sound controls",
+            move |state: &mut ShellState| state.toggle_controls(&more_key),
         ),
     ))
     .cross_axis_alignment(CrossAxisAlignment::Stretch)
@@ -283,3 +336,7 @@ fn battery(state: &ShellState) -> impl WidgetView<ShellState> + use<> {
 #[cfg(test)]
 #[path = "quick_panel_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "quick_brightness_tests.rs"]
+mod brightness_tests;

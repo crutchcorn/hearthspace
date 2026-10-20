@@ -167,7 +167,6 @@ impl ShellState {
                 Panel::Notifications => output.show_notifications = true,
                 Panel::Map => output.show_map = true,
                 Panel::Power => output.show_power = true,
-                Panel::Controls => output.show_controls = true,
             }
         }
     }
@@ -197,15 +196,7 @@ impl ShellState {
     }
 
     pub(super) fn toggle_controls(&mut self, output_key: &str) {
-        self.toggle_panel(output_key, Panel::Controls);
-        if let Some(output) = self
-            .outputs
-            .iter_mut()
-            .find(|output| output.key() == output_key)
-        {
-            output.quick_panel = super::quick_panel::Kind::Controls;
-            super::popup::PopupKind::Controls.reset(output);
-        }
+        self.toggle_quick_panel(output_key, super::quick_panel::Kind::Controls);
     }
 
     pub(super) fn toggle_quick_panel(&mut self, output_key: &str, kind: super::quick_panel::Kind) {
@@ -331,7 +322,6 @@ pub(super) enum Panel {
     Notifications,
     Map,
     Power,
-    Controls,
 }
 
 fn normalized_output_targets(output_names: Vec<String>) -> Vec<Option<String>> {

@@ -109,7 +109,8 @@ fn constrained_battery_keeps_full_preferred_width_and_expands_when_output_grows(
     let preferred = system_width(&ui.state, &ui.state.outputs[0]);
     assert!(preferred > 180.0);
     assert!(!has_percentage(&ui, 57));
-    ui.button("Control center");
+    ui.button("Brightness settings");
+    ui.button("Sound settings");
     ui.button("Power");
     settle(&mut ui, &system, 600);
     assert!(has_percentage(&ui, 57));
@@ -119,4 +120,41 @@ fn constrained_battery_keeps_full_preferred_width_and_expands_when_output_grows(
     ui.dispatch(&system);
     settle(&mut ui, &system, 600);
     assert!(system_width(&ui.state, &ui.state.outputs[0]) < preferred);
+}
+
+#[test]
+fn tiny_system_corner_keeps_sound_power_and_application_tray_inside_the_surface() {
+    let mut state = state();
+    state.battery = Some(battery(57));
+    state.tray.snapshot.items = (1..=20).map(crate::ui::tray_tests::item).collect();
+    let mut ui = Ui::new(state, system, (132, 54));
+    settle(&mut ui, &system, 132);
+    assert!(!ids(&ui.harness).into_iter().any(|id| {
+        ui.harness
+            .access_node(id)
+            .is_some_and(|node| node.label().as_deref() == Some("Control center"))
+    }));
+    for name in ["Application tray", "Sound settings", "Power"] {
+        let button = ui.button(name);
+        let bounds = ui
+            .harness
+            .access_node(button)
+            .unwrap()
+            .bounding_box()
+            .unwrap();
+        assert!(bounds.x0 >= 0.0 && bounds.x1 <= 132.0, "{name}: {bounds:?}");
+        ui.harness.mouse_click_on(button, None);
+        ui.dispatch(&system);
+        let output = &ui.state.outputs[0];
+        assert_eq!(
+            [output.tray.open, output.show_controls, output.show_power]
+                .into_iter()
+                .filter(|open| *open)
+                .count(),
+            1
+        );
+        if name == "Sound settings" {
+            assert_eq!(output.quick_panel, crate::ui::quick_panel::Kind::Sound);
+        }
+    }
 }

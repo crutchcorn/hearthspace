@@ -5,6 +5,8 @@ pub const SHELL_CORNER_MARGIN: i32 = 24;
 pub const SHELL_CORNER_CLEARANCE: i32 = CONTROL_BAR_HEIGHT + SHELL_CORNER_MARGIN + 12;
 /// Logical radius shared by the shell frame and its compositor backdrop.
 pub const SHELL_CORNER_RADIUS: f64 = 20.0;
+/// Space for the notification bell, status text, and their shared button padding.
+pub const NOTIFICATION_CORNER_WIDTH: i32 = 116;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ShellCorner {

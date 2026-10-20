@@ -14,7 +14,7 @@ def run(smoke):
     viewport = smoke.control.status()["viewport"]
     for count, name, kind in (
         (1, "Notifications", "notifications"),
-        (2, "Control center", "controls"),
+        (2, "Sound settings", "controls"),
         (3, "Canvas map", "map"),
         (4, "Apps List", "search"),
     ):

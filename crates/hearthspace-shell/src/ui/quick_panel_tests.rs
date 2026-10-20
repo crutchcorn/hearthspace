@@ -17,7 +17,10 @@ fn status_dropdowns_replace_each_other_and_dismiss_with_the_existing_panel_lifec
     state.toggle_quick_panel("eDP-1", Kind::Sound);
     assert!(state.outputs[0].show_controls);
     assert_eq!(state.outputs[0].quick_panel, Kind::Sound);
-    state.toggle_quick_panel("eDP-1", Kind::Sound);
+    state.toggle_quick_panel("eDP-1", Kind::Brightness);
+    assert!(state.outputs[0].show_controls);
+    assert_eq!(state.outputs[0].quick_panel, Kind::Brightness);
+    state.toggle_quick_panel("eDP-1", Kind::Brightness);
     assert!(!state.outputs[0].show_controls);
     state.toggle_quick_panel("eDP-1", Kind::Clock);
     state.dismiss_panels();

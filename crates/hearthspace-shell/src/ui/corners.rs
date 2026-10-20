@@ -1,6 +1,7 @@
 //! Four output-local surfaces keep awareness above and actions below the canvas.
 use hearthspace_common::{
-    CONTROL_BAR_HEIGHT, SHELL_CORNER_RADIUS, ShellCorner, shell_corner_app_id,
+    CONTROL_BAR_HEIGHT, NOTIFICATION_CORNER_WIDTH, SHELL_CORNER_RADIUS, ShellCorner,
+    shell_corner_app_id,
 };
 use hearthspace_ui_components as components;
 use xilem::{
@@ -29,7 +30,7 @@ pub(super) fn windows(
         corner_window(
             output,
             ShellCorner::Notifications,
-            108.0,
+            f64::from(NOTIFICATION_CORNER_WIDTH),
             notifications_view(state, output),
         ),
         corner_window(
@@ -165,15 +166,23 @@ pub(super) fn system_view(
         + if state.battery.is_some() { 48.0 } else { 0.0 }
         + if items > 0 { 38.0 } else { 0.0 };
     let compact = output.corner_widths[1] < full_base;
-    let show_battery = !compact || output.corner_widths[1] >= 188.0;
+    // Preserve Sound, Power, and the tray drawer on very small scaled outputs.
+    let gap = if compact && output.corner_widths[1] < 140.0 {
+        0.0
+    } else {
+        4.0
+    };
+    let compact_base = FRAME + 88.0 + gap + if items > 0 { 34.0 + gap } else { 0.0 };
+    let show_brightness = !compact || output.corner_widths[1] >= compact_base + 44.0 + gap;
+    let compact_controls = compact_base + if show_brightness { 44.0 + gap } else { 0.0 };
+    let show_battery = !compact || output.corner_widths[1] >= compact_controls + 44.0 + gap;
     let reserved = if compact {
-        102.0
+        compact_controls
             + if show_battery && state.battery.is_some() {
-                48.0
+                44.0 + gap
             } else {
                 0.0
             }
-            + if items > 0 { 38.0 } else { 0.0 }
     } else {
         full_base
     };
@@ -192,21 +201,27 @@ pub(super) fn system_view(
                     "Wi-Fi settings",
                 ))
             }),
-            (!compact).then(|| {
+            show_brightness.then(|| {
                 focus(super::quick_panel::button_view(
                     output,
-                    super::quick_panel::Kind::Sound,
-                    Icon::Volume {
-                        muted: state
-                            .controls
-                            .snapshot
-                            .audio
-                            .as_ref()
-                            .is_ok_and(|audio| audio.muted),
-                    },
-                    "Sound settings",
+                    super::quick_panel::Kind::Brightness,
+                    Icon::Brightness,
+                    "Brightness settings",
                 ))
             }),
+            focus(super::quick_panel::button_view(
+                output,
+                super::quick_panel::Kind::Sound,
+                Icon::Volume {
+                    muted: state
+                        .controls
+                        .snapshot
+                        .audio
+                        .as_ref()
+                        .is_ok_and(|audio| audio.muted),
+                },
+                "Sound settings",
+            )),
             state
                 .battery
                 .as_ref()
@@ -222,11 +237,10 @@ pub(super) fn system_view(
                         &battery.accessible_label(),
                     ))
                 }),
-            focus(super::control_center::toolbar_button(output)),
             focus(super::session_controls::power_button(output)),
         ))
         .main_axis_alignment(MainAxisAlignment::Center)
-        .gap(4.0.px()),
+        .gap(gap.px()),
     )
 }
 

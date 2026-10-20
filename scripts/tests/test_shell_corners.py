@@ -83,7 +83,9 @@ class ShellCornerTests(unittest.TestCase):
             (icons + ["Switch to Foot, active"], True),
             (icons + ["Lock"], False),
             (icons + ["Overview"], False),
+            (icons + ["Control center"], False),
             (icons + ["Apps List"], False),
+            ([name for name in icons if name != "Brightness settings"], False),
             (icons[:-1], False),
         ]:
             with self.subTest(names=names):
