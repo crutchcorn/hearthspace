@@ -102,7 +102,7 @@ fn frame<V: WidgetView<ShellState>>(
                 }
             }
         },
-        sized_box(super::popup_group::group(name, view))
+        sized_box(super::popup_group::group(name, view).reset_focus_on_deactivation())
             .padding(PADDING.px())
             .background_color(components::CHROME_RAISED)
             .border(components::CHROME_BORDER, 1.0.px())

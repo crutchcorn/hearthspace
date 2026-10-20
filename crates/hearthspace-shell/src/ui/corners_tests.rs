@@ -86,6 +86,28 @@ fn apps_list_has_visible_keyboard_focus_and_opens_with_enter() {
         "focus must not move controls"
     );
     ui.harness
+        .process_text_event(TextEvent::WindowFocusChange(false));
+    assert_eq!(ui.harness.focused_widget_id(), None);
+    assert_eq!(
+        ui.harness
+            .get_widget_with_id(button)
+            .get_prop::<BorderColor>()
+            .color,
+        xilem::Color::TRANSPARENT,
+        "an inactive corner must not retain a keyboard ring"
+    );
+    ui.harness
+        .process_text_event(TextEvent::WindowFocusChange(true));
+    ui.harness.press_tab_key(false);
+    assert_eq!(ui.harness.focused_widget_id(), Some(button));
+    assert_eq!(
+        ui.harness
+            .get_widget_with_id(button)
+            .get_prop::<BorderColor>()
+            .color,
+        components::TEXT
+    );
+    ui.harness
         .process_text_event(TextEvent::key_up(Key::Named(NamedKey::Enter)));
     ui.dispatch(&apps);
     assert!(ui.state.outputs[0].show_search);
@@ -130,6 +152,19 @@ fn translucent_corners_keep_idle_buttons_clear_and_focus_contrasting() {
                 ui.harness.access_node(button).unwrap().bounding_box(),
                 "{name} must not move on focus"
             );
+            ui.harness
+                .process_text_event(TextEvent::WindowFocusChange(false));
+            assert_eq!(ui.harness.focused_widget_id(), None, "{name}");
+            assert_ne!(
+                ui.harness
+                    .get_widget_with_id(button)
+                    .get_prop::<BorderColor>()
+                    .color,
+                components::TEXT,
+                "{name} must not keep a ring in an inactive corner"
+            );
+            ui.harness
+                .process_text_event(TextEvent::WindowFocusChange(true));
         }
     }
     check(state(), notifications, 108, &["Notifications"]);
@@ -166,6 +201,14 @@ fn translucent_corners_keep_idle_buttons_clear_and_focus_contrasting() {
             .color,
         components::TEXT,
         "opaque popup controls retain the native ink focus style"
+    );
+    popup
+        .harness
+        .process_text_event(TextEvent::WindowFocusChange(false));
+    assert_eq!(
+        popup.harness.focused_widget_id(),
+        Some(close),
+        "ordinary popups retain their focus position"
     );
 }
 

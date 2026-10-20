@@ -26,7 +26,7 @@ pub(super) fn paint(appearance: &Appearance, ctx: &mut PaintCtx<'_>, painter: &m
             .stroke(
                 RoundedRect::from_rect(bounds.inset(-1.0), 6.0),
                 &Stroke::new(1.0),
-                components::ACCENT,
+                components::TEXT,
             )
             .draw();
     }
