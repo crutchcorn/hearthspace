@@ -9,7 +9,7 @@ use xilem::{
 mod widget;
 use widget::{DrawingAction, DrawingPad};
 mod thumbnail;
-pub use thumbnail::thumbnail;
+pub use thumbnail::{thumbnail, thumbnail_sized};
 
 pub struct GesturePad<State> {
     pub output_key: String,

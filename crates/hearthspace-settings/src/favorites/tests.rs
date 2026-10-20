@@ -194,3 +194,44 @@ fn cancelling_a_changed_gesture_preserves_the_existing_assignment() {
     assert_eq!(fs::read(path).unwrap(), before);
     assert_eq!(state.assigned().count(), 1);
 }
+
+#[test]
+fn choosing_an_app_preserves_the_draft_and_retargets_only_after_save() {
+    let (dir, mut state) = fixture();
+    state
+        .store
+        .as_mut()
+        .unwrap()
+        .set_gesture("Alpha.desktop", &shape())
+        .unwrap();
+    let path = dir.path().join("favorites.json");
+    let original = fs::read(&path).unwrap();
+    state.start("Alpha.desktop");
+    let old_generation = state.recording.as_ref().unwrap().generation;
+    state.stroke("Alpha.desktop", old_generation, shape());
+    state.choose_app("Alpha.desktop");
+    assert_eq!(state.recording.as_ref().unwrap().points, shape());
+    assert!(state.recording.as_ref().unwrap().valid);
+    state.choose_app("Beta.desktop");
+    let record = state.recording.as_ref().unwrap();
+    assert_eq!(record.original_app_id.as_deref(), Some("Alpha.desktop"));
+    assert_eq!(record.app_id, "Beta.desktop");
+    assert_eq!(record.points, shape());
+    let generation = record.generation;
+    state.stroke("Alpha.desktop", old_generation, vec![]);
+    assert!(state.recording.as_ref().unwrap().valid);
+    assert_eq!(state.recording.as_ref().unwrap().generation, generation);
+    assert_eq!(fs::read(&path).unwrap(), original);
+    state.cancel();
+    assert_eq!(fs::read(&path).unwrap(), original);
+
+    state.start("Alpha.desktop");
+    let generation = state.recording.as_ref().unwrap().generation;
+    state.stroke("Alpha.desktop", generation, shape());
+    state.choose_app("Beta.desktop");
+    state.save();
+    let saved = FavoriteStore::load(path).unwrap();
+    assert_eq!(saved.entries().len(), 1);
+    assert_eq!(saved.entries()[0].app_id, "Beta.desktop");
+    assert!(state.recording.is_none());
+}

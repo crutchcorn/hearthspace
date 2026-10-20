@@ -11,11 +11,17 @@ pub(crate) struct FavoriteSettings {
     pub query: String,
     pub recording: Option<Recording>,
     pub message: Option<String>,
+    pub picker_open: bool,
+    pub editing: bool,
+    pub view_width: f64,
+    pub icons: crate::favorites_icons::Icons,
+    pub icon_requests: Option<xilem::tokio::sync::watch::Sender<Vec<String>>>,
     generation: u64,
 }
 
 pub(crate) struct Recording {
     pub app_id: String,
+    pub original_app_id: Option<String>,
     pub generation: u64,
     pub points: Vec<Point>,
     pub valid: bool,
@@ -40,6 +46,11 @@ impl FavoriteSettings {
             query: String::new(),
             recording: None,
             message,
+            picker_open: false,
+            editing: false,
+            view_width: 440.0,
+            icons: Default::default(),
+            icon_requests: None,
             generation: 0,
         }
     }
@@ -47,6 +58,9 @@ impl FavoriteSettings {
     pub fn reload(&mut self) {
         self.cancel();
         self.catalog = AppCatalog::load();
+        if let Some(sender) = &self.icon_requests {
+            sender.send_replace(crate::favorites_icons::requests(self));
+        }
         match FavoriteStore::load_default() {
             Ok(store) => {
                 self.store = Some(store);
@@ -104,13 +118,52 @@ impl FavoriteSettings {
             return;
         }
         self.generation = self.generation.wrapping_add(1).max(1);
+        let editing = self.assigned().any(|entry| entry.app_id == id);
+        self.editing = editing;
+        self.picker_open = false;
+        self.query.clear();
         self.recording = Some(Recording {
             app_id: id.to_owned(),
+            original_app_id: editing.then(|| id.to_owned()),
             generation: self.generation,
             points: vec![],
             valid: false,
         });
-        self.message = Some("Draw a single shape, then save it when it looks right.".into());
+        self.message = None;
+    }
+
+    pub fn begin_add(&mut self) {
+        let app = self
+            .catalog
+            .apps()
+            .iter()
+            .find(|app| !self.assigned().any(|entry| entry.app_id == app.id))
+            .or_else(|| self.catalog.apps().first())
+            .map(|app| app.id.clone());
+        if let Some(id) = app {
+            self.start(&id);
+            self.editing = false;
+            if let Some(record) = &mut self.recording {
+                record.original_app_id = None;
+            }
+        } else {
+            self.message = Some("No installed apps are available for a gesture.".into());
+        }
+    }
+
+    pub fn choose_app(&mut self, id: &str) {
+        if self.catalog.app_by_id(id).is_none() {
+            self.message = Some("Choose an installed app first.".into());
+            return;
+        }
+        let Some(record) = &mut self.recording else {
+            return;
+        };
+        self.generation = self.generation.wrapping_add(1).max(1);
+        record.app_id = id.to_owned();
+        record.generation = self.generation;
+        self.picker_open = false;
+        self.query.clear();
     }
 
     pub fn stroke(&mut self, app_id: &str, generation: u64, points: Vec<Point>) {
@@ -135,14 +188,20 @@ impl FavoriteSettings {
     }
 
     pub fn retry(&mut self) {
-        if let Some(recording) = &self.recording {
-            let id = recording.app_id.clone();
-            self.start(&id);
+        if let Some(recording) = &mut self.recording {
+            self.generation = self.generation.wrapping_add(1).max(1);
+            recording.generation = self.generation;
+            recording.points.clear();
+            recording.valid = false;
+            self.message = None;
         }
     }
 
     pub fn cancel(&mut self) {
         self.recording = None;
+        self.picker_open = false;
+        self.query.clear();
+        self.message = None;
         self.generation = self.generation.wrapping_add(1).max(1);
     }
 
@@ -158,7 +217,11 @@ impl FavoriteSettings {
         let Some(store) = &mut self.store else {
             return;
         };
-        match store.set_gesture(&id, &recording.points) {
+        let saved = match &recording.original_app_id {
+            Some(original) => store.replace_gesture_app(original, &id, &recording.points),
+            None => store.set_gesture(&id, &recording.points),
+        };
+        match saved {
             Ok(()) => {
                 self.cancel();
                 self.message = Some(format!(

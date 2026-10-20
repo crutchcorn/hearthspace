@@ -2597,6 +2597,7 @@ dependencies = [
  "hearthspace-ipc",
  "hearthspace-shell",
  "hearthspace-ui-components",
+ "image",
  "masonry",
  "rfd",
  "tempfile",

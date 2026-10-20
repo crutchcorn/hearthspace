@@ -1,4 +1,5 @@
 mod actions;
+mod activation;
 mod ai;
 mod ai_view;
 mod ai_worker;
@@ -7,6 +8,7 @@ mod background_view;
 mod cli;
 mod display_view;
 mod favorites;
+mod favorites_icons;
 mod favorites_search;
 mod favorites_view;
 mod monitor_layout_view;
@@ -36,7 +38,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             return Ok(());
         }
     };
-    let state = initial_state(category);
+    let activation = activation::start(category)?;
+    if matches!(activation, activation::Startup::Forwarded) {
+        return Ok(());
+    }
+    let mut state = initial_state(category);
+    if let activation::Startup::Primary(Some(endpoint)) = &activation {
+        state.activation_listener = Some(endpoint.listener.try_clone()?);
+    }
     let app = Xilem::new_simple(
         state,
         app_logic,

@@ -9,6 +9,7 @@ use crate::{
 };
 
 pub(crate) struct SettingsApp {
+    pub(crate) activation_listener: Option<std::os::unix::net::UnixListener>,
     pub(crate) ai: crate::ai::AiSettings,
     pub(crate) favorites: crate::favorites::FavoriteSettings,
     pub(crate) settings: Settings,
@@ -17,6 +18,7 @@ pub(crate) struct SettingsApp {
     pub(crate) selected_monitor_id: Option<String>,
     pub(crate) background_picker_request_sender: Option<UnboundedSender<BackgroundPickerRequest>>,
     pub(crate) background_picker_pending: bool,
+    pub(crate) background_fit_open: bool,
     pub(crate) status: String,
     pub(crate) config_label: String,
 }
@@ -50,7 +52,7 @@ impl SettingsCategory {
             Self::Background => "A backdrop for your workspace.",
             Self::Gestures => "Draw shortcuts for your apps.",
             Self::Ai => "Find related windows across your canvas.",
-            Self::System => "Diagnostics and configuration for Hearthspace.",
+            Self::System => "Your system tray and canvas controls.",
         }
     }
 }
@@ -91,6 +93,7 @@ pub(crate) fn initial_state(selected_category: SettingsCategory) -> SettingsApp 
     };
 
     SettingsApp {
+        activation_listener: None,
         ai: crate::ai::AiSettings::default(),
         favorites: crate::favorites::FavoriteSettings::load(),
         settings,
@@ -99,6 +102,7 @@ pub(crate) fn initial_state(selected_category: SettingsCategory) -> SettingsApp 
         selected_monitor_id,
         background_picker_request_sender: None,
         background_picker_pending: false,
+        background_fit_open: false,
         status,
         config_label,
     }

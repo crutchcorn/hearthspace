@@ -28,6 +28,7 @@ pub(crate) struct AiSettings {
     pub(crate) pending: Option<Operation>,
     pub(crate) progress: Option<f64>,
     pub(crate) message: String,
+    pub(crate) features_open: [bool; 2],
 }
 
 impl Default for AiSettings {
@@ -38,6 +39,7 @@ impl Default for AiSettings {
             pending: None,
             progress: None,
             message: "Checking local AI availability…".into(),
+            features_open: [false; 2],
         }
     }
 }

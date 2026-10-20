@@ -23,8 +23,22 @@ fn settings_desktop_identity_resolves_to_a_transparent_app_icon() {
     })
     .expect("the Settings launcher and dock icon is available before installation");
     assert_eq!((rendered.width, rendered.height), (48, 48));
-    assert!(rendered.rgba.chunks_exact(4).any(|pixel| pixel[3] == 0));
-    assert!(rendered.rgba.chunks_exact(4).any(|pixel| pixel[3] > 0));
+    assert!(
+        rendered
+            .rgba
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .any(|pixel| pixel[3] == 0)
+    );
+    assert!(
+        rendered
+            .rgba
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .any(|pixel| pixel[3] > 0)
+    );
 }
 
 #[test]

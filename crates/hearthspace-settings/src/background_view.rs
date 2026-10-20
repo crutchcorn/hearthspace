@@ -5,69 +5,197 @@ use hearthspace_ui_components::{
 };
 use xilem::{
     AnyWidgetView, WidgetView,
-    masonry::layout::AsUnit,
+    masonry::{
+        layout::{AsUnit, Dim},
+        parley::style::FontWeight,
+        properties::{LineBreaking, Padding},
+    },
     style::Style,
-    view::{CrossAxisAlignment, flex_col, flex_item, flex_row, label, sized_box},
+    view::{
+        CrossAxisAlignment, button, flex_col, flex_item, flex_row, label, radio_button,
+        radio_group, sized_box,
+    },
 };
 
 use crate::{
     actions::{save_background_image_path, save_background_mode},
-    page_components::{card, note, section},
+    page_components::{disclosure, note, restore_focus_after_close, section},
     state::{BackgroundPickerRequest, SettingsApp},
 };
+
+#[path = "background_preview.rs"]
+mod preview;
 
 pub(crate) fn view(state: &SettingsApp) -> Box<AnyWidgetView<SettingsApp>> {
     let path = state.settings.background_image_path.as_deref();
     let name = path
         .and_then(|path| std::path::Path::new(path).file_name())
         .and_then(|name| name.to_str())
-        .unwrap_or("Default background")
+        .unwrap_or("Canvas dots")
         .to_string();
     let picker_label = if state.background_picker_pending {
-        "Selecting background image..."
+        "Loading photo…"
+    } else if path.is_some() {
+        "Change photo"
     } else {
-        "Select background image"
+        "Upload photo"
     };
-    flex_col((
-        section(
-            "Canvas background",
-            card(
-                flex_row((
-                    sized_box(icon(Icon::Photo, 30.0).color(components::TEXT_MUTED))
-                        .fixed_width(68.0.px())
-                        .fixed_height(64.0.px())
-                        .background_color(components::SURFACE_SUBTLE)
-                        .corner_radius(components::RADIUS_CONTROL.px()),
-                    flex_item(
-                        flex_col((
-                            label(name).text_size(13.0),
-                            note(path.unwrap_or("The Hearthspace dot field").to_string()),
-                        ))
-                        .cross_axis_alignment(CrossAxisAlignment::Start)
-                        .gap(5.0.px()),
-                        1.0,
-                    ),
-                ))
-                .gap(12.0.px()),
-            ),
-        ),
+    section(
+        "Background",
         flex_col((
-            components::action_button(picker_label, pick_background),
-            components::action_button("Use default background", |state: &mut SettingsApp| {
-                save_background_image_path(state, None);
+            flex_row((
+                preview::view(path),
+                flex_item(
+                    flex_col((
+                        label(name)
+                            .text_size(11.0)
+                            .weight(FontWeight::MEDIUM)
+                            .line_break_mode(LineBreaking::WordWrap),
+                        sized_box(restore_focus_after_close(
+                            components::button_surface(
+                                button(
+                                    flex_row((
+                                        icon(Icon::ImagePlus, 14.0).color(components::TEXT),
+                                        label(picker_label).text_size(11.0),
+                                    ))
+                                    .gap(7.0.px()),
+                                    pick_background,
+                                )
+                                .disabled(state.background_picker_pending),
+                                components::ButtonSurface::Control,
+                                false,
+                            )
+                            .height(34.0.px())
+                            .padding(Padding::from_vh(7.0.px(), 10.0.px())),
+                            path.is_some(),
+                        ))
+                        .width(Dim::MaxContent),
+                    ))
+                    .cross_axis_alignment(CrossAxisAlignment::Start)
+                    .gap(8.0.px()),
+                    1.0,
+                ),
+            ))
+            .gap(14.0.px()),
+            path.map(|_| {
+                flex_col((
+                    background_mode_picker(
+                        state.settings.background_mode,
+                        state.background_fit_open,
+                        state.background_picker_pending,
+                    ),
+                    note(
+                        if state.settings.background_mode == BackgroundMode::RepeatWithCanvas {
+                            "Moves with the canvas."
+                        } else {
+                            "Stays in place as the canvas moves."
+                        },
+                    ),
+                    components::button_surface(
+                        button(
+                            flex_row((
+                                icon(Icon::RotateCcw, 12.0).color(components::TEXT_MUTED),
+                                label("Use default background")
+                                    .text_size(10.0)
+                                    .color(components::TEXT_MUTED),
+                            ))
+                            .gap(7.0.px()),
+                            |state: &mut SettingsApp| {
+                                save_background_image_path(state, None);
+                                state.background_fit_open = false;
+                            },
+                        )
+                        .disabled(state.background_picker_pending),
+                        components::ButtonSurface::Bare,
+                        false,
+                    )
+                    .height(32.0.px()),
+                ))
+                .cross_axis_alignment(CrossAxisAlignment::Stretch)
+                .gap(8.0.px())
             }),
         ))
-        .cross_axis_alignment(CrossAxisAlignment::Start)
-        .gap(6.0.px()),
-        section(
-            "Background fit",
-            background_mode_picker(state.settings.background_mode),
-        ),
-        note("Choose a PNG image. Repeating follows the canvas as you move around your workspace."),
+        .cross_axis_alignment(CrossAxisAlignment::Stretch)
+        .gap(15.0.px()),
+    )
+    .boxed()
+}
+
+fn background_mode_picker(
+    selected: BackgroundMode,
+    open: bool,
+    disabled: bool,
+) -> impl WidgetView<SettingsApp> {
+    let option = move |name, mode| {
+        radio_button(
+            format!("Photo fit: {name}"),
+            selected == mode,
+            move |state: &mut SettingsApp| {
+                save_background_mode(state, mode);
+            },
+        )
+        .disabled(disabled)
+    };
+    flex_col((
+        flex_row((
+            flex_item(label("Photo fit").text_size(11.0), 1.0),
+            disclosure(
+                format!(
+                    "Photo fit: {}",
+                    match selected {
+                        BackgroundMode::RepeatWithCanvas => "Repeat with canvas",
+                        BackgroundMode::Stretch => "Stretch",
+                        BackgroundMode::Contains => "Contain",
+                        BackgroundMode::Cover => "Cover",
+                    }
+                ),
+                open,
+                disabled,
+                flex_row((
+                    label(match selected {
+                        BackgroundMode::RepeatWithCanvas => "Repeat with canvas",
+                        BackgroundMode::Stretch => "Stretch",
+                        BackgroundMode::Contains => "Contain",
+                        BackgroundMode::Cover => "Cover",
+                    })
+                    .text_size(11.0),
+                    icon(
+                        if open {
+                            Icon::ChevronUp
+                        } else {
+                            Icon::ChevronDown
+                        },
+                        12.0,
+                    )
+                    .color(components::TEXT_MUTED),
+                ))
+                .gap(8.0.px()),
+                |state: &mut SettingsApp| {
+                    state.background_fit_open = !state.background_fit_open;
+                },
+            )
+            .height(34.0.px())
+            .padding(Padding::from_vh(6.0.px(), 8.0.px()))
+            .background_color(components::SURFACE_CONTROL)
+            .border(components::BORDER, 1.0.px())
+            .corner_radius(components::RADIUS_CONTROL.px()),
+        ))
+        .gap(12.0.px()),
+        open.then(|| {
+            radio_group(
+                flex_col((
+                    option("Repeat with canvas", BackgroundMode::RepeatWithCanvas),
+                    option("Stretch", BackgroundMode::Stretch),
+                    option("Contain", BackgroundMode::Contains),
+                    option("Cover", BackgroundMode::Cover),
+                ))
+                .cross_axis_alignment(CrossAxisAlignment::Stretch)
+                .gap(8.0.px()),
+            )
+        }),
     ))
     .cross_axis_alignment(CrossAxisAlignment::Stretch)
-    .gap(20.0.px())
-    .boxed()
+    .gap(8.0.px())
 }
 
 fn pick_background(state: &mut SettingsApp) {
@@ -88,24 +216,5 @@ fn pick_background(state: &mut SettingsApp) {
     }
 }
 
-fn background_mode_picker(selected: BackgroundMode) -> impl WidgetView<SettingsApp> {
-    let option = move |name, mode| {
-        components::segmented_option(name, selected == mode, move |state: &mut SettingsApp| {
-            save_background_mode(state, mode);
-        })
-    };
-    flex_col((
-        flex_row((
-            option("Repeat with canvas", BackgroundMode::RepeatWithCanvas),
-            option("Stretch", BackgroundMode::Stretch),
-        ))
-        .gap(8.0.px()),
-        flex_row((
-            option("Contains", BackgroundMode::Contains),
-            option("Cover", BackgroundMode::Cover),
-        ))
-        .gap(8.0.px()),
-    ))
-    .cross_axis_alignment(CrossAxisAlignment::Start)
-    .gap(8.0.px())
-}
+#[cfg(test)]
+mod tests;

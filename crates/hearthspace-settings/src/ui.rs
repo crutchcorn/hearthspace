@@ -19,6 +19,10 @@ use crate::{
 
 pub(crate) fn app_logic(state: &mut SettingsApp) -> impl WidgetView<SettingsApp> + use<> {
     let content = settings_view(state);
+    let content = fork(
+        fork(content, crate::activation::task()),
+        crate::favorites_icons::task(),
+    );
     fork(
         fork(content, crate::ai_worker::worker_view()),
         worker(
@@ -100,7 +104,7 @@ fn sidebar_view(state: &SettingsApp) -> impl WidgetView<SettingsApp> + use<> {
                 flex_row((
                     icon(glyph, 16.0).color(tint),
                     flex_item(
-                        label(category.label()).text_size(12.0).color(if selected {
+                        label(category.label()).text_size(11.0).color(if selected {
                             components::TEXT
                         } else {
                             components::TEXT_MUTED
@@ -132,20 +136,23 @@ fn category_view(state: &SettingsApp) -> impl WidgetView<SettingsApp> + use<> {
     components::scroll_area(
         sized_box(
             flex_col((
-                flex_col((
-                    label(category.label())
-                        .text_size(24.0)
-                        .weight(FontWeight::MEDIUM),
-                    note(category.description()),
-                ))
-                .cross_axis_alignment(CrossAxisAlignment::Start)
-                .gap(9.0.px()),
+                (category != SettingsCategory::Gestures).then(|| {
+                    flex_col((
+                        label(category.label())
+                            .text_size(26.0)
+                            .weight(FontWeight::NORMAL),
+                        note(category.description()),
+                    ))
+                    .cross_axis_alignment(CrossAxisAlignment::Start)
+                    .gap(9.0.px())
+                }),
                 selected_category_view(state),
                 status_footer(state),
             ))
             .cross_axis_alignment(CrossAxisAlignment::Stretch)
             .gap(24.0.px()),
         )
+        .width(xilem::masonry::layout::Dim::Stretch)
         .padding(Padding::from_vh(23.0.px(), 24.0.px())),
     )
 }
@@ -161,8 +168,12 @@ fn selected_category_view(state: &SettingsApp) -> Box<AnyWidgetView<SettingsApp>
     }
 }
 
-fn status_footer(state: &SettingsApp) -> impl WidgetView<SettingsApp> + use<> {
-    note(state.status.clone())
+fn status_footer(state: &SettingsApp) -> Option<impl WidgetView<SettingsApp> + use<>> {
+    (!matches!(
+        state.status.as_str(),
+        "" | "Connected to hearthspace-settingsd" | "Connected to the settings service"
+    ))
+    .then(|| note(state.status.clone()))
 }
 
 #[cfg(test)]

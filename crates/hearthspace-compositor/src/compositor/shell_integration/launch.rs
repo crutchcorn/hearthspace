@@ -75,14 +75,28 @@ impl App {
         app_id: &str,
         output_name: Option<&str>,
     ) -> Result<(), String> {
-        self.launch_app_with_arguments(app_id, output_name, &[])
+        let existing = (app_id == "dev.hearthspace.Settings.desktop")
+            .then(|| self.existing_settings_window())
+            .flatten();
+        self.launch_app_with_arguments(app_id, output_name, &[], existing)
+    }
+
+    fn existing_settings_window(&self) -> Option<u64> {
+        self.windows.iter().enumerate().find_map(|(index, window)| {
+            (self.is_navigable_window(index)
+                && crate::compositor::windows::window_app_id(&window.surface).as_deref()
+                    == Some("dev.hearthspace.Settings"))
+            .then_some(window.id)
+        })
     }
 
     pub(super) fn open_search_settings(&mut self, output_name: Option<&str>) -> Result<(), String> {
+        let existing = self.existing_settings_window();
         self.launch_app_with_arguments(
             "dev.hearthspace.Settings.desktop",
             output_name,
-            &["--page", "search"],
+            &["--page", "gestures"],
+            existing,
         )
     }
 
@@ -91,6 +105,7 @@ impl App {
         app_id: &str,
         output_name: Option<&str>,
         arguments: &[&str],
+        existing_window: Option<u64>,
     ) -> Result<(), String> {
         // Resolve current installed entries so new favorites work and removed apps cannot launch stale commands.
         self.app_catalog = AppCatalog::load();
@@ -124,6 +139,12 @@ impl App {
         };
         let mut launch_env = launch_environment_for_app(&app)
             .map_err(|error| format!("failed to prepare app environment: {error}"))?;
+        if app_id == "dev.hearthspace.Settings.desktop" {
+            launch_env.push((
+                hearthspace_common::SHELL_COMMAND_SOCKET_ENV.to_owned(),
+                super::command_socket_path().to_string_lossy().into_owned(),
+            ));
+        }
         if let Some(display) = self.xwayland_display_name() {
             launch_env.push(("DISPLAY".to_string(), display));
         }
@@ -131,13 +152,18 @@ impl App {
             .iter()
             .map(|(key, value)| (key.as_str(), value.as_str()))
             .collect::<Vec<_>>();
-        self.prepare_spawn_output(output_name);
+        if existing_window.is_none() {
+            self.prepare_spawn_output(output_name);
+        }
         spawn_argv_with_options(
             &command,
             &wayland_display,
             &launch_env_refs,
             app.working_directory.as_deref(),
         )?;
+        if let Some(id) = existing_window {
+            self.focus_window(id)?;
+        }
         info!(app_id, wayland_display, argv = ?command, "launched desktop app");
         Ok(())
     }

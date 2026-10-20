@@ -41,7 +41,7 @@ pub(crate) fn parse(args: impl IntoIterator<Item = OsString>) -> Result<Startup,
     Ok(startup)
 }
 
-fn parse_page(page: &str) -> Result<SettingsCategory, String> {
+pub(crate) fn parse_page(page: &str) -> Result<SettingsCategory, String> {
     match page {
         "display" | "displays" => Ok(SettingsCategory::Displays),
         "appearance" => Ok(SettingsCategory::Appearance),

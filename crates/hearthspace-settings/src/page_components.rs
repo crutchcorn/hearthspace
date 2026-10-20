@@ -9,9 +9,16 @@ use xilem::{
 
 use crate::state::SettingsApp;
 
+mod toggle;
+pub(crate) use toggle::toggle;
+mod restore_focus;
+pub(crate) use restore_focus::restore_focus_after_close;
+mod disclosure;
+pub(crate) use disclosure::disclosure;
+
 pub(crate) fn note(text: impl Into<String>) -> impl WidgetView<SettingsApp> {
     label(text.into())
-        .text_size(12.0)
+        .text_size(11.0)
         .color(components::TEXT_MUTED)
         .line_break_mode(LineBreaking::WordWrap)
 }
@@ -22,7 +29,7 @@ pub(crate) fn section<V: WidgetView<SettingsApp>>(
 ) -> impl WidgetView<SettingsApp> {
     flex_col((
         label(title.into())
-            .text_size(13.0)
+            .text_size(11.0)
             .weight(FontWeight::MEDIUM),
         content,
     ))

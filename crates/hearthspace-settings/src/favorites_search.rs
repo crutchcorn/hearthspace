@@ -148,11 +148,11 @@ use xilem::{
 
 pub(crate) fn input(query: &str) -> impl WidgetView<SettingsApp> + use<> {
     Input(query.to_owned())
-        .height(36.0.px())
+        .height(44.0.px())
         .color(components::TEXT)
-        .background_color(components::SURFACE)
+        .background_color(components::SURFACE_CONTROL)
         .border(components::BORDER, 1.0.px())
-        .corner_radius(5.0.px())
+        .corner_radius(10.0.px())
         .padding(Padding::from_vh(6.0.px(), 10.0.px()))
 }
 struct Input(String);

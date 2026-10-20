@@ -46,6 +46,14 @@ def settings_elements(smoke, name, role=None):
     return a11y(smoke, "find", query)["elements"]
 
 
+def settings_app_field(smoke):
+    query = (
+        f"({SETTINGS}//*[@role='button' and @focusable='true' "
+        "and @showing='true' and contains(@name, ' Choose app')])[1]"
+    )
+    return a11y(smoke, "find", query)["elements"]
+
+
 def settings_surface(smoke):
     window = smoke.window(smoke.settings_id)
     if not window:
@@ -122,13 +130,21 @@ def configure(smoke):
     smoke.settings_id = window["id"]
     smoke.until(
         "Settings opened directly on Gestures",
-        lambda: settings_elements(smoke, "Find apps"),
+        lambda: settings_elements(smoke, "Add gesture", "button"),
     )
+    reopen_settings(smoke)
     smoke.record("search-settings-direct-page", page="Gestures")
+    settings_click(smoke, "Add gesture")
+    field = smoke.until("selected gesture app", lambda: settings_app_field(smoke))[0]
+    settings_click(smoke, field["name"])
     settings_click(smoke, "Find apps", role=None)
     with Input(smoke.control) as inputs:
         inputs.type(APP_NAME)
-    settings_click(smoke, f"Add gesture for {APP_NAME}")
+    settings_click(smoke, APP_NAME)
+    smoke.until(
+        "gesture app selected",
+        lambda: settings_elements(smoke, f"{APP_NAME} Choose app", "button"),
+    )
     element = smoke.until(
         "Settings gesture drawing area",
         lambda: settings_elements(smoke, "Gesture drawing area"),
@@ -144,7 +160,7 @@ def configure(smoke):
     ]
     draw(smoke, l_shape(rect))
     smoke.capture("favorite-gesture-recorded-in-settings")
-    settings_click(smoke, "Save gesture")
+    settings_click(smoke, "Save shortcut")
     smoke.until(
         "persisted assigned gesture",
         lambda: settings_elements(smoke, f"Change gesture for {APP_NAME}", "button"),
@@ -168,6 +184,37 @@ def configure(smoke):
         search_touch.settings_scroll(smoke)
     smoke.control.request(f"close-window {smoke.settings_id}")
     smoke.until("Settings closed", lambda: smoke.window(smoke.settings_id) is None)
+
+
+def reopen_settings(smoke):
+    """The Draw cog must retarget an existing Settings window to Gestures."""
+    settings_click(smoke, "Appearance")
+    before = window_ids(smoke)
+    # Opening Settings adds its dock icon. Use the launcher shortcut while the
+    # corner's new geometry and accessibility bounds are still converging.
+    with Input(smoke.control) as inputs:
+        inputs.chord("super")
+    checks.opened(smoke, "search")
+    smoke.until(
+        "launcher mode controls ready",
+        lambda: (
+            checks.elements(smoke, "Settings")
+            or checks.elements(smoke, "Draw to launch")
+        ),
+    )
+    if not checks.elements(smoke, "Settings"):
+        checks.click(smoke, "Draw to launch", "search")
+    checks.click(smoke, "Settings", "search")
+    smoke.until(
+        "existing Settings returned to Gestures",
+        lambda: (
+            (smoke.window(smoke.settings_id) or {}).get("focused")
+            and settings_elements(smoke, "Add gesture", "button")
+        ),
+    )
+    if window_ids(smoke) != before:
+        raise ControlError("repeated Draw settings link created another app window")
+    smoke.record("gesture-settings-reused", window_id=smoke.settings_id)
 
 
 def window_ids(smoke):

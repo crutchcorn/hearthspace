@@ -27,6 +27,8 @@ fn state() -> (tempfile::TempDir, SettingsApp) {
             selected_monitor_id: None,
             background_picker_request_sender: None,
             background_picker_pending: false,
+            background_fit_open: false,
+            activation_listener: None,
             status: "Connected to the settings service".into(),
             config_label: "Config: settings.json".into(),
         },
@@ -60,7 +62,7 @@ where
         let Some(node) = ui.harness.access_node(id) else {
             continue;
         };
-        if matches!(node.role(), Role::Button | Role::CheckBox) {
+        if matches!(node.role(), Role::Button | Role::CheckBox | Role::Switch) {
             let bounds = ui.harness.get_widget_with_id(id).ctx().bounding_box();
             assert!(
                 bounds.x0 >= 0.0 && bounds.x1 <= width,
@@ -116,18 +118,24 @@ fn sidebar_routes_to_existing_background_gestures_ai_and_system_controls() {
     ui.activate(ui.button("Background"));
     ui.dispatch(&view);
     controls_fit_width(&ui, 620.0);
-    ui.activate(ui.button("Select background image"));
+    let upload = ui
+        .harness
+        .get_widget_with_id(ui.button("Upload photo"))
+        .ctx()
+        .bounding_box();
+    assert!(upload.width() < 180.0, "photo action stretches: {upload:?}");
+    ui.activate(ui.button("Upload photo"));
     ui.dispatch(&view);
     assert!(matches!(
         picker_requests.try_recv(),
         Ok(BackgroundPickerRequest::PickFile)
     ));
-    ui.button("Selecting background image...");
+    ui.button("Loading photo…");
 
     ui.activate(ui.button("Gestures"));
     ui.dispatch(&view);
     controls_fit_width(&ui, 620.0);
-    ui.button("Reload gestures and apps");
+    ui.button("Add gesture");
 
     ui.activate(ui.button("AI"));
     ui.dispatch(&view);
@@ -170,7 +178,7 @@ fn keyboard_navigation_reaches_categories_and_skips_unavailable_appearance_optio
     ui.harness
         .process_text_event(TextEvent::key_up(Key::Named(NamedKey::Enter)));
     ui.dispatch(&view);
-    ui.button("Select background image");
+    ui.button("Upload photo");
 
     ui.activate(ui.button("Appearance"));
     ui.dispatch(&view);
@@ -209,7 +217,7 @@ fn compact_gesture_recording_keeps_the_pad_and_save_controls_visible_together() 
     state.favorites.start("Alpha.desktop");
     let ui = Ui::new(state, view, (620, 490));
     controls_fit_width(&ui, 620.0);
-    for name in ["Save gesture", "Try again", "Cancel recording"] {
+    for name in ["Save shortcut", "Retry", "Back to gestures"] {
         let bounds = ui
             .harness
             .get_widget_with_id(ui.button(name))
@@ -217,6 +225,46 @@ fn compact_gesture_recording_keeps_the_pad_and_save_controls_visible_together() 
             .bounding_box();
         assert!(bounds.y0 >= 0.0 && bounds.y1 <= 490.0, "{name}: {bounds:?}");
     }
+}
+
+#[test]
+fn compact_switch_exposes_checked_state_keyboard_action_and_visible_focus() {
+    fn switch(state: &SettingsApp) -> impl WidgetView<SettingsApp, Widget: Sized> + use<> {
+        crate::page_components::toggle(
+            "Test toggle",
+            state.settings.test,
+            state.background_picker_pending,
+            |state, on| state.settings.test = on,
+        )
+    }
+    let (_dir, mut state) = state();
+    state.settings.test = false;
+    let mut ui = Ui::new(state, switch, (80, 48));
+    let id = ui.harness.root_id();
+    let node = ui.harness.access_node(id).unwrap();
+    assert_eq!(node.role(), Role::Switch);
+    assert_eq!(node.label().as_deref(), Some("Test toggle"));
+    assert_eq!(node.toggled(), Some(masonry::accesskit::Toggled::False));
+    let unfocused = ui.harness.render();
+    ui.harness.focus_on(Some(id));
+    assert_ne!(unfocused, ui.harness.render(), "focus must be visible");
+    ui.harness
+        .process_text_event(TextEvent::key_up(Key::Character(" ".into())));
+    ui.dispatch(&switch);
+    assert!(ui.state.settings.test);
+    assert_eq!(
+        ui.harness.access_node(id).unwrap().toggled(),
+        Some(masonry::accesskit::Toggled::True)
+    );
+    ui.state.background_picker_pending = true;
+    ui.rebuild(&switch);
+    ui.activate(id);
+    ui.dispatch(&switch);
+    assert!(
+        ui.state.settings.test,
+        "a disabled switch must not mutate state"
+    );
+    assert!(ui.harness.access_node(id).unwrap().is_disabled());
 }
 
 #[test]

@@ -106,3 +106,34 @@ fn raised_controls_have_accent_hover_without_an_opaque_idle_tile() {
         Background::Color(crate::RAISED_BUTTON_HOVER)
     );
 }
+
+#[test]
+fn primary_action_keeps_visible_focus_and_disables_without_hover_emphasis() {
+    let runtime = xilem::tokio::runtime::Builder::new_current_thread()
+        .build()
+        .unwrap();
+    let mut ctx = ViewCtx::new(Arc::new(NoMessages), Arc::new(runtime));
+    let (root, _) = view(false, ButtonSurface::Primary).build(&mut ctx, &mut false);
+    let mut harness = TestHarness::create_with_size(
+        crate::hearthspace_light_properties(),
+        root.new_widget,
+        (120, 44),
+    );
+    let id = harness.root_id();
+    let idle = harness.render();
+    harness.focus_on(Some(id));
+    assert_ne!(idle, harness.render());
+    harness.mouse_move_to(id);
+    assert_eq!(
+        *harness.root_widget().get_prop::<Background>(),
+        Background::Color(crate::ACCENT_STRONG.with_alpha(0.9))
+    );
+    harness.edit_root_widget(|mut root| root.ctx.set_disabled(true));
+    harness.redraw();
+    assert_eq!(
+        *harness.root_widget().get_prop::<Background>(),
+        Background::Color(crate::SURFACE_CONTROL)
+    );
+    harness.mouse_click_on(id, None);
+    assert!(harness.pop_action::<ButtonPress>().is_none());
+}

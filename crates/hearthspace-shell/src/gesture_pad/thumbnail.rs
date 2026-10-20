@@ -18,9 +18,18 @@ use xilem::{
 };
 
 pub fn thumbnail<State: 'static>(points: Vec<[f64; 2]>) -> impl WidgetView<State> + use<State> {
+    thumbnail_sized(points, 64.0, 40.0)
+}
+
+/// Fit the same saved shape into another compact preview without stretching it.
+pub fn thumbnail_sized<State: 'static>(
+    points: Vec<[f64; 2]>,
+    width: f64,
+    height: f64,
+) -> impl WidgetView<State> + use<State> {
     sized_box(ThumbnailView(points))
-        .fixed_width(64.0.px())
-        .fixed_height(40.0.px())
+        .fixed_width(width.max(0.0).px())
+        .fixed_height(height.max(0.0).px())
 }
 
 struct ThumbnailView(Vec<[f64; 2]>);

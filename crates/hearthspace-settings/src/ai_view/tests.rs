@@ -14,6 +14,7 @@ fn state() -> (tempfile::TempDir, SettingsApp) {
     (
         dir,
         SettingsApp {
+            activation_listener: None,
             ai: AiSettings::default(),
             favorites,
             settings: Settings::default(),
@@ -22,6 +23,7 @@ fn state() -> (tempfile::TempDir, SettingsApp) {
             selected_monitor_id: None,
             background_picker_request_sender: None,
             background_picker_pending: false,
+            background_fit_open: false,
             status: String::new(),
             config_label: String::new(),
         },
@@ -30,6 +32,51 @@ fn state() -> (tempfile::TempDir, SettingsApp) {
 
 fn view(state: &SettingsApp) -> impl WidgetView<SettingsApp, Widget: Sized> + use<> {
     sized_box(super::view(state))
+}
+
+#[test]
+fn feature_details_expand_with_keyboard_and_report_their_state() {
+    use xilem::masonry::core::{
+        TextEvent,
+        keyboard::{Key, NamedKey},
+    };
+
+    let (_dir, state) = state();
+    let mut ui = Ui::new(state, view, (710, 680));
+    let feature = ui.button("On-device AI");
+    assert_eq!(
+        ui.harness
+            .access_node(feature)
+            .unwrap()
+            .data()
+            .is_expanded(),
+        Some(false)
+    );
+    ui.harness.focus_on(Some(feature));
+    ui.harness
+        .process_text_event(TextEvent::key_up(Key::Named(NamedKey::Enter)));
+    ui.dispatch(&view);
+    assert!(ui.state.ai.features_open[0]);
+    assert_eq!(
+        ui.harness
+            .access_node(feature)
+            .unwrap()
+            .data()
+            .is_expanded(),
+        Some(true)
+    );
+    assert_eq!(ui.harness.focused_widget_id(), Some(feature));
+    ui.harness
+        .process_text_event(TextEvent::key_up(Key::Character(" ".into())));
+    ui.dispatch(&view);
+    assert_eq!(
+        ui.harness
+            .access_node(feature)
+            .unwrap()
+            .data()
+            .is_expanded(),
+        Some(false)
+    );
 }
 
 #[test]

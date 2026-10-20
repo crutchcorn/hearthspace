@@ -11,6 +11,7 @@ use xilem::{
 
 const CONTROL: &str = "hearthspace-control";
 const SUBTLE: &str = "hearthspace-subtle-control";
+const PRIMARY: &str = "hearthspace-primary-control";
 const SELECTED: &str = "hearthspace-selected";
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -19,6 +20,7 @@ pub enum ButtonSurface {
     Control,
     Subtle,
     Raised,
+    Primary,
 }
 
 impl ButtonSurface {
@@ -28,6 +30,7 @@ impl ButtonSurface {
             Self::Control => CONTROL,
             Self::Subtle => SUBTLE,
             Self::Raised => crate::TRANSLUCENT_FOCUS_CLASS,
+            Self::Primary => PRIMARY,
         }
     }
 }
@@ -158,6 +161,32 @@ pub(crate) fn properties(properties: &mut DefaultProperties) {
     stack.push_layer(
         Selector::new().with_active(true),
         Background::Color(crate::BUTTON_ACTIVE),
+    );
+    stack.push_layer(
+        Selector::classes(&[PRIMARY]),
+        (
+            Background::Color(crate::ACCENT_STRONG),
+            BorderColor {
+                color: crate::ACCENT_STRONG,
+            },
+        ),
+    );
+    stack.push_layer(
+        Selector::classes(&[PRIMARY]).with_hovered(true),
+        Background::Color(crate::ACCENT_STRONG.with_alpha(0.9)),
+    );
+    stack.push_layer(
+        Selector::classes(&[PRIMARY]).with_active(true),
+        Background::Color(crate::ACCENT_STRONG),
+    );
+    stack.push_layer(
+        Selector::classes(&[PRIMARY]).with_disabled(true),
+        (
+            Background::Color(crate::SURFACE_CONTROL),
+            BorderColor {
+                color: crate::BORDER,
+            },
+        ),
     );
     stack.push_layer(
         Selector::new().with_focused(true),
