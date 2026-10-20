@@ -47,7 +47,8 @@ I develop Hearthspace on Ubuntu 26.04 LTS, and the following packages are requir
 sudo apt-get install -y build-essential pkg-config clang libclang-dev libwayland-dev wayland-protocols wayland-utils libinput-dev libxkbcommon-dev libxkbcommon-x11-dev libudev-dev libseat-dev libgbm-dev libegl1-mesa-dev libgles2-mesa-dev libdrm-dev libsystemd-dev
 ```
 
-Settings uses Liberation Sans to match the browser reference's text metrics.
+Settings and server-decorated titlebars use Liberation Sans to match the browser
+reference's text metrics.
 Install it with `sudo apt-get install -y fonts-liberation` if it is not already
 present. Fontique discovers it through the system font collection.
 
