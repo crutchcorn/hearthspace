@@ -32,13 +32,8 @@ vec4 sample_clamped(vec2 uv) {
 }
 
 void main() {
-    // Normalized Gaussian weights: sigma two samples, four samples each side.
-    // Three logical pixels per sample gives sigma six and a twelve-pixel radius.
-    vec4 color = sample_clamped(v_coords) * 0.20416369;
-    color += (sample_clamped(v_coords - step_uv) + sample_clamped(v_coords + step_uv)) * 0.18017382;
-    color += (sample_clamped(v_coords - 2.0 * step_uv) + sample_clamped(v_coords + 2.0 * step_uv)) * 0.12383154;
-    color += (sample_clamped(v_coords - 3.0 * step_uv) + sample_clamped(v_coords + 3.0 * step_uv)) * 0.06628225;
-    color += (sample_clamped(v_coords - 4.0 * step_uv) + sample_clamped(v_coords + 4.0 * step_uv)) * 0.02763055;
+    // The generated Gaussian covers every physical pixel with bilinear pairs.
+    //_KERNEL_
 
 #if defined(NO_ALPHA)
     color.a = 1.0;

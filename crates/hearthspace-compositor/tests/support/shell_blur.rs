@@ -79,6 +79,21 @@ impl Pixels {
         self.assert_solid(edge + 28, y, 0, "black source survives beyond blur radius");
     }
 
+    fn assert_blurred_horizontal_edge(&self, edge: usize, x: usize) {
+        let values: Vec<_> = ((edge - 12) * self.scale..(edge + 12) * self.scale)
+            .map(|y| self.rgb(x * self.scale, y)[0])
+            .filter(|&value| (10..245).contains(&value))
+            .collect();
+        let levels = values.iter().copied().collect::<BTreeSet<_>>().len();
+        assert!(
+            values.len() >= 4 * self.scale && levels >= 4,
+            "horizontal client edge needs vertical blur, got {} physical pixels and {levels} levels",
+            values.len()
+        );
+        self.assert_solid(x, edge - 28, 0, "black source above horizontal edge");
+        self.assert_solid(x, edge + 28, 255, "white source below horizontal edge");
+    }
+
     fn assert_rounded_outside_unchanged(&self, before: &Self, bounds: &Value) {
         let number = |key| bounds[key].as_u64().unwrap() as usize * self.scale;
         let (left, top) = (number("x"), number("y"));
@@ -179,6 +194,32 @@ fn glass_blurs_real_window_edges_and_refreshes_after_motion_and_content_commits(
     let bounds = query(&compositor, "status")["shell_corners"][0].clone();
     assert_eq!(bounds["x"], 588);
     assert_eq!(bounds["width"], 200);
+
+    // Exercise the other shader axis and vertical texture orientation. Place
+    // the opaque client's bottom edge through the glass, accounting for SSD.
+    let height = query(&compositor, "windows")["windows"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|window| window["id"] == edge_id)
+        .unwrap()["height"]
+        .as_i64()
+        .unwrap();
+    action(
+        &compositor,
+        format!("move-window {edge_id} 564 {}", 564 - height),
+    );
+    client.sync();
+    let horizontal = Pixels::capture(&compositor, scale, "blur-horizontal-edge.png");
+    horizontal.assert_blurred_horizontal_edge(564, 708);
+    action(
+        &compositor,
+        format!("move-window {edge_id} 564 {}", 540 - height),
+    );
+    client.sync();
+    let vertical_motion = Pixels::capture(&compositor, scale, "blur-vertical-motion.png");
+    vertical_motion.assert_blurred_horizontal_edge(540, 708);
+    vertical_motion.assert_solid(708, 564, 255, "vertical motion exposes fresh white content");
 
     // The cached white half must never leak over a newly fullscreen black app.
     action(&compositor, format!("fullscreen-window {edge_id} true"));

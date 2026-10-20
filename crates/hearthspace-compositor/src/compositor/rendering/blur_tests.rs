@@ -78,7 +78,7 @@ fn incremental_blur(scale: i32, output: Point<i32, Physical>) {
             .is_some()
     );
     let before =
-        crate::compositor::capture::read_pixels(&mut renderer, &target, size, true).unwrap();
+        crate::compositor::capture::read_pixels(&mut renderer, &target, size, false).unwrap();
     drop(target);
 
     let same = cache.render(&mut renderer, &[corner], scale, &scene(&stripe, &distant));
@@ -125,7 +125,7 @@ fn incremental_blur(scale: i32, output: Point<i32, Physical>) {
     assert!(damage.iter().any(|rect| rect.overlaps(corner.rect)));
     assert!(damage.iter().all(|rect| corner.rect.contains_rect(*rect)));
     let after =
-        crate::compositor::capture::read_pixels(&mut renderer, &target, size, true).unwrap();
+        crate::compositor::capture::read_pixels(&mut renderer, &target, size, false).unwrap();
     assert_ne!(
         before, after,
         "incremental presentation must change actual pixels"
@@ -140,4 +140,95 @@ fn nearby_desktop_damage_updates_glass_without_redrawing_a_static_scene() {
 #[test]
 fn glass_damage_uses_output_local_pixels_on_scaled_negative_origin_outputs() {
     incremental_blur(2, (-400, 50).into());
+}
+
+#[rstest::rstest]
+#[case(1, 3)]
+#[case(2, 2)]
+#[case(2, 6)]
+fn glass_smooths_fine_repeating_content_at_each_physical_pixel(
+    #[case] scale: i32,
+    #[case] period: i32,
+) {
+    use smithay::backend::renderer::element::texture::TextureBuffer;
+
+    let display = unsafe { EGLDisplay::new(EGLSurfacelessDisplay).unwrap() };
+    let context = EGLContext::new(&display).unwrap();
+    let mut renderer = unsafe { GlesRenderer::new(context).unwrap() };
+    let size = Size::<i32, Physical>::from((128 * scale, 128 * scale));
+    let pixels: Vec<u8> = (0..size.h)
+        .flat_map(|y| {
+            (0..size.w).flat_map(move |x| {
+                let white = (x % period < period / 2) != (y % period < period / 2);
+                let value = if white { 255 } else { 0 };
+                [value, value, value, 255]
+            })
+        })
+        .collect();
+    let texture = TextureBuffer::from_memory(
+        &mut renderer,
+        &pixels,
+        Fourcc::Abgr8888,
+        (size.w, size.h),
+        false,
+        1,
+        Transform::Normal,
+        None,
+    )
+    .unwrap();
+    let source = TextureRenderElement::from_texture_buffer(
+        (0.0, 0.0),
+        &texture,
+        None,
+        None,
+        None,
+        Kind::Unspecified,
+    );
+    let source = TranslatedHearthspaceRenderElement::from(RelocateRenderElement::from_element(
+        HearthspaceRenderElement::from(source),
+        (0, 0),
+        Relocate::Relative,
+    ));
+    let corner = CornerRegion {
+        id: 1,
+        rect: Rectangle::new(
+            (30 * scale, 30 * scale).into(),
+            (48 * scale, 48 * scale).into(),
+        ),
+    };
+    let mut cache = CornerBlurCache::default();
+    let blurred = cache.render(&mut renderer, &[corner], scale, &[source]);
+    assert_eq!(blurred.len(), 1, "GPU blur must be available");
+    let mut framebuffer: GlesRenderbuffer = renderer
+        .create_buffer(Fourcc::Abgr8888, (size.w, size.h).into())
+        .unwrap();
+    let mut target = renderer.bind(&mut framebuffer).unwrap();
+    OutputDamageTracker::new(size, 1.0, Transform::Normal)
+        .render_output(
+            &mut renderer,
+            &mut target,
+            0,
+            &blurred,
+            [1.0, 0.0, 0.0, 1.0],
+        )
+        .unwrap();
+    let actual =
+        crate::compositor::capture::read_pixels(&mut renderer, &target, size, false).unwrap();
+    let fraction = f64::from(period / 2) / f64::from(period);
+    let expected = (2.0 * fraction * (1.0 - fraction) * 255.0).round() as u8;
+    for y in 42 * scale..66 * scale {
+        for x in 42 * scale..66 * scale {
+            let offset = ((y * size.w + x) * 4) as usize;
+            assert_eq!(
+                actual[offset..offset + 3],
+                [actual[offset]; 3],
+                "the sample must land on gray glass rather than the red clear color"
+            );
+            let value = actual[offset];
+            assert!(
+                value.abs_diff(expected) <= 5,
+                "period-{period} physical-pixel content must lose its contrast at scale {scale}: ({x}, {y}) is {value}, expected near {expected}"
+            );
+        }
+    }
 }

@@ -29,7 +29,7 @@ type BlurResult<T> = Result<T, Box<dyn std::error::Error>>;
 
 #[derive(Default)]
 pub(in crate::compositor) struct CornerBlurCache {
-    renderers: HashMap<ContextId<GlesTexture>, RendererBlur>,
+    renderers: HashMap<(ContextId<GlesTexture>, i32), RendererBlur>,
 }
 
 struct RendererBlur {
@@ -120,9 +120,9 @@ impl CornerBlurCache {
     ) -> Vec<TextureRenderElement<GlesTexture>> {
         let cache = self
             .renderers
-            .entry(renderer.context_id())
+            .entry((renderer.context_id(), scale))
             .or_insert_with(|| RendererBlur {
-                shader: match CornerBlurShader::new(renderer) {
+                shader: match CornerBlurShader::new(renderer, scale) {
                     Ok(shader) => Some(shader),
                     Err(error) => {
                         tracing::warn!(%error, "corner backdrop blur is unavailable");
