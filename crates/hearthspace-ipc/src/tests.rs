@@ -51,6 +51,7 @@ fn parses_ipc_response() {
             .unwrap(),
             Settings {
                 test: true,
+                appearance: Appearance::default(),
                 background_mode: BackgroundMode::Contains,
                 background_image_path: Some("/tmp/wallpaper.png".to_string()),
                 monitors: vec![
@@ -97,4 +98,54 @@ fn parses_legacy_ipc_response_with_default_background_setting() {
             .background_mode,
         Settings::default().background_mode
     );
+}
+
+#[test]
+fn appearance_choices_round_trip_without_losing_other_settings() {
+    for color_mode in ColorMode::ALL {
+        for accent_color in AccentColor::ALL {
+            let settings = Settings {
+                appearance: Appearance {
+                    color_mode,
+                    accent_color,
+                },
+                test: true,
+                background_mode: BackgroundMode::Cover,
+                background_image_path: Some("/tmp/my photo.png".into()),
+                ..Settings::default()
+            };
+            assert_eq!(
+                parse_settings_response(&settings_response(settings.clone())).unwrap(),
+                settings,
+            );
+            assert_eq!(
+                parse_settings_request(&format!("set color-mode {color_mode}")),
+                Ok(SettingsRequest::SetColorMode(color_mode)),
+            );
+            assert_eq!(
+                parse_settings_request(&format!("set accent-color {accent_color}")),
+                Ok(SettingsRequest::SetAccentColor(accent_color)),
+            );
+        }
+    }
+    assert_eq!(
+        parse_settings_response("ok test false\n")
+            .unwrap()
+            .appearance,
+        Appearance::default(),
+    );
+    for invalid in [
+        "set color-mode auto",
+        "set color-mode",
+        "set accent-color pink",
+    ] {
+        assert!(parse_settings_request(invalid).is_err());
+    }
+    for invalid in [
+        "ok test false color-mode auto",
+        "ok test false accent-color ultraviolet",
+        "ok test false accent-color",
+    ] {
+        assert!(parse_settings_response(invalid).is_err());
+    }
 }

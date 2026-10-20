@@ -1,4 +1,7 @@
+mod appearance;
 mod shell_corners;
+
+pub use appearance::{AccentColor, Appearance, ColorMode};
 
 pub use shell_corners::{
     NOTIFICATION_CORNER_WIDTH, SHELL_CORNER_CLEARANCE, SHELL_CORNER_MARGIN, SHELL_CORNER_RADIUS,

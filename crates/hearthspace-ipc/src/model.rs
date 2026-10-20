@@ -1,8 +1,10 @@
+use hearthspace_common::{AccentColor, Appearance, ColorMode};
 use std::str::FromStr;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Settings {
     pub test: bool,
+    pub appearance: Appearance,
     pub background_mode: BackgroundMode,
     pub background_image_path: Option<String>,
     pub monitors: Vec<MonitorConfig>,
@@ -71,6 +73,7 @@ impl Default for Settings {
     fn default() -> Self {
         Self {
             test: false,
+            appearance: Appearance::default(),
             background_mode: BackgroundMode::default(),
             background_image_path: None,
             monitors: vec![
@@ -101,6 +104,8 @@ impl Default for Settings {
 pub enum SettingsRequest {
     Get,
     SetTest(bool),
+    SetColorMode(ColorMode),
+    SetAccentColor(AccentColor),
     SetBackgroundMode(BackgroundMode),
     SetBackgroundImagePath(Option<String>),
     SetMonitorPosition { id: String, x: i32, y: i32 },

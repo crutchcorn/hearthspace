@@ -100,6 +100,10 @@ fn parse_settings(contents: &str) -> io::Result<Settings> {
                 BackgroundMode::from_legacy_moves_with_canvas(moves_with_canvas);
         } else if key == "background_image_path" {
             settings.background_image_path = parse_background_image_path(value);
+        } else if key == "color_mode" {
+            settings.appearance.color_mode = value.parse().map_err(io::Error::other)?;
+        } else if key == "accent_color" {
+            settings.appearance.accent_color = value.parse().map_err(io::Error::other)?;
         }
     }
 
@@ -115,13 +119,15 @@ fn parse_settings(contents: &str) -> io::Result<Settings> {
 
 fn format_settings(settings: Settings) -> String {
     let mut contents = format!(
-        "test = {}\nbackground_mode = {}\nbackground_image_path = {}\n",
+        "test = {}\nbackground_mode = {}\nbackground_image_path = {}\ncolor_mode = {}\naccent_color = {}\n",
         settings.test,
         settings.background_mode,
         settings
             .background_image_path
             .as_deref()
-            .unwrap_or("default")
+            .unwrap_or("default"),
+        settings.appearance.color_mode,
+        settings.appearance.accent_color,
     );
     for monitor in settings.monitors {
         contents.push_str(&format!(
