@@ -53,6 +53,24 @@ class PopupPresentationTests(unittest.TestCase):
         with self.assertRaisesRegex(ControlError, "no visible interior"):
             presentation.rounded(self.background, self.background, self.surface)
 
+    def test_raised_tint_blends_with_actual_backdrop_and_rejects_opaque_or_missing_panel(
+        self,
+    ):
+        visible = self.frame([((0, 20, 100, 100), (221, 219, 214))])
+        result = presentation.raised_tint(self.background, visible, self.surface)
+        self.assertEqual(result["background"], [90, 80, 70])
+        self.assertEqual(result["visible"], [221, 219, 214])
+        for wrong in ((250, 249, 246), (90, 80, 70), (20, 20, 20)):
+            with (
+                self.subTest(wrong=wrong),
+                self.assertRaisesRegex(ControlError, "tint"),
+            ):
+                presentation.raised_tint(
+                    self.background,
+                    self.frame([((0, 20, 100, 100), wrong)]),
+                    self.surface,
+                )
+
     def test_changed_output_geometry_is_not_compared(self):
         visible = presentation.Frame(
             capture(self.metadata | {"scale": 1}, self.rounded)
@@ -133,12 +151,12 @@ class PopupPresentationTests(unittest.TestCase):
             )
         self.assertEqual(calls[:3], [None, None, None])
 
-    def test_search_width_tracks_fraction_and_small_output_edges(self):
+    def test_search_width_preserves_requested_width_with_insets_on_small_outputs(self):
         for width, expected in (
-            (1280, 768),
-            (800, 480),
-            (600, 360),
-            (300, 276),
+            (1280, 650),
+            (800, 650),
+            (600, 552),
+            (300, 252),
             (20, 1),
         ):
             with self.subTest(width=width):

@@ -10,16 +10,14 @@ from .daily_checks import a11y, read_line
 from .map_checks import SHELL, selector
 
 
-def visible(smoke, name):
-    return a11y(smoke, "find", selector(name))["elements"]
+def visible(smoke, name, role=None):
+    return a11y(smoke, "find", selector(name, role=role))["elements"]
 
 
 def battery(smoke, percentage, state):
     smoke.until(
         f"battery {percentage}% {state}",
-        lambda: (
-            visible(smoke, f"Battery: {state}") and visible(smoke, f"{percentage}%")
-        ),
+        lambda: visible(smoke, f"Battery: {percentage}%, {state}", role="button"),
     )
     smoke.record("battery-visible", percentage=percentage, state=state)
 

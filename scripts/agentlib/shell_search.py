@@ -5,7 +5,13 @@ from .control import ControlError
 from .daily_checks import a11y, focused
 from .input import Input
 from .map_checks import SHELL
-from .shell_presentation import Frame, fitted, highlight_change, park_pointer
+from .shell_presentation import (
+    Frame,
+    fitted,
+    highlight_change,
+    park_pointer,
+    search_width,
+)
 
 RESULTS = (
     f"{SHELL}//*[@role='button' and @showing='true' and "
@@ -80,17 +86,26 @@ def run(smoke):
     with Input(smoke.control) as inputs:
         inputs.chord("ctrl+a")
         inputs.type("HEARTHSPACE-NO-SUCH-INSTALLED-APP")
+    smoke.until(
+        "unmatched query shows the empty result state",
+        lambda: checks.elements(smoke, "No matching apps or windows", role=None),
+    )
     empty, gap = fitted(
         smoke,
         "search",
-        "No matching apps or windows",
+        "Enter to open",
         output,
+        max_bottom_gap=32,
     )
-    if empty["height"] >= surface["height"]:
-        raise ControlError("an unmatched search did not shrink its populated popup")
-    smoke.capture("apps-unmatched-compact")
+    if a11y(smoke, "find", RESULTS)["elements"]:
+        raise ControlError("an unmatched search still exposes application results")
+    search_width(empty, output)
+    smoke.capture("apps-unmatched")
     smoke.record(
-        "search-content-shrinks", populated=surface, empty=empty, content_bottom_gap=gap
+        "search-empty-state-fits",
+        populated=surface,
+        empty=empty,
+        content_bottom_gap=gap,
     )
     with Input(smoke.control) as inputs:
         inputs.chord("ctrl+a")

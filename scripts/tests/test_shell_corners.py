@@ -29,13 +29,13 @@ def corner_status():
                 "x": x,
                 "y": y,
                 "width": 200,
-                "height": 48,
+                "height": 54,
             }
             for corner, x, y in (
-                ("notifications", 12, 12),
-                ("system", 788, 12),
-                ("canvas", 12, 540),
-                ("apps", 788, 540),
+                ("notifications", 24, 24),
+                ("system", 776, 24),
+                ("canvas", 24, 522),
+                ("apps", 776, 522),
             )
         ],
     }
@@ -127,8 +127,22 @@ class ShellCornerTests(unittest.TestCase):
         with patch.object(shell_checks, "Input") as input_type:
             shell_checks.click(smoke, "Apps List")
         input_type.return_value.__enter__.return_value.click.assert_called_once_with(
-            810, 562
+            798, 544
         )
+
+    def test_legacy_bar_height_or_inset_is_rejected(self):
+        for field, value in (("height", 48), ("x", 12)):
+            with self.subTest(field=field):
+                smoke = Mock()
+                status = corner_status()
+                status["shell_corners"][0][field] = value
+                smoke.control.status.return_value = status
+                smoke.until.side_effect = [
+                    True,
+                    [{"name": name} for name in shell_checks.BAR_ICONS],
+                ]
+                with self.assertRaisesRegex(ControlError, "54px height/24px inset"):
+                    shell_checks.bar(smoke)
 
 
 if __name__ == "__main__":

@@ -3,7 +3,7 @@
 Four independent shell surfaces anchor to each output's corners:
 
 - **Top left — Notifications:** the bell opens notifications; its dot indicates active notifications.
-- **Top right — System tray:** application tray icons, clock, battery when available, Control center, and Power. Tray icons appear only while apps publish them; see [application tray](TRAY.md).
+- **Top right — System tray:** application tray icons, clock/calendar, Wi-Fi, sound, battery when available, Control center, and Power. Tray icons appear only while apps publish them; see [application tray](TRAY.md).
 - **Bottom left — Canvas tools:** the [canvas map](CANVAS_MAP.md) and window-group selection.
 - **Bottom right — App dock and Apps List:** running apps and the installed-app browser.
 
@@ -18,8 +18,7 @@ canvas map and Apps List open upward. Opening one closes the previous panel.
 Escape, the close icon, an outside click, or the active corner button dismisses it.
 Panels have rounded transparent corners and shrink to fit their content. Long
 lists scroll within the available height; Apps List keeps its heading and input
-visible. It uses 60% of the output's logical width, with a 360-pixel minimum where
-space permits and 12-pixel side margins on small displays. Maximized apps fit
+visible. It requests 650 logical pixels, capped to the output with 24-pixel side margins. Maximized apps fit
 between the top and bottom controls; fullscreen retains its existing shell policy.
 
 Tap Meta (also called Super or the Windows key) to toggle Apps List. The action
@@ -32,8 +31,11 @@ and App dock on the active output. Super+Shift+F6 moves backward. Tab navigates
 within a corner; Enter activates its focused control. Escape closes an open panel
 or returns from the corner to the most recent app without moving the canvas.
 
-An empty query lists installed applications alphabetically. Typing filters apps
-and running-window titles or IDs. Up and Down move the visible selection; Enter
+An empty query shows installed applications alphabetically in a four-column icon grid.
+The view switch selects an icon grid or a list with app descriptions; narrow
+panels reduce the grid column count. The Draw tab reuses the existing favorite
+gesture pad and matching flow. Typing filters apps
+and running-window titles or IDs. Up and Down move between rows (Left and Right move between grid cells); Enter
 activates it while the search field retains typing focus. Selecting a running
 window focuses its existing ID and brings it into view. Hearthspace Settings is
 available in Apps List. Prebuilt sessions register its desktop entry in their
@@ -42,6 +44,13 @@ private runtime, using the selected binary directory when provided.
 Power contains Lock and Log out; Log out requires confirmation and offers Cancel.
 Overview gestures, Super+O, and Alt+Tab remain available. Settings, Lock and Log
 out are reached through Apps List and Power rather than standalone corner buttons.
+
+Wi-Fi shows the network tray handoff until a network-management backend is
+available; it does not invent nearby networks or connection state. Sound and
+battery dropdowns use the existing hardware readings. Control center retains
+brightness/audio controls and shortcuts to every status dropdown when a narrow
+output needs to collapse the tray. Missing hardware has an explicit unavailable
+state. The clock dropdown shows the current month.
 
 ## Agent control
 

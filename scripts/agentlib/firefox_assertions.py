@@ -48,7 +48,7 @@ def fullscreen_at_output(window, outputs):
 def corner_inset(output):
     # Keep aligned with SHELL_CORNER_CLEARANCE and corner_work_area. The top
     # and bottom corners each retain space while maximized apps draw CSD.
-    return min(72, max(0, output["logical_height"] - 1) // 2)
+    return min(90, max(0, output["logical_height"] - 1) // 2)
 
 
 def matches_output_bounds(window, outputs, *, shell_corners=False):

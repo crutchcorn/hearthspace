@@ -69,9 +69,9 @@ class FirefoxEvidenceTests(unittest.TestCase):
         self.output = {
             "name": "eDP-1",
             "logical_x": 20,
-            "logical_y": -52,
+            "logical_y": -70,
             "logical_width": 200,
-            "logical_height": 304,
+            "logical_height": 340,
         }
 
     def verify(self, *, after=None, image=None):
@@ -316,17 +316,17 @@ class FirefoxShellPointerTests(unittest.TestCase):
         self.corner = {
             "corner": "canvas",
             "output": "test",
-            "x": 112,
-            "y": 790,
-            "width": 88,
-            "height": 48,
+            "x": 124,
+            "y": 772,
+            "width": 102,
+            "height": 54,
         }
         self.bounds = {"x": 14, "y": 14, "width": 68, "height": 68}
 
     def test_observed_physical_bounds_convert_to_logical_shell_center(self):
         self.assertEqual(
             firefox_shell.button_center(self.bounds, self.output, self.corner),
-            (136, 814),
+            (148, 796),
         )
         for bad in [
             None,
@@ -340,7 +340,7 @@ class FirefoxShellPointerTests(unittest.TestCase):
 
     def test_shell_pointer_focus_changes_before_button_release(self):
         smoke = Mock(target=7)
-        surface = {"output": "test", "x": 112, "y": 468, "width": 320, "height": 310}
+        surface = {"output": "test", "x": 124, "y": 450, "width": 320, "height": 310}
         smoke.control.status.return_value = {
             "outputs": [self.output],
             "shell_corners": [self.corner],
@@ -372,7 +372,7 @@ class FirefoxShellPointerTests(unittest.TestCase):
             firefox_shell.click_zoom_out(smoke)
             self.assertEqual(
                 [call.args for call in inputs.motion.call_args_list],
-                [(136, 814), (142, 733)],
+                [(148, 796), (154, 715)],
             )
         self.assertEqual(events, ["down", "focus-observed", "focus-observed", "up"] * 2)
         self.assertIn("Canvas map", accessibility.call_args_list[0].args[2])

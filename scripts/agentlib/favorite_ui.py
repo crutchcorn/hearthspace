@@ -100,6 +100,11 @@ def configure(smoke):
     if not checks.panel(smoke, "search"):
         checks.click(smoke, "Apps List")
         checks.opened(smoke, "search")
+    checks.click(smoke, "Draw to launch", "search")
+    smoke.until(
+        "gesture mode exposes Settings",
+        lambda: checks.elements(smoke, "Settings"),
+    )
     checks.click(smoke, "Settings", "search")
     window = smoke.until(
         "owned Settings window",
@@ -179,8 +184,10 @@ def launch_mode(smoke):
             smoke, "find", f"{SHELL}//*[@role='button' and @name='Open: {APP_NAME}']"
         )["elements"],
     )
-    checks.elements(smoke, "Settings")
     checks.click(smoke, "Draw to launch", "search")
+    smoke.until(
+        "gesture Settings available", lambda: checks.elements(smoke, "Settings")
+    )
     state = smoke.until(
         "armed search drawing area",
         lambda: (
@@ -192,12 +199,8 @@ def launch_mode(smoke):
         ),
     )
     smoke.until(
-        "drawing readiness presented in the search UI",
-        lambda: checks.elements(
-            smoke,
-            "Lift your finger or release the button to launch a clear match.",
-            role=None,
-        ),
+        "drawing readiness presented in the Apps List",
+        lambda: checks.elements(smoke, "Draw a gesture", role=None),
     )
     panel = checks.opened(smoke, "search")
     x, y, width, height = state["bounds"]

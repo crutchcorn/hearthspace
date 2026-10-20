@@ -22,6 +22,10 @@ CONTROL_CORNERS = {
     "Notifications": "notifications",
     "Control center": "system",
     "Power": "system",
+    "Wi-Fi settings": "system",
+    "Sound settings": "system",
+    "Battery status": "system",
+    "Date and time": "system",
     "Select window group": "canvas",
     "Canvas map": "canvas",
     "Apps List": "apps",
@@ -29,7 +33,15 @@ CONTROL_CORNERS = {
 
 
 def elements(smoke, name, *, role="button"):
-    return a11y(smoke, "find", selector(name, role=role))["elements"]
+    query = selector(name, role=role)
+    if role == "button":
+        # AccessKit exports native buttons with toggled state as ToggleButton.
+        # Launcher layout/mode controls remain ordinary pointer targets.
+        query = (
+            f"({SHELL}//*[(@role='button' or @role='toggle button') "
+            f"and @showing='true' and @name='{name}'])[1]"
+        )
+    return a11y(smoke, "find", query)["elements"]
 
 
 def panel(smoke, kind, *, exclusive=False):
@@ -126,6 +138,15 @@ def bar(smoke):
         ):
             raise ControlError(
                 f"shell corner has the wrong purpose/position: {surface}"
+            )
+        expected_height = min(54, max(1, output["logical_height"] - 48))
+        max_x = max(0, output["logical_width"] - surface["width"])
+        max_y = max(0, output["logical_height"] - surface["height"])
+        expected_x = max(0, max_x - 24) if is_right else min(24, max_x)
+        expected_y = max(0, max_y - 24) if is_bottom else min(24, max_y)
+        if (x, y, surface["height"]) != (expected_x, expected_y, expected_height):
+            raise ControlError(
+                f"shell corner does not use 54px height/24px inset: {surface}"
             )
     for name in BAR_ICONS:
         button = next(item for item in buttons if item["name"] == name)
