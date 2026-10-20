@@ -12,10 +12,10 @@ use xilem::{
     AnyWidgetView, WidgetView,
     masonry::{
         layout::AsUnit,
-        properties::{LineBreaking, Padding},
+        properties::{Dimensions, LineBreaking, Padding},
     },
     style::Style,
-    view::{CrossAxisAlignment, FlexSpacer, flex_col, flex_row, label, sized_box, zstack},
+    view::{CrossAxisAlignment, FlexExt, FlexSpacer, flex_col, flex_row, label, sized_box, zstack},
 };
 
 pub(super) fn drawing(
@@ -65,8 +65,10 @@ pub(super) fn drawing(
             ))
             .height(44.0.px()),
             zstack((
-                prompt,
-                sized_box(pad).dims(xilem::masonry::properties::Dimensions::STRETCH),
+                // Keep both stack children stable. Xilem's ZStack splice
+                // appends reinserted optional children, losing the pad's index.
+                flex_col((prompt,)),
+                sized_box(pad).dims(Dimensions::STRETCH),
             ))
             .height(
                 if output.launcher_width <= 480.0 {
@@ -83,31 +85,35 @@ pub(super) fn drawing(
     .background_color(components::PAPER)
     .border(components::CHROME_BORDER, 1.0.px())
     .corner_radius(14.0.px());
-    let mut rows = vec![card.boxed()];
-    if let Some(message) = &output.drawing.message {
-        rows.push(
-            flex_row((
-                label(message.clone())
-                    .text_size(11.0)
-                    .color(components::TEXT_MUTED)
-                    .line_break_mode(LineBreaking::WordWrap),
-                FlexSpacer::Flex(1.0),
-                super::search_result::control(
-                    "Clear drawing and retry",
-                    None,
-                    flex_row((icon(Icon::RotateCcw, 13.0), label("Retry").text_size(11.0)))
-                        .gap(7.0.px()),
-                    move |state| actions::start(state, &retry_key, Mode::Launch),
-                )
-                .height(44.0.px())
-                .padding(10.0.px())
-                .border(components::CHROME_BORDER, 1.0.px())
-                .corner_radius(10.0.px()),
-            ))
-            .gap(10.0.px())
-            .boxed(),
-        );
-    }
+    let retry = output.drawing.message.is_some().then(|| {
+        super::search_result::control(
+            "Clear drawing and retry",
+            None,
+            flex_row((icon(Icon::RotateCcw, 13.0), label("Retry").text_size(11.0))).gap(7.0.px()),
+            move |state| actions::start(state, &retry_key, Mode::Launch),
+        )
+        .height(44.0.px())
+        .padding(10.0.px())
+        .border(components::CHROME_BORDER, 1.0.px())
+        .corner_radius(10.0.px())
+    });
+    // Completing a stroke must not resize its popup and invalidate the
+    // compositor-authorized drawing bounds. Longer errors may still wrap.
+    let feedback = flex_row((
+        sized_box(label("")).dims(Dimensions::fixed(0.0.px(), 44.0.px())),
+        flex_row((
+            label(output.drawing.message.clone().unwrap_or_default())
+                .text_size(11.0)
+                .color(components::TEXT_MUTED)
+                .line_break_mode(LineBreaking::WordWrap)
+                .flex(1.0),
+            retry,
+        ))
+        .gap(10.0.px())
+        .flex(1.0),
+    ))
+    .gap(0.0.px());
+    let mut rows = vec![card.boxed(), feedback.boxed()];
     let hint =
         if let Some(error) = &state.favorites.error {
             Some(format!("Gestures unavailable: {error}"))

@@ -107,8 +107,7 @@ fn launch(state: &mut ShellState, key: &str, id: &str, generation: u64, stroke: 
         feedback(
             state,
             key,
-            "This app is no longer installed. Update its gesture in Settings → Search → Gestures."
-                .into(),
+            "This app is no longer installed. Update its gesture in Settings → Gestures.".into(),
         );
         return;
     }

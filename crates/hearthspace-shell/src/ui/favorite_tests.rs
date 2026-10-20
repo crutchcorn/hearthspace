@@ -69,6 +69,110 @@ fn apps_and_draw_tabs_preserve_browsing_and_expose_gesture_settings() {
 }
 
 #[test]
+fn live_drawing_replaces_prompt_and_keeps_feedback_controls_usable_after_resize() {
+    use super::favorite_events::{self, GestureEvent, Phase};
+    let dir = tempfile::tempdir().unwrap();
+    let mut state = state(dir.path());
+    state.favorites.store.add("fixture.desktop").unwrap();
+    state
+        .favorites
+        .store
+        .assign("fixture.desktop", &SHAPE)
+        .unwrap();
+    let mut ui = Ui::new(state, view, (650, 560));
+    ui.activate(ui.button("Draw to launch"));
+    ui.dispatch(&view);
+    let generation = ui.state.outputs[0].drawing.generation;
+    // The test boundary supplies compositor authorization after the real UI
+    // has measured its pad. Subsequent events follow the normal gesture path.
+    ui.state.outputs[0].drawing.armed = true;
+    ui.state.outputs[0].drawing.message = None;
+    ui.rebuild(&view);
+    ui.dispatch(&view);
+    let initial_height = super::popup::size(
+        &ui.state.outputs[0],
+        super::popup::PopupKind::Search,
+        650.0,
+        560.0,
+    )
+    .height;
+    let listener = UnixListener::bind(&ui.state.command_socket).unwrap();
+    let server = thread::spawn(move || {
+        let (mut stream, _) = listener.accept().unwrap();
+        let mut request = String::new();
+        stream.read_to_string(&mut request).unwrap();
+        assert_eq!(request, format!("favorite-gesture-accept {generation} 1\n"));
+        stream.write_all(b"ok\n").unwrap();
+    });
+    for (sequence, phase, point) in [
+        (0, Phase::Begin, [30.0, 30.0]),
+        (1, Phase::Update, [100.0, 30.0]),
+        (2, Phase::Update, [30.0, 30.0]),
+        (3, Phase::End, [30.0, 30.0]),
+    ] {
+        favorite_events::apply(
+            &mut ui.state,
+            GestureEvent {
+                generation,
+                stroke: 1,
+                sequence,
+                phase,
+                point,
+                output: Some("eDP-1".into()),
+            },
+        );
+        ui.rebuild(&view);
+        ui.dispatch(&view);
+        let height = super::popup::size(
+            &ui.state.outputs[0],
+            super::popup::PopupKind::Search,
+            650.0,
+            560.0,
+        )
+        .height as u32;
+        ui.harness
+            .process_window_event(masonry::core::WindowEvent::Resize((650, height).into()));
+        ui.dispatch(&view);
+        ui.harness.render();
+    }
+    server.join().unwrap();
+    assert_eq!(
+        super::popup::size(
+            &ui.state.outputs[0],
+            super::popup::PopupKind::Search,
+            650.0,
+            560.0,
+        )
+        .height,
+        initial_height,
+        "drawing feedback must not reconfigure and cancel its own popup"
+    );
+    assert!(
+        ui.state.outputs[0]
+            .drawing
+            .message
+            .as_ref()
+            .unwrap()
+            .contains("No matching")
+    );
+    let retry = ui.button("Clear drawing and retry");
+    ui.harness.focus_on(Some(retry));
+    ui.dispatch(&view);
+    assert_eq!(ui.harness.focused_widget_id(), Some(retry));
+    ui.activate(retry);
+    ui.dispatch(&view);
+    assert!(ui.state.outputs[0].drawing.preview.is_empty());
+    assert!(ui.state.outputs[0].drawing.generation > generation);
+    assert!(super::test_support::ids(&ui.harness).into_iter().any(|id| {
+        ui.harness.access_node(id).is_some_and(|node| {
+            node.value().as_deref() == Some("Draw a gesture")
+                || node.label().as_deref() == Some("Draw a gesture")
+        })
+    }));
+    ui.button("Settings");
+}
+
+#[test]
 fn clear_match_launches_immediately_by_id_and_launch_failure_keeps_feedback() {
     for accepted in [true, false] {
         let dir = tempfile::tempdir().unwrap();
@@ -178,8 +282,7 @@ fn empty_gestures_keep_drawing_available_and_explain_where_to_assign_one() {
     assert!(super::test_support::ids(&ui.harness).into_iter().any(|id| {
         ui.harness.access_node(id).is_some_and(|node| {
             node.value().as_deref() == Some("Add an app gesture in Settings → Gestures.")
-                || node.label().as_deref()
-                    == Some("Add an app gesture in Settings → Gestures.")
+                || node.label().as_deref() == Some("Add an app gesture in Settings → Gestures.")
         })
     }));
     ui.activate(ui.button("Back to apps list"));
