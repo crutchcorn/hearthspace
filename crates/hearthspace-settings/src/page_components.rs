@@ -12,9 +12,11 @@ use crate::state::SettingsApp;
 mod toggle;
 pub(crate) use toggle::toggle;
 mod restore_focus;
-pub(crate) use restore_focus::restore_focus_after_close;
+pub(crate) use restore_focus::{focus_on_mount, restore_focus_after_close};
 mod disclosure;
 pub(crate) use disclosure::disclosure;
+mod photo_fit;
+pub(crate) use photo_fit::photo_fit;
 
 pub(crate) fn note(text: impl Into<String>) -> impl WidgetView<SettingsApp> {
     label(text.into())

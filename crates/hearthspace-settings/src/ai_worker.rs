@@ -57,8 +57,8 @@ fn execute(
             manager.install(device, progress)
         }
         Operation::Remove => manager.remove(),
+        Operation::EnableInstalled => manager.enable_installed(),
         Operation::Warm => manager.warm(),
-        Operation::SetDevice(device) => manager.set_device(device),
     };
     let error = result.err().map(|error| error.to_string());
     match manager.status() {

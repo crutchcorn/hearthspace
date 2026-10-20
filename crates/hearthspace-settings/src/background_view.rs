@@ -11,15 +11,12 @@ use xilem::{
         properties::{LineBreaking, Padding},
     },
     style::Style,
-    view::{
-        CrossAxisAlignment, button, flex_col, flex_item, flex_row, label, radio_button,
-        radio_group, sized_box,
-    },
+    view::{CrossAxisAlignment, button, flex_col, flex_item, flex_row, label, sized_box},
 };
 
 use crate::{
-    actions::{save_background_image_path, save_background_mode},
-    page_components::{disclosure, note, restore_focus_after_close, section},
+    actions::save_background_image_path,
+    page_components::{note, photo_fit, restore_focus_after_close, section},
     state::{BackgroundPickerRequest, SettingsApp},
 };
 
@@ -79,11 +76,14 @@ pub(crate) fn view(state: &SettingsApp) -> Box<AnyWidgetView<SettingsApp>> {
             .gap(14.0.px()),
             path.map(|_| {
                 flex_col((
-                    background_mode_picker(
-                        state.settings.background_mode,
-                        state.background_fit_open,
-                        state.background_picker_pending,
-                    ),
+                    flex_row((
+                        flex_item(label("Photo fit").text_size(11.0), 1.0),
+                        photo_fit(
+                            state.settings.background_mode,
+                            state.background_picker_pending,
+                        ),
+                    ))
+                    .gap(12.0.px()),
                     note(
                         if state.settings.background_mode == BackgroundMode::RepeatWithCanvas {
                             "Moves with the canvas."
@@ -102,7 +102,6 @@ pub(crate) fn view(state: &SettingsApp) -> Box<AnyWidgetView<SettingsApp>> {
                             .gap(7.0.px()),
                             |state: &mut SettingsApp| {
                                 save_background_image_path(state, None);
-                                state.background_fit_open = false;
                             },
                         )
                         .disabled(state.background_picker_pending),
@@ -119,83 +118,6 @@ pub(crate) fn view(state: &SettingsApp) -> Box<AnyWidgetView<SettingsApp>> {
         .gap(15.0.px()),
     )
     .boxed()
-}
-
-fn background_mode_picker(
-    selected: BackgroundMode,
-    open: bool,
-    disabled: bool,
-) -> impl WidgetView<SettingsApp> {
-    let option = move |name, mode| {
-        radio_button(
-            format!("Photo fit: {name}"),
-            selected == mode,
-            move |state: &mut SettingsApp| {
-                save_background_mode(state, mode);
-            },
-        )
-        .disabled(disabled)
-    };
-    flex_col((
-        flex_row((
-            flex_item(label("Photo fit").text_size(11.0), 1.0),
-            disclosure(
-                format!(
-                    "Photo fit: {}",
-                    match selected {
-                        BackgroundMode::RepeatWithCanvas => "Repeat with canvas",
-                        BackgroundMode::Stretch => "Stretch",
-                        BackgroundMode::Contains => "Contain",
-                        BackgroundMode::Cover => "Cover",
-                    }
-                ),
-                open,
-                disabled,
-                flex_row((
-                    label(match selected {
-                        BackgroundMode::RepeatWithCanvas => "Repeat with canvas",
-                        BackgroundMode::Stretch => "Stretch",
-                        BackgroundMode::Contains => "Contain",
-                        BackgroundMode::Cover => "Cover",
-                    })
-                    .text_size(11.0),
-                    icon(
-                        if open {
-                            Icon::ChevronUp
-                        } else {
-                            Icon::ChevronDown
-                        },
-                        12.0,
-                    )
-                    .color(components::TEXT_MUTED),
-                ))
-                .gap(8.0.px()),
-                |state: &mut SettingsApp| {
-                    state.background_fit_open = !state.background_fit_open;
-                },
-            )
-            .height(34.0.px())
-            .padding(Padding::from_vh(6.0.px(), 8.0.px()))
-            .background_color(components::SURFACE_CONTROL)
-            .border(components::BORDER, 1.0.px())
-            .corner_radius(components::RADIUS_CONTROL.px()),
-        ))
-        .gap(12.0.px()),
-        open.then(|| {
-            radio_group(
-                flex_col((
-                    option("Repeat with canvas", BackgroundMode::RepeatWithCanvas),
-                    option("Stretch", BackgroundMode::Stretch),
-                    option("Contain", BackgroundMode::Contains),
-                    option("Cover", BackgroundMode::Cover),
-                ))
-                .cross_axis_alignment(CrossAxisAlignment::Stretch)
-                .gap(8.0.px()),
-            )
-        }),
-    ))
-    .cross_axis_alignment(CrossAxisAlignment::Stretch)
-    .gap(8.0.px())
 }
 
 fn pick_background(state: &mut SettingsApp) {

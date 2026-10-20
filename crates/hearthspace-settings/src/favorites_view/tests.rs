@@ -26,9 +26,7 @@ pub(crate) fn state() -> (tempfile::TempDir, SettingsApp) {
             selected_monitor_id: None,
             background_picker_request_sender: None,
             background_picker_pending: false,
-            background_fit_open: false,
             status: String::new(),
-            config_label: String::new(),
         },
     )
 }

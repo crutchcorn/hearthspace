@@ -64,6 +64,7 @@ fn monitor_details_view(state: &SettingsApp) -> Box<AnyWidgetView<SettingsApp>> 
     let built_in = connector.starts_with("eDP")
         || connector.starts_with("LVDS")
         || monitor.name.to_lowercase().contains("built-in");
+    let name = display_name(&monitor.name, connector, built_in);
     let scale_buttons = MONITOR_SCALE_OPTIONS.map(|scale| {
         let id = monitor.id.clone();
         components::segmented_option(
@@ -90,9 +91,7 @@ fn monitor_details_view(state: &SettingsApp) -> Box<AnyWidgetView<SettingsApp>> 
             .border(components::CHROME_BORDER, 1.0.px())
             .corner_radius(components::RADIUS_CONTROL.px()),
             flex_col((
-                label(monitor.name.clone())
-                    .text_size(13.0)
-                    .weight(FontWeight::MEDIUM),
+                label(name).text_size(13.0).weight(FontWeight::MEDIUM),
                 label(format!("Display {} · {connector}", index + 1))
                     .text_size(10.0)
                     .color(components::TEXT_MUTED),
@@ -126,9 +125,35 @@ fn monitor_details_view(state: &SettingsApp) -> Box<AnyWidgetView<SettingsApp>> 
         .background_color(components::SURFACE_SUBTLE)
         .border(components::CHROME_BORDER, 1.0.px())
         .corner_radius(components::RADIUS_TILE.px()),
-        note(format!("Position: {}, {}", monitor.x, monitor.y)),
     ))
     .cross_axis_alignment(CrossAxisAlignment::Stretch)
     .gap(14.0.px())
     .boxed()
 }
+
+fn display_name(description: &str, connector: &str, built_in: bool) -> String {
+    if built_in {
+        return "Built-in display".into();
+    }
+    // Smithay descriptions combine make, model and connector. Our native
+    // backend uses "DRM - DP-1 - DP-1"; keep real product names when available,
+    // and show the connector once in the smaller identity line below.
+    let description = description
+        .trim()
+        .strip_suffix(&format!(" ({connector})"))
+        .unwrap_or(description.trim());
+    let name = description
+        .split(" - ")
+        .map(str::trim)
+        .filter(|part| !part.is_empty() && *part != connector && *part != "DRM")
+        .collect::<Vec<_>>()
+        .join(" ");
+    if name.is_empty() {
+        "External display".into()
+    } else {
+        name
+    }
+}
+
+#[cfg(test)]
+mod tests;

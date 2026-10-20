@@ -27,10 +27,8 @@ fn state() -> (tempfile::TempDir, SettingsApp) {
             selected_monitor_id: None,
             background_picker_request_sender: None,
             background_picker_pending: false,
-            background_fit_open: false,
             activation_listener: None,
             status: "Connected to the settings service".into(),
-            config_label: "Config: settings.json".into(),
         },
     )
 }
@@ -141,14 +139,23 @@ fn sidebar_routes_to_existing_background_gestures_ai_and_system_controls() {
     ui.dispatch(&view);
     controls_fit_width(&ui, 620.0);
     assert_eq!(ai_requests.try_recv().unwrap(), Operation::Refresh);
-    ui.button("Download D1 model");
+    assert!(ids(&ui.harness).into_iter().any(|id| {
+        ui.harness.access_node(id).is_some_and(|node| {
+            node.role() == Role::Switch && node.label().as_deref() == Some("Enable AI features")
+        })
+    }));
 
     ui.activate(ui.button("System"));
     ui.dispatch(&view);
     controls_fit_width(&ui, 620.0);
-    assert!(ids(&ui.harness).into_iter().any(|id| {
+    ui.button("Change layout");
+    ui.button("Restore canvas tools");
+    assert!(!ids(&ui.harness).into_iter().any(|id| {
         ui.harness.access_node(id).is_some_and(|node| {
-            node.role() == Role::CheckBox && node.label().as_deref() == Some("Test setting")
+            matches!(
+                node.label().as_deref(),
+                Some("Diagnostics" | "Test setting")
+            )
         })
     }));
     ui.activate(ui.button("Displays"));

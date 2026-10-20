@@ -2,7 +2,8 @@
 use super::*;
 use xilem::masonry::kurbo::{Rect, Vec2};
 
-const EDITOR_PADDING: f64 = 8.0;
+// Leave only the preview outline's inner stroke, not an invisible drag margin.
+const EDITOR_PADDING: f64 = 2.0;
 const MONITOR_SNAP: i32 = 10;
 const MONITOR_LAYOUT_CANVAS_MULTIPLIER: f64 = 1.8;
 
@@ -21,7 +22,7 @@ impl LayoutMetrics {
         Self::from_canvas(Rect::from_origin_size(origin, canvas_size), size)
     }
 
-    pub fn from_canvas(canvas: Rect, size: Size) -> Self {
+    pub fn from_canvas(mut canvas: Rect, size: Size) -> Self {
         let padding = EDITOR_PADDING
             .min(size.width / 4.0)
             .min(size.height / 4.0)
@@ -35,6 +36,21 @@ impl LayoutMetrics {
         let scale = (viewport.width() / canvas.width())
             .min(viewport.height() / canvas.height())
             .clamp(f64::EPSILON, 1.0);
+        // Uniform scaling can leave letterboxing on either axis. That space is
+        // visible inside the board, so include it in the draggable world area.
+        // Preserve an already fitted canvas to avoid floating-point drift when
+        // rebuilding the frozen projection during a drag.
+        let center = canvas.center();
+        if canvas.width() * scale < viewport.width() - 1e-6 {
+            let half_width = viewport.width() / scale / 2.0;
+            canvas.x0 = center.x - half_width;
+            canvas.x1 = center.x + half_width;
+        }
+        if canvas.height() * scale < viewport.height() - 1e-6 {
+            let half_height = viewport.height() / scale / 2.0;
+            canvas.y0 = center.y - half_height;
+            canvas.y1 = center.y + half_height;
+        }
         Self {
             canvas,
             scale,

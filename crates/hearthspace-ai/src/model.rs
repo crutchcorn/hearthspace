@@ -41,6 +41,9 @@ pub struct InstallProgress {
 
 #[derive(Clone, Debug, Default)]
 pub struct ModelStatus {
+    /// Hearthspace registered this model for session readiness.
+    /// Installation alone does not imply that the user enabled local AI.
+    pub registered: bool,
     pub installed: bool,
     pub downloaded: bool,
     pub warm: bool,
@@ -72,6 +75,7 @@ impl ModelManager {
     pub fn status(&self) -> Result<ModelStatus> {
         let saved = model_files::saved(&self.directory)?;
         let mut status = ModelStatus {
+            registered: saved.registered,
             installed: saved.registered,
             downloaded: model_files::cache_present(&self.directory),
             device: saved.device,
@@ -225,6 +229,27 @@ impl ModelManager {
 
     pub fn warm(&self) -> Result<()> {
         let _lock = model_files::lock(&self.directory)?;
+        self.warm_locked()
+    }
+
+    /// Explicit opt-in for a model already present in Ollama; never downloads.
+    /// Keep the registration after a load error so readiness can be retried.
+    pub fn enable_installed(&self) -> Result<()> {
+        let _lock = model_files::lock(&self.directory)?;
+        let status = self.status()?;
+        if let Some(error) = status.runtime_error {
+            bail!("{error}");
+        }
+        if !status.installed {
+            bail!("The local model is no longer installed. Turn on AI to download it again.");
+        }
+        model_files::save(
+            &self.directory,
+            &SavedModel {
+                device: status.device,
+                registered: true,
+            },
+        )?;
         self.warm_locked()
     }
 

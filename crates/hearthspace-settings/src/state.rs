@@ -18,9 +18,7 @@ pub(crate) struct SettingsApp {
     pub(crate) selected_monitor_id: Option<String>,
     pub(crate) background_picker_request_sender: Option<UnboundedSender<BackgroundPickerRequest>>,
     pub(crate) background_picker_pending: bool,
-    pub(crate) background_fit_open: bool,
     pub(crate) status: String,
-    pub(crate) config_label: String,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -87,11 +85,6 @@ pub(crate) fn initial_state(selected_category: SettingsCategory) -> SettingsApp 
     settings = settings_with_live_outputs(settings, &live_outputs);
     let selected_monitor_id = settings.monitors.first().map(|monitor| monitor.id.clone());
 
-    let config_label = match hearthspace_common::config_path() {
-        Ok(path) => format!("Config: {}", path.display()),
-        Err(error) => format!("Config path unavailable: {error}"),
-    };
-
     SettingsApp {
         activation_listener: None,
         ai: crate::ai::AiSettings::default(),
@@ -102,9 +95,7 @@ pub(crate) fn initial_state(selected_category: SettingsCategory) -> SettingsApp 
         selected_monitor_id,
         background_picker_request_sender: None,
         background_picker_pending: false,
-        background_fit_open: false,
         status,
-        config_label,
     }
 }
 

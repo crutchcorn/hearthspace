@@ -179,6 +179,11 @@ impl Widget for MonitorLayoutWidget {
                         return;
                     }
                     drag.moved = true;
+                    // A resized board can expose more world area. Freeze that
+                    // full area before moving into it, so later resizes still
+                    // fit every tile without changing desktop coordinates.
+                    drag.canvas =
+                        LayoutMetrics::from_canvas(drag.canvas, ctx.content_box().size()).canvas;
                     let drag = drag.clone();
                     let moved_id = drag.id.clone();
                     let monitors =
@@ -318,5 +323,7 @@ impl Widget for MonitorLayoutWidget {
     }
 }
 
+#[cfg(test)]
+mod edge_tests;
 #[cfg(test)]
 mod tests;

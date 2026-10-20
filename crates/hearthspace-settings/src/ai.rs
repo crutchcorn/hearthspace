@@ -1,15 +1,15 @@
 //! UI state for optional local decisions. All model work runs in `ai_worker`.
 
-use hearthspace_ai::{DevicePreference, InstallPhase, InstallProgress, ModelStatus};
+use hearthspace_ai::{InstallPhase, InstallProgress, ModelStatus};
 use xilem::tokio::sync::mpsc::UnboundedSender;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Operation {
     Refresh,
     Install,
+    EnableInstalled,
     Remove,
     Warm,
-    SetDevice(DevicePreference),
 }
 
 #[derive(Debug)]
@@ -29,6 +29,8 @@ pub(crate) struct AiSettings {
     pub(crate) progress: Option<f64>,
     pub(crate) message: String,
     pub(crate) features_open: [bool; 2],
+    pub(crate) confirm_off: bool,
+    pub(crate) failed_operation: Option<Operation>,
 }
 
 impl Default for AiSettings {
@@ -40,11 +42,49 @@ impl Default for AiSettings {
             progress: None,
             message: "Checking local AI availability…".into(),
             features_open: [false; 2],
+            confirm_off: false,
+            failed_operation: None,
         }
     }
 }
 
 impl AiSettings {
+    pub(crate) fn set_enabled(&mut self, enabled: bool) {
+        if self.pending.is_some() || self.confirm_off {
+            return;
+        }
+        if enabled {
+            self.request(self.enable_operation());
+        } else if self.can_remove() {
+            // The toggle alone never removes a model or its download.
+            self.confirm_off = true;
+        }
+    }
+
+    pub(crate) fn confirm_removal(&mut self) {
+        if self.confirm_off && self.pending.is_none() {
+            self.confirm_off = false;
+            self.request(Operation::Remove);
+        }
+    }
+
+    pub(crate) fn enable_operation(&self) -> Operation {
+        if self.installed() {
+            Operation::EnableInstalled
+        } else {
+            Operation::Install
+        }
+    }
+
+    pub(crate) fn retry(&mut self) {
+        match self.failed_operation {
+            Some(Operation::Remove) => self.confirm_off = true,
+            Some(Operation::Install) => self.request(self.enable_operation()),
+            Some(operation) => self.request(operation),
+            None => self.request(Operation::Refresh),
+        }
+    }
+
     pub(crate) fn request(&mut self, operation: Operation) {
         if self.pending.is_some() {
             return;
@@ -58,13 +98,13 @@ impl AiSettings {
             return;
         }
         self.pending = Some(operation);
+        self.failed_operation = None;
         self.progress = None;
         self.message = match operation {
-            Operation::Refresh => "Checking local model and Ollama…",
-            Operation::Install => "Preparing the D1 model download…",
-            Operation::Remove => "Deleting the D1 model and its download…",
-            Operation::Warm => "Loading D1 into memory…",
-            Operation::SetDevice(_) => "Saving processing mode and preparing D1…",
+            Operation::Refresh => "Checking AI availability…",
+            Operation::Install => "Preparing the model download…",
+            Operation::Remove => "Turning off AI and deleting the local model…",
+            Operation::Warm | Operation::EnableInstalled => "Loading the local model…",
         }
         .into();
     }
@@ -82,17 +122,17 @@ impl AiSettings {
                 self.message = match progress.phase {
                     InstallPhase::Downloading => match progress.total {
                         Some(total) if total > 0 => format!(
-                            "Downloading D1: {:.0} / {:.0} MB",
+                            "Downloading model: {:.0} / {:.0} MB",
                             progress.completed as f64 / 1_000_000.0,
                             total as f64 / 1_000_000.0,
                         ),
                         _ => format!(
-                            "Downloading D1: {:.0} MB",
+                            "Downloading model: {:.0} MB",
                             progress.completed as f64 / 1_000_000.0,
                         ),
                     },
-                    InstallPhase::Importing => "Registering D1 with Ollama…".into(),
-                    InstallPhase::Warming => "Loading D1 into memory…".into(),
+                    InstallPhase::Importing => "Setting up the local model…".into(),
+                    InstallPhase::Warming => "Loading the local model…".into(),
                 };
             }
             Response::Progress(_) => {}
@@ -103,24 +143,34 @@ impl AiSettings {
             } => {
                 self.pending = None;
                 self.progress = None;
+                self.failed_operation = error.as_ref().map(|_| operation);
                 if let Some(snapshot) = snapshot {
-                    self.message = match operation {
-                        _ if snapshot.runtime_error.is_some() => {
-                            snapshot.runtime_error.as_ref().unwrap().clone()
-                        }
-                        Operation::Remove => "D1 model deleted.".into(),
-                        _ if snapshot.installed && snapshot.warm => {
-                            "D1 is ready to gather similar windows.".into()
-                        }
-                        _ if snapshot.installed => {
-                            "D1 is installed. It will load when needed.".into()
-                        }
-                        _ => "D1 is optional and is not installed.".into(),
+                    self.message = if let Some(error) = &snapshot.runtime_error {
+                        error.clone()
+                    } else if snapshot.registered && snapshot.installed && snapshot.warm {
+                        "AI features are ready.".into()
+                    } else if snapshot.registered && snapshot.installed {
+                        "AI is enabled. The local model is not ready yet.".into()
+                    } else if snapshot.downloaded && !snapshot.installed {
+                        "AI features are off. Model setup is incomplete.".into()
+                    } else {
+                        "AI features are off.".into()
                     };
                     self.snapshot = Some(snapshot);
                 }
                 if let Some(error) = error {
                     self.message = format!("Local AI unavailable: {error}");
+                } else if operation == Operation::Refresh
+                    && self.snapshot.as_ref().is_some_and(|snapshot| {
+                        snapshot.registered
+                            && snapshot.installed
+                            && !snapshot.warm
+                            && snapshot.runtime_error.is_none()
+                    })
+                {
+                    // An existing enabled model can be cold after a session restart.
+                    // Renew its existing opt-in; never download during a refresh.
+                    self.request(Operation::Warm);
                 }
             }
         }
@@ -132,16 +182,28 @@ impl AiSettings {
             .is_some_and(|status| status.installed)
     }
 
-    pub(crate) fn device(&self) -> DevicePreference {
-        self.snapshot
+    pub(crate) fn enabled(&self) -> bool {
+        matches!(
+            self.pending,
+            Some(Operation::Install | Operation::EnableInstalled | Operation::Warm)
+        ) || self
+            .snapshot
             .as_ref()
-            .map_or(DevicePreference::Automatic, |status| status.device)
+            .is_some_and(|status| status.registered && status.installed)
+    }
+
+    pub(crate) fn needs_retry(&self) -> bool {
+        self.failed_operation.is_some()
+            || self.snapshot.as_ref().is_some_and(|status| {
+                status.runtime_error.is_some()
+                    || (status.registered && status.installed && !status.warm)
+            })
     }
 
     pub(crate) fn can_remove(&self) -> bool {
         self.snapshot
             .as_ref()
-            .is_some_and(|status| status.installed || status.downloaded)
+            .is_some_and(|status| status.registered || status.installed || status.downloaded)
     }
 }
 

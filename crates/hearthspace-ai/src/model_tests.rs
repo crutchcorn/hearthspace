@@ -68,6 +68,86 @@ fn optional_startup_avoids_all_ollama_requests_and_cache_creation() {
 }
 
 #[test]
+fn inspecting_an_existing_model_does_not_claim_hearthspace_registered_it() {
+    let temp = tempfile::tempdir().unwrap();
+    let (endpoint, _, server) = mock(vec![(200, json!({})), (200, json!({"models":[]}))]);
+    let status = ModelManager::new(&endpoint, temp.path().into())
+        .unwrap()
+        .status()
+        .unwrap();
+    server.join().unwrap();
+    assert!(status.installed);
+    assert!(!status.registered);
+    assert!(!status.warm);
+    assert!(!temp.path().join("model.json").exists());
+}
+
+#[test]
+fn explicitly_enabling_existing_model_registers_and_warms_without_download() {
+    let temp = tempfile::tempdir().unwrap();
+    model_files::save(
+        temp.path(),
+        &model_files::SavedModel {
+            device: DevicePreference::Cpu,
+            registered: false,
+        },
+    )
+    .unwrap();
+    let (endpoint, requests, server) = mock(vec![
+        (200, json!({})),
+        (200, json!({"models":[]})),
+        (200, json!({"answers":{"ready":{"noul":0.9}}})),
+        (200, json!({})),
+        (200, json!({"models":[{"name":MODEL_NAME}]})),
+        (200, json!({"answers":{"ready":{"noul":0.9}}})),
+    ]);
+    let manager = ModelManager::new(&endpoint, temp.path().into()).unwrap();
+    manager.enable_installed().unwrap();
+    let saved = model_files::saved(temp.path()).unwrap();
+    assert!(saved.registered);
+    assert_eq!(saved.device, DevicePreference::Cpu);
+    assert!(!temp.path().join("hub").exists());
+    assert!(
+        manager.warm_for_session().unwrap(),
+        "explicit enable joins the existing session keep-alive lifecycle"
+    );
+    server.join().unwrap();
+    let requests = requests.lock().unwrap();
+    assert_eq!(
+        requests
+            .iter()
+            .map(|request| request.0.as_str())
+            .collect::<Vec<_>>(),
+        [
+            "POST /api/show HTTP/1.1",
+            "GET /api/ps HTTP/1.1",
+            "POST /v1/systemone HTTP/1.1",
+            "POST /api/show HTTP/1.1",
+            "GET /api/ps HTTP/1.1",
+            "POST /v1/systemone HTTP/1.1",
+        ]
+    );
+}
+
+#[test]
+fn explicit_enable_preserves_opt_in_after_load_error_but_never_adopts_missing_model() {
+    let temp = tempfile::tempdir().unwrap();
+    let (endpoint, _, server) = mock(vec![
+        (404, json!({"error":"model not found"})),
+        (200, json!({})),
+        (200, json!({"models":[]})),
+        (500, json!({"error":"not enough memory"})),
+    ]);
+    let manager = ModelManager::new(&endpoint, temp.path().into()).unwrap();
+    assert!(manager.enable_installed().is_err());
+    assert!(!model_files::saved(temp.path()).unwrap().registered);
+    assert!(manager.enable_installed().is_err());
+    assert!(model_files::saved(temp.path()).unwrap().registered);
+    assert!(!temp.path().join("hub").exists());
+    server.join().unwrap();
+}
+
+#[test]
 fn offline_status_and_delete_preserve_pending_runtime_cleanup() {
     let temp = tempfile::tempdir().unwrap();
     seed_cache(temp.path());
@@ -81,7 +161,12 @@ fn offline_status_and_delete_preserve_pending_runtime_cleanup() {
     .unwrap();
     let manager = ModelManager::new("http://127.0.0.1:9", temp.path().into()).unwrap();
     let status = manager.status().unwrap();
-    assert!(status.installed && status.downloaded && status.runtime_error.is_some());
+    assert!(
+        status.registered
+            && status.installed
+            && status.downloaded
+            && status.runtime_error.is_some()
+    );
     assert!(manager.remove().is_err());
     assert!(!temp.path().join("hub").exists());
     assert!(model_files::saved(temp.path()).unwrap().registered);
@@ -124,6 +209,7 @@ fn partial_download_remains_visible_and_removable() {
     ]);
     let manager = ModelManager::new(&endpoint, temp.path().into()).unwrap();
     let status = manager.status().unwrap();
+    assert!(!status.registered);
     assert!(!status.installed && status.downloaded);
     manager.remove().unwrap();
     server.join().unwrap();
