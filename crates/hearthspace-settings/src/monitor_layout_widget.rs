@@ -1,4 +1,5 @@
 use hearthspace_ipc::MonitorConfig;
+use hearthspace_ui_components as components;
 use xilem::masonry::accesskit::{Node, Role};
 use xilem::masonry::core::{
     AccessCtx, AccessEvent, ChildrenIds, CursorIcon, EventCtx, LayoutCtx, MeasureCtx, PaintCtx,
@@ -8,9 +9,7 @@ use xilem::masonry::core::{
 use xilem::masonry::imaging::Painter;
 use xilem::masonry::kurbo::{Axis, Point, Rect, Size, Stroke};
 use xilem::masonry::layout::{LenReq, Length};
-use xilem::masonry::palette;
 use xilem::masonry::{core::MutateCtx, layout::AsUnit};
-use xilem::peniko::Color;
 
 use crate::{
     actions::MonitorEditorAction,
@@ -261,9 +260,7 @@ impl Widget for MonitorLayoutWidget {
         painter: &mut Painter<'_>,
     ) {
         let content = ctx.content_box();
-        painter
-            .fill(content, Color::from_rgb8(0x13, 0x17, 0x22))
-            .draw();
+        painter.fill(content, components::SURFACE_SUBTLE).draw();
 
         let metrics = self.layout_metrics(content.size());
         for monitor in &self.monitors {
@@ -274,15 +271,23 @@ impl Widget for MonitorLayoutWidget {
                 .as_ref()
                 .is_some_and(|id| id == &monitor.id);
             let fill = if active {
-                Color::from_rgb8(0x74, 0x9C, 0xFF)
+                components::ACCENT
             } else if selected {
-                Color::from_rgb8(0x50, 0x72, 0xD8)
+                components::ACCENT_SUBTLE
             } else {
-                Color::from_rgb8(0x38, 0x55, 0xA3)
+                components::SURFACE
             };
             painter.fill(rect, fill).draw();
             painter
-                .stroke(rect, &Stroke::new(2.0), palette::css::WHITE)
+                .stroke(
+                    rect,
+                    &Stroke::new(2.0),
+                    if selected {
+                        components::ACCENT
+                    } else {
+                        components::BORDER
+                    },
+                )
                 .draw();
         }
     }

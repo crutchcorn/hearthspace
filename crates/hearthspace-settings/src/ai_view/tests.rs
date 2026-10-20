@@ -49,7 +49,7 @@ fn download_click_queues_background_work_and_disables_conflicting_controls() {
             .unwrap()
             .is_disabled()
     );
-    ui.state.select_category(SettingsCategory::Display);
+    ui.state.select_category(SettingsCategory::Displays);
     assert_eq!(ui.state.ai.pending, Some(Operation::Install));
 }
 

@@ -1,4 +1,4 @@
-"""App gestures configured in Settings and drawn in an explicit search area."""
+"""App gestures configured in Settings and drawn in the Apps List."""
 
 import contextlib
 import itertools
@@ -116,10 +116,10 @@ def configure(smoke):
     )
     smoke.settings_id = window["id"]
     smoke.until(
-        "Settings opened directly on Search",
-        lambda: settings_elements(smoke, "Gestures"),
+        "Settings opened directly on Gestures",
+        lambda: settings_elements(smoke, "Find apps"),
     )
-    smoke.record("search-settings-direct-page", page="Search")
+    smoke.record("search-settings-direct-page", page="Gestures")
     settings_click(smoke, "Find apps", role=None)
     with Input(smoke.control) as inputs:
         inputs.type(APP_NAME)

@@ -21,7 +21,7 @@ fn state() -> (tempfile::TempDir, SettingsApp) {
             favorites,
             settings: Settings::default(),
             live_outputs: vec![],
-            selected_category: SettingsCategory::Search,
+            selected_category: SettingsCategory::Gestures,
             selected_monitor_id: None,
             background_picker_request_sender: None,
             background_picker_pending: false,
@@ -143,7 +143,7 @@ fn switching_settings_categories_cancels_recording_and_late_completion() {
     let (_dir, mut state) = state();
     state.favorites.start("Alpha.desktop");
     let generation = state.favorites.recording.as_ref().unwrap().generation;
-    state.select_category(SettingsCategory::Display);
+    state.select_category(SettingsCategory::Displays);
     state.favorites.stroke(
         "Alpha.desktop",
         generation,
@@ -154,7 +154,7 @@ fn switching_settings_categories_cancels_recording_and_late_completion() {
 }
 
 #[test]
-fn search_category_has_only_gesture_controls_and_hides_legacy_empty_entries() {
+fn gestures_category_has_only_gesture_controls_and_hides_legacy_empty_entries() {
     let (_dir, mut state) = state();
     state
         .favorites
@@ -163,7 +163,7 @@ fn search_category_has_only_gesture_controls_and_hides_legacy_empty_entries() {
         .unwrap()
         .add("Alpha.desktop")
         .unwrap();
-    assert_eq!(SettingsCategory::Search.label(), "Search");
+    assert_eq!(SettingsCategory::Gestures.label(), "Gestures");
     let ui = Ui::new(state, view, (760, 700));
     ui.button("Add gesture for Alpha");
     let mut labels = Vec::new();
@@ -173,7 +173,7 @@ fn search_category_has_only_gesture_controls_and_hides_legacy_empty_entries() {
             labels.extend(node.value());
         }
     }
-    assert!(labels.iter().any(|label| label == "Gestures"));
+    assert!(labels.iter().any(|label| label == "Add gestures"));
     assert!(
         !labels
             .iter()

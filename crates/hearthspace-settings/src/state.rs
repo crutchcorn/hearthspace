@@ -23,31 +23,34 @@ pub(crate) struct SettingsApp {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum SettingsCategory {
-    Display,
     Appearance,
-    Search,
+    Displays,
+    Background,
+    Gestures,
     Ai,
-    Advanced,
+    System,
 }
 
 impl SettingsCategory {
     pub(crate) const fn label(self) -> &'static str {
         match self {
-            Self::Display => "Display",
+            Self::Displays => "Displays",
             Self::Appearance => "Appearance",
-            Self::Search => "Search",
+            Self::Background => "Background",
+            Self::Gestures => "Gestures",
             Self::Ai => "AI",
-            Self::Advanced => "Advanced",
+            Self::System => "System",
         }
     }
 
     pub(crate) const fn description(self) -> &'static str {
         match self {
-            Self::Display => "Monitor placement and scale",
-            Self::Appearance => "Canvas background image and fit",
-            Self::Search => "Search and app launch gestures",
-            Self::Ai => "Local AI for gathering related windows",
-            Self::Advanced => "Diagnostics and configuration",
+            Self::Displays => "Arrange your screens and adjust each display.",
+            Self::Appearance => "Light and color, shaped around your space.",
+            Self::Background => "A backdrop for your workspace.",
+            Self::Gestures => "Draw shortcuts for your apps.",
+            Self::Ai => "Find related windows across your canvas.",
+            Self::System => "Diagnostics and configuration for Hearthspace.",
         }
     }
 }
@@ -104,7 +107,7 @@ pub(crate) fn initial_state(selected_category: SettingsCategory) -> SettingsApp 
 impl SettingsApp {
     pub(crate) fn select_category(&mut self, category: SettingsCategory) {
         self.favorites.cancel();
-        if category == SettingsCategory::Search {
+        if category == SettingsCategory::Gestures {
             self.favorites.reload();
         }
         if category == SettingsCategory::Ai {
