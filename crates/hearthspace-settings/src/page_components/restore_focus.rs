@@ -7,8 +7,8 @@ use xilem::{
         accesskit::{Node, Role},
         core::{
             AccessCtx, ActionCtx, ChildrenIds, ErasedAction, LayoutCtx, MeasureCtx, NoAction,
-            PaintCtx, PropertiesMut, PropertiesRef, RegisterCtx, Update, UpdateCtx, Widget,
-            WidgetId, WidgetMut, WidgetPod,
+            PaintCtx, PropertiesMut, PropertiesRef, RegisterCtx, Widget, WidgetId, WidgetMut,
+            WidgetPod,
         },
         imaging::Painter,
         kurbo::{Axis, Point, Size},
@@ -20,26 +20,12 @@ pub(crate) fn restore_focus_after_close<V: WidgetView<SettingsApp>>(
     inner: V,
     open: bool,
 ) -> RestoreFocus<V> {
-    RestoreFocus {
-        inner,
-        open,
-        on_mount: false,
-    }
-}
-
-/// Focus a safe initial action when a user opens transient confirmation content.
-pub(crate) fn focus_on_mount<V: WidgetView<SettingsApp>>(inner: V) -> RestoreFocus<V> {
-    RestoreFocus {
-        inner,
-        open: false,
-        on_mount: true,
-    }
+    RestoreFocus { inner, open }
 }
 
 pub(crate) struct RestoreFocus<V> {
     inner: V,
     open: bool,
-    on_mount: bool,
 }
 impl<V> ViewMarker for RestoreFocus<V> {}
 const CONTENT: ViewId = ViewId::new(0);
@@ -55,7 +41,6 @@ impl<V: WidgetView<SettingsApp>> View<SettingsApp, (), ViewCtx> for RestoreFocus
         (
             ctx.create_pod(FocusScope {
                 inner: inner.new_widget.erased().to_pod(),
-                on_mount: self.on_mount,
             }),
             view_state,
         )
@@ -79,9 +64,7 @@ impl<V: WidgetView<SettingsApp>> View<SettingsApp, (), ViewCtx> for RestoreFocus
         });
         if previous.open && !self.open {
             let WidgetMut { widget, ctx, .. } = &mut element;
-            ctx.mutate_child_later(&mut widget.inner, |mut child| {
-                child.ctx.submit_untyped_action(Box::new(ReturnFocus));
-            });
+            ctx.mutate_child_later(&mut widget.inner, return_to_control);
         }
     }
     fn teardown(
@@ -119,9 +102,19 @@ impl<V: WidgetView<SettingsApp>> View<SettingsApp, (), ViewCtx> for RestoreFocus
 
 #[derive(Debug)]
 struct ReturnFocus;
+
+fn return_to_control(mut child: WidgetMut<'_, dyn Widget>) {
+    if child.widget.accepts_focus() {
+        child.ctx.submit_untyped_action(Box::new(ReturnFocus));
+    } else if let Some(&id) = child.widget.children_ids().first() {
+        // Material and sizing decorators are not focus targets. This scope
+        // contains one persistent control, reached through their first child.
+        child.ctx.mutate_later(id, return_to_control);
+    }
+}
+
 pub(crate) struct FocusScope {
     inner: WidgetPod<dyn Widget>,
-    on_mount: bool,
 }
 impl FocusScope {
     fn child_mut<'a>(this: &'a mut WidgetMut<'_, Self>) -> WidgetMut<'a, dyn Widget> {
@@ -133,13 +126,6 @@ impl Widget for FocusScope {
     fn register_children(&mut self, ctx: &mut RegisterCtx<'_>) {
         ctx.register_child(&mut self.inner);
     }
-    fn update(&mut self, ctx: &mut UpdateCtx<'_>, _: &mut PropertiesMut<'_>, event: &Update) {
-        if self.on_mount && matches!(event, Update::WidgetAdded) {
-            ctx.mutate_child_later(&mut self.inner, |mut child| {
-                child.ctx.submit_untyped_action(Box::new(ReturnFocus));
-            });
-        }
-    }
     fn on_action(
         &mut self,
         ctx: &mut ActionCtx<'_>,
@@ -147,7 +133,7 @@ impl Widget for FocusScope {
         action: &ErasedAction,
         source: WidgetId,
     ) {
-        if source == self.inner.id() && action.is::<ReturnFocus>() {
+        if action.is::<ReturnFocus>() {
             ctx.set_focus(source);
             ctx.set_handled();
         }

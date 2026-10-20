@@ -30,7 +30,9 @@ const DRAG_START_DISTANCE: f64 = 3.0;
 pub(crate) struct MonitorLayoutWidget {
     monitors: Vec<MonitorConfig>,
     selected_monitor_id: Option<String>,
+    hovered_monitor_id: Option<String>,
     drag: Option<MonitorDrag>,
+    focus: components::settings_material::FocusIndicator,
 }
 
 #[derive(Debug, Clone)]
@@ -48,7 +50,9 @@ impl MonitorLayoutWidget {
         Self {
             monitors,
             selected_monitor_id,
+            hovered_monitor_id: None,
             drag: None,
+            focus: components::settings_material::FocusIndicator::default(),
         }
     }
 
@@ -141,6 +145,11 @@ impl Widget for MonitorLayoutWidget {
         _props: &mut PropertiesMut<'_>,
         event: &PointerEvent,
     ) {
+        let focus_was_visible = self.focus.visible();
+        self.focus.pointer(event);
+        if focus_was_visible != self.focus.visible() {
+            ctx.request_paint_only();
+        }
         match event {
             PointerEvent::Down(PointerButtonEvent {
                 button: None | Some(PointerButton::Primary),
@@ -237,6 +246,17 @@ impl Widget for MonitorLayoutWidget {
                     ctx.request_render();
                 }
             }
+            PointerEvent::Move(PointerUpdate { current, .. }) => {
+                let point = ctx.local_position(current.position);
+                let metrics = self.layout_metrics(ctx.content_box().size());
+                let hovered = self
+                    .hit_monitor(point, metrics)
+                    .map(|monitor| monitor.id.clone());
+                if self.hovered_monitor_id != hovered {
+                    self.hovered_monitor_id = hovered;
+                    ctx.request_paint_only();
+                }
+            }
             _ => {}
         }
     }
@@ -251,6 +271,8 @@ impl Widget for MonitorLayoutWidget {
         _: &mut PropertiesMut<'_>,
         event: &TextEvent,
     ) {
+        self.focus.text(event);
+        ctx.request_paint_only();
         self.handle_key(ctx, event);
     }
 
@@ -263,7 +285,11 @@ impl Widget for MonitorLayoutWidget {
     }
 
     fn update(&mut self, ctx: &mut UpdateCtx<'_>, _: &mut PropertiesMut<'_>, event: &Update) {
-        if matches!(event, Update::FocusChanged(_)) {
+        self.focus.update(event);
+        if matches!(event, Update::HoveredChanged(false)) {
+            self.hovered_monitor_id = None;
+        }
+        if matches!(event, Update::FocusChanged(_) | Update::HoveredChanged(_)) {
             ctx.request_paint_only();
         }
     }
@@ -275,12 +301,17 @@ impl Widget for MonitorLayoutWidget {
         _ctx: &mut MeasureCtx<'_>,
         _props: &PropertiesRef<'_>,
         axis: Axis,
-        _len_req: LenReq,
-        _cross_length: Option<Length>,
+        request: LenReq,
+        cross: Option<Length>,
     ) -> Length {
-        match axis {
-            Axis::Horizontal => 400.0.px(),
-            Axis::Vertical => 225.0.px(),
+        let preferred = match axis {
+            Axis::Horizontal => 400.0,
+            Axis::Vertical => cross.map_or(400.0, Length::get).min(400.0) * 450.0 / 800.0,
+        };
+        match request {
+            LenReq::MinContent => Length::ZERO,
+            LenReq::MaxContent => preferred.px(),
+            LenReq::FitContent(available) => preferred.min(available.get()).px(),
         }
     }
 
@@ -315,7 +346,9 @@ impl Widget for MonitorLayoutWidget {
 
     fn get_cursor(&self, ctx: &QueryCtx<'_>, pos: Point) -> CursorIcon {
         let metrics = self.layout_metrics(ctx.content_box().size());
-        if self.hit_monitor(ctx.to_local(pos), metrics).is_some() {
+        if self.drag.is_some() {
+            CursorIcon::Grabbing
+        } else if self.hit_monitor(ctx.to_local(pos), metrics).is_some() {
             CursorIcon::Grab
         } else {
             CursorIcon::Default
@@ -325,5 +358,7 @@ impl Widget for MonitorLayoutWidget {
 
 #[cfg(test)]
 mod edge_tests;
+#[cfg(test)]
+mod focus_tests;
 #[cfg(test)]
 mod tests;

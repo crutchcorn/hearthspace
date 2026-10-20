@@ -1,7 +1,7 @@
 //! Focus stays native; only the visible ring follows keyboard versus pointer.
 use xilem::masonry::core::{PointerEvent, TextEvent, Update};
 
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub struct FocusIndicator {
     pointer_down: bool,
     visible: bool,

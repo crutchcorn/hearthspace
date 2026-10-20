@@ -47,11 +47,7 @@ def settings_elements(smoke, name, role=None):
 
 
 def settings_app_field(smoke):
-    query = (
-        f"({SETTINGS}//*[@role='button' and @focusable='true' "
-        "and @showing='true' and contains(@name, ' Choose app')])[1]"
-    )
-    return a11y(smoke, "find", query)["elements"]
+    return settings_elements(smoke, "Open this app", "combo box")
 
 
 def settings_surface(smoke):
@@ -135,16 +131,9 @@ def configure(smoke):
     reopen_settings(smoke)
     smoke.record("search-settings-direct-page", page="Gestures")
     settings_click(smoke, "Add gesture")
-    field = smoke.until("selected gesture app", lambda: settings_app_field(smoke))[0]
-    settings_click(smoke, field["name"])
-    settings_click(smoke, "Find apps", role=None)
-    with Input(smoke.control) as inputs:
-        inputs.type(APP_NAME)
-    settings_click(smoke, APP_NAME)
-    smoke.until(
-        "gesture app selected",
-        lambda: settings_elements(smoke, f"{APP_NAME} Choose app", "button"),
-    )
+    from .favorite_picker import choose
+
+    choose(smoke, APP_NAME)
     element = smoke.until(
         "Settings gesture drawing area",
         lambda: settings_elements(smoke, "Gesture drawing area"),

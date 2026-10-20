@@ -51,6 +51,14 @@ where
         .expect("Photo fit combobox")
 }
 
+fn control_bounds<V: WidgetView<SettingsApp, Widget: Sized>>(ui: &Ui<V>, id: WidgetId) -> Rect {
+    let widget = ui.harness.get_widget_with_id(id);
+    widget
+        .ctx()
+        .window_transform()
+        .transform_rect_bbox(widget.ctx().border_box())
+}
+
 fn layer_nodes<V: WidgetView<SettingsApp>>(ui: &Ui<V>, role: Role) -> Vec<(String, Rect, bool)>
 where
     V::Widget: Sized,
@@ -166,12 +174,23 @@ fn photo_fit_selection_and_reset_keep_keyboard_focus() {
         "no initial autofocus"
     );
     let opener = combobox(&ui);
+    let opener_bounds = control_bounds(&ui, opener);
+    let paint_bounds = ui.harness.get_widget_with_id(opener).ctx().bounding_box();
+    assert!(
+        paint_bounds.y1 > opener_bounds.y1 + 10.0,
+        "fixture includes the material glow"
+    );
     let reset = ui.button("Use default background");
     let before = ui.harness.get_widget_with_id(reset).ctx().bounding_box();
     ui.harness.focus_on(Some(opener));
     key(&mut ui, NamedKey::Enter);
     ui.dispatch(&view);
     assert_eq!(layer_nodes(&ui, Role::ListBox).len(), 1);
+    let menu = layer_nodes(&ui, Role::ListBox)[0].1;
+    assert!(
+        (menu.y0 - opener_bounds.y1 - 4.0).abs() < 0.01,
+        "popup must sit four pixels below the control, excluding glow/focus paint: {menu:?}, {opener_bounds:?}"
+    );
     let choices = layer_nodes(&ui, Role::ListBoxOption);
     assert_eq!(choices.len(), 4);
     assert!(
@@ -206,6 +225,11 @@ fn photo_fit_selection_and_reset_keep_keyboard_focus() {
     key(&mut ui, NamedKey::Enter);
     ui.dispatch(&view);
     assert_eq!(ui.state.settings.background_mode, BackgroundMode::Cover);
+    assert_eq!(
+        control_bounds(&ui, opener),
+        opener_bounds,
+        "choosing a shorter label must not resize or move the selector"
+    );
     assert!(layer_nodes(&ui, Role::ListBox).is_empty());
     assert_eq!(ui.harness.focused_widget_id(), Some(opener));
     assert_eq!(
@@ -278,7 +302,7 @@ fn popup_flips_and_clamps_to_the_window_and_cleans_up_when_disabled_or_page_chan
     };
     let mut ui = Ui::new(state, lower_view, (320, 320));
     let opener = combobox(&ui);
-    let anchor = ui.harness.get_widget_with_id(opener).ctx().bounding_box();
+    let anchor = control_bounds(&ui, opener);
     ui.harness.focus_on(Some(opener));
     key(&mut ui, NamedKey::Enter);
     let menu = layer_nodes(&ui, Role::ListBox)[0].1;
@@ -290,7 +314,7 @@ fn popup_flips_and_clamps_to_the_window_and_cleans_up_when_disabled_or_page_chan
     ui.harness
         .process_window_event(WindowEvent::Resize((460, 320).into()));
     ui.harness.redraw();
-    let moved_anchor = ui.harness.get_widget_with_id(opener).ctx().bounding_box();
+    let moved_anchor = control_bounds(&ui, opener);
     assert!(
         moved_anchor.x1 > anchor.x1 + 100.0,
         "the wider window must move the opener"

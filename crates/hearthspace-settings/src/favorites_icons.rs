@@ -103,7 +103,7 @@ pub(crate) fn app_icon(
             hearthspace_ui_components::icons::Icon::AppsGrid,
             size,
         )
-        .color(hearthspace_ui_components::TEXT_MUTED)
+        .color(hearthspace_ui_components::settings_material::MUTED)
         .boxed(),
     }
 }

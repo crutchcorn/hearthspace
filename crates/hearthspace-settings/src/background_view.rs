@@ -7,17 +7,20 @@ use xilem::{
     AnyWidgetView, WidgetView,
     masonry::{
         layout::{AsUnit, Dim},
-        parley::style::FontWeight,
+        parley::style::{FontWeight, LineHeight},
         properties::{LineBreaking, Padding},
     },
     style::Style,
-    view::{CrossAxisAlignment, button, flex_col, flex_item, flex_row, label, sized_box},
+    view::{
+        CrossAxisAlignment, MainAxisAlignment, button, flex_col, flex_item, flex_row, sized_box,
+    },
 };
 
 use crate::{
     actions::save_background_image_path,
-    page_components::{note, photo_fit, restore_focus_after_close, section},
+    page_components::{photo_fit, restore_focus_after_close, section},
     state::{BackgroundPickerRequest, SettingsApp},
+    typography::label,
 };
 
 pub(crate) fn view(state: &SettingsApp) -> Box<AnyWidgetView<SettingsApp>> {
@@ -46,7 +49,7 @@ pub(crate) fn view(state: &SettingsApp) -> Box<AnyWidgetView<SettingsApp>> {
                             .weight(FontWeight::MEDIUM)
                             .line_break_mode(LineBreaking::WordWrap),
                         sized_box(restore_focus_after_close(
-                            components::button_surface(
+                            components::settings_button(
                                 button(
                                     flex_row((
                                         icon(Icon::ImagePlus, 14.0).color(components::TEXT),
@@ -55,17 +58,18 @@ pub(crate) fn view(state: &SettingsApp) -> Box<AnyWidgetView<SettingsApp>> {
                                     .gap(7.0.px()),
                                     pick_background,
                                 )
-                                .disabled(state.background_picker_pending),
-                                components::ButtonSurface::Control,
+                                .height(34.0.px())
+                                .padding(Padding::from_vh(7.0.px(), 10.0.px())),
+                                components::SettingsButton::Control,
                                 false,
                             )
-                            .height(34.0.px())
-                            .padding(Padding::from_vh(7.0.px(), 10.0.px())),
+                            .disabled(state.background_picker_pending),
                             path.is_some(),
                         ))
                         .width(Dim::MaxContent),
                     ))
                     .cross_axis_alignment(CrossAxisAlignment::Start)
+                    .main_axis_alignment(MainAxisAlignment::Center)
                     .gap(8.0.px()),
                     1.0,
                 ),
@@ -81,31 +85,42 @@ pub(crate) fn view(state: &SettingsApp) -> Box<AnyWidgetView<SettingsApp>> {
                         ),
                     ))
                     .gap(12.0.px()),
-                    note(
-                        if state.settings.background_mode == BackgroundMode::RepeatWithCanvas {
-                            "Moves with the canvas."
-                        } else {
-                            "Stays in place as the canvas moves."
-                        },
-                    ),
-                    components::button_surface(
-                        button(
-                            flex_row((
-                                icon(Icon::RotateCcw, 12.0).color(components::TEXT_MUTED),
-                                label("Use default background")
-                                    .text_size(10.0)
-                                    .color(components::TEXT_MUTED),
-                            ))
-                            .gap(7.0.px()),
-                            |state: &mut SettingsApp| {
-                                save_background_image_path(state, None);
+                    sized_box(
+                        label(
+                            if state.settings.background_mode == BackgroundMode::RepeatWithCanvas {
+                                "Moves with the canvas."
+                            } else {
+                                "Stays in place as the canvas moves."
                             },
                         )
-                        .disabled(state.background_picker_pending),
-                        components::ButtonSurface::Bare,
-                        false,
+                        .text_size(10.0)
+                        .line_height(LineHeight::FontSizeRelative(1.5))
+                        .color(components::settings_material::MUTED),
                     )
-                    .height(32.0.px()),
+                    .padding(Padding::bottom(4.0.px())),
+                    sized_box(
+                        components::settings_button(
+                            button(
+                                flex_row((
+                                    icon(Icon::RotateCcw, 12.0)
+                                        .color(components::settings_material::MUTED),
+                                    label("Use default background")
+                                        .text_size(10.0)
+                                        .color(components::settings_material::MUTED),
+                                ))
+                                .gap(7.0.px()),
+                                |state: &mut SettingsApp| {
+                                    save_background_image_path(state, None);
+                                },
+                            )
+                            .height(32.0.px())
+                            .padding(Padding::from_vh(7.0.px(), 10.0.px())),
+                            components::SettingsButton::Outline,
+                            false,
+                        )
+                        .disabled(state.background_picker_pending),
+                    )
+                    .width(Dim::MaxContent),
                 ))
                 .cross_axis_alignment(CrossAxisAlignment::Stretch)
                 .gap(8.0.px())

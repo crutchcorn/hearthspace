@@ -179,7 +179,10 @@ fn keyboard_off_requires_confirmation_defaults_to_keep_and_restores_switch_focus
         ui.harness.access_node(toggle).unwrap().data().toggled(),
         Some(Toggled::True)
     );
-    assert_eq!(ui.harness.focused_widget_id(), Some(ui.button("Keep AI")));
+    assert_eq!(
+        ui.harness.focused_widget_id().unwrap(),
+        modal::button(&ui, "Keep AI")
+    );
     ui.harness
         .process_text_event(TextEvent::key_up(Key::Named(NamedKey::Enter)));
     ui.dispatch(&view);
@@ -189,7 +192,7 @@ fn keyboard_off_requires_confirmation_defaults_to_keep_and_restores_switch_focus
     ui.harness
         .process_text_event(TextEvent::key_up(Key::Character(" ".into())));
     ui.dispatch(&view);
-    ui.harness.focus_on(Some(ui.button("Turn off and delete")));
+    modal::focus(&mut ui, "Turn off and delete");
     ui.harness
         .process_text_event(TextEvent::key_up(Key::Named(NamedKey::Enter)));
     ui.dispatch(&view);
@@ -236,13 +239,18 @@ fn partial_install_error_offers_real_retry_and_confirmed_cleanup_within_status()
     ui.activate(ui.button("Remove incomplete download"));
     ui.dispatch(&view);
     assert!(requests.try_recv().is_err());
-    assert_eq!(ui.harness.focused_widget_id(), Some(ui.button("Keep AI")));
-    ui.activate(ui.button("Keep AI"));
+    assert_eq!(
+        ui.harness.focused_widget_id().unwrap(),
+        modal::button(&ui, "Keep AI")
+    );
+    modal::activate(&mut ui, "Keep AI");
     ui.dispatch(&view);
     ui.activate(ui.button("Try again"));
     ui.dispatch(&view);
     assert_eq!(requests.try_recv().unwrap(), Operation::Install);
 }
+
+mod modal;
 
 #[test]
 fn externally_warmed_model_stays_off_until_user_explicitly_enables_it() {

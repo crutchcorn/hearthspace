@@ -13,6 +13,7 @@ pub(super) fn preview(state: &StorybookState) -> impl WidgetView<StorybookState>
     let controls = [
         ("Bare", SettingsButton::Bare),
         ("Control", SettingsButton::Control),
+        ("Outline", SettingsButton::Outline),
         ("Card", SettingsButton::Card),
         ("Primary", SettingsButton::Primary),
     ]

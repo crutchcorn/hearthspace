@@ -1,5 +1,5 @@
 //! Saved gestures and their editor use the same real catalog and recorder.
-use crate::state::SettingsApp;
+use crate::{state::SettingsApp, typography::label};
 use hearthspace_shell::gesture_pad::thumbnail_sized;
 use hearthspace_ui_components::{
     self as components,
@@ -13,7 +13,7 @@ use xilem::{
         properties::{LineBreaking, Padding},
     },
     style::Style,
-    view::{CrossAxisAlignment, FlexExt, flex_col, flex_row, label, resize_observer, sized_box},
+    view::{CrossAxisAlignment, FlexExt, flex_col, flex_row, resize_observer, sized_box},
 };
 
 mod controls;
@@ -50,7 +50,7 @@ fn browsing(state: &SettingsApp) -> Box<AnyWidgetView<SettingsApp>> {
         label("Gestures").text_size(26.0),
         label("Draw shortcuts for your apps.")
             .text_size(11.0)
-            .color(components::TEXT_MUTED)
+            .color(components::settings_material::MUTED)
             .line_break_mode(LineBreaking::WordWrap),
     ))
     .cross_axis_alignment(CrossAxisAlignment::Start)
@@ -77,17 +77,18 @@ fn browsing(state: &SettingsApp) -> Box<AnyWidgetView<SettingsApp>> {
             let installed = favorites.catalog.app_by_id(&id).is_some();
             let edit_id = id.clone();
             let remove_id = id.clone();
-            let preview = sized_box(thumbnail_sized::<SettingsApp>(
-                favorite.gesture.as_ref().unwrap().points().to_vec(),
-                44.0,
-                40.0,
-            ))
-            .width(56.0.px())
-            .height(48.0.px())
-            .padding(Padding::from_vh(4.0.px(), 6.0.px()))
-            .background_color(components::SURFACE_CONTROL)
-            .border(components::CHROME_BORDER, 1.0.px())
-            .corner_radius(10.0.px());
+            let preview = components::settings_surface(
+                sized_box(thumbnail_sized::<SettingsApp>(
+                    favorite.gesture.as_ref().unwrap().points().to_vec(),
+                    44.0,
+                    40.0,
+                ))
+                .width(56.0.px())
+                .height(48.0.px())
+                .padding(Padding::from_vh(4.0.px(), 6.0.px()))
+                .corner_radius(10.0.px()),
+                components::SettingsSurface::Control,
+            );
             let name_width = (favorites.view_width
                 - if favorites.view_width < 340.0 {
                     119.0
@@ -132,36 +133,38 @@ fn browsing(state: &SettingsApp) -> Box<AnyWidgetView<SettingsApp>> {
                     .gap(12.0.px())
                     .boxed()
             };
-            sized_box(
-                flex_col((
-                    row,
-                    (!installed).then(|| controls::note("No longer installed.")),
-                ))
-                .cross_axis_alignment(CrossAxisAlignment::Stretch)
-                .gap(4.0.px()),
+            components::settings_surface(
+                sized_box(
+                    flex_col((
+                        row,
+                        (!installed).then(|| controls::note("No longer installed.")),
+                    ))
+                    .cross_axis_alignment(CrossAxisAlignment::Stretch)
+                    .gap(4.0.px()),
+                )
+                .padding(8.0.px())
+                .corner_radius(14.0.px()),
+                components::SettingsSurface::Subtle,
             )
-            .padding(8.0.px())
-            .background_color(components::SURFACE_SUBTLE)
-            .border(components::CHROME_BORDER, 1.0.px())
-            .corner_radius(14.0.px())
             .boxed()
         })
         .collect();
     let empty = rows.is_empty().then(|| {
-        sized_box(
-            flex_col((
-                icon(Icon::GestureStroke, 28.0).color(components::TEXT_MUTED),
-                label("No gestures yet")
-                    .text_size(13.0)
-                    .weight(FontWeight::MEDIUM),
-                controls::note("Add a gesture and choose the app it opens."),
-            ))
-            .gap(12.0.px()),
+        components::settings_surface(
+            sized_box(
+                flex_col((
+                    icon(Icon::GestureStroke, 28.0).color(components::settings_material::MUTED),
+                    label("No gestures yet")
+                        .text_size(13.0)
+                        .weight(FontWeight::MEDIUM),
+                    controls::note("Add a gesture and choose the app it opens."),
+                ))
+                .gap(12.0.px()),
+            )
+            .padding(Padding::from_vh(35.0.px(), 16.0.px()))
+            .corner_radius(14.0.px()),
+            components::SettingsSurface::Subtle,
         )
-        .padding(Padding::from_vh(35.0.px(), 16.0.px()))
-        .background_color(components::SURFACE_SUBTLE)
-        .border(components::CHROME_BORDER, 1.0.px())
-        .corner_radius(14.0.px())
     });
     flex_col((
         header,
@@ -176,3 +179,6 @@ fn browsing(state: &SettingsApp) -> Box<AnyWidgetView<SettingsApp>> {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod picker_tests;

@@ -44,7 +44,24 @@ struct OutputState {
     description: Option<String>,
     width: Option<i32>,
     height: Option<i32>,
+    refresh_millihertz: Option<i32>,
     scale: Option<i32>,
+}
+
+impl OutputState {
+    fn current_mode(
+        &mut self,
+        flags: WEnum<wl_output::Mode>,
+        width: i32,
+        height: i32,
+        refresh: i32,
+    ) {
+        if output_size_is_current(flags) {
+            self.width = Some(width);
+            self.height = Some(height);
+            self.refresh_millihertz = (refresh > 0).then_some(refresh);
+        }
+    }
 }
 
 impl OutputProbe {
@@ -62,6 +79,7 @@ impl OutputProbe {
             description: None,
             width: None,
             height: None,
+            refresh_millihertz: None,
             scale: None,
         });
         self.outputs.last_mut().unwrap()
@@ -79,6 +97,7 @@ impl OutputProbe {
                     width: output.width.unwrap_or(EMPTY_MONITOR_CANVAS_WIDTH),
                     height: output.height.unwrap_or(EMPTY_MONITOR_CANVAS_HEIGHT),
                     scale: output.scale.unwrap_or(1).max(1),
+                    refresh_millihertz: output.refresh_millihertz,
                 }
             })
             .collect()
@@ -116,11 +135,8 @@ impl Dispatch<wl_output::WlOutput, OutputGlobal> for OutputProbe {
                 flags,
                 width,
                 height,
-                ..
-            } if output_size_is_current(flags) => {
-                output.width = Some(width);
-                output.height = Some(height);
-            }
+                refresh,
+            } => output.current_mode(flags, width, height, refresh),
             wl_output::Event::Scale { factor } => output.scale = Some(factor.max(1)),
             _ => {}
         }
@@ -129,4 +145,34 @@ impl Dispatch<wl_output::WlOutput, OutputGlobal> for OutputProbe {
 
 fn output_size_is_current(flags: WEnum<wl_output::Mode>) -> bool {
     matches!(flags, WEnum::Value(flags) if flags.contains(wl_output::Mode::Current))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn refresh_rate_comes_only_from_the_advertised_current_mode() {
+        let mut probe = OutputProbe::default();
+        let output = probe.output_mut(3);
+        output.current_mode(WEnum::Value(wl_output::Mode::Current), 1920, 1080, 59_940);
+        output.current_mode(
+            WEnum::Value(wl_output::Mode::Preferred),
+            2560,
+            1440,
+            144_000,
+        );
+        let output = &probe.live_outputs()[0];
+        assert_eq!((output.width, output.height), (1920, 1080));
+        assert_eq!(output.refresh_millihertz, Some(59_940));
+    }
+
+    #[test]
+    fn unreported_frequency_is_not_invented() {
+        let mut probe = OutputProbe::default();
+        probe
+            .output_mut(3)
+            .current_mode(WEnum::Value(wl_output::Mode::Current), 1920, 1080, 0);
+        assert_eq!(probe.live_outputs()[0].refresh_millihertz, None);
+    }
 }

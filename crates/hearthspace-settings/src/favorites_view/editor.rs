@@ -1,5 +1,5 @@
 use super::{controls, passive::passive, picker};
-use crate::state::SettingsApp;
+use crate::{state::SettingsApp, typography::label};
 use hearthspace_shell::gesture_pad::GesturePad;
 use hearthspace_ui_components::{
     self as components,
@@ -9,10 +9,13 @@ use xilem::{
     AnyWidgetView, WidgetView,
     masonry::{
         layout::{AsUnit, Dim, UnitPoint},
+        parley::{Alignment, LineHeight},
         properties::{Dimensions, LineBreaking, Padding},
     },
     style::Style,
-    view::{CrossAxisAlignment, ZStackExt, flex_col, flex_row, label, sized_box, zstack},
+    view::{
+        CrossAxisAlignment, MainAxisAlignment, ZStackExt, flex_col, flex_row, sized_box, zstack,
+    },
 };
 
 pub(super) fn view(state: &SettingsApp) -> Box<AnyWidgetView<SettingsApp>> {
@@ -21,12 +24,17 @@ pub(super) fn view(state: &SettingsApp) -> Box<AnyWidgetView<SettingsApp>> {
     let name = favorites.name(&record.app_id);
     let prompt = record.points.is_empty().then(|| {
         flex_col((
-            icon(Icon::Pencil, 30.0).color(components::ACCENT_STRONG),
-            label("Record a gesture").text_size(20.0),
+            icon(Icon::Pencil, 30.0).color(components::settings_material::ACCENT_DECORATIVE),
+            label("Record a gesture")
+                .text_size(20.0)
+                .letter_spacing(-0.4),
             label(format!("One continuous stroke for {name}."))
                 .text_size(10.0)
-                .color(components::TEXT_MUTED)
-                .line_break_mode(LineBreaking::WordWrap),
+                .line_height(LineHeight::FontSizeRelative(1.5))
+                .text_alignment(Alignment::Center)
+                .color(components::settings_material::MUTED)
+                .line_break_mode(LineBreaking::WordWrap)
+                .width((favorites.view_width - 24.0).clamp(0.0, 220.0).px()),
         ))
         .gap(12.0.px())
     });
@@ -49,19 +57,32 @@ pub(super) fn view(state: &SettingsApp) -> Box<AnyWidgetView<SettingsApp>> {
     let drawing = zstack((
         sized_box(pad).dims(Dimensions::STRETCH),
         // Stable children keep pad identity when Retry reinserts the prompt.
-        passive(sized_box(flex_col((prompt,))).padding(22.0.px())),
+        passive(
+            sized_box(flex_col((prompt,)).main_axis_alignment(MainAxisAlignment::Center)).padding(
+                Padding {
+                    left: 12.0.px(),
+                    top: 46.0.px(),
+                    right: 12.0.px(),
+                    bottom: 22.0.px(),
+                },
+            ),
+        ),
         passive(
             sized_box(
-                label("Draw here")
+                flex_col((label("Draw here")
                     .text_size(9.0)
-                    .color(components::TEXT_MUTED),
+                    .color(components::settings_material::MUTED),))
+                .main_axis_alignment(MainAxisAlignment::Center),
             )
-            .padding(Padding::from_vh(14.0.px(), 14.0.px())),
+            .height(46.0.px())
+            .padding(Padding::from_vh(1.0.px(), 15.0.px())),
         )
         .alignment(UnitPoint::TOP_LEFT),
-        sized_box(controls::text(Icon::RotateCcw, "Retry", false, |state| {
-            state.favorites.retry()
-        }))
+        sized_box(flex_col(((!record.points.is_empty()).then(|| {
+            controls::text(Icon::RotateCcw, "Retry", false, |state| {
+                state.favorites.retry()
+            })
+        }),)))
         .width(Dim::MaxContent)
         .padding(8.0.px())
         .alignment(UnitPoint::BOTTOM_RIGHT),
@@ -84,7 +105,9 @@ pub(super) fn view(state: &SettingsApp) -> Box<AnyWidgetView<SettingsApp>> {
             } else {
                 "Add gesture"
             })
-            .text_size(26.0),
+            .text_size(26.0)
+            .letter_spacing(-0.7)
+            .line_height(LineHeight::FontSizeRelative(1.1)),
         ))
         .gap(12.0.px()),
         flex_col((

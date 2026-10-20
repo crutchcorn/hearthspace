@@ -6,18 +6,21 @@ use xilem::{
     masonry::{
         accesskit::{Node, Role},
         core::{
-            AccessCtx, AccessEvent, ChildrenIds, EventCtx, LayoutCtx, MeasureCtx, PaintCtx,
-            PointerEvent, PropertiesMut, PropertiesRef, RegisterCtx, TextEvent, Update, UpdateCtx,
-            Widget,
+            AccessCtx, AccessEvent, ChildrenIds, CursorIcon, EventCtx, LayoutCtx, MeasureCtx,
+            PaintCtx, PointerEvent, PropertiesMut, PropertiesRef, QueryCtx, RegisterCtx, TextEvent,
+            Update, UpdateCtx, Widget,
         },
         imaging::Painter,
-        kurbo::{Axis, Circle, Rect, Size, Stroke},
+        kurbo::{Axis, Point, Size},
         layout::{AsUnit, LenReq, Length},
         widgets::{Switch, SwitchToggled},
     },
 };
 
+use super::toggle_row::RowContent;
 use crate::state::SettingsApp;
+
+mod paint;
 
 pub(crate) fn toggle<F>(name: &'static str, on: bool, disabled: bool, callback: F) -> Toggle<F>
 where
@@ -27,6 +30,8 @@ where
         name,
         on,
         disabled,
+        row: false,
+        description: None,
         callback,
     }
 }
@@ -35,7 +40,17 @@ pub(crate) struct Toggle<F> {
     name: &'static str,
     on: bool,
     disabled: bool,
+    row: bool,
+    description: Option<&'static str>,
     callback: F,
+}
+
+impl<F> Toggle<F> {
+    pub(super) fn with_row(mut self, description: Option<&'static str>) -> Self {
+        self.row = true;
+        self.description = description;
+        self
+    }
 }
 
 impl<F> ViewMarker for Toggle<F> {}
@@ -52,6 +67,10 @@ where
             let mut element = ctx.create_pod(NamedSwitch {
                 name: self.name,
                 inner: Switch::new(self.on),
+                focus: components::settings_material::FocusIndicator::default(),
+                row: self
+                    .row
+                    .then(|| RowContent::new(self.name, self.description)),
             });
             element.new_widget.options.disabled = self.disabled;
             element
@@ -74,6 +93,12 @@ where
         }
         if self.disabled != previous.disabled {
             element.ctx.set_disabled(self.disabled);
+        }
+        if self.name != previous.name || self.description != previous.description {
+            let xilem::masonry::core::WidgetMut { widget, ctx, .. } = &mut element;
+            if let Some(row) = &mut widget.row {
+                row.set_text(ctx, self.name, self.description);
+            }
         }
     }
 
@@ -102,6 +127,8 @@ where
 pub(crate) struct NamedSwitch {
     name: &'static str,
     inner: Switch,
+    focus: components::settings_material::FocusIndicator,
+    row: Option<RowContent>,
 }
 
 impl Widget for NamedSwitch {
@@ -113,7 +140,9 @@ impl Widget for NamedSwitch {
         props: &mut PropertiesMut<'_>,
         event: &PointerEvent,
     ) {
+        self.focus.pointer(event);
         self.inner.on_pointer_event(ctx, props, event);
+        ctx.request_paint_only();
     }
 
     fn on_text_event(
@@ -122,7 +151,9 @@ impl Widget for NamedSwitch {
         props: &mut PropertiesMut<'_>,
         event: &TextEvent,
     ) {
+        self.focus.text(event);
         self.inner.on_text_event(ctx, props, event);
+        ctx.request_paint_only();
     }
 
     fn on_access_event(
@@ -135,6 +166,7 @@ impl Widget for NamedSwitch {
     }
 
     fn update(&mut self, ctx: &mut UpdateCtx<'_>, props: &mut PropertiesMut<'_>, event: &Update) {
+        self.focus.update(event);
         self.inner.update(ctx, props, event);
     }
 
@@ -142,16 +174,35 @@ impl Widget for NamedSwitch {
         true
     }
 
-    fn register_children(&mut self, _: &mut RegisterCtx<'_>) {}
+    fn propagates_pointer_interaction(&self) -> bool {
+        false
+    }
+
+    fn get_cursor(&self, ctx: &QueryCtx<'_>, pos: Point) -> CursorIcon {
+        if self.row.is_some() && !ctx.is_disabled() {
+            CursorIcon::Pointer
+        } else {
+            self.inner.get_cursor(ctx, pos)
+        }
+    }
+
+    fn register_children(&mut self, ctx: &mut RegisterCtx<'_>) {
+        if let Some(row) = &mut self.row {
+            row.register_children(ctx);
+        }
+    }
 
     fn measure(
         &mut self,
-        _: &mut MeasureCtx<'_>,
+        ctx: &mut MeasureCtx<'_>,
         _: &PropertiesRef<'_>,
         axis: Axis,
-        _: LenReq,
-        _: Option<Length>,
+        request: LenReq,
+        cross: Option<Length>,
     ) -> Length {
+        if let Some(row) = &mut self.row {
+            return row.measure(ctx, axis, request, cross);
+        }
         match axis {
             // Keep the 40×24 track compact while reserving room for its
             // outside focus ring, including in tightly measured rows.
@@ -160,44 +211,32 @@ impl Widget for NamedSwitch {
         }
     }
 
-    fn layout(&mut self, _: &mut LayoutCtx<'_>, _: &PropertiesRef<'_>, _: Size) {}
+    fn layout(&mut self, ctx: &mut LayoutCtx<'_>, _: &PropertiesRef<'_>, size: Size) {
+        if let Some(row) = &mut self.row {
+            row.layout(ctx, size);
+            ctx.set_paint_insets(24.0);
+        } else {
+            ctx.set_paint_insets(5.0);
+        }
+    }
 
     fn paint(&mut self, ctx: &mut PaintCtx<'_>, _: &PropertiesRef<'_>, painter: &mut Painter<'_>) {
         let bounds = ctx.content_box();
-        let x = (bounds.width() - 40.0) / 2.0;
+        let x = if self.row.is_some() {
+            RowContent::paint(ctx, painter);
+            (bounds.width() - 53.0).max(0.0)
+        } else {
+            (bounds.width() - 40.0) / 2.0
+        };
         let y = (bounds.height() - 24.0) / 2.0;
-        let track = Rect::new(x + 0.5, y + 0.5, x + 39.5, y + 23.5).to_rounded_rect(12.0);
-        let on = self.inner.is_on();
-        let alpha = if ctx.is_disabled() { 0.5 } else { 1.0 };
-        painter
-            .fill(
-                track,
-                if on {
-                    components::ACCENT
-                } else {
-                    components::CONTROL_TRACK
-                }
-                .with_alpha(alpha),
-            )
-            .draw();
-        painter
-            .stroke(track, &Stroke::new(1.0), components::BORDER)
-            .draw();
-        painter
-            .fill(
-                Circle::new((x + if on { 28.0 } else { 12.0 }, y + 12.0), 8.0),
-                components::CONTROL_THUMB.with_alpha(alpha),
-            )
-            .draw();
-        if ctx.is_focus_target() {
-            painter
-                .stroke(
-                    Rect::new(x - 1.0, y - 2.0, x + 41.0, y + 26.0).to_rounded_rect(14.0),
-                    &Stroke::new(2.0),
-                    components::FOCUS_RING,
-                )
-                .draw();
-        }
+        paint::paint(
+            painter,
+            x,
+            y,
+            self.inner.is_on(),
+            ctx.is_disabled(),
+            ctx.is_focus_target() && self.focus.visible(),
+        );
     }
 
     fn accessibility_role(&self) -> Role {
@@ -212,10 +251,15 @@ impl Widget for NamedSwitch {
     ) {
         self.inner.accessibility(ctx, props, node);
         node.set_label(self.name);
+        if let Some(row) = &self.row {
+            row.accessibility(node);
+        }
     }
 
     fn children_ids(&self) -> ChildrenIds {
-        ChildrenIds::new()
+        self.row
+            .as_ref()
+            .map_or_else(ChildrenIds::new, RowContent::children_ids)
     }
 }
 
@@ -235,6 +279,8 @@ mod tests {
             NewWidget::new(NamedSwitch {
                 name: "Enable AI",
                 inner: Switch::new(true),
+                focus: components::settings_material::FocusIndicator::default(),
+                row: None,
             }),
             (80, 44),
         );
@@ -257,6 +303,35 @@ mod tests {
         assert_eq!(
             harness.pop_action::<SwitchToggled>(),
             Some((SwitchToggled(false), id))
+        );
+    }
+
+    #[test]
+    fn off_track_keeps_its_translucent_fill_and_disabled_state_reduces_it() {
+        use xilem::masonry::properties::Background;
+        let mut harness = TestHarness::create_with_size(
+            components::hearthspace_opaque_properties(),
+            NewWidget::new(NamedSwitch {
+                name: "Enable AI",
+                inner: Switch::new(false),
+                focus: components::settings_material::FocusIndicator::default(),
+                row: None,
+            })
+            .with_props(Background::Color(components::SURFACE)),
+            (80, 44),
+        );
+        let idle = harness.render();
+        // Right side of the off track, clear of the thumb, border and shadow.
+        let pixel = idle.get_pixel(52, 22).0;
+        assert!(
+            pixel[0] > 180 && pixel[1] > 180 && pixel[2] > 180,
+            "the25%-alpha off track must not become opaque dark green"
+        );
+        harness.edit_root_widget(|mut root| root.ctx.set_disabled(true));
+        let disabled = harness.render().get_pixel(52, 22).0;
+        assert!(
+            disabled[0] > pixel[0] && disabled[1] > pixel[1] && disabled[2] > pixel[2],
+            "disabled opacity multiplies the existing track alpha"
         );
     }
 }

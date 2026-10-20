@@ -97,6 +97,19 @@ unchanged regions reuse their textures. The two blur passes stay on the GPU and
 require no CPU pixel readback. If the shader is unavailable, the shell keeps its
 translucent tint and controls, with blur disabled for that renderer.
 
+Settings also opts into a compositor backdrop. It samples the wallpaper and
+windows below its position in the stack, excluding its own controls and windows
+above it. Overlapping Settings windows resolve from back to front, so each sees
+the completed glass below. The client paints its translucent warm tint over this
+backdrop, and the compositor keeps the rounded edge sharp at the output scale.
+
+Settings caches each visible window region separately for each output. Its
+40-logical-pixel Gaussian runs on smaller GPU textures, then resolves to the
+visible output size; unchanged content reuses the cached result. The sampling
+margin accounts for damage outside the window, and output-edge clamping avoids
+dark borders. This path performs no CPU pixel readback and does not run in the
+lock screen or overview. Fullscreen Settings uses the normal fullscreen path.
+
 ## Shared visual system
 
 The native orange/light UI follows `hearthspace-ui-experiments` revision
@@ -105,10 +118,26 @@ control states, and the reference SVG path geometry. The paths render as native
 Masonry vectors in shell clients, Settings, and server-side window decorations.
 The default canvas background is a seamless muted dot field.
 
-Glass uses an 82% warm tint; muted and accent text are darker than the prototype to retain
-4.5:1 contrast over black application content. Button styling uses shared property
-classes so hover and keyboard-focus states survive selection changes. Local
-button background or border colors override these selectors and should be avoided.
+Shell glass uses an 82% warm tint and stronger muted/accent ink to retain
+contrast over dark application content. Settings uses the reference's lighter
+ink, Liberation Sans text metrics, a 54% window tint (76% over photos), and the
+compositor backdrop described above.
+
+Settings controls use `settings_button` and `settings_surface` from
+`hearthspace-ui-components`. These decorate native Masonry controls with inset
+highlights, soft shadows, a radial orange wash, and keyboard-only focus rings.
+Set sizing and padding on the native button before wrapping it; put dynamic
+`.disabled(...)` on the returned material view so the decoration and input state
+stay in sync. The Settings Materials story exposes selected and disabled states.
+Shell buttons continue to use property classes; local background or border
+colors override those selectors.
+
+Masonry layers do not expose a backdrop filter for content inside a client
+window. Settings menus and the AI confirmation therefore use a precomposed
+opaque raised backing with the same tint and highlights. This avoids sharp
+text showing through the popup; it approximates the browser's blurred backing.
+The AI modal dims the client window without blurring the underlying controls.
+The Settings window itself uses actual GPU backdrop blur.
 
 Settings displays the reference's appearance options, but only light mode and
 orange are enabled. The other choices are visibly unavailable. This visual system

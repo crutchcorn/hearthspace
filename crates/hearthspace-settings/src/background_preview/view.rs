@@ -3,7 +3,7 @@ use xilem::{
     Color, WidgetView,
     masonry::{
         imaging::Painter,
-        kurbo::{Affine, Circle, Rect, Stroke},
+        kurbo::{Affine, Rect, Stroke},
         layout::AsUnit,
     },
     view::{canvas, sized_box},
@@ -20,7 +20,7 @@ pub(crate) fn view(state: &SettingsApp) -> impl WidgetView<SettingsApp> + use<> 
         .image_for(state.settings.background_image_path.as_deref());
     sized_box(
         canvas(move |_: &mut SettingsApp, _, scene, size| {
-            let mut painter = Painter::new(scene);
+            let mut painter: Painter<'_> = Painter::new(scene);
             let shape = Rect::from_origin_size((0.5, 0.5), (size.width - 1.0, size.height - 1.0))
                 .to_rounded_rect(components::RADIUS_CONTROL);
             painter.fill(shape, components::APP_BACKGROUND).draw();
@@ -34,21 +34,25 @@ pub(crate) fn view(state: &SettingsApp) -> impl WidgetView<SettingsApp> + use<> 
                     ),
                 );
             } else {
-                for x in (6..size.width as i32).step_by(12) {
-                    for y in (6..size.height as i32).step_by(12) {
-                        painter
-                            .fill(
-                                Circle::new((f64::from(x), f64::from(y)), 0.8),
-                                Color::from_rgba8(0x58, 0x6f, 0x68, 38),
-                            )
-                            .draw();
-                    }
-                }
+                components::settings_material::dot_pattern(
+                    &mut painter,
+                    Rect::from_origin_size((0.0, 0.0), size).inset(-1.0),
+                    12.0,
+                    1.0,
+                    1.2,
+                    Color::from_rgba8(0x58, 0x6f, 0x68, 38),
+                );
             }
             painter.pop_clip();
             painter
                 .stroke(shape, &Stroke::new(1.0), components::BORDER)
                 .draw();
+            components::settings_material::glass_edge(
+                &mut painter,
+                Rect::from_origin_size((0.0, 0.0), size),
+                components::RADIUS_CONTROL,
+                false,
+            );
         })
         .alt_text(""),
     )

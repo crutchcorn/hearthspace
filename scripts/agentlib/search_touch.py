@@ -75,8 +75,8 @@ def apps_corner(smoke):
 
 
 def settings_scroll(smoke):
+    from .favorite_picker import dismiss, opened, selected
     from .favorite_ui import (
-        settings_app_field,
         settings_click,
         settings_elements,
         settings_surface,
@@ -84,18 +84,23 @@ def settings_scroll(smoke):
 
     saved = smoke.service_fixture.favorites.read_bytes()
     settings_click(smoke, "Add gesture")
-    field = smoke.until("gesture app chooser", lambda: settings_app_field(smoke))[0]
-    selected = field["name"]
-    settings_click(smoke, selected)
-    settings_click(smoke, "Find apps", role=None)
+    settings_click(smoke, "Choose app")
+    original = smoke.until("selected gesture app", lambda: selected(smoke))
+    settings_click(smoke, "Open this app", "combo box")
     with Input(smoke.control) as inputs:
         inputs.chord("ctrl+a")
         inputs.type("Hearthspace Scroll Fixture")
     name = "Hearthspace Scroll Fixture 00"
-    row = smoke.until("first scroll fixture", lambda: settings_elements(smoke, name))[0]
+    row = smoke.until(
+        "first scroll fixture", lambda: settings_elements(smoke, name, "list item")
+    )[0]
+    lower = smoke.until(
+        "lower visible scroll fixture",
+        lambda: settings_elements(smoke, "Hearthspace Scroll Fixture 04", "list item"),
+    )[0]
     output = smoke.control.status()["outputs"][0]
     surface = settings_surface(smoke)
-    start = button_center(row["bounds"], output, surface)
+    start = button_center(lower["bounds"], output, surface)
     # Start on an app choice: scrolling must cancel its tap and preserve the draft app.
     end = (start[0], max(surface["y"] + 60, start[1] - 220))
     if start[1] - end[1] < 50:
@@ -107,13 +112,11 @@ def settings_scroll(smoke):
         smoke.until(
             "Settings content scrolled by one finger",
             lambda: (
-                not (rows := settings_elements(smoke, name))
+                not (rows := settings_elements(smoke, name, "list item"))
                 or rows[0]["bounds"]["y"] < row["bounds"]["y"] - 30 * output["scale"]
             ),
         )
-    if not settings_elements(smoke, selected, "button"):
-        raise ControlError("scrolling an app choice changed the selected gesture app")
-    if not settings_elements(smoke, "Find apps"):
+    if not opened(smoke):
         raise ControlError("scrolling an app choice unexpectedly closed the picker")
     if settings_surface(smoke) != surface:
         raise ControlError(
@@ -127,8 +130,14 @@ def settings_scroll(smoke):
         "search-settings-touch-scroll",
         one_finger=True,
         tap_cancelled=True,
-        selected_app_unchanged=selected,
+        selected_app_unchanged=original,
     )
+    dismiss(smoke)
+    settings_click(smoke, "Choose app")
+    smoke.until(
+        "selected app preserved after scrolling", lambda: selected(smoke) == original
+    )
+    dismiss(smoke)
     settings_click(smoke, "Back to gestures")
     if smoke.service_fixture.favorites.read_bytes() != saved:
         raise ControlError("browsing gesture apps unexpectedly changed saved shortcuts")

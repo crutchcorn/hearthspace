@@ -1,102 +1,146 @@
-use super::controls;
-use crate::state::SettingsApp;
-use hearthspace_ui_components::{
-    self as components,
-    icons::{Icon, icon},
-};
+//! The app chooser floats above the editor, retaining its recording geometry.
+use crate::{state::SettingsApp, typography::label};
+use hearthspace_ui_components as components;
 use xilem::{
-    AnyWidgetView, WidgetView,
+    AnyWidgetView, Pod, ViewCtx, WidgetView,
+    core::{MessageCtx, MessageResult, Mut, View, ViewMarker},
     masonry::{
-        layout::AsUnit,
-        properties::{LineBreaking, Padding},
+        layout::{AsUnit, Dim},
+        peniko::ImageBrush,
     },
     style::Style,
-    view::{CrossAxisAlignment, button, flex_col, flex_row, label, sized_box},
+    view::{CrossAxisAlignment, flex_col},
 };
+
+mod field;
+mod layer;
+mod option;
+use field::PickerField;
+
+#[derive(Clone, PartialEq)]
+struct Choice {
+    id: String,
+    name: String,
+    image: Option<ImageBrush>,
+}
+
+#[derive(Debug)]
+enum PickerAction {
+    Open,
+    Query(String),
+    Dismiss,
+    Choose(String),
+}
+
+fn choice(state: &SettingsApp, app: &hearthspace_shell::app_catalog::DesktopApp) -> Choice {
+    Choice {
+        id: app.id.clone(),
+        name: app.name.clone(),
+        image: app
+            .icon
+            .as_ref()
+            .and_then(|name| state.favorites.icons.get(name))
+            .cloned()
+            .flatten(),
+    }
+}
 
 pub(super) fn view(state: &SettingsApp) -> Box<AnyWidgetView<SettingsApp>> {
     let favorites = &state.favorites;
     let record = favorites.recording.as_ref().unwrap();
-    let name = favorites.name(&record.app_id);
-    let field = crate::page_components::disclosure(
-        format!("{name} Choose app"),
-        favorites.picker_open,
-        false,
-        flex_row((
-            crate::favorites_icons::app_icon(state, &record.app_id, 24.0),
-            label(name)
-                .text_size(12.0)
-                .line_break_mode(LineBreaking::Clip)
-                .width((favorites.view_width - 88.0).max(1.0).px()),
-            icon(
-                if favorites.picker_open {
-                    Icon::ChevronUp
-                } else {
-                    Icon::ChevronDown
-                },
-                16.0,
-            )
-            .color(components::TEXT_MUTED),
-        ))
-        .gap(10.0.px()),
-        |state: &mut SettingsApp| state.favorites.picker_open = !state.favorites.picker_open,
-    )
-    .height(44.0.px())
-    .padding(Padding::from_vh(0.0.px(), 12.0.px()))
-    .background_color(components::SURFACE_CONTROL)
-    .border(components::CHROME_BORDER, 1.0.px())
-    .corner_radius(10.0.px());
-    let field = crate::page_components::restore_focus_after_close(field, favorites.picker_open);
-    let picker = favorites.picker_open.then(|| {
-        let apps: Vec<_> = favorites
+    let selected = favorites.catalog.app_by_id(&record.app_id).unwrap();
+    let picker = Picker {
+        selected: choice(state, selected),
+        choices: favorites
             .catalog
             .search(&favorites.query, 48)
-            .into_iter()
-            .map(|app| {
-                let id = app.id.clone();
-                components::button_surface(
-                    button(
-                        flex_row((
-                            crate::favorites_icons::app_icon(state, &app.id, 24.0),
-                            label(app.name)
-                                .text_size(12.0)
-                                .line_break_mode(LineBreaking::Clip)
-                                .width((favorites.view_width - 88.0).max(1.0).px()),
-                        ))
-                        .gap(10.0.px()),
-                        move |state: &mut SettingsApp| state.favorites.choose_app(&id),
-                    ),
-                    components::ButtonSurface::Bare,
-                    record.app_id == app.id,
-                )
-                .height(44.0.px())
-                .padding(Padding::from_vh(0.0.px(), 10.0.px()))
-                .corner_radius(8.0.px())
-                .boxed()
-            })
-            .collect();
-        let empty = apps.is_empty();
-        sized_box(
-            flex_col((
-                crate::favorites_search::input(&favorites.query),
-                empty.then(|| controls::note("No matching apps.")),
-                sized_box(components::scroll_area(
-                    flex_col(apps)
-                        .cross_axis_alignment(CrossAxisAlignment::Stretch)
-                        .gap(2.0.px()),
+            .iter()
+            .map(|app| choice(state, app))
+            .collect(),
+        open: favorites.picker_open,
+        query: favorites.query.clone(),
+    };
+    flex_col((
+        label("Open this app")
+            .text_size(11.0)
+            .color(components::settings_material::MUTED),
+        picker.height(46.0.px()).width(Dim::Stretch),
+    ))
+    .cross_axis_alignment(CrossAxisAlignment::Stretch)
+    .gap(6.0.px())
+    .boxed()
+}
+
+struct Picker {
+    selected: Choice,
+    choices: Vec<Choice>,
+    open: bool,
+    query: String,
+}
+impl ViewMarker for Picker {}
+impl View<SettingsApp, (), ViewCtx> for Picker {
+    type Element = Pod<PickerField>;
+    type ViewState = ();
+    fn build(&self, ctx: &mut ViewCtx, _: &mut SettingsApp) -> (Self::Element, ()) {
+        (
+            ctx.with_action_widget(|ctx| {
+                ctx.create_pod(PickerField::new(
+                    self.selected.clone(),
+                    self.choices.clone(),
                 ))
-                .height(176.0.px()),
-            ))
-            .cross_axis_alignment(CrossAxisAlignment::Stretch)
-            .gap(8.0.px()),
+            }),
+            (),
         )
-        .padding(8.0.px())
-        .background_color(components::SURFACE_CONTROL)
-        .border(components::CHROME_BORDER, 1.0.px())
-        .corner_radius(10.0.px())
-    });
-    flex_col((controls::note("Open this app"), field, picker))
-        .cross_axis_alignment(CrossAxisAlignment::Stretch)
-        .gap(7.0.px())
-        .boxed()
+    }
+    fn rebuild(
+        &self,
+        previous: &Self,
+        _: &mut (),
+        _: &mut ViewCtx,
+        mut element: Mut<'_, Self::Element>,
+        _: &mut SettingsApp,
+    ) {
+        PickerField::refresh(
+            &mut element,
+            self.selected.clone(),
+            self.choices.clone(),
+            self.open,
+            self.query != previous.query,
+        );
+        element.ctx.request_compose();
+    }
+    fn teardown(&self, _: &mut (), ctx: &mut ViewCtx, mut element: Mut<'_, Self::Element>) {
+        PickerField::dismiss(&mut element);
+        ctx.teardown_action_source(element);
+    }
+    fn message(
+        &self,
+        _: &mut (),
+        message: &mut MessageCtx,
+        _: Mut<'_, Self::Element>,
+        state: &mut SettingsApp,
+    ) -> MessageResult<()> {
+        if message.take_first().is_some() {
+            return MessageResult::Stale;
+        }
+        let Some(action) = message.take_message::<PickerAction>() else {
+            return MessageResult::Stale;
+        };
+        match *action {
+            PickerAction::Open => {
+                state.favorites.query.clear();
+                state.favorites.picker_open = true;
+            }
+            PickerAction::Query(query) => {
+                state.favorites.query = query;
+                state.favorites.picker_open = true;
+            }
+            PickerAction::Dismiss => {
+                state.favorites.query.clear();
+                state.favorites.picker_open = false;
+            }
+            PickerAction::Choose(id) => state.favorites.choose_app(&id),
+        }
+        MessageResult::Action(())
+    }
 }

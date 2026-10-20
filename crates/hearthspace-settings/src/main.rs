@@ -20,6 +20,7 @@ mod page_components;
 mod settings_backend;
 mod state;
 mod system_view;
+mod typography;
 mod ui;
 mod wayland_outputs;
 mod window_frame;

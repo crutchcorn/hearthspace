@@ -11,6 +11,8 @@ pub(crate) struct LiveOutput {
     pub(crate) width: i32,
     pub(crate) height: i32,
     pub(crate) scale: i32,
+    /// Current wl_output mode frequency, in millihertz; absent when not advertised.
+    pub(crate) refresh_millihertz: Option<i32>,
 }
 
 pub(crate) fn recalculate_monitor_positions_for_scale(
@@ -177,6 +179,7 @@ mod tests {
                 width: 2256,
                 height: 1504,
                 scale: 1,
+                refresh_millihertz: None,
             }],
         );
 
@@ -197,6 +200,7 @@ mod tests {
                     width: 2560,
                     height: 1440,
                     scale: 1,
+                    refresh_millihertz: None,
                 },
                 LiveOutput {
                     id: "HDMI-A-1".to_string(),
@@ -204,6 +208,7 @@ mod tests {
                     width: 1366,
                     height: 768,
                     scale: 1,
+                    refresh_millihertz: None,
                 },
             ],
         );
@@ -246,6 +251,7 @@ mod tests {
                     width: 2560,
                     height: 1440,
                     scale: 1,
+                    refresh_millihertz: None,
                 },
                 LiveOutput {
                     id: "HDMI-A-1".to_string(),
@@ -253,6 +259,7 @@ mod tests {
                     width: 1366,
                     height: 768,
                     scale: 1,
+                    refresh_millihertz: None,
                 },
             ],
         );
@@ -282,6 +289,7 @@ mod tests {
                 width: 2560,
                 height: 1440,
                 scale: 1,
+                refresh_millihertz: None,
             }],
         );
 
@@ -303,6 +311,7 @@ mod tests {
                 width: 2560,
                 height: 1440,
                 scale: 2,
+                refresh_millihertz: None,
             }],
         );
 

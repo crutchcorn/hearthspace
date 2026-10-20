@@ -8,6 +8,47 @@ use xilem::{
     },
 };
 
+/// Repeat CSS-style radial dots from the background's origin. The caller clips
+/// the pattern to its surface. Integer enclosing rectangles avoid adding a
+/// second antialiasing fade to the gradient's own transparent edge.
+pub fn dot_pattern(
+    painter: &mut Painter<'_>,
+    bounds: Rect,
+    spacing: f64,
+    solid_radius: f64,
+    fade_radius: f64,
+    color: Color,
+) {
+    if !(spacing > 0.0 && fade_radius > 0.0) {
+        return;
+    }
+    let solid_stop = (solid_radius / fade_radius).clamp(0.0, 1.0) as f32;
+    let mut x = bounds.x0 + spacing / 2.0;
+    while x < bounds.x1 + fade_radius {
+        let mut y = bounds.y0 + spacing / 2.0;
+        while y < bounds.y1 + fade_radius {
+            let gradient = Gradient::new_radial((x, y), fade_radius as f32).with_stops([
+                (0.0, color),
+                (solid_stop, color),
+                (1.0, color.multiply_alpha(0.0)),
+            ]);
+            painter
+                .fill(
+                    Rect::new(
+                        (x - fade_radius).floor(),
+                        (y - fade_radius).floor(),
+                        (x + fade_radius).ceil(),
+                        (y + fade_radius).ceil(),
+                    ),
+                    &gradient,
+                )
+                .draw();
+            y += spacing;
+        }
+        x += spacing;
+    }
+}
+
 /// CSS drop shadow: blur is the CSS blur radius, spread may be negative.
 pub fn shadow(
     painter: &mut Painter<'_>,
@@ -118,6 +159,14 @@ pub fn paint_surface(painter: &mut Painter<'_>, rect: Rect, radius: f64, kind: S
         SettingsSurface::Raised => (crate::CHROME_RAISED, crate::CHROME_BORDER),
     };
     let shape = rect.inset(-0.5).to_rounded_rect(radius);
+    if kind == SettingsSurface::Raised {
+        // Masonry layers cannot backdrop-filter siblings already painted by the
+        // client. Approximate the blurred window tint with an opaque backing,
+        // then retain the reference glass fill and edge lighting on top.
+        painter
+            .fill(shape, Color::from_rgb8(0xef, 0xf0, 0xeb))
+            .draw();
+    }
     painter.fill(shape, fill).draw();
     if kind == SettingsSurface::Raised {
         edge_light(painter, rect, radius);
@@ -148,7 +197,7 @@ pub fn paint_button(
         );
     }
     let mut fill = match kind {
-        SettingsButton::Bare => Color::TRANSPARENT,
+        SettingsButton::Bare | SettingsButton::Outline => Color::TRANSPARENT,
         _ => crate::SURFACE_CONTROL,
     };
     let mut border = match kind {
@@ -180,6 +229,9 @@ pub fn paint_button(
         };
         border = crate::ACCENT_BORDER;
     }
+    if kind == SettingsButton::Primary && interaction.disabled {
+        border = crate::CHROME_BORDER;
+    }
     let shape = rect.inset(-0.5).to_rounded_rect(radius);
     painter.fill(shape, fill).draw();
     if glow {
@@ -194,7 +246,9 @@ pub fn paint_button(
         painter.fill(shape, &wash).draw();
     }
     painter.stroke(shape, &Stroke::new(1.0), border).draw();
-    if kind != SettingsButton::Bare || emphasized || selected {
+    if (kind != SettingsButton::Bare || emphasized || selected)
+        && !(kind == SettingsButton::Primary && interaction.disabled)
+    {
         glass_edge(painter, rect, radius, emphasized || selected);
     }
     if interaction.focused && !interaction.disabled {

@@ -6,6 +6,7 @@ use hearthspace_ipc::Settings;
 use masonry::{
     accesskit::Role,
     core::{WidgetId, pointer::PointerButton},
+    kurbo::Rect,
 };
 use xilem::{WidgetView, view::sized_box};
 
@@ -32,30 +33,41 @@ pub(crate) fn state() -> (tempfile::TempDir, SettingsApp) {
     )
 }
 
-fn view(state: &SettingsApp) -> impl WidgetView<SettingsApp, Widget: Sized> + use<> {
+pub(super) fn view(state: &SettingsApp) -> impl WidgetView<SettingsApp, Widget: Sized> + use<> {
     sized_box(super::view(state))
 }
 
-fn named<V: WidgetView<SettingsApp>>(ui: &Ui<V>, name: &str, role: Role) -> WidgetId
+pub(super) fn named<V: WidgetView<SettingsApp>>(ui: &Ui<V>, name: &str, role: Role) -> WidgetId
 where
     V::Widget: Sized,
 {
     support::ids(&ui.harness)
         .into_iter()
         .find(|id| {
-            ui.harness
-                .access_node(*id)
-                .is_some_and(|node| node.label().as_deref() == Some(name) && node.role() == role)
+            ui.harness.access_node(*id).is_some_and(|node| {
+                node.label().or_else(|| node.value()).as_deref() == Some(name)
+                    && node.role() == role
+            })
         })
         .unwrap_or_else(|| panic!("missing {role:?}: {name}"))
 }
 
-fn draw<V: WidgetView<SettingsApp>>(ui: &mut Ui<V>, points: &[[f64; 2]])
+pub(super) fn bounds<V: WidgetView<SettingsApp>>(ui: &Ui<V>, id: WidgetId) -> Rect
+where
+    V::Widget: Sized,
+{
+    let widget = ui.harness.get_widget_with_id(id);
+    let ctx = widget.ctx();
+    // Interaction and layout use the border box; the paint box includes glow.
+    ctx.window_transform().transform_rect_bbox(ctx.border_box())
+}
+
+pub(super) fn draw<V: WidgetView<SettingsApp>>(ui: &mut Ui<V>, points: &[[f64; 2]])
 where
     V::Widget: Sized,
 {
     let id = named(ui, "Gesture drawing area", Role::Canvas);
-    let rect = ui.harness.get_widget_with_id(id).ctx().bounding_box();
+    let rect = bounds(ui, id);
     for (index, point) in points.iter().enumerate() {
         ui.harness
             .mouse_move((rect.x0 + point[0], rect.y0 + point[1]));
@@ -78,19 +90,12 @@ fn accessible_add_gesture_draw_and_save_updates_the_real_store_only_after_save()
     assert!(!path.exists());
     let save = ui.button("Save shortcut");
     assert!(ui.harness.access_node(save).unwrap().is_disabled());
-    let initial_pad = ui
-        .harness
-        .get_widget_with_id(named(&ui, "Gesture drawing area", Role::Canvas))
-        .ctx()
-        .bounding_box();
+    let initial_pad = bounds(&ui, named(&ui, "Gesture drawing area", Role::Canvas));
     draw(&mut ui, &[[30.0, 40.0], [90.0, 130.0], [150.0, 40.0]]);
     ui.dispatch(&view);
     assert!(!path.exists());
     assert_eq!(
-        ui.harness
-            .get_widget_with_id(named(&ui, "Gesture drawing area", Role::Canvas))
-            .ctx()
-            .bounding_box(),
+        bounds(&ui, named(&ui, "Gesture drawing area", Role::Canvas)),
         initial_pad
     );
     let save = ui.button("Save shortcut");
@@ -163,7 +168,7 @@ fn long_app_names_keep_list_actions_and_editor_controls_inside_narrow_content() 
     ui.dispatch(&view);
     for name in [
         "Back to gestures".to_owned(),
-        format!("{long_name} Choose app"),
+        "Choose app".into(),
         "Save shortcut".into(),
     ] {
         let bounds = ui
@@ -173,6 +178,27 @@ fn long_app_names_keep_list_actions_and_editor_controls_inside_narrow_content() 
             .bounding_box();
         assert!(bounds.x0 >= 0.0 && bounds.x1 <= 300.0, "{name}: {bounds:?}");
     }
+    let pad = bounds(&ui, named(&ui, "Gesture drawing area", Role::Canvas));
+    let prompt = ui
+        .harness
+        .get_widget_with_id(named(
+            &ui,
+            &format!("One continuous stroke for {long_name}."),
+            Role::Label,
+        ))
+        .ctx()
+        .bounding_box();
+    assert!(
+        prompt.width() <= 220.0 && prompt.height() >= 30.0,
+        "{prompt:?}"
+    );
+    assert!((prompt.center().x - pad.center().x).abs() < 0.1);
+    let metadata = ui
+        .harness
+        .get_widget_with_id(named(&ui, "Draw here", Role::Label))
+        .ctx()
+        .bounding_box();
+    assert!((metadata.center().y - (pad.y0 + 23.0)).abs() < 0.1);
     draw(&mut ui, &[[30.0, 40.0], [90.0, 130.0], [150.0, 40.0]]);
     ui.dispatch(&view);
     let retry = ui.button("Retry");
@@ -190,23 +216,10 @@ fn long_app_names_keep_list_actions_and_editor_controls_inside_narrow_content() 
 }
 
 #[test]
-fn named_search_filters_apps_and_the_recording_preview_can_be_redrawn() {
-    let (_dir, state) = state();
+fn recording_preview_can_be_redrawn_retried_and_cancelled() {
+    let (_dir, mut state) = state();
+    state.favorites.begin_add();
     let mut ui = Ui::new(state, view, (760, 700));
-    let add = ui.button("Add gesture");
-    ui.activate(add);
-    ui.dispatch(&view);
-    let picker = ui.button("Alpha Choose app");
-    ui.activate(picker);
-    ui.dispatch(&view);
-    let search = named(&ui, "Find apps", Role::TextInput);
-    ui.harness.focus_on(Some(search));
-    ui.harness.keyboard_type_chars("Beta");
-    ui.dispatch(&view);
-    assert_eq!(ui.state.favorites.query, "Beta");
-    let add = ui.button("Beta");
-    ui.activate(add);
-    ui.dispatch(&view);
     draw(&mut ui, &[[30.0, 40.0], [90.0, 130.0], [150.0, 40.0]]);
     ui.dispatch(&view);
     let first = ui
@@ -222,39 +235,7 @@ fn named_search_filters_apps_and_the_recording_preview_can_be_redrawn() {
     let record = ui.state.favorites.recording.as_ref().unwrap();
     assert!(record.valid);
     assert_ne!(record.points, first);
-    let drawn = record.points.clone();
-    let picker = ui.button("Beta Choose app");
-    ui.activate(picker);
-    ui.dispatch(&view);
-    assert_eq!(
-        ui.harness
-            .access_node(ui.button("Beta Choose app"))
-            .unwrap()
-            .data()
-            .is_expanded(),
-        Some(true)
-    );
-    let choice = ui.button("Beta");
-    ui.harness.focus_on(Some(choice));
-    ui.harness
-        .process_text_event(masonry::core::TextEvent::key_down(
-            masonry::core::keyboard::Key::Named(masonry::core::keyboard::NamedKey::Enter),
-        ));
-    ui.harness
-        .process_text_event(masonry::core::TextEvent::key_up(
-            masonry::core::keyboard::Key::Named(masonry::core::keyboard::NamedKey::Enter),
-        ));
-    ui.dispatch(&view);
-    assert_eq!(ui.state.favorites.recording.as_ref().unwrap().points, drawn);
-    assert!(ui.state.favorites.recording.as_ref().unwrap().valid);
-    let picker = ui.button("Beta Choose app");
-    assert_eq!(
-        ui.harness.access_node(picker).unwrap().data().is_expanded(),
-        Some(false)
-    );
-    assert_eq!(ui.harness.focused_widget_id(), Some(picker));
-    let retry = ui.button("Retry");
-    ui.activate(retry);
+    ui.activate(ui.button("Retry"));
     ui.dispatch(&view);
     assert!(
         ui.state
@@ -265,10 +246,13 @@ fn named_search_filters_apps_and_the_recording_preview_can_be_redrawn() {
             .points
             .is_empty()
     );
-    let save = ui.button("Save shortcut");
-    assert!(ui.harness.access_node(save).unwrap().is_disabled());
-    let cancel = ui.button("Back to gestures");
-    ui.activate(cancel);
+    assert!(
+        ui.harness
+            .access_node(ui.button("Save shortcut"))
+            .unwrap()
+            .is_disabled()
+    );
+    ui.activate(ui.button("Back to gestures"));
     ui.dispatch(&view);
     assert!(ui.state.favorites.recording.is_none());
     assert!(ui.state.favorites.entries().is_empty());

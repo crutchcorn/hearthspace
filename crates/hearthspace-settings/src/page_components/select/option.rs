@@ -1,4 +1,4 @@
-use super::{MODES, button::PhotoFitButton};
+use super::button::SettingsSelectButton;
 use hearthspace_ui_components as components;
 use xilem::masonry::{
     accesskit::{Action, Node, Role},
@@ -10,27 +10,36 @@ use xilem::masonry::{
     imaging::Painter,
     kurbo::{Axis, Point, Size, Stroke},
     layout::{LayoutSize, LenReq, Length, SizeDef},
-    parley::style::StyleProperty,
+    parley::{
+        FontFamilyName,
+        style::{FontFamily, StyleProperty},
+    },
     widgets::Label,
 };
 
-pub(super) struct FitOption {
+pub(super) struct SelectOption {
     creator: WidgetId,
     index: usize,
+    name: String,
     selected: bool,
     pub highlighted: bool,
     label: WidgetPod<Label>,
 }
 
-impl FitOption {
-    pub fn new(creator: WidgetId, index: usize, selected: bool) -> Self {
+impl SelectOption {
+    pub fn new(creator: WidgetId, index: usize, name: String, selected: bool) -> Self {
         Self {
             creator,
             index,
+            name: name.clone(),
             selected,
             highlighted: selected,
             label: WidgetPod::new(
-                Label::new(MODES[index].1).with_style(StyleProperty::FontSize(11.0)),
+                Label::new(name)
+                    .with_style(StyleProperty::FontSize(11.0))
+                    .with_style(StyleProperty::FontFamily(FontFamily::Single(
+                        FontFamilyName::Named(crate::typography::FONT.into()),
+                    ))),
             ),
         }
     }
@@ -39,13 +48,13 @@ impl FitOption {
         let index = self.index;
         ctx.set_focus(self.creator);
         ctx.mutate_later(self.creator, move |mut creator| {
-            PhotoFitButton::finish(&mut creator.downcast(), Some(index));
+            SettingsSelectButton::finish(&mut creator.downcast(), Some(index));
         });
         ctx.set_handled();
     }
 }
 
-impl Widget for FitOption {
+impl Widget for SelectOption {
     type Action = NoAction;
     fn on_pointer_event(
         &mut self,
@@ -118,25 +127,27 @@ impl Widget for FitOption {
         );
     }
     fn paint(&mut self, ctx: &mut PaintCtx<'_>, _: &PropertiesRef<'_>, painter: &mut Painter<'_>) {
-        let shape = ctx
-            .border_box()
-            .inset(-1.0)
-            .to_rounded_rect(components::RADIUS_DETAIL);
-        if self.selected || ctx.is_hovered() {
-            painter
-                .fill(
-                    shape,
-                    if self.selected {
-                        components::ACCENT_SOFT
-                    } else {
-                        components::BUTTON_HOVER
-                    },
-                )
-                .draw();
-        }
+        let bounds = ctx.border_box().inset(-1.0);
+        components::settings_material::paint_button(
+            painter,
+            bounds,
+            components::RADIUS_DETAIL,
+            components::SettingsButton::Bare,
+            self.selected,
+            components::settings_material::Interaction {
+                hovered: ctx.is_hovered(),
+                active: ctx.is_active(),
+                focused: false,
+                disabled: ctx.is_disabled(),
+            },
+        );
         if self.highlighted {
             painter
-                .stroke(shape, &Stroke::new(1.0), components::FOCUS_RING)
+                .stroke(
+                    bounds.to_rounded_rect(components::RADIUS_DETAIL),
+                    &Stroke::new(2.0),
+                    components::FOCUS_RING,
+                )
                 .draw();
         }
     }
@@ -144,7 +155,7 @@ impl Widget for FitOption {
         Role::ListBoxOption
     }
     fn accessibility(&mut self, _: &mut AccessCtx<'_>, _: &PropertiesRef<'_>, node: &mut Node) {
-        node.set_label(MODES[self.index].1);
+        node.set_label(self.name.clone());
         node.set_selected(self.selected);
         node.add_action(Action::Click);
     }

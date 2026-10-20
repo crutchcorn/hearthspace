@@ -25,9 +25,7 @@ pub use theme::*;
 mod focus_tests;
 pub mod icons;
 pub mod settings_material;
-pub use settings_material::{
-    SettingsButton, SettingsSurface, settings_button, settings_surface,
-};
+pub use settings_material::{SettingsButton, SettingsSurface, settings_button, settings_surface};
 
 /// Shell controls may sit directly on translucent panels.
 pub fn hearthspace_light_properties() -> DefaultProperties {

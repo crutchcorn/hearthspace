@@ -1,6 +1,6 @@
 //! The client body completes the compositor's rounded titlebar at its bottom.
 use crate::state::SettingsApp;
-use hearthspace_ui_components::RADIUS_PANEL;
+use hearthspace_ui_components::{self as components, RADIUS_PANEL};
 use xilem::{
     Pod, ViewCtx, WidgetView,
     core::{MessageCtx, MessageResult, Mut, View, ViewId, ViewMarker, ViewPathTracker},
@@ -16,12 +16,13 @@ use xilem::{
     },
 };
 
-pub(crate) fn body<V: WidgetView<SettingsApp>>(inner: V) -> BodyView<V> {
-    BodyView { inner }
+pub(crate) fn body<V: WidgetView<SettingsApp>>(inner: V, photo: bool) -> BodyView<V> {
+    BodyView { inner, photo }
 }
 
 pub(crate) struct BodyView<V> {
     inner: V,
+    photo: bool,
 }
 
 const CONTENT: ViewId = ViewId::new(0);
@@ -41,6 +42,7 @@ impl<V: WidgetView<SettingsApp>> View<SettingsApp, (), ViewCtx> for BodyView<V> 
         (
             ctx.create_pod(WindowBody {
                 inner: inner.new_widget.erased().to_pod(),
+                photo: self.photo,
             }),
             view_state,
         )
@@ -54,6 +56,10 @@ impl<V: WidgetView<SettingsApp>> View<SettingsApp, (), ViewCtx> for BodyView<V> 
         mut element: Mut<'_, Self::Element>,
         state: &mut SettingsApp,
     ) {
+        if self.photo != previous.photo {
+            element.widget.photo = self.photo;
+            element.ctx.request_paint_only();
+        }
         ctx.with_id(CONTENT, |ctx| {
             self.inner.rebuild(
                 &previous.inner,
@@ -101,6 +107,7 @@ impl<V: WidgetView<SettingsApp>> View<SettingsApp, (), ViewCtx> for BodyView<V> 
 
 pub(crate) struct WindowBody {
     inner: WidgetPod<dyn Widget>,
+    photo: bool,
 }
 
 impl WindowBody {
@@ -142,6 +149,19 @@ impl Widget for WindowBody {
             RADIUS_PANEL,
             RADIUS_PANEL,
         ))));
+        painter
+            .fill(
+                ctx.border_box(),
+                components::SURFACE.with_alpha(if self.photo { 0.76 } else { 0.54 }),
+            )
+            .draw();
+        // Continue the reference's window-wide wash below its titlebar.
+        let rect = ctx.border_box();
+        components::settings_material::edge_light(
+            painter,
+            xilem::masonry::kurbo::Rect::new(rect.x0, -44.0, rect.x1, rect.y1),
+            RADIUS_PANEL,
+        );
     }
 
     fn post_paint(

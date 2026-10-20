@@ -1,5 +1,4 @@
-use super::{MODES, layer::PhotoFitLayer};
-use hearthspace_ipc::BackgroundMode;
+use super::layer::SettingsSelectLayer;
 use hearthspace_ui_components as components;
 use xilem::masonry::{
     accesskit::{Action, Node, Role},
@@ -10,29 +9,40 @@ use xilem::masonry::{
         keyboard::{Key, NamedKey},
     },
     imaging::Painter,
-    kurbo::{Axis, Point, Rect, Size, Stroke},
+    kurbo::{Axis, Point, Rect, Size},
     layout::{LayoutSize, LenReq, Length},
 };
 
 struct Popup {
     layer: WidgetId,
-    options: [WidgetId; 4],
+    options: Vec<WidgetId>,
     active: usize,
     anchor: Rect,
 }
 
-pub(super) struct PhotoFitButton {
+pub(super) struct SettingsSelectButton {
+    pub name: String,
+    pub options: Vec<String>,
     pub selected: usize,
     child: WidgetPod<dyn Widget>,
     popup: Option<Popup>,
+    focus: components::settings_material::FocusIndicator,
 }
 
-impl PhotoFitButton {
-    pub fn new(selected: usize, child: NewWidget<impl Widget + ?Sized>) -> Self {
+impl SettingsSelectButton {
+    pub fn new(
+        name: String,
+        options: Vec<String>,
+        selected: usize,
+        child: NewWidget<impl Widget + ?Sized>,
+    ) -> Self {
         Self {
+            name,
+            options,
             selected,
             child: child.erased().to_pod(),
             popup: None,
+            focus: components::settings_material::FocusIndicator::default(),
         }
     }
 
@@ -54,18 +64,23 @@ impl PhotoFitButton {
         }
         Self::dismiss(this);
         if let Some(index) = selection {
-            this.ctx.submit_action::<BackgroundMode>(MODES[index].0);
+            this.ctx.submit_action::<usize>(index);
         }
     }
 
     pub fn update_anchor(this: &mut WidgetMut<'_, Self>) {
-        let anchor = this.ctx.bounding_box();
+        // bounding_box includes the shadow/focus paint insets; menus attach to
+        // the actual control border, expressed in window coordinates.
+        let anchor = this
+            .ctx
+            .window_transform()
+            .transform_rect_bbox(this.ctx.border_box());
         if let Some(popup) = &mut this.widget.popup
             && popup.anchor != anchor
         {
             popup.anchor = anchor;
             this.ctx.mutate_later(popup.layer, move |mut layer| {
-                PhotoFitLayer::set_anchor(&mut layer.downcast(), anchor);
+                SettingsSelectLayer::set_anchor(&mut layer.downcast(), anchor);
             });
         }
     }
@@ -74,8 +89,14 @@ impl PhotoFitButton {
         if ctx.is_disabled() || self.popup.is_some() {
             return;
         }
-        let anchor = ctx.bounding_box();
-        let layer = PhotoFitLayer::new(ctx.widget_id(), anchor, self.selected);
+        let anchor = ctx.window_transform().transform_rect_bbox(ctx.border_box());
+        let layer = SettingsSelectLayer::new(
+            ctx.widget_id(),
+            anchor,
+            self.name.clone(),
+            &self.options,
+            self.selected,
+        );
         let options = layer.option_ids();
         let layer = NewWidget::new(layer);
         self.popup = Some(Popup {
@@ -96,7 +117,7 @@ impl PhotoFitButton {
             ctx.request_accessibility_update();
             ctx.request_paint_only();
             if let Some(index) = selection {
-                ctx.submit_action::<BackgroundMode>(MODES[index].0);
+                ctx.submit_action::<usize>(index);
             }
         }
     }
@@ -120,22 +141,22 @@ impl PhotoFitButton {
         };
         popup.active = match key {
             NamedKey::ArrowUp => popup.active.saturating_sub(1),
-            NamedKey::ArrowDown => (popup.active + 1).min(MODES.len() - 1),
+            NamedKey::ArrowDown => (popup.active + 1).min(self.options.len() - 1),
             NamedKey::Home => 0,
-            NamedKey::End => MODES.len() - 1,
+            NamedKey::End => self.options.len() - 1,
             _ => popup.active,
         };
         let active = popup.active;
         ctx.mutate_later(popup.layer, move |mut layer| {
-            PhotoFitLayer::highlight(&mut layer.downcast(), active);
+            SettingsSelectLayer::highlight(&mut layer.downcast(), active);
         });
         ctx.request_accessibility_update();
         ctx.set_handled();
     }
 }
 
-impl Widget for PhotoFitButton {
-    type Action = BackgroundMode;
+impl Widget for SettingsSelectButton {
+    type Action = usize;
 
     fn on_pointer_event(
         &mut self,
@@ -143,6 +164,7 @@ impl Widget for PhotoFitButton {
         _: &mut PropertiesMut<'_>,
         event: &PointerEvent,
     ) {
+        self.focus.pointer(event);
         match event {
             PointerEvent::Down(event)
                 if matches!(event.button, None | Some(PointerButton::Primary)) =>
@@ -169,6 +191,8 @@ impl Widget for PhotoFitButton {
         _: &mut PropertiesMut<'_>,
         event: &TextEvent,
     ) {
+        self.focus.text(event);
+        ctx.request_paint_only();
         match event {
             TextEvent::WindowFocusChange(false) => self.close(ctx, None),
             TextEvent::Keyboard(event) => {
@@ -219,6 +243,7 @@ impl Widget for PhotoFitButton {
     }
 
     fn update(&mut self, ctx: &mut UpdateCtx<'_>, _: &mut PropertiesMut<'_>, event: &Update) {
+        self.focus.update(event);
         if matches!(
             event,
             Update::DisabledChanged(true)
@@ -260,6 +285,7 @@ impl Widget for PhotoFitButton {
         ctx.run_layout(&mut self.child, size);
         ctx.place_child(&mut self.child, Point::ORIGIN);
         ctx.derive_baselines(&self.child);
+        ctx.set_paint_insets(24.0);
     }
     fn compose(&mut self, ctx: &mut ComposeCtx<'_>) {
         if self.popup.is_some() {
@@ -267,34 +293,26 @@ impl Widget for PhotoFitButton {
         }
     }
     fn paint(&mut self, ctx: &mut PaintCtx<'_>, _: &PropertiesRef<'_>, painter: &mut Painter<'_>) {
-        let shape = ctx.border_box().to_rounded_rect(components::RADIUS_CONTROL);
-        painter
-            .fill(
-                shape,
-                if ctx.is_active() {
-                    components::BUTTON_ACTIVE
-                } else if ctx.is_hovered() {
-                    components::BUTTON_HOVER
-                } else {
-                    components::SURFACE_CONTROL
-                },
-            )
-            .draw();
-        painter
-            .stroke(shape, &Stroke::new(1.0), components::BORDER)
-            .draw();
-        if ctx.is_focus_target() {
-            painter
-                .stroke(shape, &Stroke::new(2.0), components::FOCUS_RING)
-                .draw();
-        }
+        components::settings_material::paint_button(
+            painter,
+            ctx.border_box(),
+            components::RADIUS_CONTROL,
+            components::SettingsButton::Control,
+            false,
+            components::settings_material::Interaction {
+                hovered: ctx.is_hovered(),
+                active: ctx.is_active(),
+                focused: ctx.is_focus_target() && self.focus.visible(),
+                disabled: ctx.is_disabled(),
+            },
+        );
     }
     fn accessibility_role(&self) -> Role {
         Role::ComboBox
     }
     fn accessibility(&mut self, _: &mut AccessCtx<'_>, _: &PropertiesRef<'_>, node: &mut Node) {
-        node.set_label("Photo fit");
-        node.set_value(MODES[self.selected].1);
+        node.set_label(self.name.clone());
+        node.set_value(self.options[self.selected].clone());
         node.set_expanded(self.popup.is_some());
         node.add_action(Action::Click);
         node.add_action(Action::Expand);

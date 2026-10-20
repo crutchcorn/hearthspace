@@ -6,7 +6,7 @@ mod paint;
 mod view;
 mod widget;
 pub use focus::FocusIndicator;
-pub use paint::{edge_light, glass_edge, paint_button, paint_surface, shadow};
+pub use paint::{dot_pattern, edge_light, glass_edge, paint_button, paint_surface, shadow};
 pub use view::MaterialView;
 
 /// Reference muted ink for Settings; shell glass keeps its stronger ink.
@@ -19,6 +19,7 @@ pub const ACCENT_BRIGHT: Color = Color::from_rgb8(0xf1, 0x9c, 0x77);
 pub enum SettingsButton {
     Bare,
     Control,
+    Outline,
     Card,
     Primary,
 }

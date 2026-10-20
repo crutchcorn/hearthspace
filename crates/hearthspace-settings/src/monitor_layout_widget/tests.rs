@@ -268,6 +268,66 @@ fn keyboard_selection_and_arrangement_are_available_with_a_visible_focus_ring() 
 }
 
 #[test]
+fn clicking_a_monitor_keeps_selection_without_a_keyboard_outline() {
+    let monitors = Settings::default().monitors;
+    let center = MonitorLayoutWidget::new(monitors.clone(), Some("primary".into()))
+        .layout_metrics(Size::new(400.0, 225.0))
+        .rect(&monitors[0])
+        .center();
+    let mut harness = TestHarness::create_with_size(
+        components::hearthspace_light_properties(),
+        MonitorLayoutWidget::new(monitors, Some("primary".into())).prepare(),
+        (400, 225),
+    );
+    harness.mouse_move((1.0, 1.0));
+    let selected = harness.render();
+    harness.mouse_move(center);
+    harness.mouse_button_press(Some(PointerButton::Primary));
+    harness.mouse_button_release(Some(PointerButton::Primary));
+    harness.mouse_move((1.0, 1.0));
+    assert_eq!(harness.focused_widget_id(), Some(harness.root_id()));
+    assert_eq!(selected, harness.render());
+    harness.process_text_event(TextEvent::key_down(Key::Named(NamedKey::Shift)));
+    assert_ne!(selected, harness.render());
+}
+
+#[test]
+fn hovering_an_unselected_monitor_highlights_it_without_selecting_or_saving() {
+    let monitors = Settings::default().monitors;
+    let widget = MonitorLayoutWidget::new(monitors.clone(), Some("primary".into()));
+    let mut harness = TestHarness::create_with_size(
+        components::hearthspace_light_properties(),
+        widget.prepare(),
+        (400, 225),
+    );
+    harness.mouse_move((1.0, 1.0));
+    let idle = harness.render();
+    let second = harness
+        .root_widget()
+        .layout_metrics(Size::new(400.0, 225.0))
+        .rect(&monitors[1])
+        .center();
+    harness.mouse_move(second);
+    assert_ne!(
+        idle,
+        harness.render(),
+        "hover must visibly identify the draggable tile"
+    );
+    assert_eq!(
+        harness.root_widget().selected_monitor_id.as_deref(),
+        Some("primary")
+    );
+    assert_eq!(harness.root_widget().monitors, monitors);
+    assert!(harness.pop_action::<MonitorEditorAction>().is_none());
+    harness.mouse_move((1.0, 1.0));
+    assert_eq!(
+        idle,
+        harness.render(),
+        "moving away must clear the hover treatment"
+    );
+}
+
+#[test]
 fn normalization_keeps_the_relative_native_layout_and_grid_rounding_handles_negative_values() {
     let mut monitors = Settings::default().monitors;
     set_monitor_position(&mut monitors, "primary", 10_000, -8_000);

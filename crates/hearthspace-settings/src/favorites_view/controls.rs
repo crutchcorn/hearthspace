@@ -1,4 +1,4 @@
-use crate::state::SettingsApp;
+use crate::{state::SettingsApp, typography::label};
 use hearthspace_ui_components::{
     self as components,
     icons::{Icon, icon},
@@ -10,13 +10,13 @@ use xilem::{
         properties::{Dimensions, LineBreaking, Padding},
     },
     style::Style,
-    view::{MainAxisAlignment, button, flex_row, label},
+    view::{MainAxisAlignment, button, flex_row},
 };
 
 pub(super) fn note(text: impl Into<String>) -> impl WidgetView<SettingsApp, Widget: Sized> {
     label(text.into())
         .text_size(11.0)
-        .color(components::TEXT_MUTED)
+        .color(components::settings_material::MUTED)
         .line_break_mode(LineBreaking::WordWrap)
 }
 
@@ -26,18 +26,20 @@ pub(super) fn icon_button(
     disabled: bool,
     action: impl Fn(&mut SettingsApp) + Send + Sync + 'static,
 ) -> impl WidgetView<SettingsApp, Widget: Sized> {
-    components::button_surface(
+    components::settings_button(
         button(
-            icon(glyph, 16.0).color(components::TEXT_MUTED).label(name),
+            icon(glyph, 16.0)
+                .color(components::settings_material::MUTED)
+                .label(name),
             action,
         )
-        .disabled(disabled),
-        components::ButtonSurface::Bare,
+        .dims(Dimensions::fixed(44.0.px(), 44.0.px()))
+        .padding(0.0.px())
+        .corner_radius(10.0.px()),
+        components::SettingsButton::Bare,
         false,
     )
-    .dims(Dimensions::fixed(44.0.px(), 44.0.px()))
-    .padding(0.0.px())
-    .corner_radius(10.0.px())
+    .disabled(disabled)
 }
 
 pub(super) fn text(
@@ -46,28 +48,28 @@ pub(super) fn text(
     disabled: bool,
     action: impl Fn(&mut SettingsApp) + Send + Sync + 'static,
 ) -> impl WidgetView<SettingsApp, Widget: Sized> {
-    components::button_surface(
+    components::settings_button(
         button(
             flex_row((icon(glyph, 16.0), label(name).text_size(11.0))).gap(7.0.px()),
             action,
         )
-        .disabled(disabled),
-        components::ButtonSurface::Control,
+        .height(44.0.px())
+        .padding(Padding::from_vh(0.0.px(), 12.0.px()))
+        .border_width(1.0.px())
+        .corner_radius(10.0.px()),
+        components::SettingsButton::Control,
         false,
     )
-    .height(44.0.px())
-    .padding(Padding::from_vh(0.0.px(), 12.0.px()))
-    .border_width(1.0.px())
-    .corner_radius(10.0.px())
+    .disabled(disabled)
 }
 
 pub(super) fn save(disabled: bool) -> impl WidgetView<SettingsApp, Widget: Sized> {
     let color = if disabled {
-        components::TEXT_MUTED
+        components::settings_material::MUTED
     } else {
         components::ACCENT_INK
     };
-    components::button_surface(
+    components::settings_button(
         button(
             flex_row((
                 icon(Icon::Check, 15.0).color(color),
@@ -77,12 +79,12 @@ pub(super) fn save(disabled: bool) -> impl WidgetView<SettingsApp, Widget: Sized
             .gap(8.0.px()),
             |state: &mut SettingsApp| state.favorites.save(),
         )
-        .disabled(disabled),
-        components::ButtonSurface::Primary,
+        .height(44.0.px())
+        .padding(Padding::from_vh(0.0.px(), 13.0.px()))
+        .border_width(1.0.px())
+        .corner_radius(10.0.px()),
+        components::SettingsButton::Primary,
         false,
     )
-    .height(44.0.px())
-    .padding(Padding::from_vh(0.0.px(), 13.0.px()))
-    .border_width(1.0.px())
-    .corner_radius(10.0.px())
+    .disabled(disabled)
 }

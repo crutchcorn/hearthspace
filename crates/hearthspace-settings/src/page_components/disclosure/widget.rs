@@ -17,6 +17,7 @@ pub(crate) struct DisclosureButton {
     pub(super) name: String,
     pub(super) expanded: bool,
     child: WidgetPod<dyn Widget>,
+    focus: components::settings_material::FocusIndicator,
 }
 
 impl DisclosureButton {
@@ -29,6 +30,7 @@ impl DisclosureButton {
             name,
             expanded,
             child: child.erased().to_pod(),
+            focus: components::settings_material::FocusIndicator::default(),
         }
     }
 
@@ -47,6 +49,7 @@ impl Widget for DisclosureButton {
         _: &mut PropertiesMut<'_>,
         event: &PointerEvent,
     ) {
+        self.focus.pointer(event);
         match event {
             PointerEvent::Down(..) => {
                 ctx.request_focus();
@@ -69,6 +72,8 @@ impl Widget for DisclosureButton {
         _: &mut PropertiesMut<'_>,
         event: &TextEvent,
     ) {
+        self.focus.text(event);
+        ctx.request_paint_only();
         if let TextEvent::Keyboard(event) = event
             && event.state.is_up()
             && (matches!(&event.key, Key::Character(c) if c == " ")
@@ -94,7 +99,11 @@ impl Widget for DisclosureButton {
     }
 
     fn update(&mut self, ctx: &mut UpdateCtx<'_>, _: &mut PropertiesMut<'_>, event: &Update) {
-        if matches!(event, Update::FocusChanged(_) | Update::HoveredChanged(_)) {
+        self.focus.update(event);
+        if matches!(
+            event,
+            Update::FocusChanged(_) | Update::HoveredChanged(_) | Update::ActiveChanged(_)
+        ) {
             ctx.request_paint_only();
         }
     }
@@ -120,30 +129,28 @@ impl Widget for DisclosureButton {
         ctx.run_layout(&mut self.child, size);
         ctx.place_child(&mut self.child, Point::ORIGIN);
         ctx.derive_baselines(&self.child);
+        ctx.set_paint_insets(24.0);
     }
 
     fn paint(&mut self, ctx: &mut PaintCtx<'_>, _: &PropertiesRef<'_>, painter: &mut Painter<'_>) {
-        let shape = ctx
-            .border_box()
-            .inset(1.0)
-            .to_rounded_rect(components::RADIUS_CONTROL);
-        if !ctx.is_disabled() && (ctx.is_hovered() || ctx.is_active()) {
-            painter
-                .fill(
-                    shape,
-                    if ctx.is_active() {
-                        components::BUTTON_ACTIVE
-                    } else {
-                        components::BUTTON_HOVER
-                    },
-                )
-                .draw();
-        }
-        if ctx.is_focus_target() {
+        components::settings_material::paint_button(
+            painter,
+            ctx.border_box().inset(-1.0),
+            components::RADIUS_CONTROL,
+            components::SettingsButton::Bare,
+            false,
+            components::settings_material::Interaction {
+                hovered: ctx.is_hovered(),
+                active: ctx.is_active(),
+                focused: false,
+                disabled: ctx.is_disabled(),
+            },
+        );
+        if ctx.is_focus_target() && self.focus.visible() {
             painter
                 .stroke(
                     ctx.border_box()
-                        .inset(-1.0)
+                        .inset(-3.0)
                         .to_rounded_rect(components::RADIUS_CONTROL),
                     &Stroke::new(2.0),
                     components::FOCUS_RING,

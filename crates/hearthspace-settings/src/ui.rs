@@ -6,15 +6,20 @@ use rfd::FileDialog;
 use xilem::{
     AnyWidgetView, WidgetView,
     core::fork,
-    masonry::{layout::AsUnit, parley::style::FontWeight, properties::Padding},
+    masonry::{
+        layout::AsUnit,
+        parley::style::{FontWeight, LineHeight},
+        properties::Padding,
+    },
     style::Style,
-    view::{CrossAxisAlignment, button, flex_col, flex_item, flex_row, label, sized_box, worker},
+    view::{CrossAxisAlignment, button, flex_col, flex_item, flex_row, sized_box, worker},
 };
 
 use crate::{
     actions::save_background_image_path,
     page_components::note,
     state::{BackgroundPickerRequest, BackgroundPickerResponse, SettingsApp, SettingsCategory},
+    typography::label,
 };
 
 pub(crate) fn app_logic(state: &mut SettingsApp) -> impl WidgetView<SettingsApp> + use<> {
@@ -80,12 +85,15 @@ pub(crate) fn settings_view(state: &SettingsApp) -> impl WidgetView<SettingsApp>
                 sized_box(label(""))
                     .fixed_width(1.0.px())
                     .background_color(components::BORDER),
-                flex_item(category_view(state), 1.0),
+                flex_item(
+                    sized_box(category_view(state)).background_color(components::SURFACE_SUBTLE),
+                    1.0,
+                ),
             ))
             .cross_axis_alignment(CrossAxisAlignment::Stretch)
             .gap(0.0.px()),
-        )
-        .background_color(components::SURFACE),
+        ),
+        state.settings.background_image_path.is_some(),
     )
 }
 
@@ -101,11 +109,11 @@ fn sidebar_view(state: &SettingsApp) -> impl WidgetView<SettingsApp> + use<> {
     .map(|(category, glyph)| {
         let selected = state.selected_category == category;
         let tint = if selected {
-            components::ACCENT_STRONG
+            components::settings_material::ACCENT_DECORATIVE
         } else {
-            components::TEXT_MUTED
+            components::settings_material::MUTED
         };
-        components::button_surface(
+        components::settings_button(
             button(
                 flex_row((
                     icon(glyph, 16.0).color(tint),
@@ -113,19 +121,20 @@ fn sidebar_view(state: &SettingsApp) -> impl WidgetView<SettingsApp> + use<> {
                         label(category.label()).text_size(11.0).color(if selected {
                             components::TEXT
                         } else {
-                            components::TEXT_MUTED
+                            components::settings_material::MUTED
                         }),
                         1.0,
                     ),
                 ))
                 .gap(10.0.px()),
                 move |state: &mut SettingsApp| state.select_category(category),
-            ),
-            components::ButtonSurface::Bare,
+            )
+            .corner_radius(components::RADIUS_CONTROL.px())
+            .height(40.0.px())
+            .padding(Padding::from_vh(9.0.px(), 10.0.px())),
+            components::SettingsButton::Bare,
             selected,
         )
-        .corner_radius(components::RADIUS_CONTROL.px())
-        .padding(10.0.px())
     });
     components::scroll_area(
         sized_box(
@@ -146,17 +155,23 @@ fn category_view(state: &SettingsApp) -> impl WidgetView<SettingsApp> + use<> {
                     flex_col((
                         label(category.label())
                             .text_size(26.0)
+                            .letter_spacing(-0.7)
+                            .line_height(LineHeight::FontSizeRelative(1.1))
                             .weight(FontWeight::NORMAL),
                         note(category.description()),
                     ))
                     .cross_axis_alignment(CrossAxisAlignment::Start)
-                    .gap(9.0.px())
+                    .gap(8.0.px())
                 }),
                 selected_category_view(state),
                 status_footer(state),
             ))
             .cross_axis_alignment(CrossAxisAlignment::Stretch)
-            .gap(24.0.px()),
+            .gap(if category == SettingsCategory::Displays {
+                22.0.px()
+            } else {
+                25.0.px()
+            }),
         )
         .width(xilem::masonry::layout::Dim::Stretch)
         .padding(Padding::from_vh(23.0.px(), 24.0.px())),
