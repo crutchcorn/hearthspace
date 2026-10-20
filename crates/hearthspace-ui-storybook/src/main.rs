@@ -13,6 +13,8 @@ use xilem_storybook::{Control, Story, StorybookState};
 
 const PREVIEW_HEIGHT: f64 = 260.0;
 
+mod settings_materials;
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let app = Xilem::new_simple(
         initial_state(),
@@ -30,6 +32,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 fn initial_state() -> StorybookState {
     StorybookState::new(vec![
+        Story::new(
+            "settings-materials",
+            "Settings Materials",
+            "Reference glass highlights, orange glow, and native button interaction states.",
+            vec![
+                Control::bool("selected", "Selected", false),
+                Control::bool("disabled", "Disabled", false),
+            ],
+        ),
         Story::new(
             "page-title",
             "Page Title",
@@ -167,6 +178,7 @@ fn main_area(state: &StorybookState) -> impl WidgetView<StorybookState> + use<> 
 fn preview(state: &StorybookState) -> Box<AnyWidgetView<StorybookState>> {
     let story = state.selected_story();
     let content = match story.id() {
+        "settings-materials" => settings_materials::preview(state).boxed(),
         "page-title" => components::page_title(text(state, "text")).boxed(),
         "section-title" => components::section_title(text(state, "text")).boxed(),
         "muted-text" => components::muted_text(text(state, "text")).boxed(),

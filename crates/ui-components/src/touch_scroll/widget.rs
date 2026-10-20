@@ -36,7 +36,7 @@ pub struct TouchScroll<W: Widget + FromDynWidget + ?Sized> {
 }
 
 impl<W: Widget + FromDynWidget + ?Sized> TouchScroll<W> {
-    pub(super) fn new(portal: NewWidget<Portal<W>>, horizontal: bool, vertical: bool) -> Self {
+    pub fn new(portal: NewWidget<Portal<W>>, horizontal: bool, vertical: bool) -> Self {
         Self {
             portal: portal.to_pod(),
             horizontal,
@@ -47,7 +47,7 @@ impl<W: Widget + FromDynWidget + ?Sized> TouchScroll<W> {
         }
     }
 
-    pub(super) fn portal_mut<'a>(this: &'a mut WidgetMut<'_, Self>) -> WidgetMut<'a, Portal<W>> {
+    pub fn portal_mut<'a>(this: &'a mut WidgetMut<'_, Self>) -> WidgetMut<'a, Portal<W>> {
         this.ctx.get_mut(&mut this.widget.portal)
     }
 
@@ -124,7 +124,10 @@ impl<W: Widget + FromDynWidget + ?Sized> Widget for TouchScroll<W> {
                     let owner = ctx.widget_id();
                     let generation = self.generation;
                     ctx.mutate_later(target, move |mut target| {
-                        let allowed = target.widget.accessibility_role() == Role::Button;
+                        let allowed = matches!(
+                            target.widget.accessibility_role(),
+                            Role::Button | Role::ListBoxOption
+                        );
                         target.ctx.mutate_later(owner, move |mut owner| {
                             let owner = owner.downcast::<Self>();
                             if owner.widget.generation == generation {

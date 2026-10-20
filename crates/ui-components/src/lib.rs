@@ -16,7 +16,7 @@ use xilem::{
 };
 
 mod touch_scroll;
-pub use touch_scroll::touch_portal;
+pub use touch_scroll::{TouchScroll, touch_portal};
 mod button_surface;
 pub use button_surface::{ButtonSurface, ButtonSurfaceView, button_surface};
 mod theme;
@@ -24,6 +24,10 @@ pub use theme::*;
 #[cfg(test)]
 mod focus_tests;
 pub mod icons;
+pub mod settings_material;
+pub use settings_material::{
+    SettingsButton, SettingsSurface, settings_button, settings_surface,
+};
 
 /// Shell controls may sit directly on translucent panels.
 pub fn hearthspace_light_properties() -> DefaultProperties {

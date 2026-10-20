@@ -8,7 +8,7 @@ use xilem::{
 };
 
 mod widget;
-use widget::TouchScroll;
+pub use widget::TouchScroll;
 #[cfg(test)]
 mod tests;
 
