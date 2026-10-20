@@ -35,7 +35,7 @@ fn state() -> ShellState {
 
 #[test]
 fn notification_and_canvas_controls_open_their_own_panels() {
-    let mut ui = Ui::new(state(), notifications, (116, 54));
+    let mut ui = Ui::new(state(), notifications, (110, 54));
     ui.harness.mouse_click_on(ui.button("Notifications"), None);
     ui.dispatch(&notifications);
     assert!(ui.state.outputs[0].show_notifications);
@@ -167,7 +167,7 @@ fn translucent_corners_keep_idle_buttons_clear_and_focus_contrasting() {
                 .process_text_event(TextEvent::WindowFocusChange(true));
         }
     }
-    check(state(), notifications, 116, &["Notifications"]);
+    check(state(), notifications, 110, &["Notifications"]);
     check(state(), canvas, 102, &["Canvas map", "Select window group"]);
     check(
         state(),

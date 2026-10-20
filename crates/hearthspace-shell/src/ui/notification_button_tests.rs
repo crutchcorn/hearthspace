@@ -48,7 +48,22 @@ fn icon_status_and_right_padding_share_one_notification_button_and_focus_outline
         .unwrap();
     let status = ui.harness.access_node(status(&ui, "All clear")).unwrap();
     let text = status.bounding_box().unwrap();
-    assert!(bounds.x0 < text.x0 && text.x1 + 16.0 <= bounds.x1);
+    let bell = ids(&ui.harness)
+        .into_iter()
+        .find_map(|id| {
+            ui.harness.access_node(id).filter(|node| {
+                node.role() == Role::Image && node.label().as_deref() == Some("Notifications")
+            })
+        })
+        .unwrap()
+        .bounding_box()
+        .unwrap();
+    assert_eq!(
+        bell.x0 - bounds.x0,
+        bounds.x1 - text.x1,
+        "the bell and status must have equal padding at the button's ends"
+    );
+    assert!(bounds.x0 < text.x0 && text.x1 + 10.0 <= bounds.x1);
     assert!(bounds.y0 <= text.y0 && text.y1 <= bounds.y1);
 
     ui.harness
@@ -119,7 +134,7 @@ fn unread_counts_keep_the_same_named_button_and_fit_inside_its_padding() {
         for run in status.children() {
             let text = run.bounding_box().unwrap();
             assert!(
-                text.x0 >= bounds.x0 && text.x1 + 16.0 <= bounds.x1,
+                text.x0 >= bounds.x0 && text.x1 + 10.0 <= bounds.x1,
                 "{text:?}"
             );
         }

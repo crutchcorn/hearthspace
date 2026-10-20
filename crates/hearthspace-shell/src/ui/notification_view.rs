@@ -29,9 +29,8 @@ pub(super) fn button(
         f64::from(hearthspace_common::NOTIFICATION_CORNER_WIDTH) - 10.0,
     );
     let padding_budget = (width - 20.0).max(0.0);
-    let left = 10.0_f64.min(padding_budget / 2.0);
-    let right = 16.0_f64.min(padding_budget - left);
-    let content_width = (width - left - right - 2.0).max(0.0);
+    let padding = 10.0_f64.min(padding_budget / 2.0);
+    let content_width = (width - 2.0 * padding - 2.0).max(0.0);
     let icon_size = content_width.min(18.0);
     let remaining = (content_width - icon_size).max(0.0);
     let gap = remaining.min(9.0);
@@ -73,8 +72,8 @@ pub(super) fn button(
         )
         .dims(Dimensions::fixed(width.px(), 44.0.px()))
         .padding(Padding {
-            left: left.px(),
-            right: right.px(),
+            left: padding.px(),
+            right: padding.px(),
             ..Padding::ZERO
         })
         .corner_radius(components::RADIUS_CONTROL.px()),

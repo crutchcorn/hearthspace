@@ -190,11 +190,11 @@ mod tests {
         let output = (320, 240).into();
         assert_eq!(
             corner_size(ShellCorner::Notifications, None, output),
-            (116, 54).into()
+            (110, 54).into()
         );
         assert_eq!(
             corner_size(ShellCorner::System, None, output),
-            (132, 54).into()
+            (138, 54).into()
         );
         assert_eq!(
             corner_size(ShellCorner::Canvas, None, output),

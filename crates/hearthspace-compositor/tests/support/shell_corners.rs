@@ -136,7 +136,7 @@ fn four_corners_pin_controls_panels_and_maximized_work_area() {
     let mut client = connect(&compositor);
     let mut apps_corner = None;
     for (corner, name, width, x, y) in [
-        (ShellCorner::Notifications, "notifications", 116, 24, 24),
+        (ShellCorner::Notifications, "notifications", 110, 24, 24),
         (ShellCorner::System, "system", 320, 936, 24),
         (ShellCorner::Canvas, "canvas", 102, 24, 722),
         (ShellCorner::Apps, "apps", 320, 936, 722),
@@ -229,8 +229,8 @@ fn scaled_small_corners_resize_without_overlapping_and_ignore_unknown_outputs() 
     drop(compositor.wait_for_socket());
     let mut client = connect(&compositor);
     for (corner, name, width, x, y) in [
-        (ShellCorner::Notifications, "notifications", 116, 24, 24),
-        (ShellCorner::System, "system", 132, 164, 24),
+        (ShellCorner::Notifications, "notifications", 110, 24, 24),
+        (ShellCorner::System, "system", 138, 158, 24),
         (ShellCorner::Canvas, "canvas", 102, 24, 162),
         (ShellCorner::Apps, "apps", 146, 150, 162),
     ] {
