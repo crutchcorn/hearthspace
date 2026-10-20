@@ -20,6 +20,8 @@ uniform vec2 corner_size;
 uniform vec2 crop_origin;
 uniform float radius;
 uniform float rounded;
+uniform vec2 sample_min;
+uniform vec2 sample_max;
 varying vec2 v_coords;
 
 #if defined(DEBUG_FLAGS)
@@ -27,8 +29,7 @@ uniform float tint;
 #endif
 
 vec4 sample_clamped(vec2 uv) {
-    vec2 half_texel = 0.5 / texture_size;
-    return texture2D(tex, clamp(uv, half_texel, vec2(1.0) - half_texel));
+    return texture2D(tex, clamp(uv, sample_min, sample_max));
 }
 
 void main() {

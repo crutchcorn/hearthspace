@@ -322,6 +322,7 @@ struct App {
     /// Cached texture for the repeated background image tile.
     background_image_tile: Option<rendering::BackgroundImageTile>,
     corner_blur: rendering::CornerBlurCache,
+    settings_blur: rendering::SettingsBlurCache,
     /// Stable render-element ids for visible background tile instances. Reusing
     /// ids across frames keeps the damage tracker from treating every tile as
     /// new on each redraw.
@@ -685,6 +686,7 @@ pub(in crate::compositor) fn initialize_app(
         background_image_path: settings.background_image_path,
         background_image_tile: None,
         corner_blur: rendering::CornerBlurCache::default(),
+        settings_blur: rendering::SettingsBlurCache::default(),
         background_tile_ids: Vec::new(),
         software_cursor_visible: false,
         software_cursor: cursor::standard_software_cursor(),

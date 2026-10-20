@@ -31,9 +31,12 @@ mod blur;
 mod blur_shader;
 mod lock;
 mod order;
+mod settings_blur;
+mod settings_blur_shader;
 
 pub(in crate::compositor) use background::BackgroundImageTile;
 pub(in crate::compositor) use blur::CornerBlurCache;
+pub(in crate::compositor) use settings_blur::SettingsBlurCache;
 
 type GlesTexture = <GlesRenderer as RendererSuper>::TextureId;
 
@@ -60,6 +63,7 @@ struct RenderScene {
     elements: Vec<HearthspaceRenderElement>,
     /// Everything below the shell, switcher, and cursor may feed corner blur.
     desktop_start: usize,
+    settings_backdrops: Vec<settings_blur::BackdropRequest>,
 }
 
 impl RenderScene {
@@ -67,6 +71,7 @@ impl RenderScene {
         Self {
             desktop_start: elements.len(),
             elements,
+            settings_backdrops: Vec::new(),
         }
     }
 }
@@ -148,6 +153,13 @@ impl App {
                 ),
             ));
         }
+        self.apply_settings_backdrops(
+            renderer,
+            output_rect,
+            output_scale,
+            &scene.settings_backdrops,
+            &mut elements,
+        );
         let blurred = self.corner_blur_elements(
             renderer,
             output_rect,
@@ -207,6 +219,7 @@ impl App {
 
         let mut group_elements = self.collect_group_elements(renderer, output_rect);
         let mut desktop_start = None;
+        let mut settings_backdrops = Vec::new();
         for index in order::render_order(self.windows.iter().map(|window| window.kind)) {
             if self.windows[index].kind == ManagedWindowKind::Normal {
                 desktop_start.get_or_insert(elements.len());
@@ -215,6 +228,7 @@ impl App {
             if !self.window_visible_on_output(index, output_rect) {
                 continue;
             }
+            let front = elements.len();
             // Popups (e.g. menus) render above their window's content and chrome.
             for popup in self.popup_render_elements(renderer, index) {
                 elements.push(popup);
@@ -250,6 +264,20 @@ impl App {
                     ));
                 }
             }
+            if self.windows[index].kind == ManagedWindowKind::Normal
+                && !self.windows[index].presentation.fullscreen
+                && super::windows::window_app_id(&self.windows[index].surface).as_deref()
+                    == Some(settings_blur::SETTINGS_APP_ID)
+                && let Some(window) = self.normal_window_screen_rect(index)
+            {
+                settings_backdrops.push(settings_blur::BackdropRequest {
+                    id: self.windows[index].id,
+                    front,
+                    after: elements.len(),
+                    window,
+                    zoom: scale,
+                });
+            }
             // Fullscreen content must not reveal unrelated windows through
             // transparent pixels or around a smaller-than-requested buffer.
             if self.windows[index].presentation.fullscreen {
@@ -262,6 +290,7 @@ impl App {
         RenderScene {
             elements,
             desktop_start,
+            settings_backdrops,
         }
     }
 
