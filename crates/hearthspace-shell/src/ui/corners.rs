@@ -257,7 +257,9 @@ pub(super) fn apps_view(
                 },
             )),
         ))
-        .main_axis_alignment(MainAxisAlignment::Center)
+        // Keep the screen-edge action stationary while the catalog changes
+        // before a matching Wayland surface resize has arrived.
+        .main_axis_alignment(MainAxisAlignment::End)
         .gap(4.0.px()),
     )
 }
@@ -277,3 +279,7 @@ mod tests;
 #[cfg(test)]
 #[path = "corners_battery_tests.rs"]
 mod battery_tests;
+
+#[cfg(test)]
+#[path = "corners_dock_tests.rs"]
+mod dock_tests;

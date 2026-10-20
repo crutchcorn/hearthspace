@@ -284,20 +284,6 @@ fn corner_controls_remain_centered_when_the_surface_has_extra_width() {
         .bounding_box()
         .unwrap();
     assert_eq!((left.x0 + right.x1) / 2.0, 54.0);
-
-    let ui = Ui::new(state(), apps, (64, 54));
-    let bounds = ui
-        .harness
-        .access_node(ui.button("Apps List"))
-        .unwrap()
-        .bounding_box()
-        .unwrap();
-    assert_eq!((bounds.x0 + bounds.x1) / 2.0, 32.0);
-    assert_eq!(
-        apps_width(&ui.state),
-        54.0,
-        "an empty dock must not reserve a gap"
-    );
 }
 
 #[test]
