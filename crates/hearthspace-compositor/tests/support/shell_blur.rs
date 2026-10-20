@@ -12,6 +12,10 @@ use super::*;
 
 const WHITE: [u8; 4] = [255, 255, 255, 255];
 const BLACK: [u8; 4] = [0, 0, 0, 255];
+const SOURCE_SIZE: (i32, i32) = (800, 600);
+const CONTENT_EDGE: i32 = 320;
+const VERTICAL_RECT: (i32, i32, i32, i32) =
+    (CONTENT_EDGE, 0, SOURCE_SIZE.0 - CONTENT_EDGE, SOURCE_SIZE.1);
 
 struct Pixels {
     data: Vec<u8>,
@@ -133,12 +137,23 @@ fn glass_blurs_real_window_edges_and_refreshes_after_motion_and_content_commits(
     drop(compositor.wait_for_socket());
     let mut client = connect(&compositor);
     let base = client.add("dev.hearthspace.BlurBase".into(), (380, 220), (0, 0), WHITE);
-    let foreground = client.add("dev.hearthspace.BlurEdge".into(), (240, 220), (0, 0), BLACK);
+    let foreground = client.add(
+        "dev.hearthspace.BlurEdge".into(),
+        SOURCE_SIZE,
+        (0, 0),
+        [0; 4],
+    );
+    client.repaint_rectangle(foreground, [0; 4], VERTICAL_RECT, BLACK);
     let base_id = app_id(&compositor, "dev.hearthspace.BlurBase");
     let edge_id = app_id(&compositor, "dev.hearthspace.BlurEdge");
-    // Keep both clients' titlebars and other content edges far from the glass.
+    // Test an internal SHM edge, with the white app visible through the rest
+    // of the foreground. Its frame, shadow and inset glow stay far away, so
+    // strict source/blur pixel assertions do not depend on decoration styling.
     action(&compositor, format!("move-window {base_id} 564 420"));
-    action(&compositor, format!("move-window {edge_id} 708 420"));
+    action(
+        &compositor,
+        format!("move-window {edge_id} {} 420", 708 - CONTENT_EDGE),
+    );
     action(&compositor, "pointer-motion-abs 10 100");
     client.sync();
     let before = Pixels::capture(&compositor, scale, "blur-source.png");
@@ -167,13 +182,19 @@ fn glass_blurs_real_window_edges_and_refreshes_after_motion_and_content_commits(
 
     // Put contrast beside the rounded vertices. A square blur mask would now
     // alter these pixels, while both original source vertices remain white.
-    action(&compositor, format!("move-window {edge_id} 618 420"));
+    action(
+        &compositor,
+        format!("move-window {edge_id} {} 420", 618 - CONTENT_EDGE),
+    );
     client.sync();
     let rounded = Pixels::capture(&compositor, scale, "blur-rounded-edge.png");
     rounded.assert_blurred_edge(618, y);
     rounded.assert_rounded_outside_unchanged(&before, &bounds);
 
-    action(&compositor, format!("move-window {edge_id} 732 420"));
+    action(
+        &compositor,
+        format!("move-window {edge_id} {} 420", 732 - CONTENT_EDGE),
+    );
     client.sync();
     let moved = Pixels::capture(&compositor, scale, "blur-moved-window.png");
     moved.assert_blurred_edge(732, y);
@@ -187,7 +208,7 @@ fn glass_blurs_real_window_edges_and_refreshes_after_motion_and_content_commits(
     }
 
     // Resizing a right-anchored corner must move its mask and cache allocation.
-    client.repaint_color(foreground, BLACK);
+    client.repaint_rectangle(foreground, [0; 4], VERTICAL_RECT, BLACK);
     client.resize(corner, (200, 54));
     let resized = Pixels::capture(&compositor, scale, "blur-resized-corner.png");
     resized.assert_blurred_edge(732, y);
@@ -195,8 +216,8 @@ fn glass_blurs_real_window_edges_and_refreshes_after_motion_and_content_commits(
     assert_eq!(bounds["x"], 576);
     assert_eq!(bounds["width"], 200);
 
-    // Exercise the other shader axis and vertical texture orientation. Place
-    // the opaque client's bottom edge through the glass, accounting for SSD.
+    // Exercise the other shader axis and vertical texture orientation using an
+    // internal rectangle bottom, still distant from the actual window frame.
     let height = query(&compositor, "windows")["windows"]
         .as_array()
         .unwrap()
@@ -205,16 +226,30 @@ fn glass_blurs_real_window_edges_and_refreshes_after_motion_and_content_commits(
         .unwrap()["height"]
         .as_i64()
         .unwrap();
+    let header = height - i64::from(SOURCE_SIZE.1);
+    let internal_bottom = 240;
+    client.repaint_rectangle(
+        foreground,
+        [0; 4],
+        (0, 0, SOURCE_SIZE.0, internal_bottom),
+        BLACK,
+    );
     action(
         &compositor,
-        format!("move-window {edge_id} 564 {}", 549 - height),
+        format!(
+            "move-window {edge_id} 300 {}",
+            549 - header - i64::from(internal_bottom)
+        ),
     );
     client.sync();
     let horizontal = Pixels::capture(&compositor, scale, "blur-horizontal-edge.png");
     horizontal.assert_blurred_horizontal_edge(549, 708);
     action(
         &compositor,
-        format!("move-window {edge_id} 564 {}", 525 - height),
+        format!(
+            "move-window {edge_id} 300 {}",
+            525 - header - i64::from(internal_bottom)
+        ),
     );
     client.sync();
     let vertical_motion = Pixels::capture(&compositor, scale, "blur-vertical-motion.png");
@@ -224,9 +259,12 @@ fn glass_blurs_real_window_edges_and_refreshes_after_motion_and_content_commits(
     // Palettes share the glass renderer, but have different placement and much
     // taller geometry than a corner. Exercise real content beneath the launcher.
     client.repaint_with_size(base, (800, 600));
-    client.repaint_with_size(foreground, (400, 600));
+    client.repaint_rectangle(foreground, [0; 4], VERTICAL_RECT, BLACK);
     action(&compositor, format!("move-window {base_id} 0 0"));
-    action(&compositor, format!("move-window {edge_id} 650 0"));
+    action(
+        &compositor,
+        format!("move-window {edge_id} {} 0", 650 - CONTENT_EDGE),
+    );
     client.sync();
     let panel_source = Pixels::capture(&compositor, scale, "blur-launcher-source.png");
     assert!(panel_source.transition(650, 400).0 <= 2 * scale);
@@ -252,7 +290,10 @@ fn glass_blurs_real_window_edges_and_refreshes_after_motion_and_content_commits(
     );
     action(
         &compositor,
-        format!("move-window {edge_id} {} 0", panel_x + 2),
+        format!(
+            "move-window {edge_id} {} 0",
+            panel_x as i32 + 2 - CONTENT_EDGE
+        ),
     );
     client.sync();
     let panel_moved = Pixels::capture(&compositor, scale, "blur-launcher-moved.png");

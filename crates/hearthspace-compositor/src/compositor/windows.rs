@@ -29,13 +29,15 @@ mod shell_corners;
 mod shell_panels;
 mod shell_position;
 mod shell_size;
+mod titlebar_controls;
 
 pub(super) use geometry::{ResizeEdges, resize_cursor_icon};
 use ordering::normal_insert_index_for_kinds;
+pub(super) use titlebar_controls::{TitlebarButton, titlebar_button_rect};
 
 use geometry::{
-    close_button_canvas_rect_for, content_canvas_origin_for, resize_anchored_position,
-    resize_target_content_size, title_bar_canvas_rect_for, window_canvas_rect_for,
+    content_canvas_origin_for, resize_anchored_position, resize_target_content_size,
+    title_bar_canvas_rect_for, window_canvas_rect_for,
 };
 
 use super::{
@@ -481,8 +483,31 @@ impl App {
         title_bar_canvas_rect_for(window.position, window.content_bbox_size.w)
     }
 
-    fn close_button_canvas_rect(&self, window_index: usize) -> Rectangle<i32, Logical> {
-        close_button_canvas_rect_for(self.title_bar_canvas_rect(window_index))
+    pub(super) fn titlebar_button_screen_rect(
+        &self,
+        window_index: usize,
+        button: TitlebarButton,
+    ) -> Rectangle<f64, Logical> {
+        let titlebar = self.title_bar_rect(window_index);
+        let scale = self.window_render_scale(window_index);
+        let width = if self.window_uses_output_coordinates(window_index) {
+            titlebar.size.w
+        } else {
+            self.title_bar_canvas_rect(window_index).size.w
+        };
+        let button = titlebar_button_rect(width, button);
+        Rectangle::new(
+            (
+                f64::from(titlebar.loc.x) + f64::from(button.loc.x) * scale,
+                f64::from(titlebar.loc.y) + f64::from(button.loc.y) * scale,
+            )
+                .into(),
+            (
+                f64::from(button.size.w) * scale,
+                f64::from(button.size.h) * scale,
+            )
+                .into(),
+        )
     }
 
     pub(super) fn content_canvas_origin(&self, window_index: usize) -> Point<i32, Logical> {

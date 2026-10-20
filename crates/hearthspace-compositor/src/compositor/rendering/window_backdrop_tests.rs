@@ -65,13 +65,14 @@ fn pixel(pixels: &[u8], width: i32, x: i32, y: i32) -> &[u8] {
 #[test]
 fn settings_glass_only_tracks_damage_below_its_owner_and_inside_its_halo() {
     let mut renderer = renderer();
-    let mut cache = SettingsBlurCache::default();
+    let mut cache = WindowBackdropCache::default();
     let output = Rectangle::from_size((480, 360).into());
     let request = BackdropRequest {
         id: 1,
         front: 1,
         after: 2,
         window: Rectangle::new((120, 120).into(), (160, 120).into()),
+        region: None,
         zoom: 1.0,
     };
     let mut above = SolidColorBuffer::new((8, 8), [0.0, 0.0, 1.0, 1.0]);
@@ -137,13 +138,14 @@ fn settings_glass_clips_to_outputs_without_dark_edges_or_scaled_mask_drift(
     #[case] zoom: f64,
 ) {
     let mut renderer = renderer();
-    let mut cache = SettingsBlurCache::default();
+    let mut cache = WindowBackdropCache::default();
     let output = Rectangle::new((-400, 50).into(), (240, 180).into());
     let request = BackdropRequest {
         id: 8,
         front: 0,
         after: 0,
         window: Rectangle::new((-420, 30).into(), (160, 120).into()),
+        region: None,
         zoom,
     };
     let white = SolidColorBuffer::new((240, 180), [1.0, 1.0, 1.0, 1.0]);
@@ -174,9 +176,9 @@ fn settings_glass_clips_to_outputs_without_dark_edges_or_scaled_mask_drift(
 }
 
 #[test]
-fn overlapping_settings_backdrops_are_resolved_back_to_front() {
+fn overlapping_window_backdrops_are_resolved_back_to_front() {
     let mut renderer = renderer();
-    let mut cache = SettingsBlurCache::default();
+    let mut cache = WindowBackdropCache::default();
     let output = Rectangle::from_size((240, 180).into());
     let top = SolidColorBuffer::new((240, 180), [0.0, 0.0, 0.0, 0.0]);
     let lower = SolidColorBuffer::new((240, 180), [0.0, 0.5, 0.0, 0.5]);
@@ -187,6 +189,7 @@ fn overlapping_settings_backdrops_are_resolved_back_to_front() {
             front: 0,
             after: 1,
             window: output,
+            region: None,
             zoom: 1.0,
         },
         BackdropRequest {
@@ -194,6 +197,7 @@ fn overlapping_settings_backdrops_are_resolved_back_to_front() {
             front: 1,
             after: 2,
             window: output,
+            region: None,
             zoom: 1.0,
         },
     ];
@@ -216,13 +220,14 @@ fn overlapping_settings_backdrops_are_resolved_back_to_front() {
 #[test]
 fn an_opaque_higher_window_skips_blur_and_each_output_keeps_its_own_cache() {
     let mut renderer = renderer();
-    let mut cache = SettingsBlurCache::default();
+    let mut cache = WindowBackdropCache::default();
     let output = Rectangle::from_size((240, 180).into());
     let request = BackdropRequest {
         id: 1,
         front: 1,
         after: 1,
         window: Rectangle::new((10, 10).into(), (100, 100).into()),
+        region: None,
         zoom: 1.0,
     };
     let background = SolidColorBuffer::new((240, 180), [0.2, 0.2, 0.2, 1.0]);
@@ -258,13 +263,14 @@ fn an_opaque_higher_window_skips_blur_and_each_output_keeps_its_own_cache() {
 #[test]
 fn photographic_material_reduces_saturation_without_waiting_for_source_damage() {
     let mut renderer = renderer();
-    let mut cache = SettingsBlurCache::default();
+    let mut cache = WindowBackdropCache::default();
     let output = Rectangle::from_size((120, 100).into());
     let request = BackdropRequest {
         id: 1,
         front: 0,
         after: 0,
         window: output,
+        region: None,
         zoom: 1.0,
     };
     let background = SolidColorBuffer::new((120, 100), [0.3, 0.5, 0.3, 1.0]);
@@ -278,8 +284,107 @@ fn photographic_material_reduces_saturation_without_waiting_for_source_damage() 
     let normal_rgb = pixel(&normal_pixels, 120, 60, 50);
     let photo_rgb = pixel(&photo_pixels, 120, 60, 50);
     assert!(normal_rgb[1] - normal_rgb[0] > photo_rgb[1] - photo_rgb[0]);
+    assert_eq!(
+        cache.renderers[&renderer.context_id()].windows[&(1, output_key(output))].blur_passes,
+        1,
+        "a saturation change must resolve the existing blur without repeating it"
+    );
 
     let mut steady = vec![source(&background, (0, 0), 1)];
     cache.render(&mut renderer, output, 1, 1.15, &[request], &mut steady);
     assert_eq!(photo[0].current_commit(), steady[0].current_commit());
+}
+
+#[rstest::rstest]
+#[case(1)]
+#[case(2)]
+fn server_titlebar_blurs_only_the_header_without_rounding_its_bottom(#[case] scale: i32) {
+    let mut renderer = renderer();
+    let mut cache = WindowBackdropCache::default();
+    let output = Rectangle::from_size((320, 240).into());
+    let request = BackdropRequest {
+        id: 1,
+        front: 0,
+        after: 0,
+        window: Rectangle::new((40, 40).into(), (220, 160).into()),
+        region: Some(Rectangle::new((40, 40).into(), (220, 44).into())),
+        zoom: 1.0,
+    };
+    let mut background = SolidColorBuffer::new((320, 240), [1.0, 1.0, 1.0, 1.0]);
+    let mut elements = vec![source(&background, (0, 0), scale)];
+    cache.render(
+        &mut renderer,
+        output,
+        scale,
+        1.35,
+        &[request],
+        &mut elements,
+    );
+    assert_eq!(elements.len(), 2);
+    let size = output.size.to_physical(scale);
+    let pixels = capture(&mut renderer, size, &elements[..1]);
+    assert_eq!(
+        pixel(&pixels, size.w, 40 * scale, 40 * scale),
+        &[255, 0, 0, 255],
+        "the real top window corner stays rounded"
+    );
+    assert_eq!(
+        pixel(&pixels, size.w, 40 * scale, 83 * scale),
+        &[255, 255, 255, 255],
+        "the header meets the app with square bottom corners"
+    );
+    assert_eq!(
+        pixel(&pixels, size.w, 150 * scale, 100 * scale),
+        &[255, 0, 0, 255],
+        "an ordinary application's body must not acquire a blur surface"
+    );
+    let entry = &cache.renderers[&renderer.context_id()].windows[&(1, output_key(output))];
+    assert_eq!(entry.size, (220 * scale, 44 * scale).into());
+    let commit = elements[0].current_commit();
+    let mut steady = vec![source(&background, (0, 0), scale)];
+    cache.render(&mut renderer, output, scale, 1.35, &[request], &mut steady);
+    assert_eq!(steady[0].current_commit(), commit);
+
+    let mut resized_request = request;
+    resized_request.window.size.h = 120;
+    let mut resized = vec![source(&background, (0, 0), scale)];
+    cache.render(
+        &mut renderer,
+        output,
+        scale,
+        1.35,
+        &[resized_request],
+        &mut resized,
+    );
+    assert_eq!(elements[0].id(), resized[0].id());
+    assert_ne!(
+        commit,
+        resized[0].current_commit(),
+        "the changed mask must be resolved"
+    );
+    assert_eq!(
+        cache.renderers[&renderer.context_id()].windows[&(1, output_key(output))].blur_passes,
+        1,
+        "a height-only resize must reuse the unchanged header blur"
+    );
+    background.set_color([0.2, 0.2, 0.2, 1.0]);
+    let mut changed = vec![source(&background, (0, 0), scale)];
+    cache.render(
+        &mut renderer,
+        output,
+        scale,
+        1.35,
+        &[resized_request],
+        &mut changed,
+    );
+    assert_eq!(
+        cache.renderers[&renderer.context_id()].windows[&(1, output_key(output))].blur_passes,
+        2,
+        "source damage must still recompute the blur"
+    );
+    let changed_pixels = capture(&mut renderer, size, &changed[..1]);
+    assert!(
+        pixel(&changed_pixels, size.w, 150 * scale, 60 * scale)[0] < 80,
+        "the reused allocation must receive changed backdrop pixels"
+    );
 }

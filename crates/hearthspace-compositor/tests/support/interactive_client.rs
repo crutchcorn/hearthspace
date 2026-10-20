@@ -1,4 +1,4 @@
-//! Minimal CSD client for testing real, asynchronously delivered move/resize requests.
+//! SHM client for asynchronous client requests and compositor-owned decorations.
 use std::{fs::File, io::Write, os::fd::AsFd, os::unix::net::UnixStream, path::Path};
 
 use wayland_client::{
@@ -7,7 +7,10 @@ use wayland_client::{
         wl_buffer, wl_compositor, wl_pointer, wl_registry, wl_seat, wl_shm, wl_shm_pool, wl_surface,
     },
 };
-use wayland_protocols::xdg::shell::client::{xdg_surface, xdg_toplevel, xdg_wm_base};
+use wayland_protocols::xdg::{
+    decoration::zv1::client::{zxdg_decoration_manager_v1, zxdg_toplevel_decoration_v1},
+    shell::client::{xdg_surface, xdg_toplevel, xdg_wm_base},
+};
 
 struct Window {
     surface: wl_surface::WlSurface,
@@ -23,12 +26,15 @@ struct State {
     compositor: Option<wl_compositor::WlCompositor>,
     shm: Option<wl_shm::WlShm>,
     wm_base: Option<xdg_wm_base::XdgWmBase>,
+    decoration_manager: Option<zxdg_decoration_manager_v1::ZxdgDecorationManagerV1>,
+    decorations: Vec<zxdg_toplevel_decoration_v1::ZxdgToplevelDecorationV1>,
     seat: Option<wl_seat::WlSeat>,
     pointer: Option<wl_pointer::WlPointer>,
     windows: Vec<Window>,
     buffers: Vec<(File, wl_buffer::WlBuffer)>,
     press_serial: Option<u32>,
     released_buttons: Vec<u32>,
+    closed_windows: Vec<usize>,
 }
 
 pub(crate) struct InteractiveClient {
@@ -39,6 +45,14 @@ pub(crate) struct InteractiveClient {
 
 impl InteractiveClient {
     pub(crate) fn connect(socket: &Path) -> Self {
+        Self::connect_with_chrome(socket, false)
+    }
+
+    pub(crate) fn connect_server_chrome(socket: &Path) -> Self {
+        Self::connect_with_chrome(socket, true)
+    }
+
+    fn connect_with_chrome(socket: &Path, server_chrome: bool) -> Self {
         let connection = Connection::from_socket(UnixStream::connect(socket).unwrap()).unwrap();
         let mut queue = connection.new_event_queue();
         let handle = queue.handle();
@@ -57,6 +71,15 @@ impl InteractiveClient {
                 .unwrap()
                 .get_xdg_surface(&surface, &handle, number);
             let toplevel = xdg_surface.get_toplevel(&handle, number);
+            if server_chrome {
+                let decoration = state
+                    .decoration_manager
+                    .as_ref()
+                    .unwrap()
+                    .get_toplevel_decoration(&toplevel, &handle, ());
+                decoration.set_mode(zxdg_toplevel_decoration_v1::Mode::ServerSide);
+                state.decorations.push(decoration);
+            }
             toplevel.set_app_id("dev.hearthspace.InteractiveTest".into());
             toplevel.set_title(format!("Interactive fixture {number}"));
             state.windows.push(Window {
@@ -107,6 +130,11 @@ impl InteractiveClient {
     pub(crate) fn released_buttons(&mut self) -> &[u32] {
         self.sync();
         &self.state.released_buttons
+    }
+
+    pub(crate) fn closed_windows(&mut self) -> &[usize] {
+        self.sync();
+        &self.state.closed_windows
     }
 
     pub(crate) fn request_move(&mut self, window: usize, serial: u32) {
@@ -195,6 +223,9 @@ impl Dispatch<wl_registry::WlRegistry, ()> for State {
                     state.compositor = Some(registry.bind(name, version.min(4), handle, ()))
                 }
                 "wl_shm" => state.shm = Some(registry.bind(name, 1, handle, ())),
+                "zxdg_decoration_manager_v1" => {
+                    state.decoration_manager = Some(registry.bind(name, 1, handle, ()));
+                }
                 "xdg_wm_base" => {
                     state.wm_base = Some(registry.bind(name, version.min(6), handle, ()))
                 }
@@ -258,6 +289,10 @@ impl Dispatch<xdg_toplevel::XdgToplevel, usize> for State {
         _: &Connection,
         _: &QueueHandle<Self>,
     ) {
+        if let xdg_toplevel::Event::Close = event {
+            state.closed_windows.push(*number);
+            return;
+        }
         if let xdg_toplevel::Event::Configure {
             width,
             height,
@@ -303,3 +338,5 @@ delegate_noop!(State: ignore wl_shm_pool::WlShmPool);
 delegate_noop!(State: ignore wl_buffer::WlBuffer);
 delegate_noop!(State: ignore wl_surface::WlSurface);
 delegate_noop!(State: ignore wl_seat::WlSeat);
+delegate_noop!(State: ignore zxdg_decoration_manager_v1::ZxdgDecorationManagerV1);
+delegate_noop!(State: ignore zxdg_toplevel_decoration_v1::ZxdgToplevelDecorationV1);

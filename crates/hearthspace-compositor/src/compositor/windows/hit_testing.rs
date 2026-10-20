@@ -8,7 +8,7 @@ use crate::{
     geometry::rect_contains,
 };
 
-use super::geometry::resize_edges_at;
+use super::{TitlebarButton, geometry::resize_edges_at};
 use crate::compositor::{App, HitTarget, ManagedWindowKind};
 
 impl App {
@@ -93,16 +93,16 @@ impl App {
 
             if self.has_compositor_chrome(window_index) {
                 let titlebar = self.title_bar_rect(window_index);
-                let canvas_titlebar = self.title_bar_canvas_rect(window_index);
-                let scale = self.window_render_scale(window_index);
-                let chrome_location = Point::from((
-                    f64::from(canvas_titlebar.loc.x)
-                        + (location.x - f64::from(titlebar.loc.x)) / scale,
-                    f64::from(canvas_titlebar.loc.y)
-                        + (location.y - f64::from(titlebar.loc.y)) / scale,
-                ));
-                if rect_contains(self.close_button_canvas_rect(window_index), chrome_location) {
-                    return Some(HitTarget::CloseButton { window_index });
+                for button in [TitlebarButton::Close, TitlebarButton::Maximize] {
+                    if self
+                        .titlebar_button_screen_rect(window_index, button)
+                        .contains(location)
+                    {
+                        return Some(HitTarget::TitlebarButton {
+                            window_index,
+                            button,
+                        });
+                    }
                 }
 
                 if rect_contains(titlebar, location) {

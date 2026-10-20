@@ -31,6 +31,7 @@ mod switcher;
 #[cfg(feature = "udev")]
 mod udev;
 mod viewport;
+mod window_frame;
 mod window_group;
 mod windows;
 #[cfg(feature = "xwayland")]
@@ -225,8 +226,9 @@ struct ResizeState {
 }
 
 enum HitTarget {
-    CloseButton {
+    TitlebarButton {
         window_index: usize,
+        button: windows::TitlebarButton,
     },
     TitleBar {
         window_index: usize,
@@ -269,6 +271,7 @@ struct App {
     pointer: PointerHandle<Self>,
     touch: TouchHandle<Self>,
     ui_touch: Option<input::UiTouch>,
+    titlebar_input: input::TitlebarInput,
     pressed_pointer_buttons: HashSet<u32>,
     keyboard: KeyboardHandle<Self>,
     viewport_offset: CanvasPoint,
@@ -322,7 +325,8 @@ struct App {
     /// Cached texture for the repeated background image tile.
     background_image_tile: Option<rendering::BackgroundImageTile>,
     corner_blur: rendering::CornerBlurCache,
-    settings_blur: rendering::SettingsBlurCache,
+    window_backdrop: rendering::WindowBackdropCache,
+    window_frames: window_frame::WindowFrameCache,
     /// Stable render-element ids for visible background tile instances. Reusing
     /// ids across frames keeps the damage tracker from treating every tile as
     /// new on each redraw.
@@ -641,6 +645,7 @@ pub(in crate::compositor) fn initialize_app(
         pointer,
         touch,
         ui_touch: None,
+        titlebar_input: input::TitlebarInput::default(),
         pressed_pointer_buttons: HashSet::new(),
         keyboard,
         viewport_offset,
@@ -686,7 +691,8 @@ pub(in crate::compositor) fn initialize_app(
         background_image_path: settings.background_image_path,
         background_image_tile: None,
         corner_blur: rendering::CornerBlurCache::default(),
-        settings_blur: rendering::SettingsBlurCache::default(),
+        window_backdrop: rendering::WindowBackdropCache::default(),
+        window_frames: window_frame::WindowFrameCache::default(),
         background_tile_ids: Vec::new(),
         software_cursor_visible: false,
         software_cursor: cursor::standard_software_cursor(),

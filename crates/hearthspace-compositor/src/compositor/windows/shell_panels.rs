@@ -111,7 +111,7 @@ impl App {
             .hit_test(self.pointer_location)
             .map(|target| match target {
                 HitTarget::Client { window_index, .. }
-                | HitTarget::CloseButton { window_index }
+                | HitTarget::TitlebarButton { window_index, .. }
                 | HitTarget::TitleBar { window_index }
                 | HitTarget::ResizeBorder { window_index, .. } => window_index,
             });

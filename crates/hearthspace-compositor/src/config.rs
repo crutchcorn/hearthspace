@@ -24,9 +24,10 @@ pub const HEADLESS_OUTPUT_HEIGHT: i32 = 720;
 pub const KEYBOARD_REPEAT_DELAY_MS: i32 = 600;
 pub const KEYBOARD_REPEAT_RATE: i32 = 25;
 
-pub const TITLE_BAR_HEIGHT: i32 = 30;
-pub const CLOSE_BUTTON_SIZE: i32 = 18;
+pub const TITLE_BAR_HEIGHT: i32 = 44;
+pub const CLOSE_BUTTON_SIZE: i32 = 32;
 pub const CLOSE_BUTTON_MARGIN: i32 = 6;
+pub const TITLE_BAR_BUTTON_GAP: i32 = 4;
 pub const MIN_WINDOW_WIDTH: i32 = 260;
 pub const MIN_WINDOW_HEIGHT: i32 = 120;
 /// The interactive resize handle is a band centered on each window edge: it

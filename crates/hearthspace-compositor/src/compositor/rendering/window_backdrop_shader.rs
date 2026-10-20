@@ -14,17 +14,17 @@ use super::blur_shader::{CornerBlurShader, configure_textures};
 pub(super) const DOWNSAMPLE: f64 = 4.0;
 pub(super) const PADDING: i32 = 30;
 
-pub(super) struct SettingsBlurShader {
+pub(super) struct WindowBackdropShader {
     pub blur: CornerBlurShader,
     resolve: GlesTexProgram,
 }
 
-impl SettingsBlurShader {
+impl WindowBackdropShader {
     pub fn new(renderer: &mut GlesRenderer) -> Result<Self, GlesError> {
         Ok(Self {
             blur: CornerBlurShader::with_kernel(renderer, PADDING as usize, 10.0)?,
             resolve: renderer.compile_custom_texture_shader(
-                include_str!("settings_blur_resolve.frag"),
+                include_str!("window_backdrop_resolve.frag"),
                 &[
                     UniformName::new("source_size", UniformType::_2f),
                     UniformName::new("sample_scale", UniformType::_1f),

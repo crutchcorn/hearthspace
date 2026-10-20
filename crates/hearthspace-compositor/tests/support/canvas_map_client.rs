@@ -10,6 +10,9 @@ use wayland_client::{
 };
 use wayland_protocols::xdg::shell::client::{xdg_surface, xdg_toplevel, xdg_wm_base};
 
+#[path = "canvas_map_client/pixels.rs"]
+mod pixels;
+
 struct Window {
     surface: wl_surface::WlSurface,
     xdg_surface: xdg_surface::XdgSurface,
@@ -17,6 +20,7 @@ struct Window {
     size: (i32, i32),
     inset: (i32, i32),
     color: [u8; 4],
+    rectangle: Option<pixels::ColoredRectangle>,
     alive: bool,
 }
 
@@ -90,6 +94,7 @@ impl MapClient {
             size,
             inset,
             color,
+            rectangle: None,
             alive: true,
         });
         surface.commit();
@@ -122,6 +127,7 @@ impl MapClient {
 
     pub(super) fn repaint_color(&mut self, number: usize, color: [u8; 4]) {
         self.state.windows[number].color = color;
+        self.state.windows[number].rectangle = None;
         self.state.commit_buffer(number, &self.queue.handle());
         self.sync();
     }
@@ -173,8 +179,7 @@ impl State {
         let size = width as usize * height as usize * 4;
         let mut file = tempfile::tempfile().unwrap();
         file.set_len(size as u64).unwrap();
-        file.write_all(&window.color.repeat(width as usize * height as usize))
-            .unwrap();
+        file.write_all(&pixels::paint(window)).unwrap();
         let pool = self
             .shm
             .as_ref()

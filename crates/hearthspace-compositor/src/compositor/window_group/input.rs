@@ -164,7 +164,7 @@ impl App {
     fn group_window_at(&self, location: Point<f64, Logical>) -> Option<u64> {
         let index = match self.hit_test(location)? {
             HitTarget::Client { window_index, .. }
-            | HitTarget::CloseButton { window_index }
+            | HitTarget::TitlebarButton { window_index, .. }
             | HitTarget::TitleBar { window_index }
             | HitTarget::ResizeBorder { window_index, .. } => window_index,
         };

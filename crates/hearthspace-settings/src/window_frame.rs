@@ -146,8 +146,8 @@ impl Widget for WindowBody {
         painter.push_clip(ClipRef::fill(ctx.border_box().to_rounded_rect((
             0.0,
             0.0,
-            RADIUS_PANEL,
-            RADIUS_PANEL,
+            RADIUS_PANEL - 1.0,
+            RADIUS_PANEL - 1.0,
         ))));
         painter
             .fill(

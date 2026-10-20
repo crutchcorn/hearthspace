@@ -101,6 +101,10 @@ impl App {
         if self.software_cursor_visible && self.pointer_location != previous_location {
             self.request_redraw();
         }
+        if self.titlebar_pointer_motion() {
+            self.cursor_surface = None;
+            return;
+        }
 
         if self.favorite_pointer_motion() {
             return;

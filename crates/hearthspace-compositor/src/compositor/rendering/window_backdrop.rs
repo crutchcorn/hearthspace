@@ -1,4 +1,4 @@
-//! Backdrops opt in our own Settings window without changing other applications.
+//! Backdrops for Settings and compositor-owned glass titlebars.
 //! Each source slice starts below its owner in the real front-to-back stack.
 use std::collections::{HashMap, HashSet};
 
@@ -21,7 +21,7 @@ use smithay::{
 
 use super::{
     GlesTexture, HearthspaceRenderElement, TranslatedHearthspaceRenderElement,
-    settings_blur_shader::{DOWNSAMPLE, PADDING, SettingsBlurShader},
+    window_backdrop_shader::{DOWNSAMPLE, PADDING, WindowBackdropShader},
 };
 use crate::compositor::{App, windows::window_app_id};
 
@@ -36,16 +36,19 @@ pub(super) struct BackdropRequest {
     pub front: usize,
     pub after: usize,
     pub window: Rectangle<i32, Logical>,
+    /// Titlebars sample only their own strip, while retaining the whole
+    /// window's corner mask. Settings samples its entire translucent window.
+    pub region: Option<Rectangle<i32, Logical>>,
     pub zoom: f64,
 }
 
 #[derive(Default)]
-pub(in crate::compositor) struct SettingsBlurCache {
+pub(in crate::compositor) struct WindowBackdropCache {
     renderers: HashMap<ContextId<GlesTexture>, RendererCache>,
 }
 
 struct RendererCache {
-    shader: Option<SettingsBlurShader>,
+    shader: Option<WindowBackdropShader>,
     windows: HashMap<CacheKey, Backdrop>,
 }
 
@@ -59,6 +62,8 @@ struct Backdrop {
     damage: OutputDamageTracker,
     mask: Option<(Rectangle<i32, Physical>, Rectangle<i32, Physical>)>,
     saturation: f32,
+    #[cfg(test)]
+    blur_passes: usize,
 }
 
 fn output_key(output: Rectangle<i32, Logical>) -> OutputKey {
@@ -66,7 +71,7 @@ fn output_key(output: Rectangle<i32, Logical>) -> OutputKey {
 }
 
 impl App {
-    pub(super) fn apply_settings_backdrops(
+    pub(super) fn apply_window_backdrops(
         &mut self,
         renderer: &mut GlesRenderer,
         output: Rectangle<i32, Logical>,
@@ -75,29 +80,32 @@ impl App {
         elements: &mut Vec<TranslatedHearthspaceRenderElement>,
     ) {
         if self.session_locked() {
-            self.settings_blur.renderers.clear();
+            self.window_backdrop.renderers.clear();
             return;
         }
         let live: HashSet<_> = self
             .windows
             .iter()
-            .filter(|window| {
-                window.mapped && window_app_id(&window.surface).as_deref() == Some(SETTINGS_APP_ID)
+            .enumerate()
+            .filter(|(index, window)| {
+                window.mapped
+                    && (self.has_compositor_chrome(*index)
+                        || window_app_id(&window.surface).as_deref() == Some(SETTINGS_APP_ID))
             })
-            .map(|window| window.id)
+            .map(|(_, window)| window.id)
             .collect();
         let outputs: HashSet<_> = self
             .output_logical_rects()
             .into_iter()
             .map(output_key)
             .collect();
-        for cache in self.settings_blur.renderers.values_mut() {
+        for cache in self.window_backdrop.renderers.values_mut() {
             cache
                 .windows
                 .retain(|(id, output), _| live.contains(id) && outputs.contains(output));
         }
         if !requests.is_empty() {
-            self.settings_blur.render(
+            self.window_backdrop.render(
                 renderer,
                 output,
                 scale,
@@ -113,7 +121,7 @@ impl App {
     }
 }
 
-impl SettingsBlurCache {
+impl WindowBackdropCache {
     fn render(
         &mut self,
         renderer: &mut GlesRenderer,
@@ -127,9 +135,9 @@ impl SettingsBlurCache {
             .renderers
             .entry(renderer.context_id())
             .or_insert_with(|| RendererCache {
-                shader: SettingsBlurShader::new(renderer)
+                shader: WindowBackdropShader::new(renderer)
                     .map_err(|error| {
-                        tracing::warn!(%error, "Settings backdrop blur is unavailable");
+                        tracing::warn!(%error, "window backdrop blur is unavailable");
                     })
                     .ok(),
                 windows: HashMap::new(),
@@ -143,7 +151,13 @@ impl SettingsBlurCache {
         for request in requests.iter().rev() {
             let window = Rectangle::new(request.window.loc - output.loc, request.window.size)
                 .to_physical(scale);
-            let Some(visible) = window.intersection(output_bounds) else {
+            let region = request.region.map_or(window, |region| {
+                Rectangle::new(region.loc - output.loc, region.size).to_physical(scale)
+            });
+            let Some(visible) = region
+                .intersection(window)
+                .and_then(|region| region.intersection(output_bounds))
+            else {
                 continue;
             };
             let key = (request.id, output_key(output));
@@ -190,7 +204,7 @@ impl SettingsBlurCache {
                 ),
                 Err(error) => {
                     cache.windows.remove(&key);
-                    tracing::warn!(%error, "failed to update Settings backdrop");
+                    tracing::warn!(%error, "failed to update window backdrop");
                 }
             }
         }
@@ -245,6 +259,8 @@ impl Backdrop {
             damage: OutputDamageTracker::new(padded, 1.0, Transform::Normal),
             mask: None,
             saturation: 1.0,
+            #[cfg(test)]
+            blur_passes: 0,
         })
     }
 
@@ -252,7 +268,7 @@ impl Backdrop {
     fn update(
         &mut self,
         renderer: &mut GlesRenderer,
-        shader: &SettingsBlurShader,
+        shader: &WindowBackdropShader,
         output: Rectangle<i32, Physical>,
         window: Rectangle<i32, Physical>,
         visible: Rectangle<i32, Physical>,
@@ -309,19 +325,28 @@ impl Backdrop {
         let bottom = (f64::from(output.size.h - visible.loc.y) / self.sample_scale
             + f64::from(PADDING))
         .min(f64::from(padded_size.1));
-        shader.blur.render_region(
-            renderer,
-            &self.scene,
-            &mut self.low_blur,
-            &mut self.intermediate,
-            low,
-            PADDING,
-            0.0,
-            Some(Rectangle::new(
-                (left, top).into(),
-                ((right - left).max(1.0), (bottom - top).max(1.0)).into(),
-            )),
-        )?;
+        // A vertical SSD resize changes its whole-window corner mask, but not
+        // the sampled header strip. Reuse the Gaussian result for mask/tint
+        // changes; moving the sampled region also changes its boundary clamps.
+        if changed || self.mask.is_none_or(|(_, previous)| previous != visible) {
+            shader.blur.render_region(
+                renderer,
+                &self.scene,
+                &mut self.low_blur,
+                &mut self.intermediate,
+                low,
+                PADDING,
+                0.0,
+                Some(Rectangle::new(
+                    (left, top).into(),
+                    ((right - left).max(1.0), (bottom - top).max(1.0)).into(),
+                )),
+            )?;
+            #[cfg(test)]
+            {
+                self.blur_passes += 1;
+            }
+        }
         self.resolved.render().draw(|target| {
             shader.resolve(
                 renderer,
@@ -331,7 +356,7 @@ impl Backdrop {
                 window,
                 visible,
                 self.sample_scale,
-                20.0 * self.sample_scale / DOWNSAMPLE,
+                19.0 * self.sample_scale / DOWNSAMPLE,
                 saturation,
             )?;
             Ok::<_, smithay::backend::renderer::gles::GlesError>(vec![Rectangle::from_size(
@@ -345,5 +370,5 @@ impl Backdrop {
 }
 
 #[cfg(all(test, feature = "e2e"))]
-#[path = "settings_blur_tests.rs"]
+#[path = "window_backdrop_tests.rs"]
 mod tests;

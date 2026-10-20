@@ -22,6 +22,9 @@ impl App {
             return;
         }
         let first = !self.touch_input.has_contacts();
+        if !first && self.touch_pointer_pressed && self.touch_input.has_device_input(device) {
+            self.cancel_titlebar_pointer();
+        }
         if first {
             // A previous sequence can have lifted in this same input frame.
             // Deliver its queued end/release before starting the next one.
@@ -52,12 +55,16 @@ impl App {
     }
 
     pub(super) fn remove_touch_device(&mut self, device: &str) {
+        if self.touch_pointer_pressed && self.touch_input.has_device_input(device) {
+            self.cancel_titlebar_pointer();
+        }
         self.end_ui_touch(device, None.into(), true, InputTime::now());
         let actions = self.touch_input.remove_device(device);
         self.apply_touch_actions(actions, InputTime::now());
     }
 
     pub(in crate::compositor) fn cancel_input_gestures(&mut self) {
+        self.cancel_titlebar_pointer();
         self.cancel_group_gesture();
         self.shortcuts.cancel_meta_tap();
         self.cancel_ui_touch();

@@ -286,6 +286,15 @@ impl App {
         self.outputs.primary.scale.max(1)
     }
 
+    pub(super) fn titlebar_output_scale(&self, rect: Rectangle<i32, Logical>) -> i32 {
+        self.outputs
+            .active_outputs()
+            .filter(|output| output.logical_rect().overlaps(rect))
+            .map(|output| output.scale.max(1))
+            .max()
+            .unwrap_or_else(|| self.primary_output_scale())
+    }
+
     /// The integer scale of whichever output contains `point` (in logical
     /// screen space), falling back to the primary output's scale. Used to pick
     /// the preferred fractional scale advertised to a surface's clients.

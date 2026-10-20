@@ -82,17 +82,11 @@ pub(super) fn title_bar_canvas_rect_for(
 
 /// Canvas-space rectangle of the close button, positioned at the right edge of
 /// the given title bar and vertically centered within it.
-pub(super) fn close_button_canvas_rect_for(
-    title_bar: Rectangle<i32, Logical>,
-) -> Rectangle<i32, Logical> {
-    Rectangle::new(
-        (
-            title_bar.loc.x + title_bar.size.w - CLOSE_BUTTON_MARGIN - CLOSE_BUTTON_SIZE,
-            title_bar.loc.y + (title_bar.size.h - CLOSE_BUTTON_SIZE) / 2,
-        )
-            .into(),
-        (CLOSE_BUTTON_SIZE, CLOSE_BUTTON_SIZE).into(),
-    )
+#[cfg(test)]
+fn close_button_canvas_rect_for(title_bar: Rectangle<i32, Logical>) -> Rectangle<i32, Logical> {
+    let mut button = super::titlebar_button_rect(title_bar.size.w, super::TitlebarButton::Close);
+    button.loc += title_bar.loc;
+    button
 }
 
 /// Canvas-space origin of a window's client content, offset below the title bar

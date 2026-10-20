@@ -61,6 +61,9 @@ mod shell_corners;
 #[cfg(feature = "test-apps")]
 #[path = "support/shell_panels.rs"]
 mod shell_panels;
+#[cfg(feature = "test-apps")]
+#[path = "support/titlebar_controls.rs"]
+mod titlebar_controls;
 #[path = "support/window_bounds.rs"]
 mod window_bounds;
 #[cfg(feature = "test-apps")]

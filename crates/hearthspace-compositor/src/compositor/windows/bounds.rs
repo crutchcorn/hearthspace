@@ -90,7 +90,7 @@ mod tests {
         );
         assert_eq!(
             advisory_bounds((1280, 752).into(), 1.0, true),
-            (1280, 722).into()
+            (1280, 708).into()
         );
     }
 
@@ -98,7 +98,7 @@ mod tests {
     fn canvas_scale_and_fullscreen_dialogs_have_distinct_bounds() {
         assert_eq!(
             advisory_bounds((1280, 752).into(), 0.8, true),
-            (1600, 910).into()
+            (1600, 896).into()
         );
         assert_eq!(
             advisory_bounds((1280, 752).into(), 1.25, false),
