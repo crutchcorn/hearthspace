@@ -129,9 +129,9 @@ impl App {
             })
             .collect::<Vec<_>>();
 
-        // Background tiles are wallpaper pixels, not client logical pixels, so
-        // they opt out of monitor DPI scaling while still being translated into
-        // this output's framebuffer-local coordinate space.
+        // Background tiles already carry their physical presentation size.
+        // Custom wallpapers preserve pixel sizing; the default grid accounts
+        // for monitor DPI before this output-local translation.
         let tiles = if self.session_locked()
             || (!self.overview_active() && self.fullscreen_on_output(output_rect))
         {

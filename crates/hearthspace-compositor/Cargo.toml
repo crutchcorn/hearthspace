@@ -47,6 +47,7 @@ hearthspace-ai = { path = "../hearthspace-ai" }
 hearthspace-common = { path = "../hearthspace-common" }
 hearthspace-ipc = { path = "../hearthspace-ipc" }
 hearthspace-shell = { path = "../hearthspace-shell" }
+hearthspace-ui-components = { path = "../ui-components" }
 # Xilem (app shell) and Masonry (compositor-side imaging) are pulled from
 # upstream git because the latest published crates are still behind the APIs we
 # use, including `WindowOptionsExtLinux::with_name`.
