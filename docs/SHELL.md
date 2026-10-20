@@ -17,8 +17,8 @@ Each panel opens beside its corner: awareness panels extend downward, while the
 canvas map and Apps List open upward. Opening one closes the previous panel.
 Escape, the close icon, an outside click, or the active corner button dismisses it.
 Panels have rounded transparent corners and shrink to fit their content. Long
-lists scroll within the available height; Apps List keeps its heading and input
-visible. It requests 650 logical pixels, capped to the output with 24-pixel side margins. Maximized apps fit
+lists scroll within the available height; Apps List keeps its heading, input,
+view switch, and footer visible. It requests 650 logical pixels, capped to the output with 24-pixel side margins. Maximized apps fit
 between the top and bottom controls; fullscreen retains its existing shell policy.
 
 Tap Meta (also called Super or the Windows key) to toggle Apps List. The action

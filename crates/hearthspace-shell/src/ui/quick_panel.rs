@@ -157,7 +157,13 @@ pub(super) fn panel(
         Kind::Battery => battery(state).boxed(),
         Kind::Clock => calendar::view().boxed(),
     };
-    popup::panel(output, PopupKind::Controls, content).boxed()
+    popup::panel_named(
+        output,
+        PopupKind::Controls,
+        output.quick_panel.title(),
+        content,
+    )
+    .boxed()
 }
 
 fn heading(title: &'static str, detail: String) -> impl WidgetView<ShellState> + use<> {

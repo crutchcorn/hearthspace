@@ -26,18 +26,27 @@ pub(super) fn group<V: WidgetView<ShellState>>(label: &'static str, inner: V) ->
         label,
         inner,
         reset_focus_on_deactivation: false,
+        accessibility_bounds: true,
     }
 }
 pub(super) struct GroupView<V> {
     label: &'static str,
     inner: V,
     reset_focus_on_deactivation: bool,
+    accessibility_bounds: bool,
 }
 impl<V> GroupView<V> {
     /// Corners are separate native windows; do not leave a focused control in
     /// each previously visited corner. Editors and ordinary popups retain focus.
     pub(super) fn reset_focus_on_deactivation(mut self) -> Self {
         self.reset_focus_on_deactivation = true;
+        self
+    }
+
+    /// A logical collection remains accessible even while its scroll viewport
+    /// has no space during popup configuration. Its children keep their bounds.
+    pub(super) fn without_accessibility_bounds(mut self) -> Self {
+        self.accessibility_bounds = false;
         self
     }
 }
@@ -53,6 +62,7 @@ impl<V: WidgetView<ShellState>> View<ShellState, (), ViewCtx> for GroupView<V> {
                 label: self.label,
                 inner: inner.new_widget.erased().to_pod(),
                 reset_focus_on_deactivation: self.reset_focus_on_deactivation,
+                accessibility_bounds: self.accessibility_bounds,
             }),
             view_state,
         )
@@ -70,6 +80,10 @@ impl<V: WidgetView<ShellState>> View<ShellState, (), ViewCtx> for GroupView<V> {
             element.ctx.request_accessibility_update();
         }
         element.widget.reset_focus_on_deactivation = self.reset_focus_on_deactivation;
+        if self.accessibility_bounds != previous.accessibility_bounds {
+            element.widget.accessibility_bounds = self.accessibility_bounds;
+            element.ctx.request_accessibility_update();
+        }
         ctx.with_id(CONTENT, |ctx| {
             self.inner.rebuild(
                 &previous.inner,
@@ -117,6 +131,7 @@ pub(super) struct PopupGroup {
     label: &'static str,
     inner: WidgetPod<dyn Widget>,
     reset_focus_on_deactivation: bool,
+    accessibility_bounds: bool,
 }
 impl PopupGroup {
     fn child_mut<'a>(this: &'a mut WidgetMut<'_, Self>) -> WidgetMut<'a, dyn Widget> {
@@ -171,6 +186,9 @@ impl Widget for PopupGroup {
     }
     fn accessibility(&mut self, _: &mut AccessCtx<'_>, _: &PropertiesRef<'_>, node: &mut Node) {
         node.set_label(self.label);
+        if !self.accessibility_bounds {
+            node.clear_bounds();
+        }
     }
     fn children_ids(&self) -> ChildrenIds {
         ChildrenIds::from_slice(&[self.inner.id()])

@@ -70,6 +70,7 @@ impl PopupKind {
 pub(super) struct PopupMeasurement {
     header: Option<f64>,
     body: Option<f64>,
+    footer: Option<f64>,
 }
 
 pub(super) fn size(
@@ -85,6 +86,7 @@ pub(super) fn size(
             body + measured
                 .header
                 .map_or(0.0, |header| header + kind.header_gap())
+                + measured.footer.unwrap_or(0.0)
                 + 2.0 * (kind.padding() + BORDER)
         })
         .unwrap_or(fallback_height);
@@ -165,12 +167,21 @@ pub(super) fn panel<V: WidgetView<ShellState>>(
     kind: PopupKind,
     content: V,
 ) -> impl WidgetView<ShellState> + use<V> {
+    panel_named(output, kind, kind.group_label(), content)
+}
+
+pub(super) fn panel_named<V: WidgetView<ShellState>>(
+    output: &ShellOutputInstance,
+    kind: PopupKind,
+    name: &'static str,
+    content: V,
+) -> impl WidgetView<ShellState> + use<V> {
     // A non-filling portal measures natural content height independently of
     // its current window height, so short content can shrink after a long list.
     frame(
         kind,
         components::touch_portal(super::popup_group::group(
-            kind.group_label(),
+            name,
             observed(output, kind, false, content),
         ))
         .constrain_horizontal(true)
@@ -198,6 +209,47 @@ pub(super) fn panel_with_header<H: WidgetView<ShellState>, V: WidgetView<ShellSt
         ))
         .cross_axis_alignment(CrossAxisAlignment::Stretch)
         .gap(kind.header_gap().px()),
+    )
+}
+
+pub(super) fn launcher_panel<
+    H: WidgetView<ShellState>,
+    V: WidgetView<ShellState>,
+    F: WidgetView<ShellState>,
+>(
+    output: &ShellOutputInstance,
+    header: H,
+    content: V,
+    footer: Option<F>,
+) -> impl WidgetView<ShellState> + use<H, V, F> {
+    let kind = PopupKind::Search;
+    let key = output.key().to_owned();
+    let footer = resize_observer(
+        move |state: &mut ShellState, size: Size| {
+            if let Some(output) = state.outputs.iter_mut().find(|output| output.key() == key) {
+                output.popup_measurements[kind.index()].footer = Some(size.height.ceil());
+            }
+        },
+        flex_col((footer,)),
+    );
+    frame(
+        kind,
+        flex_col((
+            observed(output, kind, true, header),
+            components::touch_portal(
+                super::popup_group::group(
+                    kind.group_label(),
+                    observed(output, kind, false, content),
+                )
+                .without_accessibility_bounds(),
+            )
+            .constrain_horizontal(true)
+            .must_fill(false)
+            .flex(1.0),
+            footer,
+        ))
+        .cross_axis_alignment(CrossAxisAlignment::Stretch)
+        .gap(0.0.px()),
     )
 }
 

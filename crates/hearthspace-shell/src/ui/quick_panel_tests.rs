@@ -29,6 +29,14 @@ fn wifi_and_missing_battery_never_present_simulated_readings() {
     let mut state = ShellState::new("/unused".into(), vec!["eDP-1".into()]);
     state.toggle_quick_panel("eDP-1", Kind::Wifi);
     let mut ui = Ui::new(state, view, (320, 300));
+    let group = |ui: &Ui<_>, name: &str| {
+        ids(&ui.harness).into_iter().any(|id| {
+            ui.harness.access_node(id).is_some_and(|node| {
+                node.role() == masonry::accesskit::Role::Group
+                    && node.label().as_deref() == Some(name)
+            })
+        })
+    };
     let text = |ui: &Ui<_>| {
         ids(&ui.harness)
             .into_iter()
@@ -44,11 +52,14 @@ fn wifi_and_missing_battery_never_present_simulated_readings() {
     };
     assert!(text(&ui).contains("network tray"));
     assert!(!text(&ui).contains("Studio network"));
+    assert!(group(&ui, "Wi-Fi"));
     ui.state.toggle_quick_panel("eDP-1", Kind::Battery);
     ui.rebuild(&view);
     ui.dispatch(&view);
     assert!(text(&ui).contains("No battery detected"));
     assert!(!text(&ui).contains("0%"));
+    assert!(group(&ui, "Battery"));
+    assert!(!group(&ui, "Wi-Fi"));
 }
 
 #[test]

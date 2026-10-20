@@ -12,7 +12,7 @@ use xilem::masonry::{
     },
     imaging::Painter,
     kurbo::{Axis, Point, Size, Stroke},
-    layout::{LenReq, Length},
+    layout::{LayoutSize, LenReq, Length},
     widgets::ButtonPress,
 };
 
@@ -155,10 +155,25 @@ impl Widget for ResultButton {
         ctx: &mut MeasureCtx<'_>,
         _: &PropertiesRef<'_>,
         axis: Axis,
-        _: LenReq,
+        request: LenReq,
         cross: Option<Length>,
     ) -> Length {
-        ctx.redirect_measurement(&mut self.text, axis, cross)
+        if self.navigation && axis == Axis::Horizontal {
+            // Result copy clips to the available tile/row width. Its complete
+            // accessible name must not become a minimum popup width.
+            match request {
+                LenReq::MinContent => return Length::ZERO,
+                LenReq::FitContent(space) => return space,
+                LenReq::MaxContent => {}
+            }
+        }
+        ctx.compute_length(
+            &mut self.text,
+            request.into(),
+            LayoutSize::maybe(axis.cross(), cross),
+            axis,
+            cross,
+        )
     }
     fn layout(&mut self, ctx: &mut LayoutCtx<'_>, _: &PropertiesRef<'_>, size: Size) {
         ctx.run_layout(&mut self.text, size);

@@ -1,7 +1,10 @@
 use hearthspace_ui_components as components;
 use xilem::{
     AnyWidgetView, WidgetView,
-    masonry::{layout::AsUnit, properties::LineBreaking},
+    masonry::{
+        layout::AsUnit,
+        properties::{LineBreaking, Padding},
+    },
     style::Style,
     view::{CrossAxisAlignment, FlexExt, flex_col, flex_row, label, sized_box},
 };
@@ -130,7 +133,6 @@ pub(super) fn launcher_view(
     if output.drawing.active() {
         rows.push(super::favorite_view::drawing(state, output));
     } else {
-        rows.push(controls::collection(output, count).boxed());
         if entries.is_empty() {
             rows.push(
                 sized_box(
@@ -198,21 +200,6 @@ pub(super) fn launcher_view(
                 .boxed()
             }));
         }
-        rows.push(
-            sized_box(
-                flex_row((
-                    components::icons::icon(components::icons::Icon::CornerDownLeft, 14.0)
-                        .color(components::TEXT_MUTED),
-                    label("Enter to open")
-                        .text_size(10.0)
-                        .color(components::TEXT_MUTED),
-                ))
-                .gap(6.0.px()),
-            )
-            .height(42.0.px())
-            .border(components::BORDER, 1.0.px())
-            .boxed(),
-        );
     }
     if let Some(error) = output.launch_error.as_ref().or(windows_error.as_ref()) {
         rows.insert(
@@ -227,24 +214,55 @@ pub(super) fn launcher_view(
         );
     }
     let output_key = output.key().to_owned();
-    let panel = super::popup::panel_with_header(
+    let horizontal_padding = if output.launcher_width <= 480.0 {
+        14.0
+    } else {
+        24.0
+    }
+    .px();
+    let collection = (!output.drawing.active()).then(|| {
+        sized_box(controls::collection(output, count)).padding(Padding {
+            top: 12.0.px(),
+            bottom: 4.0.px(),
+            ..Padding::horizontal(horizontal_padding)
+        })
+    });
+    let footer = (!output.drawing.active()).then(|| {
+        sized_box(
+            sized_box(
+                flex_row((
+                    components::icons::icon(components::icons::Icon::CornerDownLeft, 14.0)
+                        .color(components::TEXT_MUTED),
+                    label("Enter to open")
+                        .text_size(10.0)
+                        .color(components::TEXT_MUTED),
+                ))
+                .gap(6.0.px()),
+            )
+            .height(42.0.px())
+            .border(components::BORDER, 1.0.px()),
+        )
+        .padding(Padding {
+            bottom: 12.0.px(),
+            ..Padding::horizontal(horizontal_padding)
+        })
+    });
+    let panel = super::popup::launcher_panel(
         output,
-        super::popup::PopupKind::Search,
-        controls::header(output, focus_target.clone()),
+        flex_col((controls::header(output, focus_target.clone()), collection))
+            .cross_axis_alignment(CrossAxisAlignment::Stretch)
+            .gap(0.0.px()),
         sized_box(
             flex_col(rows)
                 .cross_axis_alignment(CrossAxisAlignment::Stretch)
                 .gap(4.0.px()),
         )
-        .padding(xilem::masonry::properties::Padding::from_vh(
-            12.0.px(),
-            if output.launcher_width <= 480.0 {
-                14.0
-            } else {
-                24.0
-            }
-            .px(),
-        )),
+        .padding(Padding {
+            top: if output.drawing.active() { 12.0 } else { 0.0 }.px(),
+            bottom: if output.drawing.active() { 12.0 } else { 4.0 }.px(),
+            ..Padding::horizontal(horizontal_padding)
+        }),
+        footer,
     );
     focus_on_activation(
         xilem::view::resize_observer(

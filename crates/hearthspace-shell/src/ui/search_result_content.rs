@@ -6,7 +6,10 @@ use hearthspace_ui_components::{
 };
 use xilem::{
     AnyWidgetView, WidgetView,
-    masonry::{layout::AsUnit, properties::LineBreaking},
+    masonry::{
+        layout::{AsUnit, Dim},
+        properties::LineBreaking,
+    },
     style::Style,
     view::{CrossAxisAlignment, FlexExt, flex_col, flex_row, image, label, sized_box},
 };
@@ -75,7 +78,13 @@ pub(super) fn view(
         .corner_radius(10.0.px());
     let title = label(name)
         .text_size(if grid { 12.0 } else { 14.0 })
+        .text_alignment(if grid {
+            xilem::TextAlign::Center
+        } else {
+            xilem::TextAlign::Start
+        })
         .color(components::TEXT)
+        .width(Dim::Stretch)
         .line_break_mode(LineBreaking::Clip);
     if grid {
         flex_col((artwork, title))
@@ -90,9 +99,10 @@ pub(super) fn view(
                 label(description)
                     .text_size(11.0)
                     .color(components::TEXT_MUTED)
+                    .width(Dim::Stretch)
                     .line_break_mode(LineBreaking::Clip),
             ))
-            .cross_axis_alignment(CrossAxisAlignment::Start)
+            .cross_axis_alignment(CrossAxisAlignment::Stretch)
             .gap(5.0.px())
             .flex(1.0),
             icon(Icon::ArrowUpRight, 18.0).color(components::TEXT_MUTED),

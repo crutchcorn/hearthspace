@@ -3,6 +3,9 @@ use crate::{ShellCommand, app_catalog::AppCatalog};
 use masonry::core::WindowEvent;
 use std::fs;
 
+#[path = "launcher_layout_tests.rs"]
+mod layout;
+
 fn installed_apps(count: usize) -> ShellState {
     let directory = tempfile::tempdir().unwrap();
     let applications = directory.path().join("applications");

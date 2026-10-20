@@ -127,6 +127,13 @@ impl Widget for SearchEditor {
         request: LenReq,
         cross: Option<Length>,
     ) -> Length {
+        if axis == Axis::Horizontal {
+            match request {
+                LenReq::MinContent => return Length::ZERO,
+                LenReq::FitContent(space) => return space,
+                LenReq::MaxContent => {}
+            }
+        }
         self.text.measure(ctx, props, axis, request, cross)
     }
     fn layout(&mut self, ctx: &mut LayoutCtx<'_>, props: &PropertiesRef<'_>, size: Size) {
