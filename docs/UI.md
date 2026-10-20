@@ -85,6 +85,18 @@ Prefer shell clients for richer UI:
 
 This keeps the compositor small and predictable while still allowing rich UI to exist inside Hearthspace.
 
+The [four shell corners](SHELL.md) split their glass appearance across this
+boundary. The compositor blurs the wallpaper and application windows behind each
+corner; the shell draws a translucent tint, border, icons, and text over it. Both
+use the shared corner radius of 10 logical pixels. The blur source excludes the cursor
+and shell surfaces, so controls stay sharp.
+
+Each corner caches a small GPU texture covering its bounds and the blur's sampling
+margin. Smithay damage tracking refreshes it when the desktop beneath it changes;
+unchanged regions reuse their textures. The two blur passes stay on the GPU and
+require no CPU pixel readback. If the shader is unavailable, the shell keeps its
+translucent tint and controls, with blur disabled for that renderer.
+
 ## When To Use A UI Framework
 
 Manual compositor rendering is enough for simple, tightly-coupled chrome:
