@@ -27,12 +27,17 @@ use std::{
     },
 };
 
+mod filter_updates;
+use filter_updates::effective_filter;
+
 struct AdapterChangeHandler<'a> {
     adapter: &'a Adapter,
     added_nodes: HashSet<NodeId>,
     removed_nodes: HashSet<NodeId>,
     checked_text_change: HashSet<NodeId>,
     selection_changed: HashSet<NodeId>,
+    updated_nodes: HashSet<NodeId>,
+    refreshed_filter_scopes: HashSet<NodeId>,
 }
 
 impl<'a> AdapterChangeHandler<'a> {
@@ -43,6 +48,8 @@ impl<'a> AdapterChangeHandler<'a> {
             removed_nodes: HashSet::new(),
             checked_text_change: HashSet::new(),
             selection_changed: HashSet::new(),
+            updated_nodes: HashSet::new(),
+            refreshed_filter_scopes: HashSet::new(),
         }
     }
 
@@ -277,15 +284,22 @@ impl<'a> AdapterChangeHandler<'a> {
 
 impl TreeChangeHandler for AdapterChangeHandler<'_> {
     fn node_added(&mut self, node: &Node) {
-        if filter(node) == FilterResult::Include {
+        if effective_filter(node) == FilterResult::Include {
             self.add_node(node);
         }
     }
 
     fn node_updated(&mut self, old_node: &Node, new_node: &Node) {
+        if self.updated_nodes.contains(&new_node.id()) {
+            return;
+        }
+        self.refresh_filter_scopes(old_node, new_node);
+        if !self.updated_nodes.insert(new_node.id()) {
+            return;
+        }
         self.emit_text_change_if_needed(old_node, new_node);
-        let filter_old = filter(old_node);
-        let filter_new = filter(new_node);
+        let filter_old = effective_filter(old_node);
+        let filter_new = effective_filter(new_node);
         if filter_new != filter_old {
             if filter_new == FilterResult::Include {
                 if filter_old == FilterResult::ExcludeSubtree {
@@ -341,7 +355,7 @@ impl TreeChangeHandler for AdapterChangeHandler<'_> {
     }
 
     fn node_removed(&mut self, node: &Node) {
-        if filter(node) == FilterResult::Include {
+        if effective_filter(node) == FilterResult::Include {
             self.remove_node(node);
         }
     }

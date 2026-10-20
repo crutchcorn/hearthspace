@@ -13,17 +13,25 @@ package's standalone lockfile are omitted. The Hearthspace workspace lockfile
 controls dependency resolution, and this directory is excluded from workspace
 membership.
 
-The only source modification is sorted adapter insertion in `src/context.rs`,
-backported from upstream
-[`fb7efa8cdbe6ebb48106f30c1c66163ebc781b49`](https://github.com/AccessKit/accesskit/commit/fb7efa8cdbe6ebb48106f30c1c66163ebc781b49).
-The exact delta and its removal condition are tracked in the
-[patch ledger](../../patches/README.md).
+Local source changes are:
+
+- Sorted adapter insertion in `src/context.rs`, backported from upstream
+  [`fb7efa8cdbe6ebb48106f30c1c66163ebc781b49`](https://github.com/AccessKit/accesskit/commit/fb7efa8cdbe6ebb48106f30c1c66163ebc781b49).
+- Clipped-node registration updates in `src/adapter.rs` and the local
+  `src/adapter/filter_updates.rs` module. When an ancestor's geometry changes,
+  unchanged descendants can enter or leave the exposed accessibility tree.
+  Revisit the affected clipping scopes, including neighboring nodes, so their
+  platform interfaces and child-list events stay consistent. Transparent
+  containers must not bypass an excluded ancestor.
+
+Exact deltas, upstream investigation, regressions, and removal conditions are
+tracked in the [patch ledger](../../patches/README.md).
 
 To refresh, first check for a compatible upstream release containing the fix.
 Prefer removing the override when that release can pass the regression. If the
 override is still required, replace the imported files with the chosen published
 package, preserve the license files from its recorded upstream revision, reapply
-only the documented patch if needed, update this provenance and the ledger, and
-refresh `Cargo.lock`. Run the adapter-order regression and the real shell
+only the documented patches still needed, update this provenance and the ledger,
+and refresh `Cargo.lock`. Run the adapter-order and clipped-node regressions and the real shell
 acceptance with AT-SPI enabled. Do not reformat or refactor upstream files as part
 of the refresh.
