@@ -264,17 +264,27 @@ impl Widget for DrawingPad {
     }
 
     fn paint(&mut self, ctx: &mut PaintCtx<'_>, _: &PropertiesRef<'_>, painter: &mut Painter<'_>) {
-        let bounds = self.size.to_rect().inset(-1.0).to_rounded_rect(8.0);
-        painter.fill(bounds, components::SURFACE_SUBTLE).draw();
+        let bounds = self.size.to_rect().inset(-1.0).to_rounded_rect(14.0);
+        if self.capture_locally {
+            painter.fill(bounds, components::SURFACE_SUBTLE).draw();
+        }
         let border = if ctx.is_focus_target() {
             components::ACCENT
         } else {
             components::BORDER
         };
-        painter.stroke(bounds, &Stroke::new(1.0), border).draw();
+        if self.capture_locally || ctx.is_focus_target() {
+            painter.stroke(bounds, &Stroke::new(1.0), border).draw();
+        }
         // A quiet grid indicates the active drawing region without implying a
         // required starting point, size or exact tracing path.
-        for x in (20..self.size.width.max(0.0) as usize).step_by(24) {
+        for x in (20..if self.capture_locally {
+            self.size.width.max(0.0) as usize
+        } else {
+            0
+        })
+            .step_by(24)
+        {
             for y in (20..self.size.height.max(0.0) as usize).step_by(24) {
                 painter
                     .fill(Circle::new((x as f64, y as f64), 0.8), components::BORDER)

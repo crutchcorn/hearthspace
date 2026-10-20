@@ -25,7 +25,7 @@ mod tests;
 
 pub(super) use icons::task;
 
-const BUTTON_WIDTH: f64 = 34.0;
+const BUTTON_WIDTH: f64 = 44.0;
 const GAP: f64 = 4.0;
 const MAX_VISIBLE: usize = 8;
 const MIN_OVERFLOW_WIDTH: f64 = BUTTON_WIDTH + GAP + 20.0;
@@ -174,6 +174,11 @@ pub(super) fn reconcile(state: &mut ShellState) {
     }
 }
 
+pub(super) fn image(state: &ShellState, name: Option<&str>) -> Option<ImageBrush> {
+    name.and_then(|name| state.dock.images.get(name))
+        .and_then(Clone::clone)
+}
+
 pub(super) fn view(
     state: &ShellState,
     output: &ShellOutputInstance,
@@ -276,7 +281,7 @@ fn dock_button(
 ) -> impl WidgetView<ShellState> {
     let padding = ((width - 2.0) / 2.0).clamp(0.0, 3.0);
     let content_width = (width - 2.0 - 2.0 * padding).max(0.0);
-    super::corner_button::focus(
+    components::button_surface(
         button(
             sized_box(icons::IconView {
                 glyph,
@@ -284,16 +289,13 @@ fn dock_button(
                 width: content_width,
             })
             .fixed_width(content_width.px())
-            .fixed_height(26.0.px()),
+            .fixed_height(36.0.px()),
             action,
         )
         .padding(padding.px())
-        .corner_radius(6.0.px())
-        .background_color(if focused {
-            components::ACCENT_SUBTLE
-        } else {
-            xilem::Color::TRANSPARENT
-        }),
+        .corner_radius(10.0.px()),
+        components::ButtonSurface::Raised,
+        focused,
     )
 }
 

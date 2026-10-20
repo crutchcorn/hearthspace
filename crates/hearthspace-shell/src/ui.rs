@@ -42,6 +42,7 @@ mod output_watcher;
 mod popup;
 mod popup_group;
 mod power_task;
+mod quick_panel;
 mod search_editor;
 mod search_focus;
 mod search_input;

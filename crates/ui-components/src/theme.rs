@@ -18,7 +18,9 @@ pub const TEXT: Color = Color::from_rgb8(0x30, 0x3a, 0x3c);
 // This deeper ink retains 4.5:1 over our 82% warm glass backing.
 pub const TEXT_MUTED: Color = Color::from_rgb8(0x4c, 0x55, 0x53);
 pub const ACCENT: Color = Color::from_rgb8(0xe9, 0x64, 0x2a);
-pub const ACCENT_STRONG: Color = Color::from_rgb8(0xc7, 0x5a, 0x2a);
+// Accent foregrounds need a deeper orange than the reference's decorative fill
+// to retain small-text contrast when translucent chrome covers a black window.
+pub const ACCENT_STRONG: Color = Color::from_rgb8(0x8c, 0x38, 0x18);
 pub const ACCENT_INK: Color = Color::from_rgb8(0xff, 0xfa, 0xf5);
 pub const ACCENT_BORDER: Color = Color::from_rgba8(0xf3, 0xad, 0x8e, 174);
 pub const ACCENT_SOFT: Color = Color::from_rgba8(0xf5, 0xbb, 0xa1, 58);
@@ -61,15 +63,21 @@ mod tests {
     fn small_text_retains_contrast_when_glass_covers_a_black_window() {
         for background in [SURFACE.with_alpha(0.82), CHROME_RAISED] {
             let [red, green, blue, alpha] = background.components;
-            let backdrop = luminance([red, green, blue].map(|value| f64::from(value * alpha)));
-            for foreground in [TEXT, TEXT_MUTED] {
-                let [red, green, blue, _] = foreground.components;
-                let ink = luminance([red, green, blue].map(f64::from));
-                let contrast = (backdrop + 0.05) / (ink + 0.05);
-                assert!(
-                    contrast >= 4.5,
-                    "{foreground:?} over {background:?}: {contrast}"
-                );
+            let backdrop = [red, green, blue].map(|value| f64::from(value * alpha));
+            let selected = std::array::from_fn(|index| {
+                f64::from(ACCENT_SOFT.components[index] * ACCENT_SOFT.components[3])
+                    + backdrop[index] * f64::from(1.0 - ACCENT_SOFT.components[3])
+            });
+            for surface in [backdrop, selected] {
+                for foreground in [TEXT, TEXT_MUTED, ACCENT_STRONG] {
+                    let [red, green, blue, _] = foreground.components;
+                    let ink = luminance([red, green, blue].map(f64::from));
+                    let contrast = (luminance(surface) + 0.05) / (ink + 0.05);
+                    assert!(
+                        contrast >= 4.5,
+                        "{foreground:?} over {background:?}: {contrast}"
+                    );
+                }
             }
         }
     }

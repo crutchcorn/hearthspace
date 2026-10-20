@@ -78,7 +78,7 @@ fn browsing_scrolls_through_all_apps_and_enter_launches_on_the_opened_output() {
         assert_eq!(request, format!("{}\n", command.wire_name()));
         stream.write_all(b"ok\n").unwrap();
     });
-    let mut ui = Ui::new(state, view, (360, 220));
+    let mut ui = Ui::new(state, view, (360, 360));
     let input = ui.harness.focused_widget_id().unwrap();
     assert_eq!(selected(&ui), ["Open: App 00"]);
     for _ in 0..13 {
@@ -93,7 +93,7 @@ fn browsing_scrolls_through_all_apps_and_enter_launches_on_the_opened_output() {
         .unwrap()
         .bounding_box()
         .unwrap();
-    assert!(selected_bounds.y0 >= 90.0 && selected_bounds.y1 <= 208.0);
+    assert!(selected_bounds.y0 >= 130.0 && selected_bounds.y1 <= 360.0);
     assert_eq!(ui.harness.focused_widget_id(), Some(input));
     assert!(ui.state.outputs[0].query.is_empty());
     ui.harness
@@ -106,7 +106,6 @@ fn browsing_scrolls_through_all_apps_and_enter_launches_on_the_opened_output() {
 #[test]
 fn typing_filters_apps_and_clearing_restores_browsing_after_resize() {
     let mut ui = Ui::new(installed_apps(14), view, (768, 560));
-    let input = ui.harness.focused_widget_id().unwrap();
     ui.harness
         .process_text_event(TextEvent::ClipboardPaste("App 13".into()));
     ui.dispatch(&view);
@@ -129,5 +128,159 @@ fn typing_filters_apps_and_clearing_restores_browsing_after_resize() {
     ui.dispatch(&view);
     assert_eq!(launcher::results(&ui.state, &ui.state.outputs[0]).len(), 14);
     assert_eq!(selected(&ui), ["Open: App 00"]);
-    assert_eq!(ui.harness.focused_widget_id(), Some(input));
+    let focused = ui.harness.focused_widget_id().unwrap();
+    assert_eq!(
+        ui.harness.access_node(focused).unwrap().role(),
+        Role::TextInput
+    );
+}
+
+#[test]
+fn grid_and_list_switch_preserves_selection_and_exposes_the_current_layout() {
+    use masonry::accesskit::Toggled;
+    let mut ui = Ui::new(installed_apps(8), view, (650, 560));
+    let bounds = |ui: &Ui<_>, name| {
+        ui.harness
+            .access_node(ui.button(name))
+            .unwrap()
+            .bounding_box()
+            .unwrap()
+    };
+    let first = bounds(&ui, "Open: App 00");
+    let fourth = bounds(&ui, "Open: App 03");
+    let fifth = bounds(&ui, "Open: App 04");
+    assert_eq!(first.y0, fourth.y0);
+    assert!(fourth.x0 > first.x1);
+    assert!(fifth.y0 > first.y1);
+    assert_eq!(
+        ui.harness
+            .access_node(ui.button("Show app grid"))
+            .unwrap()
+            .toggled(),
+        Some(Toggled::True)
+    );
+    ui.harness
+        .process_text_event(TextEvent::key_down(Key::Named(NamedKey::ArrowDown)));
+    ui.dispatch(&view);
+    assert_eq!(selected(&ui), ["Open: App 04"]);
+
+    ui.activate(ui.button("Show app list"));
+    ui.dispatch(&view);
+    assert_eq!(selected(&ui), ["Open: App 04"]);
+    assert_eq!(
+        ui.harness
+            .access_node(ui.button("Show app list"))
+            .unwrap()
+            .toggled(),
+        Some(Toggled::True)
+    );
+    assert_eq!(
+        ui.harness
+            .access_node(ui.button("Show app grid"))
+            .unwrap()
+            .toggled(),
+        Some(Toggled::False)
+    );
+    let first = bounds(&ui, "Open: App 00");
+    let second = bounds(&ui, "Open: App 01");
+    assert_eq!(first.x0, second.x0);
+    assert!(second.y0 >= first.y1);
+    ui.state.change_query("eDP-1", "App 07".into());
+    ui.rebuild(&view);
+    ui.dispatch(&view);
+    assert_eq!(selected(&ui), ["Open: App 07"]);
+    ui.state.change_query("eDP-1", String::new());
+    ui.rebuild(&view);
+    ui.dispatch(&view);
+    assert_eq!(
+        ui.state.outputs[0].launcher_layout,
+        launcher::AppLayout::List
+    );
+}
+
+#[test]
+fn narrow_grids_keep_tiles_readable_and_arrow_navigation_follows_visible_rows() {
+    for (width, columns) in [(272, 2), (360, 3), (650, 4)] {
+        let mut ui = Ui::new(installed_apps(8), view, (width, 560));
+        let bounds = |ui: &Ui<_>, index| {
+            ui.harness
+                .access_node(ui.button(&format!("Open: App {index:02}")))
+                .unwrap()
+                .bounding_box()
+                .unwrap()
+        };
+        let first = bounds(&ui, 0);
+        let last_in_row = bounds(&ui, columns - 1);
+        let next_row = bounds(&ui, columns);
+        assert_eq!(first.y0, last_in_row.y0);
+        assert!(next_row.y0 > first.y1);
+        for index in 0..8 {
+            let tile = bounds(&ui, index);
+            assert!(tile.width() >= 100.0, "{width}: {tile:?}");
+            assert!(tile.x0 >= 0.0 && tile.x1 <= f64::from(width), "{tile:?}");
+        }
+        let input = ui.harness.focused_widget_id().unwrap();
+        ui.harness
+            .process_text_event(TextEvent::key_down(Key::Named(NamedKey::ArrowDown)));
+        ui.dispatch(&view);
+        assert_eq!(selected(&ui), [format!("Open: App {columns:02}")]);
+        assert_eq!(ui.harness.focused_widget_id(), Some(input));
+
+        ui.harness.focus_on(Some(ui.button("Open: App 01")));
+        ui.dispatch(&view);
+        ui.harness
+            .process_text_event(TextEvent::key_down(Key::Named(NamedKey::ArrowDown)));
+        ui.dispatch(&view);
+        assert_eq!(selected(&ui), [format!("Open: App {:02}", columns + 1)]);
+        assert_eq!(ui.harness.focused_widget_id(), Some(input));
+    }
+}
+
+#[test]
+fn rebuilding_launcher_controls_preserves_tab_focus() {
+    let mut ui = Ui::new(installed_apps(8), view, (650, 560));
+    ui.harness
+        .process_text_event(TextEvent::key_down(Key::Named(NamedKey::Tab)));
+    ui.dispatch(&view);
+    let tab_target = ui.harness.focused_widget_id().unwrap();
+    assert_eq!(
+        ui.harness.access_node(tab_target).unwrap().role(),
+        Role::Button
+    );
+    ui.rebuild(&view);
+    ui.dispatch(&view);
+    assert_eq!(ui.harness.focused_widget_id(), Some(tab_target));
+}
+
+#[test]
+fn drawing_tab_returns_focus_to_search_and_escape_dismisses_without_an_editor() {
+    use masonry::accesskit::Toggled;
+    let mut ui = Ui::new(installed_apps(2), view, (650, 560));
+    let draw = ui.button("Draw to launch");
+    ui.harness.focus_on(Some(draw));
+    ui.harness
+        .process_text_event(TextEvent::key_up(Key::Named(NamedKey::Enter)));
+    ui.dispatch(&view);
+    assert!(ui.state.outputs[0].drawing.active());
+    assert_eq!(
+        ui.harness
+            .access_node(ui.button("Draw to launch"))
+            .unwrap()
+            .toggled(),
+        Some(Toggled::True)
+    );
+    ui.activate(ui.button("Back to apps list"));
+    ui.dispatch(&view);
+    let input = ui.harness.focused_widget_id().unwrap();
+    assert_eq!(
+        ui.harness.access_node(input).unwrap().role(),
+        Role::TextInput
+    );
+    ui.harness.mouse_click_on(ui.button("Draw to launch"), None);
+    ui.dispatch(&view);
+    ui.harness
+        .process_text_event(TextEvent::key_down(Key::Named(NamedKey::Escape)));
+    ui.dispatch(&view);
+    assert!(!ui.state.outputs[0].show_search);
+    assert!(!ui.state.outputs[0].drawing.active());
 }

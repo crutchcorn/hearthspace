@@ -3,7 +3,7 @@ use xilem::{
     AnyWidgetView, WidgetView,
     masonry::{layout::AsUnit, parley::fontique::GenericFamily, properties::LineBreaking},
     style::Style,
-    view::{CrossAxisAlignment, FlexSpacer, flex_col, flex_row, label, sized_box},
+    view::{CrossAxisAlignment, FlexExt, FlexSpacer, flex_col, flex_row, label, sized_box},
 };
 
 use super::{
@@ -18,14 +18,29 @@ pub(super) fn button(
     items: &[Notification],
 ) -> impl WidgetView<ShellState> + use<> {
     let key = output.key().to_string();
-    icon_button(
-        Icon::Bell {
-            active: items.iter().any(|item| item.active),
-        },
-        "Notifications",
-        output.show_notifications,
-        move |state| state.toggle_notifications(&key),
-    )
+    let count = items.iter().filter(|item| item.active).count();
+    flex_row((
+        icon_button(
+            Icon::Bell {
+                active: items.iter().any(|item| item.active),
+            },
+            "Notifications",
+            output.show_notifications,
+            move |state| state.toggle_notifications(&key),
+        ),
+        label(if count == 0 {
+            "All clear".into()
+        } else {
+            format!("{count} new")
+        })
+        .text_size(12.0)
+        .color(if count > 0 {
+            components::ACCENT_STRONG
+        } else {
+            components::TEXT_MUTED
+        }),
+    ))
+    .gap(2.0.px())
 }
 
 pub(super) fn panel(
@@ -46,33 +61,55 @@ pub(super) fn panel(
         );
     }
     if items.is_empty() {
-        rows.push(components::muted_text("No notifications yet").boxed());
+        rows.push(
+            sized_box(
+                flex_col((
+                    components::icons::icon(components::icons::Icon::Bell, 28.0)
+                        .color(components::TEXT_MUTED),
+                    label("You're all caught up").text_size(20.0),
+                    components::muted_text("No notifications yet"),
+                ))
+                .cross_axis_alignment(CrossAxisAlignment::Start)
+                .gap(12.0.px()),
+            )
+            .padding(24.0.px())
+            .height(200.0.px())
+            .boxed(),
+        );
     }
     rows.extend(items.into_iter().map(|item| notification_row(item).boxed()));
     popup::panel_with_header(
         output,
         PopupKind::Notifications,
-        flex_row((
-            components::section_title("Notifications"),
-            FlexSpacer::Flex(1.0),
-            close,
-        ))
-        .gap(4.0.px()),
+        sized_box(
+            flex_row((
+                label("Notifications").text_size(24.0),
+                FlexSpacer::Flex(1.0),
+                close,
+            ))
+            .gap(4.0.px()),
+        )
+        .padding(14.0.px())
+        .background_color(components::SURFACE_CONTROL),
         flex_col(rows)
             .cross_axis_alignment(CrossAxisAlignment::Stretch)
-            .gap(8.0.px()),
+            .gap(0.0.px()),
     )
 }
 
 fn notification_row(item: Notification) -> impl WidgetView<ShellState> + use<> {
     let mut rows: Vec<Box<AnyWidgetView<ShellState>>> = vec![
-        components::muted_text(if item.active {
+        label(if item.active {
             item.app_name
         } else {
             format!("History · {}", item.app_name)
         })
+        .text_size(11.0)
+        .color(components::TEXT_MUTED)
         .boxed(),
-        components::field_label(item.summary)
+        label(item.summary)
+            .text_size(15.0)
+            .color(components::TEXT)
             .line_break_mode(LineBreaking::WordWrap)
             .boxed(),
     ];
@@ -80,7 +117,7 @@ fn notification_row(item: Notification) -> impl WidgetView<ShellState> + use<> {
         rows.push(
             label(item.body)
                 .font(GenericFamily::SystemUi)
-                .text_size(13.0)
+                .text_size(12.0)
                 .color(components::TEXT_MUTED)
                 .line_break_mode(LineBreaking::WordWrap)
                 .boxed(),
@@ -103,15 +140,36 @@ fn notification_row(item: Notification) -> impl WidgetView<ShellState> + use<> {
             .boxed(),
         );
     }
+    let active = item.active;
     sized_box(
-        flex_col(rows)
-            .cross_axis_alignment(CrossAxisAlignment::Stretch)
-            .gap(4.0.px()),
+        flex_row((
+            sized_box(
+                components::icons::icon(components::icons::Icon::Bell, 16.0).color(if active {
+                    components::ACCENT_STRONG
+                } else {
+                    components::TEXT_MUTED
+                }),
+            )
+            .width(29.0.px())
+            .height(29.0.px())
+            .corner_radius(10.0.px())
+            .background_color(if active {
+                components::ACCENT_SUBTLE
+            } else {
+                components::SURFACE_CONTROL
+            }),
+            flex_col(rows)
+                .cross_axis_alignment(CrossAxisAlignment::Stretch)
+                .gap(7.0.px())
+                .flex(1.0),
+        ))
+        .cross_axis_alignment(CrossAxisAlignment::Start)
+        .gap(14.0.px()),
     )
     .background_color(if item.urgency == 2 && item.active {
         components::DANGER_SUBTLE
     } else {
-        components::SURFACE_SUBTLE
+        xilem::Color::TRANSPARENT
     })
-    .padding(8.0.px())
+    .padding(20.0.px())
 }

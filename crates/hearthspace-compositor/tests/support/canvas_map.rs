@@ -69,7 +69,7 @@ fn canvas_map_stays_right_anchored_hit_testable_and_focused_while_zooming() {
     );
     let bar = client.add(
         shell_bar_app_id_for_output(&output),
-        (1280, 48),
+        (1280, 54),
         (0, 0),
         [0, 0, 0xff, 0xff],
     );
@@ -77,7 +77,7 @@ fn canvas_map_stays_right_anchored_hit_testable_and_focused_while_zooming() {
     assert_eq!(client.focus(), Some(map));
     assert_eq!(
         map_bounds(&compositor),
-        json!({"output": null, "x": 928, "y": 60, "width": 340, "height": 336})
+        json!({"output": null, "x": 928, "y": 66, "width": 340, "height": 336})
     );
     assert_eq!(
         query(&compositor, "windows")["windows"]
@@ -90,10 +90,10 @@ fn canvas_map_stays_right_anchored_hit_testable_and_focused_while_zooming() {
     assert_pixel(&compositor, 940, 80, true);
     assert_pixel(&compositor, 915, 80, false);
     click(&compositor, 950.0, 100.0);
-    assert_eq!(client.presses().last(), Some(&(map, (30.0, 46.0))));
+    assert_eq!(client.presses().last(), Some(&(map, (30.0, 40.0))));
 
     client.resize(map, (420, 260));
-    let resized = json!({"output": null, "x": 848, "y": 60, "width": 420, "height": 260});
+    let resized = json!({"output": null, "x": 848, "y": 66, "width": 420, "height": 260});
     assert_eq!(map_bounds(&compositor), resized);
     action(&compositor, "pan-right");
     action(&compositor, "zoom-out");
@@ -103,7 +103,7 @@ fn canvas_map_stays_right_anchored_hit_testable_and_focused_while_zooming() {
     assert!(client.closed().is_empty());
     assert_pixel(&compositor, 860, 80, true);
     click(&compositor, 860.0, 100.0);
-    assert_eq!(client.presses().last(), Some(&(map, (20.0, 46.0))));
+    assert_eq!(client.presses().last(), Some(&(map, (20.0, 40.0))));
 
     // The base-ID map and output-qualified bar form the same focus group.
     click(&compositor, 10.0, 20.0);
@@ -236,17 +236,17 @@ fn canvas_map_clamps_to_scaled_small_output_and_resizes_in_logical_pixels() {
     );
     assert_eq!(
         map_bounds(&compositor),
-        json!({"output": output, "x": 0, "y": 48, "width": 320, "height": 192})
+        json!({"output": output, "x": 0, "y": 54, "width": 320, "height": 186})
     );
     click(&compositor, 100.0, 100.0);
-    assert_eq!(client.presses().last(), Some(&(map, (100.0, 52.0))));
+    assert_eq!(client.presses().last(), Some(&(map, (100.0, 46.0))));
     client.resize(map, (160, 100));
     assert_eq!(
         map_bounds(&compositor),
-        json!({"output": output, "x": 148, "y": 60, "width": 160, "height": 100})
+        json!({"output": output, "x": 148, "y": 66, "width": 160, "height": 100})
     );
     click(&compositor, 180.0, 90.0);
-    assert_eq!(client.presses().last(), Some(&(map, (32.0, 30.0))));
+    assert_eq!(client.presses().last(), Some(&(map, (32.0, 24.0))));
     assert!(client.closed().is_empty());
     action(&compositor, "quit");
     wait_for_exit(&mut compositor.child);

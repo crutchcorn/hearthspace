@@ -39,6 +39,8 @@ pub(super) struct ShellOutputInstance {
     pub(super) tray: super::tray_state::TrayOutput,
     pub(super) output_name: Option<String>,
     pub(super) query: String,
+    pub(super) launcher_layout: super::launcher::AppLayout,
+    pub(super) launcher_width: f64,
     pub(super) drawing: super::favorite_state::Drawing,
     pub(super) selected_result: Option<super::search_selection::EntryId>,
     pub(super) selected_result_index: usize,
@@ -46,6 +48,7 @@ pub(super) struct ShellOutputInstance {
     pub(super) search_request_token: Option<u64>,
     pub(super) show_power: bool,
     pub(super) show_controls: bool,
+    pub(super) quick_panel: super::quick_panel::Kind,
     pub(super) osd: Option<super::control_osd::Osd>,
     pub(super) confirm_logout: bool,
     pub(super) show_notifications: bool,
@@ -53,7 +56,6 @@ pub(super) struct ShellOutputInstance {
     pub(super) launch_error: Option<String>,
     pub(super) corner_window_ids: [WindowId; 4],
     pub(super) corner_widths: [f64; 4],
-    pub(super) system_content_width: Option<f64>,
     pub(super) dock_page: usize,
     pub(super) launcher_window_id: WindowId,
     pub(super) map_window_id: WindowId,
@@ -196,6 +198,30 @@ impl ShellState {
 
     pub(super) fn toggle_controls(&mut self, output_key: &str) {
         self.toggle_panel(output_key, Panel::Controls);
+        if let Some(output) = self
+            .outputs
+            .iter_mut()
+            .find(|output| output.key() == output_key)
+        {
+            output.quick_panel = super::quick_panel::Kind::Controls;
+            super::popup::PopupKind::Controls.reset(output);
+        }
+    }
+
+    pub(super) fn toggle_quick_panel(&mut self, output_key: &str, kind: super::quick_panel::Kind) {
+        let open = self.outputs.iter().any(|output| {
+            output.key() == output_key && (!output.show_controls || output.quick_panel != kind)
+        });
+        self.dismiss_panels();
+        if let Some(output) = self
+            .outputs
+            .iter_mut()
+            .find(|output| output.key() == output_key)
+        {
+            output.quick_panel = kind;
+            super::popup::PopupKind::Controls.reset(output);
+            output.show_controls = open;
+        }
     }
 
     pub(super) fn dismiss_controls(&mut self, output_key: &str) {

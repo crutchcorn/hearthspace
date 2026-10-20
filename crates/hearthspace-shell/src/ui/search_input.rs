@@ -1,13 +1,13 @@
 use super::{
-    favorite_actions,
-    favorite_state::Mode,
-    icons::{Icon, icon_button},
     search_editor::{SearchEditor, SelectionStep},
     search_focus::FocusTarget,
     search_selection,
     state::{ShellOutputInstance, ShellState},
 };
-use hearthspace_ui_components as components;
+use hearthspace_ui_components::{
+    self as components,
+    icons::{Icon, icon},
+};
 use xilem::{
     Pod, ViewCtx, WidgetView,
     core::{MessageCtx, MessageResult, Mut, View, ViewMarker},
@@ -17,44 +17,41 @@ use xilem::{
         widgets::TextAction,
     },
     style::Style,
-    view::{FlexExt, flex_row, sized_box},
+    view::{FlexExt, flex_row},
 };
 
 pub(super) fn input(
     output: &ShellOutputInstance,
     target: FocusTarget,
 ) -> impl WidgetView<ShellState> + use<> {
-    let draw_key = output.key().to_owned();
-    let settings_key = draw_key.clone();
-    let active = output.drawing.active();
     let editor = SearchInput {
         key: output.key().to_string(),
         text: output.query.clone(),
-        target,
+        target: target.clone(),
     }
-    .height(34.0.px())
+    .height(44.0.px())
     .color(components::TEXT)
-    .padding(Padding::from_vh(6.0.px(), 10.0.px()));
-    sized_box(
-        flex_row((
-            editor.flex(1.0),
-            icon_button(Icon::Draw, "Draw to launch", active, move |state| {
-                if active {
-                    favorite_actions::cancel(state, &draw_key);
-                } else {
-                    favorite_actions::start(state, &draw_key, Mode::Launch);
-                }
-            }),
-            icon_button(Icon::Settings, "Settings", false, move |state| {
-                favorite_actions::manage(state, &settings_key)
-            }),
-        ))
-        .gap(2.0.px()),
-    )
-    .background_color(components::SURFACE)
-    .border(components::BORDER, 1.0.px())
-    .corner_radius(5.0.px())
-    .padding(2.0.px())
+    .padding(Padding::from_vh(10.0.px(), 0.0.px()));
+    let key = output.key().to_owned();
+    let clear = (!output.query.is_empty()).then(|| {
+        super::search_result::focusing_control(
+            "Clear search",
+            None,
+            target,
+            icon(Icon::X, 17.0).color(components::TEXT_MUTED),
+            move |state| state.change_query(&key, String::new()),
+        )
+        .height(44.0.px())
+        .padding(12.0.px())
+        .corner_radius(10.0.px())
+    });
+    flex_row((
+        icon(Icon::Search, 22.0).color(components::ACCENT),
+        editor.flex(1.0),
+        clear,
+    ))
+    .gap(12.0.px())
+    .height(54.0.px())
 }
 
 struct SearchInput {
@@ -109,7 +106,12 @@ impl View<ShellState, (), ViewCtx> for SearchInput {
         state: &mut ShellState,
     ) -> MessageResult<()> {
         if let Some(step) = message.take_message::<SelectionStep>() {
-            search_selection::step(state, &self.key, step.0);
+            let columns = state
+                .outputs
+                .iter()
+                .find(|output| output.key() == self.key)
+                .map_or(1, |output| super::launcher::grid_columns(output) as i32);
+            search_selection::step(state, &self.key, step.0 * columns);
         } else if let Some(action) = message.take_message::<TextAction>() {
             match *action {
                 TextAction::Changed(text) => state.change_query(&self.key, text),

@@ -60,7 +60,7 @@ pub(super) fn app_logic(
             windows.push(super::control_osd::window(output, osd));
         }
         if output.show_controls {
-            windows.push(super::control_center::window(output, &state.controls));
+            windows.push(super::quick_panel::window(state, output));
             continue;
         }
         if output.tray.open {
@@ -109,7 +109,7 @@ fn notification_window(
 ) -> WindowView<ShellState> {
     let app_id = output.notifications_app_id();
     let key = output.key().to_string();
-    let size = popup::size(output, PopupKind::Notifications, 360.0, 100.0);
+    let size = popup::size(output, PopupKind::Notifications, 390.0, 280.0);
     popup::window(
         output.notifications_window_id,
         "Hearthspace Notifications",

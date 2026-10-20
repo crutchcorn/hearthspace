@@ -61,6 +61,14 @@ fn named_sliders_accept_keyboard_and_accessibility_changes_and_mute_is_separate(
         Some(100.0)
     );
     ui.harness.focus_on(Some(volume));
+    assert_eq!(
+        ui.harness
+            .get_widget_with_id(volume)
+            .get_prop::<masonry::properties::BorderColor>()
+            .color,
+        components::TEXT,
+        "the slider focus ring must contrast with translucent panels"
+    );
     ui.harness
         .process_text_event(TextEvent::key_down(Key::Named(NamedKey::ArrowRight)));
     ui.dispatch(&view);
@@ -150,7 +158,10 @@ fn available_controls_fit_their_measured_window_without_scrollbars() {
         ));
         ui.dispatch(&view);
         let normal = resize_to_measured(&mut ui, scale, &view);
-        assert!(normal < 240.0, "natural content must still shrink");
+        assert!(
+            normal < 350.0,
+            "status shortcuts and controls must fit below the height cap: {normal}"
+        );
         assert_natural_content_visible(&ui);
 
         ui.state.controls.snapshot.audio.as_mut().unwrap().output =

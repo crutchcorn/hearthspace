@@ -2,7 +2,7 @@
 //! Numeric edge-spread checks avoid golden images and font/theme dependencies.
 use std::collections::BTreeSet;
 
-use hearthspace_common::{ShellCorner, shell_corner_app_id};
+use hearthspace_common::{LAUNCHER_APP_ID, ShellCorner, shell_corner_app_id};
 use rstest::rstest;
 use serde_json::Value;
 
@@ -132,7 +132,7 @@ fn glass_blurs_real_window_edges_and_refreshes_after_motion_and_content_commits(
     let mut compositor = HeadlessCompositor::spawn_with_options(&size, None, None, scale as i32);
     drop(compositor.wait_for_socket());
     let mut client = connect(&compositor);
-    client.add("dev.hearthspace.BlurBase".into(), (380, 220), (0, 0), WHITE);
+    let base = client.add("dev.hearthspace.BlurBase".into(), (380, 220), (0, 0), WHITE);
     let foreground = client.add("dev.hearthspace.BlurEdge".into(), (240, 220), (0, 0), BLACK);
     let base_id = app_id(&compositor, "dev.hearthspace.BlurBase");
     let edge_id = app_id(&compositor, "dev.hearthspace.BlurEdge");
@@ -142,7 +142,7 @@ fn glass_blurs_real_window_edges_and_refreshes_after_motion_and_content_commits(
     action(&compositor, "pointer-motion-abs 10 100");
     client.sync();
     let before = Pixels::capture(&compositor, scale, "blur-source.png");
-    let y = 564;
+    let y = 549;
     before.assert_solid(680, y, 255, "real white window content");
     before.assert_solid(736, y, 0, "real black window content");
     assert!(
@@ -154,23 +154,23 @@ fn glass_blurs_real_window_edges_and_refreshes_after_motion_and_content_commits(
     // xdg geometry inset catches accidentally blurring the entire surface buffer.
     let corner = client.add(
         shell_corner_app_id(ShellCorner::Apps, None),
-        (160, 48),
+        (160, 54),
         (5, 7),
         [0; 4],
     );
     let bounds = query(&compositor, "status")["shell_corners"][0].clone();
-    assert_eq!(bounds["x"], 628);
-    assert_eq!(bounds["y"], 540);
+    assert_eq!(bounds["x"], 616);
+    assert_eq!(bounds["y"], 522);
     let blurred = Pixels::capture(&compositor, scale, "blur-initial.png");
     blurred.assert_blurred_edge(708, y);
-    assert_eq!(blurred.logical_rgb(708, 538), before.logical_rgb(708, 538));
+    assert_eq!(blurred.logical_rgb(708, 520), before.logical_rgb(708, 520));
 
     // Put contrast beside the rounded vertices. A square blur mask would now
     // alter these pixels, while both original source vertices remain white.
-    action(&compositor, format!("move-window {edge_id} 630 420"));
+    action(&compositor, format!("move-window {edge_id} 618 420"));
     client.sync();
     let rounded = Pixels::capture(&compositor, scale, "blur-rounded-edge.png");
-    rounded.assert_blurred_edge(630, y);
+    rounded.assert_blurred_edge(618, y);
     rounded.assert_rounded_outside_unchanged(&before, &bounds);
 
     action(&compositor, format!("move-window {edge_id} 732 420"));
@@ -188,11 +188,11 @@ fn glass_blurs_real_window_edges_and_refreshes_after_motion_and_content_commits(
 
     // Resizing a right-anchored corner must move its mask and cache allocation.
     client.repaint_color(foreground, BLACK);
-    client.resize(corner, (200, 48));
+    client.resize(corner, (200, 54));
     let resized = Pixels::capture(&compositor, scale, "blur-resized-corner.png");
     resized.assert_blurred_edge(732, y);
     let bounds = query(&compositor, "status")["shell_corners"][0].clone();
-    assert_eq!(bounds["x"], 588);
+    assert_eq!(bounds["x"], 576);
     assert_eq!(bounds["width"], 200);
 
     // Exercise the other shader axis and vertical texture orientation. Place
@@ -207,19 +207,67 @@ fn glass_blurs_real_window_edges_and_refreshes_after_motion_and_content_commits(
         .unwrap();
     action(
         &compositor,
-        format!("move-window {edge_id} 564 {}", 564 - height),
+        format!("move-window {edge_id} 564 {}", 549 - height),
     );
     client.sync();
     let horizontal = Pixels::capture(&compositor, scale, "blur-horizontal-edge.png");
-    horizontal.assert_blurred_horizontal_edge(564, 708);
+    horizontal.assert_blurred_horizontal_edge(549, 708);
     action(
         &compositor,
-        format!("move-window {edge_id} 564 {}", 540 - height),
+        format!("move-window {edge_id} 564 {}", 525 - height),
     );
     client.sync();
     let vertical_motion = Pixels::capture(&compositor, scale, "blur-vertical-motion.png");
-    vertical_motion.assert_blurred_horizontal_edge(540, 708);
-    vertical_motion.assert_solid(708, 564, 255, "vertical motion exposes fresh white content");
+    vertical_motion.assert_blurred_horizontal_edge(525, 708);
+    vertical_motion.assert_solid(708, 549, 255, "vertical motion exposes fresh white content");
+
+    // Palettes share the glass renderer, but have different placement and much
+    // taller geometry than a corner. Exercise real content beneath the launcher.
+    client.repaint_with_size(base, (800, 600));
+    client.repaint_with_size(foreground, (400, 600));
+    action(&compositor, format!("move-window {base_id} 0 0"));
+    action(&compositor, format!("move-window {edge_id} 650 0"));
+    client.sync();
+    let panel_source = Pixels::capture(&compositor, scale, "blur-launcher-source.png");
+    assert!(panel_source.transition(650, 400).0 <= 2 * scale);
+    let panel = client.add(LAUNCHER_APP_ID.into(), (300, 200), (6, 9), [0; 4]);
+    let panel_bounds = query(&compositor, "status")["shell_panels"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|panel| panel["kind"] == "search")
+        .unwrap()
+        .clone();
+    let panel_y = panel_bounds["y"].as_u64().unwrap() as usize;
+    let panel_x = panel_bounds["x"].as_u64().unwrap() as usize;
+    assert_eq!(panel_bounds["width"], 300);
+    assert_eq!(panel_bounds["height"], 200);
+    assert!(panel_y + 200 < 522, "launcher must sit above the app dock");
+    let panel_pixels = Pixels::capture(&compositor, scale, "blur-launcher-edge.png");
+    panel_pixels.assert_blurred_edge(650, panel_y + 100);
+    panel_pixels.assert_rounded_outside_unchanged(&panel_source, &panel_bounds);
+    assert_eq!(
+        panel_pixels.logical_rgb(650, panel_y - 2),
+        panel_source.logical_rgb(650, panel_y - 2)
+    );
+    action(
+        &compositor,
+        format!("move-window {edge_id} {} 0", panel_x + 2),
+    );
+    client.sync();
+    let panel_moved = Pixels::capture(&compositor, scale, "blur-launcher-moved.png");
+    panel_moved.assert_blurred_edge(panel_x + 2, panel_y + 100);
+    panel_moved.assert_rounded_outside_unchanged(&panel_source, &panel_bounds);
+    client.repaint_color(foreground, WHITE);
+    let panel_repainted = Pixels::capture(&compositor, scale, "blur-launcher-repainted.png");
+    panel_repainted.assert_solid(
+        650,
+        panel_y + 100,
+        255,
+        "launcher blur must update with its backdrop",
+    );
+    client.destroy(panel);
+    client.repaint_color(foreground, BLACK);
 
     // The cached white half must never leak over a newly fullscreen black app.
     action(&compositor, format!("fullscreen-window {edge_id} true"));

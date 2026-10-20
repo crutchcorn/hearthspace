@@ -10,7 +10,9 @@ use xilem::{
 
 use super::state::{ShellOutputInstance, ShellState};
 
-const PADDING: f64 = 12.0;
+mod rounded;
+
+const PADDING: f64 = 20.0;
 const BORDER: f64 = 1.0;
 const HEADER_GAP: f64 = 8.0;
 
@@ -25,6 +27,23 @@ pub(super) enum PopupKind {
 }
 
 impl PopupKind {
+    pub(super) fn reset(self, output: &mut ShellOutputInstance) {
+        output.popup_measurements[self.index()] = PopupMeasurement::default();
+    }
+    fn padding(self) -> f64 {
+        if matches!(self, Self::Search | Self::Notifications) {
+            0.0
+        } else {
+            PADDING
+        }
+    }
+    fn header_gap(self) -> f64 {
+        if matches!(self, Self::Search | Self::Notifications) {
+            0.0
+        } else {
+            HEADER_GAP
+        }
+    }
     fn group_label(self) -> &'static str {
         match self {
             Self::Search => "Apps and windows",
@@ -63,8 +82,10 @@ pub(super) fn size(
     let height = measured
         .body
         .map(|body| {
-            body + measured.header.map_or(0.0, |header| header + HEADER_GAP)
-                + 2.0 * (PADDING + BORDER)
+            body + measured
+                .header
+                .map_or(0.0, |header| header + kind.header_gap())
+                + 2.0 * (kind.padding() + BORDER)
         })
         .unwrap_or(fallback_height);
     LogicalSize::new(width, height.ceil().clamp(1.0, kind.height_cap()))
@@ -125,12 +146,18 @@ fn observed<V: WidgetView<ShellState>>(
     )
 }
 
-fn frame<V: WidgetView<ShellState>>(content: V) -> impl WidgetView<ShellState> + use<V> {
-    sized_box(content)
-        .padding(PADDING.px())
-        .background_color(components::SURFACE)
-        .border(components::BORDER, BORDER.px())
-        .corner_radius(10.0.px())
+fn frame<V: WidgetView<ShellState>>(
+    kind: PopupKind,
+    content: V,
+) -> impl WidgetView<ShellState> + use<V> {
+    rounded::clip(
+        sized_box(content)
+            .padding(kind.padding().px())
+            // A steady tint keeps the text legible over arbitrary client content.
+            .background_color(components::CHROME_RAISED)
+            .border(components::CHROME_BORDER, BORDER.px())
+            .corner_radius(20.0.px()),
+    )
 }
 
 pub(super) fn panel<V: WidgetView<ShellState>>(
@@ -141,6 +168,7 @@ pub(super) fn panel<V: WidgetView<ShellState>>(
     // A non-filling portal measures natural content height independently of
     // its current window height, so short content can shrink after a long list.
     frame(
+        kind,
         components::touch_portal(super::popup_group::group(
             kind.group_label(),
             observed(output, kind, false, content),
@@ -157,6 +185,7 @@ pub(super) fn panel_with_header<H: WidgetView<ShellState>, V: WidgetView<ShellSt
     content: V,
 ) -> impl WidgetView<ShellState> + use<H, V> {
     frame(
+        kind,
         flex_col((
             observed(output, kind, true, header),
             components::touch_portal(super::popup_group::group(
@@ -168,7 +197,7 @@ pub(super) fn panel_with_header<H: WidgetView<ShellState>, V: WidgetView<ShellSt
             .flex(1.0),
         ))
         .cross_axis_alignment(CrossAxisAlignment::Stretch)
-        .gap(HEADER_GAP.px()),
+        .gap(kind.header_gap().px()),
     )
 }
 

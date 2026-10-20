@@ -41,7 +41,7 @@ fn settle<V: WidgetView<ShellState>>(
         let requested = system_width(&ui.state, &ui.state.outputs[0]);
         ui.harness
             .process_window_event(masonry::core::WindowEvent::Resize(
-                ((requested as u32).min(available), 48).into(),
+                ((requested as u32).min(available), 54).into(),
             ));
         ui.dispatch(build);
         if system_width(&ui.state, &ui.state.outputs[0]) == requested {
@@ -57,17 +57,20 @@ where
 {
     let text = format!("{percentage}%");
     ids(&ui.harness).into_iter().any(|id| {
-        ui.harness
-            .access_node(id)
-            .is_some_and(|node| node.label().or_else(|| node.value()).as_deref() == Some(&text))
+        ui.harness.access_node(id).is_some_and(|node| {
+            node.label()
+                .or_else(|| node.value())
+                .as_deref()
+                .is_some_and(|value| value.contains(&text))
+        })
     })
 }
 
 #[test]
-fn battery_arriving_after_clock_sizing_shows_percentages_across_digit_counts() {
-    let mut ui = Ui::new(state(), system, (320, 48));
+fn battery_arriving_after_clock_sizing_exposes_percentages_across_digit_counts() {
+    let mut ui = Ui::new(state(), system, (320, 54));
     settle(&mut ui, &system, 600);
-    assert!(ui.state.outputs[0].corner_widths[1] < 220.0);
+    assert!(ui.state.outputs[0].corner_widths[1] == 290.0);
     ui.state.battery = Some(battery(57));
     ui.rebuild(&system);
     ui.dispatch(&system);
@@ -89,10 +92,10 @@ fn battery_arriving_after_clock_sizing_shows_percentages_across_digit_counts() {
 }
 
 #[test]
-fn battery_available_before_first_frame_retains_visible_percentage() {
+fn battery_available_before_first_frame_retains_accessible_percentage() {
     let mut state = state();
     state.battery = Some(battery(57));
-    let mut ui = Ui::new(state, system, (320, 48));
+    let mut ui = Ui::new(state, system, (320, 54));
     settle(&mut ui, &system, 600);
     assert!(has_percentage(&ui, 57));
 }
@@ -101,18 +104,13 @@ fn battery_available_before_first_frame_retains_visible_percentage() {
 fn constrained_battery_keeps_full_preferred_width_and_expands_when_output_grows() {
     let mut state = state();
     state.battery = Some(battery(57));
-    let mut ui = Ui::new(state, system, (180, 48));
+    let mut ui = Ui::new(state, system, (180, 54));
     settle(&mut ui, &system, 180);
     let preferred = system_width(&ui.state, &ui.state.outputs[0]);
     assert!(preferred > 180.0);
     assert!(!has_percentage(&ui, 57));
-    assert!(
-        ids(&ui.harness)
-            .into_iter()
-            .any(|id| ui.harness.access_node(id).is_some_and(|node| node
-                .label()
-                .is_some_and(|label| label.contains("Battery") && label.contains("57%"))))
-    );
+    ui.button("Control center");
+    ui.button("Power");
     settle(&mut ui, &system, 600);
     assert!(has_percentage(&ui, 57));
     assert_eq!(system_width(&ui.state, &ui.state.outputs[0]), preferred);

@@ -140,9 +140,9 @@ fn run_window_states(backend: &str) {
     wait_windows(&compositor, |windows| {
         windows[0]["maximized"] == true
             && windows[0]["x"] == 0
-            && windows[0]["y"] == 48
+            && windows[0]["y"] == 54
             && windows[0]["width"] == 1280
-            && windows[0]["height"] == 752
+            && windows[0]["height"] == 746
     });
     assert!(
         compositor
@@ -171,7 +171,7 @@ fn run_window_states(backend: &str) {
         state["fullscreen"] == false && state["maximized"] == true
     });
     wait_windows(&compositor, |windows| {
-        windows[0]["height"] == 752 && windows[0]["y"] == 48
+        windows[0]["height"] == 746 && windows[0]["y"] == 54
     });
     action(&compositor, format!("restore-window {id}"));
     wait_state(&state_path, |state| {
@@ -271,7 +271,7 @@ fn window_bounds_wayland_oversized_initial_window_and_dialog_fit_output() {
         let y = window["y"].as_i64().unwrap();
         let width = window["width"].as_i64().unwrap();
         let height = window["height"].as_i64().unwrap();
-        x >= 0 && y >= 48 && width > 0 && height > 0 && x + width <= 1280 && y + height <= 800
+        x >= 0 && y >= 54 && width > 0 && height > 0 && x + width <= 1280 && y + height <= 800
     };
     let windows = wait_windows(&compositor, |windows| {
         windows.len() == 1 && windows[0]["focused"] == true && fits(&windows[0])

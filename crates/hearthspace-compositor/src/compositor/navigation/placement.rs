@@ -113,7 +113,7 @@ mod tests {
                 viewport,
                 1.0,
             ),
-            CanvasPoint { x: -360, y: 1109 }
+            CanvasPoint { x: -360, y: 1112 }
         );
         assert_eq!(
             centered_position(
@@ -123,7 +123,7 @@ mod tests {
                 viewport,
                 1.0,
             ),
-            CanvasPoint { x: -700, y: 948 }
+            CanvasPoint { x: -700, y: 954 }
         );
     }
 }

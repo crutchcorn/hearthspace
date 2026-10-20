@@ -205,7 +205,7 @@ mod tests {
         assert!(
             image
                 .pixels()
-                .any(|pixel| u16::from(pixel[2]) > u16::from(pixel[0]) + 30)
+                .any(|pixel| u16::from(pixel[0]) > u16::from(pixel[2]) + 30)
         );
         let node = harness.access_node(harness.root_id()).unwrap();
         assert_eq!(node.label().as_deref(), Some("Assigned gesture"));

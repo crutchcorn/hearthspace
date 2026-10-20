@@ -61,28 +61,28 @@ fn search_grows_for_results_and_shrinks_when_the_query_is_cleared() {
             focused: false,
         })
         .collect();
-    let mut ui = Ui::new(state, search, (768, 560));
-    let empty = size(&ui.state.outputs[0], PopupKind::Search, 768.0, 560.0);
+    let mut ui = Ui::new(state, search, (650, 560));
+    let empty = size(&ui.state.outputs[0], PopupKind::Search, 650.0, 560.0);
     assert!(
-        empty.height < 180.0,
-        "empty search should fit its input actions and hint: {empty:?}"
+        empty.height < 560.0,
+        "empty launcher should fit its command bar, layout controls and empty state: {empty:?}"
     );
-    ui.button("Settings");
+    ui.button("Show app grid");
     ui.button("Draw to launch");
     ui.state.change_query("eDP-1", "Notes".into());
     ui.rebuild(&search);
     ui.dispatch(&search);
-    let populated = size(&ui.state.outputs[0], PopupKind::Search, 768.0, 560.0);
+    let populated = size(&ui.state.outputs[0], PopupKind::Search, 650.0, 560.0);
     assert!(
         populated.height > empty.height,
         "four results should grow beyond the input actions"
     );
-    assert!(populated.height < 360.0);
+    assert!(populated.height < 560.0);
     ui.state.change_query("eDP-1", String::new());
     ui.rebuild(&search);
     ui.dispatch(&search);
     assert_eq!(
-        size(&ui.state.outputs[0], PopupKind::Search, 768.0, 560.0),
+        size(&ui.state.outputs[0], PopupKind::Search, 650.0, 560.0),
         empty
     );
 }
@@ -92,8 +92,8 @@ fn empty_notifications_shrink_long_content_caps_and_removal_shrinks_again() {
     let mut ui = Ui::new(state(), notifications, (360, 440));
     let empty = size(&ui.state.outputs[0], PopupKind::Notifications, 360.0, 440.0);
     assert!(
-        empty.height < 140.0,
-        "empty inbox should fit its title and one line: {empty:?}"
+        (250.0..300.0).contains(&empty.height),
+        "empty inbox should fit its header and spacious status card: {empty:?}"
     );
     ui.harness
         .process_window_event(WindowEvent::Resize((360, empty.height as u32).into()));
@@ -203,12 +203,12 @@ impl RawProxy for NoMessages {
 }
 
 #[test]
-fn rounded_popup_frame_has_transparent_corners_and_opaque_content() {
+fn rounded_popup_frame_has_transparent_corners_and_a_readable_glass_tint() {
     let runtime = xilem::tokio::runtime::Builder::new_current_thread()
         .build()
         .unwrap();
     let mut ctx = ViewCtx::new(Arc::new(NoMessages), Arc::new(runtime));
-    let view = sized_box(frame(label("Popup content")));
+    let view = sized_box(frame(PopupKind::Controls, label("Popup content")));
     let (root, _) = view.build(&mut ctx, &mut state());
     let mut harness = TestHarness::create_with(
         components::hearthspace_light_properties(),
@@ -225,6 +225,66 @@ fn rounded_popup_frame_has_transparent_corners_and_opaque_content() {
             "corner ({x}, {y}) must expose the compositor behind it"
         );
     }
-    assert_eq!(image.get_pixel(180, 110).0, [255, 255, 255, 255]);
-    assert!(image.get_pixel(180, 1).0[3] > 240);
+    assert!((200..230).contains(&image.get_pixel(180, 110).0[3]));
+    assert!((200..230).contains(&image.get_pixel(180, 1).0[3]));
+}
+
+#[test]
+fn full_bleed_launcher_and_notification_content_preserve_rounded_corners() {
+    for notification in [false, true] {
+        let mut state = state();
+        state.catalog = Default::default();
+        state.notifications = vec![Notification {
+            id: 1,
+            app_name: "Notes".into(),
+            summary: "Critical message".into(),
+            body: "Body text ".repeat(60),
+            actions: Vec::new(),
+            urgency: 2,
+            active: true,
+        }];
+        let runtime = xilem::tokio::runtime::Builder::new_current_thread()
+            .build()
+            .unwrap();
+        let mut ctx = ViewCtx::new(Arc::new(NoMessages), Arc::new(runtime));
+        let content = if notification {
+            notifications(&state).boxed()
+        } else {
+            search(&state).boxed()
+        };
+        let view = sized_box(content);
+        let (root, _) = view.build(&mut ctx, &mut state);
+        let mut harness = TestHarness::create_with(
+            components::hearthspace_light_properties(),
+            root.new_widget,
+            TestHarnessParams::default()
+                .with_size((650, 320))
+                .with_background(Color::TRANSPARENT),
+        );
+        let image = harness.render();
+        for (x, y) in [(2, 2), (647, 2), (2, 317), (647, 317)] {
+            assert_eq!(
+                image.get_pixel(x, y).0[3],
+                0,
+                "full-bleed content must not paint outside the rounded frame at ({x}, {y}); notifications={notification}"
+            );
+        }
+        assert!(image.get_pixel(325, 5).0[3] >= 200);
+        let control = if notification {
+            "Close notifications"
+        } else {
+            "Close apps list"
+        };
+        let button = crate::ui::test_support::ids(&harness)
+            .into_iter()
+            .find(|id| {
+                harness.access_node(*id).is_some_and(|node| {
+                    node.role() == masonry::accesskit::Role::Button
+                        && node.label().as_deref() == Some(control)
+                })
+            })
+            .unwrap();
+        harness.focus_on(Some(button));
+        assert_eq!(harness.focused_widget_id(), Some(button));
+    }
 }

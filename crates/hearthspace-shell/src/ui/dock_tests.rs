@@ -174,8 +174,10 @@ fn narrow_dock_pages_every_app_and_recovers_after_last_page_apps_close() {
     ui.state.windows.truncate(2);
     ui.rebuild(&strip);
     ui.harness.redraw();
-    ui.button("Switch to app1");
     ui.button("Switch to app2");
+    ui.activate(ui.button("Next running apps (page 2 of 2)"));
+    ui.dispatch(&strip);
+    ui.button("Switch to app1");
 }
 
 #[test]
@@ -236,13 +238,13 @@ fn held_pointer_does_not_activate_another_app_when_the_pressed_app_closes() {
 }
 
 #[test]
-fn sixty_four_pixel_strip_keeps_compact_pager_and_app_inside_allocation() {
-    let build = |state: &ShellState| sized_box(view(state, &state.outputs[0], 64.0));
+fn sixty_eight_pixel_strip_keeps_compact_pager_and_app_inside_allocation() {
+    let build = |state: &ShellState| sized_box(view(state, &state.outputs[0], 68.0));
     let mut state = state();
     state.windows = (1..=3)
         .map(|id| window(id, &format!("app{id}"), false))
         .collect();
-    let mut ui = Ui::new(state, &build, (64, 48));
+    let mut ui = Ui::new(state, &build, (68, 54));
     for page in 1..=3 {
         let app = ui.button(&format!("Switch to app{page}"));
         let next = ui.button(&format!("Next running apps (page {page} of 3)"));
@@ -253,7 +255,7 @@ fn sixty_four_pixel_strip_keeps_compact_pager_and_app_inside_allocation() {
                 .unwrap()
                 .bounding_box()
                 .unwrap();
-            assert!(bounds.x0 >= 0.0 && bounds.x1 <= 64.0, "{bounds:?}");
+            assert!(bounds.x0 >= 0.0 && bounds.x1 <= 68.0, "{bounds:?}");
             assert!(bounds.width() >= 20.0);
         }
         ui.harness.mouse_click_on(next, None);

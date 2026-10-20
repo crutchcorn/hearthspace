@@ -79,7 +79,7 @@ fn initial_window_bounds_precede_configure_and_leave_client_size_advisory() {
     assert_eq!(
         initial_events(&compositor, false),
         vec![
-            Event::Bounds(1280, 752),
+            Event::Bounds(1280, 746),
             Event::Size(0, 0),
             Event::Configure
         ]
@@ -87,7 +87,7 @@ fn initial_window_bounds_precede_configure_and_leave_client_size_advisory() {
     assert_eq!(
         initial_events(&compositor, true),
         vec![
-            Event::Bounds(1280, 722),
+            Event::Bounds(1280, 716),
             Event::Size(0, 0),
             Event::Configure
         ]
@@ -114,7 +114,9 @@ fn initial_window_bounds_precede_configure_and_leave_client_size_advisory() {
     assert_eq!(
         initial_events(&compositor, true),
         vec![
-            Event::Bounds(1600, 910),
+            // Floor the 746px work area at 0.8 zoom before subtracting
+            // the 30px server decoration: floor(746 / 0.8) - 30.
+            Event::Bounds(1600, 902),
             Event::Size(0, 0),
             Event::Configure
         ]

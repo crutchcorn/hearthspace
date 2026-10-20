@@ -69,23 +69,22 @@ pub(super) fn panel(
                 Err(error) => Some(error.clone()),
             });
     let mute_key = output.key().to_string();
-    let mute = button(
-        glyph(
-            Icon::Volume { muted },
-            if muted { "Unmute" } else { "Mute" }.into(),
-        ),
-        move |state: &mut ShellState| {
-            super::control_task::submit(state, &mute_key, Action::ToggleMute, None);
-        },
-    )
-    .disabled(audio.is_none() || controls.sender.is_none())
-    .padding(7.0.px())
-    .corner_radius(6.0.px())
-    .background_color(if muted {
-        components::ACCENT_SUBTLE
-    } else {
-        components::SURFACE_SUBTLE
-    });
+    let mute = components::button_surface(
+        button(
+            glyph(
+                Icon::Volume { muted },
+                if muted { "Unmute" } else { "Mute" }.into(),
+            ),
+            move |state: &mut ShellState| {
+                super::control_task::submit(state, &mute_key, Action::ToggleMute, None);
+            },
+        )
+        .disabled(audio.is_none() || controls.sender.is_none())
+        .padding(7.0.px())
+        .corner_radius(6.0.px()),
+        components::ButtonSurface::Subtle,
+        muted,
+    );
     popup::panel_with_header(
         output,
         PopupKind::Controls,
@@ -97,6 +96,7 @@ pub(super) fn panel(
             }),
         )),
         flex_col((
+            super::quick_panel::shortcuts(output),
             flex_row((
                 glyph(Icon::Brightness, "Display brightness".into()),
                 label("Brightness").text_size(14.0).flex(1.0),

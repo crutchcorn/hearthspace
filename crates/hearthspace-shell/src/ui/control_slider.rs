@@ -55,7 +55,7 @@ impl View<ShellState, (), ViewCtx> for ControlSlider {
                     },
                     ThumbColor(hearthspace_ui_components::SURFACE),
                     BorderColor {
-                        color: hearthspace_ui_components::ACCENT,
+                        color: hearthspace_ui_components::TEXT,
                     },
                 ));
                 pod.new_widget.options.disabled = !self.enabled;

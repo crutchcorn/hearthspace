@@ -23,7 +23,7 @@ use super::{
     GlesTexture, TranslatedHearthspaceRenderElement,
     blur_shader::{BLUR_PADDING, CornerBlurShader},
 };
-use crate::compositor::App;
+use crate::compositor::{App, ManagedWindowKind};
 
 type BlurResult<T> = Result<T, Box<dyn std::error::Error>>;
 
@@ -70,7 +70,9 @@ impl App {
         let mut live = HashSet::new();
         let mut regions = Vec::new();
         for (index, window) in self.windows.iter().enumerate() {
-            if !window.mapped || self.shell_corner(index).is_none() {
+            let corner = self.shell_corner(index).is_some();
+            let panel = window.kind == ManagedWindowKind::Launcher;
+            if !window.mapped || (!corner && !panel) {
                 continue;
             }
             let Some(window_output) =
@@ -85,7 +87,11 @@ impl App {
             {
                 continue;
             }
-            let Some(origin) = self.shell_bar_logical_origin(index) else {
+            let Some(origin) = (if corner {
+                self.shell_bar_logical_origin(index)
+            } else {
+                self.launcher_logical_origin(index)
+            }) else {
                 continue;
             };
             let rect = Rectangle::new(

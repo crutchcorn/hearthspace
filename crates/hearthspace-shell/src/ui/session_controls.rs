@@ -105,29 +105,31 @@ pub(super) fn power_panel(
     let suspend_key = output.key().to_string();
     let available = power.can_suspend();
     let suspend = (!confirming).then(|| {
-        button(
-            label(if power.busy() {
-                "Suspending…"
-            } else {
-                "Suspend"
-            })
-            .text_size(13.0)
-            .text_alignment(xilem::TextAlign::Center)
-            .color(if available {
-                components::TEXT
-            } else {
-                components::TEXT_MUTED
-            }),
-            move |state: &mut ShellState| super::power_task::suspend(state, &suspend_key),
+        components::button_surface(
+            button(
+                label(if power.busy() {
+                    "Suspending…"
+                } else {
+                    "Suspend"
+                })
+                .text_size(13.0)
+                .text_alignment(xilem::TextAlign::Center)
+                .color(if available {
+                    components::TEXT
+                } else {
+                    components::TEXT_MUTED
+                }),
+                move |state: &mut ShellState| super::power_task::suspend(state, &suspend_key),
+            )
+            .disabled(!available)
+            .corner_radius(6.0.px())
+            .padding(xilem::masonry::properties::Padding::from_vh(
+                5.0.px(),
+                9.0.px(),
+            )),
+            components::ButtonSurface::Subtle,
+            false,
         )
-        .disabled(!available)
-        .background_color(components::SURFACE_SUBTLE)
-        .border(components::BORDER, 1.0.px())
-        .corner_radius(6.0.px())
-        .padding(xilem::masonry::properties::Padding::from_vh(
-            5.0.px(),
-            9.0.px(),
-        ))
     });
     let unavailable = (!confirming && !power.status.available && !power.busy()).then(|| {
         label(

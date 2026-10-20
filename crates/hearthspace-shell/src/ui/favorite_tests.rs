@@ -39,7 +39,7 @@ fn view(
 }
 
 #[test]
-fn apps_list_browses_assigned_apps_and_keeps_gesture_actions_inside_the_input() {
+fn apps_and_draw_tabs_preserve_browsing_and_expose_gesture_settings() {
     let dir = tempfile::tempdir().unwrap();
     let mut state = state(dir.path());
     state.favorites.store.add("fixture.desktop").unwrap();
@@ -55,13 +55,12 @@ fn apps_list_browses_assigned_apps_and_keeps_gesture_actions_inside_the_input() 
     let bounds = |id| ui.harness.access_node(id).unwrap().bounding_box().unwrap();
     let input = bounds(editor);
     let draw = bounds(ui.button("Draw to launch"));
-    let settings = bounds(ui.button("Settings"));
-    assert!(draw.x0 >= input.x1 && settings.x0 >= draw.x1);
+    assert!(draw.x0 >= input.x1);
     assert!(draw.y0 <= input.y1 && draw.y1 >= input.y0);
-    assert_eq!(settings.y0, draw.y0);
     ui.activate(ui.button("Draw to launch"));
     ui.dispatch(&view);
     assert_eq!(ui.state.outputs[0].drawing.mode, Mode::Launch);
+    ui.button("Settings");
     assert!(launcher::results(&ui.state, &ui.state.outputs[0]).is_empty());
     ui.activate(ui.button("Back to apps list"));
     ui.dispatch(&view);
@@ -136,7 +135,9 @@ fn missing_apps_and_unclear_strokes_do_not_launch_or_destroy_favorites() {
     assert!(state.outputs[0].show_search);
     assert_eq!(state.favorites.store.entries().len(), 1);
     actions::cancel(&mut state, "eDP-1");
-    let ui = Ui::new(state, view, (768, 560));
+    let mut ui = Ui::new(state, view, (768, 560));
+    ui.activate(ui.button("Draw to launch"));
+    ui.dispatch(&view);
     ui.button("Settings");
 }
 
@@ -172,17 +173,16 @@ fn empty_gestures_keep_drawing_available_and_explain_where_to_assign_one() {
             .unwrap()
             .is_disabled()
     );
-    ui.button("Settings");
     ui.activate(ui.button("Draw to launch"));
     ui.dispatch(&view);
     assert!(super::test_support::ids(&ui.harness).into_iter().any(|id| {
         ui.harness.access_node(id).is_some_and(|node| {
-            node.value().as_deref() == Some("Add an app gesture in Settings → Search → Gestures.")
+            node.value().as_deref() == Some("Add an app gesture in Settings → Gestures.")
                 || node.label().as_deref()
-                    == Some("Add an app gesture in Settings → Search → Gestures.")
+                    == Some("Add an app gesture in Settings → Gestures.")
         })
     }));
-    ui.activate(ui.button("Draw to launch"));
+    ui.activate(ui.button("Back to apps list"));
     ui.dispatch(&view);
     assert!(!ui.state.outputs[0].drawing.active());
 }
@@ -205,9 +205,8 @@ fn one_finger_scrolls_real_search_rows_without_launching_or_changing_query() {
         })
         .collect();
     state.change_query("eDP-1", "Notes".into());
-    let mut ui = Ui::new(state, view, (768, 210));
+    let mut ui = Ui::new(state, view, (768, 260));
     let first = ui.button("Window: Notes 1");
-    let second = ui.button("Window: Notes 2");
     let before = ui
         .harness
         .access_node(first)
@@ -216,7 +215,7 @@ fn one_finger_scrolls_real_search_rows_without_launching_or_changing_query() {
         .unwrap();
     let start = ui
         .harness
-        .access_node(second)
+        .access_node(first)
         .unwrap()
         .bounding_box()
         .unwrap();

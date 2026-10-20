@@ -4,43 +4,11 @@ use hearthspace_ui_components as components;
 use xilem::{
     WidgetView,
     core::{MessageProxy, NoElement, View},
-    masonry::layout::AsUnit,
     style::Style,
-    view::{flex_row, label, task_raw},
+    view::{label, task_raw},
 };
 
-use super::{
-    icons::{self, Icon},
-    state::ShellState,
-};
-
-pub(super) fn indicator(
-    battery: Option<&BatteryStatus>,
-    compact: bool,
-) -> Option<impl WidgetView<ShellState> + use<>> {
-    let battery = battery?;
-    Some(
-        flex_row((
-            icons::glyph(
-                Icon::Battery {
-                    percentage: battery.percentage,
-                    charging: battery.is_charging(),
-                },
-                if compact {
-                    battery.accessible_label()
-                } else {
-                    format!("{}: {}", battery.kind.label(), battery.state_label())
-                },
-            ),
-            (!compact).then(|| {
-                label(format!("{}%", battery.percentage))
-                    .text_size(13.0)
-                    .color(components::TEXT)
-            }),
-        ))
-        .gap(4.0.px()),
-    )
-}
+use super::state::ShellState;
 
 pub(super) fn detail(
     battery: Option<&BatteryStatus>,

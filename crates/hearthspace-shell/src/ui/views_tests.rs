@@ -6,10 +6,10 @@ use std::{
     time::Duration,
 };
 
-use masonry::{core::TextEvent, testing::TestHarness};
+use masonry::{accesskit::Role, core::TextEvent};
 use xilem::{
     ViewCtx,
-    core::{DynMessage, MessageCtx, MessageResult, RawProxy, View, ViewPathTracker},
+    core::{RawProxy, View},
     masonry::core::keyboard::{Key, NamedKey},
 };
 
@@ -61,58 +61,34 @@ fn search_overlay_focuses_input_and_enter_activates_matching_window() {
         app_id: "editor".into(),
         focused: false,
     }];
-    let runtime = xilem::tokio::runtime::Builder::new_current_thread()
-        .build()
-        .unwrap();
-    let mut ctx = ViewCtx::new(Arc::new(NoMessages), Arc::new(runtime));
-    let mut view = launcher::launcher_view(
-        &state,
-        &state.outputs[0],
-        launcher::results(&state, &state.outputs[0]),
-        None,
-    );
-    let (root, mut view_state) = view.build(&mut ctx, &mut state);
-    let mut harness = TestHarness::create(
-        hearthspace_ui_components::hearthspace_light_properties(),
-        root.new_widget,
+    let view = |state: &ShellState| {
+        launcher::launcher_view(
+            state,
+            &state.outputs[0],
+            launcher::results(state, &state.outputs[0]),
+            None,
+        )
+    };
+    // Use the shared driver fixture so initial resize and icon actions settle
+    // before the first key, just as they do when the real popup opens.
+    let mut ui = crate::ui::test_support::Ui::new(state, view, (650, 560));
+    let input = ui.harness.focused_widget_id().unwrap();
+    assert_eq!(
+        ui.harness.access_node(input).unwrap().role(),
+        Role::TextInput
     );
     for event in "Research"
         .chars()
         .map(|character| TextEvent::key_down(Key::Character(character.to_string())))
         .chain([TextEvent::key_down(Key::Named(NamedKey::Enter))])
     {
-        harness.process_text_event(event);
-        while let Some((action, widget_id)) = harness.pop_action_erased() {
-            let path = ctx.get_id_path(widget_id).unwrap().clone();
-            let mut message =
-                MessageCtx::new(std::mem::take(ctx.environment()), path, DynMessage(action));
-            let result = harness.edit_root_widget(|root| {
-                view.message(&mut view_state, &mut message, root, &mut state)
-            });
-            // Canvas icons request their first draw after layout; those
-            // messages must pass through the same view tree as text actions.
-            assert!(matches!(
-                result,
-                MessageResult::Action(()) | MessageResult::RequestRebuild
-            ));
-            let (environment, _, _) = message.finish();
-            *ctx.environment() = environment;
-            let next = launcher::launcher_view(
-                &state,
-                &state.outputs[0],
-                launcher::results(&state, &state.outputs[0]),
-                None,
-            );
-            harness.edit_root_widget(|root| {
-                next.rebuild(&view, &mut view_state, &mut ctx, root, &mut state);
-            });
-            view = next;
-        }
+        ui.harness.process_text_event(event);
+        ui.dispatch(&view);
     }
     server.join().unwrap();
     assert_eq!(received.try_recv().unwrap(), "focus-window 42\n");
-    assert!(state.outputs[0].query.is_empty());
-    assert!(state.outputs[0].launch_error.is_none());
+    assert!(ui.state.outputs[0].query.is_empty());
+    assert!(ui.state.outputs[0].launch_error.is_none());
 }
 
 #[test]
@@ -153,7 +129,7 @@ fn launcher_creation_options_fit_results_headers_and_errors() {
         let (window, _) = view.build(&mut ctx, &mut state);
         assert_eq!(window.0.base_color, xilem::Color::TRANSPARENT);
         let attrs = window.0.attributes;
-        let expected = Some(xilem::dpi::LogicalSize::new(768.0, height).into());
+        let expected = Some(xilem::dpi::LogicalSize::new(650.0, height).into());
         assert!(!attrs.resizable);
         assert!(attrs.transparent);
         assert_eq!(

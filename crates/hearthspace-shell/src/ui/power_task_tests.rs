@@ -97,7 +97,17 @@ fn batteryless_desktop_can_suspend_and_repeated_clicks_queue_only_once() {
             .unwrap()
             .is_disabled()
     );
-    ui.harness.mouse_click_on(ui.button("Suspend"), None);
+    let suspend_button = ui.button("Suspend");
+    ui.harness.focus_on(Some(suspend_button));
+    assert_eq!(
+        ui.harness
+            .get_widget_with_id(suspend_button)
+            .get_prop::<masonry::properties::BorderColor>()
+            .color,
+        hearthspace_ui_components::TEXT,
+        "Suspend must keep its visible keyboard focus outline"
+    );
+    ui.harness.mouse_click_on(suspend_button, None);
     ui.dispatch(&power);
     assert_eq!(commands.try_recv().unwrap(), "DP-1");
     assert!(ui.state.power.pending);
@@ -117,7 +127,7 @@ fn batteryless_desktop_can_suspend_and_repeated_clicks_queue_only_once() {
 fn battery_updates_are_accessible_and_removal_removes_indicator() {
     let mut state = ShellState::new("/unused".into(), vec!["eDP-1".into()]);
     state.battery = Some(battery(BatteryState::Charging));
-    let mut ui = Ui::new(state, bar, (320, 48));
+    let mut ui = Ui::new(state, bar, (340, 54));
     let labels = |ui: &Ui<_>| {
         ids(&ui.harness)
             .into_iter()
@@ -128,11 +138,7 @@ fn battery_updates_are_accessible_and_removal_removes_indicator() {
             })
             .collect::<Vec<_>>()
     };
-    assert!(labels(&ui).contains(&"57%".into()));
-    assert!(labels(&ui).contains(&format!(
-        "Battery: {}",
-        ui.state.battery.as_ref().unwrap().state_label()
-    )));
+    assert!(labels(&ui).contains(&ui.state.battery.as_ref().unwrap().accessible_label()));
     let before = ui.harness.render();
     ui.state.battery = Some(battery(BatteryState::Discharging));
     ui.rebuild(&bar);
@@ -142,10 +148,7 @@ fn battery_updates_are_accessible_and_removal_removes_indicator() {
         ui.harness.render(),
         "charge icon must visibly change"
     );
-    let expected = format!(
-        "Battery: {}",
-        ui.state.battery.as_ref().unwrap().state_label()
-    );
+    let expected = ui.state.battery.as_ref().unwrap().accessible_label();
     assert!(labels(&ui).contains(&expected));
     for name in ["Control center", "Power"] {
         let bounds = ui
@@ -154,7 +157,7 @@ fn battery_updates_are_accessible_and_removal_removes_indicator() {
             .unwrap()
             .bounding_box()
             .unwrap();
-        assert!(bounds.x0 >= 0.0 && bounds.x1 <= 320.0, "{name}: {bounds:?}");
+        assert!(bounds.x0 >= 0.0 && bounds.x1 <= 340.0, "{name}: {bounds:?}");
     }
     ui.state.battery = None;
     ui.rebuild(&bar);

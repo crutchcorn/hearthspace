@@ -130,7 +130,7 @@ fn osd_fits_scaled_small_outputs_without_taking_keyboard_focus() {
     assert_eq!(
         query(&compositor, "status")["control_osds"],
         json!([
-            {"output":null,"x":0,"y":0,"width":320,"height":192}
+            {"output":null,"x":0,"y":6,"width":320,"height":186}
         ])
     );
     green_pixel(&compositor, 200, 200);
@@ -168,7 +168,7 @@ fn media_keys_send_one_use_events_repeat_levels_and_revoke_requests_at_lock() {
         (0, 0),
         [0xff, 0, 0, 0xff],
     );
-    client.add(SHELL_BAR_APP_ID.into(), (1280, 48), (0, 0), GREEN);
+    client.add(SHELL_BAR_APP_ID.into(), (1280, 54), (0, 0), GREEN);
     for (code, control) in [
         (115, "volume-up"),
         (114, "volume-down"),

@@ -183,17 +183,17 @@ mod tests {
         let geometry = Rectangle::new((8, 6).into(), (340, 336).into());
         assert_eq!(
             shell_panel_surface_origin(output, geometry, false),
-            (1944, 174).into()
+            (1944, 180).into()
         );
         let resized = Rectangle::new((8, 6).into(), (420, 260).into());
         assert_eq!(
             shell_panel_surface_origin(output, resized, false),
-            (1864, 174).into()
+            (1864, 180).into()
         );
         let negative = Rectangle::new((-1280, -200).into(), (1280, 800).into());
         assert_eq!(
             shell_panel_surface_origin(negative, geometry, false),
-            (-360, -146).into()
+            (-360, -140).into()
         );
     }
 
@@ -210,7 +210,7 @@ mod tests {
         let geometry = Rectangle::new((0, 0).into(), (340, 336).into());
         assert_eq!(
             shell_panel_surface_origin(scaled, geometry, false),
-            (928, 60).into()
+            (928, 66).into()
         );
     }
 
@@ -220,7 +220,7 @@ mod tests {
         let geometry = Rectangle::new((8, 6).into(), (600, 400).into());
         assert_eq!(
             shell_panel_surface_origin(output, geometry, true),
-            Point::from((1484, 174))
+            Point::from((1484, 180))
         );
         let small = Rectangle::new((-320, 0).into(), (320, 240).into());
         let geometry = Rectangle::new((0, 0).into(), (320, 192).into());

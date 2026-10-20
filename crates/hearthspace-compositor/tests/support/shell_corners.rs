@@ -28,27 +28,27 @@ fn stationary_pointer_click_uses_resized_corner_geometry_and_preserves_held_rele
     let mut client = connect(&compositor);
     let apps = client.add(
         shell_corner_app_id(ShellCorner::Apps, None),
-        (124, 48),
+        (124, 54),
         (0, 0),
         COLOR,
     );
-    action(&compositor, "pointer-motion-abs 1244 764");
-    client.resize(apps, (86, 48));
-    assert_eq!(corner_bounds(&compositor, "apps")["x"], 1182);
+    action(&compositor, "pointer-motion-abs 1232 749");
+    client.resize(apps, (86, 54));
+    assert_eq!(corner_bounds(&compositor, "apps")["x"], 1170);
     action(&compositor, "pointer-button-down 272");
     action(&compositor, "pointer-button-up 272");
-    assert_eq!(client.presses().last(), Some(&(apps, (62.0, 24.0))));
+    assert_eq!(client.presses().last(), Some(&(apps, (62.0, 27.0))));
 
     // A press owns its matching release even if its corner moves meanwhile.
-    client.resize(apps, (124, 48));
+    client.resize(apps, (124, 54));
     action(&compositor, "pointer-button-down 272");
-    assert_eq!(client.presses().last(), Some(&(apps, (100.0, 24.0))));
-    client.resize(apps, (86, 48));
+    assert_eq!(client.presses().last(), Some(&(apps, (100.0, 27.0))));
+    client.resize(apps, (86, 54));
     action(&compositor, "pointer-button-up 272");
-    assert_eq!(client.releases().last(), Some(&(apps, (100.0, 24.0))));
+    assert_eq!(client.releases().last(), Some(&(apps, (100.0, 27.0))));
     action(&compositor, "pointer-button-down 272");
     action(&compositor, "pointer-button-up 272");
-    assert_eq!(client.presses().last(), Some(&(apps, (62.0, 24.0))));
+    assert_eq!(client.presses().last(), Some(&(apps, (62.0, 27.0))));
     assert_eq!(client.releases().len(), 3);
     action(&compositor, "quit");
     wait_for_exit(&mut compositor.child);
@@ -75,7 +75,7 @@ fn keyboard_cycles_corners_and_escape_restores_apps_without_moving_the_canvas() 
         ShellCorner::Canvas,
         ShellCorner::Apps,
     ] {
-        corners.push(client.add(shell_corner_app_id(corner, None), (48, 48), (0, 0), COLOR));
+        corners.push(client.add(shell_corner_app_id(corner, None), (48, 54), (0, 0), COLOR));
     }
     action(&compositor, "pan-to 9000 -7000");
     let viewport = query(&compositor, "status")["viewport"].clone();
@@ -136,14 +136,14 @@ fn four_corners_pin_controls_panels_and_maximized_work_area() {
     let mut client = connect(&compositor);
     let mut apps_corner = None;
     for (corner, name, width, x, y) in [
-        (ShellCorner::Notifications, "notifications", 48, 12, 12),
-        (ShellCorner::System, "system", 320, 948, 12),
-        (ShellCorner::Canvas, "canvas", 88, 12, 740),
-        (ShellCorner::Apps, "apps", 320, 948, 740),
+        (ShellCorner::Notifications, "notifications", 108, 24, 24),
+        (ShellCorner::System, "system", 320, 936, 24),
+        (ShellCorner::Canvas, "canvas", 102, 24, 722),
+        (ShellCorner::Apps, "apps", 320, 936, 722),
     ] {
         let window = client.add(
             shell_corner_app_id(corner, Some(&output)),
-            (width, 48),
+            (width, 54),
             (8, 6),
             COLOR,
         );
@@ -180,10 +180,10 @@ fn four_corners_pin_controls_panels_and_maximized_work_area() {
     action(&compositor, "pan-to 9000 -7000");
     assert_eq!(query(&compositor, "status")["shell_corners"], corners);
     for (app_id, kind, expected_x, expected_y) in [
-        (NOTIFICATIONS_APP_ID, "notifications", 12, 72),
-        (CONTROL_CENTER_APP_ID, "controls", 908, 72),
-        (CANVAS_MAP_APP_ID, "map", 12, 568),
-        (LAUNCHER_APP_ID, "search", 500, 568),
+        (NOTIFICATIONS_APP_ID, "notifications", 24, 90),
+        (CONTROL_CENTER_APP_ID, "controls", 896, 90),
+        (CANVAS_MAP_APP_ID, "map", 24, 550),
+        (LAUNCHER_APP_ID, "search", 896, 550),
     ] {
         let panel = client.add(app_id.into(), (360, 160), (8, 6), COLOR);
         let status = query(&compositor, "status");
@@ -215,8 +215,8 @@ fn four_corners_pin_controls_panels_and_maximized_work_area() {
     action(&compositor, format!("maximize-window {id} true"));
     client.sync();
     let window = query(&compositor, "windows")["windows"][0].clone();
-    assert_eq!(window["y"], 72);
-    assert_eq!(window["height"], 656);
+    assert_eq!(window["y"], 90);
+    assert_eq!(window["height"], 620);
     assert_eq!(client.focus(), Some(normal));
     action(&compositor, "quit");
     wait_for_exit(&mut compositor.child);
@@ -229,12 +229,12 @@ fn scaled_small_corners_resize_without_overlapping_and_ignore_unknown_outputs() 
     drop(compositor.wait_for_socket());
     let mut client = connect(&compositor);
     for (corner, name, width, x, y) in [
-        (ShellCorner::Notifications, "notifications", 48, 12, 12),
-        (ShellCorner::System, "system", 236, 72, 12),
-        (ShellCorner::Canvas, "canvas", 88, 12, 180),
-        (ShellCorner::Apps, "apps", 196, 112, 180),
+        (ShellCorner::Notifications, "notifications", 108, 24, 24),
+        (ShellCorner::System, "system", 140, 156, 24),
+        (ShellCorner::Canvas, "canvas", 102, 24, 162),
+        (ShellCorner::Apps, "apps", 146, 150, 162),
     ] {
-        let window = client.add(shell_corner_app_id(corner, None), (1000, 48), (0, 0), COLOR);
+        let window = client.add(shell_corner_app_id(corner, None), (1000, 54), (0, 0), COLOR);
         let bounds = corner_bounds(&compositor, name);
         assert_eq!(bounds["width"], width);
         assert_eq!(bounds["x"], x);
@@ -242,15 +242,15 @@ fn scaled_small_corners_resize_without_overlapping_and_ignore_unknown_outputs() 
         click(&compositor, f64::from(x) + 20.0, f64::from(y) + 20.0);
         assert_eq!(client.presses().last(), Some(&(window, (20.0, 20.0))));
         if corner == ShellCorner::Apps {
-            client.resize(window, (100, 48));
+            client.resize(window, (100, 54));
             let resized = corner_bounds(&compositor, name);
             assert_eq!(resized["width"], 100);
-            assert_eq!(resized["x"], 208);
+            assert_eq!(resized["x"], 196);
         }
     }
     client.add(
         shell_corner_app_id(ShellCorner::Apps, Some("unplugged")),
-        (100, 48),
+        (100, 54),
         (0, 0),
         COLOR,
     );
@@ -264,18 +264,18 @@ fn scaled_small_corners_resize_without_overlapping_and_ignore_unknown_outputs() 
     let panel = client.add(LAUNCHER_APP_ID.into(), (500, 500), (0, 0), COLOR);
     let bounds = query(&compositor, "status")["shell_panels"][0].clone();
     assert_eq!(bounds["y"], 0);
-    assert_eq!(bounds["height"], 168);
-    client.resize(panel, (500, 160));
+    assert_eq!(bounds["height"], 150);
+    client.resize(panel, (500, 120));
     let bounds = query(&compositor, "status")["shell_panels"][0].clone();
-    assert_eq!(bounds["y"], 8);
-    assert_eq!(bounds["height"], 160);
+    assert_eq!(bounds["y"], 30);
+    assert_eq!(bounds["height"], 120);
     assert_eq!(
         bounds["y"].as_i64().unwrap() + bounds["height"].as_i64().unwrap(),
         corner_bounds(&compositor, "apps")["y"].as_i64().unwrap() - 12,
         "the app list leaves its own corner exposed"
     );
-    click(&compositor, 100.0, 150.0);
-    assert_eq!(client.presses().last(), Some(&(panel, (88.0, 142.0))));
+    click(&compositor, 100.0, 100.0);
+    assert_eq!(client.presses().last(), Some(&(panel, (76.0, 70.0))));
     client.destroy(panel);
     action(&compositor, "quit");
     wait_for_exit(&mut compositor.child);

@@ -3,13 +3,12 @@ use xilem::{
     AnyWidgetView, WidgetView,
     masonry::{layout::AsUnit, properties::LineBreaking},
     style::Style,
-    view::{CrossAxisAlignment, FlexSpacer, flex_col, flex_row, label, sized_box},
+    view::{CrossAxisAlignment, FlexExt, flex_col, flex_row, label, sized_box},
 };
 
 use super::{
     command_client::{launch_app, send_command},
     constants::MAX_RESULTS,
-    icons::{Icon, icon_button},
     search_focus::{FocusTarget, focus_on_activation},
     state::{ShellOutputInstance, ShellState},
     window_catalog::RunningWindow,
@@ -90,6 +89,34 @@ pub(super) fn select(
     state.finish_launch(output_key, result);
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(super) enum AppLayout {
+    #[default]
+    Grid,
+    List,
+}
+
+#[path = "launcher_controls.rs"]
+pub(super) mod controls;
+
+pub(super) fn is_grid(output: &ShellOutputInstance) -> bool {
+    output.query.trim().is_empty() && output.launcher_layout == AppLayout::Grid
+}
+
+pub(super) fn grid_columns(output: &ShellOutputInstance) -> usize {
+    if !is_grid(output) {
+        return 1;
+    }
+    let (padding, gap) = if output.launcher_width <= 480.0 {
+        (28.0, 2.0)
+    } else {
+        (48.0, 12.0)
+    };
+    ((output.launcher_width - padding + gap) / (100.0 + gap))
+        .floor()
+        .clamp(1.0, 4.0) as usize
+}
+
 pub(super) fn launcher_view(
     state: &ShellState,
     output: &ShellOutputInstance,
@@ -97,48 +124,94 @@ pub(super) fn launcher_view(
     windows_error: Option<String>,
 ) -> impl WidgetView<ShellState, Widget = super::search_focus::SearchFocus> + use<> {
     let focus_target = FocusTarget::default();
-    let search = super::search_input::input(output, focus_target.clone());
-    let close_key = output.key().to_string();
-    let close = icon_button(Icon::Close, "Close apps list", false, move |state| {
-        state.dismiss_search(&close_key)
-    });
     let selected = super::search_selection::selected_index(output, &entries);
-    let mut rows: Vec<Box<AnyWidgetView<ShellState>>> = if output.drawing.active() {
-        vec![super::favorite_view::drawing(state, output)]
+    let count = entries.len();
+    let mut rows = Vec::<Box<AnyWidgetView<ShellState>>>::new();
+    if output.drawing.active() {
+        rows.push(super::favorite_view::drawing(state, output));
     } else {
-        let mut rows: Vec<Box<AnyWidgetView<ShellState>>> = entries
-            .into_iter()
-            .enumerate()
-            .map(|(index, entry)| {
+        rows.push(controls::collection(output, count).boxed());
+        if entries.is_empty() {
+            rows.push(
+                sized_box(
+                    flex_col((
+                        components::icons::icon(components::icons::Icon::Search, 30.0)
+                            .color(components::TEXT_MUTED),
+                        label(if output.query.trim().is_empty() {
+                            "No installed apps found"
+                        } else {
+                            "No matching apps or windows"
+                        })
+                        .text_size(20.0)
+                        .color(components::TEXT)
+                        .line_break_mode(LineBreaking::WordWrap),
+                    ))
+                    .gap(12.0.px()),
+                )
+                .height(204.0.px())
+                .boxed(),
+            );
+        } else if is_grid(output) {
+            let columns = grid_columns(output);
+            for (row, chunk) in entries.chunks(columns).enumerate() {
+                let mut cells = chunk
+                    .iter()
+                    .cloned()
+                    .enumerate()
+                    .map(|(column, entry)| {
+                        super::search_result::row(
+                            state,
+                            output,
+                            entry,
+                            selected == Some(row * columns + column),
+                            focus_target.clone(),
+                        )
+                        .boxed()
+                        .flex(1.0)
+                    })
+                    .collect::<Vec<_>>();
+                for _ in chunk.len()..columns {
+                    cells.push(sized_box(label("")).boxed().flex(1.0));
+                }
+                rows.push(
+                    flex_row(cells)
+                        .gap(
+                            if output.launcher_width <= 480.0 {
+                                2.0
+                            } else {
+                                12.0
+                            }
+                            .px(),
+                        )
+                        .boxed(),
+                );
+            }
+        } else {
+            rows.extend(entries.into_iter().enumerate().map(|(index, entry)| {
                 super::search_result::row(
+                    state,
                     output,
                     entry,
                     Some(index) == selected,
                     focus_target.clone(),
                 )
                 .boxed()
-            })
-            .collect();
-        if rows.is_empty() {
-            rows.push(
-                label(if output.query.trim().is_empty() {
-                    "No installed apps found"
-                } else {
-                    "No matching apps or windows"
-                })
-                .line_break_mode(LineBreaking::WordWrap)
-                .boxed(),
-            );
+            }));
         }
-        rows
-    };
-    if !output.drawing.active()
-        && let Some(message) = &output.drawing.message
-    {
         rows.push(
-            label(message.clone())
-                .line_break_mode(LineBreaking::WordWrap)
-                .boxed(),
+            sized_box(
+                flex_row((
+                    components::icons::icon(components::icons::Icon::CornerDownLeft, 14.0)
+                        .color(components::TEXT_MUTED),
+                    label("Enter to open")
+                        .text_size(10.0)
+                        .color(components::TEXT_MUTED),
+                ))
+                .gap(6.0.px()),
+            )
+            .height(42.0.px())
+            .border(components::BORDER, 1.0.px())
+            .boxed(),
         );
     }
     if let Some(error) = output.launch_error.as_ref().or(windows_error.as_ref()) {
@@ -153,25 +226,41 @@ pub(super) fn launcher_view(
             .boxed(),
         );
     }
-    focus_on_activation(
-        super::popup::panel_with_header(
-            output,
-            super::popup::PopupKind::Search,
-            flex_col((
-                flex_row((
-                    components::section_title("Apps List"),
-                    FlexSpacer::Flex(1.0),
-                    close,
-                )),
-                search,
-            ))
-            .cross_axis_alignment(CrossAxisAlignment::Stretch)
-            .gap(8.0.px()),
+    let output_key = output.key().to_owned();
+    let panel = super::popup::panel_with_header(
+        output,
+        super::popup::PopupKind::Search,
+        controls::header(output, focus_target.clone()),
+        sized_box(
             flex_col(rows)
                 .cross_axis_alignment(CrossAxisAlignment::Stretch)
                 .gap(4.0.px()),
+        )
+        .padding(xilem::masonry::properties::Padding::from_vh(
+            12.0.px(),
+            if output.launcher_width <= 480.0 {
+                14.0
+            } else {
+                24.0
+            }
+            .px(),
+        )),
+    );
+    focus_on_activation(
+        xilem::view::resize_observer(
+            move |state: &mut ShellState, size| {
+                if let Some(output) = state
+                    .outputs
+                    .iter_mut()
+                    .find(|output| output.key() == output_key)
+                {
+                    output.launcher_width = size.width;
+                }
+            },
+            panel,
         ),
         focus_target,
+        output.key().to_owned(),
     )
 }
 

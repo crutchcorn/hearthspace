@@ -6,9 +6,9 @@ use hearthspace_ui_components as components;
 use xilem::{
     WidgetView, WindowView,
     dpi::LogicalSize,
-    masonry::{layout::AsUnit, properties::LineBreaking},
+    masonry::layout::AsUnit,
     style::Style,
-    view::{FlexExt, MainAxisAlignment, flex_row, label, resize_observer, sized_box},
+    view::{MainAxisAlignment, flex_row, resize_observer, sized_box},
 };
 
 use super::{
@@ -17,12 +17,9 @@ use super::{
     state::{ShellOutputInstance, ShellState},
 };
 
-const PADDING: f64 = 6.0;
+const PADDING: f64 = 4.0;
 const FRAME: f64 = 2.0 * (PADDING + 1.0);
-const APPS_BUTTON: f64 = 38.0;
-
-#[path = "corner_measure.rs"]
-mod measure;
+const APPS_BUTTON: f64 = 48.0;
 
 pub(super) fn windows(
     state: &ShellState,
@@ -32,7 +29,7 @@ pub(super) fn windows(
         corner_window(
             output,
             ShellCorner::Notifications,
-            48.0,
+            108.0,
             notifications_view(state, output),
         ),
         corner_window(
@@ -44,7 +41,7 @@ pub(super) fn windows(
         corner_window(
             output,
             ShellCorner::Canvas,
-            88.0,
+            102.0,
             canvas_view(state, output),
         ),
         corner_window(
@@ -107,8 +104,8 @@ fn frame<V: WidgetView<ShellState>>(
         },
         sized_box(super::popup_group::group(name, view))
             .padding(PADDING.px())
-            .background_color(components::SURFACE.with_alpha(0.72))
-            .border(components::BORDER, 1.0.px())
+            .background_color(components::CHROME_RAISED)
+            .border(components::CHROME_BORDER, 1.0.px())
             .corner_radius(SHELL_CORNER_RADIUS.px()),
     )
 }
@@ -142,17 +139,14 @@ pub(super) fn canvas_view(
             focus(super::window_group::button(&state.window_group)),
         ))
         .main_axis_alignment(MainAxisAlignment::Center)
-        .gap(6.0.px()),
+        .gap(4.0.px()),
     )
 }
 
-fn system_width(state: &ShellState, output: &ShellOutputInstance) -> f64 {
-    if let Some(width) = output.system_content_width {
-        return width + FRAME;
-    }
+fn system_width(state: &ShellState, _output: &ShellOutputInstance) -> f64 {
     let items = super::tray_state::visible(&state.tray.snapshot).count();
-    250.0
-        + if state.battery.is_some() { 64.0 } else { 0.0 }
+    290.0
+        + if state.battery.is_some() { 48.0 } else { 0.0 }
         + if items > 0 {
             38.0 * (items.min(8) + 1) as f64
         } else {
@@ -164,49 +158,75 @@ pub(super) fn system_view(
     state: &ShellState,
     output: &ShellOutputInstance,
 ) -> impl WidgetView<ShellState> + use<> {
-    // A self-sized corner may be narrow simply because its clock is short.
-    // Only collapse the percentage while its full preferred width is clipped
-    // by the output (or is still waiting for the resize configure).
-    let compact =
-        state.battery.is_some() && output.corner_widths[1] + 0.5 < system_width(state, output);
     let items = super::tray_state::visible(&state.tray.snapshot)
         .count()
         .min(8);
-    let reserved = system_width(state, output) - items as f64 * 38.0;
-    let visible = super::tray_state::capacity(output.tray.bar_width - reserved).min(items);
+    let full_base = 290.0
+        + if state.battery.is_some() { 48.0 } else { 0.0 }
+        + if items > 0 { 38.0 } else { 0.0 };
+    let compact = output.corner_widths[1] < full_base;
+    let show_battery = !compact || output.corner_widths[1] >= 188.0;
+    let reserved = if compact {
+        102.0
+            + if show_battery && state.battery.is_some() {
+                48.0
+            } else {
+                0.0
+            }
+            + if items > 0 { 38.0 } else { 0.0 }
+    } else {
+        full_base
+    };
     frame(
         output,
         ShellCorner::System,
         "System tray",
-        measure::content(
-            output,
-            (items - visible) as f64 * 38.0,
-            !compact && state.tray.hovered.is_none() && state.window_group.hint().is_none(),
-            flex_row((
-                label(
-                    state
-                        .tray
-                        .hovered
-                        .as_ref()
-                        .map(|(_, title)| title.clone())
-                        .or_else(|| state.window_group.hint())
-                        .unwrap_or_else(|| state.clock.clone())
-                        .split_whitespace()
-                        .collect::<Vec<_>>()
-                        .join(" "),
-                )
-                .text_size(13.0)
-                .text_alignment(xilem::TextAlign::End)
-                .color(components::TEXT)
-                .line_break_mode(LineBreaking::Clip)
-                .flex(1.0),
-                super::tray_view::strip(output, &state.tray, reserved),
-                super::battery_view::indicator(state.battery.as_ref(), compact),
-                focus(super::control_center::toolbar_button(output)),
-                focus(super::session_controls::power_button(output)),
-            ))
-            .gap(6.0.px()),
-        ),
+        flex_row((
+            (!compact).then(|| focus(super::quick_panel::clock_button(state, output))),
+            super::tray_view::strip(output, &state.tray, reserved),
+            (!compact).then(|| {
+                focus(super::quick_panel::button_view(
+                    output,
+                    super::quick_panel::Kind::Wifi,
+                    Icon::Wifi,
+                    "Wi-Fi settings",
+                ))
+            }),
+            (!compact).then(|| {
+                focus(super::quick_panel::button_view(
+                    output,
+                    super::quick_panel::Kind::Sound,
+                    Icon::Volume {
+                        muted: state
+                            .controls
+                            .snapshot
+                            .audio
+                            .as_ref()
+                            .is_ok_and(|audio| audio.muted),
+                    },
+                    "Sound settings",
+                ))
+            }),
+            state
+                .battery
+                .as_ref()
+                .filter(|_| show_battery)
+                .map(|battery| {
+                    focus(super::quick_panel::button_view(
+                        output,
+                        super::quick_panel::Kind::Battery,
+                        Icon::Battery {
+                            percentage: battery.percentage,
+                            charging: battery.is_charging(),
+                        },
+                        &battery.accessible_label(),
+                    ))
+                }),
+            focus(super::control_center::toolbar_button(output)),
+            focus(super::session_controls::power_button(output)),
+        ))
+        .main_axis_alignment(MainAxisAlignment::Center)
+        .gap(4.0.px()),
     )
 }
 
@@ -244,7 +264,7 @@ pub(super) fn apps_view(
 
 fn apps_width(state: &ShellState) -> f64 {
     if state.windows.is_empty() {
-        48.0
+        54.0
     } else {
         FRAME + APPS_BUTTON + super::dock::desired_width(state)
     }

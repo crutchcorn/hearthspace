@@ -1,10 +1,10 @@
 //! Stable identities shared by the shell and its output-pinned compositor layer.
 use super::{CONTROL_BAR_HEIGHT, shell_app_id_for_output, shell_output_name_from_app_id};
 
-pub const SHELL_CORNER_MARGIN: i32 = 12;
-pub const SHELL_CORNER_CLEARANCE: i32 = CONTROL_BAR_HEIGHT + 2 * SHELL_CORNER_MARGIN;
+pub const SHELL_CORNER_MARGIN: i32 = 24;
+pub const SHELL_CORNER_CLEARANCE: i32 = CONTROL_BAR_HEIGHT + SHELL_CORNER_MARGIN + 12;
 /// Logical radius shared by the shell frame and its compositor backdrop.
-pub const SHELL_CORNER_RADIUS: f64 = 10.0;
+pub const SHELL_CORNER_RADIUS: f64 = 20.0;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ShellCorner {

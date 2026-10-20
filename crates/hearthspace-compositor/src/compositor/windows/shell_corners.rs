@@ -127,7 +127,7 @@ pub(super) fn corner_size(
     requested: Option<Size<i32, Logical>>,
     output: Size<i32, Logical>,
 ) -> Size<i32, Logical> {
-    let left_width = if corner.is_bottom() { 88 } else { 48 };
+    let left_width = if corner.is_bottom() { 102 } else { 108 };
     let max_width = if corner.is_right() {
         output
             .w
@@ -186,23 +186,23 @@ mod tests {
         let output = (320, 240).into();
         assert_eq!(
             corner_size(ShellCorner::Notifications, None, output),
-            (48, 48).into()
+            (108, 54).into()
         );
         assert_eq!(
             corner_size(ShellCorner::System, None, output),
-            (236, 48).into()
+            (140, 54).into()
         );
         assert_eq!(
             corner_size(ShellCorner::Canvas, None, output),
-            (88, 48).into()
+            (102, 54).into()
         );
         assert_eq!(
             corner_size(ShellCorner::Apps, None, output),
-            (196, 48).into()
+            (146, 54).into()
         );
         assert_eq!(
             corner_size(ShellCorner::Apps, Some((120, 48).into()), output),
-            (120, 48).into()
+            (120, 54).into()
         );
         assert_eq!(
             corner_size(ShellCorner::Apps, None, (10, 10).into()),
@@ -216,32 +216,32 @@ mod tests {
         let geometry = Rectangle::new((8, 6).into(), (320, 48).into());
         assert_eq!(
             corner_origin(ShellCorner::Notifications, output, geometry, false),
-            (-1276, 126).into()
+            (-1264, 138).into()
         );
         assert_eq!(
             corner_origin(ShellCorner::System, output, geometry, false),
-            (-340, 126).into()
+            (-352, 138).into()
         );
         assert_eq!(
             corner_origin(ShellCorner::Canvas, output, geometry, false),
-            (-1276, 854).into()
+            (-1264, 842).into()
         );
         assert_eq!(
             corner_origin(ShellCorner::Apps, output, geometry, false),
-            (-340, 854).into()
+            (-352, 842).into()
         );
         let panel = Rectangle::new((8, 6).into(), (360, 240).into());
         assert_eq!(
             corner_origin(ShellCorner::Canvas, output, panel, true),
-            (-1276, 602).into()
+            (-1264, 584).into()
         );
         assert_eq!(
             corner_origin(ShellCorner::Apps, output, panel, true),
-            (-380, 602).into()
+            (-392, 584).into()
         );
         assert_eq!(
             corner_work_area(output),
-            Rectangle::new((-1280, 192).into(), (1280, 656).into())
+            Rectangle::new((-1280, 210).into(), (1280, 620).into())
         );
         assert_eq!(
             corner_work_area(Rectangle::from_size((1, 1).into())).size,

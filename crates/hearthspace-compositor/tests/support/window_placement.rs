@@ -29,7 +29,7 @@ pub(super) fn assert_centered(window: &Value, width: f64, height: f64) {
     let x = window["x"].as_f64().unwrap();
     let y = window["y"].as_f64().unwrap();
     let expected_x = ((width - window["width"].as_f64().unwrap()) / 2.0).max(0.0);
-    let expected_y = 48.0 + ((height - 48.0 - window["height"].as_f64().unwrap()) / 2.0).max(0.0);
+    let expected_y = 54.0 + ((height - 54.0 - window["height"].as_f64().unwrap()) / 2.0).max(0.0);
     assert!(
         (x - expected_x).abs() <= 1.0,
         "horizontal centering: {window}"

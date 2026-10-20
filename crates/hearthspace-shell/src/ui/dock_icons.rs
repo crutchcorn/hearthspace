@@ -30,6 +30,13 @@ pub(super) fn requests(state: &ShellState) -> Vec<String> {
         .into_iter()
         .filter_map(|app| app.icon)
         .collect::<Vec<_>>();
+    names.extend(
+        state
+            .catalog
+            .apps()
+            .iter()
+            .filter_map(|app| app.icon.clone()),
+    );
     names.sort();
     names.dedup();
     names.truncate(MAX_ICONS);
@@ -174,7 +181,7 @@ impl Widget for IconWidget {
         if axis == Axis::Horizontal {
             self.width.px()
         } else {
-            26.0.px()
+            36.0.px()
         }
     }
 
@@ -182,6 +189,7 @@ impl Widget for IconWidget {
 
     fn paint(&mut self, _: &mut PaintCtx<'_>, _: &PropertiesRef<'_>, painter: &mut Painter<'_>) {
         let stroke = Stroke::new(1.6);
+        let center = self.width / 2.0;
         match &self.glyph {
             Glyph::App {
                 image,
@@ -189,28 +197,32 @@ impl Widget for IconWidget {
                 focused,
             } => {
                 if let Some(image) = image {
-                    let scale = 21.0 / f64::from(image.image.width.max(image.image.height).max(1));
+                    let scale = 24.0 / f64::from(image.image.width.max(image.image.height).max(1));
                     painter.draw_image(
                         image,
                         Affine::translate((
-                            (26.0 - f64::from(image.image.width) * scale) / 2.0,
-                            (22.0 - f64::from(image.image.height) * scale) / 2.0,
+                            (self.width - f64::from(image.image.width) * scale) / 2.0,
+                            (30.0 - f64::from(image.image.height) * scale) / 2.0,
                         )) * Affine::scale(scale),
                     );
                 } else {
                     // A recognizable app window replaces missing theme assets.
                     painter
-                        .stroke(Rect::new(3.0, 3.0, 23.0, 20.0), &stroke, components::TEXT)
-                        .draw();
-                    painter
                         .stroke(
-                            Line::new((3.0, 8.0), (23.0, 8.0)),
+                            Rect::new(center - 10.0, 6.0, center + 10.0, 24.0),
                             &stroke,
                             components::TEXT,
                         )
                         .draw();
                     painter
-                        .fill(Circle::new((6.0, 5.5), 0.8), components::TEXT)
+                        .stroke(
+                            Line::new((center - 10.0, 11.0), (center + 10.0, 11.0)),
+                            &stroke,
+                            components::TEXT,
+                        )
+                        .draw();
+                    painter
+                        .fill(Circle::new((center - 7.0, 8.5), 0.8), components::TEXT)
                         .draw();
                 }
                 let color = if *focused {
@@ -220,8 +232,8 @@ impl Widget for IconWidget {
                 };
                 let dots = (*count).clamp(1, 3);
                 for index in 0..dots {
-                    let x = 13.0 + (index as f64 - (dots - 1) as f64 / 2.0) * 5.0;
-                    painter.fill(Circle::new((x, 24.0), 1.4), color).draw();
+                    let x = center + (index as f64 - (dots - 1) as f64 / 2.0) * 6.0;
+                    painter.fill(Circle::new((x, 32.0), 1.5), color).draw();
                 }
             }
             Glyph::Next => {
@@ -231,20 +243,20 @@ impl Widget for IconWidget {
                 let centers = if self.width < 26.0 {
                     vec![self.width / 2.0]
                 } else {
-                    vec![9.0, 16.0]
+                    vec![center - 3.5, center + 3.5]
                 };
                 let span = ((self.width - 2.0) / 2.0).min(3.0);
                 for x in centers {
                     painter
                         .stroke(
-                            Line::new((x - span, 7.0), (x + span, 13.0)),
+                            Line::new((x - span, 12.0), (x + span, 18.0)),
                             &stroke,
                             components::TEXT,
                         )
                         .draw();
                     painter
                         .stroke(
-                            Line::new((x + span, 13.0), (x - span, 19.0)),
+                            Line::new((x + span, 18.0), (x - span, 24.0)),
                             &stroke,
                             components::TEXT,
                         )

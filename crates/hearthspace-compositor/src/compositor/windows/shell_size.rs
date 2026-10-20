@@ -1,7 +1,8 @@
 //! Shell palettes request their measured content height through xdg constraints.
-//! Search width follows its output; other palettes retain their requested width.
+//! Apps List retains its requested width, capped to the output's corner margins.
 use hearthspace_common::{
-    SHELL_CORNER_CLEARANCE, launcher_output_name_from_app_id, shell_corner_from_app_id,
+    SHELL_CORNER_CLEARANCE, SHELL_CORNER_MARGIN, launcher_output_name_from_app_id,
+    shell_corner_from_app_id,
 };
 use smithay::{
     utils::{Logical, Size},
@@ -102,11 +103,8 @@ fn palette_size(
     let width = output.w.max(1);
     let height = output.h.saturating_sub(CONTROL_BAR_HEIGHT).max(1);
     let width = if search {
-        // Use output-logical units so scale and monitor origin cannot change
-        // the fraction. Keep a small inset on narrow outputs as well.
-        ((f64::from(width) * 0.6).round() as i32)
-            .max(360)
-            .min(width.saturating_sub(24).max(1))
+        min.w
+            .min(width.saturating_sub(2 * SHELL_CORNER_MARGIN).max(1))
     } else {
         min.w.min(width)
     };
@@ -152,17 +150,17 @@ mod tests {
     }
 
     #[test]
-    fn search_tracks_output_width_while_retaining_its_measured_height() {
+    fn search_caps_its_requested_width_while_retaining_its_measured_height() {
         for (output, expected) in [
-            ((1280, 800), (768, 180)),
-            ((1920, 1080), (1152, 180)),
-            ((800, 600), (480, 180)),
-            ((600, 400), (360, 180)),
-            ((320, 200), (296, 152)),
+            ((1280, 800), (650, 180)),
+            ((1920, 1080), (650, 180)),
+            ((800, 600), (650, 180)),
+            ((600, 400), (552, 180)),
+            ((320, 200), (272, 146)),
             ((20, 20), (1, 1)),
         ] {
             assert_eq!(
-                palette_size((360, 180).into(), (360, 180).into(), output.into(), true),
+                palette_size((650, 180).into(), (650, 180).into(), output.into(), true),
                 Some(expected.into()),
             );
         }

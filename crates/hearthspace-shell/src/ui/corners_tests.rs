@@ -35,7 +35,7 @@ fn state() -> ShellState {
 
 #[test]
 fn notification_and_canvas_controls_open_their_own_panels() {
-    let mut ui = Ui::new(state(), notifications, (48, 48));
+    let mut ui = Ui::new(state(), notifications, (108, 54));
     ui.harness.mouse_click_on(ui.button("Notifications"), None);
     ui.dispatch(&notifications);
     assert!(ui.state.outputs[0].show_notifications);
@@ -43,7 +43,7 @@ fn notification_and_canvas_controls_open_their_own_panels() {
     ui.dispatch(&notifications);
     assert!(!ui.state.outputs[0].show_notifications);
 
-    let mut ui = Ui::new(state(), canvas, (88, 48));
+    let mut ui = Ui::new(state(), canvas, (102, 54));
     for name in ["Canvas map", "Select window group"] {
         let bounds = ui
             .harness
@@ -52,7 +52,7 @@ fn notification_and_canvas_controls_open_their_own_panels() {
             .bounding_box()
             .unwrap();
         assert!(
-            bounds.x0 >= 0.0 && bounds.x1 <= 88.0 && bounds.y1 <= 48.0,
+            bounds.x0 >= 0.0 && bounds.x1 <= 102.0 && bounds.y1 <= 54.0,
             "{name}: {bounds:?}"
         );
     }
@@ -63,7 +63,7 @@ fn notification_and_canvas_controls_open_their_own_panels() {
 
 #[test]
 fn apps_list_has_visible_keyboard_focus_and_opens_with_enter() {
-    let mut ui = Ui::new(state(), apps, (52, 48));
+    let mut ui = Ui::new(state(), apps, (54, 54));
     let button = ui.button("Apps List");
     let unfocused = ui.harness.render();
     let before = ui.harness.access_node(button).unwrap().bounding_box();
@@ -101,10 +101,10 @@ fn translucent_corners_keep_idle_buttons_clear_and_focus_contrasting() {
     ) where
         V::Widget: Sized,
     {
-        let mut ui = Ui::new(state, build, (width, 48));
+        let mut ui = Ui::new(state, build, (width, 54));
         assert!(ids(&ui.harness).iter().any(|id| {
             *ui.harness.get_widget_with_id(*id).get_prop::<Background>()
-                == Background::Color(components::SURFACE.with_alpha(0.72))
+                == Background::Color(components::CHROME_RAISED)
         }));
         for name in names {
             let button = ui.button(name);
@@ -132,8 +132,8 @@ fn translucent_corners_keep_idle_buttons_clear_and_focus_contrasting() {
             );
         }
     }
-    check(state(), notifications, 48, &["Notifications"]);
-    check(state(), canvas, 88, &["Canvas map", "Select window group"]);
+    check(state(), notifications, 108, &["Notifications"]);
+    check(state(), canvas, 102, &["Canvas map", "Select window group"]);
     check(state(), system, 300, &["Control center", "Power"]);
     let mut dock = state();
     dock.catalog = Default::default();
@@ -143,7 +143,7 @@ fn translucent_corners_keep_idle_buttons_clear_and_focus_contrasting() {
         title: "Document".into(),
         focused: false,
     }];
-    check(dock, apps, 90, &["Switch to editor", "Apps List"]);
+    check(dock, apps, 106, &["Switch to editor", "Apps List"]);
 
     let mut popup = Ui::new(
         state(),
@@ -164,8 +164,8 @@ fn translucent_corners_keep_idle_buttons_clear_and_focus_contrasting() {
             .get_widget_with_id(close)
             .get_prop::<BorderColor>()
             .color,
-        components::ACCENT,
-        "opaque popup controls retain the regular focus style"
+        components::TEXT,
+        "opaque popup controls retain the native ink focus style"
     );
 }
 
@@ -181,7 +181,7 @@ fn narrow_system_corner_keeps_tray_battery_and_controls_reachable() {
         warning: None,
     });
     state.tray.snapshot.items = (1..=20).map(crate::ui::tray_tests::item).collect();
-    let mut ui = Ui::new(state, system, (236, 48));
+    let mut ui = Ui::new(state, system, (236, 54));
     for name in ["Application tray", "Control center", "Power"] {
         let button = ui.button(name);
         let bounds = ui
@@ -191,7 +191,7 @@ fn narrow_system_corner_keeps_tray_battery_and_controls_reachable() {
             .bounding_box()
             .unwrap();
         assert!(
-            bounds.x0 >= 0.0 && bounds.x1 <= 236.0 && bounds.y1 <= 48.0,
+            bounds.x0 >= 0.0 && bounds.x1 <= 236.0 && bounds.y1 <= 54.0,
             "{name}: {bounds:?}"
         );
         ui.harness.mouse_click_on(button, None);
@@ -209,16 +209,25 @@ fn narrow_system_corner_keeps_tray_battery_and_controls_reachable() {
 
 #[test]
 fn corner_controls_remain_centered_when_the_surface_has_extra_width() {
-    let ui = Ui::new(state(), notifications, (64, 48));
+    let ui = Ui::new(state(), notifications, (128, 54));
     let bounds = ui
         .harness
         .access_node(ui.button("Notifications"))
         .unwrap()
         .bounding_box()
         .unwrap();
-    assert_eq!((bounds.x0 + bounds.x1) / 2.0, 32.0);
+    let status = ids(&ui.harness)
+        .into_iter()
+        .find_map(|id| {
+            let node = ui.harness.access_node(id)?;
+            (node.value().as_deref() == Some("All clear"))
+                .then(|| node.bounding_box())
+                .flatten()
+        })
+        .unwrap();
+    assert!(((bounds.x0 + status.x1) / 2.0 - 64.0).abs() < 1.0);
 
-    let ui = Ui::new(state(), canvas, (108, 48));
+    let ui = Ui::new(state(), canvas, (108, 54));
     let left = ui
         .harness
         .access_node(ui.button("Canvas map"))
@@ -233,7 +242,7 @@ fn corner_controls_remain_centered_when_the_surface_has_extra_width() {
         .unwrap();
     assert_eq!((left.x0 + right.x1) / 2.0, 54.0);
 
-    let ui = Ui::new(state(), apps, (64, 48));
+    let ui = Ui::new(state(), apps, (64, 54));
     let bounds = ui
         .harness
         .access_node(ui.button("Apps List"))
@@ -243,7 +252,7 @@ fn corner_controls_remain_centered_when_the_surface_has_extra_width() {
     assert_eq!((bounds.x0 + bounds.x1) / 2.0, 32.0);
     assert_eq!(
         apps_width(&ui.state),
-        48.0,
+        54.0,
         "an empty dock must not reserve a gap"
     );
 }
@@ -252,20 +261,20 @@ fn corner_controls_remain_centered_when_the_surface_has_extra_width() {
 fn system_corner_requests_only_its_content_width_and_updates_for_tray_items() {
     let mut state = state();
     state.clock = "Sat Oct 17 02:38".into();
-    let mut ui = Ui::new(state, system, (250, 48));
+    let mut ui = Ui::new(state, system, (290, 54));
     let empty_width = system_width(&ui.state, &ui.state.outputs[0]);
-    assert!(empty_width < 220.0, "spare clock width: {empty_width}");
+    assert!(empty_width == 290.0, "spare clock width: {empty_width}");
     ui.state.tray.snapshot.items = vec![crate::ui::tray_tests::item(1)];
     ui.rebuild(&system);
     ui.dispatch(&system);
     let populated_width = system_width(&ui.state, &ui.state.outputs[0]);
     assert!(
-        (populated_width - empty_width - 78.0).abs() <= 1.0,
+        (populated_width - empty_width - 76.0).abs() <= 1.0,
         "one icon + drawer + intervening gaps: {empty_width} -> {populated_width}"
     );
     ui.harness
         .process_window_event(masonry::core::WindowEvent::Resize(
-            (populated_width as u32, 48).into(),
+            (populated_width as u32, 54).into(),
         ));
     ui.dispatch(&system);
     ui.button("App 1");
@@ -279,11 +288,11 @@ fn system_corner_requests_only_its_content_width_and_updates_for_tray_items() {
 fn hover_feedback_preserves_system_width_and_tray_button_identity() {
     let mut state = state();
     state.tray.snapshot.items = vec![crate::ui::tray_tests::item(1)];
-    let mut ui = Ui::new(state, system, (320, 48));
+    let mut ui = Ui::new(state, system, (370, 54));
     let width = system_width(&ui.state, &ui.state.outputs[0]);
     ui.harness
         .process_window_event(masonry::core::WindowEvent::Resize(
-            (width as u32, 48).into(),
+            (width as u32, 54).into(),
         ));
     ui.dispatch(&system);
     let button = ui.button("App 1");
@@ -309,9 +318,10 @@ fn hover_feedback_preserves_system_width_and_tray_button_identity() {
     ui.state.tray.hovered = None;
     ui.rebuild(&system);
     ui.dispatch(&system);
-    assert!(
-        system_width(&ui.state, &ui.state.outputs[0]) > width,
-        "permanent content changes must be measured after hover ends"
+    assert_eq!(
+        system_width(&ui.state, &ui.state.outputs[0]),
+        width,
+        "the compact clock slot must stay stable for long localized dates"
     );
 }
 
@@ -326,11 +336,11 @@ fn multiline_tray_tooltip_does_not_move_or_remove_a_pointer_activation_target() 
     let description = item.tooltip.clone();
     let key = item.key.clone();
     state.tray.snapshot.items = vec![item];
-    let mut ui = Ui::new(state, system, (320, 48));
+    let mut ui = Ui::new(state, system, (370, 54));
     let width = system_width(&ui.state, &ui.state.outputs[0]);
     ui.harness
         .process_window_event(masonry::core::WindowEvent::Resize(
-            (width as u32, 48).into(),
+            (width as u32, 54).into(),
         ));
     ui.dispatch(&system);
     let button = ui.button("App 1");
