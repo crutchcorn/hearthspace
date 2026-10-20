@@ -162,7 +162,7 @@ impl FavoriteSettings {
             Ok(()) => {
                 self.cancel();
                 self.message = Some(format!(
-                    "Saved the gesture for {name}. Draw it in search to launch the app."
+                    "Saved the gesture for {name}. Draw it in Apps List to launch the app."
                 ));
             }
             Err(error) => self.message = Some(error.to_string()),

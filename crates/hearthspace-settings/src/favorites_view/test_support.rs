@@ -3,7 +3,7 @@ use hearthspace_ui_components as components;
 use masonry::{
     accesskit::{Action, ActionRequest, Role, TreeId},
     core::{Widget, WidgetId},
-    testing::TestHarness,
+    testing::{TestHarness, TestHarnessParams},
 };
 use std::sync::Arc;
 use xilem::{
@@ -54,10 +54,12 @@ where
         let mut ctx = ViewCtx::new(Arc::new(NoMessages), Arc::new(runtime));
         let view = build(&state);
         let (root, view_state) = view.build(&mut ctx, &mut state);
-        let harness = TestHarness::create_with_size(
+        let harness = TestHarness::create_with(
             components::hearthspace_light_properties(),
             root.new_widget,
-            size,
+            TestHarnessParams::default()
+                .with_size(size)
+                .with_background(xilem::Color::TRANSPARENT),
         );
         let mut ui = Self {
             view,

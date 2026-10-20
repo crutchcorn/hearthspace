@@ -61,20 +61,22 @@ pub(crate) fn app_logic(state: &mut SettingsApp) -> impl WidgetView<SettingsApp>
 }
 
 pub(crate) fn settings_view(state: &SettingsApp) -> impl WidgetView<SettingsApp> + use<> {
-    sized_box(
-        flex_row((
-            sized_box(sidebar_view(state))
-                .fixed_width(159.0.px())
-                .background_color(components::SURFACE_SUBTLE),
-            sized_box(label(""))
-                .fixed_width(1.0.px())
-                .background_color(components::BORDER),
-            flex_item(category_view(state), 1.0),
-        ))
-        .cross_axis_alignment(CrossAxisAlignment::Stretch)
-        .gap(0.0.px()),
+    crate::window_frame::body(
+        sized_box(
+            flex_row((
+                sized_box(sidebar_view(state))
+                    .fixed_width(159.0.px())
+                    .background_color(components::SURFACE_SUBTLE),
+                sized_box(label(""))
+                    .fixed_width(1.0.px())
+                    .background_color(components::BORDER),
+                flex_item(category_view(state), 1.0),
+            ))
+            .cross_axis_alignment(CrossAxisAlignment::Stretch)
+            .gap(0.0.px()),
+        )
+        .background_color(components::SURFACE),
     )
-    .background_color(components::SURFACE)
 }
 
 fn sidebar_view(state: &SettingsApp) -> impl WidgetView<SettingsApp> + use<> {

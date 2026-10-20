@@ -218,3 +218,34 @@ fn compact_gesture_recording_keeps_the_pad_and_save_controls_visible_together() 
         assert!(bounds.y0 >= 0.0 && bounds.y1 <= 490.0, "{name}: {bounds:?}");
     }
 }
+
+#[test]
+fn client_body_rounds_only_bottom_corners_and_preserves_sidebar_pointer_input() {
+    for (width, height) in [(680, 490), (620, 420)] {
+        let (_dir, state) = state();
+        let mut ui = Ui::new(state, view, (width, height));
+        for category in ["Gestures", "Appearance"] {
+            ui.harness.mouse_click_on(ui.button(category), None);
+            ui.dispatch(&view);
+            assert_eq!(ui.state.selected_category.label(), category);
+            let image = ui.harness.render();
+            for x in [2, width - 3] {
+                assert_eq!(
+                    image.get_pixel(x, height - 3).0[3],
+                    0,
+                    "bottom corners must reveal the desktop: {category}, {width}x{height}"
+                );
+                assert_eq!(
+                    image.get_pixel(x, 2).0[3],
+                    255,
+                    "top corners must join the server titlebar without a gap"
+                );
+            }
+            assert_eq!(
+                image.get_pixel(width / 2, height - 2).0[3],
+                255,
+                "the Settings body remains opaque between rounded corners"
+            );
+        }
+    }
+}

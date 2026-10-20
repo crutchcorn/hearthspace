@@ -18,6 +18,7 @@ mod state;
 mod system_view;
 mod ui;
 mod wayland_outputs;
+mod window_frame;
 
 #[cfg(test)]
 #[path = "favorites_view/test_support.rs"]
@@ -41,9 +42,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         app_logic,
         WindowOptions::new("Hearthspace Settings")
             .with_name("dev.hearthspace.Settings", "dev.hearthspace.Settings")
+            .with_transparent(true)
             .with_initial_inner_size(LogicalSize::new(680.0, 490.0))
             .with_min_inner_size(LogicalSize::new(620.0, 420.0)),
     )
+    .with_default_base_color(xilem::Color::TRANSPARENT)
     .with_default_properties(hearthspace_ui_components::hearthspace_light_properties());
 
     app.run_in(EventLoop::with_user_event())?;
