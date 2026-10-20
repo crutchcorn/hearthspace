@@ -27,10 +27,13 @@ use wayland_server::protocol::wl_surface;
 use super::{App, ManagedWindowKind, masonry_titlebar, windows::window_title};
 
 mod background;
+mod blur;
+mod blur_shader;
 mod lock;
 mod order;
 
 pub(in crate::compositor) use background::BackgroundImageTile;
+pub(in crate::compositor) use blur::CornerBlurCache;
 
 type GlesTexture = <GlesRenderer as RendererSuper>::TextureId;
 
@@ -52,6 +55,21 @@ render_elements! {
 /// Result of rendering one frame: the damaged output regions to submit, or
 /// `None` when nothing changed and the frame can be skipped.
 type RenderFrameResult = Result<Option<Vec<Rectangle<i32, Physical>>>, Box<dyn std::error::Error>>;
+
+struct RenderScene {
+    elements: Vec<HearthspaceRenderElement>,
+    /// Everything below the shell, switcher, and cursor may feed corner blur.
+    desktop_start: usize,
+}
+
+impl RenderScene {
+    fn overlay(elements: Vec<HearthspaceRenderElement>) -> Self {
+        Self {
+            desktop_start: elements.len(),
+            elements,
+        }
+    }
+}
 
 impl App {
     /// Render the current scene through an [`OutputDamageTracker`].
@@ -96,8 +114,9 @@ impl App {
         let output_offset = Point::<i32, Physical>::from((-output_location.x, -output_location.y));
         let output_scale = output_scale.max(1);
         let render_scale = f64::from(output_scale);
-        let foreground = self.collect_render_elements(renderer, output_rect);
-        let mut elements = foreground
+        let scene = self.collect_render_elements(renderer, output_rect);
+        let mut elements = scene
+            .elements
             .into_iter()
             .map(|element| {
                 let relocated =
@@ -129,6 +148,22 @@ impl App {
                 ),
             ));
         }
+        let blurred = self.corner_blur_elements(
+            renderer,
+            output_rect,
+            output_scale,
+            &elements[scene.desktop_start..],
+        );
+        elements.splice(
+            scene.desktop_start..scene.desktop_start,
+            blurred.into_iter().map(|element| {
+                TranslatedHearthspaceRenderElement::from(RelocateRenderElement::from_element(
+                    HearthspaceRenderElement::from(element),
+                    (0, 0),
+                    Relocate::Relative,
+                ))
+            }),
+        );
         let result = damage_tracker.render_output(
             renderer,
             framebuffer,
@@ -150,9 +185,9 @@ impl App {
         &mut self,
         renderer: &mut GlesRenderer,
         output_rect: Rectangle<i32, Logical>,
-    ) -> Vec<HearthspaceRenderElement> {
+    ) -> RenderScene {
         if self.session_locked() {
-            return self.collect_lock_elements(renderer, output_rect);
+            return RenderScene::overlay(self.collect_lock_elements(renderer, output_rect));
         }
         self.refresh_normal_window_outputs();
         self.refresh_fractional_scales();
@@ -160,7 +195,7 @@ impl App {
         if self.overview_active() {
             let mut elements = self.control_osd_render_elements(renderer, output_rect);
             elements.extend(self.collect_overview_elements(renderer, output_rect));
-            return elements;
+            return RenderScene::overlay(elements);
         }
 
         let mut elements = Vec::new();
@@ -171,8 +206,10 @@ impl App {
         elements.extend(self.collect_window_switcher_elements(renderer, output_rect));
 
         let mut group_elements = self.collect_group_elements(renderer, output_rect);
+        let mut desktop_start = None;
         for index in order::render_order(self.windows.iter().map(|window| window.kind)) {
             if self.windows[index].kind == ManagedWindowKind::Normal {
+                desktop_start.get_or_insert(elements.len());
                 elements.append(&mut group_elements.overlay);
             }
             if !self.window_visible_on_output(index, output_rect) {
@@ -220,8 +257,12 @@ impl App {
             }
         }
 
+        let desktop_start = desktop_start.unwrap_or(elements.len());
         elements.append(&mut group_elements.overlay);
-        elements
+        RenderScene {
+            elements,
+            desktop_start,
+        }
     }
 
     fn control_osd_render_elements(

@@ -3,6 +3,8 @@ use super::{CONTROL_BAR_HEIGHT, shell_app_id_for_output, shell_output_name_from_
 
 pub const SHELL_CORNER_MARGIN: i32 = 12;
 pub const SHELL_CORNER_CLEARANCE: i32 = CONTROL_BAR_HEIGHT + 2 * SHELL_CORNER_MARGIN;
+/// Logical radius shared by the shell frame and its compositor backdrop.
+pub const SHELL_CORNER_RADIUS: f64 = 10.0;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ShellCorner {

@@ -120,6 +120,12 @@ impl MapClient {
         self.sync();
     }
 
+    pub(super) fn repaint_color(&mut self, number: usize, color: [u8; 4]) {
+        self.state.windows[number].color = color;
+        self.state.commit_buffer(number, &self.queue.handle());
+        self.sync();
+    }
+
     pub(super) fn destroy(&mut self, number: usize) {
         let window = &mut self.state.windows[number];
         window.alive = false;

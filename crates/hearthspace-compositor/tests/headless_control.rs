@@ -53,6 +53,9 @@ mod session_bus;
 #[path = "support/session_lock.rs"]
 mod session_lock;
 #[cfg(feature = "test-apps")]
+#[path = "support/shell_blur.rs"]
+mod shell_blur;
+#[cfg(feature = "test-apps")]
 #[path = "support/shell_corners.rs"]
 mod shell_corners;
 #[cfg(feature = "test-apps")]

@@ -321,6 +321,7 @@ struct App {
     background_image_path: Option<String>,
     /// Cached texture for the repeated background image tile.
     background_image_tile: Option<rendering::BackgroundImageTile>,
+    corner_blur: rendering::CornerBlurCache,
     /// Stable render-element ids for visible background tile instances. Reusing
     /// ids across frames keeps the damage tracker from treating every tile as
     /// new on each redraw.
@@ -360,6 +361,12 @@ impl App {
             self.background_image_path = settings.background_image_path;
             self.background_image_tile = None;
             refresh.background_changed = true;
+        }
+        if refresh.background_changed {
+            // Static wallpaper elements have no content commit counter. New
+            // identities invalidate output and corner-backdrop damage trackers
+            // even when the replacement image has identical geometry.
+            self.background_tile_ids.clear();
         }
 
         refresh
@@ -677,6 +684,7 @@ pub(in crate::compositor) fn initialize_app(
         background_mode: settings.background_mode,
         background_image_path: settings.background_image_path,
         background_image_tile: None,
+        corner_blur: rendering::CornerBlurCache::default(),
         background_tile_ids: Vec::new(),
         software_cursor_visible: false,
         software_cursor: cursor::standard_software_cursor(),
