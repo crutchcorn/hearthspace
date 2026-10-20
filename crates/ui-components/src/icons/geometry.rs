@@ -31,6 +31,13 @@ impl Geometry {
                 Icon::Power => {
                     geometry.path("M6 5a9 9 0 1 0 12 0M12 2v10");
                 }
+                Icon::Lock => {
+                    geometry.rect(5.0, 10.0, 14.0, 11.0, 1.0, false);
+                    geometry.path("M8 10V7a4 4 0 0 1 8 0v3M12 14v3");
+                }
+                Icon::LogOut => {
+                    geometry.path("M10 4H4v16h6M10 12h11m-4-4 4 4-4 4");
+                }
                 Icon::Battery {
                     percentage,
                     charging,

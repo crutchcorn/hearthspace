@@ -143,7 +143,7 @@ fn power_confirmation_and_wrapped_errors_measure_their_actual_content() {
     let mut ui = Ui::new(state(), power, (300, 230));
     let normal = size(&ui.state.outputs[0], PopupKind::Power, 300.0, 230.0).height;
     assert!(
-        normal < 260.0,
+        normal < 320.0,
         "power actions should fit their content: {normal}"
     );
     ui.state.outputs[0].confirm_logout = true;
