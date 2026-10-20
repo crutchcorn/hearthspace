@@ -16,6 +16,7 @@ pub(crate) struct SettingsApp {
     pub(crate) live_outputs: Vec<LiveOutput>,
     pub(crate) selected_category: SettingsCategory,
     pub(crate) selected_monitor_id: Option<String>,
+    pub(crate) background_preview: crate::background_preview::BackgroundPreview,
     pub(crate) background_picker_request_sender: Option<UnboundedSender<BackgroundPickerRequest>>,
     pub(crate) background_picker_pending: bool,
     pub(crate) status: String,
@@ -93,6 +94,7 @@ pub(crate) fn initial_state(selected_category: SettingsCategory) -> SettingsApp 
         live_outputs,
         selected_category,
         selected_monitor_id,
+        background_preview: Default::default(),
         background_picker_request_sender: None,
         background_picker_pending: false,
         status,
@@ -107,6 +109,10 @@ impl SettingsApp {
         }
         if category == SettingsCategory::Ai {
             self.ai.request(crate::ai::Operation::Refresh);
+        }
+        if category == SettingsCategory::Background {
+            self.background_preview
+                .refresh(self.settings.background_image_path.as_deref());
         }
         self.selected_category = category;
     }

@@ -24,6 +24,7 @@ pub(crate) fn state() -> (tempfile::TempDir, SettingsApp) {
             live_outputs: vec![],
             selected_category: SettingsCategory::Gestures,
             selected_monitor_id: None,
+            background_preview: Default::default(),
             background_picker_request_sender: None,
             background_picker_pending: false,
             status: String::new(),

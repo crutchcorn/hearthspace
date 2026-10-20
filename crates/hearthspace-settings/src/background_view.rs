@@ -20,9 +20,6 @@ use crate::{
     state::{BackgroundPickerRequest, SettingsApp},
 };
 
-#[path = "background_preview.rs"]
-mod preview;
-
 pub(crate) fn view(state: &SettingsApp) -> Box<AnyWidgetView<SettingsApp>> {
     let path = state.settings.background_image_path.as_deref();
     let name = path
@@ -41,7 +38,7 @@ pub(crate) fn view(state: &SettingsApp) -> Box<AnyWidgetView<SettingsApp>> {
         "Background",
         flex_col((
             flex_row((
-                preview::view(path),
+                crate::background_preview::view(state),
                 flex_item(
                     flex_col((
                         label(name)

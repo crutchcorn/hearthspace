@@ -146,6 +146,9 @@ pub(crate) fn save_background_image_path(state: &mut SettingsApp, path: Option<P
     match client_set_background_image_path(path.as_deref()) {
         Ok(settings) => {
             state.settings = settings_with_live_outputs(settings, &state.live_outputs);
+            state
+                .background_preview
+                .refresh(state.settings.background_image_path.as_deref());
             state.status = match notify_compositor_settings_changed() {
                 Ok(()) => String::new(),
                 Err(error) => format!("Saved background image; compositor reload failed: {error}"),

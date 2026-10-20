@@ -4,6 +4,8 @@ mod ai;
 mod ai_view;
 mod ai_worker;
 mod appearance_view;
+mod background_preview;
+mod background_thumbnail;
 mod background_view;
 mod cli;
 mod display_view;

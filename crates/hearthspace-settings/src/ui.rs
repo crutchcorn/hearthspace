@@ -18,13 +18,19 @@ use crate::{
 };
 
 pub(crate) fn app_logic(state: &mut SettingsApp) -> impl WidgetView<SettingsApp> + use<> {
+    state
+        .background_preview
+        .synchronize_path(state.settings.background_image_path.as_deref());
     let content = settings_view(state);
     let content = fork(
         fork(content, crate::activation::task()),
         crate::favorites_icons::task(),
     );
     fork(
-        fork(content, crate::ai_worker::worker_view()),
+        fork(
+            fork(content, crate::ai_worker::worker_view()),
+            crate::background_preview::task(),
+        ),
         worker(
             |proxy, mut rx| async move {
                 while let Some(BackgroundPickerRequest::PickFile) = rx.recv().await {

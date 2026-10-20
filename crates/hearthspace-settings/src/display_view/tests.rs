@@ -37,6 +37,7 @@ fn display_identity_keeps_product_names_and_shows_each_connector_once_without_po
         live_outputs,
         selected_category: SettingsCategory::Displays,
         selected_monitor_id: None,
+        background_preview: Default::default(),
         background_picker_request_sender: None,
         background_picker_pending: false,
         status: String::new(),

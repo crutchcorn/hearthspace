@@ -2599,6 +2599,7 @@ dependencies = [
  "hearthspace-ui-components",
  "image",
  "masonry",
+ "png",
  "rfd",
  "tempfile",
  "wayland-client",
