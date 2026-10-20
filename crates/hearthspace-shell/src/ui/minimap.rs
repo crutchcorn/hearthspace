@@ -36,7 +36,7 @@ fn description(snapshot: Option<&CanvasSnapshot>, output_name: Option<&str>) -> 
         return "Canvas minimap loading".into();
     };
     let mut description = format!(
-        "Canvas minimap: {} windows. Blue outline shows the visible area{}.",
+        "Canvas minimap: {} windows. Orange outline shows the visible area{}.",
         snapshot.windows.len(),
         output_name
             .map(|name| format!(" on {name}"))

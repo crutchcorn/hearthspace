@@ -319,7 +319,7 @@ impl Widget for Minimap {
             self.snapshot.as_ref(),
             self.output_name.as_deref(),
         ));
-        node.set_description("Drag the blue viewport rectangle to pan the canvas.");
+        node.set_description("Drag the orange viewport rectangle to pan the canvas.");
     }
     fn children_ids(&self) -> ChildrenIds {
         ChildrenIds::new()

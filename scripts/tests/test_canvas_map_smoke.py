@@ -94,12 +94,12 @@ class MapCoordinateTests(unittest.TestCase):
         }
         surface = {"x": 0, "y": 50}
         bounds = {"x": 10, "y": 20, "width": 60, "height": 40}
-        first = capture(metadata, [((5, 60, 15, 70), (47, 118, 194))])
+        first = capture(metadata, [((5, 60, 15, 70), (233, 100, 42))])
         elsewhere = capture(
             metadata,
-            [((5, 60, 15, 70), (47, 118, 194)), ((-90, 35, -80, 45), (255, 0, 0))],
+            [((5, 60, 15, 70), (233, 100, 42)), ((-90, 35, -80, 45), (255, 0, 0))],
         )
-        changed = capture(metadata, [((15, 60, 25, 70), (47, 118, 194))])
+        changed = capture(metadata, [((15, 60, 25, 70), (233, 100, 42))])
         self.assertEqual(
             map_pixels(first, surface, bounds), map_pixels(elsewhere, surface, bounds)
         )
@@ -158,13 +158,19 @@ class MapDragTests(unittest.TestCase):
         }
         surface = {"x": 0, "y": 50}
         bounds = {"x": 10, "y": 20, "width": 100, "height": 80}
-        blue = (47, 118, 194)
+        orange = (233, 100, 42)
         image = capture(
-            metadata, [((10, 65, 30, 75), blue), ((-90, 35, -80, 45), blue)]
+            metadata, [((10, 65, 30, 75), orange), ((-90, 35, -80, 45), orange)]
         )
         self.assertEqual(
-            map_drag.blue_viewport(image, surface, bounds), (220, 70, 260, 90)
+            map_drag.accent_viewport(image, surface, bounds), (220, 70, 260, 90)
         )
+        unrelated = capture(
+            metadata,
+            [((10, 65, 30, 75), (47, 118, 194)), ((-90, 35, -80, 45), orange)],
+        )
+        with self.assertRaisesRegex(ControlError, "orange viewport"):
+            map_drag.accent_viewport(unrelated, surface, bounds)
 
     def test_drag_checks_sign_magnitude_and_preserves_zoom(self):
         before = {"x": -100, "y": 50, "scale": 1}
