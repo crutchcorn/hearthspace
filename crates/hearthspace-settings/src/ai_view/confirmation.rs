@@ -113,3 +113,12 @@ impl<V: WidgetView<SettingsApp>> View<SettingsApp, (), ViewCtx> for Confirmation
         }
     }
 }
+
+pub(crate) fn theme_properties(
+    properties: &mut xilem::masonry::core::DefaultProperties,
+    palette: hearthspace_ui_components::Palette,
+) {
+    properties.insert::<panel::ConfirmationPanel, _>(palette);
+    properties.insert::<button::ConfirmationButton, _>(palette);
+    properties.insert::<layer::ConfirmationLayer, _>(palette);
+}

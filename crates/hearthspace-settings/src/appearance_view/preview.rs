@@ -5,13 +5,21 @@ use xilem::masonry::{
     kurbo::Affine,
 };
 
-pub(super) fn theme(dark: bool) -> impl WidgetView<SettingsApp> {
+pub(super) fn theme(palette: components::Palette, dark: bool) -> impl WidgetView<SettingsApp> {
+    let palette = components::Palette::new(hearthspace_ipc::Appearance {
+        color_mode: if dark {
+            ColorMode::Dark
+        } else {
+            ColorMode::Light
+        },
+        ..palette.appearance
+    });
     canvas(move |_: &mut SettingsApp, _, scene, size| {
         let mut painter: Painter<'_> = Painter::new(scene);
         let field = if dark {
             Color::from_rgb8(0x14, 0x22, 0x25)
         } else {
-            components::APP_BACKGROUND
+            palette.app_background
         };
         let dot = if dark {
             Color::from_rgba8(0xd5, 0xf1, 0xe5, 0x1c)

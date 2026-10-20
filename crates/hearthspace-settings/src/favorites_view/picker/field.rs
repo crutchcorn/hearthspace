@@ -15,9 +15,7 @@ use xilem::masonry::{
     imaging::Painter,
     kurbo::{Axis, Point, Rect, Size, Stroke},
     layout::{AsUnit, LenReq, Length},
-    properties::{
-        Background, BorderColor, BorderWidth, CaretColor, ContentColor, Padding, SelectionColor,
-    },
+    properties::{Background, BorderColor, BorderWidth, Padding},
     widgets::{Button, ButtonPress, TextAction},
 };
 
@@ -41,25 +39,14 @@ pub(super) struct PickerField {
 impl PickerField {
     pub fn new(selected: Choice, choices: Vec<Choice>) -> Self {
         Self {
-            editor: Editor::new(&selected.name)
-                .prepare()
-                .with_props((
-                    ContentColor::new(components::TEXT),
-                    CaretColor {
-                        color: components::TEXT,
-                    },
-                    SelectionColor {
-                        color: components::ACCENT_SOFT,
-                    },
-                ))
-                .to_pod(),
+            editor: Editor::new(&selected.name).prepare().to_pod(),
             artwork: WidgetPod::new(Artwork::new(selected.image.clone())),
             trigger: Button::new(
                 icon(Icon::ChevronDown, 16.0)
-                    .color(components::settings_material::MUTED)
                     .label("Choose app")
                     .into_widget()
-                    .prepare(),
+                    .prepare()
+                    .with_class("settings-muted"),
             )
             .prepare()
             .with_props((

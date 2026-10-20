@@ -22,6 +22,7 @@ mod passive;
 mod picker;
 
 pub(crate) fn view(state: &SettingsApp) -> Box<AnyWidgetView<SettingsApp>> {
+    let palette = state.palette();
     let body = if state.favorites.recording.is_some() {
         editor::view(state)
     } else {
@@ -35,7 +36,7 @@ pub(crate) fn view(state: &SettingsApp) -> Box<AnyWidgetView<SettingsApp>> {
                 .favorites
                 .message
                 .as_ref()
-                .map(|message| controls::note(message.clone())),
+                .map(|message| controls::note(palette, message.clone())),
         ))
         .cross_axis_alignment(CrossAxisAlignment::Stretch)
         .gap(12.0.px()),
@@ -45,12 +46,13 @@ pub(crate) fn view(state: &SettingsApp) -> Box<AnyWidgetView<SettingsApp>> {
 }
 
 fn browsing(state: &SettingsApp) -> Box<AnyWidgetView<SettingsApp>> {
+    let palette = state.palette();
     let favorites = &state.favorites;
     let heading = flex_col((
         label("Gestures").text_size(26.0),
         label("Draw shortcuts for your apps.")
             .text_size(11.0)
-            .color(components::settings_material::MUTED)
+            .color(palette.muted)
             .line_break_mode(LineBreaking::WordWrap),
     ))
     .cross_axis_alignment(CrossAxisAlignment::Start)
@@ -107,12 +109,14 @@ fn browsing(state: &SettingsApp) -> Box<AnyWidgetView<SettingsApp>> {
             .gap(9.0.px());
             let actions = flex_row((
                 controls::icon_button(
+                    palette,
                     Icon::Pencil,
                     format!("Change gesture for {name}"),
                     !installed,
                     move |state| state.favorites.start(&edit_id),
                 ),
                 controls::icon_button(
+                    palette,
                     Icon::Trash2,
                     format!("Remove gesture for {name}"),
                     false,
@@ -137,7 +141,7 @@ fn browsing(state: &SettingsApp) -> Box<AnyWidgetView<SettingsApp>> {
                 sized_box(
                     flex_col((
                         row,
-                        (!installed).then(|| controls::note("No longer installed.")),
+                        (!installed).then(|| controls::note(palette, "No longer installed.")),
                     ))
                     .cross_axis_alignment(CrossAxisAlignment::Stretch)
                     .gap(4.0.px()),
@@ -153,11 +157,11 @@ fn browsing(state: &SettingsApp) -> Box<AnyWidgetView<SettingsApp>> {
         components::settings_surface(
             sized_box(
                 flex_col((
-                    icon(Icon::GestureStroke, 28.0).color(components::settings_material::MUTED),
+                    icon(Icon::GestureStroke, 28.0).color(palette.muted),
                     label("No gestures yet")
                         .text_size(13.0)
                         .weight(FontWeight::MEDIUM),
-                    controls::note("Add a gesture and choose the app it opens."),
+                    controls::note(palette, "Add a gesture and choose the app it opens."),
                 ))
                 .gap(12.0.px()),
             )
@@ -182,3 +186,10 @@ mod tests;
 
 #[cfg(test)]
 mod picker_tests;
+
+pub(crate) fn theme_properties(
+    properties: &mut xilem::masonry::core::DefaultProperties,
+    palette: hearthspace_ui_components::Palette,
+) {
+    picker::theme_properties(properties, palette);
+}

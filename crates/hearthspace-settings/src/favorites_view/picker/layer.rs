@@ -11,7 +11,6 @@ use xilem::masonry::{
     kurbo::{Axis, Point, Rect, Size},
     layout::{AsUnit, LayoutSize, LenReq, Length},
     parley::{FontFamily, FontFamilyName, StyleProperty},
-    properties::ContentColor,
     widgets::{ButtonPress, Label, Portal},
 };
 
@@ -58,7 +57,7 @@ impl PickerLayer {
                     crate::typography::FONT.into(),
                 )))
                 .prepare()
-                .with_props(ContentColor::new(components::settings_material::MUTED))
+                .with_class("settings-muted")
                 .to_pod(),
         };
         let scroll = TouchScroll::new(
@@ -277,12 +276,27 @@ impl Widget for Menu {
         ctx.place_child(&mut self.scroll, Point::new(4.0, 4.0));
         ctx.set_paint_insets(24.0);
     }
-    fn paint(&mut self, ctx: &mut PaintCtx<'_>, _: &PropertiesRef<'_>, painter: &mut Painter<'_>) {
-        components::settings_material::paint_surface(
+    fn property_changed(
+        &mut self,
+        ctx: &mut xilem::masonry::core::UpdateCtx<'_>,
+        property_type: std::any::TypeId,
+    ) {
+        components::Palette::prop_changed(ctx, property_type);
+    }
+
+    fn paint(
+        &mut self,
+        ctx: &mut PaintCtx<'_>,
+        props: &PropertiesRef<'_>,
+        painter: &mut Painter<'_>,
+    ) {
+        let palette = *props.get::<components::Palette>(ctx.property_cache());
+        components::settings_material::paint_surface_with_palette(
             painter,
             ctx.border_box(),
             14.0,
             components::SettingsSurface::Raised,
+            &palette,
         );
     }
     fn accessibility_role(&self) -> Role {
@@ -348,4 +362,11 @@ impl Widget for AppList {
             .chain([self.empty.id()])
             .collect()
     }
+}
+
+pub(crate) fn theme_properties(
+    properties: &mut xilem::masonry::core::DefaultProperties,
+    palette: hearthspace_ui_components::Palette,
+) {
+    properties.insert::<Menu, _>(palette);
 }

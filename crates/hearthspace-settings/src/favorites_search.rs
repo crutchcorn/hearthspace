@@ -12,7 +12,6 @@ use xilem::masonry::{
     kurbo::{Axis, Point, Size},
     layout::{LenReq, Length},
     parley::{FontFamily, FontFamilyName, StyleProperty},
-    properties::ContentColor,
     widgets::{Label, TextAction, TextArea},
 };
 
@@ -53,9 +52,7 @@ impl Editor {
                 )))
                 .accessibility_hidden(true)
                 .prepare()
-                .with_props(ContentColor::new(
-                    hearthspace_ui_components::settings_material::MUTED,
-                ))
+                .with_class("settings-muted")
                 .to_pod(),
             composing: false,
             expanded: false,

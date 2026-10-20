@@ -212,12 +212,27 @@ impl Widget for SelectMenu {
             ctx.place_child(option, Point::new(padding, padding + row * index as f64));
         }
     }
-    fn paint(&mut self, ctx: &mut PaintCtx<'_>, _: &PropertiesRef<'_>, painter: &mut Painter<'_>) {
-        components::settings_material::paint_surface(
+    fn property_changed(
+        &mut self,
+        ctx: &mut xilem::masonry::core::UpdateCtx<'_>,
+        property_type: std::any::TypeId,
+    ) {
+        components::Palette::prop_changed(ctx, property_type);
+    }
+
+    fn paint(
+        &mut self,
+        ctx: &mut PaintCtx<'_>,
+        props: &PropertiesRef<'_>,
+        painter: &mut Painter<'_>,
+    ) {
+        let palette = *props.get::<components::Palette>(ctx.property_cache());
+        components::settings_material::paint_surface_with_palette(
             painter,
             ctx.border_box(),
             components::RADIUS_CONTROL,
             components::SettingsSurface::Raised,
+            &palette,
         );
     }
     fn accessibility_role(&self) -> Role {
@@ -229,4 +244,11 @@ impl Widget for SelectMenu {
     fn children_ids(&self) -> ChildrenIds {
         self.options.iter().map(WidgetPod::id).collect()
     }
+}
+
+pub(crate) fn theme_properties(
+    properties: &mut xilem::masonry::core::DefaultProperties,
+    palette: hearthspace_ui_components::Palette,
+) {
+    properties.insert::<SelectMenu, _>(palette);
 }

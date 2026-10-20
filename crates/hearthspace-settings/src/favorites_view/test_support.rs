@@ -1,5 +1,4 @@
 use crate::state::SettingsApp;
-use hearthspace_ui_components as components;
 use masonry::{
     accesskit::{Action, ActionRequest, Role, TreeId},
     core::{Widget, WidgetId},
@@ -36,6 +35,7 @@ where
     view_state: V::ViewState,
     pub(crate) state: SettingsApp,
     ctx: ViewCtx,
+    properties: Arc<masonry::core::DefaultProperties>,
     pub(crate) harness: TestHarness<V::Widget>,
 }
 
@@ -54,18 +54,24 @@ where
         let mut ctx = ViewCtx::new(Arc::new(NoMessages), Arc::new(runtime));
         let view = build(&state);
         let (root, view_state) = view.build(&mut ctx, &mut state);
-        let harness = TestHarness::create_with(
-            components::hearthspace_opaque_properties(),
+        let properties = state.appearance_theme.properties(
+            state.settings.appearance,
+            state.settings.background_image_path.is_some(),
+        );
+        let mut harness = TestHarness::create_with(
+            crate::appearance::properties(state.palette()),
             root.new_widget,
             TestHarnessParams::default()
                 .with_size(size)
                 .with_background(xilem::Color::TRANSPARENT),
         );
+        harness.set_default_properties(properties.clone());
         let mut ui = Self {
             view,
             view_state,
             state,
             ctx,
+            properties,
             harness,
         };
         ui.dispatch(&build);
@@ -73,6 +79,14 @@ where
     }
 
     pub(crate) fn rebuild(&mut self, build: &impl Fn(&SettingsApp) -> V) {
+        let properties = self.state.appearance_theme.properties(
+            self.state.settings.appearance,
+            self.state.settings.background_image_path.is_some(),
+        );
+        if !Arc::ptr_eq(&properties, &self.properties) {
+            self.harness.set_default_properties(properties.clone());
+            self.properties = properties;
+        }
         let next = build(&self.state);
         self.harness.edit_root_widget(|root| {
             next.rebuild(

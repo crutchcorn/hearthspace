@@ -19,7 +19,8 @@ use crate::{
     typography::label,
 };
 
-pub(crate) fn view(_state: &SettingsApp) -> Box<AnyWidgetView<SettingsApp>> {
+pub(crate) fn view(state: &SettingsApp) -> Box<AnyWidgetView<SettingsApp>> {
+    let palette = state.palette();
     flex_col((
         section(
             "Frame layout",
@@ -28,8 +29,8 @@ pub(crate) fn view(_state: &SettingsApp) -> Box<AnyWidgetView<SettingsApp>> {
                     .text_size(12.0)
                     .line_height(LineHeight::FontSizeRelative(1.5))
                     .line_break_mode(LineBreaking::WordWrap)
-                    .color(components::settings_material::MUTED),
-                unavailable_action("Change layout", Icon::FrameLayout, 15.0),
+                    .color(palette.muted),
+                unavailable_action(palette, "Change layout", Icon::FrameLayout, 15.0),
             ))
             .cross_axis_alignment(CrossAxisAlignment::Start)
             .gap(8.0.px()),
@@ -45,7 +46,7 @@ pub(crate) fn view(_state: &SettingsApp) -> Box<AnyWidgetView<SettingsApp>> {
                     |_, _| {},
                 )
                 .height(75.0.px()),
-                unavailable_action("Restore canvas tools", Icon::RotateCcw, 12.0),
+                unavailable_action(palette, "Restore canvas tools", Icon::RotateCcw, 12.0),
             ))
             .cross_axis_alignment(CrossAxisAlignment::Stretch)
             .gap(8.0.px()),
@@ -55,14 +56,17 @@ pub(crate) fn view(_state: &SettingsApp) -> Box<AnyWidgetView<SettingsApp>> {
     .gap(27.0.px())
     .boxed()
 }
-fn unavailable_action(name: &'static str, glyph: Icon, size: f64) -> impl WidgetView<SettingsApp> {
+fn unavailable_action(
+    palette: components::Palette,
+    name: &'static str,
+    glyph: Icon,
+    size: f64,
+) -> impl WidgetView<SettingsApp> {
     components::settings_button(
         button(
             flex_row((
-                icon(glyph, size).color(components::settings_material::MUTED),
-                label(name)
-                    .text_size(10.0)
-                    .color(components::settings_material::MUTED),
+                icon(glyph, size).color(palette.muted),
+                label(name).text_size(10.0).color(palette.muted),
             ))
             .gap(7.0.px()),
             |_: &mut SettingsApp| {},

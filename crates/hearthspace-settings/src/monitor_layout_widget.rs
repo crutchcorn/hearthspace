@@ -317,8 +317,22 @@ impl Widget for MonitorLayoutWidget {
 
     fn layout(&mut self, _ctx: &mut LayoutCtx<'_>, _props: &PropertiesRef<'_>, _size: Size) {}
 
-    fn paint(&mut self, ctx: &mut PaintCtx<'_>, _: &PropertiesRef<'_>, painter: &mut Painter<'_>) {
-        paint::preview(self, ctx, painter);
+    fn property_changed(
+        &mut self,
+        ctx: &mut xilem::masonry::core::UpdateCtx<'_>,
+        property_type: std::any::TypeId,
+    ) {
+        components::Palette::prop_changed(ctx, property_type);
+    }
+
+    fn paint(
+        &mut self,
+        ctx: &mut PaintCtx<'_>,
+        props: &PropertiesRef<'_>,
+        painter: &mut Painter<'_>,
+    ) {
+        let palette = *props.get::<components::Palette>(ctx.property_cache());
+        paint::preview(palette, self, ctx, painter);
     }
 
     fn accessibility_role(&self) -> Role {

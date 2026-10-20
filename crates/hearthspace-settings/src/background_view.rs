@@ -24,6 +24,7 @@ use crate::{
 };
 
 pub(crate) fn view(state: &SettingsApp) -> Box<AnyWidgetView<SettingsApp>> {
+    let palette = state.palette();
     let path = state.settings.background_image_path.as_deref();
     let name = path
         .and_then(|path| std::path::Path::new(path).file_name())
@@ -52,7 +53,7 @@ pub(crate) fn view(state: &SettingsApp) -> Box<AnyWidgetView<SettingsApp>> {
                             components::settings_button(
                                 button(
                                     flex_row((
-                                        icon(Icon::ImagePlus, 14.0).color(components::TEXT),
+                                        icon(Icon::ImagePlus, 14.0).color(palette.text),
                                         label(picker_label).text_size(11.0),
                                     ))
                                     .gap(7.0.px()),
@@ -80,6 +81,7 @@ pub(crate) fn view(state: &SettingsApp) -> Box<AnyWidgetView<SettingsApp>> {
                     flex_row((
                         flex_item(label("Photo fit").text_size(11.0), 1.0),
                         photo_fit(
+                            palette,
                             state.settings.background_mode,
                             state.background_picker_pending,
                         ),
@@ -95,17 +97,17 @@ pub(crate) fn view(state: &SettingsApp) -> Box<AnyWidgetView<SettingsApp>> {
                         )
                         .text_size(10.0)
                         .line_height(LineHeight::FontSizeRelative(1.5))
-                        .color(components::settings_material::MUTED),
+                        .color(palette.muted),
                     )
                     .padding(Padding::bottom(4.0.px())),
                     sized_box(
                         components::settings_button(
                             button(
                                 flex_row((
-                                    icon(Icon::RotateCcw, 12.0).color(components::TEXT),
+                                    icon(Icon::RotateCcw, 12.0).color(palette.text),
                                     label("Use default background")
                                         .text_size(10.0)
-                                        .color(components::TEXT),
+                                        .color(palette.text),
                                 ))
                                 .gap(7.0.px()),
                                 |state: &mut SettingsApp| {

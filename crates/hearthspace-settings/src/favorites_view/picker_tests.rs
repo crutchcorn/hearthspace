@@ -316,3 +316,51 @@ fn popup_touch_scroll_does_not_select_and_tracks_resize_then_closes_with_editor(
         "unmounting the editor removes its attached popup"
     );
 }
+
+#[test]
+fn live_theme_update_keeps_open_picker_focus_filter_and_recording() {
+    let (_directory, mut state) = state();
+    state.favorites.begin_add();
+    let mut ui = Ui::new(state, view, (470, 490));
+    draw(&mut ui, &[[30.0, 40.0], [90.0, 130.0], [150.0, 40.0]]);
+    ui.dispatch(&view);
+    let points = ui
+        .state
+        .favorites
+        .recording
+        .as_ref()
+        .unwrap()
+        .points
+        .clone();
+    let editor = named(&ui, "Open this app", Role::EditableComboBox);
+    ui.activate(ui.button("Choose app"));
+    ui.dispatch(&view);
+    replace_text(&mut ui, "Beta");
+    ui.dispatch(&view);
+    let menu = nodes(&ui, Role::ListBox);
+    let options = nodes(&ui, Role::ListBoxOption);
+    let before = ui.harness.render();
+    ui.state.settings.appearance = hearthspace_ipc::Appearance {
+        color_mode: hearthspace_ipc::ColorMode::Dark,
+        accent_color: hearthspace_ipc::AccentColor::Teal,
+    };
+    ui.rebuild(&view);
+    ui.dispatch(&view);
+    assert_eq!(named(&ui, "Open this app", Role::EditableComboBox), editor);
+    assert_eq!(ui.harness.focused_widget_id(), Some(editor));
+    assert_eq!(ui.state.favorites.query, "Beta");
+    assert_eq!(nodes(&ui, Role::ListBox), menu);
+    assert_eq!(nodes(&ui, Role::ListBoxOption), options);
+    assert!(
+        before != ui.harness.render(),
+        "the retained popup must repaint"
+    );
+    key(&mut ui, NamedKey::Enter);
+    ui.dispatch(&view);
+    let recording = ui.state.favorites.recording.as_ref().unwrap();
+    assert_eq!(recording.app_id, "Beta.desktop");
+    assert_eq!(recording.points, points);
+    assert!(recording.valid);
+    assert!(nodes(&ui, Role::ListBox).is_empty());
+    assert_eq!(ui.harness.focused_widget_id(), Some(editor));
+}

@@ -13,29 +13,28 @@ use xilem::{
     view::{MainAxisAlignment, button, flex_row},
 };
 
-pub(super) fn note(text: impl Into<String>) -> impl WidgetView<SettingsApp, Widget: Sized> {
+pub(super) fn note(
+    palette: components::Palette,
+    text: impl Into<String>,
+) -> impl WidgetView<SettingsApp, Widget: Sized> {
     label(text.into())
         .text_size(11.0)
-        .color(components::settings_material::MUTED)
+        .color(palette.muted)
         .line_break_mode(LineBreaking::WordWrap)
 }
 
 pub(super) fn icon_button(
+    palette: components::Palette,
     glyph: Icon,
     name: impl Into<String>,
     disabled: bool,
     action: impl Fn(&mut SettingsApp) + Send + Sync + 'static,
 ) -> impl WidgetView<SettingsApp, Widget: Sized> {
     components::settings_button(
-        button(
-            icon(glyph, 16.0)
-                .color(components::settings_material::MUTED)
-                .label(name),
-            action,
-        )
-        .dims(Dimensions::fixed(44.0.px(), 44.0.px()))
-        .padding(0.0.px())
-        .corner_radius(10.0.px()),
+        button(icon(glyph, 16.0).color(palette.muted).label(name), action)
+            .dims(Dimensions::fixed(44.0.px(), 44.0.px()))
+            .padding(0.0.px())
+            .corner_radius(10.0.px()),
         components::SettingsButton::Bare,
         false,
     )
@@ -63,11 +62,14 @@ pub(super) fn text(
     .disabled(disabled)
 }
 
-pub(super) fn save(disabled: bool) -> impl WidgetView<SettingsApp, Widget: Sized> {
+pub(super) fn save(
+    palette: components::Palette,
+    disabled: bool,
+) -> impl WidgetView<SettingsApp, Widget: Sized> {
     let color = if disabled {
-        components::settings_material::MUTED
+        palette.muted
     } else {
-        components::ACCENT_INK
+        palette.accent_ink
     };
     components::settings_button(
         button(

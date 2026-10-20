@@ -19,6 +19,7 @@ mod option;
 use button::SettingsSelectButton;
 
 pub(crate) fn select<F>(
+    palette: components::Palette,
     name: &'static str,
     options: Vec<String>,
     selected: usize,
@@ -33,7 +34,7 @@ where
         name,
         child: flex_row((
             label(options[selected].clone()).text_size(11.0),
-            icon(Icon::ChevronDown, 12.0).color(components::settings_material::MUTED),
+            icon(Icon::ChevronDown, 12.0).color(palette.muted),
         ))
         .main_axis_alignment(MainAxisAlignment::SpaceBetween)
         .gap(8.0.px()),
@@ -164,4 +165,13 @@ where
             _ => MessageResult::Stale,
         }
     }
+}
+
+pub(crate) fn theme_properties(
+    properties: &mut xilem::masonry::core::DefaultProperties,
+    palette: hearthspace_ui_components::Palette,
+) {
+    properties.insert::<button::SettingsSelectButton, _>(palette);
+    properties.insert::<option::SelectOption, _>(palette);
+    layer::theme_properties(properties, palette);
 }

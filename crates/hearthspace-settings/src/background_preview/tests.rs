@@ -105,6 +105,8 @@ fn a_failed_refresh_removes_the_stale_image_without_changing_the_selected_path()
 fn category_navigation_works_while_loading_and_reentry_keeps_the_cached_preview() {
     let (_directory, favorites) = crate::favorites::tests::fixture();
     let mut state = SettingsApp {
+        running: true,
+        appearance_theme: Default::default(),
         activation_listener: None,
         ai: Default::default(),
         favorites,

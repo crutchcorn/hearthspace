@@ -1,6 +1,6 @@
 use hearthspace_ui_components as components;
 use xilem::{
-    Color, WidgetView,
+    WidgetView,
     masonry::{
         imaging::Painter,
         kurbo::{Affine, Rect, Stroke},
@@ -15,6 +15,7 @@ use crate::{
 };
 
 pub(crate) fn view(state: &SettingsApp) -> impl WidgetView<SettingsApp> + use<> {
+    let palette = state.palette();
     let image = state
         .background_preview
         .image_for(state.settings.background_image_path.as_deref());
@@ -23,7 +24,7 @@ pub(crate) fn view(state: &SettingsApp) -> impl WidgetView<SettingsApp> + use<> 
             let mut painter: Painter<'_> = Painter::new(scene);
             let shape = Rect::from_origin_size((0.5, 0.5), (size.width - 1.0, size.height - 1.0))
                 .to_rounded_rect(components::RADIUS_CONTROL);
-            painter.fill(shape, components::APP_BACKGROUND).draw();
+            painter.fill(shape, palette.app_background).draw();
             painter.push_fill_clip(shape);
             if let Some(image) = image.as_ref() {
                 painter.draw_image(
@@ -40,18 +41,19 @@ pub(crate) fn view(state: &SettingsApp) -> impl WidgetView<SettingsApp> + use<> 
                     12.0,
                     1.0,
                     1.2,
-                    Color::from_rgba8(0x58, 0x6f, 0x68, 38),
+                    palette.field_dot,
                 );
             }
             painter.pop_clip();
             painter
-                .stroke(shape, &Stroke::new(1.0), components::BORDER)
+                .stroke(shape, &Stroke::new(1.0), palette.border)
                 .draw();
-            components::settings_material::glass_edge(
+            components::settings_material::glass_edge_with_palette(
                 &mut painter,
                 Rect::from_origin_size((0.0, 0.0), size),
                 components::RADIUS_CONTROL,
                 false,
+                &palette,
             );
         })
         .alt_text(""),

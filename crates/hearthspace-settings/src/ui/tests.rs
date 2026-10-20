@@ -19,6 +19,8 @@ fn state() -> (tempfile::TempDir, SettingsApp) {
     (
         dir,
         SettingsApp {
+            running: true,
+            appearance_theme: Default::default(),
             ai: AiSettings::default(),
             favorites,
             settings: Settings::default(),
@@ -73,35 +75,59 @@ where
 }
 
 #[test]
-fn appearance_exposes_current_theme_and_unavailable_choices_without_changing_settings() {
+fn appearance_choices_expose_selection_and_live_updates_keep_keyboard_focus() {
+    use hearthspace_ipc::{AccentColor, ColorMode};
+    use masonry::accesskit::Toggled;
     let (_dir, state) = state();
     let mut ui = Ui::new(state, view, (680, 490));
     controls_fit_width(&ui, 680.0);
     let light = button_starting_with(&ui, "Light");
-    let light_node = ui.harness.access_node(light).unwrap();
-    assert!(light_node.label().unwrap().contains("Current"));
-    assert!(!light_node.is_disabled());
-    let orange = button_starting_with(&ui, "Orange");
-    assert!(
-        ui.harness
-            .access_node(orange)
-            .unwrap()
-            .label()
-            .unwrap()
-            .contains("Default")
-    );
-
-    for name in ["Dark", "Rose", "Violet", "Blue", "Teal", "Olive"] {
-        let choice = button_starting_with(&ui, name);
-        let node = ui.harness.access_node(choice).unwrap();
-        assert!(
-            node.is_disabled(),
-            "{name} must not offer an unsupported setting"
+    let dark = button_starting_with(&ui, "Dark");
+    let blue = button_starting_with(&ui, "Blue");
+    for name in [
+        "Light", "Dark", "Orange", "Rose", "Violet", "Blue", "Teal", "Olive",
+    ] {
+        let node = ui
+            .harness
+            .access_node(button_starting_with(&ui, name))
+            .unwrap();
+        assert!(!node.is_disabled(), "{name} must remain selectable");
+        assert_eq!(node.role(), Role::Button);
+        assert_eq!(
+            node.toggled(),
+            Some(if matches!(name, "Light" | "Orange") {
+                Toggled::True
+            } else {
+                Toggled::False
+            })
         );
-        ui.activate(choice);
-        ui.dispatch(&view);
-        assert_eq!(ui.state.selected_category, SettingsCategory::Appearance);
     }
+    ui.harness.focus_on(Some(blue));
+    let before = ui.harness.render();
+    // This is the same state boundary as a daemon refresh or completed save.
+    ui.state.settings.appearance.color_mode = ColorMode::Dark;
+    ui.state.settings.appearance.accent_color = AccentColor::Blue;
+    ui.rebuild(&view);
+    ui.dispatch(&view);
+    assert_eq!(ui.harness.focused_widget_id(), Some(blue));
+    assert_eq!(button_starting_with(&ui, "Light"), light);
+    assert_eq!(button_starting_with(&ui, "Dark"), dark);
+    assert_eq!(
+        ui.harness.access_node(light).unwrap().toggled(),
+        Some(Toggled::False)
+    );
+    assert_eq!(
+        ui.harness.access_node(dark).unwrap().toggled(),
+        Some(Toggled::True)
+    );
+    assert_eq!(
+        ui.harness.access_node(blue).unwrap().toggled(),
+        Some(Toggled::True)
+    );
+    assert!(
+        before != ui.harness.render(),
+        "live appearance must repaint the same widget tree"
+    );
 }
 
 #[test]
@@ -171,7 +197,7 @@ fn sidebar_routes_to_existing_background_gestures_ai_and_system_controls() {
 }
 
 #[test]
-fn keyboard_navigation_reaches_categories_and_skips_unavailable_appearance_options() {
+fn keyboard_navigation_reaches_categories_and_every_appearance_option() {
     let (_dir, state) = state();
     let mut ui = Ui::new(state, view, (680, 490));
     ui.harness.focus_on(Some(ui.button("Appearance")));
@@ -191,11 +217,14 @@ fn keyboard_navigation_reaches_categories_and_skips_unavailable_appearance_optio
     ui.dispatch(&view);
     ui.harness
         .focus_on(Some(button_starting_with(&ui, "Light")));
-    ui.harness.press_tab_key(false);
-    assert_eq!(
-        ui.harness.focused_widget_id(),
-        Some(button_starting_with(&ui, "Orange"))
-    );
+    for name in ["Dark", "Orange", "Rose", "Violet", "Blue", "Teal", "Olive"] {
+        ui.harness.press_tab_key(false);
+        assert_eq!(
+            ui.harness.focused_widget_id(),
+            Some(button_starting_with(&ui, name)),
+            "Tab must reach {name}"
+        );
+    }
     // Masonry includes the scroll view and its scrollbar in keyboard navigation.
     for _ in 0..4 {
         ui.harness.press_tab_key(false);

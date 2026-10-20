@@ -1,10 +1,7 @@
 use super::{controls, passive::passive, picker};
 use crate::{state::SettingsApp, typography::label};
 use hearthspace_shell::gesture_pad::GesturePad;
-use hearthspace_ui_components::{
-    self as components,
-    icons::{Icon, icon},
-};
+use hearthspace_ui_components::icons::{Icon, icon};
 use xilem::{
     AnyWidgetView, WidgetView,
     masonry::{
@@ -19,12 +16,13 @@ use xilem::{
 };
 
 pub(super) fn view(state: &SettingsApp) -> Box<AnyWidgetView<SettingsApp>> {
+    let palette = state.palette();
     let favorites = &state.favorites;
     let record = favorites.recording.as_ref().unwrap();
     let name = favorites.name(&record.app_id);
     let prompt = record.points.is_empty().then(|| {
         flex_col((
-            icon(Icon::Pencil, 30.0).color(components::settings_material::ACCENT_DECORATIVE),
+            icon(Icon::Pencil, 30.0).color(palette.accent_decorative),
             label("Record a gesture")
                 .text_size(20.0)
                 .letter_spacing(-0.4),
@@ -32,7 +30,7 @@ pub(super) fn view(state: &SettingsApp) -> Box<AnyWidgetView<SettingsApp>> {
                 .text_size(10.0)
                 .line_height(LineHeight::FontSizeRelative(1.5))
                 .text_alignment(Alignment::Center)
-                .color(components::settings_material::MUTED)
+                .color(palette.muted)
                 .line_break_mode(LineBreaking::WordWrap)
                 .width((favorites.view_width - 24.0).clamp(0.0, 220.0).px()),
         ))
@@ -69,11 +67,9 @@ pub(super) fn view(state: &SettingsApp) -> Box<AnyWidgetView<SettingsApp>> {
         ),
         passive(
             sized_box(
-                flex_col((label("Draw here")
-                    .text_size(9.0)
-                    .color(components::settings_material::MUTED),))
-                .cross_axis_alignment(CrossAxisAlignment::Start)
-                .main_axis_alignment(MainAxisAlignment::Center),
+                flex_col((label("Draw here").text_size(9.0).color(palette.muted),))
+                    .cross_axis_alignment(CrossAxisAlignment::Start)
+                    .main_axis_alignment(MainAxisAlignment::Center),
             )
             .height(46.0.px())
             .padding(Padding::from_vh(1.0.px(), 15.0.px())),
@@ -98,9 +94,13 @@ pub(super) fn view(state: &SettingsApp) -> Box<AnyWidgetView<SettingsApp>> {
     );
     flex_col((
         flex_row((
-            controls::icon_button(Icon::ArrowLeft, "Back to gestures", false, |state| {
-                state.favorites.cancel()
-            }),
+            controls::icon_button(
+                palette,
+                Icon::ArrowLeft,
+                "Back to gestures",
+                false,
+                |state| state.favorites.cancel(),
+            ),
             label(if favorites.editing {
                 "Edit gesture"
             } else {
@@ -114,7 +114,7 @@ pub(super) fn view(state: &SettingsApp) -> Box<AnyWidgetView<SettingsApp>> {
         flex_col((
             picker::view(state),
             drawing,
-            controls::save(!record.valid || favorites.store.is_none()),
+            controls::save(palette, !record.valid || favorites.store.is_none()),
         ))
         .cross_axis_alignment(CrossAxisAlignment::Stretch)
         .gap(12.0.px()),

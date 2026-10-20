@@ -1,6 +1,5 @@
 //! The app chooser floats above the editor, retaining its recording geometry.
 use crate::{state::SettingsApp, typography::label};
-use hearthspace_ui_components as components;
 use xilem::{
     AnyWidgetView, Pod, ViewCtx, WidgetView,
     core::{MessageCtx, MessageResult, Mut, View, ViewMarker},
@@ -46,6 +45,7 @@ fn choice(state: &SettingsApp, app: &hearthspace_shell::app_catalog::DesktopApp)
 }
 
 pub(super) fn view(state: &SettingsApp) -> Box<AnyWidgetView<SettingsApp>> {
+    let palette = state.palette();
     let favorites = &state.favorites;
     let record = favorites.recording.as_ref().unwrap();
     let selected = favorites.catalog.app_by_id(&record.app_id).unwrap();
@@ -61,9 +61,7 @@ pub(super) fn view(state: &SettingsApp) -> Box<AnyWidgetView<SettingsApp>> {
         query: favorites.query.clone(),
     };
     flex_col((
-        label("Open this app")
-            .text_size(11.0)
-            .color(components::settings_material::MUTED),
+        label("Open this app").text_size(11.0).color(palette.muted),
         picker.height(46.0.px()).width(Dim::Stretch),
     ))
     .cross_axis_alignment(CrossAxisAlignment::Stretch)
@@ -143,4 +141,16 @@ impl View<SettingsApp, (), ViewCtx> for Picker {
         }
         MessageResult::Action(())
     }
+}
+
+pub(crate) fn theme_properties(
+    properties: &mut xilem::masonry::core::DefaultProperties,
+    palette: hearthspace_ui_components::Palette,
+) {
+    properties.insert::<field::PickerField, _>(palette);
+    properties.insert::<option::Artwork, _>(palette);
+    properties
+        .insert::<option::Artwork, _>(xilem::masonry::properties::ContentColor::new(palette.muted));
+    properties.insert::<option::AppOption, _>(palette);
+    layer::theme_properties(properties, palette);
 }

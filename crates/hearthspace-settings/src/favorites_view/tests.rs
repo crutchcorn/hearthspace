@@ -18,6 +18,8 @@ pub(crate) fn state() -> (tempfile::TempDir, SettingsApp) {
     (
         dir,
         SettingsApp {
+            running: true,
+            appearance_theme: Default::default(),
             activation_listener: None,
             ai: crate::ai::AiSettings::default(),
             favorites,

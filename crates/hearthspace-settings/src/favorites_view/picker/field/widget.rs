@@ -167,7 +167,21 @@ impl Widget for PickerField {
             ctx.mutate_self_later(|mut this| Self::update_anchor(&mut this.downcast()));
         }
     }
-    fn paint(&mut self, ctx: &mut PaintCtx<'_>, _: &PropertiesRef<'_>, painter: &mut Painter<'_>) {
+    fn property_changed(
+        &mut self,
+        ctx: &mut xilem::masonry::core::UpdateCtx<'_>,
+        property_type: std::any::TypeId,
+    ) {
+        components::Palette::prop_changed(ctx, property_type);
+    }
+
+    fn paint(
+        &mut self,
+        ctx: &mut PaintCtx<'_>,
+        props: &PropertiesRef<'_>,
+        painter: &mut Painter<'_>,
+    ) {
+        let palette = *props.get::<components::Palette>(ctx.property_cache());
         let rect = ctx.border_box();
         // The reference moves its visual focus into the open menu. Retain the
         // editor's native text focus, but show its field outline only when closed.
@@ -177,14 +191,14 @@ impl Widget for PickerField {
                 painter,
                 rect,
                 10.0,
-                components::ACCENT.with_alpha(0.14),
+                palette.control_shadow,
                 (0.0, 6.0),
                 22.0,
                 -5.0,
             );
         }
         let shape = rect.inset(-0.5).to_rounded_rect(9.5);
-        painter.fill(shape, components::SURFACE_CONTROL).draw();
+        painter.fill(shape, palette.surface_control).draw();
         if focused {
             let wash = xilem::masonry::peniko::Gradient::new_radial(
                 rect.center(),
@@ -192,20 +206,22 @@ impl Widget for PickerField {
             )
             .with_stops([
                 (0.0, xilem::Color::TRANSPARENT),
-                (1.0, components::ACCENT.with_alpha(0.04)),
+                (1.0, palette.control_inset_glow),
             ]);
             painter.fill(shape, &wash).draw();
         }
         painter
-            .stroke(shape, &Stroke::new(1.0), components::CHROME_BORDER)
+            .stroke(shape, &Stroke::new(1.0), palette.chrome_border)
             .draw();
-        components::settings_material::glass_edge(painter, rect, 10.0, focused);
+        components::settings_material::glass_edge_with_palette(
+            painter, rect, 10.0, focused, &palette,
+        );
         if focused {
             painter
                 .stroke(
                     rect.inset(-1.0).to_rounded_rect(9.0),
                     &Stroke::new(2.0),
-                    components::ACCENT,
+                    palette.accent,
                 )
                 .draw();
         }

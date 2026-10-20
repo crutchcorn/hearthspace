@@ -172,10 +172,32 @@ impl Widget for ConfirmationLayer {
         ctx.run_layout(&mut self.panel, panel);
         ctx.place_child(&mut self.panel, self.bounds.origin());
     }
-    fn paint(&mut self, ctx: &mut PaintCtx<'_>, _: &PropertiesRef<'_>, painter: &mut Painter<'_>) {
+    fn property_changed(
+        &mut self,
+        ctx: &mut xilem::masonry::core::UpdateCtx<'_>,
+        property_type: std::any::TypeId,
+    ) {
+        hearthspace_ui_components::Palette::prop_changed(ctx, property_type);
+    }
+    fn paint(
+        &mut self,
+        ctx: &mut PaintCtx<'_>,
+        props: &PropertiesRef<'_>,
+        painter: &mut Painter<'_>,
+    ) {
+        let palette = *props.get::<hearthspace_ui_components::Palette>(ctx.property_cache());
+        let [red, green, blue, _] = palette.app_background.to_rgba8().to_u8_array();
         painter
-            // color-mix(in srgb, #e5e9e3 30%, #0005), including alpha.
-            .fill(ctx.border_box(), Color::from_rgba8(129, 131, 128, 136))
+            // color-mix(in srgb, var(--field) 30%, #0005), including alpha.
+            .fill(
+                ctx.border_box(),
+                Color::from_rgba8(
+                    (f32::from(red) * 0.5625).round() as u8,
+                    (f32::from(green) * 0.5625).round() as u8,
+                    (f32::from(blue) * 0.5625).round() as u8,
+                    136,
+                ),
+            )
             .draw();
     }
     fn accessibility_role(&self) -> Role {

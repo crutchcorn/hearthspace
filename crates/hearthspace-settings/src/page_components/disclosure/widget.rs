@@ -1,6 +1,6 @@
 use hearthspace_ui_components as components;
 use xilem::masonry::{
-    accesskit::{Action, Node, Role},
+    accesskit::{Action, Node, Role, Toggled},
     core::{
         AccessCtx, AccessEvent, ChildrenIds, EventCtx, LayoutCtx, MeasureCtx, NewWidget, PaintCtx,
         PointerButtonEvent, PointerEvent, PropertiesMut, PropertiesRef, RegisterCtx, TextEvent,
@@ -16,6 +16,7 @@ use xilem::masonry::{
 pub(crate) struct DisclosureButton {
     pub(super) name: String,
     pub(super) expanded: bool,
+    pub(super) selected: Option<bool>,
     child: WidgetPod<dyn Widget>,
     focus: components::settings_material::FocusIndicator,
 }
@@ -29,6 +30,7 @@ impl DisclosureButton {
         Self {
             name,
             expanded,
+            selected: None,
             child: child.erased().to_pod(),
             focus: components::settings_material::FocusIndicator::default(),
         }
@@ -132,8 +134,27 @@ impl Widget for DisclosureButton {
         ctx.set_paint_insets(24.0);
     }
 
-    fn paint(&mut self, ctx: &mut PaintCtx<'_>, _: &PropertiesRef<'_>, painter: &mut Painter<'_>) {
-        components::settings_material::paint_button(
+    fn property_changed(
+        &mut self,
+        ctx: &mut xilem::masonry::core::UpdateCtx<'_>,
+        property_type: std::any::TypeId,
+    ) {
+        components::Palette::prop_changed(ctx, property_type);
+    }
+
+    fn paint(
+        &mut self,
+        ctx: &mut PaintCtx<'_>,
+        props: &PropertiesRef<'_>,
+        painter: &mut Painter<'_>,
+    ) {
+        let palette = *props.get::<components::Palette>(ctx.property_cache());
+        if self.selected.is_some() {
+            // Appearance cards have one material/focus surface around the
+            // complete native action, including its preview and selection mark.
+            return;
+        }
+        components::settings_material::paint_button_with_palette(
             painter,
             ctx.border_box().inset(-1.0),
             components::RADIUS_CONTROL,
@@ -145,6 +166,7 @@ impl Widget for DisclosureButton {
                 focused: false,
                 disabled: ctx.is_disabled(),
             },
+            &palette,
         );
         if ctx.is_focus_target() && self.focus.visible() {
             painter
@@ -153,7 +175,7 @@ impl Widget for DisclosureButton {
                         .inset(-3.0)
                         .to_rounded_rect(components::RADIUS_CONTROL),
                     &Stroke::new(2.0),
-                    components::FOCUS_RING,
+                    palette.focus_ring,
                 )
                 .draw();
         }
@@ -165,7 +187,15 @@ impl Widget for DisclosureButton {
 
     fn accessibility(&mut self, _: &mut AccessCtx<'_>, _: &PropertiesRef<'_>, node: &mut Node) {
         node.set_label(self.name.clone());
-        node.set_expanded(self.expanded);
+        if let Some(selected) = self.selected {
+            node.set_toggled(if selected {
+                Toggled::True
+            } else {
+                Toggled::False
+            });
+        } else {
+            node.set_expanded(self.expanded);
+        }
         node.add_action(Action::Click);
     }
 

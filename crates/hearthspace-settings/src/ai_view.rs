@@ -24,6 +24,7 @@ mod confirmation;
 mod status;
 
 pub(crate) fn view(state: &SettingsApp) -> Box<AnyWidgetView<SettingsApp>> {
+    let palette = state.palette();
     let ai = &state.ai;
     let busy = ai.pending.is_some();
     let enabled = ai.enabled();
@@ -40,7 +41,7 @@ pub(crate) fn view(state: &SettingsApp) -> Box<AnyWidgetView<SettingsApp>> {
                 ai.confirm_off || ai.pending == Some(Operation::Remove),
             ),
             (!enabled && !busy).then(|| {
-                detail(if ai.installed() {
+                detail(palette, if ai.installed() {
                     "Turn on AI to use the local model."
                 } else {
                     "Download the local model to get started."
@@ -48,7 +49,7 @@ pub(crate) fn view(state: &SettingsApp) -> Box<AnyWidgetView<SettingsApp>> {
             }),
             status::status(
                 flex_col((
-                    detail(ai.message.clone()),
+                    detail(palette, ai.message.clone()),
                     busy.then(|| progress(ai.progress)),
                 ))
                 .cross_axis_alignment(CrossAxisAlignment::Stretch)
@@ -61,7 +62,7 @@ pub(crate) fn view(state: &SettingsApp) -> Box<AnyWidgetView<SettingsApp>> {
                 }),
             ),
             (!busy && !ai.confirm_off && ai.needs_retry()).then(|| {
-                action("Try again", components::SettingsButton::Control, |state| {
+                action(palette, "Try again", components::SettingsButton::Control, |state| {
                     state.ai.retry();
                 })
             }),
@@ -69,7 +70,7 @@ pub(crate) fn view(state: &SettingsApp) -> Box<AnyWidgetView<SettingsApp>> {
                 && (ai.needs_retry() || ai.snapshot.as_ref().is_some_and(|status| {
                     status.downloaded && !status.installed
                 }))).then(|| {
-                action(
+                action(palette,
                     if ai.installed() {
                         "Remove local model"
                     } else {
@@ -86,15 +87,15 @@ pub(crate) fn view(state: &SettingsApp) -> Box<AnyWidgetView<SettingsApp>> {
             label("Features")
                 .text_size(11.0)
                 .weight(FontWeight::MEDIUM)
-                .color(components::settings_material::MUTED),
+                .color(palette.muted),
             flex_col((
-                feature(
+                feature(palette,
                     "On-device AI",
                     "AI runs locally on your device. Window titles are processed on this device. Installing the model requires a download.",
                     0,
                     ai.features_open[0],
                 ),
-                feature(
+                feature(palette,
                     "Gather similar windows",
                     "Select one or more windows, then choose Gather similar windows. AI finds related windows on your canvas and brings them into view beside your selection.",
                     1,
@@ -113,6 +114,7 @@ pub(crate) fn view(state: &SettingsApp) -> Box<AnyWidgetView<SettingsApp>> {
 }
 
 fn action(
+    palette: components::Palette,
     name: &'static str,
     surface: components::SettingsButton,
     callback: impl Fn(&mut SettingsApp) + Send + Sync + 'static,
@@ -122,9 +124,9 @@ fn action(
             label(name)
                 .text_size(11.0)
                 .color(if surface == components::SettingsButton::Primary {
-                    components::ACCENT_INK
+                    palette.accent_ink
                 } else {
-                    components::TEXT
+                    palette.text
                 }),
             callback,
         )
@@ -135,15 +137,16 @@ fn action(
     )
 }
 
-fn detail(text: impl Into<String>) -> impl WidgetView<SettingsApp> {
+fn detail(palette: components::Palette, text: impl Into<String>) -> impl WidgetView<SettingsApp> {
     label(text.into())
         .text_size(10.0)
         .line_height(LineHeight::FontSizeRelative(1.6))
         .line_break_mode(LineBreaking::WordWrap)
-        .color(components::settings_material::MUTED)
+        .color(palette.muted)
 }
 
 fn feature(
+    palette: components::Palette,
     name: &'static str,
     description: &'static str,
     index: usize,
@@ -166,7 +169,7 @@ fn feature(
                             },
                             14.0,
                         )
-                        .color(components::settings_material::MUTED),
+                        .color(palette.muted),
                     ))
                     .gap(12.0.px()),
                     move |state: &mut SettingsApp| {
@@ -181,7 +184,7 @@ fn feature(
                             .text_size(11.0)
                             .line_height(LineHeight::FontSizeRelative(1.65))
                             .line_break_mode(LineBreaking::WordWrap)
-                            .color(components::settings_material::MUTED),
+                            .color(palette.muted),
                     )
                     .padding(Padding {
                         top: 0.0.px(),
@@ -201,3 +204,10 @@ fn feature(
 
 #[cfg(test)]
 mod tests;
+
+pub(crate) fn theme_properties(
+    properties: &mut xilem::masonry::core::DefaultProperties,
+    palette: hearthspace_ui_components::Palette,
+) {
+    confirmation::theme_properties(properties, palette);
+}

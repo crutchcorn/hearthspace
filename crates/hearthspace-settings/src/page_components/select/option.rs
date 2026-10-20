@@ -126,9 +126,23 @@ impl Widget for SelectOption {
             Point::new(8.0, (size.height - measured.height) / 2.0),
         );
     }
-    fn paint(&mut self, ctx: &mut PaintCtx<'_>, _: &PropertiesRef<'_>, painter: &mut Painter<'_>) {
+    fn property_changed(
+        &mut self,
+        ctx: &mut xilem::masonry::core::UpdateCtx<'_>,
+        property_type: std::any::TypeId,
+    ) {
+        components::Palette::prop_changed(ctx, property_type);
+    }
+
+    fn paint(
+        &mut self,
+        ctx: &mut PaintCtx<'_>,
+        props: &PropertiesRef<'_>,
+        painter: &mut Painter<'_>,
+    ) {
+        let palette = *props.get::<components::Palette>(ctx.property_cache());
         let bounds = ctx.border_box().inset(-1.0);
-        components::settings_material::paint_button(
+        components::settings_material::paint_button_with_palette(
             painter,
             bounds,
             components::RADIUS_DETAIL,
@@ -140,13 +154,14 @@ impl Widget for SelectOption {
                 focused: false,
                 disabled: ctx.is_disabled(),
             },
+            &palette,
         );
         if self.highlighted {
             painter
                 .stroke(
                     bounds.to_rounded_rect(components::RADIUS_DETAIL),
                     &Stroke::new(2.0),
-                    components::FOCUS_RING,
+                    palette.focus_ring,
                 )
                 .draw();
         }

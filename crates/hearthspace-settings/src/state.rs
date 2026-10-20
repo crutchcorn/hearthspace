@@ -9,6 +9,8 @@ use crate::{
 };
 
 pub(crate) struct SettingsApp {
+    pub(crate) running: bool,
+    pub(crate) appearance_theme: crate::appearance::Theme,
     pub(crate) activation_listener: Option<std::os::unix::net::UnixListener>,
     pub(crate) ai: crate::ai::AiSettings,
     pub(crate) favorites: crate::favorites::FavoriteSettings,
@@ -87,6 +89,8 @@ pub(crate) fn initial_state(selected_category: SettingsCategory) -> SettingsApp 
     let selected_monitor_id = settings.monitors.first().map(|monitor| monitor.id.clone());
 
     SettingsApp {
+        running: true,
+        appearance_theme: Default::default(),
         activation_listener: None,
         ai: crate::ai::AiSettings::default(),
         favorites: crate::favorites::FavoriteSettings::load(),
@@ -102,6 +106,13 @@ pub(crate) fn initial_state(selected_category: SettingsCategory) -> SettingsApp 
 }
 
 impl SettingsApp {
+    pub(crate) fn palette(&self) -> hearthspace_ui_components::Palette {
+        self.appearance_theme.palette(
+            self.settings.appearance,
+            self.settings.background_image_path.is_some(),
+        )
+    }
+
     pub(crate) fn select_category(&mut self, category: SettingsCategory) {
         self.favorites.cancel();
         if category == SettingsCategory::Gestures {
@@ -115,5 +126,11 @@ impl SettingsApp {
                 .refresh(self.settings.background_image_path.as_deref());
         }
         self.selected_category = category;
+    }
+}
+
+impl xilem::AppState for SettingsApp {
+    fn keep_running(&self) -> bool {
+        self.running
     }
 }

@@ -16,13 +16,18 @@ const MODES: [(BackgroundMode, &str); 4] = [
     (BackgroundMode::Cover, "Cover"),
 ];
 
-pub(crate) fn photo_fit(selected: BackgroundMode, disabled: bool) -> impl WidgetView<SettingsApp> {
+pub(crate) fn photo_fit(
+    palette: hearthspace_ui_components::Palette,
+    selected: BackgroundMode,
+    disabled: bool,
+) -> impl WidgetView<SettingsApp> {
     let selected = MODES
         .iter()
         .position(|(mode, _)| *mode == selected)
         .unwrap();
     sized_box(
         select(
+            palette,
             "Photo fit",
             MODES.map(|(_, label)| label.to_owned()).to_vec(),
             selected,

@@ -1,3 +1,4 @@
+use hearthspace_ipc::{AccentColor, ColorMode};
 use hearthspace_ui_components::{
     self as components,
     icons::{Icon, icon},
@@ -12,60 +13,54 @@ use xilem::{
     },
     style::Style,
     view::{
-        CrossAxisAlignment, MainAxisAlignment, button, canvas, flex_col, flex_item, flex_row,
-        sized_box, zstack,
+        CrossAxisAlignment, MainAxisAlignment, canvas, flex_col, flex_item, flex_row, sized_box,
+        zstack,
     },
 };
 
-use crate::{page_components::section, state::SettingsApp, typography::label};
+use crate::{
+    page_components::{disclosure, section},
+    state::SettingsApp,
+    typography::label,
+};
 
 mod preview;
 mod swatch;
 
-pub(crate) fn view(_: &SettingsApp) -> Box<AnyWidgetView<SettingsApp>> {
+pub(crate) fn view(state: &SettingsApp) -> Box<AnyWidgetView<SettingsApp>> {
+    let palette = state.palette();
+    let appearance = state.settings.appearance;
+    let rows = AccentColor::ALL
+        .chunks(3)
+        .map(|colors| {
+            flex_row(
+                colors
+                    .iter()
+                    .map(|&color| {
+                        flex_item(
+                            accent_card(palette, color, color == appearance.accent_color),
+                            1.0,
+                        )
+                    })
+                    .collect::<Vec<_>>(),
+            )
+            .gap(8.0.px())
+        })
+        .collect::<Vec<_>>();
     flex_col((
         section(
             "Color mode",
-            flex_row((
-                flex_item(mode_card(false), 1.0),
-                flex_item(mode_card(true), 1.0),
-            ))
+            flex_row(ColorMode::ALL.map(|mode| {
+                flex_item(mode_card(palette, mode, mode == appearance.color_mode), 1.0)
+            }))
             .cross_axis_alignment(CrossAxisAlignment::Stretch)
             .gap(8.0.px()),
         ),
         section(
             "Accent color",
-            flex_col((
-                flex_row((
-                    flex_item(accent_card("Orange", components::ACCENT, true), 1.0),
-                    flex_item(
-                        accent_card("Rose", Color::from_rgb8(0xb7, 0x4e, 0x69), false),
-                        1.0,
-                    ),
-                    flex_item(
-                        accent_card("Violet", Color::from_rgb8(0x79, 0x57, 0xb5), false),
-                        1.0,
-                    ),
-                ))
+            flex_col(rows)
+                .cross_axis_alignment(CrossAxisAlignment::Stretch)
                 .gap(8.0.px()),
-                flex_row((
-                    flex_item(
-                        accent_card("Blue", Color::from_rgb8(0x36, 0x72, 0xb5), false),
-                        1.0,
-                    ),
-                    flex_item(
-                        accent_card("Teal", Color::from_rgb8(0x23, 0x7e, 0x78), false),
-                        1.0,
-                    ),
-                    flex_item(
-                        accent_card("Olive", Color::from_rgb8(0x6f, 0x7b, 0x38), false),
-                        1.0,
-                    ),
-                ))
-                .gap(8.0.px()),
-            ))
-            .cross_axis_alignment(CrossAxisAlignment::Stretch)
-            .gap(8.0.px()),
         ),
     ))
     .cross_axis_alignment(CrossAxisAlignment::Stretch)
@@ -73,16 +68,24 @@ pub(crate) fn view(_: &SettingsApp) -> Box<AnyWidgetView<SettingsApp>> {
     .boxed()
 }
 
-fn mode_card(dark: bool) -> impl WidgetView<SettingsApp> {
+fn mode_card(
+    palette: components::Palette,
+    mode: ColorMode,
+    selected: bool,
+) -> impl WidgetView<SettingsApp> {
+    let dark = mode == ColorMode::Dark;
     components::settings_button(
-        button(
+        disclosure(
+            if dark { "Dark" } else { "Light" },
+            false,
+            false,
             flex_col((
-                sized_box(preview::theme(dark)).fixed_height(74.0.px()),
+                sized_box(preview::theme(palette, dark)).fixed_height(74.0.px()),
                 flex_row((
-                    icon(if dark { Icon::Moon } else { Icon::Sun }, 18.0).color(if dark {
-                        components::settings_material::MUTED
+                    icon(if dark { Icon::Moon } else { Icon::Sun }, 18.0).color(if selected {
+                        palette.accent_decorative
                     } else {
-                        components::settings_material::ACCENT_DECORATIVE
+                        palette.muted
                     }),
                     flex_item(
                         label(if dark { "Dark" } else { "Light" })
@@ -94,25 +97,21 @@ fn mode_card(dark: bool) -> impl WidgetView<SettingsApp> {
                         sized_box(label(""))
                             .fixed_width(16.0.px())
                             .fixed_height(16.0.px())
-                            .background_color(if dark {
-                                Color::TRANSPARENT
+                            .background_color(if selected {
+                                palette.accent
                             } else {
-                                components::ACCENT
+                                Color::TRANSPARENT
                             })
                             .border(
-                                if dark {
-                                    components::BORDER
+                                if selected {
+                                    palette.accent
                                 } else {
-                                    components::ACCENT
+                                    palette.border
                                 },
                                 1.0.px(),
                             )
                             .corner_radius(8.0.px()),
-                        (!dark).then(|| {
-                            icon(Icon::Check, 11.0)
-                                .color(components::ACCENT_INK)
-                                .label("Current")
-                        }),
+                        selected.then(|| icon(Icon::Check, 11.0).color(palette.accent_ink)),
                     )))
                     .fixed_width(16.0.px())
                     .fixed_height(16.0.px()),
@@ -121,39 +120,44 @@ fn mode_card(dark: bool) -> impl WidgetView<SettingsApp> {
             ))
             .cross_axis_alignment(CrossAxisAlignment::Stretch)
             .gap(12.0.px()),
-            |_: &mut SettingsApp| {},
+            move |state: &mut SettingsApp| crate::appearance::set_mode(state, mode),
         )
-        .disabled(dark)
+        .selected(selected)
         .corner_radius(components::RADIUS_TILE.px())
         .padding(12.0.px()),
         components::SettingsButton::Card,
-        !dark,
+        selected,
     )
 }
 
-fn accent_card(name: &'static str, color: Color, selected: bool) -> impl WidgetView<SettingsApp> {
+fn accent_card(
+    palette: components::Palette,
+    accent: AccentColor,
+    selected: bool,
+) -> impl WidgetView<SettingsApp> {
+    let [red, green, blue] = accent.rgb();
     components::settings_button(
-        button(
+        disclosure(
+            accent.name(),
+            false,
+            false,
             sized_box(
                 flex_row((
                     zstack((
-                        sized_box(swatch::Swatch(color))
+                        sized_box(swatch::Swatch(Color::from_rgb8(red, green, blue)))
                             .fixed_width(29.0.px())
                             .fixed_height(29.0.px()),
                         selected.then(|| {
-                            icon(Icon::Check, 17.0)
-                                .color(components::ACCENT_INK)
-                                .label("Current")
+                            icon(Icon::Check, 17.0).color(Color::from_rgb8(255, 250, 245))
                         }),
                     )),
                     flex_item(
                         flex_col((
-                            label(name).text_size(11.0).weight(FontWeight::MEDIUM),
-                            selected.then(|| {
-                                label("Default")
-                                    .text_size(9.0)
-                                    .color(components::settings_material::MUTED)
-                            }),
+                            label(accent.name())
+                                .text_size(11.0)
+                                .weight(FontWeight::MEDIUM),
+                            (accent == AccentColor::Orange)
+                                .then(|| label("Default").text_size(9.0).color(palette.muted)),
                         ))
                         .cross_axis_alignment(CrossAxisAlignment::Start)
                         .main_axis_alignment(MainAxisAlignment::Center)
@@ -164,9 +168,9 @@ fn accent_card(name: &'static str, color: Color, selected: bool) -> impl WidgetV
                 .gap(9.0.px()),
             )
             .fixed_height(46.0.px()),
-            |_: &mut SettingsApp| {},
+            move |state: &mut SettingsApp| crate::appearance::set_accent(state, accent),
         )
-        .disabled(!selected)
+        .selected(selected)
         .corner_radius(components::RADIUS_TILE.px())
         .padding(10.0.px()),
         components::SettingsButton::Card,

@@ -1,22 +1,19 @@
 use super::button::ConfirmationButton;
 use hearthspace_ui_components::{self as components, settings_material as material};
 use std::{cell::Cell, rc::Rc};
-use xilem::{
-    Color,
-    masonry::{
-        accesskit::{Node, Role},
-        core::{
-            AccessCtx, ChildrenIds, LayoutCtx, MeasureCtx, NewWidget, NoAction, PaintCtx,
-            PropertiesMut, PropertiesRef, RegisterCtx, Update, UpdateCtx, Widget, WidgetId,
-            WidgetMut, WidgetPod,
-        },
-        imaging::Painter,
-        kurbo::{Axis, Point, Size, Stroke},
-        layout::{AsUnit, LayoutSize, LenReq, Length, SizeDef},
-        parley::{FontFamily, FontFamilyName, StyleProperty, style::LineHeight},
-        properties::{ContentColor, LineBreaking},
-        widgets::Label,
+use xilem::masonry::{
+    accesskit::{Node, Role},
+    core::{
+        AccessCtx, ChildrenIds, LayoutCtx, MeasureCtx, NewWidget, NoAction, PaintCtx,
+        PropertiesMut, PropertiesRef, RegisterCtx, Update, UpdateCtx, Widget, WidgetId, WidgetMut,
+        WidgetPod,
     },
+    imaging::Painter,
+    kurbo::{Axis, Point, Size, Stroke},
+    layout::{AsUnit, LayoutSize, LenReq, Length, SizeDef},
+    parley::{FontFamily, FontFamilyName, StyleProperty, style::LineHeight},
+    properties::LineBreaking,
+    widgets::Label,
 };
 
 const INSET: f64 = 25.0;
@@ -52,13 +49,13 @@ impl ConfirmationPanel {
                         1.15,
                     ))),
             )
-            .with_props(ContentColor::new(components::TEXT))
             .to_pod(),
             description: NewWidget::new(
                 label(DESCRIPTION, 12.0)
                     .with_style(StyleProperty::LineHeight(LineHeight::FontSizeRelative(1.6))),
             )
-            .with_props((ContentColor::new(material::MUTED), LineBreaking::WordWrap))
+            .with_props(LineBreaking::WordWrap)
+            .with_class("settings-muted")
             .to_pod(),
             keep: ConfirmationButton::new("Keep AI", false, keyboard.clone()).to_pod(),
             delete: ConfirmationButton::new("Turn off and delete", true, keyboard).to_pod(),
@@ -181,13 +178,27 @@ impl Widget for ConfirmationPanel {
         }
         ctx.set_paint_insets(40.0);
     }
-    fn paint(&mut self, ctx: &mut PaintCtx<'_>, _: &PropertiesRef<'_>, painter: &mut Painter<'_>) {
+    fn property_changed(
+        &mut self,
+        ctx: &mut xilem::masonry::core::UpdateCtx<'_>,
+        property_type: std::any::TypeId,
+    ) {
+        components::Palette::prop_changed(ctx, property_type);
+    }
+
+    fn paint(
+        &mut self,
+        ctx: &mut PaintCtx<'_>,
+        props: &PropertiesRef<'_>,
+        painter: &mut Painter<'_>,
+    ) {
+        let palette = *props.get::<components::Palette>(ctx.property_cache());
         let rect = ctx.border_box();
         material::shadow(
             painter,
             rect,
             20.0,
-            components::ACCENT.with_alpha(0.18),
+            palette.accent.with_alpha(0.18),
             (0.0, 28.0),
             88.0,
             -18.0,
@@ -196,7 +207,7 @@ impl Widget for ConfirmationPanel {
             painter,
             rect,
             20.0,
-            Color::from_rgba8(0x35, 0x4e, 0x3b, 48),
+            palette.glow_shadow,
             (0.0, 8.0),
             32.0,
             -12.0,
@@ -204,18 +215,15 @@ impl Widget for ConfirmationPanel {
         // This native layer cannot backdrop-filter its already-painted sibling.
         // An opaque warm backing keeps the page text from showing through it.
         painter
-            .fill(
-                rect.to_rounded_rect(20.0),
-                Color::from_rgb8(0xed, 0xed, 0xe9),
-            )
+            .fill(rect.to_rounded_rect(20.0), palette.popup_backing)
             .draw();
-        material::edge_light(painter, rect, 20.0);
-        material::glass_edge(painter, rect, 20.0, true);
+        material::edge_light_with_palette(painter, rect, 20.0, &palette);
+        material::glass_edge_with_palette(painter, rect, 20.0, true, &palette);
         painter
             .stroke(
                 rect.inset(-0.5).to_rounded_rect(19.5),
                 &Stroke::new(1.0),
-                components::BORDER,
+                palette.border,
             )
             .draw();
     }

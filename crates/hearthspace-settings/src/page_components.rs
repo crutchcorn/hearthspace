@@ -28,11 +28,14 @@ pub(crate) use select::select;
 mod progress;
 pub(crate) use progress::progress;
 
-pub(crate) fn note(text: impl Into<String>) -> impl WidgetView<SettingsApp> {
+pub(crate) fn note(
+    palette: components::Palette,
+    text: impl Into<String>,
+) -> impl WidgetView<SettingsApp> {
     label(text.into())
         .text_size(11.0)
         .line_height(LineHeight::FontSizeRelative(1.5))
-        .color(components::settings_material::MUTED)
+        .color(palette.muted)
         .line_break_mode(LineBreaking::WordWrap)
 }
 
@@ -48,4 +51,14 @@ pub(crate) fn section<V: WidgetView<SettingsApp>>(
     ))
     .cross_axis_alignment(CrossAxisAlignment::Stretch)
     .gap(12.0.px())
+}
+
+pub(crate) fn theme_properties(
+    properties: &mut xilem::masonry::core::DefaultProperties,
+    palette: hearthspace_ui_components::Palette,
+) {
+    properties.insert::<disclosure::DisclosureButton, _>(palette);
+    properties.insert::<toggle::NamedSwitch, _>(palette);
+    properties.insert::<progress::ProgressWidget, _>(palette);
+    select::theme_properties(properties, palette);
 }

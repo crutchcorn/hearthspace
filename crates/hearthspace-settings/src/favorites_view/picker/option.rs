@@ -2,7 +2,7 @@ use super::Choice;
 use hearthspace_ui_components::{
     self as components,
     icons::{Icon, IconWidget, icon},
-    settings_material::{Interaction, paint_button},
+    settings_material::{Interaction, paint_button_with_palette},
 };
 use xilem::masonry::{
     accesskit::{Action, Node, Role},
@@ -16,7 +16,7 @@ use xilem::masonry::{
     layout::{AsUnit, LayoutSize, LenReq, Length, SizeDef},
     parley::{FontFamily, FontFamilyName, StyleProperty},
     peniko::ImageBrush,
-    properties::{ContentColor, LineBreaking},
+    properties::LineBreaking,
     widgets::{ButtonPress, Label},
 };
 
@@ -28,13 +28,14 @@ impl Artwork {
     pub fn new(image: Option<ImageBrush>) -> Self {
         Self {
             image,
-            fallback: icon(Icon::AppsGrid, 24.0)
-                .color(components::settings_material::MUTED)
-                .into_widget(),
+            fallback: icon(Icon::AppsGrid, 24.0).into_widget(),
         }
     }
 }
 impl Widget for Artwork {
+    fn property_changed(&mut self, ctx: &mut UpdateCtx<'_>, _: std::any::TypeId) {
+        ctx.request_paint_only();
+    }
     type Action = NoAction;
     fn register_children(&mut self, _: &mut RegisterCtx<'_>) {}
     fn measure(
@@ -103,20 +104,18 @@ impl AppOption {
                     crate::typography::FONT.into(),
                 )))
                 .prepare()
-                .with_props((
-                    LineBreaking::Clip,
-                    ContentColor::new(if selected {
-                        components::ACCENT
-                    } else {
-                        components::TEXT
-                    }),
-                ))
+                .with_props(LineBreaking::Clip)
+                .with_class(if selected {
+                    "settings-accent"
+                } else {
+                    "settings-text"
+                })
                 .to_pod(),
-            check: WidgetPod::new(
-                icon(Icon::Check, 16.0)
-                    .color(components::ACCENT)
-                    .into_widget(),
-            ),
+            check: icon(Icon::Check, 16.0)
+                .into_widget()
+                .prepare()
+                .with_class("settings-accent")
+                .to_pod(),
         }
     }
 }
@@ -217,16 +216,32 @@ impl Widget for AppOption {
             );
         }
     }
-    fn paint(&mut self, ctx: &mut PaintCtx<'_>, _: &PropertiesRef<'_>, painter: &mut Painter<'_>) {
+    fn property_changed(
+        &mut self,
+        ctx: &mut xilem::masonry::core::UpdateCtx<'_>,
+        property_type: std::any::TypeId,
+    ) {
+        components::Palette::prop_changed(ctx, property_type);
+    }
+
+    fn paint(
+        &mut self,
+        ctx: &mut PaintCtx<'_>,
+        props: &PropertiesRef<'_>,
+        painter: &mut Painter<'_>,
+    ) {
+        let palette = *props.get::<components::Palette>(ctx.property_cache());
         if self.selected {
             let rect = ctx.border_box();
             painter
-                .fill(rect.to_rounded_rect(9.0), components::ACCENT_SOFT)
+                .fill(rect.to_rounded_rect(9.0), palette.accent_soft)
                 .draw();
-            components::settings_material::glass_edge(painter, rect, 9.0, false);
+            components::settings_material::glass_edge_with_palette(
+                painter, rect, 9.0, false, &palette,
+            );
             return;
         }
-        paint_button(
+        paint_button_with_palette(
             painter,
             ctx.border_box(),
             9.0,
@@ -237,6 +252,7 @@ impl Widget for AppOption {
                 active: ctx.is_active(),
                 ..Default::default()
             },
+            &palette,
         );
     }
     fn accessibility_role(&self) -> Role {

@@ -87,6 +87,7 @@ pub(crate) fn app_icon(
     id: &str,
     size: f64,
 ) -> Box<AnyWidgetView<SettingsApp>> {
+    let palette = state.palette();
     let artwork = state
         .favorites
         .catalog
@@ -103,7 +104,7 @@ pub(crate) fn app_icon(
             hearthspace_ui_components::icons::Icon::AppsGrid,
             size,
         )
-        .color(hearthspace_ui_components::settings_material::MUTED)
+        .color(palette.muted)
         .boxed(),
     }
 }

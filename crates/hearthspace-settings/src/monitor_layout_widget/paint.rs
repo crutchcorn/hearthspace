@@ -12,6 +12,7 @@ use xilem::masonry::{
 };
 
 pub(super) fn preview(
+    palette: components::Palette,
     widget: &MonitorLayoutWidget,
     ctx: &mut PaintCtx<'_>,
     painter: &mut Painter<'_>,
@@ -19,14 +20,14 @@ pub(super) fn preview(
     let content = ctx.content_box();
     let frame = content.inset(-0.5).to_rounded_rect(components::RADIUS_TILE);
     painter.push_clip(ClipRef::fill(frame));
-    painter.fill(frame, components::SURFACE_SUBTLE).draw();
+    painter.fill(frame, palette.surface_subtle).draw();
     components::settings_material::dot_pattern(
         painter,
         content.inset(-1.0),
         16.0,
         0.7,
         1.0,
-        xilem::Color::from_rgba8(0x58, 0x6f, 0x68, 0x26),
+        palette.field_dot,
     );
     let metrics = widget.layout_metrics(content.size());
     // Selection paints last, so its accent edge remains visible at shared borders.
@@ -54,7 +55,7 @@ pub(super) fn preview(
                     painter,
                     rect,
                     radius,
-                    components::ACCENT.with_alpha(0.18),
+                    palette.accent.with_alpha(0.18),
                     (0.0, 28.0),
                     88.0,
                     -18.0,
@@ -63,7 +64,7 @@ pub(super) fn preview(
                     painter,
                     rect,
                     radius,
-                    xilem::Color::from_rgba8(0x35, 0x4e, 0x3b, 0x30),
+                    palette.glow_shadow,
                     (0.0, 8.0),
                     32.0,
                     -12.0,
@@ -73,7 +74,7 @@ pub(super) fn preview(
                     painter,
                     rect,
                     radius,
-                    xilem::Color::from_rgba8(0x35, 0x4e, 0x3b, 0x24),
+                    palette.window_shadow,
                     (0.0, 24.0),
                     64.0,
                     -20.0,
@@ -82,41 +83,41 @@ pub(super) fn preview(
                     painter,
                     rect,
                     radius,
-                    components::ACCENT.with_alpha(0.15),
+                    palette.accent.with_alpha(0.15),
                     (0.0, 6.0),
                     20.0,
                     -8.0,
                 );
             }
             // Precompose the blurred field so its dots do not show through the tile.
-            painter
-                .fill(tile, xilem::Color::from_rgb8(0xef, 0xf0, 0xeb))
-                .draw();
-            painter.fill(tile, components::CHROME_RAISED).draw();
-            components::settings_material::edge_light(painter, rect, radius);
+            painter.fill(tile, palette.popup_backing).draw();
+            painter.fill(tile, palette.chrome_raised).draw();
+            components::settings_material::edge_light_with_palette(painter, rect, radius, &palette);
             if hovered {
-                painter.fill(tile, components::RAISED_BUTTON_HOVER).draw();
+                painter.fill(tile, palette.raised_button_hover).draw();
             }
             painter
                 .stroke(
                     tile,
                     &Stroke::new(1.0),
                     if selected {
-                        components::ACCENT
+                        palette.accent
                     } else if hovered {
-                        components::ACCENT_BORDER
+                        palette.accent_border
                     } else {
-                        components::CHROME_BORDER
+                        palette.chrome_border
                     },
                 )
                 .draw();
-            components::settings_material::glass_edge(painter, rect, radius, emphasized);
+            components::settings_material::glass_edge_with_palette(
+                painter, rect, radius, emphasized, &palette,
+            );
             if selected && ctx.is_focus_target() && widget.focus.visible() {
                 painter
                     .stroke(
                         rect.inflate(3.0, 3.0).to_rounded_rect(radius + 3.0),
                         &Stroke::new(2.0),
-                        components::FOCUS_RING,
+                        palette.focus_ring,
                     )
                     .draw();
             }
@@ -146,9 +147,9 @@ pub(super) fn preview(
                 Affine::translate(origin),
                 &layout,
                 &[if selected {
-                    components::settings_material::ACCENT_DECORATIVE
+                    palette.accent_decorative
                 } else {
-                    components::TEXT
+                    palette.text
                 }
                 .into()],
                 true,
@@ -156,9 +157,15 @@ pub(super) fn preview(
             painter.pop_clip();
         }
     }
-    components::settings_material::glass_edge(painter, content, components::RADIUS_TILE, false);
+    components::settings_material::glass_edge_with_palette(
+        painter,
+        content,
+        components::RADIUS_TILE,
+        false,
+        &palette,
+    );
     painter.pop_clip();
     painter
-        .stroke(frame, &Stroke::new(1.0), components::BORDER)
+        .stroke(frame, &Stroke::new(1.0), palette.border)
         .draw();
 }

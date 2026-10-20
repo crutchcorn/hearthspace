@@ -12,7 +12,7 @@ use xilem::masonry::{
         FontFamily, FontFamilyName, StyleProperty,
         style::{FontWeight, LineHeight},
     },
-    properties::{ContentColor, LineBreaking},
+    properties::LineBreaking,
     widgets::Label,
 };
 
@@ -56,13 +56,14 @@ impl RowContent {
             title: NewWidget::new(
                 label(name, 11.0).with_style(StyleProperty::FontWeight(FontWeight::MEDIUM)),
             )
-            .with_props((ContentColor::new(components::TEXT), LineBreaking::WordWrap))
+            .with_props(LineBreaking::WordWrap)
             .to_pod(),
             detail: NewWidget::new(
                 label(description.unwrap_or(""), 10.0)
                     .with_style(StyleProperty::LineHeight(LineHeight::FontSizeRelative(1.5))),
             )
-            .with_props((ContentColor::new(material::MUTED), LineBreaking::WordWrap))
+            .with_props(LineBreaking::WordWrap)
+            .with_class("settings-muted")
             .to_pod(),
             description,
         }
@@ -173,8 +174,8 @@ impl RowContent {
         }
     }
 
-    pub fn paint(ctx: &PaintCtx<'_>, painter: &mut Painter<'_>) {
-        material::paint_button(
+    pub fn paint(palette: components::Palette, ctx: &PaintCtx<'_>, painter: &mut Painter<'_>) {
+        material::paint_button_with_palette(
             painter,
             ctx.border_box(),
             components::RADIUS_TILE,
@@ -187,6 +188,7 @@ impl RowContent {
                 focused: false,
                 disabled: ctx.is_disabled(),
             },
+            &palette,
         );
     }
 

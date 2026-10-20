@@ -40,13 +40,14 @@ fn row<V: WidgetView<SettingsApp>>(name: &'static str, value: V) -> impl WidgetV
         .padding(Padding::from_vh(8.0.px(), 12.0.px()))
 }
 
-fn divider() -> impl WidgetView<SettingsApp> {
+fn divider(palette: components::Palette) -> impl WidgetView<SettingsApp> {
     sized_box(label(""))
         .fixed_height(1.0.px())
-        .background_color(components::BORDER)
+        .background_color(palette.border)
 }
 
 fn monitor_details_view(state: &SettingsApp) -> Box<AnyWidgetView<SettingsApp>> {
+    let palette = state.palette();
     let Some((index, monitor)) = state
         .settings
         .monitors
@@ -55,7 +56,7 @@ fn monitor_details_view(state: &SettingsApp) -> Box<AnyWidgetView<SettingsApp>> 
         .find(|(_, monitor)| state.selected_monitor_id.as_ref() == Some(&monitor.id))
         .or_else(|| state.settings.monitors.iter().enumerate().next())
     else {
-        return note("No monitors are currently available.").boxed();
+        return note(palette, "No monitors are currently available.").boxed();
     };
     let live_output = state
         .live_outputs
@@ -72,6 +73,7 @@ fn monitor_details_view(state: &SettingsApp) -> Box<AnyWidgetView<SettingsApp>> 
         .position(|scale| *scale == monitor.scale)
         .unwrap_or(0);
     let scale = select(
+        palette,
         "Scale",
         MONITOR_SCALE_OPTIONS
             .map(|scale| format!("{}%", scale * 100))
@@ -105,7 +107,7 @@ fn monitor_details_view(state: &SettingsApp) -> Box<AnyWidgetView<SettingsApp>> 
                         },
                         21.0,
                     )
-                    .color(components::settings_material::MUTED),
+                    .color(palette.muted),
                 )
                 .fixed_width(38.0.px())
                 .fixed_height(38.0.px())
@@ -117,7 +119,7 @@ fn monitor_details_view(state: &SettingsApp) -> Box<AnyWidgetView<SettingsApp>> 
                 label(name).text_size(13.0).weight(FontWeight::MEDIUM),
                 label(format!("Display {} · {connector}", index + 1))
                     .text_size(10.0)
-                    .color(components::settings_material::MUTED),
+                    .color(palette.muted),
             ))
             .cross_axis_alignment(CrossAxisAlignment::Start)
             .gap(4.0.px()),
@@ -128,12 +130,12 @@ fn monitor_details_view(state: &SettingsApp) -> Box<AnyWidgetView<SettingsApp>> 
                 flex_col((
                     row(
                         "Resolution",
-                        read_only_field(format!("{} × {}", monitor.width, monitor.height)),
+                        read_only_field(palette, format!("{} × {}", monitor.width, monitor.height)),
                     ),
-                    divider(),
+                    divider(palette),
                     row("Scale", scale),
-                    divider(),
-                    row("Refresh rate", read_only_field(refresh)),
+                    divider(palette),
+                    row("Refresh rate", read_only_field(palette, refresh)),
                 ))
                 .cross_axis_alignment(CrossAxisAlignment::Stretch)
                 .gap(0.0.px()),
@@ -147,12 +149,12 @@ fn monitor_details_view(state: &SettingsApp) -> Box<AnyWidgetView<SettingsApp>> 
     .boxed()
 }
 
-fn read_only_field(value: String) -> impl WidgetView<SettingsApp> {
+fn read_only_field(palette: components::Palette, value: String) -> impl WidgetView<SettingsApp> {
     components::settings_button(
         button(
             flex_row((
                 label(value).text_size(11.0),
-                icon(Icon::ChevronDown, 12.0).color(components::settings_material::MUTED),
+                icon(Icon::ChevronDown, 12.0).color(palette.muted),
             ))
             .gap(8.0.px()),
             |_: &mut SettingsApp| {},

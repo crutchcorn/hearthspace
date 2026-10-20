@@ -140,7 +140,21 @@ impl Widget for WindowBody {
         ctx.derive_baselines(&self.inner);
     }
 
-    fn paint(&mut self, ctx: &mut PaintCtx<'_>, _: &PropertiesRef<'_>, painter: &mut Painter<'_>) {
+    fn property_changed(
+        &mut self,
+        ctx: &mut xilem::masonry::core::UpdateCtx<'_>,
+        property_type: std::any::TypeId,
+    ) {
+        components::Palette::prop_changed(ctx, property_type);
+    }
+
+    fn paint(
+        &mut self,
+        ctx: &mut PaintCtx<'_>,
+        props: &PropertiesRef<'_>,
+        painter: &mut Painter<'_>,
+    ) {
+        let palette = *props.get::<components::Palette>(ctx.property_cache());
         // Paint clipping encloses the sidebar, scrollbars and page background.
         // The square top edge joins the server titlebar without a transparent seam.
         painter.push_clip(ClipRef::fill(ctx.border_box().to_rounded_rect((
@@ -149,18 +163,14 @@ impl Widget for WindowBody {
             RADIUS_PANEL - 1.0,
             RADIUS_PANEL - 1.0,
         ))));
-        painter
-            .fill(
-                ctx.border_box(),
-                components::SURFACE.with_alpha(if self.photo { 0.76 } else { 0.54 }),
-            )
-            .draw();
+        painter.fill(ctx.border_box(), palette.chrome).draw();
         // Continue the reference's window-wide wash below its titlebar.
         let rect = ctx.border_box();
-        components::settings_material::edge_light(
+        components::settings_material::edge_light_with_palette(
             painter,
             xilem::masonry::kurbo::Rect::new(rect.x0, -44.0, rect.x1, rect.y1),
             RADIUS_PANEL,
+            &palette,
         );
     }
 

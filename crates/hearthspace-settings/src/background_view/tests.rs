@@ -154,6 +154,8 @@ fn photo_fit_selection_and_reset_keep_keyboard_focus() {
     });
     let (_directory, favorites) = crate::favorites::tests::fixture();
     let state = SettingsApp {
+        running: true,
+        appearance_theme: Default::default(),
         activation_listener: None,
         ai: Default::default(),
         favorites,
@@ -285,6 +287,8 @@ fn photo_fit_selection_and_reset_keep_keyboard_focus() {
 fn popup_flips_and_clamps_to_the_window_and_cleans_up_when_disabled_or_page_changes() {
     let (_directory, favorites) = crate::favorites::tests::fixture();
     let state = SettingsApp {
+        running: true,
+        appearance_theme: Default::default(),
         activation_listener: None,
         ai: Default::default(),
         favorites,

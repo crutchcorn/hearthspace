@@ -26,14 +26,14 @@ pub(super) struct ConfirmationButton {
 
 impl ConfirmationButton {
     pub fn new(name: &'static str, destructive: bool, keyboard: Rc<Cell<bool>>) -> NewWidget<Self> {
+        let label = NewWidget::new(super::panel::label(name, 11.0));
+        let label = if destructive {
+            label.with_props(ContentColor::new(Color::WHITE))
+        } else {
+            label
+        };
         NewWidget::new(Self {
-            inner: Button::new(NewWidget::new(super::panel::label(name, 11.0)).with_props(
-                ContentColor::new(if destructive {
-                    Color::WHITE
-                } else {
-                    components::TEXT
-                }),
-            )),
+            inner: Button::new(label),
             destructive,
             keyboard,
         })
@@ -96,7 +96,21 @@ impl Widget for ConfirmationButton {
         self.inner.layout(ctx, props, size);
         ctx.set_paint_insets(24.0);
     }
-    fn paint(&mut self, ctx: &mut PaintCtx<'_>, _: &PropertiesRef<'_>, painter: &mut Painter<'_>) {
+    fn property_changed(
+        &mut self,
+        ctx: &mut xilem::masonry::core::UpdateCtx<'_>,
+        property_type: std::any::TypeId,
+    ) {
+        components::Palette::prop_changed(ctx, property_type);
+    }
+
+    fn paint(
+        &mut self,
+        ctx: &mut PaintCtx<'_>,
+        props: &PropertiesRef<'_>,
+        painter: &mut Painter<'_>,
+    ) {
+        let palette = *props.get::<components::Palette>(ctx.property_cache());
         let rect = ctx.border_box();
         let focused = ctx.is_focus_target() && self.keyboard.get();
         if self.destructive {
@@ -108,7 +122,13 @@ impl Widget for ConfirmationButton {
             painter
                 .fill(rect.to_rounded_rect(components::RADIUS_CONTROL), color)
                 .draw();
-            material::glass_edge(painter, rect, components::RADIUS_CONTROL, ctx.is_hovered());
+            material::glass_edge_with_palette(
+                painter,
+                rect,
+                components::RADIUS_CONTROL,
+                ctx.is_hovered(),
+                &palette,
+            );
             if focused {
                 painter
                     .stroke(
@@ -120,7 +140,7 @@ impl Widget for ConfirmationButton {
                     .draw();
             }
         } else {
-            material::paint_button(
+            material::paint_button_with_palette(
                 painter,
                 rect,
                 components::RADIUS_CONTROL,
@@ -132,6 +152,7 @@ impl Widget for ConfirmationButton {
                     focused,
                     disabled: ctx.is_disabled(),
                 },
+                &palette,
             );
         }
     }

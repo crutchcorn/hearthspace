@@ -81,19 +81,30 @@ impl Widget for ProgressWidget {
         }
     }
     fn layout(&mut self, _: &mut LayoutCtx<'_>, _: &PropertiesRef<'_>, _: Size) {}
-    fn paint(&mut self, ctx: &mut PaintCtx<'_>, _: &PropertiesRef<'_>, painter: &mut Painter<'_>) {
+    fn property_changed(
+        &mut self,
+        ctx: &mut xilem::masonry::core::UpdateCtx<'_>,
+        property_type: std::any::TypeId,
+    ) {
+        components::Palette::prop_changed(ctx, property_type);
+    }
+
+    fn paint(
+        &mut self,
+        ctx: &mut PaintCtx<'_>,
+        props: &PropertiesRef<'_>,
+        painter: &mut Painter<'_>,
+    ) {
+        let palette = *props.get::<components::Palette>(ctx.property_cache());
         let bounds = ctx.border_box();
         let track = bounds.to_rounded_rect(2.5);
-        painter.fill(track, components::CONTROL_TRACK).draw();
+        painter.fill(track, palette.control_track).draw();
         let width = bounds.width() * self.0.unwrap_or(1.0);
         if width > 0.0 {
             let fill =
                 Rect::new(bounds.x0, bounds.y0, bounds.x0 + width, bounds.y1).to_rounded_rect(2.5);
             let gradient = Gradient::new_linear((bounds.x0, 0.0), (bounds.x0 + width, 0.0))
-                .with_stops([
-                    components::ACCENT,
-                    components::settings_material::ACCENT_BRIGHT,
-                ]);
+                .with_stops([palette.accent, palette.accent_bright]);
             painter.with_fill_clip(track, |painter| {
                 painter.fill(fill, &gradient).draw();
             });

@@ -26,6 +26,7 @@ where
     Disclosure {
         name: name.into(),
         expanded,
+        selected: None,
         disabled,
         child,
         callback,
@@ -35,9 +36,17 @@ where
 pub(crate) struct Disclosure<V, F> {
     name: String,
     expanded: bool,
+    selected: Option<bool>,
     disabled: bool,
     child: V,
     callback: F,
+}
+
+impl<V, F> Disclosure<V, F> {
+    pub(crate) fn selected(mut self, selected: bool) -> Self {
+        self.selected = Some(selected);
+        self
+    }
 }
 
 const CONTENT: ViewId = ViewId::new(0);
@@ -57,11 +66,10 @@ where
     ) -> (Self::Element, Self::ViewState) {
         let (child, view_state) = ctx.with_id(CONTENT, |ctx| self.child.build(ctx, state));
         let element = ctx.with_action_widget(|ctx| {
-            let mut element = ctx.create_pod(DisclosureButton::new(
-                self.name.clone(),
-                self.expanded,
-                child.new_widget,
-            ));
+            let mut widget =
+                DisclosureButton::new(self.name.clone(), self.expanded, child.new_widget);
+            widget.selected = self.selected;
+            let mut element = ctx.create_pod(widget);
             element.new_widget.options.disabled = self.disabled;
             element
         });
@@ -76,9 +84,13 @@ where
         mut element: Mut<'_, Self::Element>,
         state: &mut SettingsApp,
     ) {
-        if self.expanded != previous.expanded || self.name != previous.name {
+        if self.expanded != previous.expanded
+            || self.name != previous.name
+            || self.selected != previous.selected
+        {
             element.widget.expanded = self.expanded;
             element.widget.name = self.name.clone();
+            element.widget.selected = self.selected;
             element.ctx.request_accessibility_update();
         }
         if self.disabled != previous.disabled {

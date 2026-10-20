@@ -220,16 +220,31 @@ impl Widget for NamedSwitch {
         }
     }
 
-    fn paint(&mut self, ctx: &mut PaintCtx<'_>, _: &PropertiesRef<'_>, painter: &mut Painter<'_>) {
+    fn property_changed(
+        &mut self,
+        ctx: &mut xilem::masonry::core::UpdateCtx<'_>,
+        property_type: std::any::TypeId,
+    ) {
+        components::Palette::prop_changed(ctx, property_type);
+    }
+
+    fn paint(
+        &mut self,
+        ctx: &mut PaintCtx<'_>,
+        props: &PropertiesRef<'_>,
+        painter: &mut Painter<'_>,
+    ) {
+        let palette = *props.get::<components::Palette>(ctx.property_cache());
         let bounds = ctx.content_box();
         let x = if self.row.is_some() {
-            RowContent::paint(ctx, painter);
+            RowContent::paint(palette, ctx, painter);
             (bounds.width() - 53.0).max(0.0)
         } else {
             (bounds.width() - 40.0) / 2.0
         };
         let y = (bounds.height() - 24.0) / 2.0;
         paint::paint(
+            palette,
             painter,
             x,
             y,

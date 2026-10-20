@@ -28,7 +28,10 @@ pub(crate) fn app_logic(state: &mut SettingsApp) -> impl WidgetView<SettingsApp>
         .synchronize_path(state.settings.background_image_path.as_deref());
     let content = settings_view(state);
     let content = fork(
-        fork(content, crate::activation::task()),
+        fork(
+            fork(content, crate::activation::task()),
+            crate::appearance::task(),
+        ),
         crate::favorites_icons::task(),
     );
     fork(
@@ -76,17 +79,18 @@ pub(crate) fn app_logic(state: &mut SettingsApp) -> impl WidgetView<SettingsApp>
 }
 
 pub(crate) fn settings_view(state: &SettingsApp) -> impl WidgetView<SettingsApp> + use<> {
+    let palette = state.palette();
     crate::window_frame::body(
         sized_box(
             flex_row((
                 sized_box(sidebar_view(state))
                     .fixed_width(159.0.px())
-                    .background_color(components::SURFACE_SUBTLE),
+                    .background_color(palette.surface_subtle),
                 sized_box(label(""))
                     .fixed_width(1.0.px())
-                    .background_color(components::BORDER),
+                    .background_color(palette.border),
                 flex_item(
-                    sized_box(category_view(state)).background_color(components::SURFACE_SUBTLE),
+                    sized_box(category_view(state)).background_color(palette.surface_subtle),
                     1.0,
                 ),
             ))
@@ -98,6 +102,7 @@ pub(crate) fn settings_view(state: &SettingsApp) -> impl WidgetView<SettingsApp>
 }
 
 fn sidebar_view(state: &SettingsApp) -> impl WidgetView<SettingsApp> + use<> {
+    let palette = state.palette();
     let items = [
         (SettingsCategory::Appearance, Icon::Appearance),
         (SettingsCategory::Displays, Icon::Monitor),
@@ -109,9 +114,9 @@ fn sidebar_view(state: &SettingsApp) -> impl WidgetView<SettingsApp> + use<> {
     .map(|(category, glyph)| {
         let selected = state.selected_category == category;
         let tint = if selected {
-            components::settings_material::ACCENT_DECORATIVE
+            palette.accent_decorative
         } else {
-            components::settings_material::MUTED
+            palette.muted
         };
         components::settings_button(
             button(
@@ -119,9 +124,9 @@ fn sidebar_view(state: &SettingsApp) -> impl WidgetView<SettingsApp> + use<> {
                     icon(glyph, 16.0).color(tint),
                     flex_item(
                         label(category.label()).text_size(11.0).color(if selected {
-                            components::TEXT
+                            palette.text
                         } else {
-                            components::settings_material::MUTED
+                            palette.muted
                         }),
                         1.0,
                     ),
@@ -147,6 +152,7 @@ fn sidebar_view(state: &SettingsApp) -> impl WidgetView<SettingsApp> + use<> {
 }
 
 fn category_view(state: &SettingsApp) -> impl WidgetView<SettingsApp> + use<> {
+    let palette = state.palette();
     let category = state.selected_category;
     components::scroll_area(
         sized_box(
@@ -158,7 +164,7 @@ fn category_view(state: &SettingsApp) -> impl WidgetView<SettingsApp> + use<> {
                             .letter_spacing(-0.7)
                             .line_height(LineHeight::FontSizeRelative(1.1))
                             .weight(FontWeight::NORMAL),
-                        note(category.description()),
+                        note(palette, category.description()),
                     ))
                     .cross_axis_alignment(CrossAxisAlignment::Start)
                     .gap(8.0.px())
@@ -190,11 +196,12 @@ fn selected_category_view(state: &SettingsApp) -> Box<AnyWidgetView<SettingsApp>
 }
 
 fn status_footer(state: &SettingsApp) -> Option<impl WidgetView<SettingsApp> + use<>> {
+    let palette = state.palette();
     (!matches!(
         state.status.as_str(),
         "" | "Connected to hearthspace-settingsd" | "Connected to the settings service"
     ))
-    .then(|| note(state.status.clone()))
+    .then(|| note(palette, state.status.clone()))
 }
 
 #[cfg(test)]

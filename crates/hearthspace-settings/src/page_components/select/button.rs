@@ -292,8 +292,22 @@ impl Widget for SettingsSelectButton {
             ctx.mutate_self_later(|mut this| Self::update_anchor(&mut this.downcast()));
         }
     }
-    fn paint(&mut self, ctx: &mut PaintCtx<'_>, _: &PropertiesRef<'_>, painter: &mut Painter<'_>) {
-        components::settings_material::paint_button(
+    fn property_changed(
+        &mut self,
+        ctx: &mut xilem::masonry::core::UpdateCtx<'_>,
+        property_type: std::any::TypeId,
+    ) {
+        components::Palette::prop_changed(ctx, property_type);
+    }
+
+    fn paint(
+        &mut self,
+        ctx: &mut PaintCtx<'_>,
+        props: &PropertiesRef<'_>,
+        painter: &mut Painter<'_>,
+    ) {
+        let palette = *props.get::<components::Palette>(ctx.property_cache());
+        components::settings_material::paint_button_with_palette(
             painter,
             ctx.border_box(),
             components::RADIUS_CONTROL,
@@ -305,6 +319,7 @@ impl Widget for SettingsSelectButton {
                 focused: ctx.is_focus_target() && self.focus.visible(),
                 disabled: ctx.is_disabled(),
             },
+            &palette,
         );
     }
     fn accessibility_role(&self) -> Role {
