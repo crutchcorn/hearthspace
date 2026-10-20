@@ -865,13 +865,16 @@ The development host has Ollama **0.40.5**; Hearthspace does not install or
 reconfigure its service. Older Ollama releases without the decision endpoint
 must be updated separately. Ordinary `/api/chat` support is insufficient.
 
-Use **Settings → AI → Download D1 model** to opt in. The Rust `hf-hub` client
-downloads `LiquidAI/d1-3B-GGUF/d1-3B-Q4_K_M.gguf`, then imports it as the dedicated
-Ollama model `hearthspace-d1:latest`. Download files and preferences live under
+Turn on **Settings → AI → Enable AI features** to opt in. If the model is already
+installed, Hearthspace enables it without downloading again. Otherwise, the Rust
+`hf-hub` client downloads `LiquidAI/d1-3B-GGUF/d1-3B-Q4_K_M.gguf`, then imports it
+as the dedicated Ollama model `hearthspace-d1:latest`. Download files and
+preferences live under
 `$XDG_CACHE_HOME/hearthspace/ai` (normally `~/.cache/hearthspace/ai`); Ollama also
-stores an imported copy in its configured model directory. **Delete D1 model**
-removes the managed copy and download, preserving unrelated models. No systemd,
-login, firewall, or privilege-policy changes are required by this feature.
+stores an imported copy in its configured model directory. Turning the switch
+off opens a confirmation; **Turn off and delete** removes the managed copy and
+download, preserving unrelated models. No systemd, login, firewall, or
+privilege-policy changes are required by this feature.
 
 The default endpoint is `http://127.0.0.1:11434`. Set
 `HEARTHSPACE_OLLAMA_URL=http://127.0.0.1:PORT` before starting the desktop to use
