@@ -32,6 +32,10 @@ pub enum PropertyStyle {
 /// Cache the returned properties in an Arc and replace that Arc only when the
 /// palette changes. WindowView applies it live without rebuilding widget IDs.
 pub fn hearthspace_properties(palette: Palette, style: PropertyStyle) -> DefaultProperties {
+    let palette = match style {
+        PropertyStyle::Glass => palette.for_glass(),
+        PropertyStyle::Opaque => palette,
+    };
     let focus_ring = match style {
         PropertyStyle::Glass => palette.focus_ring_on_glass,
         PropertyStyle::Opaque => palette.focus_ring,

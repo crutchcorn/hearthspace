@@ -79,7 +79,7 @@ fn persisted_dark_window_receives_its_theme_before_first_layout_and_paint() {
         accent_color: AccentColor::Violet,
     });
     let mut window = first_frame(palette);
-    assert_eq!(label_color(&window), palette.text);
+    assert_eq!(label_color(&window), palette.text_on_glass);
     let dark = window.render();
     assert_ne!(dark, first_frame(Palette::default()).render());
 }
@@ -96,7 +96,7 @@ fn newly_created_popup_uses_current_theme_after_existing_window_changes() {
         PropertyStyle::Glass,
     )));
     let mut popup = first_frame(palette);
-    assert_eq!(label_color(&popup), palette.text);
+    assert_eq!(label_color(&popup), palette.text_on_glass);
     assert_eq!(
         popup.render(),
         existing.render(),

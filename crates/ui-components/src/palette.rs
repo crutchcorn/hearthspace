@@ -9,7 +9,8 @@ use xilem::{
 
 pub(crate) mod classes;
 mod math;
-use math::{alpha, glass_ink, mix, over};
+mod shell;
+use math::{alpha, mix, over};
 #[cfg(test)]
 mod tests;
 
@@ -30,7 +31,10 @@ pub struct Palette {
     pub surface_subtle: Color,
     pub surface_control: Color,
     pub border: Color,
+    /// Exact reference ink for Settings and window decorations.
     pub text: Color,
+    /// Contrast-safe shell foreground, including nested controls.
+    pub text_on_glass: Color,
     /// Contrast-safe shell foreground.
     pub text_muted: Color,
     /// Exact reference ink for Settings and window decorations.
@@ -52,6 +56,8 @@ pub struct Palette {
     pub focus_ring_on_glass: Color,
     pub focus_ring_on_accent: Color,
     pub button_hover: Color,
+    /// Shell-only hover tint; nested dark controls need a weaker white overlay.
+    pub button_hover_on_glass: Color,
     pub raised_button_hover: Color,
     pub button_active: Color,
     pub control_track: Color,
@@ -104,25 +110,16 @@ impl Palette {
             mix(accent, 0.80, rgb(0x3d3028))
         };
         let muted = if dark { rgb(0xafbeb9) } else { rgb(0x667373) };
-        let backdrop = if dark { Color::WHITE } else { Color::BLACK };
-        let glass = over(chrome_raised, backdrop);
-        let panel = over(alpha(surface, 0.82), backdrop);
-        let surfaces = [
-            glass,
-            panel,
-            over(accent_soft, glass),
-            over(accent_soft, panel),
-        ];
         let default_light = appearance == Appearance::default();
         let accent_strong = if default_light {
             crate::ACCENT_STRONG
         } else {
-            glass_ink(accent_decorative, dark, &surfaces)
+            accent_decorative
         };
         let text_muted = if default_light {
             crate::TEXT_MUTED
         } else {
-            glass_ink(muted, dark, &surfaces)
+            muted
         };
         let button_hover = if dark {
             rgba(0xe0f5ee12)
@@ -134,7 +131,7 @@ impl Palette {
         } else {
             crate::APP_BACKGROUND
         };
-        Self {
+        let mut palette = Self {
             appearance,
             dark,
             photo: false,
@@ -175,6 +172,7 @@ impl Palette {
                 crate::BORDER
             },
             text: if dark { rgb(0xeff4ee) } else { crate::TEXT },
+            text_on_glass: if dark { rgb(0xeff4ee) } else { crate::TEXT },
             text_muted,
             muted,
             accent_base: base,
@@ -210,6 +208,13 @@ impl Palette {
                 mix(accent, 0.30, Color::WHITE)
             },
             button_hover,
+            button_hover_on_glass: if dark {
+                // 18/255 over the launcher's header and tab container exceeds
+                // the luminance where even white text can reach 4.5:1.
+                rgba(0xe0f5ee0c)
+            } else {
+                button_hover
+            },
             raised_button_hover: if dark {
                 button_hover
             } else {
@@ -286,7 +291,20 @@ impl Palette {
             } else {
                 over(chrome, app_background)
             },
+        };
+        shell::resolve_ink(&mut palette);
+        palette
+    }
+
+    /// Adapt the reference palette for translucent shell controls. Keep this
+    /// copy local to the shell; Settings and compositor chrome use the original.
+    pub fn for_glass(mut self) -> Self {
+        self.text = self.text_on_glass;
+        self.button_hover = self.button_hover_on_glass;
+        if self.dark {
+            self.raised_button_hover = self.button_hover_on_glass;
         }
+        self
     }
 
     pub fn with_photo(mut self, photo: bool) -> Self {
