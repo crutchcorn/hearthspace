@@ -209,7 +209,9 @@ def panels(smoke, output):
             "Enter to open",
         ),
         ("notifications", "Notifications", "No notifications yet"),
-        ("power", "Power", "Log out"),
+        # The power body includes capability and battery details after its
+        # action rows, so measure the complete semantic content group.
+        ("power", "Power", "Session controls"),
         ("map", "Canvas map", "Zoom in"),
     ):
         checks.click(smoke, button)

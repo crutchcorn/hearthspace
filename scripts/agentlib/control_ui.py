@@ -131,7 +131,7 @@ def open_controls(smoke):
     checks.opened(smoke, "controls", exclusive=True)
     smoke.until(
         "brightness and volume controls",
-        lambda: visible(smoke, "Brightness and volume controls", "group"),
+        lambda: visible(smoke, "Brightness and volume controls", "panel"),
     )
     smoke.record("control-center-opened-via-sound")
 
@@ -141,7 +141,7 @@ def brightness_dropdown(smoke):
     checks.opened(smoke, "controls", exclusive=True)
     smoke.until(
         "dedicated brightness dropdown",
-        lambda: visible(smoke, "Brightness", "group"),
+        lambda: visible(smoke, "Brightness", "panel"),
     )
     smoke.until(
         "native-only brightness explanation",
