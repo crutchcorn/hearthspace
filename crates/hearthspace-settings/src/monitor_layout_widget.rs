@@ -4,10 +4,10 @@ use xilem::masonry::accesskit::{Node, Role};
 use xilem::masonry::core::{
     AccessCtx, AccessEvent, ChildrenIds, CursorIcon, EventCtx, LayoutCtx, MeasureCtx, PaintCtx,
     PointerButton, PointerButtonEvent, PointerEvent, PointerUpdate, PropertiesMut, PropertiesRef,
-    QueryCtx, RegisterCtx, TextEvent, Widget,
+    QueryCtx, RegisterCtx, TextEvent, Update, UpdateCtx, Widget,
 };
 use xilem::masonry::imaging::Painter;
-use xilem::masonry::kurbo::{Axis, Point, Rect, Size, Stroke};
+use xilem::masonry::kurbo::{Axis, Point, Size, Vec2};
 use xilem::masonry::layout::{LenReq, Length};
 use xilem::masonry::{core::MutateCtx, layout::AsUnit};
 
@@ -19,9 +19,11 @@ use crate::{
     },
 };
 
-const EDITOR_PADDING: f64 = 24.0;
-const MONITOR_SNAP: i32 = 10;
-const MONITOR_LAYOUT_CANVAS_MULTIPLIER: f64 = 1.2;
+mod geometry;
+mod keyboard;
+mod paint;
+use geometry::*;
+
 const DRAG_START_DISTANCE: f64 = 3.0;
 
 #[derive(Debug)]
@@ -35,11 +37,9 @@ pub(crate) struct MonitorLayoutWidget {
 struct MonitorDrag {
     id: String,
     start_pointer: Point,
-    start_x: i32,
-    start_y: i32,
-    origin_x: f64,
-    origin_y: f64,
-    scale: f64,
+    grab_offset: Vec2,
+    canvas: xilem::masonry::kurbo::Rect,
+    original: Vec<MonitorConfig>,
     moved: bool,
 }
 
@@ -59,62 +59,70 @@ impl MonitorLayoutWidget {
         ctx: &mut MutateCtx<'_>,
     ) {
         if self.monitors != monitors || self.selected_monitor_id != selected_monitor_id {
+            if self.drag.is_some()
+                && (self.monitors.len() != monitors.len()
+                    || self.monitors.iter().zip(&monitors).any(|(old, new)| {
+                        old.id != new.id
+                            || old.width != new.width
+                            || old.height != new.height
+                            || old.scale != new.scale
+                    }))
+            {
+                self.drag = None;
+            }
             self.monitors = monitors;
             self.selected_monitor_id = selected_monitor_id;
             ctx.request_render();
+            ctx.request_accessibility_update();
         }
     }
 
     fn layout_metrics(&self, size: Size) -> LayoutMetrics {
-        if let Some(drag) = &self.drag {
-            return LayoutMetrics {
-                origin_x: drag.origin_x,
-                origin_y: drag.origin_y,
-                scale: drag.scale,
-            };
-        }
-
-        let canvas_size = monitor_canvas_size(&self.monitors);
-        let scale = layout_scale_for_canvas(&self.monitors, size);
-        let (origin_x, origin_y) = monitor_canvas_origin(&self.monitors, canvas_size);
-
-        LayoutMetrics {
-            origin_x,
-            origin_y,
-            scale,
-        }
-    }
-
-    fn monitor_rect(&self, monitor: &MonitorConfig, metrics: LayoutMetrics) -> Rect {
-        Rect::new(
-            EDITOR_PADDING + (f64::from(monitor.x) - metrics.origin_x) * metrics.scale,
-            EDITOR_PADDING + (f64::from(monitor.y) - metrics.origin_y) * metrics.scale,
-            EDITOR_PADDING
-                + (f64::from(monitor.x + monitor_logical_width(monitor)) - metrics.origin_x)
-                    * metrics.scale,
-            EDITOR_PADDING
-                + (f64::from(monitor.y + monitor_logical_height(monitor)) - metrics.origin_y)
-                    * metrics.scale,
+        self.drag.as_ref().map_or_else(
+            || LayoutMetrics::new(&self.monitors, size),
+            |drag| LayoutMetrics::from_canvas(drag.canvas, size),
         )
     }
 
     fn hit_monitor(&self, point: Point, metrics: LayoutMetrics) -> Option<&MonitorConfig> {
+        if !metrics.contains(point) {
+            return None;
+        }
         self.monitors
             .iter()
-            .rev()
-            .find(|monitor| self.monitor_rect(monitor, metrics).contains(point))
+            .filter(|monitor| self.selected_monitor_id.as_ref() == Some(&monitor.id))
+            .chain(
+                self.monitors
+                    .iter()
+                    .rev()
+                    .filter(|monitor| self.selected_monitor_id.as_ref() != Some(&monitor.id)),
+            )
+            .find(|monitor| metrics.rect(monitor).contains(point))
     }
 
     fn monitors_for_drag(
         &self,
         drag: &MonitorDrag,
         point: Point,
+        size: Size,
         normalize: bool,
     ) -> Vec<MonitorConfig> {
-        let x = drag.start_x + ((point.x - drag.start_pointer.x) / drag.scale).round() as i32;
-        let y = drag.start_y + ((point.y - drag.start_pointer.y) / drag.scale).round() as i32;
-        let (x, y) =
-            snap_monitor_to_neighbor(&self.monitors, &drag.id, snap_position(x), snap_position(y));
+        let metrics = LayoutMetrics::from_canvas(drag.canvas, size);
+        let origin = metrics.world_point(point) - drag.grab_offset;
+        let (x, y) = metrics.bounded_position(
+            &self.monitors,
+            &drag.id,
+            origin.x.round() as i32,
+            origin.y.round() as i32,
+        );
+        // The reference allows free placement while held, then joins a neighbor
+        // and recenters on release. A bounded live preview must not forbid moving
+        // to the other side of an edge display.
+        let (x, y) = if normalize {
+            snap_monitor_to_neighbor(&self.monitors, &drag.id, x, y)
+        } else {
+            (x, y)
+        };
         let mut monitors = self.monitors.clone();
         set_monitor_position(&mut monitors, &drag.id, x, y);
         if normalize {
@@ -143,8 +151,8 @@ impl Widget for MonitorLayoutWidget {
                 let metrics = self.layout_metrics(ctx.content_box().size());
                 if let Some(monitor) = self.hit_monitor(point, metrics) {
                     let selected_id = monitor.id.clone();
-                    let start_x = monitor.x;
-                    let start_y = monitor.y;
+                    let grab_offset = metrics.world_point(point)
+                        - Point::new(f64::from(monitor.x), f64::from(monitor.y));
                     ctx.capture_pointer();
                     ctx.request_focus();
                     ctx.set_handled();
@@ -152,11 +160,9 @@ impl Widget for MonitorLayoutWidget {
                     self.drag = Some(MonitorDrag {
                         id: selected_id.clone(),
                         start_pointer: point,
-                        start_x,
-                        start_y,
-                        origin_x: metrics.origin_x,
-                        origin_y: metrics.origin_y,
-                        scale: metrics.scale,
+                        grab_offset,
+                        canvas: metrics.canvas,
+                        original: self.monitors.clone(),
                         moved: false,
                     });
                     ctx.submit_action::<MonitorEditorAction>(MonitorEditorAction::Select {
@@ -175,7 +181,8 @@ impl Widget for MonitorLayoutWidget {
                     drag.moved = true;
                     let drag = drag.clone();
                     let moved_id = drag.id.clone();
-                    let monitors = self.monitors_for_drag(&drag, point, false);
+                    let monitors =
+                        self.monitors_for_drag(&drag, point, ctx.content_box().size(), false);
                     self.monitors = monitors.clone();
                     ctx.submit_action::<MonitorEditorAction>(MonitorEditorAction::Drag {
                         moved_id,
@@ -203,7 +210,8 @@ impl Widget for MonitorLayoutWidget {
                         return;
                     }
                     let point = ctx.local_position(state.position);
-                    let monitors = self.monitors_for_drag(&drag, point, true);
+                    let monitors =
+                        self.monitors_for_drag(&drag, point, ctx.content_box().size(), true);
                     self.monitors = monitors.clone();
                     ctx.submit_action::<MonitorEditorAction>(MonitorEditorAction::Drag {
                         moved_id: drag.id,
@@ -214,25 +222,45 @@ impl Widget for MonitorLayoutWidget {
                     ctx.set_handled();
                 }
             }
-            PointerEvent::Cancel(..) => self.drag = None,
+            PointerEvent::Cancel(..) => {
+                if let Some(drag) = self.drag.take() {
+                    self.monitors = drag.original;
+                    ctx.submit_action::<MonitorEditorAction>(MonitorEditorAction::Select {
+                        id: drag.id,
+                        monitors: self.monitors.clone(),
+                    });
+                    ctx.request_render();
+                }
+            }
             _ => {}
         }
     }
 
+    fn accepts_focus(&self) -> bool {
+        true
+    }
+
     fn on_text_event(
         &mut self,
-        _ctx: &mut EventCtx<'_>,
-        _props: &mut PropertiesMut<'_>,
-        _event: &TextEvent,
+        ctx: &mut EventCtx<'_>,
+        _: &mut PropertiesMut<'_>,
+        event: &TextEvent,
     ) {
+        self.handle_key(ctx, event);
     }
 
     fn on_access_event(
         &mut self,
-        _ctx: &mut EventCtx<'_>,
-        _props: &mut PropertiesMut<'_>,
-        _event: &AccessEvent,
+        _: &mut EventCtx<'_>,
+        _: &mut PropertiesMut<'_>,
+        _: &AccessEvent,
     ) {
+    }
+
+    fn update(&mut self, ctx: &mut UpdateCtx<'_>, _: &mut PropertiesMut<'_>, event: &Update) {
+        if matches!(event, Update::FocusChanged(_)) {
+            ctx.request_paint_only();
+        }
     }
 
     fn register_children(&mut self, _ctx: &mut RegisterCtx<'_>) {}
@@ -246,50 +274,15 @@ impl Widget for MonitorLayoutWidget {
         _cross_length: Option<Length>,
     ) -> Length {
         match axis {
-            Axis::Horizontal => 520.0.px(),
-            Axis::Vertical => 300.0.px(),
+            Axis::Horizontal => 400.0.px(),
+            Axis::Vertical => 225.0.px(),
         }
     }
 
     fn layout(&mut self, _ctx: &mut LayoutCtx<'_>, _props: &PropertiesRef<'_>, _size: Size) {}
 
-    fn paint(
-        &mut self,
-        ctx: &mut PaintCtx<'_>,
-        _props: &PropertiesRef<'_>,
-        painter: &mut Painter<'_>,
-    ) {
-        let content = ctx.content_box();
-        painter.fill(content, components::SURFACE_SUBTLE).draw();
-
-        let metrics = self.layout_metrics(content.size());
-        for monitor in &self.monitors {
-            let rect = self.monitor_rect(monitor, metrics);
-            let active = self.drag.as_ref().is_some_and(|drag| drag.id == monitor.id);
-            let selected = self
-                .selected_monitor_id
-                .as_ref()
-                .is_some_and(|id| id == &monitor.id);
-            let fill = if active {
-                components::ACCENT
-            } else if selected {
-                components::ACCENT_SUBTLE
-            } else {
-                components::SURFACE
-            };
-            painter.fill(rect, fill).draw();
-            painter
-                .stroke(
-                    rect,
-                    &Stroke::new(2.0),
-                    if selected {
-                        components::ACCENT
-                    } else {
-                        components::BORDER
-                    },
-                )
-                .draw();
-        }
+    fn paint(&mut self, ctx: &mut PaintCtx<'_>, _: &PropertiesRef<'_>, painter: &mut Painter<'_>) {
+        paint::preview(self, ctx, painter);
     }
 
     fn accessibility_role(&self) -> Role {
@@ -303,6 +296,12 @@ impl Widget for MonitorLayoutWidget {
         node: &mut Node,
     ) {
         node.set_label("Drag monitor rectangles to configure their arrangement");
+        let selected = self
+            .monitors
+            .iter()
+            .enumerate()
+            .find(|(_, monitor)| self.selected_monitor_id.as_ref() == Some(&monitor.id));
+        node.set_description(selected.map_or_else(|| "No display selected.".into(), |(index, monitor)| format!("Display {}: {}. Space selects the next display. Arrow keys place it beside another display.", index+1, monitor.name)));
     }
 
     fn children_ids(&self) -> ChildrenIds {
@@ -317,167 +316,6 @@ impl Widget for MonitorLayoutWidget {
             CursorIcon::Default
         }
     }
-}
-
-#[derive(Clone, Copy)]
-struct LayoutMetrics {
-    origin_x: f64,
-    origin_y: f64,
-    scale: f64,
-}
-
-fn monitor_canvas_size(monitors: &[MonitorConfig]) -> Size {
-    let (width, height) = monitor_canvas_span(monitors);
-    Size::new(
-        f64::from(width) * MONITOR_LAYOUT_CANVAS_MULTIPLIER,
-        f64::from(height) * MONITOR_LAYOUT_CANVAS_MULTIPLIER,
-    )
-}
-
-fn monitor_canvas_origin(monitors: &[MonitorConfig], canvas_size: Size) -> (f64, f64) {
-    let Some((min_x, min_y, max_x, max_y)) = monitor_arrangement_bounds(monitors) else {
-        return (canvas_size.width / -2.0, canvas_size.height / -2.0);
-    };
-    let center_x = (f64::from(min_x) + f64::from(max_x)) / 2.0;
-    let center_y = (f64::from(min_y) + f64::from(max_y)) / 2.0;
-    (
-        center_x - canvas_size.width / 2.0,
-        center_y - canvas_size.height / 2.0,
-    )
-}
-
-fn monitor_canvas_span(monitors: &[MonitorConfig]) -> (i32, i32) {
-    if monitors.is_empty() {
-        return (EMPTY_MONITOR_CANVAS_WIDTH, EMPTY_MONITOR_CANVAS_HEIGHT);
-    }
-
-    (
-        combined_monitor_width(monitors),
-        combined_monitor_height(monitors),
-    )
-}
-
-fn combined_monitor_width(monitors: &[MonitorConfig]) -> i32 {
-    monitors.iter().map(monitor_logical_width).sum()
-}
-
-fn combined_monitor_height(monitors: &[MonitorConfig]) -> i32 {
-    monitors.iter().map(monitor_logical_height).sum()
-}
-
-fn layout_scale_for_canvas(monitors: &[MonitorConfig], size: Size) -> f64 {
-    let canvas_size = monitor_canvas_size(monitors);
-    let available_width = (size.width - EDITOR_PADDING * 2.0).max(1.0);
-    let available_height = (size.height - EDITOR_PADDING * 2.0).max(1.0);
-    (available_width / canvas_size.width)
-        .min(available_height / canvas_size.height)
-        .clamp(0.03, 1.0)
-}
-
-fn set_monitor_position(monitors: &mut [MonitorConfig], id: &str, x: i32, y: i32) {
-    if let Some(monitor) = monitors.iter_mut().find(|monitor| monitor.id == id) {
-        monitor.x = x;
-        monitor.y = y;
-    }
-}
-
-fn normalize_monitors_near_origin(monitors: &mut [MonitorConfig]) {
-    let Some((min_x, min_y, max_x, max_y)) = monitor_arrangement_bounds(monitors) else {
-        return;
-    };
-    let center_x = midpoint_i32(min_x, max_x);
-    let center_y = midpoint_i32(min_y, max_y);
-    for monitor in monitors {
-        monitor.x -= center_x;
-        monitor.y -= center_y;
-    }
-}
-
-fn monitor_arrangement_bounds(monitors: &[MonitorConfig]) -> Option<(i32, i32, i32, i32)> {
-    let first = monitors.first()?;
-    let mut min_x = first.x;
-    let mut min_y = first.y;
-    let mut max_x = first.x + monitor_logical_width(first);
-    let mut max_y = first.y + monitor_logical_height(first);
-    for monitor in monitors.iter().skip(1) {
-        min_x = min_x.min(monitor.x);
-        min_y = min_y.min(monitor.y);
-        max_x = max_x.max(monitor.x + monitor_logical_width(monitor));
-        max_y = max_y.max(monitor.y + monitor_logical_height(monitor));
-    }
-    Some((min_x, min_y, max_x, max_y))
-}
-
-fn midpoint_i32(start: i32, end: i32) -> i32 {
-    ((i64::from(start) + i64::from(end)) / 2) as i32
-}
-
-fn snap_position(value: i32) -> i32 {
-    let half = MONITOR_SNAP / 2;
-    if value >= 0 {
-        ((value + half) / MONITOR_SNAP) * MONITOR_SNAP
-    } else {
-        ((value - half) / MONITOR_SNAP) * MONITOR_SNAP
-    }
-}
-
-fn snap_monitor_to_neighbor(monitors: &[MonitorConfig], id: &str, x: i32, y: i32) -> (i32, i32) {
-    let Some(monitor) = monitors.iter().find(|monitor| monitor.id == id) else {
-        return (x, y);
-    };
-    let candidates = monitors
-        .iter()
-        .filter(|other| other.id != id)
-        .flat_map(|other| bordered_positions_for(monitor, other, x, y));
-
-    candidates
-        .min_by_key(|(candidate_x, candidate_y)| {
-            let dx = i64::from(*candidate_x - x);
-            let dy = i64::from(*candidate_y - y);
-            dx * dx + dy * dy
-        })
-        .unwrap_or((x, y))
-}
-
-fn bordered_positions_for(
-    monitor: &MonitorConfig,
-    other: &MonitorConfig,
-    x: i32,
-    y: i32,
-) -> [(i32, i32); 4] {
-    let monitor_width = monitor_logical_width(monitor);
-    let monitor_height = monitor_logical_height(monitor);
-    let other_width = monitor_logical_width(other);
-    let other_height = monitor_logical_height(other);
-    let left_of_other = other.x - monitor_width;
-    let right_of_other = other.x + other_width;
-    let above_other = other.y - monitor_height;
-    let below_other = other.y + other_height;
-
-    [
-        (
-            left_of_other,
-            clamp_overlap(y, monitor_height, other.y, other_height),
-        ),
-        (
-            right_of_other,
-            clamp_overlap(y, monitor_height, other.y, other_height),
-        ),
-        (
-            clamp_overlap(x, monitor_width, other.x, other_width),
-            above_other,
-        ),
-        (
-            clamp_overlap(x, monitor_width, other.x, other_width),
-            below_other,
-        ),
-    ]
-}
-
-fn clamp_overlap(position: i32, size: i32, other_position: i32, other_size: i32) -> i32 {
-    let size = size.max(1);
-    let other_size = other_size.max(1);
-    position.clamp(other_position - size + 1, other_position + other_size - 1)
 }
 
 #[cfg(test)]

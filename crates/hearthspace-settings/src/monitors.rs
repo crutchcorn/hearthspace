@@ -139,7 +139,7 @@ pub(crate) fn monitor_logical_height(monitor: &MonitorConfig) -> i32 {
 fn logical_dimension(size: i32, scale: i32) -> i32 {
     let size = size.max(1);
     let scale = scale.max(1);
-    ((size + scale - 1) / scale).max(1)
+    ((i64::from(size) + i64::from(scale) - 1) / i64::from(scale)).max(1) as i32
 }
 
 fn default_placeholder_monitors(monitors: &[MonitorConfig]) -> bool {

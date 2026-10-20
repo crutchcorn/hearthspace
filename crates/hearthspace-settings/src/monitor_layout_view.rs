@@ -28,7 +28,13 @@ impl View<SettingsApp, (), ViewCtx> for MonitorLayoutEditor {
             ctx.with_action_widget(|ctx| {
                 ctx.create_pod(MonitorLayoutWidget::new(
                     state.settings.monitors.clone(),
-                    state.selected_monitor_id.clone(),
+                    state.selected_monitor_id.clone().or_else(|| {
+                        state
+                            .settings
+                            .monitors
+                            .first()
+                            .map(|monitor| monitor.id.clone())
+                    }),
                 ))
             }),
             (),
@@ -45,7 +51,13 @@ impl View<SettingsApp, (), ViewCtx> for MonitorLayoutEditor {
     ) {
         element.widget.set_monitors(
             state.settings.monitors.clone(),
-            state.selected_monitor_id.clone(),
+            state.selected_monitor_id.clone().or_else(|| {
+                state
+                    .settings
+                    .monitors
+                    .first()
+                    .map(|monitor| monitor.id.clone())
+            }),
             &mut element.ctx,
         );
     }
