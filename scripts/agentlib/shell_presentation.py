@@ -209,8 +209,8 @@ def panels(smoke, output):
             "Enter to open",
         ),
         ("notifications", "Notifications", "No notifications yet"),
-        # The power body includes capability and battery details after its
-        # action rows, so measure the complete semantic content group.
+        # Include capability feedback as well as the action rows when
+        # measuring the complete semantic content group.
         ("power", "Power", "Session controls"),
         ("map", "Canvas map", "Zoom in"),
     ):

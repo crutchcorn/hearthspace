@@ -63,11 +63,7 @@ fn panel(
         zoom_button(Icon::ZoomIn, "Zoom in", "zoom-in"),
     ))
     .gap(8.0.px());
-    let hint = if error.is_some() {
-        "Map unavailable · retrying…"
-    } else {
-        "Drag the blue area to move your view"
-    };
+    let unavailable = error.map(|_| components::muted_text("Map unavailable · retrying…"));
     popup::panel(
         output,
         PopupKind::Map,
@@ -78,7 +74,7 @@ fn panel(
                 close,
             )),
             minimap_view(snapshot, output.output_name.as_deref()),
-            components::muted_text(hint),
+            unavailable,
             footer,
         ))
         .cross_axis_alignment(CrossAxisAlignment::Stretch)

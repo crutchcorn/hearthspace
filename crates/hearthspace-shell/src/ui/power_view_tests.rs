@@ -1,6 +1,6 @@
 //! The restyled menu keeps session actions accessible in short output palettes.
 use super::*;
-use crate::ui::test_support::Ui;
+use crate::ui::test_support::{Ui, ids};
 use masonry::{
     core::{
         TextEvent,
@@ -13,11 +13,7 @@ use xilem::view::sized_box;
 fn view(
     state: &ShellState,
 ) -> impl WidgetView<ShellState, Widget = masonry::widgets::SizedBox> + use<> {
-    sized_box(power_panel(
-        &state.outputs[0],
-        &state.power,
-        state.battery.as_ref(),
-    ))
+    sized_box(power_panel(&state.outputs[0], &state.power))
 }
 
 #[test]
@@ -66,10 +62,14 @@ fn power_actions_have_roomy_targets_and_keyboard_confirmation_keeps_session_open
 fn power_header_stays_reachable_when_real_errors_need_body_scrolling() {
     let mut state = ShellState::new("/unused".into(), vec!["eDP-1".into()]);
     state.toggle_power("eDP-1");
-    state.outputs[0].launch_error = Some(
-        "The session could not be locked because the lock service did not respond. Try again when the session service is available.".into(),
-    );
+    let error = "The session could not be locked because the lock service did not respond. Try again when the session service is available.";
+    state.outputs[0].launch_error = Some(error.into());
     let mut ui = Ui::new(state, view, (280, 180));
+    assert!(ids(&ui.harness).into_iter().any(|id| {
+        ui.harness
+            .access_node(id)
+            .is_some_and(|node| node.value().as_deref() == Some(error))
+    }));
     let close = ui.button("Close power menu");
     let before = ui
         .harness

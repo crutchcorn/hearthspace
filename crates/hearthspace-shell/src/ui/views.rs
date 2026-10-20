@@ -85,7 +85,7 @@ pub(super) fn app_logic(
         }
 
         if output.show_power {
-            windows.push(power_window(output, &state.power, state.battery.as_ref()));
+            windows.push(power_window(output, &state.power));
             continue;
         }
         let results = launcher::results(state, output);

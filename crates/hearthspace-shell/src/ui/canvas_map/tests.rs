@@ -131,6 +131,14 @@ where
             })
             .unwrap_or_else(|| panic!("Missing accessible button: {name}"))
     }
+
+    fn has_text(&self, text: &str) -> bool {
+        ids(&self.harness).into_iter().any(|id| {
+            self.harness
+                .access_node(id)
+                .is_some_and(|node| node.value().as_deref() == Some(text))
+        })
+    }
 }
 
 fn ids<W: Widget>(harness: &TestHarness<W>) -> Vec<WidgetId> {
@@ -203,6 +211,8 @@ fn popover_icons_have_accessible_names_and_dispatch_zoom_commands() {
     let mut state = ShellState::new(socket, vec!["eDP-1".into()]);
     state.outputs[0].show_map = true;
     let mut ui = Ui::new(state, panel_view, 340);
+    assert!(!ui.has_text("Drag the blue area to move your view"));
+    assert!(!ui.has_text("Map unavailable · retrying…"));
     for label in ["Zoom out", "Zoom in"] {
         if label == "Zoom in" {
             ui.harness.focus_on(Some(ui.button("Zoom out")));
@@ -284,4 +294,15 @@ fn small_output_keeps_zoom_controls_reachable_by_scrolling() {
         ui.state.canvas_error.is_some(),
         "the visible button must attempt its command"
     );
+    assert!(
+        ui.has_text("Map unavailable · retrying…"),
+        "a failed map command must retain its unavailable feedback"
+    );
+    ui.state.canvas_error = None;
+    ui.rebuild(&panel_view);
+    ui.dispatch(&panel_view);
+    assert!(!ui.has_text("Map unavailable · retrying…"));
+    assert!(!ui.has_text("Drag the blue area to move your view"));
+    ui.button("Zoom out");
+    ui.button("Zoom in");
 }

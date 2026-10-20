@@ -9,11 +9,7 @@ use crate::ui::{
 fn power(
     state: &ShellState,
 ) -> impl WidgetView<ShellState, Widget = masonry::widgets::SizedBox> + use<> {
-    sized_box(power_panel(
-        &state.outputs[0],
-        &state.power,
-        state.battery.as_ref(),
-    ))
+    sized_box(power_panel(&state.outputs[0], &state.power))
 }
 
 fn search(

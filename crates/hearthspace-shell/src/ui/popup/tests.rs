@@ -34,7 +34,6 @@ fn power(
     sized_box(session_controls::power_panel(
         &state.outputs[0],
         &state.power,
-        state.battery.as_ref(),
     ))
 }
 

@@ -77,14 +77,16 @@ def closed(smoke):
     )
 
 
-def click(smoke, name, kind=None):
+def click(smoke, name, kind=None, *, corner=None):
     observed = smoke.until(f"visible {name} button", lambda: elements(smoke, name))
     status = smoke.control.status()
     outputs = status["outputs"]
     if len(outputs) != 1:
         raise ControlError("shell acceptance needs one active output")
     surface = (
-        opened(smoke, kind) if kind else corner_surface(status, CONTROL_CORNERS[name])
+        opened(smoke, kind)
+        if kind
+        else corner_surface(status, corner or CONTROL_CORNERS[name])
     )
     point = button_center(observed[0].get("bounds"), outputs[0], surface)
     smoke.record("shell-button", name=name, kind=kind, point=point, elements=observed)

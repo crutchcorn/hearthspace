@@ -7,6 +7,7 @@ from pathlib import Path
 from . import shell_checks as checks
 from .control import ControlError
 from .daily_checks import a11y, read_line
+from .input import Input
 from .map_checks import SHELL, selector
 
 
@@ -78,11 +79,21 @@ def run(smoke):
     battery(smoke, 72, "Charging")
     checks.bar(smoke)
     smoke.capture("battery-charging")
-    checks.click(smoke, "Power")
-    checks.opened(smoke, "power")
-    smoke.until("battery detail", lambda: visible(smoke, "Battery: 72%, Charging"))
-    smoke.capture("battery-power-detail")
-    checks.click(smoke, "Close power menu", "power")
+    checks.click(smoke, "Battery: 72%, Charging", corner="system")
+    checks.opened(smoke, "controls")
+    smoke.until("battery dropdown", lambda: visible(smoke, "Battery", "panel"))
+    for name in ("72%", "Charging"):
+        query = (
+            selector("Battery", role="panel")
+            + f"//*[@showing='true' and @name='{name}']"
+        )
+        smoke.until(
+            f"battery dropdown {name}",
+            lambda query=query: a11y(smoke, "find", query)["elements"],
+        )
+    smoke.capture("battery-dropdown-detail")
+    with Input(smoke.control) as inputs:
+        inputs.chord("esc")
     checks.closed(smoke)
 
     peer.update(percentage=14.0, state=2, warning=3, on_battery=True)

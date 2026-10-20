@@ -85,7 +85,6 @@ pub(super) fn power_button(output: &ShellOutputInstance) -> impl WidgetView<Shel
 pub(super) fn power_window(
     output: &ShellOutputInstance,
     power: &super::power_task::PowerState,
-    battery: Option<&crate::battery::BatteryStatus>,
 ) -> WindowView<ShellState> {
     let app_id = output.power_app_id();
     let key = output.key().to_string();
@@ -95,7 +94,7 @@ pub(super) fn power_window(
         "Hearthspace Power",
         app_id,
         size,
-        power_panel(output, power, battery),
+        power_panel(output, power),
         move |state| state.dismiss_power(&key),
     )
 }
@@ -136,7 +135,6 @@ fn action<F: Fn(&mut ShellState) + Send + Sync + 'static>(
 pub(super) fn power_panel(
     output: &ShellOutputInstance,
     power: &super::power_task::PowerState,
-    battery: Option<&crate::battery::BatteryStatus>,
 ) -> impl WidgetView<ShellState> + use<> {
     let output_key = output.key().to_string();
     let cancel_key = output_key.clone();
@@ -223,11 +221,10 @@ pub(super) fn power_panel(
         flex_col((
             hint,
             error,
+            unavailable,
             flex_col((lock, suspend, logout, cancel))
                 .cross_axis_alignment(CrossAxisAlignment::Stretch)
                 .gap(8.0.px()),
-            unavailable,
-            super::battery_view::detail(battery),
         ))
         .cross_axis_alignment(CrossAxisAlignment::Stretch)
         .gap(16.0.px()),

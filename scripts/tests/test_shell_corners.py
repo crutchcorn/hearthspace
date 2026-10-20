@@ -132,6 +132,20 @@ class ShellCornerTests(unittest.TestCase):
             798, 544
         )
 
+    def test_battery_reading_uses_explicit_system_corner_and_scaled_local_bounds(self):
+        smoke = Mock()
+        status = corner_status()
+        status["outputs"][0]["scale"] = 2
+        smoke.control.status.return_value = status
+        smoke.until.return_value = [
+            {"bounds": {"x": 8, "y": 8, "width": 72, "height": 72}}
+        ]
+        with patch.object(shell_checks, "Input") as input_type:
+            shell_checks.click(smoke, "Battery: 72%, Charging", corner="system")
+        input_type.return_value.__enter__.return_value.click.assert_called_once_with(
+            798, 46
+        )
+
     def test_legacy_bar_height_or_inset_is_rejected(self):
         for field, value in (("height", 48), ("x", 12)):
             with self.subTest(field=field):
