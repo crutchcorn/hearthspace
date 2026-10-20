@@ -22,6 +22,12 @@ pub const ACCENT: Color = Color::from_rgb8(0xe9, 0x64, 0x2a);
 // to retain small-text contrast when translucent chrome covers a black window.
 pub const ACCENT_STRONG: Color = Color::from_rgb8(0x8c, 0x38, 0x18);
 pub const ACCENT_INK: Color = Color::from_rgb8(0xff, 0xfa, 0xf5);
+/// Reference orange for focus on opaque light surfaces.
+pub const FOCUS_RING: Color = ACCENT;
+/// Deeper orange retains contrast on translucent shell surfaces.
+pub const FOCUS_RING_ON_GLASS: Color = ACCENT_STRONG;
+/// A light orange edge remains distinct on a filled primary action.
+pub const FOCUS_RING_ON_ACCENT: Color = Color::from_rgb8(0xff, 0xcf, 0xb7);
 pub const ACCENT_BORDER: Color = Color::from_rgba8(0xf3, 0xad, 0x8e, 174);
 pub const ACCENT_SOFT: Color = Color::from_rgba8(0xf5, 0xbb, 0xa1, 58);
 pub const ACCENT_WASH: Color = Color::from_rgba8(0xf4, 0xb3, 0x97, 36);
@@ -57,6 +63,24 @@ mod tests {
                     }
             })
             .sum()
+    }
+
+    #[test]
+    fn orange_focus_rings_contrast_with_glass_and_primary_actions() {
+        for (background, foreground) in
+            [(SURFACE, FOCUS_RING), (CHROME_RAISED, FOCUS_RING_ON_GLASS)]
+        {
+            let [red, green, blue, alpha] = background.components;
+            let surface = luminance([red, green, blue].map(|channel| f64::from(channel * alpha)));
+            let [red, green, blue, _] = foreground.components;
+            let ring = luminance([red, green, blue].map(f64::from));
+            assert!((surface + 0.05) / (ring + 0.05) >= 3.0, "{background:?}");
+        }
+        let [red, green, blue, _] = FOCUS_RING_ON_ACCENT.components;
+        let ring = luminance([red, green, blue].map(f64::from));
+        let [red, green, blue, _] = ACCENT_STRONG.components;
+        let surface = luminance([red, green, blue].map(f64::from));
+        assert!((ring + 0.05) / (surface + 0.05) >= 3.0);
     }
 
     #[test]

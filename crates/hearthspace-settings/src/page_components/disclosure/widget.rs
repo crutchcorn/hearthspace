@@ -141,7 +141,13 @@ impl Widget for DisclosureButton {
         }
         if ctx.is_focus_target() {
             painter
-                .stroke(shape, &Stroke::new(2.0), components::TEXT)
+                .stroke(
+                    ctx.border_box()
+                        .inset(-1.0)
+                        .to_rounded_rect(components::RADIUS_CONTROL),
+                    &Stroke::new(2.0),
+                    components::FOCUS_RING,
+                )
                 .draw();
         }
     }

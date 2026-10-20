@@ -55,7 +55,7 @@ where
         let view = build(&state);
         let (root, view_state) = view.build(&mut ctx, &mut state);
         let harness = TestHarness::create_with(
-            components::hearthspace_light_properties(),
+            components::hearthspace_opaque_properties(),
             root.new_widget,
             TestHarnessParams::default()
                 .with_size(size)

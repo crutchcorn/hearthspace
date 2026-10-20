@@ -60,7 +60,7 @@ fn selected_surface_rebuild_keeps_hover_focus_geometry_and_activation() {
     harness.focus_on(Some(id));
     assert_eq!(
         harness.root_widget().get_prop::<BorderColor>().color,
-        crate::TEXT
+        crate::FOCUS_RING_ON_GLASS
     );
 
     state = true;
@@ -77,7 +77,7 @@ fn selected_surface_rebuild_keeps_hover_focus_geometry_and_activation() {
     );
     assert_eq!(
         harness.root_widget().get_prop::<BorderColor>().color,
-        crate::TEXT,
+        crate::FOCUS_RING_ON_GLASS,
         "selection must not mask keyboard focus"
     );
     harness.process_text_event(TextEvent::key_up(Key::Named(NamedKey::Enter)));
@@ -121,8 +121,14 @@ fn primary_action_keeps_visible_focus_and_disables_without_hover_emphasis() {
     );
     let id = harness.root_id();
     let idle = harness.render();
-    harness.focus_on(Some(id));
+    harness.press_tab_key(false);
+    assert_eq!(harness.focused_widget_id(), Some(id));
     assert_ne!(idle, harness.render());
+    assert_eq!(
+        harness.root_widget().get_prop::<BorderColor>().color,
+        crate::FOCUS_RING_ON_ACCENT,
+        "focus stays distinct from the filled orange action"
+    );
     harness.mouse_move_to(id);
     assert_eq!(
         *harness.root_widget().get_prop::<Background>(),
@@ -136,4 +142,58 @@ fn primary_action_keeps_visible_focus_and_disables_without_hover_emphasis() {
     );
     harness.mouse_click_on(id, None);
     assert!(harness.pop_action::<ButtonPress>().is_none());
+}
+
+#[test]
+fn pointer_and_keyboard_focus_use_orange_without_changing_native_activation() {
+    for surface in [
+        ButtonSurface::Bare,
+        ButtonSurface::Control,
+        ButtonSurface::Raised,
+    ] {
+        let runtime = xilem::tokio::runtime::Builder::new_current_thread()
+            .build()
+            .unwrap();
+        let mut ctx = ViewCtx::new(Arc::new(NoMessages), Arc::new(runtime));
+        let (root, _) = view(false, surface).build(&mut ctx, &mut false);
+        let mut harness = TestHarness::create_with_size(
+            crate::hearthspace_light_properties(),
+            root.new_widget,
+            (100, 44),
+        );
+        let id = harness.root_id();
+        harness.mouse_click_on(id, None);
+        assert_eq!(harness.focused_widget_id(), Some(id));
+        assert!(harness.pop_action::<ButtonPress>().is_some());
+        assert_eq!(
+            harness.root_widget().get_prop::<BorderColor>().color,
+            crate::FOCUS_RING_ON_GLASS
+        );
+        assert_ne!(
+            harness.root_widget().get_prop::<BorderColor>().color,
+            crate::TEXT
+        );
+        harness.mouse_move((-10.0, -10.0));
+        harness.focus_on(None);
+        let unfocused = harness.render();
+        harness.press_tab_key(false);
+        assert_eq!(harness.focused_widget_id(), Some(id));
+        let focused = harness.render();
+        let changed: Vec<_> = unfocused
+            .pixels()
+            .zip(focused.pixels())
+            .filter(|(before, after)| before != after)
+            .map(|(_, pixel)| pixel.0)
+            .collect();
+        assert!(
+            !changed.is_empty(),
+            "Tab must visibly outline the focused control"
+        );
+        assert!(
+            changed.iter().any(|[r, g, b, a]| *a > 0 && r > g && g > b),
+            "the visible focus edge must be orange, not neutral text ink"
+        );
+        harness.process_text_event(TextEvent::key_up(Key::Named(NamedKey::Enter)));
+        assert!(harness.pop_action::<ButtonPress>().is_some());
+    }
 }

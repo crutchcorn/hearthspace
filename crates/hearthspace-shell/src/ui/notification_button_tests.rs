@@ -81,7 +81,7 @@ fn icon_status_and_right_padding_share_one_notification_button_and_focus_outline
             .get_widget_with_id(button)
             .get_prop::<BorderColor>()
             .color,
-        components::TEXT
+        components::FOCUS_RING_ON_GLASS
     );
     assert_eq!(
         ui.harness.access_node(button).unwrap().bounding_box(),

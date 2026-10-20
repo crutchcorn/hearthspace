@@ -269,7 +269,7 @@ impl Widget for DrawingPad {
             painter.fill(bounds, components::SURFACE_SUBTLE).draw();
         }
         let border = if ctx.is_focus_target() {
-            components::ACCENT
+            components::FOCUS_RING_ON_GLASS
         } else {
             components::BORDER
         };

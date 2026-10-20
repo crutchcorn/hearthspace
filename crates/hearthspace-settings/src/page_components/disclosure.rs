@@ -9,6 +9,8 @@ use crate::state::SettingsApp;
 
 mod widget;
 pub(crate) use widget::DisclosureButton;
+#[cfg(test)]
+mod tests;
 
 pub(crate) fn disclosure<V, F>(
     name: impl Into<String>,

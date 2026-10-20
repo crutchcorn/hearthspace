@@ -94,7 +94,7 @@ pub(super) fn preview(
             frame,
             &Stroke::new(if ctx.is_focus_target() { 2.0 } else { 1.0 }),
             if ctx.is_focus_target() {
-                components::TEXT
+                components::FOCUS_RING
             } else {
                 components::CHROME_BORDER
             },

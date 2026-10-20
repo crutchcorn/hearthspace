@@ -56,7 +56,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .with_min_inner_size(LogicalSize::new(620.0, 420.0)),
     )
     .with_default_base_color(xilem::Color::TRANSPARENT)
-    .with_default_properties(hearthspace_ui_components::hearthspace_light_properties());
+    .with_default_properties(hearthspace_ui_components::hearthspace_opaque_properties());
 
     app.run_in(EventLoop::with_user_event())?;
     Ok(())

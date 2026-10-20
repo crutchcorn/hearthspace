@@ -115,7 +115,7 @@ impl<State: 'static, Action: 'static, V: WidgetView<State, Action>> View<State, 
     }
 }
 
-pub(crate) fn properties(properties: &mut DefaultProperties) {
+pub(crate) fn properties(properties: &mut DefaultProperties, focus_ring: xilem::Color) {
     let mut stack = PropertyStack::new();
     stack.push_layer(
         Selector::classes(&[CONTROL]),
@@ -190,7 +190,15 @@ pub(crate) fn properties(properties: &mut DefaultProperties) {
     );
     stack.push_layer(
         Selector::new().with_focused(true),
-        BorderColor { color: crate::TEXT },
+        BorderColor { color: focus_ring },
+    );
+    stack.push_layer(
+        Selector::classes(&[PRIMARY])
+            .with_focused(true)
+            .with_disabled(false),
+        BorderColor {
+            color: crate::FOCUS_RING_ON_ACCENT,
+        },
     );
     properties.insert_stack::<Button>(stack);
 }

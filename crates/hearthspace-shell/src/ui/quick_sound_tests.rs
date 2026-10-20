@@ -68,7 +68,7 @@ fn sound_slider_accepts_keyboard_and_accessibility_changes_and_mute_is_separate(
             .get_widget_with_id(volume)
             .get_prop::<masonry::properties::BorderColor>()
             .color,
-        components::TEXT,
+        components::FOCUS_RING_ON_GLASS,
         "the slider focus ring must contrast with translucent panels"
     );
     ui.harness

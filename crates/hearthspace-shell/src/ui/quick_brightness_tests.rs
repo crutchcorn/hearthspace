@@ -78,7 +78,7 @@ fn brightness_dropdown_routes_keyboard_and_accessibility_to_the_existing_backlig
             .get_widget_with_id(brightness)
             .get_prop::<masonry::properties::BorderColor>()
             .color,
-        components::TEXT,
+        components::FOCUS_RING_ON_GLASS,
     );
     ui.harness
         .process_text_event(TextEvent::key_down(Key::Named(NamedKey::ArrowRight)));

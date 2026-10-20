@@ -103,7 +103,7 @@ fn batteryless_desktop_can_suspend_and_repeated_clicks_queue_only_once() {
             .get_widget_with_id(suspend_button)
             .get_prop::<masonry::properties::BorderColor>()
             .color,
-        hearthspace_ui_components::TEXT,
+        hearthspace_ui_components::FOCUS_RING_ON_GLASS,
         "Suspend must keep its visible keyboard focus outline"
     );
     ui.harness.mouse_click_on(suspend_button, None);

@@ -186,7 +186,7 @@ impl Widget for ResultButton {
         }
         if ctx.is_focus_target() {
             painter
-                .stroke(bounds, &Stroke::new(2.0), components::ACCENT_STRONG)
+                .stroke(bounds, &Stroke::new(2.0), components::FOCUS_RING_ON_GLASS)
                 .draw();
         }
     }

@@ -41,7 +41,7 @@ fn power_actions_have_roomy_targets_and_keyboard_confirmation_keeps_session_open
             .get_widget_with_id(logout)
             .get_prop::<BorderColor>()
             .color,
-        components::TEXT,
+        components::FOCUS_RING_ON_GLASS,
         "the action must retain the shared visible keyboard focus outline"
     );
     ui.harness

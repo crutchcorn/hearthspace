@@ -153,8 +153,10 @@ impl Widget for NamedSwitch {
         _: Option<Length>,
     ) -> Length {
         match axis {
-            Axis::Horizontal => 40.0.px(),
-            Axis::Vertical => 24.0.px(),
+            // Keep the 40×24 track compact while reserving room for its
+            // outside focus ring, including in tightly measured rows.
+            Axis::Horizontal => 44.0.px(),
+            Axis::Vertical => 30.0.px(),
         }
     }
 
@@ -190,9 +192,9 @@ impl Widget for NamedSwitch {
         if ctx.is_focus_target() {
             painter
                 .stroke(
-                    Rect::new(x + 1.0, y + 1.0, x + 39.0, y + 23.0).to_rounded_rect(11.0),
+                    Rect::new(x - 1.0, y - 2.0, x + 41.0, y + 26.0).to_rounded_rect(14.0),
                     &Stroke::new(2.0),
-                    components::TEXT,
+                    components::FOCUS_RING,
                 )
                 .draw();
         }
@@ -214,5 +216,47 @@ impl Widget for NamedSwitch {
 
     fn children_ids(&self) -> ChildrenIds {
         ChildrenIds::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use xilem::masonry::{
+        accesskit::Toggled,
+        core::{NewWidget, keyboard::Key},
+        testing::TestHarness,
+    };
+
+    #[test]
+    fn switch_focus_is_orange_and_preserves_checked_state_and_keyboard_action() {
+        let mut harness = TestHarness::create_with_size(
+            components::hearthspace_light_properties(),
+            NewWidget::new(NamedSwitch {
+                name: "Enable AI",
+                inner: Switch::new(true),
+            }),
+            (80, 44),
+        );
+        let id = harness.root_id();
+        let idle = harness.render();
+        harness.press_tab_key(false);
+        assert_eq!(harness.focused_widget_id(), Some(id));
+        let focused = harness.render();
+        let [r, g, b, _] = components::FOCUS_RING.to_rgba8().to_u8_array();
+        assert!(
+            idle.pixels()
+                .zip(focused.pixels())
+                .any(|(before, after)| { before != after && after.0[..3] == [r, g, b] })
+        );
+        assert_eq!(
+            harness.access_node(id).unwrap().toggled(),
+            Some(Toggled::True)
+        );
+        harness.process_text_event(TextEvent::key_up(Key::Character(" ".into())));
+        assert_eq!(
+            harness.pop_action::<SwitchToggled>(),
+            Some((SwitchToggled(false), id))
+        );
     }
 }

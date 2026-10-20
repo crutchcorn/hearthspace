@@ -78,7 +78,7 @@ fn apps_list_has_visible_keyboard_focus_and_opens_with_enter() {
             .get_widget_with_id(button)
             .get_prop::<BorderColor>()
             .color,
-        components::TEXT
+        components::FOCUS_RING_ON_GLASS
     );
     assert_eq!(
         before,
@@ -105,7 +105,7 @@ fn apps_list_has_visible_keyboard_focus_and_opens_with_enter() {
             .get_widget_with_id(button)
             .get_prop::<BorderColor>()
             .color,
-        components::TEXT
+        components::FOCUS_RING_ON_GLASS
     );
     ui.harness
         .process_text_event(TextEvent::key_up(Key::Named(NamedKey::Enter)));
@@ -144,7 +144,7 @@ fn translucent_corners_keep_idle_buttons_clear_and_focus_contrasting() {
                     .get_widget_with_id(button)
                     .get_prop::<BorderColor>()
                     .color,
-                components::TEXT,
+                components::FOCUS_RING_ON_GLASS,
                 "{name} needs contrast over the darkest tinted backdrop"
             );
             assert_eq!(
@@ -160,7 +160,7 @@ fn translucent_corners_keep_idle_buttons_clear_and_focus_contrasting() {
                     .get_widget_with_id(button)
                     .get_prop::<BorderColor>()
                     .color,
-                components::TEXT,
+                components::FOCUS_RING_ON_GLASS,
                 "{name} must not keep a ring in an inactive corner"
             );
             ui.harness
@@ -204,8 +204,8 @@ fn translucent_corners_keep_idle_buttons_clear_and_focus_contrasting() {
             .get_widget_with_id(close)
             .get_prop::<BorderColor>()
             .color,
-        components::TEXT,
-        "opaque popup controls retain the native ink focus style"
+        components::FOCUS_RING_ON_GLASS,
+        "popup controls use the same orange focus style"
     );
     popup
         .harness

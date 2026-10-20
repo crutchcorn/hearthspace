@@ -21,9 +21,21 @@ mod button_surface;
 pub use button_surface::{ButtonSurface, ButtonSurfaceView, button_surface};
 mod theme;
 pub use theme::*;
+#[cfg(test)]
+mod focus_tests;
 pub mod icons;
 
+/// Shell controls may sit directly on translucent panels.
 pub fn hearthspace_light_properties() -> DefaultProperties {
+    light_properties(FOCUS_RING_ON_GLASS)
+}
+
+/// Opaque app surfaces can use the reference's brighter orange focus edge.
+pub fn hearthspace_opaque_properties() -> DefaultProperties {
+    light_properties(FOCUS_RING)
+}
+
+fn light_properties(focus_ring: Color) -> DefaultProperties {
     let mut properties = default_property_set();
 
     properties.insert::<Button, _>(Background::Color(Color::TRANSPARENT));
@@ -36,7 +48,7 @@ pub fn hearthspace_light_properties() -> DefaultProperties {
     });
     properties.insert::<Button, _>(ContentColor::new(TEXT));
     properties.insert::<Button, _>(Padding::from_vh(7.0.px(), 10.0.px()));
-    button_surface::properties(&mut properties);
+    button_surface::properties(&mut properties, focus_ring);
 
     properties.insert::<Label, _>(ContentColor::new(TEXT));
 
@@ -57,7 +69,7 @@ pub fn hearthspace_light_properties() -> DefaultProperties {
         );
         stack.push_layer(
             Selector::new().with_focused(true),
-            BorderColor { color: TEXT },
+            BorderColor { color: focus_ring },
         );
         stack.push_layer(
             Selector::new().with_active(true),
@@ -79,7 +91,7 @@ pub fn hearthspace_light_properties() -> DefaultProperties {
         );
         stack.push_layer(
             Selector::new().with_focused(true),
-            BorderColor { color: TEXT },
+            BorderColor { color: focus_ring },
         );
         stack.push_layer(
             Selector::new().with_active(true),
@@ -102,7 +114,7 @@ pub fn hearthspace_light_properties() -> DefaultProperties {
         let mut stack = PropertyStack::new();
         stack.push_layer(
             Selector::new().with_focused(true),
-            BorderColor { color: TEXT },
+            BorderColor { color: focus_ring },
         );
         properties.insert_stack::<TextInput>(stack);
     }
@@ -115,7 +127,7 @@ pub fn hearthspace_light_properties() -> DefaultProperties {
         let mut stack = PropertyStack::new();
         stack.push_layer(
             Selector::new().with_focused(true),
-            BorderColor { color: TEXT },
+            BorderColor { color: focus_ring },
         );
         properties.insert_stack::<Slider>(stack);
     }
