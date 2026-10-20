@@ -5,11 +5,14 @@ use xilem::{
     AnyWidgetView, WidgetView,
     masonry::layout::AsUnit,
     style::Style,
-    view::{CrossAxisAlignment, FlexExt, flex_col, flex_row, label, sized_box},
+    view::{CrossAxisAlignment, FlexExt, MainAxisAlignment, flex_col, flex_row, label, sized_box},
 };
 
 pub(super) fn view() -> impl WidgetView<ShellState> + use<> {
-    let today = Local::now().date_naive();
+    view_for_date(Local::now().date_naive())
+}
+
+fn view_for_date(today: NaiveDate) -> impl WidgetView<ShellState> + use<> {
     let first = today.with_day(1).unwrap();
     let next = if today.month() == 12 {
         NaiveDate::from_ymd_opt(today.year() + 1, 1, 1)
@@ -45,14 +48,18 @@ pub(super) fn view() -> impl WidgetView<ShellState> + use<> {
                             .filter(|day| *day <= days);
                         let selected = day == Some(today.day() as usize);
                         sized_box(
-                            label(day.map_or(String::new(), |day| day.to_string()))
+                            // Keep the text at its natural line height; a label
+                            // stretched to the cell height paints at the top.
+                            flex_col((label(day.map_or(String::new(), |day| day.to_string()))
                                 .text_size(12.0)
                                 .text_alignment(xilem::TextAlign::Center)
                                 .color(if selected {
                                     components::ACCENT_STRONG
                                 } else {
                                     components::TEXT
-                                }),
+                                }),))
+                            .main_axis_alignment(MainAxisAlignment::Center)
+                            .cross_axis_alignment(CrossAxisAlignment::Stretch),
                         )
                         .height(34.0.px())
                         .corner_radius(10.0.px())
@@ -73,3 +80,7 @@ pub(super) fn view() -> impl WidgetView<ShellState> + use<> {
         .cross_axis_alignment(CrossAxisAlignment::Stretch)
         .gap(8.0.px())
 }
+
+#[cfg(test)]
+#[path = "quick_calendar_tests.rs"]
+mod tests;
