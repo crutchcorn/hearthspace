@@ -72,6 +72,7 @@ pub(super) fn view(state: &SettingsApp) -> Box<AnyWidgetView<SettingsApp>> {
                 flex_col((label("Draw here")
                     .text_size(9.0)
                     .color(components::settings_material::MUTED),))
+                .cross_axis_alignment(CrossAxisAlignment::Start)
                 .main_axis_alignment(MainAxisAlignment::Center),
             )
             .height(46.0.px())

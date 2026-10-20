@@ -88,6 +88,10 @@ pub(super) fn preview(
                     -8.0,
                 );
             }
+            // Precompose the blurred field so its dots do not show through the tile.
+            painter
+                .fill(tile, xilem::Color::from_rgb8(0xef, 0xf0, 0xeb))
+                .draw();
             painter.fill(tile, components::CHROME_RAISED).draw();
             components::settings_material::edge_light(painter, rect, radius);
             if hovered {

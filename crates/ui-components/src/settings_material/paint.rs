@@ -27,7 +27,9 @@ pub fn dot_pattern(
     while x < bounds.x1 + fade_radius {
         let mut y = bounds.y0 + spacing / 2.0;
         while y < bounds.y1 + fade_radius {
-            let gradient = Gradient::new_radial((x, y), fade_radius as f32).with_stops([
+            // Align the radial paint with the reference's rasterized tile centers.
+            let center = (x - 0.5, y - 0.5);
+            let gradient = Gradient::new_radial(center, fade_radius as f32).with_stops([
                 (0.0, color),
                 (solid_stop, color),
                 (1.0, color.multiply_alpha(0.0)),
@@ -35,10 +37,10 @@ pub fn dot_pattern(
             painter
                 .fill(
                     Rect::new(
-                        (x - fade_radius).floor(),
-                        (y - fade_radius).floor(),
-                        (x + fade_radius).ceil(),
-                        (y + fade_radius).ceil(),
+                        (center.0 - fade_radius).floor(),
+                        (center.1 - fade_radius).floor(),
+                        (center.0 + fade_radius).ceil(),
+                        (center.1 + fade_radius).ceil(),
                     ),
                     &gradient,
                 )

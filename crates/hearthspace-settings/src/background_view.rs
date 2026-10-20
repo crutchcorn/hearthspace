@@ -102,11 +102,10 @@ pub(crate) fn view(state: &SettingsApp) -> Box<AnyWidgetView<SettingsApp>> {
                         components::settings_button(
                             button(
                                 flex_row((
-                                    icon(Icon::RotateCcw, 12.0)
-                                        .color(components::settings_material::MUTED),
+                                    icon(Icon::RotateCcw, 12.0).color(components::TEXT),
                                     label("Use default background")
                                         .text_size(10.0)
-                                        .color(components::settings_material::MUTED),
+                                        .color(components::TEXT),
                                 ))
                                 .gap(7.0.px()),
                                 |state: &mut SettingsApp| {
