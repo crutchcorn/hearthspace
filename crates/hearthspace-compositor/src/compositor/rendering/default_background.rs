@@ -38,6 +38,12 @@ mod tests {
         assert!(dark.pixels[0] < light.pixels[0]);
         assert!(dark.pixels[dot] > dark.pixels[0]);
         assert!(light.pixels[dot] < light.pixels[0]);
-        assert!(dark.pixels.chunks_exact(4).all(|pixel| pixel[3] == 255));
+        assert!(
+            dark.pixels
+                .as_chunks::<4>()
+                .0
+                .iter()
+                .all(|pixel| pixel[3] == 255)
+        );
     }
 }
