@@ -1,4 +1,4 @@
-use hearthspace_ui_components::{self as components, settings_material};
+use hearthspace_ui_components::settings_material;
 use masonry::{
     imaging::Painter,
     kurbo::{BezPath, Rect, Shape},
@@ -9,23 +9,14 @@ use xilem::Color;
 use super::TitlebarState;
 use crate::compositor::windows::TitlebarButton;
 
-pub(super) fn muted(photo: bool) -> Color {
-    if photo {
-        // Reference photo mode: 80% ink mixed with 20% warm surface.
-        Color::from_rgb8(88, 95, 96)
-    } else {
-        settings_material::MUTED
-    }
-}
-
 pub(super) fn action_color(state: &TitlebarState, button: TitlebarButton) -> Color {
     let emphasized = state.hovered == Some(button) || state.pressed == Some(button);
     let color = if emphasized && button == TitlebarButton::Close {
         Color::WHITE
     } else if state.active {
-        components::TEXT
+        state.palette().text
     } else {
-        muted(state.photo)
+        state.palette().muted
     };
     color.multiply_alpha(if emphasized { 1.0 } else { 0.8 })
 }
@@ -41,11 +32,12 @@ pub(super) fn action(
     }
     // The reference has no distinct :active rule; a held button keeps its hover
     // material until the pointer leaves its hit rectangle.
+    let palette = state.palette();
     settings_material::shadow(
         painter,
         rect,
         10.0,
-        components::ACCENT.with_alpha(0.14),
+        palette.control_shadow,
         (0.0, 6.0),
         22.0,
         -5.0,
@@ -57,7 +49,7 @@ pub(super) fn action(
             if button == TitlebarButton::Close {
                 Color::from_rgb8(0xb8, 0x47, 0x26)
             } else {
-                components::BUTTON_HOVER
+                palette.button_hover
             },
         )
         .draw();
@@ -68,12 +60,10 @@ pub(super) fn action(
             rect.path_elements(0.1)
                 .chain(shifted.to_path(0.1).reverse_subpaths()),
         );
-        painter
-            .fill(top, Color::from_rgba8(255, 255, 255, 166))
-            .draw();
+        painter.fill(top, palette.control_top_light).draw();
         let wash = Gradient::new_radial(rect.center(), 16.0).with_stops([
-            (0.0, components::ACCENT.with_alpha(0.0)),
-            (1.0, components::ACCENT.with_alpha(0.04)),
+            (0.0, palette.control_inset_glow.with_alpha(0.0)),
+            (1.0, palette.control_inset_glow),
         ]);
         painter.fill(shape, &wash).draw();
     });

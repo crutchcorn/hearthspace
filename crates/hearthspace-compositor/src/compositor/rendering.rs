@@ -202,6 +202,7 @@ impl App {
         renderer: &mut GlesRenderer,
         output_rect: Rectangle<i32, Logical>,
     ) -> RenderScene {
+        self.window_frames.set_appearance(self.appearance);
         if self.session_locked() {
             self.window_frames.clear();
             return RenderScene::overlay(self.collect_lock_elements(renderer, output_rect));

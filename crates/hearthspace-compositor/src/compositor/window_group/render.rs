@@ -14,6 +14,8 @@ use smithay::{
 };
 
 use super::{App, Gesture};
+use crate::compositor::appearance::color;
+use hearthspace_ui_components::Palette;
 
 mod lasso;
 mod shapes;
@@ -33,6 +35,7 @@ pub(in crate::compositor) struct GroupRenderElements {
 
 #[derive(Default)]
 pub(super) struct Cache {
+    palette: Palette,
     solids: BTreeMap<(u64, u8), SolidColorBuffer>,
     labels: BTreeMap<u8, LabelBuffer>,
     animation_epoch: Option<Instant>,
@@ -51,13 +54,14 @@ impl App {
             return elements;
         }
         let mut cache = std::mem::take(&mut self.window_group.cache);
+        cache.palette = self.palette();
         cache.solids.retain(|(id, _), _| {
             *id == 0
                 || self.window_group.selected.contains(id)
                 || self.window_group.keyboard_target == Some(*id)
         });
         let usable = usable_output(output);
-        let accent = Color32F::new(0.46, 0.67, 1.0, 1.0);
+        let accent = color(cache.palette.accent);
         if output == self.group_output()
             && !self.window_group.selecting
             && !self.window_group.selected.is_empty()
@@ -100,7 +104,7 @@ impl App {
                 self.window_group.selecting && self.window_group.keyboard_target == Some(window.id);
             if selected || focused {
                 let color = if focused {
-                    Color32F::new(1.0, 0.80, 0.38, 1.0)
+                    color(cache.palette.accent_bright)
                 } else {
                     accent
                 };
@@ -196,10 +200,12 @@ impl Cache {
         if !self
             .labels
             .get(&key)
-            .is_some_and(|label| label.matches(&text, rect.size, font_size))
+            .is_some_and(|label| label.matches(&text, rect.size, font_size, self.palette.text))
         {
-            self.labels
-                .insert(key, LabelBuffer::new(text, rect.size, font_size));
+            self.labels.insert(
+                key,
+                LabelBuffer::new(text, rect.size, font_size, self.palette.text),
+            );
         }
         let buffer = &self.labels[&key].buffer;
         if let Ok(element) = MemoryRenderBufferRenderElement::from_buffer(
@@ -228,9 +234,14 @@ impl Cache {
         if !self
             .action
             .as_ref()
-            .is_some_and(|action| action.matches(rect.size, hover, phase))
+            .is_some_and(|action| action.matches(rect.size, hover, phase, self.palette))
         {
-            self.action = Some(shapes::ActionBuffer::new(rect.size, hover, phase));
+            self.action = Some(shapes::ActionBuffer::new(
+                rect.size,
+                hover,
+                phase,
+                self.palette,
+            ));
         }
         if let Ok(element) = MemoryRenderBufferRenderElement::from_buffer(
             renderer,
@@ -256,9 +267,9 @@ impl Cache {
         if !self
             .lassos
             .get(&key)
-            .is_some_and(|lasso| lasso.matches(points, clip))
+            .is_some_and(|lasso| lasso.matches(points, clip, self.palette))
         {
-            let Some(buffer) = lasso::LassoBuffer::new(points, clip) else {
+            let Some(buffer) = lasso::LassoBuffer::new(points, clip, self.palette) else {
                 self.lassos.remove(&key);
                 return;
             };
@@ -325,9 +336,9 @@ impl Cache {
             (0, 36),
             message,
             if error {
-                Color32F::new(0.20, 0.07, 0.08, 0.98)
+                color(self.palette.danger_subtle.with_alpha(0.98))
             } else {
-                Color32F::new(0.04, 0.06, 0.10, 0.98)
+                color(self.palette.surface_raised.with_alpha(0.98))
             },
         );
     }

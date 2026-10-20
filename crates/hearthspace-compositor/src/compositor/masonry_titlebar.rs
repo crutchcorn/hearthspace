@@ -33,6 +33,7 @@ const ACTIONS_WIDTH: i32 = 128;
 /// Content and interaction state only: width and height never invalidate pixels.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) struct TitlebarState {
+    pub appearance: hearthspace_ipc::Appearance,
     pub title: String,
     pub app_id: Option<String>,
     pub active: bool,
@@ -40,6 +41,12 @@ pub(super) struct TitlebarState {
     pub hovered: Option<TitlebarButton>,
     pub pressed: Option<TitlebarButton>,
     pub photo: bool,
+}
+
+impl TitlebarState {
+    fn palette(&self) -> hearthspace_ui_components::Palette {
+        hearthspace_ui_components::Palette::new(self.appearance).with_photo(self.photo)
+    }
 }
 
 pub(super) struct TitlebarBuffer {
@@ -96,6 +103,9 @@ impl TitlebarBuffer {
             *self = Self::new(state, raster_scale);
             return;
         }
+        if self.state == state {
+            return;
+        }
         let text_changed = text_color(&self.state) != text_color(&state);
         if self.state.title != state.title || text_changed {
             self.title = rasterize(
@@ -111,13 +121,19 @@ impl TitlebarBuffer {
                 self.raster_scale,
             );
         }
-        if self.state.app_id != state.app_id || self.state.active != state.active || text_changed {
+        let palette_changed = self.state.appearance != state.appearance;
+        if self.state.app_id != state.app_id
+            || self.state.active != state.active
+            || text_changed
+            || palette_changed
+        {
             self.app = rasterize(widget::Strip::app(&state), 44.0, self.raster_scale);
         }
         if self.state.maximized != state.maximized
             || self.state.hovered != state.hovered
             || self.state.pressed != state.pressed
             || text_changed
+            || palette_changed
         {
             self.actions = rasterize(
                 widget::Strip::actions(&state),
@@ -170,9 +186,9 @@ impl TitlebarBuffer {
 
 fn text_color(state: &TitlebarState) -> Color {
     if state.active {
-        hearthspace_ui_components::TEXT
+        state.palette().text
     } else {
-        paint::muted(state.photo)
+        state.palette().muted
     }
 }
 

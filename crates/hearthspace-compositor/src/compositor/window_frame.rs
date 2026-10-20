@@ -1,4 +1,6 @@
 //! Damage-tracked GPU chrome around the application geometry, not its shadows.
+use hearthspace_ipc::Appearance;
+use hearthspace_ui_components::Palette;
 use std::collections::{HashMap, HashSet};
 
 use smithay::{
@@ -22,6 +24,7 @@ pub(super) use clip::{RoundedElement, WindowClip, solid_color};
 #[derive(Default)]
 pub(super) struct WindowFrameCache {
     renderers: HashMap<ContextId<GlesTexture>, RendererFrames>,
+    palette: Palette,
 }
 
 struct RendererFrames {
@@ -36,6 +39,7 @@ struct Shaders {
 
 #[derive(Clone, Copy, PartialEq)]
 struct FrameStyle {
+    appearance: Appearance,
     window: Rectangle<i32, Logical>,
     zoom: f64,
     active: bool,
@@ -67,6 +71,12 @@ enum FrameLayer {
 }
 
 impl WindowFrameCache {
+    pub fn set_appearance(&mut self, appearance: Appearance) {
+        if self.palette.appearance != appearance {
+            self.palette = Palette::new(appearance);
+        }
+    }
+
     /// Keep IDs across output passes; only the caller knows all mapped windows.
     pub fn retain(&mut self, live: &HashSet<u64>) {
         for renderer in self.renderers.values_mut() {
@@ -104,6 +114,7 @@ impl WindowFrameCache {
             });
         let shaders = cache.shaders.as_ref()?;
         let style = FrameStyle {
+            appearance: self.palette.appearance,
             window,
             zoom,
             active,
@@ -115,19 +126,21 @@ impl WindowFrameCache {
         };
         let cached = cache.windows.entry(id).or_insert_with(|| CachedFrame {
             style,
-            rim: make_element(&shaders.frame, style, FrameLayer::Rim),
-            shadow: make_element(&shaders.frame, style, FrameLayer::Shadow),
-            header: make_element(&shaders.frame, style, FrameLayer::Header),
+            rim: make_element(&shaders.frame, style, FrameLayer::Rim, &self.palette),
+            shadow: make_element(&shaders.frame, style, FrameLayer::Shadow, &self.palette),
+            header: make_element(&shaders.frame, style, FrameLayer::Header, &self.palette),
         });
         if cached.style != style {
             let geometry_changed = cached.style.window != style.window
                 || cached.style.zoom != style.zoom
                 || cached.style.server_side != style.server_side;
+            let material_changed = cached.style.appearance != style.appearance;
             for (element, layer, changed) in [
                 (
                     &mut cached.rim,
                     FrameLayer::Rim,
                     geometry_changed
+                        || material_changed
                         || cached.style.active != style.active
                         || cached.style.hovered != style.hovered,
                 ),
@@ -135,19 +148,20 @@ impl WindowFrameCache {
                     &mut cached.shadow,
                     FrameLayer::Shadow,
                     geometry_changed
+                        || material_changed
                         || cached.style.active != style.active
                         || cached.style.hovered != style.hovered,
                 ),
                 (
                     &mut cached.header,
                     FrameLayer::Header,
-                    geometry_changed || cached.style.photo != style.photo,
+                    geometry_changed || material_changed || cached.style.photo != style.photo,
                 ),
             ] {
                 if !changed {
                     continue;
                 }
-                let (area, uniforms) = appearance(style, layer);
+                let (area, uniforms) = appearance(style, layer, &self.palette);
                 element.resize(area, None);
                 element.update_uniforms(uniforms);
             }
@@ -183,7 +197,17 @@ impl Shaders {
                     UniformName::new("active", UniformType::_1f),
                     UniformName::new("hovered", UniformType::_1f),
                     UniformName::new("mode", UniformType::_1f),
-                    UniformName::new("photo", UniformType::_1f),
+                    UniformName::new("chrome_color", UniformType::_4f),
+                    UniformName::new("wash_color", UniformType::_4f),
+                    UniformName::new("control_color", UniformType::_4f),
+                    UniformName::new("line_color", UniformType::_4f),
+                    UniformName::new("muted_color", UniformType::_4f),
+                    UniformName::new("border_color", UniformType::_4f),
+                    UniformName::new("edge_color", UniformType::_4f),
+                    UniformName::new("edge_all_color", UniformType::_4f),
+                    UniformName::new("broad_shadow_color", UniformType::_4f),
+                    UniformName::new("near_shadow_color", UniformType::_4f),
+                    UniformName::new("inset_color", UniformType::_4f),
                 ],
             )?,
             clip: clip::ClipPrograms::new(renderer)?,
@@ -195,14 +219,16 @@ fn make_element(
     shader: &GlesPixelProgram,
     style: FrameStyle,
     layer: FrameLayer,
+    palette: &Palette,
 ) -> PixelShaderElement {
-    let (area, uniforms) = appearance(style, layer);
+    let (area, uniforms) = appearance(style, layer, palette);
     PixelShaderElement::new(shader.clone(), area, None, 1.0, uniforms, Kind::Unspecified)
 }
 
 fn appearance(
     style: FrameStyle,
     layer: FrameLayer,
+    palette: &Palette,
 ) -> (Rectangle<i32, Logical>, Vec<Uniform<'static>>) {
     // Three sigma of the broadest reference shadow, including its displacement.
     // The transparent interior is discarded by the shader and opaque clients
@@ -238,7 +264,7 @@ fn appearance(
             .min(style.window.size.h)
             .max(1);
     }
-    let uniforms = vec![
+    let mut uniforms = vec![
         Uniform::new("area_size", (area.size.w as f32, area.size.h as f32)),
         Uniform::new(
             "window_size",
@@ -270,7 +296,54 @@ fn appearance(
                 FrameLayer::Header => 2.0,
             },
         ),
-        Uniform::new("photo", if style.photo { 1.0f32 } else { 0.0 }),
     ];
+    let p = palette.with_photo(style.photo);
+    let raised = style.active || style.hovered;
+    let (broad, near) = if style.active {
+        (
+            p.accent.with_alpha(if p.dark { 0.14 } else { 0.18 }),
+            p.glow_shadow,
+        )
+    } else if style.hovered {
+        (p.panel_shadow, p.panel_accent_shadow)
+    } else {
+        (p.window_shadow, p.window_accent_shadow)
+    };
+    for (name, color) in [
+        ("chrome_color", p.chrome),
+        ("wash_color", p.edge_light),
+        ("control_color", p.surface_control),
+        ("line_color", p.border),
+        ("muted_color", p.muted),
+        (
+            "border_color",
+            if style.active {
+                p.accent_border
+            } else {
+                p.chrome_border
+            },
+        ),
+        (
+            "edge_color",
+            if raised {
+                p.glass_edge_active_top
+            } else {
+                p.glass_edge_top
+            },
+        ),
+        (
+            "edge_all_color",
+            if raised {
+                p.glass_edge_active_border
+            } else {
+                xilem::Color::TRANSPARENT
+            },
+        ),
+        ("broad_shadow_color", broad),
+        ("near_shadow_color", near),
+        ("inset_color", p.edge_light),
+    ] {
+        uniforms.push(Uniform::new(name, color.components));
+    }
     (area, uniforms)
 }

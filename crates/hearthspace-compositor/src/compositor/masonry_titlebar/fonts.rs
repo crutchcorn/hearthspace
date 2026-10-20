@@ -36,6 +36,7 @@ mod tests {
     #[test]
     fn hover_redraw_reuses_discovered_family_and_loaded_font_bytes() {
         let mut state = TitlebarState {
+            appearance: hearthspace_ipc::Appearance::default(),
             title: "Hearthspace Settings".into(),
             app_id: Some("dev.hearthspace.Settings".into()),
             active: true,

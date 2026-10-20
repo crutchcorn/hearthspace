@@ -38,6 +38,21 @@ struct BackgroundImageData {
 }
 
 impl App {
+    /// Changing mode replaces only the generated dot field. A user wallpaper
+    /// keeps its decoded texture, including when accents change.
+    pub(in crate::compositor) fn invalidate_default_background(&mut self) -> bool {
+        if self
+            .background_image_tile
+            .as_ref()
+            .is_some_and(|tile| tile.logical_grid)
+        {
+            self.background_image_tile = None;
+            true
+        } else {
+            false
+        }
+    }
+
     /// Build repeated background image render elements for the current viewport.
     ///
     /// The tile is laid out in *canvas* space, so it pans and zooms with the
@@ -222,7 +237,7 @@ impl App {
             }
         }
 
-        default_background_image_data()
+        default::image(self.appearance.color_mode)
     }
 }
 
@@ -338,8 +353,9 @@ fn fixed_background_rects(
     }
 }
 
+#[cfg(test)]
 fn default_background_image_data() -> BackgroundImageData {
-    default::image()
+    default::image(hearthspace_ipc::ColorMode::Light)
 }
 
 fn decode_background_png(contents: &[u8]) -> Result<BackgroundImageData, String> {

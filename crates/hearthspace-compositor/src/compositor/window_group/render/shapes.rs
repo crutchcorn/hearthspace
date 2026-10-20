@@ -1,4 +1,5 @@
 //! Small antialiased action icon, including its pending shimmer.
+use hearthspace_ui_components::Palette;
 use smithay::{
     backend::{allocator::Fourcc, renderer::element::memory::MemoryRenderBuffer},
     utils::{Logical, Size, Transform},
@@ -6,19 +7,30 @@ use smithay::{
 use tiny_skia::{Color, FillRule, GradientStop, Paint, Path, PathBuilder, Pixmap, Stroke};
 
 pub(super) struct ActionBuffer {
-    state: (Size<i32, Logical>, bool, Option<u8>),
+    state: (Size<i32, Logical>, bool, Option<u8>, Palette),
     pub(super) buffer: MemoryRenderBuffer,
 }
 
 impl ActionBuffer {
-    pub(super) fn matches(&self, size: Size<i32, Logical>, hover: bool, phase: Option<u8>) -> bool {
-        self.state == (size, hover, phase)
+    pub(super) fn matches(
+        &self,
+        size: Size<i32, Logical>,
+        hover: bool,
+        phase: Option<u8>,
+        palette: Palette,
+    ) -> bool {
+        self.state == (size, hover, phase, palette)
     }
 
-    pub(super) fn new(size: Size<i32, Logical>, hover: bool, phase: Option<u8>) -> Self {
-        let pixmap = rasterize(size, hover, phase);
+    pub(super) fn new(
+        size: Size<i32, Logical>,
+        hover: bool,
+        phase: Option<u8>,
+        palette: Palette,
+    ) -> Self {
+        let pixmap = rasterize(size, hover, phase, palette);
         Self {
-            state: (size, hover, phase),
+            state: (size, hover, phase, palette),
             buffer: MemoryRenderBuffer::from_slice(
                 pixmap.data(),
                 Fourcc::Abgr8888,
@@ -31,18 +43,17 @@ impl ActionBuffer {
     }
 }
 
-fn rasterize(size: Size<i32, Logical>, hover: bool, phase: Option<u8>) -> Pixmap {
+fn rasterize(size: Size<i32, Logical>, hover: bool, phase: Option<u8>, palette: Palette) -> Pixmap {
     let mut pixels = Pixmap::new(size.w.max(1) as u32, size.h.max(1) as u32)
         .expect("bounded positive gather button size");
     let scale = tiny_skia::Transform::from_scale(size.w as f32 / 44.0, size.h as f32 / 44.0);
     let background = rounded_rectangle(1.0, 1.0, 42.0, 42.0, 10.0);
     let mut paint = Paint::default();
-    paint.set_color_rgba8(
-        if hover { 27 } else { 13 },
-        if hover { 43 } else { 22 },
-        if hover { 67 } else { 36 },
-        250,
-    );
+    paint.set_color(to_skia(if hover {
+        palette.surface_raised
+    } else {
+        palette.surface
+    }));
     pixels.fill_path(&background, &paint, FillRule::Winding, scale, None);
     if let Some(phase) = phase {
         let x = f32::from(phase) / 40.0 * 90.0 - 28.0;
@@ -50,9 +61,9 @@ fn rasterize(size: Size<i32, Logical>, hover: bool, phase: Option<u8>) -> Pixmap
             tiny_skia::Point::from_xy(x, 0.0),
             tiny_skia::Point::from_xy(x + 28.0, 10.0),
             vec![
-                GradientStop::new(0.0, Color::from_rgba8(117, 171, 255, 0)),
-                GradientStop::new(0.5, Color::from_rgba8(117, 171, 255, 90)),
-                GradientStop::new(1.0, Color::from_rgba8(117, 171, 255, 0)),
+                GradientStop::new(0.0, to_skia(palette.accent.with_alpha(0.0))),
+                GradientStop::new(0.5, to_skia(palette.accent.with_alpha(90.0 / 255.0))),
+                GradientStop::new(1.0, to_skia(palette.accent.with_alpha(0.0))),
             ],
             tiny_skia::SpreadMode::Pad,
             tiny_skia::Transform::identity(),
@@ -60,7 +71,11 @@ fn rasterize(size: Size<i32, Logical>, hover: bool, phase: Option<u8>) -> Pixmap
         .expect("finite nonempty shimmer gradient");
         pixels.fill_path(&background, &paint, FillRule::Winding, scale, None);
     }
-    paint.set_color_rgba8(100, 140, 193, if hover { 230 } else { 155 });
+    paint.set_color(to_skia(palette.accent.with_alpha(if hover {
+        0.90
+    } else {
+        0.61
+    })));
     pixels.stroke_path(
         &background,
         &paint,
@@ -73,17 +88,22 @@ fn rasterize(size: Size<i32, Logical>, hover: bool, phase: Option<u8>) -> Pixmap
     );
     let rear = rounded_rectangle(11.0, 10.0, 16.0, 16.0, 2.5);
     let front = rounded_rectangle(17.0, 17.0, 16.0, 16.0, 2.5);
-    paint.set_color_rgba8(150, 192, 255, 255);
+    paint.set_color(to_skia(palette.accent));
     let stroke = Stroke {
         width: 1.8,
         ..Stroke::default()
     };
     pixels.stroke_path(&rear, &paint, &stroke, scale, None);
-    paint.set_color_rgba8(20, 34, 55, 255);
+    paint.set_color(to_skia(palette.surface));
     pixels.fill_path(&front, &paint, FillRule::Winding, scale, None);
-    paint.set_color_rgba8(173, 207, 255, 255);
+    paint.set_color(to_skia(palette.accent));
     pixels.stroke_path(&front, &paint, &stroke, scale, None);
     pixels
+}
+
+fn to_skia(color: xilem::Color) -> Color {
+    let [r, g, b, a] = color.components;
+    Color::from_rgba(r, g, b, a).expect("palette colors are normalized sRGB")
 }
 
 fn rounded_rectangle(x: f32, y: f32, w: f32, h: f32, r: f32) -> Path {
@@ -107,13 +127,16 @@ mod tests {
 
     #[test]
     fn button_is_transparent_outside_round_corners_and_shimmers() {
-        let normal = rasterize((44, 44).into(), false, None);
+        let normal = rasterize((44, 44).into(), false, None, Palette::default());
         assert_eq!(normal.pixel(0, 0).unwrap().alpha(), 0);
         assert!(normal.pixel(22, 22).unwrap().alpha() > 240);
-        assert_ne!(normal, rasterize((44, 44).into(), true, None));
         assert_ne!(
-            rasterize((44, 44).into(), false, Some(10)),
-            rasterize((44, 44).into(), false, Some(25))
+            normal,
+            rasterize((44, 44).into(), true, None, Palette::default())
+        );
+        assert_ne!(
+            rasterize((44, 44).into(), false, Some(10), Palette::default()),
+            rasterize((44, 44).into(), false, Some(25), Palette::default())
         );
         for pixel in normal.pixels() {
             assert!(

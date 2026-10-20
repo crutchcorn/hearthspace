@@ -39,6 +39,7 @@ impl App {
         let window = &self.windows[index];
         let (hovered, pressed) = self.titlebar_button_state(window.id);
         let state = masonry_titlebar::TitlebarState {
+            appearance: self.appearance,
             title: window_title(&window.surface)
                 .filter(|title| !title.trim().is_empty())
                 .unwrap_or_else(|| "Hearthspace".to_string()),

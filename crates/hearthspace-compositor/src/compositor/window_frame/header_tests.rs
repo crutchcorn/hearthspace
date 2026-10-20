@@ -115,3 +115,72 @@ fn header_retains_its_id_on_resize_and_ignores_unrelated_focus_damage() {
         "client decorations must not acquire an SSD header"
     );
 }
+
+#[test]
+fn live_appearance_changes_repaint_retained_chrome_and_client_decoration_rims() {
+    use hearthspace_ipc::{AccentColor, Appearance, ColorMode};
+    let mut renderer = renderer();
+    let mut cache = WindowFrameCache::default();
+    let window = Rectangle::new((40, 40).into(), (220, 160).into());
+    let first = cache
+        .elements(&mut renderer, 1, window, 1.0, true, false, true, false)
+        .unwrap();
+    let mut variants = Vec::new();
+    for mode in ColorMode::ALL {
+        for accent in AccentColor::ALL {
+            cache.set_appearance(Appearance {
+                color_mode: mode,
+                accent_color: accent,
+            });
+            let frame = cache
+                .elements(&mut renderer, 1, window, 1.0, true, false, true, false)
+                .unwrap();
+            assert_eq!(frame.rim.id(), first.rim.id());
+            assert_eq!(
+                frame.header.as_ref().unwrap().id(),
+                first.header.as_ref().unwrap().id()
+            );
+            let image = capture(
+                &mut renderer,
+                (320, 260).into(),
+                Transform::Normal,
+                &[
+                    frame.rim.into(),
+                    frame.header.unwrap().into(),
+                    frame.shadow.into(),
+                ],
+            );
+            let base = pixel(&image, 320, 230, 50);
+            assert!(
+                (150..210).contains(&base[3]),
+                "theme must preserve real translucency"
+            );
+            assert_eq!(
+                base[0] < 80,
+                mode == ColorMode::Dark,
+                "{mode} {accent}: {base:?}"
+            );
+            assert!(
+                !variants.contains(&image),
+                "each accent must change the live frame"
+            );
+            variants.push(image);
+            let csd = cache
+                .elements(&mut renderer, 2, window, 1.0, true, false, false, false)
+                .unwrap();
+            assert!(csd.header.is_none());
+            let image = capture(
+                &mut renderer,
+                (320, 260).into(),
+                Transform::Normal,
+                &[csd.rim.into()],
+            );
+            for (x, y) in [(39, 100), (260, 100), (150, 200)] {
+                assert!(
+                    pixel(&image, 320, x, y)[3] > 100,
+                    "all window edges need their theme"
+                );
+            }
+        }
+    }
+}

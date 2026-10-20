@@ -2,7 +2,6 @@ use std::collections::BTreeMap;
 
 use smithay::{
     backend::renderer::{
-        Color32F,
         element::{
             Kind,
             memory::MemoryRenderBufferRenderElement,
@@ -15,11 +14,15 @@ use smithay::{
     utils::{Logical, Physical, Point, Rectangle},
 };
 
+use crate::compositor::appearance::color;
+use hearthspace_ui_components::Palette;
+
 use super::{APPEAR_DURATION, labels::LabelBuffer, layout::Item};
 use crate::compositor::{App, rendering::HearthspaceRenderElement, windows::window_title};
 
 #[derive(Default)]
 pub(in crate::compositor) struct Cache {
+    palette: Palette,
     backgrounds: BTreeMap<(i32, i32), SolidColorBuffer>,
     cards: BTreeMap<u64, (SolidColorBuffer, SolidColorBuffer)>,
     labels: BTreeMap<u64, LabelBuffer>,
@@ -42,6 +45,7 @@ impl App {
         let selected = session.selected;
         let items = self.overview_items();
         let mut cache = std::mem::take(&mut self.overview.cache);
+        cache.palette = self.palette();
         if output == self.overview_output() {
             self.collect_window_cards(renderer, &mut elements, &mut cache, &items, selected, alpha);
             let left = output.loc.x + 32.min(output.size.w / 10);
@@ -55,6 +59,7 @@ impl App {
                 Rectangle::new((left, output.loc.y + 18).into(), (width, 34).into()),
                 24,
                 1.0,
+                cache.palette.text,
             );
             push_label(
                 renderer,
@@ -65,6 +70,7 @@ impl App {
                 Rectangle::new((left, output.loc.y + 54).into(), (width, 24).into()),
                 14,
                 1.0,
+                cache.palette.text,
             );
             if items.is_empty() {
                 push_label(
@@ -79,6 +85,7 @@ impl App {
                     ),
                     22,
                     1.0,
+                    cache.palette.text,
                 );
             }
         }
@@ -86,7 +93,7 @@ impl App {
             .backgrounds
             .entry((output.loc.x, output.loc.y))
             .or_default();
-        background.update(output.size, Color32F::new(0.025, 0.03, 0.045, 0.92));
+        background.update(output.size, color(cache.palette.surface.with_alpha(0.96)));
         elements.push(
             SolidColorRenderElement::from_buffer(
                 background,
@@ -110,6 +117,7 @@ impl App {
         selected: Option<u64>,
         alpha: f32,
     ) {
+        cache.palette = self.palette();
         cache
             .cards
             .retain(|id, _| items.iter().any(|item| item.id == *id));
@@ -135,6 +143,7 @@ impl App {
                 item.label,
                 14,
                 alpha,
+                cache.palette.text,
             );
 
             let geometry_loc = self.window_surface_geometry_loc(index);
@@ -165,7 +174,7 @@ impl App {
                 item.rect.loc + Point::from((2, 2)),
                 ((item.rect.size.w - 4).max(1), (item.rect.size.h - 4).max(1)).into(),
             );
-            body.update(inner.size, Color32F::new(0.085, 0.10, 0.13, 1.0));
+            body.update(inner.size, color(cache.palette.surface_raised));
             elements.push(
                 SolidColorRenderElement::from_buffer(
                     body,
@@ -176,12 +185,12 @@ impl App {
                 )
                 .into(),
             );
-            let color = if selected == Some(item.id) {
-                Color32F::new(0.30, 0.60, 0.98, 1.0)
+            let border_color = if selected == Some(item.id) {
+                color(cache.palette.accent)
             } else {
-                Color32F::new(0.19, 0.22, 0.28, 1.0)
+                color(cache.palette.border)
             };
-            border.update(item.rect.size, color);
+            border.update(item.rect.size, border_color);
             elements.push(
                 SolidColorRenderElement::from_buffer(
                     border,
@@ -209,12 +218,13 @@ fn push_label<K: Ord + Copy>(
     rect: Rectangle<i32, Logical>,
     font_size: u32,
     alpha: f32,
+    color: xilem::Color,
 ) {
     if !cache
         .get(&key)
-        .is_some_and(|label| label.matches(&text, rect.size, font_size))
+        .is_some_and(|label| label.matches(&text, rect.size, font_size, color))
     {
-        cache.insert(key, LabelBuffer::new(text, rect.size, font_size));
+        cache.insert(key, LabelBuffer::new(text, rect.size, font_size, color));
     }
     let buffer = &cache.get(&key).expect("cached label").buffer;
     if let Ok(element) = MemoryRenderBufferRenderElement::from_buffer(
@@ -247,6 +257,7 @@ impl Cache {
             rect,
             14,
             1.0,
+            self.palette.text,
         );
     }
 
@@ -259,7 +270,7 @@ impl Cache {
             .backgrounds
             .entry((rect.loc.x, rect.loc.y))
             .or_default();
-        buffer.update(rect.size, Color32F::new(0.025, 0.03, 0.045, 0.96));
+        buffer.update(rect.size, color(self.palette.surface.with_alpha(0.98)));
         elements.push(
             SolidColorRenderElement::from_buffer(
                 buffer,

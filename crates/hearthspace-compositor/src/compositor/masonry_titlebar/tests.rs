@@ -3,6 +3,7 @@ use crate::compositor::windows::titlebar_button_rect;
 
 fn state() -> TitlebarState {
     TitlebarState {
+        appearance: hearthspace_ipc::Appearance::default(),
         title: "Hearthspace Settings".into(),
         app_id: Some("dev.hearthspace.Settings".into()),
         active: true,
@@ -158,6 +159,44 @@ fn hovering_only_rasterizes_the_small_actions_strip() {
     assert!(Arc::ptr_eq(&app, &cache.app));
     assert!(!Arc::ptr_eq(&actions, &cache.actions));
     assert_eq!(cache.actions.pixels.dimensions(), (128, 44));
+}
+
+#[test]
+fn changing_appearance_repaints_foreground_without_reintroducing_resize_rasters() {
+    let mut state = state();
+    let mut cache = TitlebarBuffer::new(state.clone(), 1);
+    let original_title = Arc::clone(&cache.title);
+    let original_app = Arc::clone(&cache.app);
+    state.appearance.accent_color = hearthspace_ipc::AccentColor::Teal;
+    cache.update(state.clone(), 1);
+    assert!(
+        Arc::ptr_eq(&original_title, &cache.title),
+        "accent does not change title ink"
+    );
+    assert!(
+        !Arc::ptr_eq(&original_app, &cache.app),
+        "active app glyph uses the new accent"
+    );
+    state.appearance.color_mode = hearthspace_ipc::ColorMode::Dark;
+    cache.update(state.clone(), 1);
+    assert!(
+        !Arc::ptr_eq(&original_title, &cache.title),
+        "dark mode needs light ink"
+    );
+    let dark = [&cache.title, &cache.ellipsis, &cache.app, &cache.actions].map(Arc::clone);
+    for width in [300.0, 600.0, 800.0] {
+        cache.update(state.clone(), 1);
+        cache.placements(width);
+        for (before, after) in
+            dark.iter()
+                .zip([&cache.title, &cache.ellipsis, &cache.app, &cache.actions])
+        {
+            assert!(
+                Arc::ptr_eq(before, after),
+                "resizing retains theme-specific bitmaps"
+            );
+        }
+    }
 }
 
 #[test]

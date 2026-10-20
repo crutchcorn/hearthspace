@@ -9,6 +9,7 @@ use std::{
 use crate::{RunOptions, config::*, geometry::CanvasPoint};
 use hearthspace_shell::app_catalog::AppCatalog;
 
+mod appearance;
 mod capture;
 mod client;
 mod clipboard;
@@ -321,6 +322,8 @@ struct App {
     popups: PopupManager,
     popup_grab: Option<smithay::desktop::PopupGrab<App>>,
     background_mode: hearthspace_ipc::BackgroundMode,
+    appearance: hearthspace_ipc::Appearance,
+    palette: hearthspace_ui_components::Palette,
     background_image_path: Option<String>,
     /// Cached texture for the repeated background image tile.
     background_image_tile: Option<rendering::BackgroundImageTile>,
@@ -343,6 +346,7 @@ struct App {
 struct SettingsRefresh {
     output_layout_changed: bool,
     background_changed: bool,
+    appearance_changed: bool,
 }
 
 impl App {
@@ -366,6 +370,16 @@ impl App {
             self.background_image_path = settings.background_image_path;
             self.background_image_tile = None;
             refresh.background_changed = true;
+        }
+        if self.appearance != settings.appearance {
+            refresh.appearance_changed = true;
+            if self.appearance.color_mode != settings.appearance.color_mode {
+                refresh.background_changed |= self.invalidate_default_background();
+            }
+            self.appearance = settings.appearance;
+            self.palette = hearthspace_ui_components::Palette::new(self.appearance);
+            #[cfg(feature = "xwayland")]
+            self.publish_xsettings();
         }
         if refresh.background_changed {
             // Static wallpaper elements have no content commit counter. New
@@ -688,6 +702,8 @@ pub(in crate::compositor) fn initialize_app(
         popups: PopupManager::default(),
         popup_grab: None,
         background_mode: settings.background_mode,
+        appearance: settings.appearance,
+        palette: hearthspace_ui_components::Palette::new(settings.appearance),
         background_image_path: settings.background_image_path,
         background_image_tile: None,
         corner_blur: rendering::CornerBlurCache::default(),

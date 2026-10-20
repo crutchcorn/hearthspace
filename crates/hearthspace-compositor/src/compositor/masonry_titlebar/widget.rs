@@ -1,7 +1,4 @@
-use hearthspace_ui_components::{
-    self as components,
-    icons::{Icon, IconWidget, icon},
-};
+use hearthspace_ui_components::icons::{Icon, IconWidget, icon};
 use masonry::{
     accesskit::{Node, Role},
     core::{
@@ -68,9 +65,9 @@ impl Strip {
 
     pub fn app(state: &TitlebarState) -> Self {
         let color = if state.active {
-            components::settings_material::ACCENT_DECORATIVE
+            state.palette().accent_decorative
         } else {
-            paint::muted(state.photo)
+            state.palette().muted
         };
         Self {
             width: 44.0,

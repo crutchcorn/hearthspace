@@ -18,6 +18,7 @@ pub(in crate::compositor) struct LabelBuffer {
     pub(super) text: String,
     pub(super) size: Size<i32, Logical>,
     pub(super) font_size: u32,
+    color: Color,
     pub(in crate::compositor) buffer: MemoryRenderBuffer,
 }
 
@@ -27,21 +28,24 @@ impl LabelBuffer {
         text: &str,
         size: Size<i32, Logical>,
         font_size: u32,
+        color: Color,
     ) -> bool {
-        self.text == text && self.size == size && self.font_size == font_size
+        self.text == text && self.size == size && self.font_size == font_size && self.color == color
     }
 
     pub(in crate::compositor) fn new(
         text: String,
         size: Size<i32, Logical>,
         font_size: u32,
+        color: Color,
     ) -> Self {
-        let image = rasterize(&text, size, font_size);
+        let image = rasterize(&text, size, font_size, color);
         let pixels = premultiplied_pixels(image);
         Self {
             text,
             size,
             font_size,
+            color,
             buffer: MemoryRenderBuffer::from_slice(
                 &pixels,
                 Fourcc::Abgr8888,
@@ -67,13 +71,18 @@ fn premultiplied_pixels(image: image::RgbaImage) -> Vec<u8> {
     pixels
 }
 
-fn rasterize(text: &str, size: Size<i32, Logical>, font_size: u32) -> image::RgbaImage {
+fn rasterize(
+    text: &str,
+    size: Size<i32, Logical>,
+    font_size: u32,
+    color: Color,
+) -> image::RgbaImage {
     let label = Label::new(text.to_string())
         .with_style(StyleProperty::FontSize(font_size as f32))
         .prepare()
         .with_props(
             PropertySet::new()
-                .with(ContentColor::new(Color::from_rgb8(235, 240, 248)))
+                .with(ContentColor::new(color))
                 .with(LineBreaking::Clip),
         );
     let row = Flex::row()
@@ -96,7 +105,7 @@ mod tests {
 
     #[test]
     fn readable_label_has_text_and_transparent_background() {
-        let image = rasterize("Terminal — build logs", (260, 32).into(), 14);
+        let image = rasterize("Terminal — build logs", (260, 32).into(), 14, Color::WHITE);
         assert_eq!(image.dimensions(), (260, 32));
         assert!(image.pixels().filter(|pixel| pixel.0[3] > 100).count() > 100);
         assert_eq!(image.get_pixel(259, 31).0[3], 0);
@@ -104,7 +113,7 @@ mod tests {
 
     #[test]
     fn uploaded_glyph_edges_obey_premultiplied_alpha() {
-        let image = rasterize("Window switcher", (260, 32).into(), 14);
+        let image = rasterize("Window switcher", (260, 32).into(), 14, Color::WHITE);
         assert!(
             image.pixels().any(|pixel| {
                 let [red, _, _, alpha] = pixel.0;

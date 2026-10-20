@@ -78,6 +78,9 @@ mod window_states;
 #[cfg(feature = "test-apps")]
 #[path = "support/window_switcher.rs"]
 mod window_switcher;
+#[cfg(all(feature = "test-apps", feature = "xwayland"))]
+#[path = "support/xsettings.rs"]
+mod xsettings;
 
 const WIDTH: u32 = 320;
 const HEIGHT: u32 = 240;
