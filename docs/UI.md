@@ -147,7 +147,7 @@ compositor backdrop described above.
 
 Settings controls use `settings_button` and `settings_surface` from
 `hearthspace-ui-components`. These decorate native Masonry controls with inset
-highlights, soft shadows, a radial orange wash, and keyboard-only focus rings.
+highlights, soft shadows, a radial accent wash, and keyboard-only focus rings.
 Set sizing and padding on the native button before wrapping it; put dynamic
 `.disabled(...)` on the returned material view so the decoration and input state
 stay in sync. The Settings Materials story exposes selected and disabled states.
@@ -161,9 +161,27 @@ text showing through the popup; it approximates the browser's blurred backing.
 The AI modal dims the client window without blurring the underlying controls.
 The Settings window itself uses actual GPU backdrop blur.
 
-Settings displays the reference's appearance options, but only light mode and
-orange are enabled. The other choices are visibly unavailable. This visual system
-does not introduce the prototype's apps, canvas tools, layout editor, or animations.
+Settings enables light/dark mode and the reference's six accent colors. A shared
+`Palette` carries explicit colors; `hearthspace_properties(palette, style)` builds
+native defaults. Windows cache these defaults in an `Arc` and replace it only
+when appearance changes, preserving widget IDs, input focus, popup state and
+unfinished text. Custom painters read a normal Masonry `Palette` property and
+invalidate paint when it changes. There is no mutable global theme. Compatibility
+constructors still produce the original orange/light defaults for stories.
+
+Dark glass keeps the reference surface tints and transparency. Glass defaults
+use `Palette::for_glass()` to adjust shell ink and slightly reduce dark hover
+opacity so nested launcher controls remain readable over bright windows.
+Settings and window decorations retain the reference ink and hover tokens.
+Compositor frames update shader uniforms
+and titlebar foreground caches on appearance changes. Geometry-only resizing
+continues to reuse the foreground bitmaps; palette resolution is cached too.
+Changing modes regenerates the default dot field while retaining decoded user
+wallpapers. See [Settings](SETTINGS.md#linux-appearance-publication) for application
+preferences published through the desktop portal and XSettings.
+
+This visual system does not introduce the prototype's apps, canvas tools,
+layout editor, or animations.
 
 ## When To Use A UI Framework
 
