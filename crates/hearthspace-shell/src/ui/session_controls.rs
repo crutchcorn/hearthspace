@@ -1,4 +1,5 @@
 //! Small everyday session controls, kept separate from application search.
+use crate::ui::appearance::{ThemeStyle as _, Tone};
 use std::time::Duration;
 
 use chrono::Local;
@@ -108,17 +109,17 @@ fn action<F: Fn(&mut ShellState) + Send + Sync + 'static>(
     callback: F,
 ) -> impl WidgetView<ShellState> + use<F> {
     let color = if !enabled {
-        components::TEXT_MUTED
+        Tone::Muted
     } else if confirming {
-        components::ACCENT_STRONG
+        Tone::Strong
     } else {
-        components::TEXT
+        Tone::Text
     };
     components::button_surface(
         button(
             flex_row((
-                icon(glyph, 20.0).color(color),
-                label(name).text_size(14.0).color(color).flex(1.0),
+                icon(glyph, 20.0).theme_color(color),
+                label(name).text_size(14.0).theme_color(color).flex(1.0),
             ))
             .gap(12.0.px()),
             callback,
@@ -185,8 +186,8 @@ pub(super) fn power_panel(
     });
     let hint = confirming.then(|| {
         components::field_label("Close your apps and end this session?")
-            .color(components::TEXT_MUTED)
             .line_break_mode(LineBreaking::WordWrap)
+            .theme_color(Tone::Muted)
     });
     let error = output
         .launch_error
@@ -200,18 +201,17 @@ pub(super) fn power_panel(
                 .clone()
                 .unwrap_or_else(|| "Suspend is unavailable in this session.".into()),
         )
-        .color(components::TEXT_MUTED)
         .line_break_mode(LineBreaking::WordWrap)
+        .theme_color(Tone::Muted)
     });
     popup::panel_with_header(
         output,
         PopupKind::Power,
         flex_row((
-            icon(Glyph::Power, 20.0).color(components::ACCENT_STRONG),
+            icon(Glyph::Power, 20.0).theme_color(Tone::Strong),
             label("Power")
                 .text_size(16.0)
                 .weight(FontWeight::MEDIUM)
-                .color(components::TEXT)
                 .flex(1.0),
             icon_button(Icon::Close, "Close power menu", false, move |state| {
                 state.dismiss_power(&close_key)

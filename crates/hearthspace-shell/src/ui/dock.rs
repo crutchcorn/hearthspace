@@ -324,3 +324,10 @@ fn activate(state: &mut ShellState, output_key: &str, key: &Key) {
         ));
     }
 }
+
+pub(super) fn theme_properties(
+    properties: &mut xilem::masonry::core::DefaultProperties,
+    palette: components::Palette,
+) {
+    properties.insert::<icons::IconWidget, _>(palette);
+}

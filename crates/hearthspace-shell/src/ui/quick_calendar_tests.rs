@@ -1,5 +1,6 @@
 use super::*;
 use crate::ui::test_support::{Ui, ids};
+use hearthspace_ui_components as components;
 use masonry::{accesskit::Role, kurbo::Rect, properties::Background};
 
 fn assert_dates_centered(today: NaiveDate, width: u32) {

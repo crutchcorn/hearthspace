@@ -6,6 +6,7 @@ use super::{
     popup::{self, PopupKind},
     state::{ShellOutputInstance, ShellState},
 };
+use crate::ui::appearance::{ThemeStyle as _, Tone};
 use hearthspace_common::{QUICK_PANEL_APP_ID, quick_panel_app_id_for_output};
 use hearthspace_ui_components as components;
 use xilem::{
@@ -75,7 +76,6 @@ pub(super) fn clock_button(
                     .label("Date and time"),
                 label(text)
                     .text_size(14.0)
-                    .color(components::TEXT)
                     .line_break_mode(LineBreaking::Clip)
                     .flex(1.0),
             ))
@@ -129,9 +129,9 @@ pub(super) fn panel(
 
 fn heading(title: &'static str, detail: String) -> impl WidgetView<ShellState> + use<> {
     flex_row((
-        label(title).text_size(16.0).color(components::TEXT),
+        label(title).text_size(16.0),
         FlexSpacer::Flex(1.0),
-        label(detail).text_size(30.0).color(components::TEXT),
+        label(detail).text_size(30.0),
     ))
     .gap(12.0.px())
 }
@@ -139,12 +139,12 @@ fn heading(title: &'static str, detail: String) -> impl WidgetView<ShellState> +
 fn wifi() -> impl WidgetView<ShellState> + use<> {
     flex_col((
         heading("Wi-Fi", String::new()),
-        components::icons::icon(components::icons::Icon::Wifi, 24.0).color(components::TEXT_MUTED),
+        components::icons::icon(components::icons::Icon::Wifi, 24.0).theme_color(Tone::Muted),
         label("Network controls").text_size(20.0),
         label("Use your network tray application to manage connections.")
             .text_size(13.0)
-            .color(components::TEXT_MUTED)
-            .line_break_mode(LineBreaking::WordWrap),
+            .line_break_mode(LineBreaking::WordWrap)
+            .theme_color(Tone::Muted),
     ))
     .cross_axis_alignment(CrossAxisAlignment::Start)
     .gap(16.0.px())
@@ -214,8 +214,8 @@ fn sound(state: &ShellState, output: &ShellOutputInstance) -> impl WidgetView<Sh
             }
         }))
         .text_size(13.0)
-        .color(components::TEXT_MUTED)
-        .line_break_mode(LineBreaking::WordWrap),
+        .line_break_mode(LineBreaking::WordWrap)
+        .theme_color(Tone::Muted),
     ))
     .cross_axis_alignment(CrossAxisAlignment::Stretch)
     .gap(16.0.px())
@@ -243,8 +243,7 @@ fn brightness(
             value.map_or("—".into(), |value| format!("{value}%")),
         ),
         flex_row((
-            components::icons::icon(components::icons::Icon::Sun, 16.0)
-                .color(components::TEXT_MUTED),
+            components::icons::icon(components::icons::Icon::Sun, 16.0).theme_color(Tone::Muted),
             sized_box(ControlSlider {
                 name: "Brightness",
                 output: output.key().into(),
@@ -254,14 +253,14 @@ fn brightness(
             })
             .height(28.0.px())
             .flex(1.0),
-            components::icons::icon(components::icons::Icon::Sun, 22.0).color(components::TEXT),
+            components::icons::icon(components::icons::Icon::Sun, 22.0),
         ))
         .gap(12.0.px()),
         reason.map(|reason| {
             label(reason)
                 .text_size(13.0)
-                .color(components::TEXT_MUTED)
                 .line_break_mode(LineBreaking::WordWrap)
+                .theme_color(Tone::Muted)
         }),
     ))
     .cross_axis_alignment(CrossAxisAlignment::Stretch)
@@ -274,12 +273,12 @@ fn battery(state: &ShellState) -> impl WidgetView<ShellState> + use<> {
     let meter = flex_row((
         sized_box(label(""))
             .height(8.0.px())
-            .background_color(components::ACCENT)
+            .theme_background(Tone::Accent)
             .corner_radius(4.0.px())
             .flex(percentage.max(0.001)),
         sized_box(label(""))
             .height(8.0.px())
-            .background_color(components::BORDER)
+            .theme_background(Tone::Border)
             .corner_radius(4.0.px())
             .flex((100.0 - percentage).max(0.001)),
     ))
@@ -301,7 +300,6 @@ fn battery(state: &ShellState) -> impl WidgetView<ShellState> + use<> {
                 }
             })
             .text_size(13.0)
-            .color(components::TEXT)
             .line_break_mode(LineBreaking::WordWrap)
         }),
     ))

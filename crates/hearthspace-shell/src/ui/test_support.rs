@@ -1,5 +1,4 @@
 use super::state::ShellState;
-use hearthspace_ui_components as components;
 use masonry::{
     accesskit::{Action, ActionRequest, Role, TreeId},
     core::{Widget, WidgetId},
@@ -55,7 +54,7 @@ where
         let view = build(&state);
         let (root, view_state) = view.build(&mut ctx, &mut state);
         let harness = TestHarness::create_with_size(
-            components::hearthspace_light_properties(),
+            crate::ui::appearance::properties(state.appearance.palette),
             root.new_widget,
             size,
         );
@@ -71,6 +70,8 @@ where
     }
 
     pub(super) fn rebuild(&mut self, build: &impl Fn(&ShellState) -> V) {
+        self.harness
+            .set_default_properties(self.state.appearance.properties.clone());
         let next = build(&self.state);
         self.harness.edit_root_widget(|root| {
             next.rebuild(

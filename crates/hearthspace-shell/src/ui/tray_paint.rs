@@ -6,19 +6,21 @@ use xilem::masonry::{
     imaging::Painter,
     kurbo::{Affine, Circle, Line, RoundedRect, Stroke},
 };
-pub(super) fn paint(appearance: &Appearance, ctx: &mut PaintCtx<'_>, painter: &mut Painter<'_>) {
+pub(super) fn paint(
+    appearance: &Appearance,
+    ctx: &mut PaintCtx<'_>,
+    painter: &mut Painter<'_>,
+    palette: &components::Palette,
+) {
     let bounds = ctx.content_box();
     if appearance.separator {
-        painter.fill(bounds, components::BORDER).draw();
+        painter.fill(bounds, palette.border).draw();
         return;
     }
     let selected = appearance.selected || ctx.is_focus_target() || ctx.is_hovered();
     if selected {
         painter
-            .fill(
-                RoundedRect::from_rect(bounds, 6.0),
-                components::ACCENT_SUBTLE,
-            )
+            .fill(RoundedRect::from_rect(bounds, 6.0), palette.accent_soft)
             .draw();
     }
     if ctx.is_focus_target() {
@@ -26,14 +28,14 @@ pub(super) fn paint(appearance: &Appearance, ctx: &mut PaintCtx<'_>, painter: &m
             .stroke(
                 RoundedRect::from_rect(bounds.inset(-1.0), 6.0),
                 &Stroke::new(1.0),
-                components::FOCUS_RING_ON_GLASS,
+                palette.focus_ring_on_glass,
             )
             .draw();
     }
     let color = if appearance.enabled {
-        components::TEXT
+        palette.text
     } else {
-        components::TEXT_MUTED
+        palette.text_muted
     };
     if appearance.icon {
         if let Some(image) = &appearance.image {
@@ -52,7 +54,7 @@ pub(super) fn paint(appearance: &Appearance, ctx: &mut PaintCtx<'_>, painter: &m
         }
         if appearance.attention {
             painter
-                .fill(Circle::new((28.0, 6.0), 3.0), components::ACCENT)
+                .fill(Circle::new((28.0, 6.0), 3.0), palette.accent)
                 .draw();
         }
     } else {

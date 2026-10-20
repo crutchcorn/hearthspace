@@ -1,4 +1,5 @@
 //! Shared transparent popup surfaces and measured, bounded content heights.
+use crate::ui::appearance::{ThemeStyle as _, Tone};
 use hearthspace_ui_components as components;
 use xilem::{
     Color, WidgetView, WindowId, WindowOptionsExtLinux, WindowView,
@@ -156,8 +157,9 @@ fn frame<V: WidgetView<ShellState>>(
         sized_box(content)
             .padding(kind.padding().px())
             // A steady tint keeps the text legible over arbitrary client content.
-            .background_color(components::CHROME_RAISED)
-            .border(components::CHROME_BORDER, BORDER.px())
+            .theme_background(Tone::Chrome)
+            .theme_border(Tone::ChromeBorder)
+            .border_width(BORDER.px())
             .corner_radius(20.0.px()),
     )
 }

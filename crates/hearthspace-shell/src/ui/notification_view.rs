@@ -1,3 +1,4 @@
+use crate::ui::appearance::{ThemeStyle as _, Tone};
 use hearthspace_ui_components as components;
 use xilem::{
     AnyWidgetView, WidgetView,
@@ -35,9 +36,9 @@ pub(super) fn button(
     let remaining = (content_width - icon_size).max(0.0);
     let gap = remaining.min(9.0);
     let color = if count > 0 || output.show_notifications {
-        components::ACCENT_STRONG
+        Tone::Strong
     } else {
-        components::TEXT_MUTED
+        Tone::Muted
     };
     components::button_surface(
         xilem::view::button(
@@ -51,7 +52,7 @@ pub(super) fn button(
                     icon_size,
                 )
                 .label("Notifications")
-                .color(color),
+                .theme_color(color),
                 // A named group exposes the changing status separately from
                 // the button's stable name, supplied by the bell above.
                 super::popup_group::group(
@@ -62,9 +63,9 @@ pub(super) fn button(
                         format!("{count} new")
                     })
                     .text_size(13.0)
-                    .color(color)
                     .width((remaining - gap).px())
-                    .line_break_mode(LineBreaking::Clip),
+                    .line_break_mode(LineBreaking::Clip)
+                    .theme_color(color),
                 ),
             ))
             .gap(gap.px()),
@@ -104,7 +105,7 @@ pub(super) fn panel(
             sized_box(
                 flex_col((
                     components::icons::icon(components::icons::Icon::Bell, 28.0)
-                        .color(components::TEXT_MUTED),
+                        .theme_color(Tone::Muted),
                     label("You're all caught up").text_size(20.0),
                     components::muted_text("No notifications yet"),
                 ))
@@ -129,7 +130,7 @@ pub(super) fn panel(
             .gap(4.0.px()),
         )
         .padding(14.0.px())
-        .background_color(components::SURFACE_CONTROL),
+        .theme_background(Tone::Control),
         flex_col(rows)
             .cross_axis_alignment(CrossAxisAlignment::Stretch)
             .gap(0.0.px()),
@@ -144,11 +145,10 @@ fn notification_row(item: Notification) -> impl WidgetView<ShellState> + use<> {
             format!("History · {}", item.app_name)
         })
         .text_size(11.0)
-        .color(components::TEXT_MUTED)
+        .theme_color(Tone::Muted)
         .boxed(),
         label(item.summary)
             .text_size(15.0)
-            .color(components::TEXT)
             .line_break_mode(LineBreaking::WordWrap)
             .boxed(),
     ];
@@ -157,8 +157,8 @@ fn notification_row(item: Notification) -> impl WidgetView<ShellState> + use<> {
             label(item.body)
                 .font(GenericFamily::SystemUi)
                 .text_size(12.0)
-                .color(components::TEXT_MUTED)
                 .line_break_mode(LineBreaking::WordWrap)
+                .theme_color(Tone::Muted)
                 .boxed(),
         );
     }
@@ -183,19 +183,16 @@ fn notification_row(item: Notification) -> impl WidgetView<ShellState> + use<> {
     sized_box(
         flex_row((
             sized_box(
-                components::icons::icon(components::icons::Icon::Bell, 16.0).color(if active {
-                    components::ACCENT_STRONG
-                } else {
-                    components::TEXT_MUTED
-                }),
+                components::icons::icon(components::icons::Icon::Bell, 16.0)
+                    .theme_color(if active { Tone::Strong } else { Tone::Muted }),
             )
             .width(29.0.px())
             .height(29.0.px())
             .corner_radius(10.0.px())
-            .background_color(if active {
-                components::ACCENT_SUBTLE
+            .theme_background(if active {
+                Tone::AccentSoft
             } else {
-                components::SURFACE_CONTROL
+                Tone::Control
             }),
             flex_col(rows)
                 .cross_axis_alignment(CrossAxisAlignment::Stretch)
@@ -205,10 +202,10 @@ fn notification_row(item: Notification) -> impl WidgetView<ShellState> + use<> {
         .cross_axis_alignment(CrossAxisAlignment::Start)
         .gap(14.0.px()),
     )
-    .background_color(if item.urgency == 2 && item.active {
-        components::DANGER_SUBTLE
+    .theme_background(if item.urgency == 2 && item.active {
+        Tone::Danger
     } else {
-        xilem::Color::TRANSPARENT
+        Tone::Transparent
     })
     .padding(20.0.px())
 }

@@ -209,7 +209,7 @@ fn icon_preserves_input_kinds_and_context_accessibility() {
     )
     .prepare();
     let mut harness = TestHarness::create_with_size(
-        hearthspace_ui_components::hearthspace_light_properties(),
+        crate::ui::appearance::properties(hearthspace_ui_components::Palette::default()),
         widget,
         (34, 34),
     );

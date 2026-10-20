@@ -210,7 +210,7 @@ fn rounded_popup_frame_has_transparent_corners_and_a_readable_glass_tint() {
     let view = sized_box(frame(PopupKind::Controls, label("Popup content")));
     let (root, _) = view.build(&mut ctx, &mut state());
     let mut harness = TestHarness::create_with(
-        components::hearthspace_light_properties(),
+        crate::ui::appearance::properties(hearthspace_ui_components::Palette::default()),
         root.new_widget,
         TestHarnessParams::default()
             .with_size((360, 140))
@@ -254,7 +254,7 @@ fn full_bleed_launcher_and_notification_content_preserve_rounded_corners() {
         let view = sized_box(content);
         let (root, _) = view.build(&mut ctx, &mut state);
         let mut harness = TestHarness::create_with(
-            components::hearthspace_light_properties(),
+            crate::ui::appearance::properties(hearthspace_ui_components::Palette::default()),
             root.new_widget,
             TestHarnessParams::default()
                 .with_size((650, 320))

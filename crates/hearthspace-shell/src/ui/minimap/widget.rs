@@ -286,13 +286,27 @@ impl Widget for Minimap {
         ctx.set_clip_path(size.to_rect());
     }
 
-    fn paint(&mut self, _: &mut PaintCtx<'_>, _: &PropertiesRef<'_>, painter: &mut Painter<'_>) {
+    fn property_changed(
+        &mut self,
+        ctx: &mut xilem::masonry::core::UpdateCtx<'_>,
+        property: std::any::TypeId,
+    ) {
+        hearthspace_ui_components::Palette::prop_changed(ctx, property);
+    }
+    fn paint(
+        &mut self,
+        ctx: &mut PaintCtx<'_>,
+        props: &PropertiesRef<'_>,
+        painter: &mut Painter<'_>,
+    ) {
+        let palette = *props.get::<hearthspace_ui_components::Palette>(ctx.property_cache());
         render::draw(
             painter,
             self.size,
             self.snapshot.as_ref(),
             self.output_name.as_deref(),
             self.drag.as_ref().map(|drag| &drag.projection),
+            &palette,
         );
     }
 
@@ -319,7 +333,7 @@ impl Widget for Minimap {
             self.snapshot.as_ref(),
             self.output_name.as_deref(),
         ));
-        node.set_description("Drag the orange viewport rectangle to pan the canvas.");
+        node.set_description("Drag the accented viewport rectangle to pan the canvas.");
     }
     fn children_ids(&self) -> ChildrenIds {
         ChildrenIds::new()

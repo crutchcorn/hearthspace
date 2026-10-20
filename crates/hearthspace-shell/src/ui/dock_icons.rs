@@ -168,6 +168,14 @@ pub(super) struct IconWidget {
 
 impl Widget for IconWidget {
     type Action = NoAction;
+    fn property_changed(
+        &mut self,
+        ctx: &mut xilem::masonry::core::UpdateCtx<'_>,
+        property: std::any::TypeId,
+    ) {
+        components::Palette::prop_changed(ctx, property);
+    }
+
     fn register_children(&mut self, _: &mut RegisterCtx<'_>) {}
 
     fn measure(
@@ -187,7 +195,13 @@ impl Widget for IconWidget {
 
     fn layout(&mut self, _: &mut LayoutCtx<'_>, _: &PropertiesRef<'_>, _: Size) {}
 
-    fn paint(&mut self, _: &mut PaintCtx<'_>, _: &PropertiesRef<'_>, painter: &mut Painter<'_>) {
+    fn paint(
+        &mut self,
+        ctx: &mut PaintCtx<'_>,
+        props: &PropertiesRef<'_>,
+        painter: &mut Painter<'_>,
+    ) {
+        let palette = *props.get::<components::Palette>(ctx.property_cache());
         let stroke = Stroke::new(1.6);
         let center = self.width / 2.0;
         match &self.glyph {
@@ -211,24 +225,24 @@ impl Widget for IconWidget {
                         .stroke(
                             Rect::new(center - 10.0, 6.0, center + 10.0, 24.0),
                             &stroke,
-                            components::TEXT,
+                            palette.text,
                         )
                         .draw();
                     painter
                         .stroke(
                             Line::new((center - 10.0, 11.0), (center + 10.0, 11.0)),
                             &stroke,
-                            components::TEXT,
+                            palette.text,
                         )
                         .draw();
                     painter
-                        .fill(Circle::new((center - 7.0, 8.5), 0.8), components::TEXT)
+                        .fill(Circle::new((center - 7.0, 8.5), 0.8), palette.text)
                         .draw();
                 }
                 let color = if *focused {
-                    components::ACCENT
+                    palette.accent
                 } else {
-                    components::TEXT_MUTED
+                    palette.text_muted
                 };
                 let dots = (*count).clamp(1, 3);
                 for index in 0..dots {
@@ -251,14 +265,14 @@ impl Widget for IconWidget {
                         .stroke(
                             Line::new((x - span, 12.0), (x + span, 18.0)),
                             &stroke,
-                            components::TEXT,
+                            palette.text,
                         )
                         .draw();
                     painter
                         .stroke(
                             Line::new((x + span, 18.0), (x - span, 24.0)),
                             &stroke,
-                            components::TEXT,
+                            palette.text,
                         )
                         .draw();
                 }

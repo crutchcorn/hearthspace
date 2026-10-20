@@ -60,7 +60,7 @@ where
         let view = build(&state);
         let (root, view_state) = view.build(&mut ctx, &mut state);
         let harness = TestHarness::create_with_size(
-            components::hearthspace_light_properties(),
+            crate::ui::appearance::properties(hearthspace_ui_components::Palette::default()),
             root.new_widget,
             (width, 336),
         );

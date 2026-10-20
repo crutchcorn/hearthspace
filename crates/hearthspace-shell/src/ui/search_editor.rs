@@ -117,6 +117,7 @@ impl Widget for SearchEditor {
     }
     fn property_changed(&mut self, ctx: &mut UpdateCtx<'_>, property_type: TypeId) {
         self.text.property_changed(ctx, property_type);
+        self.placeholder.property_changed(ctx, property_type);
     }
     fn register_children(&mut self, _: &mut RegisterCtx<'_>) {}
     fn measure(

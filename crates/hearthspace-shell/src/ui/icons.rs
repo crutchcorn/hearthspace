@@ -1,4 +1,5 @@
 //! Shell semantics adapted to the shared native SVG geometry.
+use crate::ui::appearance::{ThemeStyle as _, Tone};
 use hearthspace_ui_components::{
     self as components,
     icons::{Icon as Glyph, icon},
@@ -69,11 +70,7 @@ pub(super) fn icon_button<F: Fn(&mut ShellState) + Send + Sync + 'static>(
         button(
             icon(kind.glyph(), kind.size())
                 .label(name)
-                .color(if selected {
-                    components::ACCENT_STRONG
-                } else {
-                    components::TEXT
-                }),
+                .theme_color(if selected { Tone::Strong } else { Tone::Text }),
             action,
         )
         .padding(((44.0 - kind.size() - 2.0) / 2.0).px())

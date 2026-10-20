@@ -1,4 +1,5 @@
 use super::ShellState;
+use crate::ui::appearance::{ThemeStyle as _, Tone};
 use chrono::{Datelike, Local, NaiveDate};
 use hearthspace_ui_components as components;
 use xilem::{
@@ -31,7 +32,7 @@ fn view_for_date(today: NaiveDate) -> impl WidgetView<ShellState> + use<> {
             label(day)
                 .text_size(11.0)
                 .text_alignment(xilem::TextAlign::Center)
-                .color(components::TEXT_MUTED)
+                .theme_color(Tone::Muted)
                 .flex(1.0)
         }))
         .boxed(),
@@ -53,20 +54,16 @@ fn view_for_date(today: NaiveDate) -> impl WidgetView<ShellState> + use<> {
                             flex_col((label(day.map_or(String::new(), |day| day.to_string()))
                                 .text_size(12.0)
                                 .text_alignment(xilem::TextAlign::Center)
-                                .color(if selected {
-                                    components::ACCENT_STRONG
-                                } else {
-                                    components::TEXT
-                                }),))
+                                .theme_color(if selected { Tone::Strong } else { Tone::Text }),))
                             .main_axis_alignment(MainAxisAlignment::Center)
                             .cross_axis_alignment(CrossAxisAlignment::Stretch),
                         )
                         .height(34.0.px())
                         .corner_radius(10.0.px())
-                        .background_color(if selected {
-                            components::ACCENT_SUBTLE
+                        .theme_background(if selected {
+                            Tone::AccentSoft
                         } else {
-                            xilem::Color::TRANSPARENT
+                            Tone::Transparent
                         })
                         .flex(1.0)
                     })

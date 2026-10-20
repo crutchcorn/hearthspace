@@ -1,6 +1,7 @@
 //! The restyled menu keeps session actions accessible in short output palettes.
 use super::*;
 use crate::ui::test_support::{Ui, ids};
+use hearthspace_ui_components as components;
 use masonry::{
     core::{
         TextEvent,

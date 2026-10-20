@@ -99,7 +99,10 @@ pub(super) fn app_logic(
         }
     }
 
-    windows.into_iter()
+    let properties = state.appearance.properties.clone();
+    windows
+        .into_iter()
+        .map(move |window| window.with_default_properties(properties.clone()))
 }
 
 fn notification_window(
@@ -146,7 +149,10 @@ fn launcher_window(
 fn output_watcher_view(map_open: bool, osd_open: bool) -> impl WidgetView<ShellState> + use<> {
     sized_box(fork(
         fork(
-            fork(label(""), output_watcher_task()),
+            fork(
+                fork(label(""), output_watcher_task()),
+                super::appearance::task(),
+            ),
             fork(
                 fork(
                     fork(window_catalog_task(), shell_events_task()),

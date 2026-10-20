@@ -129,12 +129,15 @@ impl View<ShellState, (), ViewCtx> for ButtonView {
                 let mut text = ctx.get_mut(text);
                 Label::set_text(&mut text, self.appearance.name.clone());
                 if self.appearance.enabled != prev.appearance.enabled {
-                    text.insert_prop(xilem::masonry::properties::ContentColor {
-                        color: if self.appearance.enabled {
-                            hearthspace_ui_components::TEXT
-                        } else {
-                            hearthspace_ui_components::TEXT_MUTED
-                        },
+                    text.ctx.remove_class(if self.appearance.enabled {
+                        "shell-muted-shell-ink"
+                    } else {
+                        "shell-text-shell-ink"
+                    });
+                    text.ctx.add_class(if self.appearance.enabled {
+                        "shell-text-shell-ink"
+                    } else {
+                        "shell-muted-shell-ink"
                     });
                 }
             }

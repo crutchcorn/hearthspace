@@ -77,7 +77,7 @@ impl<State: 'static> View<State, (), ViewCtx> for ThumbnailView {
     }
 }
 
-struct Thumbnail {
+pub(super) struct Thumbnail {
     points: Vec<[f64; 2]>,
     size: Size,
 }
@@ -117,6 +117,14 @@ impl Widget for Thumbnail {
         false
     }
 
+    fn property_changed(
+        &mut self,
+        ctx: &mut xilem::masonry::core::UpdateCtx<'_>,
+        property: std::any::TypeId,
+    ) {
+        components::Palette::prop_changed(ctx, property);
+    }
+
     fn register_children(&mut self, _: &mut RegisterCtx<'_>) {}
 
     fn measure(
@@ -135,11 +143,17 @@ impl Widget for Thumbnail {
         ctx.set_clip_path(size.to_rect());
     }
 
-    fn paint(&mut self, _: &mut PaintCtx<'_>, _: &PropertiesRef<'_>, painter: &mut Painter<'_>) {
+    fn paint(
+        &mut self,
+        ctx: &mut PaintCtx<'_>,
+        props: &PropertiesRef<'_>,
+        painter: &mut Painter<'_>,
+    ) {
+        let palette = *props.get::<components::Palette>(ctx.property_cache());
         painter
             .fill(
                 self.size.to_rect().to_rounded_rect(5.0),
-                components::SURFACE_SUBTLE,
+                palette.surface_subtle,
             )
             .draw();
         let mut path = BezPath::new();
@@ -156,7 +170,7 @@ impl Widget for Thumbnail {
                 &Stroke::new(2.0)
                     .with_caps(Cap::Round)
                     .with_join(Join::Round),
-                components::ACCENT,
+                palette.accent,
             )
             .draw();
     }

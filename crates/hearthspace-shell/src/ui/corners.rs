@@ -1,9 +1,9 @@
 //! Four output-local surfaces keep awareness above and actions below the canvas.
+use crate::ui::appearance::{ThemeStyle as _, Tone};
 use hearthspace_common::{
     CONTROL_BAR_HEIGHT, NOTIFICATION_CORNER_WIDTH, SHELL_CORNER_RADIUS, ShellCorner,
     shell_corner_app_id,
 };
-use hearthspace_ui_components as components;
 use xilem::{
     WidgetView, WindowView,
     dpi::LogicalSize,
@@ -105,8 +105,9 @@ fn frame<V: WidgetView<ShellState>>(
         },
         sized_box(super::popup_group::group(name, view).reset_focus_on_deactivation())
             .padding(PADDING.px())
-            .background_color(components::CHROME_RAISED)
-            .border(components::CHROME_BORDER, 1.0.px())
+            .theme_background(Tone::Chrome)
+            .theme_border(Tone::ChromeBorder)
+            .border_width(1.0.px())
             .corner_radius(SHELL_CORNER_RADIUS.px()),
     )
 }

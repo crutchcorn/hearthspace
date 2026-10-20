@@ -25,7 +25,7 @@ fn snapshot(scale: f64) -> CanvasSnapshot {
 
 fn harness(scale: f64) -> TestHarness<Minimap> {
     TestHarness::create_with_size(
-        hearthspace_ui_components::hearthspace_light_properties(),
+        crate::ui::appearance::properties(hearthspace_ui_components::Palette::default()),
         Minimap::new(Some(snapshot(scale)), Some("HDMI-A-1".into())).prepare(),
         (312, 190),
     )

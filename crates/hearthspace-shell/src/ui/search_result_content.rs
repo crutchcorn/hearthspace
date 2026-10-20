@@ -1,9 +1,7 @@
 //! Catalog artwork and copy shared by the grid and list presentation.
 use super::{Entry, ShellState};
-use hearthspace_ui_components::{
-    self as components,
-    icons::{Icon, icon},
-};
+use crate::ui::appearance::{ThemeStyle as _, Tone};
+use hearthspace_ui_components::icons::{Icon, icon};
 use xilem::{
     AnyWidgetView, WidgetView,
     masonry::{
@@ -51,30 +49,24 @@ pub(super) fn view(
             image(image_data).decorative(true).boxed()
         } else {
             icon(Icon::AppsGrid, if grid { 30.0 } else { 25.0 })
-                .color(if selected {
-                    components::ACCENT_STRONG
-                } else {
-                    components::TEXT_MUTED
-                })
+                .theme_color(if selected { Tone::Strong } else { Tone::Muted })
                 .boxed()
         };
     let artwork = sized_box(artwork)
         .fixed_width(if grid { 54.0 } else { 44.0 }.px())
         .fixed_height(if grid { 49.0 } else { 44.0 }.px())
         .padding(if grid { 9.0 } else { 8.0 }.px())
-        .background_color(if selected {
-            components::ACCENT_SUBTLE
+        .theme_background(if selected {
+            Tone::AccentSoft
         } else {
-            components::SURFACE_CONTROL
+            Tone::Control
         })
-        .border(
-            if selected {
-                components::ACCENT_BORDER
-            } else {
-                components::CHROME_BORDER
-            },
-            1.0.px(),
-        )
+        .theme_border(if selected {
+            Tone::AccentBorder
+        } else {
+            Tone::ChromeBorder
+        })
+        .border_width(1.0.px())
         .corner_radius(10.0.px());
     let title = label(name)
         .text_size(if grid { 12.0 } else { 14.0 })
@@ -83,7 +75,6 @@ pub(super) fn view(
         } else {
             xilem::TextAlign::Start
         })
-        .color(components::TEXT)
         .width(Dim::Stretch)
         .line_break_mode(LineBreaking::Clip);
     if grid {
@@ -98,14 +89,14 @@ pub(super) fn view(
                 title,
                 label(description)
                     .text_size(11.0)
-                    .color(components::TEXT_MUTED)
                     .width(Dim::Stretch)
-                    .line_break_mode(LineBreaking::Clip),
+                    .line_break_mode(LineBreaking::Clip)
+                    .theme_color(Tone::Muted),
             ))
             .cross_axis_alignment(CrossAxisAlignment::Stretch)
             .gap(5.0.px())
             .flex(1.0),
-            icon(Icon::ArrowUpRight, 18.0).color(components::TEXT_MUTED),
+            icon(Icon::ArrowUpRight, 18.0).theme_color(Tone::Muted),
         ))
         .gap(14.0.px())
         .boxed()

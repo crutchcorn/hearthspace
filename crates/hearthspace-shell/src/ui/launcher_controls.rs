@@ -1,10 +1,8 @@
 //! Launcher command bar and the explicit Apps / Draw and grid / list choices.
 use super::{AppLayout, ShellOutputInstance, ShellState};
+use crate::ui::appearance::{ThemeStyle as _, Tone};
 use crate::ui::{favorite_actions, favorite_state::Mode, search_focus::FocusTarget, search_result};
-use hearthspace_ui_components::{
-    self as components,
-    icons::{Icon, icon},
-};
+use hearthspace_ui_components::icons::{Icon, icon};
 use xilem::{
     AnyWidgetView, WidgetView,
     masonry::{
@@ -21,11 +19,7 @@ fn tab(
 ) -> impl WidgetView<ShellState, Widget: Sized> + use<> {
     let key = output.key().to_owned();
     let selected = output.drawing.active() == draw;
-    let color = if selected {
-        components::ACCENT_STRONG
-    } else {
-        components::TEXT_MUTED
-    };
+    let color = if selected { Tone::Strong } else { Tone::Muted };
     search_result::control(
         if draw {
             "Draw to launch"
@@ -34,10 +28,10 @@ fn tab(
         },
         Some(selected),
         flex_row((
-            icon(if draw { Icon::Pencil } else { Icon::AppsGrid }, 17.0).color(color),
+            icon(if draw { Icon::Pencil } else { Icon::AppsGrid }, 17.0).theme_color(color),
             label(if draw { "Draw" } else { "Apps" })
                 .text_size(12.0)
-                .color(color),
+                .theme_color(color),
         ))
         .gap(7.0.px()),
         move |state| {
@@ -50,10 +44,10 @@ fn tab(
     )
     .height(44.0.px())
     .padding(Padding::from_vh(0.0.px(), 10.0.px()))
-    .background_color(if selected {
-        components::ACCENT_SUBTLE
+    .theme_background(if selected {
+        Tone::AccentSoft
     } else {
-        xilem::Color::TRANSPARENT
+        Tone::Transparent
     })
     .corner_radius(10.0.px())
 }
@@ -61,9 +55,10 @@ fn tab(
 fn mode_switch(output: &ShellOutputInstance) -> impl WidgetView<ShellState, Widget: Sized> + use<> {
     sized_box(flex_row((tab(output, false).flex(1.0), tab(output, true).flex(1.0))).gap(2.0.px()))
         .padding(3.0.px())
-        .border(components::CHROME_BORDER, 1.0.px())
+        .theme_border(Tone::ChromeBorder)
+        .border_width(1.0.px())
         .corner_radius(14.0.px())
-        .background_color(components::SURFACE_SUBTLE)
+        .theme_background(Tone::Subtle)
 }
 
 pub(in crate::ui) fn icon_control<F: Fn(&mut ShellState) + Send + Sync + 'static>(
@@ -75,20 +70,20 @@ pub(in crate::ui) fn icon_control<F: Fn(&mut ShellState) + Send + Sync + 'static
     search_result::control(
         name,
         selected,
-        icon(glyph, 18.0).color(if selected == Some(true) {
-            components::ACCENT_STRONG
+        icon(glyph, 18.0).theme_color(if selected == Some(true) {
+            Tone::Strong
         } else {
-            components::TEXT_MUTED
+            Tone::Muted
         }),
         action,
     )
     .dims(Dimensions::fixed(44.0.px(), 44.0.px()))
     .padding(12.0.px())
     .corner_radius(10.0.px())
-    .background_color(if selected == Some(true) {
-        components::SURFACE_CONTROL
+    .theme_background(if selected == Some(true) {
+        Tone::Control
     } else {
-        xilem::Color::TRANSPARENT
+        Tone::Transparent
     })
 }
 
@@ -103,10 +98,8 @@ pub(super) fn header(
     });
     let leading: Box<AnyWidgetView<ShellState>> = if output.drawing.active() {
         flex_row((
-            icon(Icon::Pencil, 23.0).color(components::ACCENT),
-            label("Draw to open")
-                .text_size(18.0)
-                .color(components::TEXT),
+            icon(Icon::Pencil, 23.0).theme_color(Tone::Accent),
+            label("Draw to open").text_size(18.0),
         ))
         .gap(12.0.px())
         .height(54.0.px())
@@ -132,8 +125,9 @@ pub(super) fn header(
             if narrow { 12.0 } else { 14.0 }.px(),
             if narrow { 12.0 } else { 20.0 }.px(),
         ))
-        .background_color(components::SURFACE_CONTROL)
-        .border(components::BORDER, 1.0.px())
+        .theme_background(Tone::Control)
+        .theme_border(Tone::Border)
+        .border_width(1.0.px())
         .boxed()
 }
 
@@ -145,7 +139,7 @@ pub(super) fn collection(
     let controls: Box<AnyWidgetView<ShellState>> = if searching {
         label(format!("{count} found"))
             .text_size(10.0)
-            .color(components::TEXT_MUTED)
+            .theme_color(Tone::Muted)
             .boxed()
     } else {
         let grid_key = output.key().to_owned();
@@ -172,8 +166,7 @@ pub(super) fn collection(
         } else {
             "Applications"
         })
-        .text_size(15.0)
-        .color(components::TEXT),
+        .text_size(15.0),
         FlexSpacer::Flex(1.0),
         controls,
     ))

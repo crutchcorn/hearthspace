@@ -4,10 +4,8 @@ use super::{
     favorite_state::Mode,
     state::{ShellOutputInstance, ShellState},
 };
-use hearthspace_ui_components::{
-    self as components,
-    icons::{Icon, icon},
-};
+use crate::ui::appearance::{ThemeStyle as _, Tone};
+use hearthspace_ui_components::icons::{Icon, icon};
 use xilem::{
     AnyWidgetView, WidgetView,
     masonry::{
@@ -26,13 +24,11 @@ pub(super) fn drawing(
     let retry_key = settings_key.clone();
     let prompt = output.drawing.preview.is_empty().then(|| {
         flex_col((
-            icon(Icon::Pencil, 30.0).color(components::ACCENT_STRONG),
-            label("Draw a gesture")
-                .text_size(20.0)
-                .color(components::TEXT),
+            icon(Icon::Pencil, 30.0).theme_color(Tone::Strong),
+            label("Draw a gesture").text_size(20.0),
             label("Release to open.")
                 .text_size(10.0)
-                .color(components::TEXT_MUTED),
+                .theme_color(Tone::Muted),
         ))
         .gap(12.0.px())
     });
@@ -52,9 +48,7 @@ pub(super) fn drawing(
     let card = sized_box(
         flex_col((
             flex_row((
-                label("Draw here")
-                    .text_size(9.0)
-                    .color(components::TEXT_MUTED),
+                label("Draw here").text_size(9.0).theme_color(Tone::Muted),
                 FlexSpacer::Flex(1.0),
                 super::launcher::controls::icon_control(
                     Icon::Settings,
@@ -82,8 +76,9 @@ pub(super) fn drawing(
         .cross_axis_alignment(CrossAxisAlignment::Stretch),
     )
     .padding(Padding::from_vh(8.0.px(), 14.0.px()))
-    .background_color(components::PAPER)
-    .border(components::CHROME_BORDER, 1.0.px())
+    .theme_background(Tone::Paper)
+    .theme_border(Tone::ChromeBorder)
+    .border_width(1.0.px())
     .corner_radius(14.0.px());
     let retry = output.drawing.message.is_some().then(|| {
         super::search_result::control(
@@ -94,7 +89,8 @@ pub(super) fn drawing(
         )
         .height(44.0.px())
         .padding(10.0.px())
-        .border(components::CHROME_BORDER, 1.0.px())
+        .theme_border(Tone::ChromeBorder)
+        .border_width(1.0.px())
         .corner_radius(10.0.px())
     });
     // Completing a stroke must not resize its popup and invalidate the
@@ -104,8 +100,8 @@ pub(super) fn drawing(
         flex_row((
             label(output.drawing.message.clone().unwrap_or_default())
                 .text_size(11.0)
-                .color(components::TEXT_MUTED)
                 .line_break_mode(LineBreaking::WordWrap)
+                .theme_color(Tone::Muted)
                 .flex(1.0),
             retry,
         ))
@@ -128,8 +124,8 @@ pub(super) fn drawing(
         rows.push(
             label(hint)
                 .text_size(11.0)
-                .color(components::TEXT_MUTED)
                 .line_break_mode(LineBreaking::WordWrap)
+                .theme_color(Tone::Muted)
                 .boxed(),
         );
     }

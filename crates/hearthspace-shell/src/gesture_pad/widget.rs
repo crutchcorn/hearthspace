@@ -121,6 +121,14 @@ impl Widget for DrawingPad {
         self.capture_locally
     }
 
+    fn property_changed(
+        &mut self,
+        ctx: &mut xilem::masonry::core::UpdateCtx<'_>,
+        property: std::any::TypeId,
+    ) {
+        components::Palette::prop_changed(ctx, property);
+    }
+
     fn register_children(&mut self, _: &mut RegisterCtx<'_>) {}
 
     fn on_pointer_event(
@@ -276,22 +284,20 @@ impl Widget for DrawingPad {
         painter: &mut Painter<'_>,
     ) {
         xilem::masonry::core::pre_paint(ctx, props, painter);
+        let palette = *props.get::<components::Palette>(ctx.property_cache());
         if self.capture_locally
             && (ctx.is_hovered() || ctx.is_focus_target() || self.stroke.is_some())
         {
             for (color, offset, blur, spread) in [
                 (
-                    components::ACCENT.with_alpha(0.18),
+                    palette
+                        .accent
+                        .with_alpha(if palette.dark { 0.14 } else { 0.18 }),
                     (0.0, 28.0),
                     88.0,
                     -18.0,
                 ),
-                (
-                    xilem::Color::from_rgba8(0x35, 0x4e, 0x3b, 48),
-                    (0.0, 8.0),
-                    32.0,
-                    -12.0,
-                ),
+                (palette.glow_shadow, (0.0, 8.0), 32.0, -12.0),
             ] {
                 components::settings_material::shadow(
                     painter,
@@ -306,31 +312,39 @@ impl Widget for DrawingPad {
         }
     }
 
-    fn paint(&mut self, ctx: &mut PaintCtx<'_>, _: &PropertiesRef<'_>, painter: &mut Painter<'_>) {
+    fn paint(
+        &mut self,
+        ctx: &mut PaintCtx<'_>,
+        props: &PropertiesRef<'_>,
+        painter: &mut Painter<'_>,
+    ) {
+        let palette = *props.get::<components::Palette>(ctx.property_cache());
         let bounds = self.size.to_rect().inset(-1.0).to_rounded_rect(14.0);
         if self.capture_locally {
             let rect = self.size.to_rect();
             let border = rect.inset(-0.5).to_rounded_rect(13.5);
             let active = ctx.is_hovered() || ctx.is_focus_target() || self.stroke.is_some();
             painter
-                .fill(rect.to_rounded_rect(14.0), components::CHROME)
+                .fill(rect.to_rounded_rect(14.0), palette.chrome)
                 .draw();
-            components::settings_material::edge_light(painter, rect, 14.0);
+            components::settings_material::edge_light_with_palette(painter, rect, 14.0, &palette);
             painter
                 .stroke(
                     border,
                     &Stroke::new(1.0),
                     if active {
-                        components::ACCENT_BORDER
+                        palette.accent_border
                     } else {
-                        components::CHROME_BORDER
+                        palette.chrome_border
                     },
                 )
                 .draw();
-            components::settings_material::glass_edge(painter, rect, 14.0, active);
+            components::settings_material::glass_edge_with_palette(
+                painter, rect, 14.0, active, &palette,
+            );
         } else if ctx.is_focus_target() {
             painter
-                .stroke(bounds, &Stroke::new(1.0), components::FOCUS_RING_ON_GLASS)
+                .stroke(bounds, &Stroke::new(1.0), palette.focus_ring_on_glass)
                 .draw();
         }
         let mut path = BezPath::new();
@@ -348,9 +362,9 @@ impl Widget for DrawingPad {
                     .with_caps(Cap::Round)
                     .with_join(Join::Round),
                 if self.capture_locally {
-                    components::settings_material::ACCENT_DECORATIVE
+                    palette.accent_decorative
                 } else {
-                    components::ACCENT
+                    palette.accent
                 },
             )
             .draw();
@@ -360,7 +374,7 @@ impl Widget for DrawingPad {
             painter
                 .fill(
                     Circle::new(Point::new(point[0], point[1]), 3.5),
-                    components::ACCENT,
+                    palette.accent,
                 )
                 .draw();
         }

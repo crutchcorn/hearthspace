@@ -6,7 +6,7 @@ use super::{
     search_selection,
     state::{ShellOutputInstance, ShellState},
 };
-use hearthspace_ui_components as components;
+use crate::ui::appearance::{ThemeStyle as _, Tone};
 use xilem::{
     Pod, ViewCtx, WidgetView,
     core::{MessageCtx, MessageResult, Mut, View, ViewId, ViewMarker, ViewPathTracker},
@@ -51,10 +51,10 @@ pub(super) fn row(
         7.0.px(),
         if grid { 2.0 } else { 8.0 }.px(),
     ))
-    .background_color(if selected {
-        components::SURFACE_SUBTLE
+    .theme_background(if selected {
+        Tone::Subtle
     } else {
-        xilem::Color::TRANSPARENT
+        Tone::Transparent
     })
     .corner_radius(10.0.px())
 }
@@ -211,4 +211,13 @@ impl<V: WidgetView<ShellState>, F: Fn(&mut ShellState) + Send + Sync + 'static>
         }
         MessageResult::Action(())
     }
+}
+
+pub(super) fn theme_properties(
+    properties: &mut xilem::masonry::core::DefaultProperties,
+    palette: hearthspace_ui_components::Palette,
+    stack: xilem::masonry::core::PropertyStack,
+) {
+    properties.insert::<widget::ResultButton, _>(palette);
+    properties.insert_stack::<widget::ResultButton>(stack);
 }

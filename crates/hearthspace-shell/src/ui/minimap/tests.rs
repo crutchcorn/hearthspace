@@ -205,7 +205,7 @@ fn descriptions_cover_loading_empty_and_untitled_windows() {
     value["windows"][0]["title"] = Value::Null;
     let accessible_description = description(Some(&parse(value)), None);
     assert!(accessible_description.contains("Focused window: org.editor"));
-    assert!(accessible_description.contains("Orange outline shows the visible area"));
+    assert!(accessible_description.contains("Accent outline shows the visible area"));
     let mut value = status();
     value["windows"] = json!([]);
     assert!(description(Some(&parse(value)), None).contains("0 windows"));

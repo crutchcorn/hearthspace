@@ -9,6 +9,7 @@ use super::{minimap::CanvasSnapshot, notifications::Notification, window_catalog
 /// Reactive state backing the shell view.
 pub(super) struct ShellState {
     pub(super) command_socket: PathBuf,
+    pub(super) appearance: super::appearance::Theme,
     pub(super) tray: super::tray_state::TrayState,
     pub(super) dock: super::dock::State,
     pub(super) battery: Option<crate::battery::BatteryStatus>,
@@ -80,6 +81,7 @@ impl ShellState {
     pub(super) fn new(command_socket: PathBuf, output_names: Vec<String>) -> Self {
         let mut state = Self {
             command_socket,
+            appearance: Default::default(),
             tray: Default::default(),
             dock: Default::default(),
             battery: None,

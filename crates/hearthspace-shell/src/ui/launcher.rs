@@ -1,3 +1,4 @@
+use crate::ui::appearance::{ThemeStyle as _, Tone};
 use hearthspace_ui_components as components;
 use xilem::{
     AnyWidgetView, WidgetView,
@@ -138,14 +139,13 @@ pub(super) fn launcher_view(
                 sized_box(
                     flex_col((
                         components::icons::icon(components::icons::Icon::Search, 30.0)
-                            .color(components::TEXT_MUTED),
+                            .theme_color(Tone::Muted),
                         label(if output.query.trim().is_empty() {
                             "No installed apps found"
                         } else {
                             "No matching apps or windows"
                         })
                         .text_size(20.0)
-                        .color(components::TEXT)
                         .line_break_mode(LineBreaking::WordWrap),
                     ))
                     .gap(12.0.px()),
@@ -208,7 +208,7 @@ pub(super) fn launcher_view(
                 components::field_label(format!("Could not complete the request: {error}"))
                     .line_break_mode(LineBreaking::WordWrap),
             )
-            .background_color(components::DANGER_SUBTLE)
+            .theme_background(Tone::Danger)
             .padding(8.0.px())
             .boxed(),
         );
@@ -232,15 +232,16 @@ pub(super) fn launcher_view(
             sized_box(
                 flex_row((
                     components::icons::icon(components::icons::Icon::CornerDownLeft, 14.0)
-                        .color(components::TEXT_MUTED),
+                        .theme_color(Tone::Muted),
                     label("Enter to open")
                         .text_size(10.0)
-                        .color(components::TEXT_MUTED),
+                        .theme_color(Tone::Muted),
                 ))
                 .gap(6.0.px()),
             )
             .height(42.0.px())
-            .border(components::BORDER, 1.0.px()),
+            .theme_border(Tone::Border)
+            .border_width(1.0.px()),
         )
         .padding(Padding {
             bottom: 12.0.px(),

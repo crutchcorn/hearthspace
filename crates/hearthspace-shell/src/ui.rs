@@ -11,6 +11,7 @@ use hearthspace_common::SHELL_COMMAND_SOCKET_ENV;
 use tracing::{error, info};
 use xilem::{EventLoop, Xilem};
 
+mod appearance;
 mod battery_view;
 mod canvas_map;
 mod canvas_task;
@@ -80,10 +81,18 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     let mut state = ShellState::new(command_socket, output_names);
     state.shell_events = Some(events);
     state.favorites = favorite_state::Favorites::load();
+    if let Ok(settings) = hearthspace_ipc::client_get_settings() {
+        state.appearance.update(
+            hearthspace_ui_components::Palette::new(settings.appearance)
+                .with_photo(settings.background_image_path.is_some()),
+        );
+    }
 
+    let defaults = appearance::properties(state.appearance.palette);
+    let background = state.appearance.palette.app_background;
     let app = Xilem::new(state, app_logic)
-        .with_default_properties(hearthspace_ui_components::hearthspace_light_properties())
-        .with_default_base_color(hearthspace_ui_components::APP_BACKGROUND);
+        .with_default_properties(defaults)
+        .with_default_base_color(background);
     app.run_in(EventLoop::with_user_event())?;
     Ok(())
 }

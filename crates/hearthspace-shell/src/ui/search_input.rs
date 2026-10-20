@@ -4,18 +4,12 @@ use super::{
     search_selection,
     state::{ShellOutputInstance, ShellState},
 };
-use hearthspace_ui_components::{
-    self as components,
-    icons::{Icon, icon},
-};
+use crate::ui::appearance::{ThemeStyle as _, Tone};
+use hearthspace_ui_components::icons::{Icon, icon};
 use xilem::{
     Pod, ViewCtx, WidgetView,
     core::{MessageCtx, MessageResult, Mut, View, ViewMarker},
-    masonry::{
-        layout::AsUnit,
-        properties::{CaretColor, Padding, SelectionColor},
-        widgets::TextAction,
-    },
+    masonry::{layout::AsUnit, properties::Padding, widgets::TextAction},
     style::Style,
     view::{FlexExt, flex_row},
 };
@@ -30,7 +24,6 @@ pub(super) fn input(
         target: target.clone(),
     }
     .height(44.0.px())
-    .color(components::TEXT)
     .padding(Padding::from_vh(10.0.px(), 0.0.px()));
     let key = output.key().to_owned();
     let clear = (!output.query.is_empty()).then(|| {
@@ -38,7 +31,7 @@ pub(super) fn input(
             "Clear search",
             None,
             target,
-            icon(Icon::X, 17.0).color(components::TEXT_MUTED),
+            icon(Icon::X, 17.0).theme_color(Tone::Muted),
             move |state| state.change_query(&key, String::new()),
         )
         .height(44.0.px())
@@ -46,7 +39,7 @@ pub(super) fn input(
         .corner_radius(10.0.px())
     });
     flex_row((
-        icon(Icon::Search, 22.0).color(components::ACCENT),
+        icon(Icon::Search, 22.0).theme_color(Tone::Accent),
         editor.flex(1.0),
         clear,
     ))
@@ -64,15 +57,7 @@ impl View<ShellState, (), ViewCtx> for SearchInput {
     type Element = Pod<SearchEditor>;
     type ViewState = ();
     fn build(&self, ctx: &mut ViewCtx, _: &mut ShellState) -> (Self::Element, ()) {
-        let mut pod = ctx.create_pod(SearchEditor::new(&self.text));
-        pod.new_widget = pod.new_widget.with_props((
-            CaretColor {
-                color: components::TEXT,
-            },
-            SelectionColor {
-                color: components::ACCENT_SUBTLE,
-            },
-        ));
+        let pod = ctx.create_pod(SearchEditor::new(&self.text));
         ctx.record_action_source(pod.new_widget.id());
         *self.target.lock().unwrap() = Some(pod.new_widget.id());
         (pod, ())

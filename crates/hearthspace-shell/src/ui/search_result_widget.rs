@@ -36,6 +36,14 @@ impl ResultButton {
 }
 impl Widget for ResultButton {
     type Action = ButtonPress;
+    fn property_changed(
+        &mut self,
+        ctx: &mut xilem::masonry::core::UpdateCtx<'_>,
+        property: std::any::TypeId,
+    ) {
+        components::Palette::prop_changed(ctx, property);
+    }
+
     fn register_children(&mut self, ctx: &mut RegisterCtx<'_>) {
         ctx.register_child(&mut self.text);
     }
@@ -179,14 +187,20 @@ impl Widget for ResultButton {
         ctx.run_layout(&mut self.text, size);
         ctx.place_child(&mut self.text, Point::ORIGIN);
     }
-    fn paint(&mut self, ctx: &mut PaintCtx<'_>, _: &PropertiesRef<'_>, painter: &mut Painter<'_>) {
+    fn paint(
+        &mut self,
+        ctx: &mut PaintCtx<'_>,
+        props: &PropertiesRef<'_>,
+        painter: &mut Painter<'_>,
+    ) {
+        let palette = *props.get::<components::Palette>(ctx.property_cache());
         let bounds = ctx.border_box().inset(-1.0).to_rounded_rect(10.0);
         if ctx.is_hovered() && !self.selected && self.pressed != Some(true) {
-            painter.fill(bounds, components::BUTTON_HOVER).draw();
+            painter.fill(bounds, palette.button_hover).draw();
         }
         if ctx.is_focus_target() {
             painter
-                .stroke(bounds, &Stroke::new(2.0), components::FOCUS_RING_ON_GLASS)
+                .stroke(bounds, &Stroke::new(2.0), palette.focus_ring_on_glass)
                 .draw();
         }
     }

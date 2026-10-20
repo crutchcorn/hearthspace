@@ -1,5 +1,6 @@
 use super::*;
 use crate::ui::test_support::{Ui, ids};
+use hearthspace_ui_components as components;
 use masonry::{accesskit::Role, core::WidgetId, properties::BorderColor};
 
 fn view(
