@@ -1,5 +1,7 @@
 //! Four output-local surfaces keep awareness above and actions below the canvas.
-use hearthspace_common::{CONTROL_BAR_HEIGHT, ShellCorner, shell_corner_app_id};
+use hearthspace_common::{
+    CONTROL_BAR_HEIGHT, SHELL_CORNER_RADIUS, ShellCorner, shell_corner_app_id,
+};
 use hearthspace_ui_components as components;
 use xilem::{
     WidgetView, WindowView,
@@ -10,6 +12,7 @@ use xilem::{
 };
 
 use super::{
+    corner_button::focus,
     icons::{Icon, icon_button},
     state::{ShellOutputInstance, ShellState},
 };
@@ -104,9 +107,9 @@ fn frame<V: WidgetView<ShellState>>(
         },
         sized_box(super::popup_group::group(name, view))
             .padding(PADDING.px())
-            .background_color(components::SURFACE)
+            .background_color(components::SURFACE.with_alpha(0.72))
             .border(components::BORDER, 1.0.px())
-            .corner_radius(10.0.px()),
+            .corner_radius(SHELL_CORNER_RADIUS.px()),
     )
 }
 
@@ -118,10 +121,10 @@ pub(super) fn notifications_view(
         output,
         ShellCorner::Notifications,
         "Notifications",
-        flex_row((super::notification_view::button(
+        flex_row((focus(super::notification_view::button(
             output,
             &state.notifications,
-        ),))
+        )),))
         .main_axis_alignment(MainAxisAlignment::Center),
     )
 }
@@ -135,8 +138,8 @@ pub(super) fn canvas_view(
         ShellCorner::Canvas,
         "Canvas tools",
         flex_row((
-            super::canvas_map::map_button(output),
-            super::window_group::button(&state.window_group),
+            focus(super::canvas_map::map_button(output)),
+            focus(super::window_group::button(&state.window_group)),
         ))
         .main_axis_alignment(MainAxisAlignment::Center)
         .gap(6.0.px()),
@@ -194,13 +197,13 @@ pub(super) fn system_view(
                 )
                 .text_size(13.0)
                 .text_alignment(xilem::TextAlign::End)
-                .color(components::TEXT_MUTED)
+                .color(components::TEXT)
                 .line_break_mode(LineBreaking::Clip)
                 .flex(1.0),
                 super::tray_view::strip(output, &state.tray, reserved),
                 super::battery_view::indicator(state.battery.as_ref(), compact),
-                super::control_center::toolbar_button(output),
-                super::session_controls::power_button(output),
+                focus(super::control_center::toolbar_button(output)),
+                focus(super::session_controls::power_button(output)),
             ))
             .gap(6.0.px()),
         ),
@@ -225,9 +228,14 @@ pub(super) fn apps_view(
                     (output.corner_widths[3] - FRAME - APPS_BUTTON).max(0.0),
                 )
             }),
-            icon_button(Icon::Apps, "Apps List", output.show_search, move |state| {
-                state.toggle_search(&key);
-            }),
+            focus(icon_button(
+                Icon::Apps,
+                "Apps List",
+                output.show_search,
+                move |state| {
+                    state.toggle_search(&key);
+                },
+            )),
         ))
         .main_axis_alignment(MainAxisAlignment::Center)
         .gap(4.0.px()),

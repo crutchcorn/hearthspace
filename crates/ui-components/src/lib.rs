@@ -29,6 +29,8 @@ pub const ACCENT_SUBTLE: Color = Color::from_rgb8(0xe5, 0xf0, 0xfb);
 pub const BUTTON_HOVER: Color = Color::from_rgb8(0xe8, 0xec, 0xf2);
 pub const BUTTON_ACTIVE: Color = Color::from_rgb8(0xd9, 0xe2, 0xee);
 pub const DANGER_SUBTLE: Color = Color::from_rgb8(0xfd, 0xee, 0xed);
+/// Keeps a focus outline legible over light translucent surfaces and dark content.
+pub const TRANSLUCENT_FOCUS_CLASS: &str = "hearthspace-translucent-focus";
 
 pub fn hearthspace_light_properties() -> DefaultProperties {
     let mut properties = default_property_set();
@@ -54,6 +56,10 @@ pub fn hearthspace_light_properties() -> DefaultProperties {
         stack.push_layer(
             Selector::new().with_focused(true),
             BorderColor { color: ACCENT },
+        );
+        stack.push_layer(
+            Selector::classes(&[TRANSLUCENT_FOCUS_CLASS]).with_focused(true),
+            BorderColor { color: TEXT },
         );
         properties.insert_stack::<Button>(stack);
     }

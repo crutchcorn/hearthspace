@@ -276,23 +276,25 @@ fn dock_button(
 ) -> impl WidgetView<ShellState> {
     let padding = ((width - 2.0) / 2.0).clamp(0.0, 3.0);
     let content_width = (width - 2.0 - 2.0 * padding).max(0.0);
-    button(
-        sized_box(icons::IconView {
-            glyph,
-            name,
-            width: content_width,
-        })
-        .fixed_width(content_width.px())
-        .fixed_height(26.0.px()),
-        action,
+    super::corner_button::focus(
+        button(
+            sized_box(icons::IconView {
+                glyph,
+                name,
+                width: content_width,
+            })
+            .fixed_width(content_width.px())
+            .fixed_height(26.0.px()),
+            action,
+        )
+        .padding(padding.px())
+        .corner_radius(6.0.px())
+        .background_color(if focused {
+            components::ACCENT_SUBTLE
+        } else {
+            xilem::Color::TRANSPARENT
+        }),
     )
-    .padding(padding.px())
-    .corner_radius(6.0.px())
-    .background_color(if focused {
-        components::ACCENT_SUBTLE
-    } else {
-        xilem::Color::TRANSPARENT
-    })
 }
 
 fn activate(state: &mut ShellState, output_key: &str, key: &Key) {

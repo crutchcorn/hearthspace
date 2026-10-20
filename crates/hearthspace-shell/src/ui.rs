@@ -22,6 +22,7 @@ mod control_slider;
 mod control_state;
 mod control_task;
 mod control_worker;
+mod corner_button;
 mod corners;
 mod dock;
 mod favorite_actions;

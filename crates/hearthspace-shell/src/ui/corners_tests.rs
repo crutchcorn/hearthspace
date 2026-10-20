@@ -1,11 +1,11 @@
 use super::*;
-use crate::ui::test_support::Ui;
+use crate::ui::test_support::{Ui, ids};
 use masonry::{
     core::{
         TextEvent,
         keyboard::{Key, NamedKey},
     },
-    properties::BorderColor,
+    properties::{Background, BorderColor},
 };
 use xilem::view::sized_box;
 
@@ -78,7 +78,7 @@ fn apps_list_has_visible_keyboard_focus_and_opens_with_enter() {
             .get_widget_with_id(button)
             .get_prop::<BorderColor>()
             .color,
-        components::ACCENT
+        components::TEXT
     );
     assert_eq!(
         before,
@@ -89,6 +89,84 @@ fn apps_list_has_visible_keyboard_focus_and_opens_with_enter() {
         .process_text_event(TextEvent::key_up(Key::Named(NamedKey::Enter)));
     ui.dispatch(&apps);
     assert!(ui.state.outputs[0].show_search);
+}
+
+#[test]
+fn translucent_corners_keep_idle_buttons_clear_and_focus_contrasting() {
+    fn check<V: WidgetView<ShellState>>(
+        state: ShellState,
+        build: impl Fn(&ShellState) -> V,
+        width: u32,
+        names: &[&str],
+    ) where
+        V::Widget: Sized,
+    {
+        let mut ui = Ui::new(state, build, (width, 48));
+        assert!(ids(&ui.harness).iter().any(|id| {
+            *ui.harness.get_widget_with_id(*id).get_prop::<Background>()
+                == Background::Color(components::SURFACE.with_alpha(0.72))
+        }));
+        for name in names {
+            let button = ui.button(name);
+            let before = ui.harness.access_node(button).unwrap().bounding_box();
+            assert_eq!(
+                *ui.harness
+                    .get_widget_with_id(button)
+                    .get_prop::<Background>(),
+                Background::Color(xilem::Color::TRANSPARENT),
+                "{name} must leave the backdrop visible"
+            );
+            ui.harness.focus_on(Some(button));
+            assert_eq!(
+                ui.harness
+                    .get_widget_with_id(button)
+                    .get_prop::<BorderColor>()
+                    .color,
+                components::TEXT,
+                "{name} needs contrast over the darkest tinted backdrop"
+            );
+            assert_eq!(
+                before,
+                ui.harness.access_node(button).unwrap().bounding_box(),
+                "{name} must not move on focus"
+            );
+        }
+    }
+    check(state(), notifications, 48, &["Notifications"]);
+    check(state(), canvas, 88, &["Canvas map", "Select window group"]);
+    check(state(), system, 300, &["Control center", "Power"]);
+    let mut dock = state();
+    dock.catalog = Default::default();
+    dock.windows = vec![super::super::window_catalog::RunningWindow {
+        id: 1,
+        app_id: "editor".into(),
+        title: "Document".into(),
+        focused: false,
+    }];
+    check(dock, apps, 90, &["Switch to editor", "Apps List"]);
+
+    let mut popup = Ui::new(
+        state(),
+        |state| {
+            sized_box(super::super::notification_view::panel(
+                &state.outputs[0],
+                vec![],
+                None,
+            ))
+        },
+        (300, 200),
+    );
+    let close = popup.button("Close notifications");
+    popup.harness.focus_on(Some(close));
+    assert_eq!(
+        popup
+            .harness
+            .get_widget_with_id(close)
+            .get_prop::<BorderColor>()
+            .color,
+        components::ACCENT,
+        "opaque popup controls retain the regular focus style"
+    );
 }
 
 #[test]
