@@ -606,7 +606,10 @@ impl App {
                     state.bounds = None;
                     state.size = Some(size);
                 });
-                surface.send_configure();
+                // Motion can round or clamp to an unchanged logical size.
+                // Smithay compares with the latest pending/acknowledged state,
+                // so identical samples need not enqueue another client frame.
+                surface.send_pending_configure();
             }
             #[cfg(feature = "xwayland")]
             ManagedSurface::X11(surface) => {

@@ -266,3 +266,47 @@ fn redundant_restore_requests_acknowledge_configures_and_preserve_interactive_re
     action(&compositor, "quit");
     wait_for_exit(&mut compositor.child);
 }
+
+#[test]
+fn repeated_clamped_resize_motion_does_not_enqueue_duplicate_client_configures() {
+    use hearthspace_compositor::config::{MIN_WINDOW_HEIGHT, MIN_WINDOW_WIDTH};
+
+    let _guard = headless_test_guard();
+    let (mut compositor, mut client) = fixture();
+    let (point, serial) = press(&compositor, &mut client, 272);
+    client.request_resize(0, serial);
+    let before = client.configuration(0).0;
+
+    // Leave the first configure unacknowledged while more pointer samples hit
+    // the minimum size. They must share one pending configuration.
+    for delta in [80.0, 100.0, 120.0] {
+        motion(&compositor, (point.0 - delta, point.1 - delta));
+    }
+    assert_eq!(
+        client.configuration(0),
+        (before + 1, true),
+        "clamped samples queued duplicate configures before the client acknowledged"
+    );
+    let minimum = geometry(&windows(&compositor)[0]);
+    assert_eq!(minimum[2], i64::from(MIN_WINDOW_WIDTH));
+    assert_eq!(minimum[3], i64::from(MIN_WINDOW_HEIGHT));
+
+    motion(&compositor, (point.0 - 130.0, point.1 - 130.0));
+    assert_eq!(
+        client.configuration(0),
+        (before + 1, true),
+        "unchanged size queued a configure after acknowledgment"
+    );
+    motion(&compositor, (point.0 + 80.0, point.1 + 80.0));
+    assert_eq!(client.configuration(0), (before + 2, true));
+    let expanded = geometry(&windows(&compositor)[0]);
+    assert!(expanded[2] > minimum[2] && expanded[3] > minimum[3]);
+    action(&compositor, "pointer-button-up 272");
+    assert_eq!(
+        client.configuration(0),
+        (before + 3, false),
+        "release must still deliver the final non-resizing state"
+    );
+    action(&compositor, "quit");
+    wait_for_exit(&mut compositor.child);
+}
