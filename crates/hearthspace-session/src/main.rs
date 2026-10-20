@@ -3,6 +3,7 @@ use tracing::info;
 
 mod ai;
 mod app_scopes;
+mod appearance_portal;
 mod audio_env;
 mod bounded_command;
 mod cli;

@@ -69,6 +69,11 @@ pub(crate) fn prepare(paths: &SessionPaths) -> io::Result<()> {
         config.join("hearthspace-portals.conf"),
         include_str!("../../../data/xdg-desktop-portal/hearthspace-portals.conf"),
     )?;
+    fs::create_dir_all(config.join("portals"))?;
+    fs::write(
+        config.join("portals/hearthspace.portal"),
+        include_str!("../../../data/xdg-desktop-portal/hearthspace.portal"),
+    )?;
     // Prevent a crashed or not-yet-started portal from being auto-spawned outside
     // supervision. These overrides belong only to this private session bus.
     let services = paths.session_dir.join("dbus-1/services");
@@ -77,6 +82,7 @@ pub(crate) fn prepare(paths: &SessionPaths) -> io::Result<()> {
         .iter()
         .filter_map(|(_, _, bus)| *bus)
         .chain(std::iter::once("org.freedesktop.Notifications"))
+        .chain(std::iter::once(crate::appearance_portal::NAME))
     {
         fs::write(
             services.join(format!("{bus}.service")),
@@ -123,6 +129,11 @@ impl DesktopServices {
             envs.push(("DBUS_SESSION_BUS_ADDRESS".into(), self.bus.clone()));
             envs.push(("GDK_BACKEND".into(), "wayland".into()));
             envs.push(("GIO_USE_VFS".into(), "local".into()));
+            // The GTK Settings backend must read GSettings itself; routing its
+            // own GTK initialization through the portal would recurse.
+            if name == "portal-gtk" {
+                envs.push(("GTK_USE_PORTAL".into(), "0".into()));
+            }
             if matches!(name, "permission-store" | "document-portal") {
                 let data = portal_data_dir(&paths.session_dir)?;
                 fs::create_dir_all(&data)?;

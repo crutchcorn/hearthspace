@@ -43,8 +43,16 @@ fn portal_configuration_and_activation_overrides_stay_inside_the_session() {
                 .join("share/xdg-desktop-portal/hearthspace-portals.conf")
         )
         .unwrap(),
-        "[preferred]\ndefault=gtk\n"
+        "[preferred]\ndefault=gtk\norg.freedesktop.impl.portal.Settings=hearthspace\n"
     );
+    let implementation = fs::read_to_string(
+        paths
+            .session_dir
+            .join("share/xdg-desktop-portal/portals/hearthspace.portal"),
+    )
+    .unwrap();
+    assert!(implementation.contains(&format!("DBusName={}\n", crate::appearance_portal::NAME)));
+    assert!(implementation.contains("Interfaces=org.freedesktop.impl.portal.Settings;"));
     for (_, _, bus) in DEFINITIONS {
         if let Some(bus) = bus {
             let service = fs::read_to_string(
@@ -58,6 +66,15 @@ fn portal_configuration_and_activation_overrides_stay_inside_the_session() {
             assert!(!service.contains("SystemdService="));
         }
     }
+    assert!(
+        paths
+            .session_dir
+            .join(format!(
+                "dbus-1/services/{}.service",
+                crate::appearance_portal::NAME
+            ))
+            .is_file()
+    );
     assert!(!fixture.0.join("dbus-1").exists());
 }
 

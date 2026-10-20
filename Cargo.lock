@@ -2578,6 +2578,7 @@ dependencies = [
  "gio",
  "hearthspace-ai",
  "hearthspace-common",
+ "hearthspace-ipc",
  "nix",
  "serde",
  "serde_json",

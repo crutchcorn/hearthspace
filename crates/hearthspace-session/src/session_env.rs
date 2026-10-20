@@ -153,6 +153,11 @@ pub(crate) fn create_session_env(
         fs::write(paths.session_dir.join("session-bus.txt"), &bus)?;
         vars.push(("HEARTHSPACE_SESSION_BUS_ADDRESS".to_string(), bus));
     }
+    if crate::desktop_services::enabled(args) {
+        // GTK 3 Wayland otherwise reads the host's saved GNOME preferences.
+        // The portal publishes this session's choices without modifying them.
+        vars.push(("GTK_USE_PORTAL".into(), "1".into()));
+    }
 
     if mode == RunMode::DevCargo {
         vars.push((hearthspace_common::DEV_ENV.to_string(), "1".to_string()));
