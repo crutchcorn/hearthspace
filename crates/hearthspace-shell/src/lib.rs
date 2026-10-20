@@ -1,4 +1,5 @@
 pub mod app_catalog;
+pub mod app_icon;
 pub mod battery;
 pub mod command;
 pub mod controls;

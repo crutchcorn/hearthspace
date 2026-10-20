@@ -4,6 +4,7 @@ Name=Hearthspace Settings
 GenericName=Settings
 Comment=Configure Hearthspace
 Exec=hearthspace-settings
+Icon=hearthspace-settings
 Categories=Settings;
 Keywords=Hearthspace;Settings;Preferences;Configuration;
 OnlyShowIn=Hearthspace;

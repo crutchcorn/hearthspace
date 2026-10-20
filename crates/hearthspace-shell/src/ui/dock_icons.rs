@@ -56,7 +56,7 @@ pub(in crate::ui) fn task() -> impl View<ShellState, (), ViewCtx, Element = NoEl
                         cache.retain(|name, _| names.binary_search(name).is_ok());
                         for name in names {
                             cache.entry(name.clone()).or_insert_with(|| {
-                                crate::ui::tray_icon_loader::resolve(&TrayIcon {
+                                crate::app_icon::resolve(&TrayIcon {
                                     name: Some(name),
                                     ..Default::default()
                                 })

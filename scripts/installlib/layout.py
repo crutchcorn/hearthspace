@@ -121,6 +121,9 @@ def bundle(directory, binary_dir, prefix):
     sources[Path("share/icons/hicolor/scalable/apps/hearthspace.svg")] = (
         REPOSITORY / "assets/logo.svg"
     )
+    sources[Path("share/icons/hicolor/scalable/apps/hearthspace-settings.svg")] = (
+        REPOSITORY / "assets/settings.svg"
+    )
     for relative, source in sources.items():
         if not source.is_file() or source.is_symlink():
             raise RuntimeError(
@@ -134,11 +137,6 @@ def bundle(directory, binary_dir, prefix):
         shutil.copyfile(source, target)
         target.chmod(mode)
         files[str(relative)] = metadata(target, mode)
-    settings = release / "share/applications/dev.hearthspace.Settings.desktop"
-    settings.write_text(settings.read_text() + "Icon=hearthspace\n")
-    files["share/applications/dev.hearthspace.Settings.desktop"] = metadata(
-        settings, 0o644
-    )
     release_id = hashlib.sha256(json.dumps(files, sort_keys=True).encode()).hexdigest()
     stable = {str(LAUNCHER): launcher(prefix), str(SESSION): session_entry(prefix)}
     for relative, content in stable.items():

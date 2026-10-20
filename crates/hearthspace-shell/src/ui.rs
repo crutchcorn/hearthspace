@@ -53,7 +53,6 @@ mod state;
 #[cfg(test)]
 mod test_support;
 mod tray_button;
-mod tray_icon_loader;
 mod tray_paint;
 mod tray_state;
 mod tray_task;

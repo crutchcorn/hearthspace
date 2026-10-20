@@ -27,7 +27,7 @@ pub(super) fn task() -> impl View<ShellState, (), xilem::ViewCtx, Element = NoEl
                                 {
                                     pixmap.clone()
                                 } else {
-                                    let value = super::tray_icon_loader::resolve(&icon);
+                                    let value = crate::app_icon::resolve(&icon);
                                     if cache.len() >= 128 {
                                         cache.remove(0);
                                     }

@@ -11,6 +11,23 @@ fn fallback() -> TrayPixmap {
 }
 
 #[test]
+fn settings_desktop_identity_resolves_to_a_transparent_app_icon() {
+    let desktop = include_str!("../../../../data/applications/dev.hearthspace.Settings.desktop");
+    let name = desktop
+        .lines()
+        .find_map(|line| line.strip_prefix("Icon="))
+        .unwrap();
+    let rendered = resolve(&TrayIcon {
+        name: Some(name.into()),
+        ..Default::default()
+    })
+    .expect("the Settings launcher and dock icon is available before installation");
+    assert_eq!((rendered.width, rendered.height), (48, 48));
+    assert!(rendered.rgba.chunks_exact(4).any(|pixel| pixel[3] == 0));
+    assert!(rendered.rgba.chunks_exact(4).any(|pixel| pixel[3] > 0));
+}
+
+#[test]
 fn private_theme_png_and_svg_override_fallback_without_losing_alpha() {
     let directory = tempfile::tempdir().unwrap();
     fs::write(directory.path().join("example.svg"), RED_SVG).unwrap();

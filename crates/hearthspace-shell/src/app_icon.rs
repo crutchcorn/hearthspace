@@ -11,7 +11,7 @@ const ICON_SIZE: u32 = 48;
 const MAX_FILE_BYTES: u64 = 2 * 1024 * 1024;
 const MAX_DIMENSION: u32 = 1024;
 
-pub(super) fn resolve(icon: &TrayIcon) -> Option<TrayPixmap> {
+pub fn resolve(icon: &TrayIcon) -> Option<TrayPixmap> {
     icon.name
         .as_deref()
         .and_then(|name| named_icon(name, icon.theme_path.as_deref()))
@@ -35,13 +35,21 @@ fn named_icon(name: &str, theme_path: Option<&str>) -> Option<TrayPixmap> {
     if path.components().count() != 1 || matches!(name, "." | "..") {
         return None;
     }
-    themed_icon(name, theme_path).or_else(|| {
-        // Modern Adwaita ships many standard status names only as symbolic
-        // variants. Keep old AppIndicator names usable without requiring GTK.
-        (!name.ends_with("-symbolic") && path.extension().is_none())
-            .then(|| themed_icon(&format!("{name}-symbolic"), theme_path))
-            .flatten()
-    })
+    themed_icon(name, theme_path)
+        .or_else(|| {
+            // Development sessions read the repository's desktop entry before the
+            // icon has been installed into an XDG theme.
+            (name == "hearthspace-settings")
+                .then(|| decode_svg(include_bytes!("../../../assets/settings.svg")))
+                .flatten()
+        })
+        .or_else(|| {
+            // Modern Adwaita ships many standard status names only as symbolic
+            // variants. Keep old AppIndicator names usable without requiring GTK.
+            (!name.ends_with("-symbolic") && path.extension().is_none())
+                .then(|| themed_icon(&format!("{name}-symbolic"), theme_path))
+                .flatten()
+        })
 }
 
 fn themed_icon(name: &str, theme_path: Option<&str>) -> Option<TrayPixmap> {
