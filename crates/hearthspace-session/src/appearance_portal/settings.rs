@@ -56,6 +56,17 @@ impl Settings {
         }
         Ok(())
     }
+
+    pub(super) async fn announce(&self, connection: &Connection) -> zbus::Result<()> {
+        let snapshot = *self.appearance.lock().unwrap();
+        let emitter = SignalEmitter::new(connection, PATH)?;
+        for (namespace, values) in values(snapshot) {
+            for (key, value) in values {
+                Self::setting_changed(&emitter, &namespace, &key, value).await?;
+            }
+        }
+        Ok(())
+    }
 }
 
 #[derive(Debug, zbus::DBusError)]

@@ -39,7 +39,7 @@ impl AppearancePortal {
         deadline: Instant,
         cancelled: &AtomicBool,
     ) -> io::Result<Self> {
-        let worker = Worker::start(bus.clone(), socket.clone(), deadline, cancelled)?;
+        let worker = Worker::start(bus.clone(), socket.clone(), deadline, cancelled, false)?;
         Ok(Self {
             bus,
             socket,
@@ -67,6 +67,7 @@ impl AppearancePortal {
             self.socket.clone(),
             Instant::now() + Duration::from_secs(3),
             cancelled,
+            true,
         ) {
             Ok(worker) => self.worker = Some(worker),
             Err(error) => tracing::warn!(%error, "appearance portal restart failed"),
@@ -80,6 +81,7 @@ impl Worker {
         socket: PathBuf,
         deadline: Instant,
         cancelled: &AtomicBool,
+        reannounce: bool,
     ) -> io::Result<Self> {
         let runtime = tokio::runtime::Builder::new_current_thread()
             .enable_all()
@@ -92,7 +94,7 @@ impl Worker {
                 runtime.block_on(async {
                     tokio::select! {
                         _ = stopped => Ok(()),
-                        result = serve(&bus, &socket, ready.clone()) => {
+                        result = serve(&bus, &socket, ready.clone(), reannounce) => {
                             if let Err(error) = &result {
                                 let _ = ready.try_send(Err(error.to_string()));
                                 tracing::error!(%error, "appearance portal stopped");
@@ -135,6 +137,7 @@ async fn serve(
     bus: &str,
     socket: &std::path::Path,
     ready: mpsc::SyncSender<Result<(), String>>,
+    reannounce: bool,
 ) -> io::Result<()> {
     // This bounded IPC runs only on this dedicated worker, never on a UI or
     // supervisor thread. A temporarily unavailable daemon retains the last
@@ -152,6 +155,14 @@ async fn serve(
     .await
     .map_err(io::Error::other)?
     .map_err(io::Error::other)?;
+    if reannounce {
+        // Existing clients retain their cached settings when a backend owner
+        // disappears. Recover changes made while this worker was unavailable.
+        shared
+            .announce(&connection)
+            .await
+            .map_err(io::Error::other)?;
+    }
     ready
         .send(Ok(()))
         .map_err(|_| io::Error::other("appearance startup was cancelled"))?;

@@ -274,3 +274,95 @@ async fn public_portal_reads_live_appearance_preserves_other_gtk_keys_and_filter
     let [r, g, b] = AccentColor::Blue.srgb();
     assert_eq!(<(f64, f64, f64)>::try_from(rgb).unwrap(), (r, g, b));
 }
+
+#[tokio::test]
+async fn public_portal_recovers_changes_missed_during_worker_restart() {
+    let bus = Bus::start();
+    let daemon = Daemon::start(&bus.directory);
+    let mut portal = AppearancePortal::start(
+        bus.address.clone(),
+        daemon.socket.clone(),
+        Instant::now() + Duration::from_secs(3),
+        &AtomicBool::new(false),
+    )
+    .unwrap();
+    let _frontend = frontend(&bus).await;
+    let client = bus.connection().await;
+    let proxy = Proxy::new(
+        &client,
+        PUBLIC,
+        settings::PATH,
+        "org.freedesktop.portal.Settings",
+    )
+    .await
+    .unwrap();
+    let before: OwnedValue = proxy
+        .call("ReadOne", &("org.freedesktop.appearance", "color-scheme"))
+        .await
+        .unwrap();
+    assert_eq!(u32::try_from(before).unwrap(), 2);
+    let mut signals = proxy.receive_signal("SettingChanged").await.unwrap();
+
+    // Keep the public portal and its client alive across a backend outage.
+    drop(portal.worker.take());
+    let dbus = zbus::fdo::DBusProxy::new(&client).await.unwrap();
+    assert!(!dbus.name_has_owner(NAME.try_into().unwrap()).await.unwrap());
+    daemon.set(Appearance {
+        color_mode: ColorMode::Dark,
+        accent_color: AccentColor::Teal,
+    });
+    portal.poll(&AtomicBool::new(false));
+    assert!(dbus.name_has_owner(NAME.try_into().unwrap()).await.unwrap());
+
+    let mut recovered = HashMap::new();
+    for _ in 0..4 {
+        let message = tokio::time::timeout(Duration::from_secs(2), signals.next())
+            .await
+            .expect("existing clients must receive preferences missed during the outage")
+            .unwrap();
+        let (namespace, key, value): (String, String, OwnedValue) =
+            message.body().deserialize().unwrap();
+        let current: OwnedValue = proxy.call("ReadOne", &(&namespace, &key)).await.unwrap();
+        assert_eq!(current, value, "reads must agree with the recovered signal");
+        recovered.insert((namespace, key), value);
+    }
+    assert_eq!(recovered.len(), 4);
+    assert_eq!(
+        u32::try_from(
+            recovered
+                .remove(&("org.freedesktop.appearance".into(), "color-scheme".into()))
+                .unwrap()
+        )
+        .unwrap(),
+        1
+    );
+    let rgb = recovered
+        .remove(&("org.freedesktop.appearance".into(), "accent-color".into()))
+        .unwrap();
+    let [r, g, b] = AccentColor::Teal.srgb();
+    assert_eq!(<(f64, f64, f64)>::try_from(rgb).unwrap(), (r, g, b));
+    assert_eq!(
+        String::try_from(
+            recovered
+                .remove(&("org.gnome.desktop.interface".into(), "gtk-theme".into()))
+                .unwrap()
+        )
+        .unwrap(),
+        "Adwaita-dark"
+    );
+    assert_eq!(
+        String::try_from(
+            recovered
+                .remove(&("org.gnome.desktop.interface".into(), "color-scheme".into()))
+                .unwrap()
+        )
+        .unwrap(),
+        "prefer-dark"
+    );
+    assert!(
+        tokio::time::timeout(Duration::from_millis(350), signals.next())
+            .await
+            .is_err(),
+        "recovery must not turn normal polling into repeated announcements"
+    );
+}
