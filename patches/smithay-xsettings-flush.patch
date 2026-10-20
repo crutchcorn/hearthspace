@@ -1,0 +1,14 @@
+--- a/src/xwayland/xwm/settings.rs
++++ b/src/xwayland/xwm/settings.rs
+@@ -209,8 +209,9 @@
+             self.atoms._XSETTINGS_SETTINGS,
+             self.atoms._XSETTINGS_SETTINGS,
+             &self.serialize(),
+-        )
+-        .map(|_| ())
++        )?;
++        // Publish changes even when no subsequent X11 event flushes the connection.
++        conn.flush()
+     }
+ }
+ 

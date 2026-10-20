@@ -3575,7 +3575,6 @@ dependencies = [
 [[package]]
 name = "masonry_winit"
 version = "0.4.0"
-source = "git+https://github.com/linebender/xilem?rev=271a27a6d4a930f7878d404f9014e3c50a3a9b88#271a27a6d4a930f7878d404f9014e3c50a3a9b88"
 dependencies = [
  "accesskit_winit",
  "copypasta",
@@ -5617,7 +5616,6 @@ checksum = "5b3dc8af474f516a851ff4bd12db780f948b9250ad37211e4eec0bccea54e01b"
 [[package]]
 name = "smithay"
 version = "0.7.0"
-source = "git+https://github.com/Smithay/smithay?rev=5c2ba4132556a08abc70ae1771d275ec2cfc031f#5c2ba4132556a08abc70ae1771d275ec2cfc031f"
 dependencies = [
  "aliasable",
  "appendlist",
@@ -7959,7 +7957,6 @@ checksum = "213b7324336b53d2414b2db8537e56544d981803139155afa84f76eeebb7a546"
 [[package]]
 name = "xilem"
 version = "0.4.0"
-source = "git+https://github.com/linebender/xilem?rev=271a27a6d4a930f7878d404f9014e3c50a3a9b88#271a27a6d4a930f7878d404f9014e3c50a3a9b88"
 dependencies = [
  "masonry",
  "masonry_winit",

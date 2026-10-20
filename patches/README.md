@@ -68,3 +68,66 @@
   met.
 
 See [vendored provenance and refresh steps](../vendor/accesskit_atspi_common/PROVENANCE.md).
+
+## Xilem initial window properties
+
+- **Dependencies:** `xilem` and `masonry_winit` 0.4.0, copied from the same pinned
+  [`271a27a6`](https://github.com/linebender/xilem/tree/271a27a6d4a930f7878d404f9014e3c50a3a9b88)
+  Git revision into [`vendor/xilem`](../vendor/xilem/) and
+  [`vendor/masonry_winit`](../vendor/masonry_winit/). Other Linebender packages
+  remain upstream dependencies; their versions and features are unchanged.
+- **Patch:** [initial window properties](xilem-initial-window-properties.patch).
+  `WindowView::build` forwards its cached defaults to `NewWindow`, and Masonry
+  uses those defaults when constructing the window's render root. Windows
+  without an override still use the application's defaults. Runtime theme swaps
+  retain the existing Arc-identity optimization.
+- **Reason:** upstream applies per-window defaults only during rebuild when the
+  Arc changes. A window created with the same cached Arc on every frame never
+  receives it. Persisted dark Settings and shell popups created after a live
+  theme change therefore inherited the old application-wide colors.
+- **Upstream:** checked on 2026-10-20. The current
+  [WindowView creation path](https://github.com/linebender/xilem/blob/main/xilem/src/window_view.rs)
+  and [NewWindow](https://github.com/linebender/xilem/blob/main/masonry_winit/src/event_loop_runner.rs)
+  still omit the initial override. Runtime swaps came from
+  [issue 1819](https://github.com/linebender/xilem/issues/1819). No upstream issue
+  or PR has been published for this local repair.
+- **Verification:** `cargo test -p hearthspace-ui-components window_theme_tests`
+  builds real `WindowView`s and paints their initial widget trees, checking a
+  persisted dark window and a new popup after an existing window changes theme.
+  Removing the `WindowView::build` forwarding makes these regressions fail.
+  Native shell acceptance additionally checks real window creation and first
+  presentation; the CPU test does not create Winit or GPU windows.
+- **Removal:** upgrade to a compatible upstream revision carrying initial
+  per-window defaults. Remove both Git-source Cargo patches, vendor directories,
+  and the source patch; refresh `Cargo.lock` and rerun the CPU and real-window
+  appearance checks. Keep the regression until upstream coverage replaces it.
+
+## Smithay XSettings publication
+
+- **Dependency:** Smithay 0.7.0 at pinned revision
+  [`5c2ba413`](https://github.com/Smithay/smithay/tree/5c2ba4132556a08abc70ae1771d275ec2cfc031f),
+  copied into [`vendor/smithay`](../vendor/smithay/). Its
+  [provenance](../vendor/smithay/PROVENANCE.md) records the imported files and
+  standalone manifest normalization.
+- **Patch:** [flush XSettings publication](smithay-xsettings-flush.patch), a local
+  change to `XSettings::update`.
+- **Reason:** `change_property8` queues the updated `_XSETTINGS_SETTINGS`
+  property, but Smithay does not flush it. When appearance changes outside an
+  X11 event callback, idle GTK3 clients keep their previous theme until unrelated
+  X11 activity flushes the connection. Flushing at the shared publication point
+  covers initialization, set, remove, and clear without a round trip.
+- **Upstream:** checked on 2026-10-20. The latest
+  [release is 0.7.0](https://github.com/Smithay/smithay/releases/tag/v0.7.0), and
+  [current source at `24647fc8`](https://github.com/Smithay/smithay/blob/24647fc8d00131eb7f388efed26e35ea316b0018/src/xwayland/xwm/settings.rs#L192)
+  still returns immediately after queuing the property. No matching upstream
+  fix or issue was found; no report has been published.
+- **Verification:** build the workspace binaries, then run
+  `HEARTHSPACE_E2E=1 cargo test -p hearthspace-compositor --features e2e,test-apps --test headless_control xsettings_publishes_saved_startup_theme_and_idle_live_changes`.
+  This starts a private settings daemon and XWayland, checks the saved startup
+  theme, and waits for `PropertyNotify` after live Light/Dark changes without
+  sending X11 requests that could mask the missing flush. Also verify an idle
+  GTK3 client on the private XWayland display receives `gtk-theme-name` updates.
+- **Removal:** upgrade to a compatible upstream revision that publishes
+  XSettings changes promptly and passes these checks without the patch. Remove
+  the Git-source Cargo patch, vendor directory, and source patch, then refresh
+  `Cargo.lock`. Retain the idle-client regression.

@@ -1,0 +1,69 @@
+--- a/xilem/src/window_view.rs
++++ b/xilem/src/window_view.rs
+@@ -96,17 +96,13 @@
+             debug_panic!("base_color should be set already in `MasonryDriver::build_window`");
+             BACKGROUND_COLOR
+         });
+-        (
+-            PodWindow(
+-                NewWindow::new_with_id(
+-                    self.id,
+-                    initial_attributes,
+-                    root_widget.new_widget.erased(),
+-                )
+-                .with_base_color(base_color),
+-            ),
+-            view_state,
+-        )
++        let mut new_window =
++            NewWindow::new_with_id(self.id, initial_attributes, root_widget.new_widget.erased())
++                .with_base_color(base_color);
++        if let Some(properties) = &self.default_properties {
++            new_window = new_window.with_default_properties(properties.clone());
++        }
++        (PodWindow(new_window), view_state)
+     }
+ 
+     fn rebuild(
+--- a/masonry_winit/src/event_loop_runner.rs
++++ b/masonry_winit/src/event_loop_runner.rs
+@@ -81,6 +81,9 @@
+     pub root_widget: NewWidget<dyn Widget>,
+     /// The base color of the window.
+     pub base_color: Color,
++    /// Optional window-specific defaults, installed before initial layout and paint.
++    /// When absent, the application-wide defaults are used.
++    pub default_properties: Option<Arc<DefaultProperties>>,
+ }
+ 
+ impl NewWindow {
+@@ -108,7 +111,17 @@
+             attributes,
+             root_widget,
+             base_color: Color::BLACK,
+-        }
++            default_properties: None,
++        }
++    }
++
++    /// Set this window's defaults before its render root is created.
++    ///
++    /// Unlike a later theme swap, these values also govern the first layout,
++    /// accessibility tree, attached layers, and frame.
++    pub fn with_default_properties(mut self, properties: Arc<DefaultProperties>) -> Self {
++        self.default_properties = Some(properties);
++        self
+     }
+ 
+     /// Sets the base color of the new window.
+@@ -574,7 +587,9 @@
+             adapter,
+             new_window.root_widget,
+             self.signal_sender.clone(),
+-            self.default_properties.clone(),
++            new_window
++                .default_properties
++                .unwrap_or_else(|| self.default_properties.clone()),
+             new_window.base_color,
+             size,
+             scale_factor,

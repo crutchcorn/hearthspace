@@ -439,8 +439,10 @@ include it alongside the session, compositor, shell, and settings daemon when
 building or installing a native session. Its application protocol, shell control
 API, limits, and tests are documented in [Desktop notifications](docs/NOTIFICATIONS.md).
 
-Hearthspace supplies `hearthspace-portals.conf` in the session's data directory,
-selecting the GTK backend according to the standard
+Hearthspace supplies `hearthspace-portals.conf` and its Settings backend metadata
+in the session's data directory. The supervised appearance worker supplies live
+color-mode/accent preferences; unrelated Settings keys and other portal
+interfaces use the GTK backend according to the standard
 [portal configuration lookup](https://flatpak.github.io/xdg-desktop-portal/docs/portals.conf.html).
 User portal configuration retains its normal precedence. Private runtime D-Bus
 service overrides prevent portals from being activated outside supervision.
@@ -448,6 +450,11 @@ Existing portal owners may be adopted only when their executable, private bus,
 runtime directory, and process start identity match the owned session. The GTK
 chooser uses the local VFS; network filesystem browsing is not configured here.
 No shared user service environment or system-wide portal configuration is changed.
+Native app environments opt GTK 3 into these portal settings with
+`GTK_USE_PORTAL=1`; the GTK portal backend opts out to avoid recursive lookup.
+No host dconf preferences are written or restored. See
+[Linux appearance publication](docs/SETTINGS.md#linux-appearance-publication)
+for the compatibility boundary and the private-bus integration test.
 
 Document grants and portal permissions are stored under
 `$XDG_DATA_HOME/hearthspace/portals` (defaulting to
@@ -847,6 +854,11 @@ behind APIs Hearthspace uses, including
 Wayland `app_id` / X11 `WM_CLASS`.
 Keep these dependencies pinned to an explicit commit until intentionally
 updating Xilem and rerunning the full workspace checks.
+
+Two small runtime packages, `xilem` and `masonry_winit`, are vendored at that
+same revision to apply per-window theme properties before the first frame.
+The [patch ledger](./patches/README.md#xilem-initial-window-properties) records
+the upstream omission, source diff, verification, and removal conditions.
 
 The direct Naga 28 and Fontique 0.8 dependencies intentionally match the versions
 used by this Xilem revision. They enable required features in the existing

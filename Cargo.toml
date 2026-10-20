@@ -16,12 +16,28 @@ members = [
     "crates/xilem-storybook",
 ]
 default-members = ["crates/hearthspace-session"]
-exclude = ["vendor/accesskit_atspi_common"]
+exclude = [
+    "vendor/accesskit_atspi_common",
+    "vendor/xilem",
+    "vendor/masonry_winit",
+    "vendor/smithay",
+]
 
 [patch.crates-io]
 # Backport the upstream fix for out-of-order AT-SPI window activation.
 # Provenance and removal conditions: patches/README.md.
 accesskit_atspi_common = { path = "vendor/accesskit_atspi_common" }
+
+[patch."https://github.com/linebender/xilem"]
+# Preserve per-window themes during creation, not only later rebuilds.
+# Provenance and removal conditions: patches/README.md.
+xilem = { path = "vendor/xilem" }
+masonry_winit = { path = "vendor/masonry_winit" }
+
+[patch."https://github.com/Smithay/smithay"]
+# Publish XSettings changes without waiting for unrelated X11 events.
+# Provenance and removal conditions: patches/README.md.
+smithay = { path = "vendor/smithay" }
 
 # Centralized lint policy so local `cargo clippy`/`cargo build` enforce the same
 # discipline as CI (which also passes `-D warnings` to escalate rustc warnings).

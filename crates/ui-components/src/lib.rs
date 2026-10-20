@@ -219,3 +219,6 @@ where
         selected,
     )
 }
+
+#[cfg(test)]
+mod window_theme_tests;
