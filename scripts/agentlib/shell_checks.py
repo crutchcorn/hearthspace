@@ -41,7 +41,7 @@ CONTROL_CORNERS = {
 }
 
 
-def elements(smoke, name, *, role="button"):
+def button_selector(name, role="button"):
     query = selector(name, role=role)
     if role == "button":
         # AccessKit exports native buttons with toggled state as ToggleButton.
@@ -50,7 +50,11 @@ def elements(smoke, name, *, role="button"):
             f"({SHELL}//*[(@role='button' or @role='toggle button') "
             f"and @showing='true' and @name='{name}'])[1]"
         )
-    return a11y(smoke, "find", query)["elements"]
+    return query
+
+
+def elements(smoke, name, *, role="button"):
+    return a11y(smoke, "find", button_selector(name, role))["elements"]
 
 
 def panel(smoke, kind, *, exclusive=False):
@@ -78,17 +82,68 @@ def closed(smoke):
 
 
 def click(smoke, name, kind=None, *, corner=None):
-    observed = smoke.until(f"visible {name} button", lambda: elements(smoke, name))
-    status = smoke.control.status()
-    outputs = status["outputs"]
-    if len(outputs) != 1:
-        raise ControlError("shell acceptance needs one active output")
-    surface = (
-        opened(smoke, kind)
-        if kind
-        else corner_surface(status, corner or CONTROL_CORNERS[name])
-    )
-    point = button_center(observed[0].get("bounds"), outputs[0], surface)
+    target = button_selector(name)
+    # One snapshot supplies both the button and its owning window. A stale
+    # button alone can point at another dock item after the corner resizes.
+    query = f"{target} | {target}/ancestor::*[@role='frame'][1]"
+
+    def geometry():
+        status = smoke.control.status()
+        if len(status["outputs"]) != 1:
+            raise ControlError("shell acceptance needs one active output")
+        if kind:
+            matches = [
+                item for item in status.get("shell_panels", []) if item["kind"] == kind
+            ]
+            if len(matches) > 1:
+                raise ControlError("shell acceptance needs one matching panel")
+            surface = matches[0] if matches else None
+        else:
+            corner_name = corner or CONTROL_CORNERS[name]
+            # shell_ready can precede the final corner's initial map. Only an
+            # absent corner is pending; duplicates/wrong outputs remain errors.
+            mapped = any(
+                item["corner"] == corner_name
+                for item in status.get("shell_corners", [])
+            )
+            surface = corner_surface(status, corner_name) if mapped else None
+        output = status["outputs"][0]
+        output_geometry = {
+            key: output[key]
+            for key in (
+                "name",
+                "logical_x",
+                "logical_y",
+                "logical_width",
+                "logical_height",
+                "scale",
+            )
+        }
+        return output_geometry, surface
+
+    def ready():
+        before = geometry()
+        if before[1] is None:
+            return None
+        observed = a11y(smoke, "find", query)["elements"]
+        output, surface = geometry()
+        if not surface or before != (output, surface):
+            return None
+        frames = [item for item in observed if item.get("role") == "Frame"]
+        buttons = [
+            item for item in observed if item.get("role") in ("Button", "ToggleButton")
+        ]
+        if len(frames) != 1 or len(buttons) != 1:
+            return None
+        bounds = frames[0].get("bounds") or {}
+        if any(
+            bounds.get(dimension) != surface[dimension] * output["scale"]
+            for dimension in ("width", "height")
+        ):
+            return None
+        return button_center(buttons[0].get("bounds"), output, surface), buttons
+
+    point, observed = smoke.until(f"settled {name} button and shell surface", ready)
     smoke.record("shell-button", name=name, kind=kind, point=point, elements=observed)
     with Input(smoke.control) as inputs:
         inputs.click(*point)

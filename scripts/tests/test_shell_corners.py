@@ -41,6 +41,32 @@ def corner_status():
     }
 
 
+def target_snapshot(name, width, *, scale=1, x=4, role="Button"):
+    return {
+        "elements": [
+            {
+                "role": "Frame",
+                "bounds": {
+                    "x": 0,
+                    "y": 0,
+                    "width": width * scale,
+                    "height": 54 * scale,
+                },
+            },
+            {
+                "role": role,
+                "name": name,
+                "bounds": {
+                    "x": x * scale,
+                    "y": 4 * scale,
+                    "width": 36 * scale,
+                    "height": 36 * scale,
+                },
+            },
+        ]
+    }
+
+
 class ShellCornerTests(unittest.TestCase):
     def test_waits_for_every_corner_to_register_before_validating_controls(self):
         smoke = Mock()
@@ -123,10 +149,15 @@ class ShellCornerTests(unittest.TestCase):
         status = corner_status()
         status["outputs"][0]["scale"] = 2
         smoke.control.status.return_value = status
-        smoke.until.return_value = [
-            {"bounds": {"x": 8, "y": 8, "width": 72, "height": 72}}
-        ]
-        with patch.object(shell_checks, "Input") as input_type:
+        smoke.until.side_effect = lambda _name, condition: condition()
+        with (
+            patch.object(
+                shell_checks,
+                "a11y",
+                return_value=target_snapshot("Apps List", 200, scale=2),
+            ),
+            patch.object(shell_checks, "Input") as input_type,
+        ):
             shell_checks.click(smoke, "Apps List")
         input_type.return_value.__enter__.return_value.click.assert_called_once_with(
             798, 544
@@ -137,13 +168,126 @@ class ShellCornerTests(unittest.TestCase):
         status = corner_status()
         status["outputs"][0]["scale"] = 2
         smoke.control.status.return_value = status
-        smoke.until.return_value = [
-            {"bounds": {"x": 8, "y": 8, "width": 72, "height": 72}}
-        ]
-        with patch.object(shell_checks, "Input") as input_type:
+        smoke.until.side_effect = lambda _name, condition: condition()
+        with (
+            patch.object(
+                shell_checks,
+                "a11y",
+                return_value=target_snapshot("Battery: 72%, Charging", 200, scale=2),
+            ),
+            patch.object(shell_checks, "Input") as input_type,
+        ):
             shell_checks.click(smoke, "Battery: 72%, Charging", corner="system")
         input_type.return_value.__enter__.return_value.click.assert_called_once_with(
             798, 46
+        )
+
+    def assert_dock_resize_waits(self, old_width, width, scale):
+        smoke = Mock()
+        status = corner_status()
+        status["outputs"][0]["scale"] = scale
+        status["shell_corners"][3].update(x=976 - width, width=width)
+        smoke.control.status.return_value = status
+        stale = target_snapshot("Apps List", old_width, scale=scale, x=old_width - 40)
+        settled = target_snapshot("Apps List", width, scale=scale, x=width - 40)
+        with (
+            patch.object(
+                shell_checks, "a11y", side_effect=[stale, settled]
+            ) as accessibility,
+            patch.object(shell_checks, "Input") as input_type,
+        ):
+
+            def until(_name, condition):
+                self.assertIsNone(condition(), "stale frame must keep waiting")
+                input_type.assert_not_called()
+                return condition()
+
+            smoke.until.side_effect = until
+            shell_checks.click(smoke, "Apps List")
+        input_type.return_value.__enter__.return_value.click.assert_called_once_with(
+            954, 544
+        )
+        self.assertEqual(accessibility.call_count, 2)
+        self.assertIn("/ancestor::*[@role='frame'][1]", accessibility.call_args.args[2])
+        self.assertIn(" | ", accessibility.call_args.args[2])
+        self.assertEqual(
+            smoke.record.call_args.kwargs["elements"], [settled["elements"][1]]
+        )
+
+    def test_dock_growth_waits_for_its_accessibility_frame_before_clicking(self):
+        # Old local x still lies inside the grown surface, over another app.
+        self.assert_dock_resize_waits(old_width=54, width=150, scale=1)
+
+    def test_dock_shrink_waits_for_fresh_bounds_at_two_times_output_scale(self):
+        # Old local x lies outside the narrowed corner and must never be used.
+        self.assert_dock_resize_waits(old_width=150, width=54, scale=2)
+
+    def test_apps_list_click_waits_for_bottom_corner_to_map_during_startup(self):
+        smoke = Mock()
+        initial = corner_status()
+        initial["shell_corners"] = initial["shell_corners"][:2]
+        initial["shell_ready"] = True
+        settled = corner_status()
+        smoke.control.status.side_effect = [initial, settled, settled]
+        with (
+            patch.object(
+                shell_checks, "a11y", return_value=target_snapshot("Apps List", 200)
+            ) as accessibility,
+            patch.object(shell_checks, "Input") as input_type,
+        ):
+
+            def until(_name, condition):
+                self.assertIsNone(condition(), "unmapped corner must keep waiting")
+                input_type.assert_not_called()
+                accessibility.assert_not_called()
+                return condition()
+
+            smoke.until.side_effect = until
+            shell_checks.click(smoke, "Apps List")
+        input_type.return_value.__enter__.return_value.click.assert_called_once_with(
+            798, 544
+        )
+        accessibility.assert_called_once()
+
+    def test_corner_click_rejects_duplicate_or_wrong_output_instead_of_waiting(self):
+        for problem in ("duplicate", "wrong output"):
+            with self.subTest(problem=problem):
+                smoke = Mock()
+                status = corner_status()
+                if problem == "duplicate":
+                    status["shell_corners"].append(status["shell_corners"][3].copy())
+                else:
+                    status["shell_corners"][3]["output"] = "another-output"
+                smoke.control.status.return_value = status
+                smoke.until.side_effect = lambda _name, condition: condition()
+                with (
+                    patch.object(shell_checks, "Input") as input_type,
+                    self.assertRaisesRegex(ControlError, "one mapped apps"),
+                ):
+                    shell_checks.click(smoke, "Apps List")
+                input_type.assert_not_called()
+
+    def test_panel_toggle_click_waits_for_matching_frame_and_mapped_panel(self):
+        smoke = Mock()
+        status = corner_status()
+        status["shell_panels"] = [
+            {"kind": "search", "x": 300, "y": 100, "width": 650, "height": 54}
+        ]
+        smoke.control.status.return_value = status
+        smoke.until.side_effect = lambda _name, condition: condition()
+        with (
+            patch.object(
+                shell_checks,
+                "a11y",
+                return_value=target_snapshot(
+                    "Draw to launch", 650, role="ToggleButton"
+                ),
+            ),
+            patch.object(shell_checks, "Input") as input_type,
+        ):
+            shell_checks.click(smoke, "Draw to launch", "search")
+        input_type.return_value.__enter__.return_value.click.assert_called_once_with(
+            322, 122
         )
 
     def test_legacy_bar_height_or_inset_is_rejected(self):
