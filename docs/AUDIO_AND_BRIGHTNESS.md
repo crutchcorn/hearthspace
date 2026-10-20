@@ -1,9 +1,10 @@
-# Control center
+# Audio and brightness
 
-Use the sliders icon beside the power button to open **Control center**. The
-popup contains brightness and volume sliders, percentages, the current audio
-output, and a mute/unmute button. It closes with Escape, its close button, or a
-click outside. Opening another shell popup closes it.
+Use the sun button in the system tray to open **Brightness**, or the speaker
+button to open **Sound**. Each dropdown shows its own slider and percentage.
+Sound also shows the current audio output and a mute/unmute button.
+Press Escape, activate the same tray button, or click outside to close a dropdown.
+Opening another shell popup closes it.
 
 Drag either slider with a pointer or touchscreen. Keyboard navigation shows a
 complete outline inside the slider. Hover never adds an outline; clicking or
@@ -21,9 +22,9 @@ Agent input accepts `brightness-up`, `brightness-down`, `volume-up`,
 
 Confirmed hardware-key adjustments show a bottom-center on-screen display (OSD)
 for about 1.6 seconds. Further hardware-key adjustments replace its value and
-restart the timeout. Control-center sliders and mute update the popup only,
+restart the timeout. Dropdown sliders and mute update their popup only,
 including when operated with the keyboard. They never open, change or extend an
-existing OSD; any adjustment error is shown in the control center.
+existing OSD; any adjustment error is shown in the corresponding dropdown.
 The OSD shows the actual device reading or mute state; failures show an
 unavailable explanation. It neither takes focus nor intercepts pointer/touch
 input, and remains visible above fullscreen apps and the canvas overview.
@@ -37,7 +38,7 @@ new device permissions, or a separate brightness daemon. Without a usable
 backlight, the slider is disabled with an explanation; there is no fabricated
 zero reading. When several kernel backlights exist, the first usable firmware,
 platform, then raw device is chosen deterministically. This controls that system
-backlight from any output's control center. External-monitor DDC/CI controls are
+backlight from any output's Brightness dropdown. External-monitor DDC/CI controls are
 not implemented, and nested/headless sessions do not change host brightness.
 
 Volume uses the existing PulseAudio-compatible service, including PipeWire Pulse,
@@ -68,9 +69,11 @@ Masonry sliders, accessibility values, keyboard focus, unavailable controls,
 OSD lifetime, and stale-result handling.
 
 The strict Python E2E suite includes `test_control_ui_headless.py`. It runs the
-real shell and compositor with a private fake audio endpoint, then exercises
-pointer/keyboard sliders, media keys, mute, OSD dismissal, preserved application
-input, unavailable devices and recovery. It never changes host audio or
+real shell and compositor with a private fake audio endpoint, then exercises the
+individual Sound and Brightness dropdowns, pointer/keyboard sliders, media keys,
+mute, OSD dismissal, preserved application input, unavailable devices and recovery.
+Evidence is saved under `audio-and-brightness` within the configured shell evidence
+directory. It never changes host audio or
 brightness. Compositor E2E separately checks OSD placement, pointer/touch
 passthrough, fullscreen/overview layering, lock and event expiry.
 
@@ -80,6 +83,9 @@ audio volumes and mute state, and verify device readings alongside PNG/metadata
 and accessibility assertions. Keep these host checks separate from headless CI.
 
 ### 2026-10-15 acceptance
+
+These earlier runs exercised the former combined panel. Their retained evidence
+paths describe that version; current acceptance uses the individual dropdowns.
 
 Formatting, Ruff, workspace Clippy with warnings denied, and the full native/E2E
 workspace build passed. Ordinary Rust tests passed 672 tests; the strict

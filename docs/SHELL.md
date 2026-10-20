@@ -46,12 +46,10 @@ Overview gestures, Super+O, and Alt+Tab remain available. Settings, Lock and Log
 out are reached through Apps List and Power rather than standalone corner buttons.
 
 Wi-Fi shows the network tray handoff until a network-management backend is
-available; it does not invent nearby networks or connection state. Brightness,
-sound, and battery dropdowns use the existing hardware readings. Open Sound,
-then **Brightness and sound controls**, to reach the combined controls and
-shortcuts to every status dropdown. Narrow outputs retain Sound and Power while
-hiding the clock and Wi-Fi buttons; brightness and battery remain when space
-allows. Missing hardware has an explicit unavailable state. The clock dropdown
+available; it does not invent nearby networks or connection state.
+[Brightness and Sound](AUDIO_AND_BRIGHTNESS.md) open separate slider dropdowns
+using the existing hardware readings. Battery details appear in the Battery
+dropdown. Missing hardware has an explicit unavailable state. The clock dropdown
 shows the current month.
 
 ## Agent control

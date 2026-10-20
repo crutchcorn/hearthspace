@@ -6,7 +6,7 @@ use super::{
     popup::{self, PopupKind},
     state::{ShellOutputInstance, ShellState},
 };
-use hearthspace_common::{CONTROL_CENTER_APP_ID, control_center_app_id_for_output};
+use hearthspace_common::{QUICK_PANEL_APP_ID, quick_panel_app_id_for_output};
 use hearthspace_ui_components as components;
 use xilem::{
     AnyWidgetView, WidgetView, WindowView,
@@ -20,9 +20,8 @@ mod calendar;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(super) enum Kind {
-    #[default]
-    Controls,
     Wifi,
+    #[default]
     Sound,
     Brightness,
     Battery,
@@ -32,7 +31,6 @@ pub(super) enum Kind {
 impl Kind {
     fn title(self) -> &'static str {
         match self {
-            Self::Controls => "Control center",
             Self::Wifi => "Wi-Fi",
             Self::Sound => "Sound",
             Self::Brightness => "Brightness",
@@ -93,46 +91,7 @@ pub(super) fn clock_button(
     )
 }
 
-/// Keep every status dropdown reachable when the output needs a compact tray.
-pub(super) fn shortcuts(output: &ShellOutputInstance) -> impl WidgetView<ShellState> + use<> {
-    flex_row((
-        button_view(output, Kind::Wifi, Icon::Wifi, "Wi-Fi settings"),
-        button_view(
-            output,
-            Kind::Sound,
-            Icon::Volume { muted: false },
-            "Sound settings",
-        ),
-        button_view(
-            output,
-            Kind::Battery,
-            Icon::Battery {
-                percentage: 100,
-                charging: false,
-            },
-            "Battery status",
-        ),
-        {
-            let key = output.key().to_string();
-            components::button_surface(
-                button(
-                    components::icons::icon(components::icons::Icon::Clock, 20.0)
-                        .label("Date and time"),
-                    move |state: &mut ShellState| state.toggle_quick_panel(&key, Kind::Clock),
-                )
-                .padding(11.0.px()),
-                components::ButtonSurface::Bare,
-                false,
-            )
-        },
-    ))
-    .gap(4.0.px())
-}
-
 pub(super) fn window(state: &ShellState, output: &ShellOutputInstance) -> WindowView<ShellState> {
-    if output.quick_panel == Kind::Controls {
-        return super::control_center::window(output, &state.controls);
-    }
     let key = output.key().to_string();
     popup::window(
         output.controls_window_id,
@@ -140,8 +99,8 @@ pub(super) fn window(state: &ShellState, output: &ShellOutputInstance) -> Window
         output
             .output_name
             .as_deref()
-            .map(control_center_app_id_for_output)
-            .unwrap_or_else(|| CONTROL_CENTER_APP_ID.into()),
+            .map(quick_panel_app_id_for_output)
+            .unwrap_or_else(|| QUICK_PANEL_APP_ID.into()),
         popup::size(output, PopupKind::Controls, 320.0, 200.0),
         panel(state, output),
         move |state| state.dismiss_controls(&key),
@@ -153,7 +112,6 @@ pub(super) fn panel(
     output: &ShellOutputInstance,
 ) -> Box<AnyWidgetView<ShellState>> {
     let content = match output.quick_panel {
-        Kind::Controls => return super::control_center::panel(output, &state.controls).boxed(),
         Kind::Wifi => wifi().boxed(),
         Kind::Sound => sound(state, output).boxed(),
         Kind::Brightness => brightness(state, output).boxed(),
@@ -197,7 +155,22 @@ fn sound(state: &ShellState, output: &ShellOutputInstance) -> impl WidgetView<Sh
     let muted = audio.is_some_and(|audio| audio.muted);
     let value = state.controls.volume();
     let key = output.key().to_string();
-    let more_key = key.clone();
+    let reason = state.controls.volume_error.clone().or_else(|| {
+        state
+            .controls
+            .snapshot
+            .audio
+            .as_ref()
+            .err()
+            .cloned()
+            .or_else(|| {
+                state
+                    .controls
+                    .sender
+                    .is_none()
+                    .then(|| "Sound controls are unavailable.".into())
+            })
+    });
     flex_col((
         heading(
             "Sound",
@@ -231,22 +204,18 @@ fn sound(state: &ShellState, output: &ShellOutputInstance) -> impl WidgetView<Sh
             glyph(Icon::Volume { muted: false }, "Sound output".into()),
         ))
         .gap(8.0.px()),
-        label(if muted {
-            "Muted".to_string()
-        } else {
-            audio
-                .map(|audio| audio.output.clone())
-                .unwrap_or_else(|| "No audio output available".into())
-        })
+        label(reason.unwrap_or_else(|| {
+            if muted {
+                "Muted".to_string()
+            } else {
+                audio
+                    .map(|audio| audio.output.clone())
+                    .unwrap_or_else(|| "No audio output is available.".into())
+            }
+        }))
         .text_size(13.0)
         .color(components::TEXT_MUTED)
         .line_break_mode(LineBreaking::WordWrap),
-        components::compact_action_button(
-            "Brightness and sound controls",
-            move |state: &mut ShellState| {
-                state.toggle_controls(&more_key);
-            },
-        ),
     ))
     .cross_axis_alignment(CrossAxisAlignment::Stretch)
     .gap(16.0.px())
@@ -268,7 +237,6 @@ fn brightness(
             Ok(Some(_)) => None,
         }
     });
-    let more_key = output.key().to_string();
     flex_col((
         heading(
             "Brightness",
@@ -289,14 +257,12 @@ fn brightness(
             components::icons::icon(components::icons::Icon::Sun, 22.0).color(components::TEXT),
         ))
         .gap(12.0.px()),
-        label(reason.unwrap_or_else(|| "Adjust the display backlight.".into()))
-            .text_size(13.0)
-            .color(components::TEXT_MUTED)
-            .line_break_mode(LineBreaking::WordWrap),
-        components::compact_action_button(
-            "Brightness and sound controls",
-            move |state: &mut ShellState| state.toggle_controls(&more_key),
-        ),
+        reason.map(|reason| {
+            label(reason)
+                .text_size(13.0)
+                .color(components::TEXT_MUTED)
+                .line_break_mode(LineBreaking::WordWrap)
+        }),
     ))
     .cross_axis_alignment(CrossAxisAlignment::Stretch)
     .gap(16.0.px())
@@ -327,7 +293,17 @@ fn battery(state: &ShellState) -> impl WidgetView<ShellState> + use<> {
         components::muted_text(battery.map_or("No battery detected".into(), |battery| {
             battery.state_label().to_string()
         })),
-        super::battery_view::detail(battery),
+        battery.and_then(|battery| battery.warning).map(|warning| {
+            label(match warning {
+                crate::battery::BatteryWarning::Low => "Low charge. Connect to power.",
+                crate::battery::BatteryWarning::Critical => {
+                    "Critical charge. Connect to power and save your work."
+                }
+            })
+            .text_size(13.0)
+            .color(components::TEXT)
+            .line_break_mode(LineBreaking::WordWrap)
+        }),
     ))
     .cross_axis_alignment(CrossAxisAlignment::Stretch)
     .gap(20.0.px())
@@ -340,3 +316,11 @@ mod tests;
 #[cfg(test)]
 #[path = "quick_brightness_tests.rs"]
 mod brightness_tests;
+
+#[cfg(test)]
+#[path = "quick_sound_tests.rs"]
+mod sound_tests;
+
+#[cfg(test)]
+#[path = "quick_size_tests.rs"]
+mod size_tests;

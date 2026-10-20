@@ -66,6 +66,12 @@ fn brightness_dropdown_routes_keyboard_and_accessibility_to_the_existing_backlig
         Some(100.0)
     );
     assert!(text(&ui).contains(&"60%".into()));
+    assert!(
+        !text(&ui)
+            .iter()
+            .any(|text| text.contains("Adjust the display")
+                || text.contains("Brightness and sound controls"))
+    );
     ui.harness.focus_on(Some(brightness));
     assert_eq!(
         ui.harness
@@ -101,9 +107,7 @@ fn brightness_dropdown_routes_keyboard_and_accessibility_to_the_existing_backlig
     ui.dispatch(&view);
     assert!(text(&ui).contains(&"The display rejected this brightness change.".into()));
     assert!(text(&ui).contains(&"60%".into()));
-    ui.activate(ui.button("Brightness and sound controls"));
-    ui.dispatch(&view);
-    assert_eq!(ui.state.outputs[0].quick_panel, Kind::Controls);
+    assert_eq!(ui.state.outputs[0].quick_panel, Kind::Brightness);
     assert!(ui.state.outputs[0].show_controls);
 }
 

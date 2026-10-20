@@ -2,7 +2,7 @@
 use super::navigation::{action, keys, query};
 use super::shell_panels::{click, connect};
 use super::*;
-use hearthspace_common::{CONTROL_CENTER_APP_ID, CONTROL_OSD_APP_ID, SHELL_BAR_APP_ID};
+use hearthspace_common::{CONTROL_OSD_APP_ID, QUICK_PANEL_APP_ID, SHELL_BAR_APP_ID};
 use serde_json::{Value, json};
 use std::os::unix::net::UnixDatagram;
 
@@ -75,7 +75,7 @@ fn osd_is_fixed_passive_above_fullscreen_and_never_becomes_a_window_or_popup() {
         json!([bounds])
     );
     let panel = client.add(
-        CONTROL_CENTER_APP_ID.into(),
+        QUICK_PANEL_APP_ID.into(),
         (340, 250),
         (0, 0),
         [0xff, 0, 0, 0xff],

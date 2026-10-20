@@ -195,10 +195,6 @@ impl ShellState {
         self.toggle_panel(output_key, Panel::Power);
     }
 
-    pub(super) fn toggle_controls(&mut self, output_key: &str) {
-        self.toggle_quick_panel(output_key, super::quick_panel::Kind::Controls);
-    }
-
     pub(super) fn toggle_quick_panel(&mut self, output_key: &str, kind: super::quick_panel::Kind) {
         let open = self.outputs.iter().any(|output| {
             output.key() == output_key && (!output.show_controls || output.quick_panel != kind)

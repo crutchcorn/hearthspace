@@ -69,7 +69,7 @@ def settled_audio(smoke):
     return previous
 
 
-def center_feedback(smoke, capture, *, focused_slider=None):
+def popup_feedback(smoke, capture, *, focused_slider=None):
     """Keep popup adjustments in the popup, with separate focus review captures."""
     checks.opened(smoke, "controls", exclusive=True)
     if focused_slider:
@@ -79,12 +79,12 @@ def center_feedback(smoke, capture, *, focused_slider=None):
             lambda: a11y(smoke, "find", target)["elements"],
         )
     if smoke.control.status().get("control_osds"):
-        raise ControlError("control-center adjustment opened an OSD")
+        raise ControlError("dropdown adjustment opened an OSD")
     smoke.capture(capture)
     if smoke.control.status().get("control_osds"):
-        raise ControlError("control-center adjustment mapped an OSD after presentation")
+        raise ControlError("dropdown adjustment mapped an OSD after presentation")
     smoke.record(
-        "control-center-feedback",
+        "dropdown-feedback",
         capture=capture,
         focused_slider=focused_slider,
         osd=False,
@@ -121,19 +121,20 @@ def dismissed(smoke):
     smoke.record("osd-automatically-dismissed", elapsed=time.monotonic() - start)
 
 
-def open_controls(smoke):
-    """Reach the existing brightness/audio panel through the direct Sound button."""
+def open_sound(smoke):
     checks.click(smoke, "Sound settings")
     checks.opened(smoke, "controls", exclusive=True)
-    if checks.elements(smoke, "Control center"):
-        raise ControlError("Control center still appears as a standalone tray button")
-    checks.click(smoke, "Brightness and sound controls", "controls")
-    checks.opened(smoke, "controls", exclusive=True)
-    smoke.until(
-        "brightness and volume controls",
-        lambda: visible(smoke, "Brightness and volume controls", "panel"),
-    )
-    smoke.record("control-center-opened-via-sound")
+    smoke.until("Sound dropdown", lambda: visible(smoke, "Sound", "panel"))
+    for removed in ("Control center", "Brightness and sound controls"):
+        if checks.elements(smoke, removed):
+            raise ControlError(f"removed control remains available: {removed}")
+
+
+def close_dropdown(smoke):
+    with Input(smoke.control) as inputs:
+        inputs.chord("esc")
+    checks.closed(smoke)
+    smoke.until("application focus restored", lambda: focused(smoke, smoke.target))
 
 
 def brightness_dropdown(smoke):
@@ -156,10 +157,7 @@ def brightness_dropdown(smoke):
     if smoke.service_fixture.mutations() != before:
         raise ControlError("disabled brightness dropdown slider changed audio")
     smoke.capture("brightness-dropdown-unavailable")
-    with Input(smoke.control) as inputs:
-        inputs.chord("esc")
-    checks.closed(smoke)
-    smoke.until("application focus restored", lambda: focused(smoke, smoke.target))
+    close_dropdown(smoke)
     smoke.record("brightness-dropdown-verified", unavailable=True, disabled=True)
 
 
@@ -167,24 +165,11 @@ def run(smoke):
     peer = smoke.service_fixture
     terminal(smoke)
     brightness_dropdown(smoke)
-    open_controls(smoke)
+    open_sound(smoke)
     smoke.until("initial audio level", lambda: visible(smoke, "40%"))
     smoke.until("default output name", lambda: visible(smoke, "Fixture speakers"))
-    smoke.until(
-        "native-only brightness explanation",
-        lambda: visible(
-            smoke, "Brightness is available in a native Hearthspace session."
-        ),
-    )
-    brightness = slider(smoke, "Brightness", disabled=True)
     volume = slider(smoke, "Volume")
-    smoke.capture("control-center-initial")
-
-    before = peer.mutations()
-    with Input(smoke.control) as inputs:
-        inputs.click(*slider_point(smoke, brightness))
-    if peer.mutations() != before:
-        raise ControlError("disabled brightness slider changed audio")
+    smoke.capture("sound-dropdown-initial")
     start = slider_point(smoke, volume)
     scale = smoke.control.status()["outputs"][0]["scale"]
     end = (start[0] + volume["bounds"]["width"] / scale / 4, start[1])
@@ -196,7 +181,7 @@ def run(smoke):
     )
     changed = settled_audio(smoke)
     smoke.until("dragged volume label", lambda: visible(smoke, f"{changed['volume']}%"))
-    center_feedback(smoke, "control-center-slider-pointer", focused_slider="Volume")
+    popup_feedback(smoke, "sound-slider-pointer", focused_slider="Volume")
     with Input(smoke.control) as inputs:
         inputs.chord("right")
     after = audio(smoke, volume=changed["volume"] + 1, muted=False)
@@ -205,7 +190,7 @@ def run(smoke):
         "slider keyboard readback label",
         lambda: visible(smoke, f"{after['volume']}%"),
     )
-    center_feedback(smoke, "control-center-slider-keyboard", focused_slider="Volume")
+    popup_feedback(smoke, "sound-slider-keyboard", focused_slider="Volume")
     smoke.record(
         "volume-slider-input",
         pointer=changed["volume"],
@@ -215,17 +200,15 @@ def run(smoke):
     checks.click(smoke, "Mute", "controls")
     audio(smoke, muted=True)
     smoke.until("muted control", lambda: visible(smoke, "Unmute", "button"))
-    center_feedback(smoke, "control-center-muted")
+    popup_feedback(smoke, "sound-muted")
     checks.click(smoke, "Unmute", "controls")
     audio(smoke, muted=False)
     smoke.until("unmuted control", lambda: visible(smoke, "Mute", "button"))
-    center_feedback(smoke, "control-center-unmuted")
+    popup_feedback(smoke, "sound-unmuted")
 
     peer.update(volume=40)
     smoke.until("external volume change reflected", lambda: visible(smoke, "40%"))
-    checks.click(smoke, "Close control center", "controls")
-    checks.closed(smoke)
-    smoke.until("application focus restored", lambda: focused(smoke, smoke.target))
+    close_dropdown(smoke)
     dismissed(smoke)
 
     with Input(smoke.control) as inputs:
@@ -262,7 +245,7 @@ def run(smoke):
         raise ControlError("brightness key changed audio")
 
     peer.update(present=False)
-    open_controls(smoke)
+    open_sound(smoke)
     smoke.until(
         "missing output explanation",
         lambda: visible(smoke, "No audio output is available."),
@@ -271,11 +254,10 @@ def run(smoke):
     before = peer.mutations()
     with Input(smoke.control) as inputs:
         inputs.click(*slider_point(smoke, missing))
-    smoke.capture("control-center-no-audio-output")
+    smoke.capture("sound-no-audio-output")
     if peer.mutations() != before:
         raise ControlError("disabled volume slider sent a mutation")
-    checks.click(smoke, "Close control center", "controls")
-    checks.closed(smoke)
+    close_dropdown(smoke)
     with Input(smoke.control) as inputs:
         inputs.chord("volume-up")
     osd(smoke, "Volume unavailable", capture="missing-audio-output-osd")
@@ -288,13 +270,12 @@ def run(smoke):
         description="Fixture headphones",
         volume=25,
     )
-    open_controls(smoke)
+    open_sound(smoke)
     smoke.until(
         "replacement default audio output", lambda: visible(smoke, "Fixture headphones")
     )
     smoke.until("replacement default volume", lambda: visible(smoke, "25%"))
-    checks.click(smoke, "Close control center", "controls")
-    checks.closed(smoke)
+    close_dropdown(smoke)
     with Input(smoke.control) as inputs:
         inputs.chord("volume-up")
     audio(smoke, volume=30)
@@ -303,7 +284,7 @@ def run(smoke):
         raise ControlError("adjustment retained the previous default output")
     dismissed(smoke)
     smoke.record(
-        "control-center-verified",
+        "audio-and-brightness-verified",
         slider_pointer=True,
         slider_keyboard=True,
         native_brightness_disabled=True,
@@ -313,5 +294,5 @@ def run(smoke):
         missing_audio_disabled=True,
         default_output_recovered=True,
         channel_balance_preserved=True,
-        control_center_osd_suppressed=True,
+        dropdown_osd_suppressed=True,
     )

@@ -16,7 +16,6 @@ mod canvas_map;
 mod canvas_task;
 mod command_client;
 mod constants;
-mod control_center;
 mod control_osd;
 mod control_slider;
 mod control_state;

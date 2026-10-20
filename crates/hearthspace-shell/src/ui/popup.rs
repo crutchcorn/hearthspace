@@ -51,7 +51,7 @@ impl PopupKind {
             Self::Notifications => "Notifications",
             Self::Power => "Session controls",
             Self::Tray => "Application tray menu",
-            Self::Controls => "Brightness and volume controls",
+            Self::Controls => "Status controls",
         }
     }
     fn index(self) -> usize {

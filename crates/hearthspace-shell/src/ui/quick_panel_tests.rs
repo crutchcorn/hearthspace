@@ -66,9 +66,9 @@ fn wifi_and_missing_battery_never_present_simulated_readings() {
 }
 
 #[test]
-fn changing_status_panels_does_not_retain_the_control_center_header_height() {
+fn changing_status_panels_does_not_retain_the_previous_content_height() {
     let mut state = ShellState::new("/unused".into(), vec!["eDP-1".into()]);
-    state.toggle_controls("eDP-1");
+    state.toggle_quick_panel("eDP-1", Kind::Clock);
     let mut ui = Ui::new(state, view, (320, 400));
     ui.state.toggle_quick_panel("eDP-1", Kind::Wifi);
     ui.rebuild(&view);
@@ -81,5 +81,77 @@ fn changing_status_panels_does_not_retain_the_control_center_header_height() {
     assert_eq!(
         switched,
         popup::size(&fresh.state.outputs[0], PopupKind::Controls, 320.0, 200.0)
+    );
+}
+
+#[test]
+fn battery_dropdown_shows_one_reading_and_state_with_only_real_charge_warnings() {
+    use crate::battery::{BatteryKind, BatteryState, BatteryStatus, BatteryWarning};
+    let mut state = ShellState::new("/unused".into(), vec!["eDP-1".into()]);
+    state.toggle_quick_panel("eDP-1", Kind::Battery);
+    state.battery = Some(BatteryStatus {
+        percentage: 57,
+        state: BatteryState::Charging,
+        kind: BatteryKind::Battery,
+        on_battery: false,
+        warning: None,
+    });
+    let mut ui = Ui::new(state, view, (320, 240));
+    let text = |ui: &Ui<_>| {
+        ids(&ui.harness)
+            .into_iter()
+            .filter_map(|id| {
+                ui.harness
+                    .access_node(id)
+                    .and_then(|node| node.label().or_else(|| node.value()))
+            })
+            .collect::<Vec<_>>()
+    };
+    let labels = text(&ui);
+    assert_eq!(
+        labels
+            .iter()
+            .filter(|label| label.as_str() == "57%")
+            .count(),
+        1
+    );
+    assert_eq!(
+        labels
+            .iter()
+            .filter(|label| label.as_str() == "Charging")
+            .count(),
+        1
+    );
+    assert!(
+        !labels
+            .iter()
+            .any(|label| label.contains("Battery: 57%") || label.contains("Connect to power"))
+    );
+
+    let battery = ui.state.battery.as_mut().unwrap();
+    battery.percentage = 3;
+    battery.state = BatteryState::Discharging;
+    battery.on_battery = true;
+    battery.warning = Some(BatteryWarning::Critical);
+    ui.rebuild(&view);
+    ui.dispatch(&view);
+    let labels = text(&ui);
+    assert!(labels.contains(&"3%".into()));
+    assert_eq!(
+        labels
+            .iter()
+            .filter(|label| label.as_str() == "Discharging")
+            .count(),
+        1
+    );
+    assert!(labels.contains(&"Critical charge. Connect to power and save your work.".into()));
+
+    ui.state.battery.as_mut().unwrap().warning = None;
+    ui.rebuild(&view);
+    ui.dispatch(&view);
+    assert!(
+        !text(&ui)
+            .iter()
+            .any(|label| label.contains("Connect to power"))
     );
 }

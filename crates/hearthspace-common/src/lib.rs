@@ -14,7 +14,7 @@ pub const SHELL_BAR_APP_ID: &str = "dev.hearthspace.shell-bar";
 pub const LAUNCHER_APP_ID: &str = "dev.hearthspace.launcher";
 pub const CANVAS_MAP_APP_ID: &str = "dev.hearthspace.canvas-map";
 pub const NOTIFICATIONS_APP_ID: &str = "dev.hearthspace.notifications-panel";
-pub const CONTROL_CENTER_APP_ID: &str = "dev.hearthspace.control-center";
+pub const QUICK_PANEL_APP_ID: &str = "dev.hearthspace.quick-panel";
 pub const CONTROL_OSD_APP_ID: &str = "dev.hearthspace.control-osd";
 pub const POWER_MENU_APP_ID: &str = "dev.hearthspace.power-menu";
 pub const TRAY_MENU_APP_ID: &str = "dev.hearthspace.tray-menu";
@@ -90,8 +90,8 @@ pub fn power_menu_app_id_for_output(output_name: &str) -> String {
     shell_app_id_for_output(POWER_MENU_APP_ID, output_name)
 }
 
-pub fn control_center_app_id_for_output(output_name: &str) -> String {
-    shell_app_id_for_output(CONTROL_CENTER_APP_ID, output_name)
+pub fn quick_panel_app_id_for_output(output_name: &str) -> String {
+    shell_app_id_for_output(QUICK_PANEL_APP_ID, output_name)
 }
 
 pub fn control_osd_app_id_for_output(output_name: &str) -> String {
@@ -136,8 +136,8 @@ pub fn power_menu_output_name_from_app_id(app_id: &str) -> Option<Option<String>
     shell_output_name_from_app_id(POWER_MENU_APP_ID, app_id)
 }
 
-pub fn control_center_output_name_from_app_id(app_id: &str) -> Option<Option<String>> {
-    shell_output_name_from_app_id(CONTROL_CENTER_APP_ID, app_id)
+pub fn quick_panel_output_name_from_app_id(app_id: &str) -> Option<Option<String>> {
+    shell_output_name_from_app_id(QUICK_PANEL_APP_ID, app_id)
 }
 
 pub fn control_osd_output_name_from_app_id(app_id: &str) -> Option<Option<String>> {
@@ -154,7 +154,7 @@ pub fn shell_panel_output_name_from_app_id(app_id: &str) -> Option<Option<String
         .or_else(|| notifications_output_name_from_app_id(app_id))
         .or_else(|| power_menu_output_name_from_app_id(app_id))
         .or_else(|| tray_menu_output_name_from_app_id(app_id))
-        .or_else(|| control_center_output_name_from_app_id(app_id))
+        .or_else(|| quick_panel_output_name_from_app_id(app_id))
 }
 
 fn shell_app_id_for_output(base: &str, output_name: &str) -> String {
@@ -278,10 +278,7 @@ mod tests {
             ),
             (POWER_MENU_APP_ID, power_menu_app_id_for_output(output)),
             (TRAY_MENU_APP_ID, tray_menu_app_id_for_output(output)),
-            (
-                CONTROL_CENTER_APP_ID,
-                control_center_app_id_for_output(output),
-            ),
+            (QUICK_PANEL_APP_ID, quick_panel_app_id_for_output(output)),
         ] {
             assert_eq!(shell_panel_output_name_from_app_id(base), Some(None));
             assert_eq!(

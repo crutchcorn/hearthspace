@@ -3,7 +3,7 @@ use super::navigation::{action, query};
 use super::shell_panels::{click, connect};
 use super::*;
 use hearthspace_common::{
-    CANVAS_MAP_APP_ID, CONTROL_CENTER_APP_ID, LAUNCHER_APP_ID, NOTIFICATIONS_APP_ID, ShellCorner,
+    CANVAS_MAP_APP_ID, LAUNCHER_APP_ID, NOTIFICATIONS_APP_ID, QUICK_PANEL_APP_ID, ShellCorner,
     shell_corner_app_id,
 };
 use serde_json::Value;
@@ -181,7 +181,7 @@ fn four_corners_pin_controls_panels_and_maximized_work_area() {
     assert_eq!(query(&compositor, "status")["shell_corners"], corners);
     for (app_id, kind, expected_x, expected_y) in [
         (NOTIFICATIONS_APP_ID, "notifications", 24, 90),
-        (CONTROL_CENTER_APP_ID, "controls", 896, 90),
+        (QUICK_PANEL_APP_ID, "controls", 896, 90),
         (CANVAS_MAP_APP_ID, "map", 24, 550),
         (LAUNCHER_APP_ID, "search", 896, 550),
     ] {

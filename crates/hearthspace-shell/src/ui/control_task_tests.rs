@@ -66,7 +66,7 @@ fn late_readback_preserves_newer_slider_intent_without_opening_an_osd() {
 }
 
 #[test]
-fn control_center_successes_and_failures_leave_existing_osd_untouched() {
+fn status_dropdown_successes_and_failures_leave_existing_osd_untouched() {
     let mut state = ShellState::new("/unused".into(), vec!["eDP-1".into()]);
     apply(
         &mut state,
@@ -91,7 +91,14 @@ fn control_center_successes_and_failures_leave_existing_osd_untouched() {
             _ => audio(80),
         };
         for result in [Ok(reading), Err("Unavailable".into())] {
-            state.toggle_controls("eDP-1");
+            state.toggle_quick_panel(
+                "eDP-1",
+                if matches!(action, Action::SetBrightness(_)) {
+                    super::super::quick_panel::Kind::Brightness
+                } else {
+                    super::super::quick_panel::Kind::Sound
+                },
+            );
             apply(
                 &mut state,
                 Update::Finished(request(2, action), result, true),
@@ -199,7 +206,7 @@ fn recovered_device_clears_its_unavailable_error_without_showing_an_osd() {
 #[test]
 fn osd_replaces_previous_device_restarts_timeout_and_preserves_open_panel() {
     let mut state = ShellState::new("/unused".into(), vec!["eDP-1".into(), "HDMI-A-1".into()]);
-    state.toggle_controls("eDP-1");
+    state.toggle_quick_panel("eDP-1", super::super::quick_panel::Kind::Sound);
     state.controls.snapshot.brightness = Ok(Some(BrightnessStatus {
         percentage: 60,
         device: "panel".into(),

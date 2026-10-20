@@ -413,7 +413,7 @@ if it is missing. PipeWire's PulseAudio service and PulseAudio are both supporte
 missing utilities, servers, or outputs leave the control unavailable. Brightness
 uses kernel backlight readings and logind's existing active-session permissions,
 without new groups, udev rules, setuid helpers, or password prompts. See
-[control center](docs/CONTROL_CENTER.md).
+[audio and brightness](docs/AUDIO_AND_BRIGHTNESS.md).
 
 The native supervisor starts the notification daemon, permission store, document
 portal, GTK portal backend, desktop portal, and polkit agent after Wayland is ready.

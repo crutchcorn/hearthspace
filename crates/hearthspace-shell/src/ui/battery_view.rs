@@ -1,25 +1,11 @@
-//! Optional system battery presentation; machines without a battery use no space.
+//! Keep the tray and Battery dropdown in sync with system battery readings.
 use crate::battery::BatteryStatus;
-use hearthspace_ui_components as components;
 use xilem::{
-    WidgetView,
     core::{MessageProxy, NoElement, View},
-    style::Style,
-    view::{label, task_raw},
+    view::task_raw,
 };
 
 use super::state::ShellState;
-
-pub(super) fn detail(
-    battery: Option<&BatteryStatus>,
-) -> Option<impl WidgetView<ShellState> + use<>> {
-    battery.map(|battery| {
-        label(battery.accessible_label())
-            .text_size(13.0)
-            .color(components::TEXT_MUTED)
-            .line_break_mode(xilem::masonry::properties::LineBreaking::WordWrap)
-    })
-}
 
 pub(super) fn task() -> impl View<ShellState, (), xilem::ViewCtx, Element = NoElement> + use<> {
     task_raw(
