@@ -184,7 +184,7 @@ fn window_group_gathers_asynchronously_from_fixed_titles_and_restores_pinned_mat
     let server = mock::MockOllama::start();
     let mut compositor =
         HeadlessCompositor::spawn_with_command("1280x800", None, None, 1, false, |command| {
-            command.env("HEARTHSPACE_OLLAMA_URL", &server.url);
+            server.configure_enabled_model(command);
         });
     drop(compositor.wait_for_socket());
     let mut editors = Editors(Vec::new());
@@ -249,7 +249,7 @@ fn window_group_escape_cancels_stale_results_and_unavailable_model_keeps_layout(
     let server = mock::MockOllama::start();
     let mut compositor =
         HeadlessCompositor::spawn_with_command("1280x800", None, None, 1, false, |command| {
-            command.env("HEARTHSPACE_OLLAMA_URL", &server.url);
+            server.configure_enabled_model(command);
         });
     drop(compositor.wait_for_socket());
     let mut editors = Editors(Vec::new());
@@ -284,6 +284,13 @@ fn window_group_escape_cancels_stale_results_and_unavailable_model_keeps_layout(
     let failed = wait_group(&compositor, |status| {
         status["gathering"] == false && status["error"].is_string()
     });
+    assert!(
+        failed["error"]
+            .as_str()
+            .unwrap()
+            .contains("Cannot reach local Ollama"),
+        "the enabled model is offline, not disabled: {failed}"
+    );
     assert_eq!(failed["selected"], json!([first]));
     assert_eq!(window(&compositor, second)["canvas_x"], 9000);
     action(&compositor, "quit");
