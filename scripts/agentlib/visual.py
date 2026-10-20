@@ -153,7 +153,9 @@ def move_resize(smoke, window, visible, initial):
     smoke.record("move-visible", marker_bounds=landmark)
     x, y = moved["x"] + moved["width"] - 2, moved["y"] + moved["height"] - 2
     with Input(smoke.control) as inputs:
-        inputs.drag(x, y, x - 80, y - 48)
+        # Leave the sampled old edge beyond the new frame's 144px shadow
+        # extent, so the strict comparison still sees untouched wallpaper.
+        inputs.drag(x, y, x - 192, y - 48)
     resized = smoke.until(
         "window resize", lambda: smoke.changed(moved, ("width", "height"))
     )
