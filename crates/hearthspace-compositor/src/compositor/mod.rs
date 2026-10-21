@@ -10,6 +10,7 @@ use crate::{RunOptions, config::*, geometry::CanvasPoint};
 use hearthspace_shell::app_catalog::AppCatalog;
 
 mod appearance;
+mod canvas_preview;
 mod canvas_search;
 mod capture;
 mod client;
@@ -287,6 +288,7 @@ struct App {
     layout_store: layout::LayoutStore,
     desktop: desktop::State,
     canvas_search: canvas_search::State,
+    canvas_preview: canvas_preview::State,
     viewport_scale: f64,
     viewport_animation: Option<ViewportAnimation>,
     overview: overview::Overview,
@@ -677,6 +679,7 @@ pub(in crate::compositor) fn initialize_app(
         layout_store,
         desktop: Default::default(),
         canvas_search: Default::default(),
+        canvas_preview: Default::default(),
         viewport_animation: None,
         overview: overview::Overview::default(),
         window_switcher: switcher::WindowSwitcher::default(),

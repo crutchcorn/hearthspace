@@ -26,6 +26,9 @@ fn switcher_shortcut(
     if symbol == keysyms::KEY_Escape {
         return Some(Shortcut::SwitcherCancel);
     }
+    if matches!(symbol, keysyms::KEY_Return | keysyms::KEY_KP_Enter) {
+        return Some(Shortcut::SwitcherCommit);
+    }
     match shortcut(modifiers, symbol) {
         Some(Shortcut::Lock) => Some(Shortcut::Lock),
         action @ Some(Shortcut::Next | Shortcut::Previous)
@@ -65,6 +68,11 @@ mod tests {
                 switcher_shortcut(&mods, keysyms::KEY_Escape, source),
                 Some(Shortcut::SwitcherCancel)
             );
+            assert_eq!(
+                switcher_shortcut(&mods, keysyms::KEY_Return, source),
+                Some(Shortcut::SwitcherCommit)
+            );
+            assert_eq!(switcher_shortcut(&mods, keysyms::KEY_Left, source), None);
             assert_eq!(switcher_shortcut(&mods, keysyms::KEY_F4, source), None);
         }
     }

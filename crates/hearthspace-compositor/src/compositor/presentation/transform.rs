@@ -8,7 +8,7 @@ impl App {
         index: usize,
     ) -> Point<f64, Logical> {
         let origin = self.base_window_surface_screen_origin(index);
-        if let Some((pose, _)) = self.canvas_search_pose(index) {
+        if let Some((pose, _)) = self.canvas_preview_pose(index) {
             let base = self.base_window_screen_bounds(index);
             let scale = pose.width / f64::from(base.size.w.max(1));
             return Point::from((
@@ -59,7 +59,7 @@ impl App {
         &self,
         index: usize,
     ) -> Rectangle<i32, Logical> {
-        if let Some((pose, _)) = self.canvas_search_pose(index) {
+        if let Some((pose, _)) = self.canvas_preview_pose(index) {
             return Rectangle::new(
                 (pose.x.round() as i32, pose.y.round() as i32).into(),
                 (pose.width.round() as i32, pose.height.round() as i32).into(),
@@ -119,7 +119,7 @@ impl App {
         &self,
         output: Rectangle<i32, Logical>,
     ) -> bool {
-        if self.canvas_search_active() {
+        if self.canvas_preview_active() {
             return false;
         }
         // Launcher activation always provides an escape from fullscreen.
@@ -159,13 +159,16 @@ impl App {
         if !self.windows[index].mapped {
             return false;
         }
+        if self.is_window_switcher_caption(index) {
+            return self.window_switcher_caption_visible(index);
+        }
         if self.is_canvas_search_panel(index) {
             return self.canvas_search_panel_allowed(index);
         }
         if self.canvas_search_result_identity(index).is_some() {
             return self.canvas_search_result_visible(index);
         }
-        if self.canvas_search_active() && !self.windows[index].kind.is_shell_chrome() {
+        if self.canvas_preview_active() && !self.windows[index].kind.is_shell_chrome() {
             return true;
         }
         if self.windows[index].kind == super::super::ManagedWindowKind::ControlOsd {

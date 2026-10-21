@@ -30,7 +30,7 @@ impl App {
         // bounds while a client is still handling its configure. Match the
         // current frame and hit rectangles instead of stretching old controls.
         let pinned =
-            self.window_uses_output_coordinates(index) && self.canvas_search_pose(index).is_none();
+            self.window_uses_output_coordinates(index) && self.canvas_preview_pose(index).is_none();
         let native = if pinned {
             screen.size
         } else {
@@ -86,7 +86,7 @@ impl App {
                     ),
                     &part.raster.buffer,
                     Some(
-                        self.canvas_search_pose(index)
+                        self.canvas_preview_pose(index)
                             .map_or(1., |(_, alpha)| alpha as f32),
                     ),
                     Some(source),

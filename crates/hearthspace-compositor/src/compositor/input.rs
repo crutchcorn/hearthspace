@@ -206,6 +206,9 @@ pub(in crate::compositor) fn handle_input_event<B: InputBackend>(
             {
                 state.cancel_titlebar_pointer();
                 state.cancel_canvas_search_touch();
+                if state.window_switcher_active() {
+                    state.cancel_window_switcher_touch();
+                }
             }
             state.favorite_touch_up(&event.device().id(), event.slot(), true);
             state.end_ui_touch(&event.device().id(), event.slot(), true, event.time());

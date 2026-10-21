@@ -36,6 +36,7 @@ enum Shortcut {
     OverviewNext,
     OverviewPrevious,
     SwitcherCancel,
+    SwitcherCommit,
     ShellPanelDismiss,
     ShellCornerCycle { reverse: bool },
     Terminal,
@@ -198,6 +199,14 @@ impl App {
                             .insert(code)
                             .then_some(Shortcut::CanvasSearch(action)),
                     )
+                } else if state == KeyState::Pressed
+                    && app.canvas_search_active()
+                    && let Some(action @ (Shortcut::Next | Shortcut::Previous)) =
+                        shortcut(modifiers, symbol)
+                {
+                    FilterResult::Intercept(
+                        app.shortcuts.intercepted.insert(code).then_some(action),
+                    )
                 } else if app.overview_active() {
                     app.shortcuts
                         .filter_overview(code, state, modifiers, symbol)
@@ -276,6 +285,10 @@ impl App {
                 }
                 return;
             }
+            Shortcut::SwitcherCommit => {
+                self.dismiss_window_switcher(false);
+                return;
+            }
             Shortcut::SwitcherCancel => {
                 self.dismiss_window_switcher(true);
                 return;
@@ -322,6 +335,7 @@ impl App {
             | Shortcut::OverviewActivate
             | Shortcut::OverviewNext
             | Shortcut::OverviewPrevious
+            | Shortcut::SwitcherCommit
             | Shortcut::SwitcherCancel
             | Shortcut::ShellPanelDismiss
             | Shortcut::ShellCornerCycle { .. }

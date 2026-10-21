@@ -16,7 +16,7 @@ impl App {
         &self,
         location: Point<f64, Logical>,
     ) -> Option<HitTarget> {
-        if self.session_locked() {
+        if self.session_locked() || self.window_switcher_active() {
             return None;
         }
         // Shell chrome (the bar and the launcher palette) is drawn in screen
@@ -28,6 +28,7 @@ impl App {
                 .unwrap_or_else(|| self.primary_output_logical_rect());
             if (self.canvas_search_active() && !self.canvas_search_panel_allowed(window_index))
                 || self.canvas_search_result_identity(window_index).is_some()
+                || self.is_window_switcher_caption(window_index)
                 || !window.mapped
                 || (!self.canvas_search_panel_allowed(window_index)
                     && !self.shell_visible_on_output(output))

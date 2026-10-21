@@ -137,6 +137,63 @@ fn remote_keyboard_keymaps_modifiers_disconnects_and_lock_preserve_local_input()
 }
 
 #[test]
+fn remote_keyboard_disconnect_preserves_active_search_previews_and_selection() {
+    let _guard = headless_test_guard();
+    let mut compositor =
+        HeadlessCompositor::spawn_with_remote_options("1280x800", None, None, 1, true);
+    drop(compositor.wait_for_socket());
+    let mut client = super::shell_panels::connect(&compositor);
+    let app = client.add("Search window".into(), (500, 320), (0, 0), [0, 128, 0, 255]);
+    action(&compositor, "canvas-search-motion false");
+    action(&compositor, "canvas-search-open");
+    let search = query(&compositor, "canvas-search-status");
+    action(
+        &compositor,
+        format!(
+            "canvas-search-update {}",
+            serde_json::json!({
+                "session": search["session"], "query":"window", "handwriting":false,
+            })
+        ),
+    );
+    let search = query(&compositor, "canvas-search-status");
+    let field = client.add(
+        hearthspace_common::canvas_search_app_id(
+            search["session"].as_u64().unwrap(),
+            search["output"].as_str(),
+        ),
+        (420, 54),
+        (0, 0),
+        [255, 255, 255, 255],
+    );
+    assert_eq!(client.focus(), Some(field));
+    let before = query(&compositor, "canvas-search-status");
+    assert_eq!(before["result_count"], 1);
+    assert_eq!(before["scene"].as_array().unwrap().len(), 1);
+    let mut remote = RemoteClient::connect(&socket(&compositor));
+    remote.set_keymap(&keymap());
+    remote.key(42, true);
+    remote.destroy_keyboard(); // Teardown resets its held switcher chord too.
+    let after = query(&compositor, "canvas-search-status");
+    assert_eq!(after["active"], true);
+    assert_eq!(after["session"], before["session"]);
+    assert_eq!(after["query"], "window");
+    assert_eq!(
+        after["scene"], before["scene"],
+        "unrelated switcher reset erased search poses"
+    );
+    assert_eq!(client.focus(), Some(field));
+
+    // The preserved pose must still participate in compositor hit testing.
+    let bounds = &after["scene"][0]["display"];
+    let x = bounds["x"].as_f64().unwrap() + bounds["width"].as_f64().unwrap() / 2.0;
+    let y = bounds["y"].as_f64().unwrap() + bounds["height"].as_f64().unwrap() / 2.0;
+    super::shell_panels::click(&compositor, x, y);
+    assert_eq!(query(&compositor, "canvas-search-status")["active"], false);
+    assert_eq!(client.focus(), Some(app));
+}
+
+#[test]
 fn remote_pointer_maps_scaled_output_and_releases_drag_on_disconnect() {
     use super::interactive::client::InteractiveClient;
     let _guard = headless_test_guard();

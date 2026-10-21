@@ -67,6 +67,9 @@ impl App {
         &self,
         window_index: usize,
     ) -> Option<Point<i32, Logical>> {
+        if self.is_window_switcher_caption(window_index) {
+            return self.window_switcher_caption_origin(window_index);
+        }
         if self.is_canvas_search_panel(window_index)
             || self.canvas_search_result_identity(window_index).is_some()
         {

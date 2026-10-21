@@ -34,7 +34,12 @@ impl App {
             self.windows[index].pending_resize = None;
             self.favorite_window_unmapped(id);
         }
-        if mapped && self.windows[index].kind == super::super::ManagedWindowKind::ControlOsd {
+        if mapped && self.is_window_switcher_caption(index) {
+            if !self.window_switcher_caption_visible(index) {
+                self.windows[index].surface.send_close();
+            }
+        } else if mapped && self.windows[index].kind == super::super::ManagedWindowKind::ControlOsd
+        {
             if self.session_locked() {
                 self.windows[index].surface.send_close();
             }

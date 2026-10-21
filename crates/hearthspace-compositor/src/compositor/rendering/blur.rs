@@ -80,7 +80,7 @@ impl App {
             }
             if self.canvas_search_result_identity(index).is_some() {
                 live.insert(window.id);
-                if let Some((pose, alpha)) = self.canvas_search_pose(index)
+                if let Some((pose, alpha)) = self.canvas_preview_pose(index)
                     && self.window_visible_on_output(index, output)
                     && alpha > 0.0
                 {
@@ -96,6 +96,27 @@ impl App {
                             radius: (hearthspace_common::SHELL_CORNER_RADIUS * pose.width / 240.0
                                 * f64::from(scale)) as f32,
                             alpha: alpha as f32,
+                        });
+                    }
+                }
+                continue;
+            }
+            if self.is_window_switcher_caption(index) {
+                live.insert(window.id);
+                if self.window_switcher_caption_visible(index)
+                    && let Some(caption) = self.window_switcher_caption_rect()
+                {
+                    let logical = Rectangle::new(
+                        (caption.x.round() as i32, caption.y.round() as i32).into(),
+                        (caption.width.round() as i32, caption.height.round() as i32).into(),
+                    );
+                    if logical.overlaps(output) && logical.size.w > 0 && logical.size.h > 0 {
+                        regions.push(CornerRegion {
+                            id: window.id,
+                            rect: Rectangle::new(logical.loc - output.loc, logical.size)
+                                .to_physical(scale),
+                            radius: 10. * scale as f32,
+                            alpha: 1.,
                         });
                     }
                 }

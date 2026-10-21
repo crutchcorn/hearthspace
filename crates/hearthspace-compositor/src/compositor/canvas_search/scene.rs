@@ -1,4 +1,5 @@
-use super::{App, ManagedWindowKind, Rect, ResultItem, motion::Pose, window_app_id, window_title};
+use super::{App, ManagedWindowKind, Rect, ResultItem, window_app_id, window_title};
+use crate::compositor::canvas_preview::Pose;
 use hearthspace_common::canvas_search::{layout, matches, park};
 use smithay::utils::{Logical, Rectangle};
 use std::{
@@ -195,7 +196,7 @@ impl App {
                 },
             );
         }
-        let now = self.canvas_search_motion_start();
+        let now = self.canvas_preview_motion_start();
         let mut changed = false;
         for item in &sources {
             let Some(window) = item.window else { continue };
@@ -209,7 +210,7 @@ impl App {
                 }
             });
             let opacity = if is_match { 1. } else { 0. };
-            let previous = self.canvas_search.poses.get(&window);
+            let previous = self.canvas_preview.poses.get(&window);
             if previous
                 .is_some_and(|p| p.to == to && p.to_opacity == opacity && p.natural == item.natural)
             {
@@ -222,7 +223,7 @@ impl App {
                     (item.natural, 1.)
                 },
             );
-            self.canvas_search.poses.insert(
+            self.canvas_preview.poses.insert(
                 window,
                 Pose {
                     from,
@@ -243,7 +244,9 @@ impl App {
             .filter(|w| w.mapped)
             .map(|w| w.id)
             .collect();
-        self.canvas_search.poses.retain(|id, _| mapped.contains(id));
+        self.canvas_preview
+            .poses
+            .retain(|id, _| mapped.contains(id));
         let s = self.canvas_search.session.as_mut().unwrap();
         let mut field = layout.field.rect;
         if results.is_empty() {

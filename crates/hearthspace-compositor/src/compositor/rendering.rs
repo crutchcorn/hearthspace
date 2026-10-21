@@ -143,7 +143,7 @@ impl App {
         // for monitor DPI before this output-local translation.
         let tiles = if self.session_locked()
             || (!self.overview_active()
-                && !self.canvas_search_presenting()
+                && !self.canvas_preview_presenting()
                 && self.fullscreen_on_output(output_rect))
         {
             Vec::new()
@@ -220,7 +220,8 @@ impl App {
                     window.mapped
                         && (window.kind == ManagedWindowKind::Normal
                             || self.canvas_search_panel_allowed(*index)
-                            || self.canvas_search_result_visible(*index))
+                            || self.canvas_search_result_visible(*index)
+                            || self.window_switcher_caption_visible(*index))
                 })
                 .map(|(_, window)| window.id)
                 .collect(),
@@ -236,8 +237,6 @@ impl App {
         for element in self.software_cursor_elements(renderer, output_rect) {
             elements.push(element);
         }
-
-        elements.extend(self.collect_window_switcher_elements(renderer, output_rect));
 
         let mut group_elements = self.collect_group_elements(renderer, output_rect);
         let mut desktop_start = None;
@@ -257,7 +256,7 @@ impl App {
                 continue;
             }
             let front = elements.len();
-            elements.extend(self.canvas_search_selection_elements(renderer, index));
+            elements.extend(self.canvas_preview_selection_elements(renderer, index));
             // Popups (e.g. menus) render above their window's content and chrome.
             for popup in self.popup_render_elements(renderer, index) {
                 elements.push(popup);
@@ -272,7 +271,7 @@ impl App {
             let scale = self.window_render_scale(index);
             let server_side = self.has_compositor_chrome(index);
             let id = self.windows[index].id;
-            let active = !self.canvas_search_active() && self.focused_normal_window_id == Some(id);
+            let active = !self.canvas_preview_active() && self.focused_normal_window_id == Some(id);
             let frame = (self.is_navigable_window(index)
                 && !self.windows[index].presentation.fullscreen)
                 .then(|| self.normal_window_screen_rect(index))
@@ -284,10 +283,10 @@ impl App {
                         rect,
                         scale,
                         active,
-                        !self.canvas_search_active() && hovered_window == Some(id),
+                        !self.canvas_preview_active() && hovered_window == Some(id),
                         server_side,
                         self.background_image_path.is_some(),
-                        self.canvas_search_pose(index)
+                        self.canvas_preview_pose(index)
                             .map_or(1., |(_, alpha)| alpha as f32),
                     )
                 });
@@ -347,7 +346,7 @@ impl App {
                     1.,
                 ))
             } else if self.canvas_search_result_visible(index)
-                && let Some((pose, alpha)) = self.canvas_search_pose(index)
+                && let Some((pose, alpha)) = self.canvas_preview_pose(index)
             {
                 Some((
                     Rectangle::new(
@@ -365,6 +364,23 @@ impl App {
                 && let Some(shadow) = self
                     .window_frames
                     .panel_shadow(renderer, id, rect, zoom, emphasized, opacity)
+            {
+                elements.push(HearthspaceRenderElement::from(shadow));
+            }
+            if self.window_switcher_caption_visible(index)
+                && let Some(caption) = self.window_switcher_caption_rect()
+                && let Some(shadow) = self.window_frames.rounded_panel_shadow(
+                    renderer,
+                    id,
+                    Rectangle::new(
+                        (caption.x.round() as i32, caption.y.round() as i32).into(),
+                        (caption.width.round() as i32, caption.height.round() as i32).into(),
+                    ),
+                    1.,
+                    false,
+                    1.,
+                    10.,
+                )
             {
                 elements.push(HearthspaceRenderElement::from(shadow));
             }
@@ -386,13 +402,13 @@ impl App {
                     .then(|| self.title_bar_rect(index)),
                     zoom: scale,
                     opacity: self
-                        .canvas_search_pose(index)
+                        .canvas_preview_pose(index)
                         .map_or(1., |(_, alpha)| alpha as f32),
                 });
             }
             // Fullscreen content must not reveal unrelated windows through
             // transparent pixels or around a smaller-than-requested buffer.
-            if self.windows[index].presentation.fullscreen && !self.canvas_search_presenting() {
+            if self.windows[index].presentation.fullscreen && !self.canvas_preview_presenting() {
                 break;
             }
         }
@@ -586,14 +602,14 @@ impl App {
             // Built at native scale; the viewport zoom is applied by wrapping
             // these elements in a `RescaleRenderElement` in the caller.
             1.0,
-            self.canvas_search_pose(window_index)
+            self.canvas_preview_pose(window_index)
                 .map_or(1.0, |(_, alpha)| alpha as f32),
             Kind::Unspecified,
         )
     }
 
     pub(super) fn window_render_scale(&self, window_index: usize) -> f64 {
-        if let Some((pose, _)) = self.canvas_search_pose(window_index) {
+        if let Some((pose, _)) = self.canvas_preview_pose(window_index) {
             if self.canvas_search_result_identity(window_index).is_some() {
                 return pose.width / 240.;
             }

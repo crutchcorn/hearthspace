@@ -37,6 +37,7 @@ impl App {
     pub(in crate::compositor) fn is_shell_panel(&self, index: usize) -> bool {
         self.windows[index].kind == ManagedWindowKind::Launcher
             && self.canvas_search_result_identity(index).is_none()
+            && !self.is_window_switcher_caption(index)
     }
 
     pub(in crate::compositor) fn is_search_panel(&self, index: usize) -> bool {
