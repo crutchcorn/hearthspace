@@ -190,6 +190,19 @@ fn placement_inspector_sends_session_guarded_actions_and_real_date_choices() {
             bounds.x0 >= 0.0 && bounds.x1 <= 260.0 && bounds.y0 >= 0.0 && bounds.y1 <= 54.0,
             "{name}: {bounds:?}"
         );
+        assert_eq!(bounds.width(), 44.0, "{name} keeps its reference hit width");
+    }
+    for name in ["Shrink to icon", "Remove from group"] {
+        assert_eq!(
+            ui.harness
+                .access_node(ui.button(name))
+                .unwrap()
+                .bounding_box()
+                .unwrap()
+                .width(),
+            123.0,
+            "options divide the available row equally"
+        );
     }
 }
 

@@ -19,7 +19,10 @@ use xilem::{
         properties::{LineBreaking, Padding},
     },
     style::Style,
-    view::{CrossAxisAlignment, FlexExt, button, flex_col, flex_row, label, portal, sized_box},
+    view::{
+        CrossAxisAlignment, FlexExt, MainAxisAlignment, button, flex_col, flex_row, label, portal,
+        sized_box,
+    },
 };
 
 pub(super) fn window(state: &ShellState) -> Option<WindowView<ShellState>> {
@@ -153,6 +156,7 @@ pub(super) fn view(state: &ShellState) -> impl WidgetView<ShellState> + use<> {
                 "toggle-expanded",
                 palette,
             )
+            .flex(1.0)
         });
         let group = grouped.then(|| {
             text_action(
@@ -170,6 +174,7 @@ pub(super) fn view(state: &ShellState) -> impl WidgetView<ShellState> + use<> {
                 "ungroup",
                 palette,
             )
+            .flex(1.0)
         });
         separated(
             flex_row((details, group)).gap(4.0.px()).height(44.0.px()),
@@ -264,7 +269,7 @@ fn action(
     palette: Palette,
 ) -> impl WidgetView<ShellState> + use<> {
     super::tooltip::hint(
-        crate::ui::canvas_search::material::control(
+        sized_box(crate::ui::canvas_search::material::control(
             button(
                 icon(glyph, 19.0).color(palette.text).label(name),
                 move |state: &mut ShellState| super::command(state, action, serde_json::json!({})),
@@ -275,7 +280,9 @@ fn action(
             .corner_radius(15.0.px()),
             selected,
             palette,
-        ),
+        ))
+        .fixed_width(44.0.px())
+        .fixed_height(44.0.px()),
         if action == "done" { "Done" } else { name },
     )
 }
@@ -296,6 +303,7 @@ fn text_action(
                     .text_size(12.0)
                     .color(palette.text),
             ))
+            .main_axis_alignment(MainAxisAlignment::Center)
             .gap(8.0.px()),
             accessible_name,
             None,
