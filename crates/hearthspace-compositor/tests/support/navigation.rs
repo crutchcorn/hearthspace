@@ -176,7 +176,9 @@ fn navigation_maps_focuses_cycles_reveals_resizes_and_closes_real_clients() {
         wait_activation(&compositor, number, number + 1);
     }
 
-    for id in [ids[0], ids[1], ids[2]] {
+    // Each completed chord raises its choice, so quick Alt+Tab toggles the
+    // two most recent windows instead of continuing a previous session.
+    for id in [ids[1], ids[2]] {
         keys(&compositor, &[56, 15]); // Alt+Tab uses the same handler as real keys.
         wait_windows(&compositor, |windows| {
             windows
@@ -184,12 +186,15 @@ fn navigation_maps_focuses_cycles_reveals_resizes_and_closes_real_clients() {
                 .any(|window| window["id"] == id && window["focused"] == true)
         });
     }
-    keys(&compositor, &[56, 42, 15]);
-    wait_windows(&compositor, |windows| {
-        windows
-            .iter()
-            .any(|window| window["id"] == ids[1] && window["focused"] == true)
-    });
+    // Reverse starts at the oldest window in each fresh front-to-back list.
+    for id in [ids[0], ids[1]] {
+        keys(&compositor, &[56, 42, 15]);
+        wait_windows(&compositor, |windows| {
+            windows
+                .iter()
+                .any(|window| window["id"] == id && window["focused"] == true)
+        });
+    }
     wait_activation(&compositor, 1, 3);
 
     action(&compositor, format!("move-window {} 9000 -7000", ids[0]));
