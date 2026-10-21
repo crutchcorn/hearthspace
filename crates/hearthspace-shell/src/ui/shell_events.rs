@@ -335,6 +335,16 @@ fn apply_request(state: &mut ShellState, request: ShellRequest) {
             .iter()
             .any(|output| output.key() == key && output.show_search)
     {
+        if super::frame_layout::popups::defer(
+            state,
+            &key,
+            super::frame_layout::popups::Popup::AppsRequest {
+                token: request.token,
+                toggle: request.toggle,
+            },
+        ) {
+            return;
+        }
         state.toggle_search(&key);
         if let Some(output) = state
             .outputs

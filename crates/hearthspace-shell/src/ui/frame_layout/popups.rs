@@ -4,6 +4,7 @@ use crate::ui::{quick_panel::Kind, state::ShellState};
 #[derive(Clone, Debug)]
 pub(in crate::ui) enum Popup {
     Apps,
+    AppsRequest { token: u64, toggle: bool },
     Notifications,
     Power,
     Map,
@@ -21,6 +22,10 @@ pub(in crate::ui) fn defer(state: &mut ShellState, key: &str, popup: Popup) -> b
     };
     let (id, app_id) = match &popup {
         Popup::Apps => ("apps", output.launcher_app_id()),
+        Popup::AppsRequest { token, .. } => (
+            "apps",
+            hearthspace_common::launcher_app_id_for_request(output.output_name.as_deref(), *token),
+        ),
         Popup::Notifications => ("notifications", output.notifications_app_id()),
         Popup::Power => ("power", output.power_app_id()),
         Popup::Map => ("tools", output.map_app_id()),
@@ -66,13 +71,32 @@ pub(in crate::ui) fn defer(state: &mut ShellState, key: &str, popup: Popup) -> b
     }
 }
 
-pub(super) fn open(state: &mut ShellState, key: &str, popup: Popup) {
+pub(in crate::ui) fn open(state: &mut ShellState, key: &str, popup: Popup) {
     if state.frame_layout.snapshot.editing {
         return;
     }
     state.frame_layout.opening_popup = true;
     match popup {
         Popup::Apps => state.toggle_search(key),
+        Popup::AppsRequest { token, toggle } => {
+            // The anchor acknowledgement is asynchronous. Preserve a newer open
+            // launcher's query, and attach the accepted token only to this opening.
+            if toggle
+                || !state
+                    .outputs
+                    .iter()
+                    .any(|output| output.key() == key && output.show_search)
+            {
+                state.toggle_search(key);
+                if let Some(output) = state
+                    .outputs
+                    .iter_mut()
+                    .find(|output| output.key() == key && output.show_search)
+                {
+                    output.search_request_token = Some(token);
+                }
+            }
+        }
         Popup::Notifications => state.toggle_notifications(key),
         Popup::Power => state.toggle_power(key),
         Popup::Map => state.toggle_map(key),
@@ -82,3 +106,7 @@ pub(super) fn open(state: &mut ShellState, key: &str, popup: Popup) {
     }
     state.frame_layout.opening_popup = false;
 }
+
+#[cfg(test)]
+#[path = "popups_tests.rs"]
+pub(in crate::ui) mod tests;
