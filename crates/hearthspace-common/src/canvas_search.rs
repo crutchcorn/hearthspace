@@ -7,7 +7,7 @@ pub use identity::{
     canvas_search_app_id, canvas_search_from_app_id, canvas_search_result_app_id,
     canvas_search_result_from_app_id,
 };
-pub use layout::layout;
+pub use layout::{layout, window_switcher_layout};
 
 /// Bound both native text drafts and compositor query updates in UTF-8 bytes.
 pub const MAX_QUERY_BYTES: usize = 4096;
@@ -87,5 +87,7 @@ pub fn park(item: Rect, view: Rect) -> Placement {
     }
 }
 
+#[cfg(test)]
+mod switcher_tests;
 #[cfg(test)]
 mod tests;

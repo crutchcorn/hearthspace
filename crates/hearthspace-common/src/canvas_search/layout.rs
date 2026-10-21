@@ -11,7 +11,13 @@ struct Grid {
     score: f64,
 }
 
-fn fit_grid(count: usize, available_width: f64, available_height: f64, large: bool) -> Grid {
+fn fit_grid(
+    count: usize,
+    available_width: f64,
+    available_height: f64,
+    large: bool,
+    caption_space: f64,
+) -> Grid {
     let initial = ((available_width + 18.0) / if large { 258.0 } else { 114.0 })
         .floor()
         .max(1.0) as usize;
@@ -22,10 +28,10 @@ fn fit_grid(count: usize, available_width: f64, available_height: f64, large: bo
         let rows = count.div_ceil(columns).max(1) as f64;
         let cols = columns as f64;
         let column_gap = 18.0_f64.min(available_width / (cols * 4.0));
-        let row_gap = 18.0_f64.min(available_height / (rows * 4.0));
+        let row_gap = caption_space.max(18.0_f64.min(available_height / (rows * 4.0)));
         let cell_width = desired_width.min((available_width - column_gap * (cols - 1.0)) / cols);
         let cell_height = desired_height
-            .min((available_height - row_gap * (rows - 1.0)) / rows)
+            .min((available_height - row_gap * (rows - 1.0) - caption_space) / rows)
             .max(0.0);
         Grid {
             columns,
@@ -34,7 +40,7 @@ fn fit_grid(count: usize, available_width: f64, available_height: f64, large: bo
             cell_width,
             cell_height,
             width: cols * cell_width + (cols - 1.0) * column_gap,
-            height: rows * cell_height + (rows - 1.0) * row_gap,
+            height: rows * cell_height + (rows - 1.0) * row_gap + caption_space,
             score: (cell_width / desired_width).min(cell_height / desired_height),
         }
     };
@@ -115,6 +121,7 @@ pub fn layout(
         available_width,
         available_height,
         large_results,
+        0.0,
     );
     let origin_x = view.x + (view.width - grid.width) / 2.0;
     let origin_y = if results_above {
@@ -122,7 +129,24 @@ pub fn layout(
     } else {
         y + height + 24.0 + handwriting_height
     };
-    let placements = sizes
+    let placements = place(sizes, &grid, origin_x, origin_y);
+    Layout {
+        field: Field {
+            rect: Rect {
+                x,
+                y,
+                width,
+                height,
+            },
+            results_above,
+            handwriting_height,
+        },
+        placements,
+    }
+}
+
+fn place(sizes: &[(f64, f64)], grid: &Grid, origin_x: f64, origin_y: f64) -> Vec<Placement> {
+    sizes
         .iter()
         .enumerate()
         .map(|(index, &(width, height))| {
@@ -140,18 +164,29 @@ pub fn layout(
                 matches: true,
             }
         })
-        .collect();
-    Layout {
-        field: Field {
-            rect: Rect {
-                x,
-                y,
-                width,
-                height,
-            },
-            results_above,
-            handwriting_height,
-        },
-        placements,
-    }
+        .collect()
+}
+
+/// Center all live window previews, with room below each row for the selected
+/// title. Sizes include window decorations and stay in the session's MRU order.
+pub fn window_switcher_layout(view: Rect, sizes: &[(f64, f64)]) -> Vec<Placement> {
+    let compact = view.width <= 760.0;
+    let side = if compact { 12.0_f64 } else { 24.0_f64 }.min((view.width - 1.0).max(0.0) / 2.0);
+    let vertical =
+        if compact { 78.0_f64 } else { 96.0_f64 }.min((view.height - 36.0).max(0.0) / 2.0);
+    let available_width = (view.width - side * 2.0).max(1.0);
+    let available_height = (view.height - vertical * 2.0).max(1.0);
+    let grid = fit_grid(
+        sizes.len(),
+        available_width,
+        available_height,
+        true,
+        36.0_f64.min(available_height),
+    );
+    place(
+        sizes,
+        &grid,
+        view.x + (view.width - grid.width) / 2.0,
+        view.y + vertical + (available_height - grid.height) / 2.0,
+    )
 }
