@@ -234,9 +234,10 @@ are recorded separately from passing cases.
 
 `scripts/window-switcher-smoke --session /tmp/hearthspace-window-switcher-1`
 checks held Alt+Tab/Alt+Shift+Tab and left/right swipes with four touchpad contacts
-and four/five touchscreen contacts. It observes intermediate viewport positions
-during the 180 ms pan, verifies the selected client's focus and colored live
-preview pixels, and captures the revealed window after release. Input ownership,
+and four/five touchscreen contacts. It observes intermediate preview geometry
+during the grid animation, verifies unchanged focus and viewport while held,
+checks each client's colored live pixels, and captures the revealed window after
+release. Input ownership,
 Escape rollback, stale gesture events, and a touchscreen contact held across Alt
 release are checked too. A temporary keyboard is unplugged with Alt held; the
 test checks overlay cleanup and types a file-writing command to prove modifier
@@ -246,9 +247,10 @@ tests; it owns and cleans up its native session and temporary input devices.
 
 Unlocked `status.window_switcher` reports `active`, `source` (`keyboard` or
 `gesture`), `selected_window_id`, the stable `window_ids`, output, and visible
-preview `items`. The compact strip can show a subset when many windows are open.
-Use `viewport.animating: false` to wait for a completed focus pan. The held input
-must still be released separately; a settled viewport does not close the overlay.
+preview `items`. All windows fit into the spatial grid. Use
+`window_switcher.animating: false` to wait for preview motion to finish, including
+the exit transition. The held input must still be released separately; settled
+previews do not close the switcher.
 
 Agents can use `scripts/hearthspace-agent --session PATH overview on` (also
 `off`/`toggle`) and `overview-select WINDOW_ID`. Unlocked `status` includes an
@@ -321,6 +323,19 @@ Mutter display power on, and both background T3 services active.
 Final switcher checks passed: 513 Rust tests with E2E/accessibility enabled,
 269 Python tests with E2E enabled, rustfmt, Clippy with warnings denied, Ruff, and
 the full native/test-target build.
+
+The spatial switcher refresh passed all 12 native smoke steps on 2026-10-21 in
+`/tmp/hearthspace-window-switcher/native-vt-kdgury8l`, on the same AMD/amdgpu laptop
+with kernel `7.0.0-38` and eDP-1 at 2560×1600, scale 2. The updated proof checks
+fixed focus, viewport, and saved window geometry while held; stable MRU order;
+intermediate live preview poses; and activation only on release. Keyboard,
+touchpad, four/five-contact touchscreen, cancellation, competing input, late touch
+release, and keyboard unplug recovery passed. Page-flip captures retain the live
+client markers and selected title badge. Cleanup restored tty2 and removed the
+owned service and runtime. Separate native-shell screenshot reviews covered
+light/dark themes, photo backgrounds, 1×/2× scales, a 700×600 output, and reduced
+motion under `/tmp/hearthspace-window-switcher/native-review-3`,
+`native-compact-1`, and `native-reduced-1`.
 
 `scripts/touch-drag-smoke --session /tmp/hearthspace-touch-drag-1` tests one-finger
 window movement through the same uinput/libinput touchscreen path. It uses a

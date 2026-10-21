@@ -30,6 +30,10 @@ Ctrl+K or Super+K opens canvas search, which temporarily arranges matching deskt
 objects and live windows around a native search field. Its toolbar button arms
 click-to-open Search mode. This is independent of Apps List.
 
+Alt+Tab opens the [live window grid](WINDOW_MANAGEMENT.md#held-window-switcher),
+with an accent outline and a glass title badge below the selected preview.
+Alt release commits; Shift reverses cycling and Escape cancels.
+
 Super+F6 moves keyboard focus through Notifications, System tray, Canvas tools,
 and App dock on the active output. Super+Shift+F6 moves backward. Tab navigates
 within a corner; Enter activates its focused control. Escape closes an open panel
