@@ -2,7 +2,7 @@ use smithay::utils::{Logical, Point, Rectangle};
 
 use crate::config::{MAX_ZOOM, MIN_ZOOM};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct CanvasPoint {
     pub x: i32,
     pub y: i32,

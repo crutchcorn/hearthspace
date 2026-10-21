@@ -23,6 +23,9 @@ impl App {
             return;
         }
         self.windows[index].mapped = mapped;
+        if self.windows[index].kind == super::super::ManagedWindowKind::DesktopItem {
+            self.desktop_mapped(index);
+        }
         if self.shell_corner(index).is_some() {
             self.reconcile_window_presentations();
         }
@@ -73,6 +76,7 @@ impl App {
                     .and_then(|root| self.window_index_for_surface(&root))
             })
         });
+        self.desktop_focus_changed(index);
         self.cancel_search_outside_focus(index);
         self.favorite_focus_changed(index.map(|index| self.windows[index].id));
         self.ui_touch_focus_changed(index.map(|index| self.windows[index].id));

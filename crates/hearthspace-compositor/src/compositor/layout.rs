@@ -7,6 +7,7 @@ use std::{
     path::PathBuf,
 };
 
+use hearthspace_common::MAX_DESKTOP_ITEMS;
 use serde::{Deserialize, Serialize};
 
 use super::{App, windows::window_app_id};
@@ -19,7 +20,8 @@ use crate::{
 mod tests;
 
 const MAX_PLACEMENTS: usize = 128;
-const MAX_BYTES: u64 = 64 * 1024;
+// Covers 4096 desktop IDs of 1024 bytes, including JSON escaping and layout metadata.
+const MAX_BYTES: u64 = 12 * 1024 * 1024;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 struct Placement {
@@ -36,6 +38,8 @@ struct Layout {
     y: i32,
     scale: f64,
     placements: Vec<Placement>,
+    #[serde(default)]
+    desktop: std::collections::BTreeMap<String, CanvasPoint>,
 }
 
 impl Default for Layout {
@@ -46,6 +50,7 @@ impl Default for Layout {
             y: 0,
             scale: 1.0,
             placements: Vec::new(),
+            desktop: Default::default(),
         }
     }
 }
@@ -61,6 +66,13 @@ impl Layout {
             || self.placements.len() > MAX_PLACEMENTS
         {
             return Err("invalid layout version, viewport, or length");
+        }
+        if self.desktop.len() > MAX_DESKTOP_ITEMS
+            || self.desktop.iter().any(|(id, point)| {
+                id.is_empty() || id.len() > 1024 || !coordinate(point.x) || !coordinate(point.y)
+            })
+        {
+            return Err("invalid desktop placements");
         }
         let mut keys = std::collections::HashSet::new();
         for item in &self.placements {
@@ -124,6 +136,22 @@ impl LayoutStore {
             path,
             layout,
             claimed: HashMap::new(),
+        }
+    }
+
+    pub(super) fn desktop_position(&self, id: &str) -> Option<CanvasPoint> {
+        self.layout.desktop.get(id).copied()
+    }
+
+    pub(super) fn remember_desktop(&mut self, id: &str, point: CanvasPoint) {
+        if !id.is_empty()
+            && id.len() <= 1024
+            && point.x.abs_diff(0) <= 1_000_000
+            && point.y.abs_diff(0) <= 1_000_000
+            && (self.layout.desktop.contains_key(id)
+                || self.layout.desktop.len() < MAX_DESKTOP_ITEMS)
+        {
+            self.layout.desktop.insert(id.to_owned(), point);
         }
     }
 
@@ -245,8 +273,14 @@ impl App {
             self.layout_store.layout.y = self.viewport_offset.y.clamp(-1_000_000, 1_000_000);
             self.layout_store.layout.scale = self.viewport_scale;
         }
-        for window in &self.windows {
-            self.layout_store.remember(window.id, window.position);
+        for (index, window) in self.windows.iter().enumerate() {
+            if let Some(id) = self.desktop_id(index) {
+                if window.mapped && window.initial_placement_done {
+                    self.layout_store.remember_desktop(&id, window.position);
+                }
+            } else {
+                self.layout_store.remember(window.id, window.position);
+            }
         }
         self.layout_store
             .claimed

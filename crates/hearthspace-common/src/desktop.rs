@@ -6,6 +6,7 @@ pub const DESKTOP_ITEM_MARGIN: i32 = 6;
 pub const DESKTOP_SURFACE_WIDTH: i32 = DESKTOP_ITEM_WIDTH + 2 * DESKTOP_ITEM_MARGIN;
 pub const DESKTOP_SURFACE_HEIGHT: i32 = DESKTOP_ITEM_HEIGHT + 2 * DESKTOP_ITEM_MARGIN;
 pub const DESKTOP_ITEM_APP_ID: &str = "dev.hearthspace.desktop-item";
+pub const MAX_DESKTOP_ITEMS: usize = 4096;
 
 pub fn desktop_item_app_id(id: &str) -> String {
     format!(

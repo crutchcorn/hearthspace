@@ -103,3 +103,62 @@ fn duplicate_slots_and_out_of_range_positions_are_rejected() {
     store.remember(1, CanvasPoint { x: i32::MIN, y: 0 });
     assert!(store.layout.placements.is_empty());
 }
+
+#[test]
+fn desktop_positions_survive_restart_independently_of_window_slots() {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("layout.json");
+    let mut store = LayoutStore::load(Some(path.clone()));
+    store.remember_desktop("app:foot.desktop", CanvasPoint { x: -560, y: 840 });
+    store.remember_desktop("file:6e6f746573", CanvasPoint { x: 128, y: 256 });
+    store.save().unwrap();
+    let mut restarted = LayoutStore::load(Some(path));
+    assert_eq!(
+        restarted.desktop_position("app:foot.desktop"),
+        Some(CanvasPoint { x: -560, y: 840 })
+    );
+    assert_eq!(
+        restarted.desktop_position("file:6e6f746573"),
+        Some(CanvasPoint { x: 128, y: 256 })
+    );
+    assert_eq!(restarted.claim(1, "foot".into()), None);
+    restarted.remember_desktop("bad", CanvasPoint { x: i32::MAX, y: 0 });
+    assert_eq!(restarted.desktop_position("bad"), None);
+}
+
+#[test]
+fn old_layouts_without_desktop_items_remain_loadable() {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("layout.json");
+    fs::write(
+        &path,
+        br#"{"version":1,"x":40,"y":50,"scale":1,"placements":[]}"#,
+    )
+    .unwrap();
+    let store = LayoutStore::load(Some(path));
+    assert_eq!(store.viewport().0, CanvasPoint { x: 40, y: 50 });
+    assert!(store.layout.desktop.is_empty());
+}
+
+#[test]
+fn maximum_desktop_catalog_survives_restart_with_json_escaped_ids() {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("layout.json");
+    let mut store = LayoutStore::load(Some(path.clone()));
+    for index in 0..MAX_DESKTOP_ITEMS {
+        let prefix = format!("app:{index:04}:");
+        let id = format!("{prefix}{}", "\\".repeat(1024 - prefix.len()));
+        let coordinate = i32::try_from(index).unwrap();
+        store.remember_desktop(
+            &id,
+            CanvasPoint {
+                x: coordinate,
+                y: -coordinate,
+            },
+        );
+    }
+    store.save().unwrap();
+    assert!(fs::metadata(&path).unwrap().len() > 4 * 1024 * 1024);
+    let restarted = LayoutStore::load(Some(path));
+    assert_eq!(restarted.layout.desktop, store.layout.desktop);
+}

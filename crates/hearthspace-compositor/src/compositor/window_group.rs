@@ -85,6 +85,7 @@ impl App {
         self.window_group.selecting = !self.window_group.selecting;
         self.window_group.gesture = None;
         if self.window_group.selecting {
+            self.disable_desktop_selection();
             self.window_group.invalidate();
             self.window_group.keyboard_target = self.focused_normal_window_id;
             self.window_group.output = self

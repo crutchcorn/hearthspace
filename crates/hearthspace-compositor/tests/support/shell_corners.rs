@@ -138,7 +138,7 @@ fn four_corners_pin_controls_panels_and_maximized_work_area() {
     for (corner, name, width, x, y) in [
         (ShellCorner::Notifications, "notifications", 110, 24, 24),
         (ShellCorner::System, "system", 320, 936, 24),
-        (ShellCorner::Canvas, "canvas", 102, 24, 722),
+        (ShellCorner::Canvas, "canvas", 150, 24, 722),
         (ShellCorner::Apps, "apps", 320, 936, 722),
     ] {
         let window = client.add(
@@ -231,8 +231,8 @@ fn scaled_small_corners_resize_without_overlapping_and_ignore_unknown_outputs() 
     for (corner, name, width, x, y) in [
         (ShellCorner::Notifications, "notifications", 110, 24, 24),
         (ShellCorner::System, "system", 138, 158, 24),
-        (ShellCorner::Canvas, "canvas", 102, 24, 162),
-        (ShellCorner::Apps, "apps", 146, 150, 162),
+        (ShellCorner::Canvas, "canvas", 150, 24, 162),
+        (ShellCorner::Apps, "apps", 98, 198, 162),
     ] {
         let window = client.add(shell_corner_app_id(corner, None), (1000, 54), (0, 0), COLOR);
         let bounds = corner_bounds(&compositor, name);
@@ -242,10 +242,10 @@ fn scaled_small_corners_resize_without_overlapping_and_ignore_unknown_outputs() 
         click(&compositor, f64::from(x) + 20.0, f64::from(y) + 20.0);
         assert_eq!(client.presses().last(), Some(&(window, (20.0, 20.0))));
         if corner == ShellCorner::Apps {
-            client.resize(window, (100, 54));
+            client.resize(window, (80, 54));
             let resized = corner_bounds(&compositor, name);
-            assert_eq!(resized["width"], 100);
-            assert_eq!(resized["x"], 196);
+            assert_eq!(resized["width"], 80);
+            assert_eq!(resized["x"], 216);
         }
     }
     client.add(

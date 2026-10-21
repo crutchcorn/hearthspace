@@ -73,6 +73,13 @@ pub(super) fn window_kind_for_toplevel(surface: &ToplevelSurface) -> ManagedWind
     let app_id = toplevel_app_id(surface);
     if app_id
         .as_deref()
+        .and_then(hearthspace_common::desktop_item_id_from_app_id)
+        .is_some()
+    {
+        return ManagedWindowKind::DesktopItem;
+    }
+    if app_id
+        .as_deref()
         .and_then(shell_bar_output_name_from_app_id)
         .is_some()
     {
@@ -140,7 +147,7 @@ pub(super) fn position_for_new_window(
     fallback: CanvasPoint,
 ) -> CanvasPoint {
     match kind {
-        ManagedWindowKind::Normal => fallback,
+        ManagedWindowKind::Normal | ManagedWindowKind::DesktopItem => fallback,
         ManagedWindowKind::ShellBar => CanvasPoint { x: 0, y: 0 },
         ManagedWindowKind::ShellWatcher | ManagedWindowKind::ControlOsd => {
             CanvasPoint { x: 0, y: 0 }
@@ -155,6 +162,7 @@ pub(super) fn position_for_new_window(
 pub(super) fn decoration_for_new_window(kind: ManagedWindowKind) -> WindowDecoration {
     match kind {
         ManagedWindowKind::Normal
+        | ManagedWindowKind::DesktopItem
         | ManagedWindowKind::ShellBar
         | ManagedWindowKind::Launcher
         | ManagedWindowKind::ShellWatcher
@@ -272,6 +280,15 @@ impl App {
 
     pub(super) fn refresh_normal_window_outputs(&self) {
         for (window_index, window) in self.windows.iter().enumerate() {
+            if window.kind == ManagedWindowKind::DesktopItem && window.mapped {
+                if let Some(surface) = window.surface.wl_surface() {
+                    self.enter_outputs_intersecting(
+                        &surface,
+                        self.window_screen_bounds(window_index),
+                    );
+                }
+                continue;
+            }
             if window.kind != ManagedWindowKind::Normal {
                 continue;
             }
@@ -394,6 +411,17 @@ impl App {
                     state.bounds = Some((1, 1).into());
                     state.decoration_mode = Some(DecorationMode::ClientSide);
                 }
+                ManagedWindowKind::DesktopItem => {
+                    state.size = Some(
+                        (
+                            hearthspace_common::DESKTOP_SURFACE_WIDTH,
+                            hearthspace_common::DESKTOP_SURFACE_HEIGHT,
+                        )
+                            .into(),
+                    );
+                    state.bounds = state.size;
+                    state.decoration_mode = Some(DecorationMode::ClientSide);
+                }
                 ManagedWindowKind::Normal => state.bounds = normal_bounds,
             }
         });
@@ -511,6 +539,14 @@ impl App {
     }
 
     pub(super) fn content_canvas_origin(&self, window_index: usize) -> Point<i32, Logical> {
+        if self.windows[window_index].kind == ManagedWindowKind::DesktopItem {
+            let point = self.windows[window_index].position;
+            return (
+                point.x - hearthspace_common::DESKTOP_ITEM_MARGIN,
+                point.y - hearthspace_common::DESKTOP_ITEM_MARGIN,
+            )
+                .into();
+        }
         content_canvas_origin_for(
             self.windows[window_index].position,
             self.has_compositor_chrome(window_index),
@@ -540,6 +576,9 @@ impl App {
     /// rect tracks the *visible* window geometry (excluding shadow margins) so
     /// resize handles land on the visible edge rather than out in the shadow.
     pub(super) fn window_canvas_rect(&self, window_index: usize) -> Rectangle<i32, Logical> {
+        if self.windows[window_index].kind == ManagedWindowKind::DesktopItem {
+            return self.desktop_tile_rect(window_index);
+        }
         let window = &self.windows[window_index];
         if self.has_compositor_chrome(window_index) {
             return window_canvas_rect_for(window.position, window.content_bbox_size, true);

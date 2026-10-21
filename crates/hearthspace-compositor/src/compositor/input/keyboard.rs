@@ -25,6 +25,7 @@ pub(in crate::compositor) struct KeyboardShortcuts {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Shortcut {
+    Desktop(crate::compositor::desktop::Action),
     Group(groups::Action),
     DeviceControl(crate::compositor::shell_integration::device_control::DeviceControl),
     Lock,
@@ -199,6 +200,13 @@ impl App {
                     let selecting = app.group_selection_active();
                     app.shortcuts
                         .filter_group(code, state, modifiers, symbol, available, selecting)
+                } else if let Some(action) = app.desktop_key_action(state, modifiers, symbol) {
+                    FilterResult::Intercept(
+                        app.shortcuts
+                            .intercepted
+                            .insert(code)
+                            .then_some(Shortcut::Desktop(action)),
+                    )
                 } else {
                     app.shortcuts
                         .filter(code, state, modifiers, symbol, available)
@@ -210,6 +218,9 @@ impl App {
         // keyboard enter, without forwarding an unmatched key release.
         if intercepted.is_some() && keyboard.modifier_state() != previous_modifiers {
             keyboard.advertise_modifier_state(self);
+        }
+        if keyboard.modifier_state().alt != previous_modifiers.alt {
+            self.desktop_pointer_motion();
         }
         match intercepted {
             Some(Some(shortcut)) => self.run_shortcut(shortcut),
@@ -228,6 +239,10 @@ impl App {
 
     fn run_shortcut(&mut self, shortcut: Shortcut) {
         match shortcut {
+            Shortcut::Desktop(action) => {
+                self.run_desktop_key(action);
+                return;
+            }
             Shortcut::Group(action) => {
                 self.run_group_shortcut(action);
                 return;
@@ -285,6 +300,7 @@ impl App {
         let command = match shortcut {
             Shortcut::OverviewToggle => ShellCommand::OverviewToggle,
             Shortcut::DeviceControl(_)
+            | Shortcut::Desktop(_)
             | Shortcut::Group(_)
             | Shortcut::OverviewDismiss
             | Shortcut::OverviewActivate

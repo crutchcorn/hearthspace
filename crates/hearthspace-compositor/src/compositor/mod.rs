@@ -14,6 +14,7 @@ mod capture;
 mod client;
 mod clipboard;
 mod cursor;
+mod desktop;
 mod focus;
 mod handlers;
 mod idle;
@@ -184,6 +185,7 @@ impl ManagedSurface {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ManagedWindowKind {
     Normal,
+    DesktopItem,
     ShellBar,
     /// The launcher palette: a transient shell surface the shell opens below the
     /// bar to show app-search results as a dropdown.
@@ -277,6 +279,7 @@ struct App {
     keyboard: KeyboardHandle<Self>,
     viewport_offset: CanvasPoint,
     layout_store: layout::LayoutStore,
+    desktop: desktop::State,
     viewport_scale: f64,
     viewport_animation: Option<ViewportAnimation>,
     overview: overview::Overview,
@@ -665,6 +668,7 @@ pub(in crate::compositor) fn initialize_app(
         viewport_offset,
         viewport_scale,
         layout_store,
+        desktop: Default::default(),
         viewport_animation: None,
         overview: overview::Overview::default(),
         window_switcher: switcher::WindowSwitcher::default(),

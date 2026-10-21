@@ -61,6 +61,9 @@ impl App {
             self.apply_pointer_motion(self.pointer_location, time);
             return;
         }
+        if self.desktop_pointer_button(button, state, time) {
+            return;
+        }
         if self.handle_overview_button(button, state) {
             return;
         }

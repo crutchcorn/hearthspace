@@ -233,9 +233,14 @@ impl App {
 
         let mut group_elements = self.collect_group_elements(renderer, output_rect);
         let mut desktop_start = None;
+        let mut desktop_selection = self.desktop_selection_elements(renderer);
         let mut window_backdrops = Vec::new();
         let hovered_window = self.hovered_normal_window_id();
         for index in order::render_order(self.windows.iter().map(|window| window.kind)) {
+            if self.windows[index].kind == ManagedWindowKind::DesktopItem {
+                desktop_start.get_or_insert(elements.len());
+                elements.append(&mut desktop_selection);
+            }
             if self.windows[index].kind == ManagedWindowKind::Normal {
                 desktop_start.get_or_insert(elements.len());
                 elements.append(&mut group_elements.overlay);
@@ -298,7 +303,7 @@ impl App {
                     self.launcher_screen_origins(index)
                 }
                 ManagedWindowKind::ShellWatcher => Vec::new(),
-                ManagedWindowKind::Normal => {
+                ManagedWindowKind::Normal | ManagedWindowKind::DesktopItem => {
                     vec![self.surface_screen_origin(index)]
                 }
             };
@@ -539,7 +544,7 @@ impl App {
     pub(super) fn window_render_scale(&self, window_index: usize) -> f64 {
         match self.windows[window_index].kind {
             ManagedWindowKind::Normal if self.window_uses_output_coordinates(window_index) => 1.0,
-            ManagedWindowKind::Normal => self.viewport_scale,
+            ManagedWindowKind::Normal | ManagedWindowKind::DesktopItem => self.viewport_scale,
             ManagedWindowKind::ShellBar
             | ManagedWindowKind::Launcher
             | ManagedWindowKind::ControlOsd => 1.0,

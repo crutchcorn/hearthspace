@@ -53,6 +53,7 @@ pub(super) fn properties(palette: Palette) -> DefaultProperties {
     super::search_result::theme_properties(&mut properties, palette, classes::properties(&palette));
     super::minimap::theme_properties(&mut properties, palette);
     super::dock::theme_properties(&mut properties, palette);
+    super::desktop_item::theme_properties(&mut properties, palette);
     properties.insert::<super::tray_widget::TrayButton, _>(palette);
     properties.insert::<super::search_editor::SearchEditor, _>(ContentColor::new(palette.text));
     properties.insert::<super::search_editor::SearchEditor, _>(CaretColor {

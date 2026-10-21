@@ -5,7 +5,7 @@ mod shell_corners;
 pub use appearance::{AccentColor, Appearance, ColorMode};
 pub use desktop::{
     DESKTOP_ITEM_APP_ID, DESKTOP_ITEM_HEIGHT, DESKTOP_ITEM_MARGIN, DESKTOP_ITEM_WIDTH,
-    DESKTOP_SURFACE_HEIGHT, DESKTOP_SURFACE_WIDTH, desktop_item_app_id,
+    DESKTOP_SURFACE_HEIGHT, DESKTOP_SURFACE_WIDTH, MAX_DESKTOP_ITEMS, desktop_item_app_id,
     desktop_item_id_from_app_id,
 };
 

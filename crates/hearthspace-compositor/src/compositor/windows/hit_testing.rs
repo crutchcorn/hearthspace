@@ -49,7 +49,7 @@ impl App {
                     }
                 }
                 ManagedWindowKind::ShellWatcher | ManagedWindowKind::ControlOsd => continue,
-                ManagedWindowKind::Normal => continue,
+                ManagedWindowKind::Normal | ManagedWindowKind::DesktopItem => continue,
             }
         }
 
@@ -148,6 +148,28 @@ impl App {
             }
         }
 
+        for (window_index, window) in self.windows.iter().enumerate().rev() {
+            if !window.mapped || window.kind != ManagedWindowKind::DesktopItem {
+                continue;
+            }
+            if !self
+                .window_screen_bounds(window_index)
+                .contains(location.to_i32_round())
+            {
+                continue;
+            }
+            let root = window.surface.wl_surface()?;
+            let local = self.window_screen_to_surface(window_index, location);
+            if let Some((surface, origin)) =
+                under_from_surface_tree(&root, local, (0, 0), WindowSurfaceType::ALL)
+            {
+                return Some(HitTarget::Client {
+                    window_index,
+                    surface,
+                    surface_location: location - (local - origin.to_f64()),
+                });
+            }
+        }
         None
     }
 
