@@ -7,7 +7,7 @@ mod paint;
 mod view;
 pub(crate) mod widget;
 pub use compatibility::{edge_light, glass_edge, paint_button, paint_surface};
-pub use focus::FocusIndicator;
+pub use focus::{FocusIndicator, RestoreFocus};
 pub use paint::{
     dot_pattern, edge_light_with_palette, glass_edge_with_palette, paint_button_with_palette,
     paint_surface_with_palette, shadow,

@@ -49,6 +49,12 @@ impl DisclosureButton {
         )
     }
 
+    fn navigation_input(&self, ctx: &mut EventCtx<'_>, keyboard: bool) {
+        if self.current_page.is_some() || self.controls.is_some() {
+            ctx.submit_untyped_action(Box::new(super::NavigationInput { keyboard }));
+        }
+    }
+
     pub(super) fn child_mut<'a>(this: &'a mut WidgetMut<'_, Self>) -> WidgetMut<'a, dyn Widget> {
         this.ctx.get_mut(&mut this.widget.child)
     }
@@ -67,6 +73,7 @@ impl Widget for DisclosureButton {
         self.focus.pointer(event);
         match event {
             PointerEvent::Down(..) => {
+                self.navigation_input(ctx, false);
                 ctx.request_focus();
                 ctx.capture_pointer();
                 ctx.request_paint_only();
@@ -88,6 +95,9 @@ impl Widget for DisclosureButton {
         event: &TextEvent,
     ) {
         self.focus.text(event);
+        if matches!(event, TextEvent::Keyboard(_)) {
+            self.navigation_input(ctx, true);
+        }
         ctx.request_paint_only();
         if let TextEvent::Keyboard(event) = event
             && event.state.is_up()
@@ -105,6 +115,7 @@ impl Widget for DisclosureButton {
         event: &AccessEvent,
     ) {
         if event.action == Action::Click {
+            self.navigation_input(ctx, true);
             ctx.submit_action::<Self::Action>(ButtonPress { button: None });
         }
     }

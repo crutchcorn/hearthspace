@@ -15,7 +15,7 @@ use masonry::{
 };
 use xilem::WidgetView;
 
-fn bounds<V: WidgetView<SettingsApp>>(ui: &Ui<V>, id: WidgetId) -> Rect
+pub(super) fn bounds<V: WidgetView<SettingsApp>>(ui: &Ui<V>, id: WidgetId) -> Rect
 where
     V::Widget: Sized,
 {
@@ -35,7 +35,7 @@ where
             .is_some_and(|node| node.role() == role)
     })
 }
-fn key<V: WidgetView<SettingsApp>>(ui: &mut Ui<V>, key: NamedKey)
+pub(super) fn key<V: WidgetView<SettingsApp>>(ui: &mut Ui<V>, key: NamedKey)
 where
     V::Widget: Sized,
 {
@@ -298,7 +298,7 @@ fn resizing_restores_hidden_navigation_focus_and_retains_open_state() {
     assert_eq!(ui.harness.focused_widget_id(), Some(toggle));
 }
 
-fn touch(kind: &str, x: f64, y: f64) -> PointerEvent {
+pub(super) fn touch(kind: &str, x: f64, y: f64) -> PointerEvent {
     let pointer = PointerInfo {
         pointer_id: Some(PointerId::PRIMARY),
         persistent_device_id: None,

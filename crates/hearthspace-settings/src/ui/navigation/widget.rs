@@ -1,5 +1,5 @@
 use super::{HEADER_HEIGHT, MENU_HEIGHT, NavigationMenu};
-use hearthspace_ui_components as components;
+use hearthspace_ui_components::{self as components, settings_material::RestoreFocus};
 use xilem::masonry::{
     accesskit::{Node, Role},
     core::{
@@ -15,8 +15,6 @@ use xilem::masonry::{
 
 #[derive(Debug)]
 pub(crate) struct Close;
-#[derive(Debug)]
-pub(super) struct RestoreFocus;
 
 pub(crate) struct NavigationLayout {
     page: WidgetPod<dyn Widget>,
@@ -28,6 +26,7 @@ pub(crate) struct NavigationLayout {
     current_category: Option<WidgetId>,
     category_controls: Vec<WidgetId>,
     menu_bounds: Rect,
+    keyboard: bool,
 }
 impl NavigationLayout {
     pub(super) fn new(
@@ -47,6 +46,7 @@ impl NavigationLayout {
             current_category: None,
             category_controls: Vec::new(),
             menu_bounds: Rect::ZERO,
+            keyboard: true,
         }
     }
     pub(super) fn page_mut<'a>(this: &'a mut WidgetMut<'_, Self>) -> WidgetMut<'a, dyn Widget> {
@@ -101,8 +101,11 @@ impl NavigationLayout {
             None
         };
         if let Some(target) = target {
-            this.ctx.mutate_later(target, |mut control| {
-                control.ctx.submit_untyped_action(Box::new(RestoreFocus));
+            let keyboard = this.widget.keyboard;
+            this.ctx.mutate_later(target, move |mut control| {
+                control
+                    .ctx
+                    .submit_untyped_action(Box::new(RestoreFocus { keyboard }));
             });
         }
     }
@@ -115,6 +118,9 @@ impl Widget for NavigationLayout {
         _: &mut PropertiesMut<'_>,
         event: &PointerEvent,
     ) {
+        if matches!(event, PointerEvent::Down(_)) {
+            self.keyboard = false;
+        }
         if self.compact
             && self.open
             && let PointerEvent::Down(event) = event
@@ -137,6 +143,9 @@ impl Widget for NavigationLayout {
         _: &mut PropertiesMut<'_>,
         event: &TextEvent,
     ) {
+        if matches!(event, TextEvent::Keyboard(_)) {
+            self.keyboard = true;
+        }
         if self.compact
             && self.open
             && let TextEvent::Keyboard(key) = event
@@ -167,6 +176,10 @@ impl Widget for NavigationLayout {
                     self.current_category = None;
                 }
             }
+            ctx.set_handled();
+        } else if let Some(input) = action.downcast_ref::<crate::page_components::NavigationInput>()
+        {
+            self.keyboard = input.keyboard;
             ctx.set_handled();
         } else if action.is::<RestoreFocus>() {
             ctx.set_focus(source);

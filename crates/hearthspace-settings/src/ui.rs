@@ -217,3 +217,6 @@ mod tests;
 
 #[cfg(test)]
 mod navigation_tests;
+
+#[cfg(test)]
+mod navigation_focus_tests;

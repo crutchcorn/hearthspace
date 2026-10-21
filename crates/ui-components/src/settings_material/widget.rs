@@ -4,9 +4,9 @@ use super::{
 use xilem::masonry::{
     accesskit::{Node, Role},
     core::{
-        AccessCtx, ChildrenIds, EventCtx, LayoutCtx, MeasureCtx, NewWidget, NoAction, PaintCtx,
-        PointerEvent, PropertiesMut, PropertiesRef, RegisterCtx, TextEvent, Update, UpdateCtx,
-        UsesProperty, Widget, WidgetMut, WidgetPod,
+        AccessCtx, ActionCtx, ChildrenIds, ErasedAction, EventCtx, LayoutCtx, MeasureCtx,
+        NewWidget, NoAction, PaintCtx, PointerEvent, PropertiesMut, PropertiesRef, RegisterCtx,
+        TextEvent, Update, UpdateCtx, UsesProperty, Widget, WidgetId, WidgetMut, WidgetPod,
     },
     imaging::Painter,
     kurbo::{Axis, Point, Size},
@@ -60,6 +60,19 @@ impl Widget for MaterialWidget {
     ) {
         self.focus.text(event);
         ctx.request_paint_only();
+    }
+    fn on_action(
+        &mut self,
+        ctx: &mut ActionCtx<'_>,
+        _: &mut PropertiesMut<'_>,
+        action: &ErasedAction,
+        _: WidgetId,
+    ) {
+        if let Some(origin) = action.downcast_ref::<super::RestoreFocus>() {
+            self.focus.restore(origin.keyboard, ctx.has_focus_target());
+            ctx.request_paint_only();
+            // The control's owner still performs and owns native focus transfer.
+        }
     }
     fn register_children(&mut self, ctx: &mut RegisterCtx<'_>) {
         ctx.register_child(&mut self.child);

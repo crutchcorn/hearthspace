@@ -20,6 +20,11 @@ pub(crate) struct NavigationControl {
     pub(crate) current_page: Option<bool>,
 }
 
+#[derive(Debug)]
+pub(crate) struct NavigationInput {
+    pub(crate) keyboard: bool,
+}
+
 #[cfg(test)]
 mod tests;
 
