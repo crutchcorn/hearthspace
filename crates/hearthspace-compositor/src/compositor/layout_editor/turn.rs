@@ -18,6 +18,20 @@ pub(super) struct State {
     pub presented: BTreeMap<String, Presented>,
 }
 
+impl State {
+    /// Retire completed/invalid turns and report whether their pixels changed.
+    fn retire(&mut self, now: Instant, reduced: bool, valid: &[String]) -> bool {
+        // Pending reflow has no advancing clock. Redrawing its unchanged cached
+        // pixels for every Wayland request delays clients' resize roundtrips.
+        // Input and surface commits already request a frame when pixels change.
+        let running = self.turns.values().any(Turn::needs_animation_frame);
+        let previous_count = self.turns.len();
+        self.turns
+            .retain(|key, turn| !reduced && !turn.finished(now) && valid.contains(key));
+        running || self.turns.len() != previous_count
+    }
+}
+
 #[derive(Clone)]
 pub(super) struct Presented {
     pub bounds: Rect,
@@ -39,6 +53,12 @@ pub(super) struct Turn {
 }
 
 impl Turn {
+    fn needs_animation_frame(&self) -> bool {
+        // Retain timer demand through the final advance, even if the deadline
+        // passed between the previous render and the next event-loop dispatch.
+        self.started.is_some()
+    }
+
     fn remaining(&self, now: Instant) -> f64 {
         self.started.map_or(1., |started| {
             1. - ease(
@@ -72,6 +92,13 @@ impl App {
             .turns
             .values()
             .any(|turn| !turn.finished(Instant::now()))
+    }
+    pub(super) fn layout_turn_needs_animation_frame(&self) -> bool {
+        self.layout_editor
+            .turn
+            .turns
+            .values()
+            .any(Turn::needs_animation_frame)
     }
     pub(super) fn layout_target_turn_active(&self, target: &Target) -> bool {
         self.layout_editor.turn.turns.contains_key(&format!(
@@ -162,7 +189,6 @@ impl App {
             turn.pivot = pivot;
             turn.started = Some(now);
         }
-        let active = !self.layout_editor.turn.turns.is_empty();
         let reduced = self.layout_reduced_motion();
         let valid: Vec<_> = self
             .layout_editor
@@ -175,11 +201,7 @@ impl App {
             })
             .map(|(key, _)| key.clone())
             .collect();
-        self.layout_editor
-            .turn
-            .turns
-            .retain(|key, turn| !reduced && !turn.finished(now) && valid.contains(key));
-        if active {
+        if self.layout_editor.turn.retire(now, reduced, &valid) {
             self.request_redraw();
         }
     }
@@ -256,64 +278,5 @@ pub(super) fn rotated_bounds(bounds: Rect, pivot: Point, angle: f64) -> Rect {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    #[test]
-    fn reflow_wait_does_not_consume_motion_time_and_translation_shares_the_turn_clock() {
-        let queued = Instant::now();
-        let mut turn = Turn {
-            target: Target {
-                output: "test".into(),
-                target: hearthspace_common::frame_layout::LayoutTarget::widget("tools"),
-            },
-            members: vec![1],
-            bounds: Rect {
-                x: 24.,
-                y: 200.,
-                width: 54.,
-                height: 246.,
-            },
-            pivot: Point { x: -18., y: 323. },
-            from_angle: -std::f64::consts::FRAC_PI_2,
-            translation: Point { x: 480., y: -160. },
-            pointer_anchor: false,
-            started: None,
-        };
-        let committed = queued + Duration::from_millis(600);
-        assert_eq!(turn.angle(committed), turn.from_angle);
-        assert_eq!(turn.offset(committed), turn.translation);
-        assert!(!turn.finished(committed));
-        turn.started = Some(committed);
-        for elapsed in [0, 16, 50, 100, 180, 280] {
-            let now = committed + Duration::from_millis(elapsed);
-            let fraction = turn.angle(now) / turn.from_angle;
-            assert!((turn.offset(now).x - turn.translation.x * fraction).abs() < 1e-8);
-            assert!((turn.offset(now).y - turn.translation.y * fraction).abs() < 1e-8);
-            assert_eq!(turn.bounds.width, 54.);
-            assert_eq!(turn.bounds.height, 246.);
-        }
-        assert!(turn.finished(committed + TURN_DURATION));
-        assert_eq!(turn.angle(committed + TURN_DURATION), 0.);
-        assert_eq!(
-            turn.offset(committed + TURN_DURATION),
-            Point { x: 0., y: 0. }
-        );
-    }
-
-    #[test]
-    fn quarter_turn_preserves_the_pointer_grip_and_swaps_toolbar_extent() {
-        let bounds = Rect {
-            x: 100.,
-            y: 100.,
-            width: 54.,
-            height: 200.,
-        };
-        let pivot = Point { x: 127., y: 127. };
-        let rotated = rotated_bounds(bounds, pivot, -std::f64::consts::FRAC_PI_2);
-        assert!((rotated.width - 200.).abs() < 0.0001);
-        assert!((rotated.height - 54.).abs() < 0.0001);
-        assert!((rotated.x - 100.).abs() < 0.0001);
-        assert!((rotated.y - 100.).abs() < 0.0001);
-        assert_eq!(rotated_bounds(bounds, pivot, 0.), bounds);
-    }
-}
+#[path = "turn_clock_tests.rs"]
+mod tests;

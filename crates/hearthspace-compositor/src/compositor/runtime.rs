@@ -127,6 +127,7 @@ pub(in crate::compositor) fn run_event_loop(
                     || data.state.overview_animating()
                     || data.state.canvas_preview_animating()
                     || data.state.group_animating()
+                    || data.state.layout_needs_animation_frame()
                     || data.state.desktop_edge_panning())
                 .then_some(ANIMATION_FRAME_INTERVAL)
             });

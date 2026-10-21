@@ -10,6 +10,7 @@ use std::time::{Duration, Instant};
 const GUIDE_DURATION: Duration = Duration::from_millis(160);
 
 pub(super) struct GuideMotion {
+    advancing: bool,
     zone: Option<GuideZone>,
     changed: Instant,
     from: [f32; 8],
@@ -18,6 +19,7 @@ pub(super) struct GuideMotion {
 impl Default for GuideMotion {
     fn default() -> Self {
         Self {
+            advancing: false,
             zone: None,
             changed: Instant::now() - GUIDE_DURATION,
             from: [0.; 8],
@@ -118,6 +120,9 @@ impl App {
                     .as_ref()
                     .is_some_and(|session| session.started.elapsed() < GUIDE_DURATION))
     }
+    pub(super) fn layout_guides_need_animation_frame(&self) -> bool {
+        self.layout_editing() && self.layout_editor.guides.advancing
+    }
     pub(in crate::compositor) fn advance_layout_guides(&mut self) {
         if !self.layout_editing() {
             self.layout_editor.guides = Default::default();
@@ -131,14 +136,10 @@ impl App {
             self.layout_editor.guides.zone = zone;
             self.layout_editor.guides.changed = Instant::now();
         }
-        if !reduced
-            && (self.layout_editor.guides.changed.elapsed() < GUIDE_DURATION
-                || self
-                    .layout_editor
-                    .session
-                    .as_ref()
-                    .is_some_and(|session| session.started.elapsed() < GUIDE_DURATION))
-        {
+        // Keep one final timer tick when a fade expires between dispatches.
+        let advancing = !reduced && self.layout_guides_animating();
+        let was_advancing = std::mem::replace(&mut self.layout_editor.guides.advancing, advancing);
+        if was_advancing || advancing {
             self.request_redraw();
         }
     }
