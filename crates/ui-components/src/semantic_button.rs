@@ -21,6 +21,28 @@ pub fn semantic_button<
         content,
         name: name.into(),
         pressed,
+        radio: false,
+        action,
+    }
+}
+
+/// A radio choice whose entire arbitrary content shares one native focus stop.
+/// The caller owns the selected value, as with Xilem's standard radio button.
+pub fn semantic_radio_button<
+    State: 'static,
+    V: WidgetView<State>,
+    F: Fn(&mut State) + Send + Sync + 'static,
+>(
+    content: V,
+    name: impl Into<String>,
+    checked: bool,
+    action: F,
+) -> SemanticButtonView<V, F> {
+    SemanticButtonView {
+        content,
+        name: name.into(),
+        pressed: Some(checked),
+        radio: true,
         action,
     }
 }
@@ -29,6 +51,7 @@ pub struct SemanticButtonView<V, F> {
     content: V,
     name: String,
     pressed: Option<bool>,
+    radio: bool,
     action: F,
 }
 impl<V, F> ViewMarker for SemanticButtonView<V, F> {}
@@ -46,6 +69,7 @@ impl<State: 'static, V: WidgetView<State>, F: Fn(&mut State) + Send + Sync + 'st
                     content.new_widget,
                     &self.name,
                     self.pressed,
+                    self.radio,
                 ))
             }),
             vs,
@@ -68,9 +92,10 @@ impl<State: 'static, V: WidgetView<State>, F: Fn(&mut State) + Send + Sync + 'st
                 state,
             )
         });
-        if self.name != prev.name || self.pressed != prev.pressed {
+        if self.name != prev.name || self.pressed != prev.pressed || self.radio != prev.radio {
             el.widget.name.clone_from(&self.name);
             el.widget.pressed = self.pressed;
+            el.widget.radio = self.radio;
             el.ctx.request_accessibility_update();
         }
     }

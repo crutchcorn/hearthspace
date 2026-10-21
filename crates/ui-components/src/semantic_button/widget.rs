@@ -19,18 +19,21 @@ pub struct SemanticButton {
     child: WidgetPod<dyn Widget>,
     pub(super) name: String,
     pub(super) pressed: Option<bool>,
+    pub(super) radio: bool,
 }
 impl SemanticButton {
     pub(super) fn new(
         child: NewWidget<impl Widget + ?Sized>,
         name: &str,
         pressed: Option<bool>,
+        radio: bool,
     ) -> Self {
         Self {
             behavior: Button::new(NewWidget::new(SizedBox::empty())),
             child: child.erased().to_pod(),
             name: name.into(),
             pressed,
+            radio,
         }
     }
     pub(super) fn child_mut<'a>(this: &'a mut WidgetMut<'_, Self>) -> WidgetMut<'a, dyn Widget> {
@@ -95,7 +98,11 @@ impl Widget for SemanticButton {
     }
     fn paint(&mut self, _: &mut PaintCtx<'_>, _: &PropertiesRef<'_>, _: &mut Painter<'_>) {}
     fn accessibility_role(&self) -> Role {
-        Role::Button
+        if self.radio {
+            Role::RadioButton
+        } else {
+            Role::Button
+        }
     }
     fn accessibility(
         &mut self,
@@ -144,6 +151,7 @@ mod tests {
             NewWidget::new(Label::new("14:52")),
             "Date and time",
             Some(true),
+            false,
         );
         let mut harness =
             TestHarness::create(crate::hearthspace_light_properties(), widget.prepare());
@@ -168,6 +176,66 @@ mod tests {
                 },
                 id
             ))
+        );
+    }
+
+    #[test]
+    fn radio_content_has_one_named_checked_target_for_keyboard_pointer_and_accessibility() {
+        use xilem::masonry::{
+            accesskit::{Action, ActionRequest, TreeId},
+            testing::TestHarnessParams,
+        };
+        let widget = SemanticButton::new(
+            NewWidget::new(Label::new("Short date\nOct 21 · 13:05")),
+            "Short date",
+            Some(true),
+            true,
+        );
+        let mut harness = TestHarness::create_with(
+            crate::hearthspace_light_properties(),
+            widget.prepare(),
+            TestHarnessParams::default().with_size((250, 52)),
+        );
+        let id = harness.root_id();
+        let node = harness.access_node(id).unwrap();
+        assert_eq!(node.role(), Role::RadioButton);
+        assert_eq!(node.label().as_deref(), Some("Short date"));
+        assert_eq!(node.toggled(), Some(Toggled::True));
+        harness.press_tab_key(false);
+        assert_eq!(harness.focused_widget_id(), Some(id));
+        harness.process_text_event(TextEvent::key_down(Key::Character(" ".into())));
+        harness.process_text_event(TextEvent::key_up(Key::Character(" ".into())));
+        assert_eq!(
+            harness.pop_action::<ButtonPress>(),
+            Some((ButtonPress { button: None }, id))
+        );
+        harness.mouse_move((240.0, 26.0));
+        harness.mouse_button_press(Some(PointerButton::Primary));
+        harness.mouse_button_release(Some(PointerButton::Primary));
+        assert_eq!(
+            harness.pop_action::<ButtonPress>(),
+            Some((
+                ButtonPress {
+                    button: Some(PointerButton::Primary)
+                },
+                id
+            ))
+        );
+        harness.process_access_event(ActionRequest {
+            action: Action::Click,
+            target_tree: TreeId::ROOT,
+            target_node: id.to_raw().into(),
+            data: None,
+        });
+        assert_eq!(
+            harness.pop_action::<ButtonPress>(),
+            Some((ButtonPress { button: None }, id))
+        );
+        harness.press_tab_key(false);
+        assert_eq!(
+            harness.focused_widget_id(),
+            Some(id),
+            "the preview must not add another focus stop"
         );
     }
 }

@@ -36,7 +36,8 @@ pub(super) fn windows(state: &ShellState) -> Vec<WindowView<ShellState>> {
                         .width(group.rect.width.px())
                         .height(group.rect.height.px()),
                     state.appearance.palette,
-                ),
+                )
+                .hovered(group.hovered || group.focused),
                 |_| {},
             ));
             if !state.frame_layout.snapshot.editing {

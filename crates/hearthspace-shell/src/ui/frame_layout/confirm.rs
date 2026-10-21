@@ -1,15 +1,15 @@
 //! A session-bound native dialog; only its explicit affirmative action mutates.
-use crate::ui::{
-    appearance::{ThemeStyle as _, Tone},
-    search_focus::FocusTarget,
-    state::ShellState,
-};
+use crate::ui::{search_focus::FocusTarget, state::ShellState};
 use hearthspace_ui_components as components;
 use xilem::{
     Pod, ViewCtx, WidgetView, WindowView,
     core::{MessageCtx, MessageResult, Mut, View, ViewMarker},
     dpi::LogicalSize,
-    masonry::{layout::AsUnit, properties::LineBreaking},
+    masonry::{
+        layout::AsUnit,
+        parley::style::{FontWeight, LineHeight},
+        properties::{LineBreaking, Padding},
+    },
     style::Style,
     view::{
         CrossAxisAlignment, MainAxisAlignment, button, flex_col, flex_row, label, portal,
@@ -72,21 +72,36 @@ pub(super) fn view(
     };
     let target = state.frame_layout.confirm_target.clone();
     let cancel = Record {
-        inner: components::action_button("Cancel", |state: &mut ShellState| {
-            super::command(state, "cancel", serde_json::json!({}))
-        }),
+        inner: components::button_surface(
+            button(
+                label("Cancel")
+                    .font("Liberation Sans")
+                    .text_size(13.0)
+                    .color(state.appearance.palette.text),
+                |state: &mut ShellState| super::command(state, "cancel", serde_json::json!({})),
+            )
+            .padding(Padding::from_vh(10.0.px(), 14.0.px()))
+            .border_width(0.0.px())
+            .corner_radius(10.0.px()),
+            components::ButtonSurface::Control,
+            false,
+        ),
         target: target.clone(),
     };
     let affirmative = components::button_surface(
         button(
-            label(affirm).text_size(13.0).color(if tools {
-                state.appearance.palette.text
-            } else {
-                xilem::Color::WHITE
-            }),
+            label(affirm)
+                .font("Liberation Sans")
+                .text_size(13.0)
+                .color(if tools {
+                    state.appearance.palette.text
+                } else {
+                    xilem::Color::WHITE
+                }),
             |state: &mut ShellState| super::command(state, "confirm", serde_json::json!({})),
         )
-        .padding(10.0.px())
+        .padding(Padding::from_vh(10.0.px(), 14.0.px()))
+        .border_width(0.0.px())
         .corner_radius(10.0.px()),
         if tools {
             components::ButtonSurface::Control
@@ -97,12 +112,17 @@ pub(super) fn view(
     );
     let content = flex_col((
         label(title)
+            .font("Liberation Sans")
             .text_size(19.0)
+            .weight(FontWeight::BOLD)
+            .color(state.appearance.palette.text)
             .line_break_mode(LineBreaking::WordWrap),
         label(body)
+            .font("Liberation Sans")
             .text_size(14.0)
+            .line_height(LineHeight::FontSizeRelative(1.6))
             .line_break_mode(LineBreaking::WordWrap)
-            .theme_color(Tone::Muted),
+            .color(state.appearance.palette.muted),
         sized_box(
             flex_row((cancel, affirmative))
                 .main_axis_alignment(MainAxisAlignment::End)
@@ -117,7 +137,7 @@ pub(super) fn view(
     .gap(12.0.px());
     let observed = resize_observer(
         |state: &mut ShellState, size| {
-            let height = (size.height + 48.0).ceil();
+            let height = (size.height + 50.0).ceil();
             if height.is_finite() {
                 state.frame_layout.confirm_height = Some(height);
             }
@@ -129,7 +149,7 @@ pub(super) fn view(
     crate::ui::search_focus::focus_on_activation(
         crate::ui::canvas_search::material::shell(
             sized_box(dialog)
-                .padding(24.0.px())
+                .padding(25.0.px())
                 .width(width.px())
                 .height(height.px()),
             state.appearance.palette,
@@ -138,6 +158,7 @@ pub(super) fn view(
         String::new(),
     )
     .with_dismiss(dismiss)
+    .dismiss_directly()
 }
 
 struct Record<V> {

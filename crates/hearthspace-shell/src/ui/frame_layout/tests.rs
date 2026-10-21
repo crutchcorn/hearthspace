@@ -174,6 +174,18 @@ fn confirmation_focuses_cancel_and_does_not_enable_hiding_tools_implicitly() {
             .layout
             .allow_hide_tools
     );
+    ui.harness
+        .process_text_event(masonry::core::TextEvent::key_down(
+            masonry::core::keyboard::Key::Named(masonry::core::keyboard::NamedKey::Escape),
+        ));
+    ui.dispatch(&dialog);
+    assert!(
+        requests
+            .try_recv()
+            .unwrap()
+            .command
+            .contains("\"action\":\"cancel\"")
+    );
 }
 
 #[test]
@@ -229,4 +241,44 @@ fn compact_frame_items_are_named_single_actions_at_reference_dimensions() {
         .bounding_box()
         .unwrap();
     assert_eq!((bounds.width(), bounds.height()), (54.0, 54.0));
+}
+
+#[test]
+fn editor_hints_follow_native_hover_focus_and_activation_without_stealing_focus() {
+    let build = |_: &ShellState| {
+        sized_box(tooltip::hint(
+            xilem::view::button(xilem::view::label("Native action"), |_: &mut ShellState| {}),
+            "Place on canvas",
+        ))
+    };
+    let mut ui = Ui::new(state(), build, (180, 44));
+    let button = ui.button("Native action");
+    ui.harness.mouse_move_to(button);
+    ui.dispatch(&build);
+    assert_eq!(ui.state.frame_layout.tooltip.label, Some("Place on canvas"));
+    assert!(ui.harness.focused_widget_id().is_none());
+    ui.harness.mouse_move((-20.0, -20.0));
+    ui.dispatch(&build);
+    assert!(ui.state.frame_layout.tooltip.label.is_none());
+    ui.harness.focus_on(Some(button));
+    ui.dispatch(&build);
+    assert_eq!(ui.state.frame_layout.tooltip.label, Some("Place on canvas"));
+    assert_eq!(ui.harness.focused_widget_id(), Some(button));
+    ui.activate(button);
+    ui.dispatch(&build);
+    assert!(ui.state.frame_layout.tooltip.label.is_none());
+    assert_eq!(ui.harness.focused_widget_id(), Some(button));
+    ui.harness.focus_on(None);
+    ui.dispatch(&build);
+    ui.harness.focus_on(Some(button));
+    ui.dispatch(&build);
+    assert!(ui.state.frame_layout.tooltip.label.is_some());
+    apply(
+        &mut ui.state,
+        Snapshot {
+            version: 1,
+            ..Default::default()
+        },
+    );
+    assert!(ui.state.frame_layout.tooltip.label.is_none());
 }

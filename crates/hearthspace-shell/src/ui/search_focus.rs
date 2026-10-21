@@ -37,6 +37,7 @@ pub(super) fn focus_on_activation<V>(
         target,
         output_key,
         dismiss: ShellState::dismiss_search,
+        cancel_editor: true,
     }
 }
 
@@ -45,9 +46,16 @@ pub(super) struct FocusOnActivation<V> {
     target: FocusTarget,
     output_key: String,
     dismiss: fn(&mut ShellState, &str),
+    cancel_editor: bool,
 }
 
 impl<V> FocusOnActivation<V> {
+    /// Dialogs focus a button, so Escape calls their dismissal directly.
+    pub(super) fn dismiss_directly(mut self) -> Self {
+        self.cancel_editor = false;
+        self
+    }
+
     pub(super) fn with_dismiss(mut self, dismiss: fn(&mut ShellState, &str)) -> Self {
         self.dismiss = dismiss;
         self
@@ -70,6 +78,7 @@ where
         let widget = SearchFocus {
             inner: child.new_widget.erased().to_pod(),
             target: self.target.clone(),
+            cancel_editor: self.cancel_editor,
         };
         let pod = Pod::new_with_props(widget, Dimensions::MAX);
         ctx.record_action_source(pod.new_widget.id());
@@ -88,6 +97,7 @@ where
         let restore_editor =
             previous_editor.is_none() || element.ctx.focus_target_id() == previous_editor;
         element.widget.target = self.target.clone();
+        element.widget.cancel_editor = self.cancel_editor;
         ctx.with_id(CONTENT, |ctx| {
             self.inner.rebuild(
                 &prev.inner,
@@ -150,6 +160,7 @@ where
 pub(super) struct SearchFocus {
     inner: WidgetPod<dyn Widget>,
     target: FocusTarget,
+    cancel_editor: bool,
 }
 
 #[derive(Debug)]
@@ -215,7 +226,9 @@ impl Widget for SearchFocus {
         {
             // Escape must also dismiss search when a result or close button has
             // keyboard focus. Reuse the search view's existing cancel callback.
-            if let Some(target) = *self.target.lock().unwrap() {
+            if self.cancel_editor
+                && let Some(target) = *self.target.lock().unwrap()
+            {
                 ctx.mutate_later(target, |mut search| {
                     search
                         .ctx
@@ -294,6 +307,7 @@ mod tests {
         let widget = SearchFocus {
             inner: contents.prepare().erased().to_pod(),
             target: Arc::new(Mutex::new(Some(search_id))),
+            cancel_editor: true,
         }
         .prepare()
         .with_props(Dimensions::MAX);

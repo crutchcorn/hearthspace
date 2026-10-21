@@ -1,5 +1,8 @@
 use super::Kind;
-use hearthspace_ui_components::{Palette, settings_material::glass_edge_with_palette};
+use hearthspace_ui_components::{
+    Palette,
+    settings_material::{edge_light_with_palette, glass_edge_with_palette},
+};
 use xilem::masonry::{
     accesskit::{Node, Role},
     core::{
@@ -81,19 +84,58 @@ impl Widget for PanelWidget {
         let palette = &self.palette;
         let active = self.selected || self.hovered || ctx.has_hovered() || ctx.has_focus_target();
         let rect = ctx.border_box();
-        let shape = rect.inset(-0.5).to_rounded_rect(19.5);
-        let raised = self.kind == Kind::Shell || (self.kind == Kind::Card && active);
+        if self.kind == Kind::Choice {
+            let shape = rect.to_rounded_rect(15.0);
+            if self.selected || ctx.has_hovered() {
+                painter
+                    .fill(
+                        shape,
+                        if self.selected {
+                            palette.accent_soft
+                        } else {
+                            palette.raised_button_hover
+                        },
+                    )
+                    .draw();
+            }
+            if ctx.has_focus_target() {
+                painter
+                    .stroke(
+                        rect.inset(-1.0).to_rounded_rect(14.0),
+                        &Stroke::new(2.0),
+                        palette.accent,
+                    )
+                    .draw();
+            }
+            return;
+        }
+        let shell = matches!(self.kind, Kind::Shell | Kind::Tooltip);
+        let active = active && self.kind != Kind::Tooltip;
+        let radius = if self.kind == Kind::Tooltip {
+            10.0
+        } else {
+            20.0
+        };
+        let shape = rect.inset(-0.5).to_rounded_rect(radius - 0.5);
+        let raised = shell || (self.kind == Kind::Card && active);
         painter
             .fill(
                 shape,
-                if raised {
+                if shell && active {
+                    palette.chrome_raised_hover
+                } else if raised {
                     palette.chrome_raised
                 } else {
                     palette.chrome
                 },
             )
             .draw();
-        glass_edge_with_palette(painter, rect, 20.0, active, palette);
+        if shell {
+            // The same translucent raised fill and radial light as the reference.
+            // Backdrop blur and unclipped outer shadows belong to the compositor.
+            edge_light_with_palette(painter, rect, radius, palette);
+        }
+        glass_edge_with_palette(painter, rect, radius, active, palette);
         let selected_card = self.kind == Kind::Card && self.selected;
         painter
             .stroke(
@@ -101,7 +143,7 @@ impl Widget for PanelWidget {
                 &Stroke::new(if selected_card { 2.0 } else { 1.0 }),
                 if selected_card {
                     palette.accent
-                } else if self.kind == Kind::Field && active {
+                } else if (self.kind == Kind::Field || shell) && active {
                     palette.accent_border
                 } else {
                     palette.chrome_border

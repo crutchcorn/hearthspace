@@ -4,15 +4,14 @@ use crate::ui::{
     state::ShellState,
 };
 use hearthspace_common::frame_layout::{
-    ClockDateFormat, EXPANDABLE_WIDGETS, LayoutTarget, ObjectPlacement, TargetKind,
-    layout_editor_app_id,
+    EXPANDABLE_WIDGETS, LayoutTarget, ObjectPlacement, TargetKind, layout_editor_app_id,
 };
 use hearthspace_ui_components::{
     self as components,
     icons::{Icon, icon},
 };
 use xilem::{
-    AnyWidgetView, WidgetView, WindowView,
+    WidgetView, WindowView,
     dpi::LogicalSize,
     masonry::{
         layout::AsUnit,
@@ -20,10 +19,7 @@ use xilem::{
         properties::{LineBreaking, Padding},
     },
     style::Style,
-    view::{
-        CrossAxisAlignment, FlexExt, button, flex_col, flex_row, label, portal, radio_button,
-        radio_group, sized_box,
-    },
+    view::{CrossAxisAlignment, FlexExt, button, flex_col, flex_row, label, portal, sized_box},
 };
 
 pub(super) fn window(state: &ShellState) -> Option<WindowView<ShellState>> {
@@ -110,6 +106,7 @@ pub(super) fn view(state: &ShellState) -> impl WidgetView<ShellState> + use<> {
     });
     let header = flex_row((
         label(title)
+            .font("Liberation Sans")
             .text_size(13.0)
             .weight(FontWeight::SEMI_BOLD)
             .line_break_mode(LineBreaking::Clip)
@@ -140,13 +137,14 @@ pub(super) fn view(state: &ShellState) -> impl WidgetView<ShellState> + use<> {
         let details = expandable.then(|| {
             let expanded = selected.is_some_and(|(target, layout)| layout.is_expanded(&target.id));
             text_action(
-                if expanded {
-                    Icon::Minimize
-                } else {
-                    Icon::Maximize
-                },
+                if expanded { Icon::Square } else { Icon::List },
                 if expanded {
                     "Icon only"
+                } else {
+                    "Show details"
+                },
+                if expanded {
+                    "Shrink to icon"
                 } else {
                     "Show details"
                 },
@@ -160,6 +158,11 @@ pub(super) fn view(state: &ShellState) -> impl WidgetView<ShellState> + use<> {
                     "Ungroup"
                 } else {
                     "Separate"
+                },
+                if selected.is_some_and(|(target, _)| target.kind == TargetKind::Group) {
+                    "Ungroup items"
+                } else {
+                    "Remove from group"
                 },
                 "ungroup",
             )
@@ -194,14 +197,20 @@ pub(super) fn view(state: &ShellState) -> impl WidgetView<ShellState> + use<> {
             0.0,
         )
     });
-    let date = is_clock.then(|| date_options(selected.unwrap().1.clock_date_format));
+    let date = is_clock.then(|| {
+        super::editor_clock::view(
+            selected.unwrap().1.clock_date_format,
+            state.appearance.palette,
+        )
+    });
     let errors = state.frame_layout.error.clone().map(|error| {
         label(error)
+            .font("Liberation Sans")
             .text_size(12.0)
             .theme_color(Tone::Muted)
             .line_break_mode(LineBreaking::WordWrap)
     });
-    let content = flex_col((header, options, placements, date, errors))
+    let content = flex_col((header, options, date, placements, errors))
         .cross_axis_alignment(CrossAxisAlignment::Stretch)
         .gap(0.0.px());
     let size = size(state);
@@ -241,28 +250,38 @@ fn action(
     action: &'static str,
     selected: bool,
 ) -> impl WidgetView<ShellState> + use<> {
-    components::button_surface(
-        button(
-            icon(glyph, 19.0).label(name),
-            move |state: &mut ShellState| super::command(state, action, serde_json::json!({})),
-        )
-        .width(44.0.px())
-        .height(44.0.px())
-        .padding(10.0.px())
-        .corner_radius(15.0.px()),
-        components::ButtonSurface::Bare,
-        selected,
+    super::tooltip::hint(
+        components::button_surface(
+            button(
+                icon(glyph, 19.0).label(name),
+                move |state: &mut ShellState| super::command(state, action, serde_json::json!({})),
+            )
+            .width(44.0.px())
+            .height(44.0.px())
+            .padding(10.0.px())
+            .corner_radius(15.0.px()),
+            components::ButtonSurface::Bare,
+            selected,
+        ),
+        if action == "done" { "Done" } else { name },
     )
 }
 
 fn text_action(
     glyph: Icon,
     name: &'static str,
+    accessible_name: &'static str,
     action: &'static str,
 ) -> impl WidgetView<ShellState> + use<> {
     components::button_surface(
-        button(
-            flex_row((icon(glyph, 18.0), label(name).text_size(12.0))).gap(8.0.px()),
+        components::semantic_button(
+            flex_row((
+                icon(glyph, 18.0),
+                label(name).font("Liberation Sans").text_size(12.0),
+            ))
+            .gap(8.0.px()),
+            accessible_name,
+            None,
             move |state: &mut ShellState| super::command(state, action, serde_json::json!({})),
         )
         .height(44.0.px())
@@ -279,91 +298,30 @@ fn placement_button(
     selected: bool,
     surface: &'static str,
 ) -> impl WidgetView<ShellState> + use<> {
-    components::button_surface(
-        components::semantic_button(
-            icon(glyph, 19.0),
-            name,
-            Some(selected),
-            move |state: &mut ShellState| {
-                if surface == "frame" {
-                    super::command(state, "attach", serde_json::json!({}))
-                } else {
-                    super::command(
-                        state,
-                        "place",
-                        serde_json::json!({"placement":{"surface":surface}}),
-                    )
-                }
-            },
-        )
-        .height(44.0.px())
-        .padding(10.0.px())
-        .corner_radius(15.0.px()),
-        components::ButtonSurface::Bare,
-        selected,
-    )
-}
-
-fn date_options(selected: ClockDateFormat) -> impl WidgetView<ShellState> + use<> {
-    let rows: Vec<Box<AnyWidgetView<ShellState>>> = [
-        (ClockDateFormat::None, "Time only"),
-        (ClockDateFormat::Weekday, "Weekday"),
-        (ClockDateFormat::Short, "Short date"),
-        (ClockDateFormat::Numeric, "Numeric date"),
-        (ClockDateFormat::Long, "Long date"),
-    ]
-    .into_iter()
-    .map(|(format, title)| {
-        let content = flex_col((
-            radio_button(title, selected == format, move |state: &mut ShellState| {
-                super::command(
-                    state,
-                    "clock-date-format",
-                    serde_json::json!({"value":format}),
-                )
-            }),
-            label(super::widgets::clock(format))
-                .text_size(12.0)
-                .theme_color(Tone::Muted)
-                .padding(Padding {
-                    left: 24.0.px(),
-                    ..Padding::ZERO
-                }),
-        ))
-        .cross_axis_alignment(CrossAxisAlignment::Stretch)
-        .gap(3.0.px());
-        sized_box(content)
-            .padding(Padding {
-                top: 8.0.px(),
-                bottom: 8.0.px(),
-                left: 10.0.px(),
-                right: 10.0.px(),
-            })
-            .height(52.0.px())
-            .theme_background(if selected == format {
-                Tone::AccentSoft
-            } else {
-                Tone::Transparent
-            })
-            .corner_radius(10.0.px())
-            .boxed()
-    })
-    .collect();
-    separated(
-        flex_col((
-            label("Date format")
-                .text_size(11.0)
-                .theme_color(Tone::Muted)
-                .padding(Padding {
-                    top: 8.0.px(),
-                    bottom: 4.0.px(),
-                    left: 10.0.px(),
-                    right: 10.0.px(),
-                }),
-            radio_group(flex_col(rows).gap(0.0.px())),
-        ))
-        .cross_axis_alignment(CrossAxisAlignment::Stretch)
-        .gap(0.0.px()),
-        4.0,
+    super::tooltip::hint(
+        components::button_surface(
+            components::semantic_button(
+                icon(glyph, 19.0),
+                name,
+                Some(selected),
+                move |state: &mut ShellState| {
+                    if surface == "frame" {
+                        super::command(state, "attach", serde_json::json!({}))
+                    } else {
+                        super::command(
+                            state,
+                            "place",
+                            serde_json::json!({"placement":{"surface":surface}}),
+                        )
+                    }
+                },
+            )
+            .height(44.0.px())
+            .padding(10.0.px())
+            .corner_radius(15.0.px()),
+            components::ButtonSurface::Bare,
+            selected,
+        ),
+        name,
     )
 }

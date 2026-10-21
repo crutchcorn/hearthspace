@@ -15,6 +15,8 @@ enum Kind {
     Field,
     Card,
     Shell,
+    Tooltip,
+    Choice,
 }
 
 pub(in crate::ui) struct Panel<V> {
@@ -51,6 +53,26 @@ pub(in crate::ui) fn shell<V>(inner: V, palette: Palette) -> Panel<V> {
         selected: false,
         hovered: false,
         kind: Kind::Shell,
+        palette,
+    }
+}
+
+pub(in crate::ui) fn choice<V>(inner: V, selected: bool, palette: Palette) -> Panel<V> {
+    Panel {
+        inner,
+        selected,
+        hovered: false,
+        kind: Kind::Choice,
+        palette,
+    }
+}
+
+pub(in crate::ui) fn tooltip<V>(inner: V, palette: Palette) -> Panel<V> {
+    Panel {
+        inner,
+        selected: false,
+        hovered: false,
+        kind: Kind::Tooltip,
         palette,
     }
 }

@@ -185,6 +185,13 @@ pub(super) fn dismiss(state: &mut ShellState, key: &str) {
 }
 
 pub(super) fn open_menu(state: &mut ShellState, output_key: &str, key: &ItemKey) {
+    if super::frame_layout::popups::defer(
+        state,
+        output_key,
+        super::frame_layout::popups::Popup::TrayMenu(key.clone()),
+    ) {
+        return;
+    }
     let Some(item) = visible(&state.tray.snapshot).find(|item| &item.key == key) else {
         return;
     };

@@ -9,7 +9,7 @@ use super::{ShellState, Snapshot, apply};
 
 #[derive(Debug)]
 enum Update {
-    Snapshot(Snapshot),
+    Snapshot(Box<Snapshot>),
     Error(String),
     Open(String, super::popups::Popup),
 }
@@ -75,14 +75,15 @@ pub(in crate::ui) fn task() -> impl View<ShellState, (), xilem::ViewCtx, Element
                                 && !snapshot.outputs.is_empty();
                             if previous.as_ref() != Some(&snapshot) {
                                 previous = Some(snapshot.clone());
-                                if proxy.message(Update::Snapshot(snapshot)).is_err() {
+                                if proxy.message(Update::Snapshot(Box::new(snapshot))).is_err() {
                                     break;
                                 }
                             }
-                            if may_open && let Some((key, popup)) = open {
-                                if proxy.message(Update::Open(key, popup)).is_err() {
-                                    break;
-                                }
+                            if may_open
+                                && let Some((key, popup)) = open
+                                && proxy.message(Update::Open(key, popup)).is_err()
+                            {
+                                break;
                             }
                         }
                         Err(error) => {
@@ -98,7 +99,7 @@ pub(in crate::ui) fn task() -> impl View<ShellState, (), xilem::ViewCtx, Element
                                 snapshot.confirmation = None;
                                 snapshot.focus_request = None;
                                 previous = Some(snapshot.clone());
-                                if proxy.message(Update::Snapshot(snapshot)).is_err() {
+                                if proxy.message(Update::Snapshot(Box::new(snapshot))).is_err() {
                                     break;
                                 }
                             }
@@ -113,7 +114,7 @@ pub(in crate::ui) fn task() -> impl View<ShellState, (), xilem::ViewCtx, Element
         |state, update| match update {
             Update::Snapshot(snapshot) => {
                 state.frame_layout.error = None;
-                apply(state, snapshot);
+                apply(state, *snapshot);
             }
             Update::Error(error) => state.frame_layout.error = Some(error),
             Update::Open(key, popup) => super::popups::open(state, &key, popup),

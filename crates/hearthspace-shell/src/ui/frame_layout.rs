@@ -11,6 +11,7 @@ use super::state::ShellState;
 mod backing;
 mod confirm;
 mod editor;
+mod editor_clock;
 pub(super) mod focus;
 pub(super) mod items;
 mod parts;
@@ -19,8 +20,14 @@ mod reveal;
 mod task;
 #[cfg(test)]
 mod tests;
+mod tooltip;
 mod widgets;
-pub(super) use task::task;
+
+pub(super) fn task()
+-> impl xilem::core::View<ShellState, (), xilem::ViewCtx, Element = xilem::core::NoElement> + use<>
+{
+    xilem::core::fork(task::task(), tooltip::task())
+}
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Deserialize)]
 #[serde(default)]
@@ -48,6 +55,8 @@ pub(super) struct Group {
     pub rect: Rect,
     pub grip: Rect,
     pub orientation: String,
+    pub hovered: bool,
+    pub focused: bool,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Deserialize)]
@@ -127,6 +136,7 @@ pub(super) struct State {
     windows: BTreeMap<String, WindowId>,
     chains: BTreeMap<String, focus::Chain>,
     editor: Option<WindowId>,
+    tooltip: tooltip::State,
     confirm_window: Option<WindowId>,
     confirm_height: Option<f64>,
     confirm_target: super::search_focus::FocusTarget,
@@ -134,13 +144,13 @@ pub(super) struct State {
 }
 
 pub(super) fn submit(state: &mut ShellState, command: String) {
-    if let Some(requests) = &state.frame_layout.requests {
-        if let Err(error) = requests.try_send(task::Request {
+    if let Some(requests) = &state.frame_layout.requests
+        && let Err(error) = requests.try_send(task::Request {
             command,
             open: None,
-        }) {
-            state.frame_layout.error = Some(format!("Layout request could not be queued: {error}"));
-        }
+        })
+    {
+        state.frame_layout.error = Some(format!("Layout request could not be queued: {error}"));
     }
 }
 
@@ -167,6 +177,13 @@ fn apply(state: &mut ShellState, mut snapshot: Snapshot) {
         state.frame_layout.initialized = true;
     }
     let new_session = state.frame_layout.snapshot.session != snapshot.session;
+    if new_session
+        || !snapshot.editing
+        || snapshot.selected != state.frame_layout.snapshot.selected
+        || snapshot.confirmation != state.frame_layout.snapshot.confirmation
+    {
+        tooltip::clear(state);
+    }
     if new_session || !snapshot.editing {
         state.frame_layout.editor = snapshot.editing.then(WindowId::next);
     }
@@ -246,6 +263,7 @@ pub(super) fn windows(state: &ShellState) -> Vec<WindowView<ShellState>> {
     windows.extend(backing::windows(state));
     windows.extend(editor::window(state));
     windows.extend(confirm::window(state));
+    windows.extend(tooltip::window(state));
     windows.extend(reveal::windows(state));
     windows
 }
