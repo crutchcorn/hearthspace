@@ -122,6 +122,7 @@ struct ManagedWindow {
     initial_placement_done: bool,
     initial_output_name: Option<String>,
     presentation: presentation::WindowPresentation,
+    pending_resize: Option<windows::PendingResize>,
     /// Fractional scale most recently advertised to this window's surface tree.
     /// Compared each frame so the preferred scale is only re-sent when the
     /// window moves onto an output with a different scale (e.g. dragged across
@@ -218,14 +219,17 @@ struct DragState {
     window_id: u64,
     pointer_start: Point<f64, Logical>,
     window_start: CanvasPoint,
+    visible_start: Point<i32, Logical>,
 }
 
+#[derive(Clone, Copy)]
 struct ResizeState {
     window_id: u64,
     edges: ResizeEdges,
     pointer_start: Point<f64, Logical>,
-    initial_position: CanvasPoint,
     initial_content_size: Size<i32, Logical>,
+    initial_bounds: smithay::utils::Rectangle<i32, Logical>,
+    moved: bool,
 }
 
 enum HitTarget {

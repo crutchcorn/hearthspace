@@ -1,4 +1,4 @@
-use crate::geometry::CanvasPoint;
+use crate::geometry::{CanvasPoint, grid::snap_coordinate};
 use smithay::utils::{Logical, Point, Rectangle};
 
 pub(super) fn rectangle(a: Point<f64, Logical>, b: Point<f64, Logical>) -> Rectangle<f64, Logical> {
@@ -15,7 +15,7 @@ pub(super) fn moved_position(
 ) -> CanvasPoint {
     let align = |value: f64| {
         if snap {
-            ((value - 14.0) / 28.0).round() * 28.0 + 14.0
+            snap_coordinate(value, -1_000_000.0, 1_000_000.0)
         } else {
             value.round()
         }

@@ -123,29 +123,7 @@ impl App {
         if self.desktop_pointer_motion() {
             return;
         }
-        if let Some(drag) = self.drag.as_ref() {
-            let delta = self.raw_pointer_location - drag.pointer_start;
-            let new_position = crate::geometry::CanvasPoint {
-                x: drag.window_start.x + (delta.x / self.viewport_scale).round() as i32,
-                y: drag.window_start.y + (delta.y / self.viewport_scale).round() as i32,
-            };
-            let window_id = drag.window_id;
-            // The compositor owns the cursor while dragging window chrome.
-            self.cursor_surface = None;
-            if let Some(window) = self.window_mut_by_id(window_id) {
-                window.position = new_position;
-                trace!(window_id, ?new_position, "updated window drag position");
-                self.request_redraw();
-            }
-            return;
-        }
-
-        if let Some(resize) = self.resize.as_ref() {
-            let edges = resize.edges;
-            self.cursor_icon = resize_cursor_icon(edges);
-            // The compositor owns the cursor while resizing.
-            self.cursor_surface = None;
-            self.update_resize(self.raw_pointer_location);
+        if self.update_window_pointer_operation() {
             return;
         }
 

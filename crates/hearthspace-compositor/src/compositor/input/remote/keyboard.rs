@@ -172,6 +172,9 @@ impl App {
             remote.modifiers = Some(masks);
             let previous_alt = self.keyboard.modifier_state().alt;
             self.set_keyboard_modifier_masks(masks);
+            if previous_alt != self.keyboard.modifier_state().alt {
+                self.refresh_grid_snapping();
+            }
             // WayVNC sends absolute masks before the corresponding key-up.
             // Observe this edge here as well as in normal keyboard dispatch.
             if previous_alt && !self.keyboard.modifier_state().alt {

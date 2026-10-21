@@ -6,7 +6,7 @@ use smithay::{
 
 use super::{
     App, Gesture,
-    model::{Lasso, moved_position},
+    model::{Lasso, drag_delta, moved_position},
 };
 use crate::{
     compositor::{HitTarget, ManagedWindowKind, cursor::CursorIcon},
@@ -50,14 +50,16 @@ impl App {
         // Real hit order matters: a covered member cannot steal a press from
         // an unrelated window, shell panel, or popup in front of the group.
         let shell = self.group_hits_shell();
-        let selected = self
+        let anchor = self
             .group_window_under_pointer()
-            .is_some_and(|id| self.window_group.selected.contains(&id));
+            .filter(|id| self.window_group.selected.contains(id))
+            .and_then(|id| self.windows.iter().position(|window| window.id == id))
+            .map(|index| self.window_canvas_rect(index).loc);
         let gather = !shell
             && !self.window_group.selecting
             && !self.window_group.selected.is_empty()
             && rect_contains(self.group_action_rect(), self.pointer_location);
-        if shell || (!self.window_group.selecting && !selected && !gather) {
+        if shell || (!self.window_group.selecting && anchor.is_none() && !gather) {
             self.clear_window_group();
             return false;
         }
@@ -78,9 +80,15 @@ impl App {
             }
         } else {
             self.window_group.flights.clear();
+            for window in &mut self.windows {
+                if self.window_group.selected.contains(&window.id) {
+                    window.pending_resize = None;
+                }
+            }
             self.window_group.gesture = Some(Gesture::Drag {
                 origin: self.raw_pointer_location,
                 scale: self.viewport_scale,
+                anchor: anchor.expect("group drag starts on a selected window"),
                 positions: self
                     .windows
                     .iter()
@@ -210,23 +218,31 @@ impl App {
                 Gesture::Drag {
                     origin,
                     scale,
+                    anchor,
                     positions,
                 } => {
                     self.follow_group_pointer_output();
-                    let delta = self.raw_pointer_location - origin;
+                    let delta = drag_delta(
+                        anchor,
+                        &positions,
+                        self.raw_pointer_location - origin,
+                        scale,
+                        self.keyboard.modifier_state().alt,
+                    );
                     for &(id, start) in &positions {
                         if let Some(index) = self.windows.iter().position(|window| window.id == id)
                             && self.group_window_eligible(index)
                         {
                             self.set_group_window_position(
                                 index,
-                                moved_position(start, delta, scale),
+                                moved_position(start, delta, 1.0),
                             );
                         }
                     }
                     Gesture::Drag {
                         origin,
                         scale,
+                        anchor,
                         positions,
                     }
                 }

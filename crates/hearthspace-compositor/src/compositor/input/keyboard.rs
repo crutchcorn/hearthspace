@@ -220,7 +220,7 @@ impl App {
             keyboard.advertise_modifier_state(self);
         }
         if keyboard.modifier_state().alt != previous_modifiers.alt {
-            self.desktop_pointer_motion();
+            self.refresh_grid_snapping();
         }
         match intercepted {
             Some(Some(shortcut)) => self.run_shortcut(shortcut),

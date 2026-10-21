@@ -136,6 +136,7 @@ impl App {
                 .configure(Some(Rectangle::new((x, y).into(), size)))
                 .map_err(|error| format!("X11 move failed: {error}"))?;
         }
+        window.pending_resize = None;
         window.position = CanvasPoint { x, y };
         self.request_redraw();
         Ok(())
@@ -165,6 +166,7 @@ impl App {
                     .map_err(|error| format!("X11 resize failed: {error}"))?;
             }
         }
+        self.windows[index].pending_resize = None;
         self.request_redraw();
         Ok(())
     }

@@ -61,6 +61,17 @@ double-click it to toggle maximize/restore. These controls use the same
 presentation behavior as Super+M and preserve the saved floating geometry.
 Client-drawn title bars continue to handle their own controls.
 
+Hold **Alt** while moving a floating window to align its visible top-left corner
+with the canvas dot grid. Hold Alt while resizing an edge or corner to align
+the edges being dragged; the opposite edges stay anchored. Alignment includes
+the compositor title bar and excludes client shadow margins. The grid stays in
+canvas coordinates as the view pans or zooms, and uses the same spacing as
+[desktop icons](DESKTOP_ITEMS.md). Pressing or releasing Alt updates an active
+move or resize without requiring another pointer movement. Application size
+limits take precedence when a requested size cannot align with the grid.
+Terminals such as Foot may also round the final size to character cells on
+release; the opposite edges remain anchored to the actual accepted size.
+
 ## Focus, dialogs, and recovery
 
 A newly mapped application receives focus. Activation follows actual keyboard

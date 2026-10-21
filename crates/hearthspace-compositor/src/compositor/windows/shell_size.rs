@@ -12,7 +12,7 @@ use wayland_server::protocol::wl_surface::WlSurface;
 
 use crate::config::CONTROL_BAR_HEIGHT;
 
-use super::super::{App, ManagedSurface, ManagedWindowKind};
+use super::super::{App, ManagedWindowKind};
 use super::window_app_id;
 
 impl App {
@@ -27,10 +27,8 @@ impl App {
         }) else {
             return;
         };
-        let surface = match &window.surface {
-            ManagedSurface::Xdg(surface) => surface,
-            #[cfg(feature = "xwayland")]
-            ManagedSurface::X11(_) => return,
+        let Some(surface) = window.surface.xdg_toplevel() else {
+            return;
         };
         let Some(output) =
             self.output_client_logical_size_for_name(window.shell_output_name.as_deref())

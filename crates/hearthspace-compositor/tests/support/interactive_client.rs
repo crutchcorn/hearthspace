@@ -14,8 +14,10 @@ use wayland_protocols::xdg::{
 
 struct Window {
     surface: wl_surface::WlSurface,
+    xdg_surface: xdg_surface::XdgSurface,
     toplevel: xdg_toplevel::XdgToplevel,
     size: (i32, i32),
+    inset: (i32, i32),
     configure_count: usize,
     resizing: bool,
     mapped: bool,
@@ -45,14 +47,18 @@ pub(crate) struct InteractiveClient {
 
 impl InteractiveClient {
     pub(crate) fn connect(socket: &Path) -> Self {
-        Self::connect_with_chrome(socket, false)
+        Self::connect_with_chrome(socket, false, (0, 0))
     }
 
     pub(crate) fn connect_server_chrome(socket: &Path) -> Self {
-        Self::connect_with_chrome(socket, true)
+        Self::connect_with_chrome(socket, true, (0, 0))
     }
 
-    fn connect_with_chrome(socket: &Path, server_chrome: bool) -> Self {
+    pub(crate) fn connect_with_inset(socket: &Path, inset: (i32, i32)) -> Self {
+        Self::connect_with_chrome(socket, false, inset)
+    }
+
+    fn connect_with_chrome(socket: &Path, server_chrome: bool, inset: (i32, i32)) -> Self {
         let connection = Connection::from_socket(UnixStream::connect(socket).unwrap()).unwrap();
         let mut queue = connection.new_event_queue();
         let handle = queue.handle();
@@ -84,8 +90,10 @@ impl InteractiveClient {
             toplevel.set_title(format!("Interactive fixture {number}"));
             state.windows.push(Window {
                 surface: surface.clone(),
+                xdg_surface,
                 toplevel,
                 size: (240, 160),
+                inset,
                 configure_count: 0,
                 resizing: false,
                 mapped: true,
@@ -145,11 +153,26 @@ impl InteractiveClient {
     }
 
     pub(crate) fn request_resize(&mut self, window: usize, serial: u32) {
-        self.state.windows[window].toplevel.resize(
-            self.state.seat.as_ref().unwrap(),
-            serial,
-            xdg_toplevel::ResizeEdge::BottomRight,
-        );
+        self.request_resize_edge(window, serial, xdg_toplevel::ResizeEdge::BottomRight);
+    }
+
+    pub(crate) fn request_resize_edge(
+        &mut self,
+        window: usize,
+        serial: u32,
+        edge: xdg_toplevel::ResizeEdge,
+    ) {
+        self.state.windows[window]
+            .toplevel
+            .resize(self.state.seat.as_ref().unwrap(), serial, edge);
+        self.sync();
+    }
+
+    pub(crate) fn set_size_limits(&mut self, window: usize, min: (i32, i32), max: (i32, i32)) {
+        let window = &self.state.windows[window];
+        window.toplevel.set_min_size(min.0, min.1);
+        window.toplevel.set_max_size(max.0, max.1);
+        window.surface.commit();
         self.sync();
     }
 
@@ -164,7 +187,7 @@ impl InteractiveClient {
         self.sync();
     }
 
-    pub(super) fn configuration(&mut self, window: usize) -> (usize, bool) {
+    pub(crate) fn configuration(&mut self, window: usize) -> (usize, bool) {
         self.sync();
         let window = &self.state.windows[window];
         (window.configure_count, window.resizing)
@@ -174,7 +197,12 @@ impl InteractiveClient {
 impl State {
     fn commit_buffer(&mut self, number: usize, handle: &QueueHandle<Self>) {
         let window = &self.windows[number];
-        let (width, height) = window.size;
+        let (content_width, content_height) = window.size;
+        let (inset_x, inset_y) = window.inset;
+        let (width, height) = (content_width + inset_x * 2, content_height + inset_y * 2);
+        window
+            .xdg_surface
+            .set_window_geometry(inset_x, inset_y, content_width, content_height);
         assert!(width > 0 && height > 0 && width <= 4096 && height <= 4096);
         let size = width as usize * height as usize * 4;
         let mut file = tempfile::tempfile().unwrap();

@@ -31,6 +31,7 @@ impl App {
         }
         let id = self.windows[index].id;
         if !mapped {
+            self.windows[index].pending_resize = None;
             self.favorite_window_unmapped(id);
         }
         if mapped && self.windows[index].kind == super::super::ManagedWindowKind::ControlOsd {

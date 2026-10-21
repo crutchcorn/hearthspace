@@ -249,6 +249,7 @@ impl App {
     }
 
     fn set_group_window_position(&mut self, index: usize, position: crate::geometry::CanvasPoint) {
+        self.windows[index].pending_resize = None;
         #[cfg(feature = "xwayland")]
         if let super::ManagedSurface::X11(surface) = &self.windows[index].surface {
             let _ = surface.configure(Some(Rectangle::new(

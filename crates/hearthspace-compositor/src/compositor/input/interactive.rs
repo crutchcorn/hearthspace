@@ -7,6 +7,10 @@ use smithay::{
 use wayland_server::protocol::wl_seat::WlSeat;
 
 use super::super::{App, DragState};
+use crate::{
+    compositor::windows::resize_cursor_icon,
+    geometry::{CanvasPoint, grid::snap_coordinate},
+};
 
 impl App {
     pub(in crate::compositor) fn valid_window_pointer_request(
@@ -63,14 +67,72 @@ impl App {
     pub(in crate::compositor) fn start_client_window_move(&mut self, window_index: usize) {
         self.cancel_group_window_motion(self.windows[window_index].id);
         self.prepare_window_pointer_operation();
+        self.windows[window_index].pending_resize = None;
         self.drag = Some(DragState {
             window_id: self.windows[window_index].id,
             pointer_start: self.window_pointer_start(window_index),
             window_start: self.windows[window_index].position,
+            visible_start: self.window_canvas_rect(window_index).loc,
         });
         // Recognition and the client's request can arrive after the finger has
         // moved. Include that motion instead of leaving the window behind it.
         self.apply_pointer_motion(self.raw_pointer_location, InputTime::now());
         self.request_redraw();
+    }
+
+    /// Modifier changes use the same original gesture baseline as pointer motion.
+    pub(in crate::compositor) fn refresh_grid_snapping(&mut self) {
+        if self.session_locked() {
+            return;
+        }
+        if !self.desktop_pointer_motion() && !self.group_pointer_motion(InputTime::now()) {
+            self.update_window_pointer_operation();
+        }
+    }
+
+    pub(in crate::compositor) fn update_window_pointer_operation(&mut self) -> bool {
+        if let Some(drag) = self.drag.as_ref() {
+            let motion = self.raw_pointer_location - drag.pointer_start;
+            let delta = Point::<f64, Logical>::from((
+                motion.x / self.viewport_scale,
+                motion.y / self.viewport_scale,
+            ));
+            let snap = self.keyboard.modifier_state().alt;
+            let axis = |start: i32, visible: i32, delta: f64| {
+                if snap {
+                    let inset = f64::from(visible) - f64::from(start);
+                    (snap_coordinate(
+                        f64::from(visible) + delta,
+                        f64::from(i32::MIN) + inset,
+                        f64::from(i32::MAX) + inset,
+                    ) - inset) as i32
+                } else {
+                    (f64::from(start) + delta.round()) as i32
+                }
+            };
+            let position = CanvasPoint {
+                x: axis(drag.window_start.x, drag.visible_start.x, delta.x),
+                y: axis(drag.window_start.y, drag.visible_start.y, delta.y),
+            };
+            let id = drag.window_id;
+            let start = drag.window_start;
+            self.cursor_surface = None;
+            if let Some(window) = self.window_mut_by_id(id)
+                // An unmoved titlebar press remains a click, even with Alt held.
+                && (delta != (0.0, 0.0).into() || window.position != start)
+                && window.position != position
+            {
+                window.position = position;
+                self.request_redraw();
+            }
+            return true;
+        }
+        if let Some(resize) = self.resize.as_ref() {
+            self.cursor_icon = resize_cursor_icon(resize.edges);
+            self.cursor_surface = None;
+            self.update_resize(self.raw_pointer_location);
+            return true;
+        }
+        false
     }
 }

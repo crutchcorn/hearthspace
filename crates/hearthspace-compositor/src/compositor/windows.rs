@@ -25,6 +25,10 @@ mod control_osd;
 mod geometry;
 mod hit_testing;
 mod ordering;
+mod resize;
+mod resize_grid;
+mod resize_limits;
+pub(super) use resize::PendingResize;
 mod shell_corners;
 mod shell_panels;
 mod shell_position;
@@ -35,13 +39,10 @@ pub(super) use geometry::{ResizeEdges, resize_cursor_icon};
 use ordering::normal_insert_index_for_kinds;
 pub(super) use titlebar_controls::{TitlebarButton, titlebar_button_rect};
 
-use geometry::{
-    content_canvas_origin_for, resize_anchored_position, resize_target_content_size,
-    title_bar_canvas_rect_for, window_canvas_rect_for,
-};
+use geometry::{content_canvas_origin_for, title_bar_canvas_rect_for, window_canvas_rect_for};
 
 use super::{
-    App, ManagedSurface, ManagedWindow, ManagedWindowKind, ResizeState, WindowDecoration,
+    App, ManagedSurface, ManagedWindow, ManagedWindowKind, WindowDecoration,
     focus::KeyboardFocusTarget,
     idle::ActivityReason,
     rendering::{toplevel_geometry_loc, toplevel_geometry_size},
@@ -608,135 +609,13 @@ impl App {
         Some(rect)
     }
 
-    /// Begin an interactive resize of `window_index` along `edges`, capturing the
-    /// window's starting geometry so motion deltas can be resolved against it.
-    pub(super) fn start_resize(&mut self, window_index: usize, edges: ResizeEdges) {
-        if self.window_uses_output_coordinates(window_index) {
-            return;
-        }
-        self.cancel_group_window_motion(self.windows[window_index].id);
-        self.prepare_window_pointer_operation();
-        let pointer_start = self.window_pointer_start(window_index);
-        let initial_content_size = self.window_geometry_size(window_index);
-        let window = &self.windows[window_index];
-        debug!(
-            window_id = window.id,
-            ?edges,
-            ?initial_content_size,
-            "starting interactive resize"
-        );
-        self.resize = Some(ResizeState {
-            window_id: window.id,
-            edges,
-            pointer_start,
-            initial_position: window.position,
-            initial_content_size,
-        });
-        if pointer_start != self.raw_pointer_location {
-            self.update_resize(self.raw_pointer_location);
-        }
-        self.request_redraw();
-    }
-
-    /// Resolve a pointer position during an active resize into a new client
-    /// content size and forward it to the window's client.
-    pub(super) fn update_resize(&mut self, location: Point<f64, Logical>) {
-        let Some(resize) = self.resize.as_ref() else {
-            return;
-        };
-        let edges = resize.edges;
-        let initial = resize.initial_content_size;
-        let window_id = resize.window_id;
-        let delta = location - resize.pointer_start;
-        let canvas_delta = Point::<i32, Logical>::from((
-            (delta.x / self.viewport_scale).round() as i32,
-            (delta.y / self.viewport_scale).round() as i32,
-        ));
-        let size = resize_target_content_size(edges, initial, canvas_delta);
-        trace!(window_id, ?edges, ?size, "configuring interactive resize");
-        self.configure_resize(window_id, size);
-    }
-
-    /// Send the in-progress resize size to the resized window's client. The
-    /// client applies it on its next commit, where the window is re-anchored.
-    pub(super) fn configure_resize(&self, window_id: u64, size: Size<i32, Logical>) {
-        let Some(window) = self.windows.iter().find(|window| window.id == window_id) else {
-            return;
-        };
-        match &window.surface {
-            ManagedSurface::Xdg(surface) => {
-                surface.with_pending_state(|state| {
-                    state.states.set(xdg_toplevel::State::Resizing);
-                    state.bounds = None;
-                    state.size = Some(size);
-                });
-                // Motion can round or clamp to an unchanged logical size.
-                // Smithay compares with the latest pending/acknowledged state,
-                // so identical samples need not enqueue another client frame.
-                surface.send_pending_configure();
-            }
-            #[cfg(feature = "xwayland")]
-            ManagedSurface::X11(surface) => {
-                let rect =
-                    Rectangle::new(Point::from((window.position.x, window.position.y)), size);
-                if let Err(error) = surface.configure(Some(rect)) {
-                    tracing::warn!(%error, "failed to configure X11 resize");
-                }
-            }
-        }
-    }
-
-    /// End the active interactive resize, clearing the `Resizing` state on the
-    /// client so it can return to its normal rendering.
-    pub(super) fn finish_resize(&mut self) {
-        let Some(resize) = self.resize.take() else {
-            return;
-        };
-        debug!(window_id = resize.window_id, "finishing interactive resize");
-        if let Some(window) = self
-            .windows
-            .iter()
-            .find(|window| window.id == resize.window_id)
-            && let Some(surface) = window.surface.xdg_toplevel()
-        {
-            surface.with_pending_state(|state| {
-                state.states.unset(xdg_toplevel::State::Resizing);
-            });
-            surface.send_configure();
-        }
-    }
-
-    /// Re-anchor a window being resized from its left/top edge so the opposite
-    /// edge stays put as the client's content size changes. Called on commit,
-    /// after the new content bounding box has been cached.
-    pub(super) fn reanchor_resize(&mut self, surface: &WlSurface) {
-        let Some(resize) = self.resize.as_ref() else {
-            return;
-        };
-        if !(resize.edges.left || resize.edges.top) {
-            return;
-        }
-        let Some(window_index) = self.window_index_for_surface(surface) else {
-            return;
-        };
-        if self.windows[window_index].id != resize.window_id {
-            return;
-        }
-        let new_position = resize_anchored_position(
-            resize.edges,
-            resize.initial_position,
-            resize.initial_content_size,
-            self.window_geometry_size(window_index),
-        );
-        self.windows[window_index].position = new_position;
-    }
     pub(super) fn window_surface_geometry_loc(&self, window_index: usize) -> Point<i32, Logical> {
         match &self.windows[window_index].surface {
             ManagedSurface::Xdg(surface) => toplevel_geometry_loc(surface.wl_surface()),
             #[cfg(feature = "xwayland")]
-            // X11 geometry is in root-window coordinates. It is not an inset
-            // within the wl_surface as xdg window geometry is.
-            ManagedSurface::X11(_) => Point::from((0, 0)),
+            // Smithay's geometry is the local committed bbox minus frame
+            // extents, so CSD shadows are excluded just as for xdg geometry.
+            ManagedSurface::X11(surface) => surface.geometry().loc,
         }
     }
 
