@@ -3,6 +3,7 @@ use crate::{hex_decode, hex_encode, shell_app_id_for_output, shell_output_name_f
 
 const WIDGET: &str = "dev.hearthspace.frame-widget";
 const GROUP: &str = "dev.hearthspace.frame-group";
+const GRIP: &str = "dev.hearthspace.frame-group-grip";
 const EDITOR: &str = "dev.hearthspace.layout-editor";
 const REVEAL: &str = "dev.hearthspace.pinned-window-reveal.window-";
 
@@ -21,6 +22,14 @@ pub fn frame_group_app_id(output: Option<&str>, id: &str) -> String {
 
 pub fn frame_group_from_app_id(app_id: &str) -> Option<(Option<String>, String)> {
     parse_target_app_id(GROUP, app_id)
+}
+
+pub fn frame_group_grip_app_id(output: Option<&str>, id: &str) -> String {
+    target_app_id(GRIP, output, id)
+}
+
+pub fn frame_group_grip_from_app_id(app_id: &str) -> Option<(Option<String>, String)> {
+    parse_target_app_id(GRIP, app_id)
 }
 
 pub fn layout_editor_app_id(session: u64, output: Option<&str>) -> String {
