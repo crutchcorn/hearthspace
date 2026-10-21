@@ -236,6 +236,9 @@ impl App {
             button,
             state,
         });
+        if state == ButtonState::Pressed {
+            self.track_shell_pointer_grab();
+        }
         pointer.frame(self);
         self.refresh_titlebar_hover();
     }

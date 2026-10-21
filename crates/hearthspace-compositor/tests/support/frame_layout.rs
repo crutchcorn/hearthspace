@@ -15,6 +15,8 @@ mod group_members;
 mod guards;
 #[path = "frame_layout/input.rs"]
 mod input;
+#[path = "frame_layout/pointer_grab.rs"]
+mod pointer_grab;
 #[path = "frame_layout/turn.rs"]
 mod turn;
 #[path = "frame_layout/work_area.rs"]

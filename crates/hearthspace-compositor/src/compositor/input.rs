@@ -28,6 +28,7 @@ mod pointer;
 mod recovery;
 mod remote;
 mod scroll;
+mod shell_grab;
 mod titlebar;
 mod touch;
 mod touch_tracker;

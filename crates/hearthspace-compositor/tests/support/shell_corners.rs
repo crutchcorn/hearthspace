@@ -39,13 +39,14 @@ fn stationary_pointer_click_uses_resized_corner_geometry_and_preserves_held_rele
     action(&compositor, "pointer-button-up 272");
     assert_eq!(client.presses().last(), Some(&(apps, (62.0, 27.0))));
 
-    // A press owns its matching release even if its corner moves meanwhile.
+    // A press owns its matching release even if its corner moves meanwhile,
+    // and the release uses the new local position under the stationary pointer.
     client.resize(apps, (124, 54));
     action(&compositor, "pointer-button-down 272");
     assert_eq!(client.presses().last(), Some(&(apps, (100.0, 27.0))));
     client.resize(apps, (86, 54));
     action(&compositor, "pointer-button-up 272");
-    assert_eq!(client.releases().last(), Some(&(apps, (100.0, 27.0))));
+    assert_eq!(client.releases().last(), Some(&(apps, (62.0, 27.0))));
     action(&compositor, "pointer-button-down 272");
     action(&compositor, "pointer-button-up 272");
     assert_eq!(client.presses().last(), Some(&(apps, (62.0, 27.0))));
