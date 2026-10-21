@@ -161,9 +161,9 @@ pub(super) fn view(
     .dismiss_directly()
 }
 
-struct Record<V> {
-    inner: V,
-    target: FocusTarget,
+pub(super) struct Record<V> {
+    pub(super) inner: V,
+    pub(super) target: FocusTarget,
 }
 impl<V> ViewMarker for Record<V> {}
 impl<V: WidgetView<ShellState>> View<ShellState, (), ViewCtx> for Record<V> {

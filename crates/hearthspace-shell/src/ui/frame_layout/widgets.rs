@@ -11,7 +11,11 @@ use hearthspace_ui_components::{
 };
 use xilem::{
     AnyWidgetView, WidgetView,
-    masonry::{layout::AsUnit, properties::LineBreaking},
+    masonry::{
+        layout::AsUnit,
+        parley::style::FontWeight,
+        properties::{LineBreaking, Padding},
+    },
     style::Style,
     view::{button, flex_row, label},
 };
@@ -36,8 +40,10 @@ pub(super) fn size(
     expanded: bool,
     grouped: bool,
     format: ClockDateFormat,
+    compact: bool,
 ) -> (f64, f64) {
     let width = match id {
+        "tools" if compact => 44.0,
         "tools" => 236.0,
         "apps" => {
             44.0 + if state.windows.is_empty() {
@@ -53,10 +59,22 @@ pub(super) fn size(
                 + 1) as f64
                 - 4.0
         }
-        "notifications" if expanded => 110.0,
-        "clock" if expanded => (clock(format).chars().count() as f64 * 8.0 + 24.0).max(94.0),
-        "wifi" if expanded => 90.0,
-        "volume" | "brightness" | "battery" if expanded => 82.0,
+        "notifications" if expanded => {
+            super::text_metrics::width(&notification_text(state), 11.0) + 47.0
+        }
+        "clock" if expanded => (super::text_metrics::width(&clock(format), 14.0) + 24.0).max(70.0),
+        "wifi" if expanded => (super::text_metrics::width("Wi-Fi", 11.0) + 43.0).max(44.0),
+        "volume" | "brightness" | "battery" if expanded => {
+            let percentage = match id {
+                "volume" => state.controls.volume(),
+                "brightness" => state.controls.brightness(),
+                _ => state.battery.as_ref().map(|battery| battery.percentage),
+            };
+            percentage.map_or(44.0, |value| {
+                super::text_metrics::width(&format!("{value}%"), 11.0)
+                    + if id == "battery" { 44.0 } else { 43.0 }
+            })
+        }
         _ => 44.0,
     };
     let padding = if grouped { 0.0 } else { 10.0 };
@@ -77,7 +95,11 @@ pub(super) fn content(
     chain: &focus::Chain,
 ) -> Box<AnyWidgetView<ShellState>> {
     if id == "tools" {
-        return tools(state, output, vertical, chain).boxed();
+        return if super::tool_menu::compact(state, output.key()) {
+            super::tool_menu::trigger(state, output, chain).boxed()
+        } else {
+            tools(state, output, vertical, chain).boxed()
+        };
     }
     if id == "apps" {
         return apps(state, output, vertical, chain).boxed();
@@ -98,11 +120,7 @@ pub(super) fn content(
                 Icon::Bell
             },
             "Notifications".into(),
-            Some(if count == 0 {
-                "All clear".into()
-            } else {
-                format!("{count} new")
-            }),
+            Some(notification_text(state)),
             output.show_notifications,
             None,
         ),
@@ -157,17 +175,11 @@ pub(super) fn content(
                 Some(Kind::Battery),
             )
         }
-        _ => (
-            Icon::Power,
-            "Power and session".into(),
-            None,
-            output.show_power,
-            None,
-        ),
+        _ => (Icon::Power, "Power".into(), None, output.show_power, None),
     };
     let id = id.to_owned();
     let key = output.key().to_owned();
-    let width = size(state, &id, vertical, expanded, true, format).0;
+    let width = size(state, &id, vertical, expanded, true, format, false).0;
     let show_icon = id != "clock" || !expanded;
     let caption = expanded.then_some(detail).flatten();
     let contents = flex_row((
@@ -175,6 +187,8 @@ pub(super) fn content(
             .then(|| icon(glyph, if id == "battery" { 19.0 } else { 18.0 }).label(name.clone())),
         caption.map(|text| {
             label(text)
+                .font("Liberation Sans")
+                .weight(FontWeight::MEDIUM)
                 .text_size(if id == "clock" { 14.0 } else { 11.0 })
                 .line_break_mode(LineBreaking::Clip)
         }),
@@ -195,7 +209,11 @@ pub(super) fn content(
                 }
             },
         )
-        .padding(10.0.px())
+        .padding(if show_icon {
+            Padding::all(10.0.px())
+        } else {
+            Padding::from_vh(0.0.px(), 12.0.px())
+        })
         .width(width.px())
         .height(44.0.px())
         .corner_radius(15.0.px()),
@@ -251,16 +269,25 @@ fn apps(
     chain: &focus::Chain,
 ) -> impl WidgetView<ShellState> + use<> {
     let key = output.key().to_owned();
+    let desired = crate::ui::dock::desired_width(state);
+    let dock_width = state
+        .frame_layout
+        .snapshot
+        .outputs
+        .iter()
+        .find(|layout| layout.output == output.key())
+        .and_then(|layout| {
+            layout
+                .widgets
+                .iter()
+                .find(|part| part.id == "apps" && part.merged)
+        })
+        .map_or(desired, |part| {
+            (part.rect.width - 48.0).max(1.0).min(desired)
+        });
     flex_row((
-        (!state.windows.is_empty()).then(|| {
-            crate::ui::dock::frame_view(
-                state,
-                output,
-                crate::ui::dock::desired_width(state),
-                vertical,
-                chain,
-            )
-        }),
+        (!state.windows.is_empty())
+            .then(|| crate::ui::dock::frame_view(state, output, dock_width, vertical, chain)),
         focus::item(
             crate::ui::icons::icon_button(
                 crate::ui::icons::Icon::Apps,
@@ -273,5 +300,19 @@ fn apps(
         ),
     ))
     .direction(axis(vertical))
+    .main_axis_alignment(xilem::view::MainAxisAlignment::End)
     .gap(4.0.px())
+}
+
+fn notification_text(state: &ShellState) -> String {
+    let count = state
+        .notifications
+        .iter()
+        .filter(|item| item.active)
+        .count();
+    if count == 0 {
+        "All clear".into()
+    } else {
+        format!("{count} new")
+    }
 }

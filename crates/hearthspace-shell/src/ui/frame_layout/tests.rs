@@ -3,6 +3,9 @@ use crate::ui::test_support::{Ui, ids};
 use hearthspace_common::frame_layout::{FrameEdge, ObjectPlacement, TargetKind};
 use xilem::{WidgetView, masonry::accesskit::Role, view::sized_box};
 
+#[path = "compact_tests.rs"]
+mod compact;
+
 fn state() -> ShellState {
     let mut state = ShellState::new("/unused".into(), vec!["test".into()]);
     apply(
@@ -87,7 +90,22 @@ fn native_tab_traverses_toolbar_controls_then_requests_the_next_surface() {
         ui.harness.press_tab_key(false);
         ui.dispatch(&tools);
     }
-    let request = requests.try_recv().unwrap();
+    let mut revealed = 0;
+    let request = loop {
+        let request = requests.try_recv().unwrap();
+        if let Some(value) = request.command.strip_prefix("frame-focus-region ") {
+            let value: serde_json::Value = serde_json::from_str(value).unwrap();
+            assert_eq!(value["target"]["id"], "tools");
+            assert!(value["rect"]["width"].as_f64().unwrap() > 0.0);
+            revealed += 1;
+        } else {
+            break request;
+        }
+    };
+    assert_eq!(
+        revealed, 5,
+        "every focused toolbar control must be revealed"
+    );
     assert!(request.command.starts_with("frame-focus-next "));
     let value: serde_json::Value =
         serde_json::from_str(request.command.split_once(' ').unwrap().1).unwrap();
@@ -308,4 +326,43 @@ fn editor_hints_follow_native_hover_focus_and_activation_without_stealing_focus(
         },
     );
     assert!(ui.state.frame_layout.tooltip.label.is_none());
+}
+
+#[test]
+fn compact_tools_open_same_native_actions_and_use_current_tool_focus() {
+    let mut state = state();
+    state.frame_layout.snapshot.editing = false;
+    state.frame_layout.snapshot.outputs[0].compact = true;
+    let mut ui = Ui::new(state, tools, (44, 44));
+    assert_eq!(
+        widgets::size(
+            &ui.state,
+            "tools",
+            false,
+            false,
+            true,
+            Default::default(),
+            true
+        ),
+        (44.0, 44.0)
+    );
+    ui.activate(ui.button("Canvas tools"));
+    ui.dispatch(&tools);
+    assert!(ui.state.outputs[0].show_controls);
+    assert_eq!(
+        ui.state.outputs[0].quick_panel,
+        crate::ui::quick_panel::Kind::Tools
+    );
+    let menu = |state: &ShellState| sized_box(tool_menu::panel(state, &state.outputs[0]));
+    let (sender, mut requests) = mpsc::channel(8);
+    ui.state.frame_layout.requests = Some(sender);
+    let mut menu_ui = Ui::new(ui.state, menu, (260, 232));
+    assert_eq!(
+        menu_ui.harness.focused_widget_id(),
+        Some(menu_ui.button("Select desktop items"))
+    );
+    menu_ui.activate(menu_ui.button("Change layout"));
+    menu_ui.dispatch(&menu);
+    assert!(!menu_ui.state.outputs[0].show_controls);
+    assert_eq!(requests.try_recv().unwrap().command, "layout-tool");
 }

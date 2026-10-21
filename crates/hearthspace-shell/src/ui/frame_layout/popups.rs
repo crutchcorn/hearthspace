@@ -39,6 +39,7 @@ pub(in crate::ui) fn defer(state: &mut ShellState, key: &str, popup: Popup) -> b
                 Kind::Brightness => "brightness",
                 Kind::Battery => "battery",
                 Kind::Clock => "clock",
+                Kind::Tools => "tools",
             },
             output
                 .output_name

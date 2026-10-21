@@ -1,5 +1,7 @@
 //! Ordered native control identities bridge Tab between independent surfaces.
+mod item;
 use super::{FocusRequest, ShellState};
+use item::Item;
 use std::{
     collections::BTreeMap,
     sync::{Arc, Mutex},
@@ -43,58 +45,6 @@ pub(in crate::ui) fn item<V: WidgetView<ShellState>>(
         inner,
         chain: chain.clone(),
         index,
-    }
-}
-pub(in crate::ui) struct Item<V> {
-    inner: V,
-    chain: Chain,
-    index: usize,
-}
-impl<V> ViewMarker for Item<V> {}
-impl<V: WidgetView<ShellState>> View<ShellState, (), ViewCtx> for Item<V> {
-    type Element = Pod<V::Widget>;
-    type ViewState = V::ViewState;
-    fn build(&self, ctx: &mut ViewCtx, state: &mut ShellState) -> (Self::Element, Self::ViewState) {
-        let result = self.inner.build(ctx, state);
-        self.chain
-            .0
-            .lock()
-            .unwrap()
-            .insert(self.index, result.0.new_widget.id());
-        result
-    }
-    fn rebuild(
-        &self,
-        prev: &Self,
-        vs: &mut Self::ViewState,
-        ctx: &mut ViewCtx,
-        element: Mut<'_, Self::Element>,
-        state: &mut ShellState,
-    ) {
-        let id = element.id();
-        if self.index != prev.index {
-            prev.chain.0.lock().unwrap().remove(&prev.index);
-        }
-        self.chain.0.lock().unwrap().insert(self.index, id);
-        self.inner.rebuild(&prev.inner, vs, ctx, element, state);
-    }
-    fn teardown(
-        &self,
-        vs: &mut Self::ViewState,
-        ctx: &mut ViewCtx,
-        element: Mut<'_, Self::Element>,
-    ) {
-        self.chain.0.lock().unwrap().remove(&self.index);
-        self.inner.teardown(vs, ctx, element);
-    }
-    fn message(
-        &self,
-        vs: &mut Self::ViewState,
-        ctx: &mut MessageCtx,
-        element: Mut<'_, Self::Element>,
-        state: &mut ShellState,
-    ) -> MessageResult<()> {
-        self.inner.message(vs, ctx, element, state)
     }
 }
 
@@ -199,6 +149,16 @@ impl<V: WidgetView<ShellState>> View<ShellState, (), ViewCtx> for Boundary<V> {
                         ),
                     );
                     MessageResult::Action(())
+                } else if let Some(reveal) = ctx.take_message::<Reveal>() {
+                    let rect = reveal.0;
+                    super::submit(
+                        state,
+                        format!(
+                            "frame-focus-region {}",
+                            serde_json::json!({"output":self.output,"target":self.target,"rect":{"x":rect.x0,"y":rect.y0,"width":rect.width(),"height":rect.height()}})
+                        ),
+                    );
+                    MessageResult::Action(())
                 } else {
                     MessageResult::Stale
                 }
@@ -211,6 +171,8 @@ impl<V: WidgetView<ShellState>> View<ShellState, (), ViewCtx> for Boundary<V> {
 struct Leave(bool);
 #[derive(Debug)]
 struct Enter(bool);
+#[derive(Debug, Clone, Copy)]
+struct Reveal(xilem::masonry::kurbo::Rect);
 pub(super) struct BoundaryWidget {
     inner: WidgetPod<dyn Widget>,
     chain: Chain,
@@ -261,6 +223,13 @@ impl Widget for BoundaryWidget {
         action: &ErasedAction,
         source: WidgetId,
     ) {
+        if source != ctx.widget_id()
+            && let Some(reveal) = action.downcast_ref::<Reveal>()
+        {
+            ctx.submit_untyped_action(Box::new(*reveal));
+            ctx.set_handled();
+            return;
+        }
         if source == self.inner.id()
             && let Some(Enter(reverse)) = action.downcast_ref::<Enter>()
         {

@@ -20,6 +20,8 @@ mod reveal;
 mod task;
 #[cfg(test)]
 mod tests;
+mod text_metrics;
+pub(super) mod tool_menu;
 mod tooltip;
 mod widgets;
 
@@ -46,6 +48,7 @@ pub(super) struct Widget {
     pub orientation: String,
     pub rect: Rect,
     pub expanded: bool,
+    pub merged: bool,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Deserialize)]
@@ -57,12 +60,20 @@ pub(super) struct Group {
     pub orientation: String,
     pub hovered: bool,
     pub focused: bool,
+    #[serde(default = "group_material")]
+    pub material: bool,
+    pub backing_only: bool,
+}
+
+fn group_material() -> bool {
+    true
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Deserialize)]
 #[serde(default)]
 pub(super) struct Output {
     pub output: String,
+    pub compact: bool,
     pub layout: FrameLayout,
     pub widgets: Vec<Widget>,
     pub groups: Vec<Group>,
@@ -140,6 +151,7 @@ pub(super) struct State {
     confirm_window: Option<WindowId>,
     confirm_height: Option<f64>,
     confirm_target: super::search_focus::FocusTarget,
+    tool_menu_target: super::search_focus::FocusTarget,
     pub error: Option<String>,
 }
 

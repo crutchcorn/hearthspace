@@ -8,7 +8,7 @@ use hearthspace_ui_components::{
     icons::{Icon, icon},
 };
 use xilem::{
-    WindowView,
+    WidgetView, WindowView,
     dpi::LogicalSize,
     masonry::layout::AsUnit,
     style::Style,
@@ -26,21 +26,25 @@ pub(super) fn windows(state: &ShellState) -> Vec<WindowView<ShellState>> {
             if group.rect.width <= 0.0 || group.rect.height <= 0.0 {
                 continue;
             }
+            let body = sized_box(label(""))
+                .fixed_width(group.rect.width.px())
+                .fixed_height(group.rect.height.px());
+            let body = if group.material {
+                crate::ui::canvas_search::material::shell(body, state.appearance.palette)
+                    .hovered(group.hovered || group.focused)
+                    .boxed()
+            } else {
+                body.boxed()
+            };
             windows.push(crate::ui::popup::window(
                 id,
                 "Frame group",
                 frame_group_app_id(Some(&output.output), &group.id),
                 LogicalSize::new(group.rect.width, group.rect.height),
-                crate::ui::canvas_search::material::shell(
-                    sized_box(label(""))
-                        .width(group.rect.width.px())
-                        .height(group.rect.height.px()),
-                    state.appearance.palette,
-                )
-                .hovered(group.hovered || group.focused),
+                body,
                 |_| {},
             ));
-            if !state.frame_layout.snapshot.editing {
+            if !state.frame_layout.snapshot.editing || group.backing_only {
                 continue;
             }
             let Some(id) = state

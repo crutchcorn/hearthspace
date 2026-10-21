@@ -32,7 +32,8 @@ pub(super) fn windows(state: &ShellState) -> Vec<WindowView<ShellState>> {
             };
             let target = hearthspace_common::frame_layout::LayoutTarget::widget(*id);
             let part = layout.widgets.iter().find(|part| part.id == *id);
-            let grouped = layout.layout.group_for(&target).is_some();
+            let grouped =
+                layout.layout.group_for(&target).is_some() || part.is_some_and(|part| part.merged);
             let vertical = part.is_some_and(|part| part.orientation == "vertical");
             let expanded = layout.layout.is_expanded(id);
             let available = state.frame_layout.visible
@@ -42,14 +43,20 @@ pub(super) fn windows(state: &ShellState) -> Vec<WindowView<ShellState>> {
                     || crate::ui::tray_state::visible(&state.tray.snapshot)
                         .next()
                         .is_some());
-            let size = widgets::size(
+            let mut size = widgets::size(
                 state,
                 id,
                 vertical,
                 expanded,
                 grouped,
                 layout.layout.clock_date_format,
+                layout.compact,
             );
+            if *id == "apps"
+                && let Some(part) = part.filter(|part| part.merged)
+            {
+                size.0 = part.rect.width.max(44.0);
+            }
             let content = widgets::content(
                 state,
                 output,
