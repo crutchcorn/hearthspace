@@ -101,12 +101,11 @@ pub(in crate::ui) fn task() -> impl View<ShellState, (), xilem::ViewCtx, Element
                                 discover(catalog, directory.as_deref(), &previous_items)
                             }).await;
                             if let Ok((next_catalog, next_items, mut error)) = source {
-                                let ids: Vec<_> = next_items.iter().map(|item| item.id.clone()).collect();
-                                if registered.as_ref() != Some(&ids) {
-                                    let worker_ids = ids.clone();
+                                if registered.as_ref() != Some(&next_items) {
+                                    let worker_items = next_items.clone();
                                     let worker_socket = socket.clone();
-                                    match tokio::task::spawn_blocking(move || register(&worker_socket, &worker_ids)).await {
-                                        Ok(Ok(())) => registered = Some(ids),
+                                    match tokio::task::spawn_blocking(move || register(&worker_socket, &worker_items)).await {
+                                        Ok(Ok(())) => registered = Some(next_items.clone()),
                                         Ok(Err(message)) => error = Some(message),
                                         Err(error) => tracing::warn!(%error, "desktop registration worker failed"),
                                     }

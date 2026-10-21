@@ -51,6 +51,9 @@ impl App {
     }
 
     pub(super) fn open_overview(&mut self) -> Result<(), String> {
+        if self.canvas_search_active() {
+            return Err("overview unavailable during canvas search".into());
+        }
         if self.session_locked() {
             return Err("overview unavailable while the session is locked".into());
         }

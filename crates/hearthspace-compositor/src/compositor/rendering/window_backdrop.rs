@@ -40,6 +40,7 @@ pub(super) struct BackdropRequest {
     /// window's corner mask. Settings samples its entire translucent window.
     pub region: Option<Rectangle<i32, Logical>>,
     pub zoom: f64,
+    pub opacity: f32,
 }
 
 #[derive(Default)]
@@ -186,7 +187,7 @@ impl WindowBackdropCache {
                 Ok(TextureRenderElement::from_texture_render_buffer(
                     visible.loc.to_f64(),
                     &backdrop.resolved,
-                    None,
+                    Some(request.opacity),
                     None,
                     None,
                     Kind::Unspecified,

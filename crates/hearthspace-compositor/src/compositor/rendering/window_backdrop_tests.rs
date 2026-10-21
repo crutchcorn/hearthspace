@@ -74,6 +74,7 @@ fn settings_glass_only_tracks_damage_below_its_owner_and_inside_its_halo() {
         window: Rectangle::new((120, 120).into(), (160, 120).into()),
         region: None,
         zoom: 1.0,
+        opacity: 1.,
     };
     let mut above = SolidColorBuffer::new((8, 8), [0.0, 0.0, 1.0, 1.0]);
     let mut owner = SolidColorBuffer::new((160, 120), [0.25, 0.0, 0.0, 0.25]);
@@ -147,6 +148,7 @@ fn settings_glass_clips_to_outputs_without_dark_edges_or_scaled_mask_drift(
         window: Rectangle::new((-420, 30).into(), (160, 120).into()),
         region: None,
         zoom,
+        opacity: 1.,
     };
     let white = SolidColorBuffer::new((240, 180), [1.0, 1.0, 1.0, 1.0]);
     let mut elements = vec![source(&white, (0, 0), scale)];
@@ -191,6 +193,7 @@ fn overlapping_window_backdrops_are_resolved_back_to_front() {
             window: output,
             region: None,
             zoom: 1.0,
+            opacity: 1.,
         },
         BackdropRequest {
             id: 2,
@@ -199,6 +202,7 @@ fn overlapping_window_backdrops_are_resolved_back_to_front() {
             window: output,
             region: None,
             zoom: 1.0,
+            opacity: 1.,
         },
     ];
     let mut elements = vec![
@@ -229,6 +233,7 @@ fn an_opaque_higher_window_skips_blur_and_each_output_keeps_its_own_cache() {
         window: Rectangle::new((10, 10).into(), (100, 100).into()),
         region: None,
         zoom: 1.0,
+        opacity: 1.,
     };
     let background = SolidColorBuffer::new((240, 180), [0.2, 0.2, 0.2, 1.0]);
     let mut above = SolidColorBuffer::new((240, 180), [0.0, 0.0, 0.0, 1.0]);
@@ -272,6 +277,7 @@ fn photographic_material_reduces_saturation_without_waiting_for_source_damage() 
         window: output,
         region: None,
         zoom: 1.0,
+        opacity: 1.,
     };
     let background = SolidColorBuffer::new((120, 100), [0.3, 0.5, 0.3, 1.0]);
     let mut normal = vec![source(&background, (0, 0), 1)];
@@ -309,6 +315,7 @@ fn server_titlebar_blurs_only_the_header_without_rounding_its_bottom(#[case] sca
         window: Rectangle::new((40, 40).into(), (220, 160).into()),
         region: Some(Rectangle::new((40, 40).into(), (220, 44).into())),
         zoom: 1.0,
+        opacity: 1.,
     };
     let mut background = SolidColorBuffer::new((320, 240), [1.0, 1.0, 1.0, 1.0]);
     let mut elements = vec![source(&background, (0, 0), scale)];

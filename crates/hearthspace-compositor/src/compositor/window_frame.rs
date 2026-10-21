@@ -46,6 +46,7 @@ struct FrameStyle {
     hovered: bool,
     server_side: bool,
     photo: bool,
+    opacity: f32,
 }
 
 struct CachedFrame {
@@ -100,6 +101,32 @@ impl WindowFrameCache {
         server_side: bool,
         photo: bool,
     ) -> Option<WindowFrameElements> {
+        self.elements_with_opacity(
+            renderer,
+            id,
+            window,
+            zoom,
+            active,
+            hovered,
+            server_side,
+            photo,
+            1.,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn elements_with_opacity(
+        &mut self,
+        renderer: &mut GlesRenderer,
+        id: u64,
+        window: Rectangle<i32, Logical>,
+        zoom: f64,
+        active: bool,
+        hovered: bool,
+        server_side: bool,
+        photo: bool,
+        opacity: f32,
+    ) -> Option<WindowFrameElements> {
         if window.is_empty() || !zoom.is_finite() || zoom <= 0.0 {
             return None;
         }
@@ -123,6 +150,7 @@ impl WindowFrameCache {
             hovered: hovered && !active,
             server_side,
             photo: photo && server_side,
+            opacity,
         };
         let cached = cache.windows.entry(id).or_insert_with(|| CachedFrame {
             style,
@@ -134,7 +162,8 @@ impl WindowFrameCache {
             let geometry_changed = cached.style.window != style.window
                 || cached.style.zoom != style.zoom
                 || cached.style.server_side != style.server_side;
-            let material_changed = cached.style.appearance != style.appearance;
+            let material_changed = cached.style.appearance != style.appearance
+                || cached.style.opacity != style.opacity;
             for (element, layer, changed) in [
                 (
                     &mut cached.rim,
@@ -189,6 +218,7 @@ impl Shaders {
             frame: renderer.compile_custom_pixel_shader(
                 include_str!("window_frame/frame.frag"),
                 &[
+                    UniformName::new("scene_opacity", UniformType::_1f),
                     UniformName::new("area_size", UniformType::_2f),
                     UniformName::new("window_size", UniformType::_2f),
                     UniformName::new("window_offset", UniformType::_2f),
@@ -265,6 +295,7 @@ fn appearance(
             .max(1);
     }
     let mut uniforms = vec![
+        Uniform::new("scene_opacity", style.opacity),
         Uniform::new("area_size", (area.size.w as f32, area.size.h as f32)),
         Uniform::new(
             "window_size",

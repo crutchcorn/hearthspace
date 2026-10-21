@@ -31,6 +31,7 @@ struct Pending {
     token: u64,
     expires: Instant,
     accepted: bool,
+    canvas: bool,
     output: Option<String>,
     keys: Vec<PendingKey>,
     held_before: HashSet<Keycode>,
@@ -96,6 +97,30 @@ impl SearchRequest {
 }
 
 impl App {
+    pub(in crate::compositor) fn reserve_canvas_search_input(
+        &mut self,
+        token: u64,
+        output: Option<String>,
+    ) {
+        self.search_request.pending = Some(Pending {
+            token,
+            output,
+            expires: Instant::now() + REQUEST_LIFETIME,
+            accepted: true,
+            canvas: true,
+            keys: Vec::new(),
+            held_before: self.keyboard.pressed_keys(),
+        });
+    }
+    fn search_input_available(&self) -> bool {
+        self.navigation_available()
+            || (self.canvas_search_active()
+                && self
+                    .search_request
+                    .pending
+                    .as_ref()
+                    .is_none_or(|pending| pending.canvas))
+    }
     pub(in crate::compositor) fn pending_search_reserves_focus(&self) -> bool {
         self.search_request.valid()
     }
@@ -202,6 +227,7 @@ impl App {
             token,
             expires: Instant::now() + REQUEST_LIFETIME,
             accepted: false,
+            canvas: false,
             output,
             keys: Vec::new(),
             held_before: self.keyboard.pressed_keys(),
@@ -229,11 +255,29 @@ impl App {
         if self.search_request.pending.is_none() {
             return false;
         }
-        if !self.search_request.valid() || !self.navigation_available() {
+        if !self.search_request.valid() || !self.search_input_available() {
             self.cancel_pending_search();
             return false;
         }
         let modifiers = self.remote_key_modifiers(source);
+        // Opening shortcut releases precede typing. Apply those immediately so
+        // the newly mapped field does not receive an enter with stale Ctrl/K.
+        // Once typing is queued, keep every modifier transition in that queue.
+        if state == KeyState::Released
+            && self.search_request.pending.as_mut().is_some_and(|pending| {
+                pending.canvas && pending.keys.is_empty() && pending.held_before.remove(&code)
+            })
+        {
+            self.discard_search_key(PendingKey {
+                source,
+                modifiers,
+                code,
+                state,
+                time,
+                finish_existing: true,
+            });
+            return true;
+        }
         if !self
             .search_request
             .push_key(source, modifiers, code, state, time)
@@ -245,6 +289,9 @@ impl App {
     }
 
     pub(in crate::compositor) fn search_mapping_allowed(&mut self, index: usize) -> bool {
+        if self.is_canvas_search_panel(index) {
+            return self.canvas_search_panel_allowed(index);
+        }
         if !self.is_search_panel(index) {
             return true;
         }
@@ -276,7 +323,7 @@ impl App {
 
     pub(in crate::compositor) fn finish_pending_search(&mut self, index: usize) {
         let ready = self.search_request.valid()
-            && self.is_search_panel(index)
+            && (self.is_search_panel(index) || self.canvas_search_panel_allowed(index))
             && self.search_request.pending.as_ref().is_some_and(|pending| {
                 pending.accepted && pending.output == self.windows[index].shell_output_name
             });
@@ -288,7 +335,7 @@ impl App {
         for mut key in keys {
             // A queued shortcut can lock the session or change focus. Stop
             // typing immediately if that happened during replay.
-            if !self.navigation_available() || self.focused_shell_panel_index() != Some(index) {
+            if !self.search_input_available() || self.focused_shell_panel_index() != Some(index) {
                 // Earlier replay may already have forwarded this press before
                 // a shortcut moved focus. Preserve its matching release.
                 if key.state == KeyState::Released && replayed.remove(&(key.source, key.code)) {
@@ -348,7 +395,8 @@ impl App {
         let keep = self.search_request.pending.as_ref().is_some_and(|pending| {
             focus.is_some_and(|index| {
                 (self.windows[index].kind == ManagedWindowKind::ShellBar
-                    || self.is_search_panel(index))
+                    || self.is_search_panel(index)
+                    || (pending.canvas && self.canvas_search_panel_allowed(index)))
                     && self.windows[index].shell_output_name == pending.output
             })
         });

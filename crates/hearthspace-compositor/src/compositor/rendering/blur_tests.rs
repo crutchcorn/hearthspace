@@ -51,6 +51,8 @@ fn incremental_blur(scale: i32, output: Point<i32, Physical>) {
     let mut tracker = OutputDamageTracker::new(size, 1.0, Transform::Normal);
     let corner = CornerRegion {
         id: 1,
+        radius: hearthspace_common::SHELL_CORNER_RADIUS as f32 * scale as f32,
+        alpha: 1.0,
         rect: Rectangle::new(
             (30 * scale, 30 * scale).into(),
             (48 * scale, 48 * scale).into(),
@@ -130,6 +132,42 @@ fn incremental_blur(scale: i32, output: Point<i32, Physical>) {
         before, after,
         "incremental presentation must change actual pixels"
     );
+    drop(target);
+
+    // Search previews can shrink their corner radius and fade without source
+    // damage. Neither change may leave an opaque, full-size glass silhouette.
+    let rounded = CornerRegion {
+        radius: corner.radius / 2.0,
+        ..corner
+    };
+    let reshaped = cache.render(&mut renderer, &[rounded], scale, &scene(&stripe, &distant));
+    assert_ne!(changed[0].current_commit(), reshaped[0].current_commit());
+    let faded = cache.render(
+        &mut renderer,
+        &[CornerRegion {
+            alpha: 0.25,
+            ..rounded
+        }],
+        scale,
+        &scene(&stripe, &distant),
+    );
+    assert_eq!(reshaped[0].current_commit(), faded[0].current_commit());
+    assert_eq!(faded[0].alpha(), 0.25);
+    let mut target = renderer.bind(&mut framebuffer).unwrap();
+    assert!(
+        tracker
+            .render_output(&mut renderer, &mut target, 1, &faded, [1.0, 0.0, 0.0, 1.0])
+            .unwrap()
+            .damage
+            .is_some()
+    );
+    let faded_pixels =
+        crate::compositor::capture::read_pixels(&mut renderer, &target, size, false).unwrap();
+    let center = ((54 * scale * size.w + 54 * scale) * 4) as usize;
+    assert!(
+        faded_pixels[center] > 180,
+        "faded glass must expose the red background"
+    );
 }
 
 #[test]
@@ -191,6 +229,8 @@ fn glass_smooths_fine_repeating_content_at_each_physical_pixel(
     ));
     let corner = CornerRegion {
         id: 1,
+        radius: hearthspace_common::SHELL_CORNER_RADIUS as f32 * scale as f32,
+        alpha: 1.0,
         rect: Rectangle::new(
             (30 * scale, 30 * scale).into(),
             (48 * scale, 48 * scale).into(),

@@ -142,7 +142,9 @@ impl App {
         // Custom wallpapers preserve pixel sizing; the default grid accounts
         // for monitor DPI before this output-local translation.
         let tiles = if self.session_locked()
-            || (!self.overview_active() && self.fullscreen_on_output(output_rect))
+            || (!self.overview_active()
+                && !self.canvas_search_presenting()
+                && self.fullscreen_on_output(output_rect))
         {
             Vec::new()
         } else {
@@ -249,6 +251,7 @@ impl App {
                 continue;
             }
             let front = elements.len();
+            elements.extend(self.canvas_search_selection_elements(renderer, index));
             // Popups (e.g. menus) render above their window's content and chrome.
             for popup in self.popup_render_elements(renderer, index) {
                 elements.push(popup);
@@ -263,21 +266,23 @@ impl App {
             let scale = self.window_render_scale(index);
             let server_side = self.has_compositor_chrome(index);
             let id = self.windows[index].id;
-            let active = self.focused_normal_window_id == Some(id);
+            let active = !self.canvas_search_active() && self.focused_normal_window_id == Some(id);
             let frame = (self.is_navigable_window(index)
                 && !self.windows[index].presentation.fullscreen)
                 .then(|| self.normal_window_screen_rect(index))
                 .flatten()
                 .and_then(|rect| {
-                    self.window_frames.elements(
+                    self.window_frames.elements_with_opacity(
                         renderer,
                         id,
                         rect,
                         scale,
                         active,
-                        hovered_window == Some(id),
+                        !self.canvas_search_active() && hovered_window == Some(id),
                         server_side,
                         self.background_image_path.is_some(),
+                        self.canvas_search_pose(index)
+                            .map_or(1., |(_, alpha)| alpha as f32),
                     )
                 });
             if let Some(frame) = &frame {
@@ -321,6 +326,20 @@ impl App {
             if let Some(frame) = frame {
                 elements.push(HearthspaceRenderElement::from(frame.shadow));
             }
+            if self.canvas_search_panel_allowed(index)
+                && let Some(origin) = self.launcher_logical_origin(index)
+            {
+                let rect = Rectangle::new(
+                    origin + self.window_surface_geometry_loc(index),
+                    self.window_geometry_size(index),
+                );
+                if let Some(frame) = self
+                    .window_frames
+                    .elements(renderer, id, rect, 1., false, false, false, false)
+                {
+                    elements.push(HearthspaceRenderElement::from(frame.shadow));
+                }
+            }
             if self.windows[index].kind == ManagedWindowKind::Normal
                 && !self.windows[index].presentation.fullscreen
                 && (self.has_compositor_chrome(index)
@@ -338,11 +357,14 @@ impl App {
                         != Some(window_backdrop::SETTINGS_APP_ID))
                     .then(|| self.title_bar_rect(index)),
                     zoom: scale,
+                    opacity: self
+                        .canvas_search_pose(index)
+                        .map_or(1., |(_, alpha)| alpha as f32),
                 });
             }
             // Fullscreen content must not reveal unrelated windows through
             // transparent pixels or around a smaller-than-requested buffer.
-            if self.windows[index].presentation.fullscreen {
+            if self.windows[index].presentation.fullscreen && !self.canvas_search_presenting() {
                 break;
             }
         }
@@ -536,12 +558,24 @@ impl App {
             // Built at native scale; the viewport zoom is applied by wrapping
             // these elements in a `RescaleRenderElement` in the caller.
             1.0,
-            1.0,
+            self.canvas_search_pose(window_index)
+                .map_or(1.0, |(_, alpha)| alpha as f32),
             Kind::Unspecified,
         )
     }
 
     pub(super) fn window_render_scale(&self, window_index: usize) -> f64 {
+        if let Some((pose, _)) = self.canvas_search_pose(window_index) {
+            if self.canvas_search_result_identity(window_index).is_some() {
+                return pose.width / 240.;
+            }
+            let base = self.base_window_screen_bounds(window_index);
+            return self.base_window_render_scale(window_index) * pose.width
+                / f64::from(base.size.w.max(1));
+        }
+        self.base_window_render_scale(window_index)
+    }
+    pub(super) fn base_window_render_scale(&self, window_index: usize) -> f64 {
         match self.windows[window_index].kind {
             ManagedWindowKind::Normal if self.window_uses_output_coordinates(window_index) => 1.0,
             ManagedWindowKind::Normal | ManagedWindowKind::DesktopItem => self.viewport_scale,

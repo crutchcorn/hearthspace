@@ -164,6 +164,7 @@ pub fn tray_menu_output_name_from_app_id(app_id: &str) -> Option<Option<String>>
 
 pub fn shell_panel_output_name_from_app_id(app_id: &str) -> Option<Option<String>> {
     launcher_output_name_from_app_id(app_id)
+        .or_else(|| canvas_search_from_app_id(app_id).map(|(_, output)| output))
         .or_else(|| canvas_map_output_name_from_app_id(app_id))
         .or_else(|| notifications_output_name_from_app_id(app_id))
         .or_else(|| power_menu_output_name_from_app_id(app_id))

@@ -67,6 +67,11 @@ impl App {
         &self,
         window_index: usize,
     ) -> Option<Point<i32, Logical>> {
+        if self.is_canvas_search_panel(window_index)
+            || self.canvas_search_result_identity(window_index).is_some()
+        {
+            return self.canvas_search_surface_origin(window_index);
+        }
         let window = &self.windows[window_index];
         let output = self.output_logical_rect_for_name(window.shell_output_name.as_deref())?;
         let geometry = Rectangle::new(

@@ -79,6 +79,7 @@ impl App {
     }
 
     pub(super) fn toggle_group_selection(&mut self) -> Result<(), String> {
+        self.disarm_canvas_search();
         self.check_navigation_available()?;
         self.interrupt_pinch_zoom();
         self.viewport_animation = None;

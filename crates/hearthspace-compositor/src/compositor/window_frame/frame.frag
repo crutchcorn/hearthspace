@@ -1,6 +1,7 @@
 precision highp float;
 varying vec2 v_coords;
 uniform float alpha;
+uniform float scene_opacity;
 uniform vec2 area_size;
 uniform vec2 window_size;
 uniform vec2 window_offset;
@@ -132,5 +133,5 @@ void main() {
 #if defined(DEBUG_FLAGS)
     if (tint == 1.0) color = vec4(0.0, 0.2, 0.0, 0.2) + color * 0.8;
 #endif
-    gl_FragColor = color * alpha;
+    gl_FragColor = color * alpha * scene_opacity;
 }

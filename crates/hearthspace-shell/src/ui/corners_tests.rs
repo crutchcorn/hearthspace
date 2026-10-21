@@ -44,8 +44,13 @@ fn notification_and_canvas_controls_open_their_own_panels() {
     ui.dispatch(&notifications);
     assert!(!ui.state.outputs[0].show_notifications);
 
-    let mut ui = Ui::new(state(), canvas, (150, 54));
-    for name in ["Select desktop items", "Select window group", "Canvas map"] {
+    let mut ui = Ui::new(state(), canvas, (198, 54));
+    for name in [
+        "Select desktop items",
+        "Search canvas",
+        "Select window group",
+        "Canvas map",
+    ] {
         let bounds = ui
             .harness
             .access_node(ui.button(name))
@@ -53,7 +58,7 @@ fn notification_and_canvas_controls_open_their_own_panels() {
             .bounding_box()
             .unwrap();
         assert!(
-            bounds.x0 >= 0.0 && bounds.x1 <= 150.0 && bounds.y1 <= 54.0,
+            bounds.x0 >= 0.0 && bounds.x1 <= 198.0 && bounds.y1 <= 54.0,
             "{name}: {bounds:?}"
         );
     }
@@ -281,7 +286,7 @@ fn corner_controls_remain_centered_when_the_surface_has_extra_width() {
         .unwrap();
     assert!(((bounds.x0 + bounds.x1) / 2.0 - 64.0).abs() < 1.0);
 
-    let ui = Ui::new(state(), canvas, (156, 54));
+    let ui = Ui::new(state(), canvas, (204, 54));
     let left = ui
         .harness
         .access_node(ui.button("Select desktop items"))
@@ -294,7 +299,7 @@ fn corner_controls_remain_centered_when_the_surface_has_extra_width() {
         .unwrap()
         .bounding_box()
         .unwrap();
-    assert_eq!((left.x0 + right.x1) / 2.0, 78.0);
+    assert_eq!((left.x0 + right.x1) / 2.0, 102.0);
 }
 
 #[test]

@@ -25,6 +25,7 @@ pub(in crate::compositor) struct KeyboardShortcuts {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Shortcut {
+    CanvasSearch(i32),
     Desktop(crate::compositor::desktop::Action),
     Group(groups::Action),
     DeviceControl(crate::compositor::shell_integration::device_control::DeviceControl),
@@ -187,6 +188,16 @@ impl App {
                         .device_filter(code, state, symbol, !app.session_locked())
                 {
                     result
+                } else if state == KeyState::Pressed
+                    && let Some(action) =
+                        app.canvas_search_key_action(modifiers, symbol, shell_panel_focused)
+                {
+                    FilterResult::Intercept(
+                        app.shortcuts
+                            .intercepted
+                            .insert(code)
+                            .then_some(Shortcut::CanvasSearch(action)),
+                    )
                 } else if app.overview_active() {
                     app.shortcuts
                         .filter_overview(code, state, modifiers, symbol)
@@ -239,6 +250,10 @@ impl App {
 
     fn run_shortcut(&mut self, shortcut: Shortcut) {
         match shortcut {
+            Shortcut::CanvasSearch(action) => {
+                self.run_canvas_search_key(action);
+                return;
+            }
             Shortcut::Desktop(action) => {
                 self.run_desktop_key(action);
                 return;
@@ -300,6 +315,7 @@ impl App {
         let command = match shortcut {
             Shortcut::OverviewToggle => ShellCommand::OverviewToggle,
             Shortcut::DeviceControl(_)
+            | Shortcut::CanvasSearch(_)
             | Shortcut::Desktop(_)
             | Shortcut::Group(_)
             | Shortcut::OverviewDismiss

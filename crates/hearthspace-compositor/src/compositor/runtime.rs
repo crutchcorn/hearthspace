@@ -125,6 +125,7 @@ pub(in crate::compositor) fn run_event_loop(
             .and_then(|()| {
                 (data.state.viewport_animation.is_some()
                     || data.state.overview_animating()
+                    || data.state.canvas_search_animating()
                     || data.state.group_animating()
                     || data.state.desktop_edge_panning())
                 .then_some(ANIMATION_FRAME_INTERVAL)
@@ -182,6 +183,7 @@ pub(in crate::compositor) fn run_event_loop(
         data.state.handle_idle_transitions();
         data.state.advance_viewport_animation();
         data.state.advance_overview_animation();
+        data.state.advance_canvas_search();
         data.state.maintain_window_group();
         data.state.reconcile_window_switcher();
         data.apply_cursor_icon();

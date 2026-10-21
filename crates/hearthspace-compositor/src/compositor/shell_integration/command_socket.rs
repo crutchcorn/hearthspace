@@ -125,6 +125,9 @@ impl CalloopData {
         if let Some(reply) = self.run_automation_command(text) {
             return reply;
         }
+        if let Some(reply) = self.run_canvas_search_command(text) {
+            return reply;
+        }
         if let Some(reply) = self.run_desktop_command(text) {
             return reply;
         }

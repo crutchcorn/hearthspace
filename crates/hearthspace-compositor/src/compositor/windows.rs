@@ -88,6 +88,13 @@ pub(super) fn window_kind_for_toplevel(surface: &ToplevelSurface) -> ManagedWind
     }
     if app_id
         .as_deref()
+        .and_then(hearthspace_common::canvas_search_result_from_app_id)
+        .is_some()
+    {
+        return ManagedWindowKind::Launcher;
+    }
+    if app_id
+        .as_deref()
         .and_then(shell_panel_output_name_from_app_id)
         .is_some()
     {
@@ -177,6 +184,7 @@ impl App {
             self.windows[window_index].kind,
             ManagedWindowKind::ControlOsd | ManagedWindowKind::ShellWatcher
         ) || self.session_locked()
+            || (self.canvas_search_active() && !self.canvas_search_panel_allowed(window_index))
             || self.overview_active()
             || (self.window_switcher_active()
                 && self.window_switcher_selected_id() != Some(self.windows[window_index].id))
@@ -489,6 +497,18 @@ impl App {
     }
 
     pub(super) fn title_bar_rect(&self, window_index: usize) -> Rectangle<i32, Logical> {
+        if self.canvas_search_pose(window_index).is_some() {
+            let rect = self.window_screen_bounds(window_index);
+            return Rectangle::new(
+                rect.loc,
+                (
+                    rect.size.w,
+                    (f64::from(TITLE_BAR_HEIGHT) * self.window_render_scale(window_index)).round()
+                        as i32,
+                )
+                    .into(),
+            );
+        }
         if self.window_uses_output_coordinates(window_index) {
             let rect = self.window_screen_bounds(window_index);
             return Rectangle::new(rect.loc, (rect.size.w, TITLE_BAR_HEIGHT).into());

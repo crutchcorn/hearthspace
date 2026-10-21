@@ -135,7 +135,7 @@ impl App {
         if self.begin_group_ui_touch(device, slot, location, time) {
             return;
         }
-        if !self.navigation_available() {
+        if !self.navigation_available() && !self.canvas_search_active() {
             return;
         }
         let Some(HitTarget::Client {
@@ -333,7 +333,7 @@ impl App {
             let valid = touch.valid(
                 geometry,
                 &self.output_logical_rects(),
-                self.navigation_available(),
+                self.navigation_available() || self.canvas_search_active(),
                 apps_identity.as_deref(),
             );
             if !valid {

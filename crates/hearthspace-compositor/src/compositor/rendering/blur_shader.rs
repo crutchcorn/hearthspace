@@ -1,5 +1,4 @@
 //! GPU-only blur of the desktop pixels behind a shell corner.
-use hearthspace_common::SHELL_CORNER_RADIUS;
 use smithay::{
     backend::renderer::{
         Bind, Color32F, Frame, Renderer, Texture, TextureFilter,
@@ -46,32 +45,6 @@ impl CornerBlurShader {
             ],
         )?;
         Ok(Self { program })
-    }
-
-    /// All sizes and padding are physical pixels. The scene and intermediate
-    /// textures cover the padded rectangle; target covers only the corner.
-    /// Textures must be distinct and belong to this renderer's context.
-    #[allow(clippy::too_many_arguments)]
-    pub(super) fn render(
-        &self,
-        renderer: &mut GlesRenderer,
-        scene: &GlesTexture,
-        target: &mut GlesTexture,
-        intermediate: &mut GlesTexture,
-        corner_size: Size<i32, Physical>,
-        padding: i32,
-        scale: i32,
-    ) -> Result<(), GlesError> {
-        self.render_region(
-            renderer,
-            scene,
-            target,
-            intermediate,
-            corner_size,
-            padding,
-            SHELL_CORNER_RADIUS as f32 * scale.max(1) as f32,
-            None,
-        )
     }
 
     #[allow(clippy::too_many_arguments)]

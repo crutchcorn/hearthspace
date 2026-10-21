@@ -103,13 +103,20 @@ pub(super) fn registration_commands(ids: &[String]) -> Vec<String> {
     commands
 }
 
-pub(super) fn register(socket: &Path, ids: &[String]) -> Result<(), String> {
-    for command in registration_commands(ids) {
+pub(super) fn register(socket: &Path, items: &[DesktopItem]) -> Result<(), String> {
+    let ids: Vec<_> = items.iter().map(|item| item.id.clone()).collect();
+    for command in registration_commands(&ids)
+        .into_iter()
+        .chain(search_registration::commands(items))
+    {
         command_client::send_command(socket, &command)
             .map_err(|error| format!("Could not arrange desktop items: {error}"))?;
     }
     Ok(())
 }
+
+#[path = "search_registration.rs"]
+mod search_registration;
 
 pub(super) fn perform(
     socket: &Path,

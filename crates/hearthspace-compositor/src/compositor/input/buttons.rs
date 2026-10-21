@@ -57,6 +57,9 @@ impl App {
             self.deliver_lock_button(button, state, time);
             return;
         }
+        if self.canvas_search_pointer_button(button, state) {
+            return;
+        }
         if self.group_pointer_button(button, state) {
             self.apply_pointer_motion(self.pointer_location, time);
             return;

@@ -1,29 +1,8 @@
-//! One cached GPU primitive keeps a large marquee cheap while it follows the pointer.
+//! A rounded screen-space marquee drawn with the shared selection primitive.
 use super::{App, Gesture, geometry};
 use crate::compositor::rendering::HearthspaceRenderElement;
-use smithay::{
-    backend::renderer::{
-        ContextId, Renderer,
-        element::Kind,
-        gles::{
-            GlesRenderer, GlesTexture, Uniform, UniformName, UniformType,
-            element::PixelShaderElement,
-        },
-    },
-    utils::{Logical, Rectangle},
-};
-use std::collections::HashMap;
-
-#[derive(Default)]
-pub(super) struct Cache {
-    renderers: HashMap<ContextId<GlesTexture>, Option<Cached>>,
-}
-
-struct Cached {
-    element: PixelShaderElement,
-    rectangle: Rectangle<i32, Logical>,
-    ink: [f32; 4],
-}
+pub(super) use crate::compositor::selection::Cache;
+use smithay::backend::renderer::gles::GlesRenderer;
 
 impl App {
     pub(in crate::compositor) fn desktop_selection_elements(
@@ -44,64 +23,18 @@ impl App {
         let ink = self.palette().accent.components;
         self.desktop
             .selection_cache
-            .element(renderer, rectangle, ink)
+            .element(
+                renderer,
+                rectangle,
+                crate::compositor::selection::Style {
+                    ink,
+                    radius: 5.,
+                    stroke: 1.,
+                    fill: 0.07,
+                },
+            )
             .into_iter()
             .map(Into::into)
             .collect()
     }
-}
-
-impl Cache {
-    fn element(
-        &mut self,
-        renderer: &mut GlesRenderer,
-        rectangle: Rectangle<i32, Logical>,
-        ink: [f32; 4],
-    ) -> Option<PixelShaderElement> {
-        let cached = self
-            .renderers
-            .entry(renderer.context_id())
-            .or_insert_with(|| {
-                let shader = renderer
-                    .compile_custom_pixel_shader(
-                        include_str!("selection.frag"),
-                        &[
-                            UniformName::new("area_size", UniformType::_2f),
-                            UniformName::new("ink", UniformType::_4f),
-                        ],
-                    )
-                    .map_err(|error| tracing::warn!(%error, "desktop selection shader unavailable"))
-                    .ok()?;
-                Some(Cached {
-                    element: PixelShaderElement::new(
-                        shader,
-                        rectangle,
-                        None,
-                        1.0,
-                        uniforms(rectangle, ink),
-                        Kind::Unspecified,
-                    ),
-                    rectangle,
-                    ink,
-                })
-            })
-            .as_mut()?;
-        if cached.rectangle != rectangle || cached.ink != ink {
-            cached.element.resize(rectangle, None);
-            cached.element.update_uniforms(uniforms(rectangle, ink));
-            cached.rectangle = rectangle;
-            cached.ink = ink;
-        }
-        Some(cached.element.clone())
-    }
-}
-
-fn uniforms(rectangle: Rectangle<i32, Logical>, ink: [f32; 4]) -> Vec<Uniform<'static>> {
-    vec![
-        Uniform::new(
-            "area_size",
-            (rectangle.size.w as f32, rectangle.size.h as f32),
-        ),
-        Uniform::new("ink", (ink[0], ink[1], ink[2], ink[3])),
-    ]
 }

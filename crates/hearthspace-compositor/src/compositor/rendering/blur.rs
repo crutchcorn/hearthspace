@@ -42,6 +42,8 @@ struct RendererBlur {
 struct CornerRegion {
     id: u64,
     rect: Rectangle<i32, Physical>,
+    radius: f32,
+    alpha: f32,
 }
 
 struct CornerBackdrop {
@@ -52,6 +54,7 @@ struct CornerBackdrop {
     blurred: TextureRenderBuffer<GlesTexture>,
     damage: OutputDamageTracker,
     initialized: bool,
+    radius: f32,
 }
 
 impl App {
@@ -73,6 +76,29 @@ impl App {
             let corner = self.shell_corner(index).is_some();
             let panel = window.kind == ManagedWindowKind::Launcher;
             if !window.mapped || (!corner && !panel) {
+                continue;
+            }
+            if self.canvas_search_result_identity(index).is_some() {
+                live.insert(window.id);
+                if let Some((pose, alpha)) = self.canvas_search_pose(index)
+                    && self.window_visible_on_output(index, output)
+                    && alpha > 0.0
+                {
+                    let logical = Rectangle::new(
+                        (pose.x.round() as i32, pose.y.round() as i32).into(),
+                        (pose.width.round() as i32, pose.height.round() as i32).into(),
+                    );
+                    if logical.overlaps(output) && logical.size.w > 0 && logical.size.h > 0 {
+                        regions.push(CornerRegion {
+                            id: window.id,
+                            rect: Rectangle::new(logical.loc - output.loc, logical.size)
+                                .to_physical(scale),
+                            radius: (hearthspace_common::SHELL_CORNER_RADIUS * pose.width / 240.0
+                                * f64::from(scale)) as f32,
+                            alpha: alpha as f32,
+                        });
+                    }
+                }
                 continue;
             }
             let Some(window_output) =
@@ -103,6 +129,8 @@ impl App {
                 regions.push(CornerRegion {
                     id: window.id,
                     rect,
+                    radius: hearthspace_common::SHELL_CORNER_RADIUS as f32 * scale as f32,
+                    alpha: 1.0,
                 });
             }
         }
@@ -153,11 +181,11 @@ impl CornerBlurCache {
                         );
                     }
                     let corner = cache.corners.get_mut(&region.id).unwrap();
-                    corner.update(renderer, shader, region.rect, desktop)?;
+                    corner.update(renderer, shader, region.rect, region.radius, desktop)?;
                     Ok(TextureRenderElement::from_texture_render_buffer(
                         region.rect.loc.to_f64(),
                         &corner.blurred,
-                        None,
+                        Some(region.alpha),
                         None,
                         None,
                         Kind::Unspecified,
@@ -202,6 +230,7 @@ impl CornerBackdrop {
             ),
             damage: OutputDamageTracker::new(padded, 1.0, Transform::Normal),
             initialized: false,
+            radius: 0.0,
         })
     }
 
@@ -210,6 +239,7 @@ impl CornerBackdrop {
         renderer: &mut GlesRenderer,
         shader: &CornerBlurShader,
         region: Rectangle<i32, Physical>,
+        radius: f32,
         desktop: &[TranslatedHearthspaceRenderElement],
     ) -> BlurResult<()> {
         let padding = BLUR_PADDING * self.scale;
@@ -231,18 +261,19 @@ impl CornerBackdrop {
                 .damage
                 .is_some()
         };
-        if !changed && self.initialized {
+        if !changed && self.initialized && self.radius == radius {
             return Ok(());
         }
         self.blurred.render().draw(|target| {
-            shader.render(
+            shader.render_region(
                 renderer,
                 &self.scene,
                 target,
                 &mut self.intermediate,
                 self.size,
                 padding,
-                self.scale,
+                radius,
+                None,
             )?;
             // Any source change can spread throughout this small backdrop.
             // Full-corner damage also covers changes just outside its bounds.
@@ -251,6 +282,7 @@ impl CornerBackdrop {
             )])
         })?;
         self.initialized = true;
+        self.radius = radius;
         Ok(())
     }
 }

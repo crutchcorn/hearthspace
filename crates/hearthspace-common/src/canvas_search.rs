@@ -9,6 +9,9 @@ pub use identity::{
 };
 pub use layout::layout;
 
+/// Bound both native text drafts and compositor query updates in UTF-8 bytes.
+pub const MAX_QUERY_BYTES: usize = 4096;
+
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct Point {
     pub x: f64,
