@@ -48,8 +48,9 @@ Native sessions use the regular layout state file; nested or headless sessions
 can opt in with `HEARTHSPACE_LAYOUT_PATH`. Missing applications do not erase
 saved positions, so reinstalling an app restores its placement.
 
-Frame attachment, layout editing, peeking, and canvas search are separate
-prototype features. Desktop icons do not enable those systems.
+[Canvas search](CANVAS_SEARCH.md) can temporarily bring matching icons into view
+without changing their saved positions. Frame attachment, layout editing and
+peeking remain separate prototype features.
 
 Implementation: `hearthspace-shell/src/desktop_items.rs` discovers real objects;
 `ui/desktop` coordinates shell surfaces and worker tasks; `ui/desktop_item`
