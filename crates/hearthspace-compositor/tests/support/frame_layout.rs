@@ -3,6 +3,8 @@ use super::navigation::{action, keys, query};
 use super::shell_panels::connect;
 use super::*;
 use serde_json::{Value, json};
+#[path = "frame_layout/drag_layer.rs"]
+mod drag_layer;
 #[path = "frame_layout/geometry.rs"]
 mod geometry;
 #[path = "frame_layout/group_members.rs"]
@@ -11,6 +13,8 @@ mod group_members;
 mod guards;
 #[path = "frame_layout/input.rs"]
 mod input;
+#[path = "frame_layout/turn.rs"]
+mod turn;
 #[path = "frame_layout/work_area.rs"]
 mod work_area;
 

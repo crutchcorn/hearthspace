@@ -122,7 +122,13 @@ impl App {
     }
     pub(in crate::compositor) fn layout_render_layer(&self, index: usize) -> Option<i32> {
         if self.layout_drag_contains(index) {
-            return Some(115);
+            // The backing is a separate native window, often mapped after its
+            // controls. Keep it below them when raising the whole dragged group.
+            return Some(if self.frame_group_identity(index).is_some() {
+                114
+            } else {
+                115
+            });
         }
         let id = window_app_id(&self.windows[index].surface).unwrap_or_default();
         if layout_confirm_from_app_id(&id).is_some() {

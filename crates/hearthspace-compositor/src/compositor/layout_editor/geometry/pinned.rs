@@ -81,7 +81,7 @@ impl App {
             return None;
         }
         if self.frame_grip_identity(index).is_some() {
-            return Some(grip_rect(placed.rect, placed.placement.edge()));
+            return Some(self.layout_grip_rect(placed));
         }
         if target.target.kind == TargetKind::Window && placed.placement.is_frame() {
             return Some(self.pinned_full_rect(index, placed));

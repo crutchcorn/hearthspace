@@ -1,18 +1,18 @@
 //! Measure and pack native members inside an output-bounded group.
 use super::*;
+pub(super) struct GroupMeasurement {
+    pub size: (f64, f64),
+    members: Vec<(Target, (f64, f64))>,
+}
 impl App {
-    pub(super) fn place_frame_group(
+    pub(super) fn frame_group_measurement(
         &self,
         layout: &FrameLayout,
         target: &Target,
-        placement: ObjectPlacement,
         view: Rect,
         vertical: bool,
-        result: &mut Vec<PlacedTarget>,
-    ) {
-        let Some(group) = layout.groups.get(&target.target.id) else {
-            return;
-        };
+    ) -> Option<GroupMeasurement> {
+        let group = layout.groups.get(&target.target.id)?;
         let members: Vec<_> = group
             .members
             .iter()
@@ -39,7 +39,7 @@ impl App {
             })
             .collect();
         if members.is_empty() {
-            return;
+            return None;
         }
         let along = members
             .iter()
@@ -55,16 +55,31 @@ impl App {
         let maximum = if vertical { view.height } else { view.width }
             - if view.width <= 760. { 24. } else { 48. };
         let along = along.min(maximum.max(54.));
-        let rect = self.standalone_frame_rect(
-            target,
-            placement,
-            if vertical {
+        Some(GroupMeasurement {
+            size: if vertical {
                 (across, along)
             } else {
                 (along, across)
             },
-            view,
-        );
+            members,
+        })
+    }
+
+    pub(super) fn place_frame_group(
+        &self,
+        layout: &FrameLayout,
+        target: &Target,
+        placement: ObjectPlacement,
+        view: Rect,
+        vertical: bool,
+        result: &mut Vec<PlacedTarget>,
+    ) {
+        let Some(GroupMeasurement { size, members }) =
+            self.frame_group_measurement(layout, target, view, vertical)
+        else {
+            return;
+        };
+        let rect = self.standalone_frame_rect(target, placement, size, view);
         result.push(PlacedTarget {
             target: target.clone(),
             rect,

@@ -37,6 +37,30 @@ pub(super) fn json_rect(rect: Rect) -> serde_json::Value {
     serde_json::json!({"x":rect.x,"y":rect.y,"width":rect.width,"height":rect.height})
 }
 impl App {
+    pub(super) fn layout_grip_rect(&self, placed: &PlacedTarget) -> Rect {
+        let scale = if placed.placement.is_frame() {
+            1.
+        } else {
+            self.viewport_scale
+        };
+        let grip = grip_rect(
+            Rect {
+                x: placed.rect.x / scale,
+                y: placed.rect.y / scale,
+                width: placed.rect.width / scale,
+                height: placed.rect.height / scale,
+            },
+            self.layout_drag_edge(&placed.target)
+                .or(placed.placement.edge()),
+        );
+        Rect {
+            x: grip.x * scale,
+            y: grip.y * scale,
+            width: grip.width * scale,
+            height: grip.height * scale,
+        }
+    }
+
     pub(in crate::compositor) fn frame_output_rect(&self, name: &str) -> Option<Rect> {
         let r = self.output_logical_rect_for_name(Some(name))?;
         Some(Rect {
@@ -82,20 +106,34 @@ impl App {
                     )
                 }
             }
-            TargetKind::Widget => native.unwrap_or_else(|| {
-                let long = match target.target.id.as_str() {
-                    "notifications" => 132.,
-                    "clock" => 104.,
-                    "tools" => 194.,
-                    "apps" => 54.,
-                    _ => 44.,
-                };
-                if vertical && matches!(target.target.id.as_str(), "tools" | "apps" | "tray") {
-                    (if grouped { 44. } else { 54. }, long)
-                } else {
-                    (long, if grouped { 44. } else { 54. })
-                }
-            }),
+            TargetKind::Widget => native
+                .map(|(width, height)| {
+                    if matches!(target.target.id.as_str(), "tools" | "apps" | "tray") {
+                        let short = width.min(height);
+                        let long = width.max(height);
+                        if vertical {
+                            (short, long)
+                        } else {
+                            (long, short)
+                        }
+                    } else {
+                        (width, height)
+                    }
+                })
+                .unwrap_or_else(|| {
+                    let long = match target.target.id.as_str() {
+                        "notifications" => 132.,
+                        "clock" => 104.,
+                        "tools" => 194.,
+                        "apps" => 54.,
+                        _ => 44.,
+                    };
+                    if vertical && matches!(target.target.id.as_str(), "tools" | "apps" | "tray") {
+                        (if grouped { 44. } else { 54. }, long)
+                    } else {
+                        (long, if grouped { 44. } else { 54. })
+                    }
+                }),
             _ => native.unwrap_or((640., 480.)),
         }
     }
@@ -136,12 +174,34 @@ impl App {
                 f64::from(r.loc.y)
             })
         });
-        let point = self.canvas_to_screen((x, y).into());
+        let width = size.0 * self.viewport_scale;
+        let height = size.1 * self.viewport_scale;
+        let point = self
+            .layout_drag_origin(target, width, height)
+            .map(|point| (point.x, point.y).into())
+            .unwrap_or_else(|| self.canvas_to_screen((x, y).into()));
         Rect {
             x: point.x,
             y: point.y,
-            width: size.0 * self.viewport_scale,
-            height: size.1 * self.viewport_scale,
+            width,
+            height,
+        }
+    }
+    pub(super) fn layout_target_size(
+        &self,
+        target: &Target,
+        vertical: bool,
+        view: Rect,
+    ) -> (f64, f64) {
+        if target.target.kind == TargetKind::Group {
+            self.layout_editor
+                .layouts
+                .get(&target.output)
+                .and_then(|layout| self.frame_group_measurement(layout, target, view, vertical))
+                .map(|measurement| measurement.size)
+                .unwrap_or((54., 54.))
+        } else {
+            self.frame_target_size(target, false, vertical, view)
         }
     }
     pub(super) fn frame_placements(&self) -> Vec<PlacedTarget> {

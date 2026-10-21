@@ -32,6 +32,7 @@ impl App {
         );
         let turning = super::turns_as_toolbar(&target.target)
             && old_vertical != placement.edge().is_some_and(|edge| edge.is_vertical());
+        let animate_turn = turning || self.layout_target_turn_active(target);
         if matches!(target.target.kind, TargetKind::Window | TargetKind::Item)
             && let Some((Some(x), Some(y), _, _)) = placement.canvas_bounds()
             && let Some(index) = self.target_window_index(target)
@@ -75,95 +76,69 @@ impl App {
         if self.settle_frame_overlaps() {
             self.layout_editor.placed = self.frame_placements();
         }
-        if super::turns_as_toolbar(&target.target)
-            && old_vertical != placement.edge().is_some_and(|edge| edge.is_vertical())
-            && let Some(placed) = self.frame_placed(target).cloned()
-        {
-            let members: Vec<_> = self
-                .layout_editor
-                .placed
-                .iter()
-                .filter(|p| {
-                    p.target.output == target.output
-                        && (p.target == *target
-                            || p.group.as_deref() == Some(target.target.id.as_str()))
-                })
-                .filter_map(|p| {
-                    self.target_window_index(&p.target)
-                        .map(|i| self.windows[i].id)
-                })
-                .collect();
-            let pivot = self.layout_editor.drop_anchor.map_or(
-                super::Point {
-                    x: placed.rect.x + placed.rect.width / 2.,
-                    y: placed.rect.y + placed.rect.height / 2.,
-                },
-                |(pointer, old, vertical)| {
-                    let x = ((pointer.x - old.x) / old.width.max(1.)).clamp(0., 1.);
-                    let y = ((pointer.y - old.y) / old.height.max(1.)).clamp(0., 1.);
-                    let (along, across) = if vertical { (y, x) } else { (x, y) };
-                    super::Point {
-                        x: placed.rect.x
-                            + placed.rect.width * if placed.vertical { across } else { along },
-                        y: placed.rect.y
-                            + placed.rect.height * if placed.vertical { along } else { across },
-                    }
-                },
-            );
+        let mut turn_members = Vec::new();
+        if animate_turn && let Some(placed) = self.frame_placed(target).cloned() {
+            let members = self.layout_turn_members(target);
+            let (local_pivot, anchor) =
+                if let Some((pointer, old, vertical)) = self.layout_editor.drop_anchor {
+                    (
+                        super::grip::ToolbarGrip::at(old, pointer, vertical).pivot(
+                            placed.rect.width,
+                            placed.rect.height,
+                            placed.vertical,
+                        ),
+                        super::Point {
+                            x: self.pointer_location.x,
+                            y: self.pointer_location.y,
+                        },
+                    )
+                } else {
+                    let from = old_target_rect.unwrap_or(placed.rect);
+                    (
+                        super::Point {
+                            x: placed.rect.width / 2.,
+                            y: placed.rect.height / 2.,
+                        },
+                        super::Point {
+                            x: from.x + from.width / 2.,
+                            y: from.y + from.height / 2.,
+                        },
+                    )
+                };
+            let pivot = super::Point {
+                x: placed.rect.x + local_pivot.x,
+                y: placed.rect.y + local_pivot.y,
+            };
+            let translation = super::Point {
+                x: anchor.x - pivot.x,
+                y: anchor.y - pivot.y,
+            };
+            turn_members = members.clone();
             self.queue_layout_turn(
                 target.clone(),
                 members,
                 placed.rect,
                 pivot,
-                if old_vertical {
+                if !turning {
+                    0.
+                } else if old_vertical {
                     std::f64::consts::FRAC_PI_2
                 } else {
                     -std::f64::consts::FRAC_PI_2
                 },
+                translation,
             );
         }
-        let turn_members: Vec<_> = self
-            .layout_editor
-            .placed
-            .iter()
-            .filter(|p| {
-                p.target.output == target.output
-                    && (p.target == *target
-                        || (target.target.kind == TargetKind::Group
-                            && p.group.as_deref() == Some(target.target.id.as_str())))
-            })
-            .filter_map(|p| {
-                self.target_window_index(&p.target)
-                    .map(|index| self.windows[index].id)
-            })
-            .collect();
-        let group_delta = (turning && target.target.kind == TargetKind::Group)
-            .then(|| old_target_rect.zip(self.frame_placed(target).map(|p| p.rect)))
-            .flatten()
-            .map(|(from, to)| (from.x - to.x, from.y - to.y));
         for (id, from) in before {
+            if turn_members.contains(&id) {
+                continue;
+            }
             if let Some(index) = self.windows.iter().position(|w| w.id == id)
                 && let Some(to) = self.layout_target_rect(index)
             {
                 self.queue_layout_motion(
                     id,
-                    if turning && turn_members.contains(&id) {
-                        if let Some((dx, dy)) = group_delta {
-                            super::Rect {
-                                x: to.x + dx,
-                                y: to.y + dy,
-                                ..to
-                            }
-                        } else {
-                            super::Rect {
-                                width: to.width,
-                                height: to.height,
-                                ..from
-                            }
-                        }
-                    } else {
-                        from
-                    },
+                    from,
                     to,
                     if self.is_layout_surface(index) {
                         super::motion::WIDGET_DURATION_MS

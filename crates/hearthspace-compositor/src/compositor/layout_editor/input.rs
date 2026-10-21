@@ -1,5 +1,5 @@
 //! Editing captures object presses before clients; one release belongs to one gesture.
-use super::{App, LayoutTarget, ObjectPlacement, Point, Rect, Target, TargetKind};
+use super::{App, ObjectPlacement, Point, Rect, Target, TargetKind};
 use hearthspace_common::frame_layout::{self, FrameLayout};
 use smithay::backend::input::ButtonState;
 use std::collections::BTreeMap;
@@ -13,6 +13,8 @@ pub(super) struct Drag {
     start: Point,
     rect: Rect,
     moved: bool,
+    interrupted: bool,
+    original_vertical: bool,
     edge: Option<frame_layout::FrameEdge>,
     layouts: BTreeMap<String, FrameLayout>,
     positions: Vec<(u64, crate::geometry::CanvasPoint)>,
@@ -88,14 +90,18 @@ impl App {
         if state == ButtonState::Released {
             if let Some(drag) = self.layout_editor.drag.take() {
                 if drag.moved {
-                    let vertical = drag.layouts.get(&drag.target.output).is_some_and(|l| {
-                        l.placement(&drag.target.target)
-                            .edge()
-                            .is_some_and(|e| e.is_vertical())
-                    });
-                    self.layout_editor.drop_anchor = Some((drag.start, drag.rect, vertical));
+                    self.layout_editor.drop_anchor =
+                        Some((drag.start, drag.rect, drag.original_vertical));
                     self.commit_layout_drop(&drag);
                     self.layout_editor.drop_anchor = None;
+                } else if drag.interrupted {
+                    self.layout_editor.layouts = drag.layouts;
+                    for (id, position) in drag.positions {
+                        if let Some(window) = self.windows.iter_mut().find(|window| window.id == id)
+                        {
+                            window.position = position;
+                        }
+                    }
                 }
                 self.reconcile_layout_editor();
                 self.layout_changed();
@@ -144,6 +150,18 @@ impl App {
             .target_window_index(&target)
             .and_then(|index| self.layout_motion_rect(index))
             .unwrap_or(rect);
+        let original_vertical = self
+            .frame_placed(&target)
+            .is_some_and(|placed| placed.vertical);
+        let interrupted = self.interrupt_layout_turn_at(&target, point);
+        let (rect, original_vertical) = interrupted.unwrap_or((rect, original_vertical));
+        let layouts = self.layout_editor.layouts.clone();
+        let positions = self
+            .windows
+            .iter()
+            .map(|window| (window.id, window.position))
+            .collect();
+        let edge = self.target_placement(&target).edge();
         let affected: Vec<_> = self
             .layout_editor
             .placed
@@ -163,90 +181,51 @@ impl App {
             self.queue_layout_motion(id, rect, rect, 0);
         }
         self.layout_editor.session.as_mut().unwrap().selected = Some(target.clone());
+        if interrupted.is_some() {
+            let origin = crate::geometry::screen_to_canvas(
+                (rect.x, rect.y).into(),
+                self.viewport_offset,
+                self.viewport_scale,
+            );
+            if matches!(target.target.kind, TargetKind::Window | TargetKind::Item)
+                && let Some(index) = self.target_window_index(&target)
+            {
+                let bounds = self.window_canvas_rect(index);
+                let previous = self.windows[index].position;
+                self.windows[index].pending_resize = None;
+                self.windows[index].position = crate::geometry::CanvasPoint {
+                    x: origin.x.round() as i32 - (bounds.loc.x - previous.x),
+                    y: origin.y.round() as i32 - (bounds.loc.y - previous.y),
+                };
+            }
+            self.layout_editor
+                .layouts
+                .get_mut(&target.output)
+                .unwrap()
+                .set_placement(
+                    &target.target,
+                    ObjectPlacement::Canvas {
+                        x: Some(origin.x),
+                        y: Some(origin.y),
+                        width: None,
+                        height: None,
+                    },
+                );
+        }
         self.layout_editor.drag = Some(Drag {
-            edge: self.target_placement(&target).edge(),
+            edge,
             target,
             start: point,
             rect,
             moved: false,
-            layouts: self.layout_editor.layouts.clone(),
-            positions: self.windows.iter().map(|w| (w.id, w.position)).collect(),
+            interrupted: interrupted.is_some(),
+            original_vertical,
+            layouts,
+            positions,
         });
+        self.layout_editor.placed = self.frame_placements();
         self.layout_changed();
         true
-    }
-    fn layout_target_at(&self, point: Point) -> Option<Target> {
-        for placed in self.layout_editor.placed.iter().rev() {
-            if placed.target.target.kind == TargetKind::Group
-                && !super::compact::backing(&placed.target.target.id)
-                && contains(
-                    super::geometry::grip_rect(placed.rect, placed.placement.edge()),
-                    point,
-                )
-            {
-                return Some(placed.target.clone());
-            }
-        }
-        let mut indices: Vec<_> = (0..self.windows.len()).collect();
-        indices.sort_by_key(|i| {
-            (
-                self.layout_render_layer(*i)
-                    .unwrap_or(if self.desktop_id(*i).is_some() { 1 } else { 10 }),
-                *i,
-            )
-        });
-        for index in indices.into_iter().rev() {
-            if !self.windows[index].mapped
-                || self.compact_frame_backing(index)
-                || self.layout_group_clip(index).is_some_and(|clip| {
-                    !clip.contains((point.x.round() as i32, point.y.round() as i32))
-                })
-                || self.is_layout_surface(index) && !self.layout_surface_visible(index)
-            {
-                continue;
-            }
-            let target = self.frame_target_for_window(index).or_else(|| {
-                let kind = if self.desktop_id(index).is_some() {
-                    TargetKind::Item
-                } else if self.is_navigable_window(index) {
-                    TargetKind::Window
-                } else {
-                    return None;
-                };
-                let output = self.layout_editor.session.as_ref()?.output.clone();
-                Some(Target {
-                    output,
-                    target: LayoutTarget::new(
-                        kind,
-                        self.desktop_id(index)
-                            .unwrap_or_else(|| self.windows[index].id.to_string()),
-                    ),
-                })
-            });
-            let Some(target) = target else {
-                continue;
-            };
-            let r = self.window_screen_bounds(index);
-            let rect = self.frame_placed(&target).map_or(
-                Rect {
-                    x: f64::from(r.loc.x),
-                    y: f64::from(r.loc.y),
-                    width: f64::from(r.size.w),
-                    height: f64::from(r.size.h),
-                },
-                |p| {
-                    if p.target.target.kind == TargetKind::Window && p.placement.is_frame() {
-                        self.pinned_reveal_rect(p)
-                    } else {
-                        p.rect
-                    }
-                },
-            );
-            if contains(rect, point) {
-                return Some(target);
-            }
-        }
-        None
     }
     fn layout_native_editor_at(&self, point: Point) -> bool {
         self.windows.iter().enumerate().any(|(i, w)| {

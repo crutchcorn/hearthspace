@@ -1,5 +1,6 @@
 //! Drop priority and frame grouping are independent of pointer capture.
 use super::*;
+use hearthspace_common::frame_layout::LayoutTarget;
 impl App {
     pub(super) fn commit_layout_drop(&mut self, drag: &Drag) {
         if drag.target.target.kind == TargetKind::Item
@@ -239,18 +240,20 @@ impl App {
                     .edge()
                     .is_some_and(|e| e.is_vertical())
             });
-        let (width, height) = if original_vertical {
-            (drag.rect.height, drag.rect.width)
-        } else {
-            (drag.rect.width, drag.rect.height)
-        };
-        let x = ((drag.start.x - drag.rect.x) / drag.rect.width.max(1.)).clamp(0., 1.);
-        let y = ((drag.start.y - drag.rect.y) / drag.rect.height.max(1.)).clamp(0., 1.);
-        let (along, across) = if original_vertical { (y, x) } else { (x, y) };
+        let (width, height) = self
+            .frame_output_rect(&drag.target.output)
+            .map(|view| self.layout_target_size(&drag.target, false, view))
+            .unwrap_or((drag.rect.width, drag.rect.height));
+        let pivot = super::super::grip::ToolbarGrip::at(drag.rect, drag.start, original_vertical)
+            .pivot(
+                width * self.viewport_scale,
+                height * self.viewport_scale,
+                false,
+            );
         let canvas = crate::geometry::screen_to_canvas(
             (
-                self.pointer_location.x - width * along,
-                self.pointer_location.y - height * across,
+                self.pointer_location.x - pivot.x,
+                self.pointer_location.y - pivot.y,
             )
                 .into(),
             self.viewport_offset,

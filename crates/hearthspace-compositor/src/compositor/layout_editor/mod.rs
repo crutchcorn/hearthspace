@@ -16,6 +16,7 @@ mod compact;
 mod confirmation;
 mod emphasis;
 mod geometry;
+mod grip;
 mod input;
 mod motion;
 mod overflow;
@@ -29,7 +30,10 @@ mod settlement;
 mod surfaces;
 mod tooltip;
 mod turn;
+mod turn_cache;
 mod turn_element;
+mod turn_input;
+mod turn_members;
 pub(in crate::compositor) use turn_element::TurnElement;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

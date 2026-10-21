@@ -1,4 +1,5 @@
-//! A late native reflow must not crop pixels outside the new toolbar footprint.
+//! A pending reflow holds the last complete GPU composition.
+use super::super::turn_cache::TurnCache;
 use super::*;
 use smithay::backend::{
     egl::{EGLContext, EGLDisplay, native::EGLSurfacelessDisplay},
@@ -7,11 +8,24 @@ use smithay::backend::{
         gles::GlesRenderbuffer,
     },
 };
+use smithay::{
+    backend::{
+        allocator::Fourcc,
+        renderer::{
+            Bind, Color32F, Offscreen,
+            damage::OutputDamageTracker,
+            element::{Kind, utils::RescaleRenderElement},
+        },
+    },
+    utils::Transform,
+};
 
 #[rstest::rstest]
 #[case(1)]
 #[case(2)]
-fn toolbar_capture_preserves_a_native_buffer_pending_reflow(#[case] scale: i32) {
+fn toolbar_capture_keeps_the_last_presented_composition_while_native_reflow_is_pending(
+    #[case] scale: i32,
+) {
     let display = unsafe { EGLDisplay::new(EGLSurfacelessDisplay).unwrap() };
     let context = EGLContext::new(&display).unwrap();
     let mut renderer = unsafe { GlesRenderer::new(context).unwrap() };
@@ -35,7 +49,7 @@ fn toolbar_capture_preserves_a_native_buffer_pending_reflow(#[case] scale: i32) 
     let mut cache = TurnCache::default();
     let angle = std::f64::consts::FRAC_PI_4;
     let factor = f64::from(scale);
-    let element = cache
+    cache
         .element(
             &mut renderer,
             "toolbar",
@@ -43,8 +57,8 @@ fn toolbar_capture_preserves_a_native_buffer_pending_reflow(#[case] scale: i32) 
             Rect {
                 x: 80. * factor,
                 y: 80. * factor,
-                width: 54. * factor,
-                height: 180. * factor,
+                width: 140. * factor,
+                height: 20. * factor,
             },
             Point {
                 x: 90. * factor,
@@ -55,6 +69,22 @@ fn toolbar_capture_preserves_a_native_buffer_pending_reflow(#[case] scale: i32) 
         )
         .unwrap()
         .unwrap();
+    // A pending native resize never draws new/partial input into this texture.
+    // Repeated pending frames retain both its pixels and the previously rendered angle.
+    cache.move_held(
+        &renderer,
+        "toolbar",
+        scale,
+        Point {
+            x: 40. * factor,
+            y: 20. * factor,
+        },
+    );
+    let first = cache.held(&renderer, "toolbar", scale).unwrap();
+    let element = cache.held(&renderer, "toolbar", scale).unwrap();
+    use smithay::backend::renderer::element::Element;
+    assert_eq!(first.geometry(1.0.into()), element.geometry(1.0.into()));
+    assert_eq!(first.current_commit(), element.current_commit());
     let elements = [HearthspaceRenderElement::from(element)];
     let size = (400 * scale, 400 * scale).into();
     let mut buffer: GlesRenderbuffer = renderer
@@ -72,12 +102,12 @@ fn toolbar_capture_preserves_a_native_buffer_pending_reflow(#[case] scale: i32) 
         .unwrap();
     let pixels =
         crate::compositor::capture::read_pixels(&mut renderer, &target, size, false).unwrap();
-    let x = ((90. + angle.cos() * 110.) * factor).round() as usize;
-    let y = ((90. + angle.sin() * 110.) * factor).round() as usize;
+    let x = ((130. + angle.cos() * 110.) * factor).round() as usize;
+    let y = ((110. + angle.sin() * 110.) * factor).round() as usize;
     let offset = (y * 400 * scale as usize + x) * 4;
     assert_eq!(
         &pixels[offset..offset + 4],
         [0, 0, 255, 255],
-        "the old buffer's far end survives until its vertical reflow commits"
+        "the last whole composition stays unchanged while native clients reflow"
     );
 }

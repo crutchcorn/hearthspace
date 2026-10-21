@@ -85,20 +85,7 @@ impl App {
         self.layout_editor.drag = Some(drag.clone());
         self.layout_editor.placed = self.frame_placements();
         if turning && let Some(placed) = self.frame_placed(&drag.target).cloned() {
-            let members = self
-                .layout_editor
-                .placed
-                .iter()
-                .filter(|p| {
-                    p.target.output == drag.target.output
-                        && (p.target == drag.target
-                            || p.group.as_deref() == Some(drag.target.target.id.as_str()))
-                })
-                .filter_map(|p| {
-                    self.target_window_index(&p.target)
-                        .map(|i| self.windows[i].id)
-                })
-                .collect();
+            let members = self.layout_turn_members(&drag.target);
             self.queue_layout_turn(
                 drag.target.clone(),
                 members,
@@ -112,6 +99,7 @@ impl App {
                 } else {
                     -std::f64::consts::FRAC_PI_2
                 },
+                Point::default(),
             );
             self.layout_changed();
         }
@@ -129,12 +117,7 @@ impl App {
         if !super::super::turns_as_toolbar(&drag.target.target) {
             return (drag.rect.x + delta.x, drag.rect.y + delta.y).into();
         }
-        let original_vertical = drag.layouts.get(&drag.target.output).is_some_and(|layout| {
-            layout
-                .placement(&drag.target.target)
-                .edge()
-                .is_some_and(|edge| edge.is_vertical())
-        });
+        let original_vertical = drag.original_vertical;
         if let Some(view) = self.frame_output_rect(&drag.target.output) {
             let point = Point {
                 x: self.pointer_location.x - view.x,
@@ -154,25 +137,49 @@ impl App {
             }
         }
         let vertical = drag.edge.is_some_and(|edge| edge.is_vertical());
-        let (width, height) = if original_vertical != vertical {
-            (drag.rect.height, drag.rect.width)
-        } else {
-            (drag.rect.width, drag.rect.height)
-        };
-        let x = ((drag.start.x - drag.rect.x) / drag.rect.width.max(1.)).clamp(0., 1.);
-        let y = ((drag.start.y - drag.rect.y) / drag.rect.height.max(1.)).clamp(0., 1.);
-        let (along, across) = if original_vertical { (y, x) } else { (x, y) };
+        let (width, height) = self
+            .frame_output_rect(&drag.target.output)
+            .map(|view| self.layout_target_size(&drag.target, vertical, view))
+            .unwrap_or((drag.rect.width, drag.rect.height));
+        let pivot = super::super::grip::ToolbarGrip::at(drag.rect, drag.start, original_vertical)
+            .pivot(
+                width * self.viewport_scale,
+                height * self.viewport_scale,
+                vertical,
+            );
         (
-            self.pointer_location.x - width * if vertical { across } else { along },
-            self.pointer_location.y - height * if vertical { along } else { across },
+            self.pointer_location.x - pivot.x,
+            self.pointer_location.y - pivot.y,
         )
             .into()
+    }
+    pub(in crate::compositor::layout_editor) fn layout_drag_origin(
+        &self,
+        target: &Target,
+        width: f64,
+        height: f64,
+    ) -> Option<Point> {
+        let drag = self.layout_editor.drag.as_ref().filter(|drag| {
+            drag.moved && drag.target == *target && super::super::turns_as_toolbar(&target.target)
+        })?;
+        let original_vertical = drag.original_vertical;
+        let vertical = drag.edge.is_some_and(|edge| edge.is_vertical());
+        let pivot = super::super::grip::ToolbarGrip::at(drag.rect, drag.start, original_vertical)
+            .pivot(width, height, vertical);
+        Some(Point {
+            x: self.pointer_location.x - pivot.x,
+            y: self.pointer_location.y - pivot.y,
+        })
     }
     pub(in crate::compositor::layout_editor) fn layout_drag_vertical(
         &self,
         target: &Target,
     ) -> Option<bool> {
-        let drag = self.layout_editor.drag.as_ref().filter(|drag| drag.moved)?;
+        let drag = self
+            .layout_editor
+            .drag
+            .as_ref()
+            .filter(|drag| drag.moved || drag.interrupted)?;
         (drag.target == *target
             || self
                 .layout_editor
@@ -184,7 +191,21 @@ impl App {
                         && drag.target.target.kind == TargetKind::Group
                         && g.id == drag.target.target.id
                 }))
-        .then_some(drag.edge.is_some_and(|edge| edge.is_vertical()))
+        .then_some(if !drag.moved {
+            drag.original_vertical
+        } else {
+            drag.edge.is_some_and(|edge| edge.is_vertical())
+        })
+    }
+    pub(in crate::compositor::layout_editor) fn layout_drag_edge(
+        &self,
+        target: &Target,
+    ) -> Option<frame_layout::FrameEdge> {
+        self.layout_editor
+            .drag
+            .as_ref()
+            .filter(|drag| drag.moved && drag.target == *target)
+            .and_then(|drag| drag.edge)
     }
     pub(in crate::compositor) fn layout_drag_contains(&self, index: usize) -> bool {
         self.frame_target_for_window(index)

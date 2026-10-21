@@ -57,12 +57,18 @@ pub(super) struct Group {
     pub id: String,
     pub rect: Rect,
     pub grip: Rect,
+    #[serde(default = "group_scale")]
+    pub scale: f64,
     pub orientation: String,
     pub hovered: bool,
     pub focused: bool,
     #[serde(default = "group_material")]
     pub material: bool,
     pub backing_only: bool,
+}
+
+fn group_scale() -> f64 {
+    1.0
 }
 
 fn group_material() -> bool {

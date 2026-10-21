@@ -143,3 +143,85 @@ fn frame_layout_held_group_drag_moves_live_window_buffer_without_rewriting_home(
     action(&compositor, "quit");
     wait_for_exit(&mut compositor.child);
 }
+
+#[test]
+fn frame_layout_interrupted_member_press_reanchors_then_restores_its_canvas_home() {
+    let _guard = headless_test_guard();
+    for cancel in [false, true] {
+        let mut compositor = HeadlessCompositor::spawn_with_size("1280x800");
+        drop(compositor.wait_for_socket());
+        action(&compositor, "canvas-search-motion false");
+        let mut client = connect(&compositor);
+        let (id, group_id) = pin_group(&compositor, &mut client);
+        let original = window(&compositor, "group-member");
+        let state = layout(&compositor);
+        let output = state["output"].as_str().unwrap();
+        let group = state["outputs"][0]["groups"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|group| group["id"] == group_id)
+            .unwrap();
+        let bounds = &group["rect"];
+        client.add(
+            hearthspace_common::frame_layout::frame_group_app_id(Some(output), &group_id),
+            (
+                bounds["width"].as_f64().unwrap().round() as i32,
+                bounds["height"].as_f64().unwrap().round() as i32,
+            ),
+            (0, 0),
+            COLOR,
+        );
+        let slot = state["pinned_windows"][0]["rect"].clone();
+        let x = slot["x"].as_f64().unwrap() + slot["width"].as_f64().unwrap() / 2.;
+        let y = slot["y"].as_f64().unwrap() + slot["height"].as_f64().unwrap() / 2.;
+        action(&compositor, "canvas-search-motion true");
+        let _ = compositor.take_screenshot();
+        command(
+            &compositor,
+            "place",
+            json!({"kind":"group","id":group_id}),
+            json!({"surface":"frame","edge":"top","position":0.5}),
+        );
+        thread::sleep(Duration::from_millis(350));
+        assert_eq!(layout(&compositor)["animating"], true);
+        action(&compositor, format!("pointer-motion-abs {x} {y}"));
+        action(&compositor, "pointer-button-down 272");
+        let pressed = layout(&compositor);
+        assert_eq!(
+            pressed["selected"]["target"],
+            json!({"kind":"window","id":id.to_string()}),
+            "{pressed}"
+        );
+        let grabbed = window(&compositor, "group-member");
+        assert_eq!(
+            grabbed["canvas_x"].as_f64().unwrap(),
+            original["x"].as_f64().unwrap()
+        );
+        assert_eq!(
+            grabbed["canvas_y"].as_f64().unwrap(),
+            original["y"].as_f64().unwrap()
+        );
+        assert_ne!(grabbed["canvas_x"], original["canvas_x"]);
+        assert!(client.presses().is_empty());
+        if cancel {
+            keys(&compositor, &[1]);
+        }
+        action(&compositor, "pointer-button-up 272");
+        let restored = window(&compositor, "group-member");
+        assert_eq!(restored["canvas_x"], original["canvas_x"]);
+        assert_eq!(restored["canvas_y"], original["canvas_y"]);
+        let member_id = id.to_string();
+        assert_eq!(
+            layout(&compositor)["outputs"][0]["layout"]["groups"][&group_id]["members"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .filter(|member| member["id"].as_str() == Some(member_id.as_str()))
+                .count(),
+            1
+        );
+        action(&compositor, "quit");
+        wait_for_exit(&mut compositor.child);
+    }
+}

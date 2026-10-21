@@ -199,10 +199,13 @@ Xilem renders independent controls, groups, tooltips and confirmation dialogs;
 the compositor owns placement, input capture, guides, clipping and transitions.
 The shared frame model lives in `hearthspace-common::frame_layout`.
 
-Toolbar turns compose their live native surfaces, outlines, shadows and resolved
-glass into temporary GPU textures. The compositor rotates that composition around
-the grabbed point while the native controls reflow to their final orientation.
-Placement, guide and reveal animations respect reduced motion. Confirmation
+Toolbar turns compose their live native surfaces, external grip, outlines, shadows
+and resolved glass into temporary GPU textures. While the native controls reflow,
+the last complete composition follows the grabbed point. Once every member and
+its backing have committed the final dimensions, one 280 ms clock rotates and
+translates the composition without stretching it. Pointer selection uses the last
+displayed pose, including during an interrupted turn. Placement, guide and reveal
+animations respect reduced motion. Confirmation
 backdrops use a separate 8-pixel blur beneath the native dialog. No client-buffer
 readback is needed for these effects.
 

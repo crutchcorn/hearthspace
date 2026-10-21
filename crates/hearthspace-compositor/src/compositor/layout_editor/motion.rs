@@ -49,6 +49,10 @@ impl Pose {
 }
 
 impl State {
+    pub(super) fn remove(&mut self, members: &[u64]) {
+        self.poses.retain(|id, _| !members.contains(id));
+    }
+
     fn queue(
         &mut self,
         id: u64,
@@ -128,31 +132,20 @@ impl App {
             .values()
             .find(|turn| turn.members.contains(&id));
         if let Some(turn) = turn
-            && turn.target.target.kind == super::TargetKind::Group
-            && let Some(owner) = self.target_window_index(&turn.target)
-            && let Some(group_pose) = self.layout_editor.motion.poses.get(&self.windows[owner].id)
             && let Some(target) = self.layout_target_rect(index)
         {
-            // Native members can reflow on different commits. Keep every member at its
-            // current slot with one shared translation, so none escapes the rotating glass.
-            let pose = group_pose.current(now);
+            let offset = turn.offset(now);
             return Some(Rect {
-                x: target.x + pose.x - group_pose.to.x,
-                y: target.y + pose.y - group_pose.to.y,
+                x: target.x + offset.x,
+                y: target.y + offset.y,
                 ..target
             });
         }
-        let mut pose = self.layout_editor.motion.poses.get(&id)?.current(now);
-        if self.is_layout_surface(index)
-            && turn.is_some()
-            && let Some(target) = self.layout_target_rect(index)
-        {
-            // A later native reflow supplies the final dimensions; the temporary
-            // texture rotates that layout instead of stretching the old buffer.
-            pose.width = target.width;
-            pose.height = target.height;
-        }
-        Some(pose)
+        self.layout_editor
+            .motion
+            .poses
+            .get(&id)
+            .map(|pose| pose.current(now))
     }
 
     pub(in crate::compositor) fn advance_layout_motion(&mut self) {
