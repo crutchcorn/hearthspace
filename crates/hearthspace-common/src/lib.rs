@@ -1,6 +1,7 @@
 mod appearance;
 pub mod canvas_search;
 mod desktop;
+pub mod frame_layout;
 mod shell_corners;
 mod window_switcher;
 
