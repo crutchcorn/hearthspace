@@ -1,7 +1,7 @@
 use super::Kind;
 use hearthspace_ui_components::{
     Palette,
-    settings_material::{edge_light_with_palette, glass_edge_with_palette},
+    settings_material::{edge_light_with_palette, glass_edge_with_palette, shadow},
 };
 use xilem::masonry::{
     accesskit::{Node, Role},
@@ -12,6 +12,7 @@ use xilem::masonry::{
     imaging::Painter,
     kurbo::{Axis, Point, Size, Stroke},
     layout::{LayoutSize, LenReq, Length},
+    peniko::Gradient,
 };
 
 pub(in crate::ui) struct PanelWidget {
@@ -78,12 +79,65 @@ impl Widget for PanelWidget {
         ctx.run_layout(&mut self.child, size);
         ctx.place_child(&mut self.child, Point::ORIGIN);
         ctx.derive_baselines(&self.child);
-        ctx.set_paint_insets(1.0);
+        ctx.set_paint_insets(if self.kind == Kind::Control {
+            24.0
+        } else {
+            1.0
+        });
     }
     fn paint(&mut self, ctx: &mut PaintCtx<'_>, _: &PropertiesRef<'_>, painter: &mut Painter<'_>) {
         let palette = &self.palette;
         let active = self.selected || self.hovered || ctx.has_hovered() || ctx.has_focus_target();
         let rect = ctx.border_box();
+        if self.kind == Kind::Control {
+            let emphasized = self.selected || ctx.has_active();
+            let hovered = self.hovered || ctx.has_hovered();
+            let focused = ctx.has_focus_target();
+            let shape = rect.to_rounded_rect(15.0);
+            if emphasized || hovered || focused {
+                shadow(
+                    painter,
+                    rect,
+                    15.0,
+                    palette.control_shadow,
+                    (0.0, 6.0),
+                    22.0,
+                    -5.0,
+                );
+                if emphasized || hovered {
+                    painter
+                        .fill(
+                            shape,
+                            if emphasized {
+                                palette.accent_soft
+                            } else {
+                                palette.raised_button_hover
+                            },
+                        )
+                        .draw();
+                }
+                let wash = Gradient::new_radial(
+                    rect.center(),
+                    (rect.width().max(rect.height()) / 2.0) as f32,
+                )
+                .with_stops([
+                    (0.0, xilem::Color::TRANSPARENT),
+                    (1.0, palette.control_inset_glow),
+                ]);
+                painter.fill(shape, &wash).draw();
+                glass_edge_with_palette(painter, rect, 15.0, true, palette);
+            }
+            if focused {
+                painter
+                    .stroke(
+                        rect.inset(-1.0).to_rounded_rect(14.0),
+                        &Stroke::new(2.0),
+                        palette.accent,
+                    )
+                    .draw();
+            }
+            return;
+        }
         if self.kind == Kind::Choice {
             let shape = rect.to_rounded_rect(15.0);
             if self.selected || ctx.has_hovered() {

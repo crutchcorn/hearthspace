@@ -7,7 +7,7 @@ use hearthspace_common::frame_layout::{
     EXPANDABLE_WIDGETS, LayoutTarget, ObjectPlacement, TargetKind, layout_editor_app_id,
 };
 use hearthspace_ui_components::{
-    self as components,
+    self as components, Palette,
     icons::{Icon, icon},
 };
 use xilem::{
@@ -88,6 +88,7 @@ fn size(state: &ShellState) -> (f64, f64) {
 
 pub(super) fn view(state: &ShellState) -> impl WidgetView<ShellState> + use<> {
     let selected = selection(state);
+    let palette = state.appearance.palette;
     let (expandable, grouped, is_clock) = options(state);
     let title = if selected.is_none() {
         "Choose an item to place".into()
@@ -127,9 +128,10 @@ pub(super) fn view(state: &ShellState) -> impl WidgetView<ShellState> + use<> {
                 },
                 "remove",
                 false,
+                palette,
             )
         }),
-        action(Icon::Check, "Done changing layout", "done", false),
+        action(Icon::Check, "Done changing layout", "done", false, palette),
     ))
     .gap(4.0.px())
     .height(44.0.px());
@@ -149,6 +151,7 @@ pub(super) fn view(state: &ShellState) -> impl WidgetView<ShellState> + use<> {
                     "Show details"
                 },
                 "toggle-expanded",
+                palette,
             )
         });
         let group = grouped.then(|| {
@@ -165,6 +168,7 @@ pub(super) fn view(state: &ShellState) -> impl WidgetView<ShellState> + use<> {
                     "Remove from group"
                 },
                 "ungroup",
+                palette,
             )
         });
         separated(
@@ -181,6 +185,7 @@ pub(super) fn view(state: &ShellState) -> impl WidgetView<ShellState> + use<> {
                     "Canvas",
                     matches!(placement, ObjectPlacement::Canvas { .. }),
                     "canvas",
+                    palette,
                 )
                 .flex(1.0),
                 placement_button(
@@ -188,10 +193,17 @@ pub(super) fn view(state: &ShellState) -> impl WidgetView<ShellState> + use<> {
                     "Background",
                     matches!(placement, ObjectPlacement::Background { .. }),
                     "background",
+                    palette,
                 )
                 .flex(1.0),
-                placement_button(Icon::FrameLayout, "Frame", placement.is_frame(), "frame")
-                    .flex(1.0),
+                placement_button(
+                    Icon::FrameLayout,
+                    "Frame",
+                    placement.is_frame(),
+                    "frame",
+                    palette,
+                )
+                .flex(1.0),
             ))
             .gap(4.0.px()),
             0.0,
@@ -249,19 +261,20 @@ fn action(
     name: &'static str,
     action: &'static str,
     selected: bool,
+    palette: Palette,
 ) -> impl WidgetView<ShellState> + use<> {
     super::tooltip::hint(
-        components::button_surface(
+        crate::ui::canvas_search::material::control(
             button(
-                icon(glyph, 19.0).label(name),
+                icon(glyph, 19.0).color(palette.text).label(name),
                 move |state: &mut ShellState| super::command(state, action, serde_json::json!({})),
             )
             .width(44.0.px())
             .height(44.0.px())
             .padding(10.0.px())
             .corner_radius(15.0.px()),
-            components::ButtonSurface::Bare,
             selected,
+            palette,
         ),
         if action == "done" { "Done" } else { name },
     )
@@ -272,12 +285,16 @@ fn text_action(
     name: &'static str,
     accessible_name: &'static str,
     action: &'static str,
+    palette: Palette,
 ) -> impl WidgetView<ShellState> + use<> {
-    components::button_surface(
+    crate::ui::canvas_search::material::control(
         components::semantic_button(
             flex_row((
-                icon(glyph, 18.0),
-                label(name).font("Liberation Sans").text_size(12.0),
+                icon(glyph, 18.0).color(palette.text),
+                label(name)
+                    .font("Liberation Sans")
+                    .text_size(12.0)
+                    .color(palette.text),
             ))
             .gap(8.0.px()),
             accessible_name,
@@ -287,8 +304,8 @@ fn text_action(
         .height(44.0.px())
         .padding(10.0.px())
         .corner_radius(15.0.px()),
-        components::ButtonSurface::Bare,
         false,
+        palette,
     )
 }
 
@@ -297,11 +314,16 @@ fn placement_button(
     name: &'static str,
     selected: bool,
     surface: &'static str,
+    palette: Palette,
 ) -> impl WidgetView<ShellState> + use<> {
     super::tooltip::hint(
-        components::button_surface(
+        crate::ui::canvas_search::material::control(
             components::semantic_button(
-                icon(glyph, 19.0),
+                icon(glyph, 19.0).color(if selected {
+                    palette.accent
+                } else {
+                    palette.text
+                }),
                 name,
                 Some(selected),
                 move |state: &mut ShellState| {
@@ -319,8 +341,8 @@ fn placement_button(
             .height(44.0.px())
             .padding(10.0.px())
             .corner_radius(15.0.px()),
-            components::ButtonSurface::Bare,
             selected,
+            palette,
         ),
         name,
     )

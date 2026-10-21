@@ -50,8 +50,8 @@ pub(super) fn view(
                     .draw();
             }
         }))
-        .width(14.0.px())
-        .height(14.0.px());
+        .fixed_width(14.0.px())
+        .fixed_height(14.0.px());
         // The browser's Linux sans-serif resolves to Liberation Sans; its
         // default digits are tabular, keeping these live time samples aligned.
         let text = |text| {

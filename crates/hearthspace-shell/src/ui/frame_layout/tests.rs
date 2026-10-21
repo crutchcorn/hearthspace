@@ -146,6 +146,33 @@ fn placement_inspector_sends_session_guarded_actions_and_real_date_choices() {
         .filter(|node| node.role() == Role::RadioButton)
         .count();
     assert_eq!(choices, 5);
+    let indicators: Vec<_> = ids(&ui.harness)
+        .into_iter()
+        .filter_map(|id| {
+            let widget = ui.harness.get_widget_with_id(id);
+            widget
+                .downcast::<masonry::widgets::Canvas>()
+                .map(|canvas| canvas.ctx().border_box())
+        })
+        .collect();
+    assert_eq!(indicators.len(), 5);
+    assert!(
+        indicators
+            .iter()
+            .all(|rect| rect.width() == 14.0 && rect.height() == 14.0)
+    );
+    for name in ["Remove", "Done changing layout"] {
+        let bounds = ui
+            .harness
+            .access_node(ui.button(name))
+            .unwrap()
+            .bounding_box()
+            .unwrap();
+        assert!(
+            bounds.x0 >= 0.0 && bounds.x1 <= 260.0 && bounds.y0 >= 0.0 && bounds.y1 <= 54.0,
+            "{name}: {bounds:?}"
+        );
+    }
 }
 
 #[test]
