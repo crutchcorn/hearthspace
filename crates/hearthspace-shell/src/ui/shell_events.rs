@@ -80,6 +80,11 @@ impl ShellEvents {
                             pending
                                 .retain(|previous| !matches!(previous, Event::CanvasSearchChanged));
                         }
+                        if matches!(request, Event::WindowSwitcherChanged) {
+                            pending.retain(|previous| {
+                                !matches!(previous, Event::WindowSwitcherChanged)
+                            });
+                        }
                         pending.push(request);
                     }
                 }
@@ -154,6 +159,7 @@ enum Event {
     Gesture(super::favorite_events::GestureEvent),
     Desktop(super::desktop::Event),
     CanvasSearchChanged,
+    WindowSwitcherChanged,
     CanvasSearchAction(u64),
     RetryDrawing,
     ReloadFavorites,
@@ -167,7 +173,9 @@ fn parse_event(bytes: &[u8]) -> Option<Event> {
     if value["version"].as_u64()? != 1 {
         return None;
     }
-    if value["action"] == "canvas-search-changed" {
+    if value["action"] == "window-switcher-changed" {
+        Some(Event::WindowSwitcherChanged)
+    } else if value["action"] == "canvas-search-changed" {
         Some(Event::CanvasSearchChanged)
     } else if value["action"] == "canvas-search-action" {
         value["token"]
@@ -279,6 +287,7 @@ pub(super) fn shell_events_task()
             Event::Gesture(event) => super::favorite_events::apply(state, event),
             Event::Desktop(event) => super::desktop::apply_event(state, event),
             Event::CanvasSearchChanged => state.canvas_search.refresh.notify_one(),
+            Event::WindowSwitcherChanged => state.window_switcher.refresh.notify_one(),
             Event::CanvasSearchAction(token) => super::canvas_search::submit_command(
                 state,
                 format!("canvas-search-event-accept {token}"),

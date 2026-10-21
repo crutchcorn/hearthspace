@@ -55,6 +55,7 @@ pub(super) fn app_logic(
     let mut windows = vec![watcher];
     windows.extend(super::desktop::windows(state));
     windows.extend(super::canvas_search::windows(state));
+    windows.extend(super::window_switcher::window(state));
 
     for output in &state.outputs {
         windows.extend(super::corners::windows(state, output));
@@ -165,7 +166,10 @@ fn output_watcher_view(map_open: bool, osd_open: bool) -> impl WidgetView<ShellS
                 ),
                 fork(
                     super::window_group::task(),
-                    fork(super::desktop::task(), super::canvas_search::task()),
+                    fork(
+                        super::desktop::task(),
+                        fork(super::canvas_search::task(), super::window_switcher::task()),
+                    ),
                 ),
             ),
         ),

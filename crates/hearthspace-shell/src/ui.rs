@@ -65,6 +65,7 @@ mod tray_widget;
 mod views;
 mod window_catalog;
 mod window_group;
+mod window_switcher;
 
 use output_watcher::initial_wayland_output_names;
 use state::ShellState;

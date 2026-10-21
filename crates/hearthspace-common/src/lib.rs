@@ -2,6 +2,9 @@ mod appearance;
 pub mod canvas_search;
 mod desktop;
 mod shell_corners;
+mod window_switcher;
+
+pub use window_switcher::{window_switcher_caption_app_id, window_switcher_caption_from_app_id};
 
 pub use appearance::{AccentColor, Appearance, ColorMode};
 pub use canvas_search::{
