@@ -137,7 +137,10 @@ pub(super) fn view(
     .gap(12.0.px());
     let observed = resize_observer(
         |state: &mut ShellState, size| {
-            let height = (size.height + 50.0).ceil();
+            // ResizeObserver reports pixel-snapped bounds, while Portal tests
+            // the unsnapped text extent. Keep one pixel for that rounding so a
+            // naturally fitted dialog never acquires a fractional scroll range.
+            let height = (size.height + 50.0).ceil() + 1.0;
             if height.is_finite() {
                 state.frame_layout.confirm_height = Some(height);
             }
