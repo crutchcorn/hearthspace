@@ -60,9 +60,6 @@ pub(super) fn app_logic(
     windows.extend(super::frame_layout::windows(state));
 
     for output in &state.outputs {
-        if !state.frame_layout.initialized {
-            windows.extend(super::corners::windows(state, output));
-        }
         if let Some(osd) = &output.osd {
             windows.push(super::control_osd::window(output, osd));
         }

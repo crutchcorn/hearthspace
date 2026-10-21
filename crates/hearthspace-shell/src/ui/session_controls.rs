@@ -76,6 +76,7 @@ fn confirm_logout(state: &mut ShellState, output_key: &str) {
     }
 }
 
+#[cfg(test)]
 pub(super) fn power_button(output: &ShellOutputInstance) -> impl WidgetView<ShellState> + use<> {
     let key = output.key().to_string();
     icon_button(Icon::Power, "Power", output.show_power, move |state| {

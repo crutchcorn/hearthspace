@@ -138,7 +138,6 @@ pub(super) struct Snapshot {
 #[derive(Default)]
 pub(super) struct State {
     pub snapshot: Snapshot,
-    pub initialized: bool,
     visible: bool,
     pub refresh: Arc<Notify>,
     requests: Option<mpsc::Sender<task::Request>>,
@@ -185,8 +184,6 @@ fn apply(state: &mut ShellState, mut snapshot: Snapshot) {
     state.frame_layout.visible = !snapshot.outputs.is_empty();
     if snapshot.outputs.is_empty() {
         snapshot.outputs = state.frame_layout.snapshot.outputs.clone();
-    } else {
-        state.frame_layout.initialized = true;
     }
     let new_session = state.frame_layout.snapshot.session != snapshot.session;
     if new_session

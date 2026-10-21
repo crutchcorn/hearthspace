@@ -52,6 +52,7 @@ impl<V> GroupView<V> {
     }
     /// Corners are separate native windows; do not leave a focused control in
     /// each previously visited corner. Editors and ordinary popups retain focus.
+    #[cfg(test)]
     pub(super) fn reset_focus_on_deactivation(mut self) -> Self {
         self.reset_focus_on_deactivation = true;
         self

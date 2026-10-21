@@ -179,6 +179,7 @@ pub(super) fn image(state: &ShellState, name: Option<&str>) -> Option<ImageBrush
         .and_then(Clone::clone)
 }
 
+#[cfg(test)]
 pub(super) fn view(
     state: &ShellState,
     output: &ShellOutputInstance,

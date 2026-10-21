@@ -1,8 +1,10 @@
 //! Small status dropdowns share the shell's existing popup lifecycle.
+#[cfg(test)]
+use super::icons::icon_button;
 use super::{
     control_slider::ControlSlider,
     control_state::Action,
-    icons::{Icon, glyph, icon_button},
+    icons::{Icon, glyph},
     popup::{self, PopupKind},
     state::{ShellOutputInstance, ShellState},
 };
@@ -43,6 +45,7 @@ impl Kind {
     }
 }
 
+#[cfg(test)]
 pub(super) fn button_view(
     output: &ShellOutputInstance,
     kind: Kind,
@@ -58,6 +61,7 @@ pub(super) fn button_view(
     )
 }
 
+#[cfg(test)]
 pub(super) fn clock_button(
     state: &ShellState,
     output: &ShellOutputInstance,

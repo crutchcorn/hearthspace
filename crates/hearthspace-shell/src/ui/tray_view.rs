@@ -15,6 +15,7 @@ use xilem::{
     view::{CrossAxisAlignment, FlexExt, flex_col, flex_row, label},
 };
 
+#[cfg(test)]
 pub(super) fn strip(
     output: &ShellOutputInstance,
     state: &TrayState,

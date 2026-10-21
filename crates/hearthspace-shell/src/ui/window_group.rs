@@ -21,6 +21,7 @@ pub(super) struct GroupState {
 }
 
 impl GroupState {
+    #[cfg(test)]
     pub(super) fn hint(&self) -> Option<String> {
         if let Some(error) = &self.error {
             Some(error.clone())

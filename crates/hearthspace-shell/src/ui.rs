@@ -1,6 +1,6 @@
 //! Hearthspace's Xilem-rendered UI client.
 //!
-//! The shell runs as its own Wayland client. It creates four corner surfaces
+//! The shell runs as its own Wayland client. It creates independent frame parts
 //! per active output, palette surfaces for open panels, and a tiny
 //! hidden watcher surface that keeps the output list live without disturbing the
 //! visible bars' accessibility trees.
@@ -24,6 +24,8 @@ mod control_state;
 mod control_task;
 mod control_worker;
 mod corner_button;
+// Legacy compositions remain fixtures for their shared controls' regressions.
+#[cfg(test)]
 mod corners;
 mod desktop;
 mod desktop_item;

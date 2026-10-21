@@ -1,12 +1,10 @@
 use crate::ui::appearance::{ThemeStyle as _, Tone};
 use hearthspace_ui_components as components;
+#[cfg(test)]
+use xilem::masonry::properties::{Dimensions, Padding};
 use xilem::{
     AnyWidgetView, WidgetView,
-    masonry::{
-        layout::AsUnit,
-        parley::fontique::GenericFamily,
-        properties::{Dimensions, LineBreaking, Padding},
-    },
+    masonry::{layout::AsUnit, parley::fontique::GenericFamily, properties::LineBreaking},
     style::Style,
     view::{CrossAxisAlignment, FlexExt, FlexSpacer, flex_col, flex_row, label, sized_box},
 };
@@ -18,6 +16,7 @@ use super::{
     state::{ShellOutputInstance, ShellState},
 };
 
+#[cfg(test)]
 pub(super) fn button(
     output: &ShellOutputInstance,
     items: &[Notification],

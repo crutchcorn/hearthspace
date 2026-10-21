@@ -59,7 +59,9 @@ pub(super) struct ShellOutputInstance {
     pub(super) show_notifications: bool,
     pub(super) show_map: bool,
     pub(super) launch_error: Option<String>,
+    #[cfg(test)]
     pub(super) corner_window_ids: [WindowId; 4],
+    #[cfg(test)]
     pub(super) corner_widths: [f64; 4],
     pub(super) dock_page: usize,
     pub(super) launcher_window_id: WindowId,
