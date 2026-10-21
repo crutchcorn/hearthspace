@@ -32,11 +32,24 @@ def services(directory, _evidence, env, _deadline):
         "[Default Applications]\ntext/plain=file-handler.desktop\ninode/directory=file-handler.desktop\n"
     )
     opened_paths = directory / "opened-paths.jsonl"
+    x11_state = directory / "x11-opener.json"
+    binary = Path(
+        os.environ.get(
+            "HEARTHSPACE_BINARY",
+            Path(__file__).resolve().parents[2] / "target/debug/hearthspace",
+        )
+    ).with_name("hearthspace-clipboard-test")
     handler = directory / "open-handler"
     handler.write_text(
         "#!/usr/bin/python3\nimport json, os, sys\n"
         f"with open({str(opened_paths)!r}, 'a') as log:\n"
-        "    log.write(json.dumps(sys.argv[1:]) + '\\n')\n"
+        "    log.write(json.dumps({'paths': sys.argv[1:], 'display': os.getenv('DISPLAY')}) + '\\n')\n"
+        "if os.path.isdir(sys.argv[1]):\n"
+        "    os.environ.update(GDK_BACKEND='x11', GTK_A11Y='none', GIO_USE_VFS='local', "
+        "GSETTINGS_BACKEND='memory', GDK_DEBUG='no-portals')\n"
+        "    os.environ.pop('XAUTHORITY', None)\n"
+        f"    os.execv({str(binary)!r}, [{str(binary)!r}, '--title', 'DESKTOP_FILE', "
+        f"'--input-file', {str(desktop / 'Notes.txt')!r}, '--output-file', {str(x11_state)!r}])\n"
         "os.execvp('foot', ['foot', '--title=DESKTOP_FILE'])\n"
     )
     handler.chmod(0o700)
@@ -65,6 +78,7 @@ def services(directory, _evidence, env, _deadline):
         config=config,
         favorites=config / "hearthspace" / "favorites.json",
         opened_paths=opened_paths,
+        x11_state=x11_state,
     )
 
 

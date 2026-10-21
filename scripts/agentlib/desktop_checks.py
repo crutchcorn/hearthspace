@@ -178,6 +178,10 @@ def run(smoke):
         inputs.click(*point(smoke, item(smoke, second)))
     opened(smoke, "DESKTOP_EDITOR")
 
+    display = smoke.until(
+        "XWayland ready for default application",
+        lambda: smoke.control.status().get("xwayland_display"),
+    )
     for name in ["Notes.txt", "Pictures"]:
         click(smoke, f"file:{name.encode().hex()}")
         with Input(smoke.control) as inputs:
@@ -189,10 +193,17 @@ def run(smoke):
             for line in smoke.service_fixture.opened_paths.read_text().splitlines()
         ]
         == [
-            [str(smoke.service_fixture.desktop / name)]
+            {
+                "paths": [str(smoke.service_fixture.desktop / name)],
+                "display": display,
+            }
             for name in ["Notes.txt", "Pictures"]
         ],
-        "default application did not receive the exact desktop paths",
+        "default application did not receive the exact desktop paths and session display",
+    )
+    require(
+        json.loads(smoke.service_fixture.x11_state.read_text())["backend"] == "x11",
+        "folder default application did not open through XWayland",
     )
 
     original = position(item(smoke, first))
@@ -269,6 +280,7 @@ def run(smoke):
         keyboard=True,
         activation=True,
         file_and_folder_open=True,
+        x11_default_app=True,
         zoom=True,
         edge_pan=True,
         live_directory=True,

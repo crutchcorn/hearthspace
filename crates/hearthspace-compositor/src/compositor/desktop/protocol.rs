@@ -137,7 +137,11 @@ impl CalloopData {
             match app.desktop.accept_action(token, Instant::now()) {
                 Ok((action, id)) => {
                     return Some(ControlReply::Payload(
-                        serde_json::to_vec(&json!({"action":action,"id":id})).unwrap(),
+                        serde_json::to_vec(&json!({
+                            "action":action,"id":id,
+                            "xwayland_display":app.xwayland_display_name(),
+                        }))
+                        .unwrap(),
                     ));
                 }
                 Err(error) => Err(error),

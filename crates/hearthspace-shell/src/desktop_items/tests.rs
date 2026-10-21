@@ -1,6 +1,6 @@
 use super::*;
 use std::{
-    ffi::OsString,
+    ffi::{OsStr, OsString},
     os::unix::{ffi::OsStringExt, fs::symlink},
 };
 
@@ -65,7 +65,7 @@ fn desktop_objects_preserve_byte_identity_and_do_not_read_file_contents() {
             .iter()
             .all(|item| matches!(item.kind, DesktopItemKind::File { .. }))
     );
-    let command = open_command(&first).unwrap();
+    let command = open_command(&first, None).unwrap();
     assert_eq!(command.get_args().collect::<Vec<_>>(), [first.as_os_str()]);
 }
 
@@ -79,7 +79,7 @@ fn removed_desktop_folder_does_not_remove_installed_apps_or_create_files() {
         discover(&catalog, None).unwrap()
     );
     assert!(!missing.exists());
-    assert!(open_path(&missing).is_err());
+    assert!(open_path(&missing, None).is_err());
 }
 
 #[test]
@@ -101,8 +101,28 @@ fn linked_folders_are_items_without_recursively_enumerating_their_children() {
 #[test]
 fn opening_a_filename_passes_one_literal_argument() {
     let path = Path::new("/tmp/Notes $(touch unwanted); ' quote.txt");
-    let command = open_command(path).unwrap();
+    let command = open_command(path, None).unwrap();
     assert_eq!(command.get_program(), "xdg-open");
     assert_eq!(command.get_args().collect::<Vec<_>>(), [path.as_os_str()]);
     assert!(command.get_envs().any(|(key, _)| key == "WAYLAND_DISPLAY"));
+}
+
+#[test]
+fn file_opener_removes_an_inherited_display_without_session_xwayland() {
+    let command = open_command(Path::new("/tmp/notes.txt"), None).unwrap();
+    assert!(
+        command
+            .get_envs()
+            .any(|(key, value)| key == "DISPLAY" && value.is_none())
+    );
+}
+
+#[test]
+fn file_opener_uses_only_the_compositor_acknowledged_xwayland_display() {
+    let command = open_command(Path::new("/tmp/notes.txt"), Some(":37")).unwrap();
+    assert!(
+        command
+            .get_envs()
+            .any(|(key, value)| { key == "DISPLAY" && value == Some(OsStr::new(":37")) })
+    );
 }

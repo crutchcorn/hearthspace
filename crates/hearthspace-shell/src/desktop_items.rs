@@ -126,11 +126,11 @@ fn files(directory: &Path) -> io::Result<Vec<DesktopItem>> {
 /// Launch the user's associated application, using the same private session bus
 /// and Wayland environment as launcher apps. Paths remain a single OS argument;
 /// even non-UTF-8 filenames never pass through a shell command string.
-pub fn open_path(path: &Path) -> Result<(), String> {
+pub fn open_path(path: &Path, xwayland_display: Option<&str>) -> Result<(), String> {
     if !path.is_absolute() || !path.exists() {
         return Err("This desktop file or folder is no longer available.".into());
     }
-    let mut command = open_command(path)?;
+    let mut command = open_command(path, xwayland_display)?;
     let child = command
         .spawn()
         .map_err(|error| format!("Could not open {}: {error}", path.display()))?;
@@ -138,7 +138,7 @@ pub fn open_path(path: &Path) -> Result<(), String> {
     Ok(())
 }
 
-fn open_command(path: &Path) -> Result<Command, String> {
+fn open_command(path: &Path, xwayland_display: Option<&str>) -> Result<Command, String> {
     let mut command = launch_command(
         &["xdg-open".into()],
         &hearthspace_common::wayland_display_name(),
@@ -146,7 +146,9 @@ fn open_command(path: &Path) -> Result<Command, String> {
         None,
     )?;
     command.arg(path);
-    if let Some(display) = std::env::var_os("DISPLAY") {
+    // The shell may inherit the host's DISPLAY in a nested session. Only the
+    // compositor's acknowledged XWayland display belongs to this desktop.
+    if let Some(display) = xwayland_display {
         command.env("DISPLAY", display);
     }
     Ok(command)

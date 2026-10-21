@@ -135,6 +135,7 @@ pub(super) fn perform(
     struct Accepted {
         action: String,
         id: String,
+        xwayland_display: Option<String>,
     }
     let bytes = command_client::query_payload(
         socket,
@@ -156,7 +157,7 @@ pub(super) fn perform(
                     command_client::launch_app(socket, app_id, None)
                 }
                 DesktopItemKind::File { path } | DesktopItemKind::Folder { path } => {
-                    desktop_items::open_path(path)
+                    desktop_items::open_path(path, action.xwayland_display.as_deref())
                 }
             }
             .map_err(|error| Failure::report(format!("Could not open {}: {error}", item.title)))?;
