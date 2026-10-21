@@ -26,7 +26,7 @@ impl App {
         if self.windows[index].kind == super::super::ManagedWindowKind::DesktopItem {
             self.desktop_mapped(index);
         }
-        if self.shell_corner(index).is_some() {
+        if self.reserves_shell_work_area(index) {
             self.reconcile_window_presentations();
         }
         let id = self.windows[index].id;

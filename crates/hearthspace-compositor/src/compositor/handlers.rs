@@ -317,9 +317,9 @@ impl XdgShellHandler for App {
             self.windows[index].mapped = false;
             self.desktop_mapped(index);
         }
-        let corner = self
+        let reserved_work_area = self
             .window_index_for_surface(surface.wl_surface())
-            .is_some_and(|index| self.shell_corner(index).is_some());
+            .is_some_and(|index| self.reserves_shell_work_area(index));
         let restore_panel_focus = !self.pending_search_reserves_focus()
             && self
                 .active_shell_panel_index()
@@ -356,7 +356,7 @@ impl XdgShellHandler for App {
         }
         self.windows
             .retain(|window| !window.surface.same_xdg(&surface));
-        if corner {
+        if reserved_work_area {
             self.reconcile_window_presentations();
         }
         if restore_panel_focus {

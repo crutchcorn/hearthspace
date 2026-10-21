@@ -11,6 +11,8 @@ mod group_members;
 mod guards;
 #[path = "frame_layout/input.rs"]
 mod input;
+#[path = "frame_layout/work_area.rs"]
+mod work_area;
 
 const COLOR: [u8; 4] = [44, 110, 230, 255];
 fn layout(compositor: &HeadlessCompositor) -> Value {

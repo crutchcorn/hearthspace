@@ -124,11 +124,19 @@ impl App {
 
     pub(in crate::compositor) fn has_shell_corners(&self, output: Rectangle<i32, Logical>) -> bool {
         self.windows.iter().enumerate().any(|(index, window)| {
-            window.kind == ManagedWindowKind::ShellBar
-                && self.shell_corner(index).is_some()
+            self.reserves_shell_work_area(index)
                 && self.output_logical_rect_for_name(window.shell_output_name.as_deref())
                     == Some(output)
         })
+    }
+
+    pub(in crate::compositor) fn reserves_shell_work_area(&self, index: usize) -> bool {
+        // Independent native controls replace the legacy corner surfaces. The
+        // work area stays stable when those controls are moved or hidden.
+        self.windows[index].kind == ManagedWindowKind::ShellBar
+            && (self.shell_corner(index).is_some()
+                || self.frame_widget_identity(index).is_some()
+                || self.frame_group_identity(index).is_some())
     }
 
     pub(in crate::compositor) fn usable_output(
