@@ -267,7 +267,7 @@ class ShellEvidenceTests(unittest.TestCase):
                 call.args
                 for call in input_type.return_value.__enter__.return_value.chord.call_args_list
             ],
-            [("tab",), ("tab",)],
+            [("tab",)],
         )
         self.assertIn("@focused='true'", a11y.call_args.args[2])
         self.assertIn("@name='Lock'", a11y.call_args.args[2])

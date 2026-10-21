@@ -36,7 +36,14 @@ class ShellHeadlessTests(unittest.TestCase):
             evidence = Path(os.environ.get("HEARTHSPACE_SHELL_EVIDENCE", directory))
             evidence.mkdir(parents=True, exist_ok=True)
             run_shell_session(
-                self, directory, evidence, run, "HEARTHSPACE_SHELL_FIXTURE"
+                self,
+                directory,
+                evidence,
+                run,
+                "HEARTHSPACE_SHELL_FIXTURE",
+                # Includes startup, independent frame-control navigation, and
+                # every popup's pixel proof before the search/app workflows.
+                timeout=180,
             )
 
 

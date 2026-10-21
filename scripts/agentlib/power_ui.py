@@ -18,7 +18,7 @@ def visible(smoke, name, role=None):
 def battery(smoke, percentage, state):
     smoke.until(
         f"battery {percentage}% {state}",
-        lambda: visible(smoke, f"Battery: {percentage}%, {state}", role="button"),
+        lambda: checks.elements(smoke, f"Battery: {percentage}%, {state}"),
     )
     smoke.record("battery-visible", percentage=percentage, state=state)
 

@@ -236,11 +236,9 @@ def run(smoke):
 
     click(smoke, first)
     origin = position(item(smoke, first))
-    apps = next(
-        corner
-        for corner in smoke.control.status()["shell_corners"]
-        if corner["corner"] == "apps"
-    )
+    from .shell_surfaces import corner_surface, observed_status
+
+    apps = corner_surface(observed_status(smoke), "apps")
     x, y = point(smoke, item(smoke, first))
     with Input(smoke.control) as inputs:
         inputs.drag(x, y, apps["x"] + apps["width"] - 27, apps["y"] + 27)

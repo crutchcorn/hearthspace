@@ -53,6 +53,15 @@ class PopupPresentationTests(unittest.TestCase):
         with self.assertRaisesRegex(ControlError, "no visible interior"):
             presentation.rounded(self.background, self.background, self.surface)
 
+    def test_visible_panel_can_blend_into_wallpaper_above_the_dark_backdrop(self):
+        # The first eight logical pixels match the surrounding wallpaper. The
+        # panel remains clearly visible over the darker app below that edge.
+        background = self.frame([((0, 20, 100, 28), (20, 20, 20))])
+        visible = self.frame([((0, 20, 100, 28), (20, 20, 20))] + self.rounded)
+        self.assertEqual(
+            len(presentation.rounded(background, visible, self.surface)), 4
+        )
+
     def test_raised_tint_blends_with_actual_backdrop_and_rejects_opaque_or_missing_panel(
         self,
     ):

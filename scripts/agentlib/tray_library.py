@@ -10,8 +10,8 @@ from pathlib import Path
 
 from . import shell_checks, tray_checks
 from .control import ControlError
-from .map_checks import corner_surface
 from .shell_presentation import Frame, park_pointer
+from .shell_surfaces import observed_status, widget_surface
 
 TITLE = "Ayatana tray fixture"
 
@@ -96,7 +96,7 @@ def presented(smoke):
         if not observed:
             return None
         frame = Frame(smoke.control.capture(output["name"]))
-        surface = corner_surface(smoke.control.status(), "system")
+        surface = widget_surface(observed_status(smoke), "tray")
         count = central_ink(frame, observed[0]["bounds"], surface)
         return count if count >= 6 * output["scale"] ** 2 else None
 
