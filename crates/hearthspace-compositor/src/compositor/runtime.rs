@@ -187,6 +187,7 @@ pub(in crate::compositor) fn run_event_loop(
         data.state.maintain_window_group();
         data.state.reconcile_window_switcher();
         data.state.advance_canvas_preview();
+        data.state.reconcile_layout_editor();
         data.apply_cursor_icon();
         data.update_native_hardware_cursor();
 

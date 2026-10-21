@@ -32,6 +32,8 @@ impl App {
             && !self.overview_active()
             && !self.canvas_search_active()
             && !self.window_switcher_active()
+            && !self.layout_editing()
+            && !self.layout_confirmation_active()
             && !self.keyboard.is_grabbed()
             && !self.pointer.is_grabbed()
             && self.drag.is_none()
@@ -90,7 +92,9 @@ impl App {
     pub(super) fn close_window(&mut self, id: u64) -> Result<(), String> {
         self.check_navigation_available()?;
         let index = self.navigation_window_index(id)?;
-        self.windows[index].surface.send_close();
+        if !self.request_pinned_window_close(id) {
+            self.windows[index].surface.send_close();
+        }
         Ok(())
     }
 
@@ -152,6 +156,10 @@ impl App {
     }
 
     fn reveal_window(&mut self, index: usize, center: bool) {
+        if self.frame_window_attached(index) {
+            let _ = self.reveal_frame_window(self.windows[index].id);
+            return;
+        }
         if let Some(target) = self.window_reveal_offset(index, center, None) {
             self.viewport_animation = None;
             self.viewport_offset = target;

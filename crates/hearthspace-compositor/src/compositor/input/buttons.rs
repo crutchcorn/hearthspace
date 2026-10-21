@@ -57,6 +57,9 @@ impl App {
             self.deliver_lock_button(button, state, time);
             return;
         }
+        if self.layout_pointer_button(button, state) {
+            return;
+        }
         if self.canvas_search_pointer_button(button, state) {
             return;
         }

@@ -111,11 +111,11 @@ The power choices are `Lock`, `Log out`, `Confirm log out`, and `Cancel`.
 Search rows retain button roles and the names `Open: APP NAME` or `Window:
 WINDOW TITLE`; the current result exposes the accessibility `selected` state.
 
-Unlocked `status.shell_corners` retains the corner summaries with `corner`
-(`notifications`, `system`, `canvas`, or `apps`), `output`, `x`, `y`, `width`, and
-`height`. These summaries use global output-logical coordinates. `layout-status` provides
-the measured bounds, orientation, visibility and group identity of each independent
-widget, plus pinned windows, editor selection and animation state.
+Unlocked `status.shell_corners` describes legacy corner surfaces when present, with
+`corner`, `output`, `x`, `y`, `width`, and `height`. The current shell uses independent
+frame surfaces instead. Use `layout-status` for their measured bounds, orientation,
+visibility and group identity, plus pinned windows, editor selection and animation
+state. These bounds use global output-logical coordinates.
 
 Unlocked `status.shell_panels` lists visible panel bounds as `kind`, `output`,
 `x`, `y`, `width`, and `height`. Kinds are `search`, `notifications`, `map`,

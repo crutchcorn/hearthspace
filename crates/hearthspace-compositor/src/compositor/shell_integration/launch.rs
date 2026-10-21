@@ -100,6 +100,19 @@ impl App {
         )
     }
 
+    pub(in crate::compositor) fn open_layout_settings(
+        &mut self,
+        output_name: Option<&str>,
+    ) -> Result<(), String> {
+        let existing = self.existing_settings_window();
+        self.launch_app_with_arguments(
+            "dev.hearthspace.Settings.desktop",
+            output_name,
+            &["--page", "system"],
+            existing,
+        )
+    }
+
     fn launch_app_with_arguments(
         &mut self,
         app_id: &str,

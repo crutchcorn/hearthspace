@@ -49,7 +49,7 @@ impl App {
     }
 
     pub(in crate::compositor) fn window_uses_output_coordinates(&self, index: usize) -> bool {
-        self.presentation_anchor(index).is_some()
+        self.presentation_anchor(index).is_some() || self.frame_window_attached(index)
     }
 
     pub(in crate::compositor) fn window_presentation_output(

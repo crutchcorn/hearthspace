@@ -22,7 +22,8 @@ impl App {
             return;
         }
         let first = !self.touch_input.has_contacts();
-        if !first && self.touch_pointer_pressed && self.touch_input.has_device_input(device) {
+        if !first && self.touch_pointer_pressed {
+            self.cancel_layout_drag();
             self.cancel_titlebar_pointer();
             self.cancel_desktop_gesture();
         }
@@ -39,7 +40,8 @@ impl App {
         self.touch_input.down(device, slot, location);
         // Canvas previews accept ordinary single-contact taps. An extra
         // contact cancels the pending tap without activating the revealed app.
-        if ((self.canvas_search_active() || self.window_switcher_active()) && !first)
+        if ((self.canvas_search_active() || self.window_switcher_active() || self.layout_editing())
+            && !first)
             || (first
                 && !self.canvas_search_active()
                 && !self.window_switcher_active()
@@ -64,6 +66,7 @@ impl App {
         if self.touch_pointer_pressed && self.touch_input.has_device_input(device) {
             self.cancel_titlebar_pointer();
             self.cancel_desktop_gesture();
+            self.cancel_layout_drag();
             self.cancel_canvas_search_touch();
             if self.window_switcher_active() {
                 self.cancel_window_switcher_touch();
@@ -78,6 +81,7 @@ impl App {
         self.cancel_titlebar_pointer();
         self.cancel_group_gesture();
         self.cancel_desktop_gesture();
+        self.cancel_layout_drag();
         self.cancel_canvas_search_touch();
         if self.window_switcher_active() {
             self.cancel_window_switcher_touch();

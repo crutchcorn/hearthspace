@@ -32,6 +32,9 @@ mod canvas_zoom;
 #[path = "support/device_controls.rs"]
 mod device_controls;
 #[cfg(feature = "test-apps")]
+#[path = "support/frame_layout.rs"]
+mod frame_layout;
+#[cfg(feature = "test-apps")]
 #[path = "support/grid_snapping.rs"]
 mod grid_snapping;
 #[cfg(feature = "test-apps")]
@@ -40,6 +43,15 @@ mod interactive;
 #[cfg(feature = "test-apps")]
 #[path = "support/layout.rs"]
 mod layout;
+#[cfg(feature = "test-apps")]
+#[path = "support/layout_confirmation.rs"]
+mod layout_confirmation;
+#[cfg(feature = "test-apps")]
+#[path = "support/layout_emphasis.rs"]
+mod layout_emphasis;
+#[cfg(feature = "test-apps")]
+#[path = "support/layout_overflow.rs"]
+mod layout_overflow;
 #[cfg(feature = "test-apps")]
 #[path = "support/navigation.rs"]
 mod navigation;
@@ -64,6 +76,9 @@ mod shell_blur;
 #[cfg(feature = "test-apps")]
 #[path = "support/shell_corners.rs"]
 mod shell_corners;
+#[cfg(feature = "test-apps")]
+#[path = "support/shell_events.rs"]
+mod shell_events;
 #[cfg(feature = "test-apps")]
 #[path = "support/shell_panels.rs"]
 mod shell_panels;

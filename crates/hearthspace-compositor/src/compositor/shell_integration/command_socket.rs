@@ -93,6 +93,9 @@ pub(in crate::compositor) enum ControlReply {
 
 impl CalloopData {
     fn run_command_text(&mut self, text: &str) -> ControlReply {
+        if let Some(reply) = self.run_layout_command(text) {
+            return reply;
+        }
         if self.state.session_locked()
             && !matches!(
                 text,

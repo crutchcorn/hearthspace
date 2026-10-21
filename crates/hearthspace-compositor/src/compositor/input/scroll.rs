@@ -8,7 +8,7 @@ impl App {
     /// steps have been converted into logical scroll pixels.
     pub(super) fn zoom_from_scroll_amount(&mut self, vertical: Option<f64>) -> bool {
         self.shortcuts.cancel_meta_tap();
-        if self.canvas_search_active() {
+        if self.canvas_search_active() || self.layout_confirmation_active() {
             return self.hit_test(self.pointer_location).is_none();
         }
         if self.overview_active()

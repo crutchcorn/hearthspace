@@ -175,6 +175,9 @@ impl App {
                 .find(|(i, w)| w.id == session.selected && self.is_navigable_window(*i))
                 .map(|(i, _)| i)
             {
+                if self.frame_window_attached(index) {
+                    let _ = self.reveal_frame_window(self.windows[index].id);
+                }
                 if !self.window_uses_output_coordinates(index) {
                     self.viewport_animation = None;
                     self.viewport_offset = super::navigation::reveal_offset(

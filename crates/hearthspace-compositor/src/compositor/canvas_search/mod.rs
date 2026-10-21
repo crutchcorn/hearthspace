@@ -300,6 +300,9 @@ impl App {
                 .iter()
                 .position(|w| w.id == id && w.mapped)
                 .ok_or("window is unavailable")?;
+            if self.frame_window_attached(index) {
+                let _ = self.reveal_frame_window(self.windows[index].id);
+            }
             if !self.window_uses_output_coordinates(index) {
                 let output = smithay::utils::Rectangle::new(
                     (view.x.round() as i32, view.y.round() as i32).into(),

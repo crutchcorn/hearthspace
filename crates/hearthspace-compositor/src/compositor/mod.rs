@@ -22,6 +22,7 @@ mod handlers;
 mod idle;
 mod input;
 mod layout;
+mod layout_editor;
 mod masonry_titlebar;
 mod navigation;
 mod output;
@@ -286,6 +287,7 @@ struct App {
     keyboard: KeyboardHandle<Self>,
     viewport_offset: CanvasPoint,
     layout_store: layout::LayoutStore,
+    layout_editor: layout_editor::State,
     desktop: desktop::State,
     canvas_search: canvas_search::State,
     canvas_preview: canvas_preview::State,
@@ -638,6 +640,8 @@ pub(in crate::compositor) fn initialize_app(
         crate::BackendSelection::Udev
     ));
     let (viewport_offset, viewport_scale) = layout_store.viewport();
+    let frame_layouts = layout_store.frame_layouts();
+    let allow_hide_tools = layout_store.allow_hide_tools();
     let app = App {
         display_handle: dh.clone(),
         compositor_state,
@@ -677,6 +681,7 @@ pub(in crate::compositor) fn initialize_app(
         viewport_offset,
         viewport_scale,
         layout_store,
+        layout_editor: layout_editor::State::from_layouts(frame_layouts, allow_hide_tools),
         desktop: Default::default(),
         canvas_search: Default::default(),
         canvas_preview: Default::default(),

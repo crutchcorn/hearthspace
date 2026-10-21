@@ -6,6 +6,7 @@ const GROUP: &str = "dev.hearthspace.frame-group";
 const GRIP: &str = "dev.hearthspace.frame-group-grip";
 const EDITOR: &str = "dev.hearthspace.layout-editor";
 const CONFIRM: &str = "dev.hearthspace.layout-confirm";
+const TOOLTIP: &str = "dev.hearthspace.layout-tooltip";
 const REVEAL: &str = "dev.hearthspace.pinned-window-reveal.window-";
 
 pub fn frame_widget_app_id(output: Option<&str>, id: &str) -> String {
@@ -47,6 +48,14 @@ pub fn layout_confirm_app_id(session: u64, output: Option<&str>) -> String {
 
 pub fn layout_confirm_from_app_id(app_id: &str) -> Option<(u64, Option<String>)> {
     parse_session_app_id(CONFIRM, app_id)
+}
+
+pub fn layout_tooltip_app_id(session: u64, output: Option<&str>) -> String {
+    format!("{}.session-{session}", output_base(TOOLTIP, output))
+}
+
+pub fn layout_tooltip_from_app_id(app_id: &str) -> Option<(u64, Option<String>)> {
+    parse_session_app_id(TOOLTIP, app_id)
 }
 
 fn parse_session_app_id(prefix: &str, app_id: &str) -> Option<(u64, Option<String>)> {

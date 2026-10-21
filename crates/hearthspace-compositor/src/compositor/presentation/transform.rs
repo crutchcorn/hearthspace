@@ -22,6 +22,23 @@ impl App {
         &self,
         index: usize,
     ) -> Point<f64, Logical> {
+        if !self.windows[index].presentation.pinned()
+            && let Some(rect) = self
+                .layout_motion_rect(index)
+                .or_else(|| self.layout_target_rect(index))
+        {
+            let inset = self.window_surface_geometry_loc(index);
+            let chrome = if self.has_compositor_chrome(index) {
+                TITLE_BAR_HEIGHT
+            } else {
+                0
+            };
+            let scale = self.layout_render_scale(index).unwrap_or(1.);
+            return Point::from((
+                rect.x - f64::from(inset.x) * scale,
+                rect.y + f64::from(chrome - inset.y) * scale,
+            ));
+        }
         if let Some(origin) = self.transient_screen_origin(index) {
             return origin;
         }
@@ -71,6 +88,16 @@ impl App {
         &self,
         index: usize,
     ) -> Rectangle<i32, Logical> {
+        if !self.windows[index].presentation.pinned()
+            && let Some(rect) = self
+                .layout_motion_rect(index)
+                .or_else(|| self.layout_target_rect(index))
+        {
+            return Rectangle::new(
+                (rect.x.round() as i32, rect.y.round() as i32).into(),
+                (rect.width.round() as i32, rect.height.round() as i32).into(),
+            );
+        }
         if self.window_uses_output_coordinates(index) {
             let chrome = if self.has_compositor_chrome(index) {
                 TITLE_BAR_HEIGHT
@@ -158,6 +185,9 @@ impl App {
     ) -> bool {
         if !self.windows[index].mapped {
             return false;
+        }
+        if self.is_layout_surface(index) {
+            return self.layout_surface_visible(index);
         }
         if self.is_window_switcher_caption(index) {
             return self.window_switcher_caption_visible(index);

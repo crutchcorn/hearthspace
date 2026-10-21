@@ -2,7 +2,6 @@
 use super::navigation::{action, query};
 use super::shell_panels::{click, connect};
 use super::*;
-use serde_json::Value;
 const GREEN: [u8; 4] = [0x66, 0xcc, 0, 0xff];
 
 #[test]
@@ -33,9 +32,7 @@ fn repeated_search_activation_preserves_accepted_request_and_early_typing() {
         GREEN,
     );
     action(&compositor, "focus-launcher");
-    let mut bytes = [0; 4096];
-    let size = events.recv(&mut bytes).unwrap();
-    let event: Value = serde_json::from_slice(&bytes[..size]).unwrap();
+    let event = super::shell_events::receive(&events, "open-search");
     let token = event["token"].as_u64().unwrap();
     action(&compositor, format!("shell-event-accept {token}"));
     super::navigation::keys(&compositor, &[30]);
@@ -44,7 +41,9 @@ fn repeated_search_activation_preserves_accepted_request_and_early_typing() {
     }
     events.set_nonblocking(true).unwrap();
     assert_eq!(
-        events.recv(&mut bytes).unwrap_err().kind(),
+        super::shell_events::next_action(&events)
+            .unwrap_err()
+            .kind(),
         ErrorKind::WouldBlock,
         "repeated activation must reuse the accepted in-flight request"
     );
@@ -109,9 +108,7 @@ fn search_replay_finishes_key_pairs_after_buffered_shortcut_changes_focus() {
         .as_u64()
         .unwrap();
     action(&compositor, "focus-launcher");
-    let mut bytes = [0; 4096];
-    let size = events.recv(&mut bytes).unwrap();
-    let event: Value = serde_json::from_slice(&bytes[..size]).unwrap();
+    let event = super::shell_events::receive(&events, "open-search");
     let token = event["token"].as_u64().unwrap();
     // 'a' is delivered before Alt+Tab changes focus during replay. Its release
     // and the Alt release must still complete the already-delivered chord.

@@ -82,6 +82,7 @@ impl App {
 
     /// Modifier changes use the same original gesture baseline as pointer motion.
     pub(in crate::compositor) fn refresh_grid_snapping(&mut self) {
+        self.layout_pointer_motion();
         if self.session_locked() {
             return;
         }

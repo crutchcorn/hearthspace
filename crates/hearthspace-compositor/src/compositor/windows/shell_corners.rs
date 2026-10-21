@@ -12,11 +12,32 @@ impl App {
     pub(in crate::compositor) fn focused_shell_corner_index(&self) -> Option<usize> {
         let focus = self.keyboard.current_focus()?;
         let index = self.window_index_for_surface(focus.surface())?;
-        self.shell_corner(index).map(|_| index)
+        (self.shell_corner(index).is_some() || self.frame_widget_identity(index).is_some())
+            .then_some(index)
     }
 
     pub(in crate::compositor) fn cycle_shell_corner(&mut self, reverse: bool) {
         if !self.navigation_available() {
+            return;
+        }
+        if let Some(index) = self.focused_shell_corner_index()
+            && let Some(target) = self.frame_target_for_window(index)
+        {
+            let _ = self.focus_next_frame_control(target, reverse);
+            return;
+        }
+        if let Some(target) = self
+            .windows
+            .iter()
+            .enumerate()
+            .filter(|(_, w)| w.mapped)
+            .find_map(|(index, _)| {
+                self.frame_target_for_window(index).filter(|t| {
+                    t.target.kind == hearthspace_common::frame_layout::TargetKind::Widget
+                })
+            })
+        {
+            let _ = self.focus_next_frame_control(target, reverse);
             return;
         }
         let output = self

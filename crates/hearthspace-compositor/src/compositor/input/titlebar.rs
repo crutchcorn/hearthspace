@@ -252,7 +252,11 @@ impl App {
             return;
         };
         match target.button {
-            TitlebarButton::Close => self.windows[index].surface.send_close(),
+            TitlebarButton::Close => {
+                if !self.request_pinned_window_close(target.window_id) {
+                    self.windows[index].surface.send_close();
+                }
+            }
             TitlebarButton::Maximize => self.toggle_titlebar_maximize(target.window_id),
         }
     }

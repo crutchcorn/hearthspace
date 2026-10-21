@@ -183,13 +183,31 @@ impl App {
         }
     }
 
-    fn desktop_over_apps_corner(&self) -> bool {
+    pub(in crate::compositor) fn desktop_over_apps_corner(&self) -> bool {
         self.windows.iter().enumerate().any(|(index, window)| {
             window.mapped
                 && window.kind == ManagedWindowKind::ShellBar
-                && self.shell_corner(index) == Some(hearthspace_common::ShellCorner::Apps)
+                && (self.shell_corner(index) == Some(hearthspace_common::ShellCorner::Apps)
+                    || self
+                        .frame_widget_identity(index)
+                        .is_some_and(|(_, id)| id == "apps"))
                 && self.shell_bar_logical_origin(index).is_some_and(|origin| {
                     let size = self.window_geometry_size(index);
+                    if self.frame_target_for_window(index).is_some_and(|target| {
+                        self.layout_render_scale(index).is_some()
+                            && self
+                                .layout_editor
+                                .placed
+                                .iter()
+                                .find(|p| p.target == target)
+                                .is_some_and(|p| p.vertical)
+                    }) {
+                        return smithay::utils::Rectangle::new(
+                            (origin.x - 5, origin.y + size.h - 59).into(),
+                            (size.w + 10, 64).into(),
+                        )
+                        .contains(self.pointer_location.to_i32_round());
+                    }
                     // Apps List is the fixed rightmost button; running applications are not drop targets.
                     smithay::utils::Rectangle::new(
                         (origin.x + size.w - 59, origin.y - 5).into(),

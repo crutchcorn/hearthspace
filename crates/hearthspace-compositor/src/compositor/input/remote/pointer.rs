@@ -188,6 +188,7 @@ impl App {
         if !released.is_empty() {
             if released.contains(&0x110) {
                 self.cancel_titlebar_pointer();
+                self.cancel_layout_drag();
             }
             self.favorite_pointer_removed();
             for button in released {

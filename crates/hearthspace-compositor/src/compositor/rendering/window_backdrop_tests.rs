@@ -73,6 +73,8 @@ fn settings_glass_only_tracks_damage_below_its_owner_and_inside_its_halo() {
         after: 2,
         window: Rectangle::new((120, 120).into(), (160, 120).into()),
         region: None,
+        radius: 19.,
+        modal: false,
         zoom: 1.0,
         opacity: 1.,
     };
@@ -147,6 +149,8 @@ fn settings_glass_clips_to_outputs_without_dark_edges_or_scaled_mask_drift(
         after: 0,
         window: Rectangle::new((-420, 30).into(), (160, 120).into()),
         region: None,
+        radius: 19.,
+        modal: false,
         zoom,
         opacity: 1.,
     };
@@ -192,6 +196,8 @@ fn overlapping_window_backdrops_are_resolved_back_to_front() {
             after: 1,
             window: output,
             region: None,
+            radius: 19.,
+            modal: false,
             zoom: 1.0,
             opacity: 1.,
         },
@@ -201,6 +207,8 @@ fn overlapping_window_backdrops_are_resolved_back_to_front() {
             after: 2,
             window: output,
             region: None,
+            radius: 19.,
+            modal: false,
             zoom: 1.0,
             opacity: 1.,
         },
@@ -232,6 +240,8 @@ fn an_opaque_higher_window_skips_blur_and_each_output_keeps_its_own_cache() {
         after: 1,
         window: Rectangle::new((10, 10).into(), (100, 100).into()),
         region: None,
+        radius: 19.,
+        modal: false,
         zoom: 1.0,
         opacity: 1.,
     };
@@ -276,6 +286,8 @@ fn photographic_material_reduces_saturation_without_waiting_for_source_damage() 
         after: 0,
         window: output,
         region: None,
+        radius: 19.,
+        modal: false,
         zoom: 1.0,
         opacity: 1.,
     };
@@ -314,6 +326,8 @@ fn server_titlebar_blurs_only_the_header_without_rounding_its_bottom(#[case] sca
         after: 0,
         window: Rectangle::new((40, 40).into(), (220, 160).into()),
         region: Some(Rectangle::new((40, 40).into(), (220, 44).into())),
+        radius: 19.,
+        modal: false,
         zoom: 1.0,
         opacity: 1.,
     };
@@ -395,3 +409,6 @@ fn server_titlebar_blurs_only_the_header_without_rounding_its_bottom(#[case] sca
         "the reused allocation must receive changed backdrop pixels"
     );
 }
+
+#[path = "window_backdrop_layout_tests.rs"]
+mod layout;

@@ -116,6 +116,11 @@ impl MapClient {
         self.sync();
     }
 
+    pub(super) fn size(&mut self, number: usize) -> (i32, i32) {
+        self.sync();
+        self.state.windows[number].size
+    }
+
     pub(super) fn repaint_with_size(&mut self, number: usize, size: (i32, i32)) {
         let window = &mut self.state.windows[number];
         window.size = size;

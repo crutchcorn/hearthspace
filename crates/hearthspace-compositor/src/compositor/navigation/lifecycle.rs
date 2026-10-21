@@ -34,7 +34,9 @@ impl App {
             self.windows[index].pending_resize = None;
             self.favorite_window_unmapped(id);
         }
-        if mapped && self.is_window_switcher_caption(index) {
+        if mapped && self.is_layout_surface(index) {
+            self.layout_surface_mapped(index);
+        } else if mapped && self.is_window_switcher_caption(index) {
             if !self.window_switcher_caption_visible(index) {
                 self.windows[index].surface.send_close();
             }
@@ -85,6 +87,7 @@ impl App {
             })
         });
         self.desktop_focus_changed(index);
+        self.layout_focus_changed(index);
         self.cancel_search_outside_focus(index);
         self.favorite_focus_changed(index.map(|index| self.windows[index].id));
         self.ui_touch_focus_changed(index.map(|index| self.windows[index].id));

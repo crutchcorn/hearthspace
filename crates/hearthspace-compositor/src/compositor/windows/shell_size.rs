@@ -23,6 +23,7 @@ impl App {
                 ManagedWindowKind::ShellBar
                     | ManagedWindowKind::Launcher
                     | ManagedWindowKind::ControlOsd
+                    | ManagedWindowKind::DesktopItem
             ) && window.surface.wl_surface().as_ref() == Some(root)
         }) else {
             return;
@@ -37,7 +38,10 @@ impl App {
         };
         let app_id = window_app_id(&window.surface);
         let corner = app_id.as_deref().and_then(shell_corner_from_app_id);
-        if window.kind == ManagedWindowKind::ShellBar && corner.is_none() {
+        if window.kind == ManagedWindowKind::ShellBar
+            && corner.is_none()
+            && !app_id.as_deref().is_some_and(super::is_frame_shell_app_id)
+        {
             return;
         }
         let Some(requested) = fixed_size(root) else {
@@ -54,7 +58,10 @@ impl App {
             return;
         };
         if corner.is_none()
-            && window.kind != ManagedWindowKind::ControlOsd
+            && !matches!(
+                window.kind,
+                ManagedWindowKind::ControlOsd | ManagedWindowKind::DesktopItem
+            )
             && self
                 .output_logical_rect_for_name(window.shell_output_name.as_deref())
                 .is_some_and(|rect| self.has_shell_corners(rect))
@@ -71,6 +78,11 @@ impl App {
                 return false;
             }
             state.size = Some(size);
+            if window.kind == ManagedWindowKind::DesktopItem {
+                // The same native surface changes from a canvas tile to a
+                // compact frame button, and back again when it is unpinned.
+                state.bounds = Some(size);
+            }
             true
         });
         if changed {

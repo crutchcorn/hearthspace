@@ -21,8 +21,12 @@ pub(super) struct WindowBackdropShader {
 
 impl WindowBackdropShader {
     pub fn new(renderer: &mut GlesRenderer) -> Result<Self, GlesError> {
+        Self::with_sigma(renderer, 10.0)
+    }
+
+    pub fn with_sigma(renderer: &mut GlesRenderer, sigma: f64) -> Result<Self, GlesError> {
         Ok(Self {
-            blur: CornerBlurShader::with_kernel(renderer, PADDING as usize, 10.0)?,
+            blur: CornerBlurShader::with_kernel(renderer, PADDING as usize, sigma)?,
             resolve: renderer.compile_custom_texture_shader(
                 include_str!("window_backdrop_resolve.frag"),
                 &[

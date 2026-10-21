@@ -83,6 +83,18 @@ impl App {
         id: &str,
     ) -> Result<(), String> {
         self.check_navigation_available()?;
+        self.issue_desktop_action(action, id)
+    }
+    pub(in crate::compositor) fn desktop_layout_favorite(
+        &mut self,
+        id: &str,
+    ) -> Result<(), String> {
+        if !self.layout_editing() || !id.starts_with("app:") {
+            return Err("layout favorite unavailable".into());
+        }
+        self.issue_desktop_action("favorite", id)
+    }
+    fn issue_desktop_action(&mut self, action: &'static str, id: &str) -> Result<(), String> {
         if self.desktop_index(id).is_none() {
             return Err("desktop item is unavailable".into());
         }

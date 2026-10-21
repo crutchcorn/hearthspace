@@ -213,10 +213,7 @@ fn search_bridge_preserves_early_typing_and_revokes_cancelled_requests() {
         .unwrap();
     let request = || {
         action(&compositor, "focus-launcher");
-        let mut bytes = [0; 4096];
-        let length = events.recv(&mut bytes).unwrap();
-        let event: Value = serde_json::from_slice(&bytes[..length]).unwrap();
-        assert_eq!(event["action"], "open-search");
+        let event = super::shell_events::receive(&events, "open-search");
         event["token"].as_u64().unwrap()
     };
     let mut client = connect(&compositor);
