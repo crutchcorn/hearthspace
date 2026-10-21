@@ -34,6 +34,7 @@ mod favorite_state;
 #[cfg(test)]
 mod favorite_tests;
 mod favorite_view;
+mod frame_layout;
 use crate::gesture_pad;
 mod icons;
 mod launcher;

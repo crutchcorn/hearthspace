@@ -36,6 +36,7 @@ pub(super) fn app_logic(
     super::search_selection::reconcile(state);
     super::dock::reconcile(state);
     super::tray_state::reconcile(state);
+    super::frame_layout::reconcile(state);
     let watcher = window(
         state.watcher_window_id,
         "Hearthspace Output Watcher",
@@ -56,9 +57,12 @@ pub(super) fn app_logic(
     windows.extend(super::desktop::windows(state));
     windows.extend(super::canvas_search::windows(state));
     windows.extend(super::window_switcher::window(state));
+    windows.extend(super::frame_layout::windows(state));
 
     for output in &state.outputs {
-        windows.extend(super::corners::windows(state, output));
+        if !state.frame_layout.initialized {
+            windows.extend(super::corners::windows(state, output));
+        }
         if let Some(osd) = &output.osd {
             windows.push(super::control_osd::window(output, osd));
         }
@@ -168,7 +172,10 @@ fn output_watcher_view(map_open: bool, osd_open: bool) -> impl WidgetView<ShellS
                     super::window_group::task(),
                     fork(
                         super::desktop::task(),
-                        fork(super::canvas_search::task(), super::window_switcher::task()),
+                        fork(
+                            super::canvas_search::task(),
+                            fork(super::window_switcher::task(), super::frame_layout::task()),
+                        ),
                     ),
                 ),
             ),

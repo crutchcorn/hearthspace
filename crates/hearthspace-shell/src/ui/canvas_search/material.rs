@@ -14,9 +14,10 @@ use widget::PanelWidget;
 enum Kind {
     Field,
     Card,
+    Shell,
 }
 
-pub(super) struct Panel<V> {
+pub(in crate::ui) struct Panel<V> {
     inner: V,
     selected: bool,
     hovered: bool,
@@ -24,7 +25,7 @@ pub(super) struct Panel<V> {
     palette: Palette,
 }
 
-pub(super) fn panel<V>(inner: V, selected: bool, palette: Palette) -> Panel<V> {
+pub(in crate::ui) fn panel<V>(inner: V, selected: bool, palette: Palette) -> Panel<V> {
     Panel {
         inner,
         selected,
@@ -34,7 +35,7 @@ pub(super) fn panel<V>(inner: V, selected: bool, palette: Palette) -> Panel<V> {
     }
 }
 
-pub(super) fn card<V>(inner: V, selected: bool, palette: Palette) -> Panel<V> {
+pub(in crate::ui) fn card<V>(inner: V, selected: bool, palette: Palette) -> Panel<V> {
     Panel {
         inner,
         selected,
@@ -44,8 +45,18 @@ pub(super) fn card<V>(inner: V, selected: bool, palette: Palette) -> Panel<V> {
     }
 }
 
+pub(in crate::ui) fn shell<V>(inner: V, palette: Palette) -> Panel<V> {
+    Panel {
+        inner,
+        selected: false,
+        hovered: false,
+        kind: Kind::Shell,
+        palette,
+    }
+}
+
 impl<V> Panel<V> {
-    pub(super) fn hovered(mut self, hovered: bool) -> Self {
+    pub(in crate::ui) fn hovered(mut self, hovered: bool) -> Self {
         self.hovered = hovered;
         self
     }

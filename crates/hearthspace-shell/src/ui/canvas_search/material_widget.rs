@@ -11,7 +11,7 @@ use xilem::masonry::{
     layout::{LayoutSize, LenReq, Length},
 };
 
-pub(in crate::ui::canvas_search) struct PanelWidget {
+pub(in crate::ui) struct PanelWidget {
     child: WidgetPod<dyn Widget>,
     pub(super) kind: Kind,
     pub(super) selected: bool,
@@ -82,7 +82,7 @@ impl Widget for PanelWidget {
         let active = self.selected || self.hovered || ctx.has_hovered() || ctx.has_focus_target();
         let rect = ctx.border_box();
         let shape = rect.inset(-0.5).to_rounded_rect(19.5);
-        let raised = self.kind == Kind::Card && active;
+        let raised = self.kind == Kind::Shell || (self.kind == Kind::Card && active);
         painter
             .fill(
                 shape,

@@ -28,6 +28,7 @@ pub(super) fn group<V: WidgetView<ShellState>>(label: impl Into<String>, inner: 
         reset_focus_on_deactivation: false,
         accessibility_bounds: true,
         status: false,
+        dialog: false,
     }
 }
 pub(super) struct GroupView<V> {
@@ -36,8 +37,14 @@ pub(super) struct GroupView<V> {
     reset_focus_on_deactivation: bool,
     accessibility_bounds: bool,
     status: bool,
+    dialog: bool,
 }
 impl<V> GroupView<V> {
+    pub(super) fn dialog(mut self) -> Self {
+        self.dialog = true;
+        self
+    }
+
     /// Announce changing feedback through the platform's ordinary live region.
     pub(super) fn status(mut self) -> Self {
         self.status = true;
@@ -71,6 +78,7 @@ impl<V: WidgetView<ShellState>> View<ShellState, (), ViewCtx> for GroupView<V> {
                 reset_focus_on_deactivation: self.reset_focus_on_deactivation,
                 accessibility_bounds: self.accessibility_bounds,
                 status: self.status,
+                dialog: self.dialog,
             }),
             view_state,
         )
@@ -88,6 +96,10 @@ impl<V: WidgetView<ShellState>> View<ShellState, (), ViewCtx> for GroupView<V> {
             element.ctx.request_accessibility_update();
         }
         element.widget.reset_focus_on_deactivation = self.reset_focus_on_deactivation;
+        if self.dialog != previous.dialog {
+            element.widget.dialog = self.dialog;
+            element.ctx.request_accessibility_update();
+        }
         if self.status != previous.status {
             element.widget.status = self.status;
             element.ctx.request_accessibility_update();
@@ -145,6 +157,7 @@ pub(super) struct PopupGroup {
     reset_focus_on_deactivation: bool,
     accessibility_bounds: bool,
     status: bool,
+    dialog: bool,
 }
 impl PopupGroup {
     fn child_mut<'a>(this: &'a mut WidgetMut<'_, Self>) -> WidgetMut<'a, dyn Widget> {
@@ -195,7 +208,9 @@ impl Widget for PopupGroup {
     }
     fn paint(&mut self, _: &mut PaintCtx<'_>, _: &PropertiesRef<'_>, _: &mut Painter<'_>) {}
     fn accessibility_role(&self) -> Role {
-        if self.status {
+        if self.dialog {
+            Role::Dialog
+        } else if self.status {
             Role::Status
         } else {
             Role::Group
@@ -203,6 +218,9 @@ impl Widget for PopupGroup {
     }
     fn accessibility(&mut self, _: &mut AccessCtx<'_>, _: &PropertiesRef<'_>, node: &mut Node) {
         node.set_label(self.label.clone());
+        if self.dialog {
+            node.set_modal();
+        }
         if self.status {
             node.set_live(xilem::masonry::accesskit::Live::Polite);
         }

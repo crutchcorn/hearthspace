@@ -5,6 +5,7 @@ const WIDGET: &str = "dev.hearthspace.frame-widget";
 const GROUP: &str = "dev.hearthspace.frame-group";
 const GRIP: &str = "dev.hearthspace.frame-group-grip";
 const EDITOR: &str = "dev.hearthspace.layout-editor";
+const CONFIRM: &str = "dev.hearthspace.layout-confirm";
 const REVEAL: &str = "dev.hearthspace.pinned-window-reveal.window-";
 
 pub fn frame_widget_app_id(output: Option<&str>, id: &str) -> String {
@@ -37,9 +38,21 @@ pub fn layout_editor_app_id(session: u64, output: Option<&str>) -> String {
 }
 
 pub fn layout_editor_from_app_id(app_id: &str) -> Option<(u64, Option<String>)> {
+    parse_session_app_id(EDITOR, app_id)
+}
+
+pub fn layout_confirm_app_id(session: u64, output: Option<&str>) -> String {
+    format!("{}.session-{session}", output_base(CONFIRM, output))
+}
+
+pub fn layout_confirm_from_app_id(app_id: &str) -> Option<(u64, Option<String>)> {
+    parse_session_app_id(CONFIRM, app_id)
+}
+
+fn parse_session_app_id(prefix: &str, app_id: &str) -> Option<(u64, Option<String>)> {
     let (base, session) = app_id.rsplit_once(".session-")?;
     let session = session.parse::<u64>().ok().filter(|id| *id > 0)?;
-    Some((session, parse_output(EDITOR, base)?))
+    Some((session, parse_output(prefix, base)?))
 }
 
 pub fn pinned_window_reveal_app_id(window_id: u64) -> String {

@@ -165,6 +165,9 @@ pub(super) fn send(state: &mut ShellState, output: &str, command: TrayCommand) {
 }
 
 pub(super) fn toggle(state: &mut ShellState, key: &str) {
+    if super::frame_layout::popups::defer(state, key, super::frame_layout::popups::Popup::Tray) {
+        return;
+    }
     let open = state
         .outputs
         .iter()

@@ -55,6 +55,16 @@ pub fn hearthspace_properties(palette: Palette, style: PropertyStyle) -> Default
     });
     properties.insert::<Button, _>(ContentColor::new(palette.text));
     properties.insert::<Button, _>(Padding::from_vh(7.0.px(), 10.0.px()));
+    properties.insert::<crate::SemanticButton, _>(Background::Color(Color::TRANSPARENT));
+    properties.insert::<crate::SemanticButton, _>(BorderWidth { width: 1.0.px() });
+    properties.insert::<crate::SemanticButton, _>(BorderColor {
+        color: Color::TRANSPARENT,
+    });
+    properties.insert::<crate::SemanticButton, _>(CornerRadius {
+        radius: RADIUS_CONTROL.px(),
+    });
+    properties.insert::<crate::SemanticButton, _>(ContentColor::new(palette.text));
+    properties.insert::<crate::SemanticButton, _>(Padding::from_vh(7.0.px(), 10.0.px()));
     button_surface::properties(&mut properties, &palette, focus_ring);
 
     properties.insert::<Label, _>(ContentColor::new(palette.text));

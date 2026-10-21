@@ -14,6 +14,7 @@ pub(super) struct ShellState {
     pub(super) dock: super::dock::State,
     pub(super) desktop: super::desktop::State,
     pub(super) canvas_search: super::canvas_search::State,
+    pub(super) frame_layout: super::frame_layout::State,
     pub(super) window_switcher: super::window_switcher::State,
     pub(super) battery: Option<crate::battery::BatteryStatus>,
     pub(super) power: super::power_task::PowerState,
@@ -90,6 +91,7 @@ impl ShellState {
             desktop: Default::default(),
             canvas_search: Default::default(),
             window_switcher: Default::default(),
+            frame_layout: Default::default(),
             battery: None,
             power: Default::default(),
             controls: Default::default(),
@@ -188,6 +190,13 @@ impl ShellState {
     }
 
     pub(super) fn toggle_search(&mut self, output_key: &str) {
+        if super::frame_layout::popups::defer(
+            self,
+            output_key,
+            super::frame_layout::popups::Popup::Apps,
+        ) {
+            return;
+        }
         if self.favorites.tracks_installed_apps {
             self.catalog = AppCatalog::load();
         }
@@ -196,14 +205,35 @@ impl ShellState {
     }
 
     pub(super) fn toggle_notifications(&mut self, output_key: &str) {
+        if super::frame_layout::popups::defer(
+            self,
+            output_key,
+            super::frame_layout::popups::Popup::Notifications,
+        ) {
+            return;
+        }
         self.toggle_panel(output_key, Panel::Notifications);
     }
 
     pub(super) fn toggle_power(&mut self, output_key: &str) {
+        if super::frame_layout::popups::defer(
+            self,
+            output_key,
+            super::frame_layout::popups::Popup::Power,
+        ) {
+            return;
+        }
         self.toggle_panel(output_key, Panel::Power);
     }
 
     pub(super) fn toggle_quick_panel(&mut self, output_key: &str, kind: super::quick_panel::Kind) {
+        if super::frame_layout::popups::defer(
+            self,
+            output_key,
+            super::frame_layout::popups::Popup::Quick(kind),
+        ) {
+            return;
+        }
         let open = self.outputs.iter().any(|output| {
             output.key() == output_key && (!output.show_controls || output.quick_panel != kind)
         });
@@ -304,6 +334,13 @@ impl ShellState {
     }
 
     pub(super) fn toggle_map(&mut self, output_key: &str) {
+        if super::frame_layout::popups::defer(
+            self,
+            output_key,
+            super::frame_layout::popups::Popup::Map,
+        ) {
+            return;
+        }
         self.toggle_panel(output_key, Panel::Map);
         self.canvas_error = None;
     }
