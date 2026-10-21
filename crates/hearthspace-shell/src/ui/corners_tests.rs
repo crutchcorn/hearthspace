@@ -181,8 +181,13 @@ fn translucent_corners_keep_idle_buttons_clear_and_focus_contrasting() {
     check(
         state(),
         canvas,
-        150,
-        &["Select desktop items", "Select window group", "Canvas map"],
+        hearthspace_common::CANVAS_CORNER_WIDTH.try_into().unwrap(),
+        &[
+            "Select desktop items",
+            "Search canvas",
+            "Select window group",
+            "Canvas map",
+        ],
     );
     check(
         state(),

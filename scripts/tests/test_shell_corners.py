@@ -111,6 +111,10 @@ class ShellCornerTests(unittest.TestCase):
             (icons + ["Overview"], False),
             (icons + ["Control center"], False),
             (icons + ["Apps List"], False),
+            (icons + ["Search canvas"], False),
+            (icons + ["Select desktop items"], False),
+            ([name for name in icons if name != "Search canvas"], False),
+            ([name for name in icons if name != "Select desktop items"], False),
             ([name for name in icons if name != "Brightness settings"], False),
             (icons[:-1], False),
         ]:
@@ -131,6 +135,28 @@ class ShellCornerTests(unittest.TestCase):
                     else:
                         with self.assertRaises(ControlError):
                             shell_checks.bar(smoke)
+
+    def test_each_new_canvas_control_must_fit_inside_its_actual_surface(self):
+        for target in ("Select desktop items", "Search canvas"):
+            with self.subTest(target=target):
+                smoke = Mock()
+                smoke.control.status.return_value = corner_status()
+                buttons = [
+                    {
+                        "name": name,
+                        "bounds": {
+                            "x": 200 if name == target else 4,
+                            "y": 4,
+                            "width": 36,
+                            "height": 36,
+                        },
+                    }
+                    for name in shell_checks.BAR_ICONS
+                ]
+                smoke.until.side_effect = [True, buttons]
+                with self.assertRaisesRegex(ControlError, "outside its shell surface"):
+                    shell_checks.bar(smoke)
+                smoke.record.assert_not_called()
 
     def test_wrong_corner_position_is_rejected_even_with_correct_button_names(self):
         smoke = Mock()

@@ -1,7 +1,7 @@
 //! Floating shell controls and the work area between awareness and action edges.
 use hearthspace_common::{
-    CONTROL_BAR_HEIGHT, NOTIFICATION_CORNER_WIDTH, SHELL_CORNER_CLEARANCE, SHELL_CORNER_MARGIN,
-    ShellCorner, shell_corner_from_app_id,
+    CANVAS_CORNER_WIDTH, CONTROL_BAR_HEIGHT, NOTIFICATION_CORNER_WIDTH, SHELL_CORNER_CLEARANCE,
+    SHELL_CORNER_MARGIN, ShellCorner, shell_corner_from_app_id,
 };
 use smithay::utils::{Logical, Point, Rectangle, Size};
 
@@ -128,7 +128,7 @@ pub(super) fn corner_size(
     output: Size<i32, Logical>,
 ) -> Size<i32, Logical> {
     let left_width = if corner.is_bottom() {
-        150
+        CANVAS_CORNER_WIDTH
     } else {
         NOTIFICATION_CORNER_WIDTH
     };
@@ -198,15 +198,15 @@ mod tests {
         );
         assert_eq!(
             corner_size(ShellCorner::Canvas, None, output),
-            (150, 54).into()
+            (198, 54).into()
         );
         assert_eq!(
             corner_size(ShellCorner::Apps, None, output),
-            (98, 54).into()
+            (50, 54).into()
         );
         assert_eq!(
             corner_size(ShellCorner::Apps, Some((120, 48).into()), output),
-            (98, 54).into()
+            (50, 54).into()
         );
         assert_eq!(
             corner_size(ShellCorner::Apps, None, (10, 10).into()),
