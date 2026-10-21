@@ -5,6 +5,8 @@ use xilem::{WidgetView, masonry::accesskit::Role, view::sized_box};
 
 #[path = "compact_tests.rs"]
 mod compact;
+#[path = "resize_tests.rs"]
+mod resize;
 
 fn state() -> ShellState {
     let mut state = ShellState::new("/unused".into(), vec!["test".into()]);

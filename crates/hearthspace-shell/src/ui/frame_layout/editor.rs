@@ -69,16 +69,11 @@ fn options(state: &ShellState) -> (bool, bool, bool) {
 }
 
 fn size(state: &ShellState) -> (f64, f64) {
-    let (expand, group, clock) = options(state);
-    let height: f64 = if selection(state).is_none() {
-        54.0
-    } else if clock {
-        452.0
-    } else if expand || group {
-        156.0
-    } else {
-        103.0
-    };
+    let selected = selection(state);
+    let height = hearthspace_common::frame_layout::editor_height(
+        selected.map(|(target, _)| target),
+        selected.is_some_and(|(target, layout)| layout.group_for(target).is_some()),
+    );
     (
         state
             .frame_layout
@@ -231,7 +226,7 @@ pub(super) fn view(state: &ShellState) -> impl WidgetView<ShellState> + use<> {
         .cross_axis_alignment(CrossAxisAlignment::Stretch)
         .gap(0.0.px());
     let size = size(state);
-    crate::ui::canvas_search::material::shell(
+    let panel = crate::ui::canvas_search::material::shell(
         sized_box(crate::ui::popup_group::group(
             "Change layout",
             portal(content).constrain_horizontal(true),
@@ -240,7 +235,13 @@ pub(super) fn view(state: &ShellState) -> impl WidgetView<ShellState> + use<> {
         .width(size.0.px())
         .height(size.1.px()),
         state.appearance.palette,
-    )
+    );
+    // Window configuration is asynchronous. Keep the material at its requested
+    // extent while the old (possibly taller) Wayland buffer is still allocated.
+    flex_col((sized_box(panel)
+        .fixed_width(size.0.px())
+        .fixed_height(size.1.px()),))
+    .cross_axis_alignment(CrossAxisAlignment::Start)
 }
 
 fn separated<V: WidgetView<ShellState>>(

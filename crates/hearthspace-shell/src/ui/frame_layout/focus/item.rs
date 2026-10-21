@@ -21,6 +21,7 @@ impl<V: WidgetView<ShellState>> View<ShellState, (), ViewCtx> for Item<V> {
         (
             ctx.create_pod(ItemWidget {
                 child: child.new_widget.erased().to_pod(),
+                observe_focus: self.chain.1.load(Ordering::Relaxed),
             }),
             state,
         )
@@ -82,6 +83,7 @@ impl<V: WidgetView<ShellState>> View<ShellState, (), ViewCtx> for Item<V> {
 
 pub(in crate::ui) struct ItemWidget {
     child: WidgetPod<dyn Widget>,
+    observe_focus: bool,
 }
 impl ItemWidget {
     fn child_mut<'a>(this: &'a mut WidgetMut<'_, Self>) -> WidgetMut<'a, dyn Widget> {
@@ -94,7 +96,7 @@ impl Widget for ItemWidget {
         ctx.register_child(&mut self.child);
     }
     fn update(&mut self, ctx: &mut UpdateCtx<'_>, _: &mut PropertiesMut<'_>, event: &Update) {
-        if matches!(event, Update::ChildFocusChanged(true)) {
+        if self.observe_focus && matches!(event, Update::ChildFocusChanged(true)) {
             ctx.mutate_self_later(|mut widget| {
                 let rect = widget.ctx.border_box();
                 let origin = widget.ctx.to_window(rect.origin());

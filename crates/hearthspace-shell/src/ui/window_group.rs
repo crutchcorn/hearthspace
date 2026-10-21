@@ -38,11 +38,11 @@ impl GroupState {
     }
 }
 
-pub(super) fn button(group: &GroupState) -> impl WidgetView<ShellState> + use<> {
+pub(super) fn button(state: &ShellState) -> impl WidgetView<ShellState> + use<> {
     icon_button(
         Icon::SelectGroup,
         "Select window group",
-        group.selecting,
+        state.window_group.selecting && !state.frame_layout.snapshot.editing,
         |state| {
             state.dismiss_panels();
             state.window_group.error =
@@ -113,7 +113,7 @@ mod tests {
     fn view(
         state: &ShellState,
     ) -> impl WidgetView<ShellState, Widget = masonry::widgets::SizedBox> + use<> {
-        sized_box(button(&state.window_group))
+        sized_box(button(state))
     }
 
     #[test]

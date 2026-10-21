@@ -142,7 +142,7 @@ pub(super) fn selection_button(state: &ShellState) -> impl xilem::WidgetView<She
     super::icons::icon_button(
         super::icons::Icon::SelectDesktop,
         "Select desktop items",
-        state.desktop.snapshot.select_mode,
+        state.desktop.snapshot.select_mode && !state.frame_layout.snapshot.editing,
         |state| {
             state.dismiss_panels();
             task::submit(

@@ -232,12 +232,7 @@ fn tools(
     let children: Vec<Box<AnyWidgetView<ShellState>>> = vec![
         focus::item(crate::ui::desktop::selection_button(state), chain, 0).boxed(),
         focus::item(crate::ui::canvas_search::button(state), chain, 1).boxed(),
-        focus::item(
-            crate::ui::window_group::button(&state.window_group),
-            chain,
-            2,
-        )
-        .boxed(),
+        focus::item(crate::ui::window_group::button(state), chain, 2).boxed(),
         focus::item(layout_button(state), chain, 3).boxed(),
         focus::item(crate::ui::canvas_map::map_button(output), chain, 4).boxed(),
     ];

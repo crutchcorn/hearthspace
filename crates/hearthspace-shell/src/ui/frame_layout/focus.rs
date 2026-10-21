@@ -4,7 +4,10 @@ use super::{FocusRequest, ShellState};
 use item::Item;
 use std::{
     collections::BTreeMap,
-    sync::{Arc, Mutex},
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicBool, Ordering},
+    },
 };
 use xilem::{
     Pod, ViewCtx, WidgetView,
@@ -24,7 +27,7 @@ use xilem::{
 };
 
 #[derive(Clone, Default)]
-pub(in crate::ui) struct Chain(Arc<Mutex<BTreeMap<usize, WidgetId>>>);
+pub(in crate::ui) struct Chain(Arc<Mutex<BTreeMap<usize, WidgetId>>>, Arc<AtomicBool>);
 impl Chain {
     fn end(&self, reverse: bool) -> Option<WidgetId> {
         let ids = self.0.lock().unwrap();
@@ -76,6 +79,7 @@ impl<V: WidgetView<ShellState>> View<ShellState, (), ViewCtx> for Boundary<V> {
     type Element = Pod<BoundaryWidget>;
     type ViewState = V::ViewState;
     fn build(&self, ctx: &mut ViewCtx, state: &mut ShellState) -> (Self::Element, Self::ViewState) {
+        self.chain.1.store(true, Ordering::Relaxed);
         let (inner, vs) = ctx.with_id(CHILD, |ctx| self.inner.build(ctx, state));
         let pod = ctx.with_action_widget(|ctx| {
             ctx.create_pod(BoundaryWidget {
@@ -118,6 +122,7 @@ impl<V: WidgetView<ShellState>> View<ShellState, (), ViewCtx> for Boundary<V> {
         ctx: &mut ViewCtx,
         mut el: Mut<'_, Self::Element>,
     ) {
+        self.chain.1.store(false, Ordering::Relaxed);
         ctx.with_id(CHILD, |ctx| {
             self.inner
                 .teardown(vs, ctx, BoundaryWidget::child_mut(&mut el).downcast())
