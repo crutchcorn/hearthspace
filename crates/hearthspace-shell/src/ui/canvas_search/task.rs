@@ -195,8 +195,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn disconnect_removes_private_query_and_surfaces_until_a_fresh_session() {
+    fn disconnect_removes_private_query_and_field_but_preserves_warm_cards() {
         let mut state = ShellState::new("/unused".into(), vec!["test".into()]);
+        let results = state.canvas_search.result_windows.clone();
+        assert_eq!(super::super::windows(&state).len(), results.len());
         let snapshot = Snapshot {
             version: 1,
             active: true,
@@ -210,17 +212,17 @@ mod tests {
             ..Default::default()
         };
         apply(&mut state, Update::Snapshot(snapshot.clone()));
-        assert!(!super::super::windows(&state).is_empty());
+        assert_eq!(super::super::windows(&state).len(), results.len() + 1);
         let field = state.canvas_search.window_id;
-        let results = state.canvas_search.result_windows.clone();
+        assert_eq!(state.canvas_search.result_windows, results);
         apply(&mut state, Update::Unavailable("disconnected".into()));
-        assert!(super::super::windows(&state).is_empty());
+        assert_eq!(super::super::windows(&state).len(), results.len());
         assert!(state.canvas_search.query.is_empty());
         assert!(state.canvas_search.error.is_some());
         apply(&mut state, Update::Snapshot(snapshot));
         assert!(state.canvas_search.error.is_none());
         assert_ne!(state.canvas_search.window_id, field);
-        assert_ne!(state.canvas_search.result_windows, results);
+        assert_eq!(state.canvas_search.result_windows, results);
     }
 
     #[tokio::test]

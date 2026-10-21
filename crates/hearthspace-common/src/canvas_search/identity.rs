@@ -24,6 +24,7 @@ pub fn canvas_search_from_app_id(app_id: &str) -> Option<(u64, Option<String>)> 
     Some((session, output))
 }
 
+/// Session zero reserves a persistent, initially hidden control/tool preview.
 pub fn canvas_search_result_app_id(session: u64, id: &str) -> String {
     format!(
         "{RESULT_ID}.session-{session}.item-{}",
@@ -34,10 +35,17 @@ pub fn canvas_search_result_app_id(session: u64, id: &str) -> String {
 pub fn canvas_search_result_from_app_id(app_id: &str) -> Option<(u64, String)> {
     let suffix = app_id.strip_prefix(RESULT_ID)?.strip_prefix(".session-")?;
     let (session, id) = suffix.split_once(".item-")?;
-    let session = session.parse::<u64>().ok().filter(|id| *id > 0)?;
+    let session = session.parse::<u64>().ok()?;
     if id.is_empty() || id.len() > 2048 {
         return None;
     }
     let id = String::from_utf8(hex_decode(id)?).ok()?;
+    if session == 0
+        && !["control:", "tool:"]
+            .iter()
+            .any(|prefix| id.strip_prefix(prefix).is_some_and(|name| !name.is_empty()))
+    {
+        return None;
+    }
     (!id.chars().any(char::is_control)).then_some((session, id))
 }

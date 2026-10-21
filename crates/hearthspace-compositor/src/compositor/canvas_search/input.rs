@@ -76,13 +76,12 @@ impl App {
                 && state == ButtonState::Pressed
                 && button == 0x110
                 && self.hit_test(self.pointer_location).is_none()
+                && self.open_canvas_search(Some(point), None).is_ok()
             {
-                if self.open_canvas_search(Some(point), None).is_ok() {
-                    self.canvas_search
-                        .buttons
-                        .insert(button, (Some(String::new()), point));
-                    return true;
-                }
+                self.canvas_search
+                    .buttons
+                    .insert(button, (Some(String::new()), point));
+                return true;
             }
             return false;
         }
@@ -142,6 +141,9 @@ impl App {
             return None;
         }
         if self.canvas_search_active() {
+            if symbol == keysyms::KEY_Escape {
+                return Some(1);
+            }
             if modifiers.ctrl || modifiers.alt || modifiers.logo {
                 return None;
             }

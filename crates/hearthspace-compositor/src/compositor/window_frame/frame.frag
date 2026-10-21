@@ -10,6 +10,7 @@ uniform float radius;
 uniform float active;
 uniform float hovered;
 uniform float mode;
+uniform float panel;
 uniform vec4 chrome_color;
 uniform vec4 wash_color;
 uniform vec4 control_color;
@@ -97,7 +98,7 @@ void main() {
             float near = drop_shadow(p, half_size, vec2(0.0, 8.0), -12.0, 16.0);
             color = over(premultiply(broad_shadow_color.rgb, broad * broad_shadow_color.a),
                 premultiply(near_shadow_color.rgb, near * near_shadow_color.a));
-        } else if (hovered > 0.5) {
+        } else if (hovered > 0.5 || panel > 0.5) {
             // --shadow-panel: the inactive window lifts without gaining the
             // active orange border. CSS lists the uppermost shadow first.
             float broad = drop_shadow(p, half_size, vec2(0.0, 24.0), -22.0, 36.0);

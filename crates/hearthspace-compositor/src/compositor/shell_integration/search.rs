@@ -18,83 +18,9 @@ use crate::compositor::{App, ManagedWindowKind, switcher::SwitcherSource};
 const REQUEST_LIFETIME: Duration = Duration::from_secs(1);
 const MAX_PENDING_KEYS: usize = 64;
 
-pub(in crate::compositor) struct PendingKey {
-    pub source: KeyboardSource,
-    pub modifiers: Option<[u32; 4]>,
-    pub code: Keycode,
-    pub state: KeyState,
-    pub time: InputTime,
-    finish_existing: bool,
-}
-
-struct Pending {
-    token: u64,
-    expires: Instant,
-    accepted: bool,
-    canvas: bool,
-    output: Option<String>,
-    keys: Vec<PendingKey>,
-    held_before: HashSet<Keycode>,
-}
-
-#[derive(Default)]
-pub(in crate::compositor) struct SearchRequest {
-    sequence: u64,
-    pending: Option<Pending>,
-}
-
-impl SearchRequest {
-    fn valid(&self) -> bool {
-        self.pending
-            .as_ref()
-            .is_some_and(|pending| Instant::now() < pending.expires)
-    }
-
-    fn accept(&mut self, token: u64) -> Result<(), String> {
-        if !self.valid() {
-            return Err("search request expired or cancelled".into());
-        }
-        let pending = self.pending.as_mut().unwrap();
-        if token != pending.token || pending.accepted {
-            return Err("search request superseded or already accepted".into());
-        }
-        pending.accepted = true;
-        Ok(())
-    }
-
-    fn take_keys(&mut self) -> Vec<PendingKey> {
-        self.pending
-            .take()
-            .map(|pending| pending.keys)
-            .unwrap_or_default()
-    }
-
-    fn push_key(
-        &mut self,
-        source: KeyboardSource,
-        modifiers: Option<[u32; 4]>,
-        code: Keycode,
-        state: KeyState,
-        time: InputTime,
-    ) -> bool {
-        let Some(pending) = self.pending.as_mut() else {
-            return false;
-        };
-        if pending.keys.len() == MAX_PENDING_KEYS {
-            return false;
-        }
-        let finish_existing = state == KeyState::Released && pending.held_before.remove(&code);
-        pending.keys.push(PendingKey {
-            source,
-            modifiers,
-            code,
-            state,
-            time,
-            finish_existing,
-        });
-        true
-    }
-}
+mod model;
+pub(in crate::compositor) use model::SearchRequest;
+use model::{Pending, PendingKey};
 
 impl App {
     pub(in crate::compositor) fn reserve_canvas_search_input(
@@ -108,6 +34,7 @@ impl App {
             expires: Instant::now() + REQUEST_LIFETIME,
             accepted: true,
             canvas: true,
+            cancelled: false,
             keys: Vec::new(),
             held_before: self.keyboard.pressed_keys(),
         });
@@ -228,6 +155,7 @@ impl App {
             expires: Instant::now() + REQUEST_LIFETIME,
             accepted: false,
             canvas: false,
+            cancelled: false,
             output,
             keys: Vec::new(),
             held_before: self.keyboard.pressed_keys(),
@@ -254,6 +182,24 @@ impl App {
     ) -> bool {
         if self.search_request.pending.is_none() {
             return false;
+        }
+        if self
+            .search_request
+            .pending
+            .as_ref()
+            .is_some_and(|pending| pending.canvas)
+            && state == KeyState::Pressed
+        {
+            let escape = self.keyboard.clone().with_xkb_state(self, |context| {
+                let xkb = context.xkb().lock().unwrap();
+                xkb.raw_syms_for_key_in_layout(code, xkb.active_layout())
+                    .iter()
+                    .any(|sym| sym.raw() == smithay::input::keyboard::keysyms::KEY_Escape)
+            });
+            if escape {
+                self.cancel_pending_search();
+                return false;
+            }
         }
         if !self.search_request.valid() || !self.search_input_available() {
             self.cancel_pending_search();
@@ -404,7 +350,7 @@ impl App {
             // This callback runs inside Smithay's keyboard focus lock. Only
             // invalidate here; drain keys at the next input outside that lock.
             if let Some(pending) = self.search_request.pending.as_mut() {
-                pending.expires = Instant::now();
+                pending.cancelled = true;
             }
         }
     }

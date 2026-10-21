@@ -7,6 +7,10 @@ use serde_json::{Value, json};
 
 #[path = "canvas_search/lifecycle.rs"]
 mod lifecycle;
+#[path = "canvas_search/persistent.rs"]
+mod persistent;
+#[path = "canvas_search/replay.rs"]
+mod replay;
 
 const GREEN: [u8; 4] = [0x66, 0xcc, 0, 0xff];
 

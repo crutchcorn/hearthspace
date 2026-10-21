@@ -1,8 +1,5 @@
 use super::Kind;
-use hearthspace_ui_components::{
-    Palette,
-    settings_material::{glass_edge_with_palette, shadow},
-};
+use hearthspace_ui_components::{Palette, settings_material::glass_edge_with_palette};
 use xilem::masonry::{
     accesskit::{Node, Role},
     core::{
@@ -78,35 +75,13 @@ impl Widget for PanelWidget {
         ctx.run_layout(&mut self.child, size);
         ctx.place_child(&mut self.child, Point::ORIGIN);
         ctx.derive_baselines(&self.child);
-        ctx.set_paint_insets(32.0);
+        ctx.set_paint_insets(1.0);
     }
     fn paint(&mut self, ctx: &mut PaintCtx<'_>, _: &PropertiesRef<'_>, painter: &mut Painter<'_>) {
         let palette = &self.palette;
         let active = self.selected || self.hovered || ctx.has_hovered() || ctx.has_focus_target();
         let rect = ctx.border_box();
         let shape = rect.inset(-0.5).to_rounded_rect(19.5);
-        shadow(
-            painter,
-            rect,
-            20.0,
-            if active {
-                palette.glow_shadow
-            } else {
-                palette.panel_shadow
-            },
-            (0.0, 24.0),
-            72.0,
-            -22.0,
-        );
-        shadow(
-            painter,
-            rect,
-            20.0,
-            palette.panel_accent_shadow,
-            (0.0, 6.0),
-            24.0,
-            -8.0,
-        );
         let raised = self.kind == Kind::Card && active;
         painter
             .fill(

@@ -71,7 +71,7 @@ impl App {
                             self.canvas_search
                                 .session
                                 .as_ref()
-                                .is_some_and(|s| s.id == session)
+                                .is_some_and(|s| session == 0 || s.id == session)
                                 && id == entry.id
                         }))
                 .then_some(w.id)

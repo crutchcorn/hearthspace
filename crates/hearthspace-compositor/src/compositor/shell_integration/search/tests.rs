@@ -9,6 +9,7 @@ fn search_acknowledgement_requires_current_unexpired_token_once() {
         expires: Instant::now() + REQUEST_LIFETIME,
         accepted: false,
         canvas: false,
+        cancelled: false,
         output: None,
         keys: Vec::new(),
         held_before: HashSet::new(),
@@ -34,6 +35,7 @@ fn pending_keys_preserve_modifier_order_and_bound_memory() {
             expires: Instant::now() + REQUEST_LIFETIME,
             accepted: false,
             canvas: false,
+            cancelled: false,
             output: None,
             keys: Vec::new(),
             held_before: HashSet::from([shift]),
@@ -58,4 +60,25 @@ fn pending_keys_preserve_modifier_order_and_bound_memory() {
     assert!(keys[2].finish_existing);
     assert!(!keys[4].finish_existing);
     assert!(request.take_keys().is_empty());
+}
+
+#[test]
+fn canvas_input_reservation_outlives_renderer_startup_but_explicit_cancellation_wins() {
+    let mut request = SearchRequest::default();
+    request.pending = Some(Pending {
+        token: 1,
+        expires: Instant::now() - REQUEST_LIFETIME,
+        accepted: true,
+        canvas: true,
+        cancelled: false,
+        output: None,
+        keys: Vec::new(),
+        held_before: HashSet::new(),
+    });
+    assert!(request.valid());
+    request.pending.as_mut().unwrap().cancelled = true;
+    assert!(!request.valid());
+    request.pending.as_mut().unwrap().cancelled = false;
+    request.pending.as_mut().unwrap().canvas = false;
+    assert!(!request.valid());
 }

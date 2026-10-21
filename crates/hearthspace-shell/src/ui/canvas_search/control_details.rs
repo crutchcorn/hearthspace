@@ -124,6 +124,17 @@ mod tests {
         state.favorites.store.add("Echo.desktop").unwrap();
         state.favorites.store.add("Bravo.desktop").unwrap();
         assert_eq!(names(&state), ["Echo", "Bravo"]);
+        state.canvas_search.snapshot.active = true;
+        state
+            .canvas_search
+            .snapshot
+            .results
+            .push(crate::ui::canvas_search::ResultEntry {
+                id: "control:apps".into(),
+                title: "Apps".into(),
+                kind: "control".into(),
+                selected: false,
+            });
 
         let ui = crate::ui::test_support::Ui::new(
             state,

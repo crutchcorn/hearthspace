@@ -9,7 +9,9 @@ use xilem::{
     dpi::LogicalSize,
     masonry::{layout::AsUnit, parley::style::FontWeight, properties::LineBreaking},
     style::Style,
-    view::{CrossAxisAlignment, FlexExt, button, flex_col, flex_row, label, sized_box},
+    view::{
+        CrossAxisAlignment, FlexExt, button, flex_col, flex_row, indexed_stack, label, sized_box,
+    },
 };
 
 #[path = "control_catalog.rs"]
@@ -38,7 +40,7 @@ pub(super) fn windows(state: &ShellState) -> Vec<WindowView<ShellState>> {
             crate::ui::popup::window(
                 search.result_windows[entry.id],
                 entry.title,
-                canvas_search_result_app_id(search.snapshot.session, entry.id),
+                canvas_search_result_app_id(0, entry.id),
                 LogicalSize::new(240.0, 72.0),
                 view(state, entry),
                 |_| {},
@@ -49,9 +51,16 @@ pub(super) fn windows(state: &ShellState) -> Vec<WindowView<ShellState>> {
 
 fn view(state: &ShellState, entry: &'static Entry) -> impl WidgetView<ShellState> + use<> {
     let selected = state.canvas_search.snapshot.selected_id.as_deref() == Some(entry.id);
+    let available = state.canvas_search.snapshot.active
+        && state
+            .canvas_search
+            .snapshot
+            .results
+            .iter()
+            .any(|result| result.id == entry.id);
     let (glyph, detail) = detail(state, entry);
     let palette = state.appearance.palette;
-    super::material::card(
+    let card = super::material::card(
         button(
             flex_row((
                 sized_box(
@@ -81,6 +90,7 @@ fn view(state: &ShellState, entry: &'static Entry) -> impl WidgetView<ShellState
             .gap(14.0.px()),
             move |state: &mut ShellState| super::activate(state, Some(entry.id)),
         )
+        .disabled(!available)
         .padding(16.0.px())
         .width(240.0.px())
         .height(72.0.px())
@@ -88,7 +98,14 @@ fn view(state: &ShellState, entry: &'static Entry) -> impl WidgetView<ShellState
         selected,
         palette,
     )
-    .hovered(state.canvas_search.snapshot.hovered_id.as_deref() == Some(entry.id))
+    .hovered(state.canvas_search.snapshot.hovered_id.as_deref() == Some(entry.id));
+    // Stash the interactive subtree, rather than unmapping its native window:
+    // renderers stay warm without exporting invisible search buttons to AT.
+    indexed_stack((
+        sized_box(label("")).width(240.0.px()).height(72.0.px()),
+        card,
+    ))
+    .active(usize::from(available))
 }
 
 fn detail(state: &ShellState, entry: &Entry) -> (Icon, Option<String>) {

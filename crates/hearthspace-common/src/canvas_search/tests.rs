@@ -191,3 +191,23 @@ fn motion_easing_matches_browser_curve_and_trims_only_invisible_travel() {
         None
     );
 }
+
+#[test]
+fn persistent_previews_are_reserved_for_controls_and_tools() {
+    for id in ["control:sound", "tool:map"] {
+        assert_eq!(
+            canvas_search_result_from_app_id(&canvas_search_result_app_id(0, id)),
+            Some((0, id.into()))
+        );
+    }
+    for id in ["window:1", "app:foot.desktop", "file:61", "control:", ""] {
+        assert_eq!(
+            canvas_search_result_from_app_id(&canvas_search_result_app_id(0, id)),
+            None
+        );
+    }
+    assert_eq!(
+        canvas_search_from_app_id(&canvas_search_app_id(0, None)),
+        None
+    );
+}

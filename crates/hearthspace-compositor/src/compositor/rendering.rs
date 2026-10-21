@@ -215,8 +215,14 @@ impl App {
             &self
                 .windows
                 .iter()
-                .filter(|window| window.mapped && window.kind == ManagedWindowKind::Normal)
-                .map(|window| window.id)
+                .enumerate()
+                .filter(|(index, window)| {
+                    window.mapped
+                        && (window.kind == ManagedWindowKind::Normal
+                            || self.canvas_search_panel_allowed(*index)
+                            || self.canvas_search_result_visible(*index))
+                })
+                .map(|(_, window)| window.id)
                 .collect(),
         );
 
@@ -326,19 +332,41 @@ impl App {
             if let Some(frame) = frame {
                 elements.push(HearthspaceRenderElement::from(frame.shadow));
             }
-            if self.canvas_search_panel_allowed(index)
+            let panel = if self.canvas_search_panel_allowed(index)
                 && let Some(origin) = self.launcher_logical_origin(index)
             {
                 let rect = Rectangle::new(
                     origin + self.window_surface_geometry_loc(index),
                     self.window_geometry_size(index),
                 );
-                if let Some(frame) = self
+                Some((
+                    rect,
+                    1.,
+                    self.focused_shell_panel_index() == Some(index)
+                        || point_in_logical_rect(self.pointer_location, rect),
+                    1.,
+                ))
+            } else if self.canvas_search_result_visible(index)
+                && let Some((pose, alpha)) = self.canvas_search_pose(index)
+            {
+                Some((
+                    Rectangle::new(
+                        (pose.x.round() as i32, pose.y.round() as i32).into(),
+                        (pose.width.round() as i32, pose.height.round() as i32).into(),
+                    ),
+                    scale,
+                    self.canvas_search_result_emphasized(index),
+                    alpha as f32,
+                ))
+            } else {
+                None
+            };
+            if let Some((rect, zoom, emphasized, opacity)) = panel
+                && let Some(shadow) = self
                     .window_frames
-                    .elements(renderer, id, rect, 1., false, false, false, false)
-                {
-                    elements.push(HearthspaceRenderElement::from(frame.shadow));
-                }
+                    .panel_shadow(renderer, id, rect, zoom, emphasized, opacity)
+            {
+                elements.push(HearthspaceRenderElement::from(shadow));
             }
             if self.windows[index].kind == ManagedWindowKind::Normal
                 && !self.windows[index].presentation.fullscreen

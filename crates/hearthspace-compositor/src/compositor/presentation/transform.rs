@@ -162,8 +162,8 @@ impl App {
         if self.is_canvas_search_panel(index) {
             return self.canvas_search_panel_allowed(index);
         }
-        if let Some((session, _)) = self.canvas_search_result_identity(index) {
-            return self.canvas_search_session_matches(session);
+        if self.canvas_search_result_identity(index).is_some() {
+            return self.canvas_search_result_visible(index);
         }
         if self.canvas_search_active() && !self.windows[index].kind.is_shell_chrome() {
             return true;

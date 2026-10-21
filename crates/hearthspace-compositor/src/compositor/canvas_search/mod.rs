@@ -79,12 +79,6 @@ impl App {
     pub(in crate::compositor) fn canvas_search_presenting(&self) -> bool {
         self.canvas_search_active() || !self.canvas_search.poses.is_empty()
     }
-    pub(in crate::compositor) fn canvas_search_session_matches(&self, id: u64) -> bool {
-        self.canvas_search
-            .session
-            .as_ref()
-            .is_some_and(|s| s.id == id)
-    }
     pub(in crate::compositor) fn is_canvas_search_panel(&self, index: usize) -> bool {
         window_app_id(&self.windows[index].surface)
             .as_deref()
@@ -98,6 +92,26 @@ impl App {
         window_app_id(&self.windows[index].surface)
             .as_deref()
             .and_then(hearthspace_common::canvas_search_result_from_app_id)
+    }
+    pub(in crate::compositor) fn canvas_search_result_visible(&self, index: usize) -> bool {
+        let Some((session, id)) = self.canvas_search_result_identity(index) else {
+            return false;
+        };
+        self.canvas_search.session.as_ref().is_some_and(|s| {
+            (session == 0 || session == s.id)
+                && s.results
+                    .iter()
+                    .any(|result| result.id == id && result.window == Some(self.windows[index].id))
+        })
+    }
+    pub(in crate::compositor) fn canvas_search_result_emphasized(&self, index: usize) -> bool {
+        let Some((_, id)) = self.canvas_search_result_identity(index) else {
+            return false;
+        };
+        self.canvas_search_result_visible(index)
+            && self.canvas_search.session.as_ref().is_some_and(|s| {
+                s.selected.as_ref() == Some(&id) || self.canvas_search.hovered.as_ref() == Some(&id)
+            })
     }
     pub(in crate::compositor) fn canvas_search_panel_allowed(&self, index: usize) -> bool {
         let identity = window_app_id(&self.windows[index].surface)
@@ -209,10 +223,16 @@ impl App {
         self.canvas_search.hovered = None;
         self.clear_keyboard_focus();
         for (index, window) in self.windows.iter().enumerate() {
-            if self.is_canvas_search_panel(index)
-                || self.canvas_search_result_identity(index).is_some()
-            {
+            if self.is_canvas_search_panel(index) {
                 window.surface.send_close();
+            }
+            if let Some((session, _)) = self.canvas_search_result_identity(index) {
+                // Preview cards are inert shell resources. Reusing their buffers
+                // avoids per-window renderer startup on every search opening.
+                self.canvas_search.poses.remove(&window.id);
+                if session != 0 {
+                    window.surface.send_close();
+                }
             }
         }
         if restore

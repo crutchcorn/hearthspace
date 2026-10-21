@@ -37,15 +37,51 @@ fn control_card_has_a_native_action_and_does_not_open_until_accepted() {
     }
     let mut state = ShellState::new("/unused".into(), vec!["left".into()]);
     state.canvas_search.snapshot.session = 3;
+    state.canvas_search.snapshot.active = true;
+    state
+        .canvas_search
+        .snapshot
+        .results
+        .push(crate::ui::canvas_search::ResultEntry {
+            id: "control:notifications".into(),
+            title: "Notifications".into(),
+            kind: "control".into(),
+            selected: false,
+        });
     let (sender, mut receiver) = tokio::sync::mpsc::channel(4);
     state.canvas_search.requests = Some(sender);
     let mut ui = Ui::new(state, card, (240, 72));
-    ui.activate(ui.button("Notifications All clear"));
+    let button = ui.button("Notifications All clear");
+    ui.activate(button);
     ui.dispatch(&card);
     let command = receiver.try_recv().unwrap();
     assert!(command.starts_with("canvas-search-activate "));
     assert!(command.contains("control:notifications"));
+    assert!(command.contains("\"session\":3"));
     assert!(!ui.state.outputs[0].show_notifications);
+
+    let mut reopened = ui.state.canvas_search.snapshot.clone();
+    super::super::apply_snapshot(&mut ui.state, Default::default());
+    ui.rebuild(&card);
+    ui.harness.redraw();
+    assert!(
+        ui.harness
+            .access_node(button)
+            .is_none_or(|node| node.is_hidden())
+    );
+    ui.activate(button);
+    ui.dispatch(&card);
+    assert!(receiver.try_recv().is_err());
+
+    reopened.session = 4;
+    super::super::apply_snapshot(&mut ui.state, reopened);
+    ui.rebuild(&card);
+    ui.harness.redraw();
+    assert_eq!(ui.button("Notifications All clear"), button);
+    assert!(!ui.harness.access_node(button).unwrap().is_disabled());
+    ui.activate(button);
+    ui.dispatch(&card);
+    assert!(receiver.try_recv().unwrap().contains("\"session\":4"));
 }
 
 #[test]

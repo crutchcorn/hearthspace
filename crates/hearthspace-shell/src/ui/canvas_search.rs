@@ -114,10 +114,13 @@ pub(super) fn button(state: &ShellState) -> impl xilem::WidgetView<ShellState> +
 
 pub(super) fn windows(state: &ShellState) -> Vec<WindowView<ShellState>> {
     let search = &state.canvas_search;
+    // Keep the small registered cards warm. The compositor hides their stable
+    // surfaces outside search; rebuilding renderers on each open stalls input.
+    let mut windows = controls::windows(state);
     if !search.snapshot.active {
-        return Vec::new();
+        return windows;
     }
-    let mut windows = vec![super::popup::window(
+    windows.push(super::popup::window(
         search.window_id,
         "Canvas search",
         hearthspace_common::canvas_search_app_id(
@@ -127,8 +130,7 @@ pub(super) fn windows(state: &ShellState) -> Vec<WindowView<ShellState>> {
         LogicalSize::new(search.snapshot.field.width, search.snapshot.field.height),
         field::view(state),
         close,
-    )];
-    windows.extend(controls::windows(state));
+    ));
     windows
 }
 
@@ -138,6 +140,9 @@ pub(super) fn close(state: &mut ShellState) {
 }
 
 pub(super) fn activate(state: &mut ShellState, id: Option<&str>) {
+    if !state.canvas_search.snapshot.active {
+        return;
+    }
     submit_command(
         state,
         format!(
@@ -180,7 +185,6 @@ fn apply_snapshot(state: &mut ShellState, snapshot: Snapshot) {
     }
     if new_session && snapshot.active {
         search.window_id = WindowId::next();
-        search.result_windows = controls::window_ids();
     }
     if search.pending_edit.as_ref().is_some_and(|edit| {
         edit.session == snapshot.session
