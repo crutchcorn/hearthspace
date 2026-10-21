@@ -10,6 +10,7 @@ use crate::{
 
 pub(crate) struct SettingsApp {
     pub(crate) running: bool,
+    pub(crate) navigation: crate::ui::navigation::State,
     pub(crate) appearance_theme: crate::appearance::Theme,
     pub(crate) activation_listener: Option<std::os::unix::net::UnixListener>,
     pub(crate) ai: crate::ai::AiSettings,
@@ -91,6 +92,7 @@ pub(crate) fn initial_state(selected_category: SettingsCategory) -> SettingsApp 
     SettingsApp {
         running: true,
         appearance_theme: Default::default(),
+        navigation: Default::default(),
         activation_listener: None,
         ai: crate::ai::AiSettings::default(),
         favorites: crate::favorites::FavoriteSettings::load(),
@@ -114,6 +116,7 @@ impl SettingsApp {
     }
 
     pub(crate) fn select_category(&mut self, category: SettingsCategory) {
+        self.navigation.open = false;
         self.favorites.cancel();
         if category == SettingsCategory::Gestures {
             self.favorites.reload();

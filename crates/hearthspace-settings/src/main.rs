@@ -66,7 +66,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     .with_name("dev.hearthspace.Settings", "dev.hearthspace.Settings")
                     .with_transparent(true)
                     .with_initial_inner_size(LogicalSize::new(680.0, 490.0))
-                    .with_min_inner_size(LogicalSize::new(620.0, 420.0))
+                    .with_min_inner_size(LogicalSize::new(400.0, 420.0))
                     .on_close(|state: &mut state::SettingsApp| state.running = false)
             })]
         .into_iter()

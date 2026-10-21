@@ -150,6 +150,7 @@ async fn read_page(stream: &mut xilem::tokio::net::UnixStream) -> io::Result<Set
 }
 
 pub(crate) fn activate(state: &mut SettingsApp, category: SettingsCategory) {
+    state.navigation.open = false;
     // Reopening the same editor must not discard an unsaved gesture.
     if state.selected_category != category {
         state.select_category(category);

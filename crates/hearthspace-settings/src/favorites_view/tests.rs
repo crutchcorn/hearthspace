@@ -20,6 +20,7 @@ pub(crate) fn state() -> (tempfile::TempDir, SettingsApp) {
         SettingsApp {
             running: true,
             appearance_theme: Default::default(),
+            navigation: Default::default(),
             activation_listener: None,
             ai: crate::ai::AiSettings::default(),
             favorites,
@@ -121,7 +122,12 @@ fn repeated_gestures_activation_preserves_an_unsaved_recording() {
         crate::favorites::tests::shape(),
     );
     let points = state.favorites.recording.as_ref().unwrap().points.clone();
+    state.navigation.open = true;
     crate::activation::activate(&mut state, SettingsCategory::Gestures);
+    assert!(
+        !state.navigation.open,
+        "external navigation closes the compact menu"
+    );
     let recording = state.favorites.recording.as_ref().unwrap();
     assert_eq!(recording.generation, generation);
     assert_eq!(recording.points, points);

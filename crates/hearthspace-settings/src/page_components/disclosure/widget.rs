@@ -1,10 +1,10 @@
 use hearthspace_ui_components as components;
 use xilem::masonry::{
-    accesskit::{Action, Node, Role, Toggled},
+    accesskit::{Action, AriaCurrent, Node, Role, Toggled},
     core::{
         AccessCtx, AccessEvent, ChildrenIds, EventCtx, LayoutCtx, MeasureCtx, NewWidget, PaintCtx,
         PointerButtonEvent, PointerEvent, PropertiesMut, PropertiesRef, RegisterCtx, TextEvent,
-        Update, UpdateCtx, Widget, WidgetMut, WidgetPod,
+        Update, UpdateCtx, Widget, WidgetId, WidgetMut, WidgetPod,
         keyboard::{Key, NamedKey},
     },
     imaging::Painter,
@@ -17,6 +17,8 @@ pub(crate) struct DisclosureButton {
     pub(super) name: String,
     pub(super) expanded: bool,
     pub(super) selected: Option<bool>,
+    pub(super) current_page: Option<bool>,
+    pub(super) controls: Option<WidgetId>,
     child: WidgetPod<dyn Widget>,
     focus: components::settings_material::FocusIndicator,
 }
@@ -31,9 +33,20 @@ impl DisclosureButton {
             name,
             expanded,
             selected: None,
+            current_page: None,
+            controls: None,
             child: child.erased().to_pod(),
             focus: components::settings_material::FocusIndicator::default(),
         }
+    }
+
+    pub(super) fn navigation_identity(&self) -> Option<super::NavigationControl> {
+        (self.current_page.is_some() || self.controls.is_some()).then_some(
+            super::NavigationControl {
+                controls: self.controls,
+                current_page: self.current_page,
+            },
+        )
     }
 
     pub(super) fn child_mut<'a>(this: &'a mut WidgetMut<'_, Self>) -> WidgetMut<'a, dyn Widget> {
@@ -102,6 +115,11 @@ impl Widget for DisclosureButton {
 
     fn update(&mut self, ctx: &mut UpdateCtx<'_>, _: &mut PropertiesMut<'_>, event: &Update) {
         self.focus.update(event);
+        if matches!(event, Update::WidgetAdded)
+            && let Some(identity) = self.navigation_identity()
+        {
+            ctx.submit_untyped_action(Box::new(identity));
+        }
         if matches!(
             event,
             Update::FocusChanged(_) | Update::HoveredChanged(_) | Update::ActiveChanged(_)
@@ -149,9 +167,9 @@ impl Widget for DisclosureButton {
         painter: &mut Painter<'_>,
     ) {
         let palette = *props.get::<components::Palette>(ctx.property_cache());
-        if self.selected.is_some() {
-            // Appearance cards have one material/focus surface around the
-            // complete native action, including its preview and selection mark.
+        if self.selected.is_some() || self.current_page.is_some() || self.controls.is_some() {
+            // Cards and navigation actions use one enclosing material/focus
+            // surface around their complete native action.
             return;
         }
         components::settings_material::paint_button_with_palette(
@@ -193,8 +211,18 @@ impl Widget for DisclosureButton {
             } else {
                 Toggled::False
             });
+        } else if let Some(current) = self.current_page {
+            node.set_selected(current);
+            if current {
+                node.set_aria_current(AriaCurrent::Page);
+            }
         } else {
             node.set_expanded(self.expanded);
+        }
+        if let Some(target) = self.controls
+            && self.expanded
+        {
+            node.set_controls([target.into()]);
         }
         node.add_action(Action::Click);
     }

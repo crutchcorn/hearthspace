@@ -12,7 +12,7 @@ use xilem::{
         properties::Padding,
     },
     style::Style,
-    view::{CrossAxisAlignment, button, flex_col, flex_item, flex_row, sized_box, worker},
+    view::{CrossAxisAlignment, flex_col, flex_item, flex_row, resize_observer, sized_box, worker},
 };
 
 use crate::{
@@ -78,31 +78,29 @@ pub(crate) fn app_logic(state: &mut SettingsApp) -> impl WidgetView<SettingsApp>
     )
 }
 
+pub(crate) mod navigation;
+
 pub(crate) fn settings_view(state: &SettingsApp) -> impl WidgetView<SettingsApp> + use<> {
     let palette = state.palette();
-    crate::window_frame::body(
-        sized_box(
-            flex_row((
-                sized_box(sidebar_view(state))
-                    .fixed_width(159.0.px())
-                    .background_color(palette.surface_subtle),
-                sized_box(label(""))
-                    .fixed_width(1.0.px())
-                    .background_color(palette.border),
-                flex_item(
-                    sized_box(category_view(state)).background_color(palette.surface_subtle),
-                    1.0,
-                ),
-            ))
-            .cross_axis_alignment(CrossAxisAlignment::Stretch)
-            .gap(0.0.px()),
+    resize_observer(
+        |state: &mut SettingsApp, size| state.navigation.width = size.width,
+        crate::window_frame::body(
+            navigation::view(
+                sized_box(category_view(state)).background_color(palette.surface_subtle),
+                sidebar_view(state),
+                state,
+            ),
+            state.settings.background_image_path.is_some(),
         ),
-        state.settings.background_image_path.is_some(),
     )
 }
 
 fn sidebar_view(state: &SettingsApp) -> impl WidgetView<SettingsApp> + use<> {
     let palette = state.palette();
+    let mut navigation_palette = palette;
+    if state.navigation.compact() {
+        navigation_palette.button_hover = palette.raised_button_hover;
+    }
     let items = [
         (SettingsCategory::Appearance, Icon::Appearance),
         (SettingsCategory::Displays, Icon::Monitor),
@@ -119,7 +117,10 @@ fn sidebar_view(state: &SettingsApp) -> impl WidgetView<SettingsApp> + use<> {
             palette.muted
         };
         components::settings_button(
-            button(
+            crate::page_components::disclosure(
+                category.label(),
+                false,
+                false,
                 flex_row((
                     icon(glyph, 16.0).color(tint),
                     flex_item(
@@ -134,12 +135,15 @@ fn sidebar_view(state: &SettingsApp) -> impl WidgetView<SettingsApp> + use<> {
                 .gap(10.0.px()),
                 move |state: &mut SettingsApp| state.select_category(category),
             )
+            .current_page(selected)
             .corner_radius(components::RADIUS_CONTROL.px())
             .height(40.0.px())
+            .border_width(1.0.px())
             .padding(Padding::from_vh(9.0.px(), 10.0.px())),
             components::SettingsButton::Bare,
             selected,
         )
+        .prop(navigation_palette)
     });
     components::scroll_area(
         sized_box(
@@ -147,7 +151,11 @@ fn sidebar_view(state: &SettingsApp) -> impl WidgetView<SettingsApp> + use<> {
                 .cross_axis_alignment(CrossAxisAlignment::Stretch)
                 .gap(5.0.px()),
         )
-        .padding(Padding::from_vh(22.0.px(), 12.0.px())),
+        .padding(if state.navigation.compact() {
+            Padding::all(8.0.px())
+        } else {
+            Padding::from_vh(22.0.px(), 12.0.px())
+        }),
     )
 }
 
@@ -206,3 +214,6 @@ fn status_footer(state: &SettingsApp) -> Option<impl WidgetView<SettingsApp> + u
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod navigation_tests;

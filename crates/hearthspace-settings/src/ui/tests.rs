@@ -14,13 +14,14 @@ use masonry::{
 };
 use xilem::{WidgetView, tokio::sync::mpsc::unbounded_channel, view::sized_box};
 
-fn state() -> (tempfile::TempDir, SettingsApp) {
+pub(super) fn state() -> (tempfile::TempDir, SettingsApp) {
     let (dir, favorites) = fixture();
     (
         dir,
         SettingsApp {
             running: true,
             appearance_theme: Default::default(),
+            navigation: Default::default(),
             ai: AiSettings::default(),
             favorites,
             settings: Settings::default(),
@@ -36,11 +37,11 @@ fn state() -> (tempfile::TempDir, SettingsApp) {
     )
 }
 
-fn view(state: &SettingsApp) -> impl WidgetView<SettingsApp, Widget: Sized> + use<> {
+pub(super) fn view(state: &SettingsApp) -> impl WidgetView<SettingsApp, Widget: Sized> + use<> {
     sized_box(super::settings_view(state))
 }
 
-fn button_starting_with<V: WidgetView<SettingsApp>>(ui: &Ui<V>, name: &str) -> WidgetId
+pub(super) fn button_starting_with<V: WidgetView<SettingsApp>>(ui: &Ui<V>, name: &str) -> WidgetId
 where
     V::Widget: Sized,
 {
@@ -63,8 +64,20 @@ where
         let Some(node) = ui.harness.access_node(id) else {
             continue;
         };
-        if matches!(node.role(), Role::Button | Role::CheckBox | Role::Switch) {
-            let bounds = ui.harness.get_widget_with_id(id).ctx().bounding_box();
+        if matches!(
+            node.role(),
+            Role::Button
+                | Role::CheckBox
+                | Role::Switch
+                | Role::RadioButton
+                | Role::EditableComboBox
+                | Role::Canvas
+        ) {
+            let widget = ui.harness.get_widget_with_id(id);
+            let bounds = widget
+                .ctx()
+                .window_transform()
+                .transform_rect_bbox(widget.ctx().border_box());
             assert!(
                 bounds.x0 >= 0.0 && bounds.x1 <= width,
                 "{:?} is clipped horizontally: {bounds:?}",
@@ -328,6 +341,30 @@ fn client_body_rounds_only_bottom_corners_and_preserves_sidebar_pointer_input() 
                 (128..220).contains(&image.get_pixel(width / 2, height - 2).0[3]),
                 "the Settings body reveals the compositor's blurred backdrop"
             );
+        }
+    }
+}
+
+#[test]
+fn every_settings_page_fits_the_compact_minimum_and_desktop_breakpoint() {
+    for width in [400, 560] {
+        let (_dir, state) = state();
+        let mut ui = Ui::new(state, view, (width, 420));
+        for category in [
+            "Appearance",
+            "Displays",
+            "Background",
+            "Gestures",
+            "AI",
+            "System",
+        ] {
+            if width < 560 {
+                ui.activate(ui.button("Settings categories"));
+                ui.dispatch(&view);
+            }
+            ui.activate(ui.button(category));
+            ui.dispatch(&view);
+            controls_fit_width(&ui, f64::from(width));
         }
     }
 }

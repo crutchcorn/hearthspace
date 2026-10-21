@@ -53,6 +53,8 @@ pub(crate) fn properties(palette: Palette) -> DefaultProperties {
     let mut defaults = components::hearthspace_properties(palette, PropertyStyle::Opaque);
     let properties = &mut defaults;
     properties.insert::<crate::window_frame::WindowBody, _>(palette);
+    properties.insert::<crate::ui::navigation::LayoutWidget, _>(palette);
+    properties.insert::<crate::ui::navigation::NavigationMenu, _>(palette);
     properties.insert::<crate::monitor_layout_widget::MonitorLayoutWidget, _>(palette);
     crate::page_components::theme_properties(properties, palette);
     crate::favorites_view::theme_properties(properties, palette);

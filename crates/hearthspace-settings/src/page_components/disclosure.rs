@@ -2,13 +2,24 @@
 use xilem::{
     Pod, ViewCtx, WidgetView,
     core::{MessageCtx, MessageResult, Mut, View, ViewId, ViewMarker, ViewPathTracker},
-    masonry::{core::PointerButton, widgets::ButtonPress},
+    masonry::{
+        core::{PointerButton, WidgetId},
+        widgets::ButtonPress,
+    },
 };
 
 use crate::state::SettingsApp;
 
 mod widget;
 pub(crate) use widget::DisclosureButton;
+
+/// Native identity for retained navigation controls, consumed by their layout.
+#[derive(Debug)]
+pub(crate) struct NavigationControl {
+    pub(crate) controls: Option<WidgetId>,
+    pub(crate) current_page: Option<bool>,
+}
+
 #[cfg(test)]
 mod tests;
 
@@ -27,6 +38,8 @@ where
         name: name.into(),
         expanded,
         selected: None,
+        current_page: None,
+        controls: None,
         disabled,
         child,
         callback,
@@ -37,12 +50,24 @@ pub(crate) struct Disclosure<V, F> {
     name: String,
     expanded: bool,
     selected: Option<bool>,
+    current_page: Option<bool>,
+    controls: Option<WidgetId>,
     disabled: bool,
     child: V,
     callback: F,
 }
 
 impl<V, F> Disclosure<V, F> {
+    pub(crate) fn current_page(mut self, current: bool) -> Self {
+        self.current_page = Some(current);
+        self
+    }
+
+    pub(crate) fn controls(mut self, target: WidgetId) -> Self {
+        self.controls = Some(target);
+        self
+    }
+
     pub(crate) fn selected(mut self, selected: bool) -> Self {
         self.selected = Some(selected);
         self
@@ -69,6 +94,8 @@ where
             let mut widget =
                 DisclosureButton::new(self.name.clone(), self.expanded, child.new_widget);
             widget.selected = self.selected;
+            widget.current_page = self.current_page;
+            widget.controls = self.controls;
             let mut element = ctx.create_pod(widget);
             element.new_widget.options.disabled = self.disabled;
             element
@@ -87,11 +114,20 @@ where
         if self.expanded != previous.expanded
             || self.name != previous.name
             || self.selected != previous.selected
+            || self.current_page != previous.current_page
+            || self.controls != previous.controls
         {
             element.widget.expanded = self.expanded;
             element.widget.name = self.name.clone();
             element.widget.selected = self.selected;
+            element.widget.current_page = self.current_page;
+            element.widget.controls = self.controls;
             element.ctx.request_accessibility_update();
+            if (self.current_page != previous.current_page || self.controls != previous.controls)
+                && let Some(identity) = element.widget.navigation_identity()
+            {
+                element.ctx.submit_untyped_action(Box::new(identity));
+            }
         }
         if self.disabled != previous.disabled {
             element.ctx.set_disabled(self.disabled);

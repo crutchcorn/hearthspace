@@ -34,6 +34,7 @@ fn display_identity_keeps_product_names_and_shows_each_connector_once_without_po
     let state = SettingsApp {
         running: true,
         appearance_theme: Default::default(),
+        navigation: Default::default(),
         activation_listener: None,
         ai: Default::default(),
         favorites,
@@ -166,6 +167,7 @@ fn scale_popup_keeps_page_geometry_and_saves_the_keyboard_choice_to_the_backend(
     let state = SettingsApp {
         running: true,
         appearance_theme: Default::default(),
+        navigation: Default::default(),
         activation_listener: None,
         ai: Default::default(),
         favorites,
@@ -234,6 +236,7 @@ fn monitor_preview_keeps_its_reference_aspect_when_settings_content_narrows() {
     let state = SettingsApp {
         running: true,
         appearance_theme: Default::default(),
+        navigation: Default::default(),
         activation_listener: None,
         ai: Default::default(),
         favorites,

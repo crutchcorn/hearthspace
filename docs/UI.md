@@ -154,10 +154,19 @@ stay in sync. The Settings Materials story exposes selected and disabled states.
 Shell buttons continue to use property classes; local background or border
 colors override those selectors.
 
+Below 560 logical pixels of client width, Settings replaces its 160-pixel sidebar
+with a 49-pixel header. The current category button opens the navigation over
+the page; selecting a category or pressing Escape closes it and returns focus
+to the button. Tab follows header, navigation, then page controls, without a
+focus trap. Resizing preserves page widgets and unfinished input. The window's
+minimum client size is 400 by 420 pixels.
+
 Masonry layers do not expose a backdrop filter for content inside a client
-window. Settings menus and the AI confirmation therefore use a precomposed
+window. Settings choice menus and the AI confirmation therefore use a precomposed
 opaque raised backing with the same tint and highlights. This avoids sharp
 text showing through the popup; it approximates the browser's blurred backing.
+The compact category menu keeps the reference's translucent raised tint over
+the page, without an additional opaque backing.
 The AI modal dims the client window without blurring the underlying controls.
 The Settings window itself uses actual GPU backdrop blur.
 

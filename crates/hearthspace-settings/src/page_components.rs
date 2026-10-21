@@ -20,7 +20,7 @@ pub(crate) use toggle_row::toggle_row;
 mod restore_focus;
 pub(crate) use restore_focus::restore_focus_after_close;
 mod disclosure;
-pub(crate) use disclosure::disclosure;
+pub(crate) use disclosure::{NavigationControl, disclosure};
 mod photo_fit;
 pub(crate) use photo_fit::photo_fit;
 mod select;
