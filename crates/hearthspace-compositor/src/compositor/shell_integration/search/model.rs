@@ -1,5 +1,5 @@
 //! Bounded pending input for launcher requests and explicit canvas-search sessions.
-use super::MAX_PENDING_KEYS;
+use super::{MAX_CANVAS_PENDING_KEYS, MAX_PENDING_KEYS};
 use smithay::{
     backend::input::{InputTime, KeyState},
     input::keyboard::{KeyboardSource, Keycode},
@@ -69,7 +69,12 @@ impl SearchRequest {
         let Some(pending) = self.pending.as_mut() else {
             return false;
         };
-        if pending.keys.len() == MAX_PENDING_KEYS {
+        let limit = if pending.canvas {
+            MAX_CANVAS_PENDING_KEYS
+        } else {
+            MAX_PENDING_KEYS
+        };
+        if pending.keys.len() == limit {
             return false;
         }
         let finish_existing = state == KeyState::Released && pending.held_before.remove(&code);

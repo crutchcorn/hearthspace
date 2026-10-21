@@ -64,21 +64,59 @@ fn pending_keys_preserve_modifier_order_and_bound_memory() {
 
 #[test]
 fn canvas_input_reservation_outlives_renderer_startup_but_explicit_cancellation_wins() {
-    let mut request = SearchRequest::default();
-    request.pending = Some(Pending {
-        token: 1,
-        expires: Instant::now() - REQUEST_LIFETIME,
-        accepted: true,
-        canvas: true,
-        cancelled: false,
-        output: None,
-        keys: Vec::new(),
-        held_before: HashSet::new(),
-    });
+    let mut request = SearchRequest {
+        pending: Some(Pending {
+            token: 1,
+            expires: Instant::now() - REQUEST_LIFETIME,
+            accepted: true,
+            canvas: true,
+            cancelled: false,
+            output: None,
+            keys: Vec::new(),
+            held_before: HashSet::new(),
+        }),
+        ..Default::default()
+    };
     assert!(request.valid());
     request.pending.as_mut().unwrap().cancelled = true;
     assert!(!request.valid());
     request.pending.as_mut().unwrap().cancelled = false;
     request.pending.as_mut().unwrap().canvas = false;
     assert!(!request.valid());
+}
+
+#[test]
+fn canvas_pending_uppercase_text_exceeds_legacy_limit_but_remains_bounded() {
+    let mut request = SearchRequest {
+        pending: Some(Pending {
+            token: 1,
+            expires: Instant::now() + REQUEST_LIFETIME,
+            accepted: true,
+            canvas: true,
+            cancelled: false,
+            output: None,
+            keys: Vec::new(),
+            held_before: HashSet::new(),
+        }),
+        ..Default::default()
+    };
+    let letter = 38_u32.into();
+    let shift = 50_u32.into();
+    let time = InputTime::now();
+    let uppercase = [
+        (shift, KeyState::Pressed),
+        (letter, KeyState::Pressed),
+        (letter, KeyState::Released),
+        (shift, KeyState::Released),
+    ];
+    for index in 0..MAX_CANVAS_PENDING_KEYS {
+        let (code, state) = uppercase[index % uppercase.len()];
+        assert!(request.push_key(KeyboardSource::MAIN, None, code, state, time));
+    }
+    assert!(!request.push_key(KeyboardSource::MAIN, None, letter, KeyState::Pressed, time));
+    let keys = request.take_keys();
+    assert_eq!(keys.len(), MAX_CANVAS_PENDING_KEYS);
+    for (index, key) in keys.iter().enumerate() {
+        assert_eq!((key.code, key.state), uppercase[index % uppercase.len()]);
+    }
 }

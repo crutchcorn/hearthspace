@@ -39,6 +39,11 @@ fn canvas_search_typing_survives_delayed_field_and_old_session_teardown() {
     for key in [49, 24, 20, 18, 31] {
         keys(&compositor, &[key]);
     }
+    // A normal uppercase query needs extra Shift events. More than the legacy
+    // 64-event launcher bound must survive a slow Canvas Search field as well.
+    for _ in 0..29 {
+        keys(&compositor, &[42, 30]);
+    }
     client.destroy(old_field);
     client.destroy(old_card);
     // The launcher bridge's one-second event lifetime is not a typing deadline
@@ -46,10 +51,9 @@ fn canvas_search_typing_survives_delayed_field_and_old_session_teardown() {
     thread::sleep(Duration::from_millis(1200));
     let current_field = field(&mut client, &current);
     assert_eq!(client.focus(), Some(current_field));
-    assert_eq!(
-        &client.keys()[before..],
-        &[29, 30, 30, 29, 49, 49, 24, 24, 20, 20, 18, 18, 31, 31]
-    );
+    let mut expected = vec![29, 30, 30, 29, 49, 49, 24, 24, 20, 20, 18, 18, 31, 31];
+    expected.extend([42, 30, 30, 42].repeat(29));
+    assert_eq!(&client.keys()[before..], expected);
     assert!(
         client.enter_keys().is_empty(),
         "replayed modifier pairs must finish cleanly"

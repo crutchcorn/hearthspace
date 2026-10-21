@@ -8,6 +8,16 @@ fn contains(r: Rect, p: Point) -> bool {
     p.x >= r.x && p.x < r.x + r.width && p.y >= r.y && p.y < r.y + r.height
 }
 impl App {
+    pub(in crate::compositor) fn cancel_canvas_search_touch(&mut self) {
+        if self.touch_pointer_pressed
+            && let Some((target, _)) = self.canvas_search.buttons.get_mut(&0x110)
+        {
+            // Keep ownership of the eventual release without allowing a
+            // cancelled contact to activate a preview or dismiss the field.
+            *target = Some(String::new());
+        }
+    }
+
     fn canvas_search_target(&self) -> Option<String> {
         let s = self.canvas_search.session.as_ref()?;
         let p = Point {

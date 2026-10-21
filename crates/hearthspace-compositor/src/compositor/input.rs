@@ -205,6 +205,7 @@ pub(in crate::compositor) fn handle_input_event<B: InputBackend>(
                 && state.touch_input.has_device_input(&event.device().id())
             {
                 state.cancel_titlebar_pointer();
+                state.cancel_canvas_search_touch();
             }
             state.favorite_touch_up(&event.device().id(), event.slot(), true);
             state.end_ui_touch(&event.device().id(), event.slot(), true, event.time());

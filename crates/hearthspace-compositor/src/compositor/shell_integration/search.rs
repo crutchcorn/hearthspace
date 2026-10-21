@@ -17,6 +17,7 @@ use crate::compositor::{App, ManagedWindowKind, switcher::SwitcherSource};
 
 const REQUEST_LIFETIME: Duration = Duration::from_secs(1);
 const MAX_PENDING_KEYS: usize = 64;
+const MAX_CANVAS_PENDING_KEYS: usize = 1024;
 
 mod model;
 pub(in crate::compositor) use model::SearchRequest;
