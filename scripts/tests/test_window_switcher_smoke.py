@@ -1,4 +1,4 @@
-"""Reject semantic-only switching, snap animations and unproven gesture injection."""
+"""Reject premature focus, rearranged previews and unproven native input."""
 
 import contextlib
 import copy
@@ -15,50 +15,139 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from agentlib.control import ControlError
 from agentlib.window_switcher_smoke import WindowSwitcherSmoke
 from agentlib.window_switcher_smoke_assertions import (
+    held_motion,
     input_proof,
     previews,
+    released_motion,
     selection,
-    smooth_pan,
 )
 from test_agent_visual import capture
 
 
-def status(x, y, *, animating=False):
-    return {"viewport": {"x": x, "y": y, "scale": 1, "animating": animating}}
+def status(x=0, y=0, *, active=False, animating=False, focused=2, display=None):
+    windows = []
+    for identity, (canvas_x, canvas_y) in enumerate(
+        ((-5000, -3000), (0, 0), (5000, 3000)), 1
+    ):
+        rect = {"x": canvas_x - x, "y": canvas_y - y, "width": 200, "height": 100}
+        windows.append(
+            {
+                "id": identity,
+                "focused": identity == focused,
+                "mapped": True,
+                "canvas_x": canvas_x,
+                "canvas_y": canvas_y,
+                "content_width": 200,
+                "content_height": 100,
+                "maximized": False,
+                "fullscreen": False,
+                "presentation_output": None,
+                **(display or {}).get(identity, rect),
+            }
+        )
+    return {
+        "viewport": {"x": x, "y": y, "scale": 1, "animating": False},
+        "window_switcher": {
+            "active": active,
+            "animating": animating,
+            "selected_window_id": 3,
+            "window_ids": [2, 3, 1] if active else [],
+            "output": "test" if active else None,
+            "scene": [
+                {"window_id": identity, "display": rect}
+                for identity, rect in (display or {}).items()
+            ],
+        },
+        "windows": windows,
+        "overview": {"active": False},
+        "outputs": [
+            {
+                "name": "test",
+                "logical_x": 0,
+                "logical_y": 0,
+                "logical_width": 1200,
+                "logical_height": 800,
+            }
+        ],
+    }
+
+
+def preview_rects(offset=0):
+    return {
+        identity: {"x": identity * 200 + offset, "y": 200, "width": 180, "height": 90}
+        for identity in (1, 2, 3)
+    }
 
 
 class WindowSwitcherEvidenceTests(unittest.TestCase):
-    def test_animation_requires_an_interior_view_and_unchanged_zoom(self):
-        before, after = status(0, 100), status(100, -100)
-        middle = status(60, -20, animating=True)
-        self.assertEqual(
-            smooth_pan(before, [before, middle, after], after)["intermediate_views"],
-            [middle["viewport"]],
-        )
+    def test_opening_requires_live_preview_motion_while_focus_and_viewport_stay_put(
+        self,
+    ):
+        before = status()
+        after = status(active=True, display=preview_rects())
+        middle = status(active=True, animating=True, display=preview_rects(100))
+        proof = held_motion(before, [before, middle, after], after)
+        self.assertEqual(len(proof["intermediate_previews"]), 1)
         for samples in (
             [],
             [before, after],
-            [status(50, 0)],
-            [status(200, 0, animating=True)],
+            [status(active=True, display=preview_rects(100))],
         ):
             with (
                 self.subTest(samples=samples),
                 self.assertRaisesRegex(ControlError, "intermediate"),
             ):
-                smooth_pan(before, samples, after)
-        with self.assertRaisesRegex(ControlError, "never panned"):
-            smooth_pan(before, [middle], before)
-        after["viewport"]["scale"] = 0.8
-        with self.assertRaisesRegex(ControlError, "zoom"):
-            smooth_pan(before, [middle], after)
+                held_motion(before, samples, after)
+        for mutation in ("viewport", "focus", "geometry", "order"):
+            invalid = copy.deepcopy(middle)
+            if mutation == "viewport":
+                invalid["viewport"]["x"] = 50
+            elif mutation == "focus":
+                invalid["windows"][1]["focused"] = False
+                invalid["windows"][2]["focused"] = True
+            elif mutation == "geometry":
+                invalid["windows"][0]["canvas_x"] += 1
+            else:
+                invalid["window_switcher"]["window_ids"] = [3, 2, 1]
+            with self.subTest(mutation=mutation), self.assertRaises(ControlError):
+                held_motion(before, [invalid], after)
 
-    def test_held_selection_must_agree_with_actual_focus_and_not_open_overview(self):
-        state = {
-            "window_switcher": {"active": True, "selected_window_id": 1},
-            "overview": {"active": False},
-            "windows": [{"id": 1, "focused": True}, {"id": 2, "focused": False}],
-        }
-        selection(state, 1, active=True)
+    def test_cycling_changes_only_selection_in_the_same_fixed_grid(self):
+        before = status(active=True, display=preview_rects())
+        after = copy.deepcopy(before)
+        after["window_switcher"]["selected_window_id"] = 1
+        self.assertIn("stationary_grid", held_motion(before, [before, after], after))
+        invalid = status(active=True, animating=True, display=preview_rects(20))
+        with self.assertRaisesRegex(ControlError, "rearranged"):
+            held_motion(before, [invalid], after)
+
+    def test_release_centers_and_focuses_selected_window_with_live_reveal_motion(self):
+        before = status(active=True, display=preview_rects())
+        after = status(4500, 2650, focused=3)
+        middle = status(
+            4500, 2650, focused=3, animating=True, display=preview_rects(70)
+        )
+        self.assertTrue(
+            released_motion(before, [middle, after], after, 3)["intermediate_previews"]
+        )
+        with self.assertRaisesRegex(ControlError, "intermediate"):
+            released_motion(before, [after], after, 3)
+        for mutation in ("center", "zoom", "focus"):
+            invalid = copy.deepcopy(after)
+            if mutation == "center":
+                invalid["windows"][2]["x"] += 30
+            elif mutation == "zoom":
+                invalid["viewport"]["scale"] = 0.8
+            else:
+                invalid["windows"][2]["focused"] = False
+            with self.subTest(mutation=mutation), self.assertRaises(ControlError):
+                released_motion(before, [middle], invalid, 3)
+
+    def test_held_selection_is_separate_from_actual_focus_and_never_opens_overview(
+        self,
+    ):
+        state = status(active=True)
+        selection(state, 3, active=True, focused=2)
         for section, key, value in (
             ("window_switcher", "active", False),
             ("window_switcher", "selected_window_id", 2),
@@ -67,10 +156,11 @@ class WindowSwitcherEvidenceTests(unittest.TestCase):
             invalid = copy.deepcopy(state)
             invalid[section][key] = value
             with self.subTest(change=(section, key)), self.assertRaises(ControlError):
-                selection(invalid, 1, active=True)
-        state["windows"][0]["focused"] = False
+                selection(invalid, 3, active=True, focused=2)
+        state["windows"][1]["focused"] = False
+        state["windows"][2]["focused"] = True
         with self.assertRaisesRegex(ControlError, "actual client focus"):
-            selection(state, 1, active=True)
+            selection(state, 3, active=True, focused=2)
 
     def test_native_preview_requires_each_clients_own_pixels_inside_its_card(self):
         metadata = {

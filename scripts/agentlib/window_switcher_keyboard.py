@@ -7,7 +7,7 @@ from .control import ControlError
 from .input import Input
 from .keyboard_device import KeyboardDevice, removal_proof
 from .pinch_assertions import same_viewport
-from .window_switcher_smoke_assertions import previews, selection
+from .window_switcher_smoke_assertions import committed, previews, selection
 from .window_switcher_smoke_checks import prepare, settled
 
 
@@ -26,7 +26,7 @@ def unplug(smoke):
             lambda: smoke.control.status()["window_switcher"]["active"],
         )
         held = settled(smoke)
-        selection(held, last, active=True)
+        selection(held, last, active=True, focused=middle)
         if held["window_switcher"]["source"] != "keyboard":
             raise ControlError("kernel Alt+Tab did not own the switcher")
         previews(held, smoke.capture("keyboard-unplug-held"), smoke.targets)
@@ -40,11 +40,13 @@ def unplug(smoke):
     after = settled(smoke)
     # Some libinput versions neutralize held keys before DEVICE_REMOVED. That
     # genuine Alt release commits normally; removal with no release cancels.
-    expected, target = (
-        (held, last) if proof["libinput_released_alt"] else (before, middle)
-    )
-    selection(after, target, active=False)
-    if not same_viewport(expected["viewport"], after["viewport"]):
+    if proof["libinput_released_alt"]:
+        committed(held, after, last)
+    else:
+        selection(after, middle, active=False)
+    if not proof["libinput_released_alt"] and not same_viewport(
+        before["viewport"], after["viewport"]
+    ):
         raise ControlError(
             "keyboard removal viewport disagrees with backend release ordering"
         )

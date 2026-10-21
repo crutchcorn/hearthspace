@@ -1,4 +1,4 @@
-"""Native held-window switching, independent gesture evidence and presented previews."""
+"""Native MRU previews, deferred focus, reveal motion and owned input cleanup."""
 
 import argparse
 import json
