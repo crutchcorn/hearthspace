@@ -189,8 +189,10 @@ Changing modes regenerates the default dot field while retaining decoded user
 wallpapers. See [Settings](SETTINGS.md#linux-appearance-publication) for application
 preferences published through the desktop portal and XSettings.
 
-This visual system does not introduce the prototype's apps, canvas tools,
-layout editor, or animations.
+[Desktop icons](DESKTOP_ITEMS.md) use transparent Xilem shell surfaces in canvas
+coordinates, with compositor-owned placement and input. They reuse the launcher
+catalog and native application artwork. The prototype's simulated apps, layout
+editor, drawing tools, and animations remain separate work.
 
 ## When To Use A UI Framework
 
