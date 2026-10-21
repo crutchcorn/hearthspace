@@ -3,6 +3,8 @@ use super::navigation::{action, keys, query};
 use super::shell_panels::connect;
 use super::*;
 use serde_json::{Value, json};
+#[path = "frame_layout/desktop_layers.rs"]
+mod desktop_layers;
 #[path = "frame_layout/drag_layer.rs"]
 mod drag_layer;
 #[path = "frame_layout/geometry.rs"]

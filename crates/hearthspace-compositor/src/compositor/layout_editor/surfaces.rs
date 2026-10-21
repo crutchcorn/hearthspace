@@ -152,13 +152,11 @@ impl App {
                     0
                 }
             }
-            ObjectPlacement::Canvas { .. } => {
-                if matches!(target.target.kind, TargetKind::Widget | TargetKind::Group) {
-                    5
-                } else {
-                    10
-                }
-            }
+            ObjectPlacement::Canvas { .. } => match target.target.kind {
+                TargetKind::Item => 0,
+                TargetKind::Widget | TargetKind::Group => 5,
+                TargetKind::Window => 10,
+            },
             ObjectPlacement::Frame { .. } => 100,
             ObjectPlacement::Hidden => -1,
         };

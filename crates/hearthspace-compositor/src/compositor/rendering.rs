@@ -31,6 +31,7 @@ mod blur;
 mod blur_shader;
 mod layout_clip;
 mod layout_glass;
+mod layout_overlays;
 mod lock;
 mod order;
 mod titlebar;
@@ -266,31 +267,7 @@ impl App {
         }
 
         let mut group_elements = self.collect_group_elements(renderer, output_rect);
-        let (layout_back_shapes, mut layout_front_shapes) = self.layout_overlay_shapes();
-        let mut outline_owners: Vec<_> = layout_front_shapes
-            .iter()
-            .enumerate()
-            .filter_map(|(index, shape)| {
-                self.layout_outline_owner(&shape.key).map(|id| (index, id))
-            })
-            .collect();
-        let front_count = layout_front_shapes
-            .iter()
-            .filter(|shape| {
-                shape.opacity > 0.0 && shape.bounds.width > 0.0 && shape.bounds.height > 0.0
-            })
-            .count();
-        layout_front_shapes.extend(layout_back_shapes);
-        let modal_shape = self.layout_modal_shape(output_rect);
-        let has_modal = modal_shape.is_some();
-        layout_front_shapes.extend(modal_shape);
-        let mut layout_front = self
-            .layout_editor
-            .overlays
-            .elements(renderer, &layout_front_shapes);
-        let modal = has_modal.then(|| layout_front.pop()).flatten();
-        let mut modal = modal.into_iter().collect::<Vec<_>>();
-        let layout_back = layout_front.split_off(front_count.min(layout_front.len()));
+        let mut layout = self.layout_overlay_elements(renderer, output_rect);
         let mut desktop_start = None;
         let mut desktop_selection = self.desktop_selection_elements(renderer);
         let mut window_backdrops = Vec::new();
@@ -319,8 +296,8 @@ impl App {
             if layer <= 100 {
                 append_layout_outlines(
                     &mut elements,
-                    &mut layout_front,
-                    &mut outline_owners,
+                    &mut layout.front,
+                    &mut layout.owners,
                     &mut window_spans,
                 );
             }
@@ -337,6 +314,11 @@ impl App {
                 continue;
             }
             let front = elements.len();
+            // Desktop editing marks belong to the icon's own stack: ordinary
+            // windows cover them, while a held or frame-pinned icon stays raised.
+            if let Some(outlines) = layout.items.remove(&self.windows[index].id) {
+                elements.extend(outlines);
+            }
             elements.extend(self.canvas_preview_selection_elements(renderer, index));
             // Popups (e.g. menus) render above their window's content and chrome.
             for popup in self.popup_render_elements(renderer, index) {
@@ -536,9 +518,9 @@ impl App {
                 }
             }
             window_spans.push((id, front..elements.len()));
-            if self.layout_confirmation_surface(index) && !modal.is_empty() {
+            if self.layout_confirmation_surface(index) && !layout.modal.is_empty() {
                 let front = elements.len();
-                elements.append(&mut modal);
+                elements.append(&mut layout.modal);
                 window_backdrops.push(window_backdrop::BackdropRequest {
                     id: u64::MAX,
                     front,
@@ -560,13 +542,13 @@ impl App {
 
         append_layout_outlines(
             &mut elements,
-            &mut layout_front,
-            &mut outline_owners,
+            &mut layout.front,
+            &mut layout.owners,
             &mut window_spans,
         );
         let desktop_start = desktop_start.unwrap_or(elements.len());
         elements.append(&mut group_elements.overlay);
-        elements.extend(layout_back);
+        elements.extend(layout.back);
         RenderScene {
             elements,
             desktop_start,

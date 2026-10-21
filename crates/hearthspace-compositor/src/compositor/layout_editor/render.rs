@@ -64,11 +64,21 @@ impl App {
         })
     }
 
-    pub(in crate::compositor) fn layout_outline_owner(&self, key: &str) -> Option<u64> {
-        let target = LayoutTarget::from_key(key.strip_prefix("object-")?)?;
+    pub(in crate::compositor) fn layout_outline_owner(
+        &self,
+        key: &str,
+    ) -> Option<(u64, TargetKind)> {
+        let target = LayoutTarget::from_key(
+            key.strip_prefix("object-")
+                .or_else(|| key.strip_prefix("drop-"))?,
+        )?;
+        let kind = target.kind;
+        if key.starts_with("drop-") && kind != TargetKind::Item {
+            return None;
+        }
         let output = self.layout_editor.session.as_ref()?.output.clone();
         self.target_window_index(&Target { output, target })
-            .map(|index| self.windows[index].id)
+            .map(|index| (self.windows[index].id, kind))
     }
 
     pub(in crate::compositor) fn layout_modal_shape(
