@@ -2606,6 +2606,7 @@ dependencies = [
  "masonry",
  "png",
  "rfd",
+ "serde_json",
  "tempfile",
  "wayland-client",
  "xilem",

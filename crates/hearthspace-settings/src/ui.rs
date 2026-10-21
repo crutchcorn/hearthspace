@@ -27,6 +27,7 @@ pub(crate) fn app_logic(state: &mut SettingsApp) -> impl WidgetView<SettingsApp>
         .background_preview
         .synchronize_path(state.settings.background_image_path.as_deref());
     let content = settings_view(state);
+    let content = fork(content, crate::frame_settings::task());
     let content = fork(
         fork(
             fork(content, crate::activation::task()),
@@ -220,3 +221,6 @@ mod navigation_tests;
 
 #[cfg(test)]
 mod navigation_focus_tests;
+
+#[cfg(test)]
+mod system_tests;

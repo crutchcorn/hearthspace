@@ -32,7 +32,7 @@ pub(crate) fn notify_compositor_settings_changed() -> io::Result<()> {
     }
 }
 
-fn command_socket_path() -> io::Result<PathBuf> {
+pub(crate) fn command_socket_path() -> io::Result<PathBuf> {
     env::var_os(hearthspace_common::SHELL_COMMAND_SOCKET_ENV)
         .map(PathBuf::from)
         .ok_or_else(|| {

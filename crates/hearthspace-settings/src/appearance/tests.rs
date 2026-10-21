@@ -28,6 +28,7 @@ fn state() -> (tempfile::TempDir, SettingsApp) {
             running: true,
             appearance_theme: Default::default(),
             navigation: Default::default(),
+            frame_settings: Default::default(),
             activation_listener: None,
             ai: Default::default(),
             favorites,

@@ -15,6 +15,7 @@ pub(crate) struct SettingsApp {
     pub(crate) activation_listener: Option<std::os::unix::net::UnixListener>,
     pub(crate) ai: crate::ai::AiSettings,
     pub(crate) favorites: crate::favorites::FavoriteSettings,
+    pub(crate) frame_settings: crate::frame_settings::State,
     pub(crate) settings: Settings,
     pub(crate) live_outputs: Vec<LiveOutput>,
     pub(crate) selected_category: SettingsCategory,
@@ -96,6 +97,7 @@ pub(crate) fn initial_state(selected_category: SettingsCategory) -> SettingsApp 
         activation_listener: None,
         ai: crate::ai::AiSettings::default(),
         favorites: crate::favorites::FavoriteSettings::load(),
+        frame_settings: Default::default(),
         settings,
         live_outputs,
         selected_category,
@@ -127,6 +129,10 @@ impl SettingsApp {
         if category == SettingsCategory::Background {
             self.background_preview
                 .refresh(self.settings.background_image_path.as_deref());
+        }
+        if category == SettingsCategory::System {
+            self.frame_settings
+                .request(crate::frame_settings::Operation::Refresh);
         }
         self.selected_category = category;
     }
