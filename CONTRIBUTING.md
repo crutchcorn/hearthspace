@@ -279,8 +279,10 @@ Install its optional test dependencies (installed on the development host):
 sudo apt-get install -y python3-evdev libinput-tools
 ```
 
-Ubuntu also installs `python3-libevdev` and `python3-pyudev` as dependencies. The
-test uses noninteractive sudo to access `/dev/uinput`; it does not change device
+Ubuntu also installs `python3-libevdev` and `python3-pyudev` as dependencies.
+The 2026-10-22 icon/switcher validation installed `python3-evdev` 1.9.3-1build1 and
+`libinput-tools` 1.31.1-1ubuntu1.2 with those dependencies on the development host.
+The test uses noninteractive sudo to access `/dev/uinput`; it does not change device
 permissions, install udev rules, or leave a virtual device behind. The injector
 requires its owned native session's VT to be active and closes the device before
 the native harness restores the original VT. Build the native binaries first,
