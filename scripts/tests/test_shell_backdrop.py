@@ -45,11 +45,17 @@ class BackdropTests(unittest.TestCase):
             "logical_x": -20,
             "logical_y": 10,
         }
-        output = {"logical_height": 240, "scale": 2}
-        dark = capture(metadata, [((-20, 100, 140, 160), shell_backdrop.COLOR)])
+        output = {
+            "logical_x": -20,
+            "logical_y": 10,
+            "logical_width": 160,
+            "logical_height": 240,
+            "scale": 2,
+        }
+        dark = capture(metadata, [((-8, 88, 128, 172), shell_backdrop.COLOR)])
         self.assertTrue(dark_background(Frame(dark), output))
         self.assertFalse(dark_background(Frame(capture(metadata, [])), output))
-        partial = capture(metadata, [((-20, 100, 50, 160), shell_backdrop.COLOR)])
+        partial = capture(metadata, [((-8, 88, 50, 172), shell_backdrop.COLOR)])
         self.assertFalse(dark_background(Frame(partial), output))
 
     def test_backdrop_maximizes_then_closes_only_the_new_owned_id(self):

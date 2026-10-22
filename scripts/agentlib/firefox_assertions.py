@@ -11,6 +11,7 @@ def restored(window):
         and window.get("visible")
         and not window.get("maximized")
         and not window.get("fullscreen")
+        and not window.get("focused_view")
         and not window.get("presentation_output")
     )
 
@@ -22,15 +23,17 @@ def maximized(window):
         and window.get("visible")
         and window.get("maximized")
         and not window.get("fullscreen")
-        and window.get("presentation_output")
+        and not window.get("focused_view")
+        and not window.get("presentation_output")
+        and not window.get("output_coordinates")
     )
 
 
 def maximized_at_output(window, outputs):
-    """A state flag alone may precede the client's maximized configure commit."""
+    """Prove entry fits an output's workarea, before subsequent canvas travel."""
     if not maximized(window):
         return False
-    return matches_output_bounds(window, outputs, shell_corners=True)
+    return any(matches_workarea(window, output) for output in outputs)
 
 
 def fullscreen_at_output(window, outputs):
@@ -45,25 +48,37 @@ def fullscreen_at_output(window, outputs):
     return matches_output_bounds(window, outputs)
 
 
-def corner_inset(output):
-    # Keep aligned with SHELL_CORNER_CLEARANCE and corner_work_area. The top
-    # and bottom corners each retain space while maximized apps draw CSD.
-    return min(90, max(0, output["logical_height"] - 1) // 2)
+def workarea_bounds(output):
+    # Website clearances apply to outer logical bounds, including native SSD.
+    compact = output["logical_width"] <= 760
+    side = min(12 if compact else 24, max(0, output["logical_width"] - 1) // 2)
+    vertical = min(78 if compact else 96, max(0, output["logical_height"] - 1) // 2)
+    return {
+        "x": output["logical_x"] + side,
+        "y": output["logical_y"] + vertical,
+        "width": max(1, output["logical_width"] - 2 * side),
+        "height": max(1, output["logical_height"] - 2 * vertical),
+    }
 
 
-def matches_output_bounds(window, outputs, *, shell_corners=False):
+def matches_workarea(window, output):
+    return all(
+        abs(window[key] - value) <= 1 for key, value in workarea_bounds(output).items()
+    )
+
+
+def matches_output_bounds(window, outputs):
     output = next(
         (item for item in outputs if item["name"] == window["presentation_output"]),
         None,
     )
     if output is None:
         return False
-    inset = corner_inset(output) if shell_corners else 0
     expected = {
         "x": output["logical_x"],
-        "y": output["logical_y"] + inset,
+        "y": output["logical_y"],
         "width": output["logical_width"],
-        "height": max(1, output["logical_height"] - 2 * inset),
+        "height": output["logical_height"],
     }
     return all(abs(window[key] - value) <= 1 for key, value in expected.items())
 
@@ -73,14 +88,33 @@ def marker_size(capture, window):
     return [(bounds[axis + 2] - bounds[axis]) / capture[0]["scale"] for axis in (0, 1)]
 
 
+def unchanged_canvas_geometry(before, after):
+    bounds = before.get("maximized_canvas_bounds")
+    if bounds is None or bounds != after.get("maximized_canvas_bounds"):
+        raise ControlError("canvas travel changed or lost the maximized world bounds")
+    if any(
+        before[key] != after[key]
+        for key in ("canvas_x", "canvas_y", "content_width", "content_height")
+    ):
+        raise ControlError(
+            "canvas travel changed the maximized window's world geometry"
+        )
+
+
 def verify_zoom(before_view, after_view, before, after, before_image, after_image):
     ratio = after_view["scale"] / before_view["scale"]
-    if not maximized(before) or not restored(after):
-        raise ControlError("canvas zoom did not restore the maximized Firefox window")
+    if not maximized(before) or not maximized(after):
+        raise ControlError("canvas zoom did not preserve Firefox's canvas maximization")
+    unchanged_canvas_geometry(before, after)
     if not 0.45 < ratio < 0.95:
         raise ControlError("canvas zoom did not shrink by a measurable amount")
-    if any(after[key] >= before[key] - 8 for key in ("width", "height")):
-        raise ControlError("restored Firefox did not visibly shrink on both axes")
+    if any(abs(after[key] - before[key] * ratio) > 2 for key in ("width", "height")):
+        raise ControlError("maximized Firefox bounds did not scale on both axes")
+    for axis in ("x", "y"):
+        world = before[axis] / before_view["scale"] + before_view[axis]
+        expected = (world - after_view[axis]) * after_view["scale"]
+        if abs(after[axis] - expected) > 2:
+            raise ControlError("maximized Firefox position did not follow canvas zoom")
     old, new = marker_size(before_image, before), marker_size(after_image, after)
     if any(
         abs(new_size - old_size * ratio) > 3 for old_size, new_size in zip(old, new)

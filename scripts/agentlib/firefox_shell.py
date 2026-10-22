@@ -1,4 +1,4 @@
-"""Click the real shell while a maximized browser has distant saved geometry."""
+"""Shell focus and zoom preserve a distant maximized browser on the canvas."""
 
 from . import firefox_assertions as verify
 from . import firefox_checks as checks
@@ -23,33 +23,30 @@ def click_zoom_out(smoke):
     map_checks.click(smoke, "Zoom out", on_press=focus_cleared)
 
 
-def prepare_pinned_view(smoke):
-    # Explicit viewport coordinates leave the pinned browser's distant saved
-    # floating position untouched. Refocusing must not reveal that position.
-    set_viewport(smoke, x=0, y=0, scale=1)
-    smoke.control.request(f"focus-window {smoke.target}")
+def prepare_canvas_view(smoke):
+    # Move slightly away from the maximized entry view. Closing the shell must
+    # restore keyboard focus without recentering either its max or restore bounds.
+    before = settled(smoke)
+    expected = {"x": before["x"] + 80, "y": before["y"] + 40, "scale": 1}
+    set_viewport(smoke, **expected)
     smoke.until(
         "maximized Firefox focused before shell click",
         lambda: smoke.window(smoke.target).get("focused"),
     )
     view = settled(smoke)
-    if any(view[key] != value for key, value in (("x", 0), ("y", 0), ("scale", 1))):
-        raise ControlError("shell zoom setup failed to place the distant viewport")
+    if any(view[key] != value for key, value in expected.items()):
+        raise ControlError("shell zoom setup failed to pan the maximized canvas view")
     return view
 
 
-def close_map_preserving_view(smoke):
+def close_map_preserving_view(smoke, expected):
     before_view = settled(smoke)
     before = smoke.window(smoke.target)
-    if (
-        not before
-        or before.get("focused")
-        or before["canvas_x"] != 100000
-        or before["canvas_y"] != 100000
-    ):
+    if not before or before.get("focused") or not verify.maximized(before):
         raise ControlError(
             "open canvas map lost focus or changed saved Firefox position"
         )
+    verify.unchanged_canvas_geometry(expected, before)
     smoke.record("shell-map-holds-focus", window=before, viewport=before_view)
     map_checks.close(smoke)
     smoke.until(
@@ -63,12 +60,14 @@ def close_map_preserving_view(smoke):
     if (
         not after
         or not after.get("focused")
+        or not verify.maximized(after)
         or any(after[key] != before[key] for key in ("canvas_x", "canvas_y"))
     ):
         raise ControlError(
             "closing canvas map lost Firefox focus or its saved position"
         )
     smoke.record("shell-map-close-restores-focus", window=after, viewport=after_view)
+    verify.unchanged_canvas_geometry(before, after)
 
 
 def run(smoke):
@@ -83,10 +82,11 @@ def run(smoke):
             and window["canvas_x"] == window["canvas_y"] == 100000
         ),
     )
-    # Focus reveals the real CSD Maximize control. Placing the view afterwards
-    # puts the saved floating location offscreen again while max stays pinned.
-    before = checks.prepare_maximized(smoke)
-    before_view = prepare_pinned_view(smoke)
+    # The real CSD maximizes near the distant window, then canvas pan shifts it
+    # on screen while retaining its maximized size and original restore bounds.
+    checks.prepare_maximized(smoke)
+    before_view = prepare_canvas_view(smoke)
+    before = smoke.window(smoke.target)
     smoke.record("shell-distant-maximized", window=before, viewport=before_view)
     image = smoke.capture("shell-zoom-before")
     click_zoom_out(smoke)
@@ -94,5 +94,5 @@ def run(smoke):
         "shell reduced canvas scale",
         lambda: smoke.control.status()["viewport"]["scale"] < 0.95,
     )
-    close_map_preserving_view(smoke)
+    close_map_preserving_view(smoke, before)
     checks.zoom_result(smoke, "shell-zoom", before_view, before, image)

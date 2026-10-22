@@ -4,7 +4,7 @@ import math
 
 from . import shell_checks as checks
 from .control import ControlError
-from .firefox_assertions import corner_inset
+from .firefox_assertions import workarea_bounds
 from .input import Input
 from .png import pixels
 from .shell_backdrop import COLOR, backdrop
@@ -171,12 +171,16 @@ def park_pointer(smoke, output):
 
 def dark_background(frame, output):
     # Verify the actual committed backdrop, not merely its maximize state.
-    inset = corner_inset(output)
-    height = max(1, output["logical_height"] - 2 * inset)
+    area = workarea_bounds(output)
     for fx in (0.1, 0.5, 0.9):
         for fy in (0.1, 0.5, 0.9):
-            x = round(fx * frame.width)
-            y = round((inset + height * fy) * output["scale"])
+            x = round(
+                (area["x"] - output["logical_x"] + area["width"] * fx) * output["scale"]
+            )
+            y = round(
+                (area["y"] - output["logical_y"] + area["height"] * fy)
+                * output["scale"]
+            )
             if difference(frame.rgb(x, y), COLOR) > 2:
                 return False
     return True

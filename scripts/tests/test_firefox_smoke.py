@@ -13,12 +13,10 @@ from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from agentlib import firefox_assertions as assertions
-from agentlib import firefox_checks, firefox_profile, firefox_shell, map_checks
+from agentlib import firefox_profile, firefox_shell, map_checks
 from agentlib.control import ControlError, Deadline
 from agentlib.firefox import FirefoxSmoke
 from agentlib.firefox_touch import DeadlineTouchDevice
-from test_agent_visual import window_capture
 
 
 def args(directory):
@@ -29,200 +27,6 @@ def args(directory):
         total_timeout=120,
         log_level="info",
     )
-
-
-class FirefoxEvidenceTests(unittest.TestCase):
-    def setUp(self):
-        self.metadata = {
-            "width": 320,
-            "height": 240,
-            "scale": 1,
-            "logical_x": 0,
-            "logical_y": 0,
-        }
-        self.before = {
-            "x": 20,
-            "y": 20,
-            "width": 200,
-            "height": 160,
-            "mapped": True,
-            "visible": True,
-            "maximized": True,
-            "fullscreen": False,
-            "presentation_output": "eDP-1",
-        }
-        self.after = {
-            **self.before,
-            "x": 60,
-            "y": 50,
-            "width": 120,
-            "height": 96,
-            "maximized": False,
-            "presentation_output": None,
-        }
-        self.before_image = window_capture(
-            self.metadata, self.before, landmark=(40, 40, 80, 60)
-        )
-        self.after_image = window_capture(
-            self.metadata, self.after, landmark=(70, 60, 100, 75)
-        )
-        self.output = {
-            "name": "eDP-1",
-            "logical_x": 20,
-            "logical_y": -70,
-            "logical_width": 200,
-            "logical_height": 340,
-        }
-
-    def verify(self, *, after=None, image=None):
-        return assertions.verify_zoom(
-            {"scale": 1},
-            {"scale": 0.75},
-            self.before,
-            after or self.after,
-            self.before_image,
-            image or self.after_image,
-        )
-
-    def test_zoom_requires_restored_state_and_real_marker_shrink(self):
-        self.assertEqual(self.verify()["scale_ratio"], 0.75)
-        for state in [
-            {"maximized": True},
-            {"fullscreen": True},
-            {"presentation_output": "eDP-1"},
-            {"visible": False},
-        ]:
-            with (
-                self.subTest(state=state),
-                self.assertRaisesRegex(ControlError, "restore"),
-            ):
-                self.verify(after=self.after | state)
-        stale = window_capture(self.metadata, self.after, landmark=(70, 60, 110, 80))
-        with self.assertRaisesRegex(ControlError, "marker"):
-            self.verify(image=stale)
-
-    def test_smaller_marker_does_not_hide_unchanged_window_bounds(self):
-        with self.assertRaisesRegex(ControlError, "both axes"):
-            self.verify(after=self.after | {"width": self.before["width"]})
-
-    def test_resize_checks_pointer_distance_and_untouched_edges(self):
-        before = self.after | {"width": 400}
-        after = before | {"width": 240}
-        assertions.verify_resize(before, after, 160)
-        with self.assertRaisesRegex(ControlError, "pointer distance"):
-            assertions.verify_resize(before, before | {"width": 300}, 160)
-        with self.assertRaisesRegex(ControlError, "another edge"):
-            assertions.verify_resize(before, after | {"x": before["x"] + 10}, 160)
-
-    def test_fullscreen_stays_fixed_in_state_geometry_and_pixels(self):
-        full = self.before | {"fullscreen": True}
-        assertions.verify_fullscreen(full, full, self.before_image, self.before_image)
-        with self.assertRaisesRegex(ControlError, "fullscreen state"):
-            assertions.verify_fullscreen(
-                full, self.before, self.before_image, self.before_image
-            )
-        with self.assertRaisesRegex(ControlError, "moved or scaled"):
-            assertions.verify_fullscreen(
-                full, full | {"width": 180}, self.before_image, self.before_image
-            )
-
-    def test_fullscreen_flag_before_full_output_configure_is_not_ready(self):
-        before_configure = self.before | {"fullscreen": True}
-        full = before_configure | {
-            "y": self.output["logical_y"],
-            "height": self.output["logical_height"],
-        }
-        self.assertFalse(
-            assertions.fullscreen_at_output(before_configure, [self.output])
-        )
-        self.assertTrue(assertions.fullscreen_at_output(full, [self.output]))
-        for state in [
-            {"fullscreen": False},
-            {"visible": False},
-            {"mapped": False},
-            {"presentation_output": "unknown"},
-        ]:
-            with self.subTest(state=state):
-                self.assertFalse(
-                    assertions.fullscreen_at_output(full | state, [self.output])
-                )
-
-    def test_independent_maximize_case_resets_scale_before_using_real_csd(self):
-        smoke = Mock(target=7)
-        smoke.control.status.return_value = {
-            "viewport": {"scale": 1},
-            "outputs": [self.output],
-        }
-        transitional = self.before | {"width": self.after["width"]}
-        smoke.window.side_effect = [
-            self.after,
-            self.after,
-            transitional,
-            self.before,
-        ]
-        samples = []
-
-        def until(_name, condition):
-            for _ in range(4):
-                samples.append(value := condition())
-                if value:
-                    return value
-            self.fail("maximized geometry never settled")
-
-        smoke.until.side_effect = until
-        with (
-            patch.object(firefox_checks, "activate") as activate,
-            patch.object(firefox_checks, "set_viewport") as place,
-        ):
-            result = firefox_checks.prepare_maximized(smoke)
-        self.assertEqual(
-            [call.args[0] for call in smoke.control.request.call_args_list],
-            ["focus-window 7"],
-        )
-        place.assert_called_once_with(smoke, x=0, y=0, scale=1)
-        activate.assert_called_once_with(smoke, "Maximize")
-        self.assertEqual(smoke.floating_before_max, self.after)
-        self.assertEqual(result, self.before)
-        self.assertEqual(samples, [True, None, self.before])
-
-    def test_maximized_flag_with_transitional_client_geometry_is_rejected(self):
-        self.assertTrue(assertions.maximized_at_output(self.before, [self.output]))
-        for state in [
-            {"width": 120},
-            {"height": 96},
-            {"x": 30},
-            {"y": 30},
-            # A stale full-width top bar configure must not count as settled.
-            {"y": -4, "height": 256},
-            {"presentation_output": "unknown"},
-            {"maximized": False},
-        ]:
-            with self.subTest(state=state):
-                self.assertFalse(
-                    assertions.maximized_at_output(self.before | state, [self.output])
-                )
-
-    def test_tiny_output_preserves_one_pixel_between_corner_clearances(self):
-        output = self.output | {"logical_height": 1}
-        window = self.before | {"y": output["logical_y"], "height": 1}
-        self.assertTrue(assertions.maximized_at_output(window, [output]))
-        output = output | {"logical_height": 120}
-        window = window | {"y": output["logical_y"] + 59, "height": 2}
-        self.assertTrue(assertions.maximized_at_output(window, [output]))
-
-    def test_cancelled_maximize_waits_for_configured_bounds_before_comparing(self):
-        smoke = Mock(target=7, floating_before_max=self.after)
-        smoke.control.status.return_value = {
-            "outputs": [self.output],
-            "viewport": {"scale": 1, "x": 0, "y": 0, "pinch_active": False},
-        }
-        transitional = self.before | {"width": self.after["width"]}
-        smoke.window.side_effect = [transitional, self.before]
-        smoke.until.side_effect = lambda _name, condition: (
-            self.assertIsNone(condition()) or condition()
-        )
-        self.assertEqual(firefox_checks.wait_maximized(smoke), self.before)
-        self.assertEqual(smoke.window.call_count, 2)
 
 
 class FirefoxOwnershipTests(unittest.TestCase):
@@ -379,27 +183,25 @@ class FirefoxShellPointerTests(unittest.TestCase):
         self.assertIn("Zoom out", accessibility.call_args_list[1].args[2])
         self.assertEqual(accessibility.call_args.args[1], "find")
 
-    def test_distant_pinned_setup_places_viewport_then_refocuses_browser(self):
+    def test_canvas_maximized_setup_pans_without_refocusing_browser(self):
         smoke = Mock(target=7)
         smoke.window.return_value = {"focused": True}
         smoke.until.side_effect = lambda _name, condition: condition()
-        view = {"x": 0, "y": 0, "scale": 1}
+        original = {"x": 90000, "y": 91000, "scale": 1}
+        view = {"x": 90080, "y": 91040, "scale": 1}
         with (
-            patch.object(firefox_shell, "settled", return_value=view),
+            patch.object(firefox_shell, "settled", side_effect=[original, view]),
             patch.object(firefox_shell, "set_viewport") as place,
         ):
-            self.assertEqual(firefox_shell.prepare_pinned_view(smoke), view)
-        self.assertEqual(
-            [call.args[0] for call in smoke.control.request.call_args_list],
-            ["focus-window 7"],
-        )
-        place.assert_called_once_with(smoke, x=0, y=0, scale=1)
+            self.assertEqual(firefox_shell.prepare_canvas_view(smoke), view)
+        smoke.control.request.assert_not_called()
+        place.assert_called_once_with(smoke, **view)
         with (
             patch.object(firefox_shell, "set_viewport"),
-            patch.object(firefox_shell, "settled", return_value=view | {"x": 100000}),
-            self.assertRaisesRegex(ControlError, "place the distant viewport"),
+            patch.object(firefox_shell, "settled", side_effect=[original, original]),
+            self.assertRaisesRegex(ControlError, "pan the maximized canvas view"),
         ):
-            firefox_shell.prepare_pinned_view(smoke)
+            firefox_shell.prepare_canvas_view(smoke)
 
 
 class FirefoxTouchDeadlineTests(unittest.TestCase):

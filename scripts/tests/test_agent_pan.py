@@ -17,6 +17,7 @@ from agentlib.control import ControlError
 from agentlib.gesture_trace import gesture
 from agentlib.pan import PanSmoke
 from agentlib.pan_checks import (
+    check_active,
     expected_direction,
     pan_cancelled,
     pinned_marker,
@@ -184,6 +185,59 @@ class PanPixelTests(unittest.TestCase):
             self.verify(landmark=(40, 40, 80, 60))
         with self.assertRaisesRegex(ControlError, "anchor"):
             self.verify(translation=(-20, 10))
+
+    def maximized_pan(self, *, changed=None, landmark=(60, 30, 100, 50)):
+        window = self.window | {
+            "canvas_x": 100000,
+            "canvas_y": 100000,
+            "content_width": 200,
+            "content_height": 160,
+            "mapped": True,
+            "visible": True,
+            "maximized": True,
+            "fullscreen": False,
+            "presentation_output": None,
+            "maximized_canvas_bounds": {"x": 20, "y": 20, "width": 200, "height": 160},
+        }
+        after = window | {"x": 40, "y": 10} | (changed or {})
+        smoke = Mock(target=7)
+        smoke.window.return_value = after
+        smoke.capture.return_value = window_capture(
+            self.metadata, after, landmark=landmark
+        )
+        check_active(
+            smoke,
+            {"mode": "maximized", "delta": (20, -10)},
+            {"name": "maximized-pan", "anchor": (100, 80)},
+            {"translation": (20, -10), "scale": 1},
+            {"x": 0, "y": 0, "scale": 1},
+            window,
+            self.before,
+            {"x": -20, "y": 10, "scale": 1},
+        )
+        return smoke
+
+    def test_maximized_pan_keeps_client_size_but_translates_real_pixels(self):
+        self.maximized_pan().record.assert_called_once()
+        with self.assertRaisesRegex(ControlError, "marker"):
+            self.maximized_pan(landmark=(40, 40, 80, 60))
+
+    def test_maximized_pan_rejects_auto_restore_or_client_reflow(self):
+        with self.assertRaisesRegex(ControlError, "maximization"):
+            self.maximized_pan(changed={"maximized": False})
+        with self.assertRaisesRegex(ControlError, "world geometry"):
+            self.maximized_pan(changed={"content_width": 180})
+        with self.assertRaisesRegex(ControlError, "world bounds"):
+            self.maximized_pan(
+                changed={
+                    "maximized_canvas_bounds": {
+                        "x": 40,
+                        "y": 10,
+                        "width": 200,
+                        "height": 160,
+                    }
+                }
+            )
 
     def test_combined_transform_checks_all_marker_edges(self):
         after_window = {"x": 70, "y": 55, "width": 100, "height": 80}

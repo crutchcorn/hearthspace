@@ -4,7 +4,13 @@ from pathlib import Path
 
 from . import pan_input
 from .control import ControlError
-from .firefox_assertions import fullscreen_at_output, marker_size, maximized_at_output
+from .firefox_assertions import (
+    fullscreen_at_output,
+    marker_size,
+    maximized,
+    maximized_at_output,
+    unchanged_canvas_geometry,
+)
 from .pinch_assertions import same_viewport, verify_zoom
 from .pinch_touchscreen import settled
 from .touchpad import TouchDevice
@@ -25,6 +31,12 @@ CASES = [
         "delta": (60, 40),
         "mode": "maximized",
         "cancel": True,
+    },
+    {
+        "name": "maximized-combined",
+        "delta": (60, 40),
+        "ratio": 0.75,
+        "mode": "maximized",
     },
     {"name": "fullscreen-pan", "delta": (60, 40), "mode": "fullscreen"},
 ]
@@ -110,41 +122,20 @@ def pinned_marker(mode, image, captured, window, after_window):
 
 
 def check_active(smoke, case, state, observed, before, window, image, active):
-    if case.get("mode") == "maximized":
-        smoke.until(
-            "pan restored the committed floating client size",
-            lambda: (
-                (current := smoke.window(smoke.target))
-                and not current["maximized"]
-                and not current["fullscreen"]
-                and all(
-                    current[key] == smoke.floating[key]
-                    for key in ("content_width", "content_height")
-                )
-            ),
-        )
     after_window = smoke.window(smoke.target)
     captured = smoke.capture(f"{state['name']}-active")
     expected_direction(case, observed)
     ratio = active["scale"] / before["scale"]
     if abs(ratio - observed["scale"]) > 0.015:
         raise ControlError("applied scale differs from independent input evidence")
-    if mode := case.get("mode"):
-        if mode == "fullscreen":
-            unchanged(window, after_window)
-        elif (
-            after_window["maximized"]
-            or after_window["fullscreen"]
-            or not after_window["visible"]
-        ):
-            raise ControlError("pan did not visibly restore the maximized terminal")
-        if (
-            after_window["canvas_x"] != window["canvas_x"]
-            or after_window["canvas_y"] != window["canvas_y"]
-        ):
-            raise ControlError("pan changed the saved floating canvas position")
-        proof = pinned_marker(mode, image, captured, window, after_window)
+    if case.get("mode") == "fullscreen":
+        unchanged(window, after_window)
+        proof = pinned_marker("fullscreen", image, captured, window, after_window)
     else:
+        if case.get("mode") == "maximized":
+            if not maximized(window) or not maximized(after_window):
+                raise ControlError("pan did not preserve visible canvas maximization")
+            unchanged_canvas_geometry(window, after_window)
         proof = verify_zoom(
             before,
             active,

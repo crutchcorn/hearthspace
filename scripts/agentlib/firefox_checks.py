@@ -97,9 +97,22 @@ def prepare_maximized(smoke):
         lambda: abs(smoke.control.status()["viewport"]["scale"] - 1) < 1e-8,
     )
     smoke.control.request(f"focus-window {smoke.target}")
-    if not verify.maximized(smoke.window(smoke.target)):
-        smoke.floating_before_max = smoke.window(smoke.target)
-        activate(smoke, "Maximize")
+    settled(smoke)
+    if verify.maximized(smoke.window(smoke.target)):
+        floating = smoke.floating_before_max
+        activate(smoke, "Restore Down")
+        smoke.until(
+            "previous maximization restores committed client size before independent case",
+            lambda: (
+                verify.restored(current := smoke.window(smoke.target))
+                and all(
+                    current[key] == floating[key]
+                    for key in ("content_width", "content_height")
+                )
+            ),
+        )
+    smoke.floating_before_max = smoke.window(smoke.target)
+    activate(smoke, "Maximize")
     return wait_maximized(smoke)
 
 
@@ -272,9 +285,14 @@ def cancel_pinch(smoke, device, output):
     )
     moved = begin_pinch(smoke, device, output)
     smoke.until(
-        "restored during active pinch",
-        lambda: verify.restored(smoke.window(smoke.target)),
+        "maximized window scales during active pinch",
+        lambda: (
+            verify.maximized(current := smoke.window(smoke.target))
+            and smoke.control.status()["viewport"]["pinch_active"]
+            and current["width"] < before["width"] - 8
+        ),
     )
+    verify.unchanged_canvas_geometry(before, smoke.window(smoke.target))
     smoke.capture(f"{device.kind}-cancel-active")
     device.request("add-finger", **({"point": centroid(moved)} if moved else {}))
     smoke.until(
@@ -290,6 +308,7 @@ def cancel_pinch(smoke, device, output):
         raise ControlError(
             "cancelled Firefox pinch did not restore its maximized bounds"
         )
+    verify.unchanged_canvas_geometry(before, after)
     smoke.capture(f"{device.kind}-cancel-restored")
     smoke.record(
         "pinch-cancellation-verified",
