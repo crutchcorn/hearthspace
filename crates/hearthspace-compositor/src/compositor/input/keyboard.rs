@@ -283,6 +283,7 @@ impl App {
                 return;
             }
             Shortcut::ShellPanelDismiss => {
+                self.invalidate_shell_popups();
                 // Revoke before the asynchronous close reaches the shell: a
                 // held drawing button may be released in the same input batch.
                 self.clear_favorite_drawing();

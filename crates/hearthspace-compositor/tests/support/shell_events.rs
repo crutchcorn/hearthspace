@@ -7,6 +7,10 @@ use std::{
 };
 
 pub(super) fn next_action(events: &UnixDatagram) -> io::Result<Value> {
+    next_event(events, false)
+}
+
+fn next_event(events: &UnixDatagram, include_cancellation: bool) -> io::Result<Value> {
     let timeout = events.read_timeout()?.unwrap_or(Duration::from_secs(2));
     let deadline = Instant::now() + timeout;
     let result = (|| {
@@ -27,7 +31,9 @@ pub(super) fn next_action(events: &UnixDatagram) -> io::Result<Value> {
                 event["version"], 1,
                 "unexpected shell event version: {event}"
             );
-            if event["action"] != "layout-changed" {
+            if event["action"] != "layout-changed"
+                && (include_cancellation || event["action"] != "cancel-shell-popups")
+            {
                 return Ok(event);
             }
         }
@@ -37,7 +43,12 @@ pub(super) fn next_action(events: &UnixDatagram) -> io::Result<Value> {
 }
 
 pub(super) fn receive(events: &UnixDatagram, expected: &str) -> Value {
-    let event = next_action(events).expect("expected shell action before deadline");
+    let event = if expected == "cancel-shell-popups" {
+        next_event(events, true)
+    } else {
+        next_action(events)
+    }
+    .expect("expected shell action before deadline");
     assert_eq!(
         event["action"], expected,
         "unexpected shell action: {event}"

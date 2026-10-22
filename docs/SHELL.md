@@ -17,6 +17,21 @@ Each panel opens beside its control. Top attachments open downward, bottom
 attachments upward, and side attachments inward. Canvas controls use the side
 with more room; popups stay within the output. Opening one closes the previous panel.
 Escape, the close icon, an outside click, or the active corner button dismisses it.
+An acknowledged opening survives transient layout-query failures for at most five
+seconds. Queries retain their 750 ms deadline and never replay the anchor command.
+A shared cancellation ticket covers both pending work and queued UI delivery;
+dismissal, replacement, output removal, lock/VT recovery, and layout editing revoke
+it. Permanent transport or invalid-snapshot failures cancel it immediately.
+
+The 2026-10-22 reproduction confirmed that a synchronous software-rendered
+capture could outlast a layout query and lose an acknowledged notification
+opening. With recovery, the same query timed out, retained the opening, and
+delivered it on the next successful observation. Evidence is retained in
+`/tmp/hs-notify-helper-recovery`. The complete shell headless workflow then
+passed in 285.81 seconds, including 323 AT-SPI subprocess calls and 33 captures
+(`/tmp/hearthspace-main-recovery-timed-360`). Its total test budget is now 360
+seconds; assertions and individual IPC deadlines are unchanged.
+
 Panels have rounded transparent corners and shrink to fit their content. Long
 lists scroll within the available height; Apps List keeps its heading, input,
 view switch, and footer visible. It requests 650 logical pixels, capped to the output with 24-pixel side margins. Maximized apps fit

@@ -168,6 +168,10 @@ pub(super) fn send(state: &mut ShellState, output: &str, command: TrayCommand) {
 }
 
 pub(super) fn dismiss(state: &mut ShellState, key: &str) {
+    state
+        .frame_layout
+        .intents
+        .cancel_kind(key, super::popup::PopupKind::Tray);
     if let Some(output) = state.outputs.iter_mut().find(|output| output.key() == key) {
         output.tray.dismiss();
     }
@@ -311,7 +315,7 @@ pub(super) fn back(state: &mut ShellState, output_key: &str) {
         if let Some(id) = output.tray.path.pop() {
             output.tray.selected = Some(id);
         } else {
-            output.tray.dismiss();
+            dismiss(state, output_key);
         }
     }
 }

@@ -47,6 +47,10 @@ impl App {
                 // Reconcile it before forwarding the outside press unchanged.
                 self.apply_pointer_motion(self.pointer_location, time);
             }
+            // First touch-down already invalidates using its own coordinates.
+            if !self.dispatching_touch {
+                self.cancel_shell_popup_outside_press(self.pointer_location);
+            }
         }
         if self.favorite_pointer_button(button, state) {
             if state == ButtonState::Released {

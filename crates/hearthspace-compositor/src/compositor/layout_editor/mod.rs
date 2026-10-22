@@ -64,6 +64,7 @@ pub(super) struct State {
     pub layouts: BTreeMap<String, FrameLayout>,
     pub allow_hide_tools: bool,
     pub revision: u64,
+    popup_epoch: u64,
     sequence: u64,
     session: Option<Session>,
     pub placed: Vec<PlacedTarget>,
@@ -110,6 +111,30 @@ impl State {
     }
 }
 impl App {
+    /// Status retains invalidation even if the best-effort wakeup is dropped.
+    pub(in crate::compositor) fn invalidate_shell_popups(&mut self) {
+        self.publish_shell_popup_epoch(true);
+    }
+
+    pub(in crate::compositor) fn invalidate_shell_popup_recovery(&mut self) {
+        self.publish_shell_popup_epoch(false);
+    }
+
+    fn publish_shell_popup_epoch(&mut self, dismiss: bool) {
+        self.layout_editor.popup_epoch = self.layout_editor.popup_epoch.wrapping_add(1);
+        if let Ok(socket) = std::os::unix::net::UnixDatagram::unbound() {
+            let _ = socket.set_nonblocking(true);
+            let event = serde_json::json!({"version":1,"action":"cancel-shell-popups",
+                "popup_epoch":self.layout_editor.popup_epoch,"dismiss":dismiss});
+            let _ = socket.send_to(
+                &serde_json::to_vec(&event).unwrap(),
+                hearthspace_common::shell_event_socket_path(
+                    &super::shell_integration::command_socket_path(),
+                ),
+            );
+        }
+    }
+
     pub(in crate::compositor) fn layout_editing(&self) -> bool {
         self.layout_editor
             .session

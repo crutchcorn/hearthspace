@@ -1,6 +1,42 @@
 use super::*;
 
 #[test]
+fn accepted_keyboard_toggles_preserve_parity_and_reopening_token_provenance() {
+    crate::ui::frame_layout::popups::tests::deferred_toggle_requests(|state, token, toggle| {
+        apply_request(
+            state,
+            ShellRequest {
+                token,
+                toggle,
+                control: None,
+                output: Some("eDP-1".into()),
+            },
+        );
+    });
+}
+
+#[test]
+fn session_reset_event_cancels_queued_popup_even_between_layout_polls() {
+    crate::ui::frame_layout::popups::tests::cancellation_rejects_queued_open(|state| {
+        let directory = tempfile::tempdir().unwrap();
+        let command = directory.path().join("control.sock");
+        let events = ShellEvents::bind(&command).unwrap();
+        UnixDatagram::unbound()
+            .unwrap()
+            .send_to(
+                br#"{"version":1,"action":"cancel-shell-popups","popup_epoch":1}"#,
+                shell_event_socket_path(&command),
+            )
+            .unwrap();
+        let pending = events.pending();
+        assert_eq!(pending, [Event::CancelPopups(1)]);
+        for event in pending {
+            apply_event(state, event);
+        }
+    });
+}
+
+#[test]
 fn device_events_preserve_key_order_and_reject_unknown_actions_or_search_tokens() {
     let dir = tempfile::tempdir().unwrap();
     let command = dir.path().join("control.sock");

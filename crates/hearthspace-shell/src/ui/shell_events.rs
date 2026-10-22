@@ -164,6 +164,8 @@ enum Event {
     CanvasSearchChanged,
     WindowSwitcherChanged,
     LayoutChanged,
+    CancelPopups(u64),
+    PopupEpoch(u64),
     CanvasSearchAction(u64),
     RetryDrawing,
     ReloadFavorites,
@@ -177,7 +179,15 @@ fn parse_event(bytes: &[u8]) -> Option<Event> {
     if value["version"].as_u64()? != 1 {
         return None;
     }
-    if value["action"] == "layout-changed" {
+    if value["action"] == "cancel-shell-popups" {
+        value["popup_epoch"].as_u64().map(|epoch| {
+            if value["dismiss"].as_bool() == Some(false) {
+                Event::PopupEpoch(epoch)
+            } else {
+                Event::CancelPopups(epoch)
+            }
+        })
+    } else if value["action"] == "layout-changed" {
         Some(Event::LayoutChanged)
     } else if value["action"] == "window-switcher-changed" {
         Some(Event::WindowSwitcherChanged)
@@ -288,21 +298,29 @@ pub(super) fn shell_events_task()
                 }
             }
         },
-        |state, event| match event {
-            Event::Request(request) => apply_request(state, request),
-            Event::Gesture(event) => super::favorite_events::apply(state, event),
-            Event::Desktop(event) => super::desktop::apply_event(state, event),
-            Event::CanvasSearchChanged => state.canvas_search.refresh.notify_one(),
-            Event::WindowSwitcherChanged => state.window_switcher.refresh.notify_one(),
-            Event::LayoutChanged => state.frame_layout.refresh.notify_one(),
-            Event::CanvasSearchAction(token) => super::canvas_search::submit_command(
-                state,
-                format!("canvas-search-event-accept {token}"),
-            ),
-            Event::RetryDrawing => super::favorite_events::retry(state),
-            Event::ReloadFavorites => super::favorite_events::reload(state),
-        },
+        apply_event,
     )
+}
+
+fn apply_event(state: &mut ShellState, event: Event) {
+    match event {
+        Event::Request(request) => apply_request(state, request),
+        Event::Gesture(event) => super::favorite_events::apply(state, event),
+        Event::Desktop(event) => super::desktop::apply_event(state, event),
+        Event::CanvasSearchChanged => state.canvas_search.refresh.notify_one(),
+        Event::WindowSwitcherChanged => state.window_switcher.refresh.notify_one(),
+        Event::LayoutChanged => state.frame_layout.refresh.notify_one(),
+        Event::CancelPopups(epoch) => super::frame_layout::cancel_popups(state, epoch),
+        Event::PopupEpoch(epoch) => {
+            super::frame_layout::observe_popup_epoch(state, epoch);
+        }
+        Event::CanvasSearchAction(token) => super::canvas_search::submit_command(
+            state,
+            format!("canvas-search-event-accept {token}"),
+        ),
+        Event::RetryDrawing => super::favorite_events::retry(state),
+        Event::ReloadFavorites => super::favorite_events::reload(state),
+    }
 }
 
 fn apply_request(state: &mut ShellState, request: ShellRequest) {
@@ -353,6 +371,8 @@ fn apply_request(state: &mut ShellState, request: ShellRequest) {
         {
             output.search_request_token = Some(request.token);
         }
+    } else {
+        state.frame_layout.intents.cancel();
     }
 }
 

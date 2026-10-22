@@ -64,6 +64,7 @@ impl App {
         if let Some(session) = &mut self.layout_editor.session {
             session.confirmation = Some(Confirmation::HideTools);
             session.confirmation_focus = focus;
+            self.invalidate_shell_popups();
         }
         self.clear_keyboard_focus();
         self.layout_changed();
@@ -99,6 +100,7 @@ impl App {
         let session = self.layout_editor.session.as_mut().unwrap();
         session.confirmation = Some(Confirmation::CloseWindow { window_id: id });
         session.confirmation_focus = focus;
+        self.invalidate_shell_popups();
         self.clear_keyboard_focus();
         self.layout_changed();
         true

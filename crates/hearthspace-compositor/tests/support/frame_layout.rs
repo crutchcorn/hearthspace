@@ -19,6 +19,10 @@ mod input;
 mod pending_click;
 #[path = "frame_layout/pointer_grab.rs"]
 mod pointer_grab;
+#[path = "frame_layout/popup_epoch.rs"]
+mod popup_epoch;
+#[path = "frame_layout/popup_outside.rs"]
+mod popup_outside;
 #[path = "frame_layout/titlebar.rs"]
 mod titlebar;
 #[path = "frame_layout/turn.rs"]

@@ -38,7 +38,7 @@ fn promoted_secondary_keeps_its_connector_identity_and_wayland_global() {
     let internal = outputs.primary.output.clone();
     let external = outputs.secondary[0].output.clone();
     let external_global = outputs.secondary[0].global_id.clone();
-    outputs.sync_connectors(&display.handle(), vec![descriptor("DP-1")]);
+    assert!(outputs.sync_connectors(&display.handle(), vec![descriptor("DP-1")]));
     assert_eq!(outputs.primary.name, "DP-1");
     assert_eq!(outputs.primary.output, external);
     assert_eq!(outputs.primary.global_id, external_global);
@@ -53,18 +53,18 @@ fn changing_primary_preserves_both_connected_outputs_without_duplicates() {
     let display = Display::<App>::new().unwrap();
     let mut outputs = outputs(&display);
     let internal = outputs.primary.output.clone();
-    outputs.sync_connectors(
+    assert!(!outputs.sync_connectors(
         &display.handle(),
         vec![descriptor("DP-1"), descriptor("eDP-1")],
-    );
+    ));
     assert_eq!(outputs.primary.name, "DP-1");
     assert_eq!(outputs.secondary.len(), 1);
     assert_eq!(outputs.secondary[0].output, internal);
     assert_eq!(outputs.secondary[0].name, "eDP-1");
-    outputs.sync_connectors(
+    assert!(!outputs.sync_connectors(
         &display.handle(),
         vec![descriptor("eDP-1"), descriptor("DP-1")],
-    );
+    ));
     assert_eq!(outputs.primary.output, internal);
     assert_eq!(outputs.secondary.len(), 1);
     assert_eq!(outputs.secondary[0].name, "DP-1");
@@ -76,14 +76,15 @@ fn no_outputs_exposes_no_stale_target_and_replug_creates_a_fresh_global() {
     let mut outputs = outputs(&display);
     let old_global = outputs.primary.global_id.clone();
     let old_output = outputs.primary.output.clone();
-    outputs.sync_connectors(&display.handle(), Vec::new());
+    assert!(outputs.sync_connectors(&display.handle(), Vec::new()));
+    assert!(!outputs.sync_connectors(&display.handle(), Vec::new()));
     assert!(outputs.output_debug().is_empty());
     assert!(outputs.logical_rects().is_empty());
     assert!(outputs.output_for_name(None).is_none());
     assert!(outputs.output_for_name(Some("eDP-1")).is_none());
     // An already disabled global cannot be revived; announce a fresh object
     // so shell and lock clients receive a real registry add after removal.
-    outputs.sync_connectors(&display.handle(), vec![descriptor("eDP-1")]);
+    assert!(!outputs.sync_connectors(&display.handle(), vec![descriptor("eDP-1")]));
     assert!(outputs.primary.advertised);
     assert_ne!(outputs.primary.global_id, old_global);
     assert_ne!(outputs.primary.output, old_output);

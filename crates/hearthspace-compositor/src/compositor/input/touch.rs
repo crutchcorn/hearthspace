@@ -16,13 +16,16 @@ impl App {
         time: InputTime,
     ) {
         self.shortcuts.cancel_meta_tap();
-        if !self.touch_input.has_contacts() && !self.group_touch_blocked() {
+        let first = !self.touch_input.has_contacts();
+        if first && !self.group_touch_blocked() {
             self.dismiss_group_outside_press(location, true);
+        }
+        if first {
+            self.cancel_shell_popup_outside_press(location);
         }
         if self.favorite_touch_down(device, slot, location) {
             return;
         }
-        let first = !self.touch_input.has_contacts();
         if first {
             self.focused_shell_pointer(location, true);
         }

@@ -41,9 +41,9 @@ class ShellHeadlessTests(unittest.TestCase):
                 evidence,
                 run,
                 "HEARTHSPACE_SHELL_FIXTURE",
-                # Includes startup, independent frame-control navigation, and
-                # every popup's pixel proof before the search/app workflows.
-                timeout=180,
+                # The complete software-rendered workflow measured 286s with
+                # all input, accessibility, and pixel assertions retained.
+                timeout=360,
             )
 
 

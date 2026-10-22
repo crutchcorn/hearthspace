@@ -9,6 +9,7 @@ use hearthspace_common::{
     quick_panel_output_name_from_app_id, tray_menu_output_name_from_app_id,
 };
 use serde_json::{Value, json};
+use smithay::utils::{Logical, Point};
 
 use super::window_app_id;
 use crate::compositor::{App, HitTarget, ManagedWindowKind};
@@ -119,6 +120,29 @@ impl App {
                 | HitTarget::ResizeBorder { window_index, .. } => window_index,
             });
         self.dismiss_shell_panels_outside_focus(focus);
+    }
+
+    /// Real outside presses also revoke openings which have not mapped yet.
+    /// Focus callbacks cannot do this: mapping/restoring shell windows also
+    /// changes focus, and the initiating bar belongs to the popup's input group.
+    pub(in crate::compositor) fn cancel_shell_popup_outside_press(
+        &mut self,
+        location: Point<f64, Logical>,
+    ) {
+        if !self.navigation_available() {
+            return;
+        }
+        let target = self.hit_test(location).map(|target| match target {
+            HitTarget::Client { window_index, .. }
+            | HitTarget::TitlebarButton { window_index, .. }
+            | HitTarget::TitleBar { window_index }
+            | HitTarget::ResizeBorder { window_index, .. } => window_index,
+        });
+        if target.is_none_or(|index| {
+            self.windows[index].kind != ManagedWindowKind::ShellBar && !self.is_shell_panel(index)
+        }) {
+            self.invalidate_shell_popups();
+        }
     }
 
     pub(in crate::compositor) fn canvas_maps_status(&self) -> Vec<Value> {

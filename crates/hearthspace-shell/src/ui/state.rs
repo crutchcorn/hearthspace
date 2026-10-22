@@ -1,5 +1,8 @@
 use std::path::PathBuf;
 
+#[path = "state_dismissal.rs"]
+mod dismissal;
+
 use xilem::{AppState, WindowId};
 
 use crate::app_catalog::AppCatalog;
@@ -121,6 +124,7 @@ impl ShellState {
     }
 
     pub(super) fn stop(&mut self) {
+        self.frame_layout.intents.cancel();
         self.running = false;
     }
 
@@ -140,6 +144,9 @@ impl ShellState {
             }
         }
 
+        self.frame_layout
+            .intents
+            .retain_output(|key| outputs.iter().any(|output| output.key() == key));
         self.outputs = outputs;
         if !self.outputs.iter().any(|output| output.show_map) {
             self.canvas_dragging = false;
@@ -184,6 +191,7 @@ impl ShellState {
     }
 
     pub(super) fn dismiss_panels(&mut self) {
+        self.frame_layout.intents.cancel();
         super::favorite_actions::cancel_all(self);
         self.canvas_dragging = false;
         for output in &mut self.outputs {
@@ -251,67 +259,8 @@ impl ShellState {
         }
     }
 
-    pub(super) fn dismiss_controls(&mut self, output_key: &str) {
-        if let Some(output) = self
-            .outputs
-            .iter_mut()
-            .find(|output| output.key() == output_key)
-        {
-            output.show_controls = false;
-        }
-    }
-
-    pub(super) fn dismiss_launcher(&mut self, output_key: &str) {
-        super::favorite_actions::cancel(self, output_key);
-        self.canvas_dragging = false;
-        if let Some(output) = self
-            .outputs
-            .iter_mut()
-            .find(|output| output.key() == output_key)
-        {
-            output.dismiss_panels();
-        }
-    }
-
-    pub(super) fn dismiss_search(&mut self, output_key: &str) {
-        super::favorite_actions::cancel(self, output_key);
-        if let Some(output) = self
-            .outputs
-            .iter_mut()
-            .find(|output| output.key() == output_key && output.show_search)
-        {
-            output.show_search = false;
-            output.search_request_token = None;
-            output.query.clear();
-            output.selected_result = None;
-            output.selected_result_index = 0;
-            output.launch_error = None;
-        }
-    }
-
-    pub(super) fn dismiss_notifications(&mut self, output_key: &str) {
-        if let Some(output) = self
-            .outputs
-            .iter_mut()
-            .find(|output| output.key() == output_key)
-        {
-            output.show_notifications = false;
-        }
-    }
-
-    pub(super) fn dismiss_power(&mut self, output_key: &str) {
-        if let Some(output) = self
-            .outputs
-            .iter_mut()
-            .find(|output| output.key() == output_key && output.show_power)
-        {
-            output.show_power = false;
-            output.confirm_logout = false;
-            output.launch_error = None;
-        }
-    }
-
     pub(super) fn change_query(&mut self, output_key: &str, query: String) {
+        self.frame_layout.intents.cancel();
         super::favorite_actions::cancel(self, output_key);
         self.canvas_dragging = false;
         if let Some(output) = self
@@ -345,17 +294,6 @@ impl ShellState {
         }
         self.toggle_panel(output_key, Panel::Map);
         self.canvas_error = None;
-    }
-
-    pub(super) fn dismiss_map(&mut self, output_key: &str) {
-        self.canvas_dragging = false;
-        if let Some(output) = self
-            .outputs
-            .iter_mut()
-            .find(|output| output.key() == output_key)
-        {
-            output.show_map = false;
-        }
     }
 }
 
