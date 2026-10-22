@@ -174,6 +174,7 @@ impl App {
         }
         let mut flights = std::mem::take(&mut self.window_group.flights);
         let was_animating = !flights.is_empty();
+        let mut arrived = Vec::new();
         let now = std::time::Instant::now();
         flights.retain(|flight| {
             let Some(index) = self
@@ -190,15 +191,17 @@ impl App {
             }
             let (position, finished) = flight.position(now);
             self.set_group_window_position(index, position);
+            if finished {
+                arrived.push(flight.id);
+            }
             !finished
         });
         if self.window_group.pending.is_some() || was_animating {
             self.request_redraw();
         }
         self.window_group.flights = flights;
-        if was_animating && self.window_group.flights.is_empty() {
-            let ids: Vec<_> = self.window_group.selected.iter().copied().collect();
-            self.canvas_peek_arrangement_finished(&ids);
+        if !arrived.is_empty() {
+            self.canvas_peek_arrangement_finished(&arrived);
         }
         if !self.group_gather_layout_busy()
             && let Some((request, result)) = self.window_group.deferred_gather.take()
