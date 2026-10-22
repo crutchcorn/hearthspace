@@ -15,7 +15,8 @@ futures-util = "0.3.34"
 hearthspace-common = { path = "../hearthspace-common" }
 hearthspace-ipc = { path = "../hearthspace-ipc" }
 hearthspace-ui-components = { path = "../ui-components" }
-image = { version = "0.25.10", default-features = false, features = ["png"] }
+image = { version = "0.25.10", default-features = false, features = ["png", "jpeg"] }
+lofty = "0.25.4"
 resvg = { version = "0.47.0", default-features = false }
 rustix = { version = "1.1.5", features = ["fs"] }
 serde = { version = "1.0.228", features = ["derive"] }

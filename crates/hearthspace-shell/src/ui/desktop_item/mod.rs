@@ -26,7 +26,7 @@ pub(super) enum Artwork {
     App(Option<ImageBrush>),
     Settings,
     Folder,
-    File,
+    File(Option<ImageBrush>),
 }
 
 #[derive(Clone, PartialEq)]

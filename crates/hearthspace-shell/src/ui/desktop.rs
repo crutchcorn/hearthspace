@@ -10,6 +10,7 @@ use crate::desktop_items::{DesktopItem, DesktopItemKind};
 
 use super::{desktop_item, state::ShellState};
 
+mod artwork;
 pub(in crate::ui) mod context;
 mod context_actions;
 #[path = "desktop/events.rs"]
@@ -29,6 +30,7 @@ pub(super) fn selection_active(state: &ShellState) -> bool {
 
 #[derive(Default)]
 pub(super) struct State {
+    artwork: artwork::State,
     menu: context::State,
     items: Vec<Item>,
     snapshot: events::Snapshot,
@@ -56,6 +58,7 @@ impl State {
                 content,
             })
             .collect();
+        artwork::refresh(self);
     }
 }
 
@@ -78,7 +81,9 @@ pub(super) fn windows(state: &ShellState) -> Vec<WindowView<ShellState>> {
                         desktop_item::Artwork::App(super::dock::image(state, icon.as_deref()))
                     }
                     DesktopItemKind::Folder { .. } => desktop_item::Artwork::Folder,
-                    DesktopItemKind::File { .. } => desktop_item::Artwork::File,
+                    DesktopItemKind::File { .. } => desktop_item::Artwork::File(
+                        state.desktop.artwork.images.get(&id).cloned(),
+                    ),
                 },
             };
             let frame = super::frame_layout::items::presentation(state, &id);

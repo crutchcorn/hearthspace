@@ -136,7 +136,7 @@ pub(super) fn tile(
 
 fn artwork(painter: &mut Painter<'_>, tile: &DesktopTile, bounds: Rect, palette: &Palette) {
     let photo = tile.state.photo_background;
-    if let Artwork::App(Some(image)) = &tile.content.artwork {
+    if let Artwork::App(Some(image)) | Artwork::File(Some(image)) = &tile.content.artwork {
         let scale = 49.4 / f64::from(image.image.width.max(image.image.height).max(1));
         painter.draw_image(
             image,
@@ -149,13 +149,13 @@ fn artwork(painter: &mut Painter<'_>, tile: &DesktopTile, bounds: Rect, palette:
     }
     let size = match tile.content.artwork {
         Artwork::Folder => 46.0,
-        Artwork::File => 42.0,
+        Artwork::File(_) => 42.0,
         _ => 38.0,
     };
     let rect = Rect::from_center_size(bounds.center(), (size, size));
     let ink = if photo {
         pale_ink(palette)
-    } else if matches!(tile.content.artwork, Artwork::File) {
+    } else if matches!(tile.content.artwork, Artwork::File(_)) {
         palette.muted
     } else {
         palette.accent_decorative
@@ -165,7 +165,7 @@ fn artwork(painter: &mut Painter<'_>, tile: &DesktopTile, bounds: Rect, palette:
     } else {
         match tile.content.artwork {
             Artwork::Folder => Some(palette.accent_soft),
-            Artwork::File => Some(palette.chrome_raised),
+            Artwork::File(_) => Some(palette.chrome_raised),
             _ => None,
         }
     };

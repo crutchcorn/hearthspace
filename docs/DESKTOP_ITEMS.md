@@ -25,8 +25,10 @@ when the visible label wraps or truncates.
 Drop an app shortcut onto Apps List to add a favorite. The desktop icon returns
 to its original position. Files and folders open with `xdg-open`, using the
 user's default application. They are not executed as commands. Directory and
-catalog changes are refreshed on a worker; opening Settings, changing themes,
-or refreshing the desktop does not read the contents of personal files.
+catalog changes are refreshed on a worker. A separate artwork worker reuses
+GIO-validated GNOME thumbnails and reads embedded FLAC front covers when no
+usable thumbnail exists. Files without usable artwork use their themed MIME
+icons. Opening Settings and changing themes reuse the retained artwork.
 The desktop supports up to 4,096 combined items; exceeding that limit reports
 an error in Apps List while keeping its complete application catalog available.
 
@@ -55,7 +57,18 @@ Icons stay beneath application windows and move and zoom with the canvas.
 Each is an ordinary Xilem-rendered shell surface with the website's 88 by 96
 logical-pixel tile. Native file, folder and Settings glyphs use filled pale
 accent variants over a photo; labels become white with shadows. Real application
-artwork retains its colors. Themes and accent changes update existing surfaces.
+artwork and file previews retain their colors. Themes and accent changes update
+existing surfaces.
+
+File previews do not write to the user's files or thumbnail cache. Lofty reads
+FLAC picture metadata; the existing `image` decoder handles PNG and JPEG covers.
+The shell uses Lofty 0.25.4 with its default features and enables the `png` and
+`jpeg` codecs in `image`.
+Reads stay within the first 16 MiB of metadata, each picture is limited to 8 MiB,
+and raster dimensions/allocation are bounded. At most eight previews are loaded
+per worker pass. Both successful and missing previews are retained until the
+source or its validated thumbnail changes; file identity and nanosecond timestamps
+also detect replacements with a preserved filename or modification time.
 
 The compositor owns selection, hit testing, canvas positions, and drag movement.
 The shell owns accessible controls, icons, labels, catalog discovery, and app
@@ -63,7 +76,7 @@ activation. This keeps dragging independent of shell repaint or IPC latency.
 Compositor-owned surfaces negotiate server decoration ownership without drawing
 a titlebar. This avoids initializing a hidden client frame for every icon.
 Desktop surfaces never enter the app dock,
-window switcher, overview, or window-group selection.
+window switcher or window-group selection.
 
 Positions use stable application IDs and desktop filenames. They are recorded
 alongside the existing spatial layout and saved on normal compositor shutdown.
