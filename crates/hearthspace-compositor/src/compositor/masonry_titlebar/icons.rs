@@ -99,14 +99,7 @@ impl App {
 fn icon_name(catalog: &AppCatalog, app_id: &str) -> String {
     let id = app_id.strip_suffix(".desktop").unwrap_or(app_id);
     catalog
-        .apps()
-        .iter()
-        .find(|app| {
-            app.id
-                .strip_suffix(".desktop")
-                .unwrap_or(&app.id)
-                .eq_ignore_ascii_case(id)
-        })
+        .app_for_window(app_id)
         .and_then(|app| app.icon.clone())
         .unwrap_or_else(|| id.to_lowercase())
 }
@@ -120,13 +113,20 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         std::fs::create_dir(dir.path().join("applications")).unwrap();
         std::fs::write(
-            dir.path().join("applications/vlc.desktop"),
-            "[Desktop Entry]\nType=Application\nName=VLC media player\nExec=vlc\nIcon=video-cone\n",
+            dir.path().join("applications/vlc_vlc.desktop"),
+            "[Desktop Entry]\nType=Application\nName=VLC media player\nExec=/snap/bin/vlc --started-from-file %U\nIcon=/snap/vlc/current/vlc.png\nX-SnapInstanceName=vlc\nX-SnapAppName=vlc\nX-SnapCommonID=org.videolan.vlc\n",
         )
         .unwrap();
         let catalog = AppCatalog::load_from_data_dirs(vec![dir.path().to_owned()]);
-        assert_eq!(icon_name(&catalog, "Vlc"), "video-cone");
-        assert_eq!(icon_name(&catalog, "vlc.desktop"), "video-cone");
+        assert_eq!(icon_name(&catalog, "Vlc"), "/snap/vlc/current/vlc.png");
+        assert_eq!(
+            icon_name(&catalog, "vlc_vlc.desktop"),
+            "/snap/vlc/current/vlc.png"
+        );
+        assert_eq!(
+            icon_name(&catalog, "org.videolan.vlc"),
+            "/snap/vlc/current/vlc.png"
+        );
         assert_eq!(icon_name(&catalog, "Unknown"), "unknown");
     }
 }

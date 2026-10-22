@@ -55,6 +55,9 @@ impl DesktopApp {
                 .or_else(|| fields.get("X-ExecArg"))
                 .cloned(),
             snap_instance_name: fields.get("X-SnapInstanceName").cloned(),
+            startup_wm_class: fields.get("StartupWMClass").cloned(),
+            snap_app_name: fields.get("X-SnapAppName").cloned(),
+            snap_common_id: fields.get("X-SnapCommonID").cloned(),
         })
     }
 }

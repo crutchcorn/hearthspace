@@ -3,9 +3,15 @@ use std::{
     fs::{self, File},
     io::{Cursor, Read},
     path::{Path, PathBuf},
+    sync::OnceLock,
 };
 
-use crate::tray::{TrayIcon, TrayPixmap};
+use gio::prelude::SettingsExt;
+
+use crate::{
+    app_catalog::AppCatalog,
+    tray::{TrayIcon, TrayPixmap},
+};
 
 const ICON_SIZE: u32 = 48;
 const MAX_FILE_BYTES: u64 = 2 * 1024 * 1024;
@@ -37,6 +43,15 @@ fn named_icon(name: &str, theme_path: Option<&str>) -> Option<TrayPixmap> {
     }
     themed_icon(name, theme_path)
         .or_else(|| {
+            // Shortcuts can reference another application's icon by its identity.
+            // Sandboxed apps often export only an absolute Icon in their desktop
+            // entry, without installing that name into a host icon theme.
+            // Callers cache decoded artwork. Load current metadata for each new
+            // fallback request so a later app installation is not hidden by a
+            // second, process-lifetime catalog cache.
+            catalog_icon(&AppCatalog::load(), name)
+        })
+        .or_else(|| {
             // Development sessions read the repository's desktop entry before the
             // icon has been installed into an XDG theme.
             (name == "hearthspace-settings")
@@ -58,13 +73,49 @@ fn themed_icon(name: &str, theme_path: Option<&str>) -> Option<TrayPixmap> {
     {
         return Some(icon);
     }
-    // Adwaita supplies standard symbolic status icons; the lookup library also
-    // follows theme inheritance and falls back to hicolor and XDG pixmaps.
+    // Follow the user's installed theme before using Adwaita's standard status
+    // icons. Both lookups retain the library's hicolor and pixmap fallbacks.
+    lookup_in_theme(name, configured_theme()).or_else(|| lookup_in_theme(name, "Adwaita"))
+}
+
+fn lookup_in_theme(name: &str, theme: &str) -> Option<TrayPixmap> {
     freedesktop_icons::lookup(name)
         .with_size(ICON_SIZE as u16)
-        .with_theme("Adwaita")
+        .with_theme(theme)
         .find()
         .and_then(|path| decode_file(&path))
+}
+
+fn configured_theme() -> &'static str {
+    static THEME: OnceLock<String> = OnceLock::new();
+    THEME.get_or_init(|| {
+        let schema = gio::SettingsSchemaSource::default()
+            .and_then(|source| source.lookup("org.gnome.desktop.interface", true))
+            .filter(|schema| schema.has_key("icon-theme"));
+        schema
+            .map(|schema| {
+                gio::Settings::new_full(&schema, gio::SettingsBackend::NONE, None)
+                    .string("icon-theme")
+                    .to_string()
+            })
+            .filter(|theme| !theme.is_empty())
+            .unwrap_or_else(|| "Adwaita".into())
+    })
+}
+
+fn catalog_icon(catalog: &AppCatalog, name: &str) -> Option<TrayPixmap> {
+    let alias = catalog.app_for_window(name)?.icon.as_deref()?;
+    if alias == name {
+        return None;
+    }
+    if Path::new(alias).is_absolute() {
+        decode_file(Path::new(alias))
+    } else if Path::new(alias).components().count() == 1 {
+        // One hop is sufficient; do not recursively follow cyclic icon aliases.
+        themed_icon(alias, None)
+    } else {
+        None
+    }
 }
 
 fn application_icon(directory: &Path, name: &str) -> Option<PathBuf> {
