@@ -43,16 +43,36 @@ async fn fresh_snapshots_inhibitor_lifetimes_and_noninteractive_suspend() {
             (&*state.inhibitors[1].0, &*state.inhibitors[1].1),
             ("handle-lid-switch", "block")
         );
-        assert_eq!(
-            state.inhibitors[0].2.read(&mut [0]).unwrap_err().kind(),
-            io::ErrorKind::WouldBlock
-        );
+        for (_, _, reader) in &mut state.inhibitors {
+            assert_eq!(
+                reader.read(&mut [0]).unwrap_err().kind(),
+                io::ErrorKind::WouldBlock,
+                "retained fd keeps inhibitor alive"
+            );
+        }
     }
     drop(sleep);
     drop(lid);
-    for (_, _, reader) in &mut state.lock().unwrap().inhibitors {
+    // D-Bus messages also own transferred descriptors until asynchronous
+    // dispatch drops them. Await observable EOF without holding the service's
+    // mutex or assuming that cleanup finished with the caller's drop.
+    let readers: Vec<_> = state
+        .lock()
+        .unwrap()
+        .inhibitors
+        .iter()
+        .map(|(_, _, reader)| reader.try_clone().unwrap())
+        .collect();
+    for reader in readers {
+        let mut reader = tokio::net::UnixStream::from_std(reader).unwrap();
         assert_eq!(
-            reader.read(&mut [0]).unwrap(),
+            tokio::time::timeout(
+                RPC_TIMEOUT,
+                tokio::io::AsyncReadExt::read(&mut reader, &mut [0]),
+            )
+            .await
+            .expect("dropped inhibitor did not release before deadline")
+            .unwrap(),
             0,
             "dropping fd releases inhibitor"
         );
