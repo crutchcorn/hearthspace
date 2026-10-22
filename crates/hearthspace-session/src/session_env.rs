@@ -148,6 +148,13 @@ pub(crate) fn create_session_env(
     ));
 
     if args.private_session_bus {
+        // The scope adapter becomes available once the native scope owner is
+        // ready. Include its path in private D-Bus activation as well as direct
+        // launches; neither path modifies the shared user-manager environment.
+        vars.push((
+            "PATH".into(),
+            crate::app_scopes::command_path(&paths.session_dir, env::var_os("PATH"))?,
+        ));
         let bus = env::var("DBUS_SESSION_BUS_ADDRESS")
             .map_err(|_| "--private-session-bus requires dbus-run-session")?;
         fs::write(paths.session_dir.join("session-bus.txt"), &bus)?;

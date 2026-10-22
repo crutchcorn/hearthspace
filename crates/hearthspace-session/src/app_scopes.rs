@@ -1,4 +1,4 @@
-//! Keep Snap scopes owned by this session while using the host manager solely
+//! Keep application scopes owned by this session while using the host manager solely
 //! for process tracking. Application D-Bus and display access stay private.
 use std::{
     collections::{BTreeSet, HashMap},
@@ -13,6 +13,9 @@ use std::{
 use crate::{bounded_command, session_env::SessionPaths};
 
 mod identity;
+mod runtime;
+use identity::owner_unit;
+pub(crate) use runtime::command_path;
 
 pub(crate) const OWNER_ENV: &str = "HEARTHSPACE_APP_SCOPE_UNIT";
 
@@ -62,7 +65,7 @@ impl AppScopes {
         command.arg(format!("--unit={}", owner.unit));
         command.arg(format!("--description={}", owner.description()));
         command
-            .arg(guard)
+            .arg(&guard)
             .arg(pid.to_string())
             .arg(start_time)
             .arg(&owner.runtime);
@@ -78,6 +81,7 @@ impl AppScopes {
         if properties.get("ActiveState").map(String::as_str) != Some("active") {
             return Err(io::Error::other("app scope owner exited during startup"));
         }
+        runtime::prepare(&owner.runtime, &guard)?;
         Ok(Some(owner))
     }
 
@@ -177,24 +181,6 @@ fn checked_output(
     Ok(())
 }
 
-fn owner_unit(runtime: &Path) -> io::Result<String> {
-    let name = runtime
-        .file_name()
-        .and_then(|name| name.to_str())
-        .unwrap_or_default();
-    if name.is_empty()
-        || name.len() > 100
-        || !name
-            .bytes()
-            .all(|c| c.is_ascii_alphanumeric() || b"-_".contains(&c))
-    {
-        return Err(io::Error::other(
-            "session runtime basename cannot form an app scope owner",
-        ));
-    }
-    Ok(format!("hearthspace-apps-{name}.service"))
-}
-
 fn parse_properties(text: &str) -> HashMap<String, String> {
     text.lines()
         .filter_map(|line| line.split_once('='))
@@ -221,13 +207,7 @@ fn scope_records(runtime: &Path) -> io::Result<BTreeSet<String>> {
     for entry in fs::read_dir(directory)? {
         let entry = entry?;
         let name = entry.file_name().to_string_lossy().into_owned();
-        if units.len() >= 512
-            || !entry.file_type()?.is_file()
-            || !name.starts_with("snap.")
-            || !name.ends_with(".scope")
-            || !name
-                .bytes()
-                .all(|byte| byte.is_ascii_alphanumeric() || b"-_.".contains(&byte))
+        if units.len() >= 512 || !entry.file_type()?.is_file() || !identity::valid_scope_name(&name)
         {
             return Err(io::Error::other("invalid or excessive app scope records"));
         }

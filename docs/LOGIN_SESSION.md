@@ -59,7 +59,8 @@ The `--login-session` supervisor mode owns an entire Hearthspace login. Its
 separate cleanup guard tracks exact process and logind identities; when the
 supervisor ends, the guard terminates only that login scope, including detached
 descendants. It then removes the verified private runtime, safely detaching known
-portal mounts. Snap app scopes also retain their existing supervisor guard.
+portal mounts. Snap and Ptyxis app scopes also retain their independent supervisor
+guard; see [terminal scope integration](APPS.md#gnome-terminal--ptyxis).
 GDM can leave logind's `Desktop` property empty because it opens PAM before
 exporting the selected desktop. In that case, the guard additionally requires a
 `gdm-password` or `gdm-autologin` session and the supervisor's original

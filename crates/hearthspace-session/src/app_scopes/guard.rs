@@ -1,9 +1,7 @@
 //! A user-manager service tying app scopes to one live session supervisor.
 use std::{fs, io, path::Path, thread, time::Duration};
 
-#[path = "identity.rs"]
-mod identity;
-use identity::{CLOSING_FILE, READY_FILE, process_start_time};
+use crate::identity::{CLOSING_FILE, READY_FILE, process_start_time};
 
 pub fn alive(pid: u32, start_time: &str, runtime: &Path) -> bool {
     runtime.is_dir()

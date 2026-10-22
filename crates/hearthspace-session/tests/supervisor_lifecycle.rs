@@ -173,7 +173,7 @@ fn native_start_bootstraps_a_private_bus_and_correct_activation_environment() {
 import json, os
 keys = ['XDG_RUNTIME_DIR', 'WAYLAND_DISPLAY', 'XDG_CURRENT_DESKTOP',
         'XDG_SESSION_TYPE', 'DISPLAY', 'WAYLAND_SOCKET', 'DBUS_SESSION_BUS_ADDRESS',
-        'HEARTHSPACE_SETTINGS_SOCKET']
+        'HEARTHSPACE_SETTINGS_SOCKET', 'PATH']
 with open(os.environ['HEARTHSPACE_HOST_XDG_RUNTIME_DIR'] + '/activation.json', 'w') as output:
     json.dump({key: os.environ.get(key) for key in keys}, output)
 "#,
@@ -242,6 +242,10 @@ while True:
     assert!(activated.contains("\"DISPLAY\": \"\""));
     assert!(activated.contains("\"WAYLAND_SOCKET\": null"));
     assert!(activated.contains("settings.sock"));
+    assert!(activated.contains(&format!(
+        "\"PATH\": \"{}:",
+        runtime.join("app-bin").display()
+    )));
     assert!(!activated.contains("invalid-host-bus"));
     assert!(!runtime.exists());
 }
