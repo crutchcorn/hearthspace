@@ -48,7 +48,7 @@ fn gather_completion_keeps_independent_seed_moves_pending_for_canvas_peek() {
     let pending = server.request(&compositor);
     assert_eq!(
         pending["questions"]["relevant"]["instructions"]["candidate_window_title"],
-        "Overview editor 0"
+        "Navigation editor 0"
     );
 
     // Hold inference so the independent move cannot race the candidate's flight.
