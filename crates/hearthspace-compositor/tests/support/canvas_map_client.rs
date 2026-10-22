@@ -12,6 +12,8 @@ use wayland_protocols::xdg::shell::client::{xdg_surface, xdg_toplevel, xdg_wm_ba
 
 #[path = "canvas_map_client/pixels.rs"]
 mod pixels;
+#[path = "canvas_map_client/resize.rs"]
+mod resize;
 
 struct Window {
     surface: wl_surface::WlSurface,
@@ -22,6 +24,7 @@ struct Window {
     color: [u8; 4],
     rectangle: Option<pixels::ColoredRectangle>,
     alive: bool,
+    defer_buffer: bool,
 }
 
 #[derive(Default)]
@@ -96,6 +99,7 @@ impl MapClient {
             color,
             rectangle: None,
             alive: true,
+            defer_buffer: false,
         });
         surface.commit();
         self.sync();
@@ -375,7 +379,9 @@ impl Dispatch<xdg_surface::XdgSurface, usize> for State {
     ) {
         if let xdg_surface::Event::Configure { serial } = event {
             surface.ack_configure(serial);
-            state.commit_buffer(*number, handle);
+            if !state.windows[*number].defer_buffer {
+                state.commit_buffer(*number, handle);
+            }
         }
     }
 }

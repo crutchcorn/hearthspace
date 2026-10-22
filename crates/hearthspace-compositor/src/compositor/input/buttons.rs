@@ -29,6 +29,9 @@ impl App {
         time: InputTime,
     ) {
         self.shortcuts.cancel_meta_tap();
+        if state == ButtonState::Pressed {
+            self.abandon_released_shell_resize_click();
+        }
         // An overlay or gesture may have cancelled a compositor-owned press.
         // Consume its release before another input mode can redirect it.
         if state == ButtonState::Released && self.titlebar_pointer_button(button, state, time) {
@@ -222,7 +225,7 @@ impl App {
             // Existing grabs keep their owner and release coordinates.
             pointer.motion(
                 self,
-                focus,
+                focus.clone(),
                 &MotionEvent {
                     location: self.pointer_location,
                     serial: SERIAL_COUNTER.next_serial(),
@@ -230,12 +233,16 @@ impl App {
                 },
             );
         }
-        self.deliver_pointer_button(&ButtonEvent {
+        let event = ButtonEvent {
             serial: SERIAL_COUNTER.next_serial(),
             time,
             button,
             state,
-        });
+        };
+        if state == ButtonState::Pressed {
+            self.defer_shell_resize_click(focus, &event);
+        }
+        self.deliver_pointer_button(&event);
         if state == ButtonState::Pressed {
             self.track_shell_pointer_grab();
         }

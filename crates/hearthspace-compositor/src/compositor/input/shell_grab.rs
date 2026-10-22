@@ -11,6 +11,8 @@ use smithay::{
     utils::{Logical, Point},
 };
 
+mod pending;
+
 impl App {
     pub(super) fn track_shell_pointer_grab(&mut self) {
         let pointer = self.pointer.clone();
@@ -43,7 +45,9 @@ impl App {
             ShellGrab {
                 window_id: self.windows[index].id,
                 child_offset,
+                original_focus: start.focus.clone().unwrap(),
                 start,
+                pending: None,
             },
             serial,
             Focus::Keep,
@@ -68,6 +72,8 @@ struct ShellGrab {
     window_id: u64,
     child_offset: Point<f64, Logical>,
     start: GrabStartData<App>,
+    original_focus: (WlSurface, Point<f64, Logical>),
+    pending: Option<pending::Pending>,
 }
 
 impl ShellGrab {
@@ -76,7 +82,7 @@ impl ShellGrab {
         data: &App,
         location: Point<f64, Logical>,
     ) -> Option<(WlSurface, Point<f64, Logical>)> {
-        let (surface, old_origin) = self.start.focus.as_ref()?;
+        let (surface, old_origin) = &self.original_focus;
         let origin = data
             .windows
             .iter()
@@ -95,6 +101,11 @@ impl PointerGrab<App> for ShellGrab {
         _focus: Option<(WlSurface, Point<f64, Logical>)>,
         event: &MotionEvent,
     ) {
+        if let Some(pending) = self.pending.as_mut() {
+            pending.motion(event.clone());
+            self.flush_pending(data, handle, event.serial, event.time);
+            return;
+        }
         handle.motion(data, self.focus(data, event.location), event);
     }
 
@@ -105,6 +116,9 @@ impl PointerGrab<App> for ShellGrab {
         focus: Option<(WlSurface, Point<f64, Logical>)>,
         event: &RelativeMotionEvent,
     ) {
+        if self.pending.is_some() {
+            return;
+        }
         handle.relative_motion(data, focus, event);
     }
 
@@ -114,6 +128,11 @@ impl PointerGrab<App> for ShellGrab {
         handle: &mut PointerInnerHandle<'_, App>,
         event: &ButtonEvent,
     ) {
+        if let Some(pending) = self.pending.as_mut() {
+            pending.button(*event, data.pointer_location);
+            self.flush_pending(data, handle, event.serial, event.time);
+            return;
+        }
         // A resize may happen under a stationary pointer between down and up.
         // Native buttons need the current local coordinates before their release.
         let location = handle.current_location();
@@ -138,11 +157,16 @@ impl PointerGrab<App> for ShellGrab {
         handle: &mut PointerInnerHandle<'_, App>,
         details: AxisFrame,
     ) {
+        if self.pending.is_some() {
+            return;
+        }
         handle.axis(data, details);
     }
 
     fn frame(&mut self, data: &mut App, handle: &mut PointerInnerHandle<'_, App>) {
-        handle.frame(data);
+        if self.pending.is_none() {
+            handle.frame(data);
+        }
     }
 
     fn gesture_swipe_begin(
@@ -151,7 +175,9 @@ impl PointerGrab<App> for ShellGrab {
         handle: &mut PointerInnerHandle<'_, App>,
         event: &GestureSwipeBeginEvent,
     ) {
-        handle.gesture_swipe_begin(data, event);
+        if self.pending.is_none() {
+            handle.gesture_swipe_begin(data, event);
+        }
     }
     fn gesture_swipe_update(
         &mut self,
@@ -159,7 +185,9 @@ impl PointerGrab<App> for ShellGrab {
         handle: &mut PointerInnerHandle<'_, App>,
         event: &GestureSwipeUpdateEvent,
     ) {
-        handle.gesture_swipe_update(data, event);
+        if self.pending.is_none() {
+            handle.gesture_swipe_update(data, event);
+        }
     }
     fn gesture_swipe_end(
         &mut self,
@@ -167,7 +195,9 @@ impl PointerGrab<App> for ShellGrab {
         handle: &mut PointerInnerHandle<'_, App>,
         event: &GestureSwipeEndEvent,
     ) {
-        handle.gesture_swipe_end(data, event);
+        if self.pending.is_none() {
+            handle.gesture_swipe_end(data, event);
+        }
     }
     fn gesture_pinch_begin(
         &mut self,
@@ -175,7 +205,9 @@ impl PointerGrab<App> for ShellGrab {
         handle: &mut PointerInnerHandle<'_, App>,
         event: &GesturePinchBeginEvent,
     ) {
-        handle.gesture_pinch_begin(data, event);
+        if self.pending.is_none() {
+            handle.gesture_pinch_begin(data, event);
+        }
     }
     fn gesture_pinch_update(
         &mut self,
@@ -183,7 +215,9 @@ impl PointerGrab<App> for ShellGrab {
         handle: &mut PointerInnerHandle<'_, App>,
         event: &GesturePinchUpdateEvent,
     ) {
-        handle.gesture_pinch_update(data, event);
+        if self.pending.is_none() {
+            handle.gesture_pinch_update(data, event);
+        }
     }
     fn gesture_pinch_end(
         &mut self,
@@ -191,7 +225,9 @@ impl PointerGrab<App> for ShellGrab {
         handle: &mut PointerInnerHandle<'_, App>,
         event: &GesturePinchEndEvent,
     ) {
-        handle.gesture_pinch_end(data, event);
+        if self.pending.is_none() {
+            handle.gesture_pinch_end(data, event);
+        }
     }
     fn gesture_hold_begin(
         &mut self,
@@ -199,7 +235,9 @@ impl PointerGrab<App> for ShellGrab {
         handle: &mut PointerInnerHandle<'_, App>,
         event: &GestureHoldBeginEvent,
     ) {
-        handle.gesture_hold_begin(data, event);
+        if self.pending.is_none() {
+            handle.gesture_hold_begin(data, event);
+        }
     }
     fn gesture_hold_end(
         &mut self,
@@ -207,7 +245,9 @@ impl PointerGrab<App> for ShellGrab {
         handle: &mut PointerInnerHandle<'_, App>,
         event: &GestureHoldEndEvent,
     ) {
-        handle.gesture_hold_end(data, event);
+        if self.pending.is_none() {
+            handle.gesture_hold_end(data, event);
+        }
     }
 
     fn start_data(&self) -> &GrabStartData<App> {
