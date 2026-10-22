@@ -25,6 +25,8 @@ stable when frame controls move or hide. Maximization fits the current view,
 including its zoom, then keeps that canvas size and location as the view pans
 or zooms. Double-click again to restore the original size and position.
 Individual maximized windows must be restored before moving or resizing them.
+Dragging a selection of multiple windows moves each maximized member's visible
+bounds and saved restore position together.
 
 The server title bar's expand button enters **focused view** instead. The window
 fills its output at native scale, retains its title bar, and uses square corners.

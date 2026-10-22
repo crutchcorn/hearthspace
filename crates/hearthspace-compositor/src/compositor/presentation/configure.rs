@@ -6,7 +6,7 @@ use smithay::utils::{Point, Rectangle};
 use wayland_protocols::xdg::shell::server::xdg_toplevel;
 
 impl App {
-    pub(super) fn configure_window_presentation(&self, index: usize) {
+    pub(in crate::compositor) fn configure_window_presentation(&self, index: usize) {
         let window = &self.windows[index];
         let state = &window.presentation;
         let bounds = self
