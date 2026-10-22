@@ -74,12 +74,21 @@ fn spawn_child(
         command.env_remove(key);
     }
     command
-        .process_group(0)
         .args(&spec.args)
         .envs(spec.envs.iter().map(|(key, value)| (key, value)))
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
+    // A separate process group still inherits the login's controlling terminal.
+    // An application's interactive shell probe can then send SIGTTIN to that
+    // entire background group, stopping the compositor and every client in it.
+    // A new POSIX session removes the terminal while retaining PID == PGID for
+    // our existing group cleanup; logind/cgroup session ownership is unchanged.
+    // SAFETY: setsid is async-signal-safe, and conversion of its errno does not
+    // allocate or acquire locks between fork and exec.
+    unsafe {
+        command.pre_exec(|| nix::unistd::setsid().map(|_| ()).map_err(io::Error::from));
+    }
     if let Some(current_dir) = &spec.current_dir {
         command.current_dir(current_dir);
     }
@@ -228,3 +237,6 @@ fn kill_group(process: &ManagedProcess) {
         let _ = signal::killpg(Pid::from_raw(pid), signal::Signal::SIGKILL);
     }
 }
+
+#[cfg(test)]
+mod tests;
