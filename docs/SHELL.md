@@ -27,6 +27,13 @@ occurs on release. Using Meta in a shortcut, such as Super+Return, Super+L or
 Super+arrow, does not toggle it afterward. Super+Space opens Apps List, as does
 its dock button or an upward touchscreen swipe starting on the dock.
 
+Launcher requests reserve keyboard input immediately. The shell must acknowledge
+a request within one second; that first acknowledgement grants five seconds to
+create and map its first buffer. Repeated activation or acknowledgements cannot
+extend the deadline. Cancellation, output/token matching, and the bounded input
+queue still apply, so slow startup can preserve early typing without accepting a
+stale or cancelled launcher. Canvas search retains its explicit session lifetime.
+
 Ctrl+K or Super+K opens canvas search, which temporarily arranges matching desktop
 objects and live windows around a native search field. Its toolbar button arms
 click-to-open Search mode. This is independent of Apps List.

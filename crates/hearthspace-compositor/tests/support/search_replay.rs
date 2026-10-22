@@ -5,7 +5,7 @@ use super::*;
 const GREEN: [u8; 4] = [0x66, 0xcc, 0, 0xff];
 
 #[test]
-fn repeated_search_activation_preserves_accepted_request_and_early_typing() {
+fn delayed_search_mapping_preserves_early_typing_and_repeated_activation() {
     use std::{io::ErrorKind, os::unix::net::UnixDatagram};
 
     let _guard = headless_test_guard();
@@ -34,8 +34,9 @@ fn repeated_search_activation_preserves_accepted_request_and_early_typing() {
     action(&compositor, "focus-launcher");
     let event = super::shell_events::receive(&events, "open-search");
     let token = event["token"].as_u64().unwrap();
-    action(&compositor, format!("shell-event-accept {token}"));
+    // Text can arrive before the shell acknowledges the request.
     super::navigation::keys(&compositor, &[30]);
+    action(&compositor, format!("shell-event-accept {token}"));
     for _ in 0..4 {
         action(&compositor, "focus-launcher");
     }
@@ -47,14 +48,17 @@ fn repeated_search_activation_preserves_accepted_request_and_early_typing() {
         ErrorKind::WouldBlock,
         "repeated activation must reuse the accepted in-flight request"
     );
+    // Real shell anchoring and first-buffer creation can exceed the one-second
+    // acknowledgement deadline. Keep the surface unmapped until after it.
+    thread::sleep(Duration::from_millis(1200));
     let search = client.add(
         hearthspace_common::launcher_app_id_for_request(None, token),
         (500, 300),
         (0, 0),
         GREEN,
     );
-    assert_eq!(client.focus(), Some(search));
     assert!(!client.closed().contains(&search));
+    assert_eq!(client.focus(), Some(search));
     assert_eq!(
         client.keys(),
         [30, 30],

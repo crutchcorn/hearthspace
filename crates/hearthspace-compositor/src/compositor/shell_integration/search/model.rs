@@ -1,5 +1,5 @@
 //! Bounded pending input for launcher requests and explicit canvas-search sessions.
-use super::{MAX_CANVAS_PENDING_KEYS, MAX_PENDING_KEYS};
+use super::{FIRST_BUFFER_LIFETIME, MAX_CANVAS_PENDING_KEYS, MAX_PENDING_KEYS};
 use smithay::{
     backend::input::{InputTime, KeyState},
     input::keyboard::{KeyboardSource, Keycode},
@@ -34,13 +34,30 @@ pub(in crate::compositor) struct SearchRequest {
 
 impl SearchRequest {
     pub(super) fn valid(&self) -> bool {
-        self.pending.as_ref().is_some_and(|pending| {
-            !pending.cancelled && (pending.canvas || Instant::now() < pending.expires)
-        })
+        self.valid_at(Instant::now())
+    }
+
+    pub(super) fn valid_at(&self, now: Instant) -> bool {
+        self.pending
+            .as_ref()
+            .is_some_and(|pending| !pending.cancelled && (pending.canvas || now < pending.expires))
+    }
+
+    /// Repeated activation coalesces without extending either deadline.
+    pub(super) fn can_reuse_at(&self, output: Option<&str>, now: Instant) -> bool {
+        self.valid_at(now)
+            && self
+                .pending
+                .as_ref()
+                .is_some_and(|pending| pending.output.as_deref() == output)
     }
 
     pub(super) fn accept(&mut self, token: u64) -> Result<(), String> {
-        if !self.valid() {
+        self.accept_at(token, Instant::now())
+    }
+
+    pub(super) fn accept_at(&mut self, token: u64, now: Instant) -> Result<(), String> {
+        if !self.valid_at(now) {
             return Err("search request expired or cancelled".into());
         }
         let pending = self.pending.as_mut().unwrap();
@@ -48,6 +65,9 @@ impl SearchRequest {
             return Err("search request superseded or already accepted".into());
         }
         pending.accepted = true;
+        // A fresh acknowledgement authorizes asynchronous anchoring and window
+        // creation. Grant that work a finite budget once, separate from freshness.
+        pending.expires = now + FIRST_BUFFER_LIFETIME;
         Ok(())
     }
 
