@@ -46,6 +46,9 @@ class FavoriteUiHeadlessTests(unittest.TestCase):
                 run,
                 "HEARTHSPACE_FAVORITE_FIXTURE",
                 services=services,
+                # The complete software-rendered workflow takes about 129s,
+                # including cold renderer startup and private AT-SPI queries.
+                timeout=180,
             )
 
 

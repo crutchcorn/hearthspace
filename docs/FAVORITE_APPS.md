@@ -92,6 +92,17 @@ Settings drawing widget, reads back the saved shape, and launches through the
 real search input path. It also verifies unknown-shape rejection, leaving the
 area, closing drawing mode, and Escape while holding a stroke.
 
+The headless workflow has a 180-second aggregate budget, including startup,
+Settings interaction, cancellation checks, and launch verification. On
+2026-10-22, an isolated debug run with Lavapipe/llvmpipe at 2560×1600 and 2×
+completed every assertion in 128.6 seconds. Its private AT-SPI subprocesses took
+53.2 seconds, captures 6.4 seconds, and input contexts 33.3 seconds; these
+categories can overlap. The former 120-second limit expired during observation
+of already-present controls. Readiness controls now share the required geometry
+snapshot, preserving both consecutive observations and their geometry fences.
+The allowance covers the complete software fixture, not application launch
+latency. Timed evidence: `/tmp/hearthspace-favorite-timed-240/`.
+
 ## Initial implementation validation — 2026-10-15
 
 - Full format, Python lint, strict workspace Clippy and all-target build passed.
