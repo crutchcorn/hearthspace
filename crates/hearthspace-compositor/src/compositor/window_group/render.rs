@@ -16,14 +16,13 @@ use smithay::{
 use super::{App, Gesture};
 use crate::compositor::appearance::color;
 use hearthspace_ui_components::Palette;
+use labels::LabelBuffer;
 
+mod labels;
 mod lasso;
 mod shapes;
 use crate::{
-    compositor::{
-        navigation::usable_output, overview::labels::LabelBuffer,
-        rendering::HearthspaceRenderElement,
-    },
+    compositor::{navigation::usable_output, rendering::HearthspaceRenderElement},
     geometry::rect_contains,
 };
 

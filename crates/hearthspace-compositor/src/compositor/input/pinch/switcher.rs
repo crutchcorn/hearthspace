@@ -98,11 +98,7 @@ impl App {
         device: String,
         fingers: u32,
     ) {
-        if self.pinch_zoom.is_active()
-            || self.pinch_blocked()
-            || self.overview_active()
-            || self.window_switcher_active()
-        {
+        if self.pinch_zoom.is_active() || self.pinch_blocked() || self.window_switcher_active() {
             return;
         }
         self.pinch_zoom.switcher = SwitcherGesture::begin(input, device, fingers);

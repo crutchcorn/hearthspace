@@ -224,7 +224,6 @@ impl App {
             ManagedWindowKind::ControlOsd | ManagedWindowKind::ShellWatcher
         ) || self.session_locked()
             || (self.canvas_search_active() && !self.canvas_search_panel_allowed(window_index))
-            || self.overview_active()
             || self.window_switcher_active()
             || self.is_window_switcher_caption(window_index)
             || self.is_layout_tooltip(window_index)

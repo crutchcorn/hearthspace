@@ -15,7 +15,7 @@ pub(super) fn append(icon: Icon, _: bool, g: &mut Geometry) -> bool {
             g.path("M5.1 13.15v3.35a3 3 0 0 0 3 3h1.4");
             g.path("m14.2 13.4 7.2 4.4-3.2.8-1.6 2.8Z");
         }
-        Icon::Overview => {
+        Icon::Map => {
             g.path("M3.5 8V3.5H8m8 0h4.5V8m0 8v4.5H16m-8 0H3.5V16");
             g.rect(7.0, 7.0, 9.0, 8.0, 1.0, false);
             g.path("M10 10h3");

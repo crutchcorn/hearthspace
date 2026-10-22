@@ -5,6 +5,7 @@ use smithay::{
 };
 
 use super::{super::App, pinch::PinchInput, touch_tracker::TouchAction};
+use crate::compositor::switcher::SwitcherSource;
 
 impl App {
     pub(super) fn touch_down(
@@ -40,10 +41,15 @@ impl App {
             }
         }
         self.begin_ui_touch(device, slot, location, time, first);
+        if !first && self.window_switcher_active() {
+            self.invalidate_window_switcher_tap();
+        }
         self.touch_input.down(device, slot, location);
         // Canvas previews accept ordinary single-contact taps. An extra
         // contact cancels the pending tap without activating the revealed app.
-        if ((self.canvas_search_active() || self.window_switcher_active() || self.layout_editing())
+        if ((self.canvas_search_active()
+            || self.window_switcher_source() == Some(SwitcherSource::Keyboard)
+            || self.layout_editing())
             && !first)
             || (first
                 && !self.canvas_search_active()
@@ -139,14 +145,14 @@ impl App {
                 TouchAction::EndPinch { cancelled } => {
                     self.end_pinch_zoom(PinchInput::Touchscreen, &device, cancelled, time);
                 }
-                TouchAction::BeginOverview { fingers } => {
-                    self.start_overview_pinch(PinchInput::Touchscreen, device, fingers);
+                TouchAction::BeginSwitcherPinch { fingers } => {
+                    self.start_switcher_pinch(PinchInput::Touchscreen, device, fingers);
                 }
-                TouchAction::UpdateOverview { scale } => {
-                    self.update_overview_pinch(PinchInput::Touchscreen, &device, scale);
+                TouchAction::UpdateSwitcherPinch { scale } => {
+                    self.update_switcher_pinch(PinchInput::Touchscreen, &device, scale);
                 }
-                TouchAction::EndOverview { cancelled } => {
-                    self.end_overview_pinch(PinchInput::Touchscreen, &device, cancelled);
+                TouchAction::EndSwitcherPinch { cancelled } => {
+                    self.end_switcher_pinch(PinchInput::Touchscreen, &device, cancelled);
                 }
                 TouchAction::BeginSwitcher { fingers } => {
                     self.start_window_switcher_swipe(PinchInput::Touchscreen, device, fingers);

@@ -1,4 +1,4 @@
-use super::overview::{begin_overview, contacts};
+use super::switcher_pinch::{begin_switcher_pinch, contacts};
 use super::*;
 
 fn transform(tracker: &mut TouchTracker, fingers: u32, scale: f64, translation: Position) {
@@ -33,8 +33,8 @@ fn assert_gesture_actions(actual: Vec<TouchAction>, expected: Vec<TouchAction>) 
                 );
             }
             (
-                TouchAction::UpdateOverview { scale: actual },
-                TouchAction::UpdateOverview { scale: expected },
+                TouchAction::UpdateSwitcherPinch { scale: actual },
+                TouchAction::UpdateSwitcherPinch { scale: expected },
             ) => assert!((actual - expected).abs() < 1e-12, "{actual} != {expected}"),
             _ => assert_eq!(actual, expected),
         }
@@ -42,12 +42,12 @@ fn assert_gesture_actions(actual: Vec<TouchAction>, expected: Vec<TouchAction>) 
 }
 
 fn begin_swipe(tracker: &mut TouchTracker, fingers: u32) {
-    begin_overview(tracker, fingers);
+    begin_switcher_pinch(tracker, fingers);
     transform(tracker, fingers, 1.0, point(-40.0, 0.0));
     assert_gesture_actions(
         frame(tracker),
         vec![
-            TouchAction::EndOverview { cancelled: true },
+            TouchAction::EndSwitcherPinch { cancelled: true },
             TouchAction::BeginSwitcher { fingers },
             TouchAction::UpdateSwitcher {
                 translation: point(-40.0, 0.0),
@@ -91,16 +91,16 @@ fn four_and_five_finger_swipes_use_absolute_centroid_translation() {
 fn first_meaningful_intent_locks_pinch_or_swipe() {
     for fingers in [4, 5] {
         let mut tracker = TouchTracker::default();
-        begin_overview(&mut tracker, fingers);
+        begin_switcher_pinch(&mut tracker, fingers);
         transform(&mut tracker, fingers, 0.8, point(-40.0, 0.0));
         assert!(matches!(
             frame(&mut tracker).as_slice(),
-            [TouchAction::UpdateOverview { .. }]
+            [TouchAction::UpdateSwitcherPinch { .. }]
         ));
         transform(&mut tracker, fingers, 1.0, point(-200.0, 0.0));
         assert_gesture_actions(
             frame(&mut tracker),
-            vec![TouchAction::UpdateOverview { scale: 1.0 }],
+            vec![TouchAction::UpdateSwitcherPinch { scale: 1.0 }],
         );
         let mut tracker = TouchTracker::default();
         begin_swipe(&mut tracker, fingers);
@@ -117,16 +117,16 @@ fn first_meaningful_intent_locks_pinch_or_swipe() {
 #[test]
 fn jitter_and_vertical_motion_cannot_accidentally_switch_windows() {
     let mut tracker = TouchTracker::default();
-    begin_overview(&mut tracker, 4);
+    begin_switcher_pinch(&mut tracker, 4);
     transform(&mut tracker, 4, 1.0, point(-31.0, 10.0));
     assert_gesture_actions(
         frame(&mut tracker),
-        vec![TouchAction::UpdateOverview { scale: 1.0 }],
+        vec![TouchAction::UpdateSwitcherPinch { scale: 1.0 }],
     );
     transform(&mut tracker, 4, 1.0, point(20.0, 50.0));
     assert_eq!(
         frame(&mut tracker),
-        vec![TouchAction::EndOverview { cancelled: true }]
+        vec![TouchAction::EndSwitcherPinch { cancelled: true }]
     );
     transform(&mut tracker, 4, 0.5, point(-200.0, 0.0));
     assert!(frame(&mut tracker).is_empty());
@@ -141,7 +141,7 @@ fn fifth_contact_cancels_swipe_and_rebases_without_placement_motion() {
         frame(&mut tracker),
         vec![
             TouchAction::EndSwitcher { cancelled: true },
-            TouchAction::BeginOverview { fingers: 5 },
+            TouchAction::BeginSwitcherPinch { fingers: 5 },
         ]
     );
     let positions: Vec<_> = tracker
@@ -155,7 +155,7 @@ fn fifth_contact_cancels_swipe_and_rebases_without_placement_motion() {
     assert_gesture_actions(
         frame(&mut tracker),
         vec![
-            TouchAction::EndOverview { cancelled: true },
+            TouchAction::EndSwitcherPinch { cancelled: true },
             TouchAction::BeginSwitcher { fingers: 5 },
             TouchAction::UpdateSwitcher {
                 translation: point(-40.0, 0.0),

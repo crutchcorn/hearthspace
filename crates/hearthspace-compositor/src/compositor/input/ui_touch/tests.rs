@@ -83,5 +83,8 @@ fn cancelled_touch_never_leaks_pointer_clicks_but_global_gestures_still_pass() {
             anchor: (3.0, 4.0).into()
         }
     ));
-    assert!(!touch.suppresses_pointer("screen", &TouchAction::EndOverview { cancelled: false }));
+    assert!(!touch.suppresses_pointer(
+        "screen",
+        &TouchAction::EndSwitcherPinch { cancelled: false }
+    ));
 }

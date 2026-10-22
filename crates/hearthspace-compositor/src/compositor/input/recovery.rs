@@ -36,8 +36,7 @@ impl App {
         self.shortcuts.cancel_device_repeat();
         self.dismiss_control_osds();
         self.reset_window_switcher();
-        self.close_overview();
-        self.overview_input.clear();
+        self.switcher_input.clear();
         self.cancel_input_gestures();
         self.viewport_animation = None;
         self.drag = None;

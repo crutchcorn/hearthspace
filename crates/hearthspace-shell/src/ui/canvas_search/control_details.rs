@@ -78,7 +78,7 @@ fn tools(state: &ShellState) -> impl WidgetView<ShellState> + use<> {
         (Icon::Search, state.canvas_search.snapshot.mode),
         (Icon::Lasso, state.window_group.selecting),
         (
-            Icon::Overview,
+            Icon::Map,
             state.outputs.iter().any(|output| output.show_map),
         ),
     ]

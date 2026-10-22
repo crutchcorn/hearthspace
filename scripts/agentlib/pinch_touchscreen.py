@@ -215,8 +215,8 @@ def acceptance(smoke, window):
                 raise ControlError(
                     "fourth touchscreen contact did not restore the starting view"
                 )
-            if smoke.control.status()["overview"]["active"]:
-                raise ControlError("subthreshold fourth-contact motion opened overview")
+            if smoke.control.status()["window_switcher"]["active"]:
+                raise ControlError("subthreshold fourth-contact motion opened switcher")
             unchanged_window(smoke, window)
             smoke.capture("touchscreen-cancel-restored")
             smoke.record(

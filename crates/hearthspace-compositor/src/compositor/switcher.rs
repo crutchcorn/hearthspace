@@ -153,7 +153,10 @@ impl App {
         Ok(())
     }
     pub(super) fn dismiss_window_switcher(&mut self, cancelled: bool) {
-        let Some(session) = self.window_switcher.session.take() else {
+        // Clear the modal owner before touch cleanup can deliver queued releases.
+        let session = self.window_switcher.session.take();
+        self.interrupt_switcher_pinch();
+        let Some(session) = session else {
             return;
         };
         if session.source == SwitcherSource::Gesture {

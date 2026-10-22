@@ -45,7 +45,6 @@ impl App {
             || self.pointer.is_grabbed()
             || self.layout_editing()
             || self.canvas_search_active()
-            || self.overview_active()
             || self.window_switcher_active()
             || self.desktop.gesture.is_some()
             || self.group_interaction_active()

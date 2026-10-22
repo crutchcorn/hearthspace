@@ -126,7 +126,7 @@ impl App {
         if self.canvas_search_pointer_motion(time) {
             return;
         }
-        if self.overview_pointer_motion(time) {
+        if self.window_switcher_pointer_motion(time) {
             return;
         }
         if self.group_pointer_motion(time) {
@@ -198,7 +198,7 @@ impl App {
             self.lock_pointer_motion(InputTime::now());
             return;
         }
-        if self.overview_pointer_motion(InputTime::now()) {
+        if self.window_switcher_pointer_motion(InputTime::now()) {
             return;
         }
         let hit = self.hit_test(self.pointer_location);

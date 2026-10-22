@@ -7,7 +7,6 @@ impl App {
     pub(super) fn group_visible_on_output(&self, output: Rectangle<i32, Logical>) -> bool {
         self.group_active()
             && !self.session_locked()
-            && !self.overview_active()
             && !self.window_switcher_active()
             // A raised floating app or focused shell makes the canvas controls
             // visible again even when a fullscreen app remains behind it.

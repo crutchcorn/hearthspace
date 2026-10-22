@@ -243,7 +243,7 @@ impl XdgShellHandler for App {
     }
 
     fn grab(&mut self, surface: PopupSurface, seat: wl_seat::WlSeat, serial: Serial) {
-        if self.session_locked() || self.overview_active() || self.window_switcher_active() {
+        if self.session_locked() || self.window_switcher_active() {
             return;
         }
         // Set up a popup grab so the menu behaves modally: keyboard and pointer

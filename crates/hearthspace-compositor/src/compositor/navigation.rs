@@ -29,7 +29,6 @@ impl App {
 
     pub(super) fn navigation_available(&self) -> bool {
         !self.session_locked()
-            && !self.overview_active()
             && !self.canvas_search_active()
             && !self.window_switcher_active()
             && !self.layout_editing()
@@ -43,7 +42,7 @@ impl App {
 
     pub(in crate::compositor) fn check_navigation_available(&self) -> Result<(), String> {
         self.navigation_available().then_some(()).ok_or_else(|| {
-            "window action unavailable during overview, window switching, an input grab, or interactive move/resize".into()
+            "window action unavailable during window switching, an input grab, or interactive move/resize".into()
         })
     }
 

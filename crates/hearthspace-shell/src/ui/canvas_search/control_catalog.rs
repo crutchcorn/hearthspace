@@ -85,8 +85,8 @@ pub(super) const ENTRIES: &[Entry] = &[
     },
     Entry {
         id: "tool:map",
-        title: "Overview",
+        title: "Canvas map",
         keywords: "map minimap zoom canvas",
-        icon: Icon::Overview,
+        icon: Icon::Map,
     },
 ];

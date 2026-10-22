@@ -31,7 +31,7 @@ Ctrl+K or Super+K opens canvas search, which temporarily arranges matching deskt
 objects and live windows around a native search field. Its toolbar button arms
 click-to-open Search mode. This is independent of Apps List.
 
-Alt+Tab opens the [live window grid](WINDOW_MANAGEMENT.md#held-window-switcher),
+Alt+Tab opens the [live window grid](WINDOW_MANAGEMENT.md#window-switcher),
 with an accent outline and a glass title badge below the selected preview.
 Alt release commits; Shift reverses cycling and Escape cancels.
 
@@ -51,7 +51,7 @@ available in Apps List. Prebuilt sessions register its desktop entry in their
 private runtime, using the selected binary directory when provided.
 
 Power contains Lock and Log out; Log out requires confirmation and offers Cancel.
-Overview gestures, Super+O, and Alt+Tab remain available. Settings, Lock and Log
+Pinch gestures and Alt+Tab open the window switcher. Settings, Lock and Log
 out are reached through Apps List and Power rather than standalone corner buttons.
 
 Wi-Fi shows the network tray handoff until a network-management backend is

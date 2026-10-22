@@ -32,10 +32,6 @@ impl SpawnTarget {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ShellCommand {
-    OverviewOn,
-    OverviewOff,
-    OverviewToggle,
-    OverviewSelect(u64),
     GroupSelectionToggle,
     GroupClear,
     GroupGather,
@@ -95,8 +91,6 @@ impl ShellCommand {
 
     pub fn label(&self) -> &'static str {
         match self {
-            Self::OverviewOn | Self::OverviewOff | Self::OverviewToggle => "OVERVIEW",
-            Self::OverviewSelect(_) => "SELECT",
             Self::GroupSelectionToggle => "SELECT GROUP",
             Self::GroupClear => "CLEAR GROUP",
             Self::GroupGather => "GATHER",
@@ -142,10 +136,6 @@ impl ShellCommand {
 
     pub fn wire_name(&self) -> String {
         match self {
-            Self::OverviewOn => "overview-on".into(),
-            Self::OverviewOff => "overview-off".into(),
-            Self::OverviewToggle => "overview-toggle".into(),
-            Self::OverviewSelect(id) => format!("overview-select {id}"),
             Self::GroupSelectionToggle => "group-selection-toggle".into(),
             Self::GroupClear => "group-clear".into(),
             Self::GroupGather => "group-gather".into(),
@@ -236,20 +226,10 @@ impl ShellCommand {
                     None => None,
                 },
             },
-            "overview-on" => Self::OverviewOn,
-            "overview-off" => Self::OverviewOff,
-            "overview-toggle" => Self::OverviewToggle,
             "group-selection-toggle" => Self::GroupSelectionToggle,
             "group-clear" => Self::GroupClear,
             "group-gather" => Self::GroupGather,
             "group-status" => Self::GroupStatus,
-            "overview-select" => {
-                let id = parts.next()?.parse().ok()?;
-                if id == 0 {
-                    return None;
-                }
-                Self::OverviewSelect(id)
-            }
             "lock-session" => Self::LockSession,
             "apps" => Self::ListApps,
             "windows" => Self::ListWindows,

@@ -1,22 +1,23 @@
-//! An overview pinch is committed only after a successful, uncancelled end.
+//! A switcher pinch is committed only after a successful, uncancelled end.
 use smithay::backend::input::InputTime;
 use tracing::debug;
 
 use super::{App, PinchInput};
+use crate::compositor::switcher::SwitcherSource;
 
 #[derive(Debug, PartialEq, Eq)]
-pub(super) enum OverviewAction {
+pub(super) enum SwitcherPinchAction {
     Open,
     Close,
 }
 
-pub(super) struct OverviewGesture {
+pub(super) struct SwitcherPinch {
     input: PinchInput,
     device: String,
     scale: f64,
 }
 
-impl OverviewGesture {
+impl SwitcherPinch {
     pub(super) fn begin(input: PinchInput, device: String, fingers: u32) -> Option<Self> {
         (matches!(input, PinchInput::Touchpad | PinchInput::Touchscreen)
             && matches!(fingers, 4 | 5))
@@ -37,13 +38,13 @@ impl OverviewGesture {
         }
     }
 
-    fn action(self, cancelled: bool) -> Option<OverviewAction> {
+    fn action(self, cancelled: bool) -> Option<SwitcherPinchAction> {
         if cancelled {
             None
         } else if self.scale <= 0.8 {
-            Some(OverviewAction::Open)
+            Some(SwitcherPinchAction::Open)
         } else if self.scale >= 1.25 {
-            Some(OverviewAction::Close)
+            Some(SwitcherPinchAction::Close)
         } else {
             None
         }
@@ -51,70 +52,74 @@ impl OverviewGesture {
 }
 
 impl App {
-    pub(in crate::compositor) fn interrupt_overview_pinch(&mut self) {
-        // An idempotent overview dismissal is also used during session reset.
+    pub(in crate::compositor) fn interrupt_switcher_pinch(&mut self) {
+        // An idempotent switcher pinch dismissal is also used during session reset.
         // Preserve a three-finger gesture so reset can still roll it back.
-        if self.pinch_zoom.interrupt_overview() && !self.dispatching_touch {
+        if self.pinch_zoom.interrupt_switcher_pinch() && !self.dispatching_touch {
             let actions = self.touch_input.interrupt();
             self.apply_touch_actions(actions, InputTime::now());
         }
     }
 
-    pub(in crate::compositor::input) fn start_overview_pinch(
+    pub(in crate::compositor::input) fn start_switcher_pinch(
         &mut self,
         input: PinchInput,
         device: String,
         fingers: u32,
     ) {
         if self.pinch_zoom.is_active()
-            || self.canvas_pinch_blocked()
-            || self.window_switcher_active()
+            || self.pinch_blocked()
+            || self.window_switcher_source() == Some(SwitcherSource::Keyboard)
         {
             return;
         }
-        self.pinch_zoom.overview = OverviewGesture::begin(input, device, fingers);
-        if let Some(gesture) = &self.pinch_zoom.overview {
-            debug!(device = %gesture.device, fingers, "starting overview pinch gesture");
+        self.pinch_zoom.switcher_pinch = SwitcherPinch::begin(input, device, fingers);
+        if let Some(gesture) = &self.pinch_zoom.switcher_pinch {
+            debug!(device = %gesture.device, fingers, "starting switcher pinch gesture");
             self.apply_pointer_motion(self.pointer_location, InputTime::now());
         }
     }
 
-    pub(in crate::compositor::input) fn update_overview_pinch(
+    pub(in crate::compositor::input) fn update_switcher_pinch(
         &mut self,
         input: PinchInput,
         device: &str,
         scale: f64,
     ) -> bool {
-        let Some(gesture) = self.pinch_zoom.overview.as_mut() else {
+        let Some(gesture) = self.pinch_zoom.switcher_pinch.as_mut() else {
             return false;
         };
         gesture.update(input, device, scale);
-        if self.canvas_pinch_blocked() {
+        if self.pinch_blocked() {
             self.interrupt_pinch_zoom();
         }
         true
     }
 
-    pub(in crate::compositor::input) fn end_overview_pinch(
+    pub(in crate::compositor::input) fn end_switcher_pinch(
         &mut self,
         input: PinchInput,
         device: &str,
         cancelled: bool,
     ) -> bool {
-        let Some(gesture) = self.pinch_zoom.overview.as_ref() else {
+        let Some(gesture) = self.pinch_zoom.switcher_pinch.as_ref() else {
             return false;
         };
         if !gesture.owns(input, device) {
             return true;
         }
-        let gesture = self.pinch_zoom.overview.take().unwrap();
-        let action = gesture.action(cancelled || self.canvas_pinch_blocked());
-        debug!(%device, cancelled, ?action, "ending overview pinch gesture");
+        let gesture = self.pinch_zoom.switcher_pinch.take().unwrap();
+        let action = gesture.action(cancelled || self.pinch_blocked());
+        debug!(%device, cancelled, ?action, "ending switcher pinch gesture");
         match action {
-            Some(OverviewAction::Open) => {
-                let _ = self.open_overview();
+            Some(SwitcherPinchAction::Open) => {
+                if !self.window_switcher_active() {
+                    let _ = self.cycle_window_switcher(SwitcherSource::Gesture, false);
+                }
             }
-            Some(OverviewAction::Close) => self.close_overview(),
+            Some(SwitcherPinchAction::Close) => {
+                self.finish_window_switcher(SwitcherSource::Gesture, true);
+            }
             None => {}
         }
         true

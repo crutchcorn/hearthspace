@@ -1,4 +1,4 @@
-"""Four/five-contact input and independent libinput evidence for overview."""
+"""Four/five-contact input and independent libinput evidence for switcher."""
 
 import time
 
@@ -36,7 +36,7 @@ def move(device, state, ratio):
 
 def cancel(device, state, *, trace_path=None, deadline=None):
     if state["fingers"] != 4:
-        raise ControlError("overview cancellation fixture requires four contacts")
+        raise ControlError("switcher cancellation fixture requires four contacts")
     if device.kind == "touchpad":
         # Stay within libinput's supported motion-gesture finger counts. Five
         # active touches can suppress the count-change cancellation itself.
@@ -50,7 +50,7 @@ def cancel(device, state, *, trace_path=None, deadline=None):
             if proof["ended"]:
                 if not proof["cancelled"]:
                     raise ControlError(
-                        "overview pinch ended normally before cancellation"
+                        "switcher pinch ended normally before cancellation"
                     )
                 return
             remaining = local.remaining()
@@ -64,7 +64,7 @@ def trace_proof(path, kind, fingers, *, cancelled=False, ratio=None):
     if kind == "touchpad":
         proof = gesture(trace, "PINCH", fingers, require_end=True)
         if proof["cancelled"] != cancelled:
-            raise ControlError("overview input cancellation differs from libinput")
+            raise ControlError("switcher input cancellation differs from libinput")
         if ratio is not None:
             # libinput starts its scale baseline when motion is classified,
             # after the initial threshold. Assert the independently observed
@@ -80,14 +80,14 @@ def trace_proof(path, kind, fingers, *, cancelled=False, ratio=None):
                 matches = observed >= 1.25
             if not matches:
                 raise ControlError(
-                    "overview pinch threshold differs from libinput evidence"
+                    "switcher pinch threshold differs from libinput evidence"
                 )
             proof["requested_ratio"] = ratio
         return proof
     for event in ("TOUCH_DOWN", "TOUCH_MOTION", "TOUCH_UP", "TOUCH_FRAME"):
         if event not in trace:
-            raise ControlError(f"overview touchscreen trace lacks {event}")
+            raise ControlError(f"switcher touchscreen trace lacks {event}")
     down_count = sum(" TOUCH_DOWN " in line for line in trace.splitlines())
     if down_count != fingers + int(cancelled):
-        raise ControlError("overview touchscreen trace has the wrong contact count")
+        raise ControlError("switcher touchscreen trace has the wrong contact count")
     return {"raw_touch_frames": True, "contacts": down_count}

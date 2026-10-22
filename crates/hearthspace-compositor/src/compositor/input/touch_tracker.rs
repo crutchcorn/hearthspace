@@ -22,9 +22,9 @@ pub(in crate::compositor) enum TouchAction {
     BeginPinch { anchor: Position },
     UpdatePinch { scale: f64, translation: Position },
     EndPinch { cancelled: bool },
-    BeginOverview { fingers: u32 },
-    UpdateOverview { scale: f64 },
-    EndOverview { cancelled: bool },
+    BeginSwitcherPinch { fingers: u32 },
+    UpdateSwitcherPinch { scale: f64 },
+    EndSwitcherPinch { cancelled: bool },
     BeginSwitcher { fingers: u32 },
     UpdateSwitcher { translation: Position },
     EndSwitcher { cancelled: bool },
@@ -45,7 +45,7 @@ enum Mode {
         anchor: Position,
         radius: f64,
     },
-    Overview {
+    SwitcherPinch {
         anchor: Position,
         radius: f64,
         pinching: bool,
@@ -116,10 +116,10 @@ impl TouchTracker {
                 self.emit(TouchAction::EndSwitcher { cancelled: true });
                 self.mode = Mode::Multiple;
             }
-            Mode::Overview { .. } => {
+            Mode::SwitcherPinch { .. } => {
                 // Adding a fifth finger changes the centroid/radius even when
                 // no finger moves. Rebase rather than treating that as a pinch.
-                self.emit(TouchAction::EndOverview { cancelled: true });
+                self.emit(TouchAction::EndSwitcherPinch { cancelled: true });
                 self.mode = Mode::Multiple;
             }
             _ => {}
@@ -155,7 +155,7 @@ impl TouchTracker {
                 Mode::Pending
                     | Mode::Dragging
                     | Mode::Pinching { .. }
-                    | Mode::Overview { .. }
+                    | Mode::SwitcherPinch { .. }
                     | Mode::Switching { .. }
             )
         {
@@ -169,7 +169,9 @@ impl TouchTracker {
             }
             Mode::Dragging => self.emit(TouchAction::Release),
             Mode::Pinching { .. } => self.emit(TouchAction::EndPinch { cancelled: false }),
-            Mode::Overview { .. } => self.emit(TouchAction::EndOverview { cancelled: false }),
+            Mode::SwitcherPinch { .. } => {
+                self.emit(TouchAction::EndSwitcherPinch { cancelled: false })
+            }
             Mode::Switching { .. } => self.emit(TouchAction::EndSwitcher { cancelled: false }),
             _ => {}
         }
@@ -288,7 +290,9 @@ impl TouchTracker {
         match self.mode {
             Mode::Dragging => self.emit(TouchAction::Release),
             Mode::Pinching { .. } if cancelled => self.emit(TouchAction::EndPinch { cancelled }),
-            Mode::Overview { .. } => self.emit(TouchAction::EndOverview { cancelled: true }),
+            Mode::SwitcherPinch { .. } => {
+                self.emit(TouchAction::EndSwitcherPinch { cancelled: true })
+            }
             Mode::Switching { .. } => self.emit(TouchAction::EndSwitcher { cancelled: true }),
             _ => {}
         }
@@ -317,7 +321,7 @@ impl TouchTracker {
     fn cancel_pending_chord(&mut self, device: &str) {
         for (owner, action) in &mut self.pending {
             if owner == device
-                && let TouchAction::EndOverview { cancelled }
+                && let TouchAction::EndSwitcherPinch { cancelled }
                 | TouchAction::EndSwitcher { cancelled } = action
             {
                 *cancelled = true;
@@ -335,7 +339,7 @@ impl TouchTracker {
 fn retain_cleanup(action: &mut TouchAction) -> bool {
     match action {
         TouchAction::Release | TouchAction::EndPinch { .. } => true,
-        TouchAction::EndOverview { cancelled } | TouchAction::EndSwitcher { cancelled } => {
+        TouchAction::EndSwitcherPinch { cancelled } | TouchAction::EndSwitcher { cancelled } => {
             // Lock/VT loss/device removal must not commit an end queued earlier
             // in the same input frame, even if all fingers already lifted.
             *cancelled = true;

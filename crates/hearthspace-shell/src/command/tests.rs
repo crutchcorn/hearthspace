@@ -141,24 +141,3 @@ fn waydriver_input_commands_parse() {
     );
     assert_eq!(ShellCommand::parse("quit"), Some(ShellCommand::Quit));
 }
-
-#[test]
-fn overview_commands_round_trip_and_reject_malformed_selection() {
-    for command in [
-        ShellCommand::OverviewOn,
-        ShellCommand::OverviewOff,
-        ShellCommand::OverviewToggle,
-        ShellCommand::OverviewSelect(42),
-    ] {
-        assert_eq!(ShellCommand::parse(&command.wire_name()), Some(command));
-    }
-    for invalid in [
-        "overview-on extra",
-        "overview-select",
-        "overview-select 0",
-        "overview-select -1",
-        "overview-select 42 extra",
-    ] {
-        assert_eq!(ShellCommand::parse(invalid), None);
-    }
-}

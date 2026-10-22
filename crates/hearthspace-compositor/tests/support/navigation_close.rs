@@ -1,5 +1,5 @@
 //! Losing a focused client restores keyboard focus without navigating the canvas.
-use super::super::{interactive::client::InteractiveClient, overview::wait_state};
+use super::super::{interactive::client::InteractiveClient, navigation_client::wait_state};
 use super::*;
 use serde_json::json;
 
@@ -10,7 +10,7 @@ fn editor(
     backend: &str,
 ) -> (u64, PathBuf) {
     if backend == "wayland" {
-        return super::super::overview::editor(compositor, editors, number);
+        return super::super::navigation_client::editor(compositor, editors, number);
     }
     let title = format!("Close navigation editor {number}");
     let input = compositor

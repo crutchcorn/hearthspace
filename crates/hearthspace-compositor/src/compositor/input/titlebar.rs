@@ -104,7 +104,6 @@ fn distance_squared(a: Point<f64, Logical>, b: Point<f64, Logical>) -> f64 {
 impl App {
     fn chrome_pointer_target(&self) -> Option<HitTarget> {
         if self.session_locked()
-            || self.overview_active()
             || self.window_switcher_active()
             || self.pointer.is_grabbed()
             || self.group_pointer_visible()

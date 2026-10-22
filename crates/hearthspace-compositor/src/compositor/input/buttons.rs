@@ -76,7 +76,7 @@ impl App {
         if self.desktop_pointer_button(button, state, time) {
             return;
         }
-        if self.handle_overview_button(button, state) {
+        if self.handle_window_switcher_button(button, state) {
             return;
         }
         trace!(button, ?state, "pointer button input");

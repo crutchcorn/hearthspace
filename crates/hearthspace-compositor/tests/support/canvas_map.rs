@@ -189,11 +189,13 @@ fn canvas_map_stays_right_anchored_hit_testable_and_focused_while_zooming() {
         (0, 0),
         GREEN,
     );
-    action(&compositor, "overview-on");
+    action(&compositor, "key-down 56");
+    super::navigation::keys(&compositor, &[15]);
     assert!(client.closed().contains(&map));
-    assert_eq!(client.focus(), None);
+    assert_eq!(client.focus(), Some(normal));
     client.destroy(map);
-    action(&compositor, "overview-off");
+    super::navigation::keys(&compositor, &[1]);
+    action(&compositor, "key-up 56");
 
     let map = client.add(
         canvas_map_app_id_for_output(&output),
@@ -305,14 +307,7 @@ fn absolute_map_pan_is_immediate_preserves_window_geometry_and_respects_modal_in
         );
         assert_eq!(query(&compositor, "status")["viewport"], viewport);
     }
-    action(&compositor, "overview-on");
-    assert!(
-        compositor
-            .send_text_command("pan-to 0 0")
-            .starts_with("err dismiss the window overlay")
-    );
     client.destroy(map);
-    action(&compositor, "overview-off");
     action(&compositor, "key-down 56");
     action(&compositor, "key-down 15");
     assert!(

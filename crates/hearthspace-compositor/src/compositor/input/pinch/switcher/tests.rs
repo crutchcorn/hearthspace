@@ -117,8 +117,8 @@ fn shared_reset_discards_switcher_candidate_without_canvas_rollback() {
         };
         assert!(pinch.is_active());
         assert!(
-            !pinch.interrupt_overview(),
-            "overview cleanup preserves switcher ownership"
+            !pinch.interrupt_switcher_pinch(),
+            "switcher pinch cleanup preserves switcher ownership"
         );
         if interrupt {
             pinch.interrupt();

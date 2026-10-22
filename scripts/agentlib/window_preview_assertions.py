@@ -1,4 +1,4 @@
-"""Require overview thumbnails, presented client pixels, and preserved layout."""
+"""Require live window previews, presented client pixels, and preserved layout."""
 
 from .control import ControlError
 from .pinch_assertions import same_viewport
@@ -19,14 +19,14 @@ LAYOUT_KEYS = (
 
 def preserved(before, after, *, viewport=True):
     if viewport and not same_viewport(before["viewport"], after["viewport"]):
-        raise ControlError("overview changed the saved canvas viewport")
+        raise ControlError("switcher changed the saved canvas viewport")
     old = {window["id"]: window for window in before["windows"]}
     new = {window["id"]: window for window in after["windows"]}
     if old.keys() != new.keys():
-        raise ControlError("overview changed the set of live windows")
+        raise ControlError("switcher changed the set of live windows")
     for window_id, window in old.items():
         if any(window[key] != new[window_id][key] for key in LAYOUT_KEYS):
-            raise ControlError("overview mutated window geometry or presentation state")
+            raise ControlError("switcher mutated window geometry or presentation state")
 
 
 def marker_count(capture, bounds, color):
@@ -45,19 +45,19 @@ def marker_count(capture, bounds, color):
 
 
 def presented(status, capture, targets):
-    overview = status["overview"]
-    if not overview["active"]:
-        raise ControlError("canvas overview is not active")
-    items = {item["window_id"]: item for item in overview["items"]}
+    switcher = status["window_switcher"]
+    if not switcher["active"]:
+        raise ControlError("window switcher is not active")
+    items = {item["window_id"]: item for item in switcher["items"]}
     if set(items) != {window["id"] for window in status["windows"] if window["mapped"]}:
-        raise ControlError("overview omitted or duplicated a mapped window")
-    if len(items) != len(overview["items"]):
-        raise ControlError("overview duplicated a thumbnail")
+        raise ControlError("switcher omitted or duplicated a mapped window")
+    if len(items) != len(switcher["items"]):
+        raise ControlError("switcher duplicated a thumbnail")
     metadata = capture[0]
-    if overview["output"] != metadata["output"]:
-        raise ControlError("overview was captured on the wrong output")
+    if switcher["output"] != metadata["output"]:
+        raise ControlError("switcher was captured on the wrong output")
     output = next(
-        item for item in status["outputs"] if item["name"] == overview["output"]
+        item for item in status["outputs"] if item["name"] == switcher["output"]
     )
     rectangles = []
     proof = {}
@@ -77,7 +77,7 @@ def presented(status, capture, targets):
             or bounds[2] > output["logical_x"] + output["logical_width"]
             or bounds[3] > output["logical_y"] + output["logical_height"]
         ):
-            raise ControlError("overview thumbnail lies outside its output")
+            raise ControlError("switcher thumbnail lies outside its output")
         for other in rectangles:
             if (
                 bounds[0] < other[2]
@@ -85,7 +85,7 @@ def presented(status, capture, targets):
                 and bounds[1] < other[3]
                 and bounds[3] > other[1]
             ):
-                raise ControlError("overview thumbnails overlap")
+                raise ControlError("switcher thumbnails overlap")
         rectangles.append(bounds)
         preview = (
             item["preview_x"],
@@ -101,11 +101,11 @@ def presented(status, capture, targets):
             or preview[2] <= preview[0]
             or preview[3] <= preview[1]
         ):
-            raise ControlError("overview client preview lies outside its card")
+            raise ControlError("switcher client preview lies outside its card")
         count = marker_count(capture, preview, color)
         if count < 20:
             raise ControlError(
-                f"overview thumbnail {window_id} lacks its presented client marker"
+                f"switcher thumbnail {window_id} lacks its presented client marker"
             )
         proof[str(window_id)] = {
             "bounds": bounds,

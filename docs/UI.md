@@ -109,7 +109,7 @@ Each glass region is cached separately for each output. Its
 visible output size; unchanged content reuses the cached result. The sampling
 margin accounts for damage outside the window, and output-edge clamping avoids
 dark borders. This path performs no CPU pixel readback and does not run in the
-lock screen or overview. Fullscreen windows use the normal fullscreen path.
+lock screen. Fullscreen windows use the normal fullscreen path.
 
 Server decorations use the reference's 44-pixel header, app icon, centered grip,
 and 32-pixel maximize/restore and close controls. Masonry rasterizes their text
@@ -128,7 +128,7 @@ The active orange frame encloses every normal application, including clients
 with their own decorations. Client-decorated content and controls retain their
 own shape; its compositor border follows the advertised rectangular window
 geometry. Frames belong to each window's stack position, beneath its popups and
-any higher windows. Fullscreen content, shell panels and overview thumbnails do
+any higher windows. Fullscreen content and shell panels do
 not receive these frames. Cached shader elements track geometry, focus and
 hover without allocating a window-sized decoration texture.
 

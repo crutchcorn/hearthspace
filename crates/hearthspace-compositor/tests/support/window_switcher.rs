@@ -1,6 +1,6 @@
 //! Live canvas previews preserve client focus and canonical placement until commit.
 use super::navigation::{Editors, action, keys, query, wait_windows};
-use super::overview::{editor, wait_state};
+use super::navigation_client::{editor, wait_state};
 use super::session_lock::lock_client;
 use super::*;
 use serde_json::Value;
@@ -243,7 +243,7 @@ fn switcher_reconciles_closed_selection_and_lock_hides_all_switcher_state() {
     let locked = query(&compositor, "status");
     assert_eq!(locked["locked"], true);
     assert!(locked.get("window_switcher").is_none());
-    assert!(!locked.to_string().contains("Overview editor"));
+    assert!(!locked.to_string().contains("Navigation editor"));
     assert!(locked["windows"].as_array().unwrap().is_empty());
     locker.unlock();
     state(&compositor, false, None);

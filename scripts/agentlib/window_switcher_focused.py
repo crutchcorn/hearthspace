@@ -7,8 +7,8 @@ from . import pan_input
 from . import window_switcher_smoke_checks as checks
 from .control import ControlError
 from .input import Input
-from .overview_assertions import marker_count, preserved
 from .touchpad import TouchDevice
+from .window_preview_assertions import marker_count, preserved
 from .window_switcher_smoke_assertions import (
     committed,
     input_proof,
@@ -27,7 +27,7 @@ def retained(before, after, identity):
     preserved(before, after)
     item = window(after, identity)
     if not (item["focused"] and item["focused_view"] and item["maximized"]):
-        raise ControlError("held/cancelled swipe left the focused view")
+        raise ControlError("held/cancelled switcher left the focused view")
     if item["fullscreen"]:
         raise ControlError("focused switcher changed protocol fullscreen")
 

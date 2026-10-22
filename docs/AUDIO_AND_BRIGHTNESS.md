@@ -27,7 +27,7 @@ including when operated with the keyboard. They never open, change or extend an
 existing OSD; any adjustment error is shown in the corresponding dropdown.
 The OSD shows the actual device reading or mute state; failures show an
 unavailable explanation. It neither takes focus nor intercepts pointer/touch
-input, and remains visible above fullscreen apps and the canvas overview.
+input, and remains visible above fullscreen apps and window previews.
 Locking or switching away clears pending keys and visible feedback.
 
 ## Optional hardware and services
@@ -75,7 +75,7 @@ mute, OSD dismissal, preserved application input, unavailable devices and recove
 Evidence is saved under `audio-and-brightness` within the configured shell evidence
 directory. It never changes host audio or
 brightness. Compositor E2E separately checks OSD placement, pointer/touch
-passthrough, fullscreen/overview layering, lock and event expiry.
+passthrough, fullscreen/preview layering, lock and event expiry.
 
 Native acceptance uses the [native control skill](../.agents/skills/hearthspace-native-control/SKILL.md)
 on an owned VT. Save and restore the exact original backlight value, per-channel

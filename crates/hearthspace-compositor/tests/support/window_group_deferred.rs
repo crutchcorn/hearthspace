@@ -102,11 +102,11 @@ fn gather_completion_waits_for_group_drag_and_clear_discards_deferred_results() 
         let request = server.request(&compositor);
         assert_eq!(
             request["state"]["window_titles"],
-            json!(["Overview editor 0"])
+            json!(["Navigation editor 0"])
         );
         assert_eq!(
             request["questions"]["relevant"]["instructions"]["candidate_window_title"],
-            "Overview editor 1"
+            "Navigation editor 1"
         );
         let member = window(&compositor, seed);
         let x = member["x"].as_f64().unwrap() + 30.0;

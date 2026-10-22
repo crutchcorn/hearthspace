@@ -128,10 +128,7 @@ impl App {
                 continue;
             };
             live.insert(window.id);
-            if window_output != output
-                || self.overview_active()
-                || !self.window_visible_on_output(index, output)
-            {
+            if window_output != output || !self.window_visible_on_output(index, output) {
                 continue;
             }
             let Some(origin) = (if corner {

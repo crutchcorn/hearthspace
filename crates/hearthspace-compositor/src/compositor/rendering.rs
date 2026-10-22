@@ -52,7 +52,7 @@ render_elements! {
     RoundedMemory = window_frame::RoundedElement<MemoryRenderBufferRenderElement<GlesRenderer>>,
     RoundedSurface = window_frame::RoundedElement<RescaleRenderElement<WaylandSurfaceRenderElement<GlesRenderer>>>,
     Texture = TextureRenderElement<GlesTexture>,
-    OverviewSurface = CropRenderElement<RescaleRenderElement<WaylandSurfaceRenderElement<GlesRenderer>>>,
+    ClippedSurface = CropRenderElement<RescaleRenderElement<WaylandSurfaceRenderElement<GlesRenderer>>>,
     Solid = SolidColorRenderElement,
     Turn = super::layout_editor::TurnElement,
     CroppedFrame = CropRenderElement<PixelShaderElement>,
@@ -153,9 +153,7 @@ impl App {
         // Custom wallpapers preserve pixel sizing; the default grid accounts
         // for monitor DPI before this output-local translation.
         let tiles = if self.session_locked()
-            || (!self.overview_active()
-                && !self.canvas_preview_presenting()
-                && self.fullscreen_on_output(output_rect))
+            || (!self.canvas_preview_presenting() && self.fullscreen_on_output(output_rect))
         {
             Vec::new()
         } else {
@@ -254,12 +252,6 @@ impl App {
                 .map(|(_, window)| window.id)
                 .collect(),
         );
-
-        if self.overview_active() {
-            let mut elements = self.control_osd_render_elements(renderer, output_rect);
-            elements.extend(self.collect_overview_elements(renderer, output_rect));
-            return RenderScene::overlay(elements);
-        }
 
         let mut elements = Vec::new();
         for element in self.software_cursor_elements(renderer, output_rect) {
@@ -562,29 +554,6 @@ impl App {
             window_backdrops,
             window_spans,
         }
-    }
-
-    fn control_osd_render_elements(
-        &self,
-        renderer: &mut GlesRenderer,
-        output: Rectangle<i32, Logical>,
-    ) -> Vec<HearthspaceRenderElement> {
-        let mut elements = Vec::new();
-        for (index, window) in self.windows.iter().enumerate().rev() {
-            if window.kind != ManagedWindowKind::ControlOsd
-                || !self.window_visible_on_output(index, output)
-            {
-                continue;
-            }
-            for origin in self.launcher_screen_origins(index) {
-                for surface in self.window_render_elements_at(renderer, index, origin) {
-                    elements.push(HearthspaceRenderElement::from(
-                        RescaleRenderElement::from_element(surface, origin, 1.0),
-                    ));
-                }
-            }
-        }
-        elements
     }
 
     /// Build the cursor render elements for the current frame, front-to-back.

@@ -67,8 +67,8 @@ mod layout_overflow;
 #[path = "support/navigation.rs"]
 mod navigation;
 #[cfg(feature = "test-apps")]
-#[path = "support/overview.rs"]
-mod overview;
+#[path = "support/navigation_client.rs"]
+mod navigation_client;
 #[cfg(feature = "test-apps")]
 #[path = "support/remote_input.rs"]
 mod remote_input;

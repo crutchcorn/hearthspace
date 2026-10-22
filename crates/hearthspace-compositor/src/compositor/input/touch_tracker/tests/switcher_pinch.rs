@@ -9,7 +9,7 @@ pub(super) fn contacts(fingers: u32) -> Vec<Position> {
         .collect()
 }
 
-pub(super) fn begin_overview(tracker: &mut TouchTracker, fingers: u32) {
+pub(super) fn begin_switcher_pinch(tracker: &mut TouchTracker, fingers: u32) {
     for (id, position) in contacts(fingers).into_iter().enumerate() {
         tracker.down(DEVICE, slot(id as u32), position);
     }
@@ -17,7 +17,7 @@ pub(super) fn begin_overview(tracker: &mut TouchTracker, fingers: u32) {
         frame(tracker),
         vec![
             TouchAction::Hover(point(300.0, 200.0)),
-            TouchAction::BeginOverview { fingers },
+            TouchAction::BeginSwitcherPinch { fingers },
         ]
     );
 }
@@ -42,8 +42,8 @@ fn transform_contacts(tracker: &mut TouchTracker, scale: f64, rotate: bool) {
     }
 }
 
-fn assert_overview_scale(actions: &[TouchAction], expected: f64) {
-    let [TouchAction::UpdateOverview { scale }] = actions else {
+fn assert_switcher_pinch_scale(actions: &[TouchAction], expected: f64) {
+    let [TouchAction::UpdateSwitcherPinch { scale }] = actions else {
         panic!("unexpected actions: {actions:?}");
     };
     assert!((scale - expected).abs() < 1e-12, "{scale} != {expected}");
@@ -53,15 +53,15 @@ fn assert_overview_scale(actions: &[TouchAction], expected: f64) {
 fn four_and_five_contacts_report_absolute_pinch_only() {
     for fingers in [4, 5] {
         let mut tracker = TouchTracker::default();
-        begin_overview(&mut tracker, fingers);
+        begin_switcher_pinch(&mut tracker, fingers);
         transform_contacts(&mut tracker, 0.7, true);
-        assert_overview_scale(&frame(&mut tracker), 0.7);
+        assert_switcher_pinch_scale(&frame(&mut tracker), 0.7);
         transform_contacts(&mut tracker, 2.0, false);
-        assert_overview_scale(&frame(&mut tracker), 1.4);
+        assert_switcher_pinch_scale(&frame(&mut tracker), 1.4);
         tracker.up(DEVICE, slot(0));
         assert_eq!(
             frame(&mut tracker),
-            vec![TouchAction::EndOverview { cancelled: false }]
+            vec![TouchAction::EndSwitcherPinch { cancelled: false }]
         );
         for id in 1..fingers {
             tracker.motion(DEVICE, slot(id), point(900.0, 900.0));
@@ -71,17 +71,17 @@ fn four_and_five_contacts_report_absolute_pinch_only() {
             frame(&mut tracker).is_empty(),
             "remaining fingers cannot pan or click"
         );
-        begin_overview(&mut tracker, fingers);
+        begin_switcher_pinch(&mut tracker, fingers);
     }
 }
 
 #[test]
-fn rotation_without_translation_never_requests_an_overview_transition() {
+fn rotation_without_translation_never_requests_a_switcher_pinch_transition() {
     for fingers in [4, 5] {
         let mut tracker = TouchTracker::default();
-        begin_overview(&mut tracker, fingers);
+        begin_switcher_pinch(&mut tracker, fingers);
         transform_contacts(&mut tracker, 1.0, true);
-        assert_overview_scale(&frame(&mut tracker), 1.0);
+        assert_switcher_pinch_scale(&frame(&mut tracker), 1.0);
     }
 }
 
@@ -96,50 +96,50 @@ fn late_fourth_contact_cancels_provisional_canvas_motion_and_promotes() {
         frame(&mut tracker),
         vec![
             TouchAction::EndPinch { cancelled: true },
-            TouchAction::BeginOverview { fingers: 4 },
+            TouchAction::BeginSwitcherPinch { fingers: 4 },
         ]
     );
     transform_contacts(&mut tracker, 0.7, false);
-    assert_overview_scale(&frame(&mut tracker), 0.7);
+    assert_switcher_pinch_scale(&frame(&mut tracker), 0.7);
 }
 
 #[test]
 fn fifth_contact_rebases_instead_of_counting_placement_as_expansion() {
     let mut tracker = TouchTracker::default();
-    begin_overview(&mut tracker, 4);
+    begin_switcher_pinch(&mut tracker, 4);
     transform_contacts(&mut tracker, 0.7, false);
-    assert_overview_scale(&frame(&mut tracker), 0.7);
+    assert_switcher_pinch_scale(&frame(&mut tracker), 0.7);
     tracker.down(DEVICE, slot(4), point(900.0, 900.0));
     assert_eq!(
         frame(&mut tracker),
         vec![
-            TouchAction::EndOverview { cancelled: true },
-            TouchAction::BeginOverview { fingers: 5 },
+            TouchAction::EndSwitcherPinch { cancelled: true },
+            TouchAction::BeginSwitcherPinch { fingers: 5 },
         ]
     );
     transform_contacts(&mut tracker, 1.0, true);
-    assert_overview_scale(&frame(&mut tracker), 1.0);
+    assert_switcher_pinch_scale(&frame(&mut tracker), 1.0);
     transform_contacts(&mut tracker, 1.4, false);
-    assert_overview_scale(&frame(&mut tracker), 1.4);
+    assert_switcher_pinch_scale(&frame(&mut tracker), 1.4);
 }
 
 #[test]
 fn sixth_contact_cancels_and_suppresses_until_all_fingers_lift() {
     let mut tracker = TouchTracker::default();
-    begin_overview(&mut tracker, 5);
+    begin_switcher_pinch(&mut tracker, 5);
     transform_contacts(&mut tracker, 0.6, false);
-    assert_overview_scale(&frame(&mut tracker), 0.6);
+    assert_switcher_pinch_scale(&frame(&mut tracker), 0.6);
     tracker.down(DEVICE, slot(5), point(600.0, 300.0));
     tracker.up(DEVICE, slot(5));
     assert_eq!(
         frame(&mut tracker),
-        vec![TouchAction::EndOverview { cancelled: true }]
+        vec![TouchAction::EndSwitcherPinch { cancelled: true }]
     );
     for id in 0..5 {
         tracker.up(DEVICE, slot(id));
     }
     assert!(frame(&mut tracker).is_empty());
-    begin_overview(&mut tracker, 4);
+    begin_switcher_pinch(&mut tracker, 4);
 }
 
 #[test]
@@ -158,26 +158,26 @@ fn all_six_contacts_before_first_frame_cannot_downgrade_to_five() {
 }
 
 #[test]
-fn final_motion_in_lift_frame_precedes_overview_commit() {
+fn final_motion_in_lift_frame_precedes_switcher_pinch_commit() {
     for fingers in [4, 5] {
         let mut tracker = TouchTracker::default();
-        begin_overview(&mut tracker, fingers);
+        begin_switcher_pinch(&mut tracker, fingers);
         transform_contacts(&mut tracker, 0.6, false);
         tracker.up(DEVICE, slot(0));
         let mut actions = frame(&mut tracker);
         assert_eq!(
             actions.pop(),
-            Some(TouchAction::EndOverview { cancelled: false })
+            Some(TouchAction::EndSwitcherPinch { cancelled: false })
         );
-        assert_overview_scale(&actions, 0.6);
+        assert_switcher_pinch_scale(&actions, 0.6);
     }
 }
 
 #[test]
-fn cancel_device_removal_reset_and_external_input_never_commit_overview() {
+fn cancel_device_removal_reset_and_external_input_never_commit_switcher_pinch() {
     for cleanup in 0..4 {
         let mut tracker = TouchTracker::default();
-        begin_overview(&mut tracker, 4);
+        begin_switcher_pinch(&mut tracker, 4);
         transform_contacts(&mut tracker, 0.6, false);
         frame(&mut tracker);
         let actions = match cleanup {
@@ -193,7 +193,7 @@ fn cancel_device_removal_reset_and_external_input_never_commit_overview() {
             actions,
             vec![(
                 DEVICE.to_owned(),
-                TouchAction::EndOverview { cancelled: true }
+                TouchAction::EndSwitcherPinch { cancelled: true }
             )]
         );
         for id in 0..4 {
@@ -207,7 +207,7 @@ fn cancel_device_removal_reset_and_external_input_never_commit_overview() {
 fn pending_end_is_cancelled_if_reset_or_removal_arrives_before_dispatch() {
     for remove in [false, true] {
         let mut tracker = TouchTracker::default();
-        begin_overview(&mut tracker, 5);
+        begin_switcher_pinch(&mut tracker, 5);
         transform_contacts(&mut tracker, 0.6, false);
         for id in 0..5 {
             tracker.up(DEVICE, slot(id));
@@ -221,7 +221,7 @@ fn pending_end_is_cancelled_if_reset_or_removal_arrives_before_dispatch() {
             actions,
             vec![(
                 DEVICE.to_owned(),
-                TouchAction::EndOverview { cancelled: true }
+                TouchAction::EndSwitcherPinch { cancelled: true }
             )]
         );
     }
@@ -230,14 +230,14 @@ fn pending_end_is_cancelled_if_reset_or_removal_arrives_before_dispatch() {
 #[test]
 fn cancellation_after_one_lift_cannot_commit_a_pending_end() {
     let mut tracker = TouchTracker::default();
-    begin_overview(&mut tracker, 4);
+    begin_switcher_pinch(&mut tracker, 4);
     transform_contacts(&mut tracker, 0.6, false);
     tracker.up(DEVICE, slot(0));
     tracker.cancel(DEVICE, slot(1));
     let mut actions = frame(&mut tracker);
     assert_eq!(
         actions.pop(),
-        Some(TouchAction::EndOverview { cancelled: true })
+        Some(TouchAction::EndSwitcherPinch { cancelled: true })
     );
-    assert_overview_scale(&actions, 0.6);
+    assert_switcher_pinch_scale(&actions, 0.6);
 }

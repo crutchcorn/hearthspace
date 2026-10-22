@@ -22,7 +22,6 @@ mod interactive;
 mod keyboard;
 #[cfg(feature = "winit")]
 mod nested;
-mod overview;
 mod pinch;
 mod pointer;
 mod recovery;
@@ -33,12 +32,12 @@ mod titlebar;
 mod touch;
 mod touch_tracker;
 mod ui_touch;
+mod window_switcher;
 
 pub(super) use favorite_drawing::FavoriteDrawing;
 pub(super) use keyboard::KeyboardShortcuts;
 #[cfg(feature = "winit")]
 pub(super) use nested::handle_winit_input;
-pub(super) use overview::OverviewInput;
 use pinch::PinchInput;
 pub(super) use pinch::PinchZoom;
 use pointer::relative_pointer_location;
@@ -46,6 +45,7 @@ pub(super) use remote::RemoteInput;
 pub(super) use titlebar::TitlebarInput;
 pub(super) use touch_tracker::TouchTracker;
 pub(super) use ui_touch::UiTouch;
+pub(super) use window_switcher::SwitcherInput;
 
 pub(in crate::compositor) fn handle_input_event<B: InputBackend>(
     state: &mut App,

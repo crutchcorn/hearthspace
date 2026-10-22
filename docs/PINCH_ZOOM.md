@@ -1,9 +1,9 @@
 # Canvas Gestures
 
 Three fingers navigate the canvas. Four fingers on native touchpads, or four/five
-on touchscreens, pinch to open or dismiss a
-[temporary overview of live windows](./WINDOW_MANAGEMENT.md#canvas-overview), or
-swipe left/right to [switch windows](./WINDOW_MANAGEMENT.md#held-window-switcher).
+on touchscreens, pinch to open or dismiss the
+[window switcher](./WINDOW_MANAGEMENT.md#window-switcher), or swipe left/right
+to switch windows with the same live previews.
 These gestures work without modifiers and do not change application content.
 Five-finger touchpad gestures are unavailable through the native libinput backend;
 see [backend availability](#backend-availability).
@@ -40,26 +40,31 @@ Super+scroll use the same rule, including at zoom limits. Application fullscreen
 stays fixed to its output. Focused view blocks canvas navigation until it is
 closed or another application or canvas tool is activated.
 
-## Four- and Five-Finger Overview
+## Four- and Five-Finger Pinch
 
 Place four fingers on a native touchpad, or four/five on a touchscreen, bring
-them together, and lift to open overview. Spread the same supported number of
-fingers and lift to dismiss it. Inward means a final spread of at most 80% of the
-starting spread; outward means at least 125%. For touchpads, libinput establishes
+them together, and lift to open the centered window switcher. It opens only
+after a successful gesture end, selects the next most recently used window, and
+stays open after release. Repeating an inward pinch keeps that selection.
+Spread the same supported number of fingers and lift to dismiss it. Inward
+means a final spread of at most 80% of the starting spread; outward means at
+least 125%. For touchpads, libinput establishes
 that baseline after enough motion to recognize a pinch. Touchscreens use the
 initial geometry at the supported contact count. Only the final spread on a
-normal gesture end commits the action. Crossing a threshold and returning to the middle before lifting does nothing,
-as does a cancelled gesture. At most one transition occurs per completed pinch.
+normal gesture end opens or dismisses the switcher. Crossing a threshold and
+returning to the middle before lifting does nothing, as does a cancelled gesture.
+At most one transition occurs per completed pinch.
 
 These pinches do not pan or zoom the canvas. Parallel motion and rotation do not
-change the overview state. Four-finger touchpad pinches and four-/five-finger
-touchscreen pinches control overview; three remain reserved for canvas navigation.
-Horizontal swipes switch windows outside overview. While overview
-is open, three-finger navigation and scrolling cannot move the underlying canvas.
+change the switcher state. Four-finger touchpad pinches and four-/five-finger
+touchscreen pinches control the switcher; three remain reserved for canvas
+navigation. Horizontal swipes open the switcher while held and activate the
+selection on release. While the switcher is open, three-finger navigation and
+scrolling cannot move the underlying canvas.
 
 Touchscreen contacts often arrive in separate frames. Adding a fourth contact
 to an active three-finger gesture cancels that temporary canvas transformation,
-restores its original viewport, and starts overview recognition
+restores its original viewport, and starts switcher-pinch recognition
 from the four-contact geometry. Adding a fifth contact cancels the four-contact
 candidate and starts a fresh five-contact baseline, so placing another finger
 cannot itself count as expansion. Place all intended fingers before pinching.
@@ -67,10 +72,10 @@ Adding a sixth contact cancels the gesture and suppresses the rest of the touch
 sequence. After the first finger lifts, the remaining contacts cannot become
 clicks, drags, or a new gesture until all fingers lift.
 
-Use Super+O when a supported pinch is
-unavailable. Inside overview, arrows or Tab/Shift+Tab select a preview,
-Enter activates it, and Escape dismisses it. Clicking or tapping a preview also
-activates it. See [window management](./WINDOW_MANAGEMENT.md#canvas-overview)
+Alt+Tab also opens the switcher, with Alt release activating the selection.
+In the persistent switcher opened by a pinch, click or tap a preview, or press
+Enter, to activate it. Escape or a background click/tap dismisses it.
+See [window management](./WINDOW_MANAGEMENT.md#window-switcher)
 for the complete controls and preserved window state.
 
 ## Four- and Five-Finger Window Switching
@@ -89,15 +94,15 @@ horizontal distance at least 1.5 times vertical distance. Further selections are
 threshold. This prevents small tremors from changing the selected window.
 A predominantly vertical movement claims no switching action for that sequence.
 
-Touchscreens distinguish swipes from overview pinches using both center movement
+Touchscreens distinguish swipes from switcher pinches using both center movement
 and spread. An approximately 8% spread change claims pinch recognition; a
 horizontal movement meeting the swipe threshold claims switching. Once claimed,
 the gesture keeps its meaning until it ends. Place all intended fingers before
 moving: adding a fifth finger rebases the candidate and cancels a switch already
 in progress. Remaining contacts after the first lift cannot start another action.
 
-An active overview, input grab, move, resize, or keyboard-owned switcher prevents
-starting a swipe. A cancelled swipe restores the previous focus and view. Device
+An active switcher, input grab, move, or resize prevents starting a swipe.
+A cancelled swipe restores the previous focus and view. Device
 removal, lock, or VT loss clears the interaction, so late events cannot reopen it.
 Keyboard input, pointer clicks, and scrolling do not reach applications while
 the switcher is held.
@@ -107,7 +112,7 @@ the switcher is held.
 Native touchpad gestures come from libinput through Smithay. The installed
 libinput 1.31.1 backend only processes gestures with at most four active contacts;
 its [gesture state processing](https://gitlab.freedesktop.org/libinput/libinput/-/blob/1.31.1/src/evdev-mt-touchpad-gestures.c)
-explicitly excludes five. Hearthspace therefore supports four-finger overview
+explicitly excludes five. Hearthspace therefore supports four-finger switcher
 pinches and window-switching swipes on this native touchpad path. Its compositor
 policy can accept five-finger gestures from a backend that supplies them, but this does not enable
 five-finger touchpad recognition in libinput. Touchscreens supply raw contacts,
@@ -115,7 +120,7 @@ so Hearthspace can recognize both four- and five-finger pinches and swipes there
 
 The pinned Smithay/winit backend only delivers two-finger touchpad pinch events
 and no touchpad swipe events, so three-finger navigation and four-finger
-overview pinches on touchpads require the native backend. Nested touchscreen
+switcher pinches on touchpads require the native backend. Nested touchscreen
 events use the same recognizer, with an adapter for winit's unframed physical
 coordinates. Nested X11 does not supply touchpad pinch events.
 
@@ -130,14 +135,15 @@ Touchscreen positions use the compositor's existing primary-output mapping.
 Touchscreen taps click on release. A single contact moving at least eight logical
 pixels starts a drag from its original position. Adding another contact before
 that point suppresses the click and allows a later three-finger canvas gesture
-or four-/five-finger overview gesture. Adding contacts after a drag has started
+or four-/five-finger switcher gesture. Adding contacts after a drag has started
 releases the drag and suppresses the rest of that touch sequence. Two-finger
 touchscreen gestures do not pan, zoom or click.
 
 The first normal lift ends three-finger touchscreen navigation at its current
 view. A fourth contact cancels that navigation and can promote the sequence to
-overview; touch cancellation cancels it without promotion. Remaining contacts
-after a lift cannot start another gesture or become a click until all have lifted.
+switcher-pinch recognition; touch cancellation cancels it without promotion.
+Remaining contacts after a lift cannot start another gesture or become a click
+until all have lifted.
 
 Ending a three-finger gesture normally retains the current view. Cancelling it,
 removing its device, losing nested-window focus, or suspending the native session
@@ -149,11 +155,11 @@ grab instead ends the gesture at its current view, letting the newer interaction
 proceed. Later events from the interrupted gesture cannot restore an obsolete
 viewport or alter those windows' presentation states.
 
-An unfinished overview pinch is discarded on cancellation, device removal,
+An unfinished switcher pinch is discarded on cancellation, device removal,
 interruption, nested focus loss, or native VT/suspend input reset. It does not
-change overview or the canvas. Reset and removal also cancel a successful touch
+change the switcher or the canvas. Reset and removal also cancel a successful touch
 end that was queued earlier in the same frame but has not yet been dispatched.
-Locking or losing the active VT dismisses any already-open overview separately.
+Locking or losing the active VT dismisses any already-open switcher separately.
 
 ## Implementation and Testing
 
@@ -177,7 +183,7 @@ compositor and does not require advertising that protocol.
 Unit regressions cover cardinal/diagonal translation, combined pan and zoom,
 fractional motion, translated anchoring, bounds and reversal,
 invalid updates, device isolation, contact batching, pointer arbitration, normal
-completion, and cancellation. Overview regressions additionally cover exact
+completion, and cancellation. Switcher-pinch regressions additionally cover exact
 contact counts, inward/outward thresholds, final-scale reversal, three-to-four
 contact promotion, four-to-five contact rebasing, queued-end cancellation, and
 suppression after the first lift. For the kernel-to-compositor path and visible
@@ -186,7 +192,13 @@ native presentation, use the optional
 They create temporary virtual touchpad and touchscreen devices and exercise the
 normal libinput path. `scripts/pan-smoke` checks visible translation and combined
 scaling; `scripts/pinch-smoke` checks zoom, contact arbitration and device removal.
-`scripts/overview-smoke` checks four-finger touchpad and four-/five-finger
-touchscreen overview gestures, recording the five-finger libinput limit separately.
+`scripts/window-switcher-smoke` checks held keyboard switching and horizontal
+swipes, including cancellation, input ownership, and focused-view behavior.
+Its four-contact touchpad and four-/five-contact touchscreen pinch cases check
+persistence after successful inward release, outward dismissal, subthreshold
+input, four-contact cancellation, keyboard ownership, and repeated inward pinches
+without cycling. Focused-view cases check outward dismissal retains focus and
+Enter commits after reopening. Preview clicks/taps and Escape/background dismissal in the
+persistent switcher need [additional native acceptance](NATIVE_TESTING.md#persistent-switcher-acceptance).
 These tests validate the input and rendering pipeline, without emulating a
 person's physical finger feel on the hardware.

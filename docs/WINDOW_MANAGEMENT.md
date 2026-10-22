@@ -141,46 +141,31 @@ use the client's Wayland positioner constraints to flip, slide, or resize into
 the available output area. Active popup grabs retain input authority; window
 actions return an error until the popup is dismissed.
 
-## Canvas overview
+## Canvas map
 
-The right-hand map icon opens the [canvas map](CANVAS_MAP.md), with a live
+The **Canvas map** button in Canvas tools opens the [canvas map](CANVAS_MAP.md), with a live
 zoomed-out minimap and icon zoom controls. Drag its orange viewport area to move
 around the canvas without changing the zoom level or window positions.
 
-Overview presents live previews of the session's application windows in a grid,
-including windows outside the current canvas view. It opens on the output under
-the pointer. The grid is temporary: window positions, sizes, fullscreen and
-maximized states, and the canvas viewport remain intact. Selecting a preview
-returns to the canvas, focuses that window, and reveals it if needed.
-
-Open overview with Super+O or an inward pinch:
-use four fingers on a native touchpad, or four/five on a touchscreen. Finish the
-pinch by lifting your fingers. An outward pinch with the same supported counts
-dismisses it. The native libinput backend does not emit five-finger touchpad
-gestures; [backend availability](./PINCH_ZOOM.md#backend-availability) explains
-that boundary. Three fingers continue to pan and zoom the canvas outside
-overview; they do not open or dismiss it. See [canvas gestures](./PINCH_ZOOM.md)
-for thresholds, contact transitions, and cancellation.
-
-Click or tap a preview to activate its window. Arrow keys, Tab, and Shift+Tab
-move the selection; Enter activates it. Left/Up and Shift+Tab choose the previous
-preview, while Right/Down and Tab choose the next, wrapping through the grid.
-Escape, Super+O, an outward pinch with a supported count, or a click/tap on the
-background dismisses overview and restores the previous focus. A drag across a
-preview does not activate it.
-
-Overview owns keyboard, pointer, scrolling, and touch input while it is open;
-these interactions do not reach the applications behind the previews. Canvas
-pan and zoom are suspended. Overview cannot open during a move, resize, popup
-grab, or session lock. Locking or losing the active native VT dismisses it.
-
-## Held window switcher
+## Window switcher
 
 Alt+Tab gathers live windows into a centered spatial grid and selects the most
 recently used alternative. Keep Alt held and press Tab again to continue; add
-Shift to move backward. Releasing Alt, pressing Enter, or clicking a preview
-activates it. Escape or an empty-background click cancels switching and restores
+Shift to move backward. Releasing Alt, pressing Enter, or clicking/tapping a preview
+activates it. Escape or an empty-background click/tap cancels switching and restores
 the original presentation.
+
+An inward pinch opens the same switcher persistently: use four fingers on a
+native touchpad, or four/five on a touchscreen, then lift. The grid opens only
+after a successful gesture end, selects the next most recently used window, and
+stays open after release. Repeated inward pinches keep the current selection.
+Crossing the pinch threshold and returning before lifting, or cancelling the
+gesture, leaves it closed. Click or tap a preview, or press Enter, to activate the selection; Escape,
+a background click/tap, or a completed outward pinch dismisses it. A drag across
+a preview does not activate it.
+
+Switcher pinches also work in focused view. Dismissal retains the focused app;
+activating another preview leaves the previous app maximized on the canvas.
 
 Swipe four fingers left on a native touchpad, or four/five on a touchscreen,
 to select the next window. Swipe right to select the previous window. The same
@@ -189,8 +174,9 @@ additional windows, and reversing direction moves back. Lift to keep the chosen
 window. See [canvas gestures](./PINCH_ZOOM.md) for recognition thresholds and the
 native backend's five-finger touchpad limitation.
 
-The original application retains focus while previews are shown. Cycling only
-changes the accent outline and the title badge below the selected preview;
+The grid opens on the output under the pointer and includes windows outside the
+current canvas view. The original application retains focus while previews are
+shown. Cycling only changes the accent outline and the title badge below the selected preview;
 hovering does not change selection. The viewport and saved window positions,
 sizes, zoom, and presentation states remain unchanged until activation. Existing
 window buffers and decorations animate into the grid over 360 ms, while desktop
@@ -200,12 +186,13 @@ final view. Fullscreen and maximized clients keep their presentation state.
 The shared search motion preference honors reduced animations.
 
 The initial order is front to back with the focused app first, and stays fixed
-for the held interaction, with wrapping at either end. All previews fit into
+for the interaction, with wrapping at either end. All previews fit into
 rows; closed windows are removed and new windows join the next interaction.
-Typing, arrow keys, and scrolling are consumed while the grid is open. Preview
-clicks never reach application contents. The keyboard and gesture cannot take over each
-other's active switcher. Locking or losing the native VT dismisses it and clears
-the held input state. Unplugging the keyboard cannot leave Alt or its overlay
+Typing, arrow keys, and scrolling are consumed while the grid is open, and canvas
+pan and zoom are suspended. Preview clicks never reach application contents. The switcher
+cannot open during a move, resize, popup grab, or session lock. The keyboard and
+gestures cannot take over each other's held switcher. Locking or losing the native
+VT dismisses it and clears the held input state. Unplugging the keyboard cannot leave Alt or its overlay
 stuck; a backend-synthesized release keeps the selection, otherwise removal
 cancels the held switch.
 
@@ -220,7 +207,7 @@ Movement begins after eight logical pixels and includes that initial movement.
 The window follows the finger's screen distance at any canvas zoom. Adding a
 second contact ends the drag and suppresses that touch sequence until all fingers
 lift; touch cancellation or device removal also releases the window. Three-finger
-canvas navigation and four-/five-finger overview pinches are separate gestures.
+canvas navigation and four-/five-finger switcher pinches are separate gestures.
 
 ## Keyboard control
 
@@ -236,7 +223,6 @@ Super+K and temporarily arranges matching live objects around its field.
 | Super+Space | Open Apps List |
 | Ctrl+K / Super+K | Open canvas search |
 | / (desktop focus) | Open canvas search |
-| Super+O | Toggle canvas overview |
 | Alt+Tab / Alt+Shift+Tab | Select next / previous application; hold Alt for previews |
 | Alt+F4 | Request that the focused application close |
 | Super+arrow keys | Pan the canvas |
@@ -246,13 +232,13 @@ Super+K and temporarily arranges matching live objects around its field.
 | Super+L | Lock the native session |
 | Ctrl+Alt+F1–F12 | Switch to Linux TTY1–TTY12 in a native session |
 
-While overview is open, Escape dismisses it, arrows or Tab/Shift+Tab change its
-selection, and Enter activates the selected window. Super+L remains available.
-Outside overview, application shortcuts such as F11 continue to reach the client.
+While the window switcher is open, Escape dismisses it and Enter activates the
+selected window. Super+L remains available. Outside the switcher, application
+shortcuts such as F11 continue to reach the client.
 Real and synthetic keyboard events share the same compositor navigation policy.
 VT switching is a native keyboard binding, handled before application grabs,
-search, overview, and the lock screen. It preserves the running desktop and its
-lock state; switching back resumes it. On laptops whose function row defaults
+search, the window switcher, and the lock screen. It preserves the running desktop
+and its lock state; switching back resumes it. On laptops whose function row defaults
 to media controls, hold Fn as well to send an F key. Nested and headless sessions
 do not switch the host's TTY. Agents can exercise the native binding through an
 owned uinput keyboard; control-socket key injection remains inside Hearthspace.
@@ -266,18 +252,12 @@ for the current session. The `focus`, `close`, `move`, `resize`, `fullscreen`,
 coordinates; `resize` takes client content dimensions in logical pixels.
 Fullscreen, focused, and maximized windows must be restored before moving or resizing.
 
-Use `scripts/hearthspace-agent --session SESSION overview on` to open overview;
-`off` dismisses it and `toggle` switches it. With overview open,
-`overview-select WINDOW_ID` activates one of its previews. The compositor status
-includes an `overview` object containing its active state, selected window ID,
-output, and preview/card rectangles in logical screen coordinates. Read that
-state again after windows close or outputs change before acting on a preview.
-
-Unlocked status also includes `window_switcher` with its active input source,
+Unlocked status includes `window_switcher` with its active input source,
 selected window ID, output, and preview rectangles. `window_switcher.animating`
 lets agents wait for preview motion to finish, including the return animation
-after dismissal. Both window overlays are omitted
-from status while the session is locked.
+after dismissal. Read the state again after windows close or outputs change
+before acting on a preview. Switcher state is omitted from status while the
+session is locked. See [native testing](NATIVE_TESTING.md) for its status fields.
 
 Window metadata distinguishes canvas position, screen geometry, client content
 size, focus, and presentation state. The `visible` field describes intersection

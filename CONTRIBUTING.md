@@ -316,21 +316,7 @@ expectations use the injected contact centroid. Both scripts accept `--device`
 and `--timeout` and clean up their owned session on failure. The pan script also
 accepts `--total-timeout` to bound its complete workflow.
 
-Canvas overview acceptance uses the same prerequisites:
-
-```sh
-scripts/overview-smoke --session "$(mktemp -d /tmp/hearthspace-overview.XXXXXX)"
-```
-
-It checks four-finger touchpad and four/five-finger touchscreen inward/outward
-gestures, subthreshold and cancelled
-gestures, live thumbnail pixels, unchanged canvas/window geometry, and pointer
-and touchscreen selection. `--device touchpad` or `--device touchscreen` selects
-one device type. Libinput currently suppresses five-contact touchpad gestures;
-the test records this backend limitation rather than reporting it as a pass.
-Keep the physical input devices idle during native acceptance.
-
-Held window-switcher acceptance uses those same installed dependencies and
+Window-switcher acceptance uses those same installed dependencies and
 temporary uinput permissions:
 
 ```sh
@@ -339,11 +325,25 @@ scripts/window-switcher-smoke --session "$(mktemp -d /tmp/hearthspace-window-swi
 
 It checks Alt+Tab/Alt+Shift+Tab, left/right four-contact touchpad and four/five-contact
 touchscreen swipes, live previews over the animated canvas, cancellation, input
-ownership, and keyboard unplug recovery. In focused view it also verifies that
+ownership, and keyboard unplug recovery. Pinch cases use four touchpad contacts
+and four/five touchscreen contacts: successful inward pinches keep the switcher
+open after release, outward pinches dismiss it, and subthreshold inward pinches
+leave it closed. Four-contact cases also test cancellation; subthreshold outward
+pinches preserve the open switcher. They check that a keyboard-owned switcher is
+unaffected and a repeated inward pinch does not cycle the selection.
+In focused view, inward pinch opens the switcher, outward dismissal retains the
+focused app, and reopening followed by Enter leaves that app bounded on the canvas.
+The horizontal swipe cases also verify that
 canvas panning stays blocked, cancelled swipes retain focus, and a completed
 switch leaves the previous app maximized on the canvas. Its bounded keyboard
 worker records libinput key events only from its own temporary device. No extra
 packages, udev rules, or persistent input devices are required.
+Libinput suppresses five-contact touchpad gestures; touchscreen coverage includes
+both four and five contacts. Keep physical input devices idle during acceptance.
+
+Preview clicks/taps and Escape/background dismissal in a persistent switcher need
+additional acceptance. Follow the [persistent switcher acceptance steps](docs/NATIVE_TESTING.md#persistent-switcher-acceptance)
+for these interactions and a separate Enter activation check.
 
 ### Recovering a black host login screen
 

@@ -28,7 +28,6 @@ mod layout_editor;
 mod masonry_titlebar;
 mod navigation;
 mod output;
-mod overview;
 mod presentation;
 mod rendering;
 mod runtime;
@@ -297,10 +296,9 @@ struct App {
     canvas_preview: canvas_preview::State,
     viewport_scale: f64,
     viewport_animation: Option<ViewportAnimation>,
-    overview: overview::Overview,
     window_switcher: switcher::WindowSwitcher,
     window_group: window_group::WindowGroup,
-    overview_input: input::OverviewInput,
+    switcher_input: input::SwitcherInput,
     pinch_zoom: input::PinchZoom,
     windows: Vec<ManagedWindow>,
     next_window_id: u64,
@@ -694,10 +692,9 @@ pub(in crate::compositor) fn initialize_app(
         canvas_search: Default::default(),
         canvas_preview: Default::default(),
         viewport_animation: None,
-        overview: overview::Overview::default(),
         window_switcher: switcher::WindowSwitcher::default(),
         window_group: window_group::WindowGroup::default(),
-        overview_input: input::OverviewInput::default(),
+        switcher_input: input::SwitcherInput::default(),
         pinch_zoom: input::PinchZoom::default(),
         windows: Vec::new(),
         next_window_id: 1,
