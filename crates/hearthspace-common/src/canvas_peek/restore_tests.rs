@@ -226,3 +226,70 @@ fn restoration_only_does_not_reveal_new_overlaps_or_undo_window_movement() {
     restore_background(&mut scene);
     assert_eq!(scene.windows[0].bounds, rect(100.0, 76.0, 200.0, 200.0));
 }
+
+#[test]
+fn rejecting_an_earlier_home_conflict_keeps_a_later_cycle_eligible() {
+    let displaced = |id, current, home| Decoration {
+        home: Some(point(home, 0.0)),
+        ..control(id, rect(current, 0.0, 10.0, 10.0), false)
+    };
+    let earlier = displaced(1, 300.0, 0.0);
+    let mut scene = Scene {
+        decorations: vec![earlier, displaced(2, 100.0, 0.0), displaced(3, 0.0, 100.0)],
+        ..Scene::default()
+    };
+    restore_background(&mut scene);
+    assert_eq!(
+        scene.decorations,
+        [
+            earlier,
+            control(2, rect(0.0, 0.0, 10.0, 10.0), false),
+            control(3, rect(100.0, 0.0, 10.0, 10.0), false)
+        ]
+    );
+}
+
+#[test]
+fn reverse_individual_fallback_selects_the_later_clear_home() {
+    let displaced = |id, current, width| Decoration {
+        home: Some(point(0.0, 0.0)),
+        ..control(id, rect(current, 0.0, width, 10.0), false)
+    };
+    let earlier = displaced(1, 100.0, 10.0);
+    let blocked = displaced(3, 300.0, 20.0);
+    let mut scene = Scene {
+        decorations: vec![earlier, displaced(2, 200.0, 10.0), blocked],
+        windows: vec![window(4, rect(15.0, 0.0, 1.0, 10.0))],
+        ..Scene::default()
+    };
+    restore_background(&mut scene);
+    assert_eq!(
+        scene.decorations,
+        [
+            earlier,
+            control(2, rect(0.0, 0.0, 10.0, 10.0), false),
+            blocked
+        ]
+    );
+}
+
+#[test]
+fn a_raised_home_rejected_later_still_blocks_the_first_ascending_sweep() {
+    let displaced = |id, current, home, width, raised| Decoration {
+        home: Some(point(home, 0.0)),
+        ..control(id, rect(current, 0.0, width, 10.0), raised)
+    };
+    let mut scene = Scene {
+        decorations: vec![
+            displaced(1, 300.0, 0.0, 20.0, true),
+            displaced(2, 100.0, 15.0, 10.0, false),
+            displaced(3, 15.0, 100.0, 10.0, false),
+            displaced(4, 0.0, 200.0, 10.0, true),
+            control(5, rect(200.0, 0.0, 10.0, 10.0), true),
+        ],
+        ..Scene::default()
+    };
+    let original = scene.clone();
+    restore_background(&mut scene);
+    assert_eq!(scene, original);
+}
