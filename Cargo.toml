@@ -21,12 +21,16 @@ exclude = [
     "vendor/xilem",
     "vendor/masonry_winit",
     "vendor/smithay",
+    "vendor/winit",
 ]
 
 [patch.crates-io]
 # Backport the upstream fix for out-of-order AT-SPI window activation.
 # Provenance and removal conditions: patches/README.md.
 accesskit_atspi_common = { path = "vendor/accesskit_atspi_common" }
+# Backport queued Wayland update cleanup when transient windows are destroyed.
+# Provenance and removal conditions: patches/README.md.
+winit = { path = "vendor/winit" }
 
 [patch."https://github.com/linebender/xilem"]
 # Preserve per-window themes during creation, not only later rebuilds.

@@ -10,6 +10,8 @@ use std::{
 
 #[path = "support/serialization.rs"]
 mod serialization;
+#[path = "support/shell_window_lifecycle.rs"]
+mod shell_window_lifecycle;
 #[path = "support/startup.rs"]
 mod startup;
 

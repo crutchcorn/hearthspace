@@ -1,5 +1,44 @@
 # Dependency patches
 
+## Winit Wayland destroyed-window updates
+
+- **Dependency:** `winit` 0.30.13, published source preserved in
+  [`vendor/winit`](../vendor/winit/). Its [provenance](../vendor/winit/PROVENANCE.md)
+  records the archive checksum, exact upstream revision, and retained notices.
+  Smithay's separate Winit 0.31 dependency is unchanged.
+- **Patch:** [discard queued updates during window cleanup](winit-wayland-destroyed-updates.patch),
+  backported from upstream commit
+  [`250cd01ae8d83a8969265a14496fb6957b44a34e`](https://github.com/rust-windowing/winit/commit/250cd01ae8d83a8969265a14496fb6957b44a34e).
+- **Reason:** creating and dropping a transient window in an application event
+  callback can queue its initial Wayland configure after the current iteration
+  has taken pending updates. Cleanup removes the window, but its queued update
+  survives into the next iteration, where Winit unwraps a missing window entry.
+  Hearthspace encountered this panic while dragging Canvas tools in the layout
+  editor. Removing the destroyed window's pending updates preserves live-window
+  events and avoids changing the shell's drag timing to hide the dependency bug.
+- **Upstream:** [PR 4760](https://github.com/rust-windowing/winit/pull/4760) merged
+  on 2026-10-15. Its final implementation removes updates during cleanup; the
+  PR description also discusses an earlier guard-based proposal. As checked on
+  2026-10-22, the latest stable release is
+  [0.30.13](https://github.com/rust-windowing/winit/releases/tag/v0.30.13), and
+  the fix has not shipped in a compatible release.
+- **Verification:**
+  `cargo test -p hearthspace-compositor --features e2e --test headless_control transient_shell_window_retired_in_callback_preserves_survivor_resize`
+  starts an owned headless compositor and the shell's Winit dependency in a
+  separate client process. An initial resize callback creates and drops a
+  transient window. The test requires its destruction and a later maximized
+  resize of the surviving window, beyond the stale-update failure point.
+  On 2026-10-22 it reproduced the missing-window panic without the patch and
+  passed with the backport, using llvmpipe and isolated process environments.
+  Native acceptance passed 15 Canvas tools drags, frame grouping and removal,
+  and subsequent keyboard search with an unchanged shell PID and no panic.
+  [The shell evidence](../docs/SHELL.md#layout-editor-crash-2026-10-22) records
+  hardware, artifacts, cleanup, and the broader suite's validation limits.
+- **Removal:** upgrade the Winit version used by Xilem/Masonry to a compatible
+  upstream release containing this fix. Remove the Cargo patch, vendored package,
+  and patch file, refresh `Cargo.lock`, and rerun the regression and native
+  layout editor workflow before removing this ledger entry.
+
 ## AccessKit AT-SPI adapter ordering
 
 - **Dependency:** `accesskit_atspi_common` 0.18.1, vendored in
