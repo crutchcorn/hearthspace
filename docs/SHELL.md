@@ -323,3 +323,33 @@ Release `5e565c6a0812` was installed with `scripts/install-session install`.
 All 13 installed runtime files match the manifest hashes, modes, and root
 ownership; compiled binaries also match the optimized build. Start a new
 Hearthspace login session to load this fix.
+
+### Icon and stability release, 2026-10-22
+
+Release `99123250698f` includes the direct application-icon strip, centered
+gesture-driven window switcher, desktop/titlebar icon resolution, FLAC artwork,
+and the Portal, shutdown, popup-recovery and drawing-layout fixes. See
+[tray evidence](TRAY.md), [desktop artwork](DESKTOP_ITEMS.md),
+[window switching](WINDOW_MANAGEMENT.md), and [drawing stability](FAVORITE_APPS.md).
+
+The final workspace run passed all 1,495 Rust tests, formatting, warnings-denied
+Clippy and the all-target build. Python lint/format and the CI dependency checks
+passed. The complete Python run passed 468 of 469 tests; the remaining tray
+workflow exceeded its shared budget. After the measured budget correction, its
+unchanged assertions passed in 120.68 seconds. Thus all 469 tests were validated
+across the full run and corrected tray rerun. Logs are retained under
+`/tmp/hearthspace-icon-final-*` and `/tmp/hearthspace-tray-budget-verified`.
+
+The optimized release was installed and all nine compiled binaries matched its
+installed hashes. Native acceptance in `/tmp/hearthspace-icon-installed.FTb68g`
+used Intel UHD 620/i915, Linux `7.0.0-38-generic`, and eDP-1 at 1920×1080, scale 1.
+Both real FLAC covers passed canvas/frame color checks, keyboard selection, and
+light/orange and dark/blue theme checks. Updater and Z.A.T.O. used their declared
+icons; the latter declares Steam. Notifications opened through the observed
+AT-SPI toggle and closed with Escape. Source FLACs and cached thumbnails remained
+unchanged. Page-flip captures, manifest hashes and cleanup evidence are retained.
+
+No GPU hang, device loss or panic appeared in the session or kernel logs. Cleanup
+restored tty2, removed the runtime, and left the owned service inactive with
+`MainPID=0` and `Result=success`. Existing desktop sessions were preserved; log out
+and choose Hearthspace again to load this release.
