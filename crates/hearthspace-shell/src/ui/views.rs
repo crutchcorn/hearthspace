@@ -24,6 +24,9 @@ use super::{
 };
 
 #[cfg(test)]
+#[path = "favorite_catalog_layout_tests.rs"]
+mod favorite_catalog_layout_tests;
+#[cfg(test)]
 #[path = "views_tests.rs"]
 mod tests;
 #[cfg(test)]
@@ -136,6 +139,9 @@ fn launcher_window(
     results: Vec<Entry>,
     windows_error: Option<String>,
 ) -> WindowView<ShellState> {
+    // Background catalog errors must not move the pad or resize its popup,
+    // which would invalidate an in-flight drawing capture.
+    let windows_error = windows_error.filter(|_| !output.drawing.active());
     let launcher_app_id = output.launcher_app_id();
     let mut size = launcher_size(results.len().max(1));
     let key = output.key().to_string();

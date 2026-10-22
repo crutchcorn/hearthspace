@@ -162,3 +162,26 @@ that its session/application scopes stopped and its runtime was removed.
 Native evidence is in `/tmp/hearthspace-search-native.HVX2ZS/`; automated check
 logs and headless evidence are in `/tmp/hearthspace-search-checks.iULxsN/`.
 No operating-system configuration was changed.
+
+## Drawing layout stability — 2026-10-22
+
+Background window-list or desktop-catalog errors remain visible in browsing mode,
+but do not change the active drawing layout or its window size. Gesture feedback
+and app-launch failures remain visible. This keeps a background query timeout
+from moving the pad and invalidating a stroke that the user has already begun.
+
+The final integration run exposed this instability: a window-list error banner
+shifted the pad by 55 logical pixels and increased the popup height by 56 pixels.
+The drawing generation changed after readiness, and the matching stroke did not
+launch its app despite roughly 57 seconds remaining. The original evidence is
+retained in `/tmp/hearthspace-icon-integrated-e2e.jchd1fng/shell/favorite-apps`.
+An unchanged targeted rerun passed in 130.98 seconds; that intermittent success
+does not remove the layout hazard. The workflow's 180-second budget is unchanged.
+
+The rendered-window regression failed before the repair for both background error
+sources, then passed all four focused cases after it. It compares the actual pad,
+content bounds and native creation hints, feeds the measured bounds through the
+production capture callback, and checks that the original stroke keeps accepting
+input. Browsing and genuine launch/gesture error visibility are checked separately.
+The fixture builds fresh window roots; it does not simulate a retained native
+window lifecycle. Logs are `/tmp/hearthspace-favorite-layout-{negative,positive}.log`.
