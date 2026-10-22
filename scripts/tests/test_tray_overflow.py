@@ -64,14 +64,31 @@ class TrayOverflowTests(unittest.TestCase):
                 )
         self.assertFalse(checks.fully_visible({}, surface, 2))
 
-    def test_overflow_requires_all_unique_icons_and_an_unreachable_trailing_icon(self):
+    def test_overflow_accepts_omitted_offscreen_icons_with_observed_clipping(self):
         icons = [{"name": fixtures.title(index)} for index in range(24)]
         observed = {"icons": icons, "visible": icons[:12]}
         self.assertTrue(checks.require_overflow(observed, 24))
+        self.assertTrue(checks.require_overflow(observed | {"icons": icons[:-1]}, 24))
+
+    def test_overflow_rejects_fitting_subset_without_observed_clipping(self):
+        icons = [{"name": fixtures.title(index)} for index in range(12)]
+        observed = {"icons": icons, "visible": icons}
+        self.assertFalse(checks.require_overflow(observed, 24))
+
+    def test_overflow_rejects_duplicate_unknown_and_absent_leading_icons(self):
+        icons = [{"name": fixtures.title(index)} for index in range(24)]
+        observed = {"icons": icons, "visible": icons[:12]}
         self.assertFalse(checks.require_overflow(observed | {"visible": icons}, 24))
-        self.assertFalse(checks.require_overflow(observed | {"icons": icons[:-1]}, 24))
         self.assertFalse(
             checks.require_overflow(observed | {"icons": icons + icons[:1]}, 24)
+        )
+        self.assertFalse(
+            checks.require_overflow(
+                observed | {"icons": icons + [{"name": fixtures.title(24)}]}, 24
+            )
+        )
+        self.assertFalse(
+            checks.require_overflow({"icons": icons[1:], "visible": icons[1:12]}, 24)
         )
         self.assertFalse(
             checks.require_overflow(observed | {"visible": icons[1:12]}, 24)

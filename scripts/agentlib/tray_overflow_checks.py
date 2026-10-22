@@ -67,10 +67,13 @@ def elements(smoke, *, focused=False):
     )["elements"]
 
 
-def observe(smoke, edge):
+def observe(smoke, edge, *, pending_mapping=False):
     status = observed_status(smoke)
     layout = output_layout(status)
-    widget = next(item for item in layout["widgets"] if item["id"] == "tray")
+    widgets = [item for item in layout["widgets"] if item["id"] == "tray"]
+    if len(widgets) != 1:
+        raise ControlError("expected one tray frame widget")
+    widget = widgets[0]
     placement = layout["layout"]["placements"].get("widget:tray", {})
     if (
         widget.get("group")
@@ -81,6 +84,15 @@ def observe(smoke, edge):
         raise ControlError(
             "overflow acceptance requires a standalone tray on its requested edge"
         )
+    # Registration acknowledges the watcher, before property reads, shell
+    # availability and native mapping. layout-status uses the default zero rect
+    # until a frame placement exists. Only initial readiness may retry it.
+    if (
+        pending_mapping
+        and not widget.get("hidden")
+        and widget["rect"] == {"x": 0, "y": 0, "width": 0, "height": 0}
+    ):
+        return None
     output = status["outputs"][0]
     surface = widget_surface(status, "tray")
     bounded(surface, output)
@@ -97,6 +109,14 @@ def observe(smoke, edge):
         ],
         "viewport": status["viewport"],
     }
+
+
+def wait_for_overflow(smoke, edge, count):
+    def ready():
+        observed = observe(smoke, edge, pending_mapping=True)
+        return observed if observed and require_overflow(observed, count) else None
+
+    return smoke.until("standalone tray mapped with observed icon clipping", ready)
 
 
 def revealed(smoke, edge, name, *, focused=False):
@@ -151,9 +171,13 @@ def evidence(smoke, edge, label, observed, names):
 
 def require_overflow(observed, count):
     names = [item["name"] for item in observed["icons"]]
-    if sorted(names) != [title(index) for index in range(count)]:
+    unique = set(names)
+    expected = {title(index) for index in range(count)}
+    # AccessKit omits offscreen descendants of a clipping Portal. Registration
+    # accounts for all fixtures; per-index keyboard traversal proves reachability.
+    if len(unique) != len(names) or not unique <= expected:
         return False
     visible = {item["name"] for item in observed["visible"]}
-    return (
-        title(0) in visible and title(count - 1) not in visible and len(visible) < count
-    )
+    # Missing snapshot entries alone do not prove overflow: require an observed
+    # icon outside the fully visible set, as well as the initial leading icon.
+    return title(0) in visible and title(count - 1) not in visible and visible < unique

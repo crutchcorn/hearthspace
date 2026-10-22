@@ -193,13 +193,7 @@ def edge_workflow(smoke, peer, count, edge):
     if edge != "top":
         place(smoke, edge)
 
-    def ready():
-        observed = checks.observe(smoke, edge)
-        return observed if checks.require_overflow(observed, count) else None
-
-    initial = smoke.until(
-        "all fixtures loaded and the standalone tray truly overflows", ready
-    )
+    initial = checks.wait_for_overflow(smoke, edge, count)
     before, baseline = initial["viewport"], len(peer.events())
     checks.evidence(smoke, edge, "initial", initial, [title(0)])
     for forward, label in ((True, "wheel-last"), (False, "wheel-first")):
