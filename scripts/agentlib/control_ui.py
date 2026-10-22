@@ -95,7 +95,6 @@ def osd(smoke, text, *, capture=None):
     smoke.until(
         "mapped passive control OSD", lambda: smoke.control.status().get("control_osds")
     )
-    smoke.until(f"OSD {text}", lambda: visible(smoke, text))
     status = smoke.control.status()
     if len(status["control_osds"]) != 1:
         raise ControlError("one adjustment must show exactly one OSD")
@@ -103,6 +102,9 @@ def osd(smoke, text, *, capture=None):
         raise ControlError("OSD unexpectedly opened an interactive shell panel")
     if not focused(smoke, smoke.target):
         raise ControlError("volume OSD stole focus from the application")
+    # The accessibility snapshot can outlast the passive OSD. Check its live
+    # geometry and focus before that traversal, then verify the captured text.
+    smoke.until(f"OSD {text}", lambda: visible(smoke, text))
     if capture:
         smoke.capture(capture)
     smoke.record(

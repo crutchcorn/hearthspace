@@ -182,6 +182,52 @@ class ControlFixtureTests(unittest.TestCase):
                 ):
                     control_ui.osd(smoke, "Volume 45%")
 
+    def test_osd_can_expire_while_accessibility_reads_its_text(self):
+        smoke = Mock()
+        smoke.target = 17
+        smoke.until.side_effect = lambda _name, check: check()
+        geometry = [{"x": 520, "y": 676, "width": 240, "height": 76}]
+        smoke.control.status.return_value = {
+            "control_osds": geometry,
+            "shell_panels": [],
+        }
+
+        def snapshot(*_args):
+            smoke.control.status.return_value = {
+                "control_osds": [],
+                "shell_panels": [],
+            }
+            return {"elements": [{"name": "Volume muted"}]}
+
+        with (
+            patch.object(control_ui, "a11y", side_effect=snapshot) as a11y,
+            patch.object(control_ui, "focused", return_value=True) as focused,
+        ):
+            control_ui.osd(smoke, "Volume muted", capture="muted-osd")
+            a11y.assert_called_once_with(
+                smoke, "find", control_ui.selector("Volume muted")
+            )
+            focused.assert_called_once_with(smoke, 17)
+            smoke.capture.assert_called_once_with("muted-osd")
+            smoke.record.assert_called_once_with(
+                "control-osd", text="Volume muted", focus=17, geometry=geometry
+            )
+            control_ui.dismissed(smoke)
+            self.assertEqual(focused.call_count, 2)
+            self.assertEqual(
+                smoke.record.call_args.args, ("osd-automatically-dismissed",)
+            )
+
+    def test_osd_rejects_multiple_mapped_surfaces(self):
+        smoke = Mock()
+        smoke.until.side_effect = lambda _name, check: check()
+        smoke.control.status.return_value = {"control_osds": [{}, {}]}
+        with (
+            patch.object(control_ui, "visible", return_value=[{}]),
+            self.assertRaisesRegex(ControlError, "exactly one OSD"),
+        ):
+            control_ui.osd(smoke, "Volume 45%")
+
     def test_popup_feedback_rejects_immediate_and_late_osds(self):
         for statuses in (
             [{"control_osds": [{}]}],

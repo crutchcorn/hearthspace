@@ -18,16 +18,37 @@ def chunk(kind, data):
     )
 
 
-def png(raw, width=2, height=1):
+def png(raw, width=2, height=1, color=2):
     return (
         PNG_SIGNATURE
-        + chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0))
+        + chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, color, 0, 0, 0))
         + chunk(b"IDAT", zlib.compress(raw))
         + chunk(b"IEND", b"")
     )
 
 
 class PngTests(unittest.TestCase):
+    def test_up_filter_reconstructs_changing_rgba_rows_with_byte_wraparound(self):
+        image = png(
+            bytes([2, 250, 5, 128, 255, 2, 10, 251, 128, 1, 2, 0, 100, 255, 255]),
+            width=1,
+            height=3,
+            color=6,
+        )
+        self.assertEqual(
+            pixels(image),
+            (
+                1,
+                3,
+                4,
+                [
+                    bytes([250, 5, 128, 255]),
+                    bytes([4, 0, 0, 0]),
+                    bytes([4, 100, 255, 255]),
+                ],
+            ),
+        )
+
     def test_all_png_scanline_filters(self):
         # Two identical pixels in two identical rows make filters explicit.
         row = bytes([10, 240, 20, 10, 240, 20])
