@@ -93,3 +93,22 @@ Implementation: `hearthspace-shell/src/desktop_items.rs` discovers real objects;
 paints the native tiles; the compositor's `desktop` module manages canvas
 interaction. The headless desktop workflow exercises native input, accessibility,
 application opening, and canvas transforms together.
+
+## Native artwork validation — 2026-10-22
+
+The physical Intel UHD 620 session at 1920×1080, scale 1, displayed both real
+Desktop FLAC covers on canvas tiles and attached frame tiles. Tab, Shift+Tab,
+and Space selected each file without opening it. Color probes passed for the
+32×32 frame covers in light/orange and dark/blue themes; settings and placements
+were restored afterwards. A first fixed-delay capture caught the tiles before
+their final resize. The follow-up waited within a ten-second bound for the
+same exact artwork probes and passed on its second capture; both theme checks
+passed on their first capture. No pixel tolerances were relaxed.
+
+Software Updater displayed its configured theme icon. Z.A.T.O. displayed the
+Steam artwork declared by its installed launcher. Opening VLC from its desktop
+icon with Enter produced a focused X11 window with a 44-pixel server titlebar
+and the VLC cone in its titlebar. Evidence, page-flip metadata, state snapshots,
+and source-file hashes are under
+`/tmp/hearthspace-gpu-portal.mwspkdj0/icon-acceptance`. Both FLAC files and their
+existing GNOME thumbnails retained their original hashes and recorded metadata.

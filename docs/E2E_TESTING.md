@@ -98,6 +98,12 @@ both Rust and Python. Required accessibility or deployed
 Ayatana libraries cannot silently skip their coverage. Native VT/device tests
 remain a separate hardware workflow.
 
+When running locally with a target directory shared by multiple worktrees, set
+`HEARTHSPACE_BINARY="$PWD/target/debug/hearthspace"` after building the intended
+checkout. Adapter tests embed a fallback path at compile time; a reused test
+artifact can otherwise look for the executable beneath a previous worktree.
+The explicit override selects the binary under test without changing assertions.
+
 `GSK_RENDERER=cairo` keeps GTK fixtures on software-rendered shared-memory
 buffers while the compositor uses Mesa's software GLES renderer. Setting only
 `LIBGL_ALWAYS_SOFTWARE=1` can leave GTK using Vulkan and submitting DMA-BUFs that

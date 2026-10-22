@@ -143,3 +143,53 @@ The optimized build was installed with `scripts/install-session install` as
 release `8c62c1b1dc73`. Installed binary hashes were compared against the release
 build and the installation manifest was verified. The user's existing desktop
 session was not restarted. No additional OS packages were needed.
+
+## Repeated popup GPU hang — 2026-10-22
+
+On the physical ThinkPad T480s, repeated tray-menu creation hung the Intel UHD
+620 (`8086:5917`, i915, kernel `7.0.0-38-generic`). A first opening succeeded;
+another opening after unregister/register could hang the shell GPU context.
+Checked Vello shaders did not prevent it. CPU preprocessing instead exposed a
+NaN assertion, and an instrumented diagnostic captured non-finite coordinates
+already in the input path. Its evidence is retained in
+`/tmp/hearthspace-gpu-capture.vfc1gr61/flatten-nan.txt`.
+
+The [Masonry Portal repair](../patches/README.md#masonry-finite-scrollbar-geometry)
+keeps scrollbar progress finite when focus reveal occurs at an exact fit and a
+later resize exposes the hidden bar. A renderer-free regression fails on the
+original dependency and passes with this repair. Production Vello and shader
+settings remain unchanged.
+
+The targeted native comparison passed first opening and unregister/register
+followed by another opening in the same shell process, with normal GPU
+rendering. Evidence is in `/tmp/hearthspace-gpu-portal.mwspkdj0`, with exact
+binary provenance in `target/gpu-portal/provenance.json`. An initial harness
+attempt lacked its copied tray fixture and stopped before interaction; the
+retained `single-ready` and `reregister` attempts both passed. No GPU loss or
+panic appeared in the session or kernel logs. Output eDP-1 was 1920×1080 at
+scale 1. Cleanup restored tty2, stopped the session and app scopes, removed the
+runtime, and left the owned unit inactive with `MainPID=0`.
+
+The later `/tmp/hearthspace-tray-portal.c687y_3p` run passed the complete ordinary
+tray workflow, including real touchscreen actions and the required installed
+Ayatana indicator library. Its additional standalone-overflow phase stopped
+during setup with `tray frame widget is not mapped`, before overflow input was
+tested. Evidence and complete cleanup are retained; this run does not count as
+overflow acceptance.
+
+Standalone overflow subsequently passed in
+`/tmp/hearthspace-tray-overflow-verified.f9Q5om`: 59 registered icons on both the
+top and left edges, wheel navigation to both endpoints, every Tab/Shift+Tab
+focus-and-reveal step, reverse entry at the trailing icon, and physical touch
+dragging. Pixel checks verified the revealed icons; no application callbacks,
+menus, or canvas movement leaked from scrolling. Session/kernel logs contain no
+GPU loss or panic. Cleanup restored tty2, removed the runtime and temporary
+touchscreen devices, and left the owned service inactive with `MainPID=0`.
+
+The intervening `/tmp/hearthspace-tray-overflow-final.UpeyFQ` attempt exhausted
+its initial-readiness deadline because it required every fixture in one AT-SPI
+snapshot. AccessKit intentionally omits offscreen Portal children. Readiness now
+accepts the observed clipped subset while rejecting duplicate/unknown names and
+requiring actual clipping. Registration still accounts for all 59 fixtures, and
+the complete forward/reverse traversal proves each is reachable. Both failed
+attempts retain their evidence and completed cleanup.

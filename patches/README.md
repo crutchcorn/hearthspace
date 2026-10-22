@@ -200,7 +200,8 @@ See [vendored provenance and refresh steps](../vendor/accesskit_atspi_common/PRO
   298×18 and validates actual paint with `ValidatingSink`. The unmodified
   dependency fails with `NonFinite { what: "Geometry::RoundedRect" }`; the patch
   passes alongside the existing touch-scroll regressions. Native repeated menu
-  and full tray acceptance must also pass before release.
+  creation and the full ordinary tray workflow passed on Intel UHD 620 with
+  normal GPU rendering; see the [native evidence](../docs/TRAY.md#repeated-popup-gpu-hang--2026-10-22).
 - **Removal:** upgrade to a compatible unmodified upstream revision that passes
   the regression and repeated native tray-menu workflow. Remove the Masonry
   Git-source patch, vendor directory, and patch file, then refresh `Cargo.lock`.

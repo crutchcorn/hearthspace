@@ -286,6 +286,18 @@ or `off` to disable persistence. Nested and headless sessions only save when an
 explicit path is supplied. The native agent harness uses `layout.json` inside
 its artifact directory so tests do not alter the user's normal layout.
 
+## Native switcher validation — 2026-10-22
+
+Native switcher acceptance on 2026-10-22 passed all 41 stages in
+`/tmp/hearthspace-icon-switcher.1D06Er`, including keyboard switching and physical
+touchpad/touchscreen pinch events. A subsequent Intel UHD 620 run at 1920×1080,
+scale 1, verified that inward touchscreen pinch leaves the centered switcher
+open after release. Escape and background click preserved focus; pointer click
+and touchscreen tap on another preview activated that app. Captures and exact
+before/after focus assertions are in
+`/tmp/hearthspace-gpu-portal.mwspkdj0/switcher-extra`. Both owned sessions were
+cleaned up; the latter restored tty2 with no GPU loss or panic logged.
+
 ## Contributor rules
 
 - Render, hit testing, output membership, and metadata must use the same
