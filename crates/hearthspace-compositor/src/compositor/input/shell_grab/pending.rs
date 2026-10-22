@@ -29,15 +29,17 @@ pub(super) struct Pending {
     started: Instant,
     cancelled: AtomicBool,
     reconciled: AtomicBool,
+    surface_padding: Size<i32, Logical>,
 }
 
 impl Pending {
-    fn new() -> Self {
+    fn new(surface_padding: Size<i32, Logical>) -> Self {
         Self {
             events: Vec::new(),
             started: Instant::now(),
             cancelled: AtomicBool::new(false),
             reconciled: AtomicBool::new(false),
+            surface_padding,
         }
     }
 
@@ -67,7 +69,11 @@ impl Pending {
 }
 
 impl App {
-    fn shell_resize_state(&self, index: usize) -> Option<(Serial, Size<i32, Logical>, bool)> {
+    fn shell_resize_state(
+        &self,
+        index: usize,
+        padding: Size<i32, Logical>,
+    ) -> Option<(Serial, Size<i32, Logical>, bool)> {
         let surface = self.windows[index].surface.xdg_toplevel()?;
         let (serial, size) = with_states(surface.wl_surface(), |states| {
             let role = states
@@ -93,7 +99,9 @@ impl App {
         Some((
             serial,
             size,
-            committed && self.window_geometry_size(index) == size && surface_size == Some(size),
+            committed
+                && self.window_geometry_size(index) == size
+                && surface_size == Some(size + padding),
         ))
     }
 
@@ -111,15 +119,25 @@ impl App {
         if self.frame_widget_identity(index).is_none() && self.shell_corner(index).is_none() {
             return;
         }
-        let Some((_, size, _)) = self.shell_resize_state(index) else {
+        let Some((_, size, _)) = self.shell_resize_state(index, (0, 0).into()) else {
             return;
         };
-        let root_size = self.windows[index].surface.wl_surface().and_then(|root| {
-            with_renderer_surface_state(&root, |state| state.surface_size()).flatten()
-        });
-        if self.window_geometry_size(index) == size && root_size == Some(size) {
+        let geometry = self.window_geometry_size(index);
+        if geometry == size {
             return;
         }
+        let Some(root_size) = self.windows[index].surface.wl_surface().and_then(|root| {
+            with_renderer_surface_state(&root, |state| state.surface_size()).flatten()
+        }) else {
+            return;
+        };
+        // xdg window geometry excludes buffer margins. Preserve their actual
+        // total extent while the shell resizes; the margins need not be symmetric.
+        let padding = (
+            root_size.w.saturating_sub(geometry.w).max(0),
+            root_size.h.saturating_sub(geometry.h).max(0),
+        )
+            .into();
         let Some(local) = self.shell_grab_local(index, self.pointer_location) else {
             return;
         };
@@ -138,7 +156,7 @@ impl App {
                     button: event.button,
                     location: self.pointer_location,
                 },
-                pending: Some(Pending::new()),
+                pending: Some(Pending::new(padding)),
             },
             serial,
             Focus::Keep,
@@ -276,7 +294,7 @@ impl ShellGrab {
         }
         if !pending.reconciled.swap(false, Ordering::Relaxed)
             || !index
-                .and_then(|index| data.shell_resize_state(index))
+                .and_then(|index| data.shell_resize_state(index, pending.surface_padding))
                 .is_some_and(|(_, _, ready)| ready)
         {
             return;
@@ -313,7 +331,7 @@ mod tests {
 
     #[test]
     fn pending_click_overflow_discards_the_entire_sequence() {
-        let mut pending = Pending::new();
+        let mut pending = Pending::new((0, 0).into());
         let event = ButtonEvent {
             serial: SERIAL_COUNTER.next_serial(),
             time: InputTime::now(),

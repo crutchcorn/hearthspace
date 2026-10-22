@@ -3,6 +3,40 @@ use super::*;
 use hearthspace_common::frame_layout::frame_widget_app_id;
 
 #[test]
+fn frame_layout_pending_resize_keeps_existing_buffer_margins() {
+    let _guard = headless_test_guard();
+    let mut compositor = HeadlessCompositor::spawn_with_options("2560x1600", None, None, 2);
+    drop(compositor.wait_for_socket());
+    let mut client = connect(&compositor);
+    let apps = client.add(
+        hearthspace_common::shell_corner_app_id(hearthspace_common::ShellCorner::Apps, None),
+        (150, 54),
+        (8, 6),
+        COLOR,
+    );
+    client.begin_resize(apps, (102, 54));
+    action(&compositor, "pointer-motion-abs 1229 749");
+    action(&compositor, "pointer-button-down 272");
+    action(&compositor, "pointer-button-up 272");
+    client.commit_old_buffer(apps);
+    assert!(client.presses().is_empty());
+    client.commit_resize(apps);
+    assert_eq!(client.presses(), &[(apps, (83.0, 33.0))]);
+    assert_eq!(client.releases(), &[(apps, (83.0, 33.0))]);
+    assert_eq!(client.pointer_target(), Some(apps));
+    action(&compositor, "pointer-button-down 272");
+    action(&compositor, "pointer-button-up 272");
+    assert_eq!(
+        client.presses().len(),
+        2,
+        "a stable padded surface must not wait for another configure"
+    );
+    assert_eq!(client.releases().len(), 2);
+    action(&compositor, "quit");
+    wait_for_exit(&mut compositor.child);
+}
+
+#[test]
 fn frame_layout_pending_resize_click_waits_for_the_resized_native_buffer() {
     let _guard = headless_test_guard();
     let mut compositor = HeadlessCompositor::spawn_with_options("2560x1600", None, None, 2);
