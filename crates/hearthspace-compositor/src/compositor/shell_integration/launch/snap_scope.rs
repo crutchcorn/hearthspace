@@ -2,6 +2,9 @@
 //! The command itself receives the private desktop runtime and D-Bus again.
 use std::{env, fs, os::unix::fs::PermissionsExt, path::Path};
 
+mod resolution;
+pub(super) use resolution::resolve;
+
 pub(super) fn wrap(instance: &str, command: Vec<String>) -> Result<Vec<String>, String> {
     let owner = env::var("HEARTHSPACE_APP_SCOPE_UNIT")
         .map_err(|_| "Snap launch requires a supervised native app scope owner".to_string())?;
@@ -110,6 +113,9 @@ fn security_tag(instance: &str, command: &[String]) -> Result<String, String> {
         .is_some_and(|arg| matches!(arg.as_str(), "env" | "/usr/bin/env"))
     {
         args = &args[1..];
+        if args.first().is_some_and(|arg| arg == "--") {
+            args = &args[1..];
+        }
         while args
             .first()
             .is_some_and(|arg| arg.contains('=') && !arg.starts_with('-'))

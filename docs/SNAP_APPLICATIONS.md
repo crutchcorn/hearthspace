@@ -38,6 +38,10 @@ Current acceptance limits remain explicit:
 
 - This integration covers catalog launches using `/snap/bin/APP` or
   `snap run APP`, including exported commands with leading `env` assignments.
+  Shortcuts without `X-SnapInstanceName`, such as Steam-generated game entries,
+  also receive the scope and socket when their executable resolves to
+  `/snap/bin/APP`. Resolution respects PATH order and the desktop working
+  directory; an ordinary executable that shadows a Snap command stays ordinary.
   Direct Snap commands typed in a terminal and external desktop-entry launches
   by a portal currently bypass the catalog wrapper.
 - Snap expects its document portal at `/run/user/UID/doc`. Hearthspace's private

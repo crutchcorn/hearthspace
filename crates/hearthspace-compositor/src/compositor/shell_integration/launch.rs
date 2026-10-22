@@ -147,7 +147,12 @@ impl App {
         }
         let mut app_command = app.launch_argv()?;
         app_command.extend(arguments.iter().map(|argument| (*argument).to_string()));
-        let app_command = if let Some(instance) = &app.snap_instance_name {
+        let snap_instance = snap_scope::resolve(
+            app.snap_instance_name.as_deref(),
+            &mut app_command,
+            app.working_directory.as_deref(),
+        )?;
+        let app_command = if let Some(instance) = &snap_instance {
             snap_scope::wrap(instance, app_command)?
         } else {
             app_command
@@ -157,7 +162,7 @@ impl App {
         } else {
             app_command
         };
-        let wayland_display = if let Some(instance_name) = &app.snap_instance_name {
+        let wayland_display = if let Some(instance_name) = &snap_instance {
             self.ensure_snap_wayland_listener(instance_name)
                 .map_err(|error| format!("failed to prepare Snap Wayland socket: {error}"))?
         } else {
