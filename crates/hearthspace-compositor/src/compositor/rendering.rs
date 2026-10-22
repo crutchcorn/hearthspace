@@ -744,6 +744,10 @@ impl App {
     }
 
     pub(super) fn window_render_scale(&self, window_index: usize) -> f64 {
+        #[cfg(feature = "xwayland")]
+        if let Some((parent, _)) = self.x11_popup_anchor(window_index) {
+            return self.window_render_scale(parent);
+        }
         if let Some((pose, _)) = self.canvas_preview_pose(window_index) {
             if self.canvas_search_result_identity(window_index).is_some() {
                 return pose.width / 240.;

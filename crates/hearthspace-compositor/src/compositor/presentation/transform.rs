@@ -22,6 +22,10 @@ impl App {
         &self,
         index: usize,
     ) -> Point<f64, Logical> {
+        #[cfg(feature = "xwayland")]
+        if let Some(origin) = self.x11_popup_screen_origin(index) {
+            return origin;
+        }
         if !self.windows[index].presentation.pinned()
             && let Some(rect) = self
                 .layout_motion_rect(index)
@@ -88,6 +92,10 @@ impl App {
         &self,
         index: usize,
     ) -> Rectangle<i32, Logical> {
+        #[cfg(feature = "xwayland")]
+        if let Some(bounds) = self.x11_popup_screen_bounds(index) {
+            return bounds;
+        }
         if !self.windows[index].presentation.pinned()
             && let Some(rect) = self
                 .layout_motion_rect(index)

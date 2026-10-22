@@ -49,6 +49,10 @@ impl App {
     }
 
     pub(in crate::compositor) fn window_uses_output_coordinates(&self, index: usize) -> bool {
+        #[cfg(feature = "xwayland")]
+        if let Some((parent, _)) = self.x11_popup_anchor(index) {
+            return self.window_uses_output_coordinates(parent);
+        }
         self.presentation_anchor(index).is_some() || self.frame_window_attached(index)
     }
 
@@ -56,6 +60,10 @@ impl App {
         &self,
         index: usize,
     ) -> Option<Rectangle<i32, Logical>> {
+        #[cfg(feature = "xwayland")]
+        if let Some((parent, _)) = self.x11_popup_anchor(index) {
+            return self.window_presentation_output(parent);
+        }
         self.presentation_anchor(index)
             .and_then(|anchor| self.presentation_output_rect(anchor))
     }

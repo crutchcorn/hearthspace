@@ -105,6 +105,9 @@ mod window_switcher;
 #[cfg(all(feature = "test-apps", feature = "xwayland"))]
 #[path = "support/xsettings.rs"]
 mod xsettings;
+#[cfg(all(feature = "test-apps", feature = "xwayland"))]
+#[path = "support/x11_popups.rs"]
+mod x11_popups;
 
 const WIDTH: u32 = 320;
 const HEIGHT: u32 = 240;

@@ -37,6 +37,8 @@ impl App {
             self.title_bar_canvas_rect(index).size
         };
         let width = native.w.max(1);
+        let app_id = window_app_id(&self.windows[index].surface);
+        let icon = self.titlebar_app_icon(app_id.as_deref());
         let window = &self.windows[index];
         let (hovered, pressed) = self.titlebar_button_state(window.id);
         let state = masonry_titlebar::TitlebarState {
@@ -44,7 +46,8 @@ impl App {
             title: window_title(&window.surface)
                 .filter(|title| !title.trim().is_empty())
                 .unwrap_or_else(|| "Hearthspace".to_string()),
-            app_id: window_app_id(&window.surface),
+            app_id,
+            icon,
             active: !self.canvas_search_active()
                 && self.focused_normal_window_id == Some(window.id),
             maximized: window.presentation.maximized,

@@ -15,6 +15,7 @@ use super::{
 mod clipboard;
 mod dispatch;
 mod handlers;
+mod popups;
 
 impl App {
     pub(super) fn start_xwayland(&mut self, dh: &DisplayHandle) {
@@ -69,7 +70,7 @@ impl App {
         }
     }
 
-    fn map_x11_window(&mut self, window: X11Surface, override_redirect: bool) {
+    fn map_x11_window(&mut self, window: X11Surface) {
         if self
             .windows
             .iter()
@@ -86,13 +87,14 @@ impl App {
             return;
         };
 
+        let override_redirect = window.is_override_redirect();
         let id = self.next_window_id;
         self.next_window_id += 1;
         let geometry = window.geometry();
         let position = if override_redirect {
             crate::geometry::CanvasPoint {
-                x: geometry.loc.x,
-                y: geometry.loc.y,
+                x: window.last_configure().loc.x,
+                y: window.last_configure().loc.y,
             }
         } else {
             position_for_new_window(ManagedWindowKind::Normal, self.viewport_offset)

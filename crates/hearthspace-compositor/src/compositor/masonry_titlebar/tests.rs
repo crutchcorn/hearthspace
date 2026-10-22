@@ -6,12 +6,34 @@ fn state() -> TitlebarState {
         appearance: hearthspace_ipc::Appearance::default(),
         title: "Hearthspace Settings".into(),
         app_id: Some("dev.hearthspace.Settings".into()),
+        icon: None,
         active: true,
         maximized: false,
         hovered: None,
         pressed: None,
         photo: false,
     }
+}
+
+#[test]
+fn resolved_application_artwork_replaces_fallback_without_tinting_or_rerasterizing_title() {
+    let mut state = state();
+    state.app_id = Some("vlc".into());
+    let mut cache = TitlebarBuffer::new(state.clone(), 2);
+    let title = Arc::clone(&cache.title);
+    let fallback = Arc::clone(&cache.app);
+    state.icon = Some(Arc::new(hearthspace_shell::tray::TrayPixmap {
+        width: 2,
+        height: 2,
+        rgba: [255, 120, 0, 255].repeat(4),
+    }));
+    cache.update(state.clone(), 2);
+    assert!(Arc::ptr_eq(&title, &cache.title));
+    assert!(!Arc::ptr_eq(&fallback, &cache.app));
+    assert_eq!(cache.app.pixels.get_pixel(40, 43).0, [255, 120, 0, 255]);
+    state.active = false;
+    cache.update(state, 2);
+    assert_eq!(cache.app.pixels.get_pixel(40, 43).0, [255, 120, 0, 255]);
 }
 
 #[test]
