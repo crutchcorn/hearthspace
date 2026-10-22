@@ -212,7 +212,7 @@ impl App {
             seen.insert(placed.target.target.key());
             let dropping = drop_target.as_ref() == Some(&placed.target);
             let selected = session.selected.as_ref() == Some(&placed.target) || dropping;
-            let bounds =
+            let mut bounds =
                 if placed.target.target.kind == TargetKind::Window && placed.placement.is_frame() {
                     self.pinned_reveal_rect(placed)
                 } else {
@@ -220,6 +220,11 @@ impl App {
                         .and_then(|index| self.layout_motion_rect(index))
                         .unwrap_or(placed.rect)
                 };
+            if let Some(index) = self.target_window_index(&placed.target) {
+                let offset = self.canvas_peek_offset(index);
+                bounds.x += offset.x;
+                bounds.y += offset.y;
+            }
             let Some(bounds) = self.layout_outline_bounds(&placed.target, bounds) else {
                 continue;
             };

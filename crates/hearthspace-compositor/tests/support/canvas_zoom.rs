@@ -188,14 +188,34 @@ fn run_zoom_preserves_startup_maximized_apps(backend: &str) {
     });
     action(&compositor, format!("move-window {id} 7000 -3000"));
     action(&compositor, format!("maximize-window {id} true"));
-    wait_state(&state, |state| state["maximized"] == true);
+    let maximized_state = wait_state(&state, |state| {
+        state["maximized"] == true && state["width"] == 1540
+    });
     let (_second, second_state) = maximized_fixture(&compositor, "second", backend);
+    // The second maximized app fully covers the first, translating its restore
+    // home by 24 canvas pixels. Wait for the real client allocation, compositor
+    // geometry and settled home before attributing later movement to scroll zoom.
+    // X11's client height excludes its server-side titlebar.
+    wait_state(&second_state, |state| {
+        state["maximized"] == true
+            && state["width"] == maximized_state["width"]
+            && state["height"] == maximized_state["height"]
+    });
     let before = wait_windows(&compositor, |windows| {
         windows.len() == 2
+            && windows.iter().all(|window| {
+                window["maximized"] == true
+                    && window["width"] == 1232
+                    && window["content_width"] == maximized_state["width"]
+                    && window["content_height"] == maximized_state["height"]
+            })
             && windows
                 .iter()
-                .all(|window| window["maximized"] == true && window["width"] == 1232)
+                .any(|window| window["id"] == id && window["canvas_y"] == -3024)
     });
+    let revealed = before.iter().find(|window| window["id"] == id).unwrap();
+    assert_eq!(revealed["canvas_x"], 7000);
+    assert_eq!(revealed["canvas_y"].as_i64().unwrap() - (-3000), -24);
     let second_id = before.iter().find(|window| window["id"] != id).unwrap()["id"]
         .as_u64()
         .unwrap();
@@ -243,7 +263,7 @@ fn run_zoom_preserves_startup_maximized_apps(backend: &str) {
     });
     let restored = restored.iter().find(|window| window["id"] == id).unwrap();
     assert_eq!(restored["canvas_x"], 7000);
-    assert_eq!(restored["canvas_y"], -3000);
+    assert_eq!(restored["canvas_y"], -3024);
     action(&compositor, format!("close-window {second_id}"));
     action(&compositor, format!("close-window {id}"));
     action(&compositor, "quit");

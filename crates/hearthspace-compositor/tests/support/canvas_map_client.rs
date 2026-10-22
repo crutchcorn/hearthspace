@@ -149,6 +149,7 @@ impl MapClient {
     }
 
     pub(super) fn destroy(&mut self, number: usize) {
+        self.state.decorations.destroy(number);
         let window = &mut self.state.windows[number];
         window.alive = false;
         window.toplevel.destroy();

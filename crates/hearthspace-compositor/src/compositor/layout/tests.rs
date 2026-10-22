@@ -127,6 +127,36 @@ fn desktop_positions_survive_restart_independently_of_window_slots() {
 }
 
 #[test]
+fn displaced_desktop_and_control_homes_survive_restart_and_reject_invalid_coordinates() {
+    use hearthspace_common::frame_layout::Point;
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("layout.json");
+    let mut store = LayoutStore::load(Some(path.clone()));
+    store.remember_desktop("app:foot.desktop", CanvasPoint { x: 540, y: 360 });
+    let key = "item:app:foot.desktop".to_owned();
+    let home = Point { x: 28., y: 112. };
+    store.layout.peek_homes.insert(key.clone(), home);
+    store.layout.peek_homes.insert(
+        "widget:[\"DP-1\",\"clock\"]".into(),
+        Point { x: -400., y: 200. },
+    );
+    store.save().unwrap();
+    let restored = LayoutStore::load(Some(path));
+    assert_eq!(restored.peek_homes(), store.peek_homes());
+    assert_eq!(
+        restored.desktop_position("app:foot.desktop"),
+        Some(CanvasPoint { x: 540, y: 360 })
+    );
+    for invalid in [f64::NAN, f64::INFINITY, 1_000_001.] {
+        store
+            .layout
+            .peek_homes
+            .insert(key.clone(), Point { x: invalid, y: 0. });
+        assert!(store.layout.validate().is_err());
+    }
+}
+
+#[test]
 fn old_layouts_without_desktop_items_remain_loadable() {
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join("layout.json");

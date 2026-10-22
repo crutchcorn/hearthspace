@@ -40,11 +40,11 @@ fn frame_layout_desktop_marks_stay_behind_apps_except_while_the_icon_is_held() {
     drop(compositor.wait_for_socket());
     action(&compositor, "canvas-search-motion false");
     let mut client = connect(&compositor);
-    client.add("desktop-covering-app".into(), (400, 360), (0, 0), APP);
+    client.add("desktop-covering-app".into(), (300, 360), (0, 0), APP);
     let app_id = window(&compositor, "desktop-covering-app")["id"]
         .as_u64()
         .unwrap();
-    action(&compositor, format!("move-window {app_id} 0 0"));
+    action(&compositor, format!("move-window {app_id} 800 0"));
     let id = "file:6465736b746f702d6c61796572";
     client.add(
         hearthspace_common::desktop_item_app_id(id),
@@ -52,21 +52,32 @@ fn frame_layout_desktop_marks_stay_behind_apps_except_while_the_icon_is_held() {
         (0, 0),
         ITEM,
     );
-    let home = query(&compositor, "desktop-status")["items"][0].clone();
-    let x = home["x"].as_u64().unwrap() as usize;
-    let y = home["y"].as_u64().unwrap() as usize;
+    let target = json!({"kind":"item","id":id});
     action(&compositor, "pointer-motion-abs 1000 700");
     action(&compositor, "layout-tool");
+    command(
+        &compositor,
+        "place",
+        target.clone(),
+        json!({"surface":"canvas","x":250.,"y":160.}),
+    );
+    // Leave part of the icon artwork uncovered so avoidance does not move it.
+    // Its left outline and the buffer sample still sit beneath the opaque app.
+    command(&compositor, "done", Value::Null, Value::Null);
+    action(&compositor, format!("move-window {app_id} 0 0"));
+    action(&compositor, "layout-tool");
+    let home = query(&compositor, "desktop-status")["items"][0].clone();
+    assert_eq!(home["x"], 250);
+    assert_eq!(home["y"], 160);
     // The dashed left outline was previously drawn over this opaque app. Keep
     // the sample clear of the separate frame guides and the app's own chrome.
     assert_color(
         &compositor,
-        (x - 3, y + 25, 2, 40),
+        (247, 185, 2, 40),
         APP,
         "an untouched desktop icon's dashed outline covered the app",
     );
 
-    let target = json!({"kind":"item","id":id});
     command(&compositor, "select", target.clone(), Value::Null);
     command(
         &compositor,
@@ -82,7 +93,7 @@ fn frame_layout_desktop_marks_stay_behind_apps_except_while_the_icon_is_held() {
     );
     assert_color(
         &compositor,
-        (285, 195, 16, 16),
+        (285, 225, 12, 12),
         APP,
         "a later-mapped Canvas icon covered the app's buffer",
     );
@@ -102,16 +113,28 @@ fn frame_layout_desktop_marks_stay_behind_apps_except_while_the_icon_is_held() {
         ITEM,
         "the actively held icon must remain visible over the app",
     );
-    action(&compositor, "pointer-button-up 272");
+    // Drop with some artwork still visible so the same pixels exercise the
+    // layer transition, rather than an automatic move out from under the app.
+    action(&compositor, "pointer-motion-abs 290 200");
     assert_color(
         &compositor,
-        (137, 185, 2, 40),
+        (285, 225, 12, 12),
+        ITEM,
+        "the held icon must stay above the app at its drop location",
+    );
+    action(&compositor, "pointer-button-up 272");
+    let dropped = query(&compositor, "desktop-status")["items"][0].clone();
+    assert_eq!(dropped["x"], 250);
+    assert_eq!(dropped["y"], 160);
+    assert_color(
+        &compositor,
+        (247, 185, 2, 40),
         APP,
         "the dropped icon's selected outline must return behind the app",
     );
     assert_color(
         &compositor,
-        (170, 225, 12, 12),
+        (285, 225, 12, 12),
         APP,
         "the dropped icon's buffer must return behind the app",
     );

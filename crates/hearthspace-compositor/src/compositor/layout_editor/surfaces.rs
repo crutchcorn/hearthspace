@@ -122,7 +122,13 @@ impl App {
             .layout_motion_rect(index)
             .or_else(|| self.layout_target_rect(index))?;
         let inset = self.window_surface_geometry_loc(index);
-        Some(Point::from((rect.x.round() as i32, rect.y.round() as i32)) - inset)
+        let offset = self.canvas_peek_offset(index);
+        Some(
+            Point::from((
+                (rect.x + offset.x).round() as i32,
+                (rect.y + offset.y).round() as i32,
+            )) - inset,
+        )
     }
 }
 
@@ -169,8 +175,7 @@ impl App {
                 }
             }
             ObjectPlacement::Canvas { .. } => match target.target.kind {
-                TargetKind::Item => 0,
-                TargetKind::Widget | TargetKind::Group => 5,
+                TargetKind::Item | TargetKind::Widget | TargetKind::Group => 5,
                 TargetKind::Window => 10,
             },
             ObjectPlacement::Frame { .. } => 100,

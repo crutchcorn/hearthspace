@@ -133,6 +133,12 @@ impl App {
                 self.desktop.selected.clear();
                 self.desktop.selected.insert(id.clone());
             }
+            let selected: Vec<_> = self.desktop.selected.iter().cloned().collect();
+            for id in selected {
+                if let Some(index) = self.desktop_index(&id) {
+                    self.grab_canvas_peek_target(index);
+                }
+            }
             self.desktop.gesture = Some(Gesture::Move {
                 id,
                 start: self.desktop_canvas_pointer(),
@@ -281,7 +287,16 @@ impl App {
                 for (index, window) in self.windows.iter().enumerate() {
                     if window.mapped
                         && let Some(id) = self.desktop_id(index)
-                        && rectangle.overlaps(self.desktop_tile_rect(index).to_f64())
+                        && {
+                            let mut tile = self.desktop_tile_rect(index).to_f64();
+                            let offset = self.canvas_peek_offset(index);
+                            tile.loc += (
+                                offset.x / self.viewport_scale,
+                                offset.y / self.viewport_scale,
+                            )
+                                .into();
+                            rectangle.overlaps(tile)
+                        }
                     {
                         selected.insert(id);
                     }

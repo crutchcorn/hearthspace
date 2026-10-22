@@ -192,6 +192,7 @@ pub(super) fn insert_drm_source(
                         || data.state.viewport_animation.is_some()
                         || data.state.group_animating()
                         || data.state.canvas_preview_animating()
+                        || data.state.canvas_peek_needs_animation_frame()
                         || data.state.layout_needs_animation_frame()
                         || data.state.desktop_edge_panning()
                     {

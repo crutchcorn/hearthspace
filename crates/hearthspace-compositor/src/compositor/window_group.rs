@@ -196,6 +196,10 @@ impl App {
             self.request_redraw();
         }
         self.window_group.flights = flights;
+        if was_animating && self.window_group.flights.is_empty() {
+            let ids: Vec<_> = self.window_group.selected.iter().copied().collect();
+            self.canvas_peek_arrangement_finished(&ids);
+        }
         if !self.group_gather_layout_busy()
             && let Some((request, result)) = self.window_group.deferred_gather.take()
         {
@@ -249,7 +253,11 @@ impl App {
         serde_json::to_vec(&self.group_status()).expect("serializable window group")
     }
 
-    fn set_group_window_position(&mut self, index: usize, position: crate::geometry::CanvasPoint) {
+    pub(in crate::compositor) fn set_group_window_position(
+        &mut self,
+        index: usize,
+        position: crate::geometry::CanvasPoint,
+    ) {
         if let Some(mut bounds) = self.canvas_maximized_rect(index) {
             // A canvas-maximized member carries its visible rectangle and its
             // original restore home together. Pointer snapshots retain that home,

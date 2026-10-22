@@ -136,7 +136,9 @@ fn glass_blurs_real_window_edges_and_refreshes_after_motion_and_content_commits(
     let mut compositor = HeadlessCompositor::spawn_with_options(&size, None, None, scale as i32);
     drop(compositor.wait_for_socket());
     let mut client = connect(&compositor);
-    let base = client.add("dev.hearthspace.BlurBase".into(), (380, 220), (0, 0), WHITE);
+    // Keep the base partly outside the foreground's bounds. Canvas avoidance
+    // uses window rectangles even when their SHM pixels are transparent.
+    let base = client.add("dev.hearthspace.BlurBase".into(), (380, 800), (0, 0), WHITE);
     let foreground = client.add(
         "dev.hearthspace.BlurEdge".into(),
         SOURCE_SIZE,

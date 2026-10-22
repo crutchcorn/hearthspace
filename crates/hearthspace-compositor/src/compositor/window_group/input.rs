@@ -54,6 +54,14 @@ impl App {
             .group_window_under_pointer()
             .filter(|id| self.window_group.selected.contains(id))
             .and_then(|id| self.windows.iter().position(|window| window.id == id));
+        if anchor_index.is_some() && !self.window_group.selecting {
+            let selected: Vec<_> = self.window_group.selected.iter().copied().collect();
+            for id in selected {
+                if let Some(index) = self.windows.iter().position(|w| w.id == id) {
+                    self.grab_canvas_peek_target(index);
+                }
+            }
+        }
         let anchor = anchor_index.map(|index| self.window_canvas_rect(index).loc);
         let gather = !shell
             && !self.window_group.selecting

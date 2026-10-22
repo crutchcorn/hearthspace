@@ -26,6 +26,7 @@ impl App {
             return;
         }
         self.cancel_group_window_motion(self.windows[window_index].id);
+        self.grab_canvas_peek_target(window_index);
         self.prepare_window_pointer_operation();
         let pointer_start = self.window_pointer_start(window_index);
         let initial_bounds = self.window_canvas_rect(window_index);

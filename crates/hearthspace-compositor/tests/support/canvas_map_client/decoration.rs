@@ -19,6 +19,13 @@ pub(super) struct State {
 }
 
 impl State {
+    pub(super) fn destroy(&mut self, number: usize) {
+        if let Some(decoration) = self.objects.remove(&number) {
+            decoration.destroy();
+        }
+        self.modes.remove(&number);
+    }
+
     pub(super) fn bind(
         &mut self,
         registry: &wl_registry::WlRegistry,

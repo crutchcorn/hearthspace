@@ -127,6 +127,7 @@ impl App {
             {
                 continue;
             }
+            self.grab_canvas_peek_target(index);
             let pinned = self.windows[index].presentation.pinned();
             let previous = self.window_screen_bounds(index);
             if pinned && self.restore_window_for_group(id).is_err() {

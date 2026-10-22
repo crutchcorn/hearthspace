@@ -174,6 +174,7 @@ impl App {
             }
             return Ok(());
         }
+        self.cancel_canvas_peek_motion(id);
         self.interrupt_pinch_zoom();
         if focused == Some(true) {
             self.advance_viewport_animation();
