@@ -193,3 +193,13 @@ accepts the observed clipped subset while rejecting duplicate/unknown names and
 requiring actual clipping. Registration still accounts for all 59 fixtures, and
 the complete forward/reverse traversal proves each is reachable. Both failed
 attempts retain their evidence and completed cleanup.
+
+The final software-rendered headless suite reached the Ayatana menu snapshot
+with only 0.046 seconds left in its shared 120-second budget. The complete
+unchanged workflow then passed in 123.83 seconds under a diagnostic budget;
+workflow-only time was 120.95 seconds. It included 240 AT-SPI subprocesses,
+26 captures, and nine PNG decodes. Those categories overlap and are not additive.
+Evidence is retained in `/tmp/hearthspace-icon-final-e2e.rpc4my38/tray` and
+`/tmp/hearthspace-tray-final-timed-180`. The headless test now allows 180 seconds
+in total; all delivery, removal, pixel and menu assertions, and individual IPC
+deadlines, remain unchanged.
