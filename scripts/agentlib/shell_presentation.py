@@ -92,8 +92,8 @@ def raised_tint(background, visible, surface):
     behind = background.rgb(*point)
     # CHROME_RAISED is #faf9f6 at 209/255 opacity (82%). This point is beside
     # content, away from the one-pixel border and all rounded corners. Sample
-    # the side padding: the bottom edge touches the maximized backdrop boundary,
-    # where Apps List's genuine blur correctly mixes in the wallpaper below it.
+    # the side padding over the uniform oversized fixture: a nearby window edge
+    # would let genuine blur mix in wallpaper, invalidating a raw-pixel alpha check.
     expected = [
         round((tint * 209 + source * 46) / 255)
         for tint, source in zip((250, 249, 246), behind)
@@ -170,7 +170,7 @@ def park_pointer(smoke, output):
 
 
 def dark_background(frame, output):
-    # Verify the actual committed backdrop, not merely its maximize state.
+    # Verify the actual committed backdrop in the central area between controls.
     area = workarea_bounds(output)
     for fx in (0.1, 0.5, 0.9):
         for fy in (0.1, 0.5, 0.9):
