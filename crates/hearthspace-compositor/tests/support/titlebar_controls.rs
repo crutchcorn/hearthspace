@@ -4,8 +4,19 @@ use super::navigation::{action, query, wait_windows};
 use super::*;
 use serde_json::Value;
 
+#[path = "focused_view.rs"]
+mod focused_view;
+
 fn fixture(scale: i32) -> (HeadlessCompositor, InteractiveClient, u64) {
-    let physical = format!("{}x{}", 1280 * scale, 800 * scale);
+    fixture_with_size(scale, 1280, 800)
+}
+
+fn fixture_with_size(
+    scale: i32,
+    width: i32,
+    height: i32,
+) -> (HeadlessCompositor, InteractiveClient, u64) {
+    let physical = format!("{}x{}", width * scale, height * scale);
     let mut compositor = HeadlessCompositor::spawn_with_options(&physical, None, None, scale);
     drop(compositor.wait_for_socket());
     let socket = compositor
@@ -57,6 +68,16 @@ fn click(compositor: &HeadlessCompositor, point: (f64, f64)) {
     motion(compositor, point);
     action(compositor, "pointer-button-down 272");
     action(compositor, "pointer-button-up 272");
+}
+
+fn double_click_title(compositor: &HeadlessCompositor, window: &Value) {
+    let scale = window["titlebar_height"].as_f64().unwrap() / 44.0;
+    let point = (
+        window["x"].as_f64().unwrap() + 40.0 * scale,
+        window["y"].as_f64().unwrap() + 22.0 * scale,
+    );
+    click(compositor, point);
+    click(compositor, point);
 }
 
 fn assert_presentation(
@@ -114,7 +135,11 @@ fn titlebar_controls_activate_on_release_cancel_outside_and_restore_at_canvas_an
             "pinned chrome must ignore canvas zoom"
         );
         assert_eq!(maximized["width"], 1280);
+        assert_eq!(maximized["focused_view"], true);
         click(&compositor, button_point(&maximized, true));
+        let bounded = assert_presentation(&compositor, &mut client, id, true);
+        assert_eq!(bounded["focused_view"], false);
+        double_click_title(&compositor, &bounded);
         let restored = assert_presentation(&compositor, &mut client, id, false);
         for field in ["canvas_x", "canvas_y", "content_width", "content_height"] {
             assert_eq!(restored[field], original[field], "restore {field}");
@@ -171,6 +196,11 @@ fn titlebar_drag_and_double_click_preserve_restore_geometry_and_ignore_disappear
     assert_presentation(&compositor, &mut client, id, false);
     click(&compositor, moved_title);
     let maximized = assert_presentation(&compositor, &mut client, id, true);
+    assert_eq!(maximized["focused_view"], false);
+    assert_eq!(maximized["x"], 24);
+    assert_eq!(maximized["y"], 96);
+    assert_eq!(maximized["width"], 1232);
+    assert_eq!(maximized["height"], 608);
     let pinned_title = (
         maximized["x"].as_f64().unwrap() + 40.0,
         maximized["y"].as_f64().unwrap() + 22.0,
@@ -217,6 +247,7 @@ fn titlebar_pinned_controls_match_paint_before_the_client_handles_its_resize() {
         // floating chrome was 260px. Painting must use the pinned hit geometry.
         let pending = window(&compositor, id);
         assert_eq!(pending["maximized"], true);
+        assert_eq!(pending["focused_view"], true);
         assert_eq!(pending["width"], 240);
         assert_eq!(pending["content_width"], 240);
         let close = button_point(&pending, false);
@@ -237,6 +268,9 @@ fn titlebar_pinned_controls_match_paint_before_the_client_handles_its_resize() {
             "close hover must cover its hit rectangle before configure at {output_scale}×: rgb=({red},{green},{blue})"
         );
         click(&compositor, button_point(&pending, true));
+        let bounded = assert_presentation(&compositor, &mut client, id, true);
+        assert_eq!(bounded["focused_view"], false);
+        double_click_title(&compositor, &bounded);
         let restored = assert_presentation(&compositor, &mut client, id, false);
         assert_eq!(restored["content_width"], original["content_width"]);
         assert_eq!(restored["canvas_x"], original["canvas_x"]);
@@ -310,6 +344,9 @@ fn maximized_titlebar_keeps_its_release_when_the_pointer_moves_into_content() {
     action(&compositor, "pointer-button-up 272");
     assert_eq!(client.released_buttons(), &[272]);
     click(&compositor, button_point(&maximized, true));
+    let bounded = assert_presentation(&compositor, &mut client, id, true);
+    assert_eq!(bounded["focused_view"], false);
+    double_click_title(&compositor, &bounded);
     assert_presentation(&compositor, &mut client, id, false);
     action(&compositor, "quit");
     wait_for_exit(&mut compositor.child);

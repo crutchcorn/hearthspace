@@ -46,7 +46,7 @@ impl App {
         if let Some(origin) = self.transient_screen_origin(index) {
             return origin;
         }
-        if let Some(mut output) = self.presentation_output_rect(index) {
+        if let Some(output) = self.presentation_output_rect(index) {
             let fullscreen = self.windows[index].presentation.fullscreen;
             let chrome = if self.has_compositor_chrome(index) {
                 TITLE_BAR_HEIGHT
@@ -54,9 +54,6 @@ impl App {
                 0
             };
             let size = self.window_geometry_size(index);
-            if !fullscreen {
-                output = self.usable_output(output);
-            }
             let inset = self.window_surface_geometry_loc(index);
             return Point::from((
                 f64::from(output.loc.x - inset.x)
@@ -180,8 +177,11 @@ impl App {
             })
             .is_some_and(|(index, _)| {
                 self.presentation_anchor(index).is_some_and(|anchor| {
-                    self.windows[anchor].presentation.fullscreen
-                        && self.presentation_output_rect(anchor) == Some(output)
+                    let state = &self.windows[anchor].presentation;
+                    self.presentation_output_rect(anchor) == Some(output)
+                        && (state.fullscreen
+                            || (state.focused_view
+                                && !self.focused_shell_visible_on_output(output)))
                 })
             })
     }

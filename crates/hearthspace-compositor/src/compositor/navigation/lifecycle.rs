@@ -87,6 +87,7 @@ impl App {
                     .and_then(|root| self.window_index_for_surface(&root))
             })
         });
+        self.window_focus_view_changed(index);
         self.desktop_focus_changed(index);
         self.layout_focus_changed(index);
         self.cancel_search_outside_focus(index);

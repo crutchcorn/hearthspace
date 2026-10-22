@@ -21,6 +21,7 @@ impl App {
     pub(in crate::compositor) fn reset_session_input(&mut self) {
         self.cancel_pending_shell_click();
         self.cancel_titlebar_pointer();
+        self.reset_focused_shell_peek();
         self.reset_window_group_input();
         self.reset_desktop_input();
         self.reset_layout_editor();

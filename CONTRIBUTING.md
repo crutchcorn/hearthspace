@@ -307,9 +307,10 @@ virtual device disappears and no gesture remains active.
 
 The pan test checks left/right/up/down and diagonal translation, simultaneous
 pan and zoom, cancellation, and ignored two-finger input on both device types.
-It also checks that a pan restores maximized windows, cancellation re-maximizes
-them, and fullscreen content stays fixed. Assertions pair viewport and window
-geometry with the position and size of a rendered terminal marker. Touchpad
+It also checks that maximized windows keep their world bounds during pan and
+zoom, cancellation restores the view, and fullscreen content stays fixed.
+Assertions pair viewport and window geometry with the position and size of a
+rendered terminal marker. Touchpad
 expectations use independently recorded libinput center deltas; touchscreen
 expectations use the injected contact centroid. Both scripts accept `--device`
 and `--timeout` and clean up their owned session on failure. The pan script also

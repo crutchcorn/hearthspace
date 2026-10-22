@@ -1,6 +1,19 @@
 use super::*;
 
 #[test]
+fn focused_view_shortcut_is_distinct_from_application_fullscreen() {
+    let mut mods = ModifiersState {
+        logo: true,
+        ..Default::default()
+    };
+    assert_eq!(shortcut(&mods, keysyms::KEY_f), Some(Shortcut::Fullscreen));
+    mods.shift = true;
+    assert_eq!(shortcut(&mods, keysyms::KEY_F), Some(Shortcut::FocusedView));
+    mods.ctrl = true;
+    assert_eq!(shortcut(&mods, keysyms::KEY_F), None);
+}
+
+#[test]
 fn shell_corner_shortcuts_support_reverse_and_consume_releases_after_focus_changes() {
     let mut shortcuts = KeyboardShortcuts::default();
     let mut mods = ModifiersState {

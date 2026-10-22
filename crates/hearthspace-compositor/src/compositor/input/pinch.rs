@@ -7,7 +7,7 @@ use tracing::{debug, trace};
 
 use crate::geometry::CanvasPoint;
 
-use super::super::{App, presentation::RestoredMaximizedWindow};
+use super::super::App;
 
 mod overview;
 mod switcher;
@@ -27,12 +27,9 @@ struct Gesture {
     input: PinchInput,
     device: String,
     offset: CanvasPoint,
-    original_offset: CanvasPoint,
     scale: f64,
     anchor: Point<f64, Logical>,
     translation: Point<f64, Logical>,
-    prepared: bool,
-    restored: Vec<RestoredMaximizedWindow>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -62,12 +59,9 @@ impl PinchZoom {
             input,
             device,
             offset,
-            original_offset: offset,
             scale,
             anchor,
             translation: (0.0, 0.0).into(),
-            prepared: false,
-            restored: Vec::new(),
         });
     }
 
@@ -126,36 +120,6 @@ impl PinchZoom {
         Some(translation)
     }
 
-    fn needs_canvas_restore(
-        &self,
-        device: &str,
-        factor: f64,
-        translation: Point<f64, Logical>,
-    ) -> bool {
-        self.gesture.as_ref().is_some_and(|gesture| {
-            !gesture.prepared
-                && self
-                    .update(device, factor, translation)
-                    .is_some_and(|viewport| viewport != (gesture.offset, gesture.scale))
-        })
-    }
-
-    fn prepare_canvas(&mut self, offset: CanvasPoint, restored: Vec<RestoredMaximizedWindow>) {
-        if let Some(gesture) = &mut self.gesture {
-            gesture.offset = offset;
-            gesture.prepared = true;
-            gesture.restored = restored;
-        }
-    }
-
-    fn take_restored(&mut self, device: Option<&str>) -> Vec<RestoredMaximizedWindow> {
-        self.gesture
-            .as_mut()
-            .filter(|gesture| device.is_none_or(|device| device == gesture.device))
-            .map(|gesture| std::mem::take(&mut gesture.restored))
-            .unwrap_or_default()
-    }
-
     fn end(&mut self, device: &str, cancelled: bool) -> Option<(CanvasPoint, f64)> {
         if self
             .gesture
@@ -163,7 +127,7 @@ impl PinchZoom {
             .is_some_and(|gesture| gesture.device == device)
         {
             let gesture = self.gesture.take().unwrap();
-            return cancelled.then_some((gesture.original_offset, gesture.scale));
+            return cancelled.then_some((gesture.offset, gesture.scale));
         }
         None
     }
@@ -173,7 +137,7 @@ impl PinchZoom {
         self.switcher = None;
         self.gesture
             .take()
-            .map(|gesture| (gesture.original_offset, gesture.scale))
+            .map(|gesture| (gesture.offset, gesture.scale))
     }
 
     fn interrupt_overview(&mut self) -> bool {
@@ -198,6 +162,10 @@ impl App {
             || self.group_interaction_active()
             || self.pointer.is_grabbed()
             || self.keyboard.is_grabbed()
+    }
+
+    fn canvas_pinch_blocked(&self) -> bool {
+        self.pinch_blocked() || self.window_focus_view_active()
     }
 
     pub(super) fn begin_touchpad_gesture(
@@ -249,7 +217,7 @@ impl App {
         anchor: Point<f64, Logical>,
     ) {
         if self.pinch_zoom.is_active()
-            || self.pinch_blocked()
+            || self.canvas_pinch_blocked()
             || self.overview_active()
             || self.window_switcher_active()
         {
@@ -280,23 +248,11 @@ impl App {
         if !self.pinch_zoom.accepts(input) {
             return;
         }
-        if self.pinch_blocked() {
+        if self.canvas_pinch_blocked() {
             // A newly opened popup or drag takes ownership of the interaction.
             // Keep its currently displayed transform; stale updates cannot resume.
             self.interrupt_pinch_zoom();
             return;
-        }
-        if self
-            .pinch_zoom
-            .needs_canvas_restore(device, scale, translation)
-        {
-            // Presentation updates interrupt older input. Hold this gesture
-            // locally while releasing maximization, then rebase only its zoom
-            // anchor; cancellation still owns the original view and states.
-            let mut pinch = std::mem::take(&mut self.pinch_zoom);
-            let restored = self.restore_maximized_for_canvas_zoom();
-            pinch.prepare_canvas(self.viewport_offset, restored);
-            self.pinch_zoom = pinch;
         }
         if let Some((offset, scale)) = self.pinch_zoom.update(device, scale, translation) {
             trace!(%device, scale, ?translation, "updating three-finger canvas gesture");
@@ -321,33 +277,25 @@ impl App {
             %device,
             cancelled,
             active = self.pinch_zoom.is_active(),
-            blocked = self.pinch_blocked(),
+            blocked = self.canvas_pinch_blocked(),
             "ending three-finger canvas gesture"
         );
-        if self.pinch_blocked() {
+        if self.canvas_pinch_blocked() {
             self.interrupt_pinch_zoom();
             return;
         }
-        let restored = if cancelled {
-            self.pinch_zoom.take_restored(Some(device))
-        } else {
-            Vec::new()
-        };
         if let Some((offset, scale)) = self.pinch_zoom.end(device, cancelled) {
-            self.cancel_canvas_zoom_restore(restored);
             self.apply_pinch_viewport(offset, scale, time);
         }
     }
 
     pub(in crate::compositor) fn cancel_pinch_zoom(&mut self) {
         self.cancel_window_switcher_swipe();
-        if self.pinch_blocked() {
+        if self.canvas_pinch_blocked() {
             self.interrupt_pinch_zoom();
             return;
         }
-        let restored = self.pinch_zoom.take_restored(None);
         if let Some((offset, scale)) = self.pinch_zoom.cancel() {
-            self.cancel_canvas_zoom_restore(restored);
             self.apply_pinch_viewport(offset, scale, InputTime::now());
         }
     }

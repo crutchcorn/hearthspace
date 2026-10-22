@@ -1,4 +1,4 @@
-//! The client body completes the compositor's rounded titlebar at its bottom.
+//! Paint a complete client body; the compositor masks the outer SSD corners.
 use crate::state::SettingsApp;
 use hearthspace_ui_components::{self as components, RADIUS_PANEL};
 use xilem::{
@@ -10,7 +10,7 @@ use xilem::{
             AccessCtx, ChildrenIds, LayoutCtx, MeasureCtx, NoAction, PaintCtx, PropertiesRef,
             RegisterCtx, Widget, WidgetMut, WidgetPod,
         },
-        imaging::{ClipRef, Painter},
+        imaging::Painter,
         kurbo::{Axis, Point, Size},
         layout::{LenReq, Length},
     },
@@ -155,14 +155,8 @@ impl Widget for WindowBody {
         painter: &mut Painter<'_>,
     ) {
         let palette = *props.get::<components::Palette>(ctx.property_cache());
-        // Paint clipping encloses the sidebar, scrollbars and page background.
-        // The square top edge joins the server titlebar without a transparent seam.
-        painter.push_clip(ClipRef::fill(ctx.border_box().to_rounded_rect((
-            0.0,
-            0.0,
-            RADIUS_PANEL - 1.0,
-            RADIUS_PANEL - 1.0,
-        ))));
+        // The compositor clips the complete server-decorated window. Keeping
+        // this buffer square also fills the corners in edge-to-edge focused view.
         painter.fill(ctx.border_box(), palette.chrome).draw();
         // Continue the reference's window-wide wash below its titlebar.
         let rect = ctx.border_box();
@@ -172,15 +166,6 @@ impl Widget for WindowBody {
             RADIUS_PANEL,
             &palette,
         );
-    }
-
-    fn post_paint(
-        &mut self,
-        _: &mut PaintCtx<'_>,
-        _: &PropertiesRef<'_>,
-        painter: &mut Painter<'_>,
-    ) {
-        painter.pop_clip();
     }
 
     fn accessibility_role(&self) -> Role {

@@ -66,7 +66,10 @@ impl App {
         device: String,
         fingers: u32,
     ) {
-        if self.pinch_zoom.is_active() || self.pinch_blocked() || self.window_switcher_active() {
+        if self.pinch_zoom.is_active()
+            || self.canvas_pinch_blocked()
+            || self.window_switcher_active()
+        {
             return;
         }
         self.pinch_zoom.overview = OverviewGesture::begin(input, device, fingers);
@@ -86,7 +89,7 @@ impl App {
             return false;
         };
         gesture.update(input, device, scale);
-        if self.pinch_blocked() {
+        if self.canvas_pinch_blocked() {
             self.interrupt_pinch_zoom();
         }
         true
@@ -105,7 +108,7 @@ impl App {
             return true;
         }
         let gesture = self.pinch_zoom.overview.take().unwrap();
-        let action = gesture.action(cancelled || self.pinch_blocked());
+        let action = gesture.action(cancelled || self.canvas_pinch_blocked());
         debug!(%device, cancelled, ?action, "ending overview pinch gesture");
         match action {
             Some(OverviewAction::Open) => {

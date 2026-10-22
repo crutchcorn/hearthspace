@@ -139,7 +139,9 @@ impl App {
                     if self.titlebar_title_press(self.windows[window_index].id, time) {
                         return;
                     }
-                    if self.window_uses_output_coordinates(window_index) {
+                    if self.window_uses_output_coordinates(window_index)
+                        || self.windows[window_index].presentation.maximized
+                    {
                         return;
                     }
                     self.windows[window_index].pending_resize = None;

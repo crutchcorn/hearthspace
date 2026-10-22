@@ -318,7 +318,7 @@ fn compact_switch_exposes_checked_state_keyboard_action_and_visible_focus() {
 }
 
 #[test]
-fn client_body_rounds_only_bottom_corners_and_preserves_sidebar_pointer_input() {
+fn client_body_fills_all_corners_and_preserves_sidebar_pointer_input() {
     for (width, height) in [(680, 490), (620, 420)] {
         let (_dir, state) = state();
         let mut ui = Ui::new(state, view, (width, height));
@@ -328,10 +328,9 @@ fn client_body_rounds_only_bottom_corners_and_preserves_sidebar_pointer_input() 
             assert_eq!(ui.state.selected_category.label(), category);
             let image = ui.harness.render();
             for x in [2, width - 3] {
-                assert_eq!(
-                    image.get_pixel(x, height - 3).0[3],
-                    0,
-                    "bottom corners must reveal the desktop: {category}, {width}x{height}"
+                assert!(
+                    image.get_pixel(x, height - 3).0[3] > 128,
+                    "client corners must remain filled for compositor-owned focused view: {category}, {width}x{height}"
                 );
                 assert!(
                     image.get_pixel(x, 2).0[3] > 128,

@@ -121,14 +121,15 @@ fn run_window_states(backend: &str) {
     let id = original["id"].as_u64().unwrap();
     wait_state(&state_path, |state| state["active"] == true);
 
-    // A zoomed canvas must not shrink output-pinned windows or their input.
+    // Maximizing fits the current canvas view; actual fullscreen uses native
+    // output coordinates independently of that canvas zoom.
     action(&compositor, "zoom-out");
     let deadline = Instant::now() + Duration::from_secs(5);
     loop {
         if query(&compositor, "status")["viewport"]["scale"]
             .as_f64()
             .unwrap()
-            < 0.99
+            == 0.8
         {
             break;
         }
@@ -139,10 +140,10 @@ fn run_window_states(backend: &str) {
     wait_state(&state_path, |state| state["maximized"] == true);
     wait_windows(&compositor, |windows| {
         windows[0]["maximized"] == true
-            && windows[0]["x"] == 0
-            && windows[0]["y"] == 54
-            && windows[0]["width"] == 1280
-            && windows[0]["height"] == 746
+            && windows[0]["x"] == 24
+            && windows[0]["y"] == 96
+            && windows[0]["width"] == 1232
+            && windows[0]["height"] == 608
     });
     assert!(
         compositor
@@ -171,7 +172,7 @@ fn run_window_states(backend: &str) {
         state["fullscreen"] == false && state["maximized"] == true
     });
     wait_windows(&compositor, |windows| {
-        windows[0]["height"] == 746 && windows[0]["y"] == 54
+        windows[0]["height"] == 608 && windows[0]["y"] == 96
     });
     action(&compositor, format!("restore-window {id}"));
     wait_state(&state_path, |state| {

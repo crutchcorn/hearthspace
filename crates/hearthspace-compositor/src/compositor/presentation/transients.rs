@@ -40,7 +40,7 @@ impl App {
     /// walk so a broken client-supplied parent chain cannot trap the compositor.
     pub(in crate::compositor) fn presentation_anchor(&self, mut index: usize) -> Option<usize> {
         for _ in 0..self.windows.len() {
-            if self.windows[index].presentation.pinned() {
+            if self.windows[index].presentation.output_pinned() {
                 return Some(index);
             }
             index = self.transient_parent_index(index)?;
@@ -76,10 +76,7 @@ impl App {
             return None;
         }
         let parent = self.presentation_anchor(index)?;
-        let mut output = self.presentation_output_rect(parent)?;
-        if !self.windows[parent].presentation.fullscreen {
-            output = self.usable_output(output);
-        }
+        let output = self.presentation_output_rect(parent)?;
         let size = self.window_geometry_size(index);
         let chrome = if self.has_compositor_chrome(index) {
             TITLE_BAR_HEIGHT
@@ -119,7 +116,7 @@ impl App {
         };
         if !self
             .presentation_anchor(index)
-            .is_some_and(|anchor| self.windows[anchor].presentation.fullscreen)
+            .is_some_and(|anchor| self.windows[anchor].presentation.output_pinned())
         {
             output = self.usable_output(output);
         }

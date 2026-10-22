@@ -33,15 +33,12 @@ frame, to track their center and spread. No new protocol or vendored backend is
 required. Shell zoom buttons and Super+scroll
 remain available.
 
-An actual three-finger pan or zoom restores maximized applications to their saved
-floating size and canvas position, so they move with the desktop. The focused
-application or its dialog is revealed first if its saved position is off-screen.
-When a shell control has focus, its output's topmost maximized application is
-revealed instead, while keyboard focus stays on the shell control.
-Fullscreen applications stay fullscreen. Shell zoom buttons and Super+scroll use
-the same rule for zoom. Starting a gesture without changing the view does not
-restore maximized windows. A clamped pinch without translation also leaves them
-maximized; a pan at the zoom limit restores them.
+Three-finger pan and zoom move and scale maximized applications with the canvas.
+Their expanded world bounds and original restore geometry remain unchanged;
+they do not automatically restore or recenter. Shell zoom buttons and
+Super+scroll use the same rule, including at zoom limits. Application fullscreen
+stays fixed to its output. Focused view blocks canvas navigation until it is
+closed or another application or canvas tool is activated.
 
 ## Four- and Five-Finger Overview
 
@@ -62,7 +59,7 @@ is open, three-finger navigation and scrolling cannot move the underlying canvas
 
 Touchscreen contacts often arrive in separate frames. Adding a fourth contact
 to an active three-finger gesture cancels that temporary canvas transformation,
-restores its original viewport and maximization, and starts overview recognition
+restores its original viewport, and starts overview recognition
 from the four-contact geometry. Adding a fifth contact cancels the four-contact
 candidate and starts a fresh five-contact baseline, so placing another finger
 cannot itself count as expansion. Place all intended fingers before pinching.
@@ -144,13 +141,13 @@ after a lift cannot start another gesture or become a click until all have lifte
 
 Ending a three-finger gesture normally retains the current view. Cancelling it,
 removing its device, losing nested-window focus, or suspending the native session
-restores the view from that gesture's beginning and re-maximizes windows restored
-by that gesture. Libinput may end a gesture normally before reporting device removal;
+restores the view from that gesture's beginning without changing window presentation
+states. Libinput may end a gesture normally before reporting device removal;
 that completed gesture retains its final view.
 A mouse press, shell/scroll navigation, output geometry change, or newly observed
 grab instead ends the gesture at its current view, letting the newer interaction
 proceed. Later events from the interrupted gesture cannot restore an obsolete
-viewport or re-maximize those windows.
+viewport or alter those windows' presentation states.
 
 An unfinished overview pinch is discarded on cancellation, device removal,
 interruption, nested focus loss, or native VT/suspend input reset. It does not

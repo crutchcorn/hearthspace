@@ -105,32 +105,31 @@ fn touchpad_fractional_deltas_accumulate_without_per_event_rounding() {
 }
 
 #[test]
-fn pan_still_works_at_zoom_limits_and_restore_waits_for_visible_movement() {
+fn pan_still_works_at_zoom_limits_without_replacing_the_baseline() {
     for input in [
         PinchInput::Touchpad,
         PinchInput::TouchpadSwipe,
         PinchInput::Touchscreen,
     ] {
         for (scale, factor) in [(MIN_ZOOM, 0.1), (MAX_ZOOM, 100.0)] {
-            let mut gesture = begin(input, scale);
+            let gesture = begin(input, scale);
             for translation in [(0.0, 0.0), (0.1, -0.1)] {
-                assert!(!gesture.needs_canvas_restore(DEVICE, factor, translation.into()));
+                assert_eq!(
+                    gesture.update(DEVICE, factor, translation.into()),
+                    Some((OFFSET, scale))
+                );
             }
             let translation = (20.0, -10.0).into();
-            assert!(gesture.needs_canvas_restore(DEVICE, factor, translation));
             let updated = gesture.update(DEVICE, factor, translation).unwrap();
             assert_eq!(updated.1, scale);
             assert_ne!(updated.0, OFFSET);
-            gesture.prepare_canvas(OFFSET, Vec::new());
-            assert!(!gesture.needs_canvas_restore(DEVICE, factor, translation));
         }
     }
 }
 
 #[test]
-fn cancelled_pan_and_combined_gestures_restore_the_original_view_after_reveal() {
+fn cancelled_pan_and_combined_gestures_restore_the_original_view() {
     let anchor: Point<f64, Logical> = (400.25, 250.75).into();
-    let revealed = CanvasPoint { x: 9000, y: -4000 };
     let translation: Point<f64, Logical> = (80.25, 42.75).into();
     for input in [
         PinchInput::Touchpad,
@@ -139,9 +138,7 @@ fn cancelled_pan_and_combined_gestures_restore_the_original_view_after_reveal() 
     ] {
         for factor in [1.0, 0.75] {
             let mut gesture = begin(input, 1.0);
-            assert!(gesture.needs_canvas_restore(DEVICE, factor, translation));
-            gesture.prepare_canvas(revealed, Vec::new());
-            let canvas_anchor = screen_to_canvas(anchor, revealed, 1.0);
+            let canvas_anchor = screen_to_canvas(anchor, OFFSET, 1.0);
             let (offset, scale) = gesture.update(DEVICE, factor, translation).unwrap();
             let after = canvas_to_screen(canvas_anchor, offset, scale);
             assert!((after.x - (anchor.x + translation.x)).abs() <= 0.5 * scale);
@@ -263,7 +260,6 @@ fn malformed_absolute_translations_and_integer_limits_do_not_replace_baseline() 
     let gesture = begin(PinchInput::Touchscreen, MIN_ZOOM);
     for translation in [(f64::NAN, 0.0), (0.0, f64::INFINITY), (f64::MAX, f64::MAX)] {
         assert_eq!(gesture.update(DEVICE, 1.0, translation.into()), None);
-        assert!(!gesture.needs_canvas_restore(DEVICE, 1.0, translation.into()));
     }
     assert_eq!(
         gesture.update(DEVICE, 1.0, (1e30, -1e30).into()),

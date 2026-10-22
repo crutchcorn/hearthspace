@@ -229,13 +229,16 @@ fn override_redirect_menu_follows_parent_content_through_pan_zoom_and_maximize()
     connection.unmap_window(popup).unwrap();
     connection.flush().unwrap();
     action(&compositor, format!("maximize-window {id} true"));
-    let max = wait_windows(&compositor, |w| w[0]["maximized"] == true)[0].clone();
-    // X11 root coordinates remain client coordinates; the compositor projects
-    // their offset from the parent even when that parent no longer uses canvas coordinates.
-    let expected_origin = (
-        max["x"].as_i64().unwrap() as i16,
-        (max["y"].as_i64().unwrap() + max["titlebar_height"].as_i64().unwrap()) as i16,
-    );
+    let max = wait_windows(&compositor, |w| {
+        w[0]["maximized"] == true && w[0]["width"] == 1232 && w[0]["height"] == 608
+    })[0]
+        .clone();
+    assert_eq!(max["x"], 24);
+    assert_eq!(max["y"], 96);
+    // At 0.5x and viewport (100,80), the bounded screen origin (24,96)
+    // corresponds to canvas (148,272). X11 receives native client coordinates,
+    // including the unscaled 44px header, while menu pixels follow canvas zoom.
+    let expected_origin = (148, 316);
     let deadline = Instant::now() + Duration::from_secs(5);
     let origin = loop {
         let origin = connection
@@ -265,12 +268,12 @@ fn override_redirect_menu_follows_parent_content_through_pan_zoom_and_maximize()
     wait_red(
         &compositor,
         (
-            max["x"].as_i64().unwrap() as i32 + 10,
+            max["x"].as_i64().unwrap() as i32 + 5,
             max["y"].as_i64().unwrap() as i32
                 + max["titlebar_height"].as_i64().unwrap() as i32
-                + 24,
-            160,
-            100,
+                + 12,
+            80,
+            50,
         ),
     );
 }

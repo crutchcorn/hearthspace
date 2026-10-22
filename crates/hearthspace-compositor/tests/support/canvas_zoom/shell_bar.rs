@@ -1,7 +1,7 @@
 use super::*;
 
 #[test]
-fn shell_pointer_zoom_reveals_distant_app_without_stealing_shell_focus() {
+fn shell_pointer_zoom_preserves_maximized_canvas_app_without_stealing_shell_focus() {
     let _guard = headless_test_guard();
     let mut compositor = HeadlessCompositor::spawn_with_size("1280x800");
     drop(compositor.wait_for_socket());
@@ -113,17 +113,20 @@ fn shell_pointer_zoom_reveals_distant_app_without_stealing_shell_focus() {
     });
     wait_scale(&compositor, 0.8);
     wait_state(&state, |state| {
-        state["maximized"] == false && state["active"] == false
+        state["maximized"] == true && state["active"] == false
     });
     let window = wait_windows(&compositor, |windows| {
-        windows[0]["maximized"] == false
+        windows[0]["maximized"] == true
             && windows[0]["visible"] == true
             && windows[0]["focused"] == false
     })[0]
         .clone();
+    assert_eq!(window["width"], 986);
     assert_eq!(window["canvas_x"], 7000);
     assert_eq!(window["canvas_y"], -3000);
-    wait_green_pixels(&compositor, "shell-zoom-restored", |pixels| pixels > 50_000);
+    wait_green_pixels(&compositor, "shell-zoom-maximized", |pixels| {
+        pixels > 50_000
+    });
     assert_eq!(
         wait_state(&bar_state, |state| state["clicked"] == true)["active"],
         true

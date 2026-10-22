@@ -152,6 +152,10 @@ pub(in crate::compositor) fn run_event_loop(
             (Some(a), Some(b)) => Some(a.min(b)),
             (a, b) => a.or(b),
         };
+        let timeout = match (timeout, data.state.focused_shell_peek_timeout()) {
+            (Some(a), Some(b)) => Some(a.min(b)),
+            (a, b) => a.or(b),
+        };
         event_loop.dispatch(timeout, data)?;
         data.maintain_captures();
 
@@ -189,6 +193,7 @@ pub(in crate::compositor) fn run_event_loop(
         data.state.reconcile_window_switcher();
         data.state.advance_canvas_preview();
         data.state.reconcile_layout_editor();
+        data.state.maintain_focused_shell_peek();
         data.state.refresh_pending_shell_click();
         data.apply_cursor_icon();
         data.update_native_hardware_cursor();

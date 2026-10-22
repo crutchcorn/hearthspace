@@ -59,14 +59,13 @@ fn wait_state(path: &Path, condition: impl Fn(&Value) -> bool) -> Value {
     }
 }
 
-fn wait_scale(compositor: &HeadlessCompositor, target: f64) {
+pub(super) fn wait_scale(compositor: &HeadlessCompositor, target: f64) {
     let deadline = Instant::now() + Duration::from_secs(5);
     loop {
         let viewport = query(compositor, "status")["viewport"].clone();
         let scale = viewport["scale"].as_f64().unwrap();
         // Cubic easing gets close to the target before the animation finishes.
-        // A subsequent zoom during that tail can still change the scale and
-        // legitimately restore maximized windows, even near the zoom limit.
+        // Wait for completion so the next navigation starts at a stable view.
         if viewport["animating"] == false && (scale - target).abs() < 0.0001 {
             return;
         }
@@ -114,46 +113,62 @@ fn wait_green_pixels(
     }
 }
 
-fn run_zoom_restores_startup_maximized_apps(backend: &str) {
+fn run_zoom_preserves_startup_maximized_apps(backend: &str) {
     let _guard = headless_test_guard();
     let mut compositor = HeadlessCompositor::spawn_with_size("1280x800");
     drop(compositor.wait_for_socket());
     let (_first, state) = maximized_fixture(&compositor, "first", backend);
     let first = wait_windows(&compositor, |windows| {
-        windows.len() == 1 && windows[0]["maximized"] == true && windows[0]["width"] == 1280
+        windows.len() == 1
+            && windows[0]["maximized"] == true
+            && windows[0]["width"] == 1232
+            && windows[0]["height"] == 608
     })[0]
         .clone();
     wait_state(&state, |state| state["maximized"] == true);
     let id = first["id"].as_u64().unwrap();
-    // GTK reports its maximized state before the corresponding buffer arrives,
-    // especially through XWayland/software rendering. Require the green editor
-    // to visibly fill most of the output before using it as our baseline.
+    // Observe the real buffer, not only the configure acknowledgement.
     let before_pixels =
         wait_green_pixels(&compositor, "maximized", |pixels| pixels > 1280 * 800 / 2);
 
     action(&compositor, "zoom-out");
     wait_scale(&compositor, 0.8);
-    wait_state(&state, |state| {
-        state["maximized"] == false && state["active"] == true
-    });
-    let floating = wait_windows(&compositor, |windows| {
-        windows[0]["maximized"] == false
+    let zoomed = wait_windows(&compositor, |windows| {
+        windows[0]["maximized"] == true
             && windows[0]["focused"] == true
             && windows[0]["visible"] == true
-            && windows[0]["content_width"] == 560
-            && windows[0]["content_height"] == 360
+            && windows[0]["width"] == 986
+            && windows[0]["height"] == 486
     })[0]
         .clone();
-    assert_eq!(floating["canvas_x"], first["canvas_x"]);
-    assert_eq!(floating["canvas_y"], first["canvas_y"]);
-    assert!(floating["width"].as_i64().unwrap() < 1280);
-    // State/configure acknowledgement likewise precedes the restored buffer.
-    // A missing app must not satisfy the shrink check merely by drawing nothing.
-    wait_green_pixels(&compositor, "restored", |pixels| {
-        pixels > 0 && pixels < before_pixels / 2
+    for field in ["canvas_x", "canvas_y", "content_width", "content_height"] {
+        assert_eq!(zoomed[field], first[field], "zoom changed {field}");
+    }
+    assert_eq!(zoomed["focused_view"], false);
+    wait_green_pixels(&compositor, "zoomed", |pixels| {
+        pixels > before_pixels / 2 && pixels < before_pixels * 3 / 4
     });
-    let center_x = floating["x"].as_f64().unwrap() + floating["width"].as_f64().unwrap() / 2.0;
-    let center_y = floating["y"].as_f64().unwrap() + floating["height"].as_f64().unwrap() / 2.0;
+
+    let viewport = query(&compositor, "status")["viewport"].clone();
+    let pan_x = viewport["x"].as_i64().unwrap() + 100;
+    let pan_y = viewport["y"].as_i64().unwrap() - 50;
+    action(&compositor, format!("pan-to {pan_x} {pan_y}"));
+    let panned = wait_windows(&compositor, |windows| {
+        windows[0]["x"].as_i64() == Some(zoomed["x"].as_i64().unwrap() - 80)
+            && windows[0]["y"].as_i64() == Some(zoomed["y"].as_i64().unwrap() + 40)
+    })[0]
+        .clone();
+    for field in [
+        "maximized",
+        "content_width",
+        "content_height",
+        "width",
+        "height",
+    ] {
+        assert_eq!(panned[field], zoomed[field], "pan changed {field}");
+    }
+    let center_x = panned["x"].as_f64().unwrap() + panned["width"].as_f64().unwrap() / 2.0;
+    let center_y = panned["y"].as_f64().unwrap() + panned["height"].as_f64().unwrap() / 2.0;
     action(
         &compositor,
         format!("pointer-motion-abs {center_x} {center_y}"),
@@ -161,43 +176,74 @@ fn run_zoom_restores_startup_maximized_apps(backend: &str) {
     action(&compositor, "pointer-button-down 272");
     action(&compositor, "pointer-button-up 272");
     keys(&compositor, &[30]);
-    wait_state(&state, |state| state["text"] == "a");
+    wait_state(&state, |state| {
+        state["text"] == "a" && state["maximized"] == true
+    });
 
-    // A distant saved position is retained, while zoom reveals it before
-    // restoring; the configure response must not later undo the zoom.
+    // Maximize projects a distant home into the current view, without losing
+    // that home. Scroll zoom must keep both apps maximized and their sizes fixed.
+    action(&compositor, format!("restore-window {id}"));
+    wait_state(&state, |state| {
+        state["maximized"] == false && state["width"] == 560
+    });
     action(&compositor, format!("move-window {id} 7000 -3000"));
     action(&compositor, format!("maximize-window {id} true"));
     wait_state(&state, |state| state["maximized"] == true);
     let (_second, second_state) = maximized_fixture(&compositor, "second", backend);
-    let windows = wait_windows(&compositor, |windows| {
-        windows.len() == 2 && windows.iter().all(|window| window["maximized"] == true)
+    let before = wait_windows(&compositor, |windows| {
+        windows.len() == 2
+            && windows
+                .iter()
+                .all(|window| window["maximized"] == true && window["width"] == 1232)
     });
-    let second_id = windows.iter().find(|window| window["id"] != id).unwrap()["id"]
+    let second_id = before.iter().find(|window| window["id"] != id).unwrap()["id"]
         .as_u64()
         .unwrap();
     action(&compositor, format!("focus-window {id}"));
     action(&compositor, "key-down 125");
     action(&compositor, "axis 0 -15");
     action(&compositor, "key-up 125");
-    let windows = wait_windows(&compositor, |windows| {
-        windows.iter().all(|window| window["maximized"] == false)
-            && windows.iter().any(|window| {
-                window["id"] == id && window["focused"] == true && window["visible"] == true
-            })
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        let viewport = query(&compositor, "status")["viewport"].clone();
+        if viewport["animating"] == false && viewport["scale"].as_f64().unwrap() > 0.8 {
+            break;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "scroll zoom did not finish: {viewport}"
+        );
+        thread::sleep(Duration::from_millis(25));
+    }
+    let after = wait_windows(&compositor, |windows| {
+        windows.iter().all(|window| window["maximized"] == true)
+            && windows
+                .iter()
+                .any(|window| window["id"] == id && window["focused"] == true)
     });
-    let restored = windows.iter().find(|window| window["id"] == id).unwrap();
-    assert_eq!(restored["canvas_x"], 7000);
-    assert_eq!(restored["canvas_y"], -3000);
+    for prior in &before {
+        let current = after
+            .iter()
+            .find(|window| window["id"] == prior["id"])
+            .unwrap();
+        for field in ["canvas_x", "canvas_y", "content_width", "content_height"] {
+            assert_eq!(current[field], prior[field], "scroll zoom changed {field}");
+        }
+        assert!(current["width"].as_i64().unwrap() > prior["width"].as_i64().unwrap());
+    }
+    wait_state(&second_state, |state| state["maximized"] == true);
+    action(&compositor, format!("restore-window {id}"));
     wait_state(&state, |state| {
         state["maximized"] == false && state["width"] == 560 && state["height"] == 360
     });
-    wait_state(&second_state, |state| state["maximized"] == false);
-    assert!(
-        query(&compositor, "status")["viewport"]["scale"]
-            .as_f64()
-            .unwrap()
-            > 0.8
-    );
+    let restored = wait_windows(&compositor, |windows| {
+        windows
+            .iter()
+            .any(|window| window["id"] == id && window["maximized"] == false)
+    });
+    let restored = restored.iter().find(|window| window["id"] == id).unwrap();
+    assert_eq!(restored["canvas_x"], 7000);
+    assert_eq!(restored["canvas_y"], -3000);
     action(&compositor, format!("close-window {second_id}"));
     action(&compositor, format!("close-window {id}"));
     action(&compositor, "quit");
@@ -205,13 +251,13 @@ fn run_zoom_restores_startup_maximized_apps(backend: &str) {
 }
 
 #[test]
-fn zoom_restores_startup_maximized_wayland_apps_and_preserves_floating_input() {
-    run_zoom_restores_startup_maximized_apps("wayland");
+fn zoom_preserves_startup_maximized_wayland_apps_and_canvas_input() {
+    run_zoom_preserves_startup_maximized_apps("wayland");
 }
 
 #[test]
-fn zoom_restores_startup_maximized_x11_apps_and_preserves_floating_input() {
-    run_zoom_restores_startup_maximized_apps("x11");
+fn zoom_preserves_startup_maximized_x11_apps_and_canvas_input() {
+    run_zoom_preserves_startup_maximized_apps("x11");
 }
 
 #[test]
@@ -221,7 +267,7 @@ fn zoom_preserves_fullscreen_and_maximization_at_scale_limit() {
     drop(compositor.wait_for_socket());
     let (_fixture, state) = maximized_fixture(&compositor, "fullscreen", "wayland");
     let first = wait_windows(&compositor, |windows| {
-        windows.len() == 1 && windows[0]["maximized"] == true
+        windows.len() == 1 && windows[0]["maximized"] == true && windows[0]["width"] == 1232
     })[0]
         .clone();
     let id = first["id"].as_u64().unwrap();
@@ -253,25 +299,26 @@ fn zoom_preserves_fullscreen_and_maximization_at_scale_limit() {
     });
     action(&compositor, "zoom-out");
     wait_scale(&compositor, 0.5);
-    let windows = query(&compositor, "windows")["windows"]
-        .as_array()
-        .unwrap()
-        .clone();
-    assert_eq!(windows[0]["maximized"], true);
-    assert_eq!(windows[0]["width"], 1280);
+    let windows = wait_windows(&compositor, |windows| {
+        windows[0]["maximized"] == true
+            && windows[0]["width"] == 616
+            && windows[0]["content_width"] == first["content_width"]
+    });
+    assert_eq!(windows[0]["fullscreen"], false);
+    assert_eq!(windows[0]["content_width"], first["content_width"]);
     action(&compositor, format!("close-window {id}"));
     action(&compositor, "quit");
     wait_for_exit(&mut compositor.child);
 }
 
 #[test]
-fn zoom_reveals_a_focused_dialog_above_a_distant_maximized_parent() {
+fn zoom_keeps_a_focused_dialog_above_its_maximized_canvas_parent() {
     let _guard = headless_test_guard();
     let mut compositor = HeadlessCompositor::spawn_with_size("1280x800");
     drop(compositor.wait_for_socket());
     let (_fixture, state) = maximized_fixture(&compositor, "dialog-parent", "wayland");
     let first = wait_windows(&compositor, |windows| {
-        windows.len() == 1 && windows[0]["maximized"] == true
+        windows.len() == 1 && windows[0]["maximized"] == true && windows[0]["width"] == 1232
     })[0]
         .clone();
     let id = first["id"].as_u64().unwrap();
@@ -296,16 +343,19 @@ fn zoom_reveals_a_focused_dialog_above_a_distant_maximized_parent() {
     let dialog_id = dialog["id"].as_u64().unwrap();
     action(&compositor, "zoom-out");
     wait_scale(&compositor, 0.8);
-    wait_state(&state, |state| state["maximized"] == false);
+    wait_state(&state, |state| state["maximized"] == true);
     let windows = wait_windows(&compositor, |windows| {
-        windows.iter().all(|window| window["maximized"] == false)
+        windows
+            .iter()
+            .any(|window| window["id"] == id && window["maximized"] == true)
             && windows.iter().any(|window| {
                 window["id"] == dialog_id && window["focused"] == true && window["visible"] == true
             })
     });
-    let restored_parent = windows.iter().find(|window| window["id"] == id).unwrap();
-    assert_eq!(restored_parent["canvas_x"], 7000);
-    assert_eq!(restored_parent["canvas_y"], -3000);
+    let parent = windows.iter().find(|window| window["id"] == id).unwrap();
+    assert_eq!(parent["canvas_x"], 7000);
+    assert_eq!(parent["canvas_y"], -3000);
+    assert_eq!(parent["width"], 986);
     action(&compositor, format!("close-window {dialog_id}"));
     action(&compositor, format!("close-window {id}"));
     action(&compositor, "quit");

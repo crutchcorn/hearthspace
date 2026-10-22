@@ -100,6 +100,9 @@ impl App {
         }
         self.pointer_location = constrained.visible;
         self.raw_pointer_location = constrained.raw;
+        if !self.dispatching_touch {
+            self.focused_shell_pointer(self.pointer_location, false);
+        }
         self.update_layout_emphasis();
         if self.software_cursor_visible && self.pointer_location != previous_location {
             self.request_redraw();

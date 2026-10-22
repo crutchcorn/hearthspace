@@ -173,6 +173,7 @@ impl App {
             // tracks the visible geometry so the band sits on the real edge.
             let window_rect = self.window_screen_bounds(window_index);
             if !self.window_uses_output_coordinates(window_index)
+                && !self.windows[window_index].presentation.maximized
                 && let Some(edges) = resize_edges_at(
                     window_rect,
                     location,

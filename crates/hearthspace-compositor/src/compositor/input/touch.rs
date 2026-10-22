@@ -22,6 +22,9 @@ impl App {
             return;
         }
         let first = !self.touch_input.has_contacts();
+        if first {
+            self.focused_shell_pointer(location, true);
+        }
         if !first && self.touch_pointer_pressed {
             self.cancel_layout_drag();
             self.cancel_titlebar_pointer();

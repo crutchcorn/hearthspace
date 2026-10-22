@@ -32,6 +32,8 @@ render_elements! {
     ScaledFrame = RescaleRenderElement<RelocateRenderElement<PixelShaderElement>>,
 }
 
+#[path = "focused_tests.rs"]
+mod focused;
 #[path = "header_tests.rs"]
 mod header;
 #[path = "panel_tests.rs"]

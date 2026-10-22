@@ -75,7 +75,9 @@ pub(super) fn appearance(
         Uniform::new("zoom", style.zoom as f32),
         Uniform::new(
             "radius",
-            if style.panel {
+            if style.square {
+                0.
+            } else if style.panel {
                 style.panel_radius * style.zoom as f32
             } else if style.server_side {
                 19.0 * style.zoom as f32
@@ -83,6 +85,7 @@ pub(super) fn appearance(
                 0.0
             },
         ),
+        Uniform::new("inset_border", if style.square { 1.0f32 } else { 0.0 }),
         Uniform::new("active", if style.active { 1.0f32 } else { 0.0 }),
         Uniform::new("hovered", if style.hovered { 1.0f32 } else { 0.0 }),
         Uniform::new("panel", if style.panel { 1.0f32 } else { 0.0 }),

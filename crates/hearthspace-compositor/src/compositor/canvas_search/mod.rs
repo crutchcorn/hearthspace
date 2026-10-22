@@ -140,6 +140,7 @@ impl App {
             self.close_canvas_search(true);
         }
         self.check_navigation_available()?;
+        self.leave_window_focus_views();
         let outputs = self.capture_outputs();
         let target = outputs
             .iter()

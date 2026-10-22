@@ -10,6 +10,9 @@ use serde_json::Value;
 
 const COLOR: [u8; 4] = [0x66, 0xcc, 0, 0xff];
 
+#[path = "shell_corners/focused_view.rs"]
+mod focused_view;
+
 fn corner_bounds(compositor: &HeadlessCompositor, corner: &str) -> Value {
     query(compositor, "status")["shell_corners"]
         .as_array()
@@ -216,8 +219,10 @@ fn four_corners_pin_controls_panels_and_maximized_work_area() {
     action(&compositor, format!("maximize-window {id} true"));
     client.sync();
     let window = query(&compositor, "windows")["windows"][0].clone();
-    assert_eq!(window["y"], 90);
-    assert_eq!(window["height"], 620);
+    assert_eq!(window["x"], 24);
+    assert_eq!(window["y"], 96);
+    assert_eq!(window["width"], 1232);
+    assert_eq!(window["height"], 608);
     assert_eq!(client.focus(), Some(normal));
     action(&compositor, "quit");
     wait_for_exit(&mut compositor.child);
