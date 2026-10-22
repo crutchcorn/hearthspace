@@ -235,7 +235,13 @@ it does not change Hearthspace's runtime or browser configuration.
 
 Native supervisor launches automatically create a private `dbus-run-session`
 before starting desktop components. The harness already supplies that bus and
-uses `--private-session-bus` to reuse it. Both routes explicitly provide
+uses `--private-session-bus` to reuse it. Both use the sibling
+`hearthspace-session-bus` helper to select a private abstract Unix socket that
+remains reachable inside Snap's separate `/tmp` mount. Build the package's
+complete binary set with `cargo build --locked -p hearthspace-session --bins`
+before launching the supervisor directly; `cargo run --bin hearthspace-session`
+alone does not build its helpers. The installer and native build include them.
+Both routes explicitly provide
 `HEARTHSPACE_SESSION_BUS_ADDRESS` to children so app launch and AT-SPI stay on the
 Hearthspace bus. Before desktop startup, `dbus-update-activation-environment`
 updates only the private bus with Hearthspace's display, runtime, and settings

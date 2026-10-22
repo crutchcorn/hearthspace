@@ -22,6 +22,10 @@ fn bootstrap_gives_the_bus_its_private_runtime_before_starting_it() {
     );
     let args = command.get_args().collect::<Vec<_>>();
     assert_eq!(command.get_program(), "dbus-run-session");
+    assert_eq!(
+        &args[..3],
+        ["--dbus-daemon", "/bin/hearthspace-session-bus", "--"]
+    );
     assert!(args.contains(&OsStr::new("--private-session-bus")));
     assert!(
         args.windows(2)

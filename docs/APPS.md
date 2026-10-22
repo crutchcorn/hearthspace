@@ -16,6 +16,7 @@ This is a running compatibility log for apps tested through Hearthspace's app la
 | Nautilus | GTK file manager | Native folder creation verified. GVfs mount cleanup belongs to session recovery; see the daily acceptance record for shutdown evidence. |
 | Firefox | Mozilla native DEB | Native Unicode entry, browser-to-terminal copy, local navigation, and file selection with exact-content verification exercised. See [package setup](../CONTRIBUTING.md#native-firefox-package). |
 | Firefox | Snap install | Catalog launch uses a managed Snap scope and a confinement-compatible Wayland socket. The private document-portal path remains a confined file-selection limitation; see [Snap applications](SNAP_APPLICATIONS.md). |
+| Pepper Grinder | Steam Snap | Original game shortcut launched Steam and the game; keyboard input reached save selection. Scope ownership and complete process cleanup verified. See [Steam game shortcuts](#steam-game-shortcuts). |
 
 These checks cover specific workflows, not every application feature. Retained
 native evidence and outstanding acceptance are recorded in
@@ -93,3 +94,45 @@ all five added cleanup regressions; the same nine failures as the preceding run
 remain in eight outdated shell fixtures and the terminal smoke's cumulative
 deadline at its final cursor check. Native acceptance ran separately from the
 headless GPU suites.
+
+Both normal and crash cases passed again with the private abstract D-Bus socket
+in release `29e6b4bb6a1d`. Evidence is retained in
+`/tmp/hearthspace-ptyxis-normal-20261021-2` and
+`/tmp/hearthspace-ptyxis-crash-20261021-2`; exact shell input, private environment,
+disowned-job cleanup, runtime removal, and VT restoration all passed.
+
+## Steam Game Shortcuts
+
+Steam generated `Pepper Grinder.desktop` with
+`Exec=steam steam://rungameid/2076580` and no `X-SnapInstanceName`. On this host,
+`steam` resolves to `/snap/bin/steam`. The missing metadata caused Hearthspace
+to skip Snap's tracking scope, so Snap refused to start the application. Catalog
+launch now resolves the executable before deciding whether to provide Snap's
+scope and Wayland socket. PATH precedence and ordinary executables are preserved.
+
+Once Steam could start, its runtime exposed a second issue: Snap's private
+`/tmp` hid the desktop's D-Bus socket. The session now uses the private abstract
+socket described in [Snap applications](SNAP_APPLICATIONS.md), preserving the
+normal daemon policy and lifetime.
+
+Native acceptance on 2026-10-21 passed with installed release `29e6b4bb6a1d`
+on the physical ThinkPad T480s, Intel UHD 620 (`i915`), kernel
+`7.0.0-38-generic`, eDP-1 at 1920×1080, scale 1. The isolated catalog received
+a byte-identical copy of the user's original game shortcut. Launching that entry
+opened Steam and an Xwayland `PepperGrinder` window. Enter dismissed the safety
+screen, then advanced from the title to the existing save-selection menu.
+This establishes launch and keyboard response; gameplay and controllers were
+not exercised. The recorded Steam scope was bound to the session owner.
+Shutdown stopped all 24 observed Steam/game processes, removed the scope and
+runtime, and restored tty2 while the original GNOME desktop and agent continued.
+
+Evidence is in `/tmp/hearthspace-pepper-native-20261021-3`, with screenshots,
+input observations, process identities, scope properties, and cleanup results.
+Attempt `-1` failed before app launch because the test fixture precreated an
+isolated-profile directory. Attempt `-2` started Steam but reproduced the hidden
+D-Bus socket. Both attempts cleaned up completely; their evidence is retained.
+Checks under `/tmp/hearthspace-pepper-launch-20261021/bus-fix` passed all 1,343
+Rust tests, rustfmt, Clippy with warnings denied, the workspace build, and Ruff
+lint/format. Default Python checks passed 407 tests with 14 E2E skips. The full
+E2E-enabled Python run earlier in this fix passed 410 of 419, with the same nine
+failures recorded above. Native checks ran separately from GPU test suites.

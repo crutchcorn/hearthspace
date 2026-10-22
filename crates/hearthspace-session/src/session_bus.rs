@@ -63,6 +63,8 @@ fn bootstrap_command(
 ) -> Command {
     let mut command = Command::new("dbus-run-session");
     command
+        .arg("--dbus-daemon")
+        .arg(executable.with_file_name("hearthspace-session-bus"))
         .arg("--")
         .arg(executable)
         .args(args)

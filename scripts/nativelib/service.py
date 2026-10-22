@@ -239,6 +239,8 @@ def exec_session(state_file):
         "--ambient-caps=-all",
         "--inh-caps=-all",
         "/usr/bin/dbus-run-session",
+        "--dbus-daemon",
+        str(Path(state["binary_dir"]) / "hearthspace-session-bus"),
         "--",
         supervisor,
         "--dev" if state.get("dev") else "--installed",
