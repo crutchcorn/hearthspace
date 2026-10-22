@@ -52,13 +52,9 @@ pub(super) fn size(
                 4.0 + crate::ui::dock::desired_width(state)
             }
         }
-        "tray" => {
-            38.0 * (crate::ui::tray_state::visible(&state.tray.snapshot)
-                .count()
-                .min(8)
-                + 1) as f64
-                - 4.0
-        }
+        "tray" => (38.0 * crate::ui::tray_state::visible(&state.tray.snapshot).count() as f64
+            - 4.0)
+            .max(0.0),
         "notifications" if expanded => {
             super::text_metrics::width(&notification_text(state), 11.0) + 47.0
         }
@@ -105,7 +101,7 @@ pub(super) fn content(
         return apps(state, output, vertical, chain).boxed();
     }
     if id == "tray" {
-        return crate::ui::tray_view::frame_strip(output, &state.tray, vertical, chain).boxed();
+        return super::tray::content(state, output, vertical, chain);
     }
     let count = state
         .notifications

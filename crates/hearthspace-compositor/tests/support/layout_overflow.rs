@@ -30,6 +30,11 @@ fn layout_compact_default_bars_do_not_rewrite_groups_or_custom_placements() {
     drop(compositor.wait_for_socket());
     let before = layout(&compositor);
     let output = &before["outputs"][0];
+    assert_eq!(
+        output["rect"],
+        json!({"x":0.0,"y":0.0,"width":700.0,"height":600.0}),
+        "standalone native viewports need the full output bounds, not their previous size"
+    );
     assert_eq!(output["compact"], true);
     assert_eq!(
         output["layout"],

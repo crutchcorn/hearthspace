@@ -57,6 +57,9 @@ pub(super) fn windows(state: &ShellState) -> Vec<WindowView<ShellState>> {
             {
                 size.0 = part.rect.width.max(44.0);
             }
+            if *id == "tray" && !grouped {
+                size = super::tray::size(layout, vertical, size);
+            }
             let content = widgets::content(
                 state,
                 output,

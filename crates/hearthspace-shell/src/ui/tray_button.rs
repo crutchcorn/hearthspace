@@ -18,9 +18,7 @@ use xilem::{
 #[derive(Clone, Debug, PartialEq)]
 pub(super) enum Target {
     Item(ItemKey),
-    ItemMenu(ItemKey),
     Menu(ItemKey, String, i32),
-    Drawer,
     Back,
     Close,
     DesktopContext(u64, usize),
@@ -222,7 +220,7 @@ impl View<ShellState, (), ViewCtx> for ButtonView {
                 }
             }
             ButtonAction::Context => {
-                if let Target::Item(key) | Target::ItemMenu(key) = &self.target {
+                if let Target::Item(key) = &self.target {
                     tray_state::open_menu(state, &self.output, key);
                 }
             }
@@ -241,9 +239,7 @@ impl View<ShellState, (), ViewCtx> for ButtonView {
             }
             ButtonAction::Activate => match &self.target {
                 Target::Item(key) => tray_state::activate(state, &self.output, key),
-                Target::ItemMenu(key) => tray_state::open_menu(state, &self.output, key),
                 Target::Menu(_, _, id) => tray_state::choose(state, &self.output, *id),
-                Target::Drawer => tray_state::toggle(state, &self.output),
                 Target::Back => tray_state::back(state, &self.output),
                 Target::Close => tray_state::dismiss(state, &self.output),
                 Target::DesktopContext(_, _) => unreachable!("desktop menus are dispatched above"),

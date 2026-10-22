@@ -137,12 +137,15 @@ fn parse(bytes: &[u8]) -> Result<Snapshot, String> {
         {
             return Err("Invalid frame layout parts".into());
         }
-        for rect in output.widgets.iter().map(|part| part.rect).chain(
-            output
-                .groups
-                .iter()
-                .flat_map(|group| [group.rect, group.grip]),
-        ) {
+        for rect in std::iter::once(output.rect)
+            .chain(output.widgets.iter().map(|part| part.rect))
+            .chain(
+                output
+                    .groups
+                    .iter()
+                    .flat_map(|group| [group.rect, group.grip]),
+            )
+        {
             if ![rect.x, rect.y, rect.width, rect.height]
                 .into_iter()
                 .all(f64::is_finite)

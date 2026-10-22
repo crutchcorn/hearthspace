@@ -2,6 +2,9 @@
 use super::*;
 use xilem::masonry::core::{Update, UpdateCtx};
 
+#[derive(Debug)]
+struct RevealFocus;
+
 pub(in crate::ui) struct Item<V> {
     pub(super) inner: V,
     pub(super) chain: Chain,
@@ -97,13 +100,26 @@ impl Widget for ItemWidget {
     }
     fn update(&mut self, ctx: &mut UpdateCtx<'_>, _: &mut PropertiesMut<'_>, event: &Update) {
         if self.observe_focus && matches!(event, Update::ChildFocusChanged(true)) {
-            ctx.mutate_self_later(|mut widget| {
-                let rect = widget.ctx.border_box();
-                let origin = widget.ctx.to_window(rect.origin());
-                widget.ctx.submit_untyped_action(Box::new(Reveal(
-                    xilem::masonry::kurbo::Rect::from_origin_size(origin, rect.size()),
-                )));
+            ctx.mutate_child_later(&mut self.child, |mut child| {
+                child.ctx.submit_untyped_action(Box::new(RevealFocus));
             });
+        }
+    }
+    fn on_action(
+        &mut self,
+        ctx: &mut ActionCtx<'_>,
+        _: &mut PropertiesMut<'_>,
+        action: &ErasedAction,
+        source: WidgetId,
+    ) {
+        if source == self.child.id() && action.is::<RevealFocus>() {
+            ctx.request_scroll_to_this();
+            let rect = ctx.border_box();
+            let origin = ctx.to_window(rect.origin());
+            ctx.submit_untyped_action(Box::new(Reveal(
+                xilem::masonry::kurbo::Rect::from_origin_size(origin, rect.size()),
+            )));
+            ctx.set_handled();
         }
     }
     fn measure(

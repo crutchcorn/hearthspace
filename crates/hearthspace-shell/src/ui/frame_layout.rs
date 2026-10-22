@@ -23,6 +23,7 @@ mod tests;
 mod text_metrics;
 pub(super) mod tool_menu;
 mod tooltip;
+mod tray;
 mod widgets;
 
 pub(super) fn task()
@@ -79,6 +80,7 @@ fn group_material() -> bool {
 #[serde(default)]
 pub(super) struct Output {
     pub output: String,
+    pub rect: Rect,
     pub compact: bool,
     pub layout: FrameLayout,
     pub widgets: Vec<Widget>,

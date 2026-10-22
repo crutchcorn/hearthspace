@@ -17,12 +17,15 @@ use xilem::masonry::{
     widgets::Label,
 };
 
+mod touch;
+
 #[derive(Clone, PartialEq)]
 pub(super) struct Appearance {
     pub name: String,
     pub description: String,
     pub image: Option<ImageBrush>,
     pub icon: bool,
+    pub scroll_in_parent: bool,
     pub attention: bool,
     pub enabled: bool,
     pub selected: bool,
@@ -39,6 +42,7 @@ impl Default for Appearance {
             description: String::new(),
             image: None,
             icon: false,
+            scroll_in_parent: false,
             attention: false,
             enabled: true,
             selected: false,
@@ -74,6 +78,7 @@ pub(super) struct TrayButton {
     pub cancelled_press: bool,
     pub target: super::tray_button::Target,
     pressed: Option<Option<PointerButton>>,
+    touch_hold: Option<touch::Hold>,
     pub text: Option<WidgetPod<Label>>,
 }
 impl TrayButton {
@@ -101,6 +106,7 @@ impl TrayButton {
             cancelled_press: false,
             target,
             pressed: None,
+            touch_hold: None,
         }
     }
 }
@@ -117,6 +123,7 @@ impl Widget for TrayButton {
         _: &mut PropertiesMut<'_>,
         event: &PointerEvent,
     ) {
+        self.track_touch(event, ctx);
         match event {
             PointerEvent::Down(event) => {
                 self.pressed = Some(event.button);
@@ -141,7 +148,9 @@ impl Widget for TrayButton {
                 );
                 ctx.request_paint_only();
             }
-            PointerEvent::Scroll(event) if self.appearance.icon => {
+            PointerEvent::Scroll(event)
+                if self.appearance.icon && !self.appearance.scroll_in_parent =>
+            {
                 let unit = xilem::dpi::PhysicalPosition::new(120.0, 120.0);
                 let delta = event.delta.to_pixel_delta(unit, unit);
                 for (value, horizontal) in [(delta.x, true), (delta.y, false)] {
@@ -160,12 +169,19 @@ impl Widget for TrayButton {
             _ => {}
         }
     }
+    fn on_anim_frame(&mut self, ctx: &mut UpdateCtx<'_>, _: &mut PropertiesMut<'_>, interval: u64) {
+        self.advance_touch_hold(ctx, interval);
+    }
     fn on_text_event(
         &mut self,
         ctx: &mut EventCtx<'_>,
         _: &mut PropertiesMut<'_>,
         event: &TextEvent,
     ) {
+        if matches!(event, TextEvent::WindowFocusChange(false)) {
+            self.touch_hold = None;
+            self.cancelled_press = true;
+        }
         let TextEvent::Keyboard(event) = event else {
             return;
         };

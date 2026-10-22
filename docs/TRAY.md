@@ -12,8 +12,10 @@ Wayland shell surfaces.
 - Click an icon to activate its application. Menu-only indicators open their menu.
 - Right-click to open an application's exported menu. Applications without an
   exported menu receive the protocol's context-menu request.
-- Middle-click and scroll are delivered to applications that support those actions.
-- The **Application tray** button offers menu access with a touchscreen or keyboard.
+- Middle-click is delivered to applications that support it. Scrolling moves an
+  overflowing strip; when all icons fit, it reaches the application instead.
+- Tap an app icon on a touchscreen to activate it; hold the icon to open its
+  menu. With keyboard focus on the icon, press Menu or Shift+F10 to open it.
 - Exported menus support nested items, checkmarks, radio choices, separators,
   disabled actions, live updates, and keyboard focus. Escape and clicking outside
   dismiss the popup.
@@ -21,9 +23,11 @@ Wayland shell surfaces.
 Passive indicators are hidden. Active and attention-requesting indicators remain
 visible. App exit removes its icon and closes an open menu belonging to it.
 Restarting an app registers a fresh item without leaving a duplicate behind.
-The bar keeps space for desktop controls and moves excess icons into the
-Application tray list. Named PNG/SVG icons, private app icon themes, and supplied
-pixel images are supported. Standard status names fall back to their symbolic
+The bar shows the app icons directly, without an extra tray button or list.
+All active icons remain in the strip. Detached strips stay within the output and
+support wheel scrolling, touch dragging, and keyboard focus reveal; grouped strips
+use the frame group's scrolling. Named PNG/SVG icons, private app icon themes,
+and supplied pixel images are supported. Standard status names fall back to their symbolic
 theme variants when needed. Attention icons are supported; separate overlay
 icons and animated icon movies are not currently composed.
 
@@ -60,9 +64,9 @@ changes app state, while a JSON-lines log records actual D-Bus calls received.
 
 The workflow checks red icon pixels, delivery of primary/middle/scroll actions,
 exported-menu accessibility and activation, disabled-item suppression, nested
-menus, checkbox state, live menu replacement, Escape/outside dismissal, the
-touch-friendly menu launcher, pixmap updates and same-filename SVG replacement,
-passive/attention transitions, alias release and duplicate registration,
+menus, checkbox state, live menu replacement, Escape/outside dismissal, direct
+keyboard access from each app icon, pixmap updates and same-filename SVG
+replacement, passive/attention transitions, alias release and duplicate registration,
 menu-only activation, context-menu fallback, and process exit/restart. It checks
 both semantic state and screenshots rather
 than treating an accepted input request as evidence of app behavior.
@@ -92,8 +96,13 @@ records the original VT, owns its compositor session, retains page-flip capture
 metadata, and restores the original VT on success or failure. Check the retained
 manifest's cleanup fields and stopped unit, not only the command's exit status.
 Native acceptance also uses a temporary owned uinput touchscreen to tap the
-tray list, open an app menu, and activate an action. It verifies the app received
-that action, records real libinput touch frames, and removes the virtual device.
+app icon, hold it to open its menu, and activate an action. It verifies the app
+received that action, records real libinput touch frames, and removes the virtual device.
+
+Use `--overflow --timeout 240 --total-timeout 900` to include many-icon standalone
+trays on the top and left edges, or `--overflow-only` to run just those checks.
+They verify wheel scrolling, Tab and Shift-Tab focus reveal, and touchscreen
+dragging without app activation or canvas movement.
 
 Artifacts include `tray-actions-*.jsonl`, fixture logs, icon/menu PNG and metadata
 pairs, accessibility snapshots, workflow `results.json`, and the session manifest.

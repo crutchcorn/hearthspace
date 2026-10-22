@@ -99,6 +99,23 @@ impl<W: Widget + FromDynWidget + ?Sized> Widget for TouchScroll<W> {
         event: &PointerEvent,
     ) {
         match event {
+            PointerEvent::Scroll(event) if self.vertical && !self.horizontal => {
+                // Portal handles horizontal input directly. A normal wheel
+                // should also move a strip whose only scroll axis is horizontal.
+                let scale = ctx.scale_factor();
+                let line = xilem::dpi::PhysicalPosition::new(120.0 * scale, 120.0 * scale);
+                let page = xilem::dpi::PhysicalPosition::new(
+                    ctx.content_box().width() * scale,
+                    ctx.content_box().height() * scale,
+                );
+                let delta = event.delta.to_pixel_delta(line, page);
+                if delta.x == 0.0 && delta.y.is_finite() && delta.y != 0.0 {
+                    ctx.mutate_child_later(&mut self.portal, move |mut portal| {
+                        Portal::pan_viewport_by(&mut portal, (-delta.y / scale, 0.0).into());
+                    });
+                    ctx.set_handled();
+                }
+            }
             PointerEvent::Down(event) if event.pointer.pointer_type == PointerType::Touch => {
                 self.suppressed_button = None;
                 self.generation = self.generation.wrapping_add(1);

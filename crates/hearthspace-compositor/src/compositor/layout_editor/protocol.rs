@@ -69,7 +69,7 @@ impl App {
                 json!({"id":id,"merged":self.frame_widget_merged(output,id),"group":placed.and_then(|p|p.group.as_deref()),"orientation":if placed.is_some_and(|p|p.vertical){"vertical"}else{"horizontal"},"rect":json_rect(placed.map_or(Default::default(),|p|p.rect)),"expanded":layout.is_expanded(id),"hidden":layout.placement(&target.target)==ObjectPlacement::Hidden})
             }).collect();
             let groups:Vec<_>=state.placed.iter().filter(|p|p.target.output==*output&&p.target.target.kind==super::TargetKind::Group).map(|p|json!({"id":p.target.target.id,"material":self.frame_group_material(output,&p.target.target.id),"backing_only":super::compact::backing(&p.target.target.id),"hovered":self.frame_group_hovered(output,&p.target.target.id),"focused":self.frame_group_focused(output,&p.target.target.id),"rect":json_rect(p.rect),"grip":json_rect(self.layout_grip_rect(p)),"scale":if p.placement.is_frame(){1.}else{self.viewport_scale},"orientation":if p.vertical{"vertical"}else{"horizontal"}})).collect();
-            json!({"output":output,"compact":self.frame_output_rect(output).is_some_and(|view|view.width<=760.),"layout":layout,"widgets":widgets,"groups":groups})
+            json!({"output":output,"rect":json_rect(self.frame_output_rect(output).unwrap_or_default()),"compact":self.frame_output_rect(output).is_some_and(|view|view.width<=760.),"layout":layout,"widgets":widgets,"groups":groups})
         }).collect();
         let pinned:Vec<_>=self.windows.iter().filter_map(|w|{
             let p=self.pinned_window_target(w.id)?;

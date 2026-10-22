@@ -9,7 +9,6 @@ pub(in crate::ui) enum Popup {
     Power,
     Map,
     Quick(Kind),
-    Tray,
     TrayMenu(crate::tray::ItemKey),
 }
 
@@ -29,7 +28,7 @@ pub(in crate::ui) fn defer(state: &mut ShellState, key: &str, popup: Popup) -> b
         Popup::Notifications => ("notifications", output.notifications_app_id()),
         Popup::Power => ("power", output.power_app_id()),
         Popup::Map => ("tools", output.map_app_id()),
-        Popup::Tray | Popup::TrayMenu(_) => (
+        Popup::TrayMenu(_) => (
             "tray",
             output
                 .output_name
@@ -101,7 +100,6 @@ pub(in crate::ui) fn open(state: &mut ShellState, key: &str, popup: Popup) {
         Popup::Power => state.toggle_power(key),
         Popup::Map => state.toggle_map(key),
         Popup::Quick(kind) => state.toggle_quick_panel(key, kind),
-        Popup::Tray => crate::ui::tray_state::toggle(state, key),
         Popup::TrayMenu(item) => crate::ui::tray_state::open_menu(state, key, &item),
     }
     state.frame_layout.opening_popup = false;

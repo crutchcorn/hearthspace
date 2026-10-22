@@ -250,12 +250,7 @@ fn narrow_system_corner_keeps_tray_battery_and_controls_reachable() {
     });
     state.tray.snapshot.items = (1..=20).map(crate::ui::tray_tests::item).collect();
     let mut ui = Ui::new(state, system, (236, 54));
-    for name in [
-        "Application tray",
-        "Brightness settings",
-        "Sound settings",
-        "Power",
-    ] {
+    for name in ["App 1", "Brightness settings", "Sound settings", "Power"] {
         let button = ui.button(name);
         let bounds = ui
             .harness
@@ -267,7 +262,14 @@ fn narrow_system_corner_keeps_tray_battery_and_controls_reachable() {
             bounds.x0 >= 0.0 && bounds.x1 <= 236.0 && bounds.y1 <= 54.0,
             "{name}: {bounds:?}"
         );
-        ui.harness.mouse_click_on(button, None);
+        ui.harness.mouse_click_on(
+            button,
+            if name == "App 1" {
+                Some(masonry::core::PointerButton::Secondary)
+            } else {
+                None
+            },
+        );
         ui.dispatch(&system);
         let output = &ui.state.outputs[0];
         assert_eq!(
@@ -319,8 +321,8 @@ fn system_corner_requests_only_its_content_width_and_updates_for_tray_items() {
     ui.dispatch(&system);
     let populated_width = system_width(&ui.state, &ui.state.outputs[0]);
     assert!(
-        (populated_width - empty_width - 76.0).abs() <= 1.0,
-        "one icon + drawer + intervening gaps: {empty_width} -> {populated_width}"
+        (populated_width - empty_width - 38.0).abs() <= 1.0,
+        "one icon and its gap: {empty_width} -> {populated_width}"
     );
     ui.harness
         .process_window_event(masonry::core::WindowEvent::Resize(

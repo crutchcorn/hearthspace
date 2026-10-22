@@ -9,6 +9,8 @@ mod compact;
 mod resize;
 #[path = "startup_tests.rs"]
 mod startup;
+#[path = "tray_tests.rs"]
+mod tray;
 
 fn state() -> ShellState {
     let mut state = ShellState::new("/unused".into(), vec!["test".into()]);

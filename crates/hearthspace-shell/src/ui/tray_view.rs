@@ -26,15 +26,7 @@ pub(super) fn strip(
         .take(tray_state::capacity(output.tray.bar_width - reserved_width))
         .map(|item| tray_button::icon(output.key(), item))
         .collect::<Vec<_>>();
-    let mut drawer = tray_button::text(
-        output.key(),
-        "Application tray".into(),
-        Target::Drawer,
-        output.tray.open,
-    );
-    drawer.appearance.icon = true;
-    drawer.appearance.selected = output.tray.open;
-    Some(flex_row((icons, drawer)).gap(4.0.px()))
+    Some(flex_row(icons).gap(4.0.px()))
 }
 
 pub(super) fn frame_strip(
@@ -42,24 +34,17 @@ pub(super) fn frame_strip(
     state: &TrayState,
     vertical: bool,
     chain: &super::frame_layout::focus::Chain,
+    scroll_in_parent: bool,
 ) -> impl WidgetView<ShellState> + use<> {
     let icons = tray_state::visible(&state.snapshot)
-        .take(8)
         .enumerate()
         .map(|(index, item)| {
-            super::frame_layout::focus::item(tray_button::icon(output.key(), item), chain, index)
-                .boxed()
+            let mut icon = tray_button::icon(output.key(), item);
+            icon.appearance.scroll_in_parent = scroll_in_parent;
+            super::frame_layout::focus::item(icon, chain, index).boxed()
         })
         .collect::<Vec<_>>();
-    let mut drawer = tray_button::text(
-        output.key(),
-        "Application tray".into(),
-        Target::Drawer,
-        output.tray.open,
-    );
-    drawer.appearance.icon = true;
-    drawer.appearance.selected = output.tray.open;
-    flex_row((icons, super::frame_layout::focus::item(drawer, chain, 100)))
+    flex_row(icons)
         .direction(if vertical {
             xilem::masonry::kurbo::Axis::Vertical
         } else {
@@ -96,7 +81,7 @@ pub(super) fn panel(
         .as_ref()
         .and_then(|key| tray_state::visible(&state.snapshot).find(|item| &item.key == key));
     let title = item
-        .map_or("Application tray", |item| item.title.as_str())
+        .map_or("Application menu", |item| item.title.as_str())
         .to_string();
     let nodes = tray_state::menu_items(&state.snapshot, &output.tray);
     let mut rows: Vec<Box<AnyWidgetView<ShellState>>> = Vec::new();
@@ -130,31 +115,8 @@ pub(super) fn panel(
         if nodes.is_empty() {
             rows.push(components::muted_text("No menu actions available").boxed());
         }
-    } else {
-        for (index, item) in tray_state::visible(&state.snapshot).enumerate() {
-            rows.push(
-                flex_col((
-                    tray_button::text(
-                        output.key(),
-                        item.title.clone(),
-                        Target::Item(item.key.clone()),
-                        index == 0,
-                    ),
-                    tray_button::text(
-                        output.key(),
-                        format!("Menu for {}", item.title),
-                        Target::ItemMenu(item.key.clone()),
-                        false,
-                    ),
-                ))
-                .cross_axis_alignment(CrossAxisAlignment::Stretch)
-                .gap(2.0.px())
-                .boxed(),
-            );
-        }
     }
-    let back = item
-        .is_some()
+    let back = (!output.tray.path.is_empty())
         .then(|| tray_button::text(output.key(), "Back".into(), Target::Back, false));
     popup::panel_with_header(
         output,
