@@ -13,6 +13,7 @@ from unittest.mock import Mock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from agentlib.control import ControlError
+from agentlib.window_switcher_focused import retained, switched
 from agentlib.window_switcher_smoke import WindowSwitcherSmoke
 from agentlib.window_switcher_smoke_assertions import (
     held_motion,
@@ -41,6 +42,7 @@ def status(x=0, y=0, *, active=False, animating=False, focused=2, display=None):
                 "content_height": 100,
                 "maximized": False,
                 "fullscreen": False,
+                "focused_view": False,
                 "presentation_output": None,
                 **(display or {}).get(identity, rect),
             }
@@ -80,6 +82,44 @@ def preview_rects(offset=0):
 
 
 class WindowSwitcherEvidenceTests(unittest.TestCase):
+    def test_focused_swipe_retains_focus_until_cancel_or_commit(self):
+        before = status(active=True, display=preview_rects())
+        focused = before["windows"][1]
+        focused.update(
+            focused_view=True,
+            maximized=True,
+            content_height=756,
+            content_width=1200,
+            presentation_output="test",
+        )
+        retained(before, copy.deepcopy(before), 2)
+        for mutation in ("focused_view", "focused", "maximized", "fullscreen"):
+            invalid = copy.deepcopy(before)
+            invalid["windows"][1][mutation] = not focused[mutation]
+            with self.subTest(mutation=mutation), self.assertRaises(ControlError):
+                retained(before, invalid, 2)
+        invalid = copy.deepcopy(before)
+        invalid["viewport"]["x"] = 1
+        with self.assertRaises(ControlError):
+            retained(before, invalid, 2)
+
+        after = status(4500, 2650, focused=3)
+        after["windows"][1].update(
+            maximized=True, content_width=1152, content_height=564
+        )
+        switched(before, after, 2, 3)
+        for mutation in ("focused_view", "fullscreen", "maximized", "canvas_x"):
+            invalid = copy.deepcopy(after)
+            invalid["windows"][1][mutation] = (
+                1 if mutation == "canvas_x" else not invalid["windows"][1][mutation]
+            )
+            with self.subTest(mutation=mutation), self.assertRaises(ControlError):
+                switched(before, invalid, 2, 3)
+        invalid = copy.deepcopy(after)
+        invalid["windows"][0]["content_width"] += 1
+        with self.assertRaises(ControlError):
+            switched(before, invalid, 2, 3)
+
     def test_opening_requires_live_preview_motion_while_focus_and_viewport_stay_put(
         self,
     ):

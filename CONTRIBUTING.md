@@ -339,9 +339,11 @@ scripts/window-switcher-smoke --session "$(mktemp -d /tmp/hearthspace-window-swi
 
 It checks Alt+Tab/Alt+Shift+Tab, left/right four-contact touchpad and four/five-contact
 touchscreen swipes, live previews over the animated canvas, cancellation, input
-ownership, and keyboard unplug recovery. Its bounded keyboard worker records
-libinput key events only from its own temporary device. No extra packages, udev
-rules, or persistent input devices are required.
+ownership, and keyboard unplug recovery. In focused view it also verifies that
+canvas panning stays blocked, cancelled swipes retain focus, and a completed
+switch leaves the previous app maximized on the canvas. Its bounded keyboard
+worker records libinput key events only from its own temporary device. No extra
+packages, udev rules, or persistent input devices are required.
 
 ### Recovering a black host login screen
 

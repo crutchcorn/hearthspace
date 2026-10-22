@@ -155,6 +155,28 @@ def keyboard(smoke):
     smoke.record("switcher-keyboard-cancel-verified", status=after)
 
 
+def begin_swipe(smoke, device, kind, fingers, direction):
+    if kind == "touchpad":
+        device.request("begin", fingers=fingers, distance=700)
+
+        def move():
+            device.request("move", distance=700, translation=[160 * direction, 0])
+    else:
+        points = checked_points(contact_positions(700, fingers))
+        device.request("begin", fingers=fingers, points=points)
+        moved = checked_points(
+            [
+                (x + 64 * direction * 2000 / smoke.output["logical_width"], y)
+                for x, y in points
+            ]
+        )
+
+        def move():
+            device.request("move", points=moved)
+
+    return move
+
+
 def swipe(smoke, kind, fingers, direction):
     name = f"{kind}-{fingers}-{'left' if direction < 0 else 'right'}"
     before = prepare(smoke)
@@ -168,23 +190,7 @@ def swipe(smoke, kind, fingers, direction):
         ) as device,
     ):
         smoke.record("virtual-switcher-device", name=name, **device.device)
-        if kind == "touchpad":
-            device.request("begin", fingers=fingers, distance=700)
-
-            def move():
-                device.request("move", distance=700, translation=[160 * direction, 0])
-        else:
-            points = checked_points(contact_positions(700, fingers))
-            device.request("begin", fingers=fingers, points=points)
-            moved = checked_points(
-                [
-                    (x + 64 * direction * 2000 / smoke.output["logical_width"], y)
-                    for x, y in points
-                ]
-            )
-
-            def move():
-                device.request("move", points=moved)
+        move = begin_swipe(smoke, device, kind, fingers, direction)
 
         samples = observe(smoke, move)
         final_held = held(smoke, name, target, before, samples, source="gesture")
