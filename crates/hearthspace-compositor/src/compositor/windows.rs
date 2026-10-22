@@ -49,10 +49,6 @@ use super::{
 };
 
 fn configure_server_side_decoration(toplevel: &ToplevelSurface) {
-    if window_kind_for_toplevel(toplevel).is_shell_chrome() {
-        return;
-    }
-
     toplevel.with_pending_state(|state| {
         state.decoration_mode = Some(DecorationMode::ServerSide);
     });
@@ -485,23 +481,23 @@ impl App {
                 ManagedWindowKind::ShellBar => {
                     state.size = bar_size;
                     state.bounds = bar_size;
-                    state.decoration_mode = Some(DecorationMode::ClientSide);
+                    state.decoration_mode = Some(DecorationMode::ServerSide);
                 }
                 ManagedWindowKind::Launcher | ManagedWindowKind::ControlOsd => {
                     // Content measurements arrive as fixed min/max hints. The
                     // palette sizing path then applies the output bounds and
                     // responsive search width.
-                    state.decoration_mode = Some(DecorationMode::ClientSide);
+                    state.decoration_mode = Some(DecorationMode::ServerSide);
                 }
                 ManagedWindowKind::ShellWatcher => {
                     state.size = Some((1, 1).into());
                     state.bounds = Some((1, 1).into());
-                    state.decoration_mode = Some(DecorationMode::ClientSide);
+                    state.decoration_mode = Some(DecorationMode::ServerSide);
                 }
                 ManagedWindowKind::DesktopItem => {
                     state.size = desktop_size;
                     state.bounds = desktop_size;
-                    state.decoration_mode = Some(DecorationMode::ClientSide);
+                    state.decoration_mode = Some(DecorationMode::ServerSide);
                 }
                 ManagedWindowKind::Normal => state.bounds = normal_bounds,
             }
@@ -550,8 +546,12 @@ impl App {
         toplevel: &ToplevelSurface,
         decoration: WindowDecoration,
     ) {
-        if window_kind_for_toplevel(toplevel).is_shell_chrome() {
-            configure_client_side_decoration(toplevel);
+        if window_kind_for_toplevel(toplevel) != ManagedWindowKind::Normal {
+            // The compositor owns these surfaces' presentation. Negotiating
+            // server decorations avoids a hidden client-side frame (including
+            // its portal/font lookups) for every tile, panel and control. Only
+            // Normal windows receive a titlebar in has_compositor_chrome.
+            configure_server_side_decoration(toplevel);
             return;
         }
 

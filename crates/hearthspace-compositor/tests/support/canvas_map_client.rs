@@ -12,6 +12,8 @@ use wayland_protocols::xdg::shell::client::{xdg_surface, xdg_toplevel, xdg_wm_ba
 
 #[path = "canvas_map_client/pixels.rs"]
 mod pixels;
+#[path = "canvas_map_client/decoration.rs"]
+mod decoration;
 #[path = "canvas_map_client/resize.rs"]
 mod resize;
 
@@ -29,6 +31,7 @@ struct Window {
 
 #[derive(Default)]
 struct State {
+    decorations: decoration::State,
     compositor: Option<wl_compositor::WlCompositor>,
     shm: Option<wl_shm::WlShm>,
     wm_base: Option<xdg_wm_base::XdgWmBase>,
@@ -88,6 +91,7 @@ impl MapClient {
             .get_xdg_surface(&surface, &handle, number);
         let toplevel = xdg_surface.get_toplevel(&handle, number);
         toplevel.set_app_id(app_id);
+        self.state.decorations.create(&toplevel, &handle, number);
         toplevel.set_min_size(size.0, size.1);
         toplevel.set_max_size(size.0, size.1);
         self.state.windows.push(Window {
@@ -239,6 +243,9 @@ impl Dispatch<wl_registry::WlRegistry, ()> for State {
                 "wl_shm" => state.shm = Some(registry.bind(name, 1, handle, ())),
                 "xdg_wm_base" => {
                     state.wm_base = Some(registry.bind(name, version.min(6), handle, ()))
+                }
+                "zxdg_decoration_manager_v1" => {
+                    state.decorations.bind(registry, name, handle);
                 }
                 "wl_seat" => {
                     let seat: wl_seat::WlSeat = registry.bind(name, version.min(7), handle, ());

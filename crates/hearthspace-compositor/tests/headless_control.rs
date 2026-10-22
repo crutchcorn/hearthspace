@@ -83,6 +83,9 @@ mod shell_events;
 #[path = "support/shell_panels.rs"]
 mod shell_panels;
 #[cfg(feature = "test-apps")]
+#[path = "support/shell_decorations.rs"]
+mod shell_decorations;
+#[cfg(feature = "test-apps")]
 #[path = "support/titlebar_controls.rs"]
 mod titlebar_controls;
 #[path = "support/window_bounds.rs"]
