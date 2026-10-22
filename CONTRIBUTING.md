@@ -187,6 +187,10 @@ enabled on this host; on another host, install `openssh-server` and enable
 `ssh` if needed. The setup requires no firewall rule for VNC, persistent VNC
 service, or system authentication changes.
 
+On 2026-10-21, the same `apt-get` command installed WayVNC `0.9.1-1build1`
+and its runtime dependencies on the ThinkPad T480s so the full headless E2E
+suite could exercise VNC capture and input. No persistent VNC service was enabled.
+
 Start a native session from a Linux TTY with:
 
 ```sh
@@ -927,6 +931,11 @@ cargo deny check advisories bans sources --warn unmaintained
 ruff check scripts
 ruff format --check scripts
 ```
+
+On the ThinkPad, Ruff checks can also use the existing `uvx` tool runner:
+`uvx ruff==0.17.0 check scripts` and
+`uvx ruff==0.17.0 format --check scripts`. This keeps Ruff in uv's tool cache
+without installing a system Python package.
 
 ### Verified Versions
 

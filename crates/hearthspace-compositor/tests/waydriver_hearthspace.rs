@@ -2,6 +2,8 @@ use std::{path::PathBuf, sync::Arc, time::Duration};
 
 #[path = "support/session_bus.rs"]
 mod session_bus;
+#[path = "support/shell_environment.rs"]
+mod shell_environment;
 use session_bus::{PrivateSessionBus, enable_accessibility};
 
 use tokio_util::sync::CancellationToken;
@@ -60,6 +62,10 @@ async fn waydriver_session_locates_shell_ui_by_xpath() -> Result<(), Box<dyn std
     let _guard = WAYDRIVER_TEST_LOCK.lock().await;
     let _bus = PrivateSessionBus::start()?;
     enable_accessibility().await?;
+    // The shell starts with the compositor, before SessionConfig can isolate
+    // its dummy target command. Keep its catalog and desktop independent of
+    // the developer's installed applications and files too.
+    let _environment = shell_environment::ShellEnvironment::new()?;
     run_shell_ui_xpath_check().await
 }
 
