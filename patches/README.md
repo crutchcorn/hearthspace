@@ -170,3 +170,39 @@ See [vendored provenance and refresh steps](../vendor/accesskit_atspi_common/PRO
   XSettings changes promptly and passes these checks without the patch. Remove
   the Git-source Cargo patch, vendor directory, and source patch, then refresh
   `Cargo.lock`. Retain the idle-client regression.
+
+## Masonry finite scrollbar geometry
+
+- **Dependency:** Masonry 0.4.0 at Xilem revision
+  [`271a27a6`](https://github.com/linebender/xilem/tree/271a27a6d4a930f7878d404f9014e3c50a3a9b88),
+  preserved in [`vendor/masonry`](../vendor/masonry/). Its
+  [provenance](../vendor/masonry/PROVENANCE.md) records manifest normalization.
+- **Patch:** [normalize and refresh Portal scrollbar progress](masonry-portal-finite-progress.patch),
+  a local extension of the existing guarded scroll-range calculation. Use it
+  for focus reveal and the public viewport setter, and recompute progress after
+  layout clamps the viewport, including hidden scrollbars and unchanged offsets.
+- **Reason:** focus reveal divides by zero when content fits the viewport exactly.
+  The resulting NaN can remain in a hidden scrollbar, then become visible when
+  a later popup configure shrinks the viewport. Repeated tray-menu opening on
+  Intel UHD 620 produced GPU hangs; a CPU-preprocessing diagnostic captured NaN
+  coordinates already in the input path. The deterministic regression reproduces
+  non-finite rounded-rectangle paint without creating a renderer or GPU device.
+  Vello and its shader settings remain unchanged.
+- **Upstream:** checked on 2026-10-22. Current
+  [Portal source](https://github.com/linebender/xilem/blob/main/masonry/src/widgets/portal.rs)
+  still has the unguarded reveal/setter divisions and layout progress TODO.
+  Existing [PR 1596](https://github.com/linebender/xilem/pull/1596) supplies the
+  guarded calculation and [PR 1587](https://github.com/linebender/xilem/pull/1587)
+  invalidates resized scrollbar rendering; both are already in this pin.
+  No matching compatible fix was found, and no upstream report was published.
+- **Verification:** `cargo test -p hearthspace-ui-components touch_scroll`
+  exercises real Portal focus reveal at an exact 298×153 fit, then resizes to
+  298×18 and validates actual paint with `ValidatingSink`. The unmodified
+  dependency fails with `NonFinite { what: "Geometry::RoundedRect" }`; the patch
+  passes alongside the existing touch-scroll regressions. Native repeated menu
+  and full tray acceptance must also pass before release.
+- **Removal:** upgrade to a compatible unmodified upstream revision that passes
+  the regression and repeated native tray-menu workflow. Remove the Masonry
+  Git-source patch, vendor directory, and patch file, then refresh `Cargo.lock`.
+  Preserve the independent Xilem and Masonry Winit patches until their own
+  removal conditions are satisfied.

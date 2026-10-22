@@ -3581,7 +3581,6 @@ dependencies = [
 [[package]]
 name = "masonry"
 version = "0.4.0"
-source = "git+https://github.com/linebender/xilem?rev=271a27a6d4a930f7878d404f9014e3c50a3a9b88#271a27a6d4a930f7878d404f9014e3c50a3a9b88"
 dependencies = [
  "accesskit",
  "linebender_include_doc_path",

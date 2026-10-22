@@ -1,0 +1,84 @@
+--- a/vendor/masonry/src/widgets/portal.rs
++++ b/vendor/masonry/src/widgets/portal.rs
+@@ -155,6 +155 @@
+-    fn update_scrollbars_from_viewport(
+-        &mut self,
+-        ctx: &mut EventCtx<'_>,
+-        portal_size: Size,
+-        content_size: Size,
+-    ) {
++    fn scrollbar_progress(&self, portal_size: Size, content_size: Size) -> Point {
+@@ -173,0 +169,11 @@
++        Point::new(progress_x, progress_y)
++    }
++
++    fn update_scrollbars_from_viewport(
++        &mut self,
++        ctx: &mut EventCtx<'_>,
++        portal_size: Size,
++        content_size: Size,
++    ) {
++        let progress = self.scrollbar_progress(portal_size, content_size);
++
+@@ -176 +182 @@
+-            scrollbar.cursor_progress = progress_x;
++            scrollbar.cursor_progress = progress.x;
+@@ -181 +187 @@
+-            scrollbar.cursor_progress = progress_y;
++            scrollbar.cursor_progress = progress.y;
+@@ -369,2 +375,2 @@
+-            let progress_x = this.widget.viewport_pos.x / (content_size - portal_size).width;
+-            Self::horizontal_scrollbar_mut(this).widget.cursor_progress = progress_x;
++            let progress = this.widget.scrollbar_progress(portal_size, content_size);
++            Self::horizontal_scrollbar_mut(this).widget.cursor_progress = progress.x;
+@@ -372,2 +378 @@
+-            let progress_y = this.widget.viewport_pos.y / (content_size - portal_size).height;
+-            Self::vertical_scrollbar_mut(this).widget.cursor_progress = progress_y;
++            Self::vertical_scrollbar_mut(this).widget.cursor_progress = progress.y;
+@@ -688,0 +694 @@
++                let progress = self.scrollbar_progress(portal_size, content_size);
+@@ -696,2 +702 @@
+-                scrollbar.cursor_progress =
+-                    self.viewport_pos.y / (content_size - portal_size).height;
++                scrollbar.cursor_progress = progress.y;
+@@ -704,2 +709 @@
+-                scrollbar.cursor_progress =
+-                    self.viewport_pos.x / (content_size - portal_size).width;
++                scrollbar.cursor_progress = progress.x;
+@@ -772,2 +776 @@
+-        // TODO - document better
+-        // Recompute the portal offset for the new layout
++        // A resize changes the scroll range even when the clamped offset stays put.
+@@ -775 +778,17 @@
+-        // TODO - recompute portal progress
++        let progress = self.scrollbar_progress(size, content_size);
++
++        // Refresh hidden bars too: a later resize may make them visible again.
++        {
++            let (scrollbar, mut sb_ctx) = ctx.get_raw_mut(&mut self.scrollbar_horizontal);
++            scrollbar.cursor_progress = progress.x;
++            scrollbar.portal_size = size.width;
++            scrollbar.content_size = content_size.width;
++            sb_ctx.request_render();
++        }
++        {
++            let (scrollbar, mut sb_ctx) = ctx.get_raw_mut(&mut self.scrollbar_vertical);
++            scrollbar.cursor_progress = progress.y;
++            scrollbar.portal_size = size.height;
++            scrollbar.content_size = content_size.height;
++            sb_ctx.request_render();
++        }
+@@ -791,6 +809,0 @@
+-            let (scrollbar, mut sb_ctx) = ctx.get_raw_mut(&mut self.scrollbar_horizontal);
+-            scrollbar.portal_size = size.width;
+-            scrollbar.content_size = content_size.width;
+-            sb_ctx.request_render();
+-            drop(sb_ctx);
+-
+@@ -814,6 +826,0 @@
+-            let (scrollbar, mut sb_ctx) = ctx.get_raw_mut(&mut self.scrollbar_vertical);
+-            scrollbar.portal_size = size.height;
+-            scrollbar.content_size = content_size.height;
+-            sb_ctx.request_render();
+-            drop(sb_ctx);
+-

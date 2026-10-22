@@ -1,0 +1,63 @@
+[package]
+name = "masonry"
+version.workspace = true # We mimic Xilem's version
+description = "Traits and types of the Masonry toolkit."
+keywords = ["gui", "ui", "toolkit"]
+categories = ["gui", "internationalization", "accessibility"]
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+exclude = ["screenshots", "examples/assets"]
+
+[package.metadata.docs.rs]
+all-features = true
+# There are no platform specific docs.
+default-target = "x86_64-unknown-linux-gnu"
+targets = []
+
+[features]
+default = ["masonry_core/default", "imaging_vello"]
+imaging_vello = ["masonry_winit/imaging_vello"]
+imaging_vello_hybrid = ["masonry_winit/imaging_vello_hybrid"]
+imaging_skia = ["masonry_winit/imaging_skia"]
+tracy = ["masonry_core/tracy"]
+testing = ["dep:masonry_testing"]
+
+[dependencies]
+accesskit.workspace = true
+masonry_core.workspace = true
+masonry_testing = { workspace = true, optional = true, default-features = false }
+smallvec.workspace = true
+tracing = { workspace = true, features = ["default"] }
+include_doc_path.workspace = true
+resvg.workspace = true
+understory_virtual_list = "0.1.2"
+
+[dev-dependencies]
+accesskit_consumer.workspace = true
+divan.workspace = true
+float-cmp = { version = "0.10.0", features = ["std"], default-features = false }
+image = { workspace = true, features = ["png"] }
+insta = { version = "1.46.3" }
+masonry_testing = { workspace = true, default-features = false }
+masonry_winit = { workspace = true, default-features = false }
+
+# Make wgpu use tracing for its spans.
+profiling = { version = "1.0.17", features = ["profile-with-tracing"] }
+
+[lints]
+workspace = true
+
+[[bench]]
+name = "widget_list"
+# We use divan's harness instead of the default one.
+harness = false
+# Ensures the benchmark is ran included when running bare `cargo test`.
+test = true
+
+[[example]]
+name = "calc_masonry"
+# This actually enables scraping for all examples, not just this one.
+# However it is possible to set doc-scrape-examples to false for other specific examples.
+doc-scrape-examples = true

@@ -20,6 +20,7 @@ exclude = [
     "vendor/accesskit_atspi_common",
     "vendor/xilem",
     "vendor/masonry_winit",
+    "vendor/masonry",
     "vendor/smithay",
     "vendor/winit",
 ]
@@ -37,6 +38,9 @@ winit = { path = "vendor/winit" }
 # Provenance and removal conditions: patches/README.md.
 xilem = { path = "vendor/xilem" }
 masonry_winit = { path = "vendor/masonry_winit" }
+# Keep scrollbar geometry finite across focus reveal and viewport resize.
+# Provenance and removal conditions: patches/README.md.
+masonry = { path = "vendor/masonry" }
 
 [patch."https://github.com/Smithay/smithay"]
 # Publish XSettings changes without waiting for unrelated X11 events.

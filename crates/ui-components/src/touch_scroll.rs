@@ -10,6 +10,8 @@ use xilem::{
 mod widget;
 pub use widget::TouchScroll;
 #[cfg(test)]
+mod geometry_tests;
+#[cfg(test)]
 mod tests;
 
 /// A Portal with one-finger scrolling over its background and button rows.
