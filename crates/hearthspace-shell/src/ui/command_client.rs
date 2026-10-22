@@ -105,7 +105,7 @@ pub(super) fn query_payload(
     )
 }
 
-fn query_payload_bounded(
+pub(super) fn query_payload_bounded(
     command_socket: &Path,
     command: &str,
     timeout: Duration,

@@ -147,7 +147,9 @@ impl App {
                     self.launcher_logical_origin(index)? + self.window_surface_geometry_loc(index);
                 let size = self.window_geometry_size(index);
                 let app_id = window_app_id(&window.surface)?;
-                let kind = if canvas_map_output_name_from_app_id(&app_id).is_some() {
+                let kind = if hearthspace_common::desktop_context::identity(&app_id).is_some() {
+                    "desktop-context"
+                } else if canvas_map_output_name_from_app_id(&app_id).is_some() {
                     "map"
                 } else if launcher_output_name_from_app_id(&app_id).is_some() {
                     "search"

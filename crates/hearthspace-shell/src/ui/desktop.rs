@@ -10,6 +10,8 @@ use crate::desktop_items::{DesktopItem, DesktopItemKind};
 
 use super::{desktop_item, state::ShellState};
 
+pub(in crate::ui) mod context;
+mod context_actions;
 #[path = "desktop/events.rs"]
 mod events;
 #[path = "desktop/task.rs"]
@@ -27,6 +29,7 @@ pub(super) fn selection_active(state: &ShellState) -> bool {
 
 #[derive(Default)]
 pub(super) struct State {
+    menu: context::State,
     items: Vec<Item>,
     snapshot: events::Snapshot,
     requests: Option<mpsc::Sender<task::Request>>,
@@ -57,7 +60,7 @@ impl State {
 }
 
 pub(super) fn windows(state: &ShellState) -> Vec<WindowView<ShellState>> {
-    state
+    let mut windows: Vec<_> = state
         .desktop
         .items
         .iter()
@@ -135,7 +138,9 @@ pub(super) fn windows(state: &ShellState) -> Vec<WindowView<ShellState>> {
                 |_| {},
             )
         })
-        .collect()
+        .collect();
+    windows.extend(context::window(state));
+    windows
 }
 
 pub(super) fn selection_button(state: &ShellState) -> impl xilem::WidgetView<ShellState> + use<> {

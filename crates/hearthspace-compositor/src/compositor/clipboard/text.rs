@@ -91,6 +91,10 @@ pub(super) fn send_text(bytes: Arc<[u8]>, mime: &str, fd: OwnedFd) {
     if !MIME_TYPES.contains(&mime) {
         return;
     }
+    send_bytes(bytes, fd);
+}
+
+pub(in crate::compositor) fn send_bytes(bytes: Arc<[u8]>, fd: OwnedFd) {
     // Bound stalled readers as well as each payload. Dropping the FD reports
     // cancellation through the ordinary selection protocol.
     if TRANSFERS

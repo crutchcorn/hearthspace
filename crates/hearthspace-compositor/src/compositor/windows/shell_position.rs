@@ -70,6 +70,13 @@ impl App {
         &self,
         window_index: usize,
     ) -> Option<Point<i32, Logical>> {
+        if super::window_app_id(&self.windows[window_index].surface)
+            .as_deref()
+            .and_then(hearthspace_common::desktop_context::identity)
+            .is_some()
+        {
+            return self.desktop_context_origin(window_index);
+        }
         if let Some(origin) = self.frame_popup_origin(window_index) {
             return Some(origin);
         }

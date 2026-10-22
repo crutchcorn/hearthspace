@@ -29,6 +29,7 @@ pub(super) fn group<V: WidgetView<ShellState>>(label: impl Into<String>, inner: 
         accessibility_bounds: true,
         status: false,
         dialog: false,
+        menu: false,
     }
 }
 pub(super) struct GroupView<V> {
@@ -38,8 +39,14 @@ pub(super) struct GroupView<V> {
     accessibility_bounds: bool,
     status: bool,
     dialog: bool,
+    menu: bool,
 }
 impl<V> GroupView<V> {
+    pub(super) fn menu(mut self) -> Self {
+        self.menu = true;
+        self
+    }
+
     pub(super) fn dialog(mut self) -> Self {
         self.dialog = true;
         self
@@ -80,6 +87,7 @@ impl<V: WidgetView<ShellState>> View<ShellState, (), ViewCtx> for GroupView<V> {
                 accessibility_bounds: self.accessibility_bounds,
                 status: self.status,
                 dialog: self.dialog,
+                menu: self.menu,
             }),
             view_state,
         )
@@ -97,6 +105,10 @@ impl<V: WidgetView<ShellState>> View<ShellState, (), ViewCtx> for GroupView<V> {
             element.ctx.request_accessibility_update();
         }
         element.widget.reset_focus_on_deactivation = self.reset_focus_on_deactivation;
+        if self.menu != previous.menu {
+            element.widget.menu = self.menu;
+            element.ctx.request_accessibility_update();
+        }
         if self.dialog != previous.dialog {
             element.widget.dialog = self.dialog;
             element.ctx.request_accessibility_update();
@@ -159,6 +171,7 @@ pub(super) struct PopupGroup {
     accessibility_bounds: bool,
     status: bool,
     dialog: bool,
+    menu: bool,
 }
 impl PopupGroup {
     fn child_mut<'a>(this: &'a mut WidgetMut<'_, Self>) -> WidgetMut<'a, dyn Widget> {
@@ -211,6 +224,8 @@ impl Widget for PopupGroup {
     fn accessibility_role(&self) -> Role {
         if self.dialog {
             Role::Dialog
+        } else if self.menu {
+            Role::Menu
         } else if self.status {
             Role::Status
         } else {

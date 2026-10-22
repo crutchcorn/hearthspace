@@ -50,17 +50,23 @@ impl App {
         if !self.xwm_has_keyboard_focus(xwm) {
             return;
         }
-        let text = match target {
+        let owned = match target {
             SelectionTarget::Clipboard => current_data_device_selection_userdata(&self._seat),
             SelectionTarget::Primary => current_primary_selection_userdata(&self._seat),
         }
-        .and_then(|source| match &*source {
-            SelectionData::Text(bytes) => Some(bytes.clone()),
-            SelectionData::X11(_) => None,
-        });
-        if let Some(text) = text {
-            self.send_selection_text(text, &mime_type, fd);
-            return;
+        .map(|source| source.clone());
+        match owned {
+            Some(SelectionData::Text(text)) => {
+                self.send_selection_text(text, &mime_type, fd);
+                return;
+            }
+            Some(SelectionData::Files(files)) => {
+                if let Some(bytes) = files.encode(&mime_type) {
+                    super::super::clipboard::send_bytes(bytes.into(), fd);
+                }
+                return;
+            }
+            _ => {}
         }
         let result = match target {
             SelectionTarget::Clipboard => {
@@ -104,18 +110,19 @@ impl App {
         mime_types: Vec<String>,
     ) {
         if self.xdisplay.is_some() && self.xwm.as_ref().is_some_and(|current| current.id() == xwm) {
+            let source = ClipboardSource::new(xwm, &mime_types);
             match target {
                 SelectionTarget::Clipboard => set_data_device_selection(
                     &self.display_handle,
                     &self._seat,
                     mime_types,
-                    SelectionData::X11(ClipboardSource::new(xwm)),
+                    SelectionData::X11(source),
                 ),
                 SelectionTarget::Primary => set_primary_selection(
                     &self.display_handle,
                     &self._seat,
                     mime_types,
-                    SelectionData::X11(ClipboardSource::new(xwm)),
+                    SelectionData::X11(source),
                 ),
             }
         }

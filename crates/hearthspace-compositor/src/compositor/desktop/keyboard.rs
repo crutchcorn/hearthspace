@@ -12,6 +12,8 @@ pub(in crate::compositor) enum Action {
     Direction(i32, i32),
     Select(bool),
     Activate,
+    Context,
+    CancelContext,
 }
 
 impl App {
@@ -23,6 +25,9 @@ impl App {
     ) -> Option<Action> {
         if state != KeyState::Pressed || self.session_locked() {
             return None;
+        }
+        if symbol == keysyms::KEY_Escape && self.desktop_context_pending() {
+            return Some(Action::CancelContext);
         }
         if symbol == keysyms::KEY_Escape && self.desktop.gesture.is_some() {
             return Some(Action::Cancel);
@@ -45,6 +50,8 @@ impl App {
             return None;
         }
         match symbol {
+            keysyms::KEY_Menu => Some(Action::Context),
+            keysyms::KEY_F10 if modifiers.shift => Some(Action::Context),
             keysyms::KEY_v | keysyms::KEY_V => Some(Action::Toggle),
             keysyms::KEY_Tab | keysyms::KEY_ISO_Left_Tab => Some(Action::Cycle(
                 modifiers.shift || symbol == keysyms::KEY_ISO_Left_Tab,
@@ -66,6 +73,10 @@ impl App {
 
     pub(in crate::compositor) fn run_desktop_key(&mut self, action: Action) {
         match action {
+            Action::CancelContext => self.cancel_pending_desktop_context(),
+            Action::Context => {
+                let _ = self.open_desktop_context(self.desktop.focused.clone(), true);
+            }
             Action::Toggle => {
                 self.disarm_canvas_search();
                 self.cancel_desktop_gesture();

@@ -10,10 +10,12 @@ use wayland_client::{
 };
 use wayland_protocols::xdg::shell::client::{xdg_surface, xdg_toplevel, xdg_wm_base};
 
-#[path = "canvas_map_client/pixels.rs"]
-mod pixels;
 #[path = "canvas_map_client/decoration.rs"]
 mod decoration;
+#[path = "canvas_map_client/dnd.rs"]
+mod dnd;
+#[path = "canvas_map_client/pixels.rs"]
+mod pixels;
 #[path = "canvas_map_client/resize.rs"]
 mod resize;
 
@@ -31,6 +33,7 @@ struct Window {
 
 #[derive(Default)]
 struct State {
+    dnd: dnd::State,
     decorations: decoration::State,
     compositor: Option<wl_compositor::WlCompositor>,
     shm: Option<wl_shm::WlShm>,
@@ -251,8 +254,9 @@ impl Dispatch<wl_registry::WlRegistry, ()> for State {
                     let seat: wl_seat::WlSeat = registry.bind(name, version.min(7), handle, ());
                     seat.get_pointer(handle, ());
                     seat.get_keyboard(handle, ());
+                    state.dnd.seat = Some(seat);
                 }
-                _ => {}
+                _ => dnd::global(state, registry, name, &interface, version, handle),
             }
         }
     }

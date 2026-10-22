@@ -74,7 +74,7 @@ impl App {
                 "keyboard_focus":self.desktop.keyboard_focus}))
             })
             .collect();
-        serde_json::to_vec(&json!({"version":1,"revision":self.desktop.revision,"select_mode":self.desktop.select_mode,"items":items})).expect("serializable desktop state")
+        serde_json::to_vec(&json!({"version":1,"revision":self.desktop.revision,"select_mode":self.desktop.select_mode,"items":items,"context":self.desktop.context.current})).expect("serializable desktop state")
     }
 
     pub(in crate::compositor) fn desktop_action(
@@ -115,6 +115,9 @@ impl CalloopData {
         if !text.starts_with("desktop-") {
             return None;
         }
+        if let Some(reply) = self.run_desktop_context_command(text) {
+            return Some(reply);
+        }
         if !self.running || !self.capture_active() || self.state.session_locked() {
             self.state.reset_desktop_input();
             return Some(ControlReply::Err("desktop is inactive".into()));
@@ -122,6 +125,43 @@ impl CalloopData {
         let app = &mut self.state;
         let result = if text == "desktop-status" {
             return Some(ControlReply::Payload(app.desktop_status()));
+        } else if text == "desktop-files-clipboard-read" {
+            return Some(app.read_file_clipboard());
+        } else if let Some(argument) = text.strip_prefix("desktop-files-copy ") {
+            #[derive(serde::Deserialize)]
+            #[serde(deny_unknown_fields)]
+            struct Copy {
+                ids: Vec<String>,
+                cut: bool,
+            }
+            match serde_json::from_str::<Copy>(argument) {
+                Ok(value) => app.copy_desktop_files(&value.ids, value.cut),
+                Err(_) => Err("invalid desktop file selection".into()),
+            }
+        } else if let Some(argument) = text.strip_prefix("desktop-files-clipboard-clear ") {
+            #[derive(serde::Deserialize)]
+            #[serde(deny_unknown_fields)]
+            struct OwnedSelection {
+                generation: u64,
+            }
+            match serde_json::from_str::<OwnedSelection>(argument) {
+                Ok(expected) => {
+                    app.clear_file_clipboard(expected.generation);
+                    Ok(())
+                }
+                Err(_) => Err("invalid desktop file clipboard".into()),
+            }
+        } else if let Some(registration) = text.strip_prefix("desktop-file-register ") {
+            #[derive(serde::Deserialize)]
+            #[serde(deny_unknown_fields)]
+            struct Registration {
+                offset: usize,
+                entries: Vec<super::dnd::Entry>,
+            }
+            match serde_json::from_str::<Registration>(registration) {
+                Ok(value) => app.register_desktop_files(value.offset, value.entries),
+                Err(_) => Err("invalid desktop file registration".into()),
+            }
         } else if let Some(registration) = text.strip_prefix("desktop-register ") {
             #[derive(serde::Deserialize)]
             #[serde(deny_unknown_fields)]

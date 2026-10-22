@@ -195,3 +195,62 @@ fn large_catalog_registration_is_batched_without_reordering_or_losing_ids() {
     }
     assert_eq!(received, ids);
 }
+
+#[test]
+fn favorite_completion_updates_shared_state_without_changing_a_replacement_menu() {
+    let mut state = ShellState::new("/unused".into(), vec!["eDP-1".into()]);
+    super::super::context::apply(
+        &mut state,
+        Some(hearthspace_common::desktop_context::DesktopContext {
+            generation: 9,
+            ids: vec![],
+            output: Some("eDP-1".into()),
+            max_width: 340,
+            max_height: 600,
+        }),
+    );
+    state.desktop.menu.busy = true;
+    state.favorites.error = Some("old write failure".into());
+    let (sender, mut requests) = tokio::sync::mpsc::channel(4);
+    state.desktop.requests = Some(sender);
+    let mut saved = FavoriteStore::in_memory();
+    saved.add("editor.desktop").unwrap();
+
+    apply_completed(
+        &mut state,
+        Completed::Context(
+            8,
+            Ok(super::super::context_actions::Completed::Closed(Some(
+                saved,
+            ))),
+        ),
+        true,
+    );
+
+    assert_eq!(state.favorites.store.entries()[0].app_id, "editor.desktop");
+    assert!(state.favorites.error.is_none());
+    assert_eq!(state.desktop.menu.current.as_ref().unwrap().generation, 9);
+    assert!(state.desktop.menu.busy);
+    assert!(requests.try_recv().is_err());
+}
+
+#[test]
+fn favorite_completion_updates_shared_state_without_reopening_an_inactive_menu() {
+    let mut state = ShellState::new("/unused".into(), vec!["eDP-1".into()]);
+    let mut saved = FavoriteStore::in_memory();
+    saved.add("editor.desktop").unwrap();
+
+    apply_completed(
+        &mut state,
+        Completed::Context(
+            8,
+            Ok(super::super::context_actions::Completed::Closed(Some(
+                saved,
+            ))),
+        ),
+        false,
+    );
+
+    assert_eq!(state.favorites.store.entries()[0].app_id, "editor.desktop");
+    assert!(state.desktop.menu.current.is_none());
+}

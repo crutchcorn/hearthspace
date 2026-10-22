@@ -47,6 +47,7 @@ impl App {
             let Some(gesture) = self.desktop.gesture.take() else {
                 return false;
             };
+            let app_drop = self.finish_desktop_drop();
             self.release_desktop_pointer(button, time);
             let mut positions_changed = false;
             match gesture {
@@ -59,7 +60,9 @@ impl App {
                 } => {
                     if moved {
                         positions_changed = true;
-                        if id.starts_with("app:") && self.desktop_over_apps_corner() {
+                        if app_drop {
+                            self.restore_desktop_positions(&positions);
+                        } else if id.starts_with("app:") && self.desktop_over_apps_corner() {
                             self.restore_desktop_positions(&positions);
                             let _ = self.desktop_action("favorite", &id);
                         } else {
@@ -245,7 +248,7 @@ impl App {
                             f64::from(anchor.y - origin.y),
                         )
                             .into();
-                        for (id, origin) in positions {
+                        for (id, origin) in positions.iter() {
                             if let Some(index) = self.desktop_index(id) {
                                 self.windows[index].position =
                                     geometry::moved_position(*origin, delta, false);
@@ -254,6 +257,14 @@ impl App {
                     }
                     self.cursor_surface = None;
                     self.cursor_icon = CursorIcon::Grabbing;
+                    if id.starts_with("file:") {
+                        let files: Vec<_> = positions
+                            .keys()
+                            .filter(|id| id.starts_with("file:"))
+                            .cloned()
+                            .collect();
+                        self.update_desktop_drop(&files);
+                    }
                     self.request_redraw();
                 }
                 *moved

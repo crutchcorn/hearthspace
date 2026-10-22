@@ -49,6 +49,7 @@ impl App {
             // Only the initial mapping requests focus; zoom updates and other
             // buffer commits must not steal it back from a newer user action.
             if (self.navigation_available() || self.canvas_search_panel_allowed(index))
+                && self.desktop_context_mapping_allowed(index)
                 && self.search_mapping_allowed(index)
             {
                 self.set_keyboard_focus_to_window(index, root.clone());

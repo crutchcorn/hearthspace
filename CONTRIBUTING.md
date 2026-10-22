@@ -44,8 +44,12 @@ desktop after each run. See [Native Testing](./docs/NATIVE_TESTING.md).
 I develop Hearthspace on Ubuntu 26.04 LTS, and the following packages are required to build and run the compositor and shell:
 
 ```sh
-sudo apt-get install -y build-essential pkg-config clang libclang-dev libwayland-dev wayland-protocols wayland-utils libinput-dev libxkbcommon-dev libxkbcommon-x11-dev libudev-dev libseat-dev libgbm-dev libegl1-mesa-dev libgles2-mesa-dev libdrm-dev libsystemd-dev
+sudo apt-get install -y build-essential pkg-config clang libclang-dev libwayland-dev wayland-protocols wayland-utils libinput-dev libxkbcommon-dev libxkbcommon-x11-dev libudev-dev libseat-dev libgbm-dev libegl1-mesa-dev libgles2-mesa-dev libdrm-dev libsystemd-dev libglib2.0-dev libglib2.0-bin xdg-utils
 ```
+
+Desktop file menus use GIO for application associations and Trash.
+`libglib2.0-dev` supplies its build interfaces; `libglib2.0-bin` supplies
+`gio launch` for Open With, and `xdg-utils` supplies the default `xdg-open` handler.
 
 Settings and server-decorated titlebars use Liberation Sans to match the browser
 reference's text metrics.

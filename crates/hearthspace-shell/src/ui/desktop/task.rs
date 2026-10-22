@@ -21,6 +21,7 @@ use worker::{Completed, Failure, discover, perform, register};
 pub(super) enum Request {
     Command(String),
     Accept(u64),
+    Context(super::context_actions::Request),
 }
 
 #[derive(Debug)]
@@ -36,6 +37,10 @@ mod tests;
 
 pub(super) fn submit(state: &mut ShellState, request: Request) {
     let accepts_token = matches!(request, Request::Accept(_));
+    let menu_generation = match &request {
+        Request::Context(request) => Some(request.generation),
+        _ => None,
+    };
     if state
         .desktop
         .requests
@@ -43,7 +48,9 @@ pub(super) fn submit(state: &mut ShellState, request: Request) {
         .is_none_or(|sender| sender.try_send(request).is_err())
     {
         let error = "Desktop items are busy. Try again shortly.".to_string();
-        if accepts_token {
+        if let Some(generation) = menu_generation {
+            super::context::finished(state, generation, Err(error));
+        } else if accepts_token {
             // An event can still be queued after lock or VT loss. Only a worker
             // that confirms an active session may open feedback for it.
             state.desktop.error = Some(error);
@@ -77,14 +84,31 @@ pub(in crate::ui) fn task() -> impl View<ShellState, (), xilem::ViewCtx, Element
                         biased;
                         request = requests.recv() => {
                             let Some(request) = request else { break; };
+                            let changed_files = matches!(&request, Request::Context(super::context_actions::Request { action: super::context_actions::Action::Paste | super::context_actions::Action::Rename(_) | super::context_actions::Action::Trash | super::context_actions::Action::NewFolder(_), .. }));
                             let socket = socket.clone();
                             let worker_socket = socket.clone();
                             let known = items.clone();
                             let store = favorites.clone();
-                            let result = tokio::task::spawn_blocking(move || {
+                            let mut pending = tokio::task::spawn_blocking(move || {
                                 perform(&worker_socket, request, &known, store, runtime)
-                            }).await.unwrap_or_else(|error| Err(Failure::report(format!("Desktop action failed: {error}"))));
-                            if let Ok(Completed::Favorite(store)) = &result { favorites = store.clone(); }
+                            });
+                            // Large transfers stay serial, but must not hold desktop
+                            // snapshots hostage: outside clicks and lock still close menus.
+                            let result = loop {
+                                tokio::select! {
+                                    result = &mut pending => break result.unwrap_or_else(|error| Err(Failure::report(format!("Desktop action failed: {error}")))),
+                                    _ = refresh.notified() => {
+                                        if !refresh_snapshot(&socket, &proxy, &mut previous_snapshot).await { return; }
+                                    }
+                                    _ = poll.tick() => {
+                                        if !refresh_snapshot(&socket, &proxy, &mut previous_snapshot).await { return; }
+                                    }
+                                }
+                            };
+                            if let Ok(Completed::Favorite(store) | Completed::Context(_, Ok(super::context_actions::Completed::Closed(Some(store))))) = &result {
+                                favorites = store.clone();
+                            }
+                            if changed_files { poll.reset_immediately(); }
                             let active = control_worker::session(socket).await.available;
                             if proxy.message(Update::Finished(result, active)).is_err() { break; }
                             refresh.notify_one();
@@ -130,17 +154,13 @@ pub(in crate::ui) fn task() -> impl View<ShellState, (), xilem::ViewCtx, Element
                 state.desktop.replace_items(items);
                 state.desktop.source_error = error;
             }
-            Update::Snapshot(snapshot) => state.desktop.snapshot = snapshot,
+            Update::Snapshot(snapshot) => {
+                super::context::apply(state, snapshot.context.clone());
+                state.desktop.snapshot = snapshot;
+            }
             Update::Finished(result, active) => match result {
                 Ok(completed) => {
-                    match completed {
-                        Completed::Favorite(store) => {
-                            state.favorites.store = store;
-                            state.favorites.error = None;
-                        }
-                        Completed::Activated if active => state.dismiss_panels(),
-                        Completed::Activated | Completed::Command => {}
-                    }
+                    apply_completed(state, completed, active);
                     state.desktop.error = None;
                 }
                 Err(error) if active && error.report => super::feedback(state, error.message),
@@ -148,6 +168,32 @@ pub(in crate::ui) fn task() -> impl View<ShellState, (), xilem::ViewCtx, Element
             },
         },
     )
+}
+
+fn apply_completed(state: &mut ShellState, completed: Completed, active: bool) {
+    match completed {
+        Completed::Favorite(store) => {
+            state.favorites.store = store;
+            state.favorites.error = None;
+        }
+        Completed::Activated if active => state.dismiss_panels(),
+        Completed::Activated | Completed::Command => {}
+        Completed::Context(generation, result) => {
+            // A completed write belongs to shared state even if its menu was
+            // dismissed or replaced while the worker was saving the favorite.
+            let result = match result {
+                Ok(super::context_actions::Completed::Closed(Some(store))) => {
+                    state.favorites.store = store;
+                    state.favorites.error = None;
+                    Ok(super::context_actions::Completed::Closed(None))
+                }
+                result => result,
+            };
+            if active {
+                super::context::finished(state, generation, result);
+            }
+        }
+    }
 }
 
 async fn refresh_snapshot(
@@ -166,7 +212,9 @@ async fn refresh_snapshot(
         // Coordinates and the compositor revision change continuously while
         // dragging. Rebuild tile surfaces only when their visible state changes.
         let changed = previous.as_ref().is_none_or(|old| {
-            old.select_mode != snapshot.select_mode || old.items != snapshot.items
+            old.select_mode != snapshot.select_mode
+                || old.items != snapshot.items
+                || old.context != snapshot.context
         });
         *previous = Some(snapshot.clone());
         if changed {

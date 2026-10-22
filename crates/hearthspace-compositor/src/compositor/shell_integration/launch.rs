@@ -113,6 +113,19 @@ impl App {
         )
     }
 
+    pub(in crate::compositor) fn open_background_settings(
+        &mut self,
+        output_name: Option<&str>,
+    ) -> Result<(), String> {
+        let existing = self.existing_settings_window();
+        self.launch_app_with_arguments(
+            "dev.hearthspace.Settings.desktop",
+            output_name,
+            &["--page", "background"],
+            existing,
+        )
+    }
+
     fn launch_app_with_arguments(
         &mut self,
         app_id: &str,

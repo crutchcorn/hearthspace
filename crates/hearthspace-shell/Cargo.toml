@@ -9,14 +9,18 @@ license = "Apache-2.0"
 chrono = { version = "0.4.45", default-features = false, features = ["clock"] }
 dirs = "6.0.0"
 freedesktop-icons = "0.4.0"
+gio = "0.22.10"
+gio-unix = "0.22.8"
 futures-util = "0.3.34"
 hearthspace-common = { path = "../hearthspace-common" }
 hearthspace-ipc = { path = "../hearthspace-ipc" }
 hearthspace-ui-components = { path = "../ui-components" }
 image = { version = "0.25.10", default-features = false, features = ["png"] }
 resvg = { version = "0.47.0", default-features = false }
+rustix = { version = "1.1.5", features = ["fs"] }
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.154"
+tempfile = "3.27.0"
 tokio = { version = "1.53.3", features = ["fs", "io-util", "macros", "net", "process", "rt", "sync", "time"] }
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
@@ -28,7 +32,6 @@ zbus = { version = "5.19.0", default-features = false, features = ["async-io"] }
 accesskit_atspi_common = "0.18.1"
 masonry = { git = "https://github.com/linebender/xilem", rev = "271a27a6d4a930f7878d404f9014e3c50a3a9b88", features = ["testing"] }
 rstest = "0.27.0"
-tempfile = "3.27.0"
 
 [lints.rust]
 unsafe_op_in_unsafe_fn = "deny"

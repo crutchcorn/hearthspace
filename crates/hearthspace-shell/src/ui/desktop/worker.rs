@@ -15,6 +15,10 @@ pub(super) enum Completed {
     Command,
     Activated,
     Favorite(FavoriteStore),
+    Context(
+        u64,
+        Result<super::super::context_actions::Completed, String>,
+    ),
 }
 
 #[derive(Debug)]
@@ -108,6 +112,7 @@ pub(super) fn register(socket: &Path, items: &[DesktopItem]) -> Result<(), Strin
     for command in registration_commands(&ids)
         .into_iter()
         .chain(search_registration::commands(items))
+        .chain(file_registration::commands(items))
     {
         command_client::send_command(socket, &command)
             .map_err(|error| format!("Could not arrange desktop items: {error}"))?;
@@ -115,6 +120,8 @@ pub(super) fn register(socket: &Path, items: &[DesktopItem]) -> Result<(), Strin
     Ok(())
 }
 
+#[path = "file_registration.rs"]
+mod file_registration;
 #[path = "search_registration.rs"]
 mod search_registration;
 
@@ -126,6 +133,12 @@ pub(super) fn perform(
     runtime: bool,
 ) -> Result<Completed, Failure> {
     let token = match request {
+        Request::Context(request) => {
+            let generation = request.generation;
+            let result =
+                super::super::context_actions::perform(socket, request, items, favorites, runtime);
+            return Ok(Completed::Context(generation, result));
+        }
         Request::Command(command) => {
             command_client::send_command(socket, &command).map_err(|error| {
                 if command.starts_with("desktop-focus ") {

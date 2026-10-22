@@ -29,6 +29,12 @@ mod canvas_search;
 #[path = "support/canvas_zoom.rs"]
 mod canvas_zoom;
 #[cfg(feature = "test-apps")]
+#[path = "support/desktop_context.rs"]
+mod desktop_context;
+#[cfg(feature = "test-apps")]
+#[path = "support/desktop_files.rs"]
+mod desktop_files;
+#[cfg(feature = "test-apps")]
 #[path = "support/device_controls.rs"]
 mod device_controls;
 #[cfg(feature = "test-apps")]
@@ -77,14 +83,14 @@ mod shell_blur;
 #[path = "support/shell_corners.rs"]
 mod shell_corners;
 #[cfg(feature = "test-apps")]
+#[path = "support/shell_decorations.rs"]
+mod shell_decorations;
+#[cfg(feature = "test-apps")]
 #[path = "support/shell_events.rs"]
 mod shell_events;
 #[cfg(feature = "test-apps")]
 #[path = "support/shell_panels.rs"]
 mod shell_panels;
-#[cfg(feature = "test-apps")]
-#[path = "support/shell_decorations.rs"]
-mod shell_decorations;
 #[cfg(feature = "test-apps")]
 #[path = "support/titlebar_controls.rs"]
 mod titlebar_controls;
@@ -103,11 +109,11 @@ mod window_states;
 #[path = "support/window_switcher.rs"]
 mod window_switcher;
 #[cfg(all(feature = "test-apps", feature = "xwayland"))]
-#[path = "support/xsettings.rs"]
-mod xsettings;
-#[cfg(all(feature = "test-apps", feature = "xwayland"))]
 #[path = "support/x11_popups.rs"]
 mod x11_popups;
+#[cfg(all(feature = "test-apps", feature = "xwayland"))]
+#[path = "support/xsettings.rs"]
+mod xsettings;
 
 const WIDTH: u32 = 320;
 const HEIGHT: u32 = 240;

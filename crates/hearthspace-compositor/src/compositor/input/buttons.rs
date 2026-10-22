@@ -70,6 +70,9 @@ impl App {
             self.apply_pointer_motion(self.pointer_location, time);
             return;
         }
+        if self.desktop_context_button(button, state) {
+            return;
+        }
         if self.desktop_pointer_button(button, state, time) {
             return;
         }
