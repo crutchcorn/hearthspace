@@ -41,9 +41,12 @@ pub(super) fn size(
                 4.0 + crate::ui::dock::desired_width(state)
             }
         }
-        "tray" => (38.0 * crate::ui::tray_state::visible(&state.tray.snapshot).count() as f64
-            - 4.0)
-            .max(0.0),
+        "tray" => match crate::ui::tray_state::visible(&state.tray.snapshot).count() {
+            0 => 0.0,
+            // A toolbar's along-axis extent must not be shorter than its lane;
+            // the compositor normalizes that pair when changing orientation.
+            count => (38.0 * count as f64 - 4.0).max(44.0),
+        },
         "notifications" if expanded => {
             super::text_metrics::width(&notification_text(state), 13.0) + 47.0
         }

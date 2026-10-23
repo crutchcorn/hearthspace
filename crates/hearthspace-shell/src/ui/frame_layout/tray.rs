@@ -76,6 +76,7 @@ pub(super) fn content(
         hearthspace_ui_components::touch_portal(strip)
             .constrain_horizontal(vertical)
             .constrain_vertical(!vertical)
+            .must_fill(true)
             .boxed()
     }
 }

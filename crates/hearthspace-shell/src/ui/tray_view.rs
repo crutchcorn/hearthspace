@@ -12,7 +12,7 @@ use xilem::{
     AnyWidgetView, WidgetView, WindowView,
     masonry::{layout::AsUnit, properties::LineBreaking},
     style::Style,
-    view::{CrossAxisAlignment, FlexExt, flex_col, flex_row, label},
+    view::{CrossAxisAlignment, FlexExt, MainAxisAlignment, flex_col, flex_row, label},
 };
 
 #[cfg(test)]
@@ -50,6 +50,7 @@ pub(super) fn frame_strip(
         } else {
             xilem::masonry::kurbo::Axis::Horizontal
         })
+        .main_axis_alignment(MainAxisAlignment::Center)
         .gap(4.0.px())
 }
 
