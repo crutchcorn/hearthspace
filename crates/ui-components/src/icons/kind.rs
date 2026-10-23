@@ -69,10 +69,11 @@ pub enum Icon {
     AppSettings,
     FileText,
     ImagePlus,
-    /// Native system power control, absent from the browser experiment.
+    /// Session controls and identity, following the experiment's 24px outline grid.
     Power,
-    /// Native session controls, following the same 24px outline grid.
     Lock,
+    User,
+    Eye,
     LogOut,
     /// Live native battery status, using the experiment’s battery case.
     Battery {
@@ -153,6 +154,8 @@ pub(super) const ALL: &[Icon] = &[
     Icon::ImagePlus,
     Icon::Power,
     Icon::Lock,
+    Icon::User,
+    Icon::Eye,
     Icon::LogOut,
     Icon::Battery {
         percentage: 57,
