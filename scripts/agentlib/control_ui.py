@@ -57,18 +57,6 @@ def balanced_channels(state):
         )
 
 
-def settled_audio(smoke):
-    """Wait for the coalesced tail of a real drag before pressing an arrow."""
-    previous = smoke.service_fixture.status()
-    quiet_since = time.monotonic()
-    while time.monotonic() - quiet_since < 0.3:
-        time.sleep(min(0.03, smoke.control.deadline.remaining()))
-        state = smoke.service_fixture.status()
-        if state != previous:
-            previous, quiet_since = state, time.monotonic()
-    return previous
-
-
 def popup_feedback(smoke, capture, *, focused_slider=None):
     """Keep popup adjustments in the popup, with separate focus review captures."""
     checks.opened(smoke, "controls", exclusive=True)
@@ -177,11 +165,10 @@ def run(smoke):
     end = (start[0] + volume["bounds"]["width"] / scale / 4, start[1])
     with Input(smoke.control) as inputs:
         inputs.drag(*start, *end, duration=0.2)
-    smoke.until(
-        "volume slider drag",
-        lambda: state if 60 < (state := peer.status())["volume"] < 90 else None,
-    )
-    changed = settled_audio(smoke)
+    # Masonry maps x / width across 0..100: center plus a quarter ends at 75%.
+    # An intermediate backend value can stay quiet while the tail is queued;
+    # wait for this endpoint before matching the label or pressing an arrow.
+    changed = audio(smoke, volume=75, muted=False)
     smoke.until("dragged volume label", lambda: visible(smoke, f"{changed['volume']}%"))
     popup_feedback(smoke, "sound-slider-pointer", focused_slider="Volume")
     with Input(smoke.control) as inputs:
