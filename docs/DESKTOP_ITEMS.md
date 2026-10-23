@@ -72,6 +72,16 @@ accent variants over a photo; labels become white with shadows. Real application
 artwork and file previews retain their colors. Themes and accent changes update
 existing surfaces.
 
+Application artwork is shared by desktop tiles, Apps List, the dock, and matched
+window decorations. Requests retain the desktop application's identity, so two
+shortcuts declaring the same generic icon can still display different artwork.
+Steam game shortcuts retain a usable custom icon. When a shortcut declares the
+generic Steam icon, Hearthspace tries its installed `steam_icon_<appid>` and then
+the game's local cached icon before falling back to Steam. Cache discovery is
+bounded to known native, Snap, and Flatpak Steam locations; ambiguous artwork is
+ignored. It does not download assets or rewrite desktop entries. PNG, SVG, and
+JPEG decoding retains the application's existing size and allocation limits.
+
 File previews do not write to the user's files or thumbnail cache. Lofty reads
 FLAC picture metadata; the existing `image` decoder handles PNG and JPEG covers.
 The shell uses Lofty 0.25.4 with its default features and enables the `png` and
@@ -118,7 +128,9 @@ same exact artwork probes and passed on its second capture; both theme checks
 passed on their first capture. No pixel tolerances were relaxed.
 
 Software Updater displayed its configured theme icon. Z.A.T.O. displayed the
-Steam artwork declared by its installed launcher. Opening VLC from its desktop
+Steam artwork declared by its installed launcher; that historical check did not
+validate the game's own artwork, now supported by the application-aware fallback
+above. Opening VLC from its desktop
 icon with Enter produced a focused X11 window with a 44-pixel server titlebar
 and the VLC cone in its titlebar. Evidence, page-flip metadata, state snapshots,
 and source-file hashes are under

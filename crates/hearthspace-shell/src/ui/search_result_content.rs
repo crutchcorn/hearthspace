@@ -18,32 +18,28 @@ pub(super) fn view(
     selected: bool,
     grid: bool,
 ) -> Box<AnyWidgetView<ShellState>> {
-    let (name, description, image_name) = match entry {
+    let (name, description, artwork) = match entry {
         Entry::App(app) => (
             app.name.clone(),
             app.comment
                 .clone()
                 .or_else(|| app.generic_name.clone())
                 .unwrap_or_default(),
-            app.icon.as_deref(),
+            super::super::dock::app_image(state, app),
         ),
         Entry::Window(window) => (
             window.title.clone(),
             format!("Running · {}", window.app_id),
-            state
-                .catalog
-                .app_for_window(&window.app_id)
-                .and_then(|app| app.icon.as_deref()),
+            super::super::dock::window_image(state, &window.app_id),
         ),
     };
-    let artwork: Box<AnyWidgetView<ShellState>> =
-        if let Some(image_data) = super::super::dock::image(state, image_name) {
-            image(image_data).decorative(true).boxed()
-        } else {
-            icon(Icon::AppsGrid, if grid { 30.0 } else { 25.0 })
-                .theme_color(if selected { Tone::Strong } else { Tone::Muted })
-                .boxed()
-        };
+    let artwork: Box<AnyWidgetView<ShellState>> = if let Some(image_data) = artwork {
+        image(image_data).decorative(true).boxed()
+    } else {
+        icon(Icon::AppsGrid, if grid { 30.0 } else { 25.0 })
+            .theme_color(if selected { Tone::Strong } else { Tone::Muted })
+            .boxed()
+    };
     let artwork = sized_box(artwork)
         .fixed_width(if grid { 54.0 } else { 44.0 }.px())
         .fixed_height(if grid { 49.0 } else { 44.0 }.px())

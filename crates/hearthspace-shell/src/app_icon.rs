@@ -9,9 +9,11 @@ use std::{
 use gio::prelude::SettingsExt;
 
 use crate::{
-    app_catalog::AppCatalog,
+    app_catalog::{AppCatalog, DesktopApp},
     tray::{TrayIcon, TrayPixmap},
 };
+
+mod steam;
 
 const ICON_SIZE: u32 = 48;
 const MAX_FILE_BYTES: u64 = 2 * 1024 * 1024;
@@ -20,19 +22,29 @@ const MAX_DIMENSION: u32 = 1024;
 /// Resolve a window's installed artwork through the desktop icon pipeline.
 /// `identity` is an app ID or WM_CLASS, never a display title.
 pub fn resolve_window(catalog: &AppCatalog, identity: &str) -> Option<TrayPixmap> {
-    let name = catalog
-        .app_for_window(identity)
-        .and_then(|app| app.icon.clone())
-        .unwrap_or_else(|| {
-            identity
-                .strip_suffix(".desktop")
-                .unwrap_or(identity)
-                .to_lowercase()
-        });
+    if let Some(app) = catalog.app_for_window(identity) {
+        return resolve_app(app);
+    }
+    let name = identity
+        .strip_suffix(".desktop")
+        .unwrap_or(identity)
+        .to_lowercase();
     resolve(&TrayIcon {
         name: Some(name),
         ..Default::default()
     })
+}
+
+/// Resolve installed applications using both their artwork and launch identity.
+pub fn resolve_app(app: &DesktopApp) -> Option<TrayPixmap> {
+    if app.icon.as_deref() == Some("steam")
+        && let Some(id) = steam::game_id(app)
+        && let Some(icon) = named_icon(&format!("steam_icon_{id}"), None)
+            .or_else(|| steam::cached_icon(&steam::installed_roots(), &id))
+    {
+        return Some(icon);
+    }
+    app.icon.as_deref().and_then(|name| named_icon(name, None))
 }
 
 pub fn resolve(icon: &TrayIcon) -> Option<TrayPixmap> {
@@ -178,6 +190,10 @@ fn application_icon(directory: &Path, name: &str) -> Option<PathBuf> {
 }
 
 fn decode_file(path: &Path) -> Option<TrayPixmap> {
+    decode_file_with_shape(path, false)
+}
+
+fn decode_file_with_shape(path: &Path, require_square: bool) -> Option<TrayPixmap> {
     let metadata = fs::metadata(path).ok()?;
     if !metadata.is_file() || metadata.len() > MAX_FILE_BYTES {
         return None;
@@ -192,24 +208,31 @@ fn decode_file(path: &Path) -> Option<TrayPixmap> {
         return None;
     }
     match path.extension().and_then(|extension| extension.to_str()) {
-        Some("svg") => decode_svg(&bytes),
-        Some("png") => decode_png(&bytes),
+        Some("svg") if !require_square => decode_svg(&bytes),
+        Some("png") => decode_raster(&bytes, image::ImageFormat::Png, require_square),
+        Some("jpg" | "jpeg") => decode_raster(&bytes, image::ImageFormat::Jpeg, require_square),
         _ => None,
     }
 }
 
-fn decode_png(bytes: &[u8]) -> Option<TrayPixmap> {
-    let mut reader = image::ImageReader::with_format(Cursor::new(bytes), image::ImageFormat::Png);
+fn decode_raster(
+    bytes: &[u8],
+    format: image::ImageFormat,
+    require_square: bool,
+) -> Option<TrayPixmap> {
+    let mut reader = image::ImageReader::with_format(Cursor::new(bytes), format);
     let mut limits = image::Limits::default();
     limits.max_image_width = Some(MAX_DIMENSION);
     limits.max_image_height = Some(MAX_DIMENSION);
     limits.max_alloc = Some(8 * 1024 * 1024);
     reader.limits(limits);
-    let decoded = reader
-        .decode()
-        .ok()?
-        .thumbnail(ICON_SIZE, ICON_SIZE)
-        .to_rgba8();
+    let decoded = reader.decode().ok()?;
+    // Validate source dimensions before thumbnail rounding can hide a
+    // near-square capsule. General application icons retain their aspect ratio.
+    if require_square && decoded.width() != decoded.height() {
+        return None;
+    }
+    let decoded = decoded.thumbnail(ICON_SIZE, ICON_SIZE).to_rgba8();
     Some(TrayPixmap {
         width: decoded.width(),
         height: decoded.height(),

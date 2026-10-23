@@ -1,5 +1,5 @@
-//! Reuse the tray's bounded icon decoder on a worker and expose named glyphs.
-use std::collections::{BTreeMap, BTreeSet};
+//! Decode app-aware artwork on a worker and expose shared application glyphs.
+use std::collections::BTreeMap;
 
 use hearthspace_ui_components as components;
 use xilem::{
@@ -20,28 +20,86 @@ use xilem::{
 };
 
 use super::{ShellState, apps};
-use crate::tray::{TrayIcon, TrayPixmap};
+use crate::{
+    app_catalog::DesktopApp,
+    tray::{TrayIcon, TrayPixmap},
+};
 
 const MAX_ICONS: usize = 128;
-type Icons = BTreeMap<String, Option<TrayPixmap>>;
+type Icons = BTreeMap<CacheKey, Option<TrayPixmap>>;
 
-pub(super) fn requests(state: &ShellState) -> Vec<String> {
-    let dock_names = apps(state).into_iter().filter_map(|app| app.icon);
-    let catalog_names = state
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub(super) enum CacheKey {
+    App {
+        id: String,
+        argv: Option<Vec<String>>,
+        icon: Option<String>,
+    },
+    Named(String),
+}
+
+impl CacheKey {
+    pub(super) fn app(app: &DesktopApp) -> Self {
+        Self::App {
+            id: app.id.clone(),
+            argv: app.launch_argv().ok(),
+            icon: app.icon.clone(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(super) enum Request {
+    App(Box<DesktopApp>),
+    Named(String),
+}
+
+impl Request {
+    pub(super) fn app(app: &DesktopApp) -> Self {
+        Self::App(Box::new(app.clone()))
+    }
+
+    pub(super) fn key(&self) -> CacheKey {
+        match self {
+            Self::App(app) => CacheKey::app(app),
+            Self::Named(name) => CacheKey::Named(name.clone()),
+        }
+    }
+}
+
+pub(super) fn requests(state: &ShellState) -> Vec<Request> {
+    let dock = apps(state).into_iter().filter_map(|app| app.icon);
+    let catalog = state
         .catalog
         .apps()
         .iter()
-        .filter_map(|app| app.icon.clone());
-    // A large catalog must not evict a visible pin merely because its icon name
-    // sorts late. Keep the returned set sorted for the decoder's cache lookup.
-    let mut names = BTreeSet::new();
-    for name in dock_names.chain(catalog_names) {
-        names.insert(name);
-        if names.len() == MAX_ICONS {
+        .filter(|app| app.icon.is_some())
+        .map(Request::app);
+    // Visible pins keep priority even in a large catalog. Distinct applications
+    // must not share a cache entry just because both declare Icon=steam.
+    let mut requests = BTreeMap::new();
+    for request in dock.chain(catalog) {
+        requests.insert(request.key(), request);
+        if requests.len() == MAX_ICONS {
             break;
         }
     }
-    names.into_iter().collect()
+    requests.into_values().collect()
+}
+
+fn decode_requests(mut cache: Icons, requests: Vec<Request>) -> Icons {
+    let requests: BTreeMap<_, _> = requests.into_iter().map(|r| (r.key(), r)).collect();
+    cache.retain(|key, _| requests.contains_key(key));
+    for (key, request) in requests {
+        cache.entry(key).or_insert_with(|| match request {
+            Request::App(app) => crate::app_icon::resolve_app(&app),
+            Request::Named(name) => crate::app_icon::resolve(&TrayIcon {
+                name: Some(name),
+                ..Default::default()
+            }),
+        });
+    }
+    cache
 }
 
 pub(in crate::ui) fn task() -> impl View<ShellState, (), ViewCtx, Element = NoElement> + use<> {
@@ -52,18 +110,9 @@ pub(in crate::ui) fn task() -> impl View<ShellState, (), ViewCtx, Element = NoEl
             async move {
                 let mut cache = Icons::new();
                 loop {
-                    let names = receiver.borrow_and_update().clone();
+                    let requests = receiver.borrow_and_update().clone();
                     let result = xilem::tokio::task::spawn_blocking(move || {
-                        cache.retain(|name, _| names.binary_search(name).is_ok());
-                        for name in names {
-                            cache.entry(name.clone()).or_insert_with(|| {
-                                crate::app_icon::resolve(&TrayIcon {
-                                    name: Some(name),
-                                    ..Default::default()
-                                })
-                            });
-                        }
-                        cache
+                        decode_requests(cache, requests)
                     })
                     .await;
                     let Ok(icons) = result else { break };
@@ -93,6 +142,10 @@ fn image(pixmap: TrayPixmap) -> ImageBrush {
     }
     .into()
 }
+
+#[cfg(test)]
+#[path = "dock_icon_tests.rs"]
+mod tests;
 
 #[derive(Clone, PartialEq)]
 pub(super) enum Glyph {

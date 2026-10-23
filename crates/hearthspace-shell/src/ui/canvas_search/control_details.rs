@@ -55,7 +55,7 @@ fn apps(state: &ShellState) -> impl WidgetView<ShellState> + use<> {
                     icon(Icon::AppSettings, 18.0)
                         .color(state.appearance.palette.text)
                         .boxed()
-                } else if let Some(brush) = dock::image(state, app.icon.as_deref()) {
+                } else if let Some(brush) = dock::app_image(state, app) {
                     image(brush).decorative(true).boxed()
                 } else {
                     icon(Icon::AppsGrid, 18.0)

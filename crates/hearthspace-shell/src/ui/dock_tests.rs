@@ -103,8 +103,13 @@ fn desktop_entry_supplies_human_name_and_icon_without_launching() {
     state.windows = vec![window(4, "org.example.Editor", false)];
     let app = apps(&state).remove(0);
     assert_eq!(app.name, "Text Editor");
-    assert_eq!(app.icon.as_deref(), Some("editor-logo"));
-    assert_eq!(icons::requests(&state), ["editor-logo"]);
+    let installed = state
+        .catalog
+        .app_by_id("org.example.Editor.desktop")
+        .unwrap();
+    assert_eq!(installed.icon.as_deref(), Some("editor-logo"));
+    assert_eq!(app.icon, Some(icons::Request::app(installed)));
+    assert_eq!(icons::requests(&state), [icons::Request::app(installed)]);
 }
 
 #[test]

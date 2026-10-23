@@ -13,6 +13,7 @@ use super::{
     command_client::{launch_app, send_command},
     state::{ShellOutputInstance, ShellState},
 };
+use crate::app_catalog::DesktopApp;
 
 #[path = "dock_apps.rs"]
 mod applications;
@@ -35,8 +36,8 @@ const MIN_OVERFLOW_WIDTH: f64 = BUTTON_WIDTH + GAP + 20.0;
 
 #[derive(Default)]
 pub(super) struct State {
-    images: BTreeMap<String, Option<ImageBrush>>,
-    requests: Option<xilem::tokio::sync::watch::Sender<Vec<String>>>,
+    images: BTreeMap<icons::CacheKey, Option<ImageBrush>>,
+    requests: Option<xilem::tokio::sync::watch::Sender<Vec<icons::Request>>>,
     last_focused_window: Option<u64>,
     compact_last_app: BTreeMap<String, Key>,
 }
@@ -78,12 +79,12 @@ pub(super) fn reconcile(state: &mut ShellState) {
         state.dock.last_focused_window = None;
     }
     if let Some(requests) = &state.dock.requests {
-        let names = icons::requests(state);
+        let next = icons::requests(state);
         requests.send_if_modified(|previous| {
-            if *previous == names {
+            if *previous == next {
                 false
             } else {
-                *previous = names;
+                *previous = next;
                 true
             }
         });
@@ -91,8 +92,24 @@ pub(super) fn reconcile(state: &mut ShellState) {
 }
 
 pub(super) fn image(state: &ShellState, name: Option<&str>) -> Option<ImageBrush> {
-    name.and_then(|name| state.dock.images.get(name))
+    name.and_then(|name| state.dock.images.get(&icons::CacheKey::Named(name.into())))
         .and_then(Clone::clone)
+}
+
+pub(super) fn app_image(state: &ShellState, app: &DesktopApp) -> Option<ImageBrush> {
+    state
+        .dock
+        .images
+        .get(&icons::CacheKey::app(app))
+        .and_then(Clone::clone)
+}
+
+pub(super) fn window_image(state: &ShellState, identity: &str) -> Option<ImageBrush> {
+    if let Some(app) = state.catalog.app_for_window(identity) {
+        app_image(state, app)
+    } else {
+        image(state, Some(identity))
+    }
 }
 
 #[cfg(test)]
@@ -168,7 +185,7 @@ pub(super) fn frame_view(
             let image = app
                 .icon
                 .as_ref()
-                .and_then(|name| state.dock.images.get(name))
+                .and_then(|request| state.dock.images.get(&request.key()))
                 .and_then(Clone::clone);
             let focused = app.focused();
             // Track the native button before type erasure introduces a

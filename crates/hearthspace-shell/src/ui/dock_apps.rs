@@ -1,7 +1,7 @@
 //! Saved pins and live windows share the installed catalog's application identity.
 use std::collections::BTreeMap;
 
-use super::ShellState;
+use super::{ShellState, icons::Request};
 use crate::{app_catalog::DesktopApp, ui::window_catalog::RunningWindow};
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -13,7 +13,7 @@ pub(super) enum Key {
 pub(super) struct App {
     pub key: Key,
     pub name: String,
-    pub icon: Option<String>,
+    pub icon: Option<Request>,
     pub windows: Vec<RunningWindow>,
     pub pinned: bool,
 }
@@ -23,7 +23,7 @@ impl App {
         Self {
             key: Key::App(app.id.clone()),
             name: app.name.clone(),
-            icon: app.icon.clone(),
+            icon: app.icon.as_ref().map(|_| Request::app(app)),
             windows: Vec::new(),
             pinned,
         }
@@ -100,7 +100,8 @@ pub(super) fn apps(state: &ShellState) -> Vec<App> {
                     } else {
                         "Untitled window".into()
                     },
-                    icon: (!window.app_id.is_empty()).then(|| window.app_id.clone()),
+                    icon: (!window.app_id.is_empty())
+                        .then(|| Request::Named(window.app_id.clone())),
                     windows: Vec::new(),
                     pinned: false,
                 },

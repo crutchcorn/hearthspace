@@ -77,8 +77,11 @@ pub(super) fn windows(state: &ShellState) -> Vec<WindowView<ShellState>> {
                     {
                         desktop_item::Artwork::Settings
                     }
-                    DesktopItemKind::App { icon, .. } => {
-                        desktop_item::Artwork::App(super::dock::image(state, icon.as_deref()))
+                    DesktopItemKind::App { app_id, icon } => {
+                        desktop_item::Artwork::App(state.catalog.app_by_id(app_id).map_or_else(
+                            || super::dock::image(state, icon.as_deref()),
+                            |app| super::dock::app_image(state, app),
+                        ))
                     }
                     DesktopItemKind::Folder { .. } => desktop_item::Artwork::Folder,
                     DesktopItemKind::File { .. } => desktop_item::Artwork::File(

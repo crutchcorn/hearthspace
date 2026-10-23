@@ -1,10 +1,6 @@
 use std::{fs, path::Path};
 
-use hearthspace_shell::{
-    app_catalog::AppCatalog,
-    app_icon,
-    tray::{TrayIcon, TrayPixmap},
-};
+use hearthspace_shell::{app_catalog::AppCatalog, app_icon, tray::TrayPixmap};
 
 fn write_app(root: &Path, id: &str, fields: &str, color: [u8; 4]) {
     let applications = root.join("applications");
@@ -24,11 +20,7 @@ fn write_app(root: &Path, id: &str, fields: &str, color: [u8; 4]) {
 }
 
 fn desktop_icon(catalog: &AppCatalog, id: &str) -> TrayPixmap {
-    app_icon::resolve(&TrayIcon {
-        name: catalog.app_by_id(id).unwrap().icon.clone(),
-        ..Default::default()
-    })
-    .expect("desktop artwork decodes")
+    app_icon::resolve_app(catalog.app_by_id(id).unwrap()).expect("desktop artwork decodes")
 }
 
 #[test]

@@ -234,7 +234,8 @@ fn a_large_catalog_cannot_evict_visible_pin_icons() {
     }
     state.catalog = AppCatalog::load_from_data_dirs(vec![dir.path().to_owned()]);
     state.favorites.store.add("steam_steam.desktop").unwrap();
-    let names = icons::requests(&state);
-    assert_eq!(names.len(), 128);
-    assert!(names.binary_search(&"steam-icon".into()).is_ok());
+    let requests = icons::requests(&state);
+    assert_eq!(requests.len(), 128);
+    let steam = state.catalog.app_by_id("steam_steam.desktop").unwrap();
+    assert!(requests.contains(&icons::Request::app(steam)));
 }
