@@ -25,6 +25,76 @@ and run it separately from all other native or GPU-intensive suites.
 
 ## Regression and hardware evidence
 
+### CSD maximize and titlebar gestures
+
+After building, start an isolated native session using the
+[native control workflow](../.agents/skills/hearthspace-native-control/SKILL.md).
+The titlebar acceptance path attaches to that session; its caller must stop it
+and verify recovery afterward:
+
+```sh
+scripts/gtk-touch-smoke --session "$native_run" --titlebar-maximize \
+  --window-test "$PWD/target/debug/hearthspace-window-test" \
+  --timeout 450 --total-timeout 1200
+```
+
+This opt-in path uses isolated GTK 3/4 HeaderBar fixtures. Pointer double-clicks
+and uinput touchscreen double-taps must canvas-maximize/restore; their maximize
+buttons must enter focused view with the application header retained and the
+canvas frame hidden. An explicit header gesture exits focused view into canvas
+maximization. The ordinary F9 maximize request in `hearthspace-window-test`
+exercises the generic fallback. Super+M, Super+Shift+F and application F11 retain
+their separate actions. The workflow checks committed client state, original
+floating geometry on restore, rendered input and fullscreen signals at canvas
+scales 1.0 and 0.8. It records fresh target geometry and page-flip captures.
+Each GTK application exercises 44 presentation transitions with input and pixel
+checks. Allow 450 seconds per application and 1,200 seconds overall; the owning
+session's watchdog must also cover startup and inspection (for example, 1,500
+seconds). These are acceptance-run budgets, separate from compositor IPC deadlines.
+
+Use `--case gtk3`, `--case gtk4` or `--case generic` for a focused run. This
+validates cooperating GTK headers and generic maximize requests, not custom
+titlebar implementations in every application. See the
+[GTK protocol contract](../crates/hearthspace-compositor/protocols/README.md)
+for input validation and compatibility limits.
+
+The CSD matrix passed on 2026-10-22 on a physical ThinkPad T480s with Intel
+UHD 620 graphics (`i915`), Linux `7.0.0-38-generic`, and `eDP-1` at 1920×1080,
+output scale 1. GTK 3.24.52 and GTK 4.22.4 each passed all 44 transitions; the
+generic maximize fixture passed 20. Each transition checked committed state and
+rendered application input. Focused entry also checked that every live shell
+widget disappeared, before deliberate hover reveal and again afterward.
+
+Evidence is under `/home/crutchcorn/hearthspace-csd-recovery-xm_vd6xe/`:
+`native-gtk-fdkfdpm5` contains the completed GTK 3 workflow;
+`native-gtk-q6zdwmkg` contains the completed GTK 4 and generic workflows.
+The latter retained separate touchscreen traces for each pointer, touch, and
+keyboard batch. Both owned sessions restored tty2, removed their runtimes and
+clients, and left inactive units with PID 0 and no cgroup. No other native or
+GPU-intensive suite ran concurrently.
+
+Earlier attempts exposed acceptance-helper defects: the temporary touchscreen's
+180-second guard expired during an oversized batch, GTK 4 retained the accessible
+label **Maximize** while maximized, and a client header border confused a
+whole-widget background estimate. Fresh devices per batch, toolkit-specific
+control discovery, and per-row background sampling address these cases without
+relaxing presentation or input assertions. Synthetic regressions still reject
+shell glyphs retained over a disappearing backdrop. The final comparator also
+passed all 27 saved initial/re-hide observations from the earlier GTK runs.
+This evidence validates the worktree build; it does not update the installed
+Hearthspace release.
+
+Automated validation passed rustfmt, Clippy with warnings denied, the full
+workspace/all-target build, and 1,584 Rust tests with `udev,e2e,test-apps` and
+required accessibility enabled. The full Python E2E run passed all 512 tests.
+After adding the native observer regressions, the final Python unit run completed
+566 tests with only the 14 opt-in E2E cases skipped; Ruff lint and formatting
+passed for all 191 Python files. Logs are retained in the same evidence root's
+`validation-6gh7jrje` directory. Native Firefox acceptance is recorded in
+[daily application testing](DAILY_APPS_TESTING.md).
+
+### Earlier touch movement repair
+
 GTK can send `xdg_toplevel.unset_fullscreen` immediately before its titlebar
 `move` request, even when the window is already floating. Hearthspace previously
 treated this redundant request as a state change, cancelling the touch-emulated

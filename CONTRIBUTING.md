@@ -635,6 +635,16 @@ Preparing these temporary entries also regenerates
 is regenerated again after their removal. Existing `mimeapps.list` files and
 browser defaults are preserved.
 
+For an isolated CSD acceptance run on a host with only the Snap launcher,
+Mozilla's [Linux tarball](https://support.mozilla.org/en-US/kb/install-firefox-linux#w_install-firefox-from-mozilla-tarball-builds)
+can be extracted into the run's artifact directory. Pass its absolute `firefox`
+executable to `scripts/firefox-smoke --firefox PATH`; the harness creates a new
+profile. The CSD recovery run prepared Firefox **158.0.1**, checking its
+`linux-x86_64/en-US/firefox-158.0.1.tar.xz` against Mozilla's release
+`SHA512SUMS` before extraction. This requires no package repository, desktop
+registration, default-browser change, or system installation. Retain the archive
+URL and checksum with the native evidence; preparation alone is not a passing test.
+
 ### Optional Test Apps
 
 Built-in test apps are gated behind the Cargo feature `test-apps` so normal compositor and shell builds do not require their dependencies.

@@ -137,14 +137,25 @@ scripts/firefox-smoke --session "$(mktemp -d /tmp/hearthspace-firefox.XXXXXX)" -
 This fixture uses native `/usr/bin/firefox`, one active output, and its English
 **Restore Down**/**Maximize** controls. It types an explicit `--no-remote --profile`
 launch into the owned Foot terminal, inheriting the session's GTK settings.
+Before onboarding, the fixture requests a floating size of 1000×760, bounded
+by the output's usable space, and waits for committed, fully visible geometry.
+This keeps first-run controls reachable when Firefox replaces its command-line
+size during startup. The output must provide at least 800×600 usable logical
+pixels. This setup does not count as CSD resize acceptance.
 Only the fresh profile's optional **Continue**/**Not now** onboarding controls
 are dismissed. Browser profiles, desktop entries, and default associations
 outside the artifact directory are untouched.
 
+The CSD maximize button must enter focused view, retain and repaint Firefox's
+header, and hide the shell before any deliberate reveal. Each live system
+widget is checked separately. Super+M then enters bounded canvas maximization
+for the existing zoom checks.
+
 Assertions cover real CSD restore/maximize, pointer-edge resizing, shell zoom,
 three-finger touchpad and touchscreen zoom, fourth-contact cancellation, restored
 floating geometry after cancellation, and F11 fullscreen remaining fixed during
-canvas zoom. Shell zoom uses a pointer click at the observed accessible button
+canvas zoom, followed by restoration of the saved canvas geometry. Shell zoom
+uses a pointer click at the observed accessible button
 bounds after putting the browser's saved floating position far offscreen. It
 must reveal the restored browser while preserving shell focus and the saved
 canvas position. Maximized/fullscreen baselines wait for the client's configured
@@ -153,11 +164,35 @@ zoom limit. A fixed green rectangle in `zoom.html` must visibly scale in capture
 pixels; viewport state changes alone cannot pass. Logs retain control results,
 libinput traces, PNGs with page-flip metadata, and failure accessibility snapshots.
 
+A fourth touchscreen contact must roll back the three-finger canvas transform
+without opening the switcher. It can leave a fresh four-finger recognizer pending
+until lift, so the check requires exact rollback while held and an idle gesture
+state with no switcher after release. The shell-zoom setup also keeps the whole
+green marker visible before zooming; comparing a clipped baseline would produce
+an incorrect scale ratio.
+
 Successful runs remove their marker-owned browser profile only after verified
 session cleanup and no matching live profile process. Failed runs retain that
 profile for diagnosis. The normal 420-second aggregate budget reserves a separate
 45 seconds for native cleanup; each touch-worker reply also respects its step's
 deadline.
+
+The complete Firefox 158.0.1 workflow passed on 2026-10-22 on the physical
+ThinkPad T480s with Intel UHD 620 (`i915`), Linux `7.0.0-38-generic`, and
+`eDP-1` at 1920×1080, output scale 1. Evidence is retained under
+`/home/crutchcorn/hearthspace-csd-recovery-xm_vd6xe/native-firefox-hclbjol6`.
+It verifies focused entry with retained, repainted client chrome and hidden shell
+widgets; CSD restore and physical edge resizing; shell, touchpad and touchscreen
+zoom; cancellation with saved floating geometry; and F11 pinning followed by
+restoration of the previous canvas maximization.
+
+The run used the same compositor and shell binaries as the
+[108 GTK/generic checkpoints](GTK_TOUCH_TESTING.md), with no concurrent native
+or GPU-heavy suite. Cleanup restored tty2, removed the private runtime, browser
+profile and virtual devices, and left the owned unit inactive with PID 0 and no
+cgroup. Earlier failed attempts and their cleanup evidence remain available;
+their fixture corrections are covered by regressions. This worktree validation
+does not install or replace the deployed release.
 
 ### Interactive application checks
 

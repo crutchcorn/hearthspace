@@ -188,7 +188,7 @@ class FirefoxShellPointerTests(unittest.TestCase):
         smoke.window.return_value = {"focused": True}
         smoke.until.side_effect = lambda _name, condition: condition()
         original = {"x": 90000, "y": 91000, "scale": 1}
-        view = {"x": 90080, "y": 91040, "scale": 1}
+        view = {"x": 89920, "y": 91040, "scale": 1}
         with (
             patch.object(firefox_shell, "settled", side_effect=[original, view]),
             patch.object(firefox_shell, "set_viewport") as place,

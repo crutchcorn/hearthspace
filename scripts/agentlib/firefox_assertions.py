@@ -29,11 +29,63 @@ def maximized(window):
     )
 
 
+def restored_client_size(window, saved):
+    """Cleared state flags can precede the restored client's buffer commit."""
+    return bool(
+        restored(window)
+        and all(
+            window[key] == saved[key] for key in ("content_width", "content_height")
+        )
+    )
+
+
+def verify_fullscreen_exit(before_view, after_view, before, after):
+    if not maximized(before) or not maximized(after):
+        raise ControlError("F11 exit did not restore saved canvas maximization")
+    unchanged_canvas_geometry(before, after)
+    # F11 permits canvas navigation behind the pinned client. Restore its world
+    # bounds through the current viewport instead of reusing old screen bounds.
+    ratio = after_view["scale"] / before_view["scale"]
+    for axis in ("x", "y"):
+        world = before[axis] / before_view["scale"] + before_view[axis]
+        expected = (world - after_view[axis]) * after_view["scale"]
+        if abs(after[axis] - expected) > 2:
+            raise ControlError("F11 exit did not restore projected canvas position")
+    if any(abs(after[key] - before[key] * ratio) > 2 for key in ("width", "height")):
+        raise ControlError("F11 exit did not restore projected canvas size")
+    return {"restore_scale_ratio": ratio}
+
+
 def maximized_at_output(window, outputs):
     """Prove entry fits an output's workarea, before subsequent canvas travel."""
     if not maximized(window):
         return False
     return any(matches_workarea(window, output) for output in outputs)
+
+
+def focused_at_output(window, outputs):
+    """Client CSD maximize fills the output without advertising fullscreen."""
+    return bool(
+        window
+        and all(
+            window.get(key)
+            for key in (
+                "mapped",
+                "visible",
+                "focused",
+                "focused_view",
+                "maximized",
+                "output_coordinates",
+            )
+        )
+        and window.get("fullscreen") is False
+        and window.get("titlebar_height") == 0
+        and matches_output_bounds(window, outputs)
+        and all(
+            abs(window[f"content_{key}"] - window[key]) <= 1
+            for key in ("width", "height")
+        )
+    )
 
 
 def fullscreen_at_output(window, outputs):

@@ -58,6 +58,19 @@ class FirefoxEvidenceTests(unittest.TestCase):
             "logical_width": 224,
             "logical_height": 316,
         }
+        self.focused = self.before | {
+            "focused": True,
+            "focused_view": True,
+            "output_coordinates": True,
+            "presentation_output": "eDP-1",
+            "titlebar_height": 0,
+            "x": 8,
+            "y": -58,
+            "width": 224,
+            "height": 316,
+            "content_width": 224,
+            "content_height": 316,
+        }
 
     def verify(self, *, after=None, image=None):
         return assertions.verify_zoom(
@@ -149,6 +162,8 @@ class FirefoxEvidenceTests(unittest.TestCase):
         smoke.window.side_effect = [
             floating,
             floating,
+            self.focused | {"content_width": 150},
+            self.focused,
             transitional,
             self.before,
         ]
@@ -164,19 +179,47 @@ class FirefoxEvidenceTests(unittest.TestCase):
         smoke.until.side_effect = until
         with (
             patch.object(firefox_checks, "activate") as activate,
+            patch.object(firefox_checks.firefox_focused, "evidence") as focused,
             patch.object(firefox_checks, "set_viewport") as place,
             patch.object(firefox_checks, "settled"),
         ):
             result = firefox_checks.prepare_maximized(smoke)
         self.assertEqual(
             [call.args[0] for call in smoke.control.request.call_args_list],
-            ["focus-window 7"],
+            [
+                "focus-window 7",
+                "pointer-motion-abs 120.0 100.0",
+                "key-down 125",
+                "key-down 50",
+                "key-up 50",
+                "key-up 125",
+            ],
         )
         place.assert_called_once_with(smoke, x=0, y=0, scale=1)
         activate.assert_called_once_with(smoke, "Maximize")
+        focused.assert_called_once_with(smoke)
         self.assertEqual(smoke.floating_before_max, floating)
         self.assertEqual(result, self.before)
-        self.assertEqual(samples, [True, None, self.before])
+        self.assertEqual(samples, [True, False, True, None, self.before])
+
+    def test_csd_focused_setup_rejects_fullscreen_stale_size_and_wrong_output(self):
+        self.assertTrue(assertions.focused_at_output(self.focused, [self.output]))
+        for change in (
+            {"fullscreen": True},
+            {"focused_view": False},
+            {"maximized": False},
+            {"focused": False},
+            {"content_width": 200},
+            {"content_height": 160},
+            {"width": 200},
+            {"x": 0},
+            {"presentation_output": "unknown"},
+            {"output_coordinates": False},
+        ):
+            with self.subTest(change=change):
+                self.assertFalse(
+                    assertions.focused_at_output(self.focused | change, [self.output])
+                )
 
     def test_maximized_flag_with_transitional_client_geometry_is_rejected(self):
         self.assertTrue(assertions.maximized_at_output(self.before, [self.output]))
@@ -211,6 +254,7 @@ class FirefoxEvidenceTests(unittest.TestCase):
             self.before | {"maximized": False},
             floating,
             floating,
+            self.focused,
             self.before,
         ]
 
@@ -223,6 +267,7 @@ class FirefoxEvidenceTests(unittest.TestCase):
         smoke.until.side_effect = until
         with (
             patch.object(firefox_checks, "activate") as activate,
+            patch.object(firefox_checks.firefox_focused, "evidence"),
             patch.object(firefox_checks, "set_viewport"),
             patch.object(firefox_checks, "settled"),
         ):
