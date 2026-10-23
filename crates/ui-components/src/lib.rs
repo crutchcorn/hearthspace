@@ -1,4 +1,5 @@
 use palette::classes::{self, class};
+pub use xilem::Color;
 use xilem::{
     TextAlign, WidgetView,
     masonry::{

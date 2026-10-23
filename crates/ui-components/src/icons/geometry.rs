@@ -29,14 +29,22 @@ impl Geometry {
         {
             match icon {
                 Icon::Power => {
-                    geometry.path("M6 5a9 9 0 1 0 12 0M12 2v10");
+                    geometry.path("M12 3v9M7 5.5a8.5 8.5 0 1 0 10 0");
                 }
                 Icon::Lock => {
                     geometry.rect(5.0, 10.0, 14.0, 11.0, 1.0, false);
                     geometry.path("M8 10V7a4 4 0 0 1 8 0v3M12 14v3");
                 }
                 Icon::LogOut => {
-                    geometry.path("M10 4H4v16h6M10 12h11m-4-4 4 4-4 4");
+                    geometry.path("M10 3H4v18h6M9 12h12m-5-5 5 5-5 5");
+                }
+                Icon::User => {
+                    geometry.circle(12.0, 7.0, 4.0, false);
+                    geometry.path("M4 21v-2a8 8 0 0 1 16 0v2");
+                }
+                Icon::Eye => {
+                    geometry.path("M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12Z");
+                    geometry.circle(12.0, 12.0, 3.0, false);
                 }
                 Icon::Battery {
                     percentage,
