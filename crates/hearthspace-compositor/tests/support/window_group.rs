@@ -9,6 +9,8 @@ use serde_json::{Value, json};
 mod deferred;
 #[path = "window_group_lasso.rs"]
 mod lasso;
+#[path = "window_group_maximized.rs"]
+mod maximized;
 #[path = "window_group_mock.rs"]
 mod mock;
 #[path = "window_group_stacking.rs"]

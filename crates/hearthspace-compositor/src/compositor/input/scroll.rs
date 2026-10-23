@@ -17,7 +17,7 @@ impl App {
         {
             return true;
         }
-        if self.session_locked() {
+        if self.session_locked() || self.window_focus_view_active() {
             return false;
         }
         let super_active = self.keyboard.modifier_state().logo

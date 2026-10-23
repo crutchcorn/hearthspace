@@ -18,28 +18,44 @@ view starts at its top-left so its controls remain reachable. Dialogs stay
 centered on their parents. Alt-Tab, search selection, and explicit focus actions
 still navigate to existing windows.
 
-A maximized or fullscreen window belongs to one output and uses that output's
-logical coordinates at native scale. Deliberate canvas zoom or a three-finger pan
-restores maximized windows to their floating size and position so they follow
-the canvas again; fullscreen windows remain pinned. A cancelled three-finger
-gesture restores the prior view and maximization. Maximized windows reserve space
-for the shell bar and any compositor title bar. Fullscreen windows cover the output and suppress
-those decorations. A smaller fullscreen client buffer is centered against an
-opaque black background.
+Double-clicking an ordinary title bar expands the window on the canvas. At output
+widths above 760 logical pixels, its outer bounds leave 24 pixels at each side
+and 96 at the top and bottom; smaller outputs use 12 and 78. The clearances stay
+stable when frame controls move or hide. Maximization fits the current view,
+including its zoom, then keeps that canvas size and location as the view pans
+or zooms. Double-click again to restore the original size and position.
+Individual maximized windows must be restored before moving or resizing them.
+Dragging a selection of multiple windows moves each maximized member's visible
+bounds and saved restore position together.
 
-Canvas gestures and zoom reveal a restored app or its focused dialog if its saved
-position is outside the view. When a shell button owns focus, it reveals the
-topmost restored app on that output while keeping focus on the shell.
+The server title bar's expand button enters **focused view** instead. The window
+fills its output at native scale, retains its title bar, and uses square corners.
+The canvas stays still while the application receives input. Click the button
+again, or double-click the header, to return to ordinary canvas maximization;
+another header double-click restores the original window. Super+Shift+F offers
+the same focused-view action from the keyboard. Frame-attached windows use both
+header actions to expand or tuck at their existing edge.
 
-Entering either state preserves the floating position and content size.
-Fullscreen may be layered over maximized state: leaving fullscreen returns to
-maximized, and restoring clears both states. The original floating size remains
-available until the client commits the restore configure. Repeated state
-changes must not accidentally save a still-fullscreen buffer as the floating
-size.
+Focused view hides the shell until the pointer approaches a corner (within 72
+logical pixels of both adjoining edges). Controls remain visible while in use,
+with a 450 ms grace after leaving them; a touchscreen corner tap grants 2.5
+seconds. The window's own header buttons do not trigger this reveal. Super+F6
+reveals and focuses shell controls for keyboard use. Escape dismisses a shell
+panel or returns keyboard focus to the application; it does not exit focused
+view. Activating another app, canvas search, or the layout editor leaves focused
+view and keeps the previous app maximized on the canvas.
 
-Output changes reconfigure pinned windows. If their output disappears, they
-move to the primary output. Their saved canvas position remains intact.
+Application-requested fullscreen (such as F11) and Super+F remain separate.
+Fullscreen uses the entire output at native scale and suppresses server
+decorations. A smaller fullscreen client buffer is centered against an opaque
+black background. Leaving fullscreen returns to the preceding focused or
+maximized state. Restore clears all presentation states. The original floating
+geometry remains available until the client commits the restore configure;
+rapid state changes cannot replace it with a pending enlarged buffer.
+
+Focused and fullscreen windows follow their output's configuration. If it
+vanishes, they move to the primary output. Temporary maximized and focused
+geometry does not overwrite the saved floating position.
 
 The session supplies GTK defaults that expose maximize/restore and close controls
 in application title bars, including Firefox. Existing user button-layout
@@ -57,8 +73,9 @@ Click or tap a control to activate it on release. Releasing off the pressed cont
 losing its window, changing its geometry, or cancelling the input sequence
 prevents activation. A close requests that the application exit; it does not
 force termination. Drag empty title-bar space to move a floating window, or
-double-click it to toggle maximize/restore. These controls use the same
-presentation behavior as Super+M and preserve the saved floating geometry.
+double-click it to toggle canvas maximize/restore, as with Super+M. The expand
+button toggles focused view, as with Super+Shift+F. Both preserve the original
+floating geometry.
 Client-drawn title bars continue to handle their own controls.
 
 Hold **Alt** while moving a floating window to align its visible top-left corner
@@ -193,7 +210,8 @@ Super+K and temporarily arranges matching live objects around its field.
 | Alt+Tab / Alt+Shift+Tab | Select next / previous application; hold Alt for previews |
 | Alt+F4 | Request that the focused application close |
 | Super+arrow keys | Pan the canvas |
-| Super+F | Toggle fullscreen |
+| Super+F | Toggle application fullscreen |
+| Super+Shift+F | Toggle focused view with the title bar retained |
 | Super+M | Toggle maximized state |
 | Super+L | Lock the native session |
 | Ctrl+Alt+F1–F12 | Switch to Linux TTY1–TTY12 in a native session |
@@ -216,7 +234,7 @@ Use `scripts/hearthspace-agent --session SESSION windows` to obtain stable IDs
 for the current session. The `focus`, `close`, `move`, `resize`, `fullscreen`,
 `maximize`, and `restore` actions target those IDs. `move` takes canvas
 coordinates; `resize` takes client content dimensions in logical pixels.
-Fullscreen and maximized windows must be restored before moving or resizing.
+Fullscreen, focused, and maximized windows must be restored before moving or resizing.
 
 Use `scripts/hearthspace-agent --session SESSION overview on` to open overview;
 `off` dismisses it and `toggle` switches it. With overview open,

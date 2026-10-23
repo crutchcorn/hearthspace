@@ -349,6 +349,7 @@ impl App {
                         !self.canvas_preview_active() && hovered_window == Some(id),
                         server_side,
                         self.background_image_path.is_some(),
+                        self.windows[index].presentation.focused_view,
                         self.canvas_preview_pose(index)
                             .map_or(1., |(_, alpha)| alpha as f32),
                     )
@@ -393,7 +394,9 @@ impl App {
                     }
                 }
             }
-            if let Some(frame) = frame {
+            if let Some(frame) = frame
+                && !self.windows[index].presentation.focused_view
+            {
                 elements.push(HearthspaceRenderElement::from(frame.shadow));
             }
             let panel = if self.canvas_search_panel_allowed(index)
@@ -465,7 +468,11 @@ impl App {
                         .as_deref()
                         != Some(window_backdrop::SETTINGS_APP_ID))
                     .then(|| self.title_bar_rect(index)),
-                    radius: 19.,
+                    radius: if self.windows[index].presentation.focused_view {
+                        0.
+                    } else {
+                        19.
+                    },
                     modal: false,
                     zoom: scale,
                     opacity: self
@@ -756,7 +763,8 @@ impl App {
             return self.base_window_render_scale(window_index) * pose.width
                 / f64::from(base.size.w.max(1));
         }
-        if let Some(pose) = self.layout_motion_rect(window_index)
+        if !self.windows[window_index].presentation.pinned()
+            && let Some(pose) = self.layout_motion_rect(window_index)
             && let Some(target) = self.layout_target_rect(window_index)
         {
             return self.base_window_render_scale(window_index) * pose.width / target.width.max(1.);
@@ -764,7 +772,9 @@ impl App {
         self.base_window_render_scale(window_index)
     }
     pub(super) fn base_window_render_scale(&self, window_index: usize) -> f64 {
-        if let Some(scale) = self.layout_render_scale(window_index) {
+        if !self.windows[window_index].presentation.pinned()
+            && let Some(scale) = self.layout_render_scale(window_index)
+        {
             return scale;
         }
         match self.windows[window_index].kind {

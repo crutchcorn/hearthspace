@@ -20,7 +20,9 @@ impl App {
     /// Begin an interactive resize of `window_index` along `edges`, capturing the
     /// window's starting geometry so motion deltas can be resolved against it.
     pub(in crate::compositor) fn start_resize(&mut self, window_index: usize, edges: ResizeEdges) {
-        if self.window_uses_output_coordinates(window_index) {
+        if self.window_uses_output_coordinates(window_index)
+            || self.windows[window_index].presentation.maximized
+        {
             return;
         }
         self.cancel_group_window_motion(self.windows[window_index].id);

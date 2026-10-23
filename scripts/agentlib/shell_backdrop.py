@@ -6,11 +6,12 @@ from contextlib import contextmanager
 
 from .clipboard import stop_client
 from .control import ControlError
-from .firefox_assertions import maximized_at_output
 from .input import Input
 
 APP_ID = "hearthspace-popup-backdrop"
 COLOR = (16, 24, 32)
+PADDING = 128
+CELL_TOLERANCE = 32
 
 
 def environment(manifest):
@@ -25,18 +26,68 @@ def environment(manifest):
     return env
 
 
-def unfocus(smoke, target, output):
+def unfocus(smoke, target):
     # Popup focus removes the normal window's active frame. Capture its
-    # reference in that same state; the bottom popup corners can overlap the
-    # maximized window's inset highlight. The reserved outer margin is canvas.
+    # reference in that same state. Keyboard shell focus avoids a background
+    # press near the output edge starting a desktop marquee and edge panning.
     with Input(smoke.control) as inputs:
-        inputs.click(output["logical_x"] + 4, output["logical_y"] + 4)
+        inputs.chord("super+f6")
 
     def inactive():
         window = smoke.window(target)
         return window if window and window.get("focused") is False else None
 
     return smoke.until("popup backdrop is inactive before reference capture", inactive)
+
+
+def configured(window, output):
+    if not (
+        window
+        and window.get("mapped")
+        and window.get("visible")
+        and window.get("titlebar_height") == 0
+        and window.get("maximized") is False
+        and window.get("fullscreen") is False
+        and window.get("focused_view") is False
+        and window.get("output_coordinates") is False
+    ):
+        return False
+    # Foot rounds ordinary resize requests to complete character cells. Its
+    # actual committed dimensions must still cover every popup's blur halo.
+    return all(
+        0
+        <= output["logical_" + axis] + 2 * PADDING - window["content_" + axis]
+        <= CELL_TOLERANCE
+        for axis in ("width", "height")
+    )
+
+
+def covers_output(window, output):
+    return configured(window, output) and all(
+        abs(window[axis] - (output["logical_" + axis] - PADDING)) <= 1
+        and window[size] == window["content_" + size]
+        for axis, size in (("x", "width"), ("y", "height"))
+    )
+
+
+def place(smoke, target, output):
+    width, height = (
+        output["logical_" + axis] + 2 * PADDING for axis in ("width", "height")
+    )
+    smoke.control.request(f"resize-window {target} {width} {height}")
+    smoke.until(
+        "ordinary popup backdrop committed its oversized native content",
+        lambda: configured(smoke.window(target), output),
+    )
+    view = smoke.control.status()["viewport"]
+    if view["scale"] != 1 or view.get("animating", False):
+        raise ControlError("popup contrast fixture needs a settled unit-scale canvas")
+    x, y = (view[axis] + output["logical_" + axis] - PADDING for axis in ("x", "y"))
+    smoke.control.request(f"move-window {target} {x} {y}")
+    smoke.until(
+        "popup backdrop covers output and blur neighborhoods",
+        lambda: covers_output(smoke.window(target), output),
+    )
 
 
 @contextmanager
@@ -78,16 +129,13 @@ def backdrop(smoke, output):
 
             window = smoke.until("owned popup backdrop mapped", mapped)
             target = window["id"]
-            smoke.control.request(f"maximize-window {target} true")
-            smoke.until(
-                "popup backdrop fills workarea between corners without decorations",
-                lambda: (
-                    maximized_at_output(current := smoke.window(target), [output])
-                    and current.get("titlebar_height") == 0
-                ),
+            place(smoke, target, output)
+            inactive = unfocus(smoke, target)
+            if not covers_output(inactive, output):
+                raise ControlError("shell focus changed popup backdrop coverage")
+            smoke.record(
+                "shell-popup-backdrop", window_id=target, argv=command, window=inactive
             )
-            unfocus(smoke, target, output)
-            smoke.record("shell-popup-backdrop", window_id=target, argv=command)
             try:
                 yield
             except BaseException:

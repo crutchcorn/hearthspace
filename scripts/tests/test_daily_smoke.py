@@ -30,6 +30,48 @@ def arguments(directory, **extra):
 
 
 class DailySmokeTests(unittest.TestCase):
+    def test_window_modes_assign_an_output_only_for_explicit_fullscreen(self):
+        smoke = Mock(target=7)
+        windows = [
+            {
+                "fullscreen": False,
+                "maximized": True,
+                "presentation_output": None,
+                "output_coordinates": False,
+            },
+            {
+                "fullscreen": True,
+                "maximized": True,
+                "presentation_output": "test",
+                "output_coordinates": True,
+            },
+            {
+                "fullscreen": False,
+                "maximized": True,
+                "presentation_output": None,
+                "output_coordinates": False,
+            },
+            {
+                "fullscreen": False,
+                "maximized": False,
+                "presentation_output": None,
+                "output_coordinates": False,
+            },
+        ]
+        smoke.window.side_effect = windows
+
+        def until(_name, condition):
+            result = condition()
+            self.assertIsNotNone(result)
+            return result
+
+        smoke.until.side_effect = until
+        daily_checks.window_states(smoke)
+        self.assertEqual(smoke.capture.call_count, 4)
+        self.assertEqual(
+            [entry.kwargs["window"] for entry in smoke.record.call_args_list], windows
+        )
+
     def test_stale_manifest_or_prior_evidence_is_never_reused_or_stopped(self):
         for stale in ["session.json", "artifacts/results.json"]:
             with self.subTest(stale=stale), tempfile.TemporaryDirectory() as directory:

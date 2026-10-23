@@ -7,6 +7,7 @@ uniform vec2 window_size;
 uniform vec2 window_offset;
 uniform float zoom;
 uniform float radius;
+uniform float inset_border;
 uniform float active;
 uniform float hovered;
 uniform float mode;
@@ -112,6 +113,13 @@ void main() {
                 premultiply(near_shadow_color.rgb, near * near_shadow_color.a));
         }
         color *= clamp(inner / max(zoom, 0.01), 0.0, 1.0);
+    } else if (inset_border > 0.5) {
+        // Focused views meet the output boundary. Their square one-pixel
+        // border stays inside the client so it is never clipped off-screen.
+        float aa = max(0.5 * zoom, 0.25);
+        float inside = 1.0 - smoothstep(-aa, aa, inner);
+        float border = smoothstep(-zoom - aa, -zoom + aa, inner) * inside;
+        color = premultiply(border_color.rgb, border * border_color.a);
     } else {
         // Match the browser's one-pixel border outside the existing content.
         float outer = rounded_distance(p, half_size + vec2(zoom), radius + zoom);

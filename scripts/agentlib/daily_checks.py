@@ -192,7 +192,8 @@ def window_states(smoke):
                 if window
                 and window.get("fullscreen") == fullscreen
                 and window.get("maximized") == maximized
-                and (not (fullscreen or maximized) or window.get("presentation_output"))
+                and bool(window.get("presentation_output")) == fullscreen
+                and bool(window.get("output_coordinates")) == fullscreen
                 else None
             )
 

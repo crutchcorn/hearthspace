@@ -307,9 +307,10 @@ virtual device disappears and no gesture remains active.
 
 The pan test checks left/right/up/down and diagonal translation, simultaneous
 pan and zoom, cancellation, and ignored two-finger input on both device types.
-It also checks that a pan restores maximized windows, cancellation re-maximizes
-them, and fullscreen content stays fixed. Assertions pair viewport and window
-geometry with the position and size of a rendered terminal marker. Touchpad
+It also checks that maximized windows keep their world bounds during pan and
+zoom, cancellation restores the view, and fullscreen content stays fixed.
+Assertions pair viewport and window geometry with the position and size of a
+rendered terminal marker. Touchpad
 expectations use independently recorded libinput center deltas; touchscreen
 expectations use the injected contact centroid. Both scripts accept `--device`
 and `--timeout` and clean up their owned session on failure. The pan script also
@@ -338,9 +339,11 @@ scripts/window-switcher-smoke --session "$(mktemp -d /tmp/hearthspace-window-swi
 
 It checks Alt+Tab/Alt+Shift+Tab, left/right four-contact touchpad and four/five-contact
 touchscreen swipes, live previews over the animated canvas, cancellation, input
-ownership, and keyboard unplug recovery. Its bounded keyboard worker records
-libinput key events only from its own temporary device. No extra packages, udev
-rules, or persistent input devices are required.
+ownership, and keyboard unplug recovery. In focused view it also verifies that
+canvas panning stays blocked, cancelled swipes retain focus, and a completed
+switch leaves the previous app maximized on the canvas. Its bounded keyboard
+worker records libinput key events only from its own temporary device. No extra
+packages, udev rules, or persistent input devices are required.
 
 ### Recovering a black host login screen
 

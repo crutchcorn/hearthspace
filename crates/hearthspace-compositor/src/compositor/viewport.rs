@@ -104,6 +104,9 @@ impl App {
     }
 
     pub(super) fn pan_viewport_by(&mut self, x: i32, y: i32) {
+        if self.window_focus_view_active() {
+            return;
+        }
         debug!(x, y, "panning viewport");
         self.start_viewport_animation(
             CanvasPoint {
@@ -117,6 +120,9 @@ impl App {
     /// Direct manipulation follows the pointer immediately, at the current
     /// zoom. Its own one-finger touch/pointer grab must remain alive.
     pub(super) fn pan_viewport_to(&mut self, x: i32, y: i32) -> Result<(), String> {
+        if self.window_focus_view_active() {
+            return Err("canvas navigation is unavailable in focused view".into());
+        }
         if !(-1_000_000..=1_000_000).contains(&x) || !(-1_000_000..=1_000_000).contains(&y) {
             return Err("canvas coordinates must be between -1000000 and 1000000".into());
         }
@@ -147,6 +153,9 @@ impl App {
     }
 
     pub(super) fn zoom_viewport_to(&mut self, scale: f64) -> Result<(), String> {
+        if self.window_focus_view_active() {
+            return Err("canvas navigation is unavailable in focused view".into());
+        }
         if !scale.is_finite()
             || !(crate::config::MIN_ZOOM..=crate::config::MAX_ZOOM).contains(&scale)
         {
@@ -157,21 +166,15 @@ impl App {
     }
 
     pub(super) fn animate_zoom_around_viewport_center(&mut self, multiplier: f64) {
+        if self.window_focus_view_active() {
+            return;
+        }
         debug!(multiplier, "zooming viewport around center");
         let primary_output = self.primary_output_logical_rect();
         let center_screen = Point::<f64, Logical>::from((
             f64::from(primary_output.loc.x) + f64::from(primary_output.size.w) / 2.0,
             f64::from(primary_output.loc.y) + f64::from(primary_output.size.h) / 2.0,
         ));
-        let (_, target_scale) = zoom_around_screen_point(
-            self.viewport_offset,
-            self.viewport_scale,
-            center_screen,
-            multiplier,
-        );
-        if target_scale != self.viewport_scale {
-            self.restore_maximized_for_canvas_zoom();
-        }
         let (viewport_offset, viewport_scale) = zoom_around_screen_point(
             self.viewport_offset,
             self.viewport_scale,

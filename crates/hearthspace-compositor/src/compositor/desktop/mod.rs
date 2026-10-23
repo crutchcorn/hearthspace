@@ -301,12 +301,20 @@ impl App {
     }
 
     pub(in crate::compositor) fn clear_desktop_for_canvas_search(&mut self) -> bool {
-        self.desktop.selected.clear();
-        self.desktop.keyboard_focus = false;
-        self.disable_desktop_selection();
+        self.clear_desktop_selection();
         // Search owns the cancelled gesture's eventual release. Leaving this
         // latch here would consume a later field or desktop click instead.
         std::mem::take(&mut self.desktop.suppress_release)
+    }
+
+    pub(in crate::compositor) fn clear_desktop_selection(&mut self) {
+        // Cancel before clearing: a cancelled marquee restores its old selection.
+        // Keep ownership of any held pointer release until it reaches the desktop.
+        self.cancel_desktop_gesture();
+        self.desktop.selected.clear();
+        self.desktop.keyboard_focus = false;
+        self.desktop.select_mode = false;
+        self.desktop_changed();
     }
     pub(in crate::compositor) fn disable_desktop_selection(&mut self) {
         self.cancel_desktop_gesture();

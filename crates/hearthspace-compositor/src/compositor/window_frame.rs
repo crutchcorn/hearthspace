@@ -49,6 +49,7 @@ struct FrameStyle {
     photo: bool,
     panel: bool,
     panel_radius: f32,
+    square: bool,
     opacity: f32,
 }
 
@@ -114,6 +115,7 @@ impl WindowFrameCache {
             hovered,
             server_side,
             photo,
+            false,
             1.,
         )
     }
@@ -129,6 +131,7 @@ impl WindowFrameCache {
         hovered: bool,
         server_side: bool,
         photo: bool,
+        square: bool,
         opacity: f32,
     ) -> Option<WindowFrameElements> {
         let style = FrameStyle {
@@ -143,6 +146,7 @@ impl WindowFrameCache {
             photo: photo && server_side,
             panel: false,
             panel_radius: 0.,
+            square,
             opacity,
         };
         self.frame(renderer, id, style)
@@ -184,6 +188,7 @@ impl WindowFrameCache {
             photo: false,
             panel: true,
             panel_radius: radius,
+            square: false,
             opacity,
         };
         self.frame(renderer, id, style).map(|frame| frame.shadow)
@@ -218,7 +223,8 @@ impl WindowFrameCache {
             let geometry_changed = cached.style.window != style.window
                 || cached.style.zoom != style.zoom
                 || cached.style.server_side != style.server_side
-                || cached.style.panel != style.panel;
+                || cached.style.panel != style.panel
+                || cached.style.square != style.square;
             let material_changed = cached.style.appearance != style.appearance
                 || cached.style.opacity != style.opacity;
             for (element, layer, changed) in [
@@ -262,7 +268,7 @@ impl WindowFrameCache {
                     shaders.clip.clone(),
                     style.window,
                     // The border occupies the pixel outside the client geometry.
-                    19.0 * style.zoom,
+                    if style.square { 0. } else { 19.0 * style.zoom },
                 )
             }),
         })
@@ -281,6 +287,7 @@ impl Shaders {
                     UniformName::new("window_offset", UniformType::_2f),
                     UniformName::new("zoom", UniformType::_1f),
                     UniformName::new("radius", UniformType::_1f),
+                    UniformName::new("inset_border", UniformType::_1f),
                     UniformName::new("active", UniformType::_1f),
                     UniformName::new("hovered", UniformType::_1f),
                     UniformName::new("mode", UniformType::_1f),

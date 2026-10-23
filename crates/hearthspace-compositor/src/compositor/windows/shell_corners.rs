@@ -20,6 +20,7 @@ impl App {
         if !self.navigation_available() {
             return;
         }
+        self.reveal_focused_shell_for_keyboard();
         if let Some(index) = self.focused_shell_corner_index()
             && let Some(target) = self.frame_target_for_window(index)
         {

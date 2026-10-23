@@ -250,14 +250,26 @@ impl App {
     }
 
     fn set_group_window_position(&mut self, index: usize, position: crate::geometry::CanvasPoint) {
+        if let Some(mut bounds) = self.canvas_maximized_rect(index) {
+            // A canvas-maximized member carries its visible rectangle and its
+            // original restore home together. Pointer snapshots retain that home,
+            // so use only the delta since the previous update here.
+            let previous = self.windows[index].position;
+            bounds.loc += (position.x - previous.x, position.y - previous.y).into();
+            self.windows[index].presentation.maximized_bounds = Some(bounds);
+        }
         self.windows[index].pending_resize = None;
+        self.windows[index].position = position;
         #[cfg(feature = "xwayland")]
         if let super::ManagedSurface::X11(surface) = &self.windows[index].surface {
-            let _ = surface.configure(Some(Rectangle::new(
-                (position.x, position.y).into(),
-                surface.geometry().size,
-            )));
+            if self.canvas_maximized_rect(index).is_some() {
+                self.configure_window_presentation(index);
+            } else {
+                let _ = surface.configure(Some(Rectangle::new(
+                    (position.x, position.y).into(),
+                    surface.geometry().size,
+                )));
+            }
         }
-        self.windows[index].position = position;
     }
 }

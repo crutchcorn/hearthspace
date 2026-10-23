@@ -45,29 +45,39 @@ class BackdropTests(unittest.TestCase):
             "logical_x": -20,
             "logical_y": 10,
         }
-        output = {"logical_height": 240, "scale": 2}
-        dark = capture(metadata, [((-20, 100, 140, 160), shell_backdrop.COLOR)])
+        output = {
+            "logical_x": -20,
+            "logical_y": 10,
+            "logical_width": 160,
+            "logical_height": 240,
+            "scale": 2,
+        }
+        dark = capture(metadata, [((-8, 88, 128, 172), shell_backdrop.COLOR)])
         self.assertTrue(dark_background(Frame(dark), output))
         self.assertFalse(dark_background(Frame(capture(metadata, [])), output))
-        partial = capture(metadata, [((-20, 100, 50, 160), shell_backdrop.COLOR)])
+        partial = capture(metadata, [((-8, 88, 50, 172), shell_backdrop.COLOR)])
         self.assertFalse(dark_background(Frame(partial), output))
 
-    def test_backdrop_maximizes_then_closes_only_the_new_owned_id(self):
+    def test_backdrop_waits_for_ordinary_content_and_closes_only_the_new_owned_id(self):
         with tempfile.TemporaryDirectory() as directory:
             smoke = Mock(artifacts=Path(directory))
             smoke.until.side_effect = lambda _name, condition: condition()
             existing = {"id": 7, "app_id": shell_backdrop.APP_ID, "mapped": True}
             owned = existing | {"id": 12}
+            output = {
+                "logical_x": -800,
+                "logical_y": 50,
+                "logical_width": 800,
+                "logical_height": 600,
+            }
+            placed = self.window(output)
             smoke.control.status.side_effect = [
                 {"windows": [existing]},
                 {"windows": [existing, owned]},
+                {"viewport": {"x": 25, "y": -40, "scale": 1}},
                 {"windows": [existing]},
             ]
-            smoke.window.side_effect = [
-                {"titlebar_height": 0},
-                {"focused": False},
-                None,
-            ]
+            smoke.window.side_effect = [placed, placed, placed, None]
             process = Mock()
             process.poll.return_value = None
             with (
@@ -76,23 +86,68 @@ class BackdropTests(unittest.TestCase):
                     shell_backdrop.subprocess, "Popen", return_value=process
                 ) as launch,
                 patch.object(shell_backdrop, "stop_client") as stop,
-                patch.object(shell_backdrop, "maximized_at_output", return_value=True),
                 patch.object(shell_backdrop, "Input") as inputs,
-                shell_backdrop.backdrop(smoke, {"logical_x": -800, "logical_y": 50}),
+                shell_backdrop.backdrop(smoke, output),
             ):
                 pass
             self.assertEqual(
                 [item.args[0] for item in smoke.control.request.call_args_list],
-                ["maximize-window 12 true", "close-window 12"],
+                [
+                    "resize-window 12 1056 856",
+                    "move-window 12 -903 -118",
+                    "close-window 12",
+                ],
             )
             self.assertIn(
                 "--override=colors.background=101820", launch.call_args.args[0]
             )
             self.assertIn("--override=colors.alpha=1.0", launch.call_args.args[0])
-            inputs.return_value.__enter__.return_value.click.assert_called_once_with(
-                -796, 54
+            inputs.return_value.__enter__.return_value.chord.assert_called_once_with(
+                "super+f6"
             )
             stop.assert_called_once_with(process)
+
+    @staticmethod
+    def window(output):
+        return {
+            "id": 12,
+            "mapped": True,
+            "visible": True,
+            "focused": False,
+            "maximized": False,
+            "fullscreen": False,
+            "focused_view": False,
+            "output_coordinates": False,
+            "titlebar_height": 0,
+            "x": output["logical_x"] - 128,
+            "y": output["logical_y"] - 128,
+            "width": output["logical_width"] + 240,
+            "height": output["logical_height"] + 240,
+            "content_width": output["logical_width"] + 240,
+            "content_height": output["logical_height"] + 240,
+        }
+
+    def test_backdrop_rejects_stale_native_size_or_inadequate_blur_coverage(self):
+        output = {
+            "logical_x": -800,
+            "logical_y": 50,
+            "logical_width": 800,
+            "logical_height": 600,
+        }
+        window = self.window(output)
+        self.assertTrue(shell_backdrop.covers_output(window, output))
+        for change in (
+            {"content_width": 800},
+            {"content_height": 600},
+            {"maximized": True},
+            {"titlebar_height": 44},
+            {"focused_view": True},
+            {"output_coordinates": True},
+            {"x": -800},
+            {"width": window["width"] // 2},
+        ):
+            with self.subTest(change=change):
+                self.assertFalse(shell_backdrop.covers_output(window | change, output))
 
     def test_reference_waits_for_explicitly_inactive_owned_window(self):
         smoke = Mock()
@@ -112,13 +167,11 @@ class BackdropTests(unittest.TestCase):
         smoke.until.side_effect = until
         with patch.object(shell_backdrop, "Input") as inputs:
             self.assertEqual(
-                shell_backdrop.unfocus(
-                    smoke, 12, {"logical_x": 100, "logical_y": -600}
-                ),
+                shell_backdrop.unfocus(smoke, 12),
                 inactive,
             )
-        inputs.return_value.__enter__.return_value.click.assert_called_once_with(
-            104, -596
+        inputs.return_value.__enter__.return_value.chord.assert_called_once_with(
+            "super+f6"
         )
         self.assertEqual(smoke.window.call_args_list, [call(12)] * 4)
 

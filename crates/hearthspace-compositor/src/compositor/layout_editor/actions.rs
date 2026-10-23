@@ -8,6 +8,7 @@ impl App {
             return Ok(());
         }
         self.check_navigation_available()?;
+        self.leave_window_focus_views();
         self.cancel_desktop_gesture();
         self.clear_window_group();
         let pointer = self.pointer.current_location();
@@ -229,6 +230,50 @@ impl App {
             self.set_keyboard_focus_to_window(index, surface);
         }
     }
+    pub(in crate::compositor) fn toggle_frame_window_reveal(
+        &mut self,
+        id: u64,
+    ) -> Result<bool, String> {
+        if self.pinned_window_target(id).is_none() {
+            return Ok(false);
+        }
+        if self.layout_editor.expanded_window != Some(id) {
+            self.reveal_frame_window(id)?;
+            return Ok(true);
+        }
+        let index = self
+            .windows
+            .iter()
+            .position(|window| window.id == id && window.mapped)
+            .ok_or("pinned window disappeared")?;
+        let from = self
+            .layout_motion_rect(index)
+            .or_else(|| self.layout_target_rect(index))
+            .ok_or("pinned window has no placement")?;
+        self.layout_editor.expanded_window = None;
+        if let Some(to) = self.layout_target_rect(index) {
+            self.queue_layout_motion(id, from, to, super::motion::REVEAL_DURATION_MS);
+        }
+        // A tucked client cannot receive ordinary keyboard input. Its native
+        // reveal control is the keyboard entry point for opening it again.
+        let reveal = self.windows.iter().position(|window| {
+            window.mapped
+                && super::window_app_id(&window.surface)
+                    .as_deref()
+                    .and_then(frame_layout::pinned_window_reveal_from_app_id)
+                    == Some(id)
+        });
+        if let Some(reveal) = reveal
+            && let Some(surface) = self.windows[reveal].surface.wl_surface()
+        {
+            self.set_keyboard_focus_to_window(reveal, surface);
+        } else {
+            self.clear_keyboard_focus();
+        }
+        self.layout_changed();
+        Ok(true)
+    }
+
     pub(in crate::compositor) fn reveal_frame_window(&mut self, id: u64) -> Result<(), String> {
         let index = self
             .windows

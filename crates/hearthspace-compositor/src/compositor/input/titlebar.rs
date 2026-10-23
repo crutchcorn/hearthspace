@@ -257,16 +257,17 @@ impl App {
                     self.windows[index].surface.send_close();
                 }
             }
-            TitlebarButton::Maximize => self.toggle_titlebar_maximize(target.window_id),
+            TitlebarButton::Maximize => {
+                if let Err(error) = self.toggle_window_focus_view(target.window_id) {
+                    tracing::debug!(window_id = target.window_id, %error, "titlebar focused view was unavailable");
+                }
+            }
         }
     }
 
     fn toggle_titlebar_maximize(&mut self, id: u64) {
-        if let Some(window) = self.windows.iter().find(|window| window.id == id) {
-            let maximized = !window.presentation.maximized;
-            if let Err(error) = self.user_window_presentation(id, None, Some(maximized)) {
-                tracing::debug!(window_id = id, %error, "titlebar maximize was unavailable");
-            }
+        if let Err(error) = self.toggle_window_canvas_maximize(id) {
+            tracing::debug!(window_id = id, %error, "titlebar maximize was unavailable");
         }
     }
 

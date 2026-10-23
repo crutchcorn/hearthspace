@@ -21,7 +21,24 @@ class FirefoxMapFocusTests(unittest.TestCase):
     ):
         smoke = Mock(target=7)
         view = {"x": 0, "y": 0, "scale": 0.85}
-        window = {"focused": focused_before, "canvas_x": 100000, "canvas_y": 100000}
+        window = {
+            "focused": focused_before,
+            "canvas_x": 100000,
+            "canvas_y": 100000,
+            "content_width": 1232,
+            "content_height": 608,
+            "mapped": True,
+            "visible": True,
+            "maximized": True,
+            "fullscreen": False,
+            "presentation_output": None,
+            "maximized_canvas_bounds": {
+                "x": 99900,
+                "y": 99900,
+                "width": 1232,
+                "height": 608,
+            },
+        }
         closed = False
 
         def current_window(_target):
@@ -50,7 +67,7 @@ class FirefoxMapFocusTests(unittest.TestCase):
                 side_effect=[view, view | (changed_view or {})],
             ),
         ):
-            firefox_shell.close_map_preserving_view(smoke)
+            firefox_shell.close_map_preserving_view(smoke, window)
         dismiss.assert_called_once_with(smoke)
         return smoke
 
@@ -86,6 +103,10 @@ class FirefoxMapFocusTests(unittest.TestCase):
                 self.assertRaisesRegex(ControlError, "saved position"),
             ):
                 self.run_close(changed_window=change)
+
+    def test_shell_dismissal_cannot_silently_resize_maximized_client(self):
+        with self.assertRaisesRegex(ControlError, "world geometry"):
+            self.run_close(changed_window={"content_width": 800})
 
 
 if __name__ == "__main__":

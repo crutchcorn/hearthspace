@@ -50,17 +50,26 @@ impl App {
         // Real hit order matters: a covered member cannot steal a press from
         // an unrelated window, shell panel, or popup in front of the group.
         let shell = self.group_hits_shell();
-        let anchor = self
+        let anchor_index = self
             .group_window_under_pointer()
             .filter(|id| self.window_group.selected.contains(id))
-            .and_then(|id| self.windows.iter().position(|window| window.id == id))
-            .map(|index| self.window_canvas_rect(index).loc);
+            .and_then(|id| self.windows.iter().position(|window| window.id == id));
+        let anchor = anchor_index.map(|index| self.window_canvas_rect(index).loc);
         let gather = !shell
             && !self.window_group.selecting
             && !self.window_group.selected.is_empty()
             && rect_contains(self.group_action_rect(), self.pointer_location);
         if shell || (!self.window_group.selecting && anchor.is_none() && !gather) {
             self.clear_window_group();
+            return false;
+        }
+        if !self.window_group.selecting
+            && !gather
+            && self.window_group.selected.len() == 1
+            && anchor_index.is_some_and(|index| self.windows[index].presentation.maximized)
+        {
+            // Selection must not bypass the individual maximized move guard.
+            // Only a multi-window move carries a maximized member on the canvas.
             return false;
         }
         self.interrupt_pinch_zoom();

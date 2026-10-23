@@ -36,8 +36,12 @@ impl App {
                 "mapped": window.mapped, "visible": !visible_outputs.is_empty(), "outputs": visible_outputs,
                 "focused": self.focused_normal_window_id == Some(window.id), "client_type": client_type,
                 "fullscreen": window.presentation.fullscreen, "maximized": window.presentation.maximized,
+                "focused_view": window.presentation.focused_view,
+                "maximized_canvas_bounds": window.presentation.maximized_bounds.map(|bounds| serde_json::json!({
+                    "x": bounds.loc.x, "y": bounds.loc.y, "width": bounds.size.w, "height": bounds.size.h,
+                })),
                 "output_coordinates": self.window_uses_output_coordinates(index),
-                "presentation_output": window.presentation.output,
+                "presentation_output": window.presentation.output.as_ref().filter(|_| window.presentation.output_pinned()),
             }))
         }).collect()
     }

@@ -1,6 +1,6 @@
 //! Advisory initial bounds keep ordinary clients reachable without fixing sizes.
 use smithay::{
-    utils::{Logical, Point, Size},
+    utils::{Logical, Size},
     wayland::shell::xdg::ToplevelSurface,
 };
 use wayland_server::protocol::wl_surface::WlSurface;
@@ -34,10 +34,8 @@ impl App {
             if !self.windows[parent].initial_placement_done {
                 return Some(self.initial_window_output(parent));
             }
-            let position = self.windows[parent].position;
-            let point = self
-                .canvas_to_screen(Point::from((f64::from(position.x), f64::from(position.y))))
-                .to_i32_round();
+            let position = self.window_canvas_rect(parent).loc;
+            let point = self.canvas_to_screen(position.to_f64()).to_i32_round();
             let outputs = self.output_logical_rects();
             outputs
                 .iter()
@@ -45,14 +43,14 @@ impl App {
                 .copied()
                 .or_else(|| outputs.first().copied())
         })?;
-        let fullscreen = anchor.is_some_and(|index| self.windows[index].presentation.fullscreen);
+        let output_pinned = anchor.is_some();
         let scale = if anchor.is_some() {
             1.0
         } else {
             self.viewport_scale
         };
         Some(advisory_bounds(
-            if fullscreen {
+            if output_pinned {
                 output.size
             } else {
                 self.usable_output(output).size

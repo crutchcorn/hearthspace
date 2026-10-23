@@ -50,7 +50,7 @@ impl App {
             icon,
             active: !self.canvas_search_active()
                 && self.focused_normal_window_id == Some(window.id),
-            maximized: window.presentation.maximized,
+            maximized: window.presentation.focused_view || self.frame_window_attached(index),
             hovered,
             pressed,
             photo: self.background_image_path.is_some(),

@@ -73,6 +73,22 @@ impl App {
         let Some(id) = window_app_id(&self.windows[index].surface) else {
             return false;
         };
+        let target = self.frame_target_for_window(index).or_else(|| {
+            pinned_window_reveal_from_app_id(&id)
+                .and_then(|id| self.pinned_window_target(id))
+                .map(|placed| placed.target.clone())
+        });
+        let output = self
+            .output_logical_rect_for_name(
+                target
+                    .as_ref()
+                    .map(|target| target.output.as_str())
+                    .or(self.windows[index].shell_output_name.as_deref()),
+            )
+            .unwrap_or_else(|| self.primary_output_logical_rect());
+        if !self.shell_visible_on_output(output) {
+            return false;
+        }
         if layout_tooltip_from_app_id(&id).is_some() {
             return self.layout_tooltip_rect(index).is_some();
         }

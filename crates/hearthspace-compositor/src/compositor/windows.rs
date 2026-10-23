@@ -601,6 +601,12 @@ impl App {
     }
 
     pub(super) fn title_bar_canvas_rect(&self, window_index: usize) -> Rectangle<i32, Logical> {
+        if let Some(rect) = self.canvas_maximized_rect(window_index) {
+            return Rectangle::new(
+                rect.loc,
+                (self.window_geometry_size(window_index).w, TITLE_BAR_HEIGHT).into(),
+            );
+        }
         let window = &self.windows[window_index];
         title_bar_canvas_rect_for(window.position, window.content_bbox_size.w)
     }
@@ -641,6 +647,15 @@ impl App {
             )
                 .into();
         }
+        if let Some(rect) = self.canvas_maximized_rect(window_index) {
+            let chrome = if self.has_compositor_chrome(window_index) {
+                crate::config::TITLE_BAR_HEIGHT
+            } else {
+                0
+            };
+            return rect.loc + Point::from((0, chrome))
+                - self.window_surface_geometry_loc(window_index);
+        }
         content_canvas_origin_for(
             self.windows[window_index].position,
             self.has_compositor_chrome(window_index),
@@ -674,6 +689,15 @@ impl App {
             return self.desktop_tile_rect(window_index);
         }
         let window = &self.windows[window_index];
+        if let Some(rect) = self.canvas_maximized_rect(window_index) {
+            let size = self.window_geometry_size(window_index);
+            let chrome = if self.has_compositor_chrome(window_index) {
+                crate::config::TITLE_BAR_HEIGHT
+            } else {
+                0
+            };
+            return Rectangle::new(rect.loc, (size.w, size.h + chrome).into());
+        }
         if self.has_compositor_chrome(window_index) {
             return window_canvas_rect_for(window.position, window.content_bbox_size, true);
         }

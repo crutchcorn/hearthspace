@@ -49,6 +49,7 @@ enum Shortcut {
     Up,
     Down,
     Fullscreen,
+    FocusedView,
     Maximize,
 }
 
@@ -335,6 +336,19 @@ impl App {
             }
             _ => {}
         }
+        if matches!(shortcut, Shortcut::FocusedView | Shortcut::Maximize) {
+            if let Some(id) = self.focused_normal_window_id {
+                let result = if shortcut == Shortcut::FocusedView {
+                    self.toggle_window_focus_view(id)
+                } else {
+                    self.toggle_window_canvas_maximize(id)
+                };
+                if let Err(error) = result {
+                    tracing::debug!(%error, "window presentation shortcut unavailable");
+                }
+            }
+            return;
+        }
         let command = match shortcut {
             Shortcut::OverviewToggle => ShellCommand::OverviewToggle,
             Shortcut::DeviceControl(_)
@@ -350,6 +364,8 @@ impl App {
             | Shortcut::ShellPanelDismiss
             | Shortcut::ShellCornerCycle { .. }
             | Shortcut::Next
+            | Shortcut::FocusedView
+            | Shortcut::Maximize
             | Shortcut::Previous => unreachable!(),
             Shortcut::Lock => ShellCommand::LockSession,
             Shortcut::Terminal => ShellCommand::Spawn(SpawnTarget::Foot),
@@ -364,23 +380,16 @@ impl App {
             Shortcut::Right => ShellCommand::PanRight,
             Shortcut::Up => ShellCommand::PanUp,
             Shortcut::Down => ShellCommand::PanDown,
-            Shortcut::Fullscreen | Shortcut::Maximize => {
+            Shortcut::Fullscreen => {
                 let Some(id) = self.focused_normal_window_id else {
                     return;
                 };
                 let Some(window) = self.windows.iter().find(|window| window.id == id) else {
                     return;
                 };
-                if shortcut == Shortcut::Fullscreen {
-                    ShellCommand::FullscreenWindow {
-                        id,
-                        enabled: !window.presentation.fullscreen,
-                    }
-                } else {
-                    ShellCommand::MaximizeWindow {
-                        id,
-                        enabled: !window.presentation.maximized,
-                    }
+                ShellCommand::FullscreenWindow {
+                    id,
+                    enabled: !window.presentation.fullscreen,
                 }
             }
         };
@@ -433,6 +442,13 @@ fn shortcut(modifiers: &ModifiersState, symbol: u32) -> Option<Shortcut> {
         return Some(Shortcut::ShellCornerCycle {
             reverse: modifiers.shift,
         });
+    }
+    if modifiers.logo
+        && !modifiers.alt
+        && modifiers.shift
+        && matches!(symbol, keysyms::KEY_f | keysyms::KEY_F)
+    {
+        return Some(Shortcut::FocusedView);
     }
     if !modifiers.logo || modifiers.alt || modifiers.shift {
         return None;

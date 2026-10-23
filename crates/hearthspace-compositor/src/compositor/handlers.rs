@@ -183,6 +183,7 @@ impl XdgShellHandler for App {
 
         if self.windows[window_index].kind != ManagedWindowKind::Normal
             || self.window_uses_output_coordinates(window_index)
+            || self.windows[window_index].presentation.maximized
             || !self.valid_window_pointer_request(window_index, &seat, serial)
         {
             return;
@@ -223,6 +224,7 @@ impl XdgShellHandler for App {
 
         if self.windows[window_index].kind != ManagedWindowKind::Normal
             || self.window_uses_output_coordinates(window_index)
+            || self.windows[window_index].presentation.maximized
             || !self.valid_window_pointer_request(window_index, &seat, serial)
         {
             return;

@@ -1,28 +1,30 @@
-//! Output-pinned window states preserve the window's position on the canvas.
+//! Canvas maximization and output-focused states share one restore transaction.
 use smithay::{
     utils::{Logical, Rectangle, Size},
     wayland::shell::xdg::ToplevelSurface,
 };
 use wayland_protocols::xdg::shell::server::xdg_toplevel;
 
-use super::{App, ManagedSurface, ManagedWindowKind, WindowDecoration};
-use crate::config::TITLE_BAR_HEIGHT;
+use super::{App, ManagedSurface, ManagedWindowKind};
 
-mod canvas_zoom;
+mod configure;
+mod focused;
+mod geometry;
 mod groups;
 #[cfg(test)]
 mod tests;
 mod transform;
 mod transients;
 
-pub(super) use canvas_zoom::RestoredMaximizedWindow;
-
 #[derive(Debug, Default)]
 pub(super) struct WindowPresentation {
     pub(super) maximized: bool,
     pub(super) fullscreen: bool,
+    pub(super) focused_view: bool,
+    pub(super) maximized_bounds: Option<Rectangle<i32, Logical>>,
     pub(super) output: Option<String>,
     pub(super) restoring: bool,
+    focused_output_bounds: Option<Rectangle<i32, Logical>>,
     reveal_on_restore: bool,
     restore_size: Option<Size<i32, Logical>>,
 }
@@ -30,6 +32,10 @@ pub(super) struct WindowPresentation {
 impl WindowPresentation {
     pub(super) fn pinned(&self) -> bool {
         self.maximized || self.fullscreen
+    }
+
+    pub(super) fn output_pinned(&self) -> bool {
+        self.fullscreen || self.focused_view
     }
 
     fn changes_for_request(
@@ -57,6 +63,11 @@ impl WindowPresentation {
         }
         if let Some(maximized) = maximized {
             self.maximized = maximized;
+            if !maximized {
+                self.focused_view = false;
+                self.focused_output_bounds = None;
+                self.maximized_bounds = None;
+            }
         }
         if self.pinned() {
             if !was_pinned && !self.restoring {
@@ -88,7 +99,7 @@ impl App {
             return Err("window is not a mapped application window".into());
         }
         self.update_window_presentation(id, fullscreen, maximized, None)?;
-        self.focus_window(id)
+        self.focus_presentation_window(id)
     }
     pub(super) fn set_window_fullscreen(
         &mut self,
@@ -108,6 +119,17 @@ impl App {
         id: u64,
         fullscreen: Option<bool>,
         maximized: Option<bool>,
+        output: Option<String>,
+    ) -> Result<(), String> {
+        self.update_window_presentation_with_focus(id, fullscreen, maximized, None, output)
+    }
+
+    fn update_window_presentation_with_focus(
+        &mut self,
+        id: u64,
+        fullscreen: Option<bool>,
+        maximized: Option<bool>,
+        focused: Option<bool>,
         output: Option<String>,
     ) -> Result<(), String> {
         if self.session_locked() {
@@ -136,9 +158,10 @@ impl App {
             return Err("cannot change state during an interactive move or resize".into());
         }
         let target = self.presentation_output_for_window(index, output.as_deref());
-        if !self.windows[index]
-            .presentation
-            .changes_for_request(fullscreen, maximized, &target)
+        if focused.is_none_or(|value| value == self.windows[index].presentation.focused_view)
+            && !self.windows[index]
+                .presentation
+                .changes_for_request(fullscreen, maximized, &target)
         {
             // GTK sends unset_fullscreen before requesting a titlebar move,
             // including for floating windows. Acknowledge the request without
@@ -152,13 +175,34 @@ impl App {
             return Ok(());
         }
         self.interrupt_pinch_zoom();
+        if focused == Some(true) {
+            self.advance_viewport_animation();
+            self.viewport_animation = None;
+        }
         let size = self.window_geometry_size(index);
+        let maximize = maximized.unwrap_or(self.windows[index].presentation.maximized);
+        let new_bounds = (maximize
+            && (self.windows[index].presentation.maximized_bounds.is_none()
+                || focused == Some(true)))
+        .then(|| self.maximized_canvas_bounds(index, &target));
         self.windows[index].pending_resize = None;
         let state = &mut self.windows[index].presentation;
         state.update(fullscreen, maximized, size);
+        if let Some(focused) = focused {
+            state.focused_view = focused && state.maximized;
+        }
+        if let Some(bounds) = new_bounds {
+            state.maximized_bounds = Some(bounds);
+        }
         if state.pinned() {
             state.output = Some(target);
         }
+        if focused == Some(true) {
+            self.clear_window_group();
+            self.clear_desktop_selection();
+            self.reset_focused_shell_peek();
+        }
+        self.refresh_focused_output_bounds(index);
         self.configure_window_presentation(index);
         if !self.windows[index].presentation.pinned() {
             self.windows[index].presentation.output = None;
@@ -169,8 +213,13 @@ impl App {
 
     fn presentation_output_for_window(&self, index: usize, requested: Option<&str>) -> String {
         let outputs = self.capture_outputs();
-        if let Some(name) = requested.or(self.windows[index].presentation.output.as_deref())
-            && outputs.iter().any(|output| output.name == name)
+        let state = &self.windows[index].presentation;
+        if let Some(name) = requested.or_else(|| {
+            state
+                .output_pinned()
+                .then_some(state.output.as_deref())
+                .flatten()
+        }) && outputs.iter().any(|output| output.name == name)
         {
             return name.to_string();
         }
@@ -194,83 +243,10 @@ impl App {
 
     pub(super) fn presentation_output_rect(&self, index: usize) -> Option<Rectangle<i32, Logical>> {
         let state = &self.windows[index].presentation;
-        state.pinned().then(|| {
+        state.output_pinned().then(|| {
             self.output_logical_rect_for_name(state.output.as_deref())
                 .unwrap_or_else(|| self.primary_output_logical_rect())
         })
-    }
-
-    fn configure_window_presentation(&self, index: usize) {
-        let window = &self.windows[index];
-        let state = &window.presentation;
-        let size = if let Some(output) = self.presentation_output_rect(index) {
-            let mut size = output.size;
-            if !state.fullscreen {
-                size = self.usable_output(output).size;
-                if window.decoration == WindowDecoration::ServerSide {
-                    size.h = (size.h - TITLE_BAR_HEIGHT).max(1);
-                }
-            }
-            Some(size)
-        } else {
-            state.restore_size
-        };
-        match &window.surface {
-            ManagedSurface::Xdg(surface) => {
-                surface.with_pending_state(|pending| {
-                    set_state(
-                        &mut pending.states,
-                        xdg_toplevel::State::Fullscreen,
-                        state.fullscreen,
-                    );
-                    set_state(
-                        &mut pending.states,
-                        xdg_toplevel::State::Maximized,
-                        state.maximized,
-                    );
-                    pending.states.unset(xdg_toplevel::State::Resizing);
-                    pending.fullscreen_output = None;
-                    pending.bounds = None;
-                    pending.size = size;
-                });
-                if surface.is_initial_configure_sent() {
-                    surface.send_configure();
-                }
-            }
-            #[cfg(feature = "xwayland")]
-            ManagedSurface::X11(surface) => {
-                if let Err(error) = surface
-                    .set_fullscreen(state.fullscreen)
-                    .and_then(|()| surface.set_maximized(state.maximized))
-                {
-                    tracing::warn!(%error, "failed to update X11 window state");
-                }
-                if let Some(size) = size {
-                    let chrome = if self.has_compositor_chrome(index) {
-                        TITLE_BAR_HEIGHT
-                    } else {
-                        0
-                    };
-                    let origin = self
-                        .presentation_output_rect(index)
-                        .map(|output| {
-                            output.loc
-                                + smithay::utils::Point::from((
-                                    0,
-                                    if state.fullscreen {
-                                        0
-                                    } else {
-                                        self.usable_output(output).loc.y - output.loc.y + chrome
-                                    },
-                                ))
-                        })
-                        .unwrap_or_else(|| (window.position.x, window.position.y + chrome).into());
-                    if let Err(error) = surface.configure(Some(Rectangle::new(origin, size))) {
-                        tracing::warn!(%error, "failed to configure X11 window state");
-                    }
-                }
-            }
-        }
     }
 
     pub(super) fn reconcile_window_presentations(&mut self) {
@@ -289,6 +265,7 @@ impl App {
             {
                 state.output = Some(primary.name.clone());
             }
+            self.refresh_focused_output_bounds(index);
             self.configure_window_presentation(index);
         }
     }

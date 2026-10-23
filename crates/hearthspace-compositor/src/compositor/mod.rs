@@ -18,6 +18,7 @@ mod clipboard;
 mod cursor;
 mod desktop;
 mod focus;
+mod focused_shell_peek;
 mod handlers;
 mod idle;
 mod input;
@@ -283,6 +284,7 @@ struct App {
     touch: TouchHandle<Self>,
     ui_touch: Option<input::UiTouch>,
     titlebar_input: input::TitlebarInput,
+    focused_shell_peek: focused_shell_peek::FocusedShellPeek,
     pressed_pointer_buttons: HashSet<u32>,
     keyboard: KeyboardHandle<Self>,
     viewport_offset: CanvasPoint,
@@ -677,6 +679,7 @@ pub(in crate::compositor) fn initialize_app(
         touch,
         ui_touch: None,
         titlebar_input: input::TitlebarInput::default(),
+        focused_shell_peek: focused_shell_peek::FocusedShellPeek::default(),
         pressed_pointer_buttons: HashSet::new(),
         keyboard,
         viewport_offset,

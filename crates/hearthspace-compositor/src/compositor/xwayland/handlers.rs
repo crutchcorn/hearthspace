@@ -185,6 +185,7 @@ impl XwmHandler for App {
             return;
         };
         if self.window_uses_output_coordinates(index)
+            || self.windows[index].presentation.maximized
             || self.drag.is_some()
             || self.resize.is_some()
             || !self.pointer_grab_targets_window(index)
@@ -203,6 +204,7 @@ impl XwmHandler for App {
             return;
         };
         if self.window_uses_output_coordinates(index)
+            || self.windows[index].presentation.maximized
             || self.drag.is_some()
             || self.resize.is_some()
             || !self.pointer_grab_targets_window(index)

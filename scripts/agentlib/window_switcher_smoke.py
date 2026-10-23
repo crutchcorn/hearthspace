@@ -9,6 +9,7 @@ from pathlib import Path
 from . import window_switcher_smoke_checks as checks
 from .control import ControlError
 from .daily import DailySmoke
+from .window_switcher_focused import focused
 from .window_switcher_keyboard import unplug
 
 
@@ -16,6 +17,11 @@ class WindowSwitcherSmoke(DailySmoke):
     def __init__(self, args):
         args.captures, args.notifications = 1, False
         super().__init__(args)
+
+    def launcher(self, operation, *extra, **kwargs):
+        if operation == "start":
+            extra = (*extra, "--isolated-profile")
+        return super().launcher(operation, *extra, **kwargs)
 
     def step(self, name, operation):
         try:
@@ -52,6 +58,12 @@ class WindowSwitcherSmoke(DailySmoke):
                             checks.swipe(smoke, kind, fingers, direction)
                         ),
                     )
+                self.step(
+                    f"{kind}-{fingers}-focused-view",
+                    lambda smoke, kind=kind, fingers=fingers: focused(
+                        smoke, kind, fingers
+                    ),
+                )
             self.step(
                 f"{kind}-ownership-and-cancellation",
                 lambda smoke, kind=kind: checks.ownership(smoke, kind),
