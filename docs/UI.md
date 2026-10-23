@@ -124,12 +124,13 @@ The compositor clips the complete decorated window to a 19-pixel inner radius.
 A separate GPU frame paints its one-pixel outer border (20-pixel outer radius),
 inset highlights and soft shadows.
 
-The active orange frame encloses every normal application, including clients
-with their own decorations. Client-decorated content and controls retain their
-own shape; its compositor border follows the advertised rectangular window
-geometry. Frames belong to each window's stack position, beneath its popups and
-any higher windows. Fullscreen content and shell panels do
-not receive these frames. Cached shader elements track geometry, focus and
+The active orange frame encloses server-decorated applications. Clients with
+their own decorations receive a rectangular frame only when a single mapped
+root surface guarantees opaque coverage of the window geometry. Rounded,
+translucent, and multi-surface clients retain their own pixels without a synthetic
+rim or shadow. Frames belong to each window's stack position, beneath its popups
+and any higher windows. Fullscreen content and shell panels do not receive these
+frames. Cached shader elements track geometry, focus and
 hover without allocating a window-sized decoration texture.
 
 ## Shared visual system

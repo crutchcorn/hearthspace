@@ -71,10 +71,11 @@ installed catalog alphabetically.
 Super+F6 moves keyboard focus between the corners; add Shift to move backward.
 
 Assign app shortcuts in **Settings → Search → Gestures**. Open Apps List with Meta,
-the Apps List button, or an upward touchscreen swipe from the dock. The drawing
-icon at the right of the search field enables **Draw to launch**; the adjacent
-Settings icon opens its Search tab. Click and drag with a mouse or trackpad, or draw
-with one touchscreen finger; a clear match launches immediately on release.
+the Apps List button, or an upward touchscreen swipe from the dock. The **Draw**
+tab enables **Draw to launch**; its Settings icon opens the Settings app's Search
+tab. Return to **Apps** to browse or search. Click and drag with a mouse or
+trackpad, or draw with one touchscreen finger; a clear match launches immediately
+on release.
 Use one finger to scroll Settings and search results outside the drawing area.
 See [search gestures](./docs/FAVORITE_APPS.md) for assignment and recognition details.
 

@@ -21,9 +21,9 @@ Typing searches applications and open windows as usual.
 
 Release the mouse button or lift your finger after drawing: a clear match launches
 the app immediately. An unrecognized or ambiguous shape keeps search open and
-shows feedback. **Back to search** or pressing the drawing icon again leaves
-drawing mode. One touchscreen finger scrolls Settings and search results outside
-the drawing area; a drag on the drawing area stays a drawing.
+shows feedback. Select the **Apps** tab to leave drawing mode. One touchscreen
+finger scrolls Settings and search results outside the drawing area; a drag on
+the drawing area stays a drawing.
 
 Recognition is deterministic. It resamples the stroke uniformly, removes
 position and uniform scale, and allows modest rotation, drawing in reverse, and
