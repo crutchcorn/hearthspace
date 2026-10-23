@@ -4,7 +4,6 @@ use gio::prelude::*;
 use std::{
     fs,
     path::{Component, Path, PathBuf},
-    process::Command,
 };
 
 mod properties;
@@ -119,32 +118,11 @@ pub fn open_with_apps(path: &Path) -> Result<Vec<OpenWithApp>, String> {
     Ok(apps)
 }
 
-pub fn open_with(paths: &[PathBuf], app_id: &str, x_display: Option<&str>) -> Result<(), String> {
-    let desktop_file = gio_unix::DesktopAppInfo::new(app_id)
-        .and_then(|app| app.filename())
-        .ok_or("This application is no longer available.")?;
-    // GIO's D-Bus activation reads the process environment, not the launch
-    // context's child environment. Run it in the same isolated session as apps.
-    super::run_opener(open_with_command(&desktop_file, paths, x_display)?)
-}
-
-fn open_with_command(
-    desktop_file: &Path,
+pub fn open_with(
+    socket: &Path,
     paths: &[PathBuf],
-    x_display: Option<&str>,
-) -> Result<Command, String> {
-    if paths.is_empty() || paths.iter().any(|path| !path.is_absolute()) {
-        return Err("Select local files or folders to open.".into());
-    }
-    let mut command = crate::app_catalog::launch_command(
-        &["gio".into(), "launch".into(), "--".into()],
-        &hearthspace_common::wayland_display_name(),
-        &[],
-        None,
-    )?;
-    command.arg(desktop_file).args(paths);
-    if let Some(display) = x_display {
-        command.env("DISPLAY", display);
-    }
-    Ok(command)
+    app_id: &str,
+    output: Option<&str>,
+) -> Result<(), String> {
+    super::file_launch::Request::for_app(paths, app_id, output)?.send(socket)
 }

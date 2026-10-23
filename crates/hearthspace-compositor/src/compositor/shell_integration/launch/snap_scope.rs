@@ -4,8 +4,18 @@ use std::{env, fs, os::unix::fs::PermissionsExt, path::Path};
 
 mod resolution;
 pub(super) use resolution::resolve;
+#[cfg(test)]
+mod gio_tests;
 
 pub(super) fn wrap(instance: &str, command: Vec<String>) -> Result<Vec<String>, String> {
+    let mut wrapped = prefix(instance, &command)?;
+    wrapped.extend(command);
+    Ok(wrapped)
+}
+
+/// Scope identity belongs to the installed app even when GIO launches it.
+/// Keeping the prefix separate also avoids converting native file paths to UTF-8.
+pub(super) fn prefix(instance: &str, identity: &[String]) -> Result<Vec<String>, String> {
     let owner = env::var("HEARTHSPACE_APP_SCOPE_UNIT")
         .map_err(|_| "Snap launch requires a supervised native app scope owner".to_string())?;
     let runtime = env::var("XDG_RUNTIME_DIR").map_err(|error| error.to_string())?;
@@ -16,7 +26,7 @@ pub(super) fn wrap(instance: &str, command: Vec<String>) -> Result<Vec<String>, 
         fs::read_to_string("/proc/sys/kernel/random/uuid").map_err(|error| error.to_string())?;
     let wrapped = wrap_with(
         instance,
-        command,
+        identity,
         &owner,
         &runtime,
         &host,
@@ -45,14 +55,14 @@ pub(super) fn wrap(instance: &str, command: Vec<String>) -> Result<Vec<String>, 
 
 fn wrap_with(
     instance: &str,
-    command: Vec<String>,
+    command: &[String],
     owner: &str,
     runtime: &str,
     host: &str,
     bus: &str,
     uuid: &str,
 ) -> Result<Vec<String>, String> {
-    let tag = security_tag(instance, &command)?;
+    let tag = security_tag(instance, command)?;
     if !owner.starts_with("hearthspace-apps-")
         || !owner.ends_with(".service")
         || !owner
@@ -72,7 +82,7 @@ fn wrap_with(
     {
         return Err("invalid owned Snap scope environment".into());
     }
-    let mut wrapped = vec![
+    Ok(vec![
         "/usr/bin/env".into(),
         format!("XDG_RUNTIME_DIR={host}"),
         format!("DBUS_SESSION_BUS_ADDRESS=unix:path={host}/bus"),
@@ -90,9 +100,7 @@ fn wrap_with(
         "/usr/bin/env".into(),
         format!("XDG_RUNTIME_DIR={runtime}"),
         format!("DBUS_SESSION_BUS_ADDRESS={bus}"),
-    ];
-    wrapped.extend(command);
-    Ok(wrapped)
+    ])
 }
 
 fn security_tag(instance: &str, command: &[String]) -> Result<String, String> {
@@ -189,9 +197,9 @@ mod tests {
     #[test]
     fn manager_environment_is_restored_before_the_unchanged_app_argv() {
         let original = vec!["/snap/bin/firefox".into(), "file:///tmp/a $b.txt".into()];
-        let wrapped = wrap_with(
+        let mut wrapped = wrap_with(
             "firefox",
-            original.clone(),
+            &original,
             "hearthspace-apps-test.service",
             "/private",
             "/run/user/1000",
@@ -199,6 +207,7 @@ mod tests {
             "01234567-89ab-cdef-0123-456789abcdef",
         )
         .unwrap();
+        wrapped.extend(original.clone());
         assert_eq!(&wrapped[wrapped.len() - original.len()..], &original);
         assert_eq!(wrapped[1], "XDG_RUNTIME_DIR=/run/user/1000");
         assert!(wrapped.contains(&"XDG_RUNTIME_DIR=/private".into()));

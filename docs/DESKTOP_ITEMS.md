@@ -23,10 +23,17 @@ ring. The accessible button name includes the full filename or app name even
 when the visible label wraps or truncates.
 
 Drop an app shortcut onto Apps List to add a favorite. The desktop icon returns
-to its original position. Favorites appear first in Apps List in their saved
-order, with a pin marker in both icon and list views. Files and folders open
-with `gio open`, using the
-user's default application. They are not executed as commands. Directory and
+to its original position. Favorites remain pinned in the app dock in their saved
+order, including while closed. Apps List keeps its normal alphabetical catalog.
+Files and folders use GIO to select the user's default application. Both Open
+and Open With ask the compositor to launch the selected installed desktop entry,
+using the same application environment and owned Snap scope as app shortcuts.
+GIO expands the entry's file arguments; filenames are never executed as commands.
+Launch preparation runs outside the compositor event loop, with at most four
+workers and an eight-second preparation/launch deadline. Native D-Bus handlers
+keep a supervised GIO connection until the application acknowledges the file
+request. Snap handlers inherit their prepared scope instead of relying on an
+unscoped bus activation. Directory and
 catalog changes are refreshed on a worker. A separate artwork worker reuses
 GIO-validated GNOME thumbnails and reads embedded FLAC front covers when no
 usable thumbnail exists. Files without usable artwork use their themed MIME

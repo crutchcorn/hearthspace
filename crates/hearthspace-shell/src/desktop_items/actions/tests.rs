@@ -1,5 +1,5 @@
 use super::*;
-use std::{ffi::OsStr, os::unix::fs::symlink};
+use std::os::unix::fs::symlink;
 
 #[test]
 fn rename_preserves_existing_files_and_dangling_links() {
@@ -49,51 +49,5 @@ fn folder_creation_and_rename_cannot_escape_or_replace_an_existing_folder() {
     assert_eq!(
         fs::read(root.path().join("Projects/notes")).unwrap(),
         b"keep me"
-    );
-}
-
-#[test]
-fn open_with_passes_literal_native_paths_and_only_the_own_session_environment() {
-    use std::{ffi::OsString, os::unix::ffi::OsStringExt};
-    let desktop_file = Path::new("/apps/Player with spaces.desktop");
-    let paths = vec![
-        PathBuf::from("/owned/--song; $(touch nope).wav"),
-        PathBuf::from(OsString::from_vec(b"/owned/song-\xff.wav".to_vec())),
-    ];
-    let command = open_with_command(desktop_file, &paths, None).unwrap();
-    assert_eq!(command.get_program(), OsStr::new("gio"));
-    assert_eq!(
-        command.get_args().collect::<Vec<_>>(),
-        [
-            OsStr::new("launch"),
-            OsStr::new("--"),
-            desktop_file.as_os_str(),
-            paths[0].as_os_str(),
-            paths[1].as_os_str(),
-        ]
-    );
-    let environment = command
-        .get_envs()
-        .collect::<std::collections::BTreeMap<_, _>>();
-    assert_eq!(environment.get(OsStr::new("DISPLAY")), Some(&None));
-    assert_eq!(
-        environment.get(OsStr::new("DBUS_SESSION_BUS_PID")),
-        Some(&None)
-    );
-    assert_eq!(
-        environment.get(OsStr::new("DBUS_SESSION_BUS_ADDRESS")),
-        Some(&std::env::var_os("HEARTHSPACE_SESSION_BUS_ADDRESS").as_deref())
-    );
-    assert_eq!(
-        environment.get(OsStr::new("WAYLAND_DISPLAY")),
-        Some(&Some(OsStr::new(
-            &hearthspace_common::wayland_display_name()
-        )))
-    );
-    let command = open_with_command(desktop_file, &paths, Some(":91")).unwrap();
-    assert!(
-        command
-            .get_envs()
-            .any(|(key, value)| key == "DISPLAY" && value == Some(OsStr::new(":91")))
     );
 }

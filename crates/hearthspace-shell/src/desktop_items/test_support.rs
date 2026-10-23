@@ -4,7 +4,7 @@ use std::{
     io::{BufRead, BufReader},
     os::unix::fs::symlink,
     path::{Path, PathBuf},
-    process::{Child, Command, Stdio},
+    process::{Child, ChildStdout, Command, Stdio},
 };
 
 pub const CHILD_ROOT: &str = "HEARTHSPACE_TEST_FILE_ACTION_ROOT";
@@ -73,14 +73,30 @@ pub fn assert_success(command: &mut Command) {
 
 pub struct Bus {
     child: Child,
+    // Keep the print-address pipe open while a fixture service may inherit it.
+    _output: BufReader<ChildStdout>,
     pub address: String,
 }
 
 impl Bus {
     pub fn start(root: &Path) -> Self {
+        Self::with_service_directory(root, None)
+    }
+
+    pub fn start_with_services(root: &Path) -> Self {
+        let services = root.join("services");
+        fs::create_dir_all(&services).unwrap();
+        Self::with_service_directory(root, Some(&services))
+    }
+
+    fn with_service_directory(root: &Path, services: Option<&Path>) -> Self {
         let config = root.join("bus.conf");
-        // No service directories: a missing peer can never activate a host app.
-        fs::write(&config, "<busconfig><type>session</type><listen>unix:tmpdir=/tmp</listen><policy context=\"default\"><allow own=\"*\"/><allow send_destination=\"*\"/><allow receive_sender=\"*\"/></policy></busconfig>").unwrap();
+        // Only an explicitly supplied fixture directory may activate a service;
+        // neither mode loads host applications or standard service directories.
+        let services = services
+            .map(|path| format!("<servicedir>{}</servicedir>", path.display()))
+            .unwrap_or_default();
+        fs::write(&config, format!("<busconfig><type>session</type><listen>unix:tmpdir=/tmp</listen>{services}<policy context=\"default\"><allow own=\"*\"/><allow send_destination=\"*\"/><allow receive_sender=\"*\"/></policy></busconfig>")).unwrap();
         let mut child = Command::new("dbus-daemon")
             .arg("--config-file")
             .arg(config)
@@ -89,11 +105,11 @@ impl Bus {
             .spawn()
             .expect("dbus-daemon is required for file-manager protocol tests");
         let mut address = String::new();
-        BufReader::new(child.stdout.take().unwrap())
-            .read_line(&mut address)
-            .unwrap();
+        let mut output = BufReader::new(child.stdout.take().unwrap());
+        output.read_line(&mut address).unwrap();
         Self {
             child,
+            _output: output,
             address: address.trim().into(),
         }
     }

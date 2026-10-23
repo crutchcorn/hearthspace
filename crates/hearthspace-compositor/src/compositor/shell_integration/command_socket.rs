@@ -119,6 +119,9 @@ impl CalloopData {
                 Err(error) => ControlReply::Err(error),
             };
         }
+        if let Some(request) = text.strip_prefix("launch-files ") {
+            return self.state.launch_files(request);
+        }
         if text == "clipboard-set" {
             return self.state.set_clipboard_text("");
         }

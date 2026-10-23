@@ -7,13 +7,13 @@ use std::{
     fs, io,
     os::unix::ffi::OsStrExt,
     path::{Path, PathBuf},
-    process::{Command, Stdio},
 };
 
-use crate::app_catalog::{AppCatalog, launch_command};
+use crate::app_catalog::AppCatalog;
 
 pub mod actions;
 pub(crate) mod artwork;
+pub mod file_launch;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct DesktopItem {
@@ -126,50 +126,10 @@ fn files(directory: &Path) -> io::Result<Vec<DesktopItem>> {
     Ok(items)
 }
 
-/// Launch the user's associated application, using the same private session bus
-/// and Wayland environment as launcher apps. Paths remain a single OS argument;
-/// even non-UTF-8 filenames never pass through a shell command string.
-pub fn open_path(path: &Path, xwayland_display: Option<&str>) -> Result<(), String> {
-    if !path.is_absolute() || !path.exists() {
-        return Err("This desktop file or folder is no longer available.".into());
-    }
-    run_opener(open_command(path, xwayland_display)?)
-}
-
-fn open_command(path: &Path, xwayland_display: Option<&str>) -> Result<Command, String> {
-    // Use GIO's desktop-entry parsing and launch status. xdg-open's generic
-    // desktop path uses its own parser and can hide launcher failures.
-    let mut command = launch_command(
-        &["gio".into(), "open".into(), "--".into()],
-        &hearthspace_common::wayland_display_name(),
-        &[],
-        None,
-    )?;
-    command.arg(path);
-    // The shell may inherit the host's DISPLAY in a nested session. Only the
-    // compositor's acknowledged XWayland display belongs to this desktop.
-    if let Some(display) = xwayland_display {
-        command.env("DISPLAY", display);
-    }
-    Ok(command)
-}
-
-fn run_opener(mut command: Command) -> Result<(), String> {
-    // Wait for GIO's launch result, not the application. Descendants inherit
-    // these handles; piping their output would wait for the app to close.
-    let status = command
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::inherit())
-        .status()
-        .map_err(|error| format!("Could not open files: {error}"))?;
-    if status.success() {
-        Ok(())
-    } else {
-        Err(format!(
-            "Could not open files: the application launcher failed ({status})."
-        ))
-    }
+/// Select with GIO on the desktop worker, then launch through the compositor's
+/// supervised environment. File URIs preserve native filename bytes over IPC.
+pub fn open_path(socket: &Path, path: &Path, output: Option<&str>) -> Result<(), String> {
+    file_launch::Request::for_default(path, output)?.send(socket)
 }
 
 #[cfg(test)]

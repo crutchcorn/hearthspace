@@ -9,7 +9,13 @@ use super::{App, launch_environment::*};
 use crate::compositor::client::ClientState;
 use crate::config::*;
 
+mod files;
 mod snap_scope;
+
+struct ApplicationEnvironment {
+    wayland_display: String,
+    variables: Vec<(String, String)>,
+}
 
 impl App {
     fn prepare_spawn_output(&mut self, output_name: Option<&str>) {
@@ -162,23 +168,10 @@ impl App {
         } else {
             app_command
         };
-        let wayland_display = if let Some(instance_name) = &snap_instance {
-            self.ensure_snap_wayland_listener(instance_name)
-                .map_err(|error| format!("failed to prepare Snap Wayland socket: {error}"))?
-        } else {
-            wayland_display_name()
-        };
-        let mut launch_env = launch_environment_for_app(&app)
-            .map_err(|error| format!("failed to prepare app environment: {error}"))?;
-        if app_id == "dev.hearthspace.Settings.desktop" {
-            launch_env.push((
-                hearthspace_common::SHELL_COMMAND_SOCKET_ENV.to_owned(),
-                super::command_socket_path().to_string_lossy().into_owned(),
-            ));
-        }
-        if let Some(display) = self.xwayland_display_name() {
-            launch_env.push(("DISPLAY".to_string(), display));
-        }
+        let ApplicationEnvironment {
+            wayland_display,
+            variables: launch_env,
+        } = self.application_environment(app_id, snap_instance.as_deref())?;
         let launch_env_refs = launch_env
             .iter()
             .map(|(key, value)| (key.as_str(), value.as_str()))
@@ -197,6 +190,43 @@ impl App {
         }
         info!(app_id, wayland_display, argv = ?command, "launched desktop app");
         Ok(())
+    }
+
+    fn application_environment(
+        &mut self,
+        app_id: &str,
+        snap_instance: Option<&str>,
+    ) -> Result<ApplicationEnvironment, String> {
+        let launch_env = launch_environment_for_app(app_id)
+            .map_err(|error| format!("failed to prepare app environment: {error}"))?;
+        self.finish_application_environment(app_id, snap_instance, launch_env)
+    }
+
+    fn finish_application_environment(
+        &mut self,
+        app_id: &str,
+        snap_instance: Option<&str>,
+        mut launch_env: Vec<(String, String)>,
+    ) -> Result<ApplicationEnvironment, String> {
+        let wayland_display = if let Some(instance_name) = snap_instance {
+            self.ensure_snap_wayland_listener(instance_name)
+                .map_err(|error| format!("failed to prepare Snap Wayland socket: {error}"))?
+        } else {
+            wayland_display_name()
+        };
+        if app_id == "dev.hearthspace.Settings.desktop" {
+            launch_env.push((
+                hearthspace_common::SHELL_COMMAND_SOCKET_ENV.to_owned(),
+                super::command_socket_path().to_string_lossy().into_owned(),
+            ));
+        }
+        if let Some(display) = self.xwayland_display_name() {
+            launch_env.push(("DISPLAY".to_string(), display));
+        }
+        Ok(ApplicationEnvironment {
+            wayland_display,
+            variables: launch_env,
+        })
     }
 
     pub(super) fn list_apps_json(&self) -> Vec<u8> {
