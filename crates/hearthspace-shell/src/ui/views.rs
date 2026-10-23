@@ -53,6 +53,7 @@ pub(super) fn app_logic(
             .on_close(ShellState::stop)
     });
     let mut windows = vec![watcher];
+    windows.extend(super::desktop::windows(state));
 
     for output in &state.outputs {
         windows.extend(super::corners::windows(state, output));
@@ -94,7 +95,10 @@ pub(super) fn app_logic(
                 state,
                 output,
                 results,
-                state.windows_error.clone(),
+                state
+                    .windows_error
+                    .clone()
+                    .or_else(|| state.desktop.source_error.clone()),
             ));
         }
     }
@@ -158,7 +162,7 @@ fn output_watcher_view(map_open: bool, osd_open: bool) -> impl WidgetView<ShellS
                     fork(window_catalog_task(), shell_events_task()),
                     super::dock::task(),
                 ),
-                super::window_group::task(),
+                fork(super::window_group::task(), super::desktop::task()),
             ),
         ),
         fork(

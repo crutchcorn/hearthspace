@@ -4,7 +4,7 @@ Four independent shell surfaces anchor to each output's corners:
 
 - **Top left — Notifications:** one button combines the bell with “All clear” or the number of new notifications and opens the notification panel.
 - **Top right — System tray:** application tray icons, clock/calendar, Wi-Fi, brightness, sound, battery when available, and Power. Tray icons appear only while apps publish them; see [application tray](TRAY.md).
-- **Bottom left — Canvas tools:** the [canvas map](CANVAS_MAP.md) and window-group selection.
+- **Bottom left — Canvas tools:** [desktop-item selection](DESKTOP_ITEMS.md), window-group selection, and the [canvas map](CANVAS_MAP.md).
 - **Bottom right — App dock and Apps List:** running apps and the installed-app browser.
 
 The dock groups windows by application ID. Activating an icon focuses and reveals

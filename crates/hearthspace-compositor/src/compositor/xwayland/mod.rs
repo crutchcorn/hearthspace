@@ -125,6 +125,7 @@ impl App {
             initial_placement_done: false,
             initial_output_name: spawn_output_name.clone(),
             presentation: Default::default(),
+            pending_resize: None,
             advertised_fractional_scale: 0.0,
         });
         self.idle_daemon.register_window(id);

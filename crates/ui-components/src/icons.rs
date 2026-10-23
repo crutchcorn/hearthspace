@@ -18,8 +18,10 @@ use xilem::{
 };
 
 mod geometry;
+mod glyph;
 mod kind;
 use geometry::Geometry;
+pub use glyph::IconGlyph;
 pub use kind::Icon;
 #[cfg(test)]
 mod tests;

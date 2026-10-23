@@ -153,6 +153,7 @@ impl App {
         }
         self.interrupt_pinch_zoom();
         let size = self.window_geometry_size(index);
+        self.windows[index].pending_resize = None;
         let state = &mut self.windows[index].presentation;
         state.update(fullscreen, maximized, size);
         if state.pinned() {

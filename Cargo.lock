@@ -2625,6 +2625,7 @@ version = "0.1.0"
 dependencies = [
  "accesskit_atspi_common",
  "chrono",
+ "dirs 6.0.0",
  "freedesktop-icons",
  "futures-util",
  "hearthspace-common",

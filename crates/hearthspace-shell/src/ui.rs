@@ -24,6 +24,8 @@ mod control_task;
 mod control_worker;
 mod corner_button;
 mod corners;
+mod desktop;
+mod desktop_item;
 mod dock;
 mod favorite_actions;
 mod favorite_events;

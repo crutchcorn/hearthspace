@@ -14,6 +14,7 @@ mod capture;
 mod client;
 mod clipboard;
 mod cursor;
+mod desktop;
 mod focus;
 mod handlers;
 mod idle;
@@ -121,6 +122,7 @@ struct ManagedWindow {
     initial_placement_done: bool,
     initial_output_name: Option<String>,
     presentation: presentation::WindowPresentation,
+    pending_resize: Option<windows::PendingResize>,
     /// Fractional scale most recently advertised to this window's surface tree.
     /// Compared each frame so the preferred scale is only re-sent when the
     /// window moves onto an output with a different scale (e.g. dragged across
@@ -184,6 +186,7 @@ impl ManagedSurface {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ManagedWindowKind {
     Normal,
+    DesktopItem,
     ShellBar,
     /// The launcher palette: a transient shell surface the shell opens below the
     /// bar to show app-search results as a dropdown.
@@ -216,14 +219,17 @@ struct DragState {
     window_id: u64,
     pointer_start: Point<f64, Logical>,
     window_start: CanvasPoint,
+    visible_start: Point<i32, Logical>,
 }
 
+#[derive(Clone, Copy)]
 struct ResizeState {
     window_id: u64,
     edges: ResizeEdges,
     pointer_start: Point<f64, Logical>,
-    initial_position: CanvasPoint,
     initial_content_size: Size<i32, Logical>,
+    initial_bounds: smithay::utils::Rectangle<i32, Logical>,
+    moved: bool,
 }
 
 enum HitTarget {
@@ -277,6 +283,7 @@ struct App {
     keyboard: KeyboardHandle<Self>,
     viewport_offset: CanvasPoint,
     layout_store: layout::LayoutStore,
+    desktop: desktop::State,
     viewport_scale: f64,
     viewport_animation: Option<ViewportAnimation>,
     overview: overview::Overview,
@@ -665,6 +672,7 @@ pub(in crate::compositor) fn initialize_app(
         viewport_offset,
         viewport_scale,
         layout_store,
+        desktop: Default::default(),
         viewport_animation: None,
         overview: overview::Overview::default(),
         window_switcher: switcher::WindowSwitcher::default(),

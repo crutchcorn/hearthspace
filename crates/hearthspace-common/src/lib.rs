@@ -1,7 +1,13 @@
 mod appearance;
+mod desktop;
 mod shell_corners;
 
 pub use appearance::{AccentColor, Appearance, ColorMode};
+pub use desktop::{
+    DESKTOP_ITEM_APP_ID, DESKTOP_ITEM_HEIGHT, DESKTOP_ITEM_MARGIN, DESKTOP_ITEM_WIDTH,
+    DESKTOP_SURFACE_HEIGHT, DESKTOP_SURFACE_WIDTH, MAX_DESKTOP_ITEMS, desktop_item_app_id,
+    desktop_item_id_from_app_id,
+};
 
 pub use shell_corners::{
     NOTIFICATION_CORNER_WIDTH, SHELL_CORNER_CLEARANCE, SHELL_CORNER_MARGIN, SHELL_CORNER_RADIUS,

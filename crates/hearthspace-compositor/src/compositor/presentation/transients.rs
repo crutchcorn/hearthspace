@@ -91,6 +91,7 @@ impl App {
         }
         let parent = self.window_canvas_rect(parent);
         let child = self.window_canvas_rect(index);
+        self.windows[index].pending_resize = None;
         self.windows[index].position =
             centered_canvas_position(parent, child, self.windows[index].position);
         self.request_redraw();

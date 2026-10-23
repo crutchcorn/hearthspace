@@ -13,6 +13,11 @@ windows rather than interacting with their contents. Click or touch outside the
 selected windows to clear the group and resume normal interaction. **Escape**
 also clears it and cancels any pending gathering.
 
+Hold **Alt** during a group drag to align the grabbed window's visible top-left
+corner with the canvas dot grid. Every member moves by the same amount, keeping
+their spacing intact. Pressing or releasing Alt updates alignment immediately,
+including while the pointer is still.
+
 The floating overlapping-window button beside the group, **Gather similar
 windows**, searches other open windows for related titles. Its moving highlight
 shows that the decision model is working. Related windows fly from their

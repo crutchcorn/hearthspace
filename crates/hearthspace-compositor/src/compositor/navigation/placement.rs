@@ -45,6 +45,7 @@ impl App {
             tracing::warn!(%error, "could not center new X11 window");
             return;
         }
+        self.windows[index].pending_resize = None;
         self.windows[index].position = point;
         self.request_redraw();
     }

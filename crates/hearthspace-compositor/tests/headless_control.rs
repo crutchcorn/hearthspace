@@ -29,6 +29,9 @@ mod canvas_zoom;
 #[path = "support/device_controls.rs"]
 mod device_controls;
 #[cfg(feature = "test-apps")]
+#[path = "support/grid_snapping.rs"]
+mod grid_snapping;
+#[cfg(feature = "test-apps")]
 #[path = "support/interactive.rs"]
 mod interactive;
 #[cfg(feature = "test-apps")]

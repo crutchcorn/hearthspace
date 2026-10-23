@@ -42,7 +42,7 @@ pub(super) fn windows(
         corner_window(
             output,
             ShellCorner::Canvas,
-            102.0,
+            150.0,
             canvas_view(state, output),
         ),
         corner_window(
@@ -137,8 +137,9 @@ pub(super) fn canvas_view(
         ShellCorner::Canvas,
         "Canvas tools",
         flex_row((
-            focus(super::canvas_map::map_button(output)),
+            focus(super::desktop::selection_button(state)),
             focus(super::window_group::button(&state.window_group)),
+            focus(super::canvas_map::map_button(output)),
         ))
         .main_axis_alignment(MainAxisAlignment::Center)
         .gap(4.0.px()),

@@ -132,6 +132,7 @@ impl App {
             if pinned && self.restore_window_for_group(id).is_err() {
                 continue;
             }
+            self.windows[index].pending_resize = None;
             if pinned {
                 let origin = crate::geometry::screen_to_canvas(
                     previous.loc.to_f64(),

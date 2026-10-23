@@ -44,8 +44,8 @@ fn notification_and_canvas_controls_open_their_own_panels() {
     ui.dispatch(&notifications);
     assert!(!ui.state.outputs[0].show_notifications);
 
-    let mut ui = Ui::new(state(), canvas, (102, 54));
-    for name in ["Canvas map", "Select window group"] {
+    let mut ui = Ui::new(state(), canvas, (150, 54));
+    for name in ["Select desktop items", "Select window group", "Canvas map"] {
         let bounds = ui
             .harness
             .access_node(ui.button(name))
@@ -53,7 +53,7 @@ fn notification_and_canvas_controls_open_their_own_panels() {
             .bounding_box()
             .unwrap();
         assert!(
-            bounds.x0 >= 0.0 && bounds.x1 <= 102.0 && bounds.y1 <= 54.0,
+            bounds.x0 >= 0.0 && bounds.x1 <= 150.0 && bounds.y1 <= 54.0,
             "{name}: {bounds:?}"
         );
     }
@@ -136,8 +136,12 @@ fn translucent_corners_keep_idle_buttons_clear_and_focus_contrasting() {
                 *ui.harness
                     .get_widget_with_id(button)
                     .get_prop::<Background>(),
-                Background::Color(xilem::Color::TRANSPARENT),
-                "{name} must leave the backdrop visible"
+                Background::Color(if *name == "Select desktop items" {
+                    components::ACCENT_SOFT
+                } else {
+                    xilem::Color::TRANSPARENT
+                }),
+                "{name} must preserve its idle or selected translucent surface"
             );
             ui.harness.focus_on(Some(button));
             assert_eq!(
@@ -169,7 +173,12 @@ fn translucent_corners_keep_idle_buttons_clear_and_focus_contrasting() {
         }
     }
     check(state(), notifications, 110, &["Notifications"]);
-    check(state(), canvas, 102, &["Canvas map", "Select window group"]);
+    check(
+        state(),
+        canvas,
+        150,
+        &["Select desktop items", "Select window group", "Canvas map"],
+    );
     check(
         state(),
         system,
@@ -272,20 +281,20 @@ fn corner_controls_remain_centered_when_the_surface_has_extra_width() {
         .unwrap();
     assert!(((bounds.x0 + bounds.x1) / 2.0 - 64.0).abs() < 1.0);
 
-    let ui = Ui::new(state(), canvas, (108, 54));
+    let ui = Ui::new(state(), canvas, (156, 54));
     let left = ui
         .harness
-        .access_node(ui.button("Canvas map"))
+        .access_node(ui.button("Select desktop items"))
         .unwrap()
         .bounding_box()
         .unwrap();
     let right = ui
         .harness
-        .access_node(ui.button("Select window group"))
+        .access_node(ui.button("Canvas map"))
         .unwrap()
         .bounding_box()
         .unwrap();
-    assert_eq!((left.x0 + right.x1) / 2.0, 54.0);
+    assert_eq!((left.x0 + right.x1) / 2.0, 78.0);
 }
 
 #[test]

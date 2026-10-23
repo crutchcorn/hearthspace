@@ -3,7 +3,9 @@ use std::time::{Duration, Instant};
 
 use smithay::utils::{Logical, Point, Rectangle, Size};
 
-use crate::geometry::{CanvasPoint, ease_out_cubic, interpolate_canvas_point};
+use crate::geometry::{
+    CanvasPoint, ease_out_cubic, grid::snap_coordinate, interpolate_canvas_point,
+};
 
 pub(super) use super::lasso::Lasso;
 const FLIGHT_DURATION: Duration = Duration::from_millis(440);
@@ -15,8 +17,42 @@ pub(super) enum Gesture {
     Drag {
         origin: Point<f64, Logical>,
         scale: f64,
+        anchor: Point<i32, Logical>,
         positions: Vec<(u64, CanvasPoint)>,
     },
+}
+
+/// Snap the grabbed member's visible origin, keeping one legal delta for every member.
+pub(super) fn drag_delta(
+    anchor: Point<i32, Logical>,
+    positions: &[(u64, CanvasPoint)],
+    delta: Point<f64, Logical>,
+    scale: f64,
+    snap: bool,
+) -> Point<f64, Logical> {
+    let axis = |anchor: i32, delta: f64, horizontal: bool| {
+        let (min, max) = positions.iter().fold(
+            (f64::NEG_INFINITY, f64::INFINITY),
+            |(min, max), (_, position)| {
+                let origin = f64::from(if horizontal { position.x } else { position.y });
+                (
+                    min.max(-1_000_000.0 - origin),
+                    max.min(1_000_000.0 - origin),
+                )
+            },
+        );
+        let anchor = f64::from(anchor);
+        if snap {
+            snap_coordinate(anchor + delta / scale, anchor + min, anchor + max) - anchor
+        } else {
+            (delta / scale).round().clamp(min, max)
+        }
+    };
+    (
+        axis(anchor.x, delta.x, true),
+        axis(anchor.y, delta.y, false),
+    )
+        .into()
 }
 
 pub(super) struct Flight {
@@ -80,6 +116,61 @@ pub(super) fn gather_target(
 mod tests {
     use super::*;
     use std::collections::BTreeSet;
+
+    #[test]
+    fn snapping_grabbed_visible_origin_preserves_group_spacing_and_alt_release() {
+        let positions = [
+            (1, CanvasPoint { x: 31, y: -11 }),
+            (2, CanvasPoint { x: 135, y: 93 }),
+        ];
+        // The grabbed client has an 8×6 shadow inset, excluded from its visible bounds.
+        let anchor = (39, -5).into();
+        let pointer_delta = (24.0, 9.0).into();
+        let snapped = drag_delta(anchor, &positions, pointer_delta, 1.5, true);
+        let a = moved_position(positions[0].1, snapped, 1.0);
+        let b = moved_position(positions[1].1, snapped, 1.0);
+        assert_eq!((a.x + 8, a.y + 6), (42, 14));
+        assert_eq!((b.x - a.x, b.y - a.y), (104, 104));
+        let released = drag_delta(anchor, &positions, pointer_delta, 1.5, false);
+        assert_eq!(
+            moved_position(positions[0].1, released, 1.0),
+            CanvasPoint { x: 47, y: -5 }
+        );
+    }
+
+    #[test]
+    fn snapped_group_motion_preserves_spacing_at_canvas_limits() {
+        let positions = [
+            (
+                1,
+                CanvasPoint {
+                    x: 999_900,
+                    y: -999_900,
+                },
+            ),
+            (
+                2,
+                CanvasPoint {
+                    x: 999_950,
+                    y: -999_950,
+                },
+            ),
+        ];
+        let delta = drag_delta(
+            (999_900, -999_900).into(),
+            &positions,
+            (1e15, -1e15).into(),
+            0.5,
+            true,
+        );
+        let a = moved_position(positions[0].1, delta, 1.0);
+        let b = moved_position(positions[1].1, delta, 1.0);
+        assert_eq!((b.x - a.x, b.y - a.y), (50, -50));
+        assert!(b.x <= 1_000_000 && b.y >= -1_000_000);
+        assert_eq!((a.x - 14).rem_euclid(28), 0);
+        assert_eq!((a.y - 14).rem_euclid(28), 0);
+    }
+
     #[test]
     fn group_motion_preserves_offsets_at_zoom_and_clamps_coordinates() {
         let delta = (90.0, -36.0).into();

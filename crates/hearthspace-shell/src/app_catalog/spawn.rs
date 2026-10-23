@@ -43,7 +43,7 @@ pub fn spawn_argv_with_options(
     Ok(())
 }
 
-fn launch_command(
+pub(crate) fn launch_command(
     argv: &[String],
     wayland_display: &str,
     envs: &[(&str, &str)],

@@ -184,7 +184,7 @@ impl App {
             .expect("serializable app catalog")
     }
 
-    fn xwayland_display_name(&self) -> Option<String> {
+    pub(in crate::compositor) fn xwayland_display_name(&self) -> Option<String> {
         #[cfg(feature = "xwayland")]
         {
             self.xdisplay

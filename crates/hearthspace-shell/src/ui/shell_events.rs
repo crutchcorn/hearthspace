@@ -71,6 +71,11 @@ impl ShellEvents {
                                 Event::Request(request) if request.control.is_none())
                             });
                         }
+                        if matches!(request, Event::Desktop(super::desktop::Event::Changed)) {
+                            pending.retain(|previous| {
+                                !matches!(previous, Event::Desktop(super::desktop::Event::Changed))
+                            });
+                        }
                         pending.push(request);
                     }
                 }
@@ -143,6 +148,7 @@ struct ShellRequest {
 enum Event {
     Request(ShellRequest),
     Gesture(super::favorite_events::GestureEvent),
+    Desktop(super::desktop::Event),
     RetryDrawing,
     ReloadFavorites,
 }
@@ -155,7 +161,9 @@ fn parse_event(bytes: &[u8]) -> Option<Event> {
     if value["version"].as_u64()? != 1 {
         return None;
     }
-    if value["action"].as_str()? == "favorite-gesture" {
+    if let Some(event) = super::desktop::parse_event(&value) {
+        Some(Event::Desktop(event))
+    } else if value["action"].as_str()? == "favorite-gesture" {
         super::favorite_events::parse(&value).map(Event::Gesture)
     } else {
         parse_request(bytes).map(Event::Request)
@@ -256,6 +264,7 @@ pub(super) fn shell_events_task()
         |state, event| match event {
             Event::Request(request) => apply_request(state, request),
             Event::Gesture(event) => super::favorite_events::apply(state, event),
+            Event::Desktop(event) => super::desktop::apply_event(state, event),
             Event::RetryDrawing => super::favorite_events::retry(state),
             Event::ReloadFavorites => super::favorite_events::reload(state),
         },

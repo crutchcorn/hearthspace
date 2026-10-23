@@ -128,7 +128,7 @@ pub(super) fn corner_size(
     output: Size<i32, Logical>,
 ) -> Size<i32, Logical> {
     let left_width = if corner.is_bottom() {
-        102
+        150
     } else {
         NOTIFICATION_CORNER_WIDTH
     };
@@ -198,15 +198,15 @@ mod tests {
         );
         assert_eq!(
             corner_size(ShellCorner::Canvas, None, output),
-            (102, 54).into()
+            (150, 54).into()
         );
         assert_eq!(
             corner_size(ShellCorner::Apps, None, output),
-            (146, 54).into()
+            (98, 54).into()
         );
         assert_eq!(
             corner_size(ShellCorner::Apps, Some((120, 48).into()), output),
-            (120, 54).into()
+            (98, 54).into()
         );
         assert_eq!(
             corner_size(ShellCorner::Apps, None, (10, 10).into()),

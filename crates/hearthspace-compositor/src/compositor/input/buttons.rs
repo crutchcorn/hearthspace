@@ -61,6 +61,9 @@ impl App {
             self.apply_pointer_motion(self.pointer_location, time);
             return;
         }
+        if self.desktop_pointer_button(button, state, time) {
+            return;
+        }
         if self.handle_overview_button(button, state) {
             return;
         }
@@ -79,6 +82,7 @@ impl App {
             && (self.drag.is_some() || self.resize.is_some())
         {
             debug!("ending pointer drag/resize from button release");
+            self.update_window_pointer_operation();
             self.drag = None;
             self.finish_resize();
             // A client-initiated move/resize established an implicit grab;
@@ -126,10 +130,12 @@ impl App {
                     if self.window_uses_output_coordinates(window_index) {
                         return;
                     }
+                    self.windows[window_index].pending_resize = None;
                     self.drag = Some(DragState {
                         window_id: self.windows[window_index].id,
                         pointer_start: self.raw_pointer_location,
                         window_start: self.windows[window_index].position,
+                        visible_start: self.window_canvas_rect(window_index).loc,
                     });
                     debug!(
                         window_id = self.windows[window_index].id,

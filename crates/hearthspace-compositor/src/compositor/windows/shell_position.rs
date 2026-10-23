@@ -103,7 +103,9 @@ impl App {
         window_index: usize,
     ) -> Point<i32, Physical> {
         match self.windows[window_index].kind {
-            ManagedWindowKind::Normal => self.content_screen_origin(window_index),
+            ManagedWindowKind::Normal | ManagedWindowKind::DesktopItem => {
+                self.content_screen_origin(window_index)
+            }
             ManagedWindowKind::ShellBar => self
                 .shell_bar_screen_origin(window_index)
                 .unwrap_or_else(|| Point::from((0, 0))),
