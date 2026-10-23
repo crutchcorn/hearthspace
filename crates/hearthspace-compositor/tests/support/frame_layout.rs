@@ -31,6 +31,8 @@ mod pointer_grab;
 mod popup_epoch;
 #[path = "frame_layout/popup_outside.rs"]
 mod popup_outside;
+#[path = "frame_layout/status_turn.rs"]
+mod status_turn;
 #[path = "frame_layout/titlebar.rs"]
 mod titlebar;
 #[path = "frame_layout/turn.rs"]

@@ -260,5 +260,8 @@ impl App {
 fn turns_as_toolbar(target: &LayoutTarget) -> bool {
     target.kind == TargetKind::Group
         || (target.kind == TargetKind::Widget
-            && matches!(target.id.as_str(), "tools" | "apps" | "tray"))
+            && matches!(
+                target.id.as_str(),
+                "tools" | "apps" | "tray" | "clock" | "notifications"
+            ))
 }
