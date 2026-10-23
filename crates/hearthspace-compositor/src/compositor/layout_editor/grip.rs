@@ -53,7 +53,7 @@ mod tests {
         };
         let anchor = Point { x: 212., y: 122. };
         let grip = ToolbarGrip::at(row, anchor, false);
-        // The clock remains horizontal, so this column is not a transpose of the row.
+        // Native reflow may change measurements beyond transposing the row.
         let pivot = grip.pivot(80., 198., true);
         assert!((pivot.x + 80. / 3.).abs() < 0.000_001);
         assert_eq!(pivot.y, 99.);

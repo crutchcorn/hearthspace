@@ -41,8 +41,8 @@ fn frame_layout_expanded_controls_keep_native_width_and_canvas_preserves_screen_
         json!({"surface":"frame","edge":"left","position":0.5}),
     );
     let state = layout(&compositor);
-    assert_eq!(widget(&state, "clock")["rect"]["width"], 94.0, "{state}");
-    assert_eq!(widget(&state, "clock")["rect"]["height"], 44.0, "{state}");
+    assert_eq!(widget(&state, "clock")["rect"]["width"], 44.0, "{state}");
+    assert_eq!(widget(&state, "clock")["rect"]["height"], 94.0, "{state}");
     assert_eq!(widget(&state, "wifi")["rect"]["width"], 100.0, "{state}");
     command(
         &compositor,

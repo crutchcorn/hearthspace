@@ -108,7 +108,10 @@ impl App {
             }
             TargetKind::Widget => native
                 .map(|(width, height)| {
-                    if matches!(target.target.id.as_str(), "tools" | "apps" | "tray") {
+                    if matches!(
+                        target.target.id.as_str(),
+                        "tools" | "apps" | "tray" | "clock" | "notifications"
+                    ) {
                         let short = width.min(height);
                         let long = width.max(height);
                         if vertical {
@@ -128,7 +131,12 @@ impl App {
                         "apps" => 54.,
                         _ => 44.,
                     };
-                    if vertical && matches!(target.target.id.as_str(), "tools" | "apps" | "tray") {
+                    if vertical
+                        && matches!(
+                            target.target.id.as_str(),
+                            "tools" | "apps" | "tray" | "clock" | "notifications"
+                        )
+                    {
                         (if grouped { 44. } else { 54. }, long)
                     } else {
                         (long, if grouped { 44. } else { 54. })

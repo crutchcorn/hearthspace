@@ -9,6 +9,8 @@ mod compact;
 mod resize;
 #[path = "startup_tests.rs"]
 mod startup;
+#[path = "status_tests.rs"]
+mod status;
 #[path = "tray_tests.rs"]
 mod tray;
 

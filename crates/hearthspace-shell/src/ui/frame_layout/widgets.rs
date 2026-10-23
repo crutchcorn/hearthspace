@@ -56,7 +56,7 @@ pub(super) fn size(
             - 4.0)
             .max(0.0),
         "notifications" if expanded => {
-            super::text_metrics::width(&notification_text(state), 11.0) + 47.0
+            super::text_metrics::width(&notification_text(state), 13.0) + 47.0
         }
         "clock" if expanded => (super::text_metrics::width(&clock(format), 14.0) + 24.0).max(70.0),
         "wifi" if expanded => (super::text_metrics::width("Wi-Fi", 11.0) + 43.0).max(44.0),
@@ -74,7 +74,7 @@ pub(super) fn size(
         _ => 44.0,
     };
     let padding = if grouped { 0.0 } else { 10.0 };
-    if vertical && matches!(id, "tools" | "apps" | "tray") {
+    if vertical && matches!(id, "tools" | "apps" | "tray" | "clock" | "notifications") {
         (44.0 + padding, width + padding)
     } else {
         (width + padding, 44.0 + padding)
@@ -175,20 +175,34 @@ pub(super) fn content(
     };
     let id = id.to_owned();
     let key = output.key().to_owned();
-    let width = size(state, &id, vertical, expanded, true, format, false).0;
+    let (width, height) = size(state, &id, vertical, expanded, true, format, false);
+    let vertical_text = vertical && matches!(id.as_str(), "clock" | "notifications");
     let show_icon = id != "clock" || !expanded;
     let caption = expanded.then_some(detail).flatten();
     let contents = flex_row((
         show_icon
             .then(|| icon(glyph, if id == "battery" { 19.0 } else { 18.0 }).label(name.clone())),
-        caption.map(|text| {
-            label(text)
+        caption.map(|text| -> Box<AnyWidgetView<ShellState>> {
+            let font_size = match id.as_str() {
+                "clock" => 14.0,
+                "notifications" => 13.0,
+                _ => 11.0,
+            };
+            let text_width = super::text_metrics::width(&text, font_size);
+            let text = label(text)
                 .font("Liberation Sans")
                 .weight(FontWeight::MEDIUM)
-                .text_size(if id == "clock" { 14.0 } else { 11.0 })
-                .line_break_mode(LineBreaking::Clip)
+                .text_size(font_size)
+                .width(text_width.px())
+                .line_break_mode(LineBreaking::Clip);
+            if vertical_text {
+                super::vertical_text::vertical_text(text).boxed()
+            } else {
+                text.boxed()
+            }
         }),
     ))
+    .direction(axis(vertical_text))
     .gap(if id == "notifications" { 9.0 } else { 5.0 }.px());
     let control = components::button_surface(
         components::semantic_button(
@@ -207,11 +221,13 @@ pub(super) fn content(
         )
         .padding(if show_icon {
             Padding::all(10.0.px())
+        } else if vertical_text {
+            Padding::from_vh(12.0.px(), 0.0.px())
         } else {
             Padding::from_vh(0.0.px(), 12.0.px())
         })
         .width(width.px())
-        .height(44.0.px())
+        .height(height.px())
         .corner_radius(15.0.px()),
         components::ButtonSurface::Bare,
         selected,

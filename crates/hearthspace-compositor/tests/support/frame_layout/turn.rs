@@ -24,10 +24,12 @@ fn widget(state: &Value, id: &str) -> Value {
         .clone()
 }
 
-fn anchored_column(state: &Value, width: f64) {
+fn anchored_column(state: &Value, clock_height: f64) {
+    let width = 54.;
+    let height = 330. + clock_height;
     let rect = &group(state)["rect"];
     assert_eq!(rect["width"], width, "{state}");
-    assert_eq!(rect["height"], 374., "{state}");
+    assert_eq!(rect["height"], height, "{state}");
     // The horizontal grip is18px below its54px body: across=4/3, not clamped1.
     let pivot_x = -width / 3.;
     assert!(
@@ -35,7 +37,7 @@ fn anchored_column(state: &Value, width: f64) {
         "{rect}"
     );
     assert!(
-        (rect["y"].as_f64().unwrap() + 187. - 400.).abs() < 0.001,
+        (rect["y"].as_f64().unwrap() + height / 2. - 400.).abs() < 0.001,
         "{rect}"
     );
     assert_eq!(widget(state, "tools")["rect"]["width"], 44.);
@@ -44,7 +46,8 @@ fn anchored_column(state: &Value, width: f64) {
     assert_eq!(widget(state, "apps")["rect"]["height"], 88.);
     assert_eq!(widget(state, "tray")["rect"]["width"], 44.);
     assert_eq!(widget(state, "tray")["rect"]["height"], 88.);
-    assert_eq!(widget(state, "clock")["rect"]["height"], 44.);
+    assert_eq!(widget(state, "clock")["rect"]["width"], 44.);
+    assert_eq!(widget(state, "clock")["rect"]["height"], clock_height);
     assert_eq!(group(state)["grip"]["width"], 24.);
     assert_eq!(group(state)["grip"]["height"], 28.);
 }
@@ -140,7 +143,7 @@ fn frame_layout_mixed_group_turn_waits_for_native_reflow_and_preserves_external_
     action(&compositor, format!("pointer-motion-abs {x} {y}"));
     action(&compositor, "pointer-button-down 272");
     action(&compositor, "pointer-motion-abs 20 400");
-    anchored_column(&layout(&compositor), 90.);
+    anchored_column(&layout(&compositor), 80.);
     assert_eq!(
         client.size(tools),
         (132, 44),
@@ -153,21 +156,21 @@ fn frame_layout_mixed_group_turn_waits_for_native_reflow_and_preserves_external_
         "pending reflow consumed the turn's duration"
     );
 
-    client.resize(clock, (110, 44));
-    anchored_column(&layout(&compositor), 120.);
+    client.resize(clock, (44, 110));
+    anchored_column(&layout(&compositor), 110.);
     client.resize(tools, (44, 132));
     client.resize(apps, (44, 88));
     client.resize(tray, (44, 88));
     let before_backing = layout(&compositor);
-    anchored_column(&before_backing, 120.);
+    anchored_column(&before_backing, 110.);
     assert_eq!(before_backing["animating"], true);
-    client.resize(backing, (120, 374));
+    client.resize(backing, (54, 440));
     assert_eq!(layout(&compositor)["animating"], true);
     client.resize(grip_surface, (24, 28));
     let deadline = Instant::now() + Duration::from_secs(3);
     loop {
         let state = layout(&compositor);
-        anchored_column(&state, 120.);
+        anchored_column(&state, 110.);
         if state["animating"] == false {
             break;
         }
