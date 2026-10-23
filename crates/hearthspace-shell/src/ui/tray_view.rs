@@ -31,12 +31,12 @@ pub(super) fn strip(
 
 pub(super) fn frame_strip(
     output: &ShellOutputInstance,
-    state: &ShellState,
+    state: &TrayState,
     vertical: bool,
     chain: &super::frame_layout::focus::Chain,
     scroll_in_parent: bool,
 ) -> impl WidgetView<ShellState> + use<> {
-    let icons = tray_state::strip_visible(state, output.key())
+    let icons = tray_state::visible(&state.snapshot)
         .enumerate()
         .map(|(index, item)| {
             let mut icon = tray_button::icon(output.key(), item);

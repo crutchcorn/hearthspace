@@ -40,7 +40,7 @@ pub(super) fn windows(state: &ShellState) -> Vec<WindowView<ShellState>> {
                 && layout.layout.placement(&target) != ObjectPlacement::Hidden
                 && (*id != "battery" || state.battery.is_some())
                 && (*id != "tray"
-                    || crate::ui::tray_state::strip_visible(state, &layout.output)
+                    || crate::ui::tray_state::visible(&state.tray.snapshot)
                         .next()
                         .is_some());
             let mut size = widgets::size(
@@ -61,11 +61,8 @@ pub(super) fn windows(state: &ShellState) -> Vec<WindowView<ShellState>> {
                     size.0 = part.rect.width.max(44.0);
                 }
             }
-            if *id == "tray" {
-                size = widgets::tray_size(state, &layout.output, vertical, grouped);
-                if !grouped {
-                    size = super::tray::size(layout, vertical, size);
-                }
+            if *id == "tray" && !grouped {
+                size = super::tray::size(layout, vertical, size);
             }
             let content = widgets::content(
                 state,

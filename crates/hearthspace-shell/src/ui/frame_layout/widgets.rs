@@ -81,22 +81,6 @@ pub(super) fn size(
     }
 }
 
-pub(super) fn tray_size(
-    state: &ShellState,
-    output: &str,
-    vertical: bool,
-    grouped: bool,
-) -> (f64, f64) {
-    let width =
-        (38.0 * crate::ui::tray_state::strip_visible(state, output).count() as f64 - 4.0).max(0.0);
-    let padding = if grouped { 0.0 } else { 10.0 };
-    if vertical {
-        (44.0 + padding, width + padding)
-    } else {
-        (width + padding, 44.0 + padding)
-    }
-}
-
 pub(super) fn content(
     state: &ShellState,
     output: &ShellOutputInstance,

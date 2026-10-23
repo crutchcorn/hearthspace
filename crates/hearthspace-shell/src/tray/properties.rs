@@ -73,7 +73,6 @@ pub(super) fn from_properties(key: ItemKey, properties: &Properties) -> Result<I
     Ok(Item {
         view: TrayItem {
             key,
-            id,
             title: limit(&title),
             tooltip: limit(&tooltip),
             status,

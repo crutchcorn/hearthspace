@@ -1,16 +1,15 @@
-//! Real private D-Bus delivery from dock input through the existing tray menu UI.
+//! The original live SNI menu remains usable alongside a matching pinned dock app.
 use super::*;
 use crate::tray::tests::support::{Bus, Host, peer, register, signal, wait_action};
 
 #[tokio::test]
-async fn merged_dock_menu_click_reaches_the_original_dbusmenu_and_fallback_keeps_context() {
+async fn live_tray_beside_running_pinned_app_keeps_original_dbusmenu_and_context_actions() {
     let bus = Bus::start();
     let mut host = Host::start(&bus);
     let peer_state = crate::tray::tests::support::state();
     let connection = peer(&bus, peer_state.clone()).await;
     register(&connection, "/StatusNotifierItem").await;
     let snapshot = host.wait(|snapshot| snapshot.items.len() == 1).await;
-    assert_eq!(snapshot.items[0].id, "fixture");
     let handle = host.handle.clone();
     let mut updates = host.updates.clone();
     let runtime = tokio::runtime::Handle::current();
@@ -21,12 +20,14 @@ async fn merged_dock_menu_click_reaches_the_original_dbusmenu_and_fallback_keeps
         install(dir.path(), "fixture", "Icon=steam\n");
         state.catalog = AppCatalog::load_from_data_dirs(vec![dir.path().to_owned()]);
         state.windows[0].app_id = "fixture".into();
+        state.favorites.store.add("fixture.desktop").unwrap();
         state.tray.snapshot = snapshot;
         state.tray.handle = Some(handle);
         let mut ui = Ui::new(state, view, (500, 300));
-        assert_eq!(tray_state::strip_visible(&ui.state, "eDP-1").count(), 0);
+        assert_eq!(tray_state::visible(&ui.state.tray.snapshot).count(), 1);
+        assert_ne!(ui.button("Fixture"), ui.button("Switch to Steam, pinned"));
         ui.harness
-            .mouse_click_on(ui.button("Switch to Steam"), Some(PointerButton::Secondary));
+            .mouse_click_on(ui.button("Fixture"), Some(PointerButton::Secondary));
         ui.dispatch(&view);
         assert!(ui.state.outputs[0].tray.open);
         ui.state.tray.snapshot =
@@ -61,8 +62,8 @@ async fn merged_dock_menu_click_reaches_the_original_dbusmenu_and_fallback_keeps
         runtime.block_on(wait_action(&peer_state, "event:1:clicked"));
         assert!(!ui.state.outputs[0].tray.open);
 
-        // Removing the exported menu restores the SNI icon and its legacy
-        // ContextMenu route, including when the dock app remains present.
+        // Removing the exported menu keeps the same SNI icon and its legacy
+        // ContextMenu route while the dock app remains present.
         peer_state.lock().unwrap().menu_path = "/".into();
         ui.state.tray.snapshot = runtime.block_on(async {
             signal(
@@ -86,7 +87,7 @@ async fn merged_dock_menu_click_reaches_the_original_dbusmenu_and_fallback_keeps
         });
         ui.rebuild(&view);
         ui.dispatch(&view);
-        assert_eq!(tray_state::strip_visible(&ui.state, "eDP-1").count(), 1);
+        assert_eq!(tray_state::visible(&ui.state.tray.snapshot).count(), 1);
         ui.harness
             .mouse_click_on(ui.button("Fixture"), Some(PointerButton::Secondary));
         ui.dispatch(&view);

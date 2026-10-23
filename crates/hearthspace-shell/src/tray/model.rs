@@ -35,8 +35,6 @@ pub struct TrayPixmap {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TrayItem {
     pub key: ItemKey,
-    /// Stable SNI application identity; never infer this from title or artwork.
-    pub id: String,
     pub title: String,
     pub tooltip: String,
     pub status: TrayStatus,

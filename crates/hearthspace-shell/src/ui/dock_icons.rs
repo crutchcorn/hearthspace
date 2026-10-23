@@ -95,7 +95,7 @@ fn image(pixmap: TrayPixmap) -> ImageBrush {
 }
 
 #[derive(Clone, PartialEq)]
-pub(in crate::ui) enum Glyph {
+pub(super) enum Glyph {
     App {
         image: Option<ImageBrush>,
         count: usize,
@@ -203,7 +203,7 @@ impl Widget for IconWidget {
         painter: &mut Painter<'_>,
     ) {
         let palette = *props.get::<components::Palette>(ctx.property_cache());
-        self.glyph.paint(self.width, 0.0, &palette, painter);
+        self.glyph.paint(self.width, &palette, painter);
     }
 
     fn accessibility_role(&self) -> Role {
@@ -224,13 +224,7 @@ impl Widget for IconWidget {
 }
 
 impl Glyph {
-    pub(in crate::ui) fn paint(
-        &self,
-        width: f64,
-        top: f64,
-        palette: &components::Palette,
-        painter: &mut Painter<'_>,
-    ) {
+    fn paint(&self, width: f64, palette: &components::Palette, painter: &mut Painter<'_>) {
         let stroke = Stroke::new(1.6);
         let center = width / 2.0;
         match self {
@@ -245,27 +239,27 @@ impl Glyph {
                         image,
                         Affine::translate((
                             (width - f64::from(image.image.width) * scale) / 2.0,
-                            top + (30.0 - f64::from(image.image.height) * scale) / 2.0,
+                            (30.0 - f64::from(image.image.height) * scale) / 2.0,
                         )) * Affine::scale(scale),
                     );
                 } else {
                     // A recognizable app window replaces missing theme assets.
                     painter
                         .stroke(
-                            Rect::new(center - 10.0, top + 6.0, center + 10.0, top + 24.0),
+                            Rect::new(center - 10.0, 6.0, center + 10.0, 24.0),
                             &stroke,
                             palette.text,
                         )
                         .draw();
                     painter
                         .stroke(
-                            Line::new((center - 10.0, top + 11.0), (center + 10.0, top + 11.0)),
+                            Line::new((center - 10.0, 11.0), (center + 10.0, 11.0)),
                             &stroke,
                             palette.text,
                         )
                         .draw();
                     painter
-                        .fill(Circle::new((center - 7.0, top + 8.5), 0.8), palette.text)
+                        .fill(Circle::new((center - 7.0, 8.5), 0.8), palette.text)
                         .draw();
                 }
                 let color = if *focused {
@@ -276,9 +270,7 @@ impl Glyph {
                 let dots = (*count).min(3);
                 for index in 0..dots {
                     let x = center + (index as f64 - (dots - 1) as f64 / 2.0) * 6.0;
-                    painter
-                        .fill(Circle::new((x, top + 32.0), 1.5), color)
-                        .draw();
+                    painter.fill(Circle::new((x, 32.0), 1.5), color).draw();
                 }
             }
             Glyph::Next => {
@@ -294,14 +286,14 @@ impl Glyph {
                 for x in centers {
                     painter
                         .stroke(
-                            Line::new((x - span, top + 12.0), (x + span, top + 18.0)),
+                            Line::new((x - span, 12.0), (x + span, 18.0)),
                             &stroke,
                             palette.text,
                         )
                         .draw();
                     painter
                         .stroke(
-                            Line::new((x + span, top + 18.0), (x - span, top + 24.0)),
+                            Line::new((x + span, 18.0), (x - span, 24.0)),
                             &stroke,
                             palette.text,
                         )

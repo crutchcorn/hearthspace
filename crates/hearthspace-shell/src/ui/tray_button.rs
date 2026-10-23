@@ -18,11 +18,6 @@ use xilem::{
 #[derive(Clone, Debug, PartialEq)]
 pub(super) enum Target {
     Item(ItemKey),
-    Dock {
-        app: String,
-        item: ItemKey,
-        menu_path: String,
-    },
     Menu(ItemKey, String, i32),
     Back,
     Close,
@@ -175,15 +170,6 @@ impl View<ShellState, (), ViewCtx> for ButtonView {
         if action.target != self.target {
             return MessageResult::Action(());
         }
-        if let Target::Dock {
-            app,
-            item,
-            menu_path,
-        } = &self.target
-        {
-            super::dock::tray::event(state, &self.output, app, item, menu_path, action.action);
-            return MessageResult::Action(());
-        }
         if let Target::DesktopContext(generation, submenu, index) = self.target {
             super::desktop::context::button_event(state, generation, submenu, index, action.action);
             return MessageResult::Action(());
@@ -260,7 +246,6 @@ impl View<ShellState, (), ViewCtx> for ButtonView {
                 Target::DesktopContext(_, _, _) => {
                     unreachable!("desktop menus are dispatched above")
                 }
-                Target::Dock { .. } => unreachable!("dock actions are dispatched above"),
             },
         }
         MessageResult::Action(())

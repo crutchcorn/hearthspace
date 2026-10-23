@@ -1,27 +1,20 @@
 use super::*;
-use crate::ui::tray_widget::ButtonAction;
 
 #[test]
-fn merged_menu_anchors_to_apps_on_the_initiating_output_and_delivers_once() {
+fn original_tray_menu_anchors_to_system_tray_on_its_output_and_delivers_once() {
     let dir = tempfile::tempdir().unwrap();
     let (mut state, _worker) = fixture(dir.path());
     let (send, mut receive) = tokio::sync::mpsc::channel(4);
     state.frame_layout.requests = Some(send);
     let item = state.tray.snapshot.items[0].clone();
-    dock::tray::event(
-        &mut state,
-        "DP-1",
-        "steam_steam.desktop",
-        &item.key,
-        "/Menu",
-        ButtonAction::Context,
-    );
+    state.favorites.store.add("steam_steam.desktop").unwrap();
+    tray_state::open_menu(&mut state, "DP-1", &item.key);
     assert!(!state.outputs[1].tray.open);
     let request = receive.try_recv().unwrap();
     let anchor: serde_json::Value =
         serde_json::from_str(request.command.strip_prefix("frame-popup-anchor ").unwrap()).unwrap();
     assert_eq!(anchor["output"], "DP-1");
-    assert_eq!(anchor["target"]["id"], "apps");
+    assert_eq!(anchor["target"]["id"], "tray");
     assert_eq!(
         anchor["app_id"],
         hearthspace_common::tray_menu_app_id_for_output("DP-1")
@@ -37,41 +30,25 @@ fn merged_menu_anchors_to_apps_on_the_initiating_output_and_delivers_once() {
 }
 
 #[test]
-fn anchor_reply_cannot_open_reconnected_removed_replaced_or_hidden_menu() {
-    for change in ["reconnect", "remove", "path", "hidden", "closed"] {
-        let dir = tempfile::tempdir().unwrap();
-        let (mut state, _worker) = fixture(dir.path());
-        let (send, mut receive) = tokio::sync::mpsc::channel(4);
-        state.frame_layout.requests = Some(send);
-        let item = state.tray.snapshot.items[0].clone();
-        dock::tray::event(
-            &mut state,
-            "eDP-1",
-            "steam_steam.desktop",
-            &item.key,
-            "/Menu",
-            ButtonAction::Context,
-        );
-        let now = std::time::Instant::now();
-        let opening = receive
-            .try_recv()
-            .unwrap()
-            .open
-            .unwrap()
-            .acknowledge(1, now);
-        match change {
-            "reconnect" => state.tray.snapshot.items[0].key.generation += 1,
-            "remove" => state.tray.snapshot.items.clear(),
-            "path" => state.tray.snapshot.items[0].menu_path = Some("/Replacement".into()),
-            "hidden" => state.frame_layout.snapshot.outputs[0]
-                .layout
-                .set_placement(&LayoutTarget::widget("apps"), ObjectPlacement::Hidden),
-            "closed" => state.windows.clear(),
-            _ => unreachable!(),
-        }
-        opening.deliver(&mut state, now);
-        assert!(!state.outputs[0].tray.open, "{change}");
-    }
+fn pending_tray_menu_still_opens_after_the_dock_app_closes() {
+    let dir = tempfile::tempdir().unwrap();
+    let (mut state, _worker) = fixture(dir.path());
+    let (send, mut receive) = tokio::sync::mpsc::channel(4);
+    state.frame_layout.requests = Some(send);
+    let item = state.tray.snapshot.items[0].clone();
+    tray_state::open_menu(&mut state, "eDP-1", &item.key);
+    let now = std::time::Instant::now();
+    let opening = receive
+        .try_recv()
+        .unwrap()
+        .open
+        .unwrap()
+        .acknowledge(1, now);
+    state.windows.clear();
+    opening.deliver(&mut state, now);
+    assert!(state.outputs[0].tray.open);
+    assert_eq!(state.outputs[0].tray.item, Some(item.key));
+    assert_eq!(state.outputs[0].tray.menu_path, item.menu_path);
 }
 
 #[test]
@@ -79,7 +56,7 @@ fn held_and_queued_context_actions_cannot_open_a_reconnected_item() {
     let dir = tempfile::tempdir().unwrap();
     let (state, _worker) = fixture(dir.path());
     let mut ui = Ui::new(state, view, (500, 300));
-    let button = ui.button("Switch to Steam");
+    let button = ui.button("Localized status title");
     ui.harness.mouse_move_to(button);
     ui.harness
         .mouse_button_press(Some(PointerButton::Secondary));
@@ -103,14 +80,14 @@ fn held_and_queued_context_actions_cannot_open_a_reconnected_item() {
 }
 
 #[test]
-fn touch_hold_uses_the_same_menu_without_also_focusing_or_launching() {
+fn touch_hold_on_original_tray_opens_menu_without_focusing_or_launching_dock_app() {
     use masonry::core::{PointerButtonEvent, PointerEvent, PointerInfo, PointerState, PointerType};
     let dir = tempfile::tempdir().unwrap();
     let (state, _worker) = fixture(dir.path());
     let mut ui = Ui::new(state, view, (500, 300));
     let bounds = ui
         .harness
-        .access_node(ui.button("Switch to Steam"))
+        .access_node(ui.button("Localized status title"))
         .unwrap()
         .bounding_box()
         .unwrap();

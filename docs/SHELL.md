@@ -14,8 +14,9 @@ matching favorite. Activating a running app focuses and reveals an existing wind
 on the infinite canvas; repeated activation cycles through that app's windows.
 The active app is highlighted, dots indicate running windows, and closed favorites
 have no dot. Apps without desktop icons have a window symbol. A page button keeps
-every app reachable when space is limited. Matching application status menus share
-their visible dock icon; unmatched or unavailable dock menus retain their tray icon.
+every app reachable when space is limited. Application tray icons remain in the
+top system group with their original status menus, including for apps that also
+appear in the dock.
 
 Each panel opens beside its control. Top attachments open downward, bottom
 attachments upward, and side attachments inward. Canvas controls use the side

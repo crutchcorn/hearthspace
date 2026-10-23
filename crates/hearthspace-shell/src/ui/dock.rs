@@ -19,14 +19,12 @@ mod applications;
 use applications::{App, Key, apps};
 
 #[path = "dock_icons.rs"]
-pub(in crate::ui) mod icons;
+mod icons;
 #[path = "dock_identity.rs"]
 mod identity;
 #[cfg(test)]
 #[path = "dock_tests.rs"]
 mod tests;
-#[path = "dock_tray.rs"]
-pub(in crate::ui) mod tray;
 
 pub(super) use icons::task;
 
@@ -175,26 +173,20 @@ pub(super) fn frame_view(
             let focused = app.focused();
             // Track the native button before type erasure introduces a
             // Passthrough widget. Frame focus must land on the action target.
-            let control = tray::button(state, output.key(), app).map_or_else(
-                || {
-                    super::frame_layout::focus::item(
-                        dock_button(
-                            icons::Glyph::App {
-                                image,
-                                count: app.windows.len(),
-                                focused,
-                            },
-                            app.label(),
-                            focused,
-                            BUTTON_WIDTH,
-                            move |state| activate(state, &output_key, &key),
-                        ),
-                        chain,
-                        index,
-                    )
-                    .boxed()
-                },
-                |button| super::frame_layout::focus::item(button, chain, index).boxed(),
+            let control = super::frame_layout::focus::item(
+                dock_button(
+                    icons::Glyph::App {
+                        image,
+                        count: app.windows.len(),
+                        focused,
+                    },
+                    app.label(),
+                    focused,
+                    BUTTON_WIDTH,
+                    move |state| activate(state, &output_key, &key),
+                ),
+                chain,
+                index,
             );
             identity::item(app.key.clone(), control).boxed()
         })

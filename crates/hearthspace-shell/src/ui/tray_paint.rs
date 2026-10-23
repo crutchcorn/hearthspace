@@ -18,37 +18,19 @@ pub(super) fn paint(
         return;
     }
     let selected = appearance.selected || ctx.is_focus_target() || ctx.is_hovered();
-    let radius = if appearance.dock.is_some() { 10.0 } else { 6.0 };
     if selected {
-        let background = if appearance.dock.is_some() && !appearance.selected {
-            palette.raised_button_hover
-        } else {
-            palette.accent_soft
-        };
         painter
-            .fill(RoundedRect::from_rect(bounds, radius), background)
+            .fill(RoundedRect::from_rect(bounds, 6.0), palette.accent_soft)
             .draw();
     }
     if ctx.is_focus_target() {
         painter
             .stroke(
-                RoundedRect::from_rect(bounds.inset(-1.0), radius),
+                RoundedRect::from_rect(bounds.inset(-1.0), 6.0),
                 &Stroke::new(1.0),
                 palette.focus_ring_on_glass,
             )
             .draw();
-    }
-    if let Some(glyph) = &appearance.dock {
-        glyph.paint(bounds.width(), 4.0, palette, painter);
-        if appearance.attention {
-            painter
-                .fill(
-                    Circle::new((bounds.width() - 6.0, 6.0), 3.0),
-                    palette.accent,
-                )
-                .draw();
-        }
-        return;
     }
     let color = if appearance.enabled {
         palette.text

@@ -7,16 +7,6 @@ impl AppCatalog {
     /// Explicit metadata takes priority over whitespace-compacted desktop IDs
     /// and executable-name fallbacks. Equally ranked matches are ambiguous.
     pub fn app_for_window(&self, identity: &str) -> Option<&DesktopApp> {
-        self.app_for_identity(identity, u8::MAX)
-    }
-
-    /// Status items may share a dock control only through a canonical desktop
-    /// identity or explicit metadata, never executable or compacted-ID guesses.
-    pub fn app_for_status_item(&self, identity: &str) -> Option<&DesktopApp> {
-        self.app_for_identity(identity, 5)
-    }
-
-    fn app_for_identity(&self, identity: &str, max_rank: u8) -> Option<&DesktopApp> {
         if identity.is_empty() {
             return None;
         }
@@ -26,9 +16,6 @@ impl AppCatalog {
             let Some(rank) = match_rank(app, identity) else {
                 continue;
             };
-            if rank > max_rank {
-                continue;
-            }
             if rank < best_rank {
                 best = Some(app);
                 best_rank = rank;

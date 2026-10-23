@@ -38,7 +38,6 @@ fn node(id: i32, title: &str) -> TrayMenuItem {
 pub(super) fn item(id: u64) -> TrayItem {
     TrayItem {
         key: key(id),
-        id: format!("app{id}"),
         title: format!("App {id}"),
         tooltip: "Tray tooltip".into(),
         status: TrayStatus::Active,

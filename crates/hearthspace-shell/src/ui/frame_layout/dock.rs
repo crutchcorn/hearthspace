@@ -1,24 +1,10 @@
-//! Use the same output-local allocation for dock controls and tray suppression.
-use super::{ShellState, widget_key};
+//! Allocate dock controls within each output's current frame geometry.
+use super::ShellState;
 use hearthspace_common::frame_layout::{LayoutTarget, ObjectPlacement};
 
 #[cfg(test)]
 #[path = "dock_tests.rs"]
 mod tests;
-
-pub(in crate::ui) fn menu_width(state: &ShellState, output: &str) -> Option<f64> {
-    if !state.frame_layout.visible
-        || state.frame_layout.snapshot.editing
-        || state.frame_layout.snapshot.confirmation.is_some()
-        || !state
-            .frame_layout
-            .windows
-            .contains_key(&widget_key(output, "apps"))
-    {
-        return None;
-    }
-    width(state, output)
-}
 
 pub(in crate::ui) fn width(state: &ShellState, output: &str) -> Option<f64> {
     let layout = state

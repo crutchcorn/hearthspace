@@ -86,7 +86,7 @@ fn every_active_app_has_an_icon_without_a_container_button() {
         let strip = |state: &ShellState| {
             sized_box(tray_view::frame_strip(
                 &state.outputs[0],
-                state,
+                &state.tray,
                 vertical,
                 &chain,
                 false,

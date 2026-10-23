@@ -8,7 +8,7 @@ mod races;
 pub(crate) mod support;
 
 #[test]
-fn steam_properties_keep_stable_id_separate_from_title_and_icon() {
+fn steam_properties_preserve_original_title_icon_and_menu() {
     use super::properties::from_properties;
     use zbus::zvariant::{OwnedObjectPath, Value};
     let properties = support::Props::from([
@@ -34,7 +34,6 @@ fn steam_properties_keep_stable_id_separate_from_title_and_icon() {
     )
     .unwrap()
     .view;
-    assert_eq!(item.id, "steam");
     assert_eq!(item.title, "Localized Steam title");
     assert_eq!(item.icon.name.as_deref(), Some("steam_tray_mono"));
     assert!(!item.item_is_menu);

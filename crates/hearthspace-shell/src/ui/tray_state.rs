@@ -57,15 +57,6 @@ pub(super) fn visible(snapshot: &TraySnapshot) -> impl Iterator<Item = &TrayItem
         .filter(|item| item.status != TrayStatus::Passive)
 }
 
-/// Strip filtering must not remove items from the live menu/action snapshot.
-pub(super) fn strip_visible<'a>(
-    state: &'a ShellState,
-    output: &str,
-) -> impl Iterator<Item = &'a TrayItem> + use<'a> {
-    let merged = super::dock::tray::merged_items(state, output);
-    visible(&state.tray.snapshot).filter(move |item| !merged.contains(&item.key))
-}
-
 #[cfg(test)]
 pub(super) fn capacity(width: f64) -> usize {
     // The caller reserves clock, battery, and desktop controls.

@@ -24,14 +24,11 @@ Passive indicators are hidden. Active and attention-requesting indicators remain
 visible. App exit removes its icon and closes an open menu belonging to it.
 Restarting an app registers a fresh item without leaving a duplicate behind.
 The bar shows the app icons directly, without an extra tray button or list.
-When a status item's explicit ID unambiguously matches one visible app in the
-dock, its menu shares that dock icon. Primary activation still opens or focuses
-the app; secondary click, Menu / Shift+F10, or touch-and-hold opens its original
-status menu beside the dock. The separate tray icon returns when the dock is
-hidden, the app is on another page, its menu is unavailable, or the match is
-ambiguous. Each output makes this choice from its own visible dock.
+Application tray icons remain in the top system group even when the same app is
+running or pinned in the bottom dock. Each tray icon retains its original artwork,
+status, and menu; the dock icon launches the app or focuses its windows.
 
-Other active icons remain in the strip. Detached strips stay within the output and
+All active icons remain in the strip. Detached strips stay within the output and
 support wheel scrolling, touch dragging, and keyboard focus reveal; grouped strips
 use the frame group's scrolling. Named PNG/SVG icons, private app icon themes,
 and supplied pixel images are supported. Standard status names fall back to their symbolic

@@ -1,4 +1,4 @@
-use super::super::{Output, Rect, Snapshot, Widget as Part, apply};
+use super::super::{Output, Rect, Snapshot, Widget as Part, apply, widget_key};
 use super::*;
 use crate::{
     app_catalog::AppCatalog,
@@ -10,7 +10,7 @@ use crate::{
         window_catalog::RunningWindow,
     },
 };
-use hearthspace_common::frame_layout::{FrameEdge, FrameGroup};
+use hearthspace_common::frame_layout::FrameEdge;
 use masonry::{
     accesskit::{Action, ActionRequest, Role, TreeId},
     core::{
@@ -23,8 +23,6 @@ use xilem::{
     view::{flex_col, sized_box},
 };
 
-#[path = "dock_fallback_tests.rs"]
-mod fallback_tests;
 #[path = "dock_focus_tests.rs"]
 mod focus_tests;
 #[path = "dock_popup_tests.rs"]
@@ -56,7 +54,6 @@ fn fixture(path: &std::path::Path) -> (ShellState, TrayWorker) {
         focused: false,
     }];
     let mut item = crate::ui::tray_tests::item(1);
-    item.id = "steam".into();
     item.title = "Localized status title".into();
     item.icon.name = Some("steam_tray_mono".into());
     state.tray.snapshot.items = vec![item];
@@ -99,16 +96,12 @@ fn view(
             false,
             &Default::default(),
         ),
-        tray_view::frame_strip(output, state, false, &Default::default(), false),
+        tray_view::frame_strip(output, &state.tray, false, &Default::default(), false),
         output
             .tray
             .open
             .then(|| tray_view::panel(output, &state.tray)),
     )))
-}
-
-fn fallback(state: &ShellState, output: &str) -> bool {
-    tray_state::strip_visible(state, output).any(|item| item.id == "steam")
 }
 
 #[test]
@@ -157,14 +150,15 @@ fn closed_pin_with_status_menu_launches_on_its_output() {
 }
 
 #[test]
-fn exact_snap_identity_replaces_status_icon_and_all_menu_inputs_keep_primary_focus() {
+fn running_pinned_app_keeps_original_tray_menu_separate_from_dock_focus() {
     use std::{
         io::{Read, Write},
         os::unix::net::UnixListener,
         thread,
     };
     let dir = tempfile::tempdir().unwrap();
-    let (state, _worker) = fixture(dir.path());
+    let (mut state, _worker) = fixture(dir.path());
+    state.favorites.store.add("steam_steam.desktop").unwrap();
     let listener = UnixListener::bind(&state.command_socket).unwrap();
     let server = thread::spawn(move || {
         let (mut stream, _) = listener.accept().unwrap();
@@ -174,13 +168,10 @@ fn exact_snap_identity_replaces_status_icon_and_all_menu_inputs_keep_primary_foc
         stream.write_all(b"ok\n").unwrap();
     });
     let mut ui = Ui::new(state, view, (500, 300));
-    assert!(!fallback(&ui.state, "eDP-1"));
-    assert!(!ids(&ui.harness).iter().any(|id| {
-        ui.harness
-            .access_node(*id)
-            .is_some_and(|node| node.label().as_deref() == Some("Localized status title"))
-    }));
-    let button = ui.button("Switch to Steam");
+    let dock = ui.button("Switch to Steam, pinned");
+    let button = ui.button("Localized status title");
+    assert_ne!(dock, button);
+    assert_eq!(tray_state::visible(&ui.state.tray.snapshot).count(), 1);
     assert!(
         ui.harness
             .access_node(button)
@@ -216,9 +207,72 @@ fn exact_snap_identity_replaces_status_icon_and_all_menu_inputs_keep_primary_foc
     tray_state::dismiss(&mut ui.state, "eDP-1");
     ui.rebuild(&view);
     ui.harness
-        .mouse_click_on(button, Some(PointerButton::Primary));
+        .mouse_click_on(dock, Some(PointerButton::Primary));
     ui.dispatch(&view);
     assert!(ui.state.windows[0].focused);
     assert!(!ui.state.outputs[0].tray.open);
     server.join().unwrap();
+}
+
+#[test]
+fn live_tray_remains_in_system_group_while_app_is_pinned_closed_and_unpinned() {
+    let dir = tempfile::tempdir().unwrap();
+    let (state, _worker) = fixture(dir.path());
+    let layout = &state.frame_layout.snapshot.outputs[0].layout;
+    let tray = LayoutTarget::widget("tray");
+    assert_eq!(layout.group_for(&tray).unwrap().id, "system");
+    assert_eq!(layout.placement(&tray).edge(), Some(FrameEdge::Top));
+    assert_eq!(
+        layout.placement(&LayoutTarget::widget("apps")).edge(),
+        Some(FrameEdge::Bottom)
+    );
+    let mut ui = Ui::new(state, view, (500, 300));
+    let tray = ui.button("Localized status title");
+    ui.button("Switch to Steam");
+    ui.state.favorites.store.add("steam_steam.desktop").unwrap();
+    ui.rebuild(&view);
+    ui.dispatch(&view);
+    ui.button("Switch to Steam, pinned");
+    assert_eq!(ui.button("Localized status title"), tray);
+
+    ui.state.windows.clear();
+    ui.rebuild(&view);
+    ui.dispatch(&view);
+    ui.button("Open Steam, pinned");
+    assert_eq!(ui.button("Localized status title"), tray);
+
+    ui.state
+        .favorites
+        .store
+        .remove("steam_steam.desktop")
+        .unwrap();
+    ui.rebuild(&view);
+    ui.dispatch(&view);
+    assert_eq!(dock::desired_width(&ui.state), 0.0);
+    assert_eq!(ui.button("Localized status title"), tray);
+}
+
+#[test]
+fn running_app_keeps_the_tray_surface_available_on_every_output() {
+    let dir = tempfile::tempdir().unwrap();
+    let (mut state, _worker) = fixture(dir.path());
+    state.favorites.store.add("steam_steam.desktop").unwrap();
+    let (sender, updates) = tokio::sync::watch::channel(Vec::new());
+    state.frame_layout.availability = Some(sender);
+    super::super::reconcile(&state);
+    let updates = updates.borrow();
+    assert!(updates.contains(&("eDP-1".into(), "tray".into(), true)));
+    assert!(updates.contains(&("DP-1".into(), "tray".into(), true)));
+    assert_eq!(
+        super::super::widgets::size(
+            &state,
+            "tray",
+            false,
+            false,
+            true,
+            Default::default(),
+            false
+        ),
+        (34.0, 44.0)
+    );
 }

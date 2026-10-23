@@ -125,7 +125,7 @@ fn running_apps(state: &mut ShellState, count: u64, dock_width: f64) {
 }
 
 #[test]
-fn native_forward_focus_activates_unmerged_dock_and_shift_tab_exits_its_boundary() {
+fn native_forward_focus_activates_dock_and_shift_tab_exits_its_boundary() {
     let dir = tempfile::tempdir().unwrap();
     let (mut state, _worker) = fixture(dir.path());
     state.tray.snapshot.items.clear();
@@ -147,7 +147,7 @@ fn native_forward_focus_activates_unmerged_dock_and_shift_tab_exits_its_boundary
 }
 
 #[test]
-fn native_frame_focus_on_merged_button_delivers_menu_key_and_primary_enter() {
+fn native_frame_focus_keeps_dock_activation_independent_of_tray_menu() {
     let dir = tempfile::tempdir().unwrap();
     let (mut state, _worker) = fixture(dir.path());
     let mut requests = requests(&mut state);
@@ -166,24 +166,11 @@ fn native_frame_focus_on_merged_button_delivers_menu_key_and_primary_enter() {
     );
     key(&mut ui, NamedKey::ContextMenu);
     ui.dispatch(&frame_view);
-    let request = std::iter::from_fn(|| requests.try_recv().ok())
-        .find(|request| request.open.is_some())
-        .expect("dock context menu anchor");
-    let value: serde_json::Value =
-        serde_json::from_str(request.command.strip_prefix("frame-popup-anchor ").unwrap()).unwrap();
-    assert_eq!(value["target"]["id"], "apps");
-    let now = Instant::now();
-    request
-        .open
-        .unwrap()
-        .acknowledge(1, now)
-        .deliver(&mut ui.state, now);
-    assert!(ui.state.outputs[0].tray.open);
-    assert_eq!(
-        ui.state.outputs[0].tray.item.as_ref(),
-        Some(&ui.state.tray.snapshot.items[0].key)
+    assert!(
+        std::iter::from_fn(|| requests.try_recv().ok()).all(|request| request.open.is_none()),
+        "dock Menu key must not open the separate tray menu"
     );
-    ui.rebuild(&frame_view);
+    assert!(!ui.state.outputs[0].tray.open);
     key(&mut ui, NamedKey::Enter);
     ui.dispatch(&frame_view);
     assert!(ui.state.windows[0].focused);

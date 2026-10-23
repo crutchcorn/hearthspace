@@ -10,10 +10,6 @@ pub struct TrayHandle {
 }
 
 impl TrayHandle {
-    pub fn is_available(&self) -> bool {
-        !self.sender.is_closed()
-    }
-
     pub fn try_send(&self, command: TrayCommand) -> Result<(), String> {
         self.sender.try_send(command).map_err(|error| match error {
             mpsc::error::TrySendError::Full(_) => "Tray application is busy; try again".into(),
