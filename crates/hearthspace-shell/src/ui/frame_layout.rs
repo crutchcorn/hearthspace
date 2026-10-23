@@ -27,6 +27,7 @@ mod text_metrics;
 pub(super) mod tool_menu;
 mod tooltip;
 mod tray;
+mod vertical_text;
 mod widgets;
 mod worker;
 

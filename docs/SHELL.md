@@ -88,7 +88,10 @@ available; it does not invent nearby networks or connection state.
 [Brightness and Sound](AUDIO_AND_BRIGHTNESS.md) open separate slider dropdowns
 using the existing hardware readings. Battery details appear in the Battery
 dropdown. Missing hardware has an explicit unavailable state. The clock dropdown
-shows the current month.
+shows the current month. Its **Date format** menu offers Time only, Weekday,
+Short date, Numeric date and Long date, with live previews. Choosing a format
+returns to the calendar and saves that output's clock preference. Time remains
+24-hour; the same choices are available in Change layout.
 
 ## Change layout
 
@@ -104,9 +107,11 @@ top and bottom bars. Custom placements remain intact. Canvas tools collapse to a
 menu button. Long groups scroll along their edge, and keyboard focus reveals the
 focused control without moving the canvas.
 
-Drag toward an edge or one of its corner guides to attach an item. Hold Alt to
-align the along-edge position with the canvas grid. Dropping onto another frame
-item forms an ordered group. Separate releases one member; Ungroup releases all.
+Drag toward an edge or one of its corner guides to attach an item. Corner drops
+preserve the tool's current horizontal or vertical orientation. Guides and drop
+highlights sit beneath frame tools; each tool retains its own selection outline.
+Hold Alt to align the along-edge position with the canvas grid. Dropping onto
+another frame item forms an ordered group. Separate releases one member; Ungroup releases all.
 Moving a group onto Canvas or Background releases its members at their displayed
 positions. Removing a group hides its controls and returns its windows and desktop
 items to the canvas; it does not close applications or delete files.
@@ -145,6 +150,11 @@ Unlocked `status.shell_corners` describes legacy corner surfaces when present, w
 frame surfaces instead. Use `layout-status` for their measured bounds, orientation,
 visibility and group identity, plus pinned windows, editor selection and animation
 state. These bounds use global output-logical coordinates.
+
+`frame-clock-format {"output":"eDP-1","value":"long"}` changes an active output's
+clock format without opening Change layout. Values are `none`, `weekday`, `short`,
+`numeric` and `long`. It uses the normal navigation guards and persists with that
+output's layout; invalid outputs or formats are rejected.
 
 Unlocked `status.shell_panels` lists visible panel bounds as `kind`, `output`,
 `x`, `y`, `width`, and `height`. Kinds are `search`, `notifications`, `map`,

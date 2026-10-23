@@ -101,18 +101,10 @@ impl App {
             x: point.x - view.x,
             y: point.y - view.y,
         });
-        let original = drag
-            .layouts
-            .get(&drag.target.output)
-            .map(|l| l.placement(&drag.target.target));
         let placement = if matches!(target.target.kind, TargetKind::Widget | TargetKind::Group) {
-            frame_layout::widget_frame_drop_target(
-                local,
-                view,
-                72.,
-                original.and_then(|p| p.edge()),
-                pointer,
-            )
+            // Match the orientation shown by the latest drag preview, including any
+            // turns made since pickup. The saved placement is only for cancellation.
+            frame_layout::widget_frame_drop_target(local, view, 72., drag.edge, pointer)
         } else {
             frame_layout::frame_drop_target(local, view, 72., pointer)
         };
@@ -234,12 +226,8 @@ impl App {
             .map(|p| p.target)
     }
     fn finish_canvas_widget_drop(&mut self, drag: &Drag) {
-        let original_vertical = super::super::turns_as_toolbar(&drag.target.target)
-            && drag.layouts.get(&drag.target.output).is_some_and(|l| {
-                l.placement(&drag.target.target)
-                    .edge()
-                    .is_some_and(|e| e.is_vertical())
-            });
+        let original_vertical =
+            super::super::turns_as_toolbar(&drag.target.target) && drag.original_vertical;
         let (width, height) = self
             .frame_output_rect(&drag.target.output)
             .map(|view| self.layout_target_size(&drag.target, false, view))

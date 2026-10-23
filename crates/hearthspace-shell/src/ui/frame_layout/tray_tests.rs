@@ -9,6 +9,9 @@ use masonry::{
 };
 use xilem::style::Style;
 
+#[path = "tray_centering_tests.rs"]
+mod centering;
+
 fn tray_state(vertical: bool) -> ShellState {
     let mut state = state();
     state.tray.snapshot.items = (1..=12).map(crate::ui::tray_tests::item).collect();

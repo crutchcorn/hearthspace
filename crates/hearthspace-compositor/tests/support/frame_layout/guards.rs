@@ -21,6 +21,7 @@ fn reject_queued_actions(
     }
     let after = layout(compositor);
     assert_eq!(after["pinned_windows"], before["pinned_windows"]);
+    assert_eq!(after["outputs"], before["outputs"]);
     assert_eq!(after["focus_request"], before["focus_request"]);
     assert_eq!(client.focus(), focused);
 }
@@ -67,7 +68,14 @@ fn frame_layout_queued_external_actions_preserve_editor_modal_search_and_switche
         ),
     );
     assert_eq!(client.focus(), Some(clock));
-    let queued = [format!("frame-reveal {id}"), next];
+    let queued = [
+        format!("frame-reveal {id}"),
+        next,
+        format!(
+            "frame-clock-format {}",
+            json!({"output":output,"value":"long"})
+        ),
+    ];
 
     action(&compositor, "layout-tool");
     let opened = layout(&compositor);

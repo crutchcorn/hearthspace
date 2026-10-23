@@ -273,6 +273,6 @@ fn running_app_keeps_the_tray_surface_available_on_every_output() {
             Default::default(),
             false
         ),
-        (34.0, 44.0)
+        (44.0, 44.0)
     );
 }

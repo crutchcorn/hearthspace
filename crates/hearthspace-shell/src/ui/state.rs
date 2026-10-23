@@ -57,6 +57,7 @@ pub(super) struct ShellOutputInstance {
     pub(super) show_power: bool,
     pub(super) show_controls: bool,
     pub(super) quick_panel: super::quick_panel::Kind,
+    pub(super) clock_formats: super::quick_clock::State,
     pub(super) osd: Option<super::control_osd::Osd>,
     pub(super) confirm_logout: bool,
     pub(super) show_notifications: bool,

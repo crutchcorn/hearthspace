@@ -165,7 +165,13 @@ impl App {
             .iter()
             .map(|window| (window.id, window.position))
             .collect();
-        let edge = self.target_placement(&target).edge();
+        // A pending turn can still display the previous orientation. Seed the drag
+        // from the captured pose, rather than its not-yet-visible destination.
+        let edge = self
+            .target_placement(&target)
+            .edge()
+            .filter(|edge| edge.is_vertical() == original_vertical)
+            .or(original_vertical.then_some(frame_layout::FrameEdge::Left));
         let affected: Vec<_> = self
             .layout_editor
             .placed

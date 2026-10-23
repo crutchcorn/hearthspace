@@ -5,13 +5,54 @@ use xilem::masonry::{
     parley::{FontContext, FontFamily, FontWeight, Layout, LayoutContext},
 };
 
-#[derive(Default)]
 struct Metrics {
     fonts: FontContext,
     layouts: LayoutContext<BrushIndex>,
     layout: Layout<BrushIndex>,
     widths: BTreeMap<(String, u32), f64>,
 }
+impl Default for Metrics {
+    fn default() -> Self {
+        Self {
+            fonts: font_context(),
+            layouts: LayoutContext::default(),
+            layout: Layout::default(),
+            widths: BTreeMap::new(),
+        }
+    }
+}
+
+#[cfg(not(test))]
+fn font_context() -> FontContext {
+    FontContext::default()
+}
+
+#[cfg(test)]
+fn font_context() -> FontContext {
+    use xilem::masonry::{
+        parley::fontique::{Collection, CollectionOptions, FallbackKey, Script},
+        peniko::Blob,
+        testing::ROBOTO,
+    };
+    // Masonry's harness disables system fonts and installs this Latin fallback.
+    // Measure with that same font environment when testing native view geometry.
+    let mut fonts = FontContext {
+        collection: Collection::new(CollectionOptions {
+            system_fonts: false,
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let families = fonts
+        .collection
+        .register_fonts(Blob::new(std::sync::Arc::new(ROBOTO)), None);
+    fonts.collection.append_fallbacks(
+        FallbackKey::new(Script::from_bytes(*b"Latn"), None),
+        families.iter().map(|(family, _)| *family),
+    );
+    fonts
+}
+
 thread_local! { static METRICS: RefCell<Metrics> = RefCell::new(Metrics::default()); }
 
 pub(super) fn width(text: &str, size: f32) -> f64 {

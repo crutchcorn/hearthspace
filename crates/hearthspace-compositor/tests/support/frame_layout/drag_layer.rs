@@ -33,7 +33,9 @@ fn assert_visible_controls(compositor: &HeadlessCompositor) {
             .find(|widget| widget["id"] == id)
             .unwrap();
         let rect = &widget["rect"];
-        let x = (rect["x"].as_f64().unwrap() + rect["width"].as_f64().unwrap() / 2.) as usize;
+        // Keep the sample away from the external grip's soft shadow on a narrow
+        // vertical group. An incorrectly stacked backing still covers this point.
+        let x = (rect["x"].as_f64().unwrap() + rect["width"].as_f64().unwrap() / 4.) as usize;
         let y = (rect["y"].as_f64().unwrap() + rect["height"].as_f64().unwrap() / 2.) as usize;
         let offset = (y * info.width as usize + x) * stride;
         let actual = &pixels[offset..offset + 3];
@@ -97,9 +99,18 @@ fn frame_layout_held_group_keeps_native_controls_above_late_mapped_backing() {
         .unwrap()
         .to_owned();
     let mut client = connect(&compositor);
-    for (id, size, color) in [("clock", (70, 44), CLOCK), ("wifi", (44, 44), WIFI)] {
-        client.add(frame_widget_app_id(Some(&output), id), size, (0, 0), color);
-    }
+    let clock = client.add(
+        frame_widget_app_id(Some(&output), "clock"),
+        (70, 44),
+        (0, 0),
+        CLOCK,
+    );
+    client.add(
+        frame_widget_app_id(Some(&output), "wifi"),
+        (44, 44),
+        (0, 0),
+        WIFI,
+    );
     // Real shell groups map their shared material separately from the controls.
     let backing = client.add(
         frame_group_app_id(Some(&output), "visible-controls"),
@@ -126,7 +137,8 @@ fn frame_layout_held_group_keeps_native_controls_above_late_mapped_backing() {
     assert_visible_controls(&compositor);
 
     action(&compositor, "pointer-motion-abs 20 400");
-    client.resize(backing, (80, 102));
+    client.resize(clock, (44, 70));
+    client.resize(backing, (54, 128));
     client.resize(grip, (24, 28));
     assert_eq!(group(&layout(&compositor))["orientation"], "vertical");
     assert_visible_controls(&compositor);

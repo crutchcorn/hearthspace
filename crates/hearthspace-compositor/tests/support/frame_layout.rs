@@ -3,6 +3,10 @@ use super::navigation::{action, keys, query};
 use super::shell_panels::connect;
 use super::*;
 use serde_json::{Value, json};
+#[path = "frame_layout/clock_format.rs"]
+mod clock_format;
+#[path = "frame_layout/corner_orientation.rs"]
+mod corner_orientation;
 #[path = "frame_layout/desktop_layers.rs"]
 mod desktop_layers;
 #[path = "frame_layout/drag_layer.rs"]
@@ -13,6 +17,8 @@ mod geometry;
 mod group_members;
 #[path = "frame_layout/guards.rs"]
 mod guards;
+#[path = "frame_layout/guide_layers.rs"]
+mod guide_layers;
 #[path = "frame_layout/input.rs"]
 mod input;
 #[path = "frame_layout/member_hit.rs"]
@@ -25,6 +31,8 @@ mod pointer_grab;
 mod popup_epoch;
 #[path = "frame_layout/popup_outside.rs"]
 mod popup_outside;
+#[path = "frame_layout/status_turn.rs"]
+mod status_turn;
 #[path = "frame_layout/titlebar.rs"]
 mod titlebar;
 #[path = "frame_layout/turn.rs"]

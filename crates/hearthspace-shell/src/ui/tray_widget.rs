@@ -30,6 +30,8 @@ pub(super) struct Appearance {
     pub enabled: bool,
     pub selected: bool,
     pub autofocus: bool,
+    /// Finish the opening gesture before handing focus to another control.
+    pub activate_on_key_release: bool,
     pub menu: bool,
     pub separator: bool,
     pub submenu: bool,
@@ -48,6 +50,7 @@ impl Default for Appearance {
             enabled: true,
             selected: false,
             autofocus: false,
+            activate_on_key_release: false,
             menu: false,
             separator: false,
             submenu: false,
@@ -194,6 +197,16 @@ impl Widget for TrayButton {
         let TextEvent::Keyboard(event) = event else {
             return;
         };
+        if self.appearance.activate_on_key_release
+            && (event.key == Key::Named(NamedKey::Enter)
+                || matches!(&event.key, Key::Character(key) if key == " "))
+        {
+            if event.state.is_up() {
+                self.submit(ctx, ButtonAction::Activate);
+            }
+            ctx.set_handled();
+            return;
+        }
         if !event.state.is_down() {
             return;
         }

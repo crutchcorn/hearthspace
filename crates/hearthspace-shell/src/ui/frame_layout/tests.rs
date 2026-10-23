@@ -5,10 +5,14 @@ use xilem::{WidgetView, masonry::accesskit::Role, view::sized_box};
 
 #[path = "compact_tests.rs"]
 mod compact;
+#[path = "../quick_clock_tests.rs"]
+mod quick_clock;
 #[path = "resize_tests.rs"]
 mod resize;
 #[path = "startup_tests.rs"]
 mod startup;
+#[path = "status_tests.rs"]
+mod status;
 #[path = "tray_tests.rs"]
 mod tray;
 

@@ -272,6 +272,8 @@ pub fn frame_drop_target(
     Some(ObjectPlacement::Frame { edge, position })
 }
 
+/// Corner drops keep the incoming preview's axis; ordinary edges may turn it.
+/// `current_edge` must follow the active drag, rather than its saved starting placement.
 pub fn widget_frame_drop_target(
     bounds: Rect,
     viewport: Rect,
@@ -376,3 +378,7 @@ pub fn snap_frame_placement(
     let snapped = (((current + origin) / grid).round() * grid - origin).clamp(start, end);
     ObjectPlacement::frame(edge, (snapped - start) / (end - start))
 }
+
+#[cfg(test)]
+#[path = "corner_tests.rs"]
+mod corner_tests;

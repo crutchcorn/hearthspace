@@ -25,6 +25,12 @@ struct Settings {
 }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
+struct ClockFormat {
+    output: String,
+    value: hearthspace_common::frame_layout::ClockDateFormat,
+}
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct Focus {
     output: String,
     target: LayoutTarget,
@@ -101,6 +107,26 @@ impl CalloopData {
             return Some(ControlReply::Err("layout editing is inactive".into()));
         }
         let result = (|| -> Result<(), String> {
+            if let Some(value) = text.strip_prefix("frame-clock-format ") {
+                self.state.check_navigation_available()?;
+                let value: ClockFormat =
+                    serde_json::from_str(value).map_err(|_| "invalid clock format")?;
+                if self.state.frame_output_rect(&value.output).is_none() {
+                    return Err("unknown clock output".into());
+                }
+                let layout = self
+                    .state
+                    .layout_editor
+                    .layouts
+                    .get_mut(&value.output)
+                    .ok_or("unknown clock output")?;
+                if layout.clock_date_format != value.value {
+                    layout.clock_date_format = value.value;
+                    self.state.reconcile_layout_editor();
+                    self.state.layout_changed();
+                }
+                return Ok(());
+            }
             if let Some(value) = text.strip_prefix("frame-focus-region ") {
                 let value: FocusRegion =
                     serde_json::from_str(value).map_err(|_| "invalid frame focus region")?;

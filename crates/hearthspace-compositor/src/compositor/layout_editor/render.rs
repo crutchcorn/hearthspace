@@ -1,4 +1,4 @@
-//! Reference guide fills sit below work; outlines sit above the edited frame.
+//! Guides sit below frame tools; selection outlines follow their owning objects.
 use super::{App, Rect, Target, overlays::OverlayShape};
 use hearthspace_common::{
     canvas_search::motion::{ease_out, opacity_ease},

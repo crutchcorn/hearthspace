@@ -22,6 +22,7 @@ pub(super) enum Target {
     Back,
     Close,
     DesktopContext(u64, bool, usize),
+    ClockFormats,
 }
 
 pub(super) struct ButtonView {
@@ -174,6 +175,10 @@ impl View<ShellState, (), ViewCtx> for ButtonView {
             super::desktop::context::button_event(state, generation, submenu, index, action.action);
             return MessageResult::Action(());
         }
+        if self.target == Target::ClockFormats {
+            super::quick_clock::button_event(state, &self.output, action.action);
+            return MessageResult::Action(());
+        }
         match action.action {
             ButtonAction::MenuAnchor(_) => {}
             ButtonAction::Hover(hovered) => {
@@ -246,6 +251,7 @@ impl View<ShellState, (), ViewCtx> for ButtonView {
                 Target::DesktopContext(_, _, _) => {
                     unreachable!("desktop menus are dispatched above")
                 }
+                Target::ClockFormats => unreachable!("clock format trigger is dispatched above"),
             },
         }
         MessageResult::Action(())
