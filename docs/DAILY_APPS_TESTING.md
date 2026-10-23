@@ -194,6 +194,21 @@ cgroup. Earlier failed attempts and their cleanup evidence remain available;
 their fixture corrections are covered by regressions. This worktree validation
 does not install or replace the deployed release.
 
+After integration with the upstream CSD grab and focus-recovery changes, the
+entire Firefox workflow passed again on 2026-10-23 in `native-firefox-olut1zg5`
+under the same evidence root and hardware configuration. All nine recorded
+session binaries match the successful `native-gtk-o006m9ss` run. Cleanup again
+restored tty2, removed the owned profile and runtime, and left no service process
+or cgroup.
+
+The separate `native-touch-drag-eq0q_2mn` run passed decorated-terminal movement
+and Firefox CSD movement at canvas scales 1.0 and 0.8, including continued drag,
+release/repeat, edge resize, second-contact cancellation, and device removal.
+It used the same binaries and completed the same VT, client, device, profile,
+and runtime cleanup. Its unit retained a failed status because shutdown tried to
+stop an application-anchor unit that was already unloaded; the compositor exited
+normally and the final service had PID 0 and no cgroup.
+
 ### Interactive application checks
 
 Launch `dev.hearthspace.NativeFirefoxProbe.desktop` through the agent's `launch`

@@ -93,6 +93,31 @@ passed for all 191 Python files. Logs are retained in the same evidence root's
 `validation-6gh7jrje` directory. Native Firefox acceptance is recorded in
 [daily application testing](DAILY_APPS_TESTING.md).
 
+### Integration with compositor-owned CSD grabs
+
+Rebase validation on 2026-10-23 retained the upstream move/resize grab and focus
+recovery behavior from `eb5e391`. GTK authority tests now require a consumed
+release after compositor takeover, followed by pointer re-entry and a usable
+new click. A real-client regression keeps a dialog's original touch drag alive
+through its parent's maximize and restore requests.
+
+The combined build passed rustfmt, Clippy with warnings denied, the full
+workspace/all-target build, and 1,661 Rust tests across 39 targets. The full
+566-test Python E2E run had one observer failure: a quiet intermediate audio
+value was mistaken for the final slider position. The repaired observer waits
+for the explicit 75% endpoint in both backend state and visible text before
+testing Right to 76%. Its regression fails with the former observer, all three
+new cases pass, and the complete controls workflow passed its isolated rerun
+with the original deadline. The other 565 E2E cases passed unchanged. The final
+unit run completed 569 tests with only the 14 opt-in E2E cases skipped; Ruff
+lint and formatting passed for all 192 Python files.
+
+On the same Intel/i915 host, `native-gtk-o006m9ss` repeated all 108 GTK 3, GTK 4,
+and generic transitions successfully. Cleanup restored tty2 and removed the
+owned clients, devices, runtime, and service processes. Evidence is beneath the
+same recovery root: `validation-oeqz75j_` contains full checks, and
+`rebase-kds6v9b7` contains the observer negative control and passing rerun.
+
 ### Earlier touch movement repair
 
 GTK can send `xdg_toplevel.unset_fullscreen` immediately before its titlebar
@@ -100,8 +125,11 @@ GTK can send `xdg_toplevel.unset_fullscreen` immediately before its titlebar
 treated this redundant request as a state change, cancelling the touch-emulated
 pointer press before Smithay could validate the move. Redundant presentation
 requests now acknowledge the client without interrupting input or replacing
-pending geometry. Actual state/output changes retain their cancellation path,
-and move/resize serial, seat, and window validation remain intact.
+pending geometry. Presentation changes affecting the focused window stop canvas
+pinch handling while preserving a delivered touch pointer sequence, including
+one moving a transient dialog. Background maximize requests wait for focus before
+changing canvas interaction. Move/resize serial, seat, and window validation
+remain intact.
 
 The failure was reproduced with GNOME Calculator 50.0 (GTK 4.22.4) on the physical
 GPD laptop, Linux 7.0.0-38-generic, AMD Radeon 880M/890M with amdgpu, and eDP-1 at
