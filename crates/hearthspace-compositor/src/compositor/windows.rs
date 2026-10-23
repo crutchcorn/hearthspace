@@ -748,10 +748,7 @@ pub(super) fn window_app_id(surface: &ManagedSurface) -> Option<String> {
     match surface {
         ManagedSurface::Xdg(surface) => toplevel_app_id(surface),
         #[cfg(feature = "xwayland")]
-        ManagedSurface::X11(surface) => {
-            let class = surface.class();
-            (!class.trim().is_empty()).then_some(class)
-        }
+        ManagedSurface::X11(surface) => super::xwayland::identity::app_id(surface),
     }
 }
 

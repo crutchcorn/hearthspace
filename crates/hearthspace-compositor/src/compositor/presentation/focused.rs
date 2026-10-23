@@ -2,6 +2,24 @@
 use crate::compositor::App;
 
 impl App {
+    /// The titlebar button restores floating geometry on its second activation.
+    /// The keyboard focused-view toggle retains its separate layered behavior.
+    pub(in crate::compositor) fn toggle_window_maximize_button(
+        &mut self,
+        id: u64,
+    ) -> Result<(), String> {
+        let window = self
+            .windows
+            .iter()
+            .find(|window| window.id == id)
+            .ok_or_else(|| format!("unknown window {id}"))?;
+        if window.presentation.focused_view {
+            self.user_window_presentation(id, Some(false), Some(false))
+        } else {
+            self.toggle_window_focus_view(id)
+        }
+    }
+
     pub(in crate::compositor) fn toggle_window_focus_view(
         &mut self,
         id: u64,

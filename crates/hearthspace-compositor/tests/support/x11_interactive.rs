@@ -10,6 +10,10 @@ mod assertions;
 mod cancellation;
 #[path = "x11_interactive/client.rs"]
 mod client;
+#[path = "x11_interactive/identity.rs"]
+mod identity;
+#[path = "x11_interactive/presentation.rs"]
+mod presentation;
 #[path = "x11_interactive/touch.rs"]
 mod touch;
 use assertions::*;

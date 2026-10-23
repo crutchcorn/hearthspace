@@ -31,10 +31,11 @@ bounds and saved restore position together.
 The server title bar's expand button enters **focused view** instead. The window
 fills its output at native scale, retains its title bar, and uses square corners.
 The canvas stays still while the application receives input. Click the button
-again, or double-click the header, to return to ordinary canvas maximization;
-another header double-click restores the original window. Super+Shift+F offers
-the same focused-view action from the keyboard. Frame-attached windows use both
-header actions to expand or tuck at their existing edge.
+again to restore the original floating size and position. Double-clicking the
+header instead returns to ordinary canvas maximization; another header
+double-click restores the original window. Super+Shift+F switches between focused
+view and canvas maximization. Frame-attached windows use both header actions to
+expand or tuck at their existing edge.
 
 Application maximize requests also enter focused view. Their restore requests
 return to the original floating size. This includes native Wayland and XWayland
@@ -87,13 +88,20 @@ a four-pixel gap and six pixels of padding at the right edge. Painting and hit
 testing use the same rectangles; canvas zoom scales both, while output-pinned
 windows retain their native logical size.
 
+Titlebar artwork uses the same installed desktop-entry and icon-theme resolution
+as desktop shortcuts. X11 class and instance identify applications; windows that
+provide neither can use the executable name obtained from the X server's client
+credentials. Window titles and client-supplied PID properties are not identity
+fallbacks. Ambiguous catalog matches do not select another application's icon.
+
 Click or tap a control to activate it on release. Releasing off the pressed control,
 losing its window, changing its geometry, or cancelling the input sequence
 prevents activation. A close requests that the application exit; it does not
 force termination. Drag empty title-bar space to move a floating window, or
 double-click it to toggle canvas maximize/restore, as with Super+M. The expand
-button toggles focused view, as with Super+Shift+F. Both preserve the original
-floating geometry.
+button enters focused view and restores the original floating geometry on its
+next activation. Super+Shift+F retains canvas maximization when leaving focused
+view. All of these actions preserve the original floating geometry.
 Client-drawn title bars retain their own controls; GTK's explicit title-bar
 gesture protocol lets the compositor distinguish their header double-clicks.
 

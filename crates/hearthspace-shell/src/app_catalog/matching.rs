@@ -4,8 +4,19 @@ use super::{AppCatalog, DesktopApp, exec::split_exec};
 
 impl AppCatalog {
     /// Match a Wayland app ID or X11 WM_CLASS to its installed desktop entry.
-    /// Explicit desktop identities take priority over executable-name fallbacks.
+    /// Explicit metadata takes priority over whitespace-compacted desktop IDs
+    /// and executable-name fallbacks. Equally ranked matches are ambiguous.
     pub fn app_for_window(&self, identity: &str) -> Option<&DesktopApp> {
+        self.app_for_identity(identity, u8::MAX)
+    }
+
+    /// Status items may share a dock control only through a canonical desktop
+    /// identity or explicit metadata, never executable or compacted-ID guesses.
+    pub fn app_for_status_item(&self, identity: &str) -> Option<&DesktopApp> {
+        self.app_for_identity(identity, 5)
+    }
+
+    fn app_for_identity(&self, identity: &str, max_rank: u8) -> Option<&DesktopApp> {
         if identity.is_empty() {
             return None;
         }
@@ -15,11 +26,14 @@ impl AppCatalog {
             let Some(rank) = match_rank(app, identity) else {
                 continue;
             };
+            if rank > max_rank {
+                continue;
+            }
             if rank < best_rank {
                 best = Some(app);
                 best_rank = rank;
             } else if rank == best_rank {
-                // Ambiguous explicit metadata must not fall through to a weaker
+                // An ambiguous stronger match must not fall through to a weaker
                 // executable match, such as a game launched by the Steam client.
                 best = None;
             }
@@ -59,13 +73,33 @@ fn match_rank(app: &DesktopApp, identity: &str) -> Option<u8> {
     {
         return Some(5);
     }
+    // Some clients omit whitespace from their desktop ID in WM_CLASS (for
+    // example, PepperGrinder vs Pepper Grinder.desktop). Keep punctuation and
+    // literal .desktop suffixes intact, and rank this below explicit metadata.
+    // The catalog's tie handling rejects collisions before trying executables.
+    if compact_id_matches(id, identity) {
+        return Some(6);
+    }
+    if compact_id_matches(&app.id, identity) {
+        return Some(7);
+    }
     let argv = split_exec(&app.exec).ok()?;
     argv.first()
         .and_then(|command| Path::new(command).file_name())
         .and_then(|name| name.to_str())
         .is_some_and(|name| name.eq_ignore_ascii_case(identity))
-        .then_some(6)
+        .then_some(8)
+}
+
+fn compact_id_matches(id: &str, identity: &str) -> bool {
+    id.chars()
+        .filter(|ch| !ch.is_whitespace())
+        .map(|ch| ch.to_ascii_lowercase())
+        .eq(identity.chars().map(|ch| ch.to_ascii_lowercase()))
 }
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod compact_tests;

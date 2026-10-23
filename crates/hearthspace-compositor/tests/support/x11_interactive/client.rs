@@ -41,6 +41,14 @@ pub(super) struct Client {
 
 impl Client {
     pub fn connect(compositor: &HeadlessCompositor) -> Self {
+        Self::connect_with_identity(compositor, Some(b"x11-csd-fixture\0X11CsdFixture\0"), None)
+    }
+
+    pub fn connect_with_identity(
+        compositor: &HeadlessCompositor,
+        class: Option<&[u8]>,
+        reported_pid: Option<u32>,
+    ) -> Self {
         let deadline = Instant::now() + Duration::from_secs(10);
         let display = loop {
             if let Some(display) = query(compositor, "status")["xwayland_display"].as_str() {
@@ -95,15 +103,28 @@ impl Client {
                 b"X11 CSD fixture",
             )
             .unwrap();
-        connection
-            .change_property8(
-                PropMode::REPLACE,
-                window,
-                AtomEnum::WM_CLASS,
-                AtomEnum::STRING,
-                b"x11-csd-fixture\0X11CsdFixture\0",
-            )
-            .unwrap();
+        if let Some(class) = class {
+            connection
+                .change_property8(
+                    PropMode::REPLACE,
+                    window,
+                    AtomEnum::WM_CLASS,
+                    AtomEnum::STRING,
+                    class,
+                )
+                .unwrap();
+        }
+        if let Some(pid) = reported_pid {
+            let atom = connection
+                .intern_atom(false, b"_NET_WM_PID")
+                .unwrap()
+                .reply()
+                .unwrap()
+                .atom;
+            connection
+                .change_property32(PropMode::REPLACE, window, atom, AtomEnum::CARDINAL, &[pid])
+                .unwrap();
+        }
         let moveresize = connection
             .intern_atom(false, b"_NET_WM_MOVERESIZE")
             .unwrap()

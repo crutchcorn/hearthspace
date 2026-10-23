@@ -80,12 +80,25 @@ fn focused_view_keyboard_entry_clears_window_and_desktop_selections() {
     assert_eq!(desktop["items"][0]["selected"], false);
     assert_eq!(desktop["items"][0]["keyboard_focus"], false);
     assert_eq!(desktop["select_mode"], false);
+    // The keyboard toggle still exits to bounded maximization; only the
+    // titlebar's maximize/restore button exits directly to floating geometry.
+    keys(&compositor, &[125, 42, 33]);
+    settled(
+        &compositor,
+        &mut client,
+        id,
+        [24, 96, 1232, 608],
+        false,
+        false,
+    );
+    keys(&compositor, &[125, 50]); // Super+M restores bounded maximization.
+    assert_presentation(&compositor, &mut client, id, false);
     action(&compositor, "quit");
     wait_for_exit(&mut compositor.child);
 }
 
 #[test]
-fn focused_view_retains_header_and_restores_through_bounded_maximize_at_both_scales() {
+fn focused_view_button_restores_floating_and_explicit_header_actions_stay_bounded() {
     let _guard = headless_test_guard();
     for (width, height, scale) in [(1280, 800, 1), (1280, 800, 2), (760, 600, 2)] {
         let (mut compositor, mut client, id) = fixture_with_size(scale, width, height);
@@ -106,10 +119,11 @@ fn focused_view_retains_header_and_restores_through_bounded_maximize_at_both_sca
         assert_eq!(focused["focused"], true);
 
         click(&compositor, button_point(&focused, true));
-        let maximized = settled(&compositor, &mut client, id, bounded, false, false);
-        // A second focused-view visit must retain the original floating size,
-        // rather than treating the already maximized size as its restore size.
-        click(&compositor, button_point(&maximized, true));
+        let restored = assert_presentation(&compositor, &mut client, id, false);
+        assert_original(&restored, &original);
+        // A later visit can still select bounded maximization explicitly with
+        // a header double-click, retaining the same original floating geometry.
+        click(&compositor, button_point(&restored, true));
         let focused = settled(&compositor, &mut client, id, output, true, false);
         double_click_title(&compositor, &focused);
         let maximized = settled(&compositor, &mut client, id, bounded, false, false);
@@ -143,10 +157,10 @@ fn focused_view_rapid_toggles_before_client_resize_preserve_original_geometry() 
     assert_eq!(focused["focused_view"], true);
     assert_eq!(focused["content_width"], original["content_width"]);
     click(&compositor, button_point(&focused, true));
-    let bounded = window(&compositor, id);
-    assert_eq!(bounded["focused_view"], false);
-    assert_eq!(bounded["maximized"], true);
-    click(&compositor, button_point(&bounded, true));
+    let restoring = window(&compositor, id);
+    assert_eq!(restoring["focused_view"], false);
+    assert_eq!(restoring["maximized"], false);
+    click(&compositor, button_point(&restoring, true));
     let focused = window(&compositor, id);
     assert_eq!(focused["focused_view"], true);
     double_click_title(&compositor, &focused);

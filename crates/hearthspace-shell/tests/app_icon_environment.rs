@@ -5,6 +5,7 @@ use hearthspace_shell::{app_catalog::AppCatalog, app_icon, tray::TrayIcon};
 const CHILD_MODE: &str = "HEARTHSPACE_TEST_APP_ICONS";
 const UPDATER: [u8; 4] = [240, 100, 20, 255];
 const STEAM: [u8; 4] = [20, 40, 70, 255];
+const PEPPER: [u8; 4] = [250, 160, 30, 255];
 const CLIENT_ALIAS: &str = "hearthspace-fixture-snap-client-4a17f9";
 
 #[test]
@@ -41,11 +42,15 @@ fn configured_theme_and_exported_snap_artwork_reach_desktop_icons() {
         &theme.join("48x48/apps/system-software-update.png"),
         UPDATER,
     );
+    write_png(&theme.join("48x48/apps/steam_icon_2076580.png"), PEPPER);
     let steam_icon = fixture
         .path()
         .join("snap/steam/current/usr/share/icons/hicolor/256x256/apps/steam.png");
     write_png(&steam_icon, STEAM);
     fs::write(applications.join("update-manager.desktop"), "[Desktop Entry]\nType=Application\nName=Software Updater\nExec=/usr/bin/update-manager\nIcon=system-software-update\n").unwrap();
+    // The installed launcher has no StartupWMClass; the native client reports
+    // PepperGrinder for both class and instance, with an empty _NET_WM_ICON.
+    fs::write(applications.join("Pepper Grinder.desktop"), "[Desktop Entry]\nName=Pepper Grinder\nComment=Play this game on Steam\nExec=steam steam://rungameid/2076580\nIcon=steam_icon_2076580\nTerminal=false\nType=Application\nCategories=Game;\n").unwrap();
     // Use a unique alias: freedesktop-icons also searches /usr/share/pixmaps,
     // even with isolated XDG paths, so a host steam.png could mask this fallback.
     // Keep the provider outside applications until the child installs it below.
@@ -87,6 +92,22 @@ fn resolve_installed_icons_in_child() {
     })
     .expect("the configured icon theme supplies Software Updater's artwork");
     assert_eq!(&updater_artwork.rgba[..4], &UPDATER);
+    assert_eq!(
+        app_icon::resolve_window(&catalog, "update-manager"),
+        Some(updater_artwork)
+    );
+
+    let pepper = catalog.app_by_id("Pepper Grinder.desktop").unwrap();
+    let pepper_artwork = app_icon::resolve(&TrayIcon {
+        name: pepper.icon.clone(),
+        ..Default::default()
+    })
+    .expect("the desktop shortcut resolves the installed game icon");
+    assert_eq!(&pepper_artwork.rgba[..4], &PEPPER);
+    assert_eq!(
+        app_icon::resolve_window(&catalog, "PepperGrinder"),
+        Some(pepper_artwork)
+    );
 
     let game = catalog
         .app_by_id("Z.A.T.O.  I Love the World and Everything In It.desktop")
@@ -106,6 +127,10 @@ fn resolve_installed_icons_in_child() {
     let game_artwork = app_icon::resolve(&icon)
         .expect("the game's declared Steam icon resolves through its exported Snap desktop entry");
     assert_eq!(&game_artwork.rgba[..4], &STEAM);
+    assert_eq!(
+        app_icon::resolve_window(&AppCatalog::load(), CLIENT_ALIAS),
+        Some(game_artwork)
+    );
 }
 
 fn write_png(path: &Path, color: [u8; 4]) {

@@ -15,6 +15,7 @@ use super::{
 mod clipboard;
 mod dispatch;
 mod handlers;
+pub(super) mod identity;
 mod interactive;
 mod popups;
 
@@ -89,6 +90,9 @@ impl App {
         };
 
         let override_redirect = window.is_override_redirect();
+        if !override_redirect {
+            identity::remember_process(&window);
+        }
         let id = self.next_window_id;
         self.next_window_id += 1;
         let geometry = window.geometry();

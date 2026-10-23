@@ -257,8 +257,8 @@ impl App {
                 }
             }
             TitlebarButton::Maximize => {
-                if let Err(error) = self.toggle_window_focus_view(target.window_id) {
-                    tracing::debug!(window_id = target.window_id, %error, "titlebar focused view was unavailable");
+                if let Err(error) = self.toggle_window_maximize_button(target.window_id) {
+                    tracing::debug!(window_id = target.window_id, %error, "titlebar maximize was unavailable");
                 }
             }
         }

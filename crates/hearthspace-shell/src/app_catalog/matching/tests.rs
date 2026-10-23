@@ -1,6 +1,6 @@
 use super::*;
 
-fn catalog(entries: &[(&str, &str)]) -> AppCatalog {
+pub(super) fn catalog(entries: &[(&str, &str)]) -> AppCatalog {
     let directory = tempfile::tempdir().unwrap();
     std::fs::create_dir(directory.path().join("applications")).unwrap();
     for (id, contents) in entries {

@@ -17,6 +17,24 @@ const ICON_SIZE: u32 = 48;
 const MAX_FILE_BYTES: u64 = 2 * 1024 * 1024;
 const MAX_DIMENSION: u32 = 1024;
 
+/// Resolve a window's installed artwork through the desktop icon pipeline.
+/// `identity` is an app ID or WM_CLASS, never a display title.
+pub fn resolve_window(catalog: &AppCatalog, identity: &str) -> Option<TrayPixmap> {
+    let name = catalog
+        .app_for_window(identity)
+        .and_then(|app| app.icon.clone())
+        .unwrap_or_else(|| {
+            identity
+                .strip_suffix(".desktop")
+                .unwrap_or(identity)
+                .to_lowercase()
+        });
+    resolve(&TrayIcon {
+        name: Some(name),
+        ..Default::default()
+    })
+}
+
 pub fn resolve(icon: &TrayIcon) -> Option<TrayPixmap> {
     icon.name
         .as_deref()
