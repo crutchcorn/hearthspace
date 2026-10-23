@@ -41,7 +41,7 @@ pub(crate) struct Args {
     #[arg(long, requires = "installed")]
     pub(crate) compositor_binary: Option<PathBuf>,
 
-    /// Use an existing dedicated dbus-run-session bus (native sessions create one automatically).
+    /// Use an existing dedicated bus for an isolated session; native sessions default to the user bus.
     #[arg(long)]
     pub(crate) private_session_bus: bool,
 

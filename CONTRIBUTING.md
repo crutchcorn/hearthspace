@@ -235,23 +235,39 @@ sudo env "PATH=$PATH" t3 browser setup
 This setup was applied on the development host to allow T3's sandboxed browser;
 it does not change Hearthspace's runtime or browser configuration.
 
-Native supervisor launches automatically create a private `dbus-run-session`
-before starting desktop components. The harness already supplies that bus and
-uses `--private-session-bus` to reuse it. Both use the sibling
-`hearthspace-session-bus` helper to select a private abstract Unix socket that
-remains reachable inside Snap's separate `/tmp` mount. Build the package's
-complete binary set with `cargo build --locked -p hearthspace-session --bins`
-before launching the supervisor directly; `cargo run --bin hearthspace-session`
-alone does not build its helpers. The installer and native build include them.
-Both routes explicitly provide
-`HEARTHSPACE_SESSION_BUS_ADDRESS` to children so app launch and AT-SPI stay on the
-Hearthspace bus. Before desktop startup, `dbus-update-activation-environment`
-updates only the private bus with Hearthspace's display, runtime, and settings
-sockets. It does not update the shared systemd user manager or the host desktop.
-The bootstrap clears host display/socket and accessibility overrides before
-creating its bus. Normal nested sessions continue to exclude the host bus from
-shell-launched apps; use a dedicated `dbus-run-session` with
-`--private-session-bus` when testing desktop service activation there.
+Ordinary native/TTY and display-manager sessions use the standard user D-Bus at
+`$HOST_RUNTIME/bus`. This reuses the login keyring that PAM unlocked; Hearthspace
+does not start another keyring, handle passwords, or rewrite encrypted stores.
+After installing an update, log out and select Hearthspace again. Passwordless
+login or a keyring password different from the login password may still require
+an unlock; this change does not bypass those protections.
+
+The native harness explicitly supplies `--private-session-bus` and wraps the
+supervisor in `dbus-run-session`. That isolated mode retains the sibling
+`hearthspace-session-bus` helper's abstract Unix socket for confined apps. Use
+this explicit mode when running alongside another desktop. Ordinary shared-bus
+mode assumes one graphical desktop for the user; it refreshes that user's GTK
+and frontend portal services for Hearthspace's display.
+
+Build the complete helper set with
+`cargo build --locked -p hearthspace-session --bins` before launching the
+supervisor directly; `cargo run --bin hearthspace-session` alone does not build
+its helpers. The installer and native build include them. Both bus modes supply
+`DBUS_SESSION_BUS_ADDRESS` and `HEARTHSPACE_SESSION_BUS_ADDRESS` consistently.
+Owned components keep their private runtime and sockets. Once the compositor is
+ready, shared activation imports a bounded allowlist into D-Bus and the user
+manager, using the canonical runtime and an absolute Wayland socket path.
+Private activation never imports into the user manager.
+
+Shared activation records its prior allowlisted values and a generation marker.
+Normal shutdown and the independent cleanup guards retire owned values before
+removing the runtime; newer session values are preserved. Inherited display and
+accessibility overrides are removed from owned children. `WAYLAND_SOCKET` and
+`AT_SPI_BUS_ADDRESS` are removed from the manager rather than published empty.
+D-Bus has no unset operation, so earlier external imports of these variables
+cannot be cleared through its activation API. Hearthspace does not restart the
+user's bus to remove them. Nested sessions do not modify the user's
+activation environment unless explicitly given their own private bus.
 
 Private sessions share the user's existing audio service. Unless explicitly
 overridden, the supervisor exports `PULSE_SERVER=unix:$HOST_RUNTIME/pulse/native`
@@ -441,12 +457,13 @@ uses kernel backlight readings and logind's existing active-session permissions,
 without new groups, udev rules, setuid helpers, or password prompts. See
 [audio and brightness](docs/AUDIO_AND_BRIGHTNESS.md).
 
-The native supervisor starts the notification daemon, permission store, document
-portal, GTK portal backend, desktop portal, and polkit agent after Wayland is ready.
-The portal processes must acquire their private-bus names before the shell starts. Helpers
-are restarted at most twice after an unexpected exit and are stopped with their
-session. `--no-desktop-services` skips these helpers for isolated diagnostics;
-normal nested sessions also leave them disabled.
+After Wayland is ready, the native supervisor starts its notification daemon and
+polkit agent and waits for the selected bus's portals before starting the shell.
+Normal sessions use the user-managed portal lifecycle described below. Explicit
+private sessions supervise their portal helpers, restarting them at most twice
+after an unexpected exit and stopping them with the session.
+`--no-desktop-services` skips this integration for isolated diagnostics; normal
+nested sessions also leave it disabled.
 
 Native sessions also coordinate logind lid/suspend and wake recovery. They use
 session-owned inhibitors and the packaged swaylock; no `/etc/systemd/logind.conf`,
@@ -465,19 +482,29 @@ in the session's data directory. The supervised appearance worker supplies live
 color-mode/accent preferences; unrelated Settings keys and other portal
 interfaces use the GTK backend according to the standard
 [portal configuration lookup](https://flatpak.github.io/xdg-desktop-portal/docs/portals.conf.html).
-User portal configuration retains its normal precedence. Private runtime D-Bus
-service overrides prevent portals from being activated outside supervision.
-Existing portal owners may be adopted only when their executable, private bus,
-runtime directory, and process start identity match the owned session. The GTK
-chooser uses the local VFS; network filesystem browsing is not configured here.
-No shared user service environment or system-wide portal configuration is changed.
+User portal configuration retains its normal precedence. Shared sessions borrow
+the standard permission store and document portal, starting their user units only
+when missing. After activation import and appearance publication, they restart
+only `xdg-desktop-portal-gtk.service` and `xdg-desktop-portal.service`, in that
+order. These services belong to the user manager and are never adopted or killed
+by Hearthspace cleanup. The notification daemon, appearance backend, and polkit
+agent remain Hearthspace-owned; name collisions fail rather than replacing
+another desktop's notification service.
+
+Explicit private sessions retain supervised portal processes and runtime D-Bus
+activation overrides. Existing owners may be adopted only when their executable,
+private bus, runtime, and process start identity match. Their GTK chooser uses
+the local VFS; network filesystem browsing is not configured for that mode.
+No system-wide portal configuration is changed.
 Native app environments opt GTK 3 into these portal settings with
 `GTK_USE_PORTAL=1`; the GTK portal backend opts out to avoid recursive lookup.
 No host dconf preferences are written or restored. See
 [Linux appearance publication](docs/SETTINGS.md#linux-appearance-publication)
 for the compatibility boundary and the private-bus integration test.
 
-Document grants and portal permissions are stored under
+Shared sessions use the standard user document mount and permission database.
+In explicit private sessions, document grants and portal permissions are stored
+under
 `$XDG_DATA_HOME/hearthspace/portals` (defaulting to
 `~/.local/share/hearthspace/portals`). Harness runs that isolate app profiles store
 this state in their private runtime instead. Shutdown stops the helpers and
@@ -495,7 +522,10 @@ isolated compositor launches use the keyfile GSettings backend, so a separately
 activated dconf service cannot redirect their writes to ordinary preferences.
 The settings daemon and Hearthspace Settings retain their authoritative paths.
 Ordinary native sessions leave application configuration and GSettings defaults
-unchanged. This isolates XDG-aware app preferences; it is not a filesystem sandbox.
+unchanged. Shared-bus applications activated by the user manager follow its normal
+lifetime; they are not all captured by Hearthspace's process groups. Explicit
+Snap and Ptyxis scopes remain session-owned. Profile isolation applies to the
+private harness and is not a filesystem sandbox.
 
 Hearthspace discards inherited ambient, inheritable, effective, and permitted
 Linux capabilities before starting the private bus or desktop processes. On this
@@ -507,11 +537,11 @@ authentication intact; no system PAM policy or image-loader sandbox is disabled.
 
 The settings app uses `rfd` for file selection. On Linux, `rfd` is built with
 its XDG Desktop Portal backend and falls back to `zenity` if the portal request
-fails. Hearthspace gives session children a private `XDG_RUNTIME_DIR` and strips
-the host `DBUS_SESSION_BUS_ADDRESS` from shell-launched apps so file pickers do
-not accidentally discover GNOME's session bus and open through GNOME's portal on
-another TTY. Native daily-use sessions provide the GTK portal backend; nested and
-diagnostic sessions may still need the fallback. Install `zenity` for that path:
+fails. Hearthspace gives owned components a private `XDG_RUNTIME_DIR` and passes
+the selected bus explicitly to launched apps. Native daily-use sessions refresh
+the standard GTK portal backend for their display. Isolated harness sessions use
+their own portal; nested and diagnostic sessions may still need the fallback.
+Install `zenity` for that path:
 
 ```sh
 sudo apt-get install -y zenity
@@ -519,7 +549,7 @@ sudo apt-get install -y zenity
 
 The file chooser portal is an external desktop service. The compositor displays
 its dialog as an ordinary Wayland client, and the portal launches URI handlers on
-the same private desktop bus.
+the selected desktop bus.
 
 X11 app support is provided by Smithay's XWayland integration. Install the
 runtime when testing X11-only applications:

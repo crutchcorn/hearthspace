@@ -162,7 +162,7 @@ fn private_dbus_session_can_initialize_and_cleanup_runtime() {
 }
 
 #[test]
-fn native_start_bootstraps_a_private_bus_and_correct_activation_environment() {
+fn explicit_private_native_start_updates_only_its_activation_environment() {
     let fixture = Fixture::new();
     let services = fixture.0.join("share/dbus-1/services");
     fs::create_dir_all(&services).unwrap();
@@ -187,7 +187,7 @@ with open(os.environ['HEARTHSPACE_HOST_XDG_RUNTIME_DIR'] + '/activation.json', '
     )
     .unwrap();
     script(
-        &fixture.0.join("hearthspace-compositor"),
+        &fixture.0.join("hearthspace-shell"),
         r#"#!/usr/bin/python3
 import os, subprocess, time
 # The probe deliberately exits without claiming a bus name. Activation still
@@ -202,10 +202,13 @@ while True:
     time.sleep(.1)
 "#,
     );
+    ready_compositor(&fixture);
     let runtime = fixture.0.join("runtime");
     let log = fs::File::create(fixture.0.join("session.log")).unwrap();
-    let mut child = Command::new(env!("CARGO_BIN_EXE_hearthspace-session"))
+    let mut child = Command::new("dbus-run-session")
+        .args(["--", env!("CARGO_BIN_EXE_hearthspace-session")])
         .args([
+            "--private-session-bus",
             "--installed",
             "--backend",
             "native",
@@ -225,7 +228,7 @@ while True:
             format!("{}:/usr/share", fixture.0.join("share").display()),
         )
         .env("WAYLAND_DISPLAY", "host-wayland")
-        .env("WAYLAND_SOCKET", "123456")
+        .env_remove("WAYLAND_SOCKET")
         .env("DISPLAY", ":12345")
         .env("DBUS_SESSION_BUS_ADDRESS", "unix:path=/invalid-host-bus")
         .stdout(Stdio::from(log.try_clone().unwrap()))
@@ -253,14 +256,26 @@ while True:
 #[test]
 fn stalled_bus_activation_cannot_extend_startup_or_leave_the_runtime() {
     let fixture = Fixture::new();
-    script(
-        &fixture.0.join("dbus-update-activation-environment"),
-        "#!/usr/bin/python3\nimport os, time\nopen(os.environ['HEARTHSPACE_HOST_XDG_RUNTIME_DIR'] + '/activation-started', 'w').close()\ntime.sleep(60)\n",
-    );
+    ready_compositor(&fixture);
+    let listener = std::os::unix::net::UnixListener::bind(fixture.0.join("stalled-bus")).unwrap();
+    listener.set_nonblocking(true).unwrap();
+    let (accepted, received) = std::sync::mpsc::channel();
+    let worker = thread::spawn(move || {
+        let deadline = Instant::now() + Duration::from_secs(3);
+        while Instant::now() < deadline {
+            if let Ok((_stream, _)) = listener.accept() {
+                accepted.send(()).unwrap();
+                thread::sleep(Duration::from_secs(2));
+                return;
+            }
+            thread::sleep(Duration::from_millis(5));
+        }
+    });
     let started = Instant::now();
     let runtime = fixture.0.join("runtime");
     let mut child = Command::new(env!("CARGO_BIN_EXE_hearthspace-session"))
         .args([
+            "--private-session-bus",
             "--installed",
             "--backend",
             "native",
@@ -274,6 +289,10 @@ fn stalled_bus_activation_cannot_extend_startup_or_leave_the_runtime() {
         .arg("--session-dir")
         .arg(&runtime)
         .env("PATH", format!("{}:/usr/bin:/bin", fixture.0.display()))
+        .env(
+            "DBUS_SESSION_BUS_ADDRESS",
+            format!("unix:path={}/stalled-bus", fixture.0.display()),
+        )
         .env("XDG_RUNTIME_DIR", &fixture.0)
         .env("HEARTHSPACE_HOST_XDG_RUNTIME_DIR", &fixture.0)
         .stdout(Stdio::null())
@@ -282,7 +301,23 @@ fn stalled_bus_activation_cannot_extend_startup_or_leave_the_runtime() {
         .unwrap();
     assert!(!bounded_exit(&mut child).success());
     assert!(started.elapsed() < Duration::from_secs(4));
-    assert!(fixture.0.join("activation-started").exists());
-    assert!(!fixture.0.join("compositor-started").exists());
+    received.recv_timeout(Duration::from_secs(1)).unwrap();
+    worker.join().unwrap();
+    assert!(fixture.0.join("compositor-started").exists());
     assert!(!runtime.exists());
+}
+
+fn ready_compositor(fixture: &Fixture) {
+    script(
+        &fixture.0.join("hearthspace-compositor"),
+        r#"#!/usr/bin/python3
+import os, socket, time
+open(os.environ['HEARTHSPACE_HOST_XDG_RUNTIME_DIR'] + '/compositor-started', 'w').close()
+with socket.socket(socket.AF_UNIX) as server:
+    server.bind(os.path.join(os.environ['XDG_RUNTIME_DIR'], os.environ['HEARTHSPACE_WAYLAND_DISPLAY']))
+    server.listen()
+    while True:
+        time.sleep(.1)
+"#,
+    );
 }

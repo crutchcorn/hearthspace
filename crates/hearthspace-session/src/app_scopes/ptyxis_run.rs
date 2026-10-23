@@ -70,6 +70,7 @@ fn scope_invocation(args: &[OsString]) -> Option<Scope<'_>> {
 
 struct Session {
     runtime: PathBuf,
+    app_runtime: PathBuf,
     host: PathBuf,
     bus: OsString,
     owner: String,
@@ -83,24 +84,36 @@ impl Session {
                 .ok_or_else(|| io::Error::other(format!("missing {key} for owned Ptyxis scope")))
         };
         Self::load(
+            required(hearthspace_common::SESSION_DIR_ENV)?.into(),
             required("XDG_RUNTIME_DIR")?.into(),
             required(hearthspace_common::HOST_RUNTIME_DIR_ENV)?.into(),
             required("DBUS_SESSION_BUS_ADDRESS")?,
         )
     }
 
-    fn load(runtime: PathBuf, host: PathBuf, bus: OsString) -> io::Result<Self> {
-        if !runtime.is_absolute() || !host.is_absolute() || !bus.as_bytes().starts_with(b"unix:") {
+    fn load(
+        runtime: PathBuf,
+        app_runtime: PathBuf,
+        host: PathBuf,
+        bus: OsString,
+    ) -> io::Result<Self> {
+        if !runtime.is_absolute()
+            || !app_runtime.is_absolute()
+            || !host.is_absolute()
+            || !bus.as_bytes().starts_with(b"unix:")
+        {
             return Err(io::Error::other("invalid private Ptyxis scope environment"));
         }
         owned_directory(&runtime)?;
         owned_directory(&host)?;
+        owned_directory(&app_runtime)?;
         if fs::canonicalize(&runtime)? == fs::canonicalize(&host)? {
             return Err(io::Error::other("Ptyxis scope requires a private runtime"));
         }
         let session = Self {
             owner: identity::owner_unit(&runtime)?,
             runtime,
+            app_runtime,
             host,
             bus,
         };
@@ -168,7 +181,7 @@ impl Session {
             ])
             .args(&args[..PREFIX.len() + 1])
             .args(["--", "/usr/bin/env", "--"])
-            .arg(assignment("XDG_RUNTIME_DIR", self.runtime.as_os_str()))
+            .arg(assignment("XDG_RUNTIME_DIR", self.app_runtime.as_os_str()))
             .arg(assignment("DBUS_SESSION_BUS_ADDRESS", &self.bus))
             .args(&args[scope.command_start..]);
         Ok(command)

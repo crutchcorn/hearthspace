@@ -1,14 +1,14 @@
-# Snap applications in a private native session
+# Snap applications in a native session
 
 Snap requires each confined application to run in a systemd tracking scope.
-Hearthspace owns a private desktop D-Bus, so Snap cannot contact the shared user
-manager through that bus. Catalog launches create the proper
-`snap.INSTANCE.APP-UUID.scope` through the host user manager, then restore the
-private runtime and desktop bus before executing the original Snap command.
-The compositor still supplies the Snap-accessible Wayland socket. Neither the
-host manager's environment nor Snap's confinement policy is changed.
+Catalog launches create the proper `snap.INSTANCE.APP-UUID.scope` through the
+user manager, then restore the application's runtime and selected desktop bus
+before executing its original command. Normal native sessions use the standard
+user bus; only the explicit private harness requires a separate bus. The
+compositor supplies the Snap-accessible Wayland socket. Scope ownership and
+confinement remain enforced in both modes.
 
-The private session bus uses a unique Linux abstract Unix socket named
+The explicit private session bus uses a unique Linux abstract Unix socket named
 `/tmp/dbus-hearthspace-UUID`. Snap gives applications a separate `/tmp` mount,
 which hides the pathname socket normally selected by `dbus-run-session` on
 this distribution. An abstract socket remains reachable across those mount
@@ -45,9 +45,10 @@ cargo build --locked -p hearthspace-session --bins
 ```
 
 The guard and `hearthspace-session-bus` belong beside `hearthspace-session`,
-including when using `--binary-dir`. A native host without a user systemd manager
-can run ordinary applications, but catalog Snap launches report that managed
-scopes are unavailable. Nested sessions do not create this native scope owner.
+including when using `--binary-dir`. Ordinary shared sessions require the standard
+user bus and systemd user manager.
+Private diagnostic sessions without a user manager cannot create managed Snap
+scopes. Nested sessions do not create this native scope owner.
 
 Current acceptance limits remain explicit:
 
@@ -59,13 +60,14 @@ Current acceptance limits remain explicit:
   directory; an ordinary executable that shadows a Snap command stays ordinary.
   Direct Snap commands typed in a terminal and external desktop-entry launches
   by a portal currently bypass the catalog wrapper.
-- Snap expects its document portal at `/run/user/UID/doc`. Hearthspace's private
-  portal mount has a different path. Confined file selection must pass the
+- Snap expects its document portal at `/run/user/UID/doc`, used by normal shared
+  sessions. The explicit private harness's portal mount has a different path.
+  Confined file selection must pass the
   exact-content checks in [native app acceptance](DAILY_APPS_TESTING.md) before
   it is considered supported; opening a browser window alone is insufficient.
 
 The tracking-name and existing-scope behavior follows Snap's
 [tracking implementation](https://github.com/canonical/snapd/blob/2.76/sandbox/cgroup/tracking.go)
 and [launcher](https://github.com/canonical/snapd/blob/2.76/cmd/snap/cmd_run.go).
-Validation should retain the application scope name, private bus identity,
+Validation should retain the application scope name, selected bus identity,
 visible browser results, and completed native cleanup alongside screenshots.

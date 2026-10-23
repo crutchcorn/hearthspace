@@ -224,7 +224,7 @@ choose how to interpret these preferences; a toolkit may map the accent to its
 own palette.
 
 The session supervisor owns `org.freedesktop.impl.portal.desktop.hearthspace` on
-its private bus. A dedicated worker reads the explicit settings socket every
+the selected session bus. A dedicated worker reads the explicit settings socket every
 250 ms with the usual 50 ms IPC budget, updates the published snapshot, and emits
 `SettingChanged` only for changed keys. Unavailable settingsd reads retain the
 last snapshot. The worker starts before the public portal, releases its bus name
@@ -252,8 +252,10 @@ GTK's
 has no equivalent interoperable accent setting; portal-aware applications can
 still consume the standard accent preference.
 
-This changes no host GSettings/dconf values, user theme files, or shared service
-environment. Explicit application theme overrides and application-specific
+This writes no host GSettings/dconf values or user theme files. Normal native
+startup separately publishes the shared activation environment and refreshes
+display-dependent portals; explicit private sessions leave that shared
+environment unchanged. Application theme overrides and application-specific
 support continue to determine an application's final appearance.
 
 The portal integration test exercises the installed public portal on a private

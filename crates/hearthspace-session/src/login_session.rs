@@ -24,7 +24,7 @@ pub(crate) fn validate(args: &Args) -> io::Result<()> {
         ));
     }
     // A terminal inside an existing desktop must not turn that entire login
-    // into a disposable session. The inner private-bus exec sets its own display.
+    // into a disposable session. The isolated native harness supplies its own display.
     if !args.private_session_bus
         && ["WAYLAND_DISPLAY", "WAYLAND_SOCKET", "DISPLAY"]
             .iter()

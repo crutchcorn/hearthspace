@@ -55,10 +55,13 @@ direct connection.
 
 Native sessions place a small `systemd-run` adapter in their private application
 PATH. It recognizes Ptyxis's scope invocation, connects to the host manager, then
-restores the private runtime and D-Bus environment before executing the original
-shell command. Version queries and other invocation shapes pass through unchanged.
+restores the application's runtime and selected D-Bus environment before
+executing the original shell command. Ownership records come from
+`HEARTHSPACE_SESSION_DIR`, independently of an activated app's canonical runtime.
+Version queries and other invocation shapes pass through unchanged.
 The adapter uses the existing `hearthspace-app-scope-guard` executable; it does not
-replace the system binary or import variables into the shared user manager.
+replace the system binary. Shared session startup separately publishes the
+activation environment; private harness sessions never modify the user manager.
 
 Each Ptyxis scope is recorded before execution and receives `BindsTo` and `After`
 dependencies on the session's application-scope owner. Normal shutdown and the
@@ -110,10 +113,10 @@ to skip Snap's tracking scope, so Snap refused to start the application. Catalog
 launch now resolves the executable before deciding whether to provide Snap's
 scope and Wayland socket. PATH precedence and ordinary executables are preserved.
 
-Once Steam could start, its runtime exposed a second issue: Snap's private
-`/tmp` hid the desktop's D-Bus socket. The session now uses the private abstract
-socket described in [Snap applications](SNAP_APPLICATIONS.md), preserving the
-normal daemon policy and lifetime.
+Once Steam could start in the private harness, Snap's private `/tmp` hid that
+desktop's D-Bus socket. Explicit private sessions use the abstract socket
+described in [Snap applications](SNAP_APPLICATIONS.md), preserving the normal
+daemon policy and lifetime. Normal native sessions now use the standard user bus.
 
 Native acceptance on 2026-10-21 passed with installed release `29e6b4bb6a1d`
 on the physical ThinkPad T480s, Intel UHD 620 (`i915`), kernel

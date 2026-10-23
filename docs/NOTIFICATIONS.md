@@ -1,6 +1,6 @@
 # Desktop notifications
 
-Native sessions run `hearthspace-notifications` on their private session D-Bus.
+Native sessions run `hearthspace-notifications` on the selected session D-Bus (the standard user bus by default).
 The supervisor starts it before the portal backend and shell, records its PID,
 restarts it at most twice, and stops it on logout. The daemon never takes over an
 existing notification service. Nested sessions and `--no-desktop-services`

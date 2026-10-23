@@ -1,3 +1,5 @@
+#[path = "../session_bus/cleanup.rs"]
+mod activation_cleanup;
 #[path = "../app_scopes/guard.rs"]
 mod guard;
 #[path = "../app_scopes/identity.rs"]
@@ -20,5 +22,10 @@ fn main() -> std::io::Result<()> {
                 .map_err(|_| std::io::Error::other("invalid guard argument"))
         })
         .collect::<Result<Vec<_>, _>>()?;
+    if let [flag, runtime] = args.as_slice()
+        && flag == "--retire-activation"
+    {
+        return activation_cleanup::retire_from_session_dir(std::path::Path::new(runtime), None);
+    }
     guard::run(&args)
 }

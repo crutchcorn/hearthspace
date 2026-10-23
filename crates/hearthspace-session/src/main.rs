@@ -40,12 +40,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let wayvnc = wayvnc::prepare(&args)?;
 
-    session_bus::bootstrap_native_session(&args)?;
-
     let mode = resolve_mode(&args);
     let paths = create_session_paths(args.session_dir.as_deref(), args.private_session_bus)?;
     if desktop_services::enabled(&args) {
-        desktop_services::prepare(&paths)?;
+        desktop_services::prepare(&paths, args.private_session_bus)?;
     }
     let session_env = create_session_env(&args, mode, &paths)?;
     gtk_defaults::prepare(&paths.session_dir, &session_env);
@@ -73,11 +71,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         if args.login_session {
             supervisor.start_login_guard(&args)?;
         }
-        supervisor.prepare_activation_environment(args.private_session_bus)?;
         supervisor.start_settingsd(if args.no_settingsd_restart { 0 } else { 3 })?;
         supervisor.wait_for_settingsd_ready()?;
         supervisor.start_compositor()?;
         supervisor.wait_for_compositor_ready()?;
+        supervisor.prepare_activation_environment()?;
         if desktop_services::enabled(&args) {
             supervisor.start_power()?;
             supervisor.start_notifications()?;

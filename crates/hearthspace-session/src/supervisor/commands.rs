@@ -43,7 +43,7 @@ impl Supervisor {
                     program: "cargo".to_string(),
                     args,
                     envs,
-                    env_removals: Vec::new(),
+                    env_removals: self.child_env_removals(),
                     current_dir,
                 }
             }
@@ -61,9 +61,30 @@ impl Supervisor {
                 ),
                 args: binary_args.iter().map(|arg| (*arg).to_string()).collect(),
                 envs,
-                env_removals: Vec::new(),
+                env_removals: self.child_env_removals(),
                 current_dir,
             },
+        }
+    }
+
+    fn child_env_removals(&self) -> Vec<String> {
+        if self
+            .session_env
+            .vars
+            .iter()
+            .any(|(key, _)| key == "HEARTHSPACE_SESSION_BUS_ADDRESS")
+        {
+            [
+                "DISPLAY",
+                "WAYLAND_SOCKET",
+                "AT_SPI_BUS_ADDRESS",
+                "DBUS_SESSION_BUS_PID",
+            ]
+            .into_iter()
+            .map(str::to_owned)
+            .collect()
+        } else {
+            Vec::new()
         }
     }
 
@@ -97,7 +118,7 @@ impl Supervisor {
                     "build -p hearthspace-settings".to_string(),
                 ],
                 envs,
-                env_removals: Vec::new(),
+                env_removals: self.child_env_removals(),
                 current_dir,
             });
         }
@@ -119,7 +140,7 @@ impl Supervisor {
                     "hearthspace-settings".to_string(),
                 ],
                 envs,
-                env_removals: Vec::new(),
+                env_removals: self.child_env_removals(),
                 current_dir,
             });
         }

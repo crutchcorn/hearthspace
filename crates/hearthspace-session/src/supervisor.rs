@@ -20,6 +20,7 @@ use crate::{
     settingsd::settingsd_ping,
 };
 
+mod activation;
 mod commands;
 mod notifications;
 mod startup;
@@ -28,6 +29,8 @@ mod wayvnc;
 pub(crate) struct Supervisor {
     mode: RunMode,
     backend: Option<Backend>,
+    private_session_bus: bool,
+    activation_environment: Option<crate::session_bus::ActivationEnvironment>,
     binary_dir: Option<PathBuf>,
     compositor_binary: Option<PathBuf>,
     startup_deadline: Instant,
@@ -61,6 +64,8 @@ impl Supervisor {
         Self {
             mode,
             backend: args.backend,
+            private_session_bus: args.private_session_bus,
+            activation_environment: None,
             binary_dir: args.binary_dir.clone(),
             compositor_binary: args.compositor_binary.clone(),
             startup_timeout: Duration::from_secs(args.startup_timeout),
@@ -81,20 +86,6 @@ impl Supervisor {
             wayvnc_config,
             wayvnc: None,
         }
-    }
-
-    pub(crate) fn prepare_activation_environment(
-        &self,
-        private_session_bus: bool,
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        if private_session_bus {
-            crate::session_bus::update_activation_environment(
-                &self.session_env,
-                self.startup_deadline,
-                &self.shutdown_requested,
-            )?;
-        }
-        Ok(())
     }
 
     pub(crate) fn start_login_guard(&self, args: &Args) -> std::io::Result<()> {
@@ -178,7 +169,7 @@ impl Supervisor {
             .iter()
             .find(|(key, _)| key == "HEARTHSPACE_SESSION_BUS_ADDRESS")
             .map(|(_, value)| value.clone())
-            .ok_or("appearance publication requires a private session bus")?;
+            .ok_or("appearance publication requires a session bus")?;
         self.appearance_portal = Some(crate::appearance_portal::AppearancePortal::start(
             bus,
             self.paths.settings_socket.clone(),
@@ -188,6 +179,7 @@ impl Supervisor {
         self.desktop_services.start(
             &self.paths,
             &self.session_env,
+            self.private_session_bus,
             self.startup_deadline,
             &self.shutdown_requested,
         )?;
@@ -345,9 +337,15 @@ impl Supervisor {
         wait_then_kill_process(&mut self.watcher);
         wait_then_kill_process(&mut self.notifications);
 
+        let retired = match &mut self.activation_environment {
+            Some(activation) => activation.retire(),
+            None => crate::session_bus::retire_persisted(&self.paths.session_dir),
+        };
+        self.activation_environment.take();
         if let Some(owner) = &self.app_scopes {
             owner.shutdown()?;
         }
+        retired?;
 
         // Do not traverse/remove a still-mounted desktop filesystem on failure.
         crate::portal_cleanup::unmount_runtime(&self.paths.session_dir)?;

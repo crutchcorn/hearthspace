@@ -1,5 +1,5 @@
 //! Keep application scopes owned by this session while using the host manager solely
-//! for process tracking. Application D-Bus and display access stay private.
+//! for process tracking. Applications retain the selected session bus and display.
 use std::{
     collections::{BTreeSet, HashMap},
     fs, io,
