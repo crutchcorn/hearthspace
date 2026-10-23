@@ -5,10 +5,7 @@ use std::{
 };
 
 use calloop::channel;
-use hearthspace_shell::{
-    app_catalog::AppCatalog,
-    tray::{TrayIcon, TrayPixmap},
-};
+use hearthspace_shell::{app_catalog::AppCatalog, tray::TrayPixmap};
 
 use crate::compositor::App;
 
@@ -75,12 +72,8 @@ impl App {
             .spawn(move || {
                 let catalog = AppCatalog::load();
                 while let Ok(id) = receive.recv() {
-                    let name = icon_name(&catalog, &id);
-                    let icon = hearthspace_shell::app_icon::resolve(&TrayIcon {
-                        name: Some(name),
-                        ..Default::default()
-                    })
-                    .map(Arc::new);
+                    let icon =
+                        hearthspace_shell::app_icon::resolve_window(&catalog, &id).map(Arc::new);
                     if complete.send((id, icon)).is_err() {
                         break;
                     }
@@ -93,40 +86,5 @@ impl App {
         }
         self.titlebar_icons.requests = Some(requests);
         true
-    }
-}
-
-fn icon_name(catalog: &AppCatalog, app_id: &str) -> String {
-    let id = app_id.strip_suffix(".desktop").unwrap_or(app_id);
-    catalog
-        .apps()
-        .iter()
-        .find(|app| {
-            app.id
-                .strip_suffix(".desktop")
-                .unwrap_or(&app.id)
-                .eq_ignore_ascii_case(id)
-        })
-        .and_then(|app| app.icon.clone())
-        .unwrap_or_else(|| id.to_lowercase())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn x11_class_resolves_the_desktop_entry_artwork_not_the_class_name() {
-        let dir = tempfile::tempdir().unwrap();
-        std::fs::create_dir(dir.path().join("applications")).unwrap();
-        std::fs::write(
-            dir.path().join("applications/vlc.desktop"),
-            "[Desktop Entry]\nType=Application\nName=VLC media player\nExec=vlc\nIcon=video-cone\n",
-        )
-        .unwrap();
-        let catalog = AppCatalog::load_from_data_dirs(vec![dir.path().to_owned()]);
-        assert_eq!(icon_name(&catalog, "Vlc"), "video-cone");
-        assert_eq!(icon_name(&catalog, "vlc.desktop"), "video-cone");
-        assert_eq!(icon_name(&catalog, "Unknown"), "unknown");
     }
 }

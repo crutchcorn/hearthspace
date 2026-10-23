@@ -60,7 +60,7 @@ impl App {
     fn layout_status(&self, available: bool) -> Value {
         let state = &self.layout_editor;
         if !available {
-            return json!({"version":1,"animating":available&&self.layout_animating(),"revision":state.revision,"editing":false,"session":0,"output":null,"selected":null,"selected_title":"","allow_hide_tools":state.allow_hide_tools,"outputs":[],"pinned_windows":[],"confirmation":null,"focus_request":null});
+            return json!({"version":1,"animating":available&&self.layout_animating(),"revision":state.revision,"popup_epoch":state.popup_epoch,"editing":false,"session":0,"output":null,"selected":null,"selected_title":"","allow_hide_tools":state.allow_hide_tools,"outputs":[],"pinned_windows":[],"confirmation":null,"focus_request":null});
         }
         let outputs:Vec<_>=state.layouts.iter().filter(|(name,_)|self.frame_output_rect(name).is_some()).map(|(output,layout)|{
             let widgets:Vec<_>=hearthspace_common::frame_layout::WIDGETS.iter().map(|id|{
@@ -69,7 +69,7 @@ impl App {
                 json!({"id":id,"merged":self.frame_widget_merged(output,id),"group":placed.and_then(|p|p.group.as_deref()),"orientation":if placed.is_some_and(|p|p.vertical){"vertical"}else{"horizontal"},"rect":json_rect(placed.map_or(Default::default(),|p|p.rect)),"expanded":layout.is_expanded(id),"hidden":layout.placement(&target.target)==ObjectPlacement::Hidden})
             }).collect();
             let groups:Vec<_>=state.placed.iter().filter(|p|p.target.output==*output&&p.target.target.kind==super::TargetKind::Group).map(|p|json!({"id":p.target.target.id,"material":self.frame_group_material(output,&p.target.target.id),"backing_only":super::compact::backing(&p.target.target.id),"hovered":self.frame_group_hovered(output,&p.target.target.id),"focused":self.frame_group_focused(output,&p.target.target.id),"rect":json_rect(p.rect),"grip":json_rect(self.layout_grip_rect(p)),"scale":if p.placement.is_frame(){1.}else{self.viewport_scale},"orientation":if p.vertical{"vertical"}else{"horizontal"}})).collect();
-            json!({"output":output,"compact":self.frame_output_rect(output).is_some_and(|view|view.width<=760.),"layout":layout,"widgets":widgets,"groups":groups})
+            json!({"output":output,"rect":json_rect(self.frame_output_rect(output).unwrap_or_default()),"compact":self.frame_output_rect(output).is_some_and(|view|view.width<=760.),"layout":layout,"widgets":widgets,"groups":groups})
         }).collect();
         let pinned:Vec<_>=self.windows.iter().filter_map(|w|{
             let p=self.pinned_window_target(w.id)?;
@@ -80,7 +80,7 @@ impl App {
         let view = session
             .and_then(|s| self.frame_output_rect(&s.output))
             .unwrap_or_default();
-        json!({"version":1,"animating":available&&self.layout_animating(),"revision":state.revision,"editing":session.is_some_and(|s|s.editing),"session":session.map_or(0,|s|s.id),"output":session.map(|s|s.output.as_str()),"selected":selected,"selected_title":selected.map_or_else(String::new,|t|self.target_title(t)),"allow_hide_tools":state.allow_hide_tools,"outputs":outputs,"pinned_windows":pinned,"confirmation":session.and_then(|s|s.confirmation.as_ref()),"focus_request":state.focus_request,"confirmation_max_width":(view.width-48.).clamp(1.,420.),"confirmation_max_height":(view.height-48.).max(1.),"editor_max_width":(view.width-24.).clamp(120.,260.),"editor_max_height":(view.height-if view.width<=760.{156.}else{180.}).max(54.)})
+        json!({"version":1,"animating":available&&self.layout_animating(),"revision":state.revision,"popup_epoch":state.popup_epoch,"editing":session.is_some_and(|s|s.editing),"session":session.map_or(0,|s|s.id),"output":session.map(|s|s.output.as_str()),"selected":selected,"selected_title":selected.map_or_else(String::new,|t|self.target_title(t)),"allow_hide_tools":state.allow_hide_tools,"outputs":outputs,"pinned_windows":pinned,"confirmation":session.and_then(|s|s.confirmation.as_ref()),"focus_request":state.focus_request,"confirmation_max_width":(view.width-48.).clamp(1.,420.),"confirmation_max_height":(view.height-48.).max(1.),"editor_max_width":(view.width-24.).clamp(120.,260.),"editor_max_height":(view.height-if view.width<=760.{156.}else{180.}).max(54.)})
     }
 }
 impl CalloopData {

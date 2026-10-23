@@ -1,5 +1,5 @@
 //! Bind a popup to its initiating part before creating its native window.
-use crate::ui::{quick_panel::Kind, state::ShellState};
+use crate::ui::{popup::PopupKind, quick_panel::Kind, state::ShellState};
 
 #[derive(Clone, Debug)]
 pub(in crate::ui) enum Popup {
@@ -9,8 +9,51 @@ pub(in crate::ui) enum Popup {
     Power,
     Map,
     Quick(Kind),
-    Tray,
     TrayMenu(crate::tray::ItemKey),
+}
+
+impl Popup {
+    pub(super) fn toggles(&self) -> bool {
+        !matches!(
+            self,
+            Self::AppsRequest { toggle: false, .. } | Self::TrayMenu(_)
+        )
+    }
+
+    pub(super) fn same_destination(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Apps | Self::AppsRequest { .. }, Self::Apps | Self::AppsRequest { .. }) => true,
+            (Self::Quick(a), Self::Quick(b)) => a == b,
+            (Self::TrayMenu(a), Self::TrayMenu(b)) => a == b,
+            (Self::Notifications, Self::Notifications)
+            | (Self::Power, Self::Power)
+            | (Self::Map, Self::Map) => true,
+            _ => false,
+        }
+    }
+
+    fn visible(&self, output: &crate::ui::state::ShellOutputInstance) -> bool {
+        match self {
+            Self::Apps | Self::AppsRequest { .. } => output.show_search,
+            Self::Notifications => output.show_notifications,
+            Self::Power => output.show_power,
+            Self::Map => output.show_map,
+            Self::Quick(kind) => output.show_controls && output.quick_panel == *kind,
+            Self::TrayMenu(item) => output.tray.open && output.tray.item.as_ref() == Some(item),
+        }
+    }
+
+    pub(super) fn matches(&self, kind: PopupKind) -> bool {
+        matches!(
+            (self, kind),
+            (Self::Apps | Self::AppsRequest { .. }, PopupKind::Search)
+                | (Self::Notifications, PopupKind::Notifications)
+                | (Self::Power, PopupKind::Power)
+                | (Self::Map, PopupKind::Map)
+                | (Self::Quick(_), PopupKind::Controls)
+                | (Self::TrayMenu(_), PopupKind::Tray)
+        )
+    }
 }
 
 pub(in crate::ui) fn defer(state: &mut ShellState, key: &str, popup: Popup) -> bool {
@@ -20,6 +63,11 @@ pub(in crate::ui) fn defer(state: &mut ShellState, key: &str, popup: Popup) -> b
     let Some(output) = state.outputs.iter().find(|output| output.key() == key) else {
         return false;
     };
+    // Closing never needs an anchor. Apply it synchronously, so a following
+    // reopening receives its own anchor and (for AppsRequest) accepted token.
+    if popup.toggles() && popup.visible(output) {
+        return false;
+    }
     let (id, app_id) = match &popup {
         Popup::Apps => ("apps", output.launcher_app_id()),
         Popup::AppsRequest { token, .. } => (
@@ -29,7 +77,7 @@ pub(in crate::ui) fn defer(state: &mut ShellState, key: &str, popup: Popup) -> b
         Popup::Notifications => ("notifications", output.notifications_app_id()),
         Popup::Power => ("power", output.power_app_id()),
         Popup::Map => ("tools", output.map_app_id()),
-        Popup::Tray | Popup::TrayMenu(_) => (
+        Popup::TrayMenu(_) => (
             "tray",
             output
                 .output_name
@@ -57,12 +105,30 @@ pub(in crate::ui) fn defer(state: &mut ShellState, key: &str, popup: Popup) -> b
         "frame-popup-anchor {}",
         serde_json::json!({"app_id":app_id,"output":output.key(),"target":hearthspace_common::frame_layout::LayoutTarget::widget(id)})
     );
+    if let Some(prior) =
+        state
+            .frame_layout
+            .intents
+            .reverse(key, &popup, state.frame_layout.popup_epoch)
+    {
+        // Fold open then close in one UI update. Reuse the real handlers so
+        // dismissal/reset effects survive (including quick kind and query).
+        open(state, key, prior);
+        open(state, key, popup);
+        return true;
+    }
+    let intent =
+        state
+            .frame_layout
+            .intents
+            .begin(key.to_owned(), popup, state.frame_layout.popup_epoch);
     let request = super::task::Request {
         command,
-        open: Some((key.to_owned(), popup)),
+        open: Some(intent),
     };
     if let Some(requests) = &state.frame_layout.requests {
         if let Err(error) = requests.try_send(request) {
+            state.frame_layout.intents.cancel();
             state.frame_layout.error = Some(format!("Popup could not be opened: {error}"));
         }
         true
@@ -72,7 +138,10 @@ pub(in crate::ui) fn defer(state: &mut ShellState, key: &str, popup: Popup) -> b
 }
 
 pub(in crate::ui) fn open(state: &mut ShellState, key: &str, popup: Popup) {
-    if state.frame_layout.snapshot.editing {
+    if state.frame_layout.snapshot.editing
+        || state.frame_layout.snapshot.confirmation.is_some()
+        || !state.outputs.iter().any(|output| output.key() == key)
+    {
         return;
     }
     state.frame_layout.opening_popup = true;
@@ -101,7 +170,6 @@ pub(in crate::ui) fn open(state: &mut ShellState, key: &str, popup: Popup) {
         Popup::Power => state.toggle_power(key),
         Popup::Map => state.toggle_map(key),
         Popup::Quick(kind) => state.toggle_quick_panel(key, kind),
-        Popup::Tray => crate::ui::tray_state::toggle(state, key),
         Popup::TrayMenu(item) => crate::ui::tray_state::open_menu(state, key, &item),
     }
     state.frame_layout.opening_popup = false;

@@ -68,9 +68,9 @@ fn steam_game_shortcut_without_snap_metadata_gets_an_owned_snap_scope() {
         .expect("Steam shortcut must receive Snap tracking");
     assert_eq!(instance, "steam");
     assert_eq!(argv, ["/snap/bin/steam", "steam://rungameid/2076580"]);
-    let wrapped = super::super::wrap_with(
+    let mut wrapped = super::super::wrap_with(
         &instance,
-        argv.clone(),
+        &argv,
         "hearthspace-apps-test.service",
         "/private",
         "/run/user/1000",
@@ -83,6 +83,13 @@ fn steam_game_shortcut_without_snap_metadata_gets_an_owned_snap_scope() {
             .contains(&"--unit=snap.steam.steam-01234567-89ab-cdef-0123-456789abcdef.scope".into())
     );
     assert!(wrapped.contains(&"--property=BindsTo=hearthspace-apps-test.service".into()));
+    // wrap_with produces the tracking prefix; the catalog launch appends its
+    // normalized argv, whereas file launches append GIO and native paths.
+    assert_eq!(
+        wrapped.last().unwrap(),
+        "DBUS_SESSION_BUS_ADDRESS=unix:path=/private/bus"
+    );
+    wrapped.extend(argv.clone());
     assert_eq!(&wrapped[wrapped.len() - argv.len()..], argv);
 }
 
@@ -240,9 +247,9 @@ fn a_system_env_alias_is_normalized_only_after_snap_identity_validation() {
             "steam://rungameid/2076580"
         ]
     );
-    let wrapped = super::super::wrap_with(
+    let mut wrapped = super::super::wrap_with(
         "steam",
-        argv.clone(),
+        &argv,
         "hearthspace-apps-test.service",
         "/private",
         "/run/user/1000",
@@ -250,6 +257,11 @@ fn a_system_env_alias_is_normalized_only_after_snap_identity_validation() {
         "01234567-89ab-cdef-0123-456789abcdef",
     )
     .unwrap();
+    assert_eq!(
+        wrapped.last().unwrap(),
+        "DBUS_SESSION_BUS_ADDRESS=unix:path=/private/bus"
+    );
+    wrapped.extend(argv.clone());
     assert_eq!(&wrapped[wrapped.len() - argv.len()..], argv);
 }
 

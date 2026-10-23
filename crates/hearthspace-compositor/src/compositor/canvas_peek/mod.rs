@@ -42,7 +42,6 @@ impl App {
         // scene underneath them; neither do intermediate move/resize samples.
         if self.session_locked()
             || self.canvas_preview_presenting()
-            || self.overview_active()
             || self
                 .windows
                 .iter()

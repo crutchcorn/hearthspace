@@ -129,7 +129,7 @@ fn png_dimension_limit_and_svg_external_resources_are_enforced() {
     let png = image::RgbaImage::new(MAX_DIMENSION + 1, 1);
     let mut bytes = Cursor::new(Vec::new());
     png.write_to(&mut bytes, image::ImageFormat::Png).unwrap();
-    assert!(decode_png(bytes.get_ref()).is_none());
+    assert!(decode_raster(bytes.get_ref(), image::ImageFormat::Png, false).is_none());
     let svg = br#"<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16"><image href="file:///tmp/absent.svg" width="16" height="16"/></svg>"#;
     assert!(decode_svg(svg).unwrap().rgba.iter().all(|byte| *byte == 0));
 }

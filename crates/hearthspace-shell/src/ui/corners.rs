@@ -152,7 +152,7 @@ fn system_width(state: &ShellState, _output: &ShellOutputInstance) -> f64 {
     290.0
         + if state.battery.is_some() { 48.0 } else { 0.0 }
         + if items > 0 {
-            38.0 * (items.min(8) + 1) as f64
+            38.0 * items.min(8) as f64
         } else {
             0.0
         }
@@ -165,11 +165,9 @@ pub(super) fn system_view(
     let items = super::tray_state::visible(&state.tray.snapshot)
         .count()
         .min(8);
-    let full_base = 290.0
-        + if state.battery.is_some() { 48.0 } else { 0.0 }
-        + if items > 0 { 38.0 } else { 0.0 };
+    let full_base = 290.0 + if state.battery.is_some() { 48.0 } else { 0.0 };
     let compact = output.corner_widths[1] < full_base;
-    // Preserve Sound, Power, and the tray drawer on very small scaled outputs.
+    // Preserve Sound, Power, and one app icon on very small scaled outputs.
     let gap = if compact && output.corner_widths[1] < 140.0 {
         0.0
     } else {
@@ -180,7 +178,7 @@ pub(super) fn system_view(
     let compact_controls = compact_base + if show_brightness { 44.0 + gap } else { 0.0 };
     let show_battery = !compact || output.corner_widths[1] >= compact_controls + 44.0 + gap;
     let reserved = if compact {
-        compact_controls
+        compact_controls - if items > 0 { 34.0 + gap } else { 0.0 }
             + if show_battery && state.battery.is_some() {
                 44.0 + gap
             } else {

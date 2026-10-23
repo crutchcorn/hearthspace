@@ -168,7 +168,7 @@ impl App {
     }
 
     fn canvas_peek_motion_suppressed(&self) -> bool {
-        self.layout_reduced_motion() || self.canvas_preview_presenting() || self.overview_active()
+        self.layout_reduced_motion() || self.canvas_preview_presenting()
     }
 
     fn canvas_peek_motion_allowed(&self, index: usize) -> bool {

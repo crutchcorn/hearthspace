@@ -1,12 +1,12 @@
 """Real GTK CSD gestures, private accessibility, and rendered content evidence."""
 
-import ast
-import subprocess
+import json
 import time
 from pathlib import Path
 
-from . import gtk_touch_pixels
+from . import client_accessibility, gtk_touch_pixels
 from . import touch_drag_assertions as verify
+from .client_accessibility import local_center, presentation_scale
 from .control import ControlError
 from .daily_checks import a11y
 from .input import Input
@@ -17,10 +17,28 @@ from .viewport_fixture import set_viewport
 
 
 def selector(smoke):
-    # GTK uses its executable name for the AT-SPI application. The owned session
-    # has exactly one GTK fixture at a time; never search the host desktop bus.
+    if smoke.kind in ("gtk3", "gtk4") and getattr(smoke, "client_identity", None):
+        return f"//*[@role='application' and @name='{smoke.client_identity['app_id']}']"
+    # Discovery remains on the owned session's private accessibility bus.
     name = "alculator" if smoke.kind == "calculator" else "gtk_touch.py"
     return f"//*[@role='application' and contains(@name,'{name}')]"
+
+
+def client_state(smoke):
+    """Only the live launched fixture may supply protocol/content evidence."""
+    process = smoke.client_process
+    if process.poll() is not None:
+        raise ControlError(f"{smoke.kind} exited early: {process.returncode}")
+    try:
+        state = json.loads(smoke.client_state.read_text())
+    except FileNotFoundError:
+        return None
+    if smoke.kind in ("gtk3", "gtk4"):
+        expected = {**smoke.client_identity, "pid": process.pid}
+        if any(state.get(key) != value for key, value in expected.items()):
+            raise ControlError("GTK status does not belong to the launched fixture")
+    # The generic fixture receives its fresh private status path as argv[1].
+    return state
 
 
 def snapshot(smoke, label):
@@ -32,70 +50,21 @@ def snapshot(smoke, label):
     smoke.capture(label)
 
 
-def call(smoke, address, owner, path, method, *arguments):
-    result = subprocess.run(
-        [
-            "gdbus",
-            "call",
-            "--address",
-            address,
-            "--dest",
-            owner,
-            "--object-path",
-            path,
-            "--method",
-            method,
-            "--",
-            *arguments,
-        ],
-        capture_output=True,
-        text=True,
-        check=True,
-        timeout=smoke.control.deadline.remaining(),
-    )
-    return ast.literal_eval(result.stdout)[0]
-
-
-def bus(smoke):
-    return call(
-        smoke,
-        smoke.manifest["dbus_session_bus_address"],
-        "org.a11y.Bus",
-        "/org/a11y/bus",
-        "org.a11y.Bus.GetAddress",
-    )
-
-
-def local_center(bounds, window, scale, origin=(0, 0)):
-    x, y, width, height = bounds
-    x, y = x - origin[0], y - origin[1]
-    if width <= 0 or height <= 0 or x < 0 or y < 0:
-        raise ControlError("GTK control has no window-relative accessible bounds")
-    if (
-        x + width > window["content_width"] + 1
-        or y + height > window["content_height"] + 1
-    ):
-        raise ControlError("GTK accessible control lies outside its client window")
-    return window["x"] + (x + width / 2) * scale, window["y"] + (y + height / 2) * scale
-
-
-def button(smoke, names):
-    alternatives = " or ".join(f"@name='{name}'" for name in names)
-    query = f"{selector(smoke)}//*[contains(@role,'button') and ({alternatives})]"
+def accessible(smoke, query):
     matches = a11y(smoke, "find", query)["elements"]
     if len(matches) != 1:
         return None
     node = matches[0]
-    bounds = call(
+    bounds = client_accessibility.call(
         smoke,
-        bus(smoke),
+        client_accessibility.bus(smoke),
         node["bus_name"],
         node["object_path"],
         "org.a11y.atspi.Component.GetExtents",
         "1",
     )
     origin = (0, 0)
-    if smoke.kind == "gtk3":
+    if smoke.kind == "gtk3" and not smoke.window(smoke.target).get("fullscreen"):
         # GTK 3 includes its CSD shadow in AT-SPI WINDOW coordinates, whereas
         # the compositor reports the xdg window geometry without that shadow.
         # The fixture's full-width HeaderBar locates the geometry origin without
@@ -106,9 +75,9 @@ def button(smoke, names):
         if len(headers) != 1:
             return None
         header = headers[0]
-        titlebar = call(
+        titlebar = client_accessibility.call(
             smoke,
-            bus(smoke),
+            client_accessibility.bus(smoke),
             header["bus_name"],
             header["object_path"],
             "org.a11y.atspi.Component.GetExtents",
@@ -117,16 +86,27 @@ def button(smoke, names):
         if titlebar[2] != smoke.window(smoke.target)["content_width"]:
             raise ControlError("GTK 3 titlebar width disagrees with window geometry")
         origin = titlebar[:2]
+    # Fullscreen GTK 3 has neither a HeaderBar nor CSD shadow: WINDOW extents
+    # already use the presented content origin. Never reuse pre-fullscreen bounds.
     return node, bounds, origin
 
 
+def button(smoke, names):
+    alternatives = " or ".join(f"@name='{name}'" for name in names)
+    return accessible(
+        smoke,
+        f"{selector(smoke)}//*[contains(@role,'button') and ({alternatives})]",
+    )
+
+
 def tap(smoke, device, names):
+    smoke.capture(f"{smoke.kind}-before-content-target-{len(smoke.results)}")
     node, bounds, origin = smoke.until(
         f"GTK button {names}", lambda: button(smoke, names)
     )
     view = smoke.control.status()["viewport"]
     window = smoke.window(smoke.target)
-    target = local_center(bounds, window, view["scale"], origin)
+    target = local_center(bounds, window, presentation_scale(window, view), origin)
     points, actual = point(smoke, target)
     smoke.record(
         "gtk-touch-target",
@@ -144,15 +124,22 @@ def tap(smoke, device, names):
 
 
 def content(smoke, device, label):
-    if smoke.kind == "gtk3":
+    if smoke.kind in ("gtk3", "gtk4"):
         current = getattr(smoke, "gtk_count", 0)
+        if (client_state(smoke) or {}).get("count") != current:
+            raise ControlError(
+                "GTK content counter disagrees with the launched fixture"
+            )
         tap(smoke, device, ("Count touch",))
         expected = f"Touch count: {current + 1}"
         smoke.until(
             expected,
-            lambda: a11y(smoke, "find", f"{selector(smoke)}//*[@name='{expected}']")[
-                "elements"
-            ],
+            lambda: (
+                (client_state(smoke) or {}).get("count") == current + 1
+                and a11y(smoke, "find", f"{selector(smoke)}//*[@name='{expected}']")[
+                    "elements"
+                ]
+            ),
         )
         smoke.gtk_count = current + 1
     else:
@@ -164,9 +151,9 @@ def content(smoke, device, label):
                 "elements"
             ]
             for node in nodes:
-                text = call(
+                text = client_accessibility.call(
                     smoke,
-                    bus(smoke),
+                    client_accessibility.bus(smoke),
                     node["bus_name"],
                     node["object_path"],
                     "org.a11y.atspi.Text.GetText",

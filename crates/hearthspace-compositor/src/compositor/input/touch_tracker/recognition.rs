@@ -14,12 +14,12 @@ impl TouchTracker {
                         self.mode = Mode::Pinching { anchor, radius };
                         self.emit(TouchAction::BeginPinch { anchor });
                     } else {
-                        self.mode = Mode::Overview {
+                        self.mode = Mode::SwitcherPinch {
                             anchor,
                             radius,
                             pinching: false,
                         };
-                        self.emit(TouchAction::BeginOverview {
+                        self.emit(TouchAction::BeginSwitcherPinch {
                             fingers: self.contacts.len() as u32,
                         });
                     }
@@ -34,7 +34,7 @@ impl TouchTracker {
                     }
                 }
             }
-            Mode::Overview {
+            Mode::SwitcherPinch {
                 anchor,
                 radius,
                 pinching,
@@ -64,24 +64,24 @@ impl TouchTracker {
         // Pinch wins when a frame contains meaningful spread and translation.
         // Once claimed, later translation or contraction cannot change intent.
         if pinching || scale.ln().abs() >= 0.08 {
-            self.mode = Mode::Overview {
+            self.mode = Mode::SwitcherPinch {
                 anchor,
                 radius,
                 pinching: true,
             };
-            self.emit(TouchAction::UpdateOverview { scale });
+            self.emit(TouchAction::UpdateSwitcherPinch { scale });
         } else if translation.x.abs() >= 32.0 && translation.x.abs() >= translation.y.abs() * 1.5 {
-            self.emit(TouchAction::EndOverview { cancelled: true });
+            self.emit(TouchAction::EndSwitcherPinch { cancelled: true });
             self.mode = Mode::Switching { anchor };
             self.emit(TouchAction::BeginSwitcher {
                 fingers: self.contacts.len() as u32,
             });
             self.emit(TouchAction::UpdateSwitcher { translation });
         } else if translation.y.abs() >= 32.0 && translation.y.abs() > translation.x.abs() * 1.5 {
-            self.emit(TouchAction::EndOverview { cancelled: true });
+            self.emit(TouchAction::EndSwitcherPinch { cancelled: true });
             self.mode = Mode::Suppressed;
         } else {
-            self.emit(TouchAction::UpdateOverview { scale });
+            self.emit(TouchAction::UpdateSwitcherPinch { scale });
         }
     }
 }

@@ -21,7 +21,7 @@ fn focused_rim_fills_four_output_edges_without_rounding_or_covering_content() {
                 1.,
                 true,
                 false,
-                true,
+                FrameKind::ServerSide,
                 false,
                 true,
                 1.,

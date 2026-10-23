@@ -1,4 +1,4 @@
-//! Reuse the tray's bounded icon decoder on a worker and expose named glyphs.
+//! Decode app-aware artwork on a worker and expose shared application glyphs.
 use std::collections::BTreeMap;
 
 use hearthspace_ui_components as components;
@@ -20,27 +20,86 @@ use xilem::{
 };
 
 use super::{ShellState, apps};
-use crate::tray::{TrayIcon, TrayPixmap};
+use crate::{
+    app_catalog::DesktopApp,
+    tray::{TrayIcon, TrayPixmap},
+};
 
 const MAX_ICONS: usize = 128;
-type Icons = BTreeMap<String, Option<TrayPixmap>>;
+type Icons = BTreeMap<CacheKey, Option<TrayPixmap>>;
 
-pub(super) fn requests(state: &ShellState) -> Vec<String> {
-    let mut names = apps(state)
-        .into_iter()
-        .filter_map(|app| app.icon)
-        .collect::<Vec<_>>();
-    names.extend(
-        state
-            .catalog
-            .apps()
-            .iter()
-            .filter_map(|app| app.icon.clone()),
-    );
-    names.sort();
-    names.dedup();
-    names.truncate(MAX_ICONS);
-    names
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub(super) enum CacheKey {
+    App {
+        id: String,
+        argv: Option<Vec<String>>,
+        icon: Option<String>,
+    },
+    Named(String),
+}
+
+impl CacheKey {
+    pub(super) fn app(app: &DesktopApp) -> Self {
+        Self::App {
+            id: app.id.clone(),
+            argv: app.launch_argv().ok(),
+            icon: app.icon.clone(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(super) enum Request {
+    App(Box<DesktopApp>),
+    Named(String),
+}
+
+impl Request {
+    pub(super) fn app(app: &DesktopApp) -> Self {
+        Self::App(Box::new(app.clone()))
+    }
+
+    pub(super) fn key(&self) -> CacheKey {
+        match self {
+            Self::App(app) => CacheKey::app(app),
+            Self::Named(name) => CacheKey::Named(name.clone()),
+        }
+    }
+}
+
+pub(super) fn requests(state: &ShellState) -> Vec<Request> {
+    let dock = apps(state).into_iter().filter_map(|app| app.icon);
+    let catalog = state
+        .catalog
+        .apps()
+        .iter()
+        .filter(|app| app.icon.is_some())
+        .map(Request::app);
+    // Visible pins keep priority even in a large catalog. Distinct applications
+    // must not share a cache entry just because both declare Icon=steam.
+    let mut requests = BTreeMap::new();
+    for request in dock.chain(catalog) {
+        requests.insert(request.key(), request);
+        if requests.len() == MAX_ICONS {
+            break;
+        }
+    }
+    requests.into_values().collect()
+}
+
+fn decode_requests(mut cache: Icons, requests: Vec<Request>) -> Icons {
+    let requests: BTreeMap<_, _> = requests.into_iter().map(|r| (r.key(), r)).collect();
+    cache.retain(|key, _| requests.contains_key(key));
+    for (key, request) in requests {
+        cache.entry(key).or_insert_with(|| match request {
+            Request::App(app) => crate::app_icon::resolve_app(&app),
+            Request::Named(name) => crate::app_icon::resolve(&TrayIcon {
+                name: Some(name),
+                ..Default::default()
+            }),
+        });
+    }
+    cache
 }
 
 pub(in crate::ui) fn task() -> impl View<ShellState, (), ViewCtx, Element = NoElement> + use<> {
@@ -51,18 +110,9 @@ pub(in crate::ui) fn task() -> impl View<ShellState, (), ViewCtx, Element = NoEl
             async move {
                 let mut cache = Icons::new();
                 loop {
-                    let names = receiver.borrow_and_update().clone();
+                    let requests = receiver.borrow_and_update().clone();
                     let result = xilem::tokio::task::spawn_blocking(move || {
-                        cache.retain(|name, _| names.binary_search(name).is_ok());
-                        for name in names {
-                            cache.entry(name.clone()).or_insert_with(|| {
-                                crate::app_icon::resolve(&TrayIcon {
-                                    name: Some(name),
-                                    ..Default::default()
-                                })
-                            });
-                        }
-                        cache
+                        decode_requests(cache, requests)
                     })
                     .await;
                     let Ok(icons) = result else { break };
@@ -92,6 +142,10 @@ fn image(pixmap: TrayPixmap) -> ImageBrush {
     }
     .into()
 }
+
+#[cfg(test)]
+#[path = "dock_icon_tests.rs"]
+mod tests;
 
 #[derive(Clone, PartialEq)]
 pub(super) enum Glyph {
@@ -202,9 +256,31 @@ impl Widget for IconWidget {
         painter: &mut Painter<'_>,
     ) {
         let palette = *props.get::<components::Palette>(ctx.property_cache());
+        self.glyph.paint(self.width, &palette, painter);
+    }
+
+    fn accessibility_role(&self) -> Role {
+        Role::Image
+    }
+
+    fn accessibility(&mut self, _: &mut AccessCtx<'_>, _: &PropertiesRef<'_>, node: &mut Node) {
+        node.set_label(self.name.clone());
+    }
+
+    fn children_ids(&self) -> ChildrenIds {
+        ChildrenIds::new()
+    }
+
+    fn make_trace_span(&self, id: WidgetId) -> tracing::Span {
+        tracing::trace_span!("DockIcon", id = id.trace())
+    }
+}
+
+impl Glyph {
+    fn paint(&self, width: f64, palette: &components::Palette, painter: &mut Painter<'_>) {
         let stroke = Stroke::new(1.6);
-        let center = self.width / 2.0;
-        match &self.glyph {
+        let center = width / 2.0;
+        match self {
             Glyph::App {
                 image,
                 count,
@@ -215,7 +291,7 @@ impl Widget for IconWidget {
                     painter.draw_image(
                         image,
                         Affine::translate((
-                            (self.width - f64::from(image.image.width) * scale) / 2.0,
+                            (width - f64::from(image.image.width) * scale) / 2.0,
                             (30.0 - f64::from(image.image.height) * scale) / 2.0,
                         )) * Affine::scale(scale),
                     );
@@ -244,22 +320,22 @@ impl Widget for IconWidget {
                 } else {
                     palette.text_muted
                 };
-                let dots = (*count).clamp(1, 3);
+                let dots = (*count).min(3);
                 for index in 0..dots {
                     let x = center + (index as f64 - (dots - 1) as f64 / 2.0) * 6.0;
                     painter.fill(Circle::new((x, 32.0), 1.5), color).draw();
                 }
             }
             Glyph::Next => {
-                if self.width <= 2.0 {
+                if width <= 2.0 {
                     return;
                 }
-                let centers = if self.width < 26.0 {
-                    vec![self.width / 2.0]
+                let centers = if width < 26.0 {
+                    vec![width / 2.0]
                 } else {
                     vec![center - 3.5, center + 3.5]
                 };
-                let span = ((self.width - 2.0) / 2.0).min(3.0);
+                let span = ((width - 2.0) / 2.0).min(3.0);
                 for x in centers {
                     painter
                         .stroke(
@@ -278,21 +354,5 @@ impl Widget for IconWidget {
                 }
             }
         }
-    }
-
-    fn accessibility_role(&self) -> Role {
-        Role::Image
-    }
-
-    fn accessibility(&mut self, _: &mut AccessCtx<'_>, _: &PropertiesRef<'_>, node: &mut Node) {
-        node.set_label(self.name.clone());
-    }
-
-    fn children_ids(&self) -> ChildrenIds {
-        ChildrenIds::new()
-    }
-
-    fn make_trace_span(&self, id: WidgetId) -> tracing::Span {
-        tracing::trace_span!("DockIcon", id = id.trace())
     }
 }

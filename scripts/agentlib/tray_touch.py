@@ -24,18 +24,26 @@ def run(smoke, peer):
     ):
         smoke.record("tray-touchscreen-created", **device.device)
 
-        def tap(name, *, menu=False):
+        def tap(name, *, menu=False, hold=False):
             point = tray_checks.point(smoke, name, menu=menu)
             device.request("begin", fingers=1, points=to_device([point], output))
             try:
                 # Wait for a real presentation while the contact is held.
-                smoke.control.capture(output["name"])
+                if hold:
+                    smoke.until(
+                        "touch hold opens app menu",
+                        lambda: shell_checks.panel(smoke, "tray"),
+                    )
+                else:
+                    smoke.control.capture(output["name"])
             finally:
                 device.request("end")
 
-        tap("Application tray")
+        before = len(peer.events())
+        tap(tray_checks.TITLE)
+        peer.expect("activate", after=before)
+        tap(tray_checks.TITLE, hold=True)
         shell_checks.opened(smoke, "tray")
-        tap("Menu for " + tray_checks.TITLE, menu=True)
         smoke.until(
             "touch opens application menu",
             lambda: tray_checks.visible(smoke, "Open fixture"),

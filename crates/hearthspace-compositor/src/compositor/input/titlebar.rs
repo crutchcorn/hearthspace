@@ -104,7 +104,6 @@ fn distance_squared(a: Point<f64, Logical>, b: Point<f64, Logical>) -> f64 {
 impl App {
     fn chrome_pointer_target(&self) -> Option<HitTarget> {
         if self.session_locked()
-            || self.overview_active()
             || self.window_switcher_active()
             || self.pointer.is_grabbed()
             || self.group_pointer_visible()
@@ -258,8 +257,8 @@ impl App {
                 }
             }
             TitlebarButton::Maximize => {
-                if let Err(error) = self.toggle_window_focus_view(target.window_id) {
-                    tracing::debug!(window_id = target.window_id, %error, "titlebar focused view was unavailable");
+                if let Err(error) = self.toggle_window_maximize_button(target.window_id) {
+                    tracing::debug!(window_id = target.window_id, %error, "titlebar maximize was unavailable");
                 }
             }
         }
@@ -285,6 +284,7 @@ impl App {
     }
 
     pub(in crate::compositor) fn cancel_titlebar_pointer(&mut self) {
+        self.gtk_shell.reset_input();
         self.titlebar_input.cancel();
         self.request_redraw();
     }

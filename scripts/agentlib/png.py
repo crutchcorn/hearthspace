@@ -51,14 +51,21 @@ def pixels(png):
         start = y * (stride + 1)
         method = raw[start]
         row = bytearray(raw[start + 1 : start + stride + 1])
+        # Native captures use Up filtering. Its independent bytes do not need
+        # the left-neighbor work and per-byte filter dispatch below.
+        if method == 2:
+            row = bytearray(
+                (value + above) & 255 for value, above in zip(row, previous)
+            )
+            rows.append(row)
+            previous = row
+            continue
         for x in range(stride):
             left = row[x - channels] if x >= channels else 0
             up = previous[x]
             upper_left = previous[x - channels] if x >= channels else 0
             if method == 1:
                 predictor = left
-            elif method == 2:
-                predictor = up
             elif method == 3:
                 predictor = (left + up) // 2
             elif method == 4:

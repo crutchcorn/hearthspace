@@ -121,8 +121,8 @@ fn run_window_states(backend: &str) {
     let id = original["id"].as_u64().unwrap();
     wait_state(&state_path, |state| state["active"] == true);
 
-    // Maximizing fits the current canvas view; actual fullscreen uses native
-    // output coordinates independently of that canvas zoom.
+    // Generic client maximize requests enter focused view at native scale,
+    // independently of canvas zoom, without advertising application fullscreen.
     action(&compositor, "zoom-out");
     let deadline = Instant::now() + Duration::from_secs(5);
     loop {
@@ -140,16 +140,36 @@ fn run_window_states(backend: &str) {
     wait_state(&state_path, |state| state["maximized"] == true);
     wait_windows(&compositor, |windows| {
         windows[0]["maximized"] == true
-            && windows[0]["x"] == 24
-            && windows[0]["y"] == 96
-            && windows[0]["width"] == 1232
-            && windows[0]["height"] == 608
+            && windows[0]["focused_view"] == true
+            && windows[0]["fullscreen"] == false
+            && windows[0]["x"] == 0
+            && windows[0]["y"] == 0
+            && windows[0]["width"] == 1280
+            && windows[0]["height"] == 800
     });
+    assert_eq!(
+        wait_state(&state_path, |state| state["maximized"] == true)["fullscreen"],
+        false
+    );
     assert!(
         compositor
             .send_text_command(&format!("move-window {id} 0 0"))
             .starts_with("err ")
     );
+
+    // The compositor's explicit canvas action remains distinct from the
+    // client's maximize request, and keeps the original floating restore size.
+    keys(&compositor, &[125, 50]); // Super+M: leave focused view for canvas maximize.
+    wait_windows(&compositor, |windows| {
+        windows[0]["maximized"] == true
+            && windows[0]["focused_view"] == false
+            && windows[0]["x"] == 24
+            && windows[0]["y"] == 96
+            && windows[0]["width"] == 1232
+            && windows[0]["height"] == 608
+    });
+    keys(&compositor, &[125, 42, 33]); // Super+Shift+F: focused view again.
+    wait_windows(&compositor, |windows| windows[0]["focused_view"] == true);
 
     keys(&compositor, &[87]); // F11: client requests fullscreen, retaining max state.
     wait_state(&state_path, |state| state["fullscreen"] == true);
@@ -172,14 +192,15 @@ fn run_window_states(backend: &str) {
         state["fullscreen"] == false && state["maximized"] == true
     });
     wait_windows(&compositor, |windows| {
-        windows[0]["height"] == 608 && windows[0]["y"] == 96
+        windows[0]["focused_view"] == true && windows[0]["height"] == 800 && windows[0]["y"] == 0
     });
-    action(&compositor, format!("restore-window {id}"));
+    keys(&compositor, &[67]); // F9: client unmaximize restores its floating window.
     wait_state(&state_path, |state| {
         state["maximized"] == false && state["fullscreen"] == false
     });
     wait_windows(&compositor, |windows| {
-        windows[0]["content_width"] == original["content_width"]
+        windows[0]["focused_view"] == false
+            && windows[0]["content_width"] == original["content_width"]
             && windows[0]["content_height"] == original["content_height"]
             && windows[0]["canvas_x"] == original["canvas_x"]
             && windows[0]["canvas_y"] == original["canvas_y"]

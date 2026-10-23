@@ -2,7 +2,8 @@
 
 `Ctrl+Alt+F1` through `Ctrl+Alt+F12` select the corresponding Linux virtual
 terminal from native Hearthspace. Either Ctrl and Alt key works. These physical
-keyboard shortcuts precede client grabs, search, overview, and the lock screen.
+keyboard shortcuts precede client grabs, search, the window switcher, and the
+lock screen.
 They preserve the running session and do not unlock it. Media-key-first laptop
 keyboards may also require Fn. Nested and headless sessions do not switch host VTs.
 
@@ -19,11 +20,11 @@ console before injecting a return chord; never type into another desktop or an
 unowned login session. Control-socket key injection intentionally does not switch
 the host VT. Native automation must use an owned uinput keyboard through libinput.
 
-Check three round trips: a focused application, an open overview, and a locked
-session. Observe the active kernel VT and compositor inactivity after switching
+Check three round trips: a focused application, an open window switcher, and a
+locked session. Observe the active kernel VT and compositor inactivity after switching
 away. On return, require `active` and `recovery_ready`, preserved application
 identity, a fresh page-flip capture, and exact text received by the application.
-The overview should close during input reset. A locked session must remain locked,
+The switcher should close during input reset. A locked session must remain locked,
 confirm its new shield presentation, redact window information, and deny capture.
 Stop through the owning harness and verify its original VT, scopes, and runtime.
 
@@ -35,11 +36,10 @@ An isolated native session occupied tty7 and returned to the recorded tty3.
 
 `/tmp/hearthspace-vt-fixed.DxhO5i` retains manifests, binary hashes, screenshots,
 capture metadata, libinput traces, and assertions. Left Ctrl/Alt selected tty12
-from the desktop and lock screen; right Ctrl/Alt selected tty11 from overview.
-The kernel return chord selected tty7 from each reserved text console. The same
-Foot window received exactly `vtok\n` after both unlocked returns. Captures
-confirmed fresh page flips; overview closed. The locked return retained the lock,
-confirmed its presentation, and refused capture. This tests native input through
+from the desktop and lock screen. The kernel return chord selected tty7 from the
+reserved text console. The same Foot window received exactly `vtok\n` after the
+unlocked return. Captures confirmed fresh page flips. The locked return retained
+the lock, confirmed its presentation, and refused capture. This tests native input through
 uinput; it does not establish a particular laptop keyboard's Fn behavior.
 
 Cleanup restored tty3, stopped the exact native unit with PID 0 and no cgroup,

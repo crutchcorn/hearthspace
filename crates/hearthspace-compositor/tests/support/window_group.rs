@@ -1,6 +1,6 @@
 use super::{
     navigation::{Editors, action, keys, query},
-    overview::{editor, wait_state},
+    navigation_client::{editor, wait_state},
     *,
 };
 use serde_json::{Value, json};
@@ -212,11 +212,11 @@ fn window_group_gathers_asynchronously_from_fixed_titles_and_restores_pinned_mat
     {
         assert_eq!(
             request["state"]["window_titles"],
-            json!(["Overview editor 0"])
+            json!(["Navigation editor 0"])
         );
         assert_eq!(
             request["questions"]["relevant"]["instructions"]["candidate_window_title"],
-            format!("Overview editor {}", index + 1)
+            format!("Navigation editor {}", index + 1)
         );
         server.reply(if index == 1 { 0.05 } else { 0.98 });
     }

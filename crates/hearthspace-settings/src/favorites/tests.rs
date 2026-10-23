@@ -101,12 +101,14 @@ fn missing_apps_keep_their_assignment_until_removed_but_cannot_start_a_new_recor
     state.start("unknown.desktop");
     assert_eq!(state.assigned().count(), 1);
     state.remove_gesture("Alpha.desktop");
-    assert!(state.entries().is_empty());
-    assert!(
+    assert_eq!(state.assigned().count(), 0);
+    assert_eq!(state.entries()[0].app_id, "Alpha.desktop");
+    assert!(state.entries()[0].gesture.is_none());
+    assert_eq!(
         FavoriteStore::load(dir.path().join("favorites.json"))
             .unwrap()
-            .entries()
-            .is_empty()
+            .entries(),
+        state.entries()
     );
 }
 
@@ -141,8 +143,9 @@ fn another_editors_change_is_preserved_and_the_unsaved_candidate_remains_availab
 }
 
 #[test]
-fn removing_a_gesture_deletes_the_assignment_rather_than_leaving_an_empty_entry() {
+fn removing_a_gesture_preserves_dock_pins_and_their_saved_order() {
     let (dir, mut state) = fixture();
+    state.store.as_mut().unwrap().add("Beta.desktop").unwrap();
     state
         .store
         .as_mut()
@@ -150,12 +153,21 @@ fn removing_a_gesture_deletes_the_assignment_rather_than_leaving_an_empty_entry(
         .set_gesture("Alpha.desktop", &shape())
         .unwrap();
     state.remove_gesture("Alpha.desktop");
-    assert!(state.entries().is_empty());
-    assert!(
+    assert_eq!(state.assigned().count(), 0);
+    assert_eq!(
+        state
+            .entries()
+            .iter()
+            .map(|entry| entry.app_id.as_str())
+            .collect::<Vec<_>>(),
+        ["Beta.desktop", "Alpha.desktop"]
+    );
+    assert!(state.entries().iter().all(|entry| entry.gesture.is_none()));
+    assert_eq!(
         FavoriteStore::load(dir.path().join("favorites.json"))
             .unwrap()
-            .entries()
-            .is_empty()
+            .entries(),
+        state.entries()
     );
 }
 
@@ -231,7 +243,10 @@ fn choosing_an_app_preserves_the_draft_and_retargets_only_after_save() {
     state.choose_app("Beta.desktop");
     state.save();
     let saved = FavoriteStore::load(path).unwrap();
-    assert_eq!(saved.entries().len(), 1);
-    assert_eq!(saved.entries()[0].app_id, "Beta.desktop");
+    assert_eq!(saved.entries().len(), 2);
+    assert_eq!(saved.entries()[0].app_id, "Alpha.desktop");
+    assert!(saved.entries()[0].gesture.is_none());
+    assert_eq!(saved.entries()[1].app_id, "Beta.desktop");
+    assert!(saved.entries()[1].gesture.is_some());
     assert!(state.recording.is_none());
 }

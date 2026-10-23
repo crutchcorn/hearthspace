@@ -29,7 +29,6 @@ impl App {
 
     pub(super) fn navigation_available(&self) -> bool {
         !self.session_locked()
-            && !self.overview_active()
             && !self.canvas_search_active()
             && !self.window_switcher_active()
             && !self.layout_editing()
@@ -43,7 +42,7 @@ impl App {
 
     pub(in crate::compositor) fn check_navigation_available(&self) -> Result<(), String> {
         self.navigation_available().then_some(()).ok_or_else(|| {
-            "window action unavailable during overview, window switching, an input grab, or interactive move/resize".into()
+            "window action unavailable during window switching, an input grab, or interactive move/resize".into()
         })
     }
 
@@ -60,10 +59,22 @@ impl App {
 
     pub(super) fn focus_window(&mut self, id: u64) -> Result<(), String> {
         self.check_navigation_available()?;
-        let index = self.navigation_window_index(id)?;
+        self.navigation_window_index(id)?;
         self.interrupt_pinch_zoom();
-        self.advance_viewport_animation();
-        self.reveal_window(index, false);
+        self.focus_window_with_existing_grab(id)
+    }
+
+    /// Continue an authenticated titlebar action without releasing its input.
+    /// Callers must have checked navigation/input authority before entering.
+    pub(super) fn focus_window_with_existing_grab(&mut self, id: u64) -> Result<(), String> {
+        let index = self.navigation_window_index(id)?;
+        // Activation can promote this window or a transient ancestor to output
+        // presentation. Keep the viewport and focus the actual target directly;
+        // an unpinned dialog must not recurse through focus_presentation_window.
+        if !self.window_focus_view_pending_for_focus(index) {
+            self.advance_viewport_animation();
+            self.reveal_window(index, false);
+        }
         let index = self.raise_window(index);
         if let Some(surface) = self.windows[index].surface.wl_surface() {
             self.set_keyboard_focus_to_window(index, surface);
@@ -211,7 +222,7 @@ fn configure_size(surface: &ToplevelSurface, size: Size<i32, Logical>) {
         state.bounds = None;
         state.size = Some(size);
     });
-    surface.send_configure();
+    crate::compositor::gtk_shell::send_configure(surface);
 }
 
 pub(super) fn usable_output(mut output: Rectangle<i32, Logical>) -> Rectangle<i32, Logical> {

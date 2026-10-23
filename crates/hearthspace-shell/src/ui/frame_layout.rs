@@ -10,11 +10,14 @@ use super::state::ShellState;
 
 mod backing;
 mod confirm;
+mod dock;
+pub(super) use dock::width as dock_width;
 mod editor;
 mod editor_clock;
 pub(super) mod focus;
 pub(super) mod items;
 mod parts;
+mod popup_intent;
 pub(super) mod popups;
 mod reveal;
 mod task;
@@ -23,7 +26,9 @@ mod tests;
 mod text_metrics;
 pub(super) mod tool_menu;
 mod tooltip;
+mod tray;
 mod widgets;
+mod worker;
 
 pub(super) fn task()
 -> impl xilem::core::View<ShellState, (), xilem::ViewCtx, Element = xilem::core::NoElement> + use<>
@@ -79,6 +84,7 @@ fn group_material() -> bool {
 #[serde(default)]
 pub(super) struct Output {
     pub output: String,
+    pub rect: Rect,
     pub compact: bool,
     pub layout: FrameLayout,
     pub widgets: Vec<Widget>,
@@ -122,6 +128,7 @@ pub(super) struct Confirmation {
 pub(super) struct Snapshot {
     pub version: u32,
     pub revision: u64,
+    pub popup_epoch: u64,
     pub editing: bool,
     pub session: u64,
     pub output: Option<String>,
@@ -144,10 +151,12 @@ pub(super) struct Snapshot {
 #[derive(Default)]
 pub(super) struct State {
     pub snapshot: Snapshot,
+    pub popup_epoch: u64,
     visible: bool,
     pub refresh: Arc<Notify>,
     requests: Option<mpsc::Sender<task::Request>>,
     opening_popup: bool,
+    pub intents: popup_intent::Intents,
     availability: Option<tokio::sync::watch::Sender<Vec<(String, String, bool)>>>,
     windows: BTreeMap<String, WindowId>,
     chains: BTreeMap<String, focus::Chain>,
@@ -161,6 +170,9 @@ pub(super) struct State {
 }
 
 pub(super) fn submit(state: &mut ShellState, command: String) {
+    if command == "layout-tool" {
+        state.frame_layout.intents.cancel();
+    }
     if let Some(requests) = &state.frame_layout.requests
         && let Err(error) = requests.try_send(task::Request {
             command,
@@ -187,6 +199,23 @@ pub(super) fn command(state: &mut ShellState, action: &str, data: serde_json::Va
 }
 
 fn apply(state: &mut ShellState, mut snapshot: Snapshot) {
+    if snapshot.popup_epoch < state.frame_layout.popup_epoch {
+        return;
+    }
+    state.frame_layout.popup_epoch = snapshot.popup_epoch;
+    state
+        .frame_layout
+        .intents
+        .observe_epoch(snapshot.popup_epoch);
+    // Empty outputs mean locked/inactive, before cached geometry is restored.
+    if snapshot.outputs.is_empty() || snapshot.editing || snapshot.confirmation.is_some() {
+        state.frame_layout.intents.cancel();
+    } else {
+        state
+            .frame_layout
+            .intents
+            .retain_output(|key| snapshot.outputs.iter().any(|output| output.output == key));
+    }
     state.frame_layout.visible = !snapshot.outputs.is_empty();
     if snapshot.outputs.is_empty() {
         snapshot.outputs = state.frame_layout.snapshot.outputs.clone();
@@ -267,6 +296,22 @@ fn apply(state: &mut ShellState, mut snapshot: Snapshot) {
         state.dismiss_panels();
     }
     state.frame_layout.snapshot = snapshot;
+}
+
+pub(super) fn cancel_popups(state: &mut ShellState, epoch: u64) {
+    if observe_popup_epoch(state, epoch) {
+        state.dismiss_panels();
+    }
+}
+
+pub(super) fn observe_popup_epoch(state: &mut ShellState, epoch: u64) -> bool {
+    if epoch <= state.frame_layout.popup_epoch {
+        return false;
+    }
+    state.frame_layout.intents.observe_epoch(epoch);
+    state.frame_layout.popup_epoch = epoch;
+    state.frame_layout.refresh.notify_one();
+    true
 }
 
 fn widget_key(output: &str, id: &str) -> String {

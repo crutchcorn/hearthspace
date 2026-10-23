@@ -127,4 +127,55 @@ mod tests {
             FilterResult::Forward
         ));
     }
+
+    #[test]
+    fn gesture_switcher_keeps_held_modifier_release_paired_after_escape() {
+        let mut shortcuts = KeyboardShortcuts::default();
+        let shift = 50_u32.into();
+        let escape = 9_u32.into();
+        let mods = ModifiersState {
+            shift: true,
+            ..Default::default()
+        };
+        assert!(matches!(
+            shortcuts.filter_switcher(
+                shift,
+                KeyState::Pressed,
+                &mods,
+                keysyms::KEY_Shift_L,
+                SwitcherSource::Gesture,
+            ),
+            FilterResult::Intercept(None)
+        ));
+        assert!(matches!(
+            shortcuts.filter_switcher(
+                escape,
+                KeyState::Pressed,
+                &mods,
+                keysyms::KEY_Escape,
+                SwitcherSource::Gesture,
+            ),
+            FilterResult::Intercept(Some(Shortcut::SwitcherCancel))
+        ));
+        assert!(matches!(
+            shortcuts.filter(
+                shift,
+                KeyState::Released,
+                &ModifiersState::default(),
+                keysyms::KEY_Shift_L,
+                true,
+            ),
+            FilterResult::Intercept(None)
+        ));
+        assert!(matches!(
+            shortcuts.filter(
+                escape,
+                KeyState::Released,
+                &ModifiersState::default(),
+                keysyms::KEY_Escape,
+                true,
+            ),
+            FilterResult::Intercept(None)
+        ));
+    }
 }

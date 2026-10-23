@@ -120,8 +120,6 @@ def parser():
         "paste",
         "clipboard-set",
         "launch",
-        "overview",
-        "overview-select",
         *WINDOW_COMMANDS,
     ):
         action = sub.add_parser(name)
@@ -182,12 +180,6 @@ def parser():
                     default="ctrl+v",
                     help="paste shortcut; terminals commonly use ctrl+shift+v",
                 )
-        elif name == "overview":
-            action.add_argument(
-                "mode", nargs="?", choices=("on", "off", "toggle"), default="toggle"
-            )
-        elif name == "overview-select":
-            action.add_argument("window_id", type=positive_integer)
         elif name == "launch":
             action.add_argument("app", help="desktop entry ID or 'foot'")
         elif name in (
@@ -252,10 +244,6 @@ def action(args, control):
             control.request(clipboard_command(args.text, args.file))
         elif args.command == "paste":
             paste(inputs, clipboard_command(args.text, args.file), args.shortcut)
-        elif args.command == "overview":
-            control.request(f"overview-{args.mode}")
-        elif args.command == "overview-select":
-            control.request(f"overview-select {args.window_id}")
         elif args.command == "launch":
             if args.app == "foot" and args.output is None:
                 control.request("spawn foot")

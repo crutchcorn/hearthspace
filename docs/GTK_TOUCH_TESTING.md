@@ -25,13 +25,111 @@ and run it separately from all other native or GPU-intensive suites.
 
 ## Regression and hardware evidence
 
+### CSD maximize and titlebar gestures
+
+After building, start an isolated native session using the
+[native control workflow](../.agents/skills/hearthspace-native-control/SKILL.md).
+The titlebar acceptance path attaches to that session; its caller must stop it
+and verify recovery afterward:
+
+```sh
+scripts/gtk-touch-smoke --session "$native_run" --titlebar-maximize \
+  --window-test "$PWD/target/debug/hearthspace-window-test" \
+  --timeout 450 --total-timeout 1200
+```
+
+This opt-in path uses isolated GTK 3/4 HeaderBar fixtures. Pointer double-clicks
+and uinput touchscreen double-taps must canvas-maximize/restore; their maximize
+buttons must enter focused view with the application header retained and the
+canvas frame hidden. An explicit header gesture exits focused view into canvas
+maximization. The ordinary F9 maximize request in `hearthspace-window-test`
+exercises the generic fallback. Super+M, Super+Shift+F and application F11 retain
+their separate actions. The workflow checks committed client state, original
+floating geometry on restore, rendered input and fullscreen signals at canvas
+scales 1.0 and 0.8. It records fresh target geometry and page-flip captures.
+Each GTK application exercises 44 presentation transitions with input and pixel
+checks. Allow 450 seconds per application and 1,200 seconds overall; the owning
+session's watchdog must also cover startup and inspection (for example, 1,500
+seconds). These are acceptance-run budgets, separate from compositor IPC deadlines.
+
+Use `--case gtk3`, `--case gtk4` or `--case generic` for a focused run. This
+validates cooperating GTK headers and generic maximize requests, not custom
+titlebar implementations in every application. See the
+[GTK protocol contract](../crates/hearthspace-compositor/protocols/README.md)
+for input validation and compatibility limits.
+
+The CSD matrix passed on 2026-10-22 on a physical ThinkPad T480s with Intel
+UHD 620 graphics (`i915`), Linux `7.0.0-38-generic`, and `eDP-1` at 1920×1080,
+output scale 1. GTK 3.24.52 and GTK 4.22.4 each passed all 44 transitions; the
+generic maximize fixture passed 20. Each transition checked committed state and
+rendered application input. Focused entry also checked that every live shell
+widget disappeared, before deliberate hover reveal and again afterward.
+
+Evidence is under `/home/crutchcorn/hearthspace-csd-recovery-xm_vd6xe/`:
+`native-gtk-fdkfdpm5` contains the completed GTK 3 workflow;
+`native-gtk-q6zdwmkg` contains the completed GTK 4 and generic workflows.
+The latter retained separate touchscreen traces for each pointer, touch, and
+keyboard batch. Both owned sessions restored tty2, removed their runtimes and
+clients, and left inactive units with PID 0 and no cgroup. No other native or
+GPU-intensive suite ran concurrently.
+
+Earlier attempts exposed acceptance-helper defects: the temporary touchscreen's
+180-second guard expired during an oversized batch, GTK 4 retained the accessible
+label **Maximize** while maximized, and a client header border confused a
+whole-widget background estimate. Fresh devices per batch, toolkit-specific
+control discovery, and per-row background sampling address these cases without
+relaxing presentation or input assertions. Synthetic regressions still reject
+shell glyphs retained over a disappearing backdrop. The final comparator also
+passed all 27 saved initial/re-hide observations from the earlier GTK runs.
+This evidence validates the worktree build; it does not update the installed
+Hearthspace release.
+
+Automated validation passed rustfmt, Clippy with warnings denied, the full
+workspace/all-target build, and 1,584 Rust tests with `udev,e2e,test-apps` and
+required accessibility enabled. The full Python E2E run passed all 512 tests.
+After adding the native observer regressions, the final Python unit run completed
+566 tests with only the 14 opt-in E2E cases skipped; Ruff lint and formatting
+passed for all 191 Python files. Logs are retained in the same evidence root's
+`validation-6gh7jrje` directory. Native Firefox acceptance is recorded in
+[daily application testing](DAILY_APPS_TESTING.md).
+
+### Integration with compositor-owned CSD grabs
+
+Rebase validation on 2026-10-23 retained the upstream move/resize grab and focus
+recovery behavior from `eb5e391`. GTK authority tests now require a consumed
+release after compositor takeover, followed by pointer re-entry and a usable
+new click. A real-client regression keeps a dialog's original touch drag alive
+through its parent's maximize and restore requests.
+
+The combined build passed rustfmt, Clippy with warnings denied, the full
+workspace/all-target build, and 1,661 Rust tests across 39 targets. The full
+566-test Python E2E run had one observer failure: a quiet intermediate audio
+value was mistaken for the final slider position. The repaired observer waits
+for the explicit 75% endpoint in both backend state and visible text before
+testing Right to 76%. Its regression fails with the former observer, all three
+new cases pass, and the complete controls workflow passed its isolated rerun
+with the original deadline. The other 565 E2E cases passed unchanged. The final
+unit run completed 569 tests with only the 14 opt-in E2E cases skipped; Ruff
+lint and formatting passed for all 192 Python files.
+
+On the same Intel/i915 host, `native-gtk-o006m9ss` repeated all 108 GTK 3, GTK 4,
+and generic transitions successfully. Cleanup restored tty2 and removed the
+owned clients, devices, runtime, and service processes. Evidence is beneath the
+same recovery root: `validation-oeqz75j_` contains full checks, and
+`rebase-kds6v9b7` contains the observer negative control and passing rerun.
+
+### Earlier touch movement repair
+
 GTK can send `xdg_toplevel.unset_fullscreen` immediately before its titlebar
 `move` request, even when the window is already floating. Hearthspace previously
 treated this redundant request as a state change, cancelling the touch-emulated
 pointer press before Smithay could validate the move. Redundant presentation
 requests now acknowledge the client without interrupting input or replacing
-pending geometry. Actual state/output changes retain their cancellation path,
-and move/resize serial, seat, and window validation remain intact.
+pending geometry. Presentation changes affecting the focused window stop canvas
+pinch handling while preserving a delivered touch pointer sequence, including
+one moving a transient dialog. Background maximize requests wait for focus before
+changing canvas interaction. Move/resize serial, seat, and window validation
+remain intact.
 
 The failure was reproduced with GNOME Calculator 50.0 (GTK 4.22.4) on the physical
 GPD laptop, Linux 7.0.0-38-generic, AMD Radeon 880M/890M with amdgpu, and eDP-1 at

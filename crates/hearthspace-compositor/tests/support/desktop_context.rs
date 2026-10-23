@@ -8,6 +8,9 @@ use super::{
 use hearthspace_common::desktop_context;
 use serde_json::{Value, json};
 
+#[path = "desktop_context/submenus.rs"]
+mod submenus;
+
 fn fixture() -> (HeadlessCompositor, MapClient, usize, [usize; 2]) {
     let mut compositor = HeadlessCompositor::spawn_with_size("1280x800");
     drop(compositor.wait_for_socket());
@@ -194,6 +197,7 @@ fn desktop_context_keyboard_escape_rejects_late_and_stale_menu_surfaces() {
     assert_eq!(context(&compositor), current);
     for command in [
         "desktop-context-read",
+        "desktop-context-parent",
         "desktop-context-select-all",
         "desktop-context-arrange",
         "desktop-context-copy",

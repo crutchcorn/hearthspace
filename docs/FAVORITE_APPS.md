@@ -3,7 +3,8 @@
 Open **Settings → Search → Gestures** to assign a drawn shortcut to an installed
 app. Choose **Add gesture for …**, draw one continuous shape, then save it.
 Cancelling a recording does not add anything. Existing assignments offer
-**Change gesture** and **Remove gesture**; there is no separate favorites list.
+**Change gesture** and **Remove gesture**. Removing a gesture keeps the app pinned
+in the dock; use the desktop app's **Remove from favorites** action to unpin it.
 
 Draw by clicking and dragging with a mouse or one finger on a trackpad, or by
 drawing directly with one finger on a touchscreen. You can redraw before saving.
@@ -13,16 +14,16 @@ ID and the existing safe app launcher, never a saved shell command.
 Open Apps List with Meta, its dock button, or a one-finger upward touchscreen
 swipe starting on the bottom-right dock. Short taps still activate dock buttons;
 horizontal/downward swipes and multi-contact interruptions do not open Apps List.
-The drawing icon at the right of the search input enables **Draw to launch**.
-The adjacent Settings icon opens the Settings app directly on its Search tab.
-Empty search does not list assigned apps. Typing searches applications and open
-windows as usual.
+The **Draw** tab enables **Draw to launch**. Its Settings icon opens the Settings
+app directly on its Search tab. An empty query in the **Apps** tab lists all
+installed apps alphabetically; favorites stay in the dock even when closed.
+Typing searches applications and open windows as usual.
 
 Release the mouse button or lift your finger after drawing: a clear match launches
 the app immediately. An unrecognized or ambiguous shape keeps search open and
-shows feedback. **Back to search** or pressing the drawing icon again leaves
-drawing mode. One touchscreen finger scrolls Settings and search results outside
-the drawing area; a drag on the drawing area stays a drawing.
+shows feedback. Select the **Apps** tab to leave drawing mode. One touchscreen
+finger scrolls Settings and search results outside the drawing area; a drag on
+the drawing area stays a drawing.
 
 Recognition is deterministic. It resamples the stroke uniformly, removes
 position and uniform scale, and allows modest rotation, drawing in reverse, and
@@ -37,8 +38,9 @@ Assignments are saved atomically in
 write errors instead of silently replacing the configuration. Search reloads
 changes automatically. Removed applications remain visible as unavailable
 assignments so they can be removed in Settings. The existing favorites file format
-is retained for compatibility: saved shapes are preserved, while old entries
-without a gesture are hidden and retired on the next successful assignment save.
+is retained: saving a gesture preserves other favorites and their order, including
+apps pinned without a gesture. Settings lists gesture assignments; the dock lists
+installed favorites with or without gestures.
 
 ## Input and automation
 
@@ -91,6 +93,17 @@ private application and configuration directories, records through the real
 Settings drawing widget, reads back the saved shape, and launches through the
 real search input path. It also verifies unknown-shape rejection, leaving the
 area, closing drawing mode, and Escape while holding a stroke.
+
+The headless workflow has a 180-second aggregate budget, including startup,
+Settings interaction, cancellation checks, and launch verification. On
+2026-10-22, an isolated debug run with Lavapipe/llvmpipe at 2560×1600 and 2×
+completed every assertion in 128.6 seconds. Its private AT-SPI subprocesses took
+53.2 seconds, captures 6.4 seconds, and input contexts 33.3 seconds; these
+categories can overlap. The former 120-second limit expired during observation
+of already-present controls. Readiness controls now share the required geometry
+snapshot, preserving both consecutive observations and their geometry fences.
+The allowance covers the complete software fixture, not application launch
+latency. Timed evidence: `/tmp/hearthspace-favorite-timed-240/`.
 
 ## Initial implementation validation — 2026-10-15
 
@@ -151,3 +164,26 @@ that its session/application scopes stopped and its runtime was removed.
 Native evidence is in `/tmp/hearthspace-search-native.HVX2ZS/`; automated check
 logs and headless evidence are in `/tmp/hearthspace-search-checks.iULxsN/`.
 No operating-system configuration was changed.
+
+## Drawing layout stability — 2026-10-22
+
+Background window-list or desktop-catalog errors remain visible in browsing mode,
+but do not change the active drawing layout or its window size. Gesture feedback
+and app-launch failures remain visible. This keeps a background query timeout
+from moving the pad and invalidating a stroke that the user has already begun.
+
+The final integration run exposed this instability: a window-list error banner
+shifted the pad by 55 logical pixels and increased the popup height by 56 pixels.
+The drawing generation changed after readiness, and the matching stroke did not
+launch its app despite roughly 57 seconds remaining. The original evidence is
+retained in `/tmp/hearthspace-icon-integrated-e2e.jchd1fng/shell/favorite-apps`.
+An unchanged targeted rerun passed in 130.98 seconds; that intermittent success
+does not remove the layout hazard. The workflow's 180-second budget is unchanged.
+
+The rendered-window regression failed before the repair for both background error
+sources, then passed all four focused cases after it. It compares the actual pad,
+content bounds and native creation hints, feeds the measured bounds through the
+production capture callback, and checks that the original stroke keeps accepting
+input. Browsing and genuine launch/gesture error visibility are checked separately.
+The fixture builds fresh window roots; it does not simulate a retained native
+window lifecycle. Logs are `/tmp/hearthspace-favorite-layout-{negative,positive}.log`.

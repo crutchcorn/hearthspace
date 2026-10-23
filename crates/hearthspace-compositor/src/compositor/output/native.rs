@@ -7,7 +7,12 @@ use super::{
 };
 
 impl OutputSet {
-    fn sync_connectors(&mut self, dh: &DisplayHandle, descriptors: Vec<OutputDescriptor>) {
+    fn sync_connectors(&mut self, dh: &DisplayHandle, descriptors: Vec<OutputDescriptor>) -> bool {
+        let removed = self.active_outputs().any(|output| {
+            !descriptors
+                .iter()
+                .any(|descriptor| descriptor.name == output.name)
+        });
         let Some(primary) = descriptors.first().cloned() else {
             if self.primary.advertised {
                 tracing::info!(name = %self.primary.name, "disabling last disconnected Wayland output");
@@ -19,7 +24,7 @@ impl OutputSet {
             }
             // Retain geometry for recovery, but expose no fictitious output to
             // capture, lock barriers, window metadata, or new clients.
-            return;
+            return removed;
         };
 
         if !self.primary.advertised || self.primary.name != primary.name {
@@ -71,6 +76,7 @@ impl OutputSet {
             tracing::info!(name = %removed.name, "disabling disconnected Wayland output");
             dh.disable_global::<App>(removed.global_id);
         }
+        removed
     }
 }
 
@@ -80,7 +86,11 @@ impl App {
         dh: &DisplayHandle,
         descriptors: Vec<OutputDescriptor>,
     ) {
-        self.outputs.sync_connectors(dh, descriptors);
+        if self.outputs.sync_connectors(dh, descriptors) {
+            // Preserve removal across shell polls, including same-name replug.
+            // Existing panels on surviving outputs retain their ordinary state.
+            self.invalidate_shell_popup_recovery();
+        }
     }
 }
 

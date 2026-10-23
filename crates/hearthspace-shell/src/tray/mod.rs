@@ -18,4 +18,4 @@ pub use backend::{TrayHandle, TrayWorker, channel};
 pub use model::*;
 
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;

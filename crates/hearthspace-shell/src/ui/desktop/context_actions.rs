@@ -37,7 +37,6 @@ pub(super) struct Request {
 pub(super) enum Completed {
     Closed(Option<FavoriteStore>),
     OpenWith(Vec<actions::OpenWithApp>),
-    Properties(Vec<(String, String)>),
 }
 
 pub(super) fn perform(
@@ -50,7 +49,6 @@ pub(super) fn perform(
     #[derive(serde::Deserialize)]
     struct Accepted {
         context: DesktopContext,
-        xwayland_display: Option<String>,
     }
     let bytes = command_client::query_payload_bounded(
         socket,
@@ -104,7 +102,7 @@ pub(super) fn perform(
                         accepted.context.output.as_deref(),
                     )?,
                     DesktopItemKind::File { path } | DesktopItemKind::Folder { path } => {
-                        desktop_items::open_path(path, accepted.xwayland_display.as_deref())?
+                        desktop_items::open_path(socket, path, accepted.context.output.as_deref())?
                     }
                 }
             }
@@ -115,9 +113,10 @@ pub(super) fn perform(
             )?));
         }
         Action::OpenWith(id) => actions::open_with(
+            socket,
             &actions::paths(&selected)?,
             &id,
-            accepted.xwayland_display.as_deref(),
+            accepted.context.output.as_deref(),
         )?,
         Action::Cut | Action::Copy => {
             actions::paths(&selected)?;
@@ -168,7 +167,7 @@ pub(super) fn perform(
         }
         Action::NewFolder(name) => actions::new_folder(&directory()?, &name)?,
         Action::Trash => actions::trash(&actions::paths(&selected)?)?,
-        Action::Properties => return Ok(Completed::Properties(actions::properties(&selected)?)),
+        Action::Properties => actions::properties(&selected)?,
         Action::Favorite(add) => {
             let DesktopItemKind::App { app_id, .. } = &one()?.kind else {
                 return Err("Only applications can be favorites.".into());
@@ -193,8 +192,9 @@ pub(super) fn perform(
             &format!("desktop-context-arrange {}", request.generation),
         )?,
         Action::OpenDesktop => desktop_items::open_path(
+            socket,
             &desktop_items::desktop_directory().ok_or("The desktop folder is not configured.")?,
-            accepted.xwayland_display.as_deref(),
+            accepted.context.output.as_deref(),
         )?,
         Action::Background => command_client::send_command(
             socket,

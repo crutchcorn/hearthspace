@@ -19,6 +19,10 @@ pub(super) struct State {
     dismissed: u64,
     window: Option<WindowId>,
     page: Page,
+    submenu: Option<Submenu>,
+    row_y: Option<u32>,
+    hovered: Option<usize>,
+    hover_blocked: bool,
     selected: usize,
     pub busy: bool,
     error: Option<String>,
@@ -31,8 +35,14 @@ enum Page {
     #[default]
     Menu,
     Name(bool), // New folder, otherwise rename.
-    OpenWith(Vec<crate::desktop_items::actions::OpenWithApp>),
-    Properties(Vec<(String, String)>),
+}
+
+struct Submenu {
+    window: WindowId,
+    parent: usize,
+    row_y: u32,
+    apps: Option<Vec<crate::desktop_items::actions::OpenWithApp>>,
+    selected: usize,
 }
 
 pub(super) fn apply(state: &mut ShellState, context: Option<DesktopContext>) {
@@ -105,12 +115,9 @@ pub(super) fn finished(state: &mut ShellState, generation: u64, result: Result<C
             dismiss(state, generation);
         }
         Ok(Completed::OpenWith(apps)) => {
-            state.desktop.menu.page = Page::OpenWith(apps);
-            state.desktop.menu.selected = 0;
-        }
-        Ok(Completed::Properties(info)) => {
-            state.desktop.menu.page = Page::Properties(info);
-            state.desktop.menu.selected = 0;
+            if let Some(submenu) = &mut state.desktop.menu.submenu {
+                submenu.apps = Some(apps);
+            }
         }
         Err(error) => state.desktop.menu.error = Some(error),
     }
@@ -119,6 +126,7 @@ pub(super) fn finished(state: &mut ShellState, generation: u64, result: Result<C
 pub(in crate::ui) fn button_event(
     state: &mut ShellState,
     generation: u64,
+    submenu: bool,
     index: usize,
     action: ButtonAction,
 ) {
@@ -128,39 +136,74 @@ pub(in crate::ui) fn button_event(
         .current
         .as_ref()
         .is_none_or(|c| c.generation != generation)
+        || (submenu && state.desktop.menu.submenu.is_none())
     {
         return;
     }
+    if !submenu && let ButtonAction::Hover(hovered) = action {
+        if hovered {
+            state.desktop.menu.hovered = Some(index);
+        } else if state.desktop.menu.hovered == Some(index) {
+            state.desktop.menu.hovered = None;
+        }
+    }
     if state.desktop.menu.busy
-        && !matches!(action, ButtonAction::Dismiss)
+        && !matches!(action, ButtonAction::Dismiss | ButtonAction::Back)
         && !(matches!(action, ButtonAction::Activate)
-            && rows::rows(state)
+            && rows::rows(state, submenu)
                 .get(index)
-                .is_some_and(|row| matches!(row.action, rows::Choice::Close)))
+                .is_some_and(|row| matches!(row.action, rows::Choice::Close | rows::Choice::Back)))
     {
         return;
     }
     match action {
-        ButtonAction::Dismiss => dismiss(state, generation),
-        ButtonAction::Back => {
-            state.desktop.menu.page = Page::Menu;
-            state.desktop.menu.selected = 0;
-        }
+        ButtonAction::Dismiss | ButtonAction::Back if submenu => back(state, generation),
+        ButtonAction::Dismiss | ButtonAction::Back => dismiss(state, generation),
         ButtonAction::Step(delta) => {
-            let count = rows::rows(state).len();
+            if !submenu && state.desktop.menu.submenu.is_some() {
+                back(state, generation);
+            }
+            let count = rows::rows(state, submenu).len();
             if count > 0 {
-                state.desktop.menu.selected =
-                    (state.desktop.menu.selected as i32 + delta).rem_euclid(count as i32) as usize;
+                let selected = selection(state, submenu);
+                *selected = (*selected as i32 + delta).rem_euclid(count as i32) as usize;
             }
         }
-        ButtonAction::Focus => state.desktop.menu.selected = index,
+        ButtonAction::Focus => *selection(state, submenu) = index,
+        ButtonAction::MenuAnchor(y) if !submenu => {
+            state.desktop.menu.row_y = Some((y - 6.0).round().clamp(0.0, 16_384.0) as u32);
+        }
+        ButtonAction::Hover(false) if !submenu => state.desktop.menu.hover_blocked = false,
+        ButtonAction::Hover(true) if !submenu && !state.desktop.menu.hover_blocked => {
+            if rows::rows(state, false)
+                .get(index)
+                .is_some_and(|row| row.submenu)
+            {
+                open_submenu(state, index);
+            } else if state.desktop.menu.submenu.is_some() {
+                back(state, generation);
+                state.desktop.menu.selected = index;
+            }
+        }
         ButtonAction::Activate => {
-            let Some(row) = rows::rows(state).into_iter().nth(index) else {
+            let Some(row) = rows::rows(state, submenu).into_iter().nth(index) else {
                 return;
             };
             match row.action {
+                rows::Choice::Action(Action::OpenWithOptions) => {
+                    state.desktop.menu.hover_blocked = false;
+                    if state.desktop.menu.submenu.is_some() {
+                        task::submit(
+                            state,
+                            task::Request::Command(format!("desktop-context-child {generation}")),
+                        );
+                    } else {
+                        open_submenu(state, index);
+                    }
+                }
                 rows::Choice::Action(action) => send(state, action),
                 rows::Choice::Rename => {
+                    state.desktop.menu.submenu = None;
                     state.desktop.menu.text = state
                         .desktop
                         .menu
@@ -173,20 +216,54 @@ pub(in crate::ui) fn button_event(
                     state.desktop.menu.page = Page::Name(false);
                 }
                 rows::Choice::NewFolder => {
+                    state.desktop.menu.submenu = None;
                     state.desktop.menu.text = "New Folder".into();
                     state.desktop.menu.page = Page::Name(true);
                 }
-                rows::Choice::Back => {
-                    state.desktop.menu.page = Page::Menu;
-                    state.desktop.menu.selected = 0;
-                }
                 rows::Choice::Close => dismiss(state, generation),
+                rows::Choice::Back => back(state, generation),
             }
         }
         _ => {}
     }
 }
 
-pub(super) fn window(state: &ShellState) -> Option<WindowView<ShellState>> {
-    view::window(state)
+fn selection(state: &mut ShellState, submenu: bool) -> &mut usize {
+    if submenu && let Some(submenu) = &mut state.desktop.menu.submenu {
+        &mut submenu.selected
+    } else {
+        &mut state.desktop.menu.selected
+    }
+}
+
+fn open_submenu(state: &mut ShellState, parent: usize) {
+    if state.desktop.menu.submenu.is_some() || state.desktop.menu.busy {
+        return;
+    }
+    state.desktop.menu.selected = parent;
+    state.desktop.menu.submenu = Some(Submenu {
+        window: WindowId::next(),
+        parent,
+        row_y: state.desktop.menu.row_y.unwrap_or((parent * 34) as u32),
+        apps: None,
+        selected: 0,
+    });
+    send(state, Action::OpenWithOptions);
+}
+
+fn back(state: &mut ShellState, generation: u64) {
+    if let Some(submenu) = state.desktop.menu.submenu.take() {
+        state.desktop.menu.hover_blocked =
+            state.desktop.menu.busy || state.desktop.menu.hovered == Some(submenu.parent);
+        state.desktop.menu.selected = submenu.parent;
+        state.desktop.menu.error = None;
+        task::submit(
+            state,
+            task::Request::Command(format!("desktop-context-parent {generation}")),
+        );
+    }
+}
+
+pub(super) fn windows(state: &ShellState) -> Vec<WindowView<ShellState>> {
+    view::windows(state)
 }

@@ -18,12 +18,10 @@ use xilem::{
 #[derive(Clone, Debug, PartialEq)]
 pub(super) enum Target {
     Item(ItemKey),
-    ItemMenu(ItemKey),
     Menu(ItemKey, String, i32),
-    Drawer,
     Back,
     Close,
-    DesktopContext(u64, usize),
+    DesktopContext(u64, bool, usize),
 }
 
 pub(super) struct ButtonView {
@@ -172,11 +170,12 @@ impl View<ShellState, (), ViewCtx> for ButtonView {
         if action.target != self.target {
             return MessageResult::Action(());
         }
-        if let Target::DesktopContext(generation, index) = self.target {
-            super::desktop::context::button_event(state, generation, index, action.action);
+        if let Target::DesktopContext(generation, submenu, index) = self.target {
+            super::desktop::context::button_event(state, generation, submenu, index, action.action);
             return MessageResult::Action(());
         }
         match action.action {
+            ButtonAction::MenuAnchor(_) => {}
             ButtonAction::Hover(hovered) => {
                 if let Target::Item(key) = &self.target {
                     if hovered {
@@ -222,7 +221,7 @@ impl View<ShellState, (), ViewCtx> for ButtonView {
                 }
             }
             ButtonAction::Context => {
-                if let Target::Item(key) | Target::ItemMenu(key) = &self.target {
+                if let Target::Item(key) = &self.target {
                     tray_state::open_menu(state, &self.output, key);
                 }
             }
@@ -241,12 +240,12 @@ impl View<ShellState, (), ViewCtx> for ButtonView {
             }
             ButtonAction::Activate => match &self.target {
                 Target::Item(key) => tray_state::activate(state, &self.output, key),
-                Target::ItemMenu(key) => tray_state::open_menu(state, &self.output, key),
                 Target::Menu(_, _, id) => tray_state::choose(state, &self.output, *id),
-                Target::Drawer => tray_state::toggle(state, &self.output),
                 Target::Back => tray_state::back(state, &self.output),
                 Target::Close => tray_state::dismiss(state, &self.output),
-                Target::DesktopContext(_, _) => unreachable!("desktop menus are dispatched above"),
+                Target::DesktopContext(_, _, _) => {
+                    unreachable!("desktop menus are dispatched above")
+                }
             },
         }
         MessageResult::Action(())

@@ -1,23 +1,27 @@
 //! A single worker serializes layout commands and coalesces semantic updates.
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use xilem::{
     core::{MessageProxy, NoElement, View},
     view::task_raw,
 };
 
-use super::{ShellState, Snapshot, apply};
+use super::{
+    ShellState, Snapshot, apply,
+    popup_intent::{Intent, Opening},
+    worker::Worker,
+};
 
 #[derive(Debug)]
 enum Update {
     Snapshot(Box<Snapshot>),
     Error(String),
-    Open(String, super::popups::Popup),
+    Open(Opening),
 }
 
 #[derive(Debug)]
 pub(super) struct Request {
     pub command: String,
-    pub open: Option<(String, super::popups::Popup)>,
+    pub open: Option<Intent>,
 }
 
 pub(in crate::ui) fn task() -> impl View<ShellState, (), xilem::ViewCtx, Element = NoElement> + use<>
@@ -34,8 +38,9 @@ pub(in crate::ui) fn task() -> impl View<ShellState, (), xilem::ViewCtx, Element
             async move {
                 let mut interval = tokio::time::interval(Duration::from_millis(500));
                 interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
-                let mut previous = None;
-                let mut published_availability = std::collections::BTreeMap::new();
+                let mut previous: Option<Snapshot> = None;
+                let mut worker = Worker::default();
+                let mut diagnostic_id = 0_u64;
                 loop {
                     let request = tokio::select! {
                         _ = interval.tick() => None,
@@ -43,47 +48,41 @@ pub(in crate::ui) fn task() -> impl View<ShellState, (), xilem::ViewCtx, Element
                         _ = availability.changed() => None,
                         value = requests.recv() => { let Some(value) = value else { break }; Some(value) },
                     };
-                    let open = request.as_ref().and_then(|request| request.open.clone());
+                    diagnostic_id = diagnostic_id.wrapping_add(1);
                     let available = availability.borrow_and_update().clone();
                     let path = socket.clone();
                     let result = tokio::task::spawn_blocking(move || {
-                        for (output,id,available) in available {
-                            let key=(output.clone(),id.clone());
-                            if published_availability.get(&key)!=Some(&available) {
-                                let command=format!("frame-widget-available {}",serde_json::json!({"output":output,"id":id,"available":available}));
-                                if crate::ui::command_client::send_command(&path,&command).is_ok(){published_availability.insert(key,available);}
-                            }
-                        }
-                        let result=(|| {
-                        if let Some(request) = request {
-                            crate::ui::command_client::send_command(&path, &request.command)?;
-                        }
-                        let bytes = crate::ui::command_client::query_frame_layout(&path)
-                            .map_err(|error| error.to_string())?;
-                        parse(&bytes)
-                        })();
-                        (published_availability,result)
-                    }).await;
-                    let Ok((published, result)) = result else {
+                        let result = worker.poll(&path, request, available, diagnostic_id);
+                        (worker, result)
+                    })
+                    .await;
+                    let Ok((returned_worker, result)) = result else {
+                        tracing::warn!(diagnostic_id, "frame layout worker task did not complete");
                         break;
                     };
-                    published_availability = published;
+                    worker = returned_worker;
                     match result {
                         Ok(snapshot) => {
-                            let may_open = !snapshot.editing
-                                && snapshot.confirmation.is_none()
-                                && !snapshot.outputs.is_empty();
+                            let opening = worker.take_ready(&snapshot, Instant::now());
                             if previous.as_ref() != Some(&snapshot) {
                                 previous = Some(snapshot.clone());
                                 if proxy.message(Update::Snapshot(Box::new(snapshot))).is_err() {
                                     break;
                                 }
                             }
-                            if may_open
-                                && let Some((key, popup)) = open
-                                && proxy.message(Update::Open(key, popup)).is_err()
-                            {
-                                break;
+                            if let Some(opening) = opening {
+                                let opening_id = opening.diagnostic_id;
+                                if proxy.message(Update::Open(opening)).is_err() {
+                                    tracing::warn!(
+                                        diagnostic_id = opening_id,
+                                        "frame layout popup delivery failed"
+                                    );
+                                    break;
+                                }
+                                tracing::debug!(
+                                    diagnostic_id = opening_id,
+                                    "frame layout popup update enqueued"
+                                );
                             }
                         }
                         Err(error) => {
@@ -111,47 +110,17 @@ pub(in crate::ui) fn task() -> impl View<ShellState, (), xilem::ViewCtx, Element
                 }
             }
         },
-        |state, update| match update {
-            Update::Snapshot(snapshot) => {
-                state.frame_layout.error = None;
-                apply(state, *snapshot);
-            }
-            Update::Error(error) => state.frame_layout.error = Some(error),
-            Update::Open(key, popup) => super::popups::open(state, &key, popup),
-        },
+        apply_update,
     )
 }
 
-fn parse(bytes: &[u8]) -> Result<Snapshot, String> {
-    let snapshot: Snapshot = serde_json::from_slice(bytes).map_err(|error| error.to_string())?;
-    if snapshot.version != 1
-        || snapshot.outputs.len() > 64
-        || (snapshot.editing && snapshot.session == 0)
-    {
-        return Err("Invalid frame layout state".into());
-    }
-    for output in &snapshot.outputs {
-        output.layout.validate().map_err(str::to_string)?;
-        if output.widgets.len() > hearthspace_common::frame_layout::WIDGETS.len()
-            || output.groups.len() > 1024
-        {
-            return Err("Invalid frame layout parts".into());
+fn apply_update(state: &mut ShellState, update: Update) {
+    match update {
+        Update::Snapshot(snapshot) => {
+            state.frame_layout.error = None;
+            apply(state, *snapshot);
         }
-        for rect in output.widgets.iter().map(|part| part.rect).chain(
-            output
-                .groups
-                .iter()
-                .flat_map(|group| [group.rect, group.grip]),
-        ) {
-            if ![rect.x, rect.y, rect.width, rect.height]
-                .into_iter()
-                .all(f64::is_finite)
-                || rect.width < 0.0
-                || rect.height < 0.0
-            {
-                return Err("Invalid frame layout geometry".into());
-            }
-        }
+        Update::Error(error) => state.frame_layout.error = Some(error),
+        Update::Open(opening) => opening.deliver(state, Instant::now()),
     }
-    Ok(snapshot)
 }

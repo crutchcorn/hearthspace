@@ -4,14 +4,14 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-from . import overview_checks
+from . import window_preview_fixtures
 from .control import ControlError
 from .gesture_trace import gesture
 from .input import Input
-from .overview_assertions import marker_count, preserved
 from .pinch_assertions import same_viewport
 from .pinch_touchscreen import to_device
 from .touchpad import TouchDevice, checked_points, contact_positions
+from .window_preview_assertions import marker_count, preserved
 from .window_switcher_smoke_assertions import (
     held_motion,
     input_proof,
@@ -37,7 +37,7 @@ def settled(smoke):
 
 
 def fixtures(smoke):
-    overview_checks.fixtures(smoke)
+    window_preview_fixtures.fixtures(smoke)
     for target, position in zip(smoke.targets, ((-5000, -3000), (0, 0), (5000, 3000))):
         smoke.control.request(f"restore-window {target}")
         smoke.control.request(f"move-window {target} {position[0]} {position[1]}")

@@ -4,11 +4,14 @@ Source: [Smithay at `5c2ba4132556a08abc70ae1771d275ec2cfc031f`](https://github.c
 package version 0.7.0, MIT. The upstream notice is preserved in `LICENSE.txt`.
 
 This directory contains upstream `src/`, `build.rs`, the two GBM C feature probes,
-README, license, and original manifest. The only runtime source change is the
+README, license, and original manifest. Runtime source changes are the
 [XSettings flush patch](../../patches/smithay-xsettings-flush.patch): after
 queuing the settings property, flush the X11 connection so idle clients receive
 the change. Initialization, set, remove, and clear share that publication path.
-It adds no X11 round trip or public API.
+It adds no X11 round trip or public API. The
+[move/resize cancellation patch](../../patches/smithay-xwm-moveresize-cancel.patch)
+adds a default XwmHandler callback and forwards EWMH cancellation (direction 11)
+to the compositor; existing handlers retain their behavior.
 
 `Cargo.toml.orig` is the exact upstream manifest. The standalone `Cargo.toml`
 omits upstream workspace members, examples, benchmarks, development-only
@@ -23,7 +26,8 @@ To refresh:
    original manifest and notices.
 2. Normalize the standalone manifest as described above, preserving all runtime
    dependencies and features.
-3. Reapply only the source patch if still needed. Follow the verification and
-   removal criteria in the [patch ledger](../../patches/README.md#smithay-xsettings-publication).
-4. Refresh `Cargo.lock` and run the idle-X11 regression and live GTK3 appearance
-   check before removing the patch or changing the pinned revision.
+3. Reapply source patches only if still needed. Follow the verification and
+   removal criteria in the [patch ledger](../../patches/README.md).
+4. Refresh `Cargo.lock` and run the idle-X11 and X11 interaction regressions plus
+   the live GTK3 appearance check before removing a patch or changing the pinned
+   revision.

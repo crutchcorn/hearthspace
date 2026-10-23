@@ -46,19 +46,15 @@ pub(super) fn size(
         "tools" if compact => 44.0,
         "tools" => 236.0,
         "apps" => {
-            44.0 + if state.windows.is_empty() {
+            44.0 + if crate::ui::dock::desired_width(state) == 0.0 {
                 0.0
             } else {
                 4.0 + crate::ui::dock::desired_width(state)
             }
         }
-        "tray" => {
-            38.0 * (crate::ui::tray_state::visible(&state.tray.snapshot)
-                .count()
-                .min(8)
-                + 1) as f64
-                - 4.0
-        }
+        "tray" => (38.0 * crate::ui::tray_state::visible(&state.tray.snapshot).count() as f64
+            - 4.0)
+            .max(0.0),
         "notifications" if expanded => {
             super::text_metrics::width(&notification_text(state), 11.0) + 47.0
         }
@@ -105,7 +101,7 @@ pub(super) fn content(
         return apps(state, output, vertical, chain).boxed();
     }
     if id == "tray" {
-        return crate::ui::tray_view::frame_strip(output, &state.tray, vertical, chain).boxed();
+        return super::tray::content(state, output, vertical, chain);
     }
     let count = state
         .notifications
@@ -265,23 +261,9 @@ fn apps(
 ) -> impl WidgetView<ShellState> + use<> {
     let key = output.key().to_owned();
     let desired = crate::ui::dock::desired_width(state);
-    let dock_width = state
-        .frame_layout
-        .snapshot
-        .outputs
-        .iter()
-        .find(|layout| layout.output == output.key())
-        .and_then(|layout| {
-            layout
-                .widgets
-                .iter()
-                .find(|part| part.id == "apps" && part.merged)
-        })
-        .map_or(desired, |part| {
-            (part.rect.width - 48.0).max(1.0).min(desired)
-        });
+    let dock_width = super::dock_width(state, output.key()).unwrap_or(desired);
     flex_row((
-        (!state.windows.is_empty())
+        (desired > 0.0)
             .then(|| crate::ui::dock::frame_view(state, output, dock_width, vertical, chain)),
         focus::item(
             crate::ui::icons::icon_button(

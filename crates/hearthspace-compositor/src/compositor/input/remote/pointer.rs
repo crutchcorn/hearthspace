@@ -16,6 +16,7 @@ use crate::compositor::{App, input::handle_input_event};
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(in crate::compositor::input) enum PointerSource {
     Local,
+    Touch,
     Remote(VirtualPointerDevice),
 }
 
@@ -55,7 +56,7 @@ impl ButtonSources {
 
     fn remove_remote(&mut self, device: Option<&VirtualPointerDevice>) -> Vec<u32> {
         self.remove_sources(|source| match source {
-            PointerSource::Local => false,
+            PointerSource::Local | PointerSource::Touch => false,
             PointerSource::Remote(candidate) => device.is_none_or(|device| device == candidate),
         })
     }
@@ -165,6 +166,11 @@ impl App {
         state: ButtonState,
         time: InputTime,
     ) {
+        if state == ButtonState::Pressed {
+            // Includes shell-consumed presses and a second input source joining
+            // a held button without producing another Wayland press.
+            self.gtk_shell.reset_input();
+        }
         if self.remote_input.buttons.transition(source, button, state) {
             self.handle_pointer_button_policy(button, state, time);
         }
@@ -175,17 +181,23 @@ impl App {
     }
 
     fn release_remote_pointer(&mut self, device: Option<&VirtualPointerDevice>) {
+        // Smithay emits synthetic releases before DeviceRemoved, so the source
+        // map can already be empty. Destruction still revokes gesture authority.
+        self.gtk_shell.reset_input();
         let released = self.remote_input.buttons.remove_remote(device);
         self.release_removed_pointer_buttons(released);
     }
 
     pub(in crate::compositor::input) fn release_local_pointer(&mut self) {
+        self.gtk_shell.reset_input();
         let released = self.remote_input.buttons.remove_local();
         self.release_removed_pointer_buttons(released);
     }
 
     fn release_removed_pointer_buttons(&mut self, released: Vec<u32>) {
         if !released.is_empty() {
+            // Device cleanup releases held buttons without authorizing gestures.
+            self.gtk_shell.reset_input();
             self.cancel_pending_shell_click();
             if released.contains(&0x110) {
                 self.cancel_titlebar_pointer();
@@ -230,6 +242,28 @@ fn layout_bounds(rectangles: &[Rectangle<i32, Logical>]) -> Option<Rectangle<i32
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn removing_mouse_does_not_release_an_active_touch_sequence() {
+        let mut sources = ButtonSources::default();
+        assert!(sources.transition(PointerSource::Touch, 0x110, ButtonState::Pressed));
+        assert!(!sources.transition(PointerSource::Local, 0x110, ButtonState::Pressed));
+        assert!(sources.remove_local().is_empty());
+        assert!(!sources.transition(PointerSource::Local, 0x110, ButtonState::Released));
+        assert!(sources.transition(PointerSource::Touch, 0x110, ButtonState::Released));
+        assert!(sources.transition(PointerSource::Local, 0x110, ButtonState::Pressed));
+        assert!(sources.transition(PointerSource::Local, 0x110, ButtonState::Released));
+    }
+
+    #[test]
+    fn touch_cancellation_keeps_a_physical_button_held_until_its_release() {
+        let mut sources = ButtonSources::default();
+        assert!(sources.transition(PointerSource::Local, 0x110, ButtonState::Pressed));
+        assert!(!sources.transition(PointerSource::Touch, 0x110, ButtonState::Pressed));
+        assert!(!sources.transition(PointerSource::Touch, 0x110, ButtonState::Released));
+        assert!(!sources.transition(PointerSource::Touch, 0x110, ButtonState::Released));
+        assert!(sources.transition(PointerSource::Local, 0x110, ButtonState::Released));
+    }
 
     #[test]
     fn removing_local_pointer_releases_held_buttons_and_allows_the_next_press() {

@@ -12,8 +12,10 @@ Wayland shell surfaces.
 - Click an icon to activate its application. Menu-only indicators open their menu.
 - Right-click to open an application's exported menu. Applications without an
   exported menu receive the protocol's context-menu request.
-- Middle-click and scroll are delivered to applications that support those actions.
-- The **Application tray** button offers menu access with a touchscreen or keyboard.
+- Middle-click is delivered to applications that support it. Scrolling moves an
+  overflowing strip; when all icons fit, it reaches the application instead.
+- Tap an app icon on a touchscreen to activate it; hold the icon to open its
+  menu. With keyboard focus on the icon, press Menu or Shift+F10 to open it.
 - Exported menus support nested items, checkmarks, radio choices, separators,
   disabled actions, live updates, and keyboard focus. Escape and clicking outside
   dismiss the popup.
@@ -21,9 +23,15 @@ Wayland shell surfaces.
 Passive indicators are hidden. Active and attention-requesting indicators remain
 visible. App exit removes its icon and closes an open menu belonging to it.
 Restarting an app registers a fresh item without leaving a duplicate behind.
-The bar keeps space for desktop controls and moves excess icons into the
-Application tray list. Named PNG/SVG icons, private app icon themes, and supplied
-pixel images are supported. Standard status names fall back to their symbolic
+The bar shows the app icons directly, without an extra tray button or list.
+Application tray icons remain in the top system group even when the same app is
+running or pinned in the bottom dock. Each tray icon retains its original artwork,
+status, and menu; the dock icon launches the app or focuses its windows.
+
+All active icons remain in the strip. Detached strips stay within the output and
+support wheel scrolling, touch dragging, and keyboard focus reveal; grouped strips
+use the frame group's scrolling. Named PNG/SVG icons, private app icon themes,
+and supplied pixel images are supported. Standard status names fall back to their symbolic
 theme variants when needed. Attention icons are supported; separate overlay
 icons and animated icon movies are not currently composed.
 
@@ -60,9 +68,9 @@ changes app state, while a JSON-lines log records actual D-Bus calls received.
 
 The workflow checks red icon pixels, delivery of primary/middle/scroll actions,
 exported-menu accessibility and activation, disabled-item suppression, nested
-menus, checkbox state, live menu replacement, Escape/outside dismissal, the
-touch-friendly menu launcher, pixmap updates and same-filename SVG replacement,
-passive/attention transitions, alias release and duplicate registration,
+menus, checkbox state, live menu replacement, Escape/outside dismissal, direct
+keyboard access from each app icon, pixmap updates and same-filename SVG
+replacement, passive/attention transitions, alias release and duplicate registration,
 menu-only activation, context-menu fallback, and process exit/restart. It checks
 both semantic state and screenshots rather
 than treating an accepted input request as evidence of app behavior.
@@ -92,8 +100,13 @@ records the original VT, owns its compositor session, retains page-flip capture
 metadata, and restores the original VT on success or failure. Check the retained
 manifest's cleanup fields and stopped unit, not only the command's exit status.
 Native acceptance also uses a temporary owned uinput touchscreen to tap the
-tray list, open an app menu, and activate an action. It verifies the app received
-that action, records real libinput touch frames, and removes the virtual device.
+app icon, hold it to open its menu, and activate an action. It verifies the app
+received that action, records real libinput touch frames, and removes the virtual device.
+
+Use `--overflow --timeout 240 --total-timeout 900` to include many-icon standalone
+trays on the top and left edges, or `--overflow-only` to run just those checks.
+They verify wheel scrolling, Tab and Shift-Tab focus reveal, and touchscreen
+dragging without app activation or canvas movement.
 
 Artifacts include `tray-actions-*.jsonl`, fixture logs, icon/menu PNG and metadata
 pairs, accessibility snapshots, workflow `results.json`, and the session manifest.
@@ -134,3 +147,63 @@ The optimized build was installed with `scripts/install-session install` as
 release `8c62c1b1dc73`. Installed binary hashes were compared against the release
 build and the installation manifest was verified. The user's existing desktop
 session was not restarted. No additional OS packages were needed.
+
+## Repeated popup GPU hang — 2026-10-22
+
+On the physical ThinkPad T480s, repeated tray-menu creation hung the Intel UHD
+620 (`8086:5917`, i915, kernel `7.0.0-38-generic`). A first opening succeeded;
+another opening after unregister/register could hang the shell GPU context.
+Checked Vello shaders did not prevent it. CPU preprocessing instead exposed a
+NaN assertion, and an instrumented diagnostic captured non-finite coordinates
+already in the input path. Its evidence is retained in
+`/tmp/hearthspace-gpu-capture.vfc1gr61/flatten-nan.txt`.
+
+The [Masonry Portal repair](../patches/README.md#masonry-finite-scrollbar-geometry)
+keeps scrollbar progress finite when focus reveal occurs at an exact fit and a
+later resize exposes the hidden bar. A renderer-free regression fails on the
+original dependency and passes with this repair. Production Vello and shader
+settings remain unchanged.
+
+The targeted native comparison passed first opening and unregister/register
+followed by another opening in the same shell process, with normal GPU
+rendering. Evidence is in `/tmp/hearthspace-gpu-portal.mwspkdj0`, with exact
+binary provenance in `target/gpu-portal/provenance.json`. An initial harness
+attempt lacked its copied tray fixture and stopped before interaction; the
+retained `single-ready` and `reregister` attempts both passed. No GPU loss or
+panic appeared in the session or kernel logs. Output eDP-1 was 1920×1080 at
+scale 1. Cleanup restored tty2, stopped the session and app scopes, removed the
+runtime, and left the owned unit inactive with `MainPID=0`.
+
+The later `/tmp/hearthspace-tray-portal.c687y_3p` run passed the complete ordinary
+tray workflow, including real touchscreen actions and the required installed
+Ayatana indicator library. Its additional standalone-overflow phase stopped
+during setup with `tray frame widget is not mapped`, before overflow input was
+tested. Evidence and complete cleanup are retained; this run does not count as
+overflow acceptance.
+
+Standalone overflow subsequently passed in
+`/tmp/hearthspace-tray-overflow-verified.f9Q5om`: 59 registered icons on both the
+top and left edges, wheel navigation to both endpoints, every Tab/Shift+Tab
+focus-and-reveal step, reverse entry at the trailing icon, and physical touch
+dragging. Pixel checks verified the revealed icons; no application callbacks,
+menus, or canvas movement leaked from scrolling. Session/kernel logs contain no
+GPU loss or panic. Cleanup restored tty2, removed the runtime and temporary
+touchscreen devices, and left the owned service inactive with `MainPID=0`.
+
+The intervening `/tmp/hearthspace-tray-overflow-final.UpeyFQ` attempt exhausted
+its initial-readiness deadline because it required every fixture in one AT-SPI
+snapshot. AccessKit intentionally omits offscreen Portal children. Readiness now
+accepts the observed clipped subset while rejecting duplicate/unknown names and
+requiring actual clipping. Registration still accounts for all 59 fixtures, and
+the complete forward/reverse traversal proves each is reachable. Both failed
+attempts retain their evidence and completed cleanup.
+
+The final software-rendered headless suite reached the Ayatana menu snapshot
+with only 0.046 seconds left in its shared 120-second budget. The complete
+unchanged workflow then passed in 123.83 seconds under a diagnostic budget;
+workflow-only time was 120.95 seconds. It included 240 AT-SPI subprocesses,
+26 captures, and nine PNG decodes. Those categories overlap and are not additive.
+Evidence is retained in `/tmp/hearthspace-icon-final-e2e.rpc4my38/tray` and
+`/tmp/hearthspace-tray-final-timed-180`. The headless test now allows 180 seconds
+in total; all delivery, removal, pixel and menu assertions, and individual IPC
+deadlines, remain unchanged.

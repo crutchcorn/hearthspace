@@ -1,0 +1,29 @@
+--- a/masonry_winit/src/event_loop_runner.rs
++++ b/masonry_winit/src/event_loop_runner.rs
+@@ -608,4 +608,6 @@
+             .unwrap_or_else(|| panic!("could not find window for id {window_id:?}"));
+         self.surfaces.remove(&window_id);
++        // Closing a window also cancels its not-yet-presented first frame.
++        self.need_first_frame.retain(|id| *id != window_id);
+         let window = self.windows.remove(&window_id).unwrap();
+
+@@ -1153,4 +1155,8 @@
+         // and then render the first frame before making it visible to avoid flashing.
+         for handle_id in std::mem::take(&mut self.need_first_frame) {
++            // Application callbacks can retire windows before this batch drains.
++            if !self.windows.contains_key(&handle_id) {
++                continue;
++            }
+             self.redraw(handle_id, app_driver);
+             let window = self.windows.get_mut(&handle_id).unwrap();
+@@ -1161,6 +1167,8 @@
+         // We batch them up to avoid redundant requests.
+         for handle_id in need_redraw {
+-            let window = self.windows.get(&handle_id).unwrap();
+-            window.handle.request_redraw();
++            // A later action in this signal batch may have closed the target.
++            if let Some(window) = self.windows.get(&handle_id) {
++                window.handle.request_redraw();
++            }
+         }
+     }

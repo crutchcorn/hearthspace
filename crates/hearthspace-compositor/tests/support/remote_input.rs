@@ -6,7 +6,7 @@ use super::{
 use serde_json::Value;
 
 #[path = "remote_input_client.rs"]
-mod client;
+pub(super) mod client;
 use client::RemoteClient;
 
 fn socket(compositor: &HeadlessCompositor) -> PathBuf {
@@ -195,7 +195,11 @@ fn remote_keyboard_disconnect_preserves_active_search_previews_and_selection() {
 
 #[test]
 fn remote_pointer_maps_scaled_output_and_releases_drag_on_disconnect() {
-    use super::interactive::client::InteractiveClient;
+    use super::interactive::client::{
+        InteractiveClient,
+        events::{assert_content_click, assert_leave, assert_reentered},
+    };
+    use wayland_client::protocol::wl_pointer::Event;
     let _guard = headless_test_guard();
     let mut compositor =
         HeadlessCompositor::spawn_with_remote_options("2560x1600", None, None, 2, true);
@@ -212,7 +216,9 @@ fn remote_pointer_maps_scaled_output_and_releases_drag_on_disconnect() {
     remote.motion(260, 360, 2560, 1600);
     remote.button(true);
     let serial = windows_client.press_serial();
+    windows_client.take_pointer_events();
     windows_client.request_move(0, serial);
+    assert_leave(&mut windows_client, 0);
     remote.motion(420, 460, 2560, 1600);
     wait_windows(&compositor, |windows| {
         windows.iter().any(|window| {
@@ -221,13 +227,26 @@ fn remote_pointer_maps_scaled_output_and_releases_drag_on_disconnect() {
     });
     drop(remote);
     let deadline = Instant::now() + Duration::from_secs(5);
-    while !windows_client.released_buttons().contains(&0x110) {
+    let mut events = Vec::new();
+    loop {
+        events.extend(windows_client.take_pointer_events());
+        if events
+            .iter()
+            .any(|event| matches!(event, Event::Enter { .. }))
+        {
+            break;
+        }
         assert!(
             Instant::now() < deadline,
             "remote disconnect left pointer grab held"
         );
         thread::sleep(Duration::from_millis(10));
     }
+    // The compositor owns the CSD sequence after leave. Disconnect must drain
+    // that grab, re-enter the client, and permit a fresh click without leaking
+    // the old release into content.
+    assert_reentered(&windows_client, &events, 0);
+    assert_content_click(&compositor, &mut windows_client);
     action(&compositor, "pointer-motion-abs 600 600");
     let windows = query(&compositor, "windows");
     let window = windows["windows"]

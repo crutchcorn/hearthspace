@@ -41,19 +41,19 @@ for installation, updates, removal, and the remaining local acceptance checks.
 
 Super+Return opens a terminal. Tap Meta (Super), press Super+Space, or click the
 Apps List button to browse installed applications or search apps and running
-windows. Alt+Tab gathers live windows into a grid until Alt is released to
+windows. Alt+Tab gathers live windows into a centered grid until Alt is released to
 activate the selection. Alt+Shift+Tab moves
 backward. Super+arrow keys pan the canvas,
 and Super+M / Super+F toggle maximize / fullscreen.
 Slide three fingers to pan the canvas; pinch them to zoom. Swipe four fingers
 left/right on a touchpad, or four/five on a touchscreen, to switch windows with
 the same previews until you lift. Activation animates into the selected window.
-Pinch inward to open
-the live window overview, or outward to dismiss it: use four fingers on a native
-touchpad, or four/five on a touchscreen. The native libinput backend does not
-emit five-finger touchpad gestures. Lift your fingers to finish the gesture. The
-Super+O shortcut also opens it; click or tap a preview to
-focus that window, or press Escape to return. Native sessions provide
+Pinch inward with four fingers on a native touchpad, or four/five on a
+touchscreen, then lift to keep the same window switcher open. It opens only
+after the pinch completes successfully. Click or tap a preview, or press Enter,
+to activate the selection. An outward pinch, Escape, or a click/tap on the
+background dismisses it. The native libinput backend does not emit five-finger
+touchpad gestures. Native sessions provide
 notifications, locking, and [lid/suspend recovery](./docs/POWER.md);
 the bell icon opens notifications, the map icon opens the canvas minimap, and
 the power menu contains Lock and confirmed Log out. Settings is available in
@@ -64,15 +64,18 @@ package behavior.
 
 The desktop keeps awareness above and actions below: notifications at the top
 left, system tray and clock at the top right, canvas tools at the bottom left,
-and the running-app dock with Apps List at the bottom right. Click a dock icon
-to reveal an app on the canvas; click again to cycle through its windows.
+and the app dock with Apps List at the bottom right. Favorites stay in the dock
+when closed; click one to launch it. Click a running app to reveal it on the
+canvas; click again to cycle through its windows. Apps List shows the full
+installed catalog alphabetically.
 Super+F6 moves keyboard focus between the corners; add Shift to move backward.
 
 Assign app shortcuts in **Settings → Search → Gestures**. Open Apps List with Meta,
-the Apps List button, or an upward touchscreen swipe from the dock. The drawing
-icon at the right of the search field enables **Draw to launch**; the adjacent
-Settings icon opens its Search tab. Click and drag with a mouse or trackpad, or draw
-with one touchscreen finger; a clear match launches immediately on release.
+the Apps List button, or an upward touchscreen swipe from the dock. The **Draw**
+tab enables **Draw to launch**; its Settings icon opens the Settings app's Search
+tab. Return to **Apps** to browse or search. Click and drag with a mouse or
+trackpad, or draw with one touchscreen finger; a clear match launches immediately
+on release.
 Use one finger to scroll Settings and search results outside the drawing area.
 See [search gestures](./docs/FAVORITE_APPS.md) for assignment and recognition details.
 

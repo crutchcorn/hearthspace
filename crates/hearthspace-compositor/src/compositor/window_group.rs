@@ -165,7 +165,7 @@ impl App {
             self.window_group.invalidate();
             self.request_redraw();
         }
-        if self.overview_active() || self.window_switcher_active() {
+        if self.window_switcher_active() {
             self.window_group.gesture = None;
             if self.window_group.pending.is_some() {
                 self.window_group.invalidate();

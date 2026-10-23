@@ -11,15 +11,26 @@ use crate::compositor::App;
 
 impl App {
     pub(in crate::compositor) fn deliver_pointer_button(&mut self, event: &ButtonEvent) {
+        let owned_release =
+            event.state == ButtonState::Released && self.gtk_pointer_release_owned(event.button);
         match event.state {
             ButtonState::Pressed => self.pressed_pointer_buttons.insert(event.button),
             ButtonState::Released => self.pressed_pointer_buttons.remove(&event.button),
         };
         self.pointer.clone().button(self, event);
+        self.record_gtk_pointer_button(event, owned_release);
     }
 
     pub(in crate::compositor) fn reset_session_input(&mut self) {
+        // Touch/remote cleanup or direct releases below can drop WindowGrab.
+        // Preserve its deferred handoff until every input grab is reset.
+        let owner_retired = self.window_pointer_grab_owner_retired();
+        self.cancel_presentation_reveals();
+        self.gtk_shell.reset_input();
         self.clear_canvas_peek_motion();
+        // A complete lock/VT transition can occur between layout polls. Cancel
+        // shell-side pending/queued openings as well as compositor input state.
+        self.invalidate_shell_popups();
         self.cancel_pending_shell_click();
         self.cancel_titlebar_pointer();
         self.reset_focused_shell_peek();
@@ -36,8 +47,7 @@ impl App {
         self.shortcuts.cancel_device_repeat();
         self.dismiss_control_osds();
         self.reset_window_switcher();
-        self.close_overview();
-        self.overview_input.clear();
+        self.switcher_input.clear();
         self.cancel_input_gestures();
         self.viewport_animation = None;
         self.drag = None;
@@ -59,6 +69,7 @@ impl App {
             });
         }
         self.clear_pointer_sources();
+        self.gtk_shell.reset_input();
         self.reset_titlebar_input();
         self.pointer.clone().frame(self);
         if let Some(mut grab) = self.popup_grab.take() {
@@ -68,6 +79,7 @@ impl App {
             .clone()
             .unset_grab(self, SERIAL_COUNTER.next_serial(), time);
         self.keyboard.clone().unset_grab(self);
+        self.restore_retired_window_grab_focus(owner_retired);
         self.request_redraw();
     }
 }

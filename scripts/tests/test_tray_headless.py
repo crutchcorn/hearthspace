@@ -19,7 +19,14 @@ class TrayHeadlessTests(unittest.TestCase):
             evidence = Path(os.environ.get("HEARTHSPACE_TRAY_EVIDENCE", directory))
             evidence.mkdir(parents=True, exist_ok=True)
             run_shell_session(
-                self, directory, evidence, run, "HEARTHSPACE_TRAY_FIXTURE"
+                self,
+                directory,
+                evidence,
+                run,
+                "HEARTHSPACE_TRAY_FIXTURE",
+                # The complete software-rendered workflow takes about 124s,
+                # including Ayatana delivery/removal and private AT-SPI queries.
+                timeout=180,
             )
 
 

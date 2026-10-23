@@ -175,12 +175,10 @@ fn removed_items_close_menus_and_panels_remain_exclusive_across_outputs() {
 }
 
 #[test]
-fn drawer_makes_menus_touch_reachable_and_shrinks_to_content() {
+fn app_menu_shrinks_to_content_and_can_be_closed() {
     let mut state = state();
-    tray_state::toggle(&mut state, "eDP-1");
+    tray_state::open_menu(&mut state, "eDP-1", &key(1));
     let mut ui = Ui::new(state, panel, (340, 440));
-    ui.harness.mouse_click_on(name(&ui, "Menu for App 1"), None);
-    ui.dispatch(&panel);
     assert_eq!(ui.state.outputs[0].tray.item, Some(key(1)));
     let height = super::popup::size(
         &ui.state.outputs[0],
@@ -287,60 +285,6 @@ fn queued_activation_cannot_target_a_replacement_icon() {
 }
 
 #[test]
-fn overflow_keeps_every_control_visible_and_empty_tray_adds_no_button() {
-    fn bar(
-        state: &ShellState,
-    ) -> impl WidgetView<ShellState, Widget = masonry::widgets::SizedBox> + use<> {
-        sized_box(crate::ui::corners::system_view(state, &state.outputs[0]))
-    }
-    for (width, visible_icons) in [(320, 3), (480, 4), (800, 8)] {
-        let mut state = state();
-        state.tray.snapshot.items = (1..=20).map(item).collect();
-        let mut ui = Ui::new(state, bar, (width, 54));
-        for label in [
-            "Application tray",
-            "Brightness settings",
-            "Sound settings",
-            "Power",
-        ] {
-            let bounds = ui
-                .harness
-                .access_node(name(&ui, label))
-                .unwrap()
-                .bounding_box()
-                .unwrap();
-            assert!(
-                bounds.x0 >= 0.0 && bounds.x1 <= width as f64,
-                "{width} {label}: {bounds:?}"
-            );
-        }
-        let icons = ids(&ui.harness)
-            .into_iter()
-            .filter(|id| {
-                ui.harness.access_node(*id).is_some_and(|node| {
-                    node.role() == Role::Button
-                        && node.label().is_some_and(|label| label.starts_with("App "))
-                })
-            })
-            .count();
-        assert_eq!(icons, visible_icons);
-        ui.state.tray.snapshot.items.clear();
-        ui.rebuild(&bar);
-        ui.dispatch(&bar);
-        assert_eq!(
-            ids(&ui.harness)
-                .into_iter()
-                .filter(|id| ui
-                    .harness
-                    .access_node(*id)
-                    .is_some_and(|node| node.role() == Role::Button))
-                .count(),
-            5
-        );
-    }
-}
-
-#[test]
 fn keyboard_navigation_reveals_selected_items_in_a_bounded_menu() {
     let mut state = state();
     state.tray.snapshot.items[0].menu.as_mut().unwrap().items = (1..=30)
@@ -379,3 +323,6 @@ mod identity;
 
 #[path = "tray_live_tests.rs"]
 mod live;
+
+#[path = "tray_strip_tests.rs"]
+mod strip;

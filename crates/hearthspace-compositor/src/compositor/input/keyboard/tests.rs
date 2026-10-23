@@ -194,50 +194,7 @@ fn popup_grabs_keep_shortcuts_and_their_releases() {
 }
 
 #[test]
-fn overview_consumes_typing_and_release_after_dismissal() {
-    let mut shortcuts = KeyboardShortcuts::default();
-    let mods = ModifiersState::default();
-    let key = 38_u32.into();
-    assert!(matches!(
-        shortcuts.filter_overview(key, KeyState::Pressed, &mods, keysyms::KEY_a),
-        FilterResult::Intercept(None)
-    ));
-    assert!(matches!(
-        shortcuts.filter(key, KeyState::Released, &mods, keysyms::KEY_a, true),
-        FilterResult::Intercept(None)
-    ));
-    assert_eq!(
-        overview_shortcut(&mods, keysyms::KEY_Escape),
-        Some(Shortcut::OverviewDismiss)
-    );
-    assert_eq!(
-        overview_shortcut(&mods, keysyms::KEY_Return),
-        Some(Shortcut::OverviewActivate)
-    );
-    assert_eq!(
-        overview_shortcut(&mods, keysyms::KEY_Right),
-        Some(Shortcut::OverviewNext)
-    );
-    assert_eq!(
-        overview_shortcut(
-            &ModifiersState {
-                shift: true,
-                ..Default::default()
-            },
-            keysyms::KEY_Tab
-        ),
-        Some(Shortcut::OverviewPrevious)
-    );
-    assert_eq!(
-        overview_shortcut(
-            &ModifiersState {
-                logo: true,
-                ..Default::default()
-            },
-            keysyms::KEY_l
-        ),
-        Some(Shortcut::Lock)
-    );
+fn removed_super_o_shortcut_is_available_to_the_client() {
     assert_eq!(
         shortcut(
             &ModifiersState {
@@ -246,6 +203,6 @@ fn overview_consumes_typing_and_release_after_dismissal() {
             },
             keysyms::KEY_o
         ),
-        Some(Shortcut::OverviewToggle)
+        None
     );
 }

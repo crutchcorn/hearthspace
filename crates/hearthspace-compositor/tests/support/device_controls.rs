@@ -96,7 +96,9 @@ fn osd_is_fixed_passive_above_fullscreen_and_never_becomes_a_window_or_popup() {
     );
     assert_eq!(query(&compositor, "status")["control_osds"], json!([]));
     client.destroy(panel);
-    action(&compositor, "overview-on");
+    action(&compositor, "key-down 56");
+    action(&compositor, "key-down 15");
+    action(&compositor, "key-up 15");
     let osd = client.add(CONTROL_OSD_APP_ID.into(), (300, 90), (0, 0), GREEN);
     green_pixel(&compositor, 500, 680);
     let socket = compositor

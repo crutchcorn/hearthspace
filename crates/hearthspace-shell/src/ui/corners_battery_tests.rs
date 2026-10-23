@@ -123,7 +123,7 @@ fn constrained_battery_keeps_full_preferred_width_and_expands_when_output_grows(
 }
 
 #[test]
-fn tiny_system_corner_keeps_sound_power_and_application_tray_inside_the_surface() {
+fn tiny_system_corner_keeps_sound_power_and_app_icon_inside_the_surface() {
     let mut state = state();
     state.battery = Some(battery(57));
     state.tray.snapshot.items = (1..=20).map(crate::ui::tray_tests::item).collect();
@@ -134,7 +134,7 @@ fn tiny_system_corner_keeps_sound_power_and_application_tray_inside_the_surface(
             .access_node(id)
             .is_some_and(|node| node.label().as_deref() == Some("Control center"))
     }));
-    for name in ["Application tray", "Sound settings", "Power"] {
+    for name in ["App 1", "Sound settings", "Power"] {
         let button = ui.button(name);
         let bounds = ui
             .harness
@@ -143,7 +143,14 @@ fn tiny_system_corner_keeps_sound_power_and_application_tray_inside_the_surface(
             .bounding_box()
             .unwrap();
         assert!(bounds.x0 >= 0.0 && bounds.x1 <= 132.0, "{name}: {bounds:?}");
-        ui.harness.mouse_click_on(button, None);
+        ui.harness.mouse_click_on(
+            button,
+            if name == "App 1" {
+                Some(masonry::core::PointerButton::Secondary)
+            } else {
+                None
+            },
+        );
         ui.dispatch(&system);
         let output = &ui.state.outputs[0];
         assert_eq!(

@@ -124,7 +124,6 @@ pub(in crate::compositor) fn run_event_loop(
             .then_some(())
             .and_then(|()| {
                 (data.state.viewport_animation.is_some()
-                    || data.state.overview_animating()
                     || data.state.canvas_preview_animating()
                     || data.state.canvas_peek_needs_animation_frame()
                     || data.state.group_animating()
@@ -188,12 +187,12 @@ pub(in crate::compositor) fn run_event_loop(
         data.state.maintain_session_lock();
         data.state.handle_idle_transitions();
         data.state.advance_viewport_animation();
-        data.state.advance_overview_animation();
         data.state.advance_canvas_search();
         data.state.maintain_window_group();
         data.state.reconcile_window_switcher();
         data.state.advance_canvas_preview();
         data.state.reconcile_layout_editor();
+        data.state.finish_pending_presentation_reveals();
         data.state.maintain_focused_shell_peek();
         data.state.refresh_pending_shell_click();
         data.apply_cursor_icon();

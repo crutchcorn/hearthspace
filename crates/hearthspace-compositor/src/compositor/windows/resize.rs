@@ -56,6 +56,7 @@ impl App {
             initial_bounds,
             moved: false,
         });
+        self.start_window_pointer_grab(window_index);
         if pointer_start != self.raw_pointer_location {
             self.update_resize(self.raw_pointer_location);
         }
@@ -137,7 +138,7 @@ impl App {
                 // Motion can round or clamp to an unchanged logical size.
                 // Smithay compares with the latest pending/acknowledged state,
                 // so identical samples need not enqueue another client frame.
-                surface.send_pending_configure();
+                crate::compositor::gtk_shell::send_pending_configure(surface);
             }
             #[cfg(feature = "xwayland")]
             ManagedSurface::X11(surface) => {
@@ -177,7 +178,7 @@ impl App {
                 surface.with_pending_state(|state| {
                     state.states.unset(xdg_toplevel::State::Resizing);
                 });
-                surface.send_configure()
+                crate::compositor::gtk_shell::send_configure(surface)
             });
             if resize.moved {
                 #[cfg(feature = "xwayland")]
@@ -253,7 +254,11 @@ impl App {
                     _ => false,
                 }
             });
-        self.windows[window_index].position = position;
+        if self.windows[window_index].position != position {
+            self.windows[window_index].position = position;
+            #[cfg(feature = "xwayland")]
+            self.sync_x11_window_position(self.windows[window_index].id);
+        }
         if finished {
             self.windows[window_index].pending_resize = None;
         }

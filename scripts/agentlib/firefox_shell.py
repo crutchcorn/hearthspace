@@ -26,8 +26,9 @@ def click_zoom_out(smoke):
 def prepare_canvas_view(smoke):
     # Move slightly away from the maximized entry view. Closing the shell must
     # restore keyboard focus without recentering either its max or restore bounds.
+    # Pan left so the page's near-left marker stays fully visible for pixel ratios.
     before = settled(smoke)
-    expected = {"x": before["x"] + 80, "y": before["y"] + 40, "scale": 1}
+    expected = {"x": before["x"] - 80, "y": before["y"] + 40, "scale": 1}
     set_viewport(smoke, **expected)
     smoke.until(
         "maximized Firefox focused before shell click",

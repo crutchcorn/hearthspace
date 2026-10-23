@@ -153,7 +153,7 @@ fn replaced_menu_ignores_late_file_action_results_and_stale_clicks() {
     next.generation = 9;
     apply(&mut state, Some(next));
     finished(&mut state, 8, Ok(Completed::Closed(None)));
-    button_event(&mut state, 8, 0, ButtonAction::Activate);
+    button_event(&mut state, 8, false, 0, ButtonAction::Activate);
     assert_eq!(state.desktop.menu.current.as_ref().unwrap().generation, 9);
     assert!(requests.try_recv().is_err());
 }
@@ -199,3 +199,106 @@ fn busy_menu_escape_dismissal_survives_a_snapshot_while_transfer_finishes() {
     finished(&mut ui.state, 8, Ok(Completed::Closed(None)));
     assert!(ui.state.desktop.menu.current.is_none());
 }
+
+#[test]
+fn open_with_keeps_the_parent_menu_and_returns_from_a_separate_child() {
+    let (state, mut requests) = state(true, 600);
+    let mut ui = Ui::new(state, panel, (340, 320));
+    let open_with = named(&ui, "Open With…", Role::MenuItem);
+    let original_window = ui.state.desktop.menu.window;
+    ui.activate(open_with);
+    ui.dispatch(&panel);
+    assert_eq!(windows(&ui.state).len(), 2);
+    assert_eq!(ui.state.desktop.menu.window, original_window);
+    assert_eq!(named(&ui, "Open With…", Role::MenuItem), open_with);
+    named(&ui, "Properties", Role::MenuItem);
+    assert!(matches!(
+        requests.try_recv().unwrap(),
+        task::Request::Context(context_actions::Request {
+            action: Action::OpenWithOptions,
+            ..
+        })
+    ));
+    finished(
+        &mut ui.state,
+        8,
+        Ok(Completed::OpenWith(vec![
+            crate::desktop_items::actions::OpenWithApp {
+                id: "music.desktop".into(),
+                name: "Music".into(),
+            },
+            crate::desktop_items::actions::OpenWithApp {
+                id: "player.desktop".into(),
+                name: "Player".into(),
+            },
+        ])),
+    );
+    ui.rebuild(&panel);
+    ui.dispatch(&panel);
+    assert_eq!(
+        ui.harness
+            .access_node(open_with)
+            .unwrap()
+            .data()
+            .is_expanded(),
+        Some(true)
+    );
+    fn child(
+        state: &ShellState,
+    ) -> impl WidgetView<ShellState, Widget = masonry::widgets::SizedBox> + use<> {
+        sized_box(view::panel(state, true))
+    }
+    let mut submenu = Ui::new(ui.state, child, (340, 160));
+    assert_eq!(
+        submenu.harness.focused_widget_id(),
+        Some(named(&submenu, "Music", Role::MenuItem))
+    );
+    press(&mut submenu, NamedKey::ArrowDown);
+    submenu.dispatch(&child);
+    assert_eq!(
+        submenu.harness.focused_widget_id(),
+        Some(named(&submenu, "Player", Role::MenuItem))
+    );
+    press(&mut submenu, NamedKey::ArrowLeft);
+    submenu.dispatch(&child);
+    assert!(submenu.state.desktop.menu.submenu.is_none());
+    assert_eq!(submenu.state.desktop.menu.selected, 1);
+    assert_eq!(submenu.state.desktop.menu.window, original_window);
+    assert_eq!(windows(&submenu.state).len(), 1);
+    assert!(
+        matches!(requests.try_recv().unwrap(), task::Request::Command(command) if command == "desktop-context-parent 8")
+    );
+}
+
+#[test]
+fn desktop_submenu_back_while_loading_does_not_reopen_on_late_completion() {
+    let (mut state, mut requests) = state(true, 600);
+    button_event(&mut state, 8, false, 1, ButtonAction::Activate);
+    assert!(state.desktop.menu.submenu.is_some());
+    requests.try_recv().unwrap();
+    button_event(&mut state, 8, true, 0, ButtonAction::Back);
+    assert!(state.desktop.menu.submenu.is_none());
+    finished(&mut state, 8, Ok(Completed::OpenWith(vec![])));
+    assert_eq!(windows(&state).len(), 1);
+    assert!(!state.desktop.menu.busy);
+    assert!(state.desktop.menu.current.is_some());
+}
+
+#[test]
+fn menu_label_is_vertically_centered_inside_its_interactive_row() {
+    let (state, _) = state(false, 600);
+    let ui = Ui::new(state, panel, (260, 300));
+    let row = ui
+        .harness
+        .get_widget_with_id(named(&ui, "Settings", Role::MenuItem));
+    let bounds = row.ctx().bounding_box();
+    let label = row.children().into_iter().next().unwrap();
+    let text = label.ctx().bounding_box();
+    assert!(text.height() < bounds.height());
+    assert!(
+        (text.center().y - bounds.center().y).abs() < 0.5,
+        "row {bounds:?}, label {text:?}"
+    );
+}
+
+mod interaction;

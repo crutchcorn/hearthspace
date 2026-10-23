@@ -8,6 +8,9 @@ use std::{
     time::{Duration, Instant},
 };
 
+#[cfg(feature = "test-apps")]
+#[path = "support/masonry_window_lifecycle.rs"]
+mod masonry_window_lifecycle;
 #[path = "support/serialization.rs"]
 mod serialization;
 #[path = "support/shell_window_lifecycle.rs"]
@@ -49,8 +52,14 @@ mod frame_layout;
 #[path = "support/grid_snapping.rs"]
 mod grid_snapping;
 #[cfg(feature = "test-apps")]
+#[path = "support/gtk_titlebar.rs"]
+mod gtk_titlebar;
+#[cfg(feature = "test-apps")]
 #[path = "support/interactive.rs"]
 mod interactive;
+#[cfg(feature = "test-apps")]
+#[path = "support/interactive_grab.rs"]
+mod interactive_grab;
 #[cfg(feature = "test-apps")]
 #[path = "support/layout.rs"]
 mod layout;
@@ -67,8 +76,8 @@ mod layout_overflow;
 #[path = "support/navigation.rs"]
 mod navigation;
 #[cfg(feature = "test-apps")]
-#[path = "support/overview.rs"]
-mod overview;
+#[path = "support/navigation_client.rs"]
+mod navigation_client;
 #[cfg(feature = "test-apps")]
 #[path = "support/remote_input.rs"]
 mod remote_input;
@@ -119,6 +128,17 @@ mod x11_popups;
 #[cfg(all(feature = "test-apps", feature = "xwayland"))]
 #[path = "support/xsettings.rs"]
 mod xsettings;
+
+#[cfg(feature = "test-apps")]
+#[path = "support/csd_lifecycle.rs"]
+mod csd_lifecycle;
+#[cfg(all(feature = "test-apps", feature = "xwayland"))]
+#[path = "support/x11_interactive.rs"]
+mod x11_interactive;
+
+#[cfg(feature = "test-apps")]
+#[path = "support/touch_interactive.rs"]
+mod touch_interactive;
 
 const WIDTH: u32 = 320;
 const HEIGHT: u32 = 240;

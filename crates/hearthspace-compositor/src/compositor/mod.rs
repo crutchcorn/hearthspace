@@ -20,6 +20,7 @@ mod cursor;
 mod desktop;
 mod focus;
 mod focused_shell_peek;
+mod gtk_shell;
 mod handlers;
 mod idle;
 mod input;
@@ -28,7 +29,6 @@ mod layout_editor;
 mod masonry_titlebar;
 mod navigation;
 mod output;
-mod overview;
 mod presentation;
 mod rendering;
 mod runtime;
@@ -280,6 +280,7 @@ struct App {
     session_lock: session_lock::LockState,
     remote_input: input::RemoteInput,
     remote_capture: capture::protocol::RemoteCaptureState,
+    gtk_shell: gtk_shell::GtkShellState,
     _seat: Seat<Self>,
     pointer: PointerHandle<Self>,
     touch: TouchHandle<Self>,
@@ -297,10 +298,9 @@ struct App {
     canvas_preview: canvas_preview::State,
     viewport_scale: f64,
     viewport_animation: Option<ViewportAnimation>,
-    overview: overview::Overview,
     window_switcher: switcher::WindowSwitcher,
     window_group: window_group::WindowGroup,
-    overview_input: input::OverviewInput,
+    switcher_input: input::SwitcherInput,
     pinch_zoom: input::PinchZoom,
     windows: Vec<ManagedWindow>,
     next_window_id: u64,
@@ -670,6 +670,7 @@ pub(in crate::compositor) fn initialize_app(
         primary_selection_state: PrimarySelectionState::new::<App>(&dh),
         remote_input: input::RemoteInput::new(&dh, options.remote_desktop),
         remote_capture: capture::protocol::RemoteCaptureState::new(&dh, options.remote_desktop),
+        gtk_shell: gtk_shell::GtkShellState::new(&dh),
         session_lock: session_lock::LockState::new(
             &dh,
             !matches!(
@@ -694,10 +695,9 @@ pub(in crate::compositor) fn initialize_app(
         canvas_search: Default::default(),
         canvas_preview: Default::default(),
         viewport_animation: None,
-        overview: overview::Overview::default(),
         window_switcher: switcher::WindowSwitcher::default(),
         window_group: window_group::WindowGroup::default(),
-        overview_input: input::OverviewInput::default(),
+        switcher_input: input::SwitcherInput::default(),
         pinch_zoom: input::PinchZoom::default(),
         windows: Vec::new(),
         next_window_id: 1,

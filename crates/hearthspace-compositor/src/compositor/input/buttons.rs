@@ -29,6 +29,24 @@ impl App {
         time: InputTime,
     ) {
         self.shortcuts.cancel_meta_tap();
+        if self.has_window_pointer_grab() {
+            let owner_retired = self.window_pointer_grab_owner_retired();
+            // Route every button to the owner, including releases after its
+            // window disappeared. Neither chrome nor another client may claim
+            // the remainder of this sequence.
+            self.deliver_pointer_button(&ButtonEvent {
+                serial: SERIAL_COUNTER.next_serial(),
+                time,
+                button,
+                state,
+            });
+            self.pointer.clone().frame(self);
+            if !self.has_window_pointer_grab() {
+                self.apply_pointer_motion(self.pointer_location, time);
+                self.restore_retired_window_grab_focus(owner_retired);
+            }
+            return;
+        }
         if state == ButtonState::Pressed {
             self.abandon_released_shell_resize_click();
         }
@@ -46,6 +64,10 @@ impl App {
                 // Selection hover may have deliberately removed client focus.
                 // Reconcile it before forwarding the outside press unchanged.
                 self.apply_pointer_motion(self.pointer_location, time);
+            }
+            // First touch-down already invalidates using its own coordinates.
+            if !self.dispatching_touch {
+                self.cancel_shell_popup_outside_press(self.pointer_location);
             }
         }
         if self.favorite_pointer_button(button, state) {
@@ -76,7 +98,7 @@ impl App {
         if self.desktop_pointer_button(button, state, time) {
             return;
         }
-        if self.handle_overview_button(button, state) {
+        if self.handle_window_switcher_button(button, state) {
             return;
         }
         trace!(button, ?state, "pointer button input");
@@ -94,11 +116,12 @@ impl App {
             && (self.drag.is_some() || self.resize.is_some())
         {
             debug!("ending pointer drag/resize from button release");
+            self.gtk_shell.reset_input();
             self.update_window_pointer_operation();
             self.drag = None;
             self.finish_resize();
-            // A client-initiated move/resize established an implicit grab;
-            // forwarding its release is necessary to end that grab as well.
+            // Client requests are owned by WindowGrab above. This also drains
+            // a pre-existing implicit grab if compositor chrome used it.
             let pointer = self.pointer.clone();
             if self.pressed_pointer_buttons.contains(&button) {
                 self.deliver_pointer_button(&ButtonEvent {

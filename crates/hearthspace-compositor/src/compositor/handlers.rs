@@ -63,7 +63,7 @@ impl XdgShellHandler for App {
             .is_some_and(|id| self.set_window_maximized(id, true).is_ok())
             && surface.is_initial_configure_sent()
         {
-            surface.send_configure();
+            crate::compositor::gtk_shell::send_configure(&surface);
         }
     }
 
@@ -73,7 +73,7 @@ impl XdgShellHandler for App {
             .is_some_and(|id| self.set_window_maximized(id, false).is_ok())
             && surface.is_initial_configure_sent()
         {
-            surface.send_configure();
+            crate::compositor::gtk_shell::send_configure(&surface);
         }
     }
 
@@ -91,7 +91,7 @@ impl XdgShellHandler for App {
             .is_some_and(|id| self.set_window_fullscreen(id, true, output).is_ok())
             && surface.is_initial_configure_sent()
         {
-            surface.send_configure();
+            crate::compositor::gtk_shell::send_configure(&surface);
         }
     }
 
@@ -101,7 +101,7 @@ impl XdgShellHandler for App {
             .is_some_and(|id| self.set_window_fullscreen(id, false, None).is_ok())
             && surface.is_initial_configure_sent()
         {
-            surface.send_configure();
+            crate::compositor::gtk_shell::send_configure(&surface);
         }
     }
 
@@ -243,7 +243,7 @@ impl XdgShellHandler for App {
     }
 
     fn grab(&mut self, surface: PopupSurface, seat: wl_seat::WlSeat, serial: Serial) {
-        if self.session_locked() || self.overview_active() || self.window_switcher_active() {
+        if self.session_locked() || self.window_switcher_active() {
             return;
         }
         // Set up a popup grab so the menu behaves modally: keyboard and pointer
@@ -329,6 +329,8 @@ impl XdgShellHandler for App {
         let restore_focus = self.windows.iter().any(|window| {
             window.surface.same_xdg(&surface) && self.focused_normal_window_id == Some(window.id)
         });
+        let retained_context_focus =
+            restore_panel_focus && self.restore_desktop_context_parent(surface.wl_surface());
         self.clear_keyboard_focus_for_surface(surface.wl_surface());
         if let Some(window) = self
             .windows
@@ -337,22 +339,9 @@ impl XdgShellHandler for App {
         {
             info!(window_id = window.id, kind = ?window.kind, "xdg toplevel destroyed");
             self.idle_daemon.unregister_window(window.id);
-            // A passive OSD expiring must not interrupt a drag of another app.
-            if self
-                .drag
-                .as_ref()
-                .is_some_and(|drag| drag.window_id == window.id)
-            {
-                self.drag = None;
-            }
-            if self
-                .resize
-                .as_ref()
-                .is_some_and(|resize| resize.window_id == window.id)
-            {
-                self.resize = None;
-            }
-            if self.focused_normal_window_id == Some(window.id) {
+            let id = window.id;
+            self.retire_window_pointer_operation(id);
+            if self.focused_normal_window_id == Some(id) {
                 self.focused_normal_window_id = None;
             }
         }
@@ -361,7 +350,7 @@ impl XdgShellHandler for App {
         if reserved_work_area {
             self.reconcile_window_presentations();
         }
-        if restore_panel_focus {
+        if restore_panel_focus && !retained_context_focus {
             self.restore_focus_after_shell_panel();
         } else if restore_focus {
             self.restore_window_focus();
@@ -559,6 +548,7 @@ impl CompositorHandler for App {
         self.finish_presentation_restore(surface);
         self.refresh_window_mapping(surface);
         self.reanchor_resize(surface);
+        self.refresh_gtk_resize_edges(surface);
         if let Some(window_id) = self.managed_normal_window_id_for_surface(surface) {
             self.idle_daemon
                 .record_activity(window_id, ActivityReason::SurfaceCommit);

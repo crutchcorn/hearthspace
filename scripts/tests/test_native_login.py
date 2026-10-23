@@ -199,10 +199,14 @@ class NativeLoginTests(unittest.TestCase):
     def test_launch_records_login_mode_in_both_owned_manifests(self):
         for enabled in (False, True):
             values = args("/tmp/native-test", enabled)
+            values.xdg_data_dirs = "/caller/share:/var/lib/snapd/desktop"
             with (
                 patch.object(service, "allocation_lock", return_value=nullcontext()),
                 patch.object(service.os, "geteuid", return_value=0),
-                patch.dict(os.environ, {"SUDO_UID": "1000"}),
+                patch.dict(
+                    os.environ,
+                    {"SUDO_UID": "1000", "XDG_DATA_DIRS": "/root/share"},
+                ),
                 patch.object(
                     service.pwd,
                     "getpwuid",
@@ -225,6 +229,7 @@ class NativeLoginTests(unittest.TestCase):
             self.assertEqual(len(save.call_args_list), 3)
             for call in save.call_args_list:
                 self.assertEqual(call.args[1]["login_session"], enabled)
+                self.assertEqual(call.args[1]["xdg_data_dirs"], values.xdg_data_dirs)
 
     def test_supervisor_receives_login_flag_without_changing_private_bus(self):
         for enabled in (False, True):
@@ -259,14 +264,16 @@ class NativeLoginTests(unittest.TestCase):
     def test_login_environment_uses_release_data_and_disables_checkout_fallback(self):
         for enabled in (False, True):
             for inherited in (None, "", "/custom/share:/usr/share"):
-                saved = state("/tmp/native-test") | {"login_session": enabled}
+                saved = state("/tmp/native-test") | {
+                    "login_session": enabled,
+                    "xdg_data_dirs": inherited,
+                }
                 original = {
                     "XDG_SESSION_ID": "108",
+                    "XDG_DATA_DIRS": "/pam/share",
                     "HEARTHSPACE_DEV": "1",
                     "HEARTHSPACE_REPO_ROOT": "/checkout",
                 }
-                if inherited is not None:
-                    original["XDG_DATA_DIRS"] = inherited
                 with (
                     self.subTest(enabled=enabled, inherited=inherited),
                     patch.object(service, "load", return_value=saved),
@@ -285,7 +292,10 @@ class NativeLoginTests(unittest.TestCase):
                     self.assertNotIn("HEARTHSPACE_DEV", environment)
                     self.assertNotIn("HEARTHSPACE_REPO_ROOT", environment)
                 else:
-                    self.assertEqual(environment.get("XDG_DATA_DIRS"), inherited)
+                    self.assertEqual(
+                        environment["XDG_DATA_DIRS"],
+                        inherited or "/usr/local/share:/usr/share",
+                    )
                     self.assertEqual(environment["HEARTHSPACE_DEV"], "1")
                     self.assertEqual(environment["HEARTHSPACE_REPO_ROOT"], "/checkout")
 

@@ -16,9 +16,11 @@ use super::command_socket_path;
 use crate::compositor::{App, ManagedWindowKind, switcher::SwitcherSource};
 
 const REQUEST_LIFETIME: Duration = Duration::from_secs(1);
+const FIRST_BUFFER_LIFETIME: Duration = Duration::from_secs(5);
 const MAX_PENDING_KEYS: usize = 64;
 const MAX_CANVAS_PENDING_KEYS: usize = 1024;
 
+mod diagnostics;
 mod modal;
 mod model;
 pub(in crate::compositor) use model::SearchRequest;
@@ -100,12 +102,9 @@ impl App {
         let output = self.windows[bar].shell_output_name.clone();
         // Repeated activation while the shell is building its window must not
         // invalidate the token already attached to that in-flight surface.
-        if self.search_request.valid()
-            && self
-                .search_request
-                .pending
-                .as_ref()
-                .is_some_and(|pending| pending.output == output)
+        if self
+            .search_request
+            .can_reuse_at(output.as_deref(), Instant::now())
         {
             return Ok(());
         }
@@ -162,6 +161,8 @@ impl App {
             keys: Vec::new(),
             held_before: self.keyboard.pressed_keys(),
         });
+        self.search_request
+            .trace("issued", Some(token), None, "reserved");
         Ok(())
     }
 
@@ -169,8 +170,16 @@ impl App {
         if token & super::device_control::CONTROL_TOKEN_BIT != 0 {
             return self.control_events.accept(token);
         }
-        self.check_navigation_available()?;
-        self.search_request.accept(token)
+        let result = self
+            .check_navigation_available()
+            .and_then(|()| self.search_request.accept(token));
+        self.search_request.trace(
+            "acknowledgement",
+            Some(token),
+            None,
+            result.as_ref().err().map_or("accepted", String::as_str),
+        );
+        result
     }
 
     /// Keep modifier changes in order with typed keys, including modifiers
@@ -250,6 +259,12 @@ impl App {
                     && pending.token == token
                     && pending.output == self.windows[index].shell_output_name
             });
+        self.search_request.trace(
+            "mapping",
+            Some(token),
+            self.windows[index].shell_output_name.as_deref(),
+            if allowed { "allowed" } else { "rejected" },
+        );
         if !allowed
             && self
                 .search_request
@@ -300,7 +315,12 @@ impl App {
         }
     }
 
+    #[track_caller]
     pub(in crate::compositor) fn cancel_pending_search(&mut self) {
+        if self.search_request.pending.is_some() {
+            self.search_request
+                .trace("cancel", None, None, "pending input discarded");
+        }
         for key in self.search_request.take_keys() {
             self.discard_search_key(key);
         }
@@ -342,6 +362,15 @@ impl App {
             })
         });
         if !keep {
+            if self
+                .search_request
+                .pending
+                .as_ref()
+                .is_some_and(|pending| !pending.cancelled)
+            {
+                self.search_request
+                    .trace("cancel", None, None, "focus left search output");
+            }
             // This callback runs inside Smithay's keyboard focus lock. Only
             // invalidate here; drain keys at the next input outside that lock.
             if let Some(pending) = self.search_request.pending.as_mut() {

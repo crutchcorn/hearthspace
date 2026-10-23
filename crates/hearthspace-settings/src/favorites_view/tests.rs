@@ -312,7 +312,7 @@ fn gestures_category_has_only_gesture_controls_and_hides_legacy_empty_entries() 
 }
 
 #[test]
-fn remove_gesture_button_deletes_assignment_and_reoffers_add_gesture() {
+fn remove_gesture_button_reoffers_add_gesture_and_preserves_the_dock_pin() {
     let (dir, mut state) = state();
     state
         .favorites
@@ -326,11 +326,13 @@ fn remove_gesture_button_deletes_assignment_and_reoffers_add_gesture() {
     ui.activate(remove);
     ui.dispatch(&view);
     ui.button("Add gesture");
-    assert!(ui.state.favorites.entries().is_empty());
-    assert!(
+    assert_eq!(ui.state.favorites.assigned().count(), 0);
+    assert_eq!(ui.state.favorites.entries()[0].app_id, "Alpha.desktop");
+    assert!(ui.state.favorites.entries()[0].gesture.is_none());
+    assert_eq!(
         hearthspace_shell::favorites::FavoriteStore::load(dir.path().join("favorites.json"))
             .unwrap()
-            .entries()
-            .is_empty()
+            .entries(),
+        ui.state.favorites.entries()
     );
 }

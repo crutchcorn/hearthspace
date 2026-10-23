@@ -147,7 +147,12 @@ impl App {
                 .layout_motion_rect(index)
                 .or_else(|| {
                     self.frame_placed(&target).map(|placed| {
-                        if target.target.kind == TargetKind::Window && placed.placement.is_frame() {
+                        if self.frame_grip_identity(index).is_some() {
+                            // The grip shares a group target, not its full hit area.
+                            self.layout_grip_rect(placed)
+                        } else if target.target.kind == TargetKind::Window
+                            && placed.placement.is_frame()
+                        {
                             self.pinned_reveal_rect(placed)
                         } else {
                             placed.rect

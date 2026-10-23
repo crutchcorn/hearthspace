@@ -37,7 +37,14 @@ def drawing_rect(smoke):
         surface, generation, bounds, scale = before
         frames = [e for e in elements if e["role"] == "Frame"]
         pads = [e for e in elements if e["role"] == "Canvas"]
-        if len(frames) != 1 or len(pads) != 1:
+        # The showing content already includes both readiness controls. Verify
+        # them in this geometry observation instead of walking the tree twice.
+        settings = any(
+            e.get("name") == "Settings" and e["role"] in ("Button", "ToggleButton")
+            for e in elements
+        )
+        prompt = any(e.get("name") == "Draw a gesture" for e in elements)
+        if len(frames) != 1 or len(pads) != 1 or not settings or not prompt:
             previous = None
             return None
         frame, native = frames[0]["bounds"], pads[0]["bounds"]

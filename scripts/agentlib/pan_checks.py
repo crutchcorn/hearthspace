@@ -92,10 +92,9 @@ def unchanged(before, after):
 
 def pan_cancelled(before, status):
     # A fourth contact can start a many-finger candidate after rolling back
-    # the three-finger transform. That candidate must not open either overlay.
+    # the three-finger transform. That candidate must not open the switcher.
     return (
         same_viewport(before, status["viewport"])
-        and not status["overview"]["active"]
         and not status["window_switcher"]["active"]
     )
 

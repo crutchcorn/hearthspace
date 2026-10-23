@@ -49,7 +49,9 @@ sudo apt-get install -y build-essential pkg-config clang libclang-dev libwayland
 
 Desktop file menus use GIO for application associations and Trash.
 `libglib2.0-dev` supplies its build interfaces; `libglib2.0-bin` supplies
-`gio launch` for Open With, and `xdg-utils` supplies the default `xdg-open` handler.
+`gio open` for default applications and `gio launch` for Open With. Properties
+uses the session file manager’s `org.freedesktop.FileManager1.ShowItemProperties`
+interface (provided by Nautilus, for example).
 
 Settings and server-decorated titlebars use Liberation Sans to match the browser
 reference's text metrics.
@@ -279,8 +281,10 @@ Install its optional test dependencies (installed on the development host):
 sudo apt-get install -y python3-evdev libinput-tools
 ```
 
-Ubuntu also installs `python3-libevdev` and `python3-pyudev` as dependencies. The
-test uses noninteractive sudo to access `/dev/uinput`; it does not change device
+Ubuntu also installs `python3-libevdev` and `python3-pyudev` as dependencies.
+The 2026-10-22 icon/switcher validation installed `python3-evdev` 1.9.3-1build1 and
+`libinput-tools` 1.31.1-1ubuntu1.2 with those dependencies on the development host.
+The test uses noninteractive sudo to access `/dev/uinput`; it does not change device
 permissions, install udev rules, or leave a virtual device behind. The injector
 requires its owned native session's VT to be active and closes the device before
 the native harness restores the original VT. Build the native binaries first,
@@ -316,21 +320,7 @@ expectations use the injected contact centroid. Both scripts accept `--device`
 and `--timeout` and clean up their owned session on failure. The pan script also
 accepts `--total-timeout` to bound its complete workflow.
 
-Canvas overview acceptance uses the same prerequisites:
-
-```sh
-scripts/overview-smoke --session "$(mktemp -d /tmp/hearthspace-overview.XXXXXX)"
-```
-
-It checks four-finger touchpad and four/five-finger touchscreen inward/outward
-gestures, subthreshold and cancelled
-gestures, live thumbnail pixels, unchanged canvas/window geometry, and pointer
-and touchscreen selection. `--device touchpad` or `--device touchscreen` selects
-one device type. Libinput currently suppresses five-contact touchpad gestures;
-the test records this backend limitation rather than reporting it as a pass.
-Keep the physical input devices idle during native acceptance.
-
-Held window-switcher acceptance uses those same installed dependencies and
+Window-switcher acceptance uses those same installed dependencies and
 temporary uinput permissions:
 
 ```sh
@@ -339,11 +329,25 @@ scripts/window-switcher-smoke --session "$(mktemp -d /tmp/hearthspace-window-swi
 
 It checks Alt+Tab/Alt+Shift+Tab, left/right four-contact touchpad and four/five-contact
 touchscreen swipes, live previews over the animated canvas, cancellation, input
-ownership, and keyboard unplug recovery. In focused view it also verifies that
+ownership, and keyboard unplug recovery. Pinch cases use four touchpad contacts
+and four/five touchscreen contacts: successful inward pinches keep the switcher
+open after release, outward pinches dismiss it, and subthreshold inward pinches
+leave it closed. Four-contact cases also test cancellation; subthreshold outward
+pinches preserve the open switcher. They check that a keyboard-owned switcher is
+unaffected and a repeated inward pinch does not cycle the selection.
+In focused view, inward pinch opens the switcher, outward dismissal retains the
+focused app, and reopening followed by Enter leaves that app bounded on the canvas.
+The horizontal swipe cases also verify that
 canvas panning stays blocked, cancelled swipes retain focus, and a completed
 switch leaves the previous app maximized on the canvas. Its bounded keyboard
 worker records libinput key events only from its own temporary device. No extra
 packages, udev rules, or persistent input devices are required.
+Libinput suppresses five-contact touchpad gestures; touchscreen coverage includes
+both four and five contacts. Keep physical input devices idle during acceptance.
+
+Preview clicks/taps and Escape/background dismissal in a persistent switcher need
+additional acceptance. Follow the [persistent switcher acceptance steps](docs/NATIVE_TESTING.md#persistent-switcher-acceptance)
+for these interactions and a separate Enter activation check.
 
 ### Recovering a black host login screen
 
@@ -548,6 +552,23 @@ magick assets/cursors/source/nesw-resize.svg assets/cursors/source/nesw-resize.p
 (cd assets/cursors/source && xcursorgen ns-resize.cursor ../ns-resize && xcursorgen ew-resize.cursor ../ew-resize && xcursorgen nwse-resize.cursor ../nwse-resize && xcursorgen nesw-resize.cursor ../nesw-resize)
 ```
 
+### Native Steam Touch Testing
+
+The 2026-10-23 CSD titlebar investigation enabled Ubuntu's `i386` architecture
+and installed `steam-installer` 1:1.0.0.85~ds-2build1 with its 32-bit runtime and
+Mesa dependencies. Steam's client downloads on first launch. This setup is
+optional; deterministic XWayland regression tests do not require Steam.
+
+```sh
+sudo dpkg --add-architecture i386
+sudo apt-get update
+sudo apt-get install -y steam-installer
+```
+
+Launch Steam only inside an owned native test session when testing its CSD
+header. Keep its stderr and session cleanup evidence; a responsive compositor
+alone does not establish that Steam recovered after a gesture.
+
 ### Native Firefox Package
 
 The physical development host also has Mozilla's official Firefox DEB for
@@ -613,6 +634,16 @@ Preparing these temporary entries also regenerates
 `~/.local/share/applications/mimeinfo.cache` with `update-desktop-database`, which
 is regenerated again after their removal. Existing `mimeapps.list` files and
 browser defaults are preserved.
+
+For an isolated CSD acceptance run on a host with only the Snap launcher,
+Mozilla's [Linux tarball](https://support.mozilla.org/en-US/kb/install-firefox-linux#w_install-firefox-from-mozilla-tarball-builds)
+can be extracted into the run's artifact directory. Pass its absolute `firefox`
+executable to `scripts/firefox-smoke --firefox PATH`; the harness creates a new
+profile. The CSD recovery run prepared Firefox **158.0.1**, checking its
+`linux-x86_64/en-US/firefox-158.0.1.tar.xz` against Mozilla's release
+`SHA512SUMS` before extraction. This requires no package repository, desktop
+registration, default-browser change, or system installation. Retain the archive
+URL and checksum with the native evidence; preparation alone is not a passing test.
 
 ### Optional Test Apps
 

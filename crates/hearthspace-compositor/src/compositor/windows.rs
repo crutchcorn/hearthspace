@@ -53,7 +53,7 @@ fn configure_server_side_decoration(toplevel: &ToplevelSurface) {
         state.decoration_mode = Some(DecorationMode::ServerSide);
     });
     if toplevel.is_initial_configure_sent() {
-        toplevel.send_configure();
+        crate::compositor::gtk_shell::send_configure(toplevel);
     }
 }
 
@@ -62,7 +62,7 @@ fn configure_client_side_decoration(toplevel: &ToplevelSurface) {
         state.decoration_mode = Some(DecorationMode::ClientSide);
     });
     if toplevel.is_initial_configure_sent() {
-        toplevel.send_configure();
+        crate::compositor::gtk_shell::send_configure(toplevel);
     }
 }
 
@@ -224,7 +224,6 @@ impl App {
             ManagedWindowKind::ControlOsd | ManagedWindowKind::ShellWatcher
         ) || self.session_locked()
             || (self.canvas_search_active() && !self.canvas_search_panel_allowed(window_index))
-            || self.overview_active()
             || self.window_switcher_active()
             || self.is_window_switcher_caption(window_index)
             || self.is_layout_tooltip(window_index)
@@ -505,7 +504,7 @@ impl App {
         // The initial empty wl_surface.commit establishes the client's parent,
         // decoration and size hints before its first configure is sent.
         if surface.is_initial_configure_sent() {
-            surface.send_configure();
+            crate::compositor::gtk_shell::send_configure(surface);
         }
     }
 
@@ -749,10 +748,7 @@ pub(super) fn window_app_id(surface: &ManagedSurface) -> Option<String> {
     match surface {
         ManagedSurface::Xdg(surface) => toplevel_app_id(surface),
         #[cfg(feature = "xwayland")]
-        ManagedSurface::X11(surface) => {
-            let class = surface.class();
-            (!class.trim().is_empty()).then_some(class)
-        }
+        ManagedSurface::X11(surface) => super::xwayland::identity::app_id(surface),
     }
 }
 

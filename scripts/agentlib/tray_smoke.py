@@ -5,7 +5,7 @@ import json
 import subprocess
 from pathlib import Path
 
-from . import shell_checks, tray_library, tray_touch
+from . import shell_checks, tray_library, tray_overflow, tray_touch
 from . import tray_checks as checks
 from .control import ControlError
 from .daily import DailySmoke
@@ -132,11 +132,14 @@ def interaction(smoke, peer):
         )
     shell_checks.closed(smoke)
     # Every app's menu is reachable without a secondary mouse button.
-    checks.click(smoke, "Application tray")
+    if checks.visible(smoke, "Application tray"):
+        raise ControlError("tray added a container button beside the app icons")
+    checks.click(smoke)
+    with Input(smoke.control) as inputs:
+        inputs.chord("shift+f10")
     shell_checks.opened(smoke, "tray")
-    checks.click(smoke, "Menu for " + checks.TITLE, menu=True)
     smoke.until(
-        "tray menu from touch-friendly launcher",
+        "tray menu from focused app icon",
         lambda: checks.visible(smoke, "Updated fixture"),
     )
     checks.dismiss(smoke)
@@ -195,12 +198,12 @@ def run(smoke):
     checks.disappeared(smoke)
     shell_checks.closed(smoke)
     smoke.until(
-        "empty tray button hidden",
+        "removed tray button remains absent",
         lambda: not checks.visible(smoke, "Application tray"),
     )
     tray_library.run(smoke)
     smoke.until(
-        "all owned tray apps removed",
+        "tray container button remains absent after library app exit",
         lambda: not checks.visible(smoke, "Application tray"),
     )
     smoke.capture("tray-workflow-complete")
@@ -218,7 +221,10 @@ class TraySmoke(DailySmoke):
         self.manifest = self.connect()
         self.step("ready", DailySmoke.ready)
         try:
-            self.step("application-tray", run)
+            if not self.args.overflow_only:
+                self.step("application-tray", run)
+            if self.args.overflow or self.args.overflow_only:
+                tray_overflow.run(self)
         except BaseException:
             self.failure_evidence("application-tray-failed")
             raise
@@ -230,6 +236,17 @@ def main():
     parser.add_argument("--timeout", type=float, default=120)
     parser.add_argument("--total-timeout", type=float, default=240)
     parser.add_argument("--log-level", default="info")
+    overflow = parser.add_mutually_exclusive_group()
+    overflow.add_argument(
+        "--overflow",
+        action="store_true",
+        help="also test standalone tray overflow on top and left",
+    )
+    overflow.add_argument(
+        "--overflow-only",
+        action="store_true",
+        help="only test native standalone tray overflow",
+    )
     args = parser.parse_args()
     try:
         TraySmoke(args).run()

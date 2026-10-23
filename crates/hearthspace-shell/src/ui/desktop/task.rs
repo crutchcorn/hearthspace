@@ -62,6 +62,10 @@ pub(super) fn submit(state: &mut ShellState, request: Request) {
 
 pub(in crate::ui) fn task() -> impl View<ShellState, (), xilem::ViewCtx, Element = NoElement> + use<>
 {
+    xilem::core::fork(operations(), super::artwork::task())
+}
+
+fn operations() -> impl View<ShellState, (), xilem::ViewCtx, Element = NoElement> + use<> {
     task_raw(
         |proxy: MessageProxy<Update>, state: &mut ShellState| {
             let socket = state.command_socket.clone();

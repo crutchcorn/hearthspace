@@ -141,6 +141,46 @@ See [vendored provenance and refresh steps](../vendor/accesskit_atspi_common/PRO
   and the source patch; refresh `Cargo.lock` and rerun the CPU and real-window
   appearance checks. Keep the regression until upstream coverage replaces it.
 
+## Masonry retired-window presentation
+
+- **Dependency:** the same vendored `masonry_winit` 0.4.0 at Xilem revision
+  [`271a27a6`](https://github.com/linebender/xilem/tree/271a27a6d4a930f7878d404f9014e3c50a3a9b88).
+- **Patch:** [cancel retired-window presentation](masonry-retired-window-presentation.patch),
+  a local lifecycle repair in `src/event_loop_runner.rs`.
+- **Reason:** a redraw or animation signal queues a native window handle. A
+  subsequent action can reconcile the shell's windows and close that window
+  before the batch drains. Masonry then unwraps the removed entry. On
+  2026-10-23, moving layout items triggered this panic at the final redraw-batch
+  lookup; the compositor survived and the session supervisor restarted the
+  shell. Visible windows created and closed within one callback also leave
+  stale entries in the first-frame queue.
+- **Behavior:** closing a window removes its pending first frame. Deferred
+  first-frame and redraw batches discard retired targets when consumed.
+  Explicit invalid close calls and inconsistent live-window maps remain errors;
+  surviving windows retain their redraws and input. This is independent of
+  Winit's lower-level queued-configure cleanup patch.
+- **Upstream:** checked on 2026-10-23. The current upstream revision is still
+  the pinned revision, whose [runner](https://github.com/linebender/xilem/blob/271a27a6d4a930f7878d404f9014e3c50a3a9b88/masonry_winit/src/event_loop_runner.rs)
+  contains both lifecycle gaps. No matching fix was found and no upstream
+  report has been published. Callback-driven window removal is supported;
+  [issue 1778](https://github.com/linebender/xilem/issues/1778) describes removing
+  windows from the application's returned view list.
+- **Verification:**
+  `cargo test --locked -p hearthspace-compositor --features e2e,test-apps --test headless_control masonry_window_lifecycle`
+  uses a real Masonry event loop and owned headless Wayland server. It queues
+  redraw before self-close, animation before another window closes the target,
+  and creation followed by retirement before first presentation. Each case
+  requires a later resize, render and real pointer activation on the survivor.
+  All three cases reproduced missing-window panics without the patch on
+  2026-10-23 and passed with it. The resize comes from the compositor so the
+  survivor must process a real configure after the retired batch has drained.
+  Also repeat native mouse drags out of and into layout groups, verify the
+  resulting placement, and require an unchanged shell PID.
+- **Removal:** adopt a compatible upstream revision that passes these lifecycle
+  regressions and native group-movement acceptance without this patch. Preserve
+  vendoring and the initial-window-properties patch until that separate repair
+  also meets its removal condition.
+
 ## Smithay XSettings publication
 
 - **Dependency:** Smithay 0.7.0 at pinned revision
@@ -170,3 +210,71 @@ See [vendored provenance and refresh steps](../vendor/accesskit_atspi_common/PRO
   XSettings changes promptly and passes these checks without the patch. Remove
   the Git-source Cargo patch, vendor directory, and source patch, then refresh
   `Cargo.lock`. Retain the idle-client regression.
+
+## Smithay X11 interactive cancellation
+
+- **Dependency:** the same vendored Smithay 0.7.0 at revision
+  [`5c2ba413`](https://github.com/Smithay/smithay/tree/5c2ba4132556a08abc70ae1771d275ec2cfc031f).
+- **Patch:** [dispatch move/resize cancellation](smithay-xwm-moveresize-cancel.patch).
+  Adds a default `XwmHandler::cancel_move_resize_request` callback and dispatches
+  `_NET_WM_MOVERESIZE` direction 11 to it. Existing implementors need no changes;
+  the compositor retains responsibility for ending and draining its operation.
+- **Reason:** the [EWMH cancellation message](https://specifications.freedesktop.org/wm/latest/ar01s04.html)
+  lets an application end an interactive operation, including when it sees the
+  button release before the window manager establishes its grab. Smithay
+  previously discarded this message, so Hearthspace could not honor it.
+- **Upstream:** checked on 2026-10-22 against
+  [master `24647fc8`](https://github.com/Smithay/smithay/blob/24647fc8d00131eb7f388efed26e35ea316b0018/src/xwayland/xwm/mod.rs).
+  Its dispatch handles directions 0–8 and ignores cancellation. GitHub's upstream
+  issue/PR search for `MOVERESIZE` returned only the unrelated active-window
+  [PR 1863](https://github.com/Smithay/smithay/pull/1863); no cancellation fix was
+  found and no report has been published.
+- **Verification:** run
+  `cargo test -p hearthspace-compositor --features e2e,test-apps --test headless_control x11_csd_`.
+  Real x11rb clients advertise CSD through Motif hints, send move/resize requests
+  after X button events, and check rendered bounds, `TranslateCoordinates`,
+  synthetic `ConfigureNotify`, wrong-button rejection, unrelated popup teardown,
+  and fresh clicks/drags after cancellation. The touch regression uses the same
+  production touch tracker as physical input. The two `cancel_while_held` tests
+  specifically exercise direction 11 for both move and resize.
+- **Removal:** upgrade to a compatible upstream revision with cancellation
+  dispatch, adapt Hearthspace's handler if its API differs, and rerun these
+  regressions without this patch. Keep the vendored dependency and Cargo patch
+  while the separate XSettings fix still requires them.
+
+## Masonry finite scrollbar geometry
+
+- **Dependency:** Masonry 0.4.0 at Xilem revision
+  [`271a27a6`](https://github.com/linebender/xilem/tree/271a27a6d4a930f7878d404f9014e3c50a3a9b88),
+  preserved in [`vendor/masonry`](../vendor/masonry/). Its
+  [provenance](../vendor/masonry/PROVENANCE.md) records manifest normalization.
+- **Patch:** [normalize and refresh Portal scrollbar progress](masonry-portal-finite-progress.patch),
+  a local extension of the existing guarded scroll-range calculation. Use it
+  for focus reveal and the public viewport setter, and recompute progress after
+  layout clamps the viewport, including hidden scrollbars and unchanged offsets.
+- **Reason:** focus reveal divides by zero when content fits the viewport exactly.
+  The resulting NaN can remain in a hidden scrollbar, then become visible when
+  a later popup configure shrinks the viewport. Repeated tray-menu opening on
+  Intel UHD 620 produced GPU hangs; a CPU-preprocessing diagnostic captured NaN
+  coordinates already in the input path. The deterministic regression reproduces
+  non-finite rounded-rectangle paint without creating a renderer or GPU device.
+  Vello and its shader settings remain unchanged.
+- **Upstream:** checked on 2026-10-22. Current
+  [Portal source](https://github.com/linebender/xilem/blob/main/masonry/src/widgets/portal.rs)
+  still has the unguarded reveal/setter divisions and layout progress TODO.
+  Existing [PR 1596](https://github.com/linebender/xilem/pull/1596) supplies the
+  guarded calculation and [PR 1587](https://github.com/linebender/xilem/pull/1587)
+  invalidates resized scrollbar rendering; both are already in this pin.
+  No matching compatible fix was found, and no upstream report was published.
+- **Verification:** `cargo test -p hearthspace-ui-components touch_scroll`
+  exercises real Portal focus reveal at an exact 298×153 fit, then resizes to
+  298×18 and validates actual paint with `ValidatingSink`. The unmodified
+  dependency fails with `NonFinite { what: "Geometry::RoundedRect" }`; the patch
+  passes alongside the existing touch-scroll regressions. Native repeated menu
+  creation and the full ordinary tray workflow passed on Intel UHD 620 with
+  normal GPU rendering; see the [native evidence](../docs/TRAY.md#repeated-popup-gpu-hang--2026-10-22).
+- **Removal:** upgrade to a compatible unmodified upstream revision that passes
+  the regression and repeated native tray-menu workflow. Remove the Masonry
+  Git-source patch, vendor directory, and patch file, then refresh `Cargo.lock`.
+  Preserve the independent Xilem and Masonry Winit patches until their own
+  removal conditions are satisfied.

@@ -4,7 +4,6 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use hearthspace_shell::app_catalog::DesktopApp;
 #[cfg(feature = "test-apps")]
 use {super::runtime_path, crate::config::*, std::process::Command, tracing::warn};
 
@@ -45,16 +44,14 @@ pub(super) fn ensure_snap_instance_name(instance_name: &str) -> std::io::Result<
     Ok(())
 }
 
-pub(super) fn launch_environment_for_app(
-    app: &DesktopApp,
-) -> std::io::Result<Vec<(String, String)>> {
+pub(super) fn launch_environment_for_app(app_id: &str) -> std::io::Result<Vec<(String, String)>> {
     if !isolate_profile(
-        &app.id,
+        app_id,
         env::var("HEARTHSPACE_ISOLATE_APP_PROFILES").ok().as_deref(),
     ) {
         return Ok(Vec::new());
     }
-    let base = app_state_base_dir().join(sanitized_path_component(&app.id));
+    let base = app_state_base_dir().join(sanitized_path_component(app_id));
     let config = base.join("config");
     let cache = base.join("cache");
     let data = base.join("data");

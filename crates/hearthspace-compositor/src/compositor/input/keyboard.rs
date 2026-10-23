@@ -30,11 +30,6 @@ enum Shortcut {
     Group(groups::Action),
     DeviceControl(crate::compositor::shell_integration::device_control::DeviceControl),
     Lock,
-    OverviewToggle,
-    OverviewDismiss,
-    OverviewActivate,
-    OverviewNext,
-    OverviewPrevious,
     SwitcherCancel,
     SwitcherCommit,
     ShellPanelDismiss,
@@ -94,20 +89,6 @@ impl KeyboardShortcuts {
             );
         }
         self.filter(code, state, modifiers, symbol, available)
-    }
-
-    fn filter_overview(
-        &mut self,
-        code: Keycode,
-        state: KeyState,
-        modifiers: &ModifiersState,
-        symbol: u32,
-    ) -> FilterResult<Option<Shortcut>> {
-        if state == KeyState::Released || self.intercepted.contains(&code) {
-            return self.filter(code, state, modifiers, symbol, false);
-        }
-        self.intercepted.insert(code);
-        FilterResult::Intercept(overview_shortcut(modifiers, symbol))
     }
 
     fn filter(
@@ -215,9 +196,6 @@ impl App {
                     FilterResult::Intercept(
                         app.shortcuts.intercepted.insert(code).then_some(action),
                     )
-                } else if app.overview_active() {
-                    app.shortcuts
-                        .filter_overview(code, state, modifiers, symbol)
                 } else if let Some(source) = app.window_switcher_source() {
                     app.shortcuts
                         .filter_switcher(code, state, modifiers, symbol, source)
@@ -305,6 +283,7 @@ impl App {
                 return;
             }
             Shortcut::ShellPanelDismiss => {
+                self.invalidate_shell_popups();
                 // Revoke before the asynchronous close reaches the shell: a
                 // held drawing button may be released in the same input batch.
                 self.clear_favorite_drawing();
@@ -318,20 +297,6 @@ impl App {
             }
             Shortcut::ShellCornerCycle { reverse } => {
                 self.cycle_shell_corner(reverse);
-                return;
-            }
-            Shortcut::OverviewDismiss => {
-                self.close_overview();
-                return;
-            }
-            Shortcut::OverviewActivate => {
-                if let Err(error) = self.overview_activate_selected() {
-                    tracing::debug!(%error, "overview selection unavailable");
-                }
-                return;
-            }
-            Shortcut::OverviewNext | Shortcut::OverviewPrevious => {
-                self.overview_selection_cycle(shortcut == Shortcut::OverviewNext);
                 return;
             }
             _ => {}
@@ -350,15 +315,10 @@ impl App {
             return;
         }
         let command = match shortcut {
-            Shortcut::OverviewToggle => ShellCommand::OverviewToggle,
             Shortcut::DeviceControl(_)
             | Shortcut::CanvasSearch(_)
             | Shortcut::Desktop(_)
             | Shortcut::Group(_)
-            | Shortcut::OverviewDismiss
-            | Shortcut::OverviewActivate
-            | Shortcut::OverviewNext
-            | Shortcut::OverviewPrevious
             | Shortcut::SwitcherCommit
             | Shortcut::SwitcherCancel
             | Shortcut::ShellPanelDismiss
@@ -399,30 +359,6 @@ impl App {
     }
 }
 
-fn overview_shortcut(modifiers: &ModifiersState, symbol: u32) -> Option<Shortcut> {
-    if matches!(
-        shortcut(modifiers, symbol),
-        Some(Shortcut::Lock | Shortcut::OverviewToggle)
-    ) {
-        return shortcut(modifiers, symbol);
-    }
-    if modifiers.ctrl || modifiers.alt || modifiers.logo {
-        return None;
-    }
-    match symbol {
-        keysyms::KEY_Escape => Some(Shortcut::OverviewDismiss),
-        keysyms::KEY_Return | keysyms::KEY_KP_Enter => Some(Shortcut::OverviewActivate),
-        keysyms::KEY_Tab | keysyms::KEY_ISO_Left_Tab => Some(if modifiers.shift {
-            Shortcut::OverviewPrevious
-        } else {
-            Shortcut::OverviewNext
-        }),
-        keysyms::KEY_Left | keysyms::KEY_Up => Some(Shortcut::OverviewPrevious),
-        keysyms::KEY_Right | keysyms::KEY_Down => Some(Shortcut::OverviewNext),
-        _ => None,
-    }
-}
-
 fn shortcut(modifiers: &ModifiersState, symbol: u32) -> Option<Shortcut> {
     if modifiers.ctrl {
         return None;
@@ -454,7 +390,6 @@ fn shortcut(modifiers: &ModifiersState, symbol: u32) -> Option<Shortcut> {
         return None;
     }
     match symbol {
-        keysyms::KEY_o => Some(Shortcut::OverviewToggle),
         keysyms::KEY_g => Some(Shortcut::Group(groups::Action::Toggle)),
         keysyms::KEY_l => Some(Shortcut::Lock),
         keysyms::KEY_Return => Some(Shortcut::Terminal),

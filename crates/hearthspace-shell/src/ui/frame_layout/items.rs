@@ -53,11 +53,13 @@ pub(in crate::ui) fn view(
         .clone()
         .filter(|request| request.target == target);
     let artwork: Box<AnyWidgetView<ShellState>> = match content.artwork {
-        Artwork::App(Some(brush)) => image(brush).alt_text(content.name.clone()).boxed(),
+        Artwork::App(Some(brush)) | Artwork::File(Some(brush)) => {
+            image(brush).alt_text(content.name.clone()).boxed()
+        }
         Artwork::App(None) => icon(Icon::AppsGrid, 30.0).label(&content.name).boxed(),
         Artwork::Settings => icon(Icon::AppSettings, 24.0).label(&content.name).boxed(),
         Artwork::Folder => icon(Icon::Folder, 30.0).label(&content.name).boxed(),
-        Artwork::File => icon(Icon::FileText, 28.0).label(&content.name).boxed(),
+        Artwork::File(None) => icon(Icon::FileText, 28.0).label(&content.name).boxed(),
     };
     let size = if grouped { 44.0 } else { 54.0 };
     let control = components::button_surface(

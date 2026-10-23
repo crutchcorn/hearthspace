@@ -4,24 +4,29 @@ use smithay::{
     utils::{Logical, Point},
 };
 
-use super::{super::App, pinch::PinchInput, touch_tracker::TouchAction};
+use super::{super::App, pinch::PinchInput, remote::PointerSource, touch_tracker::TouchAction};
+use crate::compositor::switcher::SwitcherSource;
 
 impl App {
-    pub(super) fn touch_down(
+    pub(in crate::compositor) fn touch_down(
         &mut self,
         device: &str,
         slot: TouchSlot,
         location: Point<f64, Logical>,
         time: InputTime,
     ) {
+        self.gtk_shell.reset_input();
         self.shortcuts.cancel_meta_tap();
-        if !self.touch_input.has_contacts() && !self.group_touch_blocked() {
+        let first = !self.touch_input.has_contacts();
+        if first && !self.group_touch_blocked() {
             self.dismiss_group_outside_press(location, true);
+        }
+        if first {
+            self.cancel_shell_popup_outside_press(location);
         }
         if self.favorite_touch_down(device, slot, location) {
             return;
         }
-        let first = !self.touch_input.has_contacts();
         if first {
             self.focused_shell_pointer(location, true);
         }
@@ -40,10 +45,15 @@ impl App {
             }
         }
         self.begin_ui_touch(device, slot, location, time, first);
+        if !first && self.window_switcher_active() {
+            self.invalidate_window_switcher_tap();
+        }
         self.touch_input.down(device, slot, location);
         // Canvas previews accept ordinary single-contact taps. An extra
         // contact cancels the pending tap without activating the revealed app.
-        if ((self.canvas_search_active() || self.window_switcher_active() || self.layout_editing())
+        if ((self.canvas_search_active()
+            || self.window_switcher_source() == Some(SwitcherSource::Keyboard)
+            || self.layout_editing())
             && !first)
             || (first
                 && !self.canvas_search_active()
@@ -60,12 +70,58 @@ impl App {
         }
     }
 
-    pub(super) fn flush_touch_frame(&mut self, device: &str, time: InputTime) {
+    pub(in crate::compositor) fn touch_motion(
+        &mut self,
+        device: &str,
+        slot: TouchSlot,
+        location: Point<f64, Logical>,
+        time: InputTime,
+    ) {
+        if !self.favorite_touch_motion(device, slot, location) {
+            self.motion_ui_touch(device, slot, location, time);
+            self.touch_input.motion(device, slot, location);
+        }
+    }
+
+    pub(in crate::compositor) fn touch_up(
+        &mut self,
+        device: &str,
+        slot: TouchSlot,
+        time: InputTime,
+    ) {
+        if !self.favorite_touch_up(device, slot, false) {
+            self.end_ui_touch(device, slot, false, time);
+            self.touch_input.up(device, slot);
+        }
+    }
+
+    pub(in crate::compositor) fn touch_cancel(
+        &mut self,
+        device: &str,
+        slot: TouchSlot,
+        time: InputTime,
+    ) {
+        if self.touch_pointer_pressed && self.touch_input.has_device_input(device) {
+            self.cancel_titlebar_pointer();
+            self.cancel_canvas_search_touch();
+            if self.window_switcher_active() {
+                self.cancel_window_switcher_touch();
+            }
+        }
+        self.favorite_touch_up(device, slot, true);
+        self.end_ui_touch(device, slot, true, time);
+        self.touch_input.cancel(device, slot);
+        self.flush_touch_frame(device, time);
+    }
+
+    pub(in crate::compositor) fn flush_touch_frame(&mut self, device: &str, time: InputTime) {
         let actions = self.touch_input.frame(device);
         self.apply_touch_actions(actions, time);
     }
 
-    pub(super) fn remove_touch_device(&mut self, device: &str) {
+    pub(in crate::compositor) fn remove_touch_device(&mut self, device: &str) {
+        // A completed tap may outlive the tracker's contacts while GTK replies.
+        self.gtk_shell.reset_input();
         if self.touch_pointer_pressed && self.touch_input.has_device_input(device) {
             self.cancel_titlebar_pointer();
             self.cancel_desktop_gesture();
@@ -81,6 +137,7 @@ impl App {
     }
 
     pub(in crate::compositor) fn cancel_input_gestures(&mut self) {
+        self.gtk_shell.reset_input();
         self.cancel_titlebar_pointer();
         self.cancel_group_gesture();
         self.cancel_desktop_gesture();
@@ -139,14 +196,14 @@ impl App {
                 TouchAction::EndPinch { cancelled } => {
                     self.end_pinch_zoom(PinchInput::Touchscreen, &device, cancelled, time);
                 }
-                TouchAction::BeginOverview { fingers } => {
-                    self.start_overview_pinch(PinchInput::Touchscreen, device, fingers);
+                TouchAction::BeginSwitcherPinch { fingers } => {
+                    self.start_switcher_pinch(PinchInput::Touchscreen, device, fingers);
                 }
-                TouchAction::UpdateOverview { scale } => {
-                    self.update_overview_pinch(PinchInput::Touchscreen, &device, scale);
+                TouchAction::UpdateSwitcherPinch { scale } => {
+                    self.update_switcher_pinch(PinchInput::Touchscreen, &device, scale);
                 }
-                TouchAction::EndOverview { cancelled } => {
-                    self.end_overview_pinch(PinchInput::Touchscreen, &device, cancelled);
+                TouchAction::EndSwitcherPinch { cancelled } => {
+                    self.end_switcher_pinch(PinchInput::Touchscreen, &device, cancelled);
                 }
                 TouchAction::BeginSwitcher { fingers } => {
                     self.start_window_switcher_swipe(PinchInput::Touchscreen, device, fingers);
@@ -174,6 +231,11 @@ impl App {
             return;
         }
         self.touch_pointer_pressed = state == ButtonState::Pressed;
-        self.synthesize_pointer_button(0x110, state);
+        self.handle_pointer_button_from_source(
+            PointerSource::Touch,
+            0x110,
+            state,
+            InputTime::now(),
+        );
     }
 }

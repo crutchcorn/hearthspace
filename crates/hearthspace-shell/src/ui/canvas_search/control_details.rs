@@ -55,7 +55,7 @@ fn apps(state: &ShellState) -> impl WidgetView<ShellState> + use<> {
                     icon(Icon::AppSettings, 18.0)
                         .color(state.appearance.palette.text)
                         .boxed()
-                } else if let Some(brush) = dock::image(state, app.icon.as_deref()) {
+                } else if let Some(brush) = dock::app_image(state, app) {
                     image(brush).decorative(true).boxed()
                 } else {
                     icon(Icon::AppsGrid, 18.0)
@@ -78,7 +78,7 @@ fn tools(state: &ShellState) -> impl WidgetView<ShellState> + use<> {
         (Icon::Search, state.canvas_search.snapshot.mode),
         (Icon::Lasso, state.window_group.selecting),
         (
-            Icon::Overview,
+            Icon::Map,
             state.outputs.iter().any(|output| output.show_map),
         ),
     ]

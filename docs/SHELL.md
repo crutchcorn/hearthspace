@@ -5,18 +5,38 @@ The default layout places independent native controls in four corners on each ou
 - **Top left — Notifications:** one button combines the bell with “All clear” or the number of new notifications and opens the notification panel.
 - **Top right — System tray:** application tray icons, clock/calendar, Wi-Fi, brightness, sound, battery when available, and Power. Tray icons appear only while apps publish them; see [application tray](TRAY.md).
 - **Bottom left — Canvas tools:** [desktop-item selection](DESKTOP_ITEMS.md), [canvas search](CANVAS_SEARCH.md), window-group selection, Change layout, and the [canvas map](CANVAS_MAP.md).
-- **Bottom right — App dock and Apps List:** running apps and the installed-app browser.
+- **Bottom right — App dock and Apps List:** favorite and running apps, plus the installed-app browser.
 
-The dock groups windows by application ID. Activating an icon focuses and reveals
-an existing window on the infinite canvas; repeated activation cycles through that
-app's windows. The active app is highlighted, dots indicate running windows, and
-icons update as windows open or close. Apps without desktop icons have a window
-symbol. A page button keeps every running app reachable when space is limited.
+The dock shows favorites in saved order, followed by other running apps. Favorites
+remain visible when closed; activating one launches it on that dock's output.
+Windows matching the same installed desktop entry share one icon, including a
+matching favorite. Activating a running app focuses and reveals an existing window
+on the infinite canvas; repeated activation cycles through that app's windows.
+The active app is highlighted, dots indicate running windows, and closed favorites
+have no dot. Apps without desktop icons have a window symbol. A page button keeps
+every app reachable when space is limited. Application tray icons remain in the
+top system group with their original status menus, including for apps that also
+appear in the dock.
 
 Each panel opens beside its control. Top attachments open downward, bottom
 attachments upward, and side attachments inward. Canvas controls use the side
 with more room; popups stay within the output. Opening one closes the previous panel.
 Escape, the close icon, an outside click, or the active corner button dismisses it.
+An acknowledged opening survives transient layout-query failures for at most five
+seconds. Queries retain their 750 ms deadline and never replay the anchor command.
+A shared cancellation ticket covers both pending work and queued UI delivery;
+dismissal, replacement, output removal, lock/VT recovery, and layout editing revoke
+it. Permanent transport or invalid-snapshot failures cancel it immediately.
+
+The 2026-10-22 reproduction confirmed that a synchronous software-rendered
+capture could outlast a layout query and lose an acknowledged notification
+opening. With recovery, the same query timed out, retained the opening, and
+delivered it on the next successful observation. Evidence is retained in
+`/tmp/hs-notify-helper-recovery`. The complete shell headless workflow then
+passed in 285.81 seconds, including 323 AT-SPI subprocess calls and 33 captures
+(`/tmp/hearthspace-main-recovery-timed-360`). Its total test budget is now 360
+seconds; assertions and individual IPC deadlines are unchanged.
+
 Panels have rounded transparent corners and shrink to fit their content. Long
 lists scroll within the available height; Apps List keeps its heading, input,
 view switch, and footer visible. It requests 650 logical pixels, capped to the output with 24-pixel side margins. Maximized apps fit
@@ -27,11 +47,18 @@ occurs on release. Using Meta in a shortcut, such as Super+Return, Super+L or
 Super+arrow, does not toggle it afterward. Super+Space opens Apps List, as does
 its dock button or an upward touchscreen swipe starting on the dock.
 
+Launcher requests reserve keyboard input immediately. The shell must acknowledge
+a request within one second; that first acknowledgement grants five seconds to
+create and map its first buffer. Repeated activation or acknowledgements cannot
+extend the deadline. Cancellation, output/token matching, and the bounded input
+queue still apply, so slow startup can preserve early typing without accepting a
+stale or cancelled launcher. Canvas search retains its explicit session lifetime.
+
 Ctrl+K or Super+K opens canvas search, which temporarily arranges matching desktop
 objects and live windows around a native search field. Its toolbar button arms
 click-to-open Search mode. This is independent of Apps List.
 
-Alt+Tab opens the [live window grid](WINDOW_MANAGEMENT.md#held-window-switcher),
+Alt+Tab opens the [live window grid](WINDOW_MANAGEMENT.md#window-switcher),
 with an accent outline and a glass title badge below the selected preview.
 Alt release commits; Shift reverses cycling and Escape cancels.
 
@@ -40,7 +67,9 @@ and App dock on the active output. Super+Shift+F6 moves backward. Tab navigates
 through the independent controls in a group; Enter activates the focused control. Escape closes an open panel
 or returns from the corner to the most recent app without moving the canvas.
 
-An empty query shows installed applications alphabetically in a four-column icon grid.
+An empty query shows all installed applications alphabetically in a four-column
+icon grid, with artwork centered above each name. Favorites appear in the dock;
+pinning an app does not change its position or presentation in Apps List.
 The view switch selects an icon grid or a list with app descriptions; narrow
 panels reduce the grid column count. The Draw tab reuses the existing favorite
 gesture pad and matching flow. Typing filters apps
@@ -51,7 +80,7 @@ available in Apps List. Prebuilt sessions register its desktop entry in their
 private runtime, using the selected binary directory when provided.
 
 Power contains Lock and Log out; Log out requires confirmation and offers Cancel.
-Overview gestures, Super+O, and Alt+Tab remain available. Settings, Lock and Log
+Pinch gestures and Alt+Tab open the window switcher. Settings, Lock and Log
 out are reached through Apps List and Power rather than standalone corner buttons.
 
 Wi-Fi shows the network tray handoff until a network-management backend is
@@ -301,3 +330,67 @@ Release `5e565c6a0812` was installed with `scripts/install-session install`.
 All 13 installed runtime files match the manifest hashes, modes, and root
 ownership; compiled binaries also match the optimized build. Start a new
 Hearthspace login session to load this fix.
+
+### Icon and stability release, 2026-10-22
+
+Release `99123250698f` includes the direct application-icon strip, centered
+gesture-driven window switcher, desktop/titlebar icon resolution, FLAC artwork,
+and the Portal, shutdown, popup-recovery and drawing-layout fixes. See
+[tray evidence](TRAY.md), [desktop artwork](DESKTOP_ITEMS.md),
+[window switching](WINDOW_MANAGEMENT.md), and [drawing stability](FAVORITE_APPS.md).
+
+The final workspace run passed all 1,495 Rust tests, formatting, warnings-denied
+Clippy and the all-target build. Python lint/format and the CI dependency checks
+passed. The complete Python run passed 468 of 469 tests; the remaining tray
+workflow exceeded its shared budget. After the measured budget correction, its
+unchanged assertions passed in 120.68 seconds. Thus all 469 tests were validated
+across the full run and corrected tray rerun. Logs are retained under
+`/tmp/hearthspace-icon-final-*` and `/tmp/hearthspace-tray-budget-verified`.
+
+The optimized release was installed and all nine compiled binaries matched its
+installed hashes. Native acceptance in `/tmp/hearthspace-icon-installed.FTb68g`
+used Intel UHD 620/i915, Linux `7.0.0-38-generic`, and eDP-1 at 1920×1080, scale 1.
+Both real FLAC covers passed canvas/frame color checks, keyboard selection, and
+light/orange and dark/blue theme checks. Updater and Z.A.T.O. used their declared
+icons; the latter declares Steam. Notifications opened through the observed
+AT-SPI toggle and closed with Escape. Source FLACs and cached thumbnails remained
+unchanged. Page-flip captures, manifest hashes and cleanup evidence are retained.
+
+No GPU hang, device loss or panic appeared in the session or kernel logs. Cleanup
+restored tty2, removed the runtime, and left the owned service inactive with
+`MainPID=0` and `Result=success`. Existing desktop sessions were preserved; log out
+and choose Hearthspace again to load this release.
+
+### Layout editor redraw crash, 2026-10-23
+
+Moving layout items with a mouse, probably out of a group, restarted the
+installed shell. Its journal identifies a Masonry panic in the deferred redraw
+batch at `event_loop_runner.rs:1163`; the compositor stayed alive and the
+supervisor restarted the shell. This is separate from the earlier Winit
+queued-configure failure. A redraw queued before an application callback can
+outlive the window that callback closes.
+
+The [Masonry lifecycle patch](../patches/README.md#masonry-retired-window-presentation)
+cancels pending first frames on close and ignores retired targets when consuming
+deferred work. Three real-window regressions reproduced the original redraw
+panic and the related first-frame panic before the fix. Afterward, each surviving
+window processed a compositor resize, redrew, and accepted a pointer click.
+The test injects signal ordering through Masonry's real render-root channel;
+it does not claim that a full shell drag deterministically triggers the race.
+
+Native acceptance also exposed a separate selection defect: a late-mapped group
+grip used the whole group's rectangle for fallback hit testing, intercepting
+member presses. Grip hit testing now retains its own bounds. Real Wayland
+regressions cover member detachment/regrouping with mouse and touch, plus group
+movement and cancellation through the actual grip.
+
+Native pointer acceptance on Intel UHD 620/i915 at 1920×1080, scale 1, completed
+12 member drags across canvas, group and edge placements, three editor lifecycles,
+and Wi-Fi/Sound/calendar checks. Reviewed page-flip captures retained the controls;
+shell/compositor PIDs stayed unchanged. Cleanup restored tty2 and removed every
+owned process/runtime. The supervisor reported an already-absent application
+scope during stop; the harness completed cleanup despite that exit status.
+
+The installed crash, negative controls, first positive run's corrected resize
+observer, and final positive results are retained in
+`/home/crutchcorn/hearthspace-layout-crash-20261023-135052`.

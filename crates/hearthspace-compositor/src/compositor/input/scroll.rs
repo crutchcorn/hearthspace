@@ -11,10 +11,7 @@ impl App {
         if self.canvas_search_active() || self.layout_confirmation_active() {
             return self.hit_test(self.pointer_location).is_none();
         }
-        if self.overview_active()
-            || self.window_switcher_active()
-            || self.group_interaction_active()
-        {
+        if self.window_switcher_active() || self.group_interaction_active() {
             return true;
         }
         if self.session_locked() || self.window_focus_view_active() {

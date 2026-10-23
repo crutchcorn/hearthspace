@@ -4,6 +4,26 @@ use hearthspace_compositor as hearthspace;
 use tracing::{debug, info};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    if std::env::args_os().nth(1).as_deref()
+        == Some(std::ffi::OsStr::new(
+            hearthspace_shell::desktop_items::file_launch::NATIVE_GIO_FLAG,
+        ))
+    {
+        return hearthspace_shell::desktop_items::file_launch::run_native_gio_helper(
+            std::env::args_os().skip(2),
+        )
+        .map_err(Into::into);
+    }
+    if std::env::args_os().nth(1).as_deref()
+        == Some(std::ffi::OsStr::new(
+            hearthspace_shell::desktop_items::file_launch::SCOPED_GIO_FLAG,
+        ))
+    {
+        return hearthspace_shell::desktop_items::file_launch::run_scoped_gio_helper(
+            std::env::args_os().skip(2),
+        )
+        .map_err(Into::into);
+    }
     initialize_tracing();
 
     let args = std::env::args().collect::<Vec<_>>();

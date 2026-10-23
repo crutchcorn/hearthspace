@@ -52,12 +52,22 @@ paths, VT identity, process IDs, and output metadata. Readiness requires
 responsive control and settings sockets, a mapped shell surface, and a successful
 native capture.
 
+The harness preserves the invoking user's `XDG_DATA_DIRS` across sudo and PAM,
+restoring it before the private D-Bus session starts. Desktop entries and icons
+exported by Snap or Flatpak are discoverable when their export directories are
+in that search path; the harness does not add package-specific directories or
+source shell profiles. Unset or empty `XDG_DATA_DIRS` uses
+`/usr/local/share:/usr/share`. A supplied value must be a colon-separated list of
+nonempty absolute paths without control characters. The manifest records it as
+`xdg_data_dirs`. With `--login-session`, the selected release's `share` directory
+is prepended so its installed assets take precedence.
+
 For a clean demo or settings test, add `start --isolated-profile`. This opt-in
 creates fresh `XDG_CONFIG_HOME`, `XDG_CACHE_HOME`, `XDG_DATA_HOME`, and
 `XDG_STATE_HOME` beneath the artifact directory's `profile/` before starting the
 private D-Bus session. Settings, compositor, and application profiles start fresh,
 including the default dotted background; the real user identity and `HOME` are
-preserved.
+preserved, as is the caller's `XDG_DATA_DIRS` search path for exported applications.
 The manifest records `isolated_profile`. Profiles remain with the run's other
 artifacts after cleanup; remove the artifact directory when they are no longer
 needed. The supervisor's runtime remains empty until startup and is removed on
@@ -224,14 +234,6 @@ and verify rendered three-finger canvas panning, zoom and combined movement.
 Run `scripts/pan-smoke` and `scripts/pinch-smoke` separately from the smoke cases
 above.
 
-`scripts/overview-smoke --session /tmp/hearthspace-overview-1` checks four-contact
-touchpad and four/five-contact touchscreen inward and outward pinches. It pairs independent
-libinput traces with live thumbnail captures, checks cancellation and unchanged
-window/canvas geometry, then selects windows by pointer and touchscreen. Its
-temporary windows include overlapping, off-canvas and fullscreen content.
-Five-contact touchpad gestures are a documented libinput backend limitation and
-are recorded separately from passing cases.
-
 `scripts/window-switcher-smoke --session /tmp/hearthspace-window-switcher-1`
 checks held Alt+Tab/Alt+Shift+Tab and left/right swipes with four touchpad contacts
 and four/five touchscreen contacts. It observes intermediate preview geometry
@@ -244,54 +246,44 @@ test checks overlay cleanup and types a file-writing command to prove modifier
 recovery. Independent libinput traces establish the delivered
 gesture type, direction, and contact count. Run it separately from headless GPU
 tests; it owns and cleans up its native session and temporary input devices.
+Pinch cases use four touchpad contacts and four/five touchscreen contacts. They
+check that successful inward completion leaves the switcher open after release,
+outward completion dismisses it, and subthreshold inward gestures leave it closed.
+Four-contact cases also test cancellation; subthreshold outward pinches preserve
+the open switcher. They check that pinches do not change a keyboard-owned session and
+repeating an inward pinch does not cycle the selection. Focused-view cases open
+with inward pinch, dismiss outward without leaving focused view, then reopen and
+commit with Enter, leaving the previous app bounded on the canvas.
+Preview clicks/taps and Escape/background interaction need the additional acceptance
+steps below. These cases do not establish physical finger feel on the hardware.
 
-Unlocked `status.window_switcher` reports `active`, `source` (`keyboard` or
-`gesture`), `selected_window_id`, the stable `window_ids`, output, and visible
-preview `items`. All windows fit into the spatial grid. Use
-`window_switcher.animating: false` to wait for preview motion to finish, including
-the exit transition. The held input must still be released separately; settled
-previews do not close the switcher.
+Unlocked `status.window_switcher` describes selection separately from presentation:
 
-Agents can use `scripts/hearthspace-agent --session PATH overview on` (also
-`off`/`toggle`) and `overview-select WINDOW_ID`. Unlocked `status` includes an
-`overview` object with `active`, `animating`, `selected_window_id`, `output` and thumbnail
-`items`. Card and preview bounds use global output-logical coordinates. Selection
-exits overview and reveals the window; dismissal preserves the canvas view.
-Wait for `animating: false` before asserting exact thumbnail colors, then capture
-a fresh presented frame.
+| Field | Meaning |
+| --- | --- |
+| `active` | Whether a switcher selection session is open. |
+| `source` | `"keyboard"` for Alt+Tab, `"gesture"` for swipe or pinch, or `null` when inactive; it does not identify the device type or distinguish held and persistent sessions. |
+| `selected_window_id` | Candidate window ID, or `null` when inactive; previewing does not focus it. |
+| `window_ids` | Ordered IDs participating in the current session. |
+| `output` | Output name, or `null` when inactive. |
+| `items` | Selectable previews with `window_id`, `title`, current `x`/`y`/`width`/`height`, equivalent `preview_*` bounds, `scale`, and `canonical`/`target` rectangles. |
+| `scene` | Animated poses with `window_id`, `canonical` and current `display` rectangles, `opacity`, and `matches`; includes non-result windows. |
+| `animating` | Whether preview motion is still running, including the exit transition after `active` becomes `false`. |
+| `version`, `revision`, `session` | Schema version, state revision, and interaction ID; `session` is `0` when inactive. |
+| `title`, `index`, `count`, `caption` | Selected title, one-based position, window count, and nullable title-badge bounds with `max_width`. |
 
-Overview acceptance on 2026-10-14 passed on the physical GPD laptop, AMD Radeon
-890M (`amdgpu`), kernel `7.0.0-38-generic`, eDP-1 at 2560×1600 and scale 2.
-`/tmp/hearthspace-overview-native-5` retains the complete successful run: native
-page-flip captures, independent libinput traces, unchanged viewport/presentation
-assertions, all three distinct client markers in their previews, and pointer/touch
-selection. Inputs came from temporary uinput devices through the native input
-backend. This is single-output acceptance, not a manual physical-finger test.
+Rectangles use global output-logical coordinates. `canonical` is the normal
+screen-space presentation, not the stored canvas position; `target` is the
+destination preview rectangle. All selectable windows fit into the centered
+grid. Wait for `animating: false`, then capture a fresh presented frame before
+asserting preview colors. Settled previews do not close the switcher: release
+Alt or the swipe to commit a held session, or explicitly select or dismiss a
+persistent session opened by a pinch. The full status omits `window_switcher`
+while locked. The separate shell-facing `window-switcher-status` command omits
+`scene`, `items`, and `window_ids`; use full `status` for preview inspection.
 
-Earlier `hearthspace-overview-native-1` through `-4` and
-`hearthspace-overview-touchscreen-1` remain under `/tmp` as failed attempts.
-They exposed fixture movement below libinput's recognition threshold, captures
-during the appearance fade, and a four-to-five-contact cancellation that libinput
-did not report as cancelled. The final test uses four-to-three contacts and waits
-for independently observed cancellation. `/tmp/hearthspace-overview-touchscreen-2`
-also passed independently. All these runs restored tty2 and removed their owned
-sessions and runtimes, including failures.
-
-`/tmp/hearthspace-overview-pinch-regression-2` passed the existing three-finger
-touchpad/touchscreen zoom, two-finger rejection, cancellation, removal, and
-single-finger drag/tap checks. Its first attempt was interrupted after identifying
-an obsolete assertion that expected no recognizer after a fourth contact; the
-updated check requires restoration of the original three-finger canvas transform
-and no overview opening from a subthreshold four-finger movement.
-
-The final workspace checks passed: 484 Rust tests with E2E/accessibility enabled,
-259 Python tests with E2E enabled, rustfmt, Clippy with warnings denied, Ruff, and
-the full native/test-target build. `scripts/install-session install` built and
-installed optimized release `178a39a6fa45`; its installed compositor, shell and
-session hashes match `target/release`. GNOME remained active on tty2 with display
-power on, and the background T3/remote services remained running.
-
-Window-switcher acceptance on the same physical laptop passed in
+Window-switcher acceptance on the physical GPD laptop, AMD Radeon 890M (`amdgpu`),
+kernel `7.0.0-38-generic`, eDP-1 at 2560×1600 and scale 2, passed in
 `/tmp/hearthspace-window-switcher-native-2`: held Alt+Tab and reverse selection,
 four-contact touchpad swipes, four/five-contact touchscreen swipes in both
 directions, intermediate animated viewport positions, live preview pixel proof,
@@ -304,9 +296,7 @@ uinput devices and does not establish physical finger feel or multi-output behav
 
 `/tmp/hearthspace-window-switcher-native-1` also passed before the text alpha fix
 and keyboard-unplug fixture were added. Final screenshots in the second run
-verify clean text blending. `/tmp/hearthspace-window-switcher-overview-regression-1`
-passed the existing overview pinch, cancellation, and pointer/touch selection
-checks on both device types.
+verify clean text blending.
 
 `/tmp/hearthspace-window-switcher-pan-regression-2` passed three-finger cardinal
 and diagonal panning, combined zoom, cancellation, ignored two-contact input,
@@ -373,6 +363,24 @@ cargo build --workspace --all-targets --features udev,e2e,test-apps
 HEARTHSPACE_E2E=1 python3 -m unittest discover -s scripts/tests -v
 ```
 
+### Persistent switcher acceptance
+
+The pinch smoke cases cover gesture recognition and ownership. The following
+additional native acceptance steps verify interaction after a successful inward
+pinch; they are not established by the historical held-switcher records above.
+Use an owned session following the [native control skill](../.agents/skills/hearthspace-native-control/SKILL.md)
+and record status plus fresh presented captures for each result.
+
+1. Open several distinguishable windows, including one outside the current view.
+   Complete a supported inward pinch and verify the centered live grid remains
+   open with the next most recently used window selected. Focus, viewport, and
+   saved window geometry must remain unchanged while previews are shown.
+2. Click a preview, then repeat with a touchscreen tap. Each must activate and
+   reveal the chosen window without delivering the interaction to its contents.
+3. Reopen with a pinch and press Enter. Verify activation of the selected window.
+4. Reopen for each dismissal method: Escape, a background click, and a background
+   tap. Each must restore the original presentation without activating a preview.
+
 ## External Automation and Accessibility
 
 For bidirectional copy/paste between real Wayland and X11 editors, use the
@@ -425,3 +433,38 @@ coordinates instead of treating those bounds as screen coordinates.
 The terminal CLI is sufficient for an agent to operate this workflow. An MCP
 wrapper and a Wayland image-copy-capture frontend can reuse these boundaries when
 needed; neither is required for native testing.
+
+## CSD Titlebar Regression Coverage
+
+The headless `csd_` cases drive real Wayland and XWayland clients through touch
+frames and client move/resize requests. They check focus handoff, release draining,
+mixed mouse/touch ownership, cancellation and device removal, unrelated window
+teardown, X11 root-coordinate synchronization, and delayed resize buffers.
+Run them without a native session active:
+
+```sh
+cargo test --locked -p hearthspace-compositor --features udev,e2e,test-apps \
+  --test headless_control csd_ -- --test-threads=1
+```
+
+The native Firefox/Foot smoke additionally verifies movement and rendered
+content through libinput at canvas scales 1.0 and 0.8, including second-contact
+cancellation and touchscreen unplug:
+
+```sh
+scripts/touch-drag-smoke --session /tmp/hearthspace-touch-drag
+```
+
+For Steam, use an owned native session and the optional
+[Steam setup](../CONTRIBUTING.md#native-steam-touch-testing). Check repeated CSD
+titlebar drags at both canvas scales, a physical mouse click while touch remains
+held, second-contact cancellation, and touchscreen removal. After each sequence,
+verify that movement stops on release and another drag works. Also exercise
+Steam content and text input: a responsive compositor alone cannot prove that
+the client recovered. The sign-in window can cover this without submitting
+credentials, but does not establish behavior in signed-in or game windows.
+
+Preserve app stderr, input traces, screenshots, geometry, hardware/output scale,
+and session cleanup evidence. XWM tracing can distinguish `_NET_WM_MOVERESIZE`
+from client-directed configure requests; do not assume every CSD toolkit uses
+the same path. Keep run-specific results with the session artifacts.

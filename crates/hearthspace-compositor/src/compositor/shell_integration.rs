@@ -16,6 +16,7 @@ mod favorite_drawing;
 mod launch;
 mod launch_environment;
 pub(in crate::compositor) mod search;
+mod touch_control;
 
 pub(in crate::compositor) use command_socket::{
     ControlReply, accept_command_connections, command_socket_path, remove_stale_socket,
@@ -64,7 +65,6 @@ impl App {
         self.advance_viewport_animation();
 
         if (self.canvas_search_active()
-            || self.overview_active()
             || self.window_switcher_active()
             || self.group_interaction_active())
             && matches!(
@@ -94,15 +94,6 @@ impl App {
             }
             ShellCommand::GroupGather => return action_reply(self.start_group_gather()),
             ShellCommand::GroupStatus => return ControlReply::Payload(self.group_status_json()),
-            ShellCommand::OverviewOn => return action_reply(self.open_overview()),
-            ShellCommand::OverviewOff => {
-                self.close_overview();
-                return ControlReply::Ok;
-            }
-            ShellCommand::OverviewToggle => return action_reply(self.toggle_overview()),
-            ShellCommand::OverviewSelect(id) => {
-                return action_reply(self.select_overview_window(id));
-            }
             ShellCommand::LockSession => return action_reply(self.launch_session_locker()),
             ShellCommand::ListWindows => return ControlReply::Payload(self.window_list_json()),
             ShellCommand::FocusWindow(id) => return action_reply(self.focus_window(id)),

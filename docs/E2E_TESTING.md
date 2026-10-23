@@ -98,6 +98,12 @@ both Rust and Python. Required accessibility or deployed
 Ayatana libraries cannot silently skip their coverage. Native VT/device tests
 remain a separate hardware workflow.
 
+When running locally with a target directory shared by multiple worktrees, set
+`HEARTHSPACE_BINARY="$PWD/target/debug/hearthspace"` after building the intended
+checkout. Adapter tests embed a fallback path at compile time; a reused test
+artifact can otherwise look for the executable beneath a previous worktree.
+The explicit override selects the binary under test without changing assertions.
+
 `GSK_RENDERER=cairo` keeps GTK fixtures on software-rendered shared-memory
 buffers while the compositor uses Mesa's software GLES renderer. Setting only
 `LIBGL_ALWAYS_SOFTWARE=1` can leave GTK using Vulkan and submitting DMA-BUFs that
@@ -183,6 +189,12 @@ pointer-motion-rel <dx> <dy>
 pointer-button-down <linux-button-code>
 pointer-button-up <linux-button-code>
 axis <horizontal> <vertical>
+touch-down <device> <slot> <logical-x> <logical-y>
+touch-motion <device> <slot> <logical-x> <logical-y>
+touch-up <device> <slot>
+touch-frame <device>
+touch-cancel <device> [slot]
+touch-remove <device>
 screenshot
 capture [output-name]
 status
@@ -203,6 +215,13 @@ zoom-to <scale>
 lock-session
 quit
 ```
+
+Touch commands use the production touch recognizer, UI routing and pointer
+handoff. Coordinates are global output-logical units; down/motion/up are batched
+until `touch-frame`. Cancel and removal flush their cleanup immediately. Injected
+device names are separated from hardware IDs. This permits deterministic delayed
+client requests and frame-order tests, while native uinput tests additionally
+cover libinput and device discovery.
 
 Feature-gated or shell-oriented commands can also be useful in targeted tests:
 

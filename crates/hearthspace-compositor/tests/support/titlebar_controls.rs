@@ -137,10 +137,8 @@ fn titlebar_controls_activate_on_release_cancel_outside_and_restore_at_canvas_an
         assert_eq!(maximized["width"], 1280);
         assert_eq!(maximized["focused_view"], true);
         click(&compositor, button_point(&maximized, true));
-        let bounded = assert_presentation(&compositor, &mut client, id, true);
-        assert_eq!(bounded["focused_view"], false);
-        double_click_title(&compositor, &bounded);
         let restored = assert_presentation(&compositor, &mut client, id, false);
+        assert_eq!(restored["focused_view"], false);
         for field in ["canvas_x", "canvas_y", "content_width", "content_height"] {
             assert_eq!(restored[field], original[field], "restore {field}");
         }
@@ -268,10 +266,8 @@ fn titlebar_pinned_controls_match_paint_before_the_client_handles_its_resize() {
             "close hover must cover its hit rectangle before configure at {output_scale}×: rgb=({red},{green},{blue})"
         );
         click(&compositor, button_point(&pending, true));
-        let bounded = assert_presentation(&compositor, &mut client, id, true);
-        assert_eq!(bounded["focused_view"], false);
-        double_click_title(&compositor, &bounded);
         let restored = assert_presentation(&compositor, &mut client, id, false);
+        assert_eq!(restored["focused_view"], false);
         assert_eq!(restored["content_width"], original["content_width"]);
         assert_eq!(restored["canvas_x"], original["canvas_x"]);
         assert!(client.closed_windows().is_empty());
@@ -344,10 +340,8 @@ fn maximized_titlebar_keeps_its_release_when_the_pointer_moves_into_content() {
     action(&compositor, "pointer-button-up 272");
     assert_eq!(client.released_buttons(), &[272]);
     click(&compositor, button_point(&maximized, true));
-    let bounded = assert_presentation(&compositor, &mut client, id, true);
-    assert_eq!(bounded["focused_view"], false);
-    double_click_title(&compositor, &bounded);
-    assert_presentation(&compositor, &mut client, id, false);
+    let restored = assert_presentation(&compositor, &mut client, id, false);
+    assert_eq!(restored["focused_view"], false);
     action(&compositor, "quit");
     wait_for_exit(&mut compositor.child);
 }

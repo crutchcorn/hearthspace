@@ -11,6 +11,7 @@ from contextlib import contextmanager
 from pathlib import Path
 
 from .common import ENTRY, ROOT, STATE_ROOT, active_vt, load, run, save, unit_info
+from .environment import validated_data_dirs
 from .profile import isolated_environment
 
 
@@ -108,6 +109,7 @@ def launch(args):
     uid = int(os.environ.get("SUDO_UID", "0"))
     if uid == 0:
         raise RuntimeError("start the harness as the desktop user, not root")
+    data_dirs = validated_data_dirs(getattr(args, "xdg_data_dirs", None))
     user = pwd.getpwuid(uid)
     session = Path(args.session).resolve()
     if session.stat().st_uid != uid or session.is_symlink():
@@ -161,6 +163,7 @@ def launch(args):
             "isolated_profile": getattr(args, "isolated_profile", False),
             "dev": getattr(args, "dev", False),
             "dev_path": getattr(args, "dev_path", None),
+            "xdg_data_dirs": data_dirs,
             "vnc": getattr(args, "vnc", False),
             "vnc_port": getattr(args, "vnc_port", None) or 5900,
             "started_at": time.time(),
@@ -215,6 +218,9 @@ def exec_session(state_file):
     env["WAYLAND_DISPLAY"] = state["wayland_display"]
     env["XDG_CURRENT_DESKTOP"] = "Hearthspace"
     env.update(isolated_environment(state))
+    # Restore the caller's search path after sudo/PAM, before bus activation.
+    # Keep it out of privileged hooks and systemd's environment expansion.
+    env["XDG_DATA_DIRS"] = validated_data_dirs(state.get("xdg_data_dirs"))
     # PAM may replace the service's original PATH. Restore the selected build
     # before the private bus starts so clients and activated services agree.
     inherited_path = (
@@ -227,8 +233,7 @@ def exec_session(state_file):
         # Match the installed launcher before starting the private bus, so the
         # shell and activated services discover this exact release's assets.
         share = Path(state["binary_dir"]).parent / "share"
-        inherited = env.get("XDG_DATA_DIRS") or "/usr/local/share:/usr/share"
-        env["XDG_DATA_DIRS"] = f"{share}:{inherited}"
+        env["XDG_DATA_DIRS"] = f"{share}:{env['XDG_DATA_DIRS']}"
         env.pop("HEARTHSPACE_DEV", None)
         env.pop("HEARTHSPACE_REPO_ROOT", None)
     supervisor = str(Path(state["binary_dir"]) / "hearthspace-session")

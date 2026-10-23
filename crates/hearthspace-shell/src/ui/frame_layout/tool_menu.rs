@@ -21,7 +21,7 @@ const TOOLS: [(&str, Icon, &str); 5] = [
     ("Search canvas", Icon::Search, "canvas-search-tool"),
     ("Select window group", Icon::Lasso, "group-selection-toggle"),
     ("Change layout", Icon::FrameLayout, "layout-tool"),
-    ("Canvas map", Icon::Overview, ""),
+    ("Canvas map", Icon::Map, ""),
 ];
 
 fn current(state: &ShellState) -> usize {

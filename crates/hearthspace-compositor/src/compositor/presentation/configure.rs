@@ -39,7 +39,7 @@ impl App {
                     pending.size = size;
                 });
                 if surface.is_initial_configure_sent() {
-                    surface.send_configure();
+                    crate::compositor::gtk_shell::send_configure(surface);
                 }
             }
             #[cfg(feature = "xwayland")]

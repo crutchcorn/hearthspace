@@ -303,10 +303,14 @@ fn search_bridge_preserves_early_typing_and_revokes_cancelled_requests() {
             .send_text_command(&format!("shell-event-accept {before_resume}"))
             .starts_with("err ")
     );
-    // A stuck Ctrl or Alt in XKB would suppress this plain Super+O shortcut.
-    super::navigation::keys(&compositor, &[125, 24]);
-    assert_eq!(query(&compositor, "status")["overview"]["active"], true);
-    action(&compositor, "overview-off");
+    // A stuck Ctrl or Alt in XKB would suppress plain Super+Right.
+    let viewport = query(&compositor, "status")["viewport"].clone();
+    super::navigation::keys(&compositor, &[125, 106]);
+    let moved = query(&compositor, "status")["viewport"].clone();
+    assert!(
+        moved["animating"] == true || moved["x"] != viewport["x"],
+        "modifiers survived session reset: {moved}"
+    );
     let before_lock = request();
     action(&compositor, format!("shell-event-accept {before_lock}"));
     let socket = compositor

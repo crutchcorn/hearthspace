@@ -2,15 +2,22 @@
 use std::{fs::File, io::Write, os::fd::AsFd, os::unix::net::UnixStream, path::Path};
 
 use wayland_client::{
-    Connection, Dispatch, EventQueue, QueueHandle, WEnum, delegate_noop,
+    Connection, Dispatch, EventQueue, QueueHandle, delegate_noop,
     protocol::{
-        wl_buffer, wl_compositor, wl_pointer, wl_registry, wl_seat, wl_shm, wl_shm_pool, wl_surface,
+        wl_buffer, wl_compositor, wl_keyboard, wl_pointer, wl_seat, wl_shm, wl_shm_pool, wl_surface,
     },
 };
 use wayland_protocols::xdg::{
     decoration::zv1::client::{zxdg_decoration_manager_v1, zxdg_toplevel_decoration_v1},
     shell::client::{xdg_surface, xdg_toplevel, xdg_wm_base},
 };
+
+#[path = "interactive_client_events.rs"]
+pub(crate) mod events;
+#[path = "gtk_titlebar_client.rs"]
+pub(crate) mod gtk;
+#[path = "client_maximize.rs"]
+mod maximize;
 
 struct Window {
     surface: wl_surface::WlSurface,
@@ -25,6 +32,7 @@ struct Window {
 
 #[derive(Default)]
 struct State {
+    gtk: gtk::State,
     compositor: Option<wl_compositor::WlCompositor>,
     shm: Option<wl_shm::WlShm>,
     wm_base: Option<xdg_wm_base::XdgWmBase>,
@@ -32,10 +40,13 @@ struct State {
     decorations: Vec<zxdg_toplevel_decoration_v1::ZxdgToplevelDecorationV1>,
     seat: Option<wl_seat::WlSeat>,
     pointer: Option<wl_pointer::WlPointer>,
+    keyboard: Option<wl_keyboard::WlKeyboard>,
     windows: Vec<Window>,
     buffers: Vec<(File, wl_buffer::WlBuffer)>,
     press_serial: Option<u32>,
     released_buttons: Vec<u32>,
+    pointer_events: Vec<wl_pointer::Event>,
+    keyboard_events: Vec<wl_keyboard::Event>,
     closed_windows: Vec<usize>,
 }
 
@@ -135,9 +146,49 @@ impl InteractiveClient {
         self.sync();
     }
 
+    pub(crate) fn remap(&mut self, number: usize) {
+        // Unmap's barriers already acknowledged the fresh initial configure.
+        // Reapply role properties cleared by unmapping, then attach a buffer
+        // to the same wl_surface and xdg_toplevel.
+        let window = &mut self.state.windows[number];
+        window.mapped = true;
+        window
+            .toplevel
+            .set_app_id("dev.hearthspace.InteractiveTest".into());
+        window
+            .toplevel
+            .set_title(format!("Interactive fixture {number}"));
+        self.state.commit_buffer(number, &self.queue.handle());
+        self.sync();
+    }
+
+    pub(crate) fn destroy(&mut self, window: usize) {
+        let window = &mut self.state.windows[window];
+        window.mapped = false;
+        window.toplevel.destroy();
+        window.xdg_surface.destroy();
+        window.surface.destroy();
+        self.sync();
+    }
+
+    pub(crate) fn take_keyboard_events(&mut self) -> Vec<wl_keyboard::Event> {
+        self.sync();
+        std::mem::take(&mut self.state.keyboard_events)
+    }
+
     pub(crate) fn released_buttons(&mut self) -> &[u32] {
         self.sync();
         &self.state.released_buttons
+    }
+
+    /// Drain ordered pointer events, omitting frame delimiters.
+    pub(crate) fn take_pointer_events(&mut self) -> Vec<wl_pointer::Event> {
+        self.sync();
+        std::mem::take(&mut self.state.pointer_events)
+    }
+
+    pub(crate) fn surface(&self, window: usize) -> &wl_surface::WlSurface {
+        &self.state.windows[window].surface
     }
 
     pub(crate) fn closed_windows(&mut self) -> &[usize] {
@@ -176,7 +227,7 @@ impl InteractiveClient {
         self.sync();
     }
 
-    pub(super) fn request_restore(&mut self, window: usize) {
+    pub(crate) fn request_restore(&mut self, window: usize) {
         self.state.windows[window].toplevel.unset_fullscreen();
         self.state.windows[window].toplevel.unset_maximized();
         self.sync();
@@ -231,68 +282,6 @@ impl State {
     }
 }
 
-impl Dispatch<wl_registry::WlRegistry, ()> for State {
-    fn event(
-        state: &mut Self,
-        registry: &wl_registry::WlRegistry,
-        event: wl_registry::Event,
-        _: &(),
-        _: &Connection,
-        handle: &QueueHandle<Self>,
-    ) {
-        if let wl_registry::Event::Global {
-            name,
-            interface,
-            version,
-        } = event
-        {
-            match interface.as_str() {
-                "wl_compositor" => {
-                    state.compositor = Some(registry.bind(name, version.min(4), handle, ()))
-                }
-                "wl_shm" => state.shm = Some(registry.bind(name, 1, handle, ())),
-                "zxdg_decoration_manager_v1" => {
-                    state.decoration_manager = Some(registry.bind(name, 1, handle, ()));
-                }
-                "xdg_wm_base" => {
-                    state.wm_base = Some(registry.bind(name, version.min(6), handle, ()))
-                }
-                "wl_seat" => {
-                    let seat: wl_seat::WlSeat = registry.bind(name, version.min(7), handle, ());
-                    state.pointer = Some(seat.get_pointer(handle, ()));
-                    state.seat = Some(seat);
-                }
-                _ => {}
-            }
-        }
-    }
-}
-
-impl Dispatch<wl_pointer::WlPointer, ()> for State {
-    fn event(
-        state: &mut Self,
-        _: &wl_pointer::WlPointer,
-        event: wl_pointer::Event,
-        _: &(),
-        _: &Connection,
-        _: &QueueHandle<Self>,
-    ) {
-        match event {
-            wl_pointer::Event::Button {
-                serial,
-                state: WEnum::Value(wl_pointer::ButtonState::Pressed),
-                ..
-            } => state.press_serial = Some(serial),
-            wl_pointer::Event::Button {
-                button,
-                state: WEnum::Value(wl_pointer::ButtonState::Released),
-                ..
-            } => state.released_buttons.push(button),
-            _ => {}
-        }
-    }
-}
-
 impl Dispatch<xdg_wm_base::XdgWmBase, ()> for State {
     fn event(
         _: &mut Self,
@@ -327,6 +316,7 @@ impl Dispatch<xdg_toplevel::XdgToplevel, usize> for State {
             states,
         } = event
         {
+            state.gtk.record_configure(*number, false);
             state.windows[*number].resizing =
                 states.as_chunks::<4>().0.iter().any(|bytes| {
                     u32::from_ne_bytes(*bytes) == xdg_toplevel::State::Resizing as u32
@@ -351,6 +341,7 @@ impl Dispatch<xdg_surface::XdgSurface, usize> for State {
         handle: &QueueHandle<Self>,
     ) {
         if let xdg_surface::Event::Configure { serial } = event {
+            state.gtk.record_configure(*number, true);
             surface.ack_configure(serial);
             state.windows[*number].configure_count += 1;
             if state.windows[*number].mapped {

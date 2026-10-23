@@ -1,8 +1,8 @@
 use super::*;
 
-mod overview;
 mod pan;
 mod switcher;
+mod switcher_pinch;
 
 const DEVICE: &str = "screen";
 

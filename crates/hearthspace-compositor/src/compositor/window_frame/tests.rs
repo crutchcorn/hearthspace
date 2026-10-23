@@ -30,8 +30,13 @@ render_elements! {
     CroppedTexture = CropRenderElement<RoundedElement<TextureRenderElement<GlesTexture>>>,
     Scaled = RescaleRenderElement<RelocateRenderElement<RoundedElement<SolidColorRenderElement>>>,
     ScaledFrame = RescaleRenderElement<RelocateRenderElement<PixelShaderElement>>,
+    ScaledClientTexture = RescaleRenderElement<TextureRenderElement<GlesTexture>>,
 }
 
+#[path = "client_tests.rs"]
+mod client;
+#[path = "client_tree_tests.rs"]
+mod client_tree;
 #[path = "focused_tests.rs"]
 mod focused;
 #[path = "header_tests.rs"]

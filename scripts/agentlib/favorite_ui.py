@@ -218,17 +218,12 @@ def launch_mode(smoke):
     smoke.until(
         "assigned app remains browsable in Apps List",
         lambda: a11y(
-            smoke, "find", f"{SHELL}//*[@role='button' and @name='Open: {APP_NAME}']"
+            smoke,
+            "find",
+            f"{SHELL}//*[@role='button' and @name='Open: {APP_NAME}']",
         )["elements"],
     )
     checks.click(smoke, "Draw to launch", "search")
-    smoke.until(
-        "gesture Settings available", lambda: checks.elements(smoke, "Settings")
-    )
-    smoke.until(
-        "drawing readiness presented in the Apps List",
-        lambda: checks.elements(smoke, "Draw a gesture", role=None),
-    )
     return drawing_rect(smoke)
 
 

@@ -1,4 +1,4 @@
-//! Compositor-owned canvas navigation and overview gestures for direct/indirect touch.
+//! Compositor-owned canvas navigation and switcher pinch gestures for direct/indirect touch.
 use smithay::{
     backend::input::InputTime,
     utils::{Logical, Point},
@@ -9,17 +9,17 @@ use crate::geometry::CanvasPoint;
 
 use super::super::App;
 
-mod overview;
 mod switcher;
+mod switcher_pinch;
 mod transform;
-use overview::OverviewGesture;
 use switcher::SwitcherGesture;
+use switcher_pinch::SwitcherPinch;
 use transform::{finite_point, gesture_viewport};
 
 #[derive(Default)]
 pub(in crate::compositor) struct PinchZoom {
     gesture: Option<Gesture>,
-    overview: Option<OverviewGesture>,
+    switcher_pinch: Option<SwitcherPinch>,
     switcher: Option<SwitcherGesture>,
 }
 
@@ -41,7 +41,7 @@ pub(super) enum PinchInput {
 
 impl PinchZoom {
     pub(in crate::compositor) fn is_active(&self) -> bool {
-        self.gesture.is_some() || self.overview.is_some() || self.switcher.is_some()
+        self.gesture.is_some() || self.switcher_pinch.is_some() || self.switcher.is_some()
     }
 
     fn begin(
@@ -133,19 +133,19 @@ impl PinchZoom {
     }
 
     fn cancel(&mut self) -> Option<(CanvasPoint, f64)> {
-        self.overview = None;
+        self.switcher_pinch = None;
         self.switcher = None;
         self.gesture
             .take()
             .map(|gesture| (gesture.offset, gesture.scale))
     }
 
-    fn interrupt_overview(&mut self) -> bool {
-        self.overview.take().is_some()
+    fn interrupt_switcher_pinch(&mut self) -> bool {
+        self.switcher_pinch.take().is_some()
     }
 
     pub(super) fn interrupt(&mut self) {
-        self.overview = None;
+        self.switcher_pinch = None;
         self.switcher = None;
         self.gesture = None;
     }
@@ -184,7 +184,7 @@ impl App {
         } else if input == PinchInput::TouchpadSwipe {
             self.start_window_switcher_swipe(input, device, fingers);
         } else {
-            self.start_overview_pinch(input, device, fingers);
+            self.start_switcher_pinch(input, device, fingers);
         }
     }
 
@@ -199,7 +199,7 @@ impl App {
         if self.update_touchpad_switcher_swipe(input, device, delta) {
             return;
         }
-        if self.update_overview_pinch(input, device, scale) {
+        if self.update_switcher_pinch(input, device, scale) {
             return;
         }
         if let Some(translation) = self
@@ -218,7 +218,6 @@ impl App {
     ) {
         if self.pinch_zoom.is_active()
             || self.canvas_pinch_blocked()
-            || self.overview_active()
             || self.window_switcher_active()
         {
             return;
@@ -268,7 +267,7 @@ impl App {
         time: InputTime,
     ) {
         if self.end_window_switcher_swipe(input, device, cancelled)
-            || self.end_overview_pinch(input, device, cancelled)
+            || self.end_switcher_pinch(input, device, cancelled)
             || !self.pinch_zoom.accepts(input)
         {
             return;
@@ -301,6 +300,8 @@ impl App {
     }
 
     pub(in crate::compositor) fn interrupt_pinch_zoom(&mut self) {
+        // Interrupting touch can synthesize a release; it cannot complete a click.
+        self.gtk_shell.reset_input();
         self.cancel_window_switcher_swipe();
         self.pinch_zoom.interrupt();
         if !self.dispatching_touch {

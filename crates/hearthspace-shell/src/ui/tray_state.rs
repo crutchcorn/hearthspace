@@ -59,8 +59,8 @@ pub(super) fn visible(snapshot: &TraySnapshot) -> impl Iterator<Item = &TrayItem
 
 #[cfg(test)]
 pub(super) fn capacity(width: f64) -> usize {
-    // The caller reserves clock, battery, controls, and the overflow drawer.
-    (width.max(0.0) / 38.0).floor().min(8.0) as usize
+    // The caller reserves clock, battery, and desktop controls.
+    ((width + 4.0).max(0.0) / 38.0).floor().min(8.0) as usize
 }
 
 pub(super) fn menu_items<'a>(
@@ -128,7 +128,7 @@ pub(super) fn reconcile(state: &mut ShellState) {
         if output.tray.item.as_ref().is_some_and(|key| {
             !visible(&state.tray.snapshot)
                 .any(|item| &item.key == key && item.menu_path == output.tray.menu_path)
-        }) || (output.tray.open && visible(&state.tray.snapshot).next().is_none())
+        }) || (output.tray.open && output.tray.item.is_none())
         {
             output.tray.dismiss();
             continue;
@@ -167,21 +167,11 @@ pub(super) fn send(state: &mut ShellState, output: &str, command: TrayCommand) {
     }
 }
 
-pub(super) fn toggle(state: &mut ShellState, key: &str) {
-    if super::frame_layout::popups::defer(state, key, super::frame_layout::popups::Popup::Tray) {
-        return;
-    }
-    let open = state
-        .outputs
-        .iter()
-        .any(|output| output.key() == key && !output.tray.open);
-    state.dismiss_panels();
-    if open && let Some(output) = state.outputs.iter_mut().find(|output| output.key() == key) {
-        output.tray.open = true;
-    }
-}
-
 pub(super) fn dismiss(state: &mut ShellState, key: &str) {
+    state
+        .frame_layout
+        .intents
+        .cancel_kind(key, super::popup::PopupKind::Tray);
     if let Some(output) = state.outputs.iter_mut().find(|output| output.key() == key) {
         output.tray.dismiss();
     }
@@ -325,9 +315,7 @@ pub(super) fn back(state: &mut ShellState, output_key: &str) {
         if let Some(id) = output.tray.path.pop() {
             output.tray.selected = Some(id);
         } else {
-            output.tray.item = None;
-            output.tray.menu_path = None;
-            output.tray.selected = None;
+            dismiss(state, output_key);
         }
     }
 }

@@ -55,7 +55,14 @@ pub(super) fn windows(state: &ShellState) -> Vec<WindowView<ShellState>> {
             if *id == "apps"
                 && let Some(part) = part.filter(|part| part.merged)
             {
-                size.0 = part.rect.width.max(44.0);
+                if vertical {
+                    size.1 = part.rect.height.max(44.0);
+                } else {
+                    size.0 = part.rect.width.max(44.0);
+                }
+            }
+            if *id == "tray" && !grouped {
+                size = super::tray::size(layout, vertical, size);
             }
             let content = widgets::content(
                 state,

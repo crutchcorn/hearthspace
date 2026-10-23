@@ -25,6 +25,7 @@ impl App {
             .ok_or("no active output")?
             .name
             .clone();
+        self.invalidate_shell_popups();
         self.layout_editor.sequence = self.layout_editor.sequence.wrapping_add(1).max(1);
         self.layout_editor.session = Some(Session {
             id: self.layout_editor.sequence,

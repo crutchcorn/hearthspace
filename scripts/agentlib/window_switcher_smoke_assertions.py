@@ -2,7 +2,7 @@
 
 from .control import ControlError
 from .gesture_trace import gesture
-from .overview_assertions import presented, preserved
+from .window_preview_assertions import presented, preserved
 
 
 def selection(status, target, *, active, focused=None):
@@ -15,16 +15,11 @@ def selection(status, target, *, active, focused=None):
     actual = [item["id"] for item in status["windows"] if item["focused"]]
     if actual != [expected_focus]:
         raise ControlError("switcher changed actual client focus unexpectedly")
-    if status["overview"]["active"]:
-        raise ControlError("horizontal switching accidentally opened overview")
 
 
 def previews(status, capture, targets):
-    # Both overlays publish the same live-preview geometry. Reuse pixel proof,
-    # requiring each marker inside its own preview, not merely colored chrome.
-    return presented(
-        {**status, "overview": status["window_switcher"]}, capture, targets
-    )
+    # Require each marker inside its own preview, not merely colored chrome.
+    return presented(status, capture, targets)
 
 
 def scene(status):

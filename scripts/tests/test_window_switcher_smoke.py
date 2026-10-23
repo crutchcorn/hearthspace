@@ -61,7 +61,6 @@ def status(x=0, y=0, *, active=False, animating=False, focused=2, display=None):
             ],
         },
         "windows": windows,
-        "overview": {"active": False},
         "outputs": [
             {
                 "name": "test",
@@ -183,15 +182,12 @@ class WindowSwitcherEvidenceTests(unittest.TestCase):
             with self.subTest(mutation=mutation), self.assertRaises(ControlError):
                 released_motion(before, [middle], invalid, 3)
 
-    def test_held_selection_is_separate_from_actual_focus_and_never_opens_overview(
-        self,
-    ):
+    def test_held_selection_is_separate_from_actual_focus(self):
         state = status(active=True)
         selection(state, 3, active=True, focused=2)
         for section, key, value in (
             ("window_switcher", "active", False),
             ("window_switcher", "selected_window_id", 2),
-            ("overview", "active", True),
         ):
             invalid = copy.deepcopy(state)
             invalid[section][key] = value

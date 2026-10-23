@@ -128,12 +128,18 @@ fn selected_client_content_drags_the_group_and_outside_clicks_reach_the_client()
 
 #[test]
 fn selection_refuses_an_existing_client_move_without_stealing_its_grab() {
+    use super::super::interactive::client::events::{
+        assert_content_click, assert_leave, assert_reentered,
+    };
+
     let _guard = headless_test_guard();
     let (mut compositor, mut client, [first, second]) = fixture();
     action(&compositor, "pointer-motion-abs 140 210");
     action(&compositor, "pointer-button-down 272");
     let serial = client.press_serial();
+    client.take_pointer_events();
     client.request_move(0, serial);
+    assert_leave(&mut client, 0);
     assert!(
         compositor
             .send_text_command("group-selection-toggle")
@@ -145,7 +151,9 @@ fn selection_refuses_an_existing_client_move_without_stealing_its_grab() {
     assert_eq!(window(&compositor, first)["canvas_x"], 150);
     assert_eq!(window(&compositor, first)["canvas_y"], 180);
     assert_eq!(window(&compositor, second)["canvas_x"], 600);
-    assert_eq!(client.released_buttons(), &[272]);
+    let events = client.take_pointer_events();
+    assert_reentered(&client, &events, 0);
+    assert_content_click(&compositor, &mut client);
     assert_eq!(group(&compositor)["selected"], json!([]));
     action(&compositor, "quit");
     wait_for_exit(&mut compositor.child);

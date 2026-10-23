@@ -81,17 +81,15 @@ class PanFixtureTests(unittest.TestCase):
         before = {"x": 12, "y": -50, "scale": 0.75, "pinch_active": False}
         status = {
             "viewport": before | {"pinch_active": True},
-            "overview": {"active": False},
             "window_switcher": {"active": False},
         }
         self.assertTrue(pan_cancelled(before, status))
         self.assertFalse(
             pan_cancelled(before, status | {"viewport": before | {"x": 13}})
         )
-        for overlay in ("overview", "window_switcher"):
-            self.assertFalse(
-                pan_cancelled(before, status | {overlay: {"active": True}})
-            )
+        self.assertFalse(
+            pan_cancelled(before, status | {"window_switcher": {"active": True}})
+        )
 
     def test_combined_touchpad_input_establishes_pinch_before_translation(self):
         for fingers in (2, 3):

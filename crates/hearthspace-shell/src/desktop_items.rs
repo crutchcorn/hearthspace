@@ -7,12 +7,13 @@ use std::{
     fs, io,
     os::unix::ffi::OsStrExt,
     path::{Path, PathBuf},
-    process::Command,
 };
 
-use crate::app_catalog::{AppCatalog, launch_command, reap_child};
+use crate::app_catalog::AppCatalog;
 
 pub mod actions;
+pub(crate) mod artwork;
+pub mod file_launch;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct DesktopItem {
@@ -125,36 +126,17 @@ fn files(directory: &Path) -> io::Result<Vec<DesktopItem>> {
     Ok(items)
 }
 
-/// Launch the user's associated application, using the same private session bus
-/// and Wayland environment as launcher apps. Paths remain a single OS argument;
-/// even non-UTF-8 filenames never pass through a shell command string.
-pub fn open_path(path: &Path, xwayland_display: Option<&str>) -> Result<(), String> {
-    if !path.is_absolute() || !path.exists() {
-        return Err("This desktop file or folder is no longer available.".into());
-    }
-    let mut command = open_command(path, xwayland_display)?;
-    let child = command
-        .spawn()
-        .map_err(|error| format!("Could not open {}: {error}", path.display()))?;
-    reap_child(child);
-    Ok(())
-}
-
-fn open_command(path: &Path, xwayland_display: Option<&str>) -> Result<Command, String> {
-    let mut command = launch_command(
-        &["xdg-open".into()],
-        &hearthspace_common::wayland_display_name(),
-        &[],
-        None,
-    )?;
-    command.arg(path);
-    // The shell may inherit the host's DISPLAY in a nested session. Only the
-    // compositor's acknowledged XWayland display belongs to this desktop.
-    if let Some(display) = xwayland_display {
-        command.env("DISPLAY", display);
-    }
-    Ok(command)
+/// Select with GIO on the desktop worker, then launch through the compositor's
+/// supervised environment. File URIs preserve native filename bytes over IPC.
+pub fn open_path(socket: &Path, path: &Path, output: Option<&str>) -> Result<(), String> {
+    file_launch::Request::for_default(path, output)?.send(socket)
 }
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod launch_tests;
+
+#[cfg(test)]
+mod test_support;

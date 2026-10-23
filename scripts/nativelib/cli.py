@@ -20,6 +20,7 @@ from .common import (
     unit_info,
     wait_ready,
 )
+from .environment import validated_data_dirs
 
 
 def parser():
@@ -50,6 +51,7 @@ def parser():
             command.add_argument("--vnc-port", type=int)
             if name == "_start":
                 command.add_argument("--dev-path", help=argparse.SUPPRESS)
+                command.add_argument("--xdg-data-dirs", help=argparse.SUPPRESS)
             command.add_argument("--compositor", type=Path)
             command.add_argument("--log-level", default="info")
             command.add_argument(
@@ -98,6 +100,7 @@ def start(args):
     if not 1 <= args.timeout <= 600 or not 1 <= args.watchdog <= 86400:
         raise ValueError("timeout must be 1–600s; watchdog must be 1–86400s")
     validate_development(args)
+    data_dirs = validated_data_dirs(os.environ.get("XDG_DATA_DIRS"))
     session = args.session.resolve()
     session.mkdir(parents=True, exist_ok=True, mode=0o700)
     if (session / "session.json").exists():
@@ -131,6 +134,8 @@ def start(args):
                 args.watchdog,
                 "--log-level",
                 args.log_level,
+                "--xdg-data-dirs",
+                data_dirs,
                 *extra,
             ],
         )

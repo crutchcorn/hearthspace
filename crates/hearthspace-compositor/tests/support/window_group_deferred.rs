@@ -48,7 +48,7 @@ fn gather_completion_keeps_independent_seed_moves_pending_for_canvas_peek() {
     let pending = server.request(&compositor);
     assert_eq!(
         pending["questions"]["relevant"]["instructions"]["candidate_window_title"],
-        "Overview editor 0"
+        "Navigation editor 0"
     );
 
     // Hold inference so the independent move cannot race the candidate's flight.
@@ -102,11 +102,11 @@ fn gather_completion_waits_for_group_drag_and_clear_discards_deferred_results() 
         let request = server.request(&compositor);
         assert_eq!(
             request["state"]["window_titles"],
-            json!(["Overview editor 0"])
+            json!(["Navigation editor 0"])
         );
         assert_eq!(
             request["questions"]["relevant"]["instructions"]["candidate_window_title"],
-            "Overview editor 1"
+            "Navigation editor 1"
         );
         let member = window(&compositor, seed);
         let x = member["x"].as_f64().unwrap() + 30.0;

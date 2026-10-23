@@ -99,7 +99,6 @@ impl App {
             return true;
         }
         if self.session_locked()
-            || self.overview_active()
             || self.window_switcher_active()
             || self.group_interaction_active()
             || self.pointer.is_grabbed()

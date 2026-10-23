@@ -61,7 +61,7 @@ fn glyph(artwork: &Artwork, filled: bool) -> IconGlyph {
     let icon = match artwork {
         Artwork::Settings => Icon::AppSettings,
         Artwork::Folder => Icon::Folder,
-        Artwork::File => Icon::FileText,
+        Artwork::File(_) => Icon::FileText,
         Artwork::App(_) => Icon::AppsGrid,
     };
     IconGlyph::new(icon, filled)

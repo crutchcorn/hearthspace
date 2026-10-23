@@ -16,7 +16,7 @@ pub(super) fn clip_elements(
         .filter_map(|element| match element {
             HearthspaceRenderElement::Surface(inner) => {
                 CropRenderElement::from_element(inner, 1., clip)
-                    .map(HearthspaceRenderElement::OverviewSurface)
+                    .map(HearthspaceRenderElement::ClippedSurface)
             }
             HearthspaceRenderElement::Frame(inner) => {
                 CropRenderElement::from_element(inner, 1., clip)

@@ -153,7 +153,10 @@ impl App {
         Ok(())
     }
     pub(super) fn dismiss_window_switcher(&mut self, cancelled: bool) {
-        let Some(session) = self.window_switcher.session.take() else {
+        // Clear the modal owner before touch cleanup can deliver queued releases.
+        let session = self.window_switcher.session.take();
+        self.interrupt_switcher_pinch();
+        let Some(session) = session else {
             return;
         };
         if session.source == SwitcherSource::Gesture {
@@ -175,10 +178,11 @@ impl App {
                 .find(|(i, w)| w.id == session.selected && self.is_navigable_window(*i))
                 .map(|(i, _)| i)
             {
-                if self.frame_window_attached(index) {
+                let pending_focus_view = self.window_focus_view_pending_for_focus(index);
+                if !pending_focus_view && self.frame_window_attached(index) {
                     let _ = self.reveal_frame_window(self.windows[index].id);
                 }
-                if !self.window_uses_output_coordinates(index) {
+                if !pending_focus_view && !self.window_uses_output_coordinates(index) {
                     self.viewport_animation = None;
                     self.viewport_offset = super::navigation::reveal_offset(
                         self.window_canvas_rect(index),

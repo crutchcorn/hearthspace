@@ -9,7 +9,8 @@ current view. A blue outline marks the visible area of the output whose map was
 opened; other outputs have muted outlines. The map starts with a wide canvas
 neighborhood and expands to include distant windows and viewports, retaining
 their relative positions and aspect ratio. It is an orientation aid rather than
-a window thumbnail preview; Super+O and overview gestures open live previews.
+a window thumbnail preview; Alt+Tab and inward pinch gestures open the
+[window switcher](WINDOW_MANAGEMENT.md#window-switcher) with live previews.
 
 Drag the orange viewport area with a mouse or touchscreen to pan the canvas.
 Its interior and outline both accept a drag. The map's projection stays fixed
@@ -33,7 +34,7 @@ The current Xilem/Winit window API creates xdg toplevels, so the popover follows
 the existing shell palette model. Its `dev.hearthspace.canvas-map` app ID identifies
 a client-sized, screen-space surface below the right edge of its output. It
 shares a focus group with that output's bar to allow the map toggle to close on
-release without reopening. Normal application focus, overview and lock transitions
+release without reopening. Normal application focus, window switching and lock transitions
 dismiss it using ordinary xdg close events. This does not add a Wayland protocol
 or replace Smithay's handling of application xdg popups.
 

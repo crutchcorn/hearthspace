@@ -109,7 +109,7 @@ Each glass region is cached separately for each output. Its
 visible output size; unchanged content reuses the cached result. The sampling
 margin accounts for damage outside the window, and output-edge clamping avoids
 dark borders. This path performs no CPU pixel readback and does not run in the
-lock screen or overview. Fullscreen windows use the normal fullscreen path.
+lock screen. Fullscreen windows use the normal fullscreen path.
 
 Server decorations use the reference's 44-pixel header, app icon, centered grip,
 and 32-pixel maximize/restore and close controls. Masonry rasterizes their text
@@ -124,12 +124,13 @@ The compositor clips the complete decorated window to a 19-pixel inner radius.
 A separate GPU frame paints its one-pixel outer border (20-pixel outer radius),
 inset highlights and soft shadows.
 
-The active orange frame encloses every normal application, including clients
-with their own decorations. Client-decorated content and controls retain their
-own shape; its compositor border follows the advertised rectangular window
-geometry. Frames belong to each window's stack position, beneath its popups and
-any higher windows. Fullscreen content, shell panels and overview thumbnails do
-not receive these frames. Cached shader elements track geometry, focus and
+The active orange frame encloses server-decorated applications. Clients with
+their own decorations receive a rectangular frame only when a single mapped
+root surface guarantees opaque coverage of the window geometry. Rounded,
+translucent, and multi-surface clients retain their own pixels without a synthetic
+rim or shadow. Frames belong to each window's stack position, beneath its popups
+and any higher windows. Fullscreen content and shell panels do not receive these
+frames. Cached shader elements track geometry, focus and
 hover without allocating a window-sized decoration texture.
 
 ## Shared visual system
@@ -185,6 +186,12 @@ Settings and window decorations retain the reference ink and hover tokens.
 Compositor frames update shader uniforms
 and titlebar foreground caches on appearance changes. Geometry-only resizing
 continues to reuse the foreground bitmaps; palette resolution is cached too.
+Client-decorated windows keep their own pixels and corners. The compositor adds
+a rectangular rim and shadow only when a single mapped root surface establishes
+opaque coverage of the full window geometry. Rounded, translucent, and
+multi-surface clients receive no synthetic frame; input regions and opaque
+cutouts are not treated as reliable corner-radius declarations. Server-decorated
+windows retain their rounded compositor frame and clipping.
 Changing modes regenerates the default dot field while retaining decoded user
 wallpapers. See [Settings](SETTINGS.md#linux-appearance-publication) for application
 preferences published through the desktop portal and XSettings.

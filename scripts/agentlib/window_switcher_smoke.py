@@ -11,6 +11,7 @@ from .control import ControlError
 from .daily import DailySmoke
 from .window_switcher_focused import focused
 from .window_switcher_keyboard import unplug
+from .window_switcher_pinch import stages as pinch_stages
 
 
 class WindowSwitcherSmoke(DailySmoke):
@@ -51,6 +52,7 @@ class WindowSwitcherSmoke(DailySmoke):
                     reason="libinput does not emit five-contact motion gestures",
                 )
             for fingers in (4,) if kind == "touchpad" else (4, 5):
+                pinch_stages(self, kind, fingers)
                 for direction in (-1, 1):
                     self.step(
                         f"{kind}-{fingers}-{'left' if direction < 0 else 'right'}",
@@ -74,7 +76,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--session", type=Path, required=True)
     parser.add_argument("--timeout", type=float, default=90, help="per-step seconds")
-    parser.add_argument("--total-timeout", type=float, default=600)
+    parser.add_argument("--total-timeout", type=float, default=900)
     parser.add_argument(
         "--device", choices=("touchpad", "touchscreen", "both"), default="both"
     )

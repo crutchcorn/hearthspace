@@ -5,11 +5,12 @@ import shlex
 from pathlib import Path
 
 from . import firefox_assertions as verify
+from . import firefox_focused, firefox_geometry, firefox_startup
 from .control import ControlError, save_capture
+from .csd_shell import park_before_entry
 from .daily_checks import a11y, terminal
-from .firefox_touch import DeadlineTouchDevice
+from .firefox_touch import DeadlineTouchDevice, pinch_cancelled, released_viewport
 from .input import Input
-from .pinch_assertions import same_viewport
 from .pinch_touchscreen import centroid, scaled, settled, to_device
 from .viewport_fixture import set_viewport
 from .visual import marker_bounds
@@ -39,6 +40,11 @@ def launch(smoke):
         "--no-remote",
         "--profile",
         str(smoke.profile),
+        # Request a usable initial size; startup setup verifies committed geometry.
+        "--width",
+        "1000",
+        "--height",
+        "760",
         (smoke.directory / "browser-fixtures/zoom.html").as_uri(),
     ]
     with Input(smoke.control) as inputs:
@@ -58,6 +64,7 @@ def launch(smoke):
         ),
     )
     smoke.target = window["id"]
+    firefox_startup.prepare(smoke)
     dismissed = set()
 
     def fixture_ready():
@@ -112,7 +119,18 @@ def prepare_maximized(smoke):
             ),
         )
     smoke.floating_before_max = smoke.window(smoke.target)
+    park_before_entry(smoke)
+    smoke.capture("csd-maximize-before")
     activate(smoke, "Maximize")
+    outputs = smoke.control.status()["outputs"]
+    smoke.until(
+        "Firefox CSD maximize fills output without protocol fullscreen",
+        lambda: verify.focused_at_output(smoke.window(smoke.target), outputs),
+    )
+    smoke.capture("csd-maximize-focused")
+    firefox_focused.evidence(smoke)
+    with Input(smoke.control) as inputs:
+        inputs.chord("super+m")
     return wait_maximized(smoke)
 
 
@@ -132,13 +150,7 @@ def controls_and_resize(smoke):
     prepare_maximized(smoke)
     smoke.capture("csd-restore-before")
     activate(smoke, "Restore Down")
-    before = smoke.until(
-        "Firefox restored by CSD",
-        lambda: (
-            window if verify.restored(window := smoke.window(smoke.target)) else None
-        ),
-    )
-    smoke.capture("csd-restore-after")
+    before = firefox_geometry.restored_for_resize(smoke)
     output = smoke.control.status()["outputs"][0]
     x, y = before["x"] + before["width"] - 1, before["y"] + before["height"] / 2
     if not (
@@ -296,14 +308,12 @@ def cancel_pinch(smoke, device, output):
     smoke.capture(f"{device.kind}-cancel-active")
     device.request("add-finger", **({"point": centroid(moved)} if moved else {}))
     smoke.until(
-        "fourth contact cancels pinch",
-        lambda: not smoke.control.status()["viewport"]["pinch_active"],
+        "fourth contact restores the canvas without opening the switcher",
+        lambda: pinch_cancelled(viewport, smoke.control.status()),
     )
     device.request("end")
+    restored_view = released_viewport(smoke, viewport)
     after = wait_maximized(smoke)
-    restored_view = settled(smoke)
-    if not same_viewport(viewport, restored_view):
-        raise ControlError("cancelled Firefox pinch did not restore the exact viewport")
     if any(abs(before[key] - after[key]) > 1 for key in ("x", "y", "width", "height")):
         raise ControlError(
             "cancelled Firefox pinch did not restore its maximized bounds"
@@ -340,7 +350,8 @@ def cancel_pinch(smoke, device, output):
 
 
 def fullscreen(smoke):
-    prepare_maximized(smoke)
+    saved = prepare_maximized(smoke)
+    saved_view = smoke.control.status()["viewport"]
     with Input(smoke.control) as inputs:
         inputs.chord("f11")
     outputs = smoke.control.status()["outputs"]
@@ -379,7 +390,4 @@ def fullscreen(smoke):
     )
     with Input(smoke.control) as inputs:
         inputs.chord("f11")
-    smoke.until(
-        "Firefox leaves F11 fullscreen",
-        lambda: not smoke.window(smoke.target).get("fullscreen"),
-    )
+    firefox_geometry.fullscreen_exit(smoke, saved, saved_view)

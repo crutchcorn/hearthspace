@@ -37,7 +37,7 @@ impl Icon {
     fn glyph(self) -> Glyph {
         match self {
             Self::Apps => Glyph::AppsGrid,
-            Self::Map => Glyph::Overview,
+            Self::Map => Glyph::Map,
             Self::SelectGroup => Glyph::Lasso,
             Self::SelectDesktop => Glyph::Cursor,
             Self::Search => Glyph::Search,

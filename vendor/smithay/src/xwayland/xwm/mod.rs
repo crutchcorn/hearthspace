@@ -508,6 +508,14 @@ pub trait XwmHandler {
     /// The window will be holding a grab on the mouse button provided.
     fn move_request(&mut self, xwm: XwmId, window: X11Surface, button: u32);
 
+    /// Window requests cancellation of its interactive move or resize.
+    ///
+    /// Sent for `_NET_WM_MOVERESIZE_CANCEL`, including when the client observes
+    /// a button release before the window manager establishes its grab.
+    fn cancel_move_resize_request(&mut self, xwm: XwmId, window: X11Surface) {
+        let _ = (xwm, window);
+    }
+
     /// Window requests to be set as active window.
     ///
     /// A client may include a `currently_active_window` in the request to
@@ -2675,6 +2683,7 @@ where
                                 state.resize_request(xwm_id, surface, data[3], resize_edge);
                             }
                             8 => state.move_request(xwm_id, surface, data[3]),
+                            11 => state.cancel_move_resize_request(xwm_id, surface),
                             _ => {} // ignore keyboard moves/resizes for now
                         }
                     }

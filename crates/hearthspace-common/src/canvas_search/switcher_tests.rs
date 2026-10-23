@@ -30,6 +30,32 @@ fn switcher_centers_live_previews_and_reserves_selected_title_space() {
     );
     // The 24px badge sits 10px below a preview, within the reserved 36px.
     assert_eq!(result[0].y + 600.0 * result[0].scale + 10.0 + 24.0, 524.0);
+    assert_eq!(
+        (result[0].x + result[1].x + 800.0 * result[1].scale) / 2.0,
+        640.0
+    );
+    assert_eq!(result[0].y + (600.0 * result[0].scale + 36.0) / 2.0, 400.0);
+}
+
+#[test]
+fn switcher_centers_multiple_rows_and_caption_space_on_an_offset_output() {
+    let output = Rect {
+        x: -1280.0,
+        y: 200.0,
+        width: 1280.0,
+        height: 800.0,
+    };
+    let result = window_switcher_layout(output, &[(800.0, 600.0); 8]);
+    assert_eq!(result.len(), 8);
+    assert!(result[4].y > result[0].y);
+    assert_eq!(result[3].y, result[0].y);
+    assert_eq!(result[7].y, result[4].y);
+    let left = result[0].x;
+    let right = result[3].x + 800.0 * result[3].scale;
+    let top = result[0].y;
+    let bottom = result[7].y + 600.0 * result[7].scale + 36.0;
+    assert_eq!((left + right) / 2.0, output.x + output.width / 2.0);
+    assert_eq!((top + bottom) / 2.0, output.y + output.height / 2.0);
 }
 
 #[test]
@@ -65,4 +91,8 @@ fn switcher_does_not_enlarge_small_clients_or_require_a_window() {
     let result = window_switcher_layout(output, &[(80.0, 40.0)]);
     assert_eq!(result[0].scale, 1.0);
     assert_eq!(result[0].x + 40.0, output.x + output.width / 2.0);
+    assert_eq!(
+        result[0].y + (40.0 + 36.0) / 2.0,
+        output.y + output.height / 2.0
+    );
 }

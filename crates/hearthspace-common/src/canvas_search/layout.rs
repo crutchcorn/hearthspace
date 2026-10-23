@@ -167,8 +167,9 @@ fn place(sizes: &[(f64, f64)], grid: &Grid, origin_x: f64, origin_y: f64) -> Vec
         .collect()
 }
 
-/// Center all live window previews, with room below each row for the selected
-/// title. Sizes include window decorations and stay in the session's MRU order.
+/// Center the preview grid on both output axes, including the space below each
+/// row for the selected title. Sizes include window decorations and stay in the
+/// session's MRU order.
 pub fn window_switcher_layout(view: Rect, sizes: &[(f64, f64)]) -> Vec<Placement> {
     let compact = view.width <= 760.0;
     let side = if compact { 12.0_f64 } else { 24.0_f64 }.min((view.width - 1.0).max(0.0) / 2.0);
@@ -187,6 +188,6 @@ pub fn window_switcher_layout(view: Rect, sizes: &[(f64, f64)]) -> Vec<Placement
         sizes,
         &grid,
         view.x + (view.width - grid.width) / 2.0,
-        view.y + vertical + (available_height - grid.height) / 2.0,
+        view.y + (view.height - grid.height) / 2.0,
     )
 }

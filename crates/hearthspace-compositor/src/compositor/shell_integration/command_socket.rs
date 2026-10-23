@@ -119,11 +119,17 @@ impl CalloopData {
                 Err(error) => ControlReply::Err(error),
             };
         }
+        if let Some(request) = text.strip_prefix("launch-files ") {
+            return self.state.launch_files(request);
+        }
         if text == "clipboard-set" {
             return self.state.set_clipboard_text("");
         }
         if let Some(hex) = text.strip_prefix("clipboard-set ") {
             return self.state.set_clipboard_text(hex);
+        }
+        if let Some(reply) = self.run_touch_command(text) {
+            return reply;
         }
         if let Some(reply) = self.run_automation_command(text) {
             return reply;
