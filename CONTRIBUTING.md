@@ -47,6 +47,11 @@ I develop Hearthspace on Ubuntu 26.04 LTS, and the following packages are requir
 sudo apt-get install -y build-essential pkg-config clang libclang-dev libwayland-dev wayland-protocols wayland-utils libinput-dev libxkbcommon-dev libxkbcommon-x11-dev libudev-dev libseat-dev libgbm-dev libegl1-mesa-dev libgles2-mesa-dev libdrm-dev libsystemd-dev
 ```
 
+Settings and server-decorated titlebars use Liberation Sans to match the browser
+reference's text metrics.
+Install it with `sudo apt-get install -y fonts-liberation` if it is not already
+present. Fontique discovers it through the system font collection.
+
 ### Rust Toolchain
 
 Use [rustup](https://rust-lang.org/tools/install/) for Rust. The repository's
@@ -413,7 +418,7 @@ if it is missing. PipeWire's PulseAudio service and PulseAudio are both supporte
 missing utilities, servers, or outputs leave the control unavailable. Brightness
 uses kernel backlight readings and logind's existing active-session permissions,
 without new groups, udev rules, setuid helpers, or password prompts. See
-[control center](docs/CONTROL_CENTER.md).
+[audio and brightness](docs/AUDIO_AND_BRIGHTNESS.md).
 
 The native supervisor starts the notification daemon, permission store, document
 portal, GTK portal backend, desktop portal, and polkit agent after Wayland is ready.
@@ -434,8 +439,10 @@ include it alongside the session, compositor, shell, and settings daemon when
 building or installing a native session. Its application protocol, shell control
 API, limits, and tests are documented in [Desktop notifications](docs/NOTIFICATIONS.md).
 
-Hearthspace supplies `hearthspace-portals.conf` in the session's data directory,
-selecting the GTK backend according to the standard
+Hearthspace supplies `hearthspace-portals.conf` and its Settings backend metadata
+in the session's data directory. The supervised appearance worker supplies live
+color-mode/accent preferences; unrelated Settings keys and other portal
+interfaces use the GTK backend according to the standard
 [portal configuration lookup](https://flatpak.github.io/xdg-desktop-portal/docs/portals.conf.html).
 User portal configuration retains its normal precedence. Private runtime D-Bus
 service overrides prevent portals from being activated outside supervision.
@@ -443,6 +450,11 @@ Existing portal owners may be adopted only when their executable, private bus,
 runtime directory, and process start identity match the owned session. The GTK
 chooser uses the local VFS; network filesystem browsing is not configured here.
 No shared user service environment or system-wide portal configuration is changed.
+Native app environments opt GTK 3 into these portal settings with
+`GTK_USE_PORTAL=1`; the GTK portal backend opts out to avoid recursive lookup.
+No host dconf preferences are written or restored. See
+[Linux appearance publication](docs/SETTINGS.md#linux-appearance-publication)
+for the compatibility boundary and the private-bus integration test.
 
 Document grants and portal permissions are stored under
 `$XDG_DATA_HOME/hearthspace/portals` (defaulting to
@@ -843,6 +855,11 @@ Wayland `app_id` / X11 `WM_CLASS`.
 Keep these dependencies pinned to an explicit commit until intentionally
 updating Xilem and rerunning the full workspace checks.
 
+Two small runtime packages, `xilem` and `masonry_winit`, are vendored at that
+same revision to apply per-window theme properties before the first frame.
+The [patch ledger](./patches/README.md#xilem-initial-window-properties) records
+the upstream omission, source diff, verification, and removal conditions.
+
 The direct Naga 28 and Fontique 0.8 dependencies intentionally match the versions
 used by this Xilem revision. They enable required features in the existing
 dependency graph; independently moving them to newer major versions would
@@ -865,13 +882,16 @@ The development host has Ollama **0.40.5**; Hearthspace does not install or
 reconfigure its service. Older Ollama releases without the decision endpoint
 must be updated separately. Ordinary `/api/chat` support is insufficient.
 
-Use **Settings → AI → Download D1 model** to opt in. The Rust `hf-hub` client
-downloads `LiquidAI/d1-3B-GGUF/d1-3B-Q4_K_M.gguf`, then imports it as the dedicated
-Ollama model `hearthspace-d1:latest`. Download files and preferences live under
+Turn on **Settings → AI → Enable AI features** to opt in. If the model is already
+installed, Hearthspace enables it without downloading again. Otherwise, the Rust
+`hf-hub` client downloads `LiquidAI/d1-3B-GGUF/d1-3B-Q4_K_M.gguf`, then imports it
+as the dedicated Ollama model `hearthspace-d1:latest`. Download files and
+preferences live under
 `$XDG_CACHE_HOME/hearthspace/ai` (normally `~/.cache/hearthspace/ai`); Ollama also
-stores an imported copy in its configured model directory. **Delete D1 model**
-removes the managed copy and download, preserving unrelated models. No systemd,
-login, firewall, or privilege-policy changes are required by this feature.
+stores an imported copy in its configured model directory. Turning the switch
+off opens a confirmation; **Turn off and delete** removes the managed copy and
+download, preserving unrelated models. No systemd, login, firewall, or
+privilege-policy changes are required by this feature.
 
 The default endpoint is `http://127.0.0.1:11434`. Set
 `HEARTHSPACE_OLLAMA_URL=http://127.0.0.1:PORT` before starting the desktop to use

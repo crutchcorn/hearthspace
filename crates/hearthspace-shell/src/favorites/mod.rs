@@ -141,6 +141,46 @@ impl FavoriteStore {
         self.replace(entries)
     }
 
+    /// Retarget one saved shortcut only when the complete replacement can be
+    /// committed. A different app's existing shortcut is never overwritten.
+    pub fn replace_gesture_app(
+        &mut self,
+        original_id: &str,
+        app_id: &str,
+        points: &[Point],
+    ) -> Result<(), FavoriteError> {
+        if original_id == app_id {
+            return self.set_gesture(app_id, points);
+        }
+        let original = self.index(original_id)?;
+        if self.entries[original].gesture.is_none() {
+            return Err(FavoriteError(
+                "This app has no saved gesture to edit.".into(),
+            ));
+        }
+        if self
+            .entries
+            .iter()
+            .any(|entry| entry.app_id == app_id && entry.gesture.is_some())
+        {
+            return Err(FavoriteError(
+                "This app already has a gesture. Choose another app.".into(),
+            ));
+        }
+        // Reuse upsert validation against every other assigned shape. Building
+        // an in-memory candidate leaves both disk and live state untouched if
+        // validation or the final optimistic write fails.
+        let mut candidate = Self::in_memory();
+        candidate.entries = self
+            .entries
+            .iter()
+            .filter(|entry| entry.app_id != original_id)
+            .cloned()
+            .collect();
+        candidate.set_gesture(app_id, points)?;
+        self.replace(candidate.entries)
+    }
+
     fn validate_gesture(&self, app_id: &str, gesture: &Gesture) -> Result<(), FavoriteError> {
         for entry in &self.entries {
             if entry.app_id != app_id

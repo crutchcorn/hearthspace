@@ -21,6 +21,8 @@ use xilem::{WidgetView, view::sized_box};
 
 #[path = "search_accessibility_tests.rs"]
 mod accessibility;
+#[path = "apps_list_tests.rs"]
+mod apps_list;
 
 fn state() -> ShellState {
     let mut state = ShellState::new("/unused".into(), vec!["eDP-1".into()]);
@@ -96,7 +98,7 @@ fn arrows_keep_typing_focus_show_selection_scroll_and_enter_activates_it() {
         assert_eq!(request, "focus-window 3\n");
         stream.write_all(b"ok\n").unwrap();
     });
-    let mut ui = Ui::new(state, view, (360, 176));
+    let mut ui = Ui::new(state, view, (360, 320));
     let input = ui.harness.focused_widget_id().unwrap();
     assert_eq!(selected(&ui), ["Window: Notes 1"]);
     let before = ui.harness.render();
@@ -115,7 +117,7 @@ fn arrows_keep_typing_focus_show_selection_scroll_and_enter_activates_it() {
         .bounding_box()
         .unwrap();
     assert!(
-        last.y1 <= 176.0 - 12.0,
+        last.y1 <= 320.0,
         "selected row should scroll into view: {last:?}"
     );
     ui.harness
@@ -135,7 +137,10 @@ fn tab_focus_tracks_selection_and_clipboard_edit_keeps_native_editor_actions() {
     let mut ui = Ui::new(state(), view, (360, 280));
     let input = ui.harness.focused_widget_id().unwrap();
     // The scroll portal is also a normal keyboard focus stop.
-    for _ in 0..5 {
+    for _ in 0..12 {
+        if ui.harness.focused_widget_id() == Some(ui.button("Window: Notes 2")) {
+            break;
+        }
         ui.harness
             .process_text_event(TextEvent::key_down(Key::Named(NamedKey::Tab)));
         ui.dispatch(&view);
@@ -166,7 +171,7 @@ fn long_queries_keep_search_header_and_results_inside_the_panel() {
     state.windows[0].title.clone_from(&query);
     state.change_query("eDP-1", query.clone());
     reconcile(&mut state);
-    let ui = Ui::new(state, view, (360, 176));
+    let ui = Ui::new(state, view, (360, 320));
     let input = ui.harness.focused_widget_id().unwrap();
     let input_bounds = ui
         .harness
@@ -176,7 +181,7 @@ fn long_queries_keep_search_header_and_results_inside_the_panel() {
         .unwrap();
     let close_bounds = ui
         .harness
-        .access_node(ui.button("Close search"))
+        .access_node(ui.button("Close apps list"))
         .unwrap()
         .bounding_box()
         .unwrap();
@@ -186,13 +191,13 @@ fn long_queries_keep_search_header_and_results_inside_the_panel() {
         .unwrap()
         .bounding_box()
         .unwrap();
-    assert!(input_bounds.height() <= 34.0, "{input_bounds:?}");
+    assert!(input_bounds.height() <= 44.0, "{input_bounds:?}");
     assert!(
-        close_bounds.y1 <= input_bounds.y0,
+        close_bounds.y0 <= input_bounds.y1 && close_bounds.x0 >= input_bounds.x1,
         "{close_bounds:?} {input_bounds:?}"
     );
     assert!(
-        result_bounds.y0 >= input_bounds.y1 && result_bounds.y1 <= 164.0,
+        result_bounds.y0 >= input_bounds.y1 && result_bounds.y1 <= 320.0,
         "{result_bounds:?}"
     );
 }

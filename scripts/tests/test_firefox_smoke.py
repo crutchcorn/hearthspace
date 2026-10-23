@@ -69,9 +69,9 @@ class FirefoxEvidenceTests(unittest.TestCase):
         self.output = {
             "name": "eDP-1",
             "logical_x": 20,
-            "logical_y": -28,
+            "logical_y": -70,
             "logical_width": 200,
-            "logical_height": 208,
+            "logical_height": 340,
         }
 
     def verify(self, *, after=None, image=None):
@@ -192,6 +192,8 @@ class FirefoxEvidenceTests(unittest.TestCase):
             {"height": 96},
             {"x": 30},
             {"y": 30},
+            # A stale full-width top bar configure must not count as settled.
+            {"y": -4, "height": 256},
             {"presentation_output": "unknown"},
             {"maximized": False},
         ]:
@@ -199,6 +201,14 @@ class FirefoxEvidenceTests(unittest.TestCase):
                 self.assertFalse(
                     assertions.maximized_at_output(self.before | state, [self.output])
                 )
+
+    def test_tiny_output_preserves_one_pixel_between_corner_clearances(self):
+        output = self.output | {"logical_height": 1}
+        window = self.before | {"y": output["logical_y"], "height": 1}
+        self.assertTrue(assertions.maximized_at_output(window, [output]))
+        output = output | {"logical_height": 120}
+        window = window | {"y": output["logical_y"] + 59, "height": 2}
+        self.assertTrue(assertions.maximized_at_output(window, [output]))
 
     def test_cancelled_maximize_waits_for_configured_bounds_before_comparing(self):
         smoke = Mock(target=7, floating_before_max=self.after)
@@ -296,16 +306,27 @@ class FirefoxOwnershipTests(unittest.TestCase):
 class FirefoxShellPointerTests(unittest.TestCase):
     def setUp(self):
         self.output = {
+            "name": "test",
             "scale": 2,
             "logical_x": 100,
             "logical_y": 50,
             "logical_width": 1280,
+            "logical_height": 800,
         }
-        self.bounds = {"x": 990, "y": 18, "width": 158, "height": 60}
+        self.corner = {
+            "corner": "canvas",
+            "output": "test",
+            "x": 124,
+            "y": 772,
+            "width": 102,
+            "height": 54,
+        }
+        self.bounds = {"x": 14, "y": 14, "width": 68, "height": 68}
 
     def test_observed_physical_bounds_convert_to_logical_shell_center(self):
         self.assertEqual(
-            firefox_shell.button_center(self.bounds, self.output), (634.5, 74)
+            firefox_shell.button_center(self.bounds, self.output, self.corner),
+            (148, 796),
         )
         for bad in [
             None,
@@ -315,14 +336,14 @@ class FirefoxShellPointerTests(unittest.TestCase):
             self.bounds | {"x": 3000},
         ]:
             with self.subTest(bounds=bad), self.assertRaises(ControlError):
-                firefox_shell.button_center(bad, self.output)
+                firefox_shell.button_center(bad, self.output, self.corner)
 
     def test_shell_pointer_focus_changes_before_button_release(self):
         smoke = Mock(target=7)
-        self.output["name"] = "test"
-        surface = {"output": "test", "x": 948, "y": 110, "width": 320, "height": 310}
+        surface = {"output": "test", "x": 124, "y": 450, "width": 320, "height": 310}
         smoke.control.status.return_value = {
             "outputs": [self.output],
+            "shell_corners": [self.corner],
             "canvas_maps": [surface],
         }
         smoke.until.side_effect = lambda _name, condition: condition()
@@ -351,7 +372,7 @@ class FirefoxShellPointerTests(unittest.TestCase):
             firefox_shell.click_zoom_out(smoke)
             self.assertEqual(
                 [call.args for call in inputs.motion.call_args_list],
-                [(634.5, 74), (978, 375)],
+                [(148, 796), (154, 715)],
             )
         self.assertEqual(events, ["down", "focus-observed", "focus-observed", "up"] * 2)
         self.assertIn("Canvas map", accessibility.call_args_list[0].args[2])

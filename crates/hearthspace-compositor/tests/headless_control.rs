@@ -29,6 +29,9 @@ mod canvas_zoom;
 #[path = "support/device_controls.rs"]
 mod device_controls;
 #[cfg(feature = "test-apps")]
+#[path = "support/grid_snapping.rs"]
+mod grid_snapping;
+#[cfg(feature = "test-apps")]
 #[path = "support/interactive.rs"]
 mod interactive;
 #[cfg(feature = "test-apps")]
@@ -53,8 +56,17 @@ mod session_bus;
 #[path = "support/session_lock.rs"]
 mod session_lock;
 #[cfg(feature = "test-apps")]
+#[path = "support/shell_blur.rs"]
+mod shell_blur;
+#[cfg(feature = "test-apps")]
+#[path = "support/shell_corners.rs"]
+mod shell_corners;
+#[cfg(feature = "test-apps")]
 #[path = "support/shell_panels.rs"]
 mod shell_panels;
+#[cfg(feature = "test-apps")]
+#[path = "support/titlebar_controls.rs"]
+mod titlebar_controls;
 #[path = "support/window_bounds.rs"]
 mod window_bounds;
 #[cfg(feature = "test-apps")]
@@ -69,6 +81,9 @@ mod window_states;
 #[cfg(feature = "test-apps")]
 #[path = "support/window_switcher.rs"]
 mod window_switcher;
+#[cfg(all(feature = "test-apps", feature = "xwayland"))]
+#[path = "support/xsettings.rs"]
+mod xsettings;
 
 const WIDTH: u32 = 320;
 const HEIGHT: u32 = 240;

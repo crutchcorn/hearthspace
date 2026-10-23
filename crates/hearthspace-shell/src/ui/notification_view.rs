@@ -1,9 +1,14 @@
+use crate::ui::appearance::{ThemeStyle as _, Tone};
 use hearthspace_ui_components as components;
 use xilem::{
     AnyWidgetView, WidgetView,
-    masonry::{layout::AsUnit, parley::fontique::GenericFamily, properties::LineBreaking},
+    masonry::{
+        layout::AsUnit,
+        parley::fontique::GenericFamily,
+        properties::{Dimensions, LineBreaking, Padding},
+    },
     style::Style,
-    view::{CrossAxisAlignment, FlexSpacer, flex_col, flex_row, label, sized_box},
+    view::{CrossAxisAlignment, FlexExt, FlexSpacer, flex_col, flex_row, label, sized_box},
 };
 
 use super::{
@@ -18,13 +23,63 @@ pub(super) fn button(
     items: &[Notification],
 ) -> impl WidgetView<ShellState> + use<> {
     let key = output.key().to_string();
-    icon_button(
-        Icon::Bell {
-            active: items.iter().any(|item| item.active),
-        },
-        "Notifications",
+    let count = items.iter().filter(|item| item.active).count();
+    // The corner contributes 4px padding and a 1px border on each side.
+    let width = (output.corner_widths[0] - 10.0).clamp(
+        0.0,
+        f64::from(hearthspace_common::NOTIFICATION_CORNER_WIDTH) - 10.0,
+    );
+    let padding_budget = (width - 20.0).max(0.0);
+    let padding = 10.0_f64.min(padding_budget / 2.0);
+    let content_width = (width - 2.0 * padding - 2.0).max(0.0);
+    let icon_size = content_width.min(18.0);
+    let remaining = (content_width - icon_size).max(0.0);
+    let gap = remaining.min(9.0);
+    let color = if count > 0 || output.show_notifications {
+        Tone::Strong
+    } else {
+        Tone::Muted
+    };
+    components::button_surface(
+        xilem::view::button(
+            flex_row((
+                components::icons::icon(
+                    if count > 0 {
+                        components::icons::Icon::BellUnread
+                    } else {
+                        components::icons::Icon::Bell
+                    },
+                    icon_size,
+                )
+                .label("Notifications")
+                .theme_color(color),
+                // A named group exposes the changing status separately from
+                // the button's stable name, supplied by the bell above.
+                super::popup_group::group(
+                    "Notification status",
+                    label(if count == 0 {
+                        "All clear".into()
+                    } else {
+                        format!("{count} new")
+                    })
+                    .text_size(13.0)
+                    .width((remaining - gap).px())
+                    .line_break_mode(LineBreaking::Clip)
+                    .theme_color(color),
+                ),
+            ))
+            .gap(gap.px()),
+            move |state| state.toggle_notifications(&key),
+        )
+        .dims(Dimensions::fixed(width.px(), 44.0.px()))
+        .padding(Padding {
+            left: padding.px(),
+            right: padding.px(),
+            ..Padding::ZERO
+        })
+        .corner_radius(components::RADIUS_CONTROL.px()),
+        components::ButtonSurface::Bare,
         output.show_notifications,
-        move |state| state.toggle_notifications(&key),
     )
 }
 
@@ -46,33 +101,54 @@ pub(super) fn panel(
         );
     }
     if items.is_empty() {
-        rows.push(components::muted_text("No notifications yet").boxed());
+        rows.push(
+            sized_box(
+                flex_col((
+                    components::icons::icon(components::icons::Icon::Bell, 28.0)
+                        .theme_color(Tone::Muted),
+                    label("You're all caught up").text_size(20.0),
+                    components::muted_text("No notifications yet"),
+                ))
+                .cross_axis_alignment(CrossAxisAlignment::Start)
+                .gap(12.0.px()),
+            )
+            .padding(24.0.px())
+            .height(200.0.px())
+            .boxed(),
+        );
     }
     rows.extend(items.into_iter().map(|item| notification_row(item).boxed()));
     popup::panel_with_header(
         output,
         PopupKind::Notifications,
-        flex_row((
-            components::section_title("Notifications"),
-            FlexSpacer::Flex(1.0),
-            close,
-        ))
-        .gap(4.0.px()),
+        sized_box(
+            flex_row((
+                label("Notifications").text_size(24.0),
+                FlexSpacer::Flex(1.0),
+                close,
+            ))
+            .gap(4.0.px()),
+        )
+        .padding(14.0.px())
+        .theme_background(Tone::Control),
         flex_col(rows)
             .cross_axis_alignment(CrossAxisAlignment::Stretch)
-            .gap(8.0.px()),
+            .gap(0.0.px()),
     )
 }
 
 fn notification_row(item: Notification) -> impl WidgetView<ShellState> + use<> {
     let mut rows: Vec<Box<AnyWidgetView<ShellState>>> = vec![
-        components::muted_text(if item.active {
+        label(if item.active {
             item.app_name
         } else {
             format!("History · {}", item.app_name)
         })
+        .text_size(11.0)
+        .theme_color(Tone::Muted)
         .boxed(),
-        components::field_label(item.summary)
+        label(item.summary)
+            .text_size(15.0)
             .line_break_mode(LineBreaking::WordWrap)
             .boxed(),
     ];
@@ -80,9 +156,9 @@ fn notification_row(item: Notification) -> impl WidgetView<ShellState> + use<> {
         rows.push(
             label(item.body)
                 .font(GenericFamily::SystemUi)
-                .text_size(13.0)
-                .color(components::TEXT_MUTED)
+                .text_size(12.0)
                 .line_break_mode(LineBreaking::WordWrap)
+                .theme_color(Tone::Muted)
                 .boxed(),
         );
     }
@@ -103,15 +179,37 @@ fn notification_row(item: Notification) -> impl WidgetView<ShellState> + use<> {
             .boxed(),
         );
     }
+    let active = item.active;
     sized_box(
-        flex_col(rows)
-            .cross_axis_alignment(CrossAxisAlignment::Stretch)
-            .gap(4.0.px()),
+        flex_row((
+            sized_box(
+                components::icons::icon(components::icons::Icon::Bell, 16.0)
+                    .theme_color(if active { Tone::Strong } else { Tone::Muted }),
+            )
+            .width(29.0.px())
+            .height(29.0.px())
+            .corner_radius(10.0.px())
+            .theme_background(if active {
+                Tone::AccentSoft
+            } else {
+                Tone::Control
+            }),
+            flex_col(rows)
+                .cross_axis_alignment(CrossAxisAlignment::Stretch)
+                .gap(7.0.px())
+                .flex(1.0),
+        ))
+        .cross_axis_alignment(CrossAxisAlignment::Start)
+        .gap(14.0.px()),
     )
-    .background_color(if item.urgency == 2 && item.active {
-        components::DANGER_SUBTLE
+    .theme_background(if item.urgency == 2 && item.active {
+        Tone::Danger
     } else {
-        components::SURFACE_SUBTLE
+        Tone::Transparent
     })
-    .padding(8.0.px())
+    .padding(20.0.px())
 }
+
+#[cfg(test)]
+#[path = "notification_button_tests.rs"]
+mod button_tests;

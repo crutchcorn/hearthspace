@@ -18,6 +18,7 @@ mod model;
 use model::{BarAction, BarSwipe};
 
 type Position = Point<f64, Logical>;
+type RunningAppIdentity = Vec<(u64, Option<String>)>;
 
 enum Target {
     Group,
@@ -36,6 +37,7 @@ pub(in crate::compositor) struct UiTouch {
     origin: Position,
     local: Position,
     target: Target,
+    apps_identity: Option<RunningAppIdentity>,
 }
 
 impl UiTouch {
@@ -63,8 +65,12 @@ impl UiTouch {
         geometry: Option<[f64; 5]>,
         outputs: &[Rectangle<i32, Logical>],
         available: bool,
+        apps_identity: Option<&[(u64, Option<String>)]>,
     ) -> bool {
-        available && geometry == Some(self.geometry) && outputs.contains(&self.output)
+        available
+            && geometry == Some(self.geometry)
+            && outputs.contains(&self.output)
+            && self.apps_identity.as_deref() == apps_identity
     }
 
     fn suppresses_pointer(&self, device: &str, action: &TouchAction) -> bool {
@@ -81,6 +87,20 @@ impl UiTouch {
 }
 
 impl App {
+    fn running_app_touch_identity(&self) -> RunningAppIdentity {
+        // Match the catalog shown in the dock. Stacking/focus changes leave
+        // this signature unchanged; window replacement or regrouping does not.
+        let mut identity: Vec<_> = self
+            .windows
+            .iter()
+            .enumerate()
+            .filter(|(index, _)| self.is_navigable_window(*index))
+            .map(|(_, window)| (window.id, window_app_id(&window.surface)))
+            .collect();
+        identity.sort_unstable_by_key(|(id, _)| *id);
+        identity
+    }
+
     fn ui_touch_geometry(&self, index: usize) -> [f64; 5] {
         let origin = match self.windows[index].kind {
             ManagedWindowKind::ShellBar => self.shell_bar_logical_origin(index).map(|p| p.to_f64()),
@@ -169,8 +189,15 @@ impl App {
             output,
             origin: location,
             local,
+            apps_identity: (bar
+                && self.shell_corner(window_index) == Some(hearthspace_common::ShellCorner::Apps))
+            .then(|| self.running_app_touch_identity()),
             target: if bar {
-                Target::Bar(BarSwipe::new(location, Instant::now()))
+                Target::Bar(BarSwipe::new(
+                    location,
+                    Instant::now(),
+                    self.shell_corner(window_index),
+                ))
             } else {
                 Target::Client(surface)
             },
@@ -256,7 +283,7 @@ impl App {
                 BarAction::OpenSearch => {
                     self.apply_pointer_motion(origin, time);
                     if let Err(error) = self.focus_launcher() {
-                        tracing::debug!(%error, "top bar swipe could not open search");
+                        tracing::debug!(%error, "shell swipe could not open apps list");
                     }
                 }
                 BarAction::Tap => {
@@ -291,6 +318,13 @@ impl App {
             return;
         }
         if let Some(touch) = self.ui_touch.as_ref() {
+            // Bar taps become a pointer press/release only after touch-up. A
+            // fixed-width dock can replace a tile meanwhile without changing
+            // its surface geometry; never deliver that tap to the replacement.
+            let apps_identity = touch
+                .apps_identity
+                .as_ref()
+                .map(|_| self.running_app_touch_identity());
             let geometry = self
                 .windows
                 .iter()
@@ -300,6 +334,7 @@ impl App {
                 geometry,
                 &self.output_logical_rects(),
                 self.navigation_available(),
+                apps_identity.as_deref(),
             );
             if !valid {
                 self.cancel_ui_touch();

@@ -64,13 +64,19 @@ class InstallSessionTests(unittest.TestCase):
                 stat.S_IMODE((release / "bin" / name).stat().st_mode), 0o755
             )
         self.assertIn(
-            "Icon=hearthspace",
+            "Icon=hearthspace-settings",
             (
                 release / "share/applications/dev.hearthspace.Settings.desktop"
             ).read_text(),
         )
         self.assertTrue(
             (release / "share/icons/hicolor/scalable/apps/hearthspace.svg").is_file()
+        )
+        self.assertEqual(
+            (
+                release / "share/icons/hicolor/scalable/apps/hearthspace-settings.svg"
+            ).read_bytes(),
+            (layout.REPOSITORY / "assets/settings.svg").read_bytes(),
         )
         entry = (root / layout.SESSION).read_text()
         self.assertIn('Exec="/usr/local/bin/hearthspace-login"', entry)

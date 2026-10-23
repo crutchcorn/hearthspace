@@ -1,15 +1,18 @@
+use crate::ui::appearance::{ThemeStyle as _, Tone};
 use hearthspace_ui_components as components;
 use xilem::{
     AnyWidgetView, WidgetView,
-    masonry::{layout::AsUnit, properties::LineBreaking},
+    masonry::{
+        layout::AsUnit,
+        properties::{LineBreaking, Padding},
+    },
     style::Style,
-    view::{CrossAxisAlignment, FlexSpacer, flex_col, flex_row, label, sized_box},
+    view::{CrossAxisAlignment, FlexExt, flex_col, flex_row, label, sized_box},
 };
 
 use super::{
     command_client::{launch_app, send_command},
     constants::MAX_RESULTS,
-    icons::{Icon, icon_button},
     search_focus::{FocusTarget, focus_on_activation},
     state::{ShellOutputInstance, ShellState},
     window_catalog::RunningWindow,
@@ -44,7 +47,13 @@ pub(super) fn results(state: &ShellState, output: &ShellOutputInstance) -> Vec<E
         return Vec::new();
     }
     if query.is_empty() {
-        return Vec::new();
+        return state
+            .catalog
+            .apps()
+            .iter()
+            .cloned()
+            .map(|app| Entry::App(Box::new(app)))
+            .collect();
     }
     let mut windows = state
         .windows
@@ -58,15 +67,13 @@ pub(super) fn results(state: &ShellState, output: &ShellOutputInstance) -> Vec<E
         .take(MAX_RESULTS)
         .map(Entry::Window)
         .collect::<Vec<_>>();
-    if !query.is_empty() {
-        results.extend(
-            state
-                .catalog
-                .search(query, MAX_RESULTS)
-                .into_iter()
-                .map(|app| Entry::App(Box::new(app))),
-        );
-    }
+    results.extend(
+        state
+            .catalog
+            .search(query, MAX_RESULTS)
+            .into_iter()
+            .map(|app| Entry::App(Box::new(app))),
+    );
     results
 }
 
@@ -86,6 +93,34 @@ pub(super) fn select(
     state.finish_launch(output_key, result);
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(super) enum AppLayout {
+    #[default]
+    Grid,
+    List,
+}
+
+#[path = "launcher_controls.rs"]
+pub(super) mod controls;
+
+pub(super) fn is_grid(output: &ShellOutputInstance) -> bool {
+    output.query.trim().is_empty() && output.launcher_layout == AppLayout::Grid
+}
+
+pub(super) fn grid_columns(output: &ShellOutputInstance) -> usize {
+    if !is_grid(output) {
+        return 1;
+    }
+    let (padding, gap) = if output.launcher_width <= 480.0 {
+        (28.0, 2.0)
+    } else {
+        (48.0, 12.0)
+    };
+    ((output.launcher_width - padding + gap) / (100.0 + gap))
+        .floor()
+        .clamp(1.0, 4.0) as usize
+}
+
 pub(super) fn launcher_view(
     state: &ShellState,
     output: &ShellOutputInstance,
@@ -93,49 +128,78 @@ pub(super) fn launcher_view(
     windows_error: Option<String>,
 ) -> impl WidgetView<ShellState, Widget = super::search_focus::SearchFocus> + use<> {
     let focus_target = FocusTarget::default();
-    let search = super::search_input::input(output, focus_target.clone());
-    let close_key = output.key().to_string();
-    let close = icon_button(Icon::Close, "Close search", false, move |state| {
-        state.dismiss_search(&close_key)
-    });
     let selected = super::search_selection::selected_index(output, &entries);
-    let mut rows: Vec<Box<AnyWidgetView<ShellState>>> = if output.drawing.active() {
-        vec![super::favorite_view::drawing(state, output)]
+    let count = entries.len();
+    let mut rows = Vec::<Box<AnyWidgetView<ShellState>>>::new();
+    if output.drawing.active() {
+        rows.push(super::favorite_view::drawing(state, output));
     } else {
-        let mut rows: Vec<Box<AnyWidgetView<ShellState>>> = entries
-            .into_iter()
-            .enumerate()
-            .map(|(index, entry)| {
+        if entries.is_empty() {
+            rows.push(
+                sized_box(
+                    flex_col((
+                        components::icons::icon(components::icons::Icon::Search, 30.0)
+                            .theme_color(Tone::Muted),
+                        label(if output.query.trim().is_empty() {
+                            "No installed apps found"
+                        } else {
+                            "No matching apps or windows"
+                        })
+                        .text_size(20.0)
+                        .line_break_mode(LineBreaking::WordWrap),
+                    ))
+                    .gap(12.0.px()),
+                )
+                .height(204.0.px())
+                .boxed(),
+            );
+        } else if is_grid(output) {
+            let columns = grid_columns(output);
+            for (row, chunk) in entries.chunks(columns).enumerate() {
+                let mut cells = chunk
+                    .iter()
+                    .cloned()
+                    .enumerate()
+                    .map(|(column, entry)| {
+                        super::search_result::row(
+                            state,
+                            output,
+                            entry,
+                            selected == Some(row * columns + column),
+                            focus_target.clone(),
+                        )
+                        .boxed()
+                        .flex(1.0)
+                    })
+                    .collect::<Vec<_>>();
+                for _ in chunk.len()..columns {
+                    cells.push(sized_box(label("")).boxed().flex(1.0));
+                }
+                rows.push(
+                    flex_row(cells)
+                        .gap(
+                            if output.launcher_width <= 480.0 {
+                                2.0
+                            } else {
+                                12.0
+                            }
+                            .px(),
+                        )
+                        .boxed(),
+                );
+            }
+        } else {
+            rows.extend(entries.into_iter().enumerate().map(|(index, entry)| {
                 super::search_result::row(
+                    state,
                     output,
                     entry,
                     Some(index) == selected,
                     focus_target.clone(),
                 )
                 .boxed()
-            })
-            .collect();
-        if rows.is_empty() {
-            rows.push(
-                label(if output.query.trim().is_empty() {
-                    "Type to search apps and open windows, or draw a gesture to launch an app."
-                } else {
-                    "No matching apps or windows"
-                })
-                .line_break_mode(LineBreaking::WordWrap)
-                .boxed(),
-            );
+            }));
         }
-        rows
-    };
-    if !output.drawing.active()
-        && let Some(message) = &output.drawing.message
-    {
-        rows.push(
-            label(message.clone())
-                .line_break_mode(LineBreaking::WordWrap)
-                .boxed(),
-        );
     }
     if let Some(error) = output.launch_error.as_ref().or(windows_error.as_ref()) {
         rows.insert(
@@ -144,30 +208,78 @@ pub(super) fn launcher_view(
                 components::field_label(format!("Could not complete the request: {error}"))
                     .line_break_mode(LineBreaking::WordWrap),
             )
-            .background_color(components::DANGER_SUBTLE)
+            .theme_background(Tone::Danger)
             .padding(8.0.px())
             .boxed(),
         );
     }
-    focus_on_activation(
-        super::popup::panel_with_header(
-            output,
-            super::popup::PopupKind::Search,
-            flex_col((
+    let output_key = output.key().to_owned();
+    let horizontal_padding = if output.launcher_width <= 480.0 {
+        14.0
+    } else {
+        24.0
+    }
+    .px();
+    let collection = (!output.drawing.active()).then(|| {
+        sized_box(controls::collection(output, count)).padding(Padding {
+            top: 12.0.px(),
+            bottom: 4.0.px(),
+            ..Padding::horizontal(horizontal_padding)
+        })
+    });
+    let footer = (!output.drawing.active()).then(|| {
+        sized_box(
+            sized_box(
                 flex_row((
-                    components::section_title("Search"),
-                    FlexSpacer::Flex(1.0),
-                    close,
-                )),
-                search,
-            ))
+                    components::icons::icon(components::icons::Icon::CornerDownLeft, 14.0)
+                        .theme_color(Tone::Muted),
+                    label("Enter to open")
+                        .text_size(10.0)
+                        .theme_color(Tone::Muted),
+                ))
+                .gap(6.0.px()),
+            )
+            .height(42.0.px())
+            .theme_border(Tone::Border)
+            .border_width(1.0.px()),
+        )
+        .padding(Padding {
+            bottom: 12.0.px(),
+            ..Padding::horizontal(horizontal_padding)
+        })
+    });
+    let panel = super::popup::launcher_panel(
+        output,
+        flex_col((controls::header(output, focus_target.clone()), collection))
             .cross_axis_alignment(CrossAxisAlignment::Stretch)
-            .gap(8.0.px()),
+            .gap(0.0.px()),
+        sized_box(
             flex_col(rows)
                 .cross_axis_alignment(CrossAxisAlignment::Stretch)
                 .gap(4.0.px()),
+        )
+        .padding(Padding {
+            top: if output.drawing.active() { 12.0 } else { 0.0 }.px(),
+            bottom: if output.drawing.active() { 12.0 } else { 4.0 }.px(),
+            ..Padding::horizontal(horizontal_padding)
+        }),
+        footer,
+    );
+    focus_on_activation(
+        xilem::view::resize_observer(
+            move |state: &mut ShellState, size| {
+                if let Some(output) = state
+                    .outputs
+                    .iter_mut()
+                    .find(|output| output.key() == output_key)
+                {
+                    output.launcher_width = size.width;
+                }
+            },
+            panel,
         ),
         focus_target,
+        output.key().to_owned(),
     )
 }
 

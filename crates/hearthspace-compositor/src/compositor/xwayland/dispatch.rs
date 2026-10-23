@@ -49,6 +49,23 @@ impl App {
         )?;
         self.xwm = Some(xwm);
         self.xdisplay = Some(display_number);
+        self.publish_xsettings();
         Ok(())
+    }
+
+    pub(in crate::compositor) fn publish_xsettings(&mut self) {
+        let Some(xwm) = self.xwm.as_mut() else { return };
+        let theme = match self.appearance.color_mode {
+            hearthspace_ipc::ColorMode::Light => "Adwaita",
+            hearthspace_ipc::ColorMode::Dark => "Adwaita-dark",
+        };
+        // Smithay owns the selection, serialization, change serial and property
+        // notifications. Modern accent preferences are published by the portal;
+        // XSettings has no interoperable GTK accent-color key.
+        if let Err(error) =
+            xwm.set_xsettings([("Net/ThemeName".into(), theme.to_owned().into())].into_iter())
+        {
+            warn!(%error, "failed to publish the XWayland application theme");
+        }
     }
 }

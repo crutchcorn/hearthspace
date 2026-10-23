@@ -1,58 +1,80 @@
 # Shell controls
 
-The shell bar displays application tray icons, the clock, and four desktop
-controls: Search, Notifications, Canvas map, and Power. Tray icons appear only
-while apps publish them; see [application tray](TRAY.md) for menus and input.
-Search, notifications, the map and the power menu each open a separate overlay
-or popover. Opening one closes the previous panel.
-Escape, the close icon, an outside click, or clicking
-the active toolbar icon dismisses it.
+Four independent shell surfaces anchor to each output's corners:
+
+- **Top left — Notifications:** one button combines the bell with “All clear” or the number of new notifications and opens the notification panel.
+- **Top right — System tray:** application tray icons, clock/calendar, Wi-Fi, brightness, sound, battery when available, and Power. Tray icons appear only while apps publish them; see [application tray](TRAY.md).
+- **Bottom left — Canvas tools:** [desktop-item selection](DESKTOP_ITEMS.md), window-group selection, and the [canvas map](CANVAS_MAP.md).
+- **Bottom right — App dock and Apps List:** running apps and the installed-app browser.
+
+The dock groups windows by application ID. Activating an icon focuses and reveals
+an existing window on the infinite canvas; repeated activation cycles through that
+app's windows. The active app is highlighted, dots indicate running windows, and
+icons update as windows open or close. Apps without desktop icons have a window
+symbol. A page button keeps every running app reachable when space is limited.
+
+Each panel opens beside its corner: awareness panels extend downward, while the
+canvas map and Apps List open upward. Opening one closes the previous panel.
+Escape, the close icon, an outside click, or the active corner button dismisses it.
 Panels have rounded transparent corners and shrink to fit their content. Long
-lists scroll within the available height; search keeps its heading and input
-visible above the results. Search uses 60% of the output's logical width, with a
-360-pixel minimum where space permits, capped to leave 12-pixel side margins
-on small displays.
+lists scroll within the available height; Apps List keeps its heading, input,
+view switch, and footer visible. It requests 650 logical pixels, capped to the output with 24-pixel side margins. Maximized apps fit
+between the top and bottom controls; fullscreen retains its existing shell policy.
 
-Tap Meta (also called Super or the Windows key) to toggle the search overlay.
-The action occurs when the key is released. Using Meta in a shortcut, such as
-Super+Return, Super+L or Super+arrow, does not toggle search afterward.
-Super+Space opens search, as does the Search icon. Typing searches application
-names and running-window titles or app IDs. The first result is selected initially;
-Up and Down move the visible selection, and Enter activates that result. The
-search field retains typing focus while the selection moves.
-Selecting a running window focuses its existing ID and brings it into view.
-An empty query shows a typing hint. Hearthspace Settings is available through
-search. Prebuilt sessions register its desktop entry in their private runtime,
-using the selected binary directory when provided. Native agent startup builds
-and verifies the Settings executable as part of its required binary set.
+Tap Meta (also called Super or the Windows key) to toggle Apps List. The action
+occurs on release. Using Meta in a shortcut, such as Super+Return, Super+L or
+Super+arrow, does not toggle it afterward. Super+Space opens Apps List, as does
+its dock button or an upward touchscreen swipe starting on the dock.
 
-The notification bell opens the notification list; its dot indicates active
-notifications. The [canvas map](CANVAS_MAP.md) remains beside the bell, with
-viewport dragging and zoom controls. Power contains Lock and Log out. Log out
-shows a confirmation with a Cancel option before ending the session.
+Super+F6 moves keyboard focus through Notifications, System tray, Canvas tools,
+and App dock on the active output. Super+Shift+F6 moves backward. Tab navigates
+within a corner; Enter activates its focused control. Escape closes an open panel
+or returns from the corner to the most recent app without moving the canvas.
 
-The former Reset view action, Super+0 shortcut and `reset-view` command are
-removed. There is no Overview button, separate Windows button or unfiltered
-window-list mode. Overview gestures and Super+O, Alt+Tab, and query-based window
-search remain available. Settings, Lock and Log out are no longer standalone
-bar buttons.
+An empty query shows installed applications alphabetically in a four-column icon grid.
+The view switch selects an icon grid or a list with app descriptions; narrow
+panels reduce the grid column count. The Draw tab reuses the existing favorite
+gesture pad and matching flow. Typing filters apps
+and running-window titles or IDs. Up and Down move between rows (Left and Right move between grid cells); Enter
+activates it while the search field retains typing focus. Selecting a running
+window focuses its existing ID and brings it into view. Hearthspace Settings is
+available in Apps List. Prebuilt sessions register its desktop entry in their
+private runtime, using the selected binary directory when provided.
+
+Power contains Lock and Log out; Log out requires confirmation and offers Cancel.
+Overview gestures, Super+O, and Alt+Tab remain available. Settings, Lock and Log
+out are reached through Apps List and Power rather than standalone corner buttons.
+
+Wi-Fi shows the network tray handoff until a network-management backend is
+available; it does not invent nearby networks or connection state.
+[Brightness and Sound](AUDIO_AND_BRIGHTNESS.md) open separate slider dropdowns
+using the existing hardware readings. Battery details appear in the Battery
+dropdown. Missing hardware has an explicit unavailable state. The clock dropdown
+shows the current month.
 
 ## Agent control
 
-Buttons retain descriptive accessible names despite showing icons: `Search`,
-`Notifications`, `Canvas map`, and `Power`. Close controls are named `Close
-search`, `Close notifications`, `Close canvas map`, and `Close power menu`.
+Buttons retain descriptive accessible names despite showing icons: `Apps List`,
+`Notifications`, `Canvas map`, `Select window group`, `Wi-Fi settings`,
+`Brightness settings`, `Sound settings`, `Date and time`, and `Power`.
+Close controls include `Close apps list`, `Close notifications`, `Close canvas map`,
+and `Close power menu`. Dock names include the app, window count, active state,
+and next window when cycling.
 The power choices are `Lock`, `Log out`, `Confirm log out`, and `Cancel`.
 Search rows retain button roles and the names `Open: APP NAME` or `Window:
 WINDOW TITLE`; the current result exposes the accessibility `selected` state.
 
+Unlocked `status.shell_corners` lists the four control surfaces with `corner`
+(`notifications`, `system`, `canvas`, or `apps`), `output`, `x`, `y`, `width`, and
+`height`. These surfaces use global output-logical coordinates.
+
 Unlocked `status.shell_panels` lists visible panel bounds as `kind`, `output`,
 `x`, `y`, `width`, and `height`. Kinds are `search`, `notifications`, `map`,
-`power`, and `tray`. Bounds use global logical output coordinates. AccessKit
+`power`, `controls`, and `tray`. Bounds use global logical output coordinates. AccessKit
 bounds are physical and local to each surface, so pointer automation combines both with
 the output scale. Shell panels never enter the normal `windows` list.
 
-`focus-launcher` explicitly opens search while a synthetic bare Meta tap toggles
+`focus-launcher` explicitly opens Apps List while a synthetic bare Meta tap toggles
 it. The independent `zoom-to SCALE` and `pan-to X Y` control commands allow test
 fixtures to set an explicit viewport. Wait for zoom animation to settle before
 panning, since a direct pan interrupts animation. Neither command changes
@@ -86,14 +108,15 @@ scripts/shell-smoke --session /tmp/hearthspace-shell-native-1
 Follow the [native control skill](../.agents/skills/hearthspace-native-control/SKILL.md)
 and [native testing](NATIVE_TESTING.md) for seat ownership and recovery. The
 workflow starts only an owned spare-VT session and restores its recorded original
-VT. It checks icon ordering and removed controls; Meta release immediately
+VT. It checks corner placement and control names; Meta release immediately
 followed by typing, including exact accessible text and no leakage to the prior
-terminal; Up/Down result selection and Enter activation of a running window and
+terminal; Super+F6 corner traversal and keyboard panel activation; repeated dock
+activation cycling existing windows; Up/Down result selection and Enter activation of a running window and
 Settings; pointer selection; Settings close; notifications; and power
 confirmation cancellation. It uses Tab to focus Lock without activating it, then
 focuses Cancel and presses Enter to dismiss the logout confirmation. It never
 confirms logout. It first launches an owned dark terminal backdrop, maximizes it
-below the bar, and compares every popup corner against its captured background.
+between the controls, and compares every popup corner against its captured background.
 It verifies a visible popup interior and measures
 the gap below the final accessible content. Search highlight assertions require
 both the old and new rows to change visibly. Screenshots and cleanup evidence are

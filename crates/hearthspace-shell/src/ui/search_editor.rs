@@ -29,8 +29,11 @@ impl SearchEditor {
         Self {
             // Preserve the upstream editor's soft wrapping for long queries.
             // Enter still submits; it never inserts a new line.
-            text: TextArea::new_editable(text).with_word_wrap(true),
-            placeholder: Label::new(PLACEHOLDER),
+            text: TextArea::new_editable(text)
+                .with_word_wrap(true)
+                .with_style(xilem::masonry::parley::StyleProperty::FontSize(17.0)),
+            placeholder: Label::new("Find an application")
+                .with_style(xilem::masonry::parley::StyleProperty::FontSize(17.0)),
             composing: false,
         }
     }
@@ -39,7 +42,9 @@ impl SearchEditor {
         // TextArea stores focus in Masonry's context, not in the editor. Keep
         // this widget's identity and placeholder while clearing external text
         // and any composition, matching TextArea::reset_text's semantics.
-        self.text = TextArea::new_editable(text).with_word_wrap(true);
+        self.text = TextArea::new_editable(text)
+            .with_word_wrap(true)
+            .with_style(xilem::masonry::parley::StyleProperty::FontSize(17.0));
         self.composing = false;
     }
 }
@@ -112,6 +117,7 @@ impl Widget for SearchEditor {
     }
     fn property_changed(&mut self, ctx: &mut UpdateCtx<'_>, property_type: TypeId) {
         self.text.property_changed(ctx, property_type);
+        self.placeholder.property_changed(ctx, property_type);
     }
     fn register_children(&mut self, _: &mut RegisterCtx<'_>) {}
     fn measure(
@@ -122,6 +128,13 @@ impl Widget for SearchEditor {
         request: LenReq,
         cross: Option<Length>,
     ) -> Length {
+        if axis == Axis::Horizontal {
+            match request {
+                LenReq::MinContent => return Length::ZERO,
+                LenReq::FitContent(space) => return space,
+                LenReq::MaxContent => {}
+            }
+        }
         self.text.measure(ctx, props, axis, request, cross)
     }
     fn layout(&mut self, ctx: &mut LayoutCtx<'_>, props: &PropertiesRef<'_>, size: Size) {

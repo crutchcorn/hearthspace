@@ -9,7 +9,8 @@ fn session() -> UiTouch {
         output: Rectangle::new((0, 0).into(), (1000, 800).into()),
         origin: (100.0, 80.0).into(),
         local: (20.0, 15.0).into(),
-        target: Target::Bar(BarSwipe::new((100.0, 80.0).into(), Instant::now())),
+        target: Target::Bar(BarSwipe::new((100.0, 80.0).into(), Instant::now(), None)),
+        apps_identity: None,
     }
 }
 
@@ -28,13 +29,38 @@ fn surface_coordinates_follow_scale_and_original_contact_owner() {
 #[test]
 fn stale_window_geometry_output_or_locked_session_invalidates_delivery() {
     let touch = session();
-    assert!(touch.valid(Some(touch.geometry), &[touch.output], true));
-    assert!(!touch.valid(None, &[touch.output], true));
-    assert!(!touch.valid(Some(touch.geometry), &[], true));
-    assert!(!touch.valid(Some(touch.geometry), &[touch.output], false));
+    assert!(touch.valid(Some(touch.geometry), &[touch.output], true, None));
+    assert!(!touch.valid(None, &[touch.output], true, None));
+    assert!(!touch.valid(Some(touch.geometry), &[], true, None));
+    assert!(!touch.valid(Some(touch.geometry), &[touch.output], false, None));
     let mut moved = touch.geometry;
     moved[0] += 1.0;
-    assert!(!touch.valid(Some(moved), &[touch.output], true));
+    assert!(!touch.valid(Some(moved), &[touch.output], true, None));
+}
+
+#[test]
+fn held_dock_touch_cannot_activate_a_replacement_in_the_same_surface_bounds() {
+    let mut touch = session();
+    let original = vec![(1, Some("editor".into())), (2, Some("browser".into()))];
+    touch.apps_identity = Some(original.clone());
+    assert!(touch.valid(Some(touch.geometry), &[touch.output], true, Some(&original)));
+    let replacement = vec![(2, Some("browser".into())), (3, Some("terminal".into()))];
+    assert!(!touch.valid(
+        Some(touch.geometry),
+        &[touch.output],
+        true,
+        Some(&replacement)
+    ));
+    let regrouped = vec![(1, Some("terminal".into())), (2, Some("browser".into()))];
+    assert!(!touch.valid(
+        Some(touch.geometry),
+        &[touch.output],
+        true,
+        Some(&regrouped)
+    ));
+    touch.cancel();
+    assert!(matches!(touch.target, Target::Cancelled));
+    assert!(touch.suppresses_pointer("screen", &TouchAction::Release));
 }
 
 #[test]

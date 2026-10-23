@@ -10,6 +10,9 @@ use wayland_client::{
 };
 use wayland_protocols::xdg::shell::client::{xdg_surface, xdg_toplevel, xdg_wm_base};
 
+#[path = "canvas_map_client/pixels.rs"]
+mod pixels;
+
 struct Window {
     surface: wl_surface::WlSurface,
     xdg_surface: xdg_surface::XdgSurface,
@@ -17,6 +20,7 @@ struct Window {
     size: (i32, i32),
     inset: (i32, i32),
     color: [u8; 4],
+    rectangle: Option<pixels::ColoredRectangle>,
     alive: bool,
 }
 
@@ -31,6 +35,7 @@ struct State {
     pointer: Option<usize>,
     pointer_xy: (f64, f64),
     presses: Vec<(usize, (f64, f64))>,
+    releases: Vec<(usize, (f64, f64))>,
     closed: Vec<usize>,
     keys: Vec<u32>,
     enter_keys: Vec<u32>,
@@ -89,6 +94,7 @@ impl MapClient {
             size,
             inset,
             color,
+            rectangle: None,
             alive: true,
         });
         surface.commit();
@@ -119,6 +125,13 @@ impl MapClient {
         self.sync();
     }
 
+    pub(super) fn repaint_color(&mut self, number: usize, color: [u8; 4]) {
+        self.state.windows[number].color = color;
+        self.state.windows[number].rectangle = None;
+        self.state.commit_buffer(number, &self.queue.handle());
+        self.sync();
+    }
+
     pub(super) fn destroy(&mut self, number: usize) {
         let window = &mut self.state.windows[number];
         window.alive = false;
@@ -135,6 +148,10 @@ impl MapClient {
     pub(super) fn presses(&mut self) -> &[(usize, (f64, f64))] {
         self.sync();
         &self.state.presses
+    }
+    pub(super) fn releases(&mut self) -> &[(usize, (f64, f64))] {
+        self.sync();
+        &self.state.releases
     }
     pub(super) fn closed(&mut self) -> &[usize] {
         self.sync();
@@ -162,8 +179,7 @@ impl State {
         let size = width as usize * height as usize * 4;
         let mut file = tempfile::tempfile().unwrap();
         file.set_len(size as u64).unwrap();
-        file.write_all(&window.color.repeat(width as usize * height as usize))
-            .unwrap();
+        file.write_all(&pixels::paint(window)).unwrap();
         let pool = self
             .shm
             .as_ref()
@@ -260,6 +276,14 @@ impl Dispatch<wl_pointer::WlPointer, ()> for State {
             } => {
                 if let Some(number) = state.pointer {
                     state.presses.push((number, state.pointer_xy));
+                }
+            }
+            wl_pointer::Event::Button {
+                state: WEnum::Value(wl_pointer::ButtonState::Released),
+                ..
+            } => {
+                if let Some(number) = state.pointer {
+                    state.releases.push((number, state.pointer_xy));
                 }
             }
             _ => {}

@@ -121,6 +121,14 @@ impl Widget for DrawingPad {
         self.capture_locally
     }
 
+    fn property_changed(
+        &mut self,
+        ctx: &mut xilem::masonry::core::UpdateCtx<'_>,
+        property: std::any::TypeId,
+    ) {
+        components::Palette::prop_changed(ctx, property);
+    }
+
     fn register_children(&mut self, _: &mut RegisterCtx<'_>) {}
 
     fn on_pointer_event(
@@ -208,6 +216,11 @@ impl Widget for DrawingPad {
     }
 
     fn update(&mut self, ctx: &mut UpdateCtx<'_>, _: &mut PropertiesMut<'_>, event: &Update) {
+        if self.capture_locally
+            && matches!(event, Update::HoveredChanged(_) | Update::FocusChanged(_))
+        {
+            ctx.request_paint_only();
+        }
         if matches!(
             event,
             Update::FocusChanged(false)
@@ -245,6 +258,7 @@ impl Widget for DrawingPad {
         }
         self.size = size;
         ctx.set_clip_path(size.to_rect());
+        ctx.set_paint_insets(if self.capture_locally { 88.0 } else { 0.0 });
     }
 
     fn compose(&mut self, ctx: &mut ComposeCtx<'_>) {
@@ -263,23 +277,75 @@ impl Widget for DrawingPad {
         }
     }
 
-    fn paint(&mut self, ctx: &mut PaintCtx<'_>, _: &PropertiesRef<'_>, painter: &mut Painter<'_>) {
-        let bounds = self.size.to_rect().inset(-1.0).to_rounded_rect(8.0);
-        painter.fill(bounds, components::SURFACE_SUBTLE).draw();
-        let border = if ctx.is_focus_target() {
-            components::ACCENT
-        } else {
-            components::BORDER
-        };
-        painter.stroke(bounds, &Stroke::new(1.0), border).draw();
-        // A quiet grid indicates the active drawing region without implying a
-        // required starting point, size or exact tracing path.
-        for x in (20..self.size.width.max(0.0) as usize).step_by(24) {
-            for y in (20..self.size.height.max(0.0) as usize).step_by(24) {
-                painter
-                    .fill(Circle::new((x as f64, y as f64), 0.8), components::BORDER)
-                    .draw();
+    fn pre_paint(
+        &mut self,
+        ctx: &mut PaintCtx<'_>,
+        props: &PropertiesRef<'_>,
+        painter: &mut Painter<'_>,
+    ) {
+        xilem::masonry::core::pre_paint(ctx, props, painter);
+        let palette = *props.get::<components::Palette>(ctx.property_cache());
+        if self.capture_locally
+            && (ctx.is_hovered() || ctx.is_focus_target() || self.stroke.is_some())
+        {
+            for (color, offset, blur, spread) in [
+                (
+                    palette
+                        .accent
+                        .with_alpha(if palette.dark { 0.14 } else { 0.18 }),
+                    (0.0, 28.0),
+                    88.0,
+                    -18.0,
+                ),
+                (palette.glow_shadow, (0.0, 8.0), 32.0, -12.0),
+            ] {
+                components::settings_material::shadow(
+                    painter,
+                    self.size.to_rect(),
+                    14.0,
+                    color,
+                    offset,
+                    blur,
+                    spread,
+                );
             }
+        }
+    }
+
+    fn paint(
+        &mut self,
+        ctx: &mut PaintCtx<'_>,
+        props: &PropertiesRef<'_>,
+        painter: &mut Painter<'_>,
+    ) {
+        let palette = *props.get::<components::Palette>(ctx.property_cache());
+        let bounds = self.size.to_rect().inset(-1.0).to_rounded_rect(14.0);
+        if self.capture_locally {
+            let rect = self.size.to_rect();
+            let border = rect.inset(-0.5).to_rounded_rect(13.5);
+            let active = ctx.is_hovered() || ctx.is_focus_target() || self.stroke.is_some();
+            painter
+                .fill(rect.to_rounded_rect(14.0), palette.chrome)
+                .draw();
+            components::settings_material::edge_light_with_palette(painter, rect, 14.0, &palette);
+            painter
+                .stroke(
+                    border,
+                    &Stroke::new(1.0),
+                    if active {
+                        palette.accent_border
+                    } else {
+                        palette.chrome_border
+                    },
+                )
+                .draw();
+            components::settings_material::glass_edge_with_palette(
+                painter, rect, 14.0, active, &palette,
+            );
+        } else if ctx.is_focus_target() {
+            painter
+                .stroke(bounds, &Stroke::new(1.0), palette.focus_ring_on_glass)
+                .draw();
         }
         let mut path = BezPath::new();
         for (index, point) in self.points().iter().enumerate() {
@@ -292,17 +358,23 @@ impl Widget for DrawingPad {
         painter
             .stroke(
                 path,
-                &Stroke::new(3.0)
+                &Stroke::new(if self.capture_locally { 2.5 } else { 3.0 })
                     .with_caps(Cap::Round)
                     .with_join(Join::Round),
-                components::ACCENT,
+                if self.capture_locally {
+                    palette.accent_decorative
+                } else {
+                    palette.accent
+                },
             )
             .draw();
-        if let Some(point) = self.points().first() {
+        if !self.capture_locally
+            && let Some(point) = self.points().first()
+        {
             painter
                 .fill(
                     Circle::new(Point::new(point[0], point[1]), 3.5),
-                    components::ACCENT,
+                    palette.accent,
                 )
                 .draw();
         }

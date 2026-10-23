@@ -48,8 +48,32 @@ fn get_reads_existing_config() {
 
     assert_eq!(
         response,
-        "ok test true background-mode contains background-image-path %2Ftmp%2Fwallpaper.png monitor dock 2560 1440 2 -2560 120 Dock%20Display\n"
+        "ok test true background-mode contains background-image-path %2Ftmp%2Fwallpaper.png monitor dock 2560 1440 2 -2560 120 Dock%20Display color-mode light accent-color orange\n"
     );
+}
+
+#[test]
+fn appearance_persists_across_requests_and_rejects_invalid_changes() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = dir.path().join("config.toml");
+    round_trip("set background-mode cover\n", &config);
+    for mode in hearthspace_ipc::ColorMode::ALL {
+        round_trip(&format!("set color-mode {mode}\n"), &config);
+        for accent in hearthspace_ipc::AccentColor::ALL {
+            let response = round_trip(&format!("set accent-color {accent}\n"), &config);
+            assert!(response.contains(&format!("color-mode {mode} accent-color {accent}")));
+            assert!(response.contains("background-mode cover"));
+            assert_eq!(response, round_trip("get\n", &config));
+            let contents = fs::read_to_string(&config).unwrap();
+            assert!(contents.contains(&format!("color_mode = {mode}\n")));
+            assert!(contents.contains(&format!("accent_color = {accent}\n")));
+        }
+    }
+    let original = fs::read(&config).unwrap();
+    for invalid in ["set color-mode auto\n", "set accent-color pink\n"] {
+        assert!(round_trip(invalid, &config).starts_with("err "));
+        assert_eq!(fs::read(&config).unwrap(), original);
+    }
 }
 
 #[test]

@@ -1,4 +1,5 @@
 //! Rasterize only the visible lasso bounds; cap memory on very large outputs.
+use hearthspace_ui_components::Palette;
 use smithay::{
     backend::{allocator::Fourcc, renderer::element::memory::MemoryRenderBuffer},
     utils::{Logical, Point, Rectangle, Size, Transform},
@@ -6,6 +7,7 @@ use smithay::{
 use tiny_skia::{FillRule, Paint, PathBuilder, Pixmap, Stroke};
 
 pub(super) struct LassoBuffer {
+    palette: Palette,
     points: Vec<Point<f64, Logical>>,
     clip: Rectangle<i32, Logical>,
     pub(super) rect: Rectangle<i32, Logical>,
@@ -18,13 +20,15 @@ impl LassoBuffer {
         &self,
         points: &[Point<f64, Logical>],
         clip: Rectangle<i32, Logical>,
+        palette: Palette,
     ) -> bool {
-        self.points == points && self.clip == clip
+        self.points == points && self.clip == clip && self.palette == palette
     }
 
     pub(super) fn new(
         points: &[Point<f64, Logical>],
         clip: Rectangle<i32, Logical>,
+        palette: Palette,
     ) -> Option<Self> {
         let first = points.first()?;
         let (mut x0, mut y0, mut x1, mut y1) = (first.x, first.y, first.x, first.y);
@@ -52,8 +56,9 @@ impl LassoBuffer {
             (f64::from(rect.size.w) * scale).ceil() as i32,
             (f64::from(rect.size.h) * scale).ceil() as i32,
         ));
-        let pixmap = rasterize(points, rect, pixel_size)?;
+        let pixmap = rasterize(points, rect, pixel_size, palette)?;
         Some(Self {
+            palette,
             points: points.to_vec(),
             clip,
             rect,
@@ -74,6 +79,7 @@ fn rasterize(
     points: &[Point<f64, Logical>],
     rect: Rectangle<i32, Logical>,
     size: Size<i32, Logical>,
+    palette: Palette,
 ) -> Option<Pixmap> {
     let mut pixmap = Pixmap::new(size.w as u32, size.h as u32)?;
     let sx = size.w as f32 / rect.size.w as f32;
@@ -93,7 +99,8 @@ fn rasterize(
     }
     let path = builder.finish()?;
     let mut paint = Paint::default();
-    paint.set_color_rgba8(117, 171, 255, 27);
+    let [r, g, b, _] = palette.accent.components;
+    paint.set_color(tiny_skia::Color::from_rgba(r, g, b, 27.0 / 255.0)?);
     pixmap.fill_path(
         &path,
         &paint,
@@ -101,7 +108,7 @@ fn rasterize(
         tiny_skia::Transform::identity(),
         None,
     );
-    paint.set_color_rgba8(137, 188, 255, 245);
+    paint.set_color(tiny_skia::Color::from_rgba(r, g, b, 245.0 / 255.0)?);
     pixmap.stroke_path(
         &path,
         &paint,
@@ -138,6 +145,7 @@ mod tests {
             &points,
             Rectangle::from_size((100, 100).into()),
             (100, 100).into(),
+            Palette::default(),
         )
         .unwrap();
         assert_eq!(pixels.pixel(60, 60).unwrap().alpha(), 0);
@@ -153,7 +161,7 @@ mod tests {
             (1_000_000., 1_000_000.).into(),
         ];
         let clip = Rectangle::new((-100, 40).into(), (10000, 10000).into());
-        let buffer = LassoBuffer::new(&points, clip).unwrap();
+        let buffer = LassoBuffer::new(&points, clip, Palette::default()).unwrap();
         assert_eq!(buffer.rect, clip);
         assert!(i64::from(buffer.pixel_size.w) * i64::from(buffer.pixel_size.h) <= 4_004_001);
     }

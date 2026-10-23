@@ -4,9 +4,9 @@
 //! this palette in the existing shell layer while using standard keyboard
 //! focus and xdg_toplevel.close events for its lifetime.
 use hearthspace_common::{
-    canvas_map_output_name_from_app_id, control_center_output_name_from_app_id,
-    launcher_output_name_from_app_id, notifications_output_name_from_app_id,
-    power_menu_output_name_from_app_id, tray_menu_output_name_from_app_id,
+    canvas_map_output_name_from_app_id, launcher_output_name_from_app_id,
+    notifications_output_name_from_app_id, power_menu_output_name_from_app_id,
+    quick_panel_output_name_from_app_id, tray_menu_output_name_from_app_id,
 };
 use serde_json::{Value, json};
 
@@ -111,7 +111,7 @@ impl App {
             .hit_test(self.pointer_location)
             .map(|target| match target {
                 HitTarget::Client { window_index, .. }
-                | HitTarget::CloseButton { window_index }
+                | HitTarget::TitlebarButton { window_index, .. }
                 | HitTarget::TitleBar { window_index }
                 | HitTarget::ResizeBorder { window_index, .. } => window_index,
             });
@@ -152,7 +152,7 @@ impl App {
                     "notifications"
                 } else if power_menu_output_name_from_app_id(&app_id).is_some() {
                     "power"
-                } else if control_center_output_name_from_app_id(&app_id).is_some() {
+                } else if quick_panel_output_name_from_app_id(&app_id).is_some() {
                     "controls"
                 } else if tray_menu_output_name_from_app_id(&app_id).is_some() {
                     "tray"

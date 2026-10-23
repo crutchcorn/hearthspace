@@ -5,10 +5,7 @@ use smithay::{
 };
 use wayland_server::protocol::wl_surface::WlSurface;
 
-use crate::{
-    compositor::App,
-    config::{CONTROL_BAR_HEIGHT, TITLE_BAR_HEIGHT},
-};
+use crate::{compositor::App, config::TITLE_BAR_HEIGHT};
 
 impl App {
     pub(in crate::compositor) fn configure_initial_toplevel(&self, root: &WlSurface) {
@@ -55,9 +52,12 @@ impl App {
             self.viewport_scale
         };
         Some(advisory_bounds(
-            output.size,
+            if fullscreen {
+                output.size
+            } else {
+                self.usable_output(output).size
+            },
             scale,
-            fullscreen,
             self.has_compositor_chrome(index),
         ))
     }
@@ -66,16 +66,14 @@ impl App {
 fn advisory_bounds(
     output: Size<i32, Logical>,
     scale: f64,
-    fullscreen: bool,
     server_chrome: bool,
 ) -> Size<i32, Logical> {
-    let bar = if fullscreen { 0 } else { CONTROL_BAR_HEIGHT };
     let chrome = if server_chrome { TITLE_BAR_HEIGHT } else { 0 };
     // Surface coordinates scale with the canvas, independently of output DPI.
     // Floor so rounding a client size back onto the output cannot exceed it.
     (
         (f64::from(output.w.max(1)) / scale).floor().max(1.0) as i32,
-        ((f64::from((output.h - bar).max(1)) / scale).floor() as i32 - chrome).max(1),
+        ((f64::from(output.h.max(1)) / scale).floor() as i32 - chrome).max(1),
     )
         .into()
 }
@@ -87,32 +85,29 @@ mod tests {
     #[test]
     fn bounds_exclude_panel_and_only_server_drawn_chrome() {
         assert_eq!(
-            advisory_bounds((1280, 800).into(), 1.0, false, false),
+            advisory_bounds((1280, 752).into(), 1.0, false),
             (1280, 752).into()
         );
         assert_eq!(
-            advisory_bounds((1280, 800).into(), 1.0, false, true),
-            (1280, 722).into()
+            advisory_bounds((1280, 752).into(), 1.0, true),
+            (1280, 708).into()
         );
     }
 
     #[test]
     fn canvas_scale_and_fullscreen_dialogs_have_distinct_bounds() {
         assert_eq!(
-            advisory_bounds((1280, 800).into(), 0.8, false, true),
-            (1600, 910).into()
+            advisory_bounds((1280, 752).into(), 0.8, true),
+            (1600, 896).into()
         );
         assert_eq!(
-            advisory_bounds((1280, 800).into(), 1.25, false, false),
+            advisory_bounds((1280, 752).into(), 1.25, false),
             (1024, 601).into()
         );
         assert_eq!(
-            advisory_bounds((1280, 800).into(), 1.0, true, false),
+            advisory_bounds((1280, 800).into(), 1.0, false),
             (1280, 800).into()
         );
-        assert_eq!(
-            advisory_bounds((1, 1).into(), 3.0, false, true),
-            (1, 1).into()
-        );
+        assert_eq!(advisory_bounds((1, 1).into(), 3.0, true), (1, 1).into());
     }
 }

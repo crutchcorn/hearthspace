@@ -1,7 +1,7 @@
 # Window groups
 
-Use **Select window group** in the system tray, or **Super+G**, then draw a
-freeform lasso around windows on the canvas. Windows inside or crossed by the
+Use **Select window group** in the bottom-left Canvas tools, or **Super+G**, then
+draw a freeform lasso around windows on the canvas. Windows inside or crossed by the
 enclosed shape are selected. Releasing the pointer or lifting your finger
 finishes selection immediately; the last point connects to the first. Drawing
 a new lasso replaces the previous group. A tap or a line with no enclosed area
@@ -12,6 +12,11 @@ preserving the windows' relative positions. While grouped, these gestures move
 windows rather than interacting with their contents. Click or touch outside the
 selected windows to clear the group and resume normal interaction. **Escape**
 also clears it and cancels any pending gathering.
+
+Hold **Alt** during a group drag to align the grabbed window's visible top-left
+corner with the canvas dot grid. Every member moves by the same amount, keeping
+their spacing intact. Pressing or releasing Alt updates alignment immediately,
+including while the pointer is still.
 
 The floating overlapping-window button beside the group, **Gather similar
 windows**, searches other open windows for related titles. Its moving highlight
@@ -25,9 +30,12 @@ and **G** gathers while selecting.
 
 ## Optional local model
 
-Open **Settings → AI** to download or delete the D1 model, inspect its status,
-and choose **Automatic (GPU if available)** or **CPU only**. Ollama must already
-be installed and running with support for `POST /v1/systemone`; ordinary chat
+Open **Settings → AI** and turn on **Enable AI features** to download and prepare
+the D1 model, or enable an existing installation without downloading again.
+Progress and errors appear below the switch. Turning it off opens a confirmation;
+**Turn off and delete** removes the model and its download. Gather respects this
+enabled state, even when an external installation is available. Ollama must
+already be installed and running with support for `POST /v1/systemone`; ordinary chat
 support alone is insufficient. An unavailable runtime or missing model produces
 an actionable error without freezing window interaction.
 
@@ -39,12 +47,12 @@ model lives under `$XDG_CACHE_HOME/hearthspace/ai` (normally
 `~/.cache/hearthspace/ai`), and Ollama keeps its own imported copy. Delete removes
 Hearthspace's model and cache without deleting other Ollama models.
 
-Once installed, the session warms D1 after desktop startup and keeps it ready
+Once enabled, the session warms D1 after desktop startup and keeps it ready
 while logged in, renewing a five-minute warm lease every two minutes. Normal
 logout requests unloading; the lease also expires after an interrupted session.
-Loading and inference run on background workers. The selected
-processing mode is retained for later sessions. The model supports a 32,768-token
-context; this feature submits only window titles, with bounded input sizes.
+Loading and inference run on background workers. Automatic device selection is
+the default; existing device preferences are retained. The model supports a
+32,768-token context; this feature submits only window titles, with bounded input sizes.
 Memory and latency depend on the hardware, context, quantization, and runtime;
 the model size is not a fixed total-memory guarantee.
 
@@ -74,7 +82,7 @@ before moving windows, so gathering does not fight a drag in progress.
 ## Development
 
 The compositor owns selection, input routing, group geometry, and animations.
-The shell owns the tray control; settings owns model management. The
+The shell owns the Canvas tools control; Settings owns model management. The
 `hearthspace-ai` crate contains the local decision client and optional model
 download/import lifecycle. Smithay still owns Wayland window and surface
 handling. Grouping is compositor-local policy; it requires no client protocol

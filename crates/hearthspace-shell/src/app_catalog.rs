@@ -9,6 +9,7 @@ mod search;
 mod spawn;
 mod terminal;
 
+pub(crate) use spawn::launch_command;
 pub use spawn::{
     reap_child, spawn_argv, spawn_argv_with_env, spawn_argv_with_options,
     spawn_argv_with_wayland_display,

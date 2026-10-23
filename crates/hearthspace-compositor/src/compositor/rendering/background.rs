@@ -20,22 +20,39 @@ use super::GlesTexture;
 use crate::compositor::App;
 
 const MAX_BACKGROUND_TILE_ELEMENTS: usize = 512;
-const DEFAULT_BACKGROUND_IMAGE_PNG: &[u8] =
-    include_bytes!("../../../../../assets/backgrounds/default.png");
+#[path = "default_background.rs"]
+mod default;
 
 pub(in crate::compositor) struct BackgroundImageTile {
     context_id: ContextId<GlesTexture>,
     texture: GlesTexture,
     size: Size<i32, Logical>,
+    logical_grid: bool,
 }
 
 struct BackgroundImageData {
     pixels: Vec<u8>,
     format: Fourcc,
     size: Size<i32, Logical>,
+    logical_grid: bool,
 }
 
 impl App {
+    /// Changing mode replaces only the generated dot field. A user wallpaper
+    /// keeps its decoded texture, including when accents change.
+    pub(in crate::compositor) fn invalidate_default_background(&mut self) -> bool {
+        if self
+            .background_image_tile
+            .as_ref()
+            .is_some_and(|tile| tile.logical_grid)
+        {
+            self.background_image_tile = None;
+            true
+        } else {
+            false
+        }
+    }
+
     /// Build repeated background image render elements for the current viewport.
     ///
     /// The tile is laid out in *canvas* space, so it pans and zooms with the
@@ -51,12 +68,28 @@ impl App {
         if self.viewport_scale <= 0.0 || !self.viewport_scale.is_finite() {
             return Vec::new();
         }
-        let (context_id, texture, tile_size) = match self.background_image_tile(renderer) {
-            Ok(tile) => (tile.context_id.clone(), tile.texture.clone(), tile.size),
-            Err(_) => return Vec::new(),
-        };
+        let (context_id, texture, tile_size, logical_grid) =
+            match self.background_image_tile(renderer) {
+                Ok(tile) => (
+                    tile.context_id.clone(),
+                    tile.texture.clone(),
+                    tile.size,
+                    tile.logical_grid,
+                ),
+                Err(_) => return Vec::new(),
+            };
 
-        let output_rect = wallpaper_presentation_rect(output_rect, output_scale);
+        let grid_scale = if logical_grid && self.background_mode == BackgroundMode::RepeatWithCanvas
+        {
+            output_scale.max(1)
+        } else {
+            1
+        };
+        let output_rect = if grid_scale == 1 {
+            wallpaper_presentation_rect(output_rect, output_scale)
+        } else {
+            output_rect
+        };
         if self.background_mode != BackgroundMode::RepeatWithCanvas {
             return self.fixed_background_image_element(
                 context_id,
@@ -103,10 +136,12 @@ impl App {
                 ));
                 let screen = self.canvas_to_screen(tile_origin);
                 let next_screen = self.canvas_to_screen(next_tile_origin);
-                let left = screen.x.round() as i32;
-                let top = screen.y.round() as i32;
-                let right = next_screen.x.round() as i32;
-                let bottom = next_screen.y.round() as i32;
+                let screen = grid_physical_point(screen, output_rect.loc, grid_scale);
+                let next_screen = grid_physical_point(next_screen, output_rect.loc, grid_scale);
+                let left = screen.x;
+                let top = screen.y;
+                let right = next_screen.x;
+                let bottom = next_screen.y;
                 let location = Point::<f64, Physical>::from((f64::from(left), f64::from(top)));
                 let size = Size::from(((right - left).max(1), (bottom - top).max(1)));
                 let slot = elements.len();
@@ -182,6 +217,7 @@ impl App {
                 context_id,
                 texture,
                 size: data.size,
+                logical_grid: data.logical_grid,
             });
         }
 
@@ -201,8 +237,21 @@ impl App {
             }
         }
 
-        default_background_image_data()
+        default::image(self.appearance.color_mode)
     }
+}
+
+// Wallpaper elements are translated by the output origin after this step.
+// Scale the default grid about that origin so dots retain their logical size.
+fn grid_physical_point(
+    point: Point<f64, Logical>,
+    origin: Point<i32, Logical>,
+    scale: i32,
+) -> Point<i32, Physical> {
+    let project = |value: f64, origin: i32| {
+        ((value - f64::from(origin)) * f64::from(scale)).round() as i32 + origin
+    };
+    (project(point.x, origin.x), project(point.y, origin.y)).into()
 }
 
 fn wallpaper_presentation_rect(
@@ -304,9 +353,9 @@ fn fixed_background_rects(
     }
 }
 
+#[cfg(test)]
 fn default_background_image_data() -> BackgroundImageData {
-    decode_background_png(DEFAULT_BACKGROUND_IMAGE_PNG)
-        .expect("packaged default background image must be a valid 8-bit RGBA PNG")
+    default::image(hearthspace_ipc::ColorMode::Light)
 }
 
 fn decode_background_png(contents: &[u8]) -> Result<BackgroundImageData, String> {
@@ -330,127 +379,10 @@ fn decode_background_png(contents: &[u8]) -> Result<BackgroundImageData, String>
         pixels,
         format: Fourcc::Abgr8888,
         size: Size::<i32, Logical>::from((output.width as i32, output.height as i32)),
+        logical_grid: false,
     })
 }
 
 #[cfg(test)]
-mod tests {
-    use hearthspace_ipc::BackgroundMode;
-    use smithay::utils::{Logical, Rectangle, Size};
-
-    use crate::geometry::CanvasPoint;
-
-    use super::{
-        background_tile_axis_bounds, default_background_image_data, fixed_background_rects,
-        wallpaper_presentation_rect,
-    };
-
-    #[test]
-    fn background_tile_axis_bounds_include_partially_visible_tiles() {
-        assert_eq!(
-            background_tile_axis_bounds(0.0, 240.0, 120.0),
-            Some((0, 1, 2))
-        );
-        assert_eq!(
-            background_tile_axis_bounds(-240.0, 0.0, 120.0),
-            Some((-2, -1, 2))
-        );
-        assert_eq!(
-            background_tile_axis_bounds(10.0, 240.1, 120.0),
-            Some((0, 2, 3))
-        );
-    }
-
-    #[test]
-    fn canvas_background_bounds_follow_viewport_pan_and_zoom() {
-        let output = Rectangle::<i32, Logical>::new((0, 0).into(), (800, 600).into());
-
-        assert_ne!(
-            super::background_image_visible_bounds(output, CanvasPoint { x: 0, y: 0 }, 1.0,),
-            super::background_image_visible_bounds(
-                output,
-                CanvasPoint {
-                    x: 10_000,
-                    y: -5_000
-                },
-                0.25,
-            )
-        );
-    }
-
-    #[test]
-    fn stretch_background_uses_full_image_and_output() {
-        let image = Size::<i32, Logical>::from((400, 200));
-        let output = Rectangle::<i32, Logical>::new((10, 20).into(), (800, 600).into());
-
-        assert_eq!(
-            fixed_background_rects(image, output, BackgroundMode::Stretch),
-            Some((
-                Rectangle::from_size(Size::<f64, Logical>::from((400.0, 200.0))),
-                output,
-            ))
-        );
-    }
-
-    #[test]
-    fn contains_background_preserves_aspect_inside_output() {
-        let image = Size::<i32, Logical>::from((400, 200));
-        let output = Rectangle::<i32, Logical>::new((10, 20).into(), (800, 600).into());
-
-        assert_eq!(
-            fixed_background_rects(image, output, BackgroundMode::Contains),
-            Some((
-                Rectangle::from_size(Size::<f64, Logical>::from((400.0, 200.0))),
-                Rectangle::new((10, 120).into(), (800, 400).into()),
-            ))
-        );
-    }
-
-    #[test]
-    fn cover_background_crops_source_to_fill_output() {
-        let image = Size::<i32, Logical>::from((400, 200));
-        let output = Rectangle::<i32, Logical>::new((10, 20).into(), (300, 300).into());
-
-        assert_eq!(
-            fixed_background_rects(image, output, BackgroundMode::Cover),
-            Some((
-                Rectangle::new((100.0, 0.0).into(), (200.0, 200.0).into()),
-                output,
-            ))
-        );
-    }
-
-    #[test]
-    fn wallpaper_presentation_rect_uses_physical_output_size() {
-        let rect = Rectangle::<i32, Logical>::new((960, 0).into(), (960, 540).into());
-
-        assert_eq!(
-            wallpaper_presentation_rect(rect, 2),
-            Rectangle::new((960, 0).into(), (1920, 1080).into())
-        );
-    }
-
-    #[test]
-    fn default_background_image_loads_from_png_asset() {
-        let image = default_background_image_data();
-        assert_eq!(image.size, Size::<i32, Logical>::from((1920, 1080)));
-
-        assert_eq!(
-            pixel_rgba(&image.pixels, image.size, 0, 0),
-            [199, 199, 204, 255]
-        );
-        assert_eq!(
-            pixel_rgba(&image.pixels, image.size, 1919, 0),
-            [199, 199, 204, 255]
-        );
-        assert_eq!(
-            pixel_rgba(&image.pixels, image.size, 60, 60),
-            [255, 255, 255, 255]
-        );
-    }
-
-    fn pixel_rgba(pixels: &[u8], size: Size<i32, Logical>, x: i32, y: i32) -> [u8; 4] {
-        let offset = ((y * size.w + x) * 4) as usize;
-        pixels[offset..offset + 4].try_into().unwrap()
-    }
-}
+#[path = "background_tests.rs"]
+mod tests;

@@ -54,14 +54,20 @@ impl ButtonSources {
     }
 
     fn remove_remote(&mut self, device: Option<&VirtualPointerDevice>) -> Vec<u32> {
+        self.remove_sources(|source| match source {
+            PointerSource::Local => false,
+            PointerSource::Remote(candidate) => device.is_none_or(|device| device == candidate),
+        })
+    }
+
+    fn remove_local(&mut self) -> Vec<u32> {
+        self.remove_sources(|source| matches!(source, PointerSource::Local))
+    }
+
+    fn remove_sources(&mut self, remove: impl Fn(&PointerSource) -> bool) -> Vec<u32> {
         let mut released = Vec::new();
         self.0.retain(|button, sources| {
-            sources.retain(|source| match source {
-                PointerSource::Local => true,
-                PointerSource::Remote(candidate) => {
-                    device.is_some_and(|device| device != candidate)
-                }
-            });
+            sources.retain(|source| !remove(source));
             if sources.is_empty() {
                 released.push(*button);
             }
@@ -170,7 +176,19 @@ impl App {
 
     fn release_remote_pointer(&mut self, device: Option<&VirtualPointerDevice>) {
         let released = self.remote_input.buttons.remove_remote(device);
+        self.release_removed_pointer_buttons(released);
+    }
+
+    pub(in crate::compositor::input) fn release_local_pointer(&mut self) {
+        let released = self.remote_input.buttons.remove_local();
+        self.release_removed_pointer_buttons(released);
+    }
+
+    fn release_removed_pointer_buttons(&mut self, released: Vec<u32>) {
         if !released.is_empty() {
+            if released.contains(&0x110) {
+                self.cancel_titlebar_pointer();
+            }
             self.favorite_pointer_removed();
             for button in released {
                 self.handle_pointer_button_policy(button, ButtonState::Released, InputTime::now());
@@ -210,6 +228,27 @@ fn layout_bounds(rectangles: &[Rectangle<i32, Logical>]) -> Option<Rectangle<i32
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn removing_local_pointer_releases_held_buttons_and_allows_the_next_press() {
+        let mut sources = ButtonSources::default();
+        assert!(sources.transition(PointerSource::Local, 0x110, ButtonState::Pressed));
+        assert!(!sources.transition(PointerSource::Local, 0x110, ButtonState::Pressed));
+        assert!(sources.transition(PointerSource::Local, 0x111, ButtonState::Pressed));
+        assert!(
+            sources.remove_remote(None).is_empty(),
+            "remote cleanup must retain local holds"
+        );
+        let mut released = sources.remove_local();
+        released.sort_unstable();
+        assert_eq!(released, [0x110, 0x111]);
+        assert!(
+            sources.remove_local().is_empty(),
+            "removal releases each logical button once"
+        );
+        assert!(sources.transition(PointerSource::Local, 0x110, ButtonState::Pressed));
+        assert!(sources.transition(PointerSource::Local, 0x110, ButtonState::Released));
+    }
 
     #[test]
     fn absolute_input_uses_output_logical_extent_and_origin() {

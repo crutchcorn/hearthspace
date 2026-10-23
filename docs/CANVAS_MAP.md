@@ -11,7 +11,7 @@ neighborhood and expands to include distant windows and viewports, retaining
 their relative positions and aspect ratio. It is an orientation aid rather than
 a window thumbnail preview; Super+O and overview gestures open live previews.
 
-Drag the blue viewport area with a mouse or touchscreen to pan the canvas.
+Drag the orange viewport area with a mouse or touchscreen to pan the canvas.
 Its interior and outline both accept a drag. The map's projection stays fixed
 until release, so the viewport follows the pointer without the map rescaling
 underneath it. Dragging preserves the zoom level and window positions.

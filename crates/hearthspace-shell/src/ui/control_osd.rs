@@ -5,8 +5,8 @@ use super::{
     popup,
     state::{ShellOutputInstance, ShellState},
 };
+use crate::ui::appearance::{ThemeStyle as _, Tone};
 use hearthspace_common::{CONTROL_OSD_APP_ID, control_osd_app_id_for_output};
-use hearthspace_ui_components as components;
 use std::time::{Duration, Instant};
 use xilem::{
     WidgetView, WindowView,
@@ -109,12 +109,13 @@ pub(super) fn panel(osd: &Osd) -> impl WidgetView<ShellState> + use<> {
                 } else {
                     f64::from(osd.value.min(100)) / 100.0
                 };
-                sized_box(canvas(move |_: &mut ShellState, _, scene, size| {
+                sized_box(canvas(move |state: &mut ShellState, _, scene, size| {
+                    let palette = state.appearance.palette;
                     let mut painter = Painter::new(scene);
                     painter
                         .fill(
                             Rect::new(0.0, 0.0, size.width, size.height).to_rounded_rect(4.0),
-                            components::BORDER,
+                            palette.border,
                         )
                         .draw();
                     if fraction > 0.0 {
@@ -122,7 +123,7 @@ pub(super) fn panel(osd: &Osd) -> impl WidgetView<ShellState> + use<> {
                             .fill(
                                 Rect::new(0.0, 0.0, size.width * fraction, size.height)
                                     .to_rounded_rect(4.0),
-                                components::ACCENT,
+                                palette.accent,
                             )
                             .draw();
                     }
@@ -132,16 +133,17 @@ pub(super) fn panel(osd: &Osd) -> impl WidgetView<ShellState> + use<> {
             osd.error.clone().map(|error| {
                 label(error)
                     .text_size(12.0)
-                    .color(components::TEXT_MUTED)
                     .line_break_mode(LineBreaking::WordWrap)
+                    .theme_color(Tone::Muted)
             }),
         ))
         .cross_axis_alignment(CrossAxisAlignment::Stretch)
         .gap(10.0.px()),
     )
     .padding(16.0.px())
-    .background_color(components::SURFACE)
-    .border(components::BORDER, 1.0.px())
+    .theme_background(Tone::Surface)
+    .theme_border(Tone::Border)
+    .border_width(1.0.px())
     .corner_radius(12.0.px())
 }
 

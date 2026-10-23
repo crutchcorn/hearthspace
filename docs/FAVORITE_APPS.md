@@ -10,9 +10,9 @@ drawing directly with one finger on a touchscreen. You can redraw before saving.
 Shape previews help you remember assignments. Each shortcut uses its desktop-file
 ID and the existing safe app launcher, never a saved shell command.
 
-Open search with Meta, the search icon, or a one-finger downward touchscreen
-swipe starting on the top bar. Short taps still activate toolbar buttons;
-horizontal/upward swipes and multi-contact interruptions do not open search.
+Open Apps List with Meta, its dock button, or a one-finger upward touchscreen
+swipe starting on the bottom-right dock. Short taps still activate dock buttons;
+horizontal/downward swipes and multi-contact interruptions do not open Apps List.
 The drawing icon at the right of the search input enables **Draw to launch**.
 The adjacent Settings icon opens the Settings app directly on its Search tab.
 Empty search does not list assigned apps. Typing searches applications and open

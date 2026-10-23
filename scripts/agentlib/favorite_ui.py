@@ -1,4 +1,4 @@
-"""App gestures configured in Settings and drawn in an explicit search area."""
+"""App gestures configured in Settings and drawn in the Apps List."""
 
 import contextlib
 import itertools
@@ -13,7 +13,7 @@ from . import shell_checks as checks
 from .control import ControlError
 from .daily_checks import a11y
 from .input import Input
-from .map_checks import button_center
+from .map_checks import SHELL, button_center
 
 APP_ID = "hearthspace-favorite-fixture.desktop"
 APP_NAME = "Hearthspace Favorite Fixture"
@@ -44,6 +44,10 @@ def settings_elements(smoke, name, role=None):
         role_filter += "@focusable='true' and "
     query = f"({SETTINGS}//*[{role_filter}@showing='true' and @name='{name}'])[1]"
     return a11y(smoke, "find", query)["elements"]
+
+
+def settings_app_field(smoke):
+    return settings_elements(smoke, "Open this app", "combo box")
 
 
 def settings_surface(smoke):
@@ -98,8 +102,13 @@ def draw(smoke, points):
 def configure(smoke):
     before = window_ids(smoke)
     if not checks.panel(smoke, "search"):
-        checks.click(smoke, "Search")
+        checks.click(smoke, "Apps List")
         checks.opened(smoke, "search")
+    checks.click(smoke, "Draw to launch", "search")
+    smoke.until(
+        "gesture mode exposes Settings",
+        lambda: checks.elements(smoke, "Settings"),
+    )
     checks.click(smoke, "Settings", "search")
     window = smoke.until(
         "owned Settings window",
@@ -116,14 +125,15 @@ def configure(smoke):
     )
     smoke.settings_id = window["id"]
     smoke.until(
-        "Settings opened directly on Search",
-        lambda: settings_elements(smoke, "Gestures"),
+        "Settings opened directly on Gestures",
+        lambda: settings_elements(smoke, "Add gesture", "button"),
     )
-    smoke.record("search-settings-direct-page", page="Search")
-    settings_click(smoke, "Find apps", role=None)
-    with Input(smoke.control) as inputs:
-        inputs.type(APP_NAME)
-    settings_click(smoke, f"Add gesture for {APP_NAME}")
+    reopen_settings(smoke)
+    smoke.record("search-settings-direct-page", page="Gestures")
+    settings_click(smoke, "Add gesture")
+    from .favorite_picker import choose
+
+    choose(smoke, APP_NAME)
     element = smoke.until(
         "Settings gesture drawing area",
         lambda: settings_elements(smoke, "Gesture drawing area"),
@@ -139,7 +149,7 @@ def configure(smoke):
     ]
     draw(smoke, l_shape(rect))
     smoke.capture("favorite-gesture-recorded-in-settings")
-    settings_click(smoke, "Save gesture")
+    settings_click(smoke, "Save shortcut")
     smoke.until(
         "persisted assigned gesture",
         lambda: settings_elements(smoke, f"Change gesture for {APP_NAME}", "button"),
@@ -165,18 +175,55 @@ def configure(smoke):
     smoke.until("Settings closed", lambda: smoke.window(smoke.settings_id) is None)
 
 
+def reopen_settings(smoke):
+    """The Draw cog must retarget an existing Settings window to Gestures."""
+    settings_click(smoke, "Appearance")
+    before = window_ids(smoke)
+    # Opening Settings adds its dock icon. Use the launcher shortcut while the
+    # corner's new geometry and accessibility bounds are still converging.
+    with Input(smoke.control) as inputs:
+        inputs.chord("super")
+    checks.opened(smoke, "search")
+    smoke.until(
+        "launcher mode controls ready",
+        lambda: (
+            checks.elements(smoke, "Settings")
+            or checks.elements(smoke, "Draw to launch")
+        ),
+    )
+    if not checks.elements(smoke, "Settings"):
+        checks.click(smoke, "Draw to launch", "search")
+    checks.click(smoke, "Settings", "search")
+    smoke.until(
+        "existing Settings returned to Gestures",
+        lambda: (
+            (smoke.window(smoke.settings_id) or {}).get("focused")
+            and settings_elements(smoke, "Add gesture", "button")
+        ),
+    )
+    if window_ids(smoke) != before:
+        raise ControlError("repeated Draw settings link created another app window")
+    smoke.record("gesture-settings-reused", window_id=smoke.settings_id)
+
+
 def window_ids(smoke):
     return {window["id"] for window in smoke.control.status()["windows"]}
 
 
 def launch_mode(smoke):
     if not checks.panel(smoke, "search"):
-        checks.click(smoke, "Search")
+        checks.click(smoke, "Apps List")
         checks.opened(smoke, "search")
-    if checks.elements(smoke, f"Open: {APP_NAME}"):
-        raise ControlError("empty search still lists assigned apps")
-    checks.elements(smoke, "Settings")
+    smoke.until(
+        "assigned app remains browsable in Apps List",
+        lambda: a11y(
+            smoke, "find", f"{SHELL}//*[@role='button' and @name='Open: {APP_NAME}']"
+        )["elements"],
+    )
     checks.click(smoke, "Draw to launch", "search")
+    smoke.until(
+        "gesture Settings available", lambda: checks.elements(smoke, "Settings")
+    )
     state = smoke.until(
         "armed search drawing area",
         lambda: (
@@ -188,12 +235,8 @@ def launch_mode(smoke):
         ),
     )
     smoke.until(
-        "drawing readiness presented in the search UI",
-        lambda: checks.elements(
-            smoke,
-            "Lift your finger or release the button to launch a clear match.",
-            role=None,
-        ),
+        "drawing readiness presented in the Apps List",
+        lambda: checks.elements(smoke, "Draw a gesture", role=None),
     )
     panel = checks.opened(smoke, "search")
     x, y, width, height = state["bounds"]
@@ -273,7 +316,7 @@ def touch_cases(smoke, rect):
 
 def run(smoke):
     if smoke.control.status()["backend"] == "native":
-        search_touch.top_bar(smoke)
+        search_touch.apps_corner(smoke)
     configure(smoke)
     rect = launch_mode(smoke)
     before, viewport = window_ids(smoke), smoke.control.status()["viewport"]
@@ -290,7 +333,7 @@ def run(smoke):
     smoke.until(
         "unassigned shape feedback",
         lambda: checks.elements(
-            smoke, "No matching gesture. Try again, or return to search.", role=None
+            smoke, "No matching gesture. Try again, or return to Apps List.", role=None
         ),
     )
     no_launch(smoke, before, viewport, "unassigned circle")
@@ -299,9 +342,9 @@ def run(smoke):
     points = l_shape(rect)
     draw(smoke, [points[0], (x - 8, points[0][1]), *points[1:]])
     no_launch(smoke, before, viewport, "stroke leaves drawing area")
-    checks.click(smoke, "Back to search", "search")
+    checks.click(smoke, "Back to apps list", "search")
     smoke.until(
-        "drawing capture disarmed after Back to search",
+        "drawing capture disarmed after Back to apps list",
         lambda: not smoke.control.status().get("favorite_gesture", {}).get("armed"),
     )
     no_launch(smoke, before, viewport, "drawing mode closed")

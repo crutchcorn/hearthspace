@@ -82,17 +82,11 @@ pub(super) fn title_bar_canvas_rect_for(
 
 /// Canvas-space rectangle of the close button, positioned at the right edge of
 /// the given title bar and vertically centered within it.
-pub(super) fn close_button_canvas_rect_for(
-    title_bar: Rectangle<i32, Logical>,
-) -> Rectangle<i32, Logical> {
-    Rectangle::new(
-        (
-            title_bar.loc.x + title_bar.size.w - CLOSE_BUTTON_MARGIN - CLOSE_BUTTON_SIZE,
-            title_bar.loc.y + (title_bar.size.h - CLOSE_BUTTON_SIZE) / 2,
-        )
-            .into(),
-        (CLOSE_BUTTON_SIZE, CLOSE_BUTTON_SIZE).into(),
-    )
+#[cfg(test)]
+fn close_button_canvas_rect_for(title_bar: Rectangle<i32, Logical>) -> Rectangle<i32, Logical> {
+    let mut button = super::titlebar_button_rect(title_bar.size.w, super::TitlebarButton::Close);
+    button.loc += title_bar.loc;
+    button
 }
 
 /// Canvas-space origin of a window's client content, offset below the title bar
@@ -155,50 +149,6 @@ pub(super) fn resize_edges_at(
         bottom: point.y >= f64::from(window_rect.loc.y + window_rect.size.h) - inset,
     };
     (!edges.is_empty()).then_some(edges)
-}
-
-/// Desired client content size for a resize drag, derived from the size at the
-/// start of the resize and the canvas-space pointer delta. Edges that are not
-/// being dragged leave their dimension unchanged; the result is clamped to the
-/// minimum window dimensions.
-pub(super) fn resize_target_content_size(
-    edges: ResizeEdges,
-    initial: Size<i32, Logical>,
-    delta: Point<i32, Logical>,
-) -> Size<i32, Logical> {
-    let mut width = initial.w;
-    let mut height = initial.h;
-    if edges.left {
-        width = initial.w - delta.x;
-    }
-    if edges.right {
-        width = initial.w + delta.x;
-    }
-    if edges.top {
-        height = initial.h - delta.y;
-    }
-    if edges.bottom {
-        height = initial.h + delta.y;
-    }
-    (width.max(MIN_WINDOW_WIDTH), height.max(MIN_WINDOW_HEIGHT)).into()
-}
-
-/// Window position that keeps the edge opposite a left/top resize anchored in
-/// place as the client's content size changes from `initial` to `actual`.
-pub(super) fn resize_anchored_position(
-    edges: ResizeEdges,
-    anchor: CanvasPoint,
-    initial: Size<i32, Logical>,
-    actual: Size<i32, Logical>,
-) -> CanvasPoint {
-    let mut position = anchor;
-    if edges.left {
-        position.x = anchor.x + initial.w - actual.w;
-    }
-    if edges.top {
-        position.y = anchor.y + initial.h - actual.h;
-    }
-    position
 }
 
 /// The cursor that communicates which resize a window edge or corner performs.
@@ -368,58 +318,6 @@ mod tests {
             resize_edges_at(rect, fpoint(200.0, 246.0), 8, 8),
             Some(edges(false, false, false, true))
         );
-    }
-
-    #[test]
-    fn resize_target_grows_with_bottom_right_drag() {
-        let result = resize_target_content_size(
-            edges(false, true, false, true),
-            size(400, 300),
-            (60, 40).into(),
-        );
-        assert_eq!(result, size(460, 340));
-    }
-
-    #[test]
-    fn resize_target_shrinks_with_left_drag_and_clamps() {
-        // Dragging the left edge right shrinks the width.
-        let result = resize_target_content_size(
-            edges(true, false, false, false),
-            size(400, 300),
-            (30, 0).into(),
-        );
-        assert_eq!(result, size(370, 300));
-        // Clamped to the minimum width regardless of how far the drag goes.
-        let clamped = resize_target_content_size(
-            edges(true, false, false, false),
-            size(400, 300),
-            (10_000, 0).into(),
-        );
-        assert_eq!(clamped.w, MIN_WINDOW_WIDTH);
-    }
-
-    #[test]
-    fn anchored_position_keeps_right_and_bottom_fixed_on_left_top_resize() {
-        // Initial right edge = 100 + 400 = 500, bottom = 100 + 300 = 400.
-        let position = resize_anchored_position(
-            edges(true, false, true, false),
-            point(100, 100),
-            size(400, 300),
-            size(450, 320),
-        );
-        // New width 450 keeps right at 500 -> x = 50. New height 320 keeps bottom at 400 -> y = 80.
-        assert_eq!(position, point(50, 80));
-    }
-
-    #[test]
-    fn anchored_position_unchanged_for_right_bottom_resize() {
-        let position = resize_anchored_position(
-            edges(false, true, false, true),
-            point(100, 100),
-            size(400, 300),
-            size(450, 320),
-        );
-        assert_eq!(position, point(100, 100));
     }
 
     #[test]

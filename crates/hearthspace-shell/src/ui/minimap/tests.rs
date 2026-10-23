@@ -203,7 +203,9 @@ fn descriptions_cover_loading_empty_and_untitled_windows() {
     assert_eq!(description(None, None), "Canvas minimap loading");
     let mut value = status();
     value["windows"][0]["title"] = Value::Null;
-    assert!(description(Some(&parse(value)), None).contains("Focused window: org.editor"));
+    let accessible_description = description(Some(&parse(value)), None);
+    assert!(accessible_description.contains("Focused window: org.editor"));
+    assert!(accessible_description.contains("Accent outline shows the visible area"));
     let mut value = status();
     value["windows"] = json!([]);
     assert!(description(Some(&parse(value)), None).contains("0 windows"));

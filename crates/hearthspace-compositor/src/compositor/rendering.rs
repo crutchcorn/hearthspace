@@ -11,7 +11,7 @@ use smithay::{
             texture::TextureRenderElement,
             utils::{CropRenderElement, Relocate, RelocateRenderElement, RescaleRenderElement},
         },
-        gles::GlesRenderer,
+        gles::{GlesRenderer, element::PixelShaderElement},
     },
     desktop::PopupManager,
     input::pointer::CursorImageAttributes,
@@ -24,13 +24,20 @@ use smithay::{
 use std::sync::Mutex;
 use wayland_server::protocol::wl_surface;
 
-use super::{App, ManagedWindowKind, masonry_titlebar, windows::window_title};
+use super::{App, ManagedWindowKind, window_frame};
 
 mod background;
+mod blur;
+mod blur_shader;
 mod lock;
 mod order;
+mod titlebar;
+mod window_backdrop;
+mod window_backdrop_shader;
 
 pub(in crate::compositor) use background::BackgroundImageTile;
+pub(in crate::compositor) use blur::CornerBlurCache;
+pub(in crate::compositor) use window_backdrop::WindowBackdropCache;
 
 type GlesTexture = <GlesRenderer as RendererSuper>::TextureId;
 
@@ -38,6 +45,9 @@ render_elements! {
     pub(super) HearthspaceRenderElement<=GlesRenderer>;
     Surface = RescaleRenderElement<WaylandSurfaceRenderElement<GlesRenderer>>,
     Memory = MemoryRenderBufferRenderElement<GlesRenderer>,
+    Frame = PixelShaderElement,
+    RoundedMemory = window_frame::RoundedElement<MemoryRenderBufferRenderElement<GlesRenderer>>,
+    RoundedSurface = window_frame::RoundedElement<RescaleRenderElement<WaylandSurfaceRenderElement<GlesRenderer>>>,
     Texture = TextureRenderElement<GlesTexture>,
     OverviewSurface = CropRenderElement<RescaleRenderElement<WaylandSurfaceRenderElement<GlesRenderer>>>,
     Solid = SolidColorRenderElement,
@@ -52,6 +62,23 @@ render_elements! {
 /// Result of rendering one frame: the damaged output regions to submit, or
 /// `None` when nothing changed and the frame can be skipped.
 type RenderFrameResult = Result<Option<Vec<Rectangle<i32, Physical>>>, Box<dyn std::error::Error>>;
+
+struct RenderScene {
+    elements: Vec<HearthspaceRenderElement>,
+    /// Everything below the shell, switcher, and cursor may feed corner blur.
+    desktop_start: usize,
+    window_backdrops: Vec<window_backdrop::BackdropRequest>,
+}
+
+impl RenderScene {
+    fn overlay(elements: Vec<HearthspaceRenderElement>) -> Self {
+        Self {
+            desktop_start: elements.len(),
+            elements,
+            window_backdrops: Vec::new(),
+        }
+    }
+}
 
 impl App {
     /// Render the current scene through an [`OutputDamageTracker`].
@@ -96,8 +123,9 @@ impl App {
         let output_offset = Point::<i32, Physical>::from((-output_location.x, -output_location.y));
         let output_scale = output_scale.max(1);
         let render_scale = f64::from(output_scale);
-        let foreground = self.collect_render_elements(renderer, output_rect);
-        let mut elements = foreground
+        let scene = self.collect_render_elements(renderer, output_rect);
+        let mut elements = scene
+            .elements
             .into_iter()
             .map(|element| {
                 let relocated =
@@ -110,9 +138,9 @@ impl App {
             })
             .collect::<Vec<_>>();
 
-        // Background tiles are wallpaper pixels, not client logical pixels, so
-        // they opt out of monitor DPI scaling while still being translated into
-        // this output's framebuffer-local coordinate space.
+        // Background tiles already carry their physical presentation size.
+        // Custom wallpapers preserve pixel sizing; the default grid accounts
+        // for monitor DPI before this output-local translation.
         let tiles = if self.session_locked()
             || (!self.overview_active() && self.fullscreen_on_output(output_rect))
         {
@@ -129,6 +157,29 @@ impl App {
                 ),
             ));
         }
+        self.apply_window_backdrops(
+            renderer,
+            output_rect,
+            output_scale,
+            &scene.window_backdrops,
+            &mut elements,
+        );
+        let blurred = self.corner_blur_elements(
+            renderer,
+            output_rect,
+            output_scale,
+            &elements[scene.desktop_start..],
+        );
+        elements.splice(
+            scene.desktop_start..scene.desktop_start,
+            blurred.into_iter().map(|element| {
+                TranslatedHearthspaceRenderElement::from(RelocateRenderElement::from_element(
+                    HearthspaceRenderElement::from(element),
+                    (0, 0),
+                    Relocate::Relative,
+                ))
+            }),
+        );
         let result = damage_tracker.render_output(
             renderer,
             framebuffer,
@@ -150,17 +201,27 @@ impl App {
         &mut self,
         renderer: &mut GlesRenderer,
         output_rect: Rectangle<i32, Logical>,
-    ) -> Vec<HearthspaceRenderElement> {
+    ) -> RenderScene {
+        self.window_frames.set_appearance(self.appearance);
         if self.session_locked() {
-            return self.collect_lock_elements(renderer, output_rect);
+            self.window_frames.clear();
+            return RenderScene::overlay(self.collect_lock_elements(renderer, output_rect));
         }
         self.refresh_normal_window_outputs();
         self.refresh_fractional_scales();
+        self.window_frames.retain(
+            &self
+                .windows
+                .iter()
+                .filter(|window| window.mapped && window.kind == ManagedWindowKind::Normal)
+                .map(|window| window.id)
+                .collect(),
+        );
 
         if self.overview_active() {
             let mut elements = self.control_osd_render_elements(renderer, output_rect);
             elements.extend(self.collect_overview_elements(renderer, output_rect));
-            return elements;
+            return RenderScene::overlay(elements);
         }
 
         let mut elements = Vec::new();
@@ -171,13 +232,23 @@ impl App {
         elements.extend(self.collect_window_switcher_elements(renderer, output_rect));
 
         let mut group_elements = self.collect_group_elements(renderer, output_rect);
+        let mut desktop_start = None;
+        let mut desktop_selection = self.desktop_selection_elements(renderer);
+        let mut window_backdrops = Vec::new();
+        let hovered_window = self.hovered_normal_window_id();
         for index in order::render_order(self.windows.iter().map(|window| window.kind)) {
+            if self.windows[index].kind == ManagedWindowKind::DesktopItem {
+                desktop_start.get_or_insert(elements.len());
+                elements.append(&mut desktop_selection);
+            }
             if self.windows[index].kind == ManagedWindowKind::Normal {
+                desktop_start.get_or_insert(elements.len());
                 elements.append(&mut group_elements.overlay);
             }
             if !self.window_visible_on_output(index, output_rect) {
                 continue;
             }
+            let front = elements.len();
             // Popups (e.g. menus) render above their window's content and chrome.
             for popup in self.popup_render_elements(renderer, index) {
                 elements.push(popup);
@@ -189,29 +260,85 @@ impl App {
                 elements.extend(outline);
             }
 
-            // Masonry-rasterized title bar (background, title, close button)
-            // layered above the window's content.
-            if let Some(titlebar) = self.titlebar_element(renderer, index) {
-                elements.push(titlebar);
+            let scale = self.window_render_scale(index);
+            let server_side = self.has_compositor_chrome(index);
+            let id = self.windows[index].id;
+            let active = self.focused_normal_window_id == Some(id);
+            let frame = (self.is_navigable_window(index)
+                && !self.windows[index].presentation.fullscreen)
+                .then(|| self.normal_window_screen_rect(index))
+                .flatten()
+                .and_then(|rect| {
+                    self.window_frames.elements(
+                        renderer,
+                        id,
+                        rect,
+                        scale,
+                        active,
+                        hovered_window == Some(id),
+                        server_side,
+                        self.background_image_path.is_some(),
+                    )
+                });
+            if let Some(frame) = &frame {
+                elements.push(HearthspaceRenderElement::from(frame.rim.clone()));
             }
 
-            let scale = self.window_render_scale(index);
+            // Masonry-rasterized title bar foreground (app identity and controls)
+            // layered above the window's content.
+            for titlebar in self.titlebar_elements(renderer, index) {
+                if let Some(clip) = frame.as_ref().and_then(|frame| frame.clip.as_ref()) {
+                    elements.push(HearthspaceRenderElement::from(clip.wrap(titlebar, None)));
+                } else {
+                    elements.push(HearthspaceRenderElement::from(titlebar));
+                }
+            }
+            if let Some(header) = frame.as_ref().and_then(|frame| frame.header.as_ref()) {
+                elements.push(HearthspaceRenderElement::from(header.clone()));
+            }
+
             let origins = match self.windows[index].kind {
                 ManagedWindowKind::ShellBar => self.shell_bar_screen_origins(index),
                 ManagedWindowKind::Launcher | ManagedWindowKind::ControlOsd => {
                     self.launcher_screen_origins(index)
                 }
                 ManagedWindowKind::ShellWatcher => Vec::new(),
-                ManagedWindowKind::Normal => {
+                ManagedWindowKind::Normal | ManagedWindowKind::DesktopItem => {
                     vec![self.surface_screen_origin(index)]
                 }
             };
             for origin in origins {
                 for surface in self.window_render_elements_at(renderer, index, origin) {
-                    elements.push(HearthspaceRenderElement::from(
-                        RescaleRenderElement::from_element(surface, origin, scale),
-                    ));
+                    let solid = window_frame::solid_color(&surface);
+                    let element = RescaleRenderElement::from_element(surface, origin, scale);
+                    if let Some(clip) = frame.as_ref().and_then(|frame| frame.clip.as_ref()) {
+                        elements.push(HearthspaceRenderElement::from(clip.wrap(element, solid)));
+                    } else {
+                        elements.push(HearthspaceRenderElement::from(element));
+                    }
                 }
+            }
+            if let Some(frame) = frame {
+                elements.push(HearthspaceRenderElement::from(frame.shadow));
+            }
+            if self.windows[index].kind == ManagedWindowKind::Normal
+                && !self.windows[index].presentation.fullscreen
+                && (self.has_compositor_chrome(index)
+                    || super::windows::window_app_id(&self.windows[index].surface).as_deref()
+                        == Some(window_backdrop::SETTINGS_APP_ID))
+                && let Some(window) = self.normal_window_screen_rect(index)
+            {
+                window_backdrops.push(window_backdrop::BackdropRequest {
+                    id: self.windows[index].id,
+                    front,
+                    after: elements.len(),
+                    window,
+                    region: (super::windows::window_app_id(&self.windows[index].surface)
+                        .as_deref()
+                        != Some(window_backdrop::SETTINGS_APP_ID))
+                    .then(|| self.title_bar_rect(index)),
+                    zoom: scale,
+                });
             }
             // Fullscreen content must not reveal unrelated windows through
             // transparent pixels or around a smaller-than-requested buffer.
@@ -220,8 +347,13 @@ impl App {
             }
         }
 
+        let desktop_start = desktop_start.unwrap_or(elements.len());
         elements.append(&mut group_elements.overlay);
-        elements
+        RenderScene {
+            elements,
+            desktop_start,
+            window_backdrops,
+        }
     }
 
     fn control_osd_render_elements(
@@ -412,88 +544,12 @@ impl App {
     pub(super) fn window_render_scale(&self, window_index: usize) -> f64 {
         match self.windows[window_index].kind {
             ManagedWindowKind::Normal if self.window_uses_output_coordinates(window_index) => 1.0,
-            ManagedWindowKind::Normal => self.viewport_scale,
+            ManagedWindowKind::Normal | ManagedWindowKind::DesktopItem => self.viewport_scale,
             ManagedWindowKind::ShellBar
             | ManagedWindowKind::Launcher
             | ManagedWindowKind::ControlOsd => 1.0,
             ManagedWindowKind::ShellWatcher => 1.0,
         }
-    }
-
-    /// Build the Masonry-rendered title-bar render element for a window, or
-    /// `None` when the window has no compositor chrome or the bar has no
-    /// on-screen area.
-    ///
-    /// The whole bar (gradient background, title text, and rounded close
-    /// button) is rasterized once at native (unscaled) size, cached on the
-    /// window, and scaled to the on-screen title-bar rect by the memory
-    /// element. The cache is only rebuilt when the bar width, title, or active
-    /// state changes (see [`masonry_titlebar`]).
-    pub(super) fn titlebar_element(
-        &mut self,
-        renderer: &mut GlesRenderer,
-        window_index: usize,
-    ) -> Option<HearthspaceRenderElement> {
-        if !self.has_compositor_chrome(window_index) {
-            return None;
-        }
-
-        let screen_rect = self.title_bar_rect(window_index);
-        if screen_rect.size.w <= 0 || screen_rect.size.h <= 0 {
-            return None;
-        }
-
-        // Native (unscaled) bar size the Masonry image is rasterized at; the
-        // memory element scales it to `screen_rect` so the viewport zoom is
-        // applied uniformly with the rest of the window.
-        let native_size = self.title_bar_canvas_rect(window_index).size;
-        let native_w = native_size.w.max(1);
-
-        let title = window_title(&self.windows[window_index].surface)
-            .filter(|title| !title.trim().is_empty())
-            .unwrap_or_else(|| "Hearthspace".to_string());
-        let active = self.focused_normal_window_id == Some(self.windows[window_index].id);
-
-        // Re-run Masonry's layout/raster only when the cache key changes.
-        let needs_rebuild = self.windows[window_index]
-            .titlebar
-            .as_ref()
-            .map(|cached| {
-                cached.width != native_w || cached.title != title || cached.active != active
-            })
-            .unwrap_or(true);
-        if needs_rebuild {
-            let buffer = masonry_titlebar::render_titlebar(native_w, &title, active);
-            self.windows[window_index].titlebar = Some(masonry_titlebar::TitlebarBuffer {
-                width: native_w,
-                title,
-                active,
-                buffer,
-            });
-        }
-
-        let buffer = &self.windows[window_index].titlebar.as_ref()?.buffer;
-        // Source the full native-sized Masonry image and let the memory element
-        // stretch it to the (zoom-scaled) `screen_rect`. Passing the native
-        // `src` is what makes the bar scale with the window: with `src = None`
-        // the element would instead sample a screen-sized region out of the
-        // native buffer, leaving the chrome at native size (so the close button
-        // drifts off the right edge as the window grows under zoom).
-        let native_src = Rectangle::from_size(Size::<f64, Logical>::from((
-            f64::from(native_w),
-            f64::from(native_size.h),
-        )));
-        let element = MemoryRenderBufferRenderElement::from_buffer(
-            renderer,
-            screen_rect.loc.to_physical(1).to_f64(),
-            buffer,
-            None,
-            Some(native_src),
-            Some(screen_rect.size),
-            Kind::Unspecified,
-        )
-        .ok()?;
-        Some(HearthspaceRenderElement::from(element))
     }
 }
 

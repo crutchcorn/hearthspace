@@ -1,7 +1,7 @@
 //! A lightweight live map of the infinite canvas, kept separate from the
 //! compositor's window previews. All drawing remains in the shell client.
 
-use hearthspace_ui_components as components;
+use crate::ui::appearance::{ThemeStyle as _, Tone};
 use xilem::{WidgetView, masonry::layout::AsUnit, style::Style, view::sized_box};
 
 use super::state::ShellState;
@@ -26,8 +26,9 @@ pub(super) fn minimap_view(
         output_name: output_name.map(str::to_owned),
     })
     .fixed_height(190.0.px())
-    .background_color(components::SURFACE_SUBTLE)
-    .border(components::BORDER, 1.0.px())
+    .theme_background(Tone::Subtle)
+    .theme_border(Tone::Border)
+    .border_width(1.0.px())
     .corner_radius(6.0.px())
 }
 
@@ -36,7 +37,7 @@ fn description(snapshot: Option<&CanvasSnapshot>, output_name: Option<&str>) -> 
         return "Canvas minimap loading".into();
     };
     let mut description = format!(
-        "Canvas minimap: {} windows. Blue outline shows the visible area{}.",
+        "Canvas minimap: {} windows. Accent outline shows the visible area{}.",
         snapshot.windows.len(),
         output_name
             .map(|name| format!(" on {name}"))
@@ -53,4 +54,11 @@ fn description(snapshot: Option<&CanvasSnapshot>, output_name: Option<&str>) -> 
         }
     }
     description
+}
+
+pub(super) fn theme_properties(
+    properties: &mut xilem::masonry::core::DefaultProperties,
+    palette: hearthspace_ui_components::Palette,
+) {
+    properties.insert::<widget::Minimap, _>(palette);
 }

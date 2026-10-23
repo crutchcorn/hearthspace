@@ -62,6 +62,8 @@ The daemon currently formats the file like this:
 test = false
 background_mode = repeat-with-canvas
 background_image_path = default
+color_mode = light
+accent_color = orange
 
 [[monitor]]
 id = primary
@@ -82,7 +84,7 @@ x = 1920
 y = 0
 ```
 
-Unknown top-level keys and unknown monitor keys are ignored. Invalid booleans, invalid background modes, invalid integers, invalid positive integers, and malformed key/value lines make parsing fail for that request. Monitor entries without an `id` are dropped. If no valid monitors remain, the daemon restores the default monitor list.
+Unknown top-level keys and unknown monitor keys are ignored. Invalid booleans, invalid appearance choices, invalid background modes, invalid integers, invalid positive integers, and malformed key/value lines make parsing fail for that request. Monitor entries without an `id` are dropped. If no valid monitors remain, the daemon restores the default monitor list.
 
 ## Settings Model
 
@@ -91,6 +93,7 @@ The shared settings model lives in `hearthspace-ipc`:
 ```text
 Settings
 - test: bool
+- appearance: Appearance (color_mode: Light | Dark, accent_color: Orange | Rose | Violet | Blue | Teal | Olive)
 - background_mode: BackgroundMode
 - background_image_path: Option<String>
 - monitors: Vec<MonitorConfig>
@@ -117,6 +120,8 @@ Defaults are deliberately useful in development and headless cases:
 test = false
 background_mode = repeat-with-canvas
 background_image_path = default
+color_mode = light
+accent_color = orange
 primary: 1920x1080 scale 1 at 0,0
 secondary: 1920x1080 scale 1 at 1920,0
 ```
@@ -134,6 +139,8 @@ Supported requests are:
 ```text
 get
 set test <true|false>
+set color-mode <light|dark>
+set accent-color <orange|rose|violet|blue|teal|olive>
 set background-mode <repeat-with-canvas|stretch|contains|cover>
 set background-image-path <default|percent-encoded-path>
 set monitor <id> <x> <y>
@@ -143,7 +150,7 @@ set monitor-scale <id> <scale>
 Successful responses start with `ok` and include a complete settings snapshot:
 
 ```text
-ok test false background-mode repeat-with-canvas background-image-path default monitor primary 1920 1080 1 0 0 Primary monitor secondary 1920 1080 1 1920 0 Secondary
+ok test false background-mode repeat-with-canvas background-image-path default monitor primary 1920 1080 1 0 0 Primary monitor secondary 1920 1080 1 1920 0 Secondary color-mode light accent-color orange
 ```
 
 Error responses start with `err`:
@@ -158,6 +165,9 @@ All normal clients should use the `hearthspace-ipc` helper functions instead of 
 
 ```text
 client_get_settings()
+client_get_settings_at(path)
+client_set_color_mode(mode)
+client_set_accent_color(accent)
 client_set_test(test)
 client_set_background_mode(mode)
 client_set_background_image_path(path)
@@ -187,17 +197,70 @@ On startup, the settings app:
 - Falls back to `Settings::default()` if the daemon is unavailable.
 - Probes live Wayland outputs through `wl_output` globals.
 - Merges live output geometry with saved monitor placement and scale.
-- Displays the resolved config path from `hearthspace_common::config_path()`.
 
 The app never writes `config.toml` directly. User actions update local UI state optimistically, then call the daemon through `hearthspace-ipc`:
 
-- The `test` checkbox calls `client_set_test()`.
-- The background fit radio group calls `client_set_background_mode()`.
+- Appearance mode and accent choices call `client_set_color_mode()` and `client_set_accent_color()`.
+- The background fit dropdown calls `client_set_background_mode()`.
 - The background image controls call `client_set_background_image_path()`.
 - Dragging a monitor commits positions through `client_set_monitor_position()` for each monitor.
 - Changing monitor scale calls `client_set_monitor_scale()` and then saves recalculated monitor positions.
 
-On success, the app replaces its local state with the daemon's returned settings snapshot, merged again with live output data. On failure, it restores the previous local state where needed and shows the error in the status label.
+On success, the app merges the returned settings with live output data. Appearance saves update only the appearance fields, preserving pending edits elsewhere in Settings. On failure, it restores the previous local state where needed and shows the error in the status label.
+
+The default appearance remains light/orange. Old files and older IPC responses
+without appearance fields receive that default. The shell and open Settings
+windows refresh appearance on a background task every 500 ms, retaining the
+last palette on errors. A generation check prevents an in-flight read from
+undoing a newer local save. Saving in Settings also requests compositor reload.
+
+## Linux Appearance Publication
+
+Native sessions publish their saved light/dark preference and accent through the
+[Settings portal](https://flatpak.github.io/xdg-desktop-portal/docs/doc-org.freedesktop.portal.Settings.html).
+`org.freedesktop.appearance::color-scheme` is `1` for dark and `2` for light.
+`accent-color` is an `(ddd)` tuple of normalized sRGB components. Applications
+choose how to interpret these preferences; a toolkit may map the accent to its
+own palette.
+
+The session supervisor owns `org.freedesktop.impl.portal.desktop.hearthspace` on
+its private bus. A dedicated worker reads the explicit settings socket every
+250 ms with the usual 50 ms IPC budget, updates the published snapshot, and emits
+`SettingChanged` only for changed keys. Unavailable settingsd reads retain the
+last snapshot. The worker starts before the public portal, releases its bus name
+at shutdown, and has two restart attempts after failure. A restarted worker
+reannounces its owned preferences once so existing clients recover missed
+changes. Nested sessions and `--no-desktop-services` do not run the appearance
+portal; XSettings still publishes to the compositor's own XWayland display.
+
+The runtime portal configuration selects Hearthspace for Settings and GTK for
+other portal interfaces. Hearthspace forwards unrelated GTK settings and their
+change signals, with a 500 ms call bound. It filters GTK's competing appearance
+keys: the installed portal 1.21.1
+[forwards every backend's signals](https://github.com/flatpak/xdg-desktop-portal/blob/1.21.1/src/settings.c#L220)
+even when a higher-priority backend supplied the value returned by `ReadAll`.
+Filtering in the owned backend keeps application caches consistent with reads.
+
+GTK 3 Wayland clients receive `GTK_USE_PORTAL=1` and compatible
+`org.gnome.desktop.interface` aliases for `gtk-theme` and `color-scheme`.
+The GTK backend itself opts out to avoid recursive settings lookup.
+XWayland uses Smithay's existing XSettings owner to publish `Net/ThemeName` as
+`Adwaita` or `Adwaita-dark`. A [small Smithay patch](../patches/README.md#smithay-xsettings-publication)
+flushes property updates immediately, including when the X11 client is idle.
+GTK's
+[XSettings mapping](https://github.com/GNOME/gtk/blob/gtk-3-24/gdk/x11/gdksettings.c)
+has no equivalent interoperable accent setting; portal-aware applications can
+still consume the standard accent preference.
+
+This changes no host GSettings/dconf values, user theme files, or shared service
+environment. Explicit application theme overrides and application-specific
+support continue to determine an application's final appearance.
+
+The portal integration test exercises the installed public portal on a private
+bus, including live changes and unrelated GTK settings. The compositor's
+`xsettings_publishes_saved_startup_theme_and_idle_live_changes` regression checks
+saved startup preferences and live X11 property notifications without unrelated
+X11 requests. These complement real GTK 3 and libadwaita application checks.
 
 ## Monitor Layout
 

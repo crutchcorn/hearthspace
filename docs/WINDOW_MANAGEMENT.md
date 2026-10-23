@@ -47,6 +47,31 @@ preferences take precedence. These defaults live only in the owned session
 runtime and are inherited by directly launched and portal-activated applications.
 They do not add unsupported minimize behavior or modify another desktop's settings.
 
+Applications that request compositor decorations receive a 44-logical-pixel
+title bar with maximize/restore and close controls. Each control is 32×32, with
+a four-pixel gap and six pixels of padding at the right edge. Painting and hit
+testing use the same rectangles; canvas zoom scales both, while output-pinned
+windows retain their native logical size.
+
+Click or tap a control to activate it on release. Releasing off the pressed control,
+losing its window, changing its geometry, or cancelling the input sequence
+prevents activation. A close requests that the application exit; it does not
+force termination. Drag empty title-bar space to move a floating window, or
+double-click it to toggle maximize/restore. These controls use the same
+presentation behavior as Super+M and preserve the saved floating geometry.
+Client-drawn title bars continue to handle their own controls.
+
+Hold **Alt** while moving a floating window to align its visible top-left corner
+with the canvas dot grid. Hold Alt while resizing an edge or corner to align
+the edges being dragged; the opposite edges stay anchored. Alignment includes
+the compositor title bar and excludes client shadow margins. The grid stays in
+canvas coordinates as the view pans or zooms, and uses the same spacing as
+[desktop icons](DESKTOP_ITEMS.md). Pressing or releasing Alt updates an active
+move or resize without requiring another pointer movement. Application size
+limits take precedence when a requested size cannot align with the grid.
+Terminals such as Foot may also round the final size to character cells on
+release; the opposite edges remain anchored to the actual accepted size.
+
 ## Focus, dialogs, and recovery
 
 A newly mapped application receives focus. Activation follows actual keyboard
@@ -72,7 +97,7 @@ actions return an error until the popup is dismissed.
 ## Canvas overview
 
 The right-hand map icon opens the [canvas map](CANVAS_MAP.md), with a live
-zoomed-out minimap and icon zoom controls. Drag its blue viewport area to move
+zoomed-out minimap and icon zoom controls. Drag its orange viewport area to move
 around the canvas without changing the zoom level or window positions.
 
 Overview presents live previews of the session's application windows in a grid,
@@ -230,6 +255,9 @@ its artifact directory so tests do not alter the user's normal layout.
   per-window transform.
 - Keep saved canvas placement separate from output-pinned presentation.
 - Respect client grabs and keep focus activation synchronized with the seat.
+- Keep compositor control presses owned until release, including cancellation.
+  Device removal and session recovery must clear their button-source state
+  without activating the control or sending an unmatched release to a client.
 - Client move/resize requests continue the originating pointer grab, including
   touchscreen pointer emulation. Validate the Wayland seat, button serial and
   window; stale or overlapping requests must not restart an operation.

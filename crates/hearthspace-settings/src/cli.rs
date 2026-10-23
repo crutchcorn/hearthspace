@@ -4,7 +4,8 @@ use crate::state::SettingsCategory;
 
 pub(crate) const USAGE: &str = "Usage: hearthspace-settings [--page PAGE]
 
-Pages: display (default), appearance, search, ai, advanced
+Pages: appearance (default), displays, background, gestures, ai, system
+Aliases: display, search, advanced
 Options: --help, -h";
 
 #[derive(Debug, Eq, PartialEq)]
@@ -16,7 +17,7 @@ pub(crate) enum Startup {
 pub(crate) fn parse(args: impl IntoIterator<Item = OsString>) -> Result<Startup, String> {
     let mut args = args.into_iter();
     let Some(argument) = args.next() else {
-        return Ok(Startup::Page(SettingsCategory::Display));
+        return Ok(Startup::Page(SettingsCategory::Appearance));
     };
     let argument = argument
         .to_str()
@@ -40,13 +41,14 @@ pub(crate) fn parse(args: impl IntoIterator<Item = OsString>) -> Result<Startup,
     Ok(startup)
 }
 
-fn parse_page(page: &str) -> Result<SettingsCategory, String> {
+pub(crate) fn parse_page(page: &str) -> Result<SettingsCategory, String> {
     match page {
-        "display" => Ok(SettingsCategory::Display),
+        "display" | "displays" => Ok(SettingsCategory::Displays),
         "appearance" => Ok(SettingsCategory::Appearance),
-        "search" => Ok(SettingsCategory::Search),
+        "background" => Ok(SettingsCategory::Background),
+        "search" | "gestures" => Ok(SettingsCategory::Gestures),
         "ai" => Ok(SettingsCategory::Ai),
-        "advanced" => Ok(SettingsCategory::Advanced),
+        "advanced" | "system" => Ok(SettingsCategory::System),
         _ => Err(format!("Unknown settings page: {page:?}.\n{USAGE}")),
     }
 }
@@ -60,18 +62,25 @@ mod tests {
     }
 
     #[test]
-    fn ordinary_launch_starts_on_display() {
-        assert_eq!(arguments(&[]), Ok(Startup::Page(SettingsCategory::Display)));
+    fn ordinary_launch_starts_on_appearance() {
+        assert_eq!(
+            arguments(&[]),
+            Ok(Startup::Page(SettingsCategory::Appearance))
+        );
     }
 
     #[test]
     fn named_pages_select_the_requested_category() {
         for (name, category) in [
-            ("display", SettingsCategory::Display),
+            ("display", SettingsCategory::Displays),
+            ("displays", SettingsCategory::Displays),
+            ("background", SettingsCategory::Background),
             ("appearance", SettingsCategory::Appearance),
-            ("search", SettingsCategory::Search),
+            ("search", SettingsCategory::Gestures),
+            ("gestures", SettingsCategory::Gestures),
             ("ai", SettingsCategory::Ai),
-            ("advanced", SettingsCategory::Advanced),
+            ("advanced", SettingsCategory::System),
+            ("system", SettingsCategory::System),
         ] {
             assert_eq!(arguments(&["--page", name]), Ok(Startup::Page(category)));
             assert_eq!(

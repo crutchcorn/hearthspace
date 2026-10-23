@@ -105,6 +105,18 @@ fn handle_request(request: SettingsRequest, config_path: &Path) -> io::Result<St
             save_settings_to_path(settings.clone(), config_path)?;
             Ok(settings_response(settings))
         }
+        SettingsRequest::SetColorMode(mode) => {
+            let mut settings = load_settings_from_path(config_path)?;
+            settings.appearance.color_mode = mode;
+            save_settings_to_path(settings.clone(), config_path)?;
+            Ok(settings_response(settings))
+        }
+        SettingsRequest::SetAccentColor(accent) => {
+            let mut settings = load_settings_from_path(config_path)?;
+            settings.appearance.accent_color = accent;
+            save_settings_to_path(settings.clone(), config_path)?;
+            Ok(settings_response(settings))
+        }
         SettingsRequest::SetBackgroundMode(mode) => {
             let mut settings = load_settings_from_path(config_path)?;
             settings.background_mode = mode;

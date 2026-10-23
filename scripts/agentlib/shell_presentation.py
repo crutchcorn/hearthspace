@@ -4,6 +4,7 @@ import math
 
 from . import shell_checks as checks
 from .control import ControlError
+from .firefox_assertions import corner_inset
 from .input import Input
 from .png import pixels
 from .shell_backdrop import COLOR, backdrop
@@ -62,7 +63,7 @@ def compatible(first, second):
 
 
 def rounded(background, visible, surface):
-    """Opaque rounded panels reveal the actual background at all four corners."""
+    """Rounded panels reveal the actual background at all four outside corners."""
     compatible(background, visible)
     left, top, right, bottom = visible.rect(surface)
     corners = []
@@ -80,6 +81,28 @@ def rounded(background, visible, surface):
     if difference(background.rgb(*inside), visible.rgb(*inside)) <= 3:
         raise ControlError(f"{surface['kind']} popup has no visible interior")
     return corners
+
+
+def raised_tint(background, visible, surface):
+    """Blank frame padding must retain the underlying desktop through its tint."""
+    compatible(background, visible)
+    left, top, _, bottom = visible.rect(surface)
+    point = (left + round(4 * visible.metadata["scale"]), (top + bottom) // 2)
+    behind = background.rgb(*point)
+    # CHROME_RAISED is #faf9f6 at 209/255 opacity (82%). This point is beside
+    # content, away from the one-pixel border and all rounded corners. Sample
+    # the side padding: the bottom edge touches the maximized backdrop boundary,
+    # where Apps List's genuine blur correctly mixes in the wallpaper below it.
+    expected = [
+        round((tint * 209 + source * 46) / 255)
+        for tint, source in zip((250, 249, 246), behind)
+    ]
+    observed = list(visible.rgb(*point))
+    if difference(observed, expected) > 4:
+        raise ControlError(
+            f"{surface['kind']} popup tint {observed} does not blend over {list(behind)}"
+        )
+    return {"point": list(point), "background": list(behind), "visible": observed}
 
 
 def highlight_change(before, after, surface, rows):
@@ -115,7 +138,7 @@ def bottom_gap(surface, element, scale):
 
 def search_width(surface, output):
     width = output["logical_width"]
-    expected = min(max(math.floor(width * 0.6 + 0.5), 360), max(width - 24, 1))
+    expected = min(650, max(width - 48, 1))
     if abs(surface["width"] - expected) > 1:
         raise ControlError(
             f"search width {surface['width']} does not match responsive width {expected}"
@@ -123,7 +146,7 @@ def search_width(surface, output):
     return expected
 
 
-def fitted(smoke, kind, last_name, output):
+def fitted(smoke, kind, last_name, output, *, max_bottom_gap=24):
     previous = None
 
     def settled():
@@ -135,7 +158,7 @@ def fitted(smoke, kind, last_name, output):
         gap = bottom_gap(surface, elements[0], output["scale"])
         current = surface, elements[0]["bounds"]
         stable, previous = current == previous, current
-        return (surface, gap) if stable and 0 <= gap <= 24 else None
+        return (surface, gap) if stable and 0 <= gap <= max_bottom_gap else None
 
     return smoke.until(f"{kind} content fits settled popup height", settled)
 
@@ -147,10 +170,12 @@ def park_pointer(smoke, output):
 
 def dark_background(frame, output):
     # Verify the actual committed backdrop, not merely its maximize state.
+    inset = corner_inset(output)
+    height = max(1, output["logical_height"] - 2 * inset)
     for fx in (0.1, 0.5, 0.9):
         for fy in (0.1, 0.5, 0.9):
             x = round(fx * frame.width)
-            y = round((48 + (output["logical_height"] - 48) * fy) * output["scale"])
+            y = round((inset + height * fy) * output["scale"])
             if difference(frame.rgb(x, y), COLOR) > 2:
                 return False
     return True
@@ -180,16 +205,31 @@ def panels(smoke, output):
     for kind, button, last_name in (
         (
             "search",
-            "Search",
-            "Type to search apps and open windows, or draw a gesture to launch an app.",
+            "Apps List",
+            "Enter to open",
         ),
         ("notifications", "Notifications", "No notifications yet"),
-        ("power", "Power", "Log out"),
+        # Include capability feedback as well as the action rows when
+        # measuring the complete semantic content group.
+        ("power", "Power", "Session controls"),
         ("map", "Canvas map", "Zoom in"),
     ):
         checks.click(smoke, button)
         checks.opened(smoke, kind)
-        surface, gap = fitted(smoke, kind, last_name, output)
+        if kind == "search":
+            # The initial list contains every installed app and can scroll.
+            # Use a specific result to verify content-driven popup sizing.
+            with Input(smoke.control) as inputs:
+                inputs.type("Hearthspace Settings")
+        # The notification empty state reserves a 200px card. Search centers
+        # its final label inside a 42px footer above 12px of bottom padding.
+        surface, gap = fitted(
+            smoke,
+            kind,
+            last_name,
+            output,
+            max_bottom_gap={"notifications": 120, "search": 32}.get(kind, 24),
+        )
         if kind == "search":
             search_width(surface, output)
         park_pointer(smoke, output)
@@ -197,12 +237,14 @@ def panels(smoke, output):
         if checks.panel(smoke, kind) != surface:
             raise ControlError(f"{kind} popup changed geometry during capture")
         corners = rounded(background, visible, surface)
+        tint = raised_tint(background, visible, surface)
         smoke.record(
             "shell-popup-presentation",
             kind=kind,
             surface=surface,
             content_bottom_gap=gap,
             transparent_corners=corners,
+            raised_tint=tint,
         )
         with Input(smoke.control) as inputs:
             inputs.chord("esc")

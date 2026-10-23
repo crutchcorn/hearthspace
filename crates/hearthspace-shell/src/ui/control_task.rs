@@ -63,7 +63,7 @@ fn apply(state: &mut ShellState, update: Update) {
             }
         }
         Update::Finished(request, result, active) => {
-            // Hardware keys carry a compositor token. Control-center actions
+            // Hardware keys carry a compositor token. Dropdown actions
             // already show their result inline and must not open, replace, or
             // extend an OSD, even if the panel closes before the result arrives.
             let show_osd = active && request.token.is_some();

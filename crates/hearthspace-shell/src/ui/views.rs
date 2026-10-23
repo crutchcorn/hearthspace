@@ -1,26 +1,23 @@
-use hearthspace_common::{CONTROL_BAR_HEIGHT, SHELL_OUTPUT_WATCHER_APP_ID};
-use hearthspace_ui_components as components;
+use hearthspace_common::SHELL_OUTPUT_WATCHER_APP_ID;
 use xilem::{
     WidgetView, WindowOptionsExtLinux, WindowView,
     core::fork,
     dpi::LogicalSize,
     masonry::layout::AsUnit,
-    style::Style,
-    view::{FlexExt, flex_row, label, resize_observer, sized_box},
+    view::{label, sized_box},
     window,
 };
 
 use super::{
-    canvas_map::{map_button, map_window},
+    canvas_map::map_window,
     canvas_task::canvas_task,
-    constants::{SHELL_BAR_H_PAD, launcher_size},
-    icons::{Icon, icon_button},
+    constants::launcher_size,
     launcher::{self, Entry},
     notification_view,
     notifications::{Notification, notification_task},
     output_watcher::output_watcher_task,
     popup::{self, PopupKind},
-    session_controls::{clock_task, power_button, power_window},
+    session_controls::{clock_task, power_window},
     shell_events::shell_events_task,
     state::{ShellOutputInstance, ShellState},
     window_catalog::window_catalog_task,
@@ -37,6 +34,7 @@ pub(super) fn app_logic(
     state: &mut ShellState,
 ) -> impl Iterator<Item = WindowView<ShellState>> + use<> {
     super::search_selection::reconcile(state);
+    super::dock::reconcile(state);
     super::tray_state::reconcile(state);
     let watcher = window(
         state.watcher_window_id,
@@ -55,21 +53,15 @@ pub(super) fn app_logic(
             .on_close(ShellState::stop)
     });
     let mut windows = vec![watcher];
+    windows.extend(super::desktop::windows(state));
 
     for output in &state.outputs {
-        windows.push(shell_bar_window(
-            output,
-            state.clock.clone(),
-            &state.notifications,
-            &state.tray,
-            state.battery.as_ref(),
-            &state.window_group,
-        ));
+        windows.extend(super::corners::windows(state, output));
         if let Some(osd) = &output.osd {
             windows.push(super::control_osd::window(output, osd));
         }
         if output.show_controls {
-            windows.push(super::control_center::window(output, &state.controls));
+            windows.push(super::quick_panel::window(state, output));
             continue;
         }
         if output.tray.open {
@@ -94,7 +86,7 @@ pub(super) fn app_logic(
         }
 
         if output.show_power {
-            windows.push(power_window(output, &state.power, state.battery.as_ref()));
+            windows.push(power_window(output, &state.power));
             continue;
         }
         let results = launcher::results(state, output);
@@ -103,36 +95,18 @@ pub(super) fn app_logic(
                 state,
                 output,
                 results,
-                state.windows_error.clone(),
+                state
+                    .windows_error
+                    .clone()
+                    .or_else(|| state.desktop.source_error.clone()),
             ));
         }
     }
 
-    windows.into_iter()
-}
-
-fn shell_bar_window(
-    output: &ShellOutputInstance,
-    clock: String,
-    notifications: &[Notification],
-    tray: &super::tray_state::TrayState,
-    battery: Option<&crate::battery::BatteryStatus>,
-    group: &super::window_group::GroupState,
-) -> WindowView<ShellState> {
-    let bar_app_id = output.bar_app_id();
-    window(
-        output.bar_window_id,
-        "Hearthspace Shell",
-        bar_view(output, clock, notifications, tray, battery, group),
-    )
-    .with_options(move |options| {
-        options
-            .with_name(&bar_app_id, &bar_app_id)
-            .with_decorations(false)
-            .with_resizable(false)
-            .with_initial_inner_size(LogicalSize::new(760.0, f64::from(CONTROL_BAR_HEIGHT)))
-            .on_close(ShellState::stop)
-    })
+    let properties = state.appearance.properties.clone();
+    windows
+        .into_iter()
+        .map(move |window| window.with_default_properties(properties.clone()))
 }
 
 fn notification_window(
@@ -142,7 +116,7 @@ fn notification_window(
 ) -> WindowView<ShellState> {
     let app_id = output.notifications_app_id();
     let key = output.key().to_string();
-    let size = popup::size(output, PopupKind::Notifications, 360.0, 100.0);
+    let size = popup::size(output, PopupKind::Notifications, 390.0, 280.0);
     popup::window(
         output.notifications_window_id,
         "Hearthspace Notifications",
@@ -168,7 +142,7 @@ fn launcher_window(
     let size = popup::size(output, PopupKind::Search, size.width, size.height);
     popup::window(
         output.launcher_window_id,
-        "Hearthspace Launcher",
+        "Hearthspace Apps List",
         launcher_app_id,
         size,
         launcher::launcher_view(state, output, results, windows_error),
@@ -176,71 +150,19 @@ fn launcher_window(
     )
 }
 
-pub(super) fn bar_view(
-    output: &ShellOutputInstance,
-    clock: String,
-    notifications: &[Notification],
-    tray: &super::tray_state::TrayState,
-    battery: Option<&crate::battery::BatteryStatus>,
-    group: &super::window_group::GroupState,
-) -> impl WidgetView<ShellState> + use<> {
-    let key = output.key().to_string();
-    let search = icon_button(Icon::Search, "Search", output.show_search, move |state| {
-        state.toggle_search(&key);
-    });
-    let width_key = output.key().to_string();
-    // On very small outputs retain the battery's accessible percentage while
-    // making room for both the app tray and all desktop controls.
-    let compact_battery = output.tray.bar_width <= 360.0
-        && super::tray_state::visible(&tray.snapshot).next().is_some();
-    resize_observer(
-        move |state: &mut ShellState, size| {
-            if size.width.is_finite()
-                && let Some(output) = state.outputs.iter_mut().find(|o| o.key() == width_key)
-            {
-                output.tray.bar_width = size.width;
-            }
-        },
-        sized_box(
-            flex_row((
-                label(
-                    tray.hovered
-                        .as_ref()
-                        .map(|(_, title)| title.clone())
-                        .or_else(|| group.hint())
-                        .unwrap_or(clock),
-                )
-                .text_size(13.0)
-                .text_alignment(xilem::TextAlign::End)
-                .color(components::TEXT_MUTED)
-                .line_break_mode(xilem::masonry::properties::LineBreaking::Clip)
-                .flex(1.0),
-                super::tray_view::strip(output, tray, if battery.is_some() { 148.0 } else { 84.0 }),
-                super::battery_view::indicator(battery, compact_battery),
-                super::window_group::button(group),
-                search,
-                notification_view::button(output, notifications),
-                map_button(output),
-                super::control_center::toolbar_button(output),
-                power_button(output),
-            ))
-            .gap((if compact_battery { 5.0 } else { 6.0 }).px()),
-        )
-        .background_color(components::SURFACE)
-        .padding(xilem::masonry::properties::Padding::from_vh(
-            7.0.px(),
-            SHELL_BAR_H_PAD.px(),
-        )),
-    )
-}
-
 fn output_watcher_view(map_open: bool, osd_open: bool) -> impl WidgetView<ShellState> + use<> {
     sized_box(fork(
         fork(
-            fork(label(""), output_watcher_task()),
             fork(
-                fork(window_catalog_task(), shell_events_task()),
-                super::window_group::task(),
+                fork(label(""), output_watcher_task()),
+                super::appearance::task(),
+            ),
+            fork(
+                fork(
+                    fork(window_catalog_task(), shell_events_task()),
+                    super::dock::task(),
+                ),
+                fork(super::window_group::task(), super::desktop::task()),
             ),
         ),
         fork(

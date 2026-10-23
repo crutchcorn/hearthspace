@@ -10,7 +10,7 @@ from .pinch_touchscreen import settled
 from .png import pixels
 
 
-def blue_viewport(capture, surface, bounds):
+def accent_viewport(capture, surface, bounds):
     metadata, png = capture
     width, height, channels, rows = pixels(png)
     scale = metadata["scale"]
@@ -25,11 +25,11 @@ def blue_viewport(capture, surface, bounds):
             color = rows[y][x * channels : x * channels + 3]
             if all(
                 abs(actual - target) <= 6
-                for actual, target in zip(color, (47, 118, 194))
+                for actual, target in zip(color, (233, 100, 42))
             ):
                 points.append((x, y))
     if len(points) < 16:
-        raise ControlError("minimap has no clearly rendered blue viewport frame")
+        raise ControlError("minimap has no clearly rendered orange viewport frame")
     xs, ys = zip(*points)
     rect = (min(xs), min(ys), max(xs) + 1, max(ys) + 1)
     if rect[2] - rect[0] < 8 or rect[3] - rect[1] < 8:
@@ -64,7 +64,7 @@ def run(smoke, *, touchscreen=False):
     element = checks.map_image(smoke)
     kind = "touchscreen" if touchscreen else "pointer"
     image = smoke.capture(f"map-{kind}-drag-before", output["name"])
-    rect = blue_viewport(image, surface, element["bounds"])
+    rect = accent_viewport(image, surface, element["bounds"])
     scale = output["scale"]
     start = (
         output["logical_x"] + (rect[0] + rect[2]) / 2 / scale,
@@ -116,7 +116,7 @@ def run(smoke, *, touchscreen=False):
         device=kind,
         before=before["viewport"],
         after=after["viewport"],
-        blue_frame=rect,
+        accent_frame=rect,
         pointer_delta=delta,
         expected_canvas_delta=expected,
     )

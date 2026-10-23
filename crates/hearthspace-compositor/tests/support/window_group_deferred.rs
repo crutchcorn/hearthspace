@@ -8,7 +8,7 @@ fn gather_completion_waits_for_group_drag_and_clear_discards_deferred_results() 
     let server = mock::MockOllama::start();
     let mut compositor =
         HeadlessCompositor::spawn_with_command("1280x800", None, None, 1, false, |command| {
-            command.env("HEARTHSPACE_OLLAMA_URL", &server.url);
+            server.configure_enabled_model(command);
         });
     drop(compositor.wait_for_socket());
     let mut editors = Editors(Vec::new());
@@ -70,7 +70,7 @@ fn outside_client_move_or_resize_cancels_gather_without_stealing_client_input() 
     let server = mock::MockOllama::start();
     let mut compositor =
         HeadlessCompositor::spawn_with_command("1280x800", None, None, 1, false, |command| {
-            command.env("HEARTHSPACE_OLLAMA_URL", &server.url);
+            server.configure_enabled_model(command);
         });
     drop(compositor.wait_for_socket());
     let socket = compositor

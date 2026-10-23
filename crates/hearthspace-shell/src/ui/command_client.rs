@@ -61,12 +61,39 @@ pub(super) fn query_group(command_socket: &Path) -> Result<Vec<u8>, String> {
         .map_err(|error| format!("Window group unavailable: {error}"))
 }
 
-fn query_payload(
+// A desktop may contain 4096 IDs of 1024 bytes each. JSON can double their
+// escaped length; leave bounded space for selection and position metadata too.
+const MAX_DESKTOP_RESPONSE_BYTES: usize = 12 * 1024 * 1024;
+
+pub(super) fn query_desktop(command_socket: &Path) -> std::io::Result<Vec<u8>> {
+    query_payload_bounded(
+        command_socket,
+        "desktop-status",
+        Duration::from_millis(750),
+        MAX_DESKTOP_RESPONSE_BYTES,
+    )
+}
+
+pub(super) fn query_payload(
     command_socket: &Path,
     command: &str,
     timeout: Duration,
 ) -> std::io::Result<Vec<u8>> {
-    use hearthspace_ipc::transport::{MAX_RESPONSE_BYTES, connect_until, write_until};
+    query_payload_bounded(
+        command_socket,
+        command,
+        timeout,
+        hearthspace_ipc::transport::MAX_RESPONSE_BYTES,
+    )
+}
+
+fn query_payload_bounded(
+    command_socket: &Path,
+    command: &str,
+    timeout: Duration,
+    max_response_bytes: usize,
+) -> std::io::Result<Vec<u8>> {
+    use hearthspace_ipc::transport::{connect_until, write_until};
     use std::io::{self, ErrorKind};
 
     let deadline = Instant::now() + timeout;
@@ -102,7 +129,7 @@ fn query_payload(
     let size = header
         .strip_prefix("ok ")
         .and_then(|size| size.parse::<usize>().ok())
-        .filter(|size| *size <= MAX_RESPONSE_BYTES)
+        .filter(|size| *size <= max_response_bytes)
         .ok_or_else(|| {
             io::Error::new(
                 ErrorKind::InvalidData,
@@ -215,6 +242,67 @@ mod tests {
             std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut
         ));
         assert!(start.elapsed() < Duration::from_secs(1));
+        server.join().unwrap();
+    }
+
+    #[test]
+    fn desktop_status_accepts_a_large_catalog_over_the_small_query_limit() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("control.sock");
+        let listener = UnixListener::bind(&path).unwrap();
+        let items: Vec<_> = (0..600)
+            .map(|index| {
+                serde_json::json!({
+                    "id": format!("app:{index:04}{}.desktop", "x".repeat(80)),
+                    "x": index * 104, "y": 112, "selected": index == 599,
+                    "focused": index == 599, "keyboard_focus": true,
+                })
+            })
+            .collect();
+        let payload = serde_json::to_vec(&serde_json::json!({
+            "version":1, "revision":4, "select_mode":true, "items":items,
+        }))
+        .unwrap();
+        assert!(payload.len() > hearthspace_ipc::transport::MAX_RESPONSE_BYTES);
+        let expected = payload.clone();
+        let server = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut request = [0; 15];
+            stream.read_exact(&mut request).unwrap();
+            assert_eq!(&request, b"desktop-status\n");
+            stream
+                .write_all(format!("ok {}\n", payload.len()).as_bytes())
+                .unwrap();
+            for chunk in payload.chunks(4093) {
+                stream.write_all(chunk).unwrap();
+            }
+        });
+        let received = query_desktop(&path).unwrap();
+        assert_eq!(received, expected);
+        let value: serde_json::Value = serde_json::from_slice(&received).unwrap();
+        assert_eq!(value["items"].as_array().unwrap().len(), 600);
+        assert_eq!(value["items"][599]["selected"], true);
+        server.join().unwrap();
+    }
+
+    #[test]
+    fn desktop_status_rejects_an_over_limit_header_before_allocating_the_body() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("control.sock");
+        let listener = UnixListener::bind(&path).unwrap();
+        let server = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut request = [0; 15];
+            stream.read_exact(&mut request).unwrap();
+            assert_eq!(&request, b"desktop-status\n");
+            stream
+                .write_all(format!("ok {}\n", MAX_DESKTOP_RESPONSE_BYTES + 1).as_bytes())
+                .unwrap();
+        });
+        assert_eq!(
+            query_desktop(&path).unwrap_err().kind(),
+            std::io::ErrorKind::InvalidData
+        );
         server.join().unwrap();
     }
 }

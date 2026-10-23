@@ -71,13 +71,18 @@ impl DecisionClient {
         if serde_json::to_vec(&state)?.len() > 24_000 {
             bail!("Selected window titles exceed D1's input limit; select fewer windows");
         }
-        // Settings and session workers share this process-independent guard;
-        // device changes cannot reload the model halfway through a gather.
+        // Settings and session workers share this process-independent guard.
+        // Check opt-in while holding it so disabling AI cannot race inference.
         let _operation = self
             .model_directory
             .as_ref()
             .map(|directory| model_files::lock(directory))
             .transpose()?;
+        if let Some(directory) = &self.model_directory
+            && !model_files::saved(directory)?.registered
+        {
+            bail!("Turn on AI in Settings to gather similar windows.");
+        }
         let deadline = Instant::now() + GATHER_BUDGET;
         let mut matched = Vec::new();
         progress(0, candidates.len());
@@ -122,3 +127,6 @@ fn relevance_probability(response: &Value) -> Result<f64> {
     }
     Ok(probability)
 }
+
+#[cfg(test)]
+mod tests;

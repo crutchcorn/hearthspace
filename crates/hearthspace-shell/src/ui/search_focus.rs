@@ -27,13 +27,22 @@ use super::state::ShellState;
 
 pub(super) type FocusTarget = Arc<Mutex<Option<WidgetId>>>;
 
-pub(super) fn focus_on_activation<V>(inner: V, target: FocusTarget) -> FocusOnActivation<V> {
-    FocusOnActivation { inner, target }
+pub(super) fn focus_on_activation<V>(
+    inner: V,
+    target: FocusTarget,
+    output_key: String,
+) -> FocusOnActivation<V> {
+    FocusOnActivation {
+        inner,
+        target,
+        output_key,
+    }
 }
 
 pub(super) struct FocusOnActivation<V> {
     inner: V,
     target: FocusTarget,
+    output_key: String,
 }
 
 const CONTENT: ViewId = ViewId::new(0x53454152);
@@ -53,7 +62,9 @@ where
             inner: child.new_widget.erased().to_pod(),
             target: self.target.clone(),
         };
-        (Pod::new_with_props(widget, Dimensions::MAX), view_state)
+        let pod = Pod::new_with_props(widget, Dimensions::MAX);
+        ctx.record_action_source(pod.new_widget.id());
+        (pod, view_state)
     }
 
     fn rebuild(
@@ -64,6 +75,9 @@ where
         mut element: Mut<'_, Self::Element>,
         state: &mut ShellState,
     ) {
+        let previous_editor = *element.widget.target.lock().unwrap();
+        let restore_editor =
+            previous_editor.is_none() || element.ctx.focus_target_id() == previous_editor;
         element.widget.target = self.target.clone();
         ctx.with_id(CONTENT, |ctx| {
             self.inner.rebuild(
@@ -74,6 +88,15 @@ where
                 state,
             )
         });
+        let editor = *self.target.lock().unwrap();
+        if restore_editor && editor.is_some() && previous_editor != editor {
+            let WidgetMut { widget, ctx, .. } = &mut element;
+            ctx.mutate_child_later(&mut widget.inner, |mut child| {
+                child
+                    .ctx
+                    .submit_untyped_action(Box::new(InitializeSearchFocus));
+            });
+        }
     }
 
     fn teardown(
@@ -89,6 +112,7 @@ where
                 SearchFocus::child_mut(&mut element).downcast(),
             )
         });
+        ctx.teardown_action_source(element);
     }
 
     fn message(
@@ -105,6 +129,10 @@ where
                 SearchFocus::child_mut(&mut element).downcast(),
                 state,
             ),
+            None if message.take_message::<DismissLauncher>().is_some() => {
+                state.dismiss_search(&self.output_key);
+                MessageResult::Action(())
+            }
             _ => MessageResult::Stale,
         }
     }
@@ -117,6 +145,8 @@ pub(super) struct SearchFocus {
 
 #[derive(Debug)]
 struct InitializeSearchFocus;
+#[derive(Debug)]
+struct DismissLauncher;
 
 impl SearchFocus {
     fn child_mut<'a>(this: &'a mut WidgetMut<'_, Self>) -> WidgetMut<'a, dyn Widget> {
@@ -173,16 +203,19 @@ impl Widget for SearchFocus {
         if let TextEvent::Keyboard(event) = event
             && event.state.is_down()
             && event.key == Key::Named(NamedKey::Escape)
-            && let Some(target) = *self.target.lock().unwrap()
         {
             // Escape must also dismiss search when a result or close button has
             // keyboard focus. Reuse the search view's existing cancel callback.
-            ctx.mutate_later(target, |mut search| {
-                search
-                    .ctx
-                    .submit_action::<TextAction>(TextAction::Cancelled);
-            });
-            ctx.set_focus(target);
+            if let Some(target) = *self.target.lock().unwrap() {
+                ctx.mutate_later(target, |mut search| {
+                    search
+                        .ctx
+                        .submit_action::<TextAction>(TextAction::Cancelled);
+                });
+                ctx.set_focus(target);
+            } else {
+                ctx.submit_untyped_action(Box::new(DismissLauncher));
+            }
             ctx.set_handled();
         }
     }

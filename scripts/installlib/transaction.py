@@ -140,6 +140,7 @@ def verify_bundle(bundle, prefix):
         "bin/hearthspace-login-guard",
         "share/applications/dev.hearthspace.Settings.desktop",
         "share/icons/hicolor/scalable/apps/hearthspace.svg",
+        "share/icons/hicolor/scalable/apps/hearthspace-settings.svg",
     }
     if set(spec["files"]) != expected_names:
         raise RuntimeError("bundle does not contain the complete runtime file set")

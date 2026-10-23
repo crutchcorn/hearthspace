@@ -55,7 +55,7 @@ class ShellEvidenceTests(unittest.TestCase):
             shell_smoke.launch_settings(smoke)
         self.assertEqual(
             [call.args[1] for call in click.call_args_list],
-            ["Search"],
+            ["Apps List"],
         )
         selected.assert_called_once_with(smoke, "Open: Hearthspace Settings")
         input_type.return_value.__enter__.return_value.chord.assert_called_once_with(
@@ -200,40 +200,6 @@ class ShellEvidenceTests(unittest.TestCase):
                     shell_checks.opened(smoke, "power", exclusive=True)
                 self.assertEqual(sleep.call_count, 1)
                 self.assertEqual(smoke.control.status.call_count, 2)
-
-    def test_compact_bar_rejects_old_actions_and_nonadjacent_icons(self):
-        icons = list(shell_checks.BAR_ICONS)
-        for names, succeeds in [
-            (icons, True),
-            (icons + ["Lock"], False),
-            (icons + ["Overview"], False),
-            (icons + ["Extra action"], False),
-            (icons + ["Search"], False),
-            (
-                [
-                    "Select window group",
-                    "Search",
-                    "Canvas map",
-                    "Notifications",
-                    "Control center",
-                    "Power",
-                ],
-                False,
-            ),
-        ]:
-            with self.subTest(names=names):
-                smoke = Mock()
-                buttons = [
-                    {"name": name, "bounds": {"x": index * 40}}
-                    for index, name in enumerate(names)
-                ]
-                smoke.until.side_effect = [True, buttons]
-                with patch.object(shell_checks, "a11y", return_value={"elements": []}):
-                    if succeeds:
-                        shell_checks.bar(smoke)
-                    else:
-                        with self.assertRaises(ControlError):
-                            shell_checks.bar(smoke)
 
     def test_query_text_uses_the_manifest_private_bus_and_observed_node(self):
         with tempfile.TemporaryDirectory() as directory:

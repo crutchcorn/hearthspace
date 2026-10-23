@@ -41,6 +41,7 @@ pub(crate) struct Supervisor {
     watcher: Option<ManagedProcess>,
     notifications: Option<ManagedProcess>,
     desktop_services: crate::desktop_services::DesktopServices,
+    appearance_portal: Option<crate::appearance_portal::AppearancePortal>,
     app_scopes: Option<crate::app_scopes::AppScopes>,
     power: Option<crate::power::PowerManager>,
     ai: Option<crate::ai::SessionModel>,
@@ -73,6 +74,7 @@ impl Supervisor {
             watcher: None,
             notifications: None,
             desktop_services: crate::desktop_services::DesktopServices::default(),
+            appearance_portal: None,
             app_scopes: None,
             power: None,
             ai: None,
@@ -170,6 +172,19 @@ impl Supervisor {
     }
 
     pub(crate) fn start_desktop_services(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        let bus = self
+            .session_env
+            .vars
+            .iter()
+            .find(|(key, _)| key == "HEARTHSPACE_SESSION_BUS_ADDRESS")
+            .map(|(_, value)| value.clone())
+            .ok_or("appearance publication requires a private session bus")?;
+        self.appearance_portal = Some(crate::appearance_portal::AppearancePortal::start(
+            bus,
+            self.paths.settings_socket.clone(),
+            self.startup_deadline,
+            &self.shutdown_requested,
+        )?);
         self.desktop_services.start(
             &self.paths,
             &self.session_env,
@@ -300,6 +315,9 @@ impl Supervisor {
             if self.desktop_services.poll(&self.shutdown_requested) {
                 self.record_processes()?;
             }
+            if let Some(portal) = &mut self.appearance_portal {
+                portal.poll(&self.shutdown_requested);
+            }
             self.poll_wayvnc();
 
             thread::sleep(Duration::from_millis(100));
@@ -318,6 +336,7 @@ impl Supervisor {
         terminate_process(&mut self.notifications);
 
         self.desktop_services.shutdown();
+        self.appearance_portal.take();
 
         wait_then_kill_process(&mut self.wayvnc);
         wait_then_kill_process(&mut self.shell);

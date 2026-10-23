@@ -8,7 +8,7 @@ use crate::{
     geometry::rect_contains,
 };
 
-use super::geometry::resize_edges_at;
+use super::{TitlebarButton, geometry::resize_edges_at};
 use crate::compositor::{App, HitTarget, ManagedWindowKind};
 
 impl App {
@@ -49,7 +49,7 @@ impl App {
                     }
                 }
                 ManagedWindowKind::ShellWatcher | ManagedWindowKind::ControlOsd => continue,
-                ManagedWindowKind::Normal => continue,
+                ManagedWindowKind::Normal | ManagedWindowKind::DesktopItem => continue,
             }
         }
 
@@ -93,16 +93,16 @@ impl App {
 
             if self.has_compositor_chrome(window_index) {
                 let titlebar = self.title_bar_rect(window_index);
-                let canvas_titlebar = self.title_bar_canvas_rect(window_index);
-                let scale = self.window_render_scale(window_index);
-                let chrome_location = Point::from((
-                    f64::from(canvas_titlebar.loc.x)
-                        + (location.x - f64::from(titlebar.loc.x)) / scale,
-                    f64::from(canvas_titlebar.loc.y)
-                        + (location.y - f64::from(titlebar.loc.y)) / scale,
-                ));
-                if rect_contains(self.close_button_canvas_rect(window_index), chrome_location) {
-                    return Some(HitTarget::CloseButton { window_index });
+                for button in [TitlebarButton::Close, TitlebarButton::Maximize] {
+                    if self
+                        .titlebar_button_screen_rect(window_index, button)
+                        .contains(location)
+                    {
+                        return Some(HitTarget::TitlebarButton {
+                            window_index,
+                            button,
+                        });
+                    }
                 }
 
                 if rect_contains(titlebar, location) {
@@ -148,6 +148,28 @@ impl App {
             }
         }
 
+        for (window_index, window) in self.windows.iter().enumerate().rev() {
+            if !window.mapped || window.kind != ManagedWindowKind::DesktopItem {
+                continue;
+            }
+            if !self
+                .window_screen_bounds(window_index)
+                .contains(location.to_i32_round())
+            {
+                continue;
+            }
+            let root = window.surface.wl_surface()?;
+            let local = self.window_screen_to_surface(window_index, location);
+            if let Some((surface, origin)) =
+                under_from_surface_tree(&root, local, (0, 0), WindowSurfaceType::ALL)
+            {
+                return Some(HitTarget::Client {
+                    window_index,
+                    surface,
+                    surface_location: location - (local - origin.to_f64()),
+                });
+            }
+        }
         None
     }
 

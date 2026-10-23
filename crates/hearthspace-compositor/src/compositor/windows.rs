@@ -25,20 +25,24 @@ mod control_osd;
 mod geometry;
 mod hit_testing;
 mod ordering;
+mod resize;
+mod resize_grid;
+mod resize_limits;
+pub(super) use resize::PendingResize;
+mod shell_corners;
 mod shell_panels;
 mod shell_position;
 mod shell_size;
+mod titlebar_controls;
 
 pub(super) use geometry::{ResizeEdges, resize_cursor_icon};
 use ordering::normal_insert_index_for_kinds;
+pub(super) use titlebar_controls::{TitlebarButton, titlebar_button_rect};
 
-use geometry::{
-    close_button_canvas_rect_for, content_canvas_origin_for, resize_anchored_position,
-    resize_target_content_size, title_bar_canvas_rect_for, window_canvas_rect_for,
-};
+use geometry::{content_canvas_origin_for, title_bar_canvas_rect_for, window_canvas_rect_for};
 
 use super::{
-    App, ManagedSurface, ManagedWindow, ManagedWindowKind, ResizeState, WindowDecoration,
+    App, ManagedSurface, ManagedWindow, ManagedWindowKind, WindowDecoration,
     focus::KeyboardFocusTarget,
     idle::ActivityReason,
     rendering::{toplevel_geometry_loc, toplevel_geometry_size},
@@ -68,6 +72,13 @@ fn configure_client_side_decoration(toplevel: &ToplevelSurface) {
 
 pub(super) fn window_kind_for_toplevel(surface: &ToplevelSurface) -> ManagedWindowKind {
     let app_id = toplevel_app_id(surface);
+    if app_id
+        .as_deref()
+        .and_then(hearthspace_common::desktop_item_id_from_app_id)
+        .is_some()
+    {
+        return ManagedWindowKind::DesktopItem;
+    }
     if app_id
         .as_deref()
         .and_then(shell_bar_output_name_from_app_id)
@@ -137,7 +148,7 @@ pub(super) fn position_for_new_window(
     fallback: CanvasPoint,
 ) -> CanvasPoint {
     match kind {
-        ManagedWindowKind::Normal => fallback,
+        ManagedWindowKind::Normal | ManagedWindowKind::DesktopItem => fallback,
         ManagedWindowKind::ShellBar => CanvasPoint { x: 0, y: 0 },
         ManagedWindowKind::ShellWatcher | ManagedWindowKind::ControlOsd => {
             CanvasPoint { x: 0, y: 0 }
@@ -152,6 +163,7 @@ pub(super) fn position_for_new_window(
 pub(super) fn decoration_for_new_window(kind: ManagedWindowKind) -> WindowDecoration {
     match kind {
         ManagedWindowKind::Normal
+        | ManagedWindowKind::DesktopItem
         | ManagedWindowKind::ShellBar
         | ManagedWindowKind::Launcher
         | ManagedWindowKind::ShellWatcher
@@ -269,6 +281,15 @@ impl App {
 
     pub(super) fn refresh_normal_window_outputs(&self) {
         for (window_index, window) in self.windows.iter().enumerate() {
+            if window.kind == ManagedWindowKind::DesktopItem && window.mapped {
+                if let Some(surface) = window.surface.wl_surface() {
+                    self.enter_outputs_intersecting(
+                        &surface,
+                        self.window_screen_bounds(window_index),
+                    );
+                }
+                continue;
+            }
             if window.kind != ManagedWindowKind::Normal {
                 continue;
             }
@@ -346,6 +367,23 @@ impl App {
         let normal_bounds = (kind == ManagedWindowKind::Normal)
             .then(|| self.normal_toplevel_bounds(surface))
             .flatten();
+        let bar_size = (kind == ManagedWindowKind::ShellBar).then(|| {
+            let output = self
+                .output_client_logical_size_for_name(shell_output_name)
+                .unwrap_or_else(|| (self.minimum_output_client_logical_width(), 800).into());
+            let corner = toplevel_app_id(surface)
+                .as_deref()
+                .and_then(hearthspace_common::shell_corner_from_app_id);
+            corner
+                .map(|corner| {
+                    shell_corners::corner_size(
+                        corner,
+                        shell_size::fixed_size(surface.wl_surface()),
+                        output,
+                    )
+                })
+                .unwrap_or_else(|| (output.w, CONTROL_BAR_HEIGHT).into())
+        });
         surface.with_pending_state(|state| {
             state
                 .capabilities
@@ -359,17 +397,8 @@ impl App {
                 });
             match kind {
                 ManagedWindowKind::ShellBar => {
-                    let width = self
-                        .output_client_logical_size_for_name(shell_output_name)
-                        .map(|size| size.w)
-                        .unwrap_or_else(|| self.minimum_output_client_logical_width());
-                    trace!(
-                        width,
-                        ?shell_output_name,
-                        "configuring shell bar to output width"
-                    );
-                    state.size = Some((width, CONTROL_BAR_HEIGHT).into());
-                    state.bounds = Some((width, CONTROL_BAR_HEIGHT).into());
+                    state.size = bar_size;
+                    state.bounds = bar_size;
                     state.decoration_mode = Some(DecorationMode::ClientSide);
                 }
                 ManagedWindowKind::Launcher | ManagedWindowKind::ControlOsd => {
@@ -381,6 +410,17 @@ impl App {
                 ManagedWindowKind::ShellWatcher => {
                     state.size = Some((1, 1).into());
                     state.bounds = Some((1, 1).into());
+                    state.decoration_mode = Some(DecorationMode::ClientSide);
+                }
+                ManagedWindowKind::DesktopItem => {
+                    state.size = Some(
+                        (
+                            hearthspace_common::DESKTOP_SURFACE_WIDTH,
+                            hearthspace_common::DESKTOP_SURFACE_HEIGHT,
+                        )
+                            .into(),
+                    );
+                    state.bounds = state.size;
                     state.decoration_mode = Some(DecorationMode::ClientSide);
                 }
                 ManagedWindowKind::Normal => state.bounds = normal_bounds,
@@ -408,7 +448,9 @@ impl App {
             }
             if matches!(
                 window.kind,
-                ManagedWindowKind::Launcher | ManagedWindowKind::ControlOsd
+                ManagedWindowKind::ShellBar
+                    | ManagedWindowKind::Launcher
+                    | ManagedWindowKind::ControlOsd
             ) && let Some(surface) = window.surface.wl_surface()
             {
                 self.configure_shell_palette_size(&surface);
@@ -470,11 +512,42 @@ impl App {
         title_bar_canvas_rect_for(window.position, window.content_bbox_size.w)
     }
 
-    fn close_button_canvas_rect(&self, window_index: usize) -> Rectangle<i32, Logical> {
-        close_button_canvas_rect_for(self.title_bar_canvas_rect(window_index))
+    pub(super) fn titlebar_button_screen_rect(
+        &self,
+        window_index: usize,
+        button: TitlebarButton,
+    ) -> Rectangle<f64, Logical> {
+        let titlebar = self.title_bar_rect(window_index);
+        let scale = self.window_render_scale(window_index);
+        let width = if self.window_uses_output_coordinates(window_index) {
+            titlebar.size.w
+        } else {
+            self.title_bar_canvas_rect(window_index).size.w
+        };
+        let button = titlebar_button_rect(width, button);
+        Rectangle::new(
+            (
+                f64::from(titlebar.loc.x) + f64::from(button.loc.x) * scale,
+                f64::from(titlebar.loc.y) + f64::from(button.loc.y) * scale,
+            )
+                .into(),
+            (
+                f64::from(button.size.w) * scale,
+                f64::from(button.size.h) * scale,
+            )
+                .into(),
+        )
     }
 
     pub(super) fn content_canvas_origin(&self, window_index: usize) -> Point<i32, Logical> {
+        if self.windows[window_index].kind == ManagedWindowKind::DesktopItem {
+            let point = self.windows[window_index].position;
+            return (
+                point.x - hearthspace_common::DESKTOP_ITEM_MARGIN,
+                point.y - hearthspace_common::DESKTOP_ITEM_MARGIN,
+            )
+                .into();
+        }
         content_canvas_origin_for(
             self.windows[window_index].position,
             self.has_compositor_chrome(window_index),
@@ -504,6 +577,9 @@ impl App {
     /// rect tracks the *visible* window geometry (excluding shadow margins) so
     /// resize handles land on the visible edge rather than out in the shadow.
     pub(super) fn window_canvas_rect(&self, window_index: usize) -> Rectangle<i32, Logical> {
+        if self.windows[window_index].kind == ManagedWindowKind::DesktopItem {
+            return self.desktop_tile_rect(window_index);
+        }
         let window = &self.windows[window_index];
         if self.has_compositor_chrome(window_index) {
             return window_canvas_rect_for(window.position, window.content_bbox_size, true);
@@ -533,132 +609,13 @@ impl App {
         Some(rect)
     }
 
-    /// Begin an interactive resize of `window_index` along `edges`, capturing the
-    /// window's starting geometry so motion deltas can be resolved against it.
-    pub(super) fn start_resize(&mut self, window_index: usize, edges: ResizeEdges) {
-        if self.window_uses_output_coordinates(window_index) {
-            return;
-        }
-        self.cancel_group_window_motion(self.windows[window_index].id);
-        self.prepare_window_pointer_operation();
-        let pointer_start = self.window_pointer_start(window_index);
-        let initial_content_size = self.window_geometry_size(window_index);
-        let window = &self.windows[window_index];
-        debug!(
-            window_id = window.id,
-            ?edges,
-            ?initial_content_size,
-            "starting interactive resize"
-        );
-        self.resize = Some(ResizeState {
-            window_id: window.id,
-            edges,
-            pointer_start,
-            initial_position: window.position,
-            initial_content_size,
-        });
-        if pointer_start != self.raw_pointer_location {
-            self.update_resize(self.raw_pointer_location);
-        }
-        self.request_redraw();
-    }
-
-    /// Resolve a pointer position during an active resize into a new client
-    /// content size and forward it to the window's client.
-    pub(super) fn update_resize(&mut self, location: Point<f64, Logical>) {
-        let Some(resize) = self.resize.as_ref() else {
-            return;
-        };
-        let edges = resize.edges;
-        let initial = resize.initial_content_size;
-        let window_id = resize.window_id;
-        let delta = location - resize.pointer_start;
-        let canvas_delta = Point::<i32, Logical>::from((
-            (delta.x / self.viewport_scale).round() as i32,
-            (delta.y / self.viewport_scale).round() as i32,
-        ));
-        let size = resize_target_content_size(edges, initial, canvas_delta);
-        trace!(window_id, ?edges, ?size, "configuring interactive resize");
-        self.configure_resize(window_id, size);
-    }
-
-    /// Send the in-progress resize size to the resized window's client. The
-    /// client applies it on its next commit, where the window is re-anchored.
-    pub(super) fn configure_resize(&self, window_id: u64, size: Size<i32, Logical>) {
-        let Some(window) = self.windows.iter().find(|window| window.id == window_id) else {
-            return;
-        };
-        match &window.surface {
-            ManagedSurface::Xdg(surface) => {
-                surface.with_pending_state(|state| {
-                    state.states.set(xdg_toplevel::State::Resizing);
-                    state.bounds = None;
-                    state.size = Some(size);
-                });
-                surface.send_configure();
-            }
-            #[cfg(feature = "xwayland")]
-            ManagedSurface::X11(surface) => {
-                let rect =
-                    Rectangle::new(Point::from((window.position.x, window.position.y)), size);
-                if let Err(error) = surface.configure(Some(rect)) {
-                    tracing::warn!(%error, "failed to configure X11 resize");
-                }
-            }
-        }
-    }
-
-    /// End the active interactive resize, clearing the `Resizing` state on the
-    /// client so it can return to its normal rendering.
-    pub(super) fn finish_resize(&mut self) {
-        let Some(resize) = self.resize.take() else {
-            return;
-        };
-        debug!(window_id = resize.window_id, "finishing interactive resize");
-        if let Some(window) = self
-            .windows
-            .iter()
-            .find(|window| window.id == resize.window_id)
-            && let Some(surface) = window.surface.xdg_toplevel()
-        {
-            surface.with_pending_state(|state| {
-                state.states.unset(xdg_toplevel::State::Resizing);
-            });
-            surface.send_configure();
-        }
-    }
-
-    /// Re-anchor a window being resized from its left/top edge so the opposite
-    /// edge stays put as the client's content size changes. Called on commit,
-    /// after the new content bounding box has been cached.
-    pub(super) fn reanchor_resize(&mut self, surface: &WlSurface) {
-        let Some(resize) = self.resize.as_ref() else {
-            return;
-        };
-        if !(resize.edges.left || resize.edges.top) {
-            return;
-        }
-        let Some(window_index) = self.window_index_for_surface(surface) else {
-            return;
-        };
-        if self.windows[window_index].id != resize.window_id {
-            return;
-        }
-        let new_position = resize_anchored_position(
-            resize.edges,
-            resize.initial_position,
-            resize.initial_content_size,
-            self.window_geometry_size(window_index),
-        );
-        self.windows[window_index].position = new_position;
-    }
     pub(super) fn window_surface_geometry_loc(&self, window_index: usize) -> Point<i32, Logical> {
         match &self.windows[window_index].surface {
             ManagedSurface::Xdg(surface) => toplevel_geometry_loc(surface.wl_surface()),
             #[cfg(feature = "xwayland")]
-            // X11 geometry is in root-window coordinates. It is not an inset
-            // within the wl_surface as xdg window geometry is.
-            ManagedSurface::X11(_) => Point::from((0, 0)),
+            // Smithay's geometry is the local committed bbox minus frame
+            // extents, so CSD shadows are excluded just as for xdg geometry.
+            ManagedSurface::X11(surface) => surface.geometry().loc,
         }
     }
 

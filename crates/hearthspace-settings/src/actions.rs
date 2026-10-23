@@ -28,18 +28,15 @@ pub(crate) fn apply_monitor_editor_action(state: &mut SettingsApp, action: Monit
     match action {
         MonitorEditorAction::Select { id, monitors } => {
             state.settings.monitors = monitors;
-            state.selected_monitor_id = Some(id.clone());
-            state.status = format!("Selected monitor {id}");
+            state.selected_monitor_id = Some(id);
+            state.status.clear();
         }
         MonitorEditorAction::Drag {
             moved_id,
             monitors,
             commit,
         } => {
-            let moved_monitor = monitors
-                .iter()
-                .find(|monitor| monitor.id == moved_id)
-                .cloned();
+            let moved_monitor_exists = monitors.iter().any(|monitor| monitor.id == moved_id);
             state.selected_monitor_id = Some(moved_id.clone());
             state.settings.monitors = monitors;
 
@@ -59,8 +56,8 @@ pub(crate) fn apply_monitor_editor_action(state: &mut SettingsApp, action: Monit
                     }
                     Err(error) => state.status = format!("Failed to save monitor layout: {error}"),
                 }
-            } else if let Some(monitor) = moved_monitor {
-                state.status = format!("Moving {} to {},{}", monitor.name, monitor.x, monitor.y);
+            } else if moved_monitor_exists {
+                state.status.clear();
             } else {
                 state.status = format!("Unknown monitor: {moved_id}");
             }
@@ -127,7 +124,7 @@ pub(crate) fn save_monitor_scale(state: &mut SettingsApp, id: &str, scale: i32) 
 
 fn status_after_compositor_reload(saved_message: String) -> String {
     match notify_compositor_settings_changed() {
-        Ok(()) => saved_message,
+        Ok(()) => String::new(),
         Err(error) => format!("{saved_message}; compositor reload failed: {error}"),
     }
 }
@@ -149,11 +146,11 @@ pub(crate) fn save_background_image_path(state: &mut SettingsApp, path: Option<P
     match client_set_background_image_path(path.as_deref()) {
         Ok(settings) => {
             state.settings = settings_with_live_outputs(settings, &state.live_outputs);
+            state
+                .background_preview
+                .refresh(state.settings.background_image_path.as_deref());
             state.status = match notify_compositor_settings_changed() {
-                Ok(()) => match &state.settings.background_image_path {
-                    Some(path) => format!("Saved background image: {path}"),
-                    None => "Restored default background image".to_string(),
-                },
+                Ok(()) => String::new(),
                 Err(error) => format!("Saved background image; compositor reload failed: {error}"),
             };
         }
@@ -172,7 +169,7 @@ pub(crate) fn save_background_mode(state: &mut SettingsApp, mode: BackgroundMode
         Ok(settings) => {
             state.settings = settings_with_live_outputs(settings, &state.live_outputs);
             state.status = match notify_compositor_settings_changed() {
-                Ok(()) => format!("Saved background mode: {mode}"),
+                Ok(()) => String::new(),
                 Err(error) => {
                     format!("Saved background mode: {mode}; compositor reload failed: {error}")
                 }

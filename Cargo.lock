@@ -30,8 +30,6 @@ dependencies = [
 [[package]]
 name = "accesskit_atspi_common"
 version = "0.18.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1e8c61bee90b42a772d39d06a740207dc71a4e780004ace1db8d99fb1baaa954"
 dependencies = [
  "accesskit",
  "accesskit_consumer 0.36.0",
@@ -2518,6 +2516,7 @@ dependencies = [
  "hearthspace-common",
  "hearthspace-ipc",
  "hearthspace-shell",
+ "hearthspace-ui-components",
  "image",
  "masonry",
  "naga",
@@ -2579,6 +2578,7 @@ dependencies = [
  "gio",
  "hearthspace-ai",
  "hearthspace-common",
+ "hearthspace-ipc",
  "nix",
  "serde",
  "serde_json",
@@ -2598,7 +2598,9 @@ dependencies = [
  "hearthspace-ipc",
  "hearthspace-shell",
  "hearthspace-ui-components",
+ "image",
  "masonry",
+ "png",
  "rfd",
  "tempfile",
  "wayland-client",
@@ -2623,6 +2625,7 @@ version = "0.1.0"
 dependencies = [
  "accesskit_atspi_common",
  "chrono",
+ "dirs 6.0.0",
  "freedesktop-icons",
  "futures-util",
  "hearthspace-common",
@@ -2647,6 +2650,7 @@ dependencies = [
 name = "hearthspace-ui-components"
 version = "0.1.0"
 dependencies = [
+ "hearthspace-common",
  "masonry",
  "xilem",
 ]
@@ -3572,7 +3576,6 @@ dependencies = [
 [[package]]
 name = "masonry_winit"
 version = "0.4.0"
-source = "git+https://github.com/linebender/xilem?rev=271a27a6d4a930f7878d404f9014e3c50a3a9b88#271a27a6d4a930f7878d404f9014e3c50a3a9b88"
 dependencies = [
  "accesskit_winit",
  "copypasta",
@@ -5332,9 +5335,9 @@ dependencies = [
 
 [[package]]
 name = "rustls-webpki"
-version = "0.103.15"
+version = "0.103.16"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f3c3cf1d8b1e7d4927e2d154c3fcb02979afb9939629c62cd9048d4f07b60ac2"
+checksum = "4443b1b6d39d7c663139942cc4558262562d2c84123bb6282ef177009ca8b281"
 dependencies = [
  "ring",
  "rustls-pki-types",
@@ -5614,7 +5617,6 @@ checksum = "5b3dc8af474f516a851ff4bd12db780f948b9250ad37211e4eec0bccea54e01b"
 [[package]]
 name = "smithay"
 version = "0.7.0"
-source = "git+https://github.com/Smithay/smithay?rev=5c2ba4132556a08abc70ae1771d275ec2cfc031f#5c2ba4132556a08abc70ae1771d275ec2cfc031f"
 dependencies = [
  "aliasable",
  "appendlist",
@@ -7051,9 +7053,9 @@ dependencies = [
 
 [[package]]
 name = "webpki-roots"
-version = "1.0.9"
+version = "1.0.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7dcd9d09a39985f5344844e66b0c530a33843579125f23e21e9f0f220850f22a"
+checksum = "1c1c8e20c8a38fc7d65abfe74eb7280e4aa667e8eec8bc84996d2874810748d9"
 dependencies = [
  "rustls-pki-types",
 ]
@@ -7956,7 +7958,6 @@ checksum = "213b7324336b53d2414b2db8537e56544d981803139155afa84f76eeebb7a546"
 [[package]]
 name = "xilem"
 version = "0.4.0"
-source = "git+https://github.com/linebender/xilem?rev=271a27a6d4a930f7878d404f9014e3c50a3a9b88#271a27a6d4a930f7878d404f9014e3c50a3a9b88"
 dependencies = [
  "masonry",
  "masonry_winit",

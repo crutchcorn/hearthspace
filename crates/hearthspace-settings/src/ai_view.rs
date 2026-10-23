@@ -1,70 +1,213 @@
-use hearthspace_ai::DevicePreference;
-use hearthspace_ui_components as components;
+use hearthspace_ui_components::{
+    self as components,
+    icons::{Icon, icon},
+};
 use xilem::{
     AnyWidgetView, WidgetView,
-    masonry::{layout::AsUnit, properties::LineBreaking},
+    masonry::{
+        layout::AsUnit,
+        parley::style::{FontWeight, LineHeight},
+        properties::{LineBreaking, Padding},
+    },
     style::Style,
-    view::{CrossAxisAlignment, button, flex_col, flex_row, label, progress_bar, sized_box},
+    view::{CrossAxisAlignment, button, flex_col, flex_item, flex_row, sized_box},
 };
 
-use crate::{ai::Operation, state::SettingsApp};
+use crate::{
+    ai::Operation,
+    page_components::{disclosure, progress, restore_focus_after_close, toggle_row},
+    state::SettingsApp,
+    typography::label,
+};
 
-fn note(text: impl Into<String>) -> impl WidgetView<SettingsApp> {
-    label(text.into())
-        .text_size(13.0)
-        .color(components::TEXT_MUTED)
-        .line_break_mode(LineBreaking::WordWrap)
-}
+mod confirmation;
+mod status;
 
 pub(crate) fn view(state: &SettingsApp) -> Box<AnyWidgetView<SettingsApp>> {
+    let palette = state.palette();
     let ai = &state.ai;
     let busy = ai.pending.is_some();
-    let installed = ai.installed();
-    let device = ai.device();
-    components::settings_section(
-        "Gather similar windows",
+    let enabled = ai.enabled();
+    confirmation::modal(flex_col((
         flex_col((
-            note("Select windows on the canvas, then use Gather similar windows to find related open windows by their titles. Titles are processed locally."),
-            components::field_label("LiquidAI D1 · 3B · Q4_K_M"),
-            note("Optional download from Hugging Face. Requires Ollama with D1 decision support. Text only, with a 32K context window. Memory use depends on context and processing mode."),
-            components::field_label(match &ai.snapshot {
-                None => "Model status unknown",
-                Some(status) if status.installed => "Model installed",
-                Some(status) if status.downloaded => "Model download present; runtime setup incomplete",
-                Some(_) => "Model not installed",
+            restore_focus_after_close(
+                toggle_row(
+                    "Enable AI features",
+                    None,
+                    enabled,
+                    busy || ai.confirm_off || (ai.snapshot.is_none() && !ai.needs_retry()),
+                    |state, on| state.ai.set_enabled(on),
+                ),
+                ai.confirm_off || ai.pending == Some(Operation::Remove),
+            ),
+            (!enabled && !busy).then(|| {
+                detail(palette, if ai.installed() {
+                    "Turn on AI to use the local model."
+                } else {
+                    "Download the local model to get started."
+                })
             }),
-            note(ai.message.clone()),
-            busy.then(|| sized_box(progress_bar(ai.progress)).fixed_width(280.0.px())),
-            flex_row((
-                button(label("Download D1 model"), |state: &mut SettingsApp| {
-                    state.ai.request(Operation::Install);
-                }).disabled(busy || installed),
-                button(label("Delete D1 model"), |state: &mut SettingsApp| {
-                    state.ai.request(Operation::Remove);
-                }).disabled(busy || !ai.can_remove()),
-                button(label("Refresh status"), |state: &mut SettingsApp| {
-                    state.ai.request(Operation::Refresh);
-                }).disabled(busy),
-            )).gap(8.0.px()),
-            installed.then(|| button(label("Load D1 model"), |state: &mut SettingsApp| {
-                state.ai.request(Operation::Warm);
-            }).disabled(busy || ai.snapshot.as_ref().is_some_and(|status| status.warm))),
-            components::field_label("Processing mode"),
-            flex_row((
-                button(label(if device == DevicePreference::Automatic { "✓ Automatic (GPU if available)" } else { "Automatic (GPU if available)" }), |state: &mut SettingsApp| {
-                    state.ai.request(Operation::SetDevice(DevicePreference::Automatic));
-                }).disabled(busy || device == DevicePreference::Automatic),
-                button(label(if device == DevicePreference::Cpu { "✓ CPU only" } else { "CPU only" }), |state: &mut SettingsApp| {
-                    state.ai.request(Operation::SetDevice(DevicePreference::Cpu));
-                }).disabled(busy || device == DevicePreference::Cpu),
-            )).gap(8.0.px()),
-            note("When installed, Hearthspace loads D1 after login and keeps it ready for this session. Deleting the model releases its memory and removes the managed download."),
+            status::status(
+                flex_col((
+                    detail(palette, ai.message.clone()),
+                    busy.then(|| progress(ai.progress)),
+                ))
+                .cross_axis_alignment(CrossAxisAlignment::Stretch)
+                .gap(8.0.px())
+                .padding(Padding {
+                    top: 6.0.px(),
+                    bottom: 3.0.px(),
+                    left: 0.0.px(),
+                    right: 0.0.px(),
+                }),
+            ),
+            (!busy && !ai.confirm_off && ai.needs_retry()).then(|| {
+                action(palette, "Try again", components::SettingsButton::Control, |state| {
+                    state.ai.retry();
+                })
+            }),
+            (!busy && !ai.confirm_off && !enabled && ai.can_remove()
+                && (ai.needs_retry() || ai.snapshot.as_ref().is_some_and(|status| {
+                    status.downloaded && !status.installed
+                }))).then(|| {
+                action(palette,
+                    if ai.installed() {
+                        "Remove local model"
+                    } else {
+                        "Remove incomplete download"
+                    },
+                    components::SettingsButton::Bare,
+                    |state| state.ai.confirm_off = true,
+                )
+            }),
         ))
         .cross_axis_alignment(CrossAxisAlignment::Stretch)
-        .gap(12.0.px()),
-    )
+        .gap(10.0.px()),
+        flex_col((
+            label("Features")
+                .text_size(11.0)
+                .weight(FontWeight::MEDIUM)
+                .color(palette.muted),
+            flex_col((
+                feature(palette,
+                    "On-device AI",
+                    "AI runs locally on your device. Window titles are processed on this device. Installing the model requires a download.",
+                    0,
+                    ai.features_open[0],
+                ),
+                feature(palette,
+                    "Gather similar windows",
+                    "Select one or more windows, then choose Gather similar windows. AI finds related windows on your canvas and brings them into view beside your selection.",
+                    1,
+                    ai.features_open[1],
+                ),
+            ))
+            .cross_axis_alignment(CrossAxisAlignment::Stretch)
+            .gap(8.0.px()),
+        ))
+        .cross_axis_alignment(CrossAxisAlignment::Stretch)
+        .gap(10.0.px()),
+    ))
+    .cross_axis_alignment(CrossAxisAlignment::Stretch)
+    .gap(22.0.px()), ai.confirm_off)
     .boxed()
+}
+
+fn action(
+    palette: components::Palette,
+    name: &'static str,
+    surface: components::SettingsButton,
+    callback: impl Fn(&mut SettingsApp) + Send + Sync + 'static,
+) -> impl WidgetView<SettingsApp> {
+    components::settings_button(
+        button(
+            label(name)
+                .text_size(11.0)
+                .color(if surface == components::SettingsButton::Primary {
+                    palette.accent_ink
+                } else {
+                    palette.text
+                }),
+            callback,
+        )
+        .height(40.0.px())
+        .padding(Padding::from_vh(7.0.px(), 12.0.px())),
+        surface,
+        false,
+    )
+}
+
+fn detail(palette: components::Palette, text: impl Into<String>) -> impl WidgetView<SettingsApp> {
+    label(text.into())
+        .text_size(10.0)
+        .line_height(LineHeight::FontSizeRelative(1.6))
+        .line_break_mode(LineBreaking::WordWrap)
+        .color(palette.muted)
+}
+
+fn feature(
+    palette: components::Palette,
+    name: &'static str,
+    description: &'static str,
+    index: usize,
+    open: bool,
+) -> impl WidgetView<SettingsApp> {
+    components::settings_surface(
+        sized_box(
+            flex_col((
+                disclosure(
+                    name,
+                    open,
+                    false,
+                    flex_row((
+                        flex_item(label(name).text_size(11.0).weight(FontWeight::MEDIUM), 1.0),
+                        icon(
+                            if open {
+                                Icon::ChevronUp
+                            } else {
+                                Icon::ChevronDown
+                            },
+                            14.0,
+                        )
+                        .color(palette.muted),
+                    ))
+                    .gap(12.0.px()),
+                    move |state: &mut SettingsApp| {
+                        state.ai.features_open[index] = !state.ai.features_open[index];
+                    },
+                )
+                .height(44.0.px())
+                .padding(12.0.px()),
+                open.then(|| {
+                    sized_box(
+                        label(description)
+                            .text_size(11.0)
+                            .line_height(LineHeight::FontSizeRelative(1.65))
+                            .line_break_mode(LineBreaking::WordWrap)
+                            .color(palette.muted),
+                    )
+                    .padding(Padding {
+                        top: 0.0.px(),
+                        bottom: 12.0.px(),
+                        left: 12.0.px(),
+                        right: 12.0.px(),
+                    })
+                }),
+            ))
+            .cross_axis_alignment(CrossAxisAlignment::Stretch)
+            .gap(0.0.px()),
+        )
+        .padding(1.0.px()),
+        components::SettingsSurface::Subtle,
+    )
 }
 
 #[cfg(test)]
 mod tests;
+
+pub(crate) fn theme_properties(
+    properties: &mut xilem::masonry::core::DefaultProperties,
+    palette: hearthspace_ui_components::Palette,
+) {
+    confirmation::theme_properties(properties, palette);
+}

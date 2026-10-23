@@ -9,7 +9,10 @@ use super::{minimap::CanvasSnapshot, notifications::Notification, window_catalog
 /// Reactive state backing the shell view.
 pub(super) struct ShellState {
     pub(super) command_socket: PathBuf,
+    pub(super) appearance: super::appearance::Theme,
     pub(super) tray: super::tray_state::TrayState,
+    pub(super) dock: super::dock::State,
+    pub(super) desktop: super::desktop::State,
     pub(super) battery: Option<crate::battery::BatteryStatus>,
     pub(super) power: super::power_task::PowerState,
     pub(super) controls: super::control_state::Controls,
@@ -38,6 +41,8 @@ pub(super) struct ShellOutputInstance {
     pub(super) tray: super::tray_state::TrayOutput,
     pub(super) output_name: Option<String>,
     pub(super) query: String,
+    pub(super) launcher_layout: super::launcher::AppLayout,
+    pub(super) launcher_width: f64,
     pub(super) drawing: super::favorite_state::Drawing,
     pub(super) selected_result: Option<super::search_selection::EntryId>,
     pub(super) selected_result_index: usize,
@@ -45,12 +50,15 @@ pub(super) struct ShellOutputInstance {
     pub(super) search_request_token: Option<u64>,
     pub(super) show_power: bool,
     pub(super) show_controls: bool,
+    pub(super) quick_panel: super::quick_panel::Kind,
     pub(super) osd: Option<super::control_osd::Osd>,
     pub(super) confirm_logout: bool,
     pub(super) show_notifications: bool,
     pub(super) show_map: bool,
     pub(super) launch_error: Option<String>,
-    pub(super) bar_window_id: WindowId,
+    pub(super) corner_window_ids: [WindowId; 4],
+    pub(super) corner_widths: [f64; 4],
+    pub(super) dock_page: usize,
     pub(super) launcher_window_id: WindowId,
     pub(super) map_window_id: WindowId,
     pub(super) notifications_window_id: WindowId,
@@ -74,7 +82,10 @@ impl ShellState {
     pub(super) fn new(command_socket: PathBuf, output_names: Vec<String>) -> Self {
         let mut state = Self {
             command_socket,
+            appearance: Default::default(),
             tray: Default::default(),
+            dock: Default::default(),
+            desktop: Default::default(),
             battery: None,
             power: Default::default(),
             controls: Default::default(),
@@ -160,7 +171,6 @@ impl ShellState {
                 Panel::Notifications => output.show_notifications = true,
                 Panel::Map => output.show_map = true,
                 Panel::Power => output.show_power = true,
-                Panel::Controls => output.show_controls = true,
             }
         }
     }
@@ -189,8 +199,20 @@ impl ShellState {
         self.toggle_panel(output_key, Panel::Power);
     }
 
-    pub(super) fn toggle_controls(&mut self, output_key: &str) {
-        self.toggle_panel(output_key, Panel::Controls);
+    pub(super) fn toggle_quick_panel(&mut self, output_key: &str, kind: super::quick_panel::Kind) {
+        let open = self.outputs.iter().any(|output| {
+            output.key() == output_key && (!output.show_controls || output.quick_panel != kind)
+        });
+        self.dismiss_panels();
+        if let Some(output) = self
+            .outputs
+            .iter_mut()
+            .find(|output| output.key() == output_key)
+        {
+            output.quick_panel = kind;
+            super::popup::PopupKind::Controls.reset(output);
+            output.show_controls = open;
+        }
     }
 
     pub(super) fn dismiss_controls(&mut self, output_key: &str) {
@@ -300,7 +322,6 @@ pub(super) enum Panel {
     Notifications,
     Map,
     Power,
-    Controls,
 }
 
 fn normalized_output_targets(output_names: Vec<String>) -> Vec<Option<String>> {

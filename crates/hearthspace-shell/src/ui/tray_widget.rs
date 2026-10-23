@@ -13,7 +13,7 @@ use xilem::masonry::{
     kurbo::{Axis, Point, Size},
     layout::{AsUnit, LenReq, Length},
     peniko::ImageBrush,
-    properties::{ContentColor, LineBreaking},
+    properties::LineBreaking,
     widgets::Label,
 };
 
@@ -87,16 +87,12 @@ impl TrayButton {
         let text = (!appearance.icon && !appearance.separator).then(|| {
             Label::new(appearance.name.clone())
                 .prepare()
-                .with_props((
-                    LineBreaking::Clip,
-                    ContentColor {
-                        color: if appearance.enabled {
-                            components::TEXT
-                        } else {
-                            components::TEXT_MUTED
-                        },
-                    },
-                ))
+                .with_props(LineBreaking::Clip)
+                .with_class(if appearance.enabled {
+                    "shell-text-shell-ink"
+                } else {
+                    "shell-muted-shell-ink"
+                })
                 .to_pod()
         });
         Self {
@@ -281,8 +277,17 @@ impl Widget for TrayButton {
             ctx.place_child(text, Point::new(24.0, 0.0));
         }
     }
-    fn paint(&mut self, ctx: &mut PaintCtx<'_>, _: &PropertiesRef<'_>, painter: &mut Painter<'_>) {
-        super::tray_paint::paint(&self.appearance, ctx, painter);
+    fn property_changed(&mut self, ctx: &mut UpdateCtx<'_>, property: std::any::TypeId) {
+        components::Palette::prop_changed(ctx, property);
+    }
+    fn paint(
+        &mut self,
+        ctx: &mut PaintCtx<'_>,
+        props: &PropertiesRef<'_>,
+        painter: &mut Painter<'_>,
+    ) {
+        let palette = *props.get::<components::Palette>(ctx.property_cache());
+        super::tray_paint::paint(&self.appearance, ctx, painter, &palette);
     }
     fn accessibility_role(&self) -> Role {
         if self.appearance.separator {

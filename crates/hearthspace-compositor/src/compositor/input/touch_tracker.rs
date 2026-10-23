@@ -66,6 +66,11 @@ pub(in crate::compositor) struct TouchTracker {
 }
 
 impl TouchTracker {
+    pub(super) fn has_device_input(&self, device: &str) -> bool {
+        self.device.as_deref() == Some(device)
+            || self.pending.iter().any(|(owner, _)| owner == device)
+    }
+
     pub(in crate::compositor) fn has_contacts(&self) -> bool {
         !self.contacts.is_empty()
     }

@@ -2,7 +2,7 @@
 use crate::compositor::{App, DragState, HitTarget, idle::ActivityReason};
 use smithay::{
     backend::input::{ButtonState, InputTime},
-    input::pointer::ButtonEvent,
+    input::pointer::{ButtonEvent, MotionEvent},
     utils::SERIAL_COUNTER,
 };
 use tracing::{debug, trace};
@@ -29,6 +29,12 @@ impl App {
         time: InputTime,
     ) {
         self.shortcuts.cancel_meta_tap();
+        // An overlay or gesture may have cancelled a compositor-owned press.
+        // Consume its release before another input mode can redirect it.
+        if state == ButtonState::Released && self.titlebar_pointer_button(button, state, time) {
+            self.apply_pointer_motion(self.pointer_location, time);
+            return;
+        }
         if state == ButtonState::Pressed {
             self.cancel_pending_search();
             let group_was_active = self.group_active();
@@ -55,6 +61,9 @@ impl App {
             self.apply_pointer_motion(self.pointer_location, time);
             return;
         }
+        if self.desktop_pointer_button(button, state, time) {
+            return;
+        }
         if self.handle_overview_button(button, state) {
             return;
         }
@@ -65,51 +74,68 @@ impl App {
             self.dismiss_shell_panels_outside_pointer();
         }
         let is_left_button = button == 0x110;
-
+        if self.titlebar_pointer_button(button, state, time) {
+            return;
+        }
         if is_left_button
             && state == ButtonState::Released
             && (self.drag.is_some() || self.resize.is_some())
         {
             debug!("ending pointer drag/resize from button release");
+            self.update_window_pointer_operation();
             self.drag = None;
             self.finish_resize();
             // A client-initiated move/resize established an implicit grab;
             // forwarding its release is necessary to end that grab as well.
             let pointer = self.pointer.clone();
+            if self.pressed_pointer_buttons.contains(&button) {
+                self.deliver_pointer_button(&ButtonEvent {
+                    serial: SERIAL_COUNTER.next_serial(),
+                    time,
+                    button,
+                    state,
+                });
+            }
+            pointer.frame(self);
+            self.apply_pointer_motion(self.pointer_location, time);
+            return;
+        }
+
+        if self.pointer.is_grabbed() {
+            // Smithay's existing client grab owns additional buttons too.
+            // Chrome under the pointer must not steal a press or its release.
             self.deliver_pointer_button(&ButtonEvent {
                 serial: SERIAL_COUNTER.next_serial(),
                 time,
                 button,
                 state,
             });
-            pointer.frame(self);
+            self.pointer.clone().frame(self);
+            self.refresh_titlebar_hover();
             return;
         }
 
         if is_left_button && state == ButtonState::Pressed {
             match self.hit_test(self.pointer_location) {
-                Some(HitTarget::CloseButton { window_index }) => {
-                    debug!(
-                        window_id = self.windows[window_index].id,
-                        "close button clicked"
-                    );
-                    self.windows[window_index].surface.send_close();
-                    self.drag = None;
-                    return;
-                }
+                Some(HitTarget::TitlebarButton { .. }) => return,
                 Some(HitTarget::TitleBar { window_index }) => {
                     self.cancel_group_window_motion(self.windows[window_index].id);
                     let window_index = self.raise_window(window_index);
                     if let Some(surface) = self.windows[window_index].surface.wl_surface() {
                         self.set_keyboard_focus_to_window(window_index, surface);
                     }
+                    if self.titlebar_title_press(self.windows[window_index].id, time) {
+                        return;
+                    }
                     if self.window_uses_output_coordinates(window_index) {
                         return;
                     }
+                    self.windows[window_index].pending_resize = None;
                     self.drag = Some(DragState {
                         window_id: self.windows[window_index].id,
                         pointer_start: self.raw_pointer_location,
                         window_start: self.windows[window_index].position,
+                        visible_start: self.window_canvas_rect(window_index).loc,
                     });
                     debug!(
                         window_id = self.windows[window_index].id,
@@ -147,9 +173,10 @@ impl App {
             }
         } else if is_left_button
             && state == ButtonState::Released
+            && !self.pressed_pointer_buttons.contains(&button)
             && matches!(
                 self.hit_test(self.pointer_location),
-                Some(HitTarget::CloseButton { .. })
+                Some(HitTarget::TitlebarButton { .. })
             )
         {
             return;
@@ -183,6 +210,20 @@ impl App {
         }
 
         let pointer = self.pointer.clone();
+        if state == ButtonState::Pressed {
+            // A corner can resize and move under a stationary pointer. Refresh
+            // Smithay's surface origin before the press establishes its grab.
+            // Existing grabs keep their owner and release coordinates.
+            pointer.motion(
+                self,
+                focus,
+                &MotionEvent {
+                    location: self.pointer_location,
+                    serial: SERIAL_COUNTER.next_serial(),
+                    time,
+                },
+            );
+        }
         self.deliver_pointer_button(&ButtonEvent {
             serial: SERIAL_COUNTER.next_serial(),
             time,
@@ -190,5 +231,6 @@ impl App {
             state,
         });
         pointer.frame(self);
+        self.refresh_titlebar_hover();
     }
 }

@@ -14,7 +14,7 @@ impl App {
             && self.shell_visible_on_output(output)
     }
 
-    pub(super) fn group_pointer_visible(&self) -> bool {
+    pub(in crate::compositor) fn group_pointer_visible(&self) -> bool {
         self.output_logical_rects()
             .into_iter()
             .find(|output| output.contains(self.pointer_location.to_i32_round()))

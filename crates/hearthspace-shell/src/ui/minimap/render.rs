@@ -12,6 +12,7 @@ pub(super) fn draw(
     snapshot: Option<&CanvasSnapshot>,
     output: Option<&str>,
     projection: Option<&Projection>,
+    palette: &components::Palette,
 ) {
     if size.width <= 28.0 || size.height <= 28.0 {
         return;
@@ -29,7 +30,7 @@ pub(super) fn draw(
                 .stroke(
                     Line::new(map.point(x, map.world.y0), map.point(x, map.world.y1)),
                     &Stroke::new(0.5),
-                    components::BORDER,
+                    palette.border,
                 )
                 .draw();
         }
@@ -41,7 +42,7 @@ pub(super) fn draw(
                 .stroke(
                     Line::new(map.point(map.world.x0, y), map.point(map.world.x1, y)),
                     &Stroke::new(0.5),
-                    components::BORDER,
+                    palette.border,
                 )
                 .draw();
         }
@@ -57,11 +58,11 @@ pub(super) fn draw(
         )
         .to_rounded_rect(1.5);
         let fill = if window.focused {
-            components::ACCENT_SUBTLE
+            palette.accent_soft
         } else {
-            components::SURFACE
+            palette.surface
         };
-        let border = components::TEXT_MUTED;
+        let border = palette.text_muted;
         painter.fill(rect, fill).draw();
         painter.stroke(rect, &Stroke::new(1.0), border).draw();
     }
@@ -74,14 +75,12 @@ pub(super) fn draw(
             }
             let rect = map.rect(snapshot.output_bounds(output));
             let (color, width) = if is_selected {
-                (components::ACCENT, 2.0)
+                (palette.accent, 2.0)
             } else {
-                (components::TEXT_MUTED, 1.0)
+                (palette.text_muted, 1.0)
             };
             if is_selected {
-                painter
-                    .fill(rect, components::ACCENT.with_alpha(0.08))
-                    .draw();
+                painter.fill(rect, palette.accent.with_alpha(0.08)).draw();
             }
             painter.stroke(rect, &Stroke::new(width), color).draw();
         }

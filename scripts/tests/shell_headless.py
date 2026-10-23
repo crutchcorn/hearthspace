@@ -86,9 +86,14 @@ def run_shell_session(
     )
     socket = directory / "control.sock"
     address = f"unix:path={directory / 'bus'}"
+    config = directory / "shell-config"
+    config.mkdir(exist_ok=True)
     env = {
         **os.environ,
         "XDG_RUNTIME_DIR": str(directory),
+        "XDG_CONFIG_HOME": str(config),
+        "XDG_DATA_HOME": str(directory / "shell-data"),
+        "XDG_STATE_HOME": str(directory / "shell-state"),
         "HEARTHSPACE_COMMAND_SOCKET": str(socket),
         "HEARTHSPACE_WAYLAND_DISPLAY": "wayland-map",
         "WAYLAND_DISPLAY": "wayland-map",

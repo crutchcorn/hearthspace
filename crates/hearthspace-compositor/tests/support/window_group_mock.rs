@@ -2,6 +2,8 @@
 use std::{
     io::{Read, Write},
     net::TcpListener,
+    path::PathBuf,
+    process::Command,
     sync::{
         Arc,
         atomic::{AtomicBool, Ordering},
@@ -22,6 +24,23 @@ pub(super) struct MockOllama {
 }
 
 impl MockOllama {
+    pub(super) fn configure_enabled_model(&self, command: &mut Command) {
+        let cache = command
+            .get_envs()
+            .find_map(|(key, value)| (key == "XDG_CACHE_HOME").then_some(value).flatten())
+            .expect("headless fixture has a private model cache");
+        let model_directory = PathBuf::from(cache).join("hearthspace/ai");
+        std::fs::create_dir_all(&model_directory).unwrap();
+        std::fs::write(
+            model_directory.join("model.json"),
+            br#"{"device":"Automatic","registered":true}"#,
+        )
+        .unwrap();
+        // Registration belongs to the compositor's temporary runtime, so
+        // dropping this endpoint can still test an enabled but offline model.
+        command.env("HEARTHSPACE_OLLAMA_URL", &self.url);
+    }
+
     pub(super) fn start() -> Self {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         listener.set_nonblocking(true).unwrap();

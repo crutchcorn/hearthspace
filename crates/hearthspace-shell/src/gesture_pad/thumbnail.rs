@@ -18,9 +18,18 @@ use xilem::{
 };
 
 pub fn thumbnail<State: 'static>(points: Vec<[f64; 2]>) -> impl WidgetView<State> + use<State> {
+    thumbnail_sized(points, 64.0, 40.0)
+}
+
+/// Fit the same saved shape into another compact preview without stretching it.
+pub fn thumbnail_sized<State: 'static>(
+    points: Vec<[f64; 2]>,
+    width: f64,
+    height: f64,
+) -> impl WidgetView<State> + use<State> {
     sized_box(ThumbnailView(points))
-        .fixed_width(64.0.px())
-        .fixed_height(40.0.px())
+        .fixed_width(width.max(0.0).px())
+        .fixed_height(height.max(0.0).px())
 }
 
 struct ThumbnailView(Vec<[f64; 2]>);
@@ -68,7 +77,7 @@ impl<State: 'static> View<State, (), ViewCtx> for ThumbnailView {
     }
 }
 
-struct Thumbnail {
+pub(super) struct Thumbnail {
     points: Vec<[f64; 2]>,
     size: Size,
 }
@@ -108,6 +117,14 @@ impl Widget for Thumbnail {
         false
     }
 
+    fn property_changed(
+        &mut self,
+        ctx: &mut xilem::masonry::core::UpdateCtx<'_>,
+        property: std::any::TypeId,
+    ) {
+        components::Palette::prop_changed(ctx, property);
+    }
+
     fn register_children(&mut self, _: &mut RegisterCtx<'_>) {}
 
     fn measure(
@@ -126,11 +143,17 @@ impl Widget for Thumbnail {
         ctx.set_clip_path(size.to_rect());
     }
 
-    fn paint(&mut self, _: &mut PaintCtx<'_>, _: &PropertiesRef<'_>, painter: &mut Painter<'_>) {
+    fn paint(
+        &mut self,
+        ctx: &mut PaintCtx<'_>,
+        props: &PropertiesRef<'_>,
+        painter: &mut Painter<'_>,
+    ) {
+        let palette = *props.get::<components::Palette>(ctx.property_cache());
         painter
             .fill(
                 self.size.to_rect().to_rounded_rect(5.0),
-                components::SURFACE_SUBTLE,
+                palette.surface_subtle,
             )
             .draw();
         let mut path = BezPath::new();
@@ -147,7 +170,7 @@ impl Widget for Thumbnail {
                 &Stroke::new(2.0)
                     .with_caps(Cap::Round)
                     .with_join(Join::Round),
-                components::ACCENT,
+                palette.accent,
             )
             .draw();
     }
@@ -205,7 +228,7 @@ mod tests {
         assert!(
             image
                 .pixels()
-                .any(|pixel| u16::from(pixel[2]) > u16::from(pixel[0]) + 30)
+                .any(|pixel| u16::from(pixel[0]) > u16::from(pixel[2]) + 30)
         );
         let node = harness.access_node(harness.root_id()).unwrap();
         assert_eq!(node.label().as_deref(), Some("Assigned gesture"));

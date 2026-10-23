@@ -87,7 +87,7 @@ fn overlapping_selected_outlines_follow_window_stacking_and_opaque_occlusion() {
     assert!(y + 8 < number(&a, "y") + number(&a, "height") - 3);
     assert!(a_left < b_left && b_left + 3 < a_right && a_right + 3 < b_right);
     let opaque_client = [0, 204, 102]; // InteractiveClient's opaque ARGB buffer.
-    let selected_outline = [117, 171, 255];
+    let selected_outline = [233, 100, 42]; // Default orange appearance.
     let second_in_front = Screenshot::capture(&compositor, "group-second-in-front.png");
     second_in_front.assert_strip(
         a_right,

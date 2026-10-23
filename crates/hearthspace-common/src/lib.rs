@@ -1,3 +1,19 @@
+mod appearance;
+mod desktop;
+mod shell_corners;
+
+pub use appearance::{AccentColor, Appearance, ColorMode};
+pub use desktop::{
+    DESKTOP_ITEM_APP_ID, DESKTOP_ITEM_HEIGHT, DESKTOP_ITEM_MARGIN, DESKTOP_ITEM_WIDTH,
+    DESKTOP_SURFACE_HEIGHT, DESKTOP_SURFACE_WIDTH, MAX_DESKTOP_ITEMS, desktop_item_app_id,
+    desktop_item_id_from_app_id,
+};
+
+pub use shell_corners::{
+    NOTIFICATION_CORNER_WIDTH, SHELL_CORNER_CLEARANCE, SHELL_CORNER_MARGIN, SHELL_CORNER_RADIUS,
+    ShellCorner, shell_corner_app_id, shell_corner_from_app_id,
+};
+
 pub const WAYLAND_DISPLAY_NAME: &str = "wayland-99";
 pub const WAYLAND_DISPLAY_ENV: &str = "WAYLAND_DISPLAY";
 pub const HEARTHSPACE_WAYLAND_DISPLAY_ENV: &str = "HEARTHSPACE_WAYLAND_DISPLAY";
@@ -7,12 +23,12 @@ pub const SHELL_BAR_APP_ID: &str = "dev.hearthspace.shell-bar";
 pub const LAUNCHER_APP_ID: &str = "dev.hearthspace.launcher";
 pub const CANVAS_MAP_APP_ID: &str = "dev.hearthspace.canvas-map";
 pub const NOTIFICATIONS_APP_ID: &str = "dev.hearthspace.notifications-panel";
-pub const CONTROL_CENTER_APP_ID: &str = "dev.hearthspace.control-center";
+pub const QUICK_PANEL_APP_ID: &str = "dev.hearthspace.quick-panel";
 pub const CONTROL_OSD_APP_ID: &str = "dev.hearthspace.control-osd";
 pub const POWER_MENU_APP_ID: &str = "dev.hearthspace.power-menu";
 pub const TRAY_MENU_APP_ID: &str = "dev.hearthspace.tray-menu";
 pub const SHELL_OUTPUT_WATCHER_APP_ID: &str = "dev.hearthspace.shell-output-watcher";
-pub const CONTROL_BAR_HEIGHT: i32 = 48;
+pub const CONTROL_BAR_HEIGHT: i32 = 54;
 pub const LOG_FILE_ENV: &str = "HEARTHSPACE_LOG_FILE";
 pub const SETTINGS_SOCKET_ENV: &str = "HEARTHSPACE_SETTINGS_SOCKET";
 pub const SESSION_SOCKET_ENV: &str = "HEARTHSPACE_SESSION_SOCKET";
@@ -83,8 +99,8 @@ pub fn power_menu_app_id_for_output(output_name: &str) -> String {
     shell_app_id_for_output(POWER_MENU_APP_ID, output_name)
 }
 
-pub fn control_center_app_id_for_output(output_name: &str) -> String {
-    shell_app_id_for_output(CONTROL_CENTER_APP_ID, output_name)
+pub fn quick_panel_app_id_for_output(output_name: &str) -> String {
+    shell_app_id_for_output(QUICK_PANEL_APP_ID, output_name)
 }
 
 pub fn control_osd_app_id_for_output(output_name: &str) -> String {
@@ -104,6 +120,7 @@ pub fn shell_event_socket_path(command_socket: &std::path::Path) -> std::path::P
 
 pub fn shell_bar_output_name_from_app_id(app_id: &str) -> Option<Option<String>> {
     shell_output_name_from_app_id(SHELL_BAR_APP_ID, app_id)
+        .or_else(|| shell_corners::output_name_from_app_id(app_id))
 }
 
 pub fn launcher_output_name_from_app_id(app_id: &str) -> Option<Option<String>> {
@@ -128,8 +145,8 @@ pub fn power_menu_output_name_from_app_id(app_id: &str) -> Option<Option<String>
     shell_output_name_from_app_id(POWER_MENU_APP_ID, app_id)
 }
 
-pub fn control_center_output_name_from_app_id(app_id: &str) -> Option<Option<String>> {
-    shell_output_name_from_app_id(CONTROL_CENTER_APP_ID, app_id)
+pub fn quick_panel_output_name_from_app_id(app_id: &str) -> Option<Option<String>> {
+    shell_output_name_from_app_id(QUICK_PANEL_APP_ID, app_id)
 }
 
 pub fn control_osd_output_name_from_app_id(app_id: &str) -> Option<Option<String>> {
@@ -146,7 +163,7 @@ pub fn shell_panel_output_name_from_app_id(app_id: &str) -> Option<Option<String
         .or_else(|| notifications_output_name_from_app_id(app_id))
         .or_else(|| power_menu_output_name_from_app_id(app_id))
         .or_else(|| tray_menu_output_name_from_app_id(app_id))
-        .or_else(|| control_center_output_name_from_app_id(app_id))
+        .or_else(|| quick_panel_output_name_from_app_id(app_id))
 }
 
 fn shell_app_id_for_output(base: &str, output_name: &str) -> String {
@@ -270,10 +287,7 @@ mod tests {
             ),
             (POWER_MENU_APP_ID, power_menu_app_id_for_output(output)),
             (TRAY_MENU_APP_ID, tray_menu_app_id_for_output(output)),
-            (
-                CONTROL_CENTER_APP_ID,
-                control_center_app_id_for_output(output),
-            ),
+            (QUICK_PANEL_APP_ID, quick_panel_app_id_for_output(output)),
         ] {
             assert_eq!(shell_panel_output_name_from_app_id(base), Some(None));
             assert_eq!(

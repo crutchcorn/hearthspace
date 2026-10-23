@@ -1,7 +1,7 @@
 //! Hearthspace's Xilem-rendered UI client.
 //!
-//! The shell runs as its own Wayland client. It creates one control-bar surface
-//! per active output, launcher palette surfaces for active searches, and a tiny
+//! The shell runs as its own Wayland client. It creates four corner surfaces
+//! per active output, palette surfaces for open panels, and a tiny
 //! hidden watcher surface that keeps the output list live without disturbing the
 //! visible bars' accessibility trees.
 
@@ -11,17 +11,22 @@ use hearthspace_common::SHELL_COMMAND_SOCKET_ENV;
 use tracing::{error, info};
 use xilem::{EventLoop, Xilem};
 
+mod appearance;
 mod battery_view;
 mod canvas_map;
 mod canvas_task;
 mod command_client;
 mod constants;
-mod control_center;
 mod control_osd;
 mod control_slider;
 mod control_state;
 mod control_task;
 mod control_worker;
+mod corner_button;
+mod corners;
+mod desktop;
+mod desktop_item;
+mod dock;
 mod favorite_actions;
 mod favorite_events;
 mod favorite_state;
@@ -39,6 +44,7 @@ mod output_watcher;
 mod popup;
 mod popup_group;
 mod power_task;
+mod quick_panel;
 mod search_editor;
 mod search_focus;
 mod search_input;
@@ -50,7 +56,6 @@ mod state;
 #[cfg(test)]
 mod test_support;
 mod tray_button;
-mod tray_icon_loader;
 mod tray_paint;
 mod tray_state;
 mod tray_task;
@@ -78,10 +83,18 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     let mut state = ShellState::new(command_socket, output_names);
     state.shell_events = Some(events);
     state.favorites = favorite_state::Favorites::load();
+    if let Ok(settings) = hearthspace_ipc::client_get_settings() {
+        state.appearance.update(
+            hearthspace_ui_components::Palette::new(settings.appearance)
+                .with_photo(settings.background_image_path.is_some()),
+        );
+    }
 
+    let defaults = appearance::properties(state.appearance.palette);
+    let background = state.appearance.palette.app_background;
     let app = Xilem::new(state, app_logic)
-        .with_default_properties(hearthspace_ui_components::hearthspace_light_properties())
-        .with_default_base_color(hearthspace_ui_components::APP_BACKGROUND);
+        .with_default_properties(defaults)
+        .with_default_base_color(background);
     app.run_in(EventLoop::with_user_event())?;
     Ok(())
 }

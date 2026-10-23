@@ -6,7 +6,7 @@ use smithay::{
 use wayland_protocols::xdg::shell::server::xdg_toplevel;
 
 use super::{App, ManagedSurface, ManagedWindowKind, WindowDecoration};
-use crate::config::{CONTROL_BAR_HEIGHT, TITLE_BAR_HEIGHT};
+use crate::config::TITLE_BAR_HEIGHT;
 
 mod canvas_zoom;
 mod groups;
@@ -153,6 +153,7 @@ impl App {
         }
         self.interrupt_pinch_zoom();
         let size = self.window_geometry_size(index);
+        self.windows[index].pending_resize = None;
         let state = &mut self.windows[index].presentation;
         state.update(fullscreen, maximized, size);
         if state.pinned() {
@@ -205,7 +206,7 @@ impl App {
         let size = if let Some(output) = self.presentation_output_rect(index) {
             let mut size = output.size;
             if !state.fullscreen {
-                size.h = (size.h - CONTROL_BAR_HEIGHT).max(1);
+                size = self.usable_output(output).size;
                 if window.decoration == WindowDecoration::ServerSide {
                     size.h = (size.h - TITLE_BAR_HEIGHT).max(1);
                 }
@@ -259,7 +260,7 @@ impl App {
                                     if state.fullscreen {
                                         0
                                     } else {
-                                        CONTROL_BAR_HEIGHT + chrome
+                                        self.usable_output(output).loc.y - output.loc.y + chrome
                                     },
                                 ))
                         })

@@ -2,6 +2,7 @@
 use smithay::utils::{Logical, Point, Rectangle};
 
 use super::super::App;
+#[cfg(test)]
 use super::usable_output;
 use crate::geometry::CanvasPoint;
 
@@ -30,7 +31,7 @@ impl App {
         let point = centered_position(
             self.window_canvas_rect(index),
             self.windows[index].position,
-            usable_output(self.initial_window_output(index)),
+            self.usable_output(self.initial_window_output(index)),
             self.viewport_offset,
             self.viewport_scale,
         );
@@ -44,6 +45,7 @@ impl App {
             tracing::warn!(%error, "could not center new X11 window");
             return;
         }
+        self.windows[index].pending_resize = None;
         self.windows[index].position = point;
         self.request_redraw();
     }
@@ -112,7 +114,7 @@ mod tests {
                 viewport,
                 1.0,
             ),
-            CanvasPoint { x: -360, y: 1109 }
+            CanvasPoint { x: -360, y: 1112 }
         );
         assert_eq!(
             centered_position(
@@ -122,7 +124,7 @@ mod tests {
                 viewport,
                 1.0,
             ),
-            CanvasPoint { x: -700, y: 948 }
+            CanvasPoint { x: -700, y: 954 }
         );
     }
 }

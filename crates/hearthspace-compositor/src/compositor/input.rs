@@ -28,6 +28,7 @@ mod pointer;
 mod recovery;
 mod remote;
 mod scroll;
+mod titlebar;
 mod touch;
 mod touch_tracker;
 mod ui_touch;
@@ -41,6 +42,7 @@ use pinch::PinchInput;
 pub(super) use pinch::PinchZoom;
 use pointer::relative_pointer_location;
 pub(super) use remote::RemoteInput;
+pub(super) use titlebar::TitlebarInput;
 pub(super) use touch_tracker::TouchTracker;
 pub(super) use ui_touch::UiTouch;
 
@@ -52,6 +54,7 @@ pub(in crate::compositor) fn handle_input_event<B: InputBackend>(
         InputEvent::DeviceRemoved { device } => {
             state.favorite_device_removed(&device.id());
             if device.has_capability(DeviceCapability::Pointer) {
+                state.release_local_pointer();
                 state.favorite_pointer_removed();
             }
             if device.has_capability(DeviceCapability::Keyboard) {
@@ -198,6 +201,11 @@ pub(in crate::compositor) fn handle_input_event<B: InputBackend>(
             }
         }
         InputEvent::TouchCancel { event } => {
+            if state.touch_pointer_pressed
+                && state.touch_input.has_device_input(&event.device().id())
+            {
+                state.cancel_titlebar_pointer();
+            }
             state.favorite_touch_up(&event.device().id(), event.slot(), true);
             state.end_ui_touch(&event.device().id(), event.slot(), true, event.time());
             state.touch_input.cancel(&event.device().id(), event.slot());

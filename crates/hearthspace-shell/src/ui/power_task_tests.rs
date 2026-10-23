@@ -4,7 +4,6 @@ use crate::{
     ui::{
         session_controls,
         test_support::{Ui, ids},
-        views,
     },
 };
 use masonry::accesskit::Role;
@@ -21,21 +20,13 @@ fn power(
     sized_box(session_controls::power_panel(
         &state.outputs[0],
         &state.power,
-        state.battery.as_ref(),
     ))
 }
 
 fn bar(
     state: &ShellState,
 ) -> impl WidgetView<ShellState, Widget = masonry::widgets::SizedBox> + use<> {
-    sized_box(views::bar_view(
-        &state.outputs[0],
-        state.clock.clone(),
-        &state.notifications,
-        &state.tray,
-        state.battery.as_ref(),
-        &state.window_group,
-    ))
+    sized_box(crate::ui::corners::system_view(state, &state.outputs[0]))
 }
 
 fn battery(state: BatteryState) -> BatteryStatus {
@@ -105,7 +96,17 @@ fn batteryless_desktop_can_suspend_and_repeated_clicks_queue_only_once() {
             .unwrap()
             .is_disabled()
     );
-    ui.harness.mouse_click_on(ui.button("Suspend"), None);
+    let suspend_button = ui.button("Suspend");
+    ui.harness.focus_on(Some(suspend_button));
+    assert_eq!(
+        ui.harness
+            .get_widget_with_id(suspend_button)
+            .get_prop::<masonry::properties::BorderColor>()
+            .color,
+        hearthspace_ui_components::FOCUS_RING_ON_GLASS,
+        "Suspend must keep its visible keyboard focus outline"
+    );
+    ui.harness.mouse_click_on(suspend_button, None);
     ui.dispatch(&power);
     assert_eq!(commands.try_recv().unwrap(), "DP-1");
     assert!(ui.state.power.pending);
@@ -125,7 +126,7 @@ fn batteryless_desktop_can_suspend_and_repeated_clicks_queue_only_once() {
 fn battery_updates_are_accessible_and_removal_removes_indicator() {
     let mut state = ShellState::new("/unused".into(), vec!["eDP-1".into()]);
     state.battery = Some(battery(BatteryState::Charging));
-    let mut ui = Ui::new(state, bar, (320, 48));
+    let mut ui = Ui::new(state, bar, (340, 54));
     let labels = |ui: &Ui<_>| {
         ids(&ui.harness)
             .into_iter()
@@ -136,11 +137,7 @@ fn battery_updates_are_accessible_and_removal_removes_indicator() {
             })
             .collect::<Vec<_>>()
     };
-    assert!(labels(&ui).contains(&"57%".into()));
-    assert!(labels(&ui).contains(&format!(
-        "Battery: {}",
-        ui.state.battery.as_ref().unwrap().state_label()
-    )));
+    assert!(labels(&ui).contains(&ui.state.battery.as_ref().unwrap().accessible_label()));
     let before = ui.harness.render();
     ui.state.battery = Some(battery(BatteryState::Discharging));
     ui.rebuild(&bar);
@@ -150,25 +147,16 @@ fn battery_updates_are_accessible_and_removal_removes_indicator() {
         ui.harness.render(),
         "charge icon must visibly change"
     );
-    let expected = format!(
-        "Battery: {}",
-        ui.state.battery.as_ref().unwrap().state_label()
-    );
+    let expected = ui.state.battery.as_ref().unwrap().accessible_label();
     assert!(labels(&ui).contains(&expected));
-    for name in [
-        "Search",
-        "Notifications",
-        "Canvas map",
-        "Control center",
-        "Power",
-    ] {
+    for name in ["Sound settings", "Power"] {
         let bounds = ui
             .harness
             .access_node(ui.button(name))
             .unwrap()
             .bounding_box()
             .unwrap();
-        assert!(bounds.x0 >= 0.0 && bounds.x1 <= 320.0, "{name}: {bounds:?}");
+        assert!(bounds.x0 >= 0.0 && bounds.x1 <= 340.0, "{name}: {bounds:?}");
     }
     ui.state.battery = None;
     ui.rebuild(&bar);
@@ -188,12 +176,12 @@ fn battery_updates_are_accessible_and_removal_removes_indicator() {
 }
 
 #[test]
-fn power_menu_describes_battery_state_and_capability_changes() {
+fn power_menu_omits_battery_footer_and_keeps_suspend_feedback_before_actions() {
     let mut state = ShellState::new("/unused".into(), vec!["eDP-1".into()]);
     state.battery = Some(battery(BatteryState::Charging));
     let expected = state.battery.as_ref().unwrap().accessible_label();
-    let mut ui = Ui::new(state, power, (300, 300));
-    assert!(ids(&ui.harness).into_iter().any(|id| {
+    let mut ui = Ui::new(state, power, (300, 400));
+    assert!(!ids(&ui.harness).into_iter().any(|id| {
         ui.harness
             .access_node(id)
             .is_some_and(|node| node.label().or_else(|| node.value()).as_deref() == Some(&expected))
@@ -209,7 +197,33 @@ fn power_menu_describes_battery_state_and_capability_changes() {
             .unwrap()
             .is_disabled()
     );
+    let logout = ui
+        .harness
+        .access_node(ui.button("Log out"))
+        .unwrap()
+        .bounding_box()
+        .unwrap();
+    // Decorative widgets have no accessibility node; inspect the labels that
+    // actually participate in the menu's accessible content.
+    let labels: Vec<_> = ids(&ui.harness)
+        .into_iter()
+        .filter_map(|id| ui.harness.access_node(id))
+        .filter(|node| node.role() == Role::Label)
+        .collect();
+    assert!(
+        labels
+            .iter()
+            .any(|node| node.value().as_deref() == Some("Log out"))
+    );
+    for node in labels {
+        assert!(
+            node.bounding_box().expect("menu label has bounds").y1 <= logout.y1,
+            "the normal power menu ends with Log out"
+        );
+    }
     ui.state.power.status.available = false;
+    let error = "Another application is blocking suspend.";
+    ui.state.power.status.error = Some(error.into());
     ui.rebuild(&power);
     ui.dispatch(&power);
     assert!(
@@ -217,5 +231,25 @@ fn power_menu_describes_battery_state_and_capability_changes() {
             .access_node(ui.button("Suspend"))
             .unwrap()
             .is_disabled()
+    );
+    let feedback = ids(&ui.harness)
+        .into_iter()
+        .find_map(|id| {
+            ui.harness
+                .access_node(id)
+                .filter(|node| node.value().as_deref() == Some(error))
+        })
+        .expect("the actual suspend failure remains visible")
+        .bounding_box()
+        .unwrap();
+    let lock = ui
+        .harness
+        .access_node(ui.button("Lock"))
+        .unwrap()
+        .bounding_box()
+        .unwrap();
+    assert!(
+        feedback.y1 <= lock.y0,
+        "suspend feedback stays above the actions, rather than below Log out"
     );
 }

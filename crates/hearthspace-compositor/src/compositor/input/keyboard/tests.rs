@@ -1,6 +1,38 @@
 use super::*;
 
 #[test]
+fn shell_corner_shortcuts_support_reverse_and_consume_releases_after_focus_changes() {
+    let mut shortcuts = KeyboardShortcuts::default();
+    let mut mods = ModifiersState {
+        logo: true,
+        ..Default::default()
+    };
+    let key = 72_u32.into();
+    assert!(matches!(
+        shortcuts.filter(key, KeyState::Pressed, &mods, keysyms::KEY_F6, true),
+        FilterResult::Intercept(Some(Shortcut::ShellCornerCycle { reverse: false }))
+    ));
+    assert!(matches!(
+        shortcuts.filter(
+            key,
+            KeyState::Released,
+            &Default::default(),
+            keysyms::KEY_F6,
+            true
+        ),
+        FilterResult::Intercept(None)
+    ));
+    mods.shift = true;
+    assert_eq!(
+        shortcut(&mods, keysyms::KEY_F6),
+        Some(Shortcut::ShellCornerCycle { reverse: true })
+    );
+    mods.ctrl = true;
+    assert_eq!(shortcut(&mods, keysyms::KEY_F6), None);
+    assert_eq!(shortcut(&Default::default(), keysyms::KEY_F6), None);
+}
+
+#[test]
 fn cancelled_search_keeps_preexisting_releases_and_suppresses_new_pairs() {
     let mut shortcuts = KeyboardShortcuts::default();
     let shift = 50_u32.into();

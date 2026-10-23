@@ -209,7 +209,7 @@ fn icon_preserves_input_kinds_and_context_accessibility() {
     )
     .prepare();
     let mut harness = TestHarness::create_with_size(
-        hearthspace_ui_components::hearthspace_light_properties(),
+        crate::ui::appearance::properties(hearthspace_ui_components::Palette::default()),
         widget,
         (34, 34),
     );
@@ -291,26 +291,16 @@ fn overflow_keeps_every_control_visible_and_empty_tray_adds_no_button() {
     fn bar(
         state: &ShellState,
     ) -> impl WidgetView<ShellState, Widget = masonry::widgets::SizedBox> + use<> {
-        sized_box(super::views::bar_view(
-            &state.outputs[0],
-            state.clock.clone(),
-            &state.notifications,
-            &state.tray,
-            state.battery.as_ref(),
-            &state.window_group,
-        ))
+        sized_box(crate::ui::corners::system_view(state, &state.outputs[0]))
     }
-    for width in [320, 480, 800] {
+    for (width, visible_icons) in [(320, 3), (480, 4), (800, 8)] {
         let mut state = state();
         state.tray.snapshot.items = (1..=20).map(item).collect();
-        let mut ui = Ui::new(state, bar, (width, 48));
+        let mut ui = Ui::new(state, bar, (width, 54));
         for label in [
             "Application tray",
-            "Select window group",
-            "Search",
-            "Notifications",
-            "Canvas map",
-            "Control center",
+            "Brightness settings",
+            "Sound settings",
             "Power",
         ] {
             let bounds = ui
@@ -333,7 +323,7 @@ fn overflow_keeps_every_control_visible_and_empty_tray_adds_no_button() {
                 })
             })
             .count();
-        assert_eq!(icons, tray_state::capacity(width as f64 - 84.0));
+        assert_eq!(icons, visible_icons);
         ui.state.tray.snapshot.items.clear();
         ui.rebuild(&bar);
         ui.dispatch(&bar);
@@ -345,7 +335,7 @@ fn overflow_keeps_every_control_visible_and_empty_tray_adds_no_button() {
                     .access_node(*id)
                     .is_some_and(|node| node.role() == Role::Button))
                 .count(),
-            6
+            5
         );
     }
 }

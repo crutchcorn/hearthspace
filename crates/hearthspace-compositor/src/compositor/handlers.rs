@@ -136,6 +136,7 @@ impl XdgShellHandler for App {
             initial_placement_done: false,
             initial_output_name: spawn_output_name.clone(),
             presentation: Default::default(),
+            pending_resize: None,
             advertised_fractional_scale: 0.0,
         });
         if kind == ManagedWindowKind::Normal {
@@ -310,6 +311,15 @@ impl XdgShellHandler for App {
     }
 
     fn toplevel_destroyed(&mut self, surface: ToplevelSurface) {
+        if let Some(index) = self.window_index_for_surface(surface.wl_surface())
+            && self.desktop_id(index).is_some()
+        {
+            self.windows[index].mapped = false;
+            self.desktop_mapped(index);
+        }
+        let corner = self
+            .window_index_for_surface(surface.wl_surface())
+            .is_some_and(|index| self.shell_corner(index).is_some());
         let restore_panel_focus = !self.pending_search_reserves_focus()
             && self
                 .active_shell_panel_index()
@@ -346,6 +356,9 @@ impl XdgShellHandler for App {
         }
         self.windows
             .retain(|window| !window.surface.same_xdg(&surface));
+        if corner {
+            self.reconcile_window_presentations();
+        }
         if restore_panel_focus {
             self.restore_focus_after_shell_panel();
         } else if restore_focus {
@@ -376,7 +389,7 @@ impl XdgShellHandler for App {
                 "toplevel app id changed window kind"
             );
             window.position = position_for_new_window(kind, window.position);
-            if kind.is_shell_chrome() {
+            if kind.is_shell_chrome() || kind == ManagedWindowKind::DesktopItem {
                 window.decoration = WindowDecoration::ClientSide;
             }
             if old_kind == ManagedWindowKind::Normal && kind != ManagedWindowKind::Normal {
@@ -388,6 +401,7 @@ impl XdgShellHandler for App {
                 self.idle_daemon.register_window(window.id);
             }
             let insert_index = match kind {
+                ManagedWindowKind::DesktopItem => 0,
                 ManagedWindowKind::Normal => self.normal_insert_index(),
                 ManagedWindowKind::ShellBar
                 | ManagedWindowKind::Launcher

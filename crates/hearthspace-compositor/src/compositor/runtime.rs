@@ -125,7 +125,8 @@ pub(in crate::compositor) fn run_event_loop(
             .and_then(|()| {
                 (data.state.viewport_animation.is_some()
                     || data.state.overview_animating()
-                    || data.state.group_animating())
+                    || data.state.group_animating()
+                    || data.state.desktop_edge_panning())
                 .then_some(ANIMATION_FRAME_INTERVAL)
             });
         let exit_timeout = data
@@ -168,11 +169,13 @@ pub(in crate::compositor) fn run_event_loop(
             data.state.repeat_device_control();
             data.state.maintain_favorite_drawing();
             data.state.maintain_ui_touch();
+            data.state.advance_desktop_edge_pan();
         } else {
             data.state.clear_favorite_drawing();
             data.state.cancel_ui_touch();
             data.state.shortcuts.cancel_device_repeat();
             data.state.control_events.clear();
+            data.state.reset_desktop_input();
         }
         data.process_pending_dmabuf_imports();
         data.state.maintain_session_lock();

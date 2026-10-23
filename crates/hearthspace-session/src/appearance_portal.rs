@@ -1,0 +1,184 @@
+//! Session-owned appearance publication. No desktop preference store is written.
+use std::{
+    io,
+    path::PathBuf,
+    sync::{atomic::AtomicBool, mpsc},
+    thread::{self, JoinHandle},
+    time::{Duration, Instant},
+};
+
+use tokio::sync::oneshot;
+
+#[path = "appearance_portal/fallback.rs"]
+mod fallback;
+#[path = "appearance_portal/settings.rs"]
+mod settings;
+#[cfg(test)]
+#[path = "appearance_portal/tests.rs"]
+mod tests;
+
+pub(crate) use settings::NAME;
+use settings::Settings;
+
+pub(crate) struct AppearancePortal {
+    bus: String,
+    socket: PathBuf,
+    worker: Option<Worker>,
+    restarts_left: usize,
+}
+
+struct Worker {
+    stop: Option<oneshot::Sender<()>>,
+    thread: Option<JoinHandle<io::Result<()>>>,
+}
+
+impl AppearancePortal {
+    pub(crate) fn start(
+        bus: String,
+        socket: PathBuf,
+        deadline: Instant,
+        cancelled: &AtomicBool,
+    ) -> io::Result<Self> {
+        let worker = Worker::start(bus.clone(), socket.clone(), deadline, cancelled, false)?;
+        Ok(Self {
+            bus,
+            socket,
+            worker: Some(worker),
+            restarts_left: 2,
+        })
+    }
+
+    pub(crate) fn poll(&mut self, cancelled: &AtomicBool) {
+        if self
+            .worker
+            .as_ref()
+            .is_some_and(|worker| !worker.thread.as_ref().unwrap().is_finished())
+        {
+            return;
+        }
+        self.worker.take();
+        if self.restarts_left == 0 {
+            return;
+        }
+        self.restarts_left -= 1;
+        tracing::warn!("restarting the private appearance portal");
+        match Worker::start(
+            self.bus.clone(),
+            self.socket.clone(),
+            Instant::now() + Duration::from_secs(3),
+            cancelled,
+            true,
+        ) {
+            Ok(worker) => self.worker = Some(worker),
+            Err(error) => tracing::warn!(%error, "appearance portal restart failed"),
+        }
+    }
+}
+
+impl Worker {
+    fn start(
+        bus: String,
+        socket: PathBuf,
+        deadline: Instant,
+        cancelled: &AtomicBool,
+        reannounce: bool,
+    ) -> io::Result<Self> {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()?;
+        let (stop, stopped) = oneshot::channel();
+        let (ready, readiness) = mpsc::sync_channel(1);
+        let thread = thread::Builder::new()
+            .name("appearance-portal".into())
+            .spawn(move || {
+                runtime.block_on(async {
+                    tokio::select! {
+                        _ = stopped => Ok(()),
+                        result = serve(&bus, &socket, ready.clone(), reannounce) => {
+                            if let Err(error) = &result {
+                                let _ = ready.try_send(Err(error.to_string()));
+                                tracing::error!(%error, "appearance portal stopped");
+                            }
+                            result
+                        }
+                    }
+                })
+            })?;
+        let worker = Self {
+            stop: Some(stop),
+            thread: Some(thread),
+        };
+        loop {
+            let remaining = crate::readiness::remaining(deadline, cancelled)?;
+            match readiness.recv_timeout(remaining.min(Duration::from_millis(50))) {
+                Ok(Ok(())) => return Ok(worker),
+                Ok(Err(error)) => return Err(io::Error::other(error)),
+                Err(mpsc::RecvTimeoutError::Timeout) => {}
+                Err(mpsc::RecvTimeoutError::Disconnected) => {
+                    return Err(io::Error::other("appearance portal stopped during startup"));
+                }
+            }
+        }
+    }
+}
+
+impl Drop for Worker {
+    fn drop(&mut self) {
+        if let Some(stop) = self.stop.take() {
+            let _ = stop.send(());
+        }
+        if let Some(thread) = self.thread.take() {
+            let _ = thread.join();
+        }
+    }
+}
+
+async fn serve(
+    bus: &str,
+    socket: &std::path::Path,
+    ready: mpsc::SyncSender<Result<(), String>>,
+    reannounce: bool,
+) -> io::Result<()> {
+    // This bounded IPC runs only on this dedicated worker, never on a UI or
+    // supervisor thread. A temporarily unavailable daemon retains the last
+    // published value rather than broadcasting a spurious reset.
+    let initial = hearthspace_ipc::client_get_settings_at(socket)?.appearance;
+    let fallback = tokio::time::timeout(Duration::from_secs(2), fallback::Fallback::connect(bus))
+        .await
+        .map_err(io::Error::other)?
+        .map_err(io::Error::other)?;
+    let shared = Settings::with_fallback(initial, fallback.clone());
+    let connection = tokio::time::timeout(
+        Duration::from_secs(2),
+        settings::connect(bus, shared.clone()),
+    )
+    .await
+    .map_err(io::Error::other)?
+    .map_err(io::Error::other)?;
+    if reannounce {
+        // Existing clients retain their cached settings when a backend owner
+        // disappears. Recover changes made while this worker was unavailable.
+        shared
+            .announce(&connection)
+            .await
+            .map_err(io::Error::other)?;
+    }
+    ready
+        .send(Ok(()))
+        .map_err(|_| io::Error::other("appearance startup was cancelled"))?;
+    let mut refresh = tokio::time::interval(Duration::from_millis(250));
+    refresh.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+    let forwarded = fallback.forward(&connection);
+    tokio::pin!(forwarded);
+    loop {
+        tokio::select! {
+            _ = connection.closed() => return Err(io::Error::other("private appearance bus closed")),
+            result = &mut forwarded => return result.map_err(io::Error::other),
+            _ = refresh.tick() => {
+                if let Ok(settings) = hearthspace_ipc::client_get_settings_at(socket) {
+                    shared.publish(&connection, settings.appearance).await.map_err(io::Error::other)?;
+                }
+            }
+        }
+    }
+}

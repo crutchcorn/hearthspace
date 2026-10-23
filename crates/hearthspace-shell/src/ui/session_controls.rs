@@ -1,14 +1,22 @@
 //! Small everyday session controls, kept separate from application search.
+use crate::ui::appearance::{ThemeStyle as _, Tone};
 use std::time::Duration;
 
 use chrono::Local;
-use hearthspace_ui_components as components;
+use hearthspace_ui_components::{
+    self as components,
+    icons::{Icon as Glyph, icon},
+};
 use xilem::{
     WidgetView, WindowView,
     core::{MessageProxy, NoElement, View},
-    masonry::{layout::AsUnit, properties::LineBreaking},
+    masonry::{
+        layout::AsUnit,
+        parley::style::FontWeight,
+        properties::{LineBreaking, Padding},
+    },
     style::Style,
-    view::{CrossAxisAlignment, FlexSpacer, button, flex_col, flex_row, label, task_raw},
+    view::{CrossAxisAlignment, FlexExt, button, flex_col, flex_row, label, task_raw},
 };
 
 use super::{
@@ -78,76 +86,92 @@ pub(super) fn power_button(output: &ShellOutputInstance) -> impl WidgetView<Shel
 pub(super) fn power_window(
     output: &ShellOutputInstance,
     power: &super::power_task::PowerState,
-    battery: Option<&crate::battery::BatteryStatus>,
 ) -> WindowView<ShellState> {
     let app_id = output.power_app_id();
     let key = output.key().to_string();
-    let size = popup::size(output, PopupKind::Power, 300.0, 140.0);
+    let size = popup::size(output, PopupKind::Power, 320.0, 280.0);
     popup::window(
         output.power_window_id,
         "Hearthspace Power",
         app_id,
         size,
-        power_panel(output, power, battery),
+        power_panel(output, power),
         move |state| state.dismiss_power(&key),
+    )
+}
+
+/// Full-width native buttons retain the shared hover and keyboard focus states.
+fn action<F: Fn(&mut ShellState) + Send + Sync + 'static>(
+    glyph: Glyph,
+    name: &'static str,
+    enabled: bool,
+    confirming: bool,
+    callback: F,
+) -> impl WidgetView<ShellState> + use<F> {
+    let color = if !enabled {
+        Tone::Muted
+    } else if confirming {
+        Tone::Strong
+    } else {
+        Tone::Text
+    };
+    components::button_surface(
+        button(
+            flex_row((
+                icon(glyph, 20.0).theme_color(color),
+                label(name).text_size(14.0).theme_color(color).flex(1.0),
+            ))
+            .gap(12.0.px()),
+            callback,
+        )
+        .disabled(!enabled)
+        .height(48.0.px())
+        .padding(Padding::from_vh(10.0.px(), 14.0.px()))
+        .corner_radius(components::RADIUS_CONTROL.px()),
+        components::ButtonSurface::Control,
+        confirming,
     )
 }
 
 pub(super) fn power_panel(
     output: &ShellOutputInstance,
     power: &super::power_task::PowerState,
-    battery: Option<&crate::battery::BatteryStatus>,
 ) -> impl WidgetView<ShellState> + use<> {
     let output_key = output.key().to_string();
     let cancel_key = output_key.clone();
     let lock_key = output_key.clone();
+    let suspend_key = output_key.clone();
+    let close_key = output_key.clone();
     let confirming = output.confirm_logout;
-    let suspend_key = output.key().to_string();
-    let available = power.can_suspend();
+    let lock = (!confirming).then(|| {
+        action(Glyph::Lock, "Lock", true, false, move |state| {
+            let result = send_command(&state.command_socket, "lock-session");
+            state.finish_launch(&lock_key, result);
+        })
+    });
     let suspend = (!confirming).then(|| {
-        button(
-            label(if power.busy() {
+        action(
+            Glyph::Moon,
+            if power.busy() {
                 "Suspending…"
             } else {
                 "Suspend"
-            })
-            .text_size(13.0)
-            .text_alignment(xilem::TextAlign::Center)
-            .color(if available {
-                components::TEXT
-            } else {
-                components::TEXT_MUTED
-            }),
-            move |state: &mut ShellState| super::power_task::suspend(state, &suspend_key),
+            },
+            power.can_suspend(),
+            false,
+            move |state| super::power_task::suspend(state, &suspend_key),
         )
-        .disabled(!available)
-        .background_color(components::SURFACE_SUBTLE)
-        .border(components::BORDER, 1.0.px())
-        .corner_radius(6.0.px())
-        .padding(xilem::masonry::properties::Padding::from_vh(
-            5.0.px(),
-            9.0.px(),
-        ))
     });
-    let unavailable = (!confirming && !power.status.available && !power.busy()).then(|| {
-        label(
-            power
-                .status
-                .error
-                .clone()
-                .unwrap_or_else(|| "Suspend is unavailable in this session.".into()),
-        )
-        .text_size(13.0)
-        .color(components::TEXT_MUTED)
-        .line_break_mode(LineBreaking::WordWrap)
-    });
-    let logout = components::compact_action_button(
+    let logout = action(
+        Glyph::LogOut,
         if confirming {
             "Confirm log out"
         } else {
             "Log out"
         },
-        move |state: &mut ShellState| {
+        true,
+        confirming,
+        move |state| {
             if confirming {
                 confirm_logout(state, &output_key);
             } else {
@@ -156,52 +180,60 @@ pub(super) fn power_panel(
         },
     );
     let cancel = confirming.then(|| {
-        components::compact_action_button("Cancel", move |state: &mut ShellState| {
+        action(Glyph::ArrowLeft, "Cancel", true, false, move |state| {
             set_confirmation(state, &cancel_key, false);
         })
     });
-    let lock = (!confirming).then(|| {
-        components::compact_action_button("Lock", move |state: &mut ShellState| {
-            let result = send_command(&state.command_socket, "lock-session");
-            state.finish_launch(&lock_key, result);
-        })
-    });
-    let close_key = output.key().to_string();
-    let close = icon_button(Icon::Close, "Close power menu", false, move |state| {
-        state.dismiss_launcher(&close_key)
-    });
     let hint = confirming.then(|| {
         components::field_label("Close your apps and end this session?")
-            .text_size(13.0)
-            .color(components::TEXT_MUTED)
             .line_break_mode(LineBreaking::WordWrap)
+            .theme_color(Tone::Muted)
     });
     let error = output
         .launch_error
         .clone()
         .map(|error| components::field_label(error).line_break_mode(LineBreaking::WordWrap));
-    popup::panel(
+    let unavailable = (!confirming && !power.status.available && !power.busy()).then(|| {
+        components::field_label(
+            power
+                .status
+                .error
+                .clone()
+                .unwrap_or_else(|| "Suspend is unavailable in this session.".into()),
+        )
+        .line_break_mode(LineBreaking::WordWrap)
+        .theme_color(Tone::Muted)
+    });
+    popup::panel_with_header(
         output,
         PopupKind::Power,
+        flex_row((
+            icon(Glyph::Power, 20.0).theme_color(Tone::Strong),
+            label("Power")
+                .text_size(16.0)
+                .weight(FontWeight::MEDIUM)
+                .flex(1.0),
+            icon_button(Icon::Close, "Close power menu", false, move |state| {
+                state.dismiss_power(&close_key)
+            }),
+        ))
+        .gap(12.0.px()),
         flex_col((
-            flex_row((
-                components::section_title("Power"),
-                FlexSpacer::Flex(1.0),
-                close,
-            )),
             hint,
             error,
-            super::battery_view::detail(battery),
-            lock,
-            suspend,
             unavailable,
-            logout,
-            cancel,
+            flex_col((lock, suspend, logout, cancel))
+                .cross_axis_alignment(CrossAxisAlignment::Stretch)
+                .gap(8.0.px()),
         ))
         .cross_axis_alignment(CrossAxisAlignment::Stretch)
-        .gap(8.0.px()),
+        .gap(16.0.px()),
     )
 }
+
+#[cfg(test)]
+#[path = "power_view_tests.rs"]
+mod view_tests;
 
 #[cfg(test)]
 mod tests {

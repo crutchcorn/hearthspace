@@ -1,4 +1,4 @@
-"""Full shell controls and OSD acceptance with private fake pactl routing."""
+"""Sound/Brightness dropdown and OSD acceptance with private fake pactl routing."""
 
 import os
 import sys
@@ -18,7 +18,7 @@ class ControlUiHeadlessTests(unittest.TestCase):
         with tempfile.TemporaryDirectory(prefix="hs-control-ui-") as temporary:
             directory = Path(temporary)
             root = os.environ.get("HEARTHSPACE_SHELL_EVIDENCE")
-            evidence = Path(root) / "control-center" if root else directory
+            evidence = Path(root) / "audio-and-brightness" if root else directory
             evidence.mkdir(parents=True, exist_ok=True)
             run_shell_session(
                 self,

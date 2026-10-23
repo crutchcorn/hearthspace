@@ -5,6 +5,7 @@ use super::{
     tray_button::{self, Target},
     tray_state::{self, TrayState},
 };
+use crate::ui::appearance::{ThemeStyle as _, Tone};
 use hearthspace_common::{TRAY_MENU_APP_ID, tray_menu_app_id_for_output};
 use hearthspace_ui_components as components;
 use xilem::{
@@ -76,8 +77,8 @@ pub(super) fn panel(
     if let Some(error) = error {
         rows.push(
             label(error.to_string())
-                .color(components::TEXT_MUTED)
                 .line_break_mode(LineBreaking::WordWrap)
+                .theme_color(Tone::Muted)
                 .boxed(),
         );
     }
@@ -129,7 +130,6 @@ pub(super) fn panel(
         flex_row((
             label(title)
                 .text_size(15.0)
-                .color(components::TEXT)
                 .line_break_mode(LineBreaking::Clip)
                 .flex(1.0),
             back,

@@ -1,9 +1,6 @@
 use smithay::utils::{Logical, Point, Rectangle};
 
-use crate::{
-    compositor::App,
-    config::{CONTROL_BAR_HEIGHT, TITLE_BAR_HEIGHT},
-};
+use crate::{compositor::App, config::TITLE_BAR_HEIGHT};
 
 impl App {
     pub(in crate::compositor) fn window_surface_screen_origin(
@@ -22,8 +19,7 @@ impl App {
             };
             let size = self.window_geometry_size(index);
             if !fullscreen {
-                output.loc.y += CONTROL_BAR_HEIGHT;
-                output.size.h = (output.size.h - CONTROL_BAR_HEIGHT).max(1);
+                output = self.usable_output(output);
             }
             let inset = self.window_surface_geometry_loc(index);
             return Point::from((

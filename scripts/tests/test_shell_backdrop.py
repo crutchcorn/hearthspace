@@ -4,7 +4,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import Mock, patch
+from unittest.mock import Mock, call, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from agentlib import shell_backdrop
@@ -37,19 +37,19 @@ class BackdropTests(unittest.TestCase):
         self.assertNotIn("AT_SPI_BUS_ADDRESS", env)
         self.assertNotIn("DBUS_SESSION_BUS_PID", env)
 
-    def test_pixel_readiness_requires_dark_opaque_backdrop_below_bar(self):
+    def test_pixel_readiness_samples_workarea_between_top_and_bottom_corners(self):
         metadata = {
             "width": 320,
-            "height": 240,
+            "height": 480,
             "scale": 2,
             "logical_x": -20,
             "logical_y": 10,
         }
-        output = {"logical_height": 120, "scale": 2}
-        dark = capture(metadata, [((-20, 58, 140, 130), shell_backdrop.COLOR)])
+        output = {"logical_height": 240, "scale": 2}
+        dark = capture(metadata, [((-20, 100, 140, 160), shell_backdrop.COLOR)])
         self.assertTrue(dark_background(Frame(dark), output))
         self.assertFalse(dark_background(Frame(capture(metadata, [])), output))
-        partial = capture(metadata, [((-20, 58, 50, 130), shell_backdrop.COLOR)])
+        partial = capture(metadata, [((-20, 100, 50, 160), shell_backdrop.COLOR)])
         self.assertFalse(dark_background(Frame(partial), output))
 
     def test_backdrop_maximizes_then_closes_only_the_new_owned_id(self):
@@ -63,7 +63,11 @@ class BackdropTests(unittest.TestCase):
                 {"windows": [existing, owned]},
                 {"windows": [existing]},
             ]
-            smoke.window.side_effect = [{"titlebar_height": 0}, None]
+            smoke.window.side_effect = [
+                {"titlebar_height": 0},
+                {"focused": False},
+                None,
+            ]
             process = Mock()
             process.poll.return_value = None
             with (
@@ -73,7 +77,8 @@ class BackdropTests(unittest.TestCase):
                 ) as launch,
                 patch.object(shell_backdrop, "stop_client") as stop,
                 patch.object(shell_backdrop, "maximized_at_output", return_value=True),
-                shell_backdrop.backdrop(smoke, {}),
+                patch.object(shell_backdrop, "Input") as inputs,
+                shell_backdrop.backdrop(smoke, {"logical_x": -800, "logical_y": 50}),
             ):
                 pass
             self.assertEqual(
@@ -84,7 +89,38 @@ class BackdropTests(unittest.TestCase):
                 "--override=colors.background=101820", launch.call_args.args[0]
             )
             self.assertIn("--override=colors.alpha=1.0", launch.call_args.args[0])
+            inputs.return_value.__enter__.return_value.click.assert_called_once_with(
+                -796, 54
+            )
             stop.assert_called_once_with(process)
+
+    def test_reference_waits_for_explicitly_inactive_owned_window(self):
+        smoke = Mock()
+        inactive = {"id": 12, "focused": False}
+        smoke.window.side_effect = [
+            {"id": 12, "focused": True},
+            None,
+            {"id": 12},  # Missing focus evidence cannot prove readiness.
+            inactive,
+        ]
+
+        def until(_name, condition):
+            for expected in [None, None, None, inactive]:
+                self.assertEqual(condition(), expected)
+            return inactive
+
+        smoke.until.side_effect = until
+        with patch.object(shell_backdrop, "Input") as inputs:
+            self.assertEqual(
+                shell_backdrop.unfocus(
+                    smoke, 12, {"logical_x": 100, "logical_y": -600}
+                ),
+                inactive,
+            )
+        inputs.return_value.__enter__.return_value.click.assert_called_once_with(
+            104, -596
+        )
+        self.assertEqual(smoke.window.call_args_list, [call(12)] * 4)
 
     def test_early_backdrop_exit_fails_before_waiting_for_mapping(self):
         with tempfile.TemporaryDirectory() as directory:

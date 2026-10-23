@@ -3,9 +3,12 @@ use crate::compositor::ManagedWindowKind;
 /// Shell surfaces form a separate top layer. Never let an unrelated normal
 /// window's mapping order put the bar below a fullscreen rendering cutoff.
 pub(super) fn render_order(kinds: impl IntoIterator<Item = ManagedWindowKind>) -> Vec<usize> {
-    let (mut osd, mut shell, mut normal) = (Vec::new(), Vec::new(), Vec::new());
+    let (mut osd, mut shell, mut normal, mut desktop) =
+        (Vec::new(), Vec::new(), Vec::new(), Vec::new());
     for (index, kind) in kinds.into_iter().enumerate() {
-        if kind == ManagedWindowKind::ControlOsd {
+        if kind == ManagedWindowKind::DesktopItem {
+            desktop.push(index);
+        } else if kind == ManagedWindowKind::ControlOsd {
             osd.push(index);
         } else if kind.is_shell_chrome() {
             shell.push(index);
@@ -18,12 +21,23 @@ pub(super) fn render_order(kinds: impl IntoIterator<Item = ManagedWindowKind>) -
     osd.reverse();
     osd.extend(shell);
     osd.extend(normal);
+    desktop.reverse();
+    osd.extend(desktop);
     osd
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn desktop_items_stay_beneath_every_app_and_shell_surface() {
+        use ManagedWindowKind::{DesktopItem, Launcher, Normal, ShellBar};
+        assert_eq!(
+            render_order([Normal, DesktopItem, ShellBar, DesktopItem, Launcher, Normal]),
+            [4, 2, 5, 0, 3, 1]
+        );
+    }
 
     #[test]
     fn osd_feedback_stays_above_other_shell_surfaces() {

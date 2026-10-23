@@ -1,0 +1,133 @@
+# Dependency patches
+
+## AccessKit AT-SPI adapter ordering
+
+- **Dependency:** `accesskit_atspi_common` 0.18.1, vendored in
+  [`vendor/accesskit_atspi_common`](../vendor/accesskit_atspi_common/).
+- **Patch:** [keep adapters sorted by ID](accesskit-atspi-adapter-order.patch),
+  backported from upstream commit
+  [`fb7efa8cdbe6ebb48106f30c1c66163ebc781b49`](https://github.com/AccessKit/accesskit/commit/fb7efa8cdbe6ebb48106f30c1c66163ebc781b49).
+- **Reason:** the four shell corners create separate Wayland windows. When AT-SPI
+  activates, their first redraws can arrive out of creation order. AccessKit
+  appended adapters to a vector but used binary search to find them, causing a
+  panic followed by an abort during cleanup. Sorted insertion preserves that
+  lookup invariant without changing shell window or accessibility behavior.
+- **Upstream:** [issue 820](https://github.com/AccessKit/accesskit/issues/820) and
+  [merged fix 821](https://github.com/AccessKit/accesskit/pull/821). As of
+  2026-10-17, the latest compatible release is 0.18.1, and the fix has not shipped
+  in a release. Only the `atspi-common` change is needed here: Winit creates
+  adapters on the same event-loop thread, while their deferred activation order
+  varies. The upstream Unix message-queue change addresses concurrent creation.
+- **Verification:**
+  `cargo test -p hearthspace-shell --test accesskit_adapter_order` registers
+  windows in order 2, 0, 1 and checks accessibility enumeration, updates, removal,
+  and reactivation. It fails against the original 0.18.1 implementation. Shell
+  acceptance additionally exercises the real private AT-SPI bus.
+- **Removal:** upgrade the AccessKit version used by Xilem/Masonry to a compatible
+  upstream release containing this fix. Remove the Cargo patch, vendored package,
+  and patch file, refresh `Cargo.lock`, and rerun the regression and shell
+  acceptance with accessibility enabled before removing this ledger entry.
+
+## AccessKit clipped-node registration
+
+- **Dependency:** the same vendored `accesskit_atspi_common` 0.18.1.
+- **Patch:** [refresh clipping-dependent registrations](accesskit-atspi-clipped-nodes.patch),
+  a local fix in `src/adapter.rs` and `src/adapter/filter_updates.rs`.
+- **Reason:** at 4× scale, Background settings initially places Photo fit and its
+  explanatory text below the viewport. Scrolling changes a container transform
+  while the descendants' node data stays unchanged. AccessKit's visibility filter
+  then exposes those descendants through `GetChildren`, but their D-Bus objects
+  remain unregistered because they received no node-update callback. Clients see
+  `UnknownObject` for visible controls.
+- **Behavior:** when geometry or filtering topology changes, revisit the old and
+  new clipping scopes, including siblings that may gain the filter's offscreen
+  neighbor exception. Process descendants before parent child-list events and
+  deduplicate node updates. Match actual exposed ancestry through transparent
+  containers. Ordinary value/text updates do not trigger a scope traversal; the
+  extra work is limited to affected clipping scopes, with no persistent cache
+  or public API change.
+- **Upstream:** checked on 2026-10-20. The
+  [package releases](https://crates.io/crates/accesskit_atspi_common/versions)
+  still have 0.18.1 as the latest 0.18.x release. Current
+  [adapter source at `a39329d`](https://github.com/AccessKit/accesskit/blob/a39329d281a9381510496c17e81e87763edbb8bb/adapters/atspi-common/src/adapter.rs)
+  retains the same callback-only registration logic. The clipping filter was
+  introduced in [PR 574](https://github.com/AccessKit/accesskit/pull/574).
+  No existing issue or fix for this specific registration gap was found; no
+  upstream report has been published.
+- **Verification:**
+  `cargo test -p hearthspace-shell --test accesskit_clipped_nodes --test accesskit_adapter_order`
+  checks entering/leaving view after ancestor scrolling, viewport resize,
+  sibling movement/reordering, nested clips, and simultaneous updates. It also
+  checks balanced interfaces and registration before `ChildAdded` events.
+  The initial three clipping regressions fail against unpatched 0.18.1.
+  Validate the real Settings Photo fit control through the private AT-SPI bus
+  after scrolling at 4× scale.
+- **Removal:** remove this patch after a compatible upstream release passes
+  these clipping regressions and the real 4× Settings workflow without it.
+  Preserve the separate adapter-order patch until its own removal condition is
+  met.
+
+See [vendored provenance and refresh steps](../vendor/accesskit_atspi_common/PROVENANCE.md).
+
+## Xilem initial window properties
+
+- **Dependencies:** `xilem` and `masonry_winit` 0.4.0, copied from the same pinned
+  [`271a27a6`](https://github.com/linebender/xilem/tree/271a27a6d4a930f7878d404f9014e3c50a3a9b88)
+  Git revision into [`vendor/xilem`](../vendor/xilem/) and
+  [`vendor/masonry_winit`](../vendor/masonry_winit/). Other Linebender packages
+  remain upstream dependencies; their versions and features are unchanged.
+- **Patch:** [initial window properties](xilem-initial-window-properties.patch).
+  `WindowView::build` forwards its cached defaults to `NewWindow`, and Masonry
+  uses those defaults when constructing the window's render root. Windows
+  without an override still use the application's defaults. Runtime theme swaps
+  retain the existing Arc-identity optimization.
+- **Reason:** upstream applies per-window defaults only during rebuild when the
+  Arc changes. A window created with the same cached Arc on every frame never
+  receives it. Persisted dark Settings and shell popups created after a live
+  theme change therefore inherited the old application-wide colors.
+- **Upstream:** checked on 2026-10-20. The current
+  [WindowView creation path](https://github.com/linebender/xilem/blob/main/xilem/src/window_view.rs)
+  and [NewWindow](https://github.com/linebender/xilem/blob/main/masonry_winit/src/event_loop_runner.rs)
+  still omit the initial override. Runtime swaps came from
+  [issue 1819](https://github.com/linebender/xilem/issues/1819). No upstream issue
+  or PR has been published for this local repair.
+- **Verification:** `cargo test -p hearthspace-ui-components window_theme_tests`
+  builds real `WindowView`s and paints their initial widget trees, checking a
+  persisted dark window and a new popup after an existing window changes theme.
+  Removing the `WindowView::build` forwarding makes these regressions fail.
+  Native shell acceptance additionally checks real window creation and first
+  presentation; the CPU test does not create Winit or GPU windows.
+- **Removal:** upgrade to a compatible upstream revision carrying initial
+  per-window defaults. Remove both Git-source Cargo patches, vendor directories,
+  and the source patch; refresh `Cargo.lock` and rerun the CPU and real-window
+  appearance checks. Keep the regression until upstream coverage replaces it.
+
+## Smithay XSettings publication
+
+- **Dependency:** Smithay 0.7.0 at pinned revision
+  [`5c2ba413`](https://github.com/Smithay/smithay/tree/5c2ba4132556a08abc70ae1771d275ec2cfc031f),
+  copied into [`vendor/smithay`](../vendor/smithay/). Its
+  [provenance](../vendor/smithay/PROVENANCE.md) records the imported files and
+  standalone manifest normalization.
+- **Patch:** [flush XSettings publication](smithay-xsettings-flush.patch), a local
+  change to `XSettings::update`.
+- **Reason:** `change_property8` queues the updated `_XSETTINGS_SETTINGS`
+  property, but Smithay does not flush it. When appearance changes outside an
+  X11 event callback, idle GTK3 clients keep their previous theme until unrelated
+  X11 activity flushes the connection. Flushing at the shared publication point
+  covers initialization, set, remove, and clear without a round trip.
+- **Upstream:** checked on 2026-10-20. The latest
+  [release is 0.7.0](https://github.com/Smithay/smithay/releases/tag/v0.7.0), and
+  [current source at `24647fc8`](https://github.com/Smithay/smithay/blob/24647fc8d00131eb7f388efed26e35ea316b0018/src/xwayland/xwm/settings.rs#L192)
+  still returns immediately after queuing the property. No matching upstream
+  fix or issue was found; no report has been published.
+- **Verification:** build the workspace binaries, then run
+  `HEARTHSPACE_E2E=1 cargo test -p hearthspace-compositor --features e2e,test-apps --test headless_control xsettings_publishes_saved_startup_theme_and_idle_live_changes`.
+  This starts a private settings daemon and XWayland, checks the saved startup
+  theme, and waits for `PropertyNotify` after live Light/Dark changes without
+  sending X11 requests that could mask the missing flush. Also verify an idle
+  GTK3 client on the private XWayland display receives `gtk-theme-name` updates.
+- **Removal:** upgrade to a compatible upstream revision that publishes
+  XSettings changes promptly and passes these checks without the patch. Remove
+  the Git-source Cargo patch, vendor directory, and source patch, then refresh
+  `Cargo.lock`. Retain the idle-client regression.

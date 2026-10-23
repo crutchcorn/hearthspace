@@ -1,4 +1,7 @@
 //! Shell surfaces stay in output logical coordinates regardless of canvas zoom.
+use hearthspace_common::{
+    ShellCorner, canvas_map_output_name_from_app_id, notifications_output_name_from_app_id,
+};
 use smithay::utils::{Logical, Physical, Point, Rectangle};
 
 use crate::{
@@ -42,8 +45,20 @@ impl App {
         window_index: usize,
     ) -> Option<Point<i32, Logical>> {
         let output_name = self.windows[window_index].shell_output_name.as_deref();
-        self.output_logical_rect_for_name(output_name)
-            .map(|rect| rect.loc)
+        let output = self.output_logical_rect_for_name(output_name)?;
+        Some(if let Some(corner) = self.shell_corner(window_index) {
+            super::shell_corners::corner_origin(
+                corner,
+                output,
+                Rectangle::new(
+                    self.window_surface_geometry_loc(window_index),
+                    self.window_geometry_size(window_index),
+                ),
+                false,
+            )
+        } else {
+            output.loc
+        })
     }
 
     /// Logical screen-space origin of a launcher palette: pinned below its
@@ -61,6 +76,21 @@ impl App {
         if window.kind == ManagedWindowKind::ControlOsd {
             return Some(osd_surface_origin(output, geometry));
         }
+        if self.has_shell_corners(output) {
+            let app_id = super::window_app_id(&window.surface).unwrap_or_default();
+            let corner = if self.is_search_panel(window_index) {
+                ShellCorner::Apps
+            } else if canvas_map_output_name_from_app_id(&app_id).is_some() {
+                ShellCorner::Canvas
+            } else if notifications_output_name_from_app_id(&app_id).is_some() {
+                ShellCorner::Notifications
+            } else {
+                ShellCorner::System
+            };
+            return Some(super::shell_corners::corner_origin(
+                corner, output, geometry, true,
+            ));
+        }
         Some(shell_panel_surface_origin(
             output,
             geometry,
@@ -73,7 +103,9 @@ impl App {
         window_index: usize,
     ) -> Point<i32, Physical> {
         match self.windows[window_index].kind {
-            ManagedWindowKind::Normal => self.content_screen_origin(window_index),
+            ManagedWindowKind::Normal | ManagedWindowKind::DesktopItem => {
+                self.content_screen_origin(window_index)
+            }
             ManagedWindowKind::ShellBar => self
                 .shell_bar_screen_origin(window_index)
                 .unwrap_or_else(|| Point::from((0, 0))),
@@ -153,17 +185,17 @@ mod tests {
         let geometry = Rectangle::new((8, 6).into(), (340, 336).into());
         assert_eq!(
             shell_panel_surface_origin(output, geometry, false),
-            (1944, 174).into()
+            (1944, 180).into()
         );
         let resized = Rectangle::new((8, 6).into(), (420, 260).into());
         assert_eq!(
             shell_panel_surface_origin(output, resized, false),
-            (1864, 174).into()
+            (1864, 180).into()
         );
         let negative = Rectangle::new((-1280, -200).into(), (1280, 800).into());
         assert_eq!(
             shell_panel_surface_origin(negative, geometry, false),
-            (-360, -146).into()
+            (-360, -140).into()
         );
     }
 
@@ -180,7 +212,7 @@ mod tests {
         let geometry = Rectangle::new((0, 0).into(), (340, 336).into());
         assert_eq!(
             shell_panel_surface_origin(scaled, geometry, false),
-            (928, 60).into()
+            (928, 66).into()
         );
     }
 
@@ -190,7 +222,7 @@ mod tests {
         let geometry = Rectangle::new((8, 6).into(), (600, 400).into());
         assert_eq!(
             shell_panel_surface_origin(output, geometry, true),
-            Point::from((1484, 174))
+            Point::from((1484, 180))
         );
         let small = Rectangle::new((-320, 0).into(), (320, 240).into());
         let geometry = Rectangle::new((0, 0).into(), (320, 192).into());

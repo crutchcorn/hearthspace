@@ -6,7 +6,7 @@ import shlex
 import subprocess
 from pathlib import Path
 
-from . import daily_checks, shell_presentation, shell_search
+from . import daily_checks, shell_dock, shell_keyboard, shell_presentation, shell_search
 from . import shell_checks as checks
 from .control import ControlError
 from .daily import DailySmoke
@@ -59,7 +59,7 @@ def keyboard_search(smoke):
 
 def launch_settings(smoke):
     before = {item["id"] for item in smoke.control.status()["windows"]}
-    checks.click(smoke, "Search")
+    checks.click(smoke, "Apps List")
     checks.opened(smoke, "search")
     with Input(smoke.control) as inputs:
         inputs.type("Hearthspace Settings")
@@ -94,15 +94,15 @@ def launch_settings(smoke):
 
 
 def pointer_panels(smoke):
-    checks.click(smoke, "Search")
+    checks.click(smoke, "Apps List")
     checks.opened(smoke, "search")
-    checks.click(smoke, "Search")
+    checks.click(smoke, "Apps List")
     checks.closed(smoke)
     smoke.until(
         "search icon toggle restores application keyboard focus",
         lambda: smoke.window(smoke.target)["focused"],
     )
-    checks.click(smoke, "Search")
+    checks.click(smoke, "Apps List")
     checks.opened(smoke, "search")
     if checks.elements(smoke, f"Window: {smoke.marker}"):
         raise ControlError(
@@ -120,9 +120,9 @@ def pointer_panels(smoke):
         "pointer result restores application focus",
         lambda: smoke.window(smoke.target)["focused"],
     )
-    checks.click(smoke, "Search")
+    checks.click(smoke, "Apps List")
     checks.opened(smoke, "search")
-    checks.click(smoke, "Close search", "search")
+    checks.click(smoke, "Close apps list", "search")
     checks.closed(smoke)
     checks.click(smoke, "Notifications")
     checks.opened(smoke, "notifications")
@@ -163,7 +163,9 @@ def run(smoke):
     daily_checks.terminal(smoke)
     if checks.panel(smoke, "search"):
         raise ControlError("Super+Enter incorrectly toggled search on Meta release")
+    shell_keyboard.run(smoke)
     keyboard_search(smoke)
+    shell_dock.run(smoke)
     shell_search.run(smoke)
     launch_settings(smoke)
     pointer_panels(smoke)
@@ -175,6 +177,7 @@ def run(smoke):
         "shell-workflow-verified",
         meta_search=True,
         running_window_search=True,
+        running_app_dock=True,
         settings_search=True,
         bell_notifications=True,
         power_cancel=True,

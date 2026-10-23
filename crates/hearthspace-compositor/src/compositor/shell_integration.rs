@@ -200,6 +200,7 @@ impl App {
                 debug!(
                     output_layout_changed = refresh.output_layout_changed,
                     background_changed = refresh.background_changed,
+                    appearance_changed = refresh.appearance_changed,
                     "reloaded compositor settings"
                 );
             }

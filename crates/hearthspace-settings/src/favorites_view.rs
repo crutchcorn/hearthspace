@@ -1,142 +1,195 @@
-use crate::state::SettingsApp;
-use hearthspace_shell::gesture_pad::{GesturePad, thumbnail};
-use hearthspace_ui_components as components;
+//! Saved gestures and their editor use the same real catalog and recorder.
+use crate::{state::SettingsApp, typography::label};
+use hearthspace_shell::gesture_pad::thumbnail_sized;
+use hearthspace_ui_components::{
+    self as components,
+    icons::{Icon, icon},
+};
 use xilem::{
     AnyWidgetView, WidgetView,
-    masonry::{layout::AsUnit, properties::LineBreaking},
+    masonry::{
+        layout::{AsUnit, Dim},
+        parley::style::FontWeight,
+        properties::{LineBreaking, Padding},
+    },
     style::Style,
-    view::{CrossAxisAlignment, button, flex_col, flex_row, label, sized_box},
+    view::{CrossAxisAlignment, FlexExt, flex_col, flex_row, resize_observer, sized_box},
 };
 
-fn note(text: &'static str) -> impl WidgetView<SettingsApp> + use<> {
-    label(text)
-        .text_size(13.0)
-        .color(components::TEXT_MUTED)
-        .line_break_mode(LineBreaking::WordWrap)
-}
+mod controls;
+mod editor;
+mod passive;
+mod picker;
 
 pub(crate) fn view(state: &SettingsApp) -> Box<AnyWidgetView<SettingsApp>> {
-    let content = if state.favorites.recording.is_some() {
-        recording(state)
+    let palette = state.palette();
+    let body = if state.favorites.recording.is_some() {
+        editor::view(state)
     } else {
         browsing(state)
     };
-    flex_col((
-        components::section_title("Gestures"),
-        note("Assign a shape to an app, then draw it in search to launch the app immediately."),
-        state.favorites.message.as_ref().map(|message| {
-            components::field_label(message.clone()).line_break_mode(LineBreaking::WordWrap)
-        }),
-        content,
-    ))
-    .cross_axis_alignment(CrossAxisAlignment::Stretch)
-    .gap(12.0.px())
+    resize_observer(
+        |state: &mut SettingsApp, size| state.favorites.view_width = size.width,
+        flex_col((
+            body,
+            state
+                .favorites
+                .message
+                .as_ref()
+                .map(|message| controls::note(palette, message.clone())),
+        ))
+        .cross_axis_alignment(CrossAxisAlignment::Stretch)
+        .gap(12.0.px()),
+    )
+    .width(Dim::Stretch)
     .boxed()
 }
 
 fn browsing(state: &SettingsApp) -> Box<AnyWidgetView<SettingsApp>> {
+    let palette = state.palette();
     let favorites = &state.favorites;
-    let saved: Vec<_> = favorites
+    let heading = flex_col((
+        label("Gestures").text_size(26.0),
+        label("Draw shortcuts for your apps.")
+            .text_size(11.0)
+            .color(palette.muted)
+            .line_break_mode(LineBreaking::WordWrap),
+    ))
+    .cross_axis_alignment(CrossAxisAlignment::Start)
+    .gap(8.0.px());
+    let add = controls::text(
+        Icon::Plus,
+        "Add gesture",
+        favorites.store.is_none(),
+        |state| state.favorites.begin_add(),
+    );
+    let header: Box<AnyWidgetView<SettingsApp>> = if favorites.view_width < 260.0 {
+        flex_col((heading, add))
+            .cross_axis_alignment(CrossAxisAlignment::Start)
+            .gap(12.0.px())
+            .boxed()
+    } else {
+        flex_row((heading.flex(1.0), add)).gap(12.0.px()).boxed()
+    };
+    let rows: Vec<_> = favorites
         .assigned()
         .map(|favorite| {
             let id = favorite.app_id.clone();
             let name = favorites.name(&id);
             let installed = favorites.catalog.app_by_id(&id).is_some();
-            let assign_id = id.clone();
+            let edit_id = id.clone();
             let remove_id = id.clone();
-            let shape = favorite
-                .gesture
-                .as_ref()
-                .map(|gesture| thumbnail::<SettingsApp>(gesture.points().to_vec()));
-            let assign_label = format!("Change gesture for {name}");
-            components::settings_section(
-                name.clone(),
-                flex_col((
-                    (!installed).then(|| note("No longer installed. You can remove this gesture.")),
-                    flex_row((
-                        shape,
-                        flex_col((
-                            button(label(assign_label), move |state: &mut SettingsApp| {
-                                state.favorites.start(&assign_id)
-                            })
-                            .disabled(!installed),
-                            button(
-                                label(format!("Remove gesture for {name}")),
-                                move |state: &mut SettingsApp| {
-                                    state.favorites.remove_gesture(&remove_id)
-                                },
-                            ),
-                        ))
-                        .cross_axis_alignment(CrossAxisAlignment::Start)
-                        .gap(4.0.px()),
-                    ))
-                    .gap(12.0.px()),
+            let preview = components::settings_surface(
+                sized_box(thumbnail_sized::<SettingsApp>(
+                    favorite.gesture.as_ref().unwrap().points().to_vec(),
+                    44.0,
+                    40.0,
                 ))
-                .cross_axis_alignment(CrossAxisAlignment::Stretch)
-                .gap(6.0.px()),
+                .width(56.0.px())
+                .height(48.0.px())
+                .padding(Padding::from_vh(4.0.px(), 6.0.px()))
+                .corner_radius(10.0.px()),
+                components::SettingsSurface::Control,
+            );
+            let name_width = (favorites.view_width
+                - if favorites.view_width < 340.0 {
+                    119.0
+                } else {
+                    219.0
+                })
+            .max(1.0);
+            let identity = flex_row((
+                crate::favorites_icons::app_icon(state, &id, 22.0),
+                label(name.clone())
+                    .text_size(12.0)
+                    .weight(FontWeight::MEDIUM)
+                    .line_break_mode(LineBreaking::Clip)
+                    .width(name_width.px()),
+            ))
+            .gap(9.0.px());
+            let actions = flex_row((
+                controls::icon_button(
+                    palette,
+                    Icon::Pencil,
+                    format!("Change gesture for {name}"),
+                    !installed,
+                    move |state| state.favorites.start(&edit_id),
+                ),
+                controls::icon_button(
+                    palette,
+                    Icon::Trash2,
+                    format!("Remove gesture for {name}"),
+                    false,
+                    move |state| state.favorites.remove_gesture(&remove_id),
+                ),
+            ))
+            .gap(0.0.px());
+            let row: Box<AnyWidgetView<SettingsApp>> = if favorites.view_width < 340.0 {
+                flex_col((
+                    flex_row((preview, identity.flex(1.0))).gap(12.0.px()),
+                    actions,
+                ))
+                .cross_axis_alignment(CrossAxisAlignment::End)
+                .gap(8.0.px())
+                .boxed()
+            } else {
+                flex_row((preview, identity.flex(1.0), actions))
+                    .gap(12.0.px())
+                    .boxed()
+            };
+            components::settings_surface(
+                sized_box(
+                    flex_col((
+                        row,
+                        (!installed).then(|| controls::note(palette, "No longer installed.")),
+                    ))
+                    .cross_axis_alignment(CrossAxisAlignment::Stretch)
+                    .gap(4.0.px()),
+                )
+                .padding(8.0.px())
+                .corner_radius(14.0.px()),
+                components::SettingsSurface::Subtle,
             )
             .boxed()
         })
         .collect();
-    let matches = favorites.catalog.search(&favorites.query, 24);
-    let apps: Vec<_> = matches
-        .into_iter()
-        .filter(|app| {
-            !favorites
-                .assigned()
-                .any(|favorite| favorite.app_id == app.id)
-        })
-        .map(|app| {
-            let id = app.id;
-            button(
-                label(format!("Add gesture for {}", app.name)),
-                move |state: &mut SettingsApp| state.favorites.start(&id),
+    let empty = rows.is_empty().then(|| {
+        components::settings_surface(
+            sized_box(
+                flex_col((
+                    icon(Icon::GestureStroke, 28.0).color(palette.muted),
+                    label("No gestures yet")
+                        .text_size(13.0)
+                        .weight(FontWeight::MEDIUM),
+                    controls::note(palette, "Add a gesture and choose the app it opens."),
+                ))
+                .gap(12.0.px()),
             )
-            .disabled(favorites.store.is_none())
-            .boxed()
-        })
-        .collect();
-    let empty = apps.is_empty();
+            .padding(Padding::from_vh(35.0.px(), 16.0.px()))
+            .corner_radius(14.0.px()),
+            components::SettingsSurface::Subtle,
+        )
+    });
     flex_col((
-        button(
-            label("Reload gestures and apps"),
-            |state: &mut SettingsApp| state.favorites.reload(),
-        ),
-        saved,
-        components::section_title("Add gestures"),
-        crate::favorites_search::input(&favorites.query),
-        empty.then(|| note("No more matching apps. Try a different search.")),
-        flex_col(apps)
-            .cross_axis_alignment(CrossAxisAlignment::Start)
-            .gap(4.0.px()),
-        note("Showing up to 24 matching apps. Type a name to find more."),
+        header,
+        flex_col((empty, rows))
+            .cross_axis_alignment(CrossAxisAlignment::Stretch)
+            .gap(8.0.px()),
     ))
     .cross_axis_alignment(CrossAxisAlignment::Stretch)
-    .gap(10.0.px())
+    .gap(24.0.px())
     .boxed()
-}
-
-fn recording(state: &SettingsApp) -> Box<AnyWidgetView<SettingsApp>> {
-    let favorites = &state.favorites;
-    let record = favorites.recording.as_ref().unwrap();
-    let name = favorites.name(&record.app_id);
-    flex_col((
-        components::section_title(format!("Gesture for {name}")),
-        note("Click and drag with a mouse or trackpad, or draw with one finger on the touchscreen. Keep the whole stroke inside the area. A rough shape is enough; draw similar shapes in a consistent orientation."),
-        sized_box(GesturePad {
-            output_key: record.app_id.clone(), context: record.generation, capture_locally: true,
-            status: if record.valid { "Shape ready to save" } else { "Draw a shape" }.into(),
-            preview: record.points.clone(),
-            on_stroke: |state: &mut SettingsApp, id, generation, points| state.favorites.stroke(id, generation, points),
-            on_bounds: |_, _, _, _| {},
-        }).fixed_height(220.0.px()),
-        flex_row((
-            button(label("Save gesture"), |state: &mut SettingsApp| state.favorites.save()).disabled(!record.valid || favorites.store.is_none()),
-            button(label("Try again"), |state: &mut SettingsApp| state.favorites.retry()),
-            button(label("Cancel recording"), |state: &mut SettingsApp| state.favorites.cancel()),
-        )).gap(8.0.px()),
-    )).cross_axis_alignment(CrossAxisAlignment::Stretch).gap(10.0.px()).boxed()
 }
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod picker_tests;
+
+pub(crate) fn theme_properties(
+    properties: &mut xilem::masonry::core::DefaultProperties,
+    palette: hearthspace_ui_components::Palette,
+) {
+    picker::theme_properties(properties, palette);
+}

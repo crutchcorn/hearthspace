@@ -30,8 +30,7 @@ def maximized_at_output(window, outputs):
     """A state flag alone may precede the client's maximized configure commit."""
     if not maximized(window):
         return False
-    # Keep aligned with compositor config::CONTROL_BAR_HEIGHT. Firefox draws CSD.
-    return matches_output_bounds(window, outputs, top_inset=48)
+    return matches_output_bounds(window, outputs, shell_corners=True)
 
 
 def fullscreen_at_output(window, outputs):
@@ -46,18 +45,25 @@ def fullscreen_at_output(window, outputs):
     return matches_output_bounds(window, outputs)
 
 
-def matches_output_bounds(window, outputs, top_inset=0):
+def corner_inset(output):
+    # Keep aligned with SHELL_CORNER_CLEARANCE and corner_work_area. The top
+    # and bottom corners each retain space while maximized apps draw CSD.
+    return min(90, max(0, output["logical_height"] - 1) // 2)
+
+
+def matches_output_bounds(window, outputs, *, shell_corners=False):
     output = next(
         (item for item in outputs if item["name"] == window["presentation_output"]),
         None,
     )
     if output is None:
         return False
+    inset = corner_inset(output) if shell_corners else 0
     expected = {
         "x": output["logical_x"],
-        "y": output["logical_y"] + top_inset,
+        "y": output["logical_y"] + inset,
         "width": output["logical_width"],
-        "height": max(1, output["logical_height"] - top_inset),
+        "height": max(1, output["logical_height"] - 2 * inset),
     }
     return all(abs(window[key] - value) <= 1 for key, value in expected.items())
 

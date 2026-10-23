@@ -56,8 +56,8 @@ pub(super) fn visible(snapshot: &TraySnapshot) -> impl Iterator<Item = &TrayItem
 }
 
 pub(super) fn capacity(width: f64) -> usize {
-    // Keep the clock and desktop controls available; the drawer fits even on 320px outputs.
-    ((width - 330.0).max(0.0) / 38.0).floor().min(8.0) as usize
+    // The caller reserves clock, battery, controls, and the overflow drawer.
+    (width.max(0.0) / 38.0).floor().min(8.0) as usize
 }
 
 pub(super) fn menu_items<'a>(

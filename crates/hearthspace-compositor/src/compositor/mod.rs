@@ -9,10 +9,12 @@ use std::{
 use crate::{RunOptions, config::*, geometry::CanvasPoint};
 use hearthspace_shell::app_catalog::AppCatalog;
 
+mod appearance;
 mod capture;
 mod client;
 mod clipboard;
 mod cursor;
+mod desktop;
 mod focus;
 mod handlers;
 mod idle;
@@ -31,6 +33,7 @@ mod switcher;
 #[cfg(feature = "udev")]
 mod udev;
 mod viewport;
+mod window_frame;
 mod window_group;
 mod windows;
 #[cfg(feature = "xwayland")]
@@ -119,6 +122,7 @@ struct ManagedWindow {
     initial_placement_done: bool,
     initial_output_name: Option<String>,
     presentation: presentation::WindowPresentation,
+    pending_resize: Option<windows::PendingResize>,
     /// Fractional scale most recently advertised to this window's surface tree.
     /// Compared each frame so the preferred scale is only re-sent when the
     /// window moves onto an output with a different scale (e.g. dragged across
@@ -182,6 +186,7 @@ impl ManagedSurface {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ManagedWindowKind {
     Normal,
+    DesktopItem,
     ShellBar,
     /// The launcher palette: a transient shell surface the shell opens below the
     /// bar to show app-search results as a dropdown.
@@ -214,19 +219,23 @@ struct DragState {
     window_id: u64,
     pointer_start: Point<f64, Logical>,
     window_start: CanvasPoint,
+    visible_start: Point<i32, Logical>,
 }
 
+#[derive(Clone, Copy)]
 struct ResizeState {
     window_id: u64,
     edges: ResizeEdges,
     pointer_start: Point<f64, Logical>,
-    initial_position: CanvasPoint,
     initial_content_size: Size<i32, Logical>,
+    initial_bounds: smithay::utils::Rectangle<i32, Logical>,
+    moved: bool,
 }
 
 enum HitTarget {
-    CloseButton {
+    TitlebarButton {
         window_index: usize,
+        button: windows::TitlebarButton,
     },
     TitleBar {
         window_index: usize,
@@ -269,10 +278,12 @@ struct App {
     pointer: PointerHandle<Self>,
     touch: TouchHandle<Self>,
     ui_touch: Option<input::UiTouch>,
+    titlebar_input: input::TitlebarInput,
     pressed_pointer_buttons: HashSet<u32>,
     keyboard: KeyboardHandle<Self>,
     viewport_offset: CanvasPoint,
     layout_store: layout::LayoutStore,
+    desktop: desktop::State,
     viewport_scale: f64,
     viewport_animation: Option<ViewportAnimation>,
     overview: overview::Overview,
@@ -318,9 +329,14 @@ struct App {
     popups: PopupManager,
     popup_grab: Option<smithay::desktop::PopupGrab<App>>,
     background_mode: hearthspace_ipc::BackgroundMode,
+    appearance: hearthspace_ipc::Appearance,
+    palette: hearthspace_ui_components::Palette,
     background_image_path: Option<String>,
     /// Cached texture for the repeated background image tile.
     background_image_tile: Option<rendering::BackgroundImageTile>,
+    corner_blur: rendering::CornerBlurCache,
+    window_backdrop: rendering::WindowBackdropCache,
+    window_frames: window_frame::WindowFrameCache,
     /// Stable render-element ids for visible background tile instances. Reusing
     /// ids across frames keeps the damage tracker from treating every tile as
     /// new on each redraw.
@@ -337,6 +353,7 @@ struct App {
 struct SettingsRefresh {
     output_layout_changed: bool,
     background_changed: bool,
+    appearance_changed: bool,
 }
 
 impl App {
@@ -360,6 +377,22 @@ impl App {
             self.background_image_path = settings.background_image_path;
             self.background_image_tile = None;
             refresh.background_changed = true;
+        }
+        if self.appearance != settings.appearance {
+            refresh.appearance_changed = true;
+            if self.appearance.color_mode != settings.appearance.color_mode {
+                refresh.background_changed |= self.invalidate_default_background();
+            }
+            self.appearance = settings.appearance;
+            self.palette = hearthspace_ui_components::Palette::new(self.appearance);
+            #[cfg(feature = "xwayland")]
+            self.publish_xsettings();
+        }
+        if refresh.background_changed {
+            // Static wallpaper elements have no content commit counter. New
+            // identities invalidate output and corner-backdrop damage trackers
+            // even when the replacement image has identical geometry.
+            self.background_tile_ids.clear();
         }
 
         refresh
@@ -633,11 +666,13 @@ pub(in crate::compositor) fn initialize_app(
         pointer,
         touch,
         ui_touch: None,
+        titlebar_input: input::TitlebarInput::default(),
         pressed_pointer_buttons: HashSet::new(),
         keyboard,
         viewport_offset,
         viewport_scale,
         layout_store,
+        desktop: Default::default(),
         viewport_animation: None,
         overview: overview::Overview::default(),
         window_switcher: switcher::WindowSwitcher::default(),
@@ -675,8 +710,13 @@ pub(in crate::compositor) fn initialize_app(
         popups: PopupManager::default(),
         popup_grab: None,
         background_mode: settings.background_mode,
+        appearance: settings.appearance,
+        palette: hearthspace_ui_components::Palette::new(settings.appearance),
         background_image_path: settings.background_image_path,
         background_image_tile: None,
+        corner_blur: rendering::CornerBlurCache::default(),
+        window_backdrop: rendering::WindowBackdropCache::default(),
+        window_frames: window_frame::WindowFrameCache::default(),
         background_tile_ids: Vec::new(),
         software_cursor_visible: false,
         software_cursor: cursor::standard_software_cursor(),

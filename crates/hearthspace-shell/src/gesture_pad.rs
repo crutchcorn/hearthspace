@@ -9,7 +9,7 @@ use xilem::{
 mod widget;
 use widget::{DrawingAction, DrawingPad};
 mod thumbnail;
-pub use thumbnail::thumbnail;
+pub use thumbnail::{thumbnail, thumbnail_sized};
 
 pub struct GesturePad<State> {
     pub output_key: String,
@@ -113,3 +113,12 @@ impl<State: 'static> View<State, (), ViewCtx> for GesturePad<State> {
 mod test_support;
 #[cfg(test)]
 mod tests;
+
+/// Register colors for the retained drawing pad and saved-shape thumbnails.
+pub fn theme_properties(
+    properties: &mut xilem::masonry::core::DefaultProperties,
+    palette: hearthspace_ui_components::Palette,
+) {
+    properties.insert::<widget::DrawingPad, _>(palette);
+    properties.insert::<thumbnail::Thumbnail, _>(palette);
+}

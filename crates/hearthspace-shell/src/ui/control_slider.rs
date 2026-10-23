@@ -10,7 +10,7 @@ use xilem::masonry::{
     imaging::Painter,
     kurbo::{Axis, Size, Stroke},
     layout::{AsUnit, LenReq, Length},
-    properties::{BorderColor, ThumbColor, ThumbRadius, TrackColor, TrackThickness},
+    properties::{BorderColor, ThumbRadius, TrackThickness},
     widgets::{Slider, SliderMoved},
 };
 use xilem::{
@@ -46,18 +46,9 @@ impl View<ShellState, (), ViewCtx> for ControlSlider {
                     keyboard_focus: false,
                     pointer_focus_pending: false,
                 });
-                pod.new_widget = pod.new_widget.with_props((
-                    TrackThickness(4.0.px()),
-                    ThumbRadius(7.0.px()),
-                    TrackColor {
-                        active: hearthspace_ui_components::ACCENT,
-                        inactive: hearthspace_ui_components::BORDER,
-                    },
-                    ThumbColor(hearthspace_ui_components::SURFACE),
-                    BorderColor {
-                        color: hearthspace_ui_components::ACCENT,
-                    },
-                ));
+                pod.new_widget = pod
+                    .new_widget
+                    .with_props((TrackThickness(4.0.px()), ThumbRadius(7.0.px())));
                 pod.new_widget.options.disabled = !self.enabled;
                 pod
             }),

@@ -1,8 +1,13 @@
-use std::{env, io, path::PathBuf, time::Duration};
+use std::{
+    env, io,
+    path::{Path, PathBuf},
+    time::Duration,
+};
 
 pub mod transport;
 
 mod model;
+pub use hearthspace_common::{AccentColor, Appearance, ColorMode};
 pub use model::{BackgroundMode, MonitorConfig, Settings, SettingsRequest};
 
 pub fn settings_socket_path() -> io::Result<PathBuf> {
@@ -16,14 +21,28 @@ pub fn settings_socket_path() -> io::Result<PathBuf> {
 }
 
 pub fn client_get_settings() -> io::Result<Settings> {
+    client_get_settings_at(&settings_socket_path()?)
+}
+
+/// Read a specific session's settings without changing process environment.
+pub fn client_get_settings_at(path: &Path) -> io::Result<Settings> {
     // Native refresh runs on the compositor thread: an unavailable daemon must
     // fail soft without a long input/rendering stall.
-    send_settings_request_with_timeout("get\n", Duration::from_millis(50))
+    let response = transport::request_line(path, "get\n", Duration::from_millis(50))?;
+    parse_settings_response(&response)
 }
 
 pub fn client_set_test(test: bool) -> io::Result<Settings> {
     let value = if test { "true" } else { "false" };
     send_settings_request(&format!("set test {value}\n"))
+}
+
+pub fn client_set_color_mode(mode: ColorMode) -> io::Result<Settings> {
+    send_settings_request(&format!("set color-mode {mode}\n"))
+}
+
+pub fn client_set_accent_color(accent: AccentColor) -> io::Result<Settings> {
+    send_settings_request(&format!("set accent-color {accent}\n"))
 }
 
 pub fn client_set_background_mode(mode: BackgroundMode) -> io::Result<Settings> {
@@ -58,6 +77,8 @@ pub fn parse_settings_request(line: &str) -> Result<SettingsRequest, String> {
     match parts.as_slice() {
         ["get"] => Ok(SettingsRequest::Get),
         ["set", "test", value] => Ok(SettingsRequest::SetTest(parse_bool(value)?)),
+        ["set", "color-mode", value] => Ok(SettingsRequest::SetColorMode(value.parse()?)),
+        ["set", "accent-color", value] => Ok(SettingsRequest::SetAccentColor(value.parse()?)),
         ["set", "background-mode", value] => Ok(SettingsRequest::SetBackgroundMode(
             value.parse::<BackgroundMode>()?,
         )),
@@ -104,7 +125,10 @@ pub fn settings_response(settings: Settings) -> String {
             encode_token(&monitor.name)
         ));
     }
-    response.push('\n');
+    response.push_str(&format!(
+        " color-mode {} accent-color {}\n",
+        settings.appearance.color_mode, settings.appearance.accent_color
+    ));
     response
 }
 
@@ -204,40 +228,44 @@ fn parse_settings_response_parts(
     test: &str,
     background_mode: BackgroundMode,
     background_image_path: Option<String>,
-    rest: &[&str],
+    mut rest: &[&str],
 ) -> io::Result<Settings> {
     let mut settings = Settings {
         test: parse_bool(test).map_err(io::Error::other)?,
         background_mode,
         background_image_path,
         monitors: Vec::new(),
+        appearance: Appearance::default(),
     };
-    let (chunks, remainder) = rest.as_chunks::<8>();
-    if !remainder.is_empty() {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidData,
-            "invalid settingsd response monitor field count",
-        ));
-    }
-    for monitor in chunks {
-        if monitor[0] != "monitor" {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidData,
-                format!(
-                    "invalid settingsd response monitor marker: {:?}",
-                    monitor[0]
-                ),
-            ));
-        }
-        settings.monitors.push(MonitorConfig {
-            id: decode_token(monitor[1])?,
-            width: parse_i32(monitor[2], "monitor width").map_err(io::Error::other)?,
-            height: parse_i32(monitor[3], "monitor height").map_err(io::Error::other)?,
-            scale: parse_positive_i32(monitor[4], "monitor scale").map_err(io::Error::other)?,
-            x: parse_i32(monitor[5], "monitor x").map_err(io::Error::other)?,
-            y: parse_i32(monitor[6], "monitor y").map_err(io::Error::other)?,
-            name: decode_token(monitor[7])?,
-        });
+    while !rest.is_empty() {
+        rest = match rest {
+            ["color-mode", value, rest @ ..] => {
+                settings.appearance.color_mode = value.parse().map_err(io::Error::other)?;
+                rest
+            }
+            ["accent-color", value, rest @ ..] => {
+                settings.appearance.accent_color = value.parse().map_err(io::Error::other)?;
+                rest
+            }
+            ["monitor", id, width, height, scale, x, y, name, rest @ ..] => {
+                settings.monitors.push(MonitorConfig {
+                    id: decode_token(id)?,
+                    width: parse_i32(width, "monitor width").map_err(io::Error::other)?,
+                    height: parse_i32(height, "monitor height").map_err(io::Error::other)?,
+                    scale: parse_positive_i32(scale, "monitor scale").map_err(io::Error::other)?,
+                    x: parse_i32(x, "monitor x").map_err(io::Error::other)?,
+                    y: parse_i32(y, "monitor y").map_err(io::Error::other)?,
+                    name: decode_token(name)?,
+                });
+                rest
+            }
+            _ => {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "invalid settingsd response fields",
+                ));
+            }
+        };
     }
     if settings.monitors.is_empty() {
         settings.monitors = Settings::default().monitors;

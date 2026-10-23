@@ -25,6 +25,7 @@ pub(in crate::compositor) struct KeyboardShortcuts {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Shortcut {
+    Desktop(crate::compositor::desktop::Action),
     Group(groups::Action),
     DeviceControl(crate::compositor::shell_integration::device_control::DeviceControl),
     Lock,
@@ -35,6 +36,7 @@ enum Shortcut {
     OverviewPrevious,
     SwitcherCancel,
     ShellPanelDismiss,
+    ShellCornerCycle { reverse: bool },
     Terminal,
     Launcher,
     Next,
@@ -160,7 +162,8 @@ impl App {
         let keyboard = self.keyboard.clone();
         let available = self.navigation_available();
         let mut toggle_launcher = false;
-        let shell_panel_focused = self.active_shell_panel_index().is_some();
+        let shell_panel_focused = self.active_shell_panel_index().is_some()
+            || self.focused_shell_corner_index().is_some();
         let group_visible = self.group_keyboard_visible();
         let previous_modifiers = keyboard.modifier_state();
         let intercepted = keyboard.input_from_source(
@@ -197,6 +200,13 @@ impl App {
                     let selecting = app.group_selection_active();
                     app.shortcuts
                         .filter_group(code, state, modifiers, symbol, available, selecting)
+                } else if let Some(action) = app.desktop_key_action(state, modifiers, symbol) {
+                    FilterResult::Intercept(
+                        app.shortcuts
+                            .intercepted
+                            .insert(code)
+                            .then_some(Shortcut::Desktop(action)),
+                    )
                 } else {
                     app.shortcuts
                         .filter(code, state, modifiers, symbol, available)
@@ -208,6 +218,9 @@ impl App {
         // keyboard enter, without forwarding an unmatched key release.
         if intercepted.is_some() && keyboard.modifier_state() != previous_modifiers {
             keyboard.advertise_modifier_state(self);
+        }
+        if keyboard.modifier_state().alt != previous_modifiers.alt {
+            self.refresh_grid_snapping();
         }
         match intercepted {
             Some(Some(shortcut)) => self.run_shortcut(shortcut),
@@ -226,6 +239,10 @@ impl App {
 
     fn run_shortcut(&mut self, shortcut: Shortcut) {
         match shortcut {
+            Shortcut::Desktop(action) => {
+                self.run_desktop_key(action);
+                return;
+            }
             Shortcut::Group(action) => {
                 self.run_group_shortcut(action);
                 return;
@@ -253,7 +270,15 @@ impl App {
                 // held drawing button may be released in the same input batch.
                 self.clear_favorite_drawing();
                 self.cancel_ui_touch();
-                self.dismiss_active_shell_panel();
+                if self.active_shell_panel_index().is_some() {
+                    self.dismiss_active_shell_panel();
+                } else {
+                    self.restore_focus_after_shell_panel();
+                }
+                return;
+            }
+            Shortcut::ShellCornerCycle { reverse } => {
+                self.cycle_shell_corner(reverse);
                 return;
             }
             Shortcut::OverviewDismiss => {
@@ -275,6 +300,7 @@ impl App {
         let command = match shortcut {
             Shortcut::OverviewToggle => ShellCommand::OverviewToggle,
             Shortcut::DeviceControl(_)
+            | Shortcut::Desktop(_)
             | Shortcut::Group(_)
             | Shortcut::OverviewDismiss
             | Shortcut::OverviewActivate
@@ -282,6 +308,7 @@ impl App {
             | Shortcut::OverviewPrevious
             | Shortcut::SwitcherCancel
             | Shortcut::ShellPanelDismiss
+            | Shortcut::ShellCornerCycle { .. }
             | Shortcut::Next
             | Shortcut::Previous => unreachable!(),
             Shortcut::Lock => ShellCommand::LockSession,
@@ -361,6 +388,11 @@ fn shortcut(modifiers: &ModifiersState, symbol: u32) -> Option<Shortcut> {
             keysyms::KEY_F4 if !modifiers.shift => Some(Shortcut::Close),
             _ => None,
         };
+    }
+    if modifiers.logo && !modifiers.alt && symbol == keysyms::KEY_F6 {
+        return Some(Shortcut::ShellCornerCycle {
+            reverse: modifiers.shift,
+        });
     }
     if !modifiers.logo || modifiers.alt || modifiers.shift {
         return None;

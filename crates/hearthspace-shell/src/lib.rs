@@ -1,7 +1,9 @@
 pub mod app_catalog;
+pub mod app_icon;
 pub mod battery;
 pub mod command;
 pub mod controls;
+pub mod desktop_items;
 pub mod favorites;
 pub mod gesture_pad;
 pub mod tray;
