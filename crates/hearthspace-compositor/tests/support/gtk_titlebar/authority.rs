@@ -11,7 +11,13 @@ fn claimed_sequence(resize: bool) {
         client.request_move(0, serial);
     }
     action(&compositor, "pointer-motion-rel 20 10");
-    release(&compositor, &mut client, 272);
+    // Move/resize takeover consumes the release and restores pointer focus.
+    client.take_pointer_events();
+    let releases = client.released_buttons().len();
+    action(&compositor, "pointer-button-up 272");
+    assert_eq!(client.released_buttons().len(), releases);
+    let events = client.take_pointer_events();
+    assert_reentered(&client, &events, 0);
     let claimed = state(&compositor, &mut client, id, false, false);
     let field = if resize { "content_width" } else { "canvas_x" };
     assert_eq!(
@@ -25,6 +31,7 @@ fn claimed_sequence(resize: bool) {
     for field in ["canvas_x", "canvas_y", "content_width", "content_height"] {
         assert_eq!(unchanged[field], claimed[field]);
     }
+    assert_content_click(&compositor, &mut client);
     double_click(&compositor, &mut client, id);
     state(&compositor, &mut client, id, true, false);
     action(&compositor, "quit");

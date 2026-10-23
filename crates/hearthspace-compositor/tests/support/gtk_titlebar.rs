@@ -1,6 +1,10 @@
 //! Explicit GTK titlebar intent crosses the real Wayland socket boundary.
 use super::{
-    interactive::client::{InteractiveClient, gtk::Gesture},
+    interactive::client::{
+        InteractiveClient,
+        events::{assert_content_click, assert_reentered},
+        gtk::Gesture,
+    },
     navigation::{action, keys, query, wait_windows},
     session_lock::lock_client::LockClient,
     *,
@@ -224,7 +228,15 @@ fn gtk_titlebar_cannot_interrupt_client_move_or_replay_through_switcher_and_lock
         moved["canvas_x"].as_i64().unwrap(),
         before["canvas_x"].as_i64().unwrap() + 20
     );
-    release(&compositor, &mut client, 272);
+    // The compositor owns this release after move takeover. GTK receives
+    // pointer re-entry, then a complete fresh click without another motion.
+    client.take_pointer_events();
+    let releases = client.released_buttons().len();
+    action(&compositor, "pointer-button-up 272");
+    assert_eq!(client.released_buttons().len(), releases);
+    let events = client.take_pointer_events();
+    assert_reentered(&client, &events, 0);
+    assert_content_click(&compositor, &mut client);
 
     let serial = press(&compositor, &mut client, id, 272);
     release(&compositor, &mut client, 272);
