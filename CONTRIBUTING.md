@@ -552,6 +552,23 @@ magick assets/cursors/source/nesw-resize.svg assets/cursors/source/nesw-resize.p
 (cd assets/cursors/source && xcursorgen ns-resize.cursor ../ns-resize && xcursorgen ew-resize.cursor ../ew-resize && xcursorgen nwse-resize.cursor ../nwse-resize && xcursorgen nesw-resize.cursor ../nesw-resize)
 ```
 
+### Native Steam Touch Testing
+
+The 2026-10-23 CSD titlebar investigation enabled Ubuntu's `i386` architecture
+and installed `steam-installer` 1:1.0.0.85~ds-2build1 with its 32-bit runtime and
+Mesa dependencies. Steam's client downloads on first launch. This setup is
+optional; deterministic XWayland regression tests do not require Steam.
+
+```sh
+sudo dpkg --add-architecture i386
+sudo apt-get update
+sudo apt-get install -y steam-installer
+```
+
+Launch Steam only inside an owned native test session when testing its CSD
+header. Keep its stderr and session cleanup evidence; a responsive compositor
+alone does not establish that Steam recovered after a gesture.
+
 ### Native Firefox Package
 
 The physical development host also has Mozilla's official Firefox DEB for

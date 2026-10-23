@@ -433,3 +433,38 @@ coordinates instead of treating those bounds as screen coordinates.
 The terminal CLI is sufficient for an agent to operate this workflow. An MCP
 wrapper and a Wayland image-copy-capture frontend can reuse these boundaries when
 needed; neither is required for native testing.
+
+## CSD Titlebar Regression Coverage
+
+The headless `csd_` cases drive real Wayland and XWayland clients through touch
+frames and client move/resize requests. They check focus handoff, release draining,
+mixed mouse/touch ownership, cancellation and device removal, unrelated window
+teardown, X11 root-coordinate synchronization, and delayed resize buffers.
+Run them without a native session active:
+
+```sh
+cargo test --locked -p hearthspace-compositor --features udev,e2e,test-apps \
+  --test headless_control csd_ -- --test-threads=1
+```
+
+The native Firefox/Foot smoke additionally verifies movement and rendered
+content through libinput at canvas scales 1.0 and 0.8, including second-contact
+cancellation and touchscreen unplug:
+
+```sh
+scripts/touch-drag-smoke --session /tmp/hearthspace-touch-drag
+```
+
+For Steam, use an owned native session and the optional
+[Steam setup](../CONTRIBUTING.md#native-steam-touch-testing). Check repeated CSD
+titlebar drags at both canvas scales, a physical mouse click while touch remains
+held, second-contact cancellation, and touchscreen removal. After each sequence,
+verify that movement stops on release and another drag works. Also exercise
+Steam content and text input: a responsive compositor alone cannot prove that
+the client recovered. The sign-in window can cover this without submitting
+credentials, but does not establish behavior in signed-in or game windows.
+
+Preserve app stderr, input traces, screenshots, geometry, hardware/output scale,
+and session cleanup evidence. XWM tracing can distinguish `_NET_WM_MOVERESIZE`
+from client-directed configure requests; do not assume every CSD toolkit uses
+the same path. Keep run-specific results with the session artifacts.

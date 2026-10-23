@@ -27,6 +27,7 @@ To refresh:
 2. Normalize the standalone manifest as described above, preserving all runtime
    dependencies and features.
 3. Reapply source patches only if still needed. Follow the verification and
-   removal criteria in the [patch ledger](../../patches/README.md#smithay-xsettings-publication).
-4. Refresh `Cargo.lock` and run the idle-X11 and X11 interaction regressions plus the live GTK3 appearance
-   check before removing the patch or changing the pinned revision.
+   removal criteria in the [patch ledger](../../patches/README.md).
+4. Refresh `Cargo.lock` and run the idle-X11 and X11 interaction regressions plus
+   the live GTK3 appearance check before removing a patch or changing the pinned
+   revision.
