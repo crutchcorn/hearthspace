@@ -378,6 +378,19 @@ window processed a compositor resize, redrew, and accepted a pointer click.
 The test injects signal ordering through Masonry's real render-root channel;
 it does not claim that a full shell drag deterministically triggers the race.
 
+Native acceptance also exposed a separate selection defect: a late-mapped group
+grip used the whole group's rectangle for fallback hit testing, intercepting
+member presses. Grip hit testing now retains its own bounds. Real Wayland
+regressions cover member detachment/regrouping with mouse and touch, plus group
+movement and cancellation through the actual grip.
+
+Native pointer acceptance on Intel UHD 620/i915 at 1920×1080, scale 1, completed
+12 member drags across canvas, group and edge placements, three editor lifecycles,
+and Wi-Fi/Sound/calendar checks. Reviewed page-flip captures retained the controls;
+shell/compositor PIDs stayed unchanged. Cleanup restored tty2 and removed every
+owned process/runtime. The supervisor reported an already-absent application
+scope during stop; the harness completed cleanup despite that exit status.
+
 The installed crash, negative controls, first positive run's corrected resize
 observer, and final positive results are retained in
 `/home/crutchcorn/hearthspace-layout-crash-20261023-135052`.

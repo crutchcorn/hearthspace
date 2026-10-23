@@ -15,6 +15,8 @@ mod group_members;
 mod guards;
 #[path = "frame_layout/input.rs"]
 mod input;
+#[path = "frame_layout/member_hit.rs"]
+mod member_hit;
 #[path = "frame_layout/pending_click.rs"]
 mod pending_click;
 #[path = "frame_layout/pointer_grab.rs"]
