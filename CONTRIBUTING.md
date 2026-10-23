@@ -187,6 +187,10 @@ enabled on this host; on another host, install `openssh-server` and enable
 `ssh` if needed. The setup requires no firewall rule for VNC, persistent VNC
 service, or system authentication changes.
 
+On 2026-10-21, the same `apt-get` command installed WayVNC `0.9.1-1build1`
+and its runtime dependencies on the ThinkPad T480s so the full headless E2E
+suite could exercise VNC capture and input. No persistent VNC service was enabled.
+
 Start a native session from a Linux TTY with:
 
 ```sh
@@ -231,7 +235,13 @@ it does not change Hearthspace's runtime or browser configuration.
 
 Native supervisor launches automatically create a private `dbus-run-session`
 before starting desktop components. The harness already supplies that bus and
-uses `--private-session-bus` to reuse it. Both routes explicitly provide
+uses `--private-session-bus` to reuse it. Both use the sibling
+`hearthspace-session-bus` helper to select a private abstract Unix socket that
+remains reachable inside Snap's separate `/tmp` mount. Build the package's
+complete binary set with `cargo build --locked -p hearthspace-session --bins`
+before launching the supervisor directly; `cargo run --bin hearthspace-session`
+alone does not build its helpers. The installer and native build include them.
+Both routes explicitly provide
 `HEARTHSPACE_SESSION_BUS_ADDRESS` to children so app launch and AT-SPI stay on the
 Hearthspace bus. Before desktop startup, `dbus-update-activation-environment`
 updates only the private bus with Hearthspace's display, runtime, and settings
@@ -927,6 +937,11 @@ cargo deny check advisories bans sources --warn unmaintained
 ruff check scripts
 ruff format --check scripts
 ```
+
+On the ThinkPad, Ruff checks can also use the existing `uvx` tool runner:
+`uvx ruff==0.17.0 check scripts` and
+`uvx ruff==0.17.0 format --check scripts`. This keeps Ruff in uv's tool cache
+without installing a system Python package.
 
 ### Verified Versions
 

@@ -42,6 +42,14 @@ Startup waits for the shell to map and for fresh native presentation on every
 connected output, within the configured startup deadline. Failed startup cleans
 up its children and returns control to GDM.
 
+Managed desktop processes start in separate POSIX sessions without the login's
+controlling terminal. This prevents an application's interactive shell helper
+from stopping the compositor with a terminal job-control signal such as
+`SIGTTIN`. Each managed process remains the leader of its process group, so
+supervisor shutdown still signals its descendants together. POSIX sessions are
+separate from logind sessions: the desktop keeps its existing login scope and
+seat permissions.
+
 The entry sets `X-GDM-SessionRegisters=false`: GDM's Wayland wrapper performs its
 normal session/display registration. Hearthspace does not impersonate
 gnome-session or use its private registration convention. This follows the
@@ -51,7 +59,8 @@ The `--login-session` supervisor mode owns an entire Hearthspace login. Its
 separate cleanup guard tracks exact process and logind identities; when the
 supervisor ends, the guard terminates only that login scope, including detached
 descendants. It then removes the verified private runtime, safely detaching known
-portal mounts. Snap app scopes also retain their existing supervisor guard.
+portal mounts. Snap and Ptyxis app scopes also retain their independent supervisor
+guard; see [terminal scope integration](APPS.md#gnome-terminal--ptyxis).
 GDM can leave logind's `Desktop` property empty because it opens PAM before
 exporting the selected desktop. In that case, the guard additionally requires a
 `gdm-password` or `gdm-autologin` session and the supervisor's original
@@ -146,6 +155,60 @@ cause has not been established.
 These earlier harness runs did not establish actual GDM authentication, visible
 lock feedback or real password unlock. The subsequent GPD manual run below
 covers those checks.
+
+### Application launch freeze (2026-10-21)
+
+On the ThinkPad T480s, opening OpenCode stopped the deployed compositor,
+Xwayland, and OpenCode in the same background process group. OpenCode's
+`/bin/bash -il -c 'env -0'` helper inherited tty2 as its controlling terminal.
+Tracing that helper recorded `TIOCGPGRP` returning the supervisor's foreground
+group, followed by `kill(0, SIGTTIN)`. Null standard input did not prevent Bash
+from opening `/dev/tty` and stopping the entire compositor group.
+
+Terminating only the stuck environment probe and continuing the affected group
+restored the existing desktop; its compositor PID was preserved and a fresh
+native page-flip capture succeeded. Evidence is retained under
+`/tmp/hearthspace-freeze-20261021/`. The supervisor now uses `setsid()` for managed
+children, removing the inherited controlling terminal while preserving group
+cleanup. A private-PTY regression exercises the interactive shell probe and
+descendant shutdown without touching the real login terminal.
+
+Optimized release `6c96633cb8116` was installed on the ThinkPad; all 12 release
+files matched the installation manifest's hashes, modes and root ownership.
+Workspace formatting, Clippy with warnings denied, all-target builds and all
+1,320 Rust tests passed with `udev,e2e,test-apps`. Ruff lint and formatting passed
+all 154 Python files and entrypoints. Headless checks used the documented
+software renderers and removed the inherited host D-Bus addresses. The shell's
+Waydriver fixture now also isolates XDG directories before starting the shell,
+preventing the host application catalog from changing its startup workload.
+
+The complete Python suite ran with E2E, AT-SPI and the tray library required:
+405 passed, with seven failures and two errors. Eight shell fixtures still
+expect retired corner metadata/accessibility containers or the battery's old
+button role. The terminal smoke exhausted its shared 60-second deadline at its
+final cursor check, after exact input, rendering, movement, resizing and software
+cursor checks passed. These fixtures launch their children directly with Python's
+`start_new_session=True`; they do not exercise the changed supervisor path.
+These unresolved checks are retained in `python-tests.log`, alongside the full
+Rust/build/lint results in the diagnostic directory above.
+
+Installed native verification used the ThinkPad's Intel UHD Graphics 620 / i915,
+kernel `7.0.0-38-generic`, no virtualization, and eDP-1 at 1920×1080 / scale 1.
+Run `/tmp/hearthspace-freeze-native-20261021-2` passed startup, exact terminal input
+and visible output, OpenCode launch and presentation, and continued compositor
+responsiveness with fresh page flips after launch. The compositor, shell,
+settings daemon and notification daemon each had `PID == PGID == SID` and no
+controlling terminal. The harness used the installed binaries in login-session
+mode with an isolated profile; this did not repeat GDM authentication.
+
+Both owned runs stopped their session scopes, removed their private runtimes,
+reported `cleanup.complete`, and restored the original tty2 with the existing
+Ubuntu login and background agent intact. Run `-1` passed terminal input and
+process identity assertions but stopped early because the temporary evidence
+logger tried to serialize bytes; it does not establish OpenCode acceptance.
+Its script/log and the successful repeat's manifests, binary provenance,
+PNG/metadata pairs and cleanup reports are retained. The installed fix takes
+effect on the next Hearthspace login.
 
 ### GDM login regression (2026-10-15)
 

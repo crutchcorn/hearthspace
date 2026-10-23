@@ -59,6 +59,7 @@ class InstallSessionTests(unittest.TestCase):
         root = cli.root_path(args)
         release = (root / layout.CURRENT).resolve()
         self.assertEqual(apply.call_count, 1)
+        self.assertTrue((release / "bin/hearthspace-session-bus").is_file())
         for name in (*layout.BINARIES, "hearthspace-login-guard"):
             self.assertEqual(
                 stat.S_IMODE((release / "bin" / name).stat().st_mode), 0o755
@@ -286,6 +287,15 @@ class InstallSessionTests(unittest.TestCase):
             transaction.uninstall(self.prefix, self.prefix)
         self.assertTrue((self.prefix / layout.LAUNCHER).exists())
 
+    def test_bundle_missing_private_bus_helper_never_activates(self):
+        bundle = self.bundle()
+        spec = json.loads((bundle / "bundle.json").read_text())
+        spec["files"].pop("bin/hearthspace-session-bus", None)
+        (bundle / "bundle.json").write_text(json.dumps(spec))
+        with self.assertRaisesRegex(RuntimeError, "complete runtime"):
+            transaction.install(bundle, self.prefix, self.prefix)
+        self.assertFalse((self.prefix / layout.CURRENT).exists())
+
     def test_restrictive_umask_does_not_make_system_installation_inaccessible(self):
         old_mask = os.umask(0o077)
         try:
@@ -318,6 +328,9 @@ class InstallSessionTests(unittest.TestCase):
         self.assertEqual(command[:3], ["cargo", "build", "--locked"])
         self.assertIn("hearthspace-compositor/udev", command)
         self.assertIn("waydriver-hearthspace", command)
+        self.assertIn("hearthspace-session", command)
+        self.assertIn("--bins", command)
+        self.assertNotIn("hearthspace-session-bus", command)
         self.assertIn("--release", command)
         self.assertEqual(
             command[command.index("--target-dir") + 1],

@@ -57,6 +57,32 @@ def installed_data(directory):
 
 
 class NativeLoginTests(unittest.TestCase):
+    def test_missing_or_nonexecutable_bus_helper_fails_before_vt_claim(self):
+        with tempfile.TemporaryDirectory() as directory:
+            values = args(directory)
+            values.binary_dir.mkdir()
+            helper = values.binary_dir / "hearthspace-session-bus"
+            for name in common.BINARIES:
+                executable = values.binary_dir / name
+                if executable != helper:
+                    executable.write_text("#!/bin/sh\nexit 0\n")
+                    executable.chmod(0o755)
+            for present in (False, True):
+                if present:
+                    helper.write_text("#!/bin/sh\nexit 0\n")
+                    helper.chmod(0o644)
+                with (
+                    self.subTest(present=present),
+                    patch.object(cli, "preflight"),
+                    patch.object(cli, "privileged") as privileged,
+                    self.assertRaisesRegex(
+                        RuntimeError, "missing executable .*hearthspace-session-bus"
+                    ),
+                ):
+                    privileged.side_effect = AssertionError("must not acquire a VT")
+                    cli.start(values)
+                privileged.assert_not_called()
+
     def test_native_preflight_requires_searchable_settings_binary(self):
         with tempfile.TemporaryDirectory() as directory:
             values = args(directory)
@@ -137,6 +163,12 @@ class NativeLoginTests(unittest.TestCase):
                 cli.build(values, Path(directory))
                 record = json.loads((Path(directory) / "binaries.json").read_text())
                 self.assertEqual("hearthspace-login-guard" in record, enabled)
+                bus_helper = record["hearthspace-session-bus"]
+                self.assertEqual(
+                    bus_helper["path"],
+                    str(values.binary_dir / "hearthspace-session-bus"),
+                )
+                self.assertEqual(len(bus_helper["sha256"]), 64)
                 if enabled:
                     self.assertEqual(
                         record["hearthspace-login-guard"]["path"],
@@ -210,6 +242,16 @@ class NativeLoginTests(unittest.TestCase):
             command = execute.call_args.args[1]
             self.assertEqual("--login-session" in command, enabled)
             self.assertIn("--private-session-bus", command)
+            runner = command.index("/usr/bin/dbus-run-session")
+            self.assertEqual(
+                command[runner + 1 : runner + 5],
+                [
+                    "--dbus-daemon",
+                    f"{saved['binary_dir']}/hearthspace-session-bus",
+                    "--",
+                    f"{saved['binary_dir']}/hearthspace-session",
+                ],
+            )
             self.assertEqual(
                 command[command.index("--binary-dir") + 1], saved["binary_dir"]
             )

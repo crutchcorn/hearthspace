@@ -8,6 +8,21 @@ private runtime and desktop bus before executing the original Snap command.
 The compositor still supplies the Snap-accessible Wayland socket. Neither the
 host manager's environment nor Snap's confinement policy is changed.
 
+The private session bus uses a unique Linux abstract Unix socket named
+`/tmp/dbus-hearthspace-UUID`. Snap gives applications a separate `/tmp` mount,
+which hides the pathname socket normally selected by `dbus-run-session` on
+this distribution. An abstract socket remains reachable across those mount
+namespaces and is supported by Snap's existing desktop D-Bus policy.
+`hearthspace-session-bus` directly executes the system `dbus-daemon` with an
+address override; the distribution's session policy, authentication, activation,
+and file-descriptor passing remain in effect. `dbus-run-session` still owns and
+reaps the daemon. This is the private Hearthspace bus, not the shared user bus.
+These are the supported
+[`dbus-daemon --address`](https://dbus.freedesktop.org/doc/dbus-daemon.1.html)
+and [`dbus-run-session --dbus-daemon`](https://dbus.freedesktop.org/doc/dbus-run-session.1.html)
+options. Supplying one address also avoids a multi-listener address list that
+Hearthspace's current zbus clients cannot parse.
+
 The native session starts an owned `hearthspace-apps-RUNTIME.service` whose
 description records the exact private runtime. Its
 `hearthspace-app-scope-guard` process watches the supervisor's PID and Linux
@@ -23,21 +38,25 @@ It will not report complete cleanup or remove the runtime while an owned scope
 is still active. The closing marker also prevents a delayed launch from
 successfully restarting the guard after shutdown.
 
-Build/install both binaries from the `hearthspace-session` package:
+Build/install all binaries from the `hearthspace-session` package:
 
 ```sh
 cargo build --locked -p hearthspace-session --bins
 ```
 
-The guard belongs beside `hearthspace-session`, including when using
-`--binary-dir`. A native host without a user systemd manager can run ordinary
-applications, but catalog Snap launches report that managed scopes are
-unavailable. Nested sessions do not create this native scope owner.
+The guard and `hearthspace-session-bus` belong beside `hearthspace-session`,
+including when using `--binary-dir`. A native host without a user systemd manager
+can run ordinary applications, but catalog Snap launches report that managed
+scopes are unavailable. Nested sessions do not create this native scope owner.
 
 Current acceptance limits remain explicit:
 
 - This integration covers catalog launches using `/snap/bin/APP` or
   `snap run APP`, including exported commands with leading `env` assignments.
+  Shortcuts without `X-SnapInstanceName`, such as Steam-generated game entries,
+  also receive the scope and socket when their executable resolves to
+  `/snap/bin/APP`. Resolution respects PATH order and the desktop working
+  directory; an ordinary executable that shadows a Snap command stays ordinary.
   Direct Snap commands typed in a terminal and external desktop-entry launches
   by a portal currently bypass the catalog wrapper.
 - Snap expects its document portal at `/run/user/UID/doc`. Hearthspace's private

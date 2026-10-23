@@ -1,0 +1,15 @@
+--- a/src/platform_impl/linux/wayland/event_loop/mod.rs
++++ b/src/platform_impl/linux/wayland/event_loop/mod.rs
+@@ -477,5 +477,12 @@
+                 if window_requests.get(window_id).unwrap().take_closed() {
+                     mem::drop(window_requests.remove(window_id));
+                     mem::drop(state.windows.get_mut().remove(window_id));
++                    // Creating a popup during an application callback can enqueue its
++                    // initial configure after this iteration has taken pending updates.
++                    // Remove updates for the destroyed window so the next iteration
++                    // cannot process them against the state we just removed.
++                    state
++                        .window_compositor_updates
++                        .retain(|update| update.window_id != *window_id);
+                     return Some(WindowEvent::Destroyed);
+                 }

@@ -11,6 +11,7 @@ from pathlib import Path
 REPOSITORY = Path(__file__).resolve().parents[2]
 BINARIES = (
     "hearthspace-session",
+    "hearthspace-session-bus",
     "hearthspace-app-scope-guard",
     "hearthspace-compositor",
     "hearthspace-shell",
@@ -22,7 +23,12 @@ BINARIES = (
 PACKAGES = tuple(
     name
     for name in BINARIES
-    if name not in ("hearthspace-app-scope-guard", "hearthspace-a11y")
+    if name
+    not in (
+        "hearthspace-session-bus",
+        "hearthspace-app-scope-guard",
+        "hearthspace-a11y",
+    )
 ) + ("waydriver-hearthspace",)
 BASE = Path("lib/hearthspace")
 MANIFEST = BASE / "install.json"

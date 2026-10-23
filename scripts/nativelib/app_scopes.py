@@ -2,6 +2,7 @@
 
 import os
 import pwd
+import re
 import time
 from pathlib import Path
 
@@ -73,6 +74,25 @@ def stopped(values):
     }
 
 
+def valid_scope_name(name):
+    if (
+        len(name) > 255
+        or not name.endswith(".scope")
+        or any(
+            not (char.isascii() and (char.isalnum() or char in "-_.")) for char in name
+        )
+    ):
+        return False
+    return (
+        name.startswith("snap.")
+        or re.fullmatch(
+            r"ptyxis-spawn-[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}\.scope",
+            name,
+        )
+        is not None
+    )
+
+
 def scope_records(runtime):
     directory = runtime / "app-scopes"
     if not directory.exists():
@@ -85,12 +105,7 @@ def scope_records(runtime):
             len(names) >= 512
             or entry.is_symlink()
             or not entry.is_file()
-            or not entry.name.startswith("snap.")
-            or not entry.name.endswith(".scope")
-            or any(
-                not (char.isascii() and (char.isalnum() or char in "-_."))
-                for char in entry.name
-            )
+            or not valid_scope_name(entry.name)
         ):
             raise RuntimeError("invalid or excessive app scope records")
         names.add(entry.name)
@@ -119,12 +134,7 @@ def cleanup_app_scopes(state, deadline):
         raise RuntimeError("owned app scope service identity changed; refusing stop")
     dependent_units = values.get("BoundBy", "").split()
     if len(dependent_units) > 128 or any(
-        not name.startswith("snap.")
-        or not name.endswith(".scope")
-        or any(
-            not (char.isascii() and (char.isalnum() or char in "-_.")) for char in name
-        )
-        for name in dependent_units
+        not valid_scope_name(name) for name in dependent_units
     ):
         raise RuntimeError("unexpected bound app scope identity")
     remaining = deadline - time.monotonic()

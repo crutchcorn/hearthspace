@@ -253,3 +253,51 @@ Release `752a8d9aad4c` was installed with `scripts/install-session install`.
 All eight installed executables match both the optimized build and installation
 manifest hashes. The user's running session was preserved; log out and back in
 to load these popup and search changes.
+
+### Layout editor crash, 2026-10-22
+
+The installed shell panicked in Winit 0.30.13 while dragging Canvas tools in
+the layout editor. A transient window's queued Wayland configure survived its
+destruction, and the next event-loop iteration unwrapped the removed window.
+The compositor remained responsive while the shell's surfaces disappeared.
+The [Winit patch ledger](../patches/README.md#winit-wayland-destroyed-window-updates)
+records the upstream cleanup fix, exact backport, provenance, and removal condition.
+
+The real Wayland regression creates and drops a transient window during an
+application callback, then requires a subsequent resize on a surviving window.
+It reproduced the missing-window panic before the patch and passed afterward,
+with isolated process environments and llvmpipe rendering. Logs and the original
+installed-session crash are retained in `/tmp/hearthspace-layout-crash-20261022`.
+
+The full workspace passed 1,404 Rust tests with native, E2E, test-app and required
+accessibility checks enabled, the full build, warnings-denied Clippy, Rustfmt,
+and Ruff lint and formatting. The full Python E2E run completed 428 tests with
+423 passing and five failures: the terminal workflow's shared deadline,
+duplicate creation of the desktop restart evidence directory, two waits for
+search after bare Meta, and a tray icon update wait. These results are retained
+in `python-tests.log`; this run does not establish a fully passing Python suite.
+A diagnostic run of the unchanged terminal assertions with a 120-second budget
+passed in 71.42 seconds, including 45.08 seconds spent decoding full-resolution
+PNGs. Its timings and retained artifacts are in `terminal-timing/` beneath the
+same evidence directory; the repository's test deadline was not changed here.
+
+Native acceptance used a physical ThinkPad T480s, Intel UHD 620 (`i915`), kernel
+`7.0.0-38-generic`, and eDP-1 at 1920×1080 with scale 1. The final run in
+`/tmp/hearthspace-layout-native-20261022-3` completed 15 real pointer drags across
+all four frame edges and the canvas, including grouping with Notifications and
+retiring the group. Geometry and orientation assertions match the page-flip
+captures. Escape closed the editor, and Ctrl+K followed by `Foot` returned the
+three expected Foot entries. The shell PID stayed unchanged throughout and the
+session log contains no panic.
+
+The earlier `-1` native run used the old release and did not reproduce the
+intermittent crash. Run `-2` completed the same drags, then was stopped because
+its final search check expected obsolete `shell_panels` metadata. Its screenshot
+showed a working Canvas Search; run `-3` checks `canvas-search-status` and the
+exact typed query instead. All owned native runs completed cleanup, stopped
+their session and app scopes, removed their runtimes, and restored TTY2.
+
+Release `5e565c6a0812` was installed with `scripts/install-session install`.
+All 13 installed runtime files match the manifest hashes, modes, and root
+ownership; compiled binaries also match the optimized build. Start a new
+Hearthspace login session to load this fix.
