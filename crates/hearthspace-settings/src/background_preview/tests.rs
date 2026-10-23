@@ -108,6 +108,7 @@ fn category_navigation_works_while_loading_and_reentry_keeps_the_cached_preview(
         running: true,
         appearance_theme: Default::default(),
         navigation: Default::default(),
+        frame_settings: Default::default(),
         activation_listener: None,
         ai: Default::default(),
         favorites,

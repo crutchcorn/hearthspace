@@ -37,6 +37,7 @@ pub(super) struct Snapshot {
     pub revision: u64,
     pub select_mode: bool,
     pub items: BTreeMap<String, Flags>,
+    pub context: Option<hearthspace_common::desktop_context::DesktopContext>,
 }
 
 impl Default for Snapshot {
@@ -45,6 +46,7 @@ impl Default for Snapshot {
             revision: 0,
             select_mode: true,
             items: BTreeMap::new(),
+            context: None,
         }
     }
 }
@@ -69,6 +71,8 @@ pub(super) fn parse_snapshot(bytes: &[u8]) -> Result<Snapshot, String> {
         revision: u64,
         select_mode: bool,
         items: Vec<WireItem>,
+        #[serde(default)]
+        context: Option<hearthspace_common::desktop_context::DesktopContext>,
     }
     let wire: Wire = serde_json::from_slice(bytes)
         .map_err(|error| format!("Invalid desktop status: {error}"))?;
@@ -79,6 +83,7 @@ pub(super) fn parse_snapshot(bytes: &[u8]) -> Result<Snapshot, String> {
         revision: wire.revision,
         select_mode: wire.select_mode,
         items: BTreeMap::new(),
+        context: wire.context,
     };
     for item in wire.items {
         if item.id.is_empty()

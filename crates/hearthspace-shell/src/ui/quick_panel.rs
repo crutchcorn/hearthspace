@@ -1,8 +1,10 @@
 //! Small status dropdowns share the shell's existing popup lifecycle.
+#[cfg(test)]
+use super::icons::icon_button;
 use super::{
     control_slider::ControlSlider,
     control_state::Action,
-    icons::{Icon, glyph, icon_button},
+    icons::{Icon, glyph},
     popup::{self, PopupKind},
     state::{ShellOutputInstance, ShellState},
 };
@@ -27,6 +29,7 @@ pub(super) enum Kind {
     Brightness,
     Battery,
     Clock,
+    Tools,
 }
 
 impl Kind {
@@ -37,10 +40,12 @@ impl Kind {
             Self::Brightness => "Brightness",
             Self::Battery => "Battery",
             Self::Clock => "Date and time",
+            Self::Tools => "Canvas tools",
         }
     }
 }
 
+#[cfg(test)]
 pub(super) fn button_view(
     output: &ShellOutputInstance,
     kind: Kind,
@@ -56,6 +61,7 @@ pub(super) fn button_view(
     )
 }
 
+#[cfg(test)]
 pub(super) fn clock_button(
     state: &ShellState,
     output: &ShellOutputInstance,
@@ -101,7 +107,11 @@ pub(super) fn window(state: &ShellState, output: &ShellOutputInstance) -> Window
             .as_deref()
             .map(quick_panel_app_id_for_output)
             .unwrap_or_else(|| QUICK_PANEL_APP_ID.into()),
-        popup::size(output, PopupKind::Controls, 320.0, 200.0),
+        if output.quick_panel == Kind::Tools {
+            xilem::dpi::LogicalSize::new(260.0, 232.0)
+        } else {
+            popup::size(output, PopupKind::Controls, 320.0, 200.0)
+        },
         panel(state, output),
         move |state| state.dismiss_controls(&key),
     )
@@ -111,12 +121,16 @@ pub(super) fn panel(
     state: &ShellState,
     output: &ShellOutputInstance,
 ) -> Box<AnyWidgetView<ShellState>> {
+    if output.quick_panel == Kind::Tools {
+        return super::frame_layout::tool_menu::panel(state, output).boxed();
+    }
     let content = match output.quick_panel {
         Kind::Wifi => wifi().boxed(),
         Kind::Sound => sound(state, output).boxed(),
         Kind::Brightness => brightness(state, output).boxed(),
         Kind::Battery => battery(state).boxed(),
         Kind::Clock => calendar::view().boxed(),
+        Kind::Tools => unreachable!("handled before standard status panel"),
     };
     popup::panel_named(
         output,

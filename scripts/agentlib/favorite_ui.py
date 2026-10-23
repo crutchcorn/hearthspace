@@ -12,6 +12,7 @@ from . import search_touch
 from . import shell_checks as checks
 from .control import ControlError
 from .daily_checks import a11y
+from .favorite_geometry import drawing_rect
 from .input import Input
 from .map_checks import SHELL, button_center
 
@@ -87,14 +88,14 @@ def l_shape(rect, *, scale=1.0, shifted=False):
     ]
 
 
-def draw(smoke, points):
+def draw(smoke, points, *, steps=12):
     """Ordinary primary-button drag is also the one-finger trackpad path."""
     with Input(smoke.control) as inputs:
         inputs.motion(*points[0])
         inputs.down("pointer-button", 272)
         for start, end in itertools.pairwise(points):
-            for step in range(1, 13):
-                inputs.motion(*(a + (b - a) * step / 12 for a, b in zip(start, end)))
+            for step in range(1, steps + 1):
+                inputs.motion(*(a + (b - a) * step / steps for a, b in zip(start, end)))
                 time.sleep(min(0.012, smoke.control.deadline.remaining()))
         inputs.up("pointer-button", 272)
 
@@ -224,23 +225,11 @@ def launch_mode(smoke):
     smoke.until(
         "gesture Settings available", lambda: checks.elements(smoke, "Settings")
     )
-    state = smoke.until(
-        "armed search drawing area",
-        lambda: (
-            value
-            if (value := smoke.control.status().get("favorite_gesture", {})).get(
-                "armed"
-            )
-            else None
-        ),
-    )
     smoke.until(
         "drawing readiness presented in the Apps List",
         lambda: checks.elements(smoke, "Draw a gesture", role=None),
     )
-    panel = checks.opened(smoke, "search")
-    x, y, width, height = state["bounds"]
-    return [panel["x"] + x, panel["y"] + y, width, height]
+    return drawing_rect(smoke)
 
 
 def no_launch(smoke, before, viewport, label):
@@ -329,7 +318,9 @@ def run(smoke):
         )
         for i in range(25)
     ]
-    draw(smoke, circle)
+    # The circle is already sampled. Interpolating every short segment again
+    # turns it into a >15s stroke on software rendering and correctly cancels it.
+    draw(smoke, circle, steps=1)
     smoke.until(
         "unassigned shape feedback",
         lambda: checks.elements(

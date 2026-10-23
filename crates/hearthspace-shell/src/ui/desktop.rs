@@ -4,12 +4,14 @@ use std::{collections::BTreeMap, sync::Arc};
 
 use hearthspace_common::{DESKTOP_SURFACE_HEIGHT, DESKTOP_SURFACE_WIDTH, desktop_item_app_id};
 use tokio::sync::{Notify, mpsc};
-use xilem::{WindowId, WindowView, dpi::LogicalSize};
+use xilem::{WidgetView, WindowId, WindowView, dpi::LogicalSize};
 
 use crate::desktop_items::{DesktopItem, DesktopItemKind};
 
 use super::{desktop_item, state::ShellState};
 
+pub(in crate::ui) mod context;
+mod context_actions;
 #[path = "desktop/events.rs"]
 mod events;
 #[path = "desktop/task.rs"]
@@ -27,6 +29,7 @@ pub(super) fn selection_active(state: &ShellState) -> bool {
 
 #[derive(Default)]
 pub(super) struct State {
+    menu: context::State,
     items: Vec<Item>,
     snapshot: events::Snapshot,
     requests: Option<mpsc::Sender<task::Request>>,
@@ -57,7 +60,7 @@ impl State {
 }
 
 pub(super) fn windows(state: &ShellState) -> Vec<WindowView<ShellState>> {
-    state
+    let mut windows: Vec<_> = state
         .desktop
         .items
         .iter()
@@ -78,6 +81,9 @@ pub(super) fn windows(state: &ShellState) -> Vec<WindowView<ShellState>> {
                     DesktopItemKind::File { .. } => desktop_item::Artwork::File,
                 },
             };
+            let frame = super::frame_layout::items::presentation(state, &id);
+            let frame_content = content.clone();
+            let frame_id = id.clone();
             let flags = state.desktop.snapshot.items.get(&id);
             let search = &state.canvas_search.snapshot;
             let view = desktop_item::view(
@@ -117,26 +123,31 @@ pub(super) fn windows(state: &ShellState) -> Vec<WindowView<ShellState>> {
                     );
                 },
             );
+            let (view, width, height) = if let Some((output, grouped)) = frame {
+                let size = if grouped { 44.0 } else { 54.0 };
+                (super::frame_layout::items::view(state, frame_content, frame_id, output, grouped), size, size)
+            } else {
+                (view.boxed(), f64::from(DESKTOP_SURFACE_WIDTH), f64::from(DESKTOP_SURFACE_HEIGHT))
+            };
             super::popup::window(
                 item.window_id,
                 &item.content.title,
                 desktop_item_app_id(&item.content.id),
-                LogicalSize::new(
-                    f64::from(DESKTOP_SURFACE_WIDTH),
-                    f64::from(DESKTOP_SURFACE_HEIGHT),
-                ),
+                LogicalSize::new(width, height),
                 view,
                 |_| {},
             )
         })
-        .collect()
+        .collect();
+    windows.extend(context::window(state));
+    windows
 }
 
 pub(super) fn selection_button(state: &ShellState) -> impl xilem::WidgetView<ShellState> + use<> {
     super::icons::icon_button(
         super::icons::Icon::SelectDesktop,
         "Select desktop items",
-        state.desktop.snapshot.select_mode,
+        state.desktop.snapshot.select_mode && !state.frame_layout.snapshot.editing,
         |state| {
             state.dismiss_panels();
             task::submit(
@@ -154,4 +165,18 @@ fn feedback(state: &mut ShellState, error: String) {
         output.show_search = true;
         output.launch_error = Some(error);
     }
+}
+
+pub(super) fn activate(state: &mut ShellState, id: &str) {
+    if state.canvas_search.snapshot.active {
+        super::canvas_search::activate(state, Some(id));
+        return;
+    }
+    task::submit(
+        state,
+        task::Request::Command(format!(
+            "desktop-activate {}",
+            serde_json::to_string(id).expect("item ID is serializable")
+        )),
+    );
 }

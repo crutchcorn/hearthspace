@@ -39,6 +39,8 @@ pub(super) struct BackdropRequest {
     /// Titlebars sample only their own strip, while retaining the whole
     /// window's corner mask. Settings samples its entire translucent window.
     pub region: Option<Rectangle<i32, Logical>>,
+    pub radius: f64,
+    pub modal: bool,
     pub zoom: f64,
     pub opacity: f32,
 }
@@ -50,6 +52,7 @@ pub(in crate::compositor) struct WindowBackdropCache {
 
 struct RendererCache {
     shader: Option<WindowBackdropShader>,
+    modal_shader: Option<WindowBackdropShader>,
     windows: HashMap<CacheKey, Backdrop>,
 }
 
@@ -63,6 +66,7 @@ struct Backdrop {
     damage: OutputDamageTracker,
     mask: Option<(Rectangle<i32, Physical>, Rectangle<i32, Physical>)>,
     saturation: f32,
+    radius: f64,
     #[cfg(test)]
     blur_passes: usize,
 }
@@ -79,22 +83,26 @@ impl App {
         scale: i32,
         requests: &[BackdropRequest],
         elements: &mut Vec<TranslatedHearthspaceRenderElement>,
-    ) {
+    ) -> Vec<usize> {
         if self.session_locked() {
             self.window_backdrop.renderers.clear();
-            return;
+            return (0..=elements.len()).collect();
         }
-        let live: HashSet<_> = self
+        let mut live: HashSet<_> = self
             .windows
             .iter()
             .enumerate()
             .filter(|(index, window)| {
                 window.mapped
                     && (self.has_compositor_chrome(*index)
-                        || window_app_id(&window.surface).as_deref() == Some(SETTINGS_APP_ID))
+                        || window_app_id(&window.surface).as_deref() == Some(SETTINGS_APP_ID)
+                        || self.layout_glass_rect(*index).is_some())
             })
             .map(|(_, window)| window.id)
             .collect();
+        if self.layout_confirmation_active() {
+            live.insert(u64::MAX);
+        }
         let outputs: HashSet<_> = self
             .output_logical_rects()
             .into_iter()
@@ -117,7 +125,9 @@ impl App {
                 },
                 requests,
                 elements,
-            );
+            )
+        } else {
+            (0..=elements.len()).collect()
         }
     }
 }
@@ -131,7 +141,9 @@ impl WindowBackdropCache {
         saturation: f32,
         requests: &[BackdropRequest],
         elements: &mut Vec<TranslatedHearthspaceRenderElement>,
-    ) {
+    ) -> Vec<usize> {
+        let original_len = elements.len();
+        let mut insertions = Vec::new();
         let cache = self
             .renderers
             .entry(renderer.context_id())
@@ -141,15 +153,25 @@ impl WindowBackdropCache {
                         tracing::warn!(%error, "window backdrop blur is unavailable");
                     })
                     .ok(),
+                modal_shader: None,
                 windows: HashMap::new(),
             });
-        let Some(shader) = &cache.shader else {
-            return;
-        };
+        if requests.iter().any(|request| request.modal) && cache.modal_shader.is_none() {
+            cache.modal_shader = WindowBackdropShader::with_sigma(renderer, 2.0)
+                .map_err(|error| tracing::warn!(%error, "dialog backdrop blur unavailable"))
+                .ok();
+        }
         let output_bounds = Rectangle::from_size(output.size.to_physical(scale));
         // Insertion below a lower owner leaves every earlier recorded index
         // unchanged. A higher glass window then sees the resolved lower glass.
         for request in requests.iter().rev() {
+            let Some(shader) = (if request.modal {
+                &cache.modal_shader
+            } else {
+                &cache.shader
+            }) else {
+                continue;
+            };
             let window = Rectangle::new(request.window.loc - output.loc, request.window.size)
                 .to_physical(scale);
             let region = request.region.map_or(window, |region| {
@@ -181,6 +203,7 @@ impl WindowBackdropCache {
                     output_bounds,
                     window,
                     visible,
+                    request.radius * f64::from(scale) * request.zoom,
                     saturation,
                     &elements[request.after..],
                 )?;
@@ -194,21 +217,27 @@ impl WindowBackdropCache {
                 ))
             })();
             match result {
-                Ok(element) => elements.insert(
-                    request.after,
-                    RelocateRenderElement::from_element(
-                        HearthspaceRenderElement::from(element),
-                        (0, 0),
-                        Relocate::Relative,
-                    )
-                    .into(),
-                ),
+                Ok(element) => {
+                    insertions.push(request.after);
+                    elements.insert(
+                        request.after,
+                        RelocateRenderElement::from_element(
+                            HearthspaceRenderElement::from(element),
+                            (0, 0),
+                            Relocate::Relative,
+                        )
+                        .into(),
+                    );
+                }
                 Err(error) => {
                     cache.windows.remove(&key);
                     tracing::warn!(%error, "failed to update window backdrop");
                 }
             }
         }
+        (0..=original_len)
+            .map(|boundary| boundary + insertions.iter().filter(|&&at| at <= boundary).count())
+            .collect()
     }
 }
 
@@ -227,148 +256,8 @@ fn occluded(rect: Rectangle<i32, Physical>, above: &[TranslatedHearthspaceRender
     rect.subtract_rects(opaque).is_empty()
 }
 
-impl Backdrop {
-    fn new(
-        renderer: &mut GlesRenderer,
-        size: Size<i32, Physical>,
-        sample_scale: f64,
-    ) -> Result<Self> {
-        let low = Size::<i32, Buffer>::from((
-            (f64::from(size.w) / sample_scale).ceil() as i32,
-            (f64::from(size.h) / sample_scale).ceil() as i32,
-        ));
-        let padded = (low.w + 2 * PADDING, low.h + 2 * PADDING);
-        // Only the visible output intersection is allocated at full resolution.
-        // The source and Gaussian passes stay small even at high output scale.
-        let scene = renderer.create_buffer(Fourcc::Abgr8888, padded.into())?;
-        let intermediate = renderer.create_buffer(Fourcc::Abgr8888, padded.into())?;
-        let low_blur = renderer.create_buffer(Fourcc::Abgr8888, low)?;
-        let resolved = renderer.create_buffer(Fourcc::Abgr8888, (size.w, size.h).into())?;
-        Ok(Self {
-            size,
-            sample_scale,
-            scene,
-            intermediate,
-            low_blur,
-            resolved: TextureRenderBuffer::from_texture(
-                renderer,
-                resolved,
-                1,
-                Transform::Normal,
-                None,
-            ),
-            damage: OutputDamageTracker::new(padded, 1.0, Transform::Normal),
-            mask: None,
-            saturation: 1.0,
-            #[cfg(test)]
-            blur_passes: 0,
-        })
-    }
-
-    #[allow(clippy::too_many_arguments)]
-    fn update(
-        &mut self,
-        renderer: &mut GlesRenderer,
-        shader: &WindowBackdropShader,
-        output: Rectangle<i32, Physical>,
-        window: Rectangle<i32, Physical>,
-        visible: Rectangle<i32, Physical>,
-        saturation: f32,
-        source: &[TranslatedHearthspaceRenderElement],
-    ) -> Result<()> {
-        let elements: Vec<_> = source
-            .iter()
-            .map(|element| {
-                RelocateRenderElement::from_element(
-                    RescaleRenderElement::from_element(
-                        RelocateRenderElement::from_element(
-                            element,
-                            (-visible.loc.x, -visible.loc.y),
-                            Relocate::Relative,
-                        ),
-                        Point::from((0, 0)),
-                        1.0 / self.sample_scale,
-                    ),
-                    (PADDING, PADDING),
-                    Relocate::Relative,
-                )
-            })
-            .collect();
-        let changed = {
-            let mut target = renderer.bind(&mut self.scene)?;
-            self.damage
-                .render_output(
-                    renderer,
-                    &mut target,
-                    usize::from(self.mask.is_some()),
-                    &elements,
-                    Color32F::new(0.0, 0.0, 0.0, 1.0),
-                )?
-                .damage
-                .is_some()
-        };
-        let next_mask = (window, visible);
-        if !changed && self.mask == Some(next_mask) && self.saturation == saturation {
-            return Ok(());
-        }
-        let low = Size::from((
-            (f64::from(self.size.w) / self.sample_scale).ceil() as i32,
-            (f64::from(self.size.h) / self.sample_scale).ceil() as i32,
-        ));
-        // Clamp each blur tap at the physical output boundary. Unmapped space
-        // outside a monitor must not produce black fringes around maximized UI.
-        let padded_size = (low.w + PADDING * 2, low.h + PADDING * 2);
-        let left = (f64::from(-visible.loc.x) / self.sample_scale + f64::from(PADDING)).max(0.0);
-        let top = (f64::from(-visible.loc.y) / self.sample_scale + f64::from(PADDING)).max(0.0);
-        let right = (f64::from(output.size.w - visible.loc.x) / self.sample_scale
-            + f64::from(PADDING))
-        .min(f64::from(padded_size.0));
-        let bottom = (f64::from(output.size.h - visible.loc.y) / self.sample_scale
-            + f64::from(PADDING))
-        .min(f64::from(padded_size.1));
-        // A vertical SSD resize changes its whole-window corner mask, but not
-        // the sampled header strip. Reuse the Gaussian result for mask/tint
-        // changes; moving the sampled region also changes its boundary clamps.
-        if changed || self.mask.is_none_or(|(_, previous)| previous != visible) {
-            shader.blur.render_region(
-                renderer,
-                &self.scene,
-                &mut self.low_blur,
-                &mut self.intermediate,
-                low,
-                PADDING,
-                0.0,
-                Some(Rectangle::new(
-                    (left, top).into(),
-                    ((right - left).max(1.0), (bottom - top).max(1.0)).into(),
-                )),
-            )?;
-            #[cfg(test)]
-            {
-                self.blur_passes += 1;
-            }
-        }
-        self.resolved.render().draw(|target| {
-            shader.resolve(
-                renderer,
-                &self.low_blur,
-                target,
-                self.size,
-                window,
-                visible,
-                self.sample_scale,
-                19.0 * self.sample_scale / DOWNSAMPLE,
-                saturation,
-            )?;
-            Ok::<_, smithay::backend::renderer::gles::GlesError>(vec![Rectangle::from_size(
-                (self.size.w, self.size.h).into(),
-            )])
-        })?;
-        self.mask = Some(next_mask);
-        self.saturation = saturation;
-        Ok(())
-    }
-}
+#[path = "window_backdrop_surface.rs"]
+mod surface;
 
 #[cfg(all(test, feature = "e2e"))]
 #[path = "window_backdrop_tests.rs"]

@@ -15,6 +15,7 @@ use xilem::{
     view::{CrossAxisAlignment, FlexExt, flex_col, flex_row, label},
 };
 
+#[cfg(test)]
 pub(super) fn strip(
     output: &ShellOutputInstance,
     state: &TrayState,
@@ -34,6 +35,37 @@ pub(super) fn strip(
     drawer.appearance.icon = true;
     drawer.appearance.selected = output.tray.open;
     Some(flex_row((icons, drawer)).gap(4.0.px()))
+}
+
+pub(super) fn frame_strip(
+    output: &ShellOutputInstance,
+    state: &TrayState,
+    vertical: bool,
+    chain: &super::frame_layout::focus::Chain,
+) -> impl WidgetView<ShellState> + use<> {
+    let icons = tray_state::visible(&state.snapshot)
+        .take(8)
+        .enumerate()
+        .map(|(index, item)| {
+            super::frame_layout::focus::item(tray_button::icon(output.key(), item), chain, index)
+                .boxed()
+        })
+        .collect::<Vec<_>>();
+    let mut drawer = tray_button::text(
+        output.key(),
+        "Application tray".into(),
+        Target::Drawer,
+        output.tray.open,
+    );
+    drawer.appearance.icon = true;
+    drawer.appearance.selected = output.tray.open;
+    flex_row((icons, super::frame_layout::focus::item(drawer, chain, 100)))
+        .direction(if vertical {
+            xilem::masonry::kurbo::Axis::Vertical
+        } else {
+            xilem::masonry::kurbo::Axis::Horizontal
+        })
+        .gap(4.0.px())
 }
 
 pub(super) fn window(output: &ShellOutputInstance, state: &TrayState) -> WindowView<ShellState> {

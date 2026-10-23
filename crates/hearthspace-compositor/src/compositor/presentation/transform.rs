@@ -8,7 +8,7 @@ impl App {
         index: usize,
     ) -> Point<f64, Logical> {
         let origin = self.base_window_surface_screen_origin(index);
-        if let Some((pose, _)) = self.canvas_search_pose(index) {
+        if let Some((pose, _)) = self.canvas_preview_pose(index) {
             let base = self.base_window_screen_bounds(index);
             let scale = pose.width / f64::from(base.size.w.max(1));
             return Point::from((
@@ -22,6 +22,27 @@ impl App {
         &self,
         index: usize,
     ) -> Point<f64, Logical> {
+        #[cfg(feature = "xwayland")]
+        if let Some(origin) = self.x11_popup_screen_origin(index) {
+            return origin;
+        }
+        if !self.windows[index].presentation.pinned()
+            && let Some(rect) = self
+                .layout_motion_rect(index)
+                .or_else(|| self.layout_target_rect(index))
+        {
+            let inset = self.window_surface_geometry_loc(index);
+            let chrome = if self.has_compositor_chrome(index) {
+                TITLE_BAR_HEIGHT
+            } else {
+                0
+            };
+            let scale = self.layout_render_scale(index).unwrap_or(1.);
+            return Point::from((
+                rect.x - f64::from(inset.x) * scale,
+                rect.y + f64::from(chrome - inset.y) * scale,
+            ));
+        }
         if let Some(origin) = self.transient_screen_origin(index) {
             return origin;
         }
@@ -59,7 +80,7 @@ impl App {
         &self,
         index: usize,
     ) -> Rectangle<i32, Logical> {
-        if let Some((pose, _)) = self.canvas_search_pose(index) {
+        if let Some((pose, _)) = self.canvas_preview_pose(index) {
             return Rectangle::new(
                 (pose.x.round() as i32, pose.y.round() as i32).into(),
                 (pose.width.round() as i32, pose.height.round() as i32).into(),
@@ -71,6 +92,20 @@ impl App {
         &self,
         index: usize,
     ) -> Rectangle<i32, Logical> {
+        #[cfg(feature = "xwayland")]
+        if let Some(bounds) = self.x11_popup_screen_bounds(index) {
+            return bounds;
+        }
+        if !self.windows[index].presentation.pinned()
+            && let Some(rect) = self
+                .layout_motion_rect(index)
+                .or_else(|| self.layout_target_rect(index))
+        {
+            return Rectangle::new(
+                (rect.x.round() as i32, rect.y.round() as i32).into(),
+                (rect.width.round() as i32, rect.height.round() as i32).into(),
+            );
+        }
         if self.window_uses_output_coordinates(index) {
             let chrome = if self.has_compositor_chrome(index) {
                 TITLE_BAR_HEIGHT
@@ -119,7 +154,7 @@ impl App {
         &self,
         output: Rectangle<i32, Logical>,
     ) -> bool {
-        if self.canvas_search_active() {
+        if self.canvas_preview_active() {
             return false;
         }
         // Launcher activation always provides an escape from fullscreen.
@@ -159,13 +194,19 @@ impl App {
         if !self.windows[index].mapped {
             return false;
         }
+        if self.is_layout_surface(index) {
+            return self.layout_surface_visible(index);
+        }
+        if self.is_window_switcher_caption(index) {
+            return self.window_switcher_caption_visible(index);
+        }
         if self.is_canvas_search_panel(index) {
             return self.canvas_search_panel_allowed(index);
         }
         if self.canvas_search_result_identity(index).is_some() {
             return self.canvas_search_result_visible(index);
         }
-        if self.canvas_search_active() && !self.windows[index].kind.is_shell_chrome() {
+        if self.canvas_preview_active() && !self.windows[index].kind.is_shell_chrome() {
             return true;
         }
         if self.windows[index].kind == super::super::ManagedWindowKind::ControlOsd {

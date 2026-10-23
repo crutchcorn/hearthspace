@@ -123,6 +123,21 @@ fn search_requests_require_current_token_and_open_is_idempotent() {
 }
 
 #[test]
+fn keyboard_search_keeps_its_request_token_through_deferred_frame_anchoring() {
+    crate::ui::frame_layout::popups::tests::deferred_keyboard_search(|state, token| {
+        apply_request(
+            state,
+            ShellRequest {
+                token,
+                toggle: false,
+                control: None,
+                output: Some("HDMI-A-1".into()),
+            },
+        );
+    });
+}
+
+#[test]
 fn listener_rejects_duplicates_and_only_removes_its_own_socket() {
     let dir = tempfile::tempdir().unwrap();
     let command = dir.path().join("control.sock");

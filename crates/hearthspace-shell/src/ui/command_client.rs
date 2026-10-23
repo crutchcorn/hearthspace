@@ -74,6 +74,15 @@ pub(super) fn query_desktop(command_socket: &Path) -> std::io::Result<Vec<u8>> {
     )
 }
 
+pub(super) fn query_frame_layout(command_socket: &Path) -> std::io::Result<Vec<u8>> {
+    query_payload_bounded(
+        command_socket,
+        "layout-status",
+        Duration::from_millis(750),
+        MAX_DESKTOP_RESPONSE_BYTES,
+    )
+}
+
 pub(super) fn query_canvas_search(command_socket: &Path) -> std::io::Result<Vec<u8>> {
     query_payload_bounded(
         command_socket,
@@ -96,7 +105,7 @@ pub(super) fn query_payload(
     )
 }
 
-fn query_payload_bounded(
+pub(super) fn query_payload_bounded(
     command_socket: &Path,
     command: &str,
     timeout: Duration,

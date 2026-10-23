@@ -104,7 +104,7 @@ pub(super) fn button(state: &ShellState) -> impl xilem::WidgetView<ShellState> +
     super::icons::icon_button(
         super::icons::Icon::Search,
         "Search canvas",
-        state.canvas_search.snapshot.mode,
+        state.canvas_search.snapshot.mode && !state.frame_layout.snapshot.editing,
         |state| {
             state.dismiss_panels();
             submit_command(state, "canvas-search-tool".into());

@@ -1,10 +1,10 @@
 # Shell controls
 
-Four independent shell surfaces anchor to each output's corners:
+The default layout places independent native controls in four corners on each output:
 
 - **Top left — Notifications:** one button combines the bell with “All clear” or the number of new notifications and opens the notification panel.
 - **Top right — System tray:** application tray icons, clock/calendar, Wi-Fi, brightness, sound, battery when available, and Power. Tray icons appear only while apps publish them; see [application tray](TRAY.md).
-- **Bottom left — Canvas tools:** [desktop-item selection](DESKTOP_ITEMS.md), [canvas search](CANVAS_SEARCH.md), window-group selection, and the [canvas map](CANVAS_MAP.md).
+- **Bottom left — Canvas tools:** [desktop-item selection](DESKTOP_ITEMS.md), [canvas search](CANVAS_SEARCH.md), window-group selection, Change layout, and the [canvas map](CANVAS_MAP.md).
 - **Bottom right — App dock and Apps List:** running apps and the installed-app browser.
 
 The dock groups windows by application ID. Activating an icon focuses and reveals
@@ -13,8 +13,9 @@ app's windows. The active app is highlighted, dots indicate running windows, and
 icons update as windows open or close. Apps without desktop icons have a window
 symbol. A page button keeps every running app reachable when space is limited.
 
-Each panel opens beside its corner: awareness panels extend downward, while the
-canvas map and Apps List open upward. Opening one closes the previous panel.
+Each panel opens beside its control. Top attachments open downward, bottom
+attachments upward, and side attachments inward. Canvas controls use the side
+with more room; popups stay within the output. Opening one closes the previous panel.
 Escape, the close icon, an outside click, or the active corner button dismisses it.
 Panels have rounded transparent corners and shrink to fit their content. Long
 lists scroll within the available height; Apps List keeps its heading, input,
@@ -30,9 +31,13 @@ Ctrl+K or Super+K opens canvas search, which temporarily arranges matching deskt
 objects and live windows around a native search field. Its toolbar button arms
 click-to-open Search mode. This is independent of Apps List.
 
+Alt+Tab opens the [live window grid](WINDOW_MANAGEMENT.md#held-window-switcher),
+with an accent outline and a glass title badge below the selected preview.
+Alt release commits; Shift reverses cycling and Escape cancels.
+
 Super+F6 moves keyboard focus through Notifications, System tray, Canvas tools,
 and App dock on the active output. Super+Shift+F6 moves backward. Tab navigates
-within a corner; Enter activates its focused control. Escape closes an open panel
+through the independent controls in a group; Enter activates the focused control. Escape closes an open panel
 or returns from the corner to the most recent app without moving the canvas.
 
 An empty query shows installed applications alphabetically in a four-column icon grid.
@@ -56,6 +61,44 @@ using the existing hardware readings. Battery details appear in the Battery
 dropdown. Missing hardware has an explicit unavailable state. The clock dropdown
 shows the current month.
 
+## Change layout
+
+Open **Change layout** from Canvas tools, canvas Search, or Settings → System.
+Select a control, desktop item, window, or group, then use its editor to choose
+Background, Canvas, or Frame. Background and Canvas follow the viewport; Frame
+stays attached to an output edge. Wi-Fi, clock, sound, brightness, battery,
+application tray and power can be separated from the default system group.
+Canvas tools and the app dock remain composite controls.
+
+At widths of 760 logical pixels or less, unchanged default groups share full-width
+top and bottom bars. Custom placements remain intact. Canvas tools collapse to a
+menu button. Long groups scroll along their edge, and keyboard focus reveals the
+focused control without moving the canvas.
+
+Drag toward an edge or one of its corner guides to attach an item. Hold Alt to
+align the along-edge position with the canvas grid. Dropping onto another frame
+item forms an ordered group. Separate releases one member; Ungroup releases all.
+Moving a group onto Canvas or Background releases its members at their displayed
+positions. Removing a group hides its controls and returns its windows and desktop
+items to the canvas; it does not close applications or delete files.
+
+Pinned windows retain their live application buffers. Their edge strip expands
+on hover and opens fully when activated. Focusing elsewhere collapses it. Search,
+Alt+Tab and dock activation reveal the existing pinned window without panning the
+canvas. A close request prompts for confirmation. Desktop items become compact
+frame tiles, retaining their normal activation and accessible names.
+
+Done and Escape retain completed edits. Escape during a drag restores the drag's
+starting layout and exits editing. Tab and Shift+Tab navigate native editor
+controls, with pressed placement buttons, radio choices for clock formats, and
+keyboard focus rings. Drawing is not part of the layout editor.
+
+Layout, detail visibility, clock format and group membership persist per output.
+Reopened windows recover attachments through their existing application slots.
+Settings → System can permit hiding Canvas tools and restore them. Until that
+permission is enabled, removing the tools opens an explanation with a Settings
+link. Search remains a way to find and restore hidden controls.
+
 ## Agent control
 
 Buttons retain descriptive accessible names despite showing icons: `Apps List`,
@@ -68,9 +111,11 @@ The power choices are `Lock`, `Log out`, `Confirm log out`, and `Cancel`.
 Search rows retain button roles and the names `Open: APP NAME` or `Window:
 WINDOW TITLE`; the current result exposes the accessibility `selected` state.
 
-Unlocked `status.shell_corners` lists the four control surfaces with `corner`
-(`notifications`, `system`, `canvas`, or `apps`), `output`, `x`, `y`, `width`, and
-`height`. These surfaces use global output-logical coordinates.
+Unlocked `status.shell_corners` describes legacy corner surfaces when present, with
+`corner`, `output`, `x`, `y`, `width`, and `height`. The current shell uses independent
+frame surfaces instead. Use `layout-status` for their measured bounds, orientation,
+visibility and group identity, plus pinned windows, editor selection and animation
+state. These bounds use global output-logical coordinates.
 
 Unlocked `status.shell_panels` lists visible panel bounds as `kind`, `output`,
 `x`, `y`, `width`, and `height`. Kinds are `search`, `notifications`, `map`,

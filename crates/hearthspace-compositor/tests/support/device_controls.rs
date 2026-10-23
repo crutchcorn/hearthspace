@@ -139,11 +139,7 @@ fn osd_fits_scaled_small_outputs_without_taking_keyboard_focus() {
 }
 
 fn receive(events: &UnixDatagram, control: &str) -> u64 {
-    let mut bytes = [0; 4096];
-    let count = events.recv(&mut bytes).unwrap();
-    let event: Value = serde_json::from_slice(&bytes[..count]).unwrap();
-    assert_eq!(event["version"], 1);
-    assert_eq!(event["action"], "device-control");
+    let event = super::shell_events::receive(events, "device-control");
     assert_eq!(event["control"], control);
     assert_eq!(event["output"], Value::Null);
     event["token"].as_u64().unwrap()
@@ -229,7 +225,7 @@ fn media_keys_send_one_use_events_repeat_levels_and_revoke_requests_at_lock() {
         .set_read_timeout(Some(Duration::from_millis(120)))
         .unwrap();
     assert!(
-        events.recv(&mut [0; 4096]).is_err(),
+        super::shell_events::next_action(&events).is_err(),
         "release and lock must stop repeated events"
     );
     action(&compositor, "quit");

@@ -76,7 +76,7 @@ pub(super) fn appearance(
         Uniform::new(
             "radius",
             if style.panel {
-                20.0 * style.zoom as f32
+                style.panel_radius * style.zoom as f32
             } else if style.server_side {
                 19.0 * style.zoom as f32
             } else {

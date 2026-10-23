@@ -29,6 +29,9 @@ use super::{App, ManagedWindowKind, window_frame};
 mod background;
 mod blur;
 mod blur_shader;
+mod layout_clip;
+mod layout_glass;
+mod layout_overlays;
 mod lock;
 mod order;
 mod titlebar;
@@ -51,6 +54,12 @@ render_elements! {
     Texture = TextureRenderElement<GlesTexture>,
     OverviewSurface = CropRenderElement<RescaleRenderElement<WaylandSurfaceRenderElement<GlesRenderer>>>,
     Solid = SolidColorRenderElement,
+    Turn = super::layout_editor::TurnElement,
+    CroppedFrame = CropRenderElement<PixelShaderElement>,
+    CroppedMemory = CropRenderElement<MemoryRenderBufferRenderElement<GlesRenderer>>,
+    CroppedRoundedMemory = CropRenderElement<window_frame::RoundedElement<MemoryRenderBufferRenderElement<GlesRenderer>>>,
+    CroppedRoundedSurface = CropRenderElement<window_frame::RoundedElement<RescaleRenderElement<WaylandSurfaceRenderElement<GlesRenderer>>>>,
+    CroppedTexture = CropRenderElement<TextureRenderElement<GlesTexture>>,
 }
 
 render_elements! {
@@ -68,6 +77,7 @@ struct RenderScene {
     /// Everything below the shell, switcher, and cursor may feed corner blur.
     desktop_start: usize,
     window_backdrops: Vec<window_backdrop::BackdropRequest>,
+    window_spans: Vec<(u64, std::ops::Range<usize>)>,
 }
 
 impl RenderScene {
@@ -76,6 +86,7 @@ impl RenderScene {
             desktop_start: elements.len(),
             elements,
             window_backdrops: Vec::new(),
+            window_spans: Vec::new(),
         }
     }
 }
@@ -143,7 +154,7 @@ impl App {
         // for monitor DPI before this output-local translation.
         let tiles = if self.session_locked()
             || (!self.overview_active()
-                && !self.canvas_search_presenting()
+                && !self.canvas_preview_presenting()
                 && self.fullscreen_on_output(output_rect))
         {
             Vec::new()
@@ -159,21 +170,28 @@ impl App {
                 ),
             ));
         }
-        self.apply_window_backdrops(
+        let remap = self.apply_window_backdrops(
             renderer,
             output_rect,
             output_scale,
             &scene.window_backdrops,
             &mut elements,
         );
+        let desktop_start = remap[scene.desktop_start];
+        let mut spans: Vec<_> = scene
+            .window_spans
+            .into_iter()
+            .map(|(id, range)| (id, remap[range.start]..remap[range.end]))
+            .collect();
         let blurred = self.corner_blur_elements(
             renderer,
             output_rect,
             output_scale,
-            &elements[scene.desktop_start..],
+            &elements[desktop_start..],
         );
+        let blur_count = blurred.len();
         elements.splice(
-            scene.desktop_start..scene.desktop_start,
+            desktop_start..desktop_start,
             blurred.into_iter().map(|element| {
                 TranslatedHearthspaceRenderElement::from(RelocateRenderElement::from_element(
                     HearthspaceRenderElement::from(element),
@@ -182,6 +200,15 @@ impl App {
                 ))
             }),
         );
+        for (_, range) in &mut spans {
+            if range.start >= desktop_start {
+                range.start += blur_count;
+            }
+            if range.end > desktop_start {
+                range.end += blur_count;
+            }
+        }
+        self.apply_layout_turns(renderer, &mut elements, &spans, output_rect);
         let result = damage_tracker.render_output(
             renderer,
             framebuffer,
@@ -220,7 +247,9 @@ impl App {
                     window.mapped
                         && (window.kind == ManagedWindowKind::Normal
                             || self.canvas_search_panel_allowed(*index)
-                            || self.canvas_search_result_visible(*index))
+                            || self.canvas_search_result_visible(*index)
+                            || self.window_switcher_caption_visible(*index)
+                            || self.layout_glass_rect(*index).is_some())
                 })
                 .map(|(_, window)| window.id)
                 .collect(),
@@ -237,27 +266,60 @@ impl App {
             elements.push(element);
         }
 
-        elements.extend(self.collect_window_switcher_elements(renderer, output_rect));
-
         let mut group_elements = self.collect_group_elements(renderer, output_rect);
+        let mut layout = self.layout_overlay_elements(renderer, output_rect);
         let mut desktop_start = None;
         let mut desktop_selection = self.desktop_selection_elements(renderer);
         let mut window_backdrops = Vec::new();
         let hovered_window = self.hovered_normal_window_id();
-        for index in order::render_order(self.windows.iter().map(|window| window.kind)) {
-            if self.windows[index].kind == ManagedWindowKind::DesktopItem {
+        let mut ordered = order::render_order(self.windows.iter().map(|window| window.kind));
+        ordered.sort_by_key(|index| {
+            std::cmp::Reverse(self.layout_render_layer(*index).unwrap_or_else(|| {
+                match self.windows[*index].kind {
+                    ManagedWindowKind::ControlOsd => 130,
+                    ManagedWindowKind::Launcher => 110,
+                    ManagedWindowKind::ShellBar | ManagedWindowKind::ShellWatcher => 100,
+                    ManagedWindowKind::Normal => 10,
+                    ManagedWindowKind::DesktopItem => 0,
+                }
+            }))
+        });
+        let mut window_spans = Vec::new();
+        for index in ordered {
+            let layer = self.layout_render_layer(index).unwrap_or_else(|| {
+                if self.windows[index].kind.is_shell_chrome() {
+                    110
+                } else {
+                    10
+                }
+            });
+            if layer <= 100 {
+                append_layout_outlines(
+                    &mut elements,
+                    &mut layout.front,
+                    &mut layout.owners,
+                    &mut window_spans,
+                );
+            }
+            if layer < 100 {
                 desktop_start.get_or_insert(elements.len());
+            }
+            if self.windows[index].kind == ManagedWindowKind::DesktopItem {
                 elements.append(&mut desktop_selection);
             }
             if self.windows[index].kind == ManagedWindowKind::Normal {
-                desktop_start.get_or_insert(elements.len());
                 elements.append(&mut group_elements.overlay);
             }
             if !self.window_visible_on_output(index, output_rect) {
                 continue;
             }
             let front = elements.len();
-            elements.extend(self.canvas_search_selection_elements(renderer, index));
+            // Desktop editing marks belong to the icon's own stack: ordinary
+            // windows cover them, while a held or frame-pinned icon stays raised.
+            if let Some(outlines) = layout.items.remove(&self.windows[index].id) {
+                elements.extend(outlines);
+            }
+            elements.extend(self.canvas_preview_selection_elements(renderer, index));
             // Popups (e.g. menus) render above their window's content and chrome.
             for popup in self.popup_render_elements(renderer, index) {
                 elements.push(popup);
@@ -272,7 +334,7 @@ impl App {
             let scale = self.window_render_scale(index);
             let server_side = self.has_compositor_chrome(index);
             let id = self.windows[index].id;
-            let active = !self.canvas_search_active() && self.focused_normal_window_id == Some(id);
+            let active = !self.canvas_preview_active() && self.focused_normal_window_id == Some(id);
             let frame = (self.is_navigable_window(index)
                 && !self.windows[index].presentation.fullscreen)
                 .then(|| self.normal_window_screen_rect(index))
@@ -284,10 +346,10 @@ impl App {
                         rect,
                         scale,
                         active,
-                        !self.canvas_search_active() && hovered_window == Some(id),
+                        !self.canvas_preview_active() && hovered_window == Some(id),
                         server_side,
                         self.background_image_path.is_some(),
-                        self.canvas_search_pose(index)
+                        self.canvas_preview_pose(index)
                             .map_or(1., |(_, alpha)| alpha as f32),
                     )
                 });
@@ -318,10 +380,12 @@ impl App {
                     vec![self.surface_screen_origin(index)]
                 }
             };
+            let surface_scale = self.layout_backing_scale(index).unwrap_or(scale.into());
             for origin in origins {
                 for surface in self.window_render_elements_at(renderer, index, origin) {
                     let solid = window_frame::solid_color(&surface);
-                    let element = RescaleRenderElement::from_element(surface, origin, scale);
+                    let element =
+                        RescaleRenderElement::from_element(surface, origin, surface_scale);
                     if let Some(clip) = frame.as_ref().and_then(|frame| frame.clip.as_ref()) {
                         elements.push(HearthspaceRenderElement::from(clip.wrap(element, solid)));
                     } else {
@@ -347,7 +411,7 @@ impl App {
                     1.,
                 ))
             } else if self.canvas_search_result_visible(index)
-                && let Some((pose, alpha)) = self.canvas_search_pose(index)
+                && let Some((pose, alpha)) = self.canvas_preview_pose(index)
             {
                 Some((
                     Rectangle::new(
@@ -368,6 +432,23 @@ impl App {
             {
                 elements.push(HearthspaceRenderElement::from(shadow));
             }
+            if self.window_switcher_caption_visible(index)
+                && let Some(caption) = self.window_switcher_caption_rect()
+                && let Some(shadow) = self.window_frames.rounded_panel_shadow(
+                    renderer,
+                    id,
+                    Rectangle::new(
+                        (caption.x.round() as i32, caption.y.round() as i32).into(),
+                        (caption.width.round() as i32, caption.height.round() as i32).into(),
+                    ),
+                    1.,
+                    false,
+                    1.,
+                    10.,
+                )
+            {
+                elements.push(HearthspaceRenderElement::from(shadow));
+            }
             if self.windows[index].kind == ManagedWindowKind::Normal
                 && !self.windows[index].presentation.fullscreen
                 && (self.has_compositor_chrome(index)
@@ -384,25 +465,95 @@ impl App {
                         .as_deref()
                         != Some(window_backdrop::SETTINGS_APP_ID))
                     .then(|| self.title_bar_rect(index)),
+                    radius: 19.,
+                    modal: false,
                     zoom: scale,
                     opacity: self
-                        .canvas_search_pose(index)
+                        .canvas_preview_pose(index)
                         .map_or(1., |(_, alpha)| alpha as f32),
+                });
+            }
+            if let Some(rect) = self.layout_glass_rect(index) {
+                let radius = self.layout_glass_radius(index);
+                let emphasized = self.frame_group_emphasized(index)
+                    || self.focused_shell_panel_index() == Some(index)
+                    || point_in_logical_rect(self.pointer_location, rect);
+                if let Some(shadow) = self.window_frames.rounded_panel_shadow(
+                    renderer,
+                    id,
+                    rect,
+                    scale,
+                    emphasized,
+                    1.,
+                    radius as f32,
+                ) {
+                    elements.push(HearthspaceRenderElement::from(shadow));
+                }
+                window_backdrops.push(window_backdrop::BackdropRequest {
+                    id,
+                    front,
+                    after: elements.len(),
+                    window: rect,
+                    region: None,
+                    radius: (radius - 1.).max(0.),
+                    modal: false,
+                    zoom: scale,
+                    opacity: 1.,
+                });
+            }
+            if let Some(clip) = self.layout_window_clip(index) {
+                layout_clip::clip_elements(&mut elements, front, clip);
+                for request in window_backdrops
+                    .iter_mut()
+                    .filter(|request| request.id == id)
+                {
+                    request.after = elements.len();
+                    request.region = Some(
+                        request
+                            .region
+                            .unwrap_or(request.window)
+                            .intersection(clip)
+                            .unwrap_or_else(|| Rectangle::from_size((0, 0).into())),
+                    );
+                }
+            }
+            window_spans.push((id, front..elements.len()));
+            if self.layout_confirmation_surface(index) && !layout.modal.is_empty() {
+                let front = elements.len();
+                elements.append(&mut layout.modal);
+                window_backdrops.push(window_backdrop::BackdropRequest {
+                    id: u64::MAX,
+                    front,
+                    after: elements.len(),
+                    window: output_rect,
+                    region: None,
+                    radius: 0.,
+                    modal: true,
+                    zoom: 1.,
+                    opacity: 1.,
                 });
             }
             // Fullscreen content must not reveal unrelated windows through
             // transparent pixels or around a smaller-than-requested buffer.
-            if self.windows[index].presentation.fullscreen && !self.canvas_search_presenting() {
+            if self.windows[index].presentation.fullscreen && !self.canvas_preview_presenting() {
                 break;
             }
         }
 
+        append_layout_outlines(
+            &mut elements,
+            &mut layout.front,
+            &mut layout.owners,
+            &mut window_spans,
+        );
         let desktop_start = desktop_start.unwrap_or(elements.len());
         elements.append(&mut group_elements.overlay);
+        elements.extend(layout.back);
         RenderScene {
             elements,
             desktop_start,
             window_backdrops,
+            window_spans,
         }
     }
 
@@ -586,14 +737,18 @@ impl App {
             // Built at native scale; the viewport zoom is applied by wrapping
             // these elements in a `RescaleRenderElement` in the caller.
             1.0,
-            self.canvas_search_pose(window_index)
+            self.canvas_preview_pose(window_index)
                 .map_or(1.0, |(_, alpha)| alpha as f32),
             Kind::Unspecified,
         )
     }
 
     pub(super) fn window_render_scale(&self, window_index: usize) -> f64 {
-        if let Some((pose, _)) = self.canvas_search_pose(window_index) {
+        #[cfg(feature = "xwayland")]
+        if let Some((parent, _)) = self.x11_popup_anchor(window_index) {
+            return self.window_render_scale(parent);
+        }
+        if let Some((pose, _)) = self.canvas_preview_pose(window_index) {
             if self.canvas_search_result_identity(window_index).is_some() {
                 return pose.width / 240.;
             }
@@ -601,9 +756,17 @@ impl App {
             return self.base_window_render_scale(window_index) * pose.width
                 / f64::from(base.size.w.max(1));
         }
+        if let Some(pose) = self.layout_motion_rect(window_index)
+            && let Some(target) = self.layout_target_rect(window_index)
+        {
+            return self.base_window_render_scale(window_index) * pose.width / target.width.max(1.);
+        }
         self.base_window_render_scale(window_index)
     }
     pub(super) fn base_window_render_scale(&self, window_index: usize) -> f64 {
+        if let Some(scale) = self.layout_render_scale(window_index) {
+            return scale;
+        }
         match self.windows[window_index].kind {
             ManagedWindowKind::Normal if self.window_uses_output_coordinates(window_index) => 1.0,
             ManagedWindowKind::Normal | ManagedWindowKind::DesktopItem => self.viewport_scale,
@@ -613,6 +776,19 @@ impl App {
             ManagedWindowKind::ShellWatcher => 1.0,
         }
     }
+}
+
+fn append_layout_outlines(
+    elements: &mut Vec<HearthspaceRenderElement>,
+    outlines: &mut Vec<HearthspaceRenderElement>,
+    owners: &mut Vec<(usize, u64)>,
+    spans: &mut Vec<(u64, std::ops::Range<usize>)>,
+) {
+    for (index, id) in std::mem::take(owners) {
+        let start = elements.len() + index;
+        spans.push((id, start..start + 1));
+    }
+    elements.append(outlines);
 }
 
 fn point_in_logical_rect(point: Point<f64, Logical>, rect: Rectangle<i32, Logical>) -> bool {

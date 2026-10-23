@@ -93,6 +93,9 @@ pub(in crate::compositor) enum ControlReply {
 
 impl CalloopData {
     fn run_command_text(&mut self, text: &str) -> ControlReply {
+        if let Some(reply) = self.run_layout_command(text) {
+            return reply;
+        }
         if self.state.session_locked()
             && !matches!(
                 text,
@@ -123,6 +126,9 @@ impl CalloopData {
             return self.state.set_clipboard_text(hex);
         }
         if let Some(reply) = self.run_automation_command(text) {
+            return reply;
+        }
+        if let Some(reply) = self.run_window_switcher_command(text) {
             return reply;
         }
         if let Some(reply) = self.run_canvas_search_command(text) {

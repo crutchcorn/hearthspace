@@ -220,6 +220,18 @@ reload-settings
 log-a11y-tree
 ```
 
+`layout-tool` opens Change layout on the pointer's output. Editor actions use
+`layout-command JSON` with the current `session` and `output` from `layout-status`,
+an `action`, and a `target` such as `{"kind":"widget","id":"wifi"}`.
+For example, `place` accepts `{"surface":"canvas"}` or
+`{"surface":"frame","edge":"right","position":0.5}` in `placement`.
+Session IDs prevent a stale native editor from applying actions to a new session.
+`frame-reveal WINDOW_ID` reveals an attached live window without panning.
+`frame-settings {"restore_tools":true}` restores Canvas tools to their default
+frame placement. These are private compositor-control commands, not public
+Wayland protocols. Use real pointer/keyboard input as well as commands when
+validating the [layout interaction](SHELL.md#change-layout).
+
 Keyboard commands use Linux evdev key codes at the socket boundary. The
 compositor applies Smithay's expected XKB offset internally. Pointer button
 commands use Linux input button codes, for example `272` (`0x110`) for the left
@@ -245,6 +257,8 @@ Payloads depend on the request:
 | `status` | UTF-8 JSON describing backend, activity, outputs/frame IDs, shell readiness, and mapped window geometry. |
 | `windows` | Versioned JSON window metadata, including stable IDs, canvas and screen coordinates, focus, visibility, and presentation state. |
 | `apps` | Versioned JSON catalog of launchable desktop entries. |
+| `layout-status` | Version 1 frame layout, measured widget/group bounds, pinned-window state, editor session/selection, confirmation, and animation state. Redacted while locked or inactive. |
+| `frame-settings-status` | Version 1 Canvas tools hiding preference. |
 
 Capture metadata includes a version, output name, pixel dimensions, integer
 scale, logical origin and bounds, transform, frame ID, cursor policy/source, and

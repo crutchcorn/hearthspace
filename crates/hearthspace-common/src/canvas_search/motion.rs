@@ -16,6 +16,11 @@ pub fn opacity_ease(progress: f64) -> f64 {
     cubic(progress, 0.25, 0.1, 0.25, 1.0)
 }
 
+/// CSS `ease-out`, used by frame guide entry.
+pub fn ease_out(progress: f64) -> f64 {
+    cubic(progress, 0.0, 0.0, 0.58, 1.0)
+}
+
 fn cubic(progress: f64, x1: f64, y1: f64, x2: f64, y2: f64) -> f64 {
     let progress = progress.clamp(0.0, 1.0);
     if progress == 0.0 || progress == 1.0 {

@@ -8,6 +8,7 @@ from .control import ControlError
 from .input import Input
 from .map_checks import button_center, corner_surface
 from .pinch_touchscreen import to_device
+from .shell_surfaces import observed_status
 from .touchpad import TouchDevice
 
 
@@ -48,7 +49,7 @@ def stroke(device, output, start, end):
 
 def apps_corner(smoke):
     checks.closed(smoke)
-    status = smoke.control.status()
+    status = observed_status(smoke)
     output = status["outputs"][0]
     smoke.capture("apps-before-dock-swipe")
     search = smoke.until("Apps List icon", lambda: checks.elements(smoke, "Apps List"))[

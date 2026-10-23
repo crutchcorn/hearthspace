@@ -26,7 +26,7 @@ impl App {
         if self.windows[index].kind == super::super::ManagedWindowKind::DesktopItem {
             self.desktop_mapped(index);
         }
-        if self.shell_corner(index).is_some() {
+        if self.reserves_shell_work_area(index) {
             self.reconcile_window_presentations();
         }
         let id = self.windows[index].id;
@@ -34,7 +34,14 @@ impl App {
             self.windows[index].pending_resize = None;
             self.favorite_window_unmapped(id);
         }
-        if mapped && self.windows[index].kind == super::super::ManagedWindowKind::ControlOsd {
+        if mapped && self.is_layout_surface(index) {
+            self.layout_surface_mapped(index);
+        } else if mapped && self.is_window_switcher_caption(index) {
+            if !self.window_switcher_caption_visible(index) {
+                self.windows[index].surface.send_close();
+            }
+        } else if mapped && self.windows[index].kind == super::super::ManagedWindowKind::ControlOsd
+        {
             if self.session_locked() {
                 self.windows[index].surface.send_close();
             }
@@ -42,6 +49,7 @@ impl App {
             // Only the initial mapping requests focus; zoom updates and other
             // buffer commits must not steal it back from a newer user action.
             if (self.navigation_available() || self.canvas_search_panel_allowed(index))
+                && self.desktop_context_mapping_allowed(index)
                 && self.search_mapping_allowed(index)
             {
                 self.set_keyboard_focus_to_window(index, root.clone());
@@ -80,6 +88,7 @@ impl App {
             })
         });
         self.desktop_focus_changed(index);
+        self.layout_focus_changed(index);
         self.cancel_search_outside_focus(index);
         self.favorite_focus_changed(index.map(|index| self.windows[index].id));
         self.ui_touch_focus_changed(index.map(|index| self.windows[index].id));

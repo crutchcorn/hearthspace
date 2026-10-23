@@ -17,7 +17,7 @@ Hearthspace UI should be described in two coordinate spaces.
 
 Screen-space UI is fixed to the visible output or nested compositor window:
 
-- Four corner shell controls.
+- Frame-attached shell controls, groups, pinned windows and compact desktop items.
 - Debug overlay.
 - Command palette.
 - Lock screen.
@@ -85,11 +85,11 @@ Prefer shell clients for richer UI:
 
 This keeps the compositor small and predictable while still allowing rich UI to exist inside Hearthspace.
 
-The [four shell corners and their dropdowns](SHELL.md) split their glass appearance across this
+The [frame controls and their dropdowns](SHELL.md) split their glass appearance across this
 boundary. The compositor blurs the wallpaper and application windows behind each
 surface; the shell draws a translucent tint, border, icons, and text over it. Both
-use the shared corner radius of 20 logical pixels. The blur source excludes the cursor
-and shell surfaces, so controls stay sharp.
+use the shared corner radius of 20 logical pixels. Movable controls sample the real stack below their owner. A group has one glass
+backing, with its member controls kept sharp above it.
 
 Each visible shell surface caches a GPU texture covering its bounds and the blur's sampling
 margin. Smithay damage tracking refreshes it when the desktop beneath it changes;
@@ -194,8 +194,22 @@ coordinates, with compositor-owned placement and input. They reuse the launcher
 catalog and native application artwork. [Canvas search](CANVAS_SEARCH.md) reuses
 these live surfaces and the normal window renderer with temporary compositor
 transforms. Its native field and control previews use the reference's glass
-panel material. The prototype's simulated apps, layout editor and drawing tools
-remain separate work.
+panel material. The [layout editor](SHELL.md#change-layout) uses the same boundary:
+Xilem renders independent controls, groups, tooltips and confirmation dialogs;
+the compositor owns placement, input capture, guides, clipping and transitions.
+The shared frame model lives in `hearthspace-common::frame_layout`.
+
+Toolbar turns compose their live native surfaces, external grip, outlines, shadows
+and resolved glass into temporary GPU textures. While the native controls reflow,
+the last complete composition follows the grabbed point. Once every member and
+its backing have committed the final dimensions, one 280 ms clock rotates and
+translates the composition without stretching it. Pointer selection uses the last
+displayed pose, including during an interrupted turn. Placement, guide and reveal
+animations respect reduced motion. Confirmation
+backdrops use a separate 8-pixel blur beneath the native dialog. No client-buffer
+readback is needed for these effects.
+
+The prototype's simulated apps and drawing tools remain separate work.
 
 ## When To Use A UI Framework
 

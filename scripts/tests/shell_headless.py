@@ -77,6 +77,7 @@ def run_shell_session(
     size=(2560, 1600),
     scale=2,
     services=None,
+    timeout=120,
 ):
     test.assertFalse(
         (evidence / "session.json").exists(), "use fresh evidence directory"
@@ -135,7 +136,7 @@ def run_shell_session(
             start_new_session=True,
         )
         cleanup.callback(stop_process_group, bus)
-        deadline = Deadline(120)
+        deadline = Deadline(timeout)
         while not (directory / "bus").exists():
             test.assertIsNone(bus.poll(), "private bus exited")
             time.sleep(min(0.02, deadline.remaining()))
@@ -162,7 +163,7 @@ def run_shell_session(
         )
         cleanup.callback(stop_process_group, compositor)
         smoke = Smoke(
-            SimpleNamespace(session=evidence, timeout=120), presentation="offscreen"
+            SimpleNamespace(session=evidence, timeout=timeout), presentation="offscreen"
         )
         smoke.control = Control(socket, deadline)
         smoke.marker = marker

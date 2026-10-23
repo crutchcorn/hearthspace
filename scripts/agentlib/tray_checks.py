@@ -4,8 +4,9 @@ from . import shell_checks as checks
 from .control import ControlError
 from .daily_checks import a11y
 from .input import Input
-from .map_checks import SHELL, button_center, corner_surface
+from .map_checks import SHELL, button_center
 from .shell_presentation import Frame, park_pointer
+from .shell_surfaces import observed_status, widget_surface
 
 TITLE = "Hearthspace Tray Fixture"
 
@@ -28,11 +29,11 @@ def disappeared(smoke):
 
 def point(smoke, name=TITLE, *, menu=False):
     observed = smoke.until(f"visible tray {name}", lambda: visible(smoke, name))[0]
-    status = smoke.control.status()
+    status = observed_status(smoke)
     outputs = status["outputs"]
     if len(outputs) != 1:
         raise ControlError("tray acceptance requires one active output")
-    surface = checks.opened(smoke, "tray") if menu else corner_surface(status, "system")
+    surface = checks.opened(smoke, "tray") if menu else widget_surface(status, "tray")
     return button_center(observed.get("bounds"), outputs[0], surface)
 
 
@@ -78,7 +79,7 @@ def presented(smoke, color):
     def matches():
         observed = icon(smoke)
         frame = Frame(smoke.control.capture(output["name"]))
-        surface = corner_surface(smoke.control.status(), "system")
+        surface = widget_surface(observed_status(smoke), "tray")
         count = color_pixels(frame, observed["bounds"], color, surface)
         return (observed, count) if count > 20 else None
 

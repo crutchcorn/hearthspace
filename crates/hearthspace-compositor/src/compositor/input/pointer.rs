@@ -55,7 +55,9 @@ impl App {
 
     pub(in crate::compositor) fn synthesize_axis(&mut self, horizontal: f64, vertical: f64) {
         trace!(horizontal, vertical, "synthesizing pointer axis");
-        if self.zoom_from_scroll_amount(Some(vertical)) {
+        if self.layout_group_axis(horizontal, vertical)
+            || self.zoom_from_scroll_amount(Some(vertical))
+        {
             return;
         }
         if let Some(HitTarget::Client { window_index, .. }) = self.hit_test(self.pointer_location) {
@@ -98,8 +100,12 @@ impl App {
         }
         self.pointer_location = constrained.visible;
         self.raw_pointer_location = constrained.raw;
+        self.update_layout_emphasis();
         if self.software_cursor_visible && self.pointer_location != previous_location {
             self.request_redraw();
+        }
+        if !self.session_locked() && self.layout_pointer_motion() {
+            return;
         }
         if self.titlebar_pointer_motion() {
             self.cursor_surface = None;
@@ -180,6 +186,7 @@ impl App {
             clamp_point_to_outputs(self.pointer_location, &output_rects)
         };
         self.raw_pointer_location = self.pointer_location;
+        self.update_layout_emphasis();
         if self.software_cursor_visible && self.pointer_location != previous_location {
             self.request_redraw();
         }

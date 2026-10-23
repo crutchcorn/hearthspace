@@ -13,6 +13,7 @@ use crate::compositor::{
     App, HitTarget, ManagedWindowKind, idle::ActivityReason, windows::window_app_id,
 };
 
+mod frame_scroll;
 mod groups;
 mod model;
 use model::{BarAction, BarSwipe};
@@ -24,6 +25,10 @@ enum Target {
     Group,
     GroupCancelled,
     Client(WlSurface),
+    FrameScroll {
+        target: crate::compositor::layout_editor::Target,
+        last: Position,
+    },
     Bar(BarSwipe),
     Cancelled,
 }
@@ -135,7 +140,11 @@ impl App {
         if self.begin_group_ui_touch(device, slot, location, time) {
             return;
         }
-        if !self.navigation_available() && !self.canvas_search_active() {
+        if !self.navigation_available()
+            && !self.canvas_search_active()
+            && !self.layout_editing()
+            && !self.layout_confirmation_active()
+        {
             return;
         }
         let Some(HitTarget::Client {
@@ -146,8 +155,24 @@ impl App {
         else {
             return;
         };
-        let bar = self.windows[window_index].kind == ManagedWindowKind::ShellBar;
-        let supported = bar
+        if self.layout_editing()
+            && !window_app_id(&self.windows[window_index].surface).is_some_and(|id| {
+                hearthspace_common::frame_layout::layout_editor_from_app_id(&id).is_some()
+            })
+            && !self.layout_confirmation_surface(window_index)
+        {
+            return;
+        }
+        let bar = self.windows[window_index].kind == ManagedWindowKind::ShellBar
+            && !self.is_layout_surface(window_index);
+        let supported = self.is_layout_surface(window_index)
+            || self
+                .layout_scroll_group_at(hearthspace_common::frame_layout::Point {
+                    x: location.x,
+                    y: location.y,
+                })
+                .is_some()
+            || bar
             || self.is_shell_panel(window_index)
             || window_app_id(&self.windows[window_index].surface).as_deref()
                 == Some("dev.hearthspace.Settings");
@@ -212,6 +237,9 @@ impl App {
         time: InputTime,
     ) {
         self.maintain_ui_touch();
+        if self.motion_frame_scroll_ui_touch(device, slot, location) {
+            return;
+        }
         let Some(touch) = self
             .ui_touch
             .as_mut()
@@ -245,7 +273,10 @@ impl App {
                     },
                 );
             }
-            Target::Group | Target::GroupCancelled | Target::Cancelled => (),
+            Target::Group
+            | Target::GroupCancelled
+            | Target::FrameScroll { .. }
+            | Target::Cancelled => (),
         }
     }
 
@@ -293,7 +324,7 @@ impl App {
                 }
                 BarAction::Cancel => (),
             },
-            Target::GroupCancelled | Target::Cancelled => (),
+            Target::GroupCancelled | Target::FrameScroll { .. } | Target::Cancelled => (),
         }
         if let Some(touch) = self.ui_touch.as_mut() {
             touch.target = Target::Cancelled;
@@ -317,6 +348,9 @@ impl App {
         if self.group_touch_suppresses_gestures() {
             return;
         }
+        if self.maintain_frame_scroll_ui_touch() {
+            return;
+        }
         if let Some(touch) = self.ui_touch.as_ref() {
             // Bar taps become a pointer press/release only after touch-up. A
             // fixed-width dock can replace a tile meanwhile without changing
@@ -333,7 +367,10 @@ impl App {
             let valid = touch.valid(
                 geometry,
                 &self.output_logical_rects(),
-                self.navigation_available() || self.canvas_search_active(),
+                self.navigation_available()
+                    || self.canvas_search_active()
+                    || self.layout_editing()
+                    || self.layout_confirmation_active(),
                 apps_identity.as_deref(),
             );
             if !valid {

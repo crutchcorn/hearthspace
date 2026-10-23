@@ -27,7 +27,7 @@ impl App {
         s.results.iter().find_map(|result| {
             let window = result.window?;
             let (rect, alpha) = self
-                .canvas_search
+                .canvas_preview
                 .poses
                 .get(&window)?
                 .current(std::time::Instant::now());

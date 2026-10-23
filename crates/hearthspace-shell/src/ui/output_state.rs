@@ -30,7 +30,9 @@ impl ShellOutputInstance {
             show_notifications: false,
             show_map: false,
             launch_error: None,
+            #[cfg(test)]
             corner_window_ids: std::array::from_fn(|_| WindowId::next()),
+            #[cfg(test)]
             corner_widths: [
                 f64::from(hearthspace_common::NOTIFICATION_CORNER_WIDTH),
                 320.0,

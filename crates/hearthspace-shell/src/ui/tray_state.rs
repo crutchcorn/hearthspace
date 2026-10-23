@@ -20,6 +20,7 @@ pub(super) struct TrayOutput {
     pub menu_path: Option<String>,
     pub path: Vec<i32>,
     pub selected: Option<i32>,
+    #[cfg(test)]
     pub bar_width: f64,
     pub error: Option<String>,
 }
@@ -32,6 +33,7 @@ impl Default for TrayOutput {
             menu_path: None,
             path: Vec::new(),
             selected: None,
+            #[cfg(test)]
             bar_width: 0.0,
             error: None,
         }
@@ -55,6 +57,7 @@ pub(super) fn visible(snapshot: &TraySnapshot) -> impl Iterator<Item = &TrayItem
         .filter(|item| item.status != TrayStatus::Passive)
 }
 
+#[cfg(test)]
 pub(super) fn capacity(width: f64) -> usize {
     // The caller reserves clock, battery, controls, and the overflow drawer.
     (width.max(0.0) / 38.0).floor().min(8.0) as usize
@@ -165,6 +168,9 @@ pub(super) fn send(state: &mut ShellState, output: &str, command: TrayCommand) {
 }
 
 pub(super) fn toggle(state: &mut ShellState, key: &str) {
+    if super::frame_layout::popups::defer(state, key, super::frame_layout::popups::Popup::Tray) {
+        return;
+    }
     let open = state
         .outputs
         .iter()
@@ -182,6 +188,13 @@ pub(super) fn dismiss(state: &mut ShellState, key: &str) {
 }
 
 pub(super) fn open_menu(state: &mut ShellState, output_key: &str, key: &ItemKey) {
+    if super::frame_layout::popups::defer(
+        state,
+        output_key,
+        super::frame_layout::popups::Popup::TrayMenu(key.clone()),
+    ) {
+        return;
+    }
     let Some(item) = visible(&state.tray.snapshot).find(|item| &item.key == key) else {
         return;
     };

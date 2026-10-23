@@ -186,8 +186,10 @@ impl App {
 
     fn release_removed_pointer_buttons(&mut self, released: Vec<u32>) {
         if !released.is_empty() {
+            self.cancel_pending_shell_click();
             if released.contains(&0x110) {
                 self.cancel_titlebar_pointer();
+                self.cancel_layout_drag();
             }
             self.favorite_pointer_removed();
             for button in released {

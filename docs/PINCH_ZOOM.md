@@ -79,11 +79,12 @@ for the complete controls and preserved window state.
 ## Four- and Five-Finger Window Switching
 
 Slide four fingers left/right on a native touchpad, or four/five on a
-touchscreen, to select the next/previous window. A compact strip of live previews
-stays open until the gesture ends. Each selection focuses its window and pans
-the canvas to it with a quick 180 ms eased animation. Continued swiping steps
-through more windows; reversing direction moves back. Lift to keep the selected
-window, or press Escape to cancel and restore the previous focus and view.
+touchscreen, to select the next/previous window. Live windows animate into the
+same spatial grid as Alt+Tab and stay there until the gesture ends. Continued
+swiping changes the selected outline and title; reversing direction moves back.
+The original app keeps focus and the viewport stays fixed while held. Lift to
+activate and reveal the selected window, or press Escape to cancel and restore
+the original presentation.
 
 Recognition starts after 32 logical pixels of horizontal movement, with
 horizontal distance at least 1.5 times vertical distance. Further selections are

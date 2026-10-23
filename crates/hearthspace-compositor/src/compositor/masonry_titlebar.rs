@@ -22,6 +22,7 @@ use super::windows::TitlebarButton;
 use crate::config::TITLE_BAR_HEIGHT;
 
 mod fonts;
+pub(super) mod icons;
 mod paint;
 #[cfg(test)]
 mod tests;
@@ -36,6 +37,7 @@ pub(super) struct TitlebarState {
     pub appearance: hearthspace_ipc::Appearance,
     pub title: String,
     pub app_id: Option<String>,
+    pub icon: Option<Arc<hearthspace_shell::tray::TrayPixmap>>,
     pub active: bool,
     pub maximized: bool,
     pub hovered: Option<TitlebarButton>,
@@ -122,7 +124,8 @@ impl TitlebarBuffer {
             );
         }
         let palette_changed = self.state.appearance != state.appearance;
-        if self.state.app_id != state.app_id
+        if self.state.icon != state.icon
+            || self.state.app_id != state.app_id
             || self.state.active != state.active
             || text_changed
             || palette_changed

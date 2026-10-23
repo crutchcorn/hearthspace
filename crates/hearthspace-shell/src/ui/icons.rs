@@ -15,14 +15,22 @@ pub(super) enum Icon {
     SelectGroup,
     SelectDesktop,
     Search,
+    #[cfg(test)]
     Wifi,
+    #[cfg(test)]
     Power,
     Brightness,
-    Volume { muted: bool },
+    Volume {
+        muted: bool,
+    },
     ZoomIn,
     ZoomOut,
     Close,
-    Battery { percentage: u8, charging: bool },
+    #[cfg(test)]
+    Battery {
+        percentage: u8,
+        charging: bool,
+    },
 }
 
 impl Icon {
@@ -33,7 +41,9 @@ impl Icon {
             Self::SelectGroup => Glyph::Lasso,
             Self::SelectDesktop => Glyph::Cursor,
             Self::Search => Glyph::Search,
+            #[cfg(test)]
             Self::Wifi => Glyph::Wifi,
+            #[cfg(test)]
             Self::Power => Glyph::Power,
             Self::Brightness => Glyph::Sun,
             Self::Volume { muted: false } => Glyph::Volume,
@@ -41,6 +51,7 @@ impl Icon {
             Self::ZoomIn => Glyph::ZoomIn,
             Self::ZoomOut => Glyph::ZoomOut,
             Self::Close => Glyph::X,
+            #[cfg(test)]
             Self::Battery {
                 percentage,
                 charging,
@@ -54,6 +65,7 @@ impl Icon {
     fn size(self) -> f64 {
         match self {
             Self::Apps => 22.0,
+            #[cfg(test)]
             Self::Battery { .. } => 19.0,
             _ => 20.0,
         }

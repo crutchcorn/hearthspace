@@ -39,6 +39,7 @@ mod tests {
             appearance: hearthspace_ipc::Appearance::default(),
             title: "Hearthspace Settings".into(),
             app_id: Some("dev.hearthspace.Settings".into()),
+            icon: None,
             active: true,
             maximized: false,
             hovered: None,

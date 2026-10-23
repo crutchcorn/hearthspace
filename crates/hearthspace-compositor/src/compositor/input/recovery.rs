@@ -19,9 +19,12 @@ impl App {
     }
 
     pub(in crate::compositor) fn reset_session_input(&mut self) {
+        self.cancel_pending_shell_click();
         self.cancel_titlebar_pointer();
         self.reset_window_group_input();
         self.reset_desktop_input();
+        self.reset_layout_editor();
+        self.reset_layout_pointer_captures();
         self.reset_canvas_search();
         self.reset_favorite_input();
         // Drain queued search modifiers before releasing held keys; otherwise

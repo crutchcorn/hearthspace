@@ -1,5 +1,5 @@
 //! Modal overview input never reaches the applications behind its previews.
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 use smithay::{
     backend::input::{ButtonState, InputTime},
@@ -14,7 +14,7 @@ type Position = Point<f64, Logical>;
 #[derive(Default)]
 pub(in crate::compositor) struct OverviewInput {
     buttons: HashMap<u32, (Option<u64>, Position)>,
-    switcher_buttons: HashSet<u32>,
+    switcher_buttons: HashMap<u32, (Option<u64>, Position)>,
 }
 
 #[derive(Debug, PartialEq)]
@@ -27,7 +27,7 @@ enum Action {
 
 impl OverviewInput {
     fn button(
-        &mut self,
+        buttons: &mut HashMap<u32, (Option<u64>, Position)>,
         button: u32,
         state: ButtonState,
         active: bool,
@@ -35,7 +35,7 @@ impl OverviewInput {
         location: Position,
     ) -> Action {
         if state == ButtonState::Released
-            && let Some((pressed_target, origin)) = self.buttons.remove(&button)
+            && let Some((pressed_target, origin)) = buttons.remove(&button)
         {
             if active
                 && button == 0x110
@@ -50,7 +50,7 @@ impl OverviewInput {
             return Action::Forward;
         }
         if state == ButtonState::Pressed {
-            self.buttons.entry(button).or_insert((target, location));
+            buttons.entry(button).or_insert((target, location));
         }
         Action::Consume
     }
@@ -59,33 +59,53 @@ impl OverviewInput {
         self.buttons.clear();
         self.switcher_buttons.clear();
     }
-
-    fn consume_switcher_button(&mut self, button: u32, state: ButtonState, active: bool) -> bool {
-        if state == ButtonState::Released && self.switcher_buttons.remove(&button) {
-            return true;
-        }
-        if active && state == ButtonState::Pressed {
-            self.switcher_buttons.insert(button);
-        }
-        active
-    }
 }
 
 impl App {
+    pub(in crate::compositor) fn cancel_window_switcher_touch(&mut self) {
+        if self.touch_pointer_pressed
+            && let Some((target, _)) = self.overview_input.switcher_buttons.get_mut(&0x110)
+        {
+            *target = Some(0);
+        }
+        if self.touch_input.has_contacts() {
+            let actions = self.touch_input.interrupt();
+            self.apply_touch_actions(actions, InputTime::now());
+        }
+    }
+
     pub(super) fn handle_overview_button(&mut self, button: u32, state: ButtonState) -> bool {
         let switching = self.window_switcher_active();
-        if self
-            .overview_input
-            .consume_switcher_button(button, state, switching)
-        {
-            return true;
+        let target = self.window_switcher_window_at(self.pointer_location);
+        match OverviewInput::button(
+            &mut self.overview_input.switcher_buttons,
+            button,
+            state,
+            switching,
+            target,
+            self.pointer_location,
+        ) {
+            Action::Forward => {}
+            Action::Consume => return true,
+            Action::Dismiss => {
+                self.dismiss_window_switcher(true);
+                return true;
+            }
+            Action::Select(id) => {
+                let _ = self.select_window_switcher(id);
+                return true;
+            }
         }
         let target = self.overview_window_at(self.pointer_location);
         let active = self.overview_active();
-        match self
-            .overview_input
-            .button(button, state, active, target, self.pointer_location)
-        {
+        match OverviewInput::button(
+            &mut self.overview_input.buttons,
+            button,
+            state,
+            active,
+            target,
+            self.pointer_location,
+        ) {
             Action::Forward => false,
             Action::Consume => true,
             Action::Dismiss => {
@@ -130,35 +150,59 @@ mod tests {
     use super::*;
 
     #[test]
-    fn switcher_consumes_buttons_until_release_even_after_alt_or_fingers_lift() {
-        let mut input = OverviewInput::default();
-        assert!(input.consume_switcher_button(0x110, ButtonState::Pressed, true));
-        assert!(input.consume_switcher_button(0x110, ButtonState::Released, false));
-        assert!(!input.consume_switcher_button(0x110, ButtonState::Pressed, false));
-        assert!(input.consume_switcher_button(0x111, ButtonState::Released, true));
-        input.clear();
-        assert!(!input.consume_switcher_button(0x111, ButtonState::Released, false));
-    }
-
-    #[test]
     fn selection_requires_a_matching_click_and_never_leaks_its_release() {
         let mut input = OverviewInput::default();
         let point = (100.0, 100.0).into();
         assert_eq!(
-            input.button(0x110, ButtonState::Pressed, true, Some(1), point),
+            OverviewInput::button(
+                &mut input.buttons,
+                0x110,
+                ButtonState::Pressed,
+                true,
+                Some(1),
+                point
+            ),
             Action::Consume
         );
         assert_eq!(
-            input.button(0x110, ButtonState::Released, true, Some(1), point),
+            OverviewInput::button(
+                &mut input.buttons,
+                0x110,
+                ButtonState::Released,
+                true,
+                Some(1),
+                point
+            ),
             Action::Select(1)
         );
-        input.button(0x110, ButtonState::Pressed, true, Some(1), point);
+        OverviewInput::button(
+            &mut input.buttons,
+            0x110,
+            ButtonState::Pressed,
+            true,
+            Some(1),
+            point,
+        );
         assert_eq!(
-            input.button(0x110, ButtonState::Released, false, Some(1), point),
+            OverviewInput::button(
+                &mut input.buttons,
+                0x110,
+                ButtonState::Released,
+                false,
+                Some(1),
+                point
+            ),
             Action::Consume
         );
         assert_eq!(
-            input.button(0x110, ButtonState::Pressed, false, Some(1), point),
+            OverviewInput::button(
+                &mut input.buttons,
+                0x110,
+                ButtonState::Pressed,
+                false,
+                Some(1),
+                point
+            ),
             Action::Forward
         );
     }
@@ -171,7 +215,8 @@ mod tests {
             (0x111, Some(1), (100.0, 100.0)),
         ] {
             let mut input = OverviewInput::default();
-            input.button(
+            OverviewInput::button(
+                &mut input.buttons,
                 button,
                 ButtonState::Pressed,
                 true,
@@ -179,7 +224,14 @@ mod tests {
                 (100.0, 100.0).into(),
             );
             assert_eq!(
-                input.button(button, ButtonState::Released, true, target, point.into()),
+                OverviewInput::button(
+                    &mut input.buttons,
+                    button,
+                    ButtonState::Released,
+                    true,
+                    target,
+                    point.into()
+                ),
                 Action::Consume
             );
         }
@@ -190,12 +242,33 @@ mod tests {
         let mut input = OverviewInput::default();
         let point = (0.0, 0.0).into();
         assert_eq!(
-            input.button(0x110, ButtonState::Released, true, None, point),
+            OverviewInput::button(
+                &mut input.buttons,
+                0x110,
+                ButtonState::Released,
+                true,
+                None,
+                point
+            ),
             Action::Consume
         );
-        input.button(0x110, ButtonState::Pressed, true, None, point);
+        OverviewInput::button(
+            &mut input.buttons,
+            0x110,
+            ButtonState::Pressed,
+            true,
+            None,
+            point,
+        );
         assert_eq!(
-            input.button(0x110, ButtonState::Released, true, None, point),
+            OverviewInput::button(
+                &mut input.buttons,
+                0x110,
+                ButtonState::Released,
+                true,
+                None,
+                point
+            ),
             Action::Dismiss
         );
     }

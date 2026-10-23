@@ -16,53 +16,101 @@ impl App {
         &self,
         location: Point<f64, Logical>,
     ) -> Option<HitTarget> {
-        if self.session_locked() {
+        if self.session_locked() || self.window_switcher_active() {
             return None;
         }
-        // Shell chrome (the bar and the launcher palette) is drawn in screen
-        // space above the canvas, so it is hit-tested first using each surface's
-        // own screen-space origin.
-        for (window_index, window) in self.windows.iter().enumerate().rev() {
+        let mut order: Vec<_> = (0..self.windows.len()).collect();
+        order.sort_by_key(|index| {
+            (
+                self.layout_render_layer(*index).unwrap_or_else(|| {
+                    match self.windows[*index].kind {
+                        ManagedWindowKind::DesktopItem => 1,
+                        ManagedWindowKind::Normal => 10,
+                        ManagedWindowKind::ControlOsd => 130,
+                        _ => 110,
+                    }
+                }),
+                *index,
+            )
+        });
+        for window_index in order.into_iter().rev() {
+            let window = &self.windows[window_index];
+            if !window.mapped {
+                continue;
+            }
+            if self.compact_frame_backing(window_index)
+                || self
+                    .layout_group_clip(window_index)
+                    .is_some_and(|clip| !clip.contains(location.to_i32_round()))
+            {
+                continue;
+            }
+            if self.layout_confirmation_active() && !self.layout_confirmation_surface(window_index)
+            {
+                continue;
+            }
             let output = self
                 .output_logical_rect_for_name(window.shell_output_name.as_deref())
                 .unwrap_or_else(|| self.primary_output_logical_rect());
-            if (self.canvas_search_active() && !self.canvas_search_panel_allowed(window_index))
-                || self.canvas_search_result_identity(window_index).is_some()
-                || !window.mapped
-                || (!self.canvas_search_panel_allowed(window_index)
-                    && !self.shell_visible_on_output(output))
+            if !self.window_visible_on_output(window_index, output) {
+                continue;
+            }
+            if self.canvas_search_active() && !self.canvas_search_panel_allowed(window_index) {
+                continue;
+            }
+            if self.canvas_search_result_identity(window_index).is_some()
+                || self.is_window_switcher_caption(window_index)
+                || self.is_layout_tooltip(window_index)
             {
                 continue;
             }
             match window.kind {
-                ManagedWindowKind::ShellBar => {
-                    if let Some(origin) = self.shell_bar_logical_origin(window_index)
-                        && let scale = self.window_render_scale(window_index)
-                        && let Some(target) =
-                            self.hit_test_shell_surface(window_index, location, origin, scale)
+                ManagedWindowKind::ShellBar | ManagedWindowKind::Launcher => {
+                    let origin = if window.kind == ManagedWindowKind::ShellBar {
+                        self.shell_bar_logical_origin(window_index)
+                    } else {
+                        self.launcher_logical_origin(window_index)
+                    };
+                    if let Some(origin) = origin
+                        && let Some(target) = self.hit_test_shell_surface(
+                            window_index,
+                            location,
+                            origin,
+                            self.window_render_scale(window_index),
+                        )
                     {
                         return Some(target);
                     }
+                    continue;
                 }
-                ManagedWindowKind::Launcher => {
-                    if let Some(origin) = self.launcher_logical_origin(window_index)
-                        && let scale = self.window_render_scale(window_index)
-                        && let Some(target) =
-                            self.hit_test_shell_surface(window_index, location, origin, scale)
+                ManagedWindowKind::DesktopItem => {
+                    if !self
+                        .window_screen_bounds(window_index)
+                        .contains(location.to_i32_round())
                     {
-                        return Some(target);
+                        continue;
                     }
+                    let Some(root) = window.surface.wl_surface() else {
+                        continue;
+                    };
+                    let local = self.window_screen_to_surface(window_index, location);
+                    if let Some((surface, origin)) =
+                        under_from_surface_tree(&root, local, (0, 0), WindowSurfaceType::ALL)
+                    {
+                        return Some(HitTarget::Client {
+                            window_index,
+                            surface,
+                            surface_location: location - (local - origin.to_f64()),
+                        });
+                    }
+                    continue;
                 }
                 ManagedWindowKind::ShellWatcher | ManagedWindowKind::ControlOsd => continue,
-                ManagedWindowKind::Normal | ManagedWindowKind::DesktopItem => continue,
+                ManagedWindowKind::Normal => {}
             }
-        }
-
-        if self.canvas_search_active() {
-            return None;
-        }
-        for (window_index, window) in self.windows.iter().enumerate().rev() {
-            if window.kind != ManagedWindowKind::Normal || !window.mapped {
+            if self.frame_window_attached(window_index)
+                && self.layout_editor.expanded_window != Some(window.id)
+            {
                 continue;
             }
             if self
@@ -155,29 +203,6 @@ impl App {
                 return None;
             }
         }
-
-        for (window_index, window) in self.windows.iter().enumerate().rev() {
-            if !window.mapped || window.kind != ManagedWindowKind::DesktopItem {
-                continue;
-            }
-            if !self
-                .window_screen_bounds(window_index)
-                .contains(location.to_i32_round())
-            {
-                continue;
-            }
-            let root = window.surface.wl_surface()?;
-            let local = self.window_screen_to_surface(window_index, location);
-            if let Some((surface, origin)) =
-                under_from_surface_tree(&root, local, (0, 0), WindowSurfaceType::ALL)
-            {
-                return Some(HitTarget::Client {
-                    window_index,
-                    surface,
-                    surface_location: location - (local - origin.to_f64()),
-                });
-            }
-        }
         None
     }
 
@@ -190,7 +215,7 @@ impl App {
     ) -> Option<HitTarget> {
         let window = &self.windows[window_index];
         let root = window.surface.wl_surface()?;
-        let scale = scale.max(1.0);
+        let scale = scale.max(0.01);
         let origin_f64 = origin.to_f64();
         let unscaled_location = Point::from((
             origin_f64.x + (location.x - origin_f64.x) / scale,

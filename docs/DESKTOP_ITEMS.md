@@ -30,6 +30,27 @@ or refreshing the desktop does not read the contents of personal files.
 The desktop supports up to 4,096 combined items; exceeding that limit reports
 an error in Apps List while keeping its complete application catalog available.
 
+Drag selected files or folders onto an application's content to offer their
+local file URIs through Wayland drag-and-drop or X11 XDND. Applications choose
+whether to accept the files. Dropping onto an application leaves the desktop
+icons in their original positions; dropping onto the canvas moves them. Escape
+cancels the transfer without sending the files.
+
+Right-click an icon, or press Menu / Shift+F10 while it has keyboard focus, to
+open its context menu. Files support Open, Open With, Cut, Copy, Rename, Move to
+Trash, and Properties; folders also support Paste Into Folder and New Folder.
+Application shortcuts offer Open, favorite management, and Properties.
+Right-click empty canvas for New Folder, Paste, Select All, Arrange Icons,
+Open Desktop Folder, Background, Layout, and Settings. Menus support arrow keys,
+Enter, and Escape, remain inside the output, and scroll on smaller displays.
+
+Cut and Copy use the ordinary clipboard's file URI formats, including the GNOME
+copied-files format for Cut. Paste preserves existing destination files by
+choosing a copy name; Rename refuses to replace another entry. Trash uses GIO's
+Linux trash implementation. File operations run off the UI thread, and failures
+remain visible in the menu. Closing a menu during a transfer dismisses the menu;
+it does not cancel a file operation already in progress.
+
 Icons stay beneath application windows and move and zoom with the canvas.
 Each is an ordinary Xilem-rendered shell surface with the website's 88 by 96
 logical-pixel tile. Native file, folder and Settings glyphs use filled pale
@@ -39,7 +60,9 @@ artwork retains its colors. Themes and accent changes update existing surfaces.
 The compositor owns selection, hit testing, canvas positions, and drag movement.
 The shell owns accessible controls, icons, labels, catalog discovery, and app
 activation. This keeps dragging independent of shell repaint or IPC latency.
-Desktop surfaces have no window decorations and never enter the app dock,
+Compositor-owned surfaces negotiate server decoration ownership without drawing
+a titlebar. This avoids initializing a hidden client frame for every icon.
+Desktop surfaces never enter the app dock,
 window switcher, overview, or window-group selection.
 
 Positions use stable application IDs and desktop filenames. They are recorded

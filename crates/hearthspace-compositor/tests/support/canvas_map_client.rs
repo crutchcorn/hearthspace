@@ -10,8 +10,14 @@ use wayland_client::{
 };
 use wayland_protocols::xdg::shell::client::{xdg_surface, xdg_toplevel, xdg_wm_base};
 
+#[path = "canvas_map_client/decoration.rs"]
+mod decoration;
+#[path = "canvas_map_client/dnd.rs"]
+mod dnd;
 #[path = "canvas_map_client/pixels.rs"]
 mod pixels;
+#[path = "canvas_map_client/resize.rs"]
+mod resize;
 
 struct Window {
     surface: wl_surface::WlSurface,
@@ -22,10 +28,13 @@ struct Window {
     color: [u8; 4],
     rectangle: Option<pixels::ColoredRectangle>,
     alive: bool,
+    defer_buffer: bool,
 }
 
 #[derive(Default)]
 struct State {
+    dnd: dnd::State,
+    decorations: decoration::State,
     compositor: Option<wl_compositor::WlCompositor>,
     shm: Option<wl_shm::WlShm>,
     wm_base: Option<xdg_wm_base::XdgWmBase>,
@@ -85,6 +94,7 @@ impl MapClient {
             .get_xdg_surface(&surface, &handle, number);
         let toplevel = xdg_surface.get_toplevel(&handle, number);
         toplevel.set_app_id(app_id);
+        self.state.decorations.create(&toplevel, &handle, number);
         toplevel.set_min_size(size.0, size.1);
         toplevel.set_max_size(size.0, size.1);
         self.state.windows.push(Window {
@@ -96,6 +106,7 @@ impl MapClient {
             color,
             rectangle: None,
             alive: true,
+            defer_buffer: false,
         });
         surface.commit();
         self.sync();
@@ -114,6 +125,11 @@ impl MapClient {
         window.toplevel.set_max_size(size.0, size.1);
         window.surface.commit();
         self.sync();
+    }
+
+    pub(super) fn size(&mut self, number: usize) -> (i32, i32) {
+        self.sync();
+        self.state.windows[number].size
     }
 
     pub(super) fn repaint_with_size(&mut self, number: usize, size: (i32, i32)) {
@@ -231,12 +247,16 @@ impl Dispatch<wl_registry::WlRegistry, ()> for State {
                 "xdg_wm_base" => {
                     state.wm_base = Some(registry.bind(name, version.min(6), handle, ()))
                 }
+                "zxdg_decoration_manager_v1" => {
+                    state.decorations.bind(registry, name, handle);
+                }
                 "wl_seat" => {
                     let seat: wl_seat::WlSeat = registry.bind(name, version.min(7), handle, ());
                     seat.get_pointer(handle, ());
                     seat.get_keyboard(handle, ());
+                    state.dnd.seat = Some(seat);
                 }
-                _ => {}
+                _ => dnd::global(state, registry, name, &interface, version, handle),
             }
         }
     }
@@ -370,7 +390,9 @@ impl Dispatch<xdg_surface::XdgSurface, usize> for State {
     ) {
         if let xdg_surface::Event::Configure { serial } = event {
             surface.ack_configure(serial);
-            state.commit_buffer(*number, handle);
+            if !state.windows[*number].defer_buffer {
+                state.commit_buffer(*number, handle);
+            }
         }
     }
 }

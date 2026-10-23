@@ -1,6 +1,6 @@
 use super::*;
 
-fn session() -> UiTouch {
+pub(super) fn session() -> UiTouch {
     UiTouch {
         device: "screen".into(),
         slot: Some(2).into(),

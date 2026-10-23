@@ -6,12 +6,13 @@ use masonry::{
         PropertiesRef, PropertySet, RegisterCtx, Update, UpdateCtx, Widget, WidgetPod,
     },
     imaging::{ClipRef, Painter},
-    kurbo::{Axis, Point, Rect, Size},
+    kurbo::{Affine, Axis, Point, Rect, Size},
     layout::{AsUnit, LenReq, Length, SizeDef},
     parley::{
         FontFamilyName, StyleProperty,
         style::{FontFamily, FontWeight},
     },
+    peniko::{ImageAlphaType, ImageBrush, ImageData, ImageFormat},
     properties::{ContentColor, LineBreaking},
     widgets::Label,
 };
@@ -33,6 +34,7 @@ pub(super) struct Strip {
 enum Content {
     Text(WidgetPod<Label>),
     App(WidgetPod<IconWidget>),
+    Artwork(ImageBrush),
     Actions {
         state: TitlebarState,
         maximize: WidgetPod<IconWidget>,
@@ -64,6 +66,22 @@ impl Strip {
     }
 
     pub fn app(state: &TitlebarState) -> Self {
+        if let Some(image) = &state.icon {
+            return Self {
+                width: 44.,
+                natural_width: 44.,
+                content: Content::Artwork(
+                    ImageData {
+                        data: image.rgba.clone().into(),
+                        format: ImageFormat::Rgba8,
+                        alpha_type: ImageAlphaType::Alpha,
+                        width: image.width,
+                        height: image.height,
+                    }
+                    .into(),
+                ),
+            };
+        }
         let color = if state.active {
             state.palette().accent_decorative
         } else {
@@ -72,9 +90,16 @@ impl Strip {
         Self {
             width: 44.0,
             content: Content::App(WidgetPod::new(
-                icon(app_icon(state.app_id.as_deref()), 15.0)
-                    .color(color)
-                    .into_widget(),
+                icon(
+                    state
+                        .app_id
+                        .as_deref()
+                        .and_then(native_app_icon)
+                        .unwrap_or(Icon::Square),
+                    15.0,
+                )
+                .color(color)
+                .into_widget(),
             )),
             natural_width: 44.0,
         }
@@ -119,6 +144,7 @@ impl Widget for Strip {
         match &mut self.content {
             Content::Text(child) => ctx.register_child(child),
             Content::App(child) => ctx.register_child(child),
+            Content::Artwork(_) => {}
             Content::Actions {
                 maximize, close, ..
             } => {
@@ -155,6 +181,7 @@ impl Widget for Strip {
                 ctx.run_layout(child, Size::new(15.0, 15.0));
                 ctx.place_child(child, Point::new(13.0, 14.0));
             }
+            Content::Artwork(_) => {}
             Content::Actions {
                 maximize, close, ..
             } => {
@@ -178,6 +205,16 @@ impl Widget for Strip {
 
     fn paint(&mut self, ctx: &mut PaintCtx<'_>, _: &PropertiesRef<'_>, painter: &mut Painter<'_>) {
         painter.push_clip(ClipRef::fill(ctx.border_box()));
+        if let Content::Artwork(image) = &self.content {
+            let scale = 15. / f64::from(image.image.width.max(image.image.height).max(1));
+            painter.draw_image(
+                image,
+                Affine::translate((
+                    13. + (15. - f64::from(image.image.width) * scale) / 2.,
+                    14. + (15. - f64::from(image.image.height) * scale) / 2.,
+                )) * Affine::scale(scale),
+            );
+        }
         if let Content::Actions { state, .. } = &self.content {
             for button in [TitlebarButton::Maximize, TitlebarButton::Close] {
                 paint::action(painter, action_bounds(ACTIONS_WIDTH, button), state, button);
@@ -203,6 +240,7 @@ impl Widget for Strip {
         match &self.content {
             Content::Text(child) => ChildrenIds::from_slice(&[child.id()]),
             Content::App(child) => ChildrenIds::from_slice(&[child.id()]),
+            Content::Artwork(_) => ChildrenIds::new(),
             Content::Actions {
                 maximize, close, ..
             } => ChildrenIds::from_slice(&[maximize.id(), close.id()]),
@@ -210,13 +248,13 @@ impl Widget for Strip {
     }
 }
 
-fn app_icon(app_id: Option<&str>) -> Icon {
+pub(super) fn native_app_icon(app_id: &str) -> Option<Icon> {
     match app_id {
-        Some("dev.hearthspace.Settings" | "dev.hearthspace.settings" | "hearthspace-settings") => {
-            Icon::AppSettings
+        "dev.hearthspace.Settings" | "dev.hearthspace.settings" | "hearthspace-settings" => {
+            Some(Icon::AppSettings)
         }
-        Some("foot" | "footclient" | "org.codeberg.dnkl.foot") => Icon::Terminal,
-        _ => Icon::Square,
+        "foot" | "footclient" | "org.codeberg.dnkl.foot" => Some(Icon::Terminal),
+        _ => None,
     }
 }
 

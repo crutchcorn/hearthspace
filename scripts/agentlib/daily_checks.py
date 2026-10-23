@@ -356,7 +356,7 @@ def notifications(smoke):
             a11y(
                 smoke,
                 "activate",
-                "(//*[@role='button' and @name='Notifications'])[1]",
+                "(//*[(@role='button' or @role='toggle button') and @name='Notifications'])[1]",
             )
             smoke.until(
                 "notification dismissal button",

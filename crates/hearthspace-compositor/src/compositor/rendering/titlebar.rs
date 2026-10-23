@@ -30,13 +30,15 @@ impl App {
         // bounds while a client is still handling its configure. Match the
         // current frame and hit rectangles instead of stretching old controls.
         let pinned =
-            self.window_uses_output_coordinates(index) && self.canvas_search_pose(index).is_none();
+            self.window_uses_output_coordinates(index) && self.canvas_preview_pose(index).is_none();
         let native = if pinned {
             screen.size
         } else {
             self.title_bar_canvas_rect(index).size
         };
         let width = native.w.max(1);
+        let app_id = window_app_id(&self.windows[index].surface);
+        let icon = self.titlebar_app_icon(app_id.as_deref());
         let window = &self.windows[index];
         let (hovered, pressed) = self.titlebar_button_state(window.id);
         let state = masonry_titlebar::TitlebarState {
@@ -44,7 +46,8 @@ impl App {
             title: window_title(&window.surface)
                 .filter(|title| !title.trim().is_empty())
                 .unwrap_or_else(|| "Hearthspace".to_string()),
-            app_id: window_app_id(&window.surface),
+            app_id,
+            icon,
             active: !self.canvas_search_active()
                 && self.focused_normal_window_id == Some(window.id),
             maximized: window.presentation.maximized,
@@ -86,7 +89,7 @@ impl App {
                     ),
                     &part.raster.buffer,
                     Some(
-                        self.canvas_search_pose(index)
+                        self.canvas_preview_pose(index)
                             .map_or(1., |(_, alpha)| alpha as f32),
                     ),
                     Some(source),

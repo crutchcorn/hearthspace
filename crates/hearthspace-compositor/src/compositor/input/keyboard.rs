@@ -36,6 +36,7 @@ enum Shortcut {
     OverviewNext,
     OverviewPrevious,
     SwitcherCancel,
+    SwitcherCommit,
     ShellPanelDismiss,
     ShellCornerCycle { reverse: bool },
     Terminal,
@@ -163,6 +164,7 @@ impl App {
         let keyboard = self.keyboard.clone();
         let available = self.navigation_available();
         let mut toggle_launcher = false;
+        let mut layout_escape = false;
         let shell_panel_focused = self.active_shell_panel_index().is_some()
             || self.focused_shell_corner_index().is_some();
         let group_visible = self.group_keyboard_visible();
@@ -188,6 +190,12 @@ impl App {
                         .device_filter(code, state, symbol, !app.session_locked())
                 {
                     result
+                } else if (app.layout_editing() || app.layout_confirmation_active())
+                    && state == KeyState::Pressed
+                    && symbol == 0xff1b
+                {
+                    layout_escape = app.shortcuts.intercepted.insert(code);
+                    FilterResult::Intercept(None)
                 } else if state == KeyState::Pressed
                     && let Some(action) =
                         app.canvas_search_key_action(modifiers, symbol, shell_panel_focused)
@@ -197,6 +205,14 @@ impl App {
                             .intercepted
                             .insert(code)
                             .then_some(Shortcut::CanvasSearch(action)),
+                    )
+                } else if state == KeyState::Pressed
+                    && app.canvas_search_active()
+                    && let Some(action @ (Shortcut::Next | Shortcut::Previous)) =
+                        shortcut(modifiers, symbol)
+                {
+                    FilterResult::Intercept(
+                        app.shortcuts.intercepted.insert(code).then_some(action),
                     )
                 } else if app.overview_active() {
                     app.shortcuts
@@ -232,6 +248,9 @@ impl App {
         }
         if keyboard.modifier_state().alt != previous_modifiers.alt {
             self.refresh_grid_snapping();
+        }
+        if layout_escape {
+            self.layout_escape();
         }
         match intercepted {
             Some(Some(shortcut)) => self.run_shortcut(shortcut),
@@ -274,6 +293,10 @@ impl App {
                 {
                     tracing::debug!(%error, "window switching unavailable");
                 }
+                return;
+            }
+            Shortcut::SwitcherCommit => {
+                self.dismiss_window_switcher(false);
                 return;
             }
             Shortcut::SwitcherCancel => {
@@ -322,6 +345,7 @@ impl App {
             | Shortcut::OverviewActivate
             | Shortcut::OverviewNext
             | Shortcut::OverviewPrevious
+            | Shortcut::SwitcherCommit
             | Shortcut::SwitcherCancel
             | Shortcut::ShellPanelDismiss
             | Shortcut::ShellCornerCycle { .. }

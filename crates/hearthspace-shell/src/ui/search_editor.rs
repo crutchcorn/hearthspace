@@ -23,6 +23,7 @@ pub(super) struct SearchEditor {
     pub(super) text: TextArea<true>,
     placeholder: Label,
     composing: bool,
+    navigation: bool,
     font_size: f32,
     hint: &'static str,
     accessible_label: &'static str,
@@ -47,10 +48,18 @@ impl SearchEditor {
             placeholder: Label::new(hint)
                 .with_style(xilem::masonry::parley::StyleProperty::FontSize(font_size)),
             composing: false,
+            navigation: true,
             font_size,
             hint,
             accessible_label,
         }
+    }
+
+    /// Reuse the native editor without launcher-only arrow navigation.
+    pub(super) fn text_input(text: &str, label: &'static str) -> Self {
+        let mut input = Self::configured(text, label, label, 14.0);
+        input.navigation = false;
+        input
     }
 
     pub(super) fn reset_text(&mut self, text: &str) {
@@ -85,6 +94,7 @@ impl Widget for SearchEditor {
             }
         }
         if let TextEvent::Keyboard(event) = event
+            && self.navigation
             && !self.composing
             && !event.modifiers.ctrl()
             && !event.modifiers.alt()
@@ -171,7 +181,7 @@ impl Widget for SearchEditor {
         self.text.paint(ctx, props, painter);
     }
     fn accessibility_role(&self) -> Role {
-        if self.accessible_label == PLACEHOLDER {
+        if !self.navigation || self.accessible_label == PLACEHOLDER {
             Role::TextInput
         } else {
             Role::SearchInput

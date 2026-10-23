@@ -31,7 +31,8 @@ impl App {
     fn canvas_search_status(&self) -> Vec<u8> {
         let state = &self.canvas_search;
         let scene:Vec<_>=self.windows.iter().enumerate().filter_map(|(index,w)|{
-            let pose=state.poses.get(&w.id)?;let (display,alpha)=pose.current(Instant::now());
+            if self.canvas_preview.owner != Some(crate::compositor::canvas_preview::Owner::Search) { return None; }
+            let pose=self.canvas_preview.poses.get(&w.id)?;let (display,alpha)=pose.current(Instant::now());
             let id=self.desktop_id(index).or_else(||self.canvas_search_result_identity(index).map(|(_,id)|id)).unwrap_or_else(||format!("window:{}",w.id));
             Some(json!({"id":id,"window_id":w.id,"canonical":rect(pose.natural),"display":rect(display),"opacity":alpha,"matches":pose.matches}))
         }).collect();
@@ -144,8 +145,8 @@ impl CalloopData {
         let result = (|| -> Result<(), String> {
             if let Some(enabled) = text.strip_prefix("canvas-search-motion ") {
                 match enabled {
-                    "true" => app.canvas_search.reduced_motion = false,
-                    "false" => app.canvas_search.reduced_motion = true,
+                    "true" => app.canvas_preview.reduced_motion = false,
+                    "false" => app.canvas_preview.reduced_motion = true,
                     _ => return Err("invalid motion preference".into()),
                 }
                 Ok(())

@@ -41,13 +41,13 @@ for installation, updates, removal, and the remaining local acceptance checks.
 
 Super+Return opens a terminal. Tap Meta (Super), press Super+Space, or click the
 Apps List button to browse installed applications or search apps and running
-windows. Alt+Tab switches
-applications with live window previews until Alt is released. Alt+Shift+Tab moves
+windows. Alt+Tab gathers live windows into a grid until Alt is released to
+activate the selection. Alt+Shift+Tab moves
 backward. Super+arrow keys pan the canvas,
 and Super+M / Super+F toggle maximize / fullscreen.
 Slide three fingers to pan the canvas; pinch them to zoom. Swipe four fingers
 left/right on a touchpad, or four/five on a touchscreen, to switch windows with
-the same previews until you lift. Selection smoothly pans to the focused window.
+the same previews until you lift. Activation animates into the selected window.
 Pinch inward to open
 the live window overview, or outward to dismiss it: use four fingers on a native
 touchpad, or four/five on a touchscreen. The native libinput backend does not

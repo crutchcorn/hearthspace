@@ -44,6 +44,9 @@ impl App {
         &self,
         window_index: usize,
     ) -> Option<Point<i32, Logical>> {
+        if self.is_layout_surface(window_index) {
+            return self.layout_surface_origin(window_index);
+        }
         let output_name = self.windows[window_index].shell_output_name.as_deref();
         let output = self.output_logical_rect_for_name(output_name)?;
         Some(if let Some(corner) = self.shell_corner(window_index) {
@@ -67,6 +70,19 @@ impl App {
         &self,
         window_index: usize,
     ) -> Option<Point<i32, Logical>> {
+        if super::window_app_id(&self.windows[window_index].surface)
+            .as_deref()
+            .and_then(hearthspace_common::desktop_context::identity)
+            .is_some()
+        {
+            return self.desktop_context_origin(window_index);
+        }
+        if let Some(origin) = self.frame_popup_origin(window_index) {
+            return Some(origin);
+        }
+        if self.is_window_switcher_caption(window_index) {
+            return self.window_switcher_caption_origin(window_index);
+        }
         if self.is_canvas_search_panel(window_index)
             || self.canvas_search_result_identity(window_index).is_some()
         {

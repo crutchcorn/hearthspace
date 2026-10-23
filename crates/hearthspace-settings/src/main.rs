@@ -14,6 +14,7 @@ mod favorites;
 mod favorites_icons;
 mod favorites_search;
 mod favorites_view;
+mod frame_settings;
 mod monitor_layout_view;
 mod monitor_layout_widget;
 mod monitors;

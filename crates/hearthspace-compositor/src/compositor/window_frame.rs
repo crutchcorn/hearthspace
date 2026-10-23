@@ -48,6 +48,7 @@ struct FrameStyle {
     server_side: bool,
     photo: bool,
     panel: bool,
+    panel_radius: f32,
     opacity: f32,
 }
 
@@ -141,6 +142,7 @@ impl WindowFrameCache {
             server_side,
             photo: photo && server_side,
             panel: false,
+            panel_radius: 0.,
             opacity,
         };
         self.frame(renderer, id, style)
@@ -158,6 +160,20 @@ impl WindowFrameCache {
         emphasized: bool,
         opacity: f32,
     ) -> Option<PixelShaderElement> {
+        self.rounded_panel_shadow(renderer, id, window, zoom, emphasized, opacity, 20.)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn rounded_panel_shadow(
+        &mut self,
+        renderer: &mut GlesRenderer,
+        id: u64,
+        window: Rectangle<i32, Logical>,
+        zoom: f64,
+        emphasized: bool,
+        opacity: f32,
+        radius: f32,
+    ) -> Option<PixelShaderElement> {
         let style = FrameStyle {
             appearance: self.palette.appearance,
             window,
@@ -167,6 +183,7 @@ impl WindowFrameCache {
             server_side: false,
             photo: false,
             panel: true,
+            panel_radius: radius,
             opacity,
         };
         self.frame(renderer, id, style).map(|frame| frame.shadow)

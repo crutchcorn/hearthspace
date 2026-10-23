@@ -22,6 +22,7 @@ pub(super) fn state() -> (tempfile::TempDir, SettingsApp) {
             running: true,
             appearance_theme: Default::default(),
             navigation: Default::default(),
+            frame_settings: Default::default(),
             ai: AiSettings::default(),
             favorites,
             settings: Settings::default(),

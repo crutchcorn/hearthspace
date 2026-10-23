@@ -5,6 +5,7 @@ from .control import ControlError
 from .daily_checks import a11y, focused
 from .input import Input
 from .map_checks import SHELL, button_center, corner_surface
+from .shell_surfaces import observed_status
 
 
 def next_button(smoke, title):
@@ -40,7 +41,7 @@ def run(smoke):
         raise ControlError("dock fixture windows have ambiguous titles")
     for window in (other, original):
         button = next_button(smoke, window["title"])
-        current = smoke.control.status()
+        current = observed_status(smoke)
         surface = corner_surface(current, "apps")
         point = button_center(button["bounds"], current["outputs"][0], surface)
         with Input(smoke.control) as inputs:

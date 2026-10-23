@@ -19,6 +19,7 @@ const REQUEST_LIFETIME: Duration = Duration::from_secs(1);
 const MAX_PENDING_KEYS: usize = 64;
 const MAX_CANVAS_PENDING_KEYS: usize = 1024;
 
+mod modal;
 mod model;
 pub(in crate::compositor) use model::SearchRequest;
 use model::{Pending, PendingKey};
@@ -190,17 +191,10 @@ impl App {
             .as_ref()
             .is_some_and(|pending| pending.canvas)
             && state == KeyState::Pressed
+            && self.pending_canvas_modal_shortcut(code)
         {
-            let escape = self.keyboard.clone().with_xkb_state(self, |context| {
-                let xkb = context.xkb().lock().unwrap();
-                xkb.raw_syms_for_key_in_layout(code, xkb.active_layout())
-                    .iter()
-                    .any(|sym| sym.raw() == smithay::input::keyboard::keysyms::KEY_Escape)
-            });
-            if escape {
-                self.cancel_pending_search();
-                return false;
-            }
+            self.cancel_pending_search();
+            return false;
         }
         if !self.search_request.valid() || !self.search_input_available() {
             self.cancel_pending_search();

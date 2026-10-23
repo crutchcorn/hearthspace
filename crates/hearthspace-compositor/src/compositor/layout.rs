@@ -16,6 +16,7 @@ use crate::{
     geometry::CanvasPoint,
 };
 
+mod frame;
 #[cfg(test)]
 mod tests;
 
@@ -40,6 +41,10 @@ struct Layout {
     placements: Vec<Placement>,
     #[serde(default)]
     desktop: std::collections::BTreeMap<String, CanvasPoint>,
+    #[serde(default)]
+    frames: std::collections::BTreeMap<String, hearthspace_common::frame_layout::FrameLayout>,
+    #[serde(default)]
+    allow_hide_tools: bool,
 }
 
 impl Default for Layout {
@@ -51,6 +56,8 @@ impl Default for Layout {
             scale: 1.0,
             placements: Vec::new(),
             desktop: Default::default(),
+            frames: Default::default(),
+            allow_hide_tools: false,
         }
     }
 }
@@ -73,6 +80,13 @@ impl Layout {
             })
         {
             return Err("invalid desktop placements");
+        }
+        if self.frames.len() > 32
+            || self.frames.iter().any(|(output, layout)| {
+                output.is_empty() || output.len() > 256 || layout.validate().is_err()
+            })
+        {
+            return Err("invalid frame layouts");
         }
         let mut keys = std::collections::HashSet::new();
         for item in &self.placements {
@@ -260,12 +274,14 @@ impl App {
         // Keep spatial bookkeeping, but opening an application is a new window,
         // not an instruction to navigate to its remembered offscreen location.
         let _ = self.layout_store.claim(id, app_id);
+        self.restore_window_frame_placement(id);
     }
 
     pub(super) fn remember_layout(&mut self) {
         if self.layout_store.path.is_none() {
             return;
         }
+        self.remember_frame_layout();
         // Only memory changes while the display is active. Disk I/O happens on
         // initialization and normal exit, never inside the render/input loop.
         if self.viewport_animation.is_none() {

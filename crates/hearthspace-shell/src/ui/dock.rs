@@ -179,10 +179,21 @@ pub(super) fn image(state: &ShellState, name: Option<&str>) -> Option<ImageBrush
         .and_then(Clone::clone)
 }
 
+#[cfg(test)]
 pub(super) fn view(
     state: &ShellState,
     output: &ShellOutputInstance,
     available_width: f64,
+) -> impl WidgetView<ShellState> + use<> {
+    frame_view(state, output, available_width, false, &Default::default())
+}
+
+pub(super) fn frame_view(
+    state: &ShellState,
+    output: &ShellOutputInstance,
+    available_width: f64,
+    vertical: bool,
+    chain: &super::frame_layout::focus::Chain,
 ) -> impl WidgetView<ShellState> + use<> {
     let apps = apps(state);
     if available_width < MIN_OVERFLOW_WIDTH && (apps.len() > 1 || available_width < BUTTON_WIDTH) {
@@ -196,28 +207,38 @@ pub(super) fn view(
         {
             let output_key = output.key().to_owned();
             buttons.push(
-                dock_button(
-                    icons::Glyph::Next,
-                    format!("Next running app: {}", app.name),
-                    false,
-                    available_width.min(BUTTON_WIDTH),
-                    move |state| {
-                        // This remains the same control as its next-app label
-                        // changes, preserving focus for repeated keyboard use.
-                        let apps = self::apps(state);
-                        let next = apps
-                            .iter()
-                            .position(App::focused)
-                            .map_or(0, |index| (index + 1) % apps.len());
-                        if let Some(app) = apps.get(next) {
-                            activate(state, &output_key, &app.key);
-                        }
-                    },
+                super::frame_layout::focus::item(
+                    dock_button(
+                        icons::Glyph::Next,
+                        format!("Next running app: {}", app.name),
+                        false,
+                        available_width.min(BUTTON_WIDTH),
+                        move |state| {
+                            // This remains the same control as its next-app label
+                            // changes, preserving focus for repeated keyboard use.
+                            let apps = self::apps(state);
+                            let next = apps
+                                .iter()
+                                .position(App::focused)
+                                .map_or(0, |index| (index + 1) % apps.len());
+                            if let Some(app) = apps.get(next) {
+                                activate(state, &output_key, &app.key);
+                            }
+                        },
+                    ),
+                    chain,
+                    0,
                 )
                 .boxed(),
             );
         }
-        return flex_row(buttons).gap(GAP.px());
+        return flex_row(buttons)
+            .direction(if vertical {
+                xilem::masonry::kurbo::Axis::Vertical
+            } else {
+                xilem::masonry::kurbo::Axis::Horizontal
+            })
+            .gap(GAP.px());
     }
     let capacity = capacity(available_width, apps.len());
     let pages = apps.len().div_ceil(capacity).max(1);
@@ -226,7 +247,8 @@ pub(super) fn view(
         .iter()
         .skip(page * capacity)
         .take(capacity)
-        .map(|app| {
+        .enumerate()
+        .map(|(index, app)| {
             let key = app.key.clone();
             let output_key = output.key().to_owned();
             let image = app
@@ -237,16 +259,20 @@ pub(super) fn view(
             let focused = app.focused();
             identity::item(
                 app.key.clone(),
-                dock_button(
-                    icons::Glyph::App {
-                        image,
-                        count: app.windows.len(),
+                super::frame_layout::focus::item(
+                    dock_button(
+                        icons::Glyph::App {
+                            image,
+                            count: app.windows.len(),
+                            focused,
+                        },
+                        app.label(),
                         focused,
-                    },
-                    app.label(),
-                    focused,
-                    BUTTON_WIDTH,
-                    move |state| activate(state, &output_key, &key),
+                        BUTTON_WIDTH,
+                        move |state| activate(state, &output_key, &key),
+                    ),
+                    chain,
+                    index,
                 ),
             )
             .boxed()
@@ -255,21 +281,33 @@ pub(super) fn view(
     if pages > 1 {
         let output_key = output.key().to_owned();
         buttons.push(
-            dock_button(
-                icons::Glyph::Next,
-                format!("Next running apps (page {} of {pages})", page + 1),
-                false,
-                (available_width - BUTTON_WIDTH - GAP).min(BUTTON_WIDTH),
-                move |state| {
-                    if let Some(output) = state.outputs.iter_mut().find(|o| o.key() == output_key) {
-                        output.dock_page = (page + 1) % pages;
-                    }
-                },
+            super::frame_layout::focus::item(
+                dock_button(
+                    icons::Glyph::Next,
+                    format!("Next running apps (page {} of {pages})", page + 1),
+                    false,
+                    (available_width - BUTTON_WIDTH - GAP).min(BUTTON_WIDTH),
+                    move |state| {
+                        if let Some(output) =
+                            state.outputs.iter_mut().find(|o| o.key() == output_key)
+                        {
+                            output.dock_page = (page + 1) % pages;
+                        }
+                    },
+                ),
+                chain,
+                99,
             )
             .boxed(),
         );
     }
-    flex_row(buttons).gap(GAP.px())
+    flex_row(buttons)
+        .direction(if vertical {
+            xilem::masonry::kurbo::Axis::Vertical
+        } else {
+            xilem::masonry::kurbo::Axis::Horizontal
+        })
+        .gap(GAP.px())
 }
 
 fn dock_button(

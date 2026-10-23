@@ -49,10 +49,6 @@ use super::{
 };
 
 fn configure_server_side_decoration(toplevel: &ToplevelSurface) {
-    if window_kind_for_toplevel(toplevel).is_shell_chrome() {
-        return;
-    }
-
     toplevel.with_pending_state(|state| {
         state.decoration_mode = Some(DecorationMode::ServerSide);
     });
@@ -72,6 +68,9 @@ fn configure_client_side_decoration(toplevel: &ToplevelSurface) {
 
 pub(super) fn window_kind_for_toplevel(surface: &ToplevelSurface) -> ManagedWindowKind {
     let app_id = toplevel_app_id(surface);
+    if app_id.as_deref().is_some_and(is_frame_shell_app_id) {
+        return ManagedWindowKind::ShellBar;
+    }
     if app_id
         .as_deref()
         .and_then(hearthspace_common::desktop_item_id_from_app_id)
@@ -85,6 +84,13 @@ pub(super) fn window_kind_for_toplevel(surface: &ToplevelSurface) -> ManagedWind
         .is_some()
     {
         return ManagedWindowKind::ShellBar;
+    }
+    if app_id
+        .as_deref()
+        .and_then(hearthspace_common::window_switcher_caption_from_app_id)
+        .is_some()
+    {
+        return ManagedWindowKind::Launcher;
     }
     if app_id
         .as_deref()
@@ -115,10 +121,43 @@ pub(super) fn window_kind_for_toplevel(surface: &ToplevelSurface) -> ManagedWind
 
 pub(super) fn shell_output_name_for_toplevel(surface: &ToplevelSurface) -> Option<String> {
     let app_id = toplevel_app_id(surface)?;
-    shell_bar_output_name_from_app_id(&app_id)
+    hearthspace_common::frame_layout::frame_widget_from_app_id(&app_id)
+        .map(|(output, _)| output)
+        .or_else(|| {
+            hearthspace_common::frame_layout::frame_group_from_app_id(&app_id)
+                .map(|(output, _)| output)
+        })
+        .or_else(|| {
+            hearthspace_common::frame_layout::frame_group_grip_from_app_id(&app_id)
+                .map(|(output, _)| output)
+        })
+        .or_else(|| {
+            hearthspace_common::frame_layout::layout_editor_from_app_id(&app_id)
+                .map(|(_, output)| output)
+        })
+        .or_else(|| {
+            hearthspace_common::frame_layout::layout_confirm_from_app_id(&app_id)
+                .map(|(_, output)| output)
+        })
+        .or_else(|| {
+            hearthspace_common::frame_layout::layout_tooltip_from_app_id(&app_id)
+                .map(|(_, output)| output)
+        })
+        .or_else(|| shell_bar_output_name_from_app_id(&app_id))
         .or_else(|| shell_panel_output_name_from_app_id(&app_id))
         .or_else(|| control_osd_output_name_from_app_id(&app_id))
         .flatten()
+}
+
+fn is_frame_shell_app_id(id: &str) -> bool {
+    use hearthspace_common::frame_layout::*;
+    frame_widget_from_app_id(id).is_some()
+        || frame_group_from_app_id(id).is_some()
+        || frame_group_grip_from_app_id(id).is_some()
+        || layout_editor_from_app_id(id).is_some()
+        || layout_confirm_from_app_id(id).is_some()
+        || layout_tooltip_from_app_id(id).is_some()
+        || pinned_window_reveal_from_app_id(id).is_some()
 }
 
 fn toplevel_app_id(surface: &ToplevelSurface) -> Option<String> {
@@ -186,8 +225,12 @@ impl App {
         ) || self.session_locked()
             || (self.canvas_search_active() && !self.canvas_search_panel_allowed(window_index))
             || self.overview_active()
-            || (self.window_switcher_active()
-                && self.window_switcher_selected_id() != Some(self.windows[window_index].id))
+            || self.window_switcher_active()
+            || self.is_window_switcher_caption(window_index)
+            || self.is_layout_tooltip(window_index)
+            || (self.layout_confirmation_active()
+                && !self.layout_confirmation_surface(window_index))
+            || (self.is_layout_surface(window_index) && !self.layout_surface_visible(window_index))
         {
             return;
         }
@@ -329,7 +372,9 @@ impl App {
     }
 
     pub(super) fn raise_window(&mut self, window_index: usize) -> usize {
-        if self.windows[window_index].kind != ManagedWindowKind::Normal {
+        if self.windows[window_index].kind != ManagedWindowKind::Normal
+            && self.layout_render_layer(window_index) != Some(10)
+        {
             return window_index;
         }
 
@@ -362,7 +407,16 @@ impl App {
     }
 
     pub(super) fn normal_insert_index(&self) -> usize {
-        normal_insert_index_for_kinds(self.windows.iter().map(|window| window.kind))
+        normal_insert_index_for_kinds(self.windows.iter().enumerate().map(|(index, window)| {
+            if self
+                .layout_render_layer(index)
+                .is_some_and(|layer| layer <= 10)
+            {
+                ManagedWindowKind::Normal
+            } else {
+                window.kind
+            }
+        }))
     }
 
     pub(super) fn configure_toplevel(
@@ -375,6 +429,17 @@ impl App {
         let normal_bounds = (kind == ManagedWindowKind::Normal)
             .then(|| self.normal_toplevel_bounds(surface))
             .flatten();
+        // Both reading cached hints and changing pending state lock Smithay's
+        // surface data, so resolve the hints before entering that callback.
+        let desktop_size = (kind == ManagedWindowKind::DesktopItem).then(|| {
+            shell_size::fixed_size(surface.wl_surface()).unwrap_or(
+                (
+                    hearthspace_common::DESKTOP_SURFACE_WIDTH,
+                    hearthspace_common::DESKTOP_SURFACE_HEIGHT,
+                )
+                    .into(),
+            )
+        });
         let bar_size = (kind == ManagedWindowKind::ShellBar).then(|| {
             let output = self
                 .output_client_logical_size_for_name(shell_output_name)
@@ -390,7 +455,16 @@ impl App {
                         output,
                     )
                 })
-                .unwrap_or_else(|| (output.w, CONTROL_BAR_HEIGHT).into())
+                .unwrap_or_else(|| {
+                    if toplevel_app_id(surface)
+                        .as_deref()
+                        .is_some_and(is_frame_shell_app_id)
+                    {
+                        shell_size::fixed_size(surface.wl_surface()).unwrap_or((54, 54).into())
+                    } else {
+                        (output.w, CONTROL_BAR_HEIGHT).into()
+                    }
+                })
         });
         surface.with_pending_state(|state| {
             state
@@ -407,29 +481,23 @@ impl App {
                 ManagedWindowKind::ShellBar => {
                     state.size = bar_size;
                     state.bounds = bar_size;
-                    state.decoration_mode = Some(DecorationMode::ClientSide);
+                    state.decoration_mode = Some(DecorationMode::ServerSide);
                 }
                 ManagedWindowKind::Launcher | ManagedWindowKind::ControlOsd => {
                     // Content measurements arrive as fixed min/max hints. The
                     // palette sizing path then applies the output bounds and
                     // responsive search width.
-                    state.decoration_mode = Some(DecorationMode::ClientSide);
+                    state.decoration_mode = Some(DecorationMode::ServerSide);
                 }
                 ManagedWindowKind::ShellWatcher => {
                     state.size = Some((1, 1).into());
                     state.bounds = Some((1, 1).into());
-                    state.decoration_mode = Some(DecorationMode::ClientSide);
+                    state.decoration_mode = Some(DecorationMode::ServerSide);
                 }
                 ManagedWindowKind::DesktopItem => {
-                    state.size = Some(
-                        (
-                            hearthspace_common::DESKTOP_SURFACE_WIDTH,
-                            hearthspace_common::DESKTOP_SURFACE_HEIGHT,
-                        )
-                            .into(),
-                    );
-                    state.bounds = state.size;
-                    state.decoration_mode = Some(DecorationMode::ClientSide);
+                    state.size = desktop_size;
+                    state.bounds = desktop_size;
+                    state.decoration_mode = Some(DecorationMode::ServerSide);
                 }
                 ManagedWindowKind::Normal => state.bounds = normal_bounds,
             }
@@ -459,6 +527,7 @@ impl App {
                 ManagedWindowKind::ShellBar
                     | ManagedWindowKind::Launcher
                     | ManagedWindowKind::ControlOsd
+                    | ManagedWindowKind::DesktopItem
             ) && let Some(surface) = window.surface.wl_surface()
             {
                 self.configure_shell_palette_size(&surface);
@@ -477,8 +546,12 @@ impl App {
         toplevel: &ToplevelSurface,
         decoration: WindowDecoration,
     ) {
-        if window_kind_for_toplevel(toplevel).is_shell_chrome() {
-            configure_client_side_decoration(toplevel);
+        if window_kind_for_toplevel(toplevel) != ManagedWindowKind::Normal {
+            // The compositor owns these surfaces' presentation. Negotiating
+            // server decorations avoids a hidden client-side frame (including
+            // its portal/font lookups) for every tile, panel and control. Only
+            // Normal windows receive a titlebar in has_compositor_chrome.
+            configure_server_side_decoration(toplevel);
             return;
         }
 
@@ -497,7 +570,7 @@ impl App {
     }
 
     pub(super) fn title_bar_rect(&self, window_index: usize) -> Rectangle<i32, Logical> {
-        if self.canvas_search_pose(window_index).is_some() {
+        if self.canvas_preview_pose(window_index).is_some() {
             let rect = self.window_screen_bounds(window_index);
             return Rectangle::new(
                 rect.loc,

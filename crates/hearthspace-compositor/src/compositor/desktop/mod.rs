@@ -10,6 +10,8 @@ use std::{
     time::Instant,
 };
 
+mod context;
+mod dnd;
 mod geometry;
 mod input;
 mod keyboard;
@@ -34,6 +36,9 @@ pub(super) struct State {
     fresh: BTreeSet<String>,
     edge_tick: Instant,
     selection_cache: render::Cache,
+    context: context::State,
+    files: BTreeMap<String, String>,
+    file_drag: Option<dnd::Drag>,
 }
 
 impl Default for State {
@@ -54,6 +59,9 @@ impl Default for State {
             fresh: BTreeSet::new(),
             edge_tick: Instant::now(),
             selection_cache: Default::default(),
+            context: Default::default(),
+            files: BTreeMap::new(),
+            file_drag: None,
         }
     }
 }
@@ -280,6 +288,7 @@ impl App {
     }
 
     pub(in crate::compositor) fn cancel_desktop_gesture(&mut self) {
+        self.cancel_desktop_drop();
         if let Some(gesture) = self.desktop.gesture.take() {
             match gesture {
                 Gesture::Move { positions, .. } => self.restore_desktop_positions(&positions),
@@ -307,6 +316,7 @@ impl App {
 
     pub(in crate::compositor) fn reset_desktop_input(&mut self) {
         self.cancel_desktop_gesture();
+        self.reset_desktop_context();
         self.desktop.suppress_release = false;
         self.desktop.actions.clear();
         self.desktop.last_click = None;

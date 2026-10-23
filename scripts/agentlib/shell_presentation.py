@@ -76,8 +76,9 @@ def rounded(background, visible, surface):
                 )
             corners.append([x, y])
     # A missing or entirely transparent popup must not satisfy the corner test.
-    inset = max(3, round(4 * visible.metadata["scale"]))
-    inside = ((left + right) // 2, top + inset)
+    # An anchored panel can straddle the backdrop's edge; its upper padding
+    # may blend into similarly colored wallpaper even when the panel is drawn.
+    inside = ((left + right) // 2, (top + bottom) // 2)
     if difference(background.rgb(*inside), visible.rgb(*inside)) <= 3:
         raise ControlError(f"{surface['kind']} popup has no visible interior")
     return corners

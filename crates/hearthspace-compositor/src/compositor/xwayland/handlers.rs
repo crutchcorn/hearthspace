@@ -29,7 +29,7 @@ impl XWaylandShellHandler for App {
             "X11 window associated with wl_surface"
         );
         if surface.is_mapped() {
-            self.map_x11_window(surface, false);
+            self.map_x11_window(surface);
         }
     }
 }
@@ -81,15 +81,15 @@ impl XwmHandler for App {
             warn!(%error, x11_window = window.window_id(), "failed to map X11 window");
             return;
         }
-        self.map_x11_window(window, false);
+        self.map_x11_window(window);
     }
 
     fn map_window_notify(&mut self, _xwm: XwmId, window: X11Surface) {
-        self.map_x11_window(window, false);
+        self.map_x11_window(window);
     }
 
     fn mapped_override_redirect_window(&mut self, _xwm: XwmId, window: X11Surface) {
-        self.map_x11_window(window, true);
+        self.map_x11_window(window);
     }
 
     fn unmapped_window(&mut self, _xwm: XwmId, window: X11Surface) {
@@ -161,11 +161,12 @@ impl XwmHandler for App {
         ) && let Some(index) = self.window_index_for_x11(&window)
         {
             self.windows[index].titlebar = None;
-            self.windows[index].decoration = if window.is_decorated() {
-                WindowDecoration::ClientSide
-            } else {
-                WindowDecoration::ServerSide
-            };
+            self.windows[index].decoration =
+                if window.is_decorated() || window.is_override_redirect() {
+                    WindowDecoration::ClientSide
+                } else {
+                    WindowDecoration::ServerSide
+                };
             self.request_redraw();
         }
     }

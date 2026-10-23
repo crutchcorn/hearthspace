@@ -10,6 +10,7 @@ use crate::{RunOptions, config::*, geometry::CanvasPoint};
 use hearthspace_shell::app_catalog::AppCatalog;
 
 mod appearance;
+mod canvas_preview;
 mod canvas_search;
 mod capture;
 mod client;
@@ -21,6 +22,7 @@ mod handlers;
 mod idle;
 mod input;
 mod layout;
+mod layout_editor;
 mod masonry_titlebar;
 mod navigation;
 mod output;
@@ -285,8 +287,10 @@ struct App {
     keyboard: KeyboardHandle<Self>,
     viewport_offset: CanvasPoint,
     layout_store: layout::LayoutStore,
+    layout_editor: layout_editor::State,
     desktop: desktop::State,
     canvas_search: canvas_search::State,
+    canvas_preview: canvas_preview::State,
     viewport_scale: f64,
     viewport_animation: Option<ViewportAnimation>,
     overview: overview::Overview,
@@ -297,6 +301,7 @@ struct App {
     windows: Vec<ManagedWindow>,
     next_window_id: u64,
     idle_daemon: WindowIdleDaemon,
+    titlebar_icons: masonry_titlebar::icons::State,
     focused_normal_window_id: Option<u64>,
     shortcuts: input::KeyboardShortcuts,
     search_request: shell_integration::search::SearchRequest,
@@ -636,6 +641,8 @@ pub(in crate::compositor) fn initialize_app(
         crate::BackendSelection::Udev
     ));
     let (viewport_offset, viewport_scale) = layout_store.viewport();
+    let frame_layouts = layout_store.frame_layouts();
+    let allow_hide_tools = layout_store.allow_hide_tools();
     let app = App {
         display_handle: dh.clone(),
         compositor_state,
@@ -675,8 +682,10 @@ pub(in crate::compositor) fn initialize_app(
         viewport_offset,
         viewport_scale,
         layout_store,
+        layout_editor: layout_editor::State::from_layouts(frame_layouts, allow_hide_tools),
         desktop: Default::default(),
         canvas_search: Default::default(),
+        canvas_preview: Default::default(),
         viewport_animation: None,
         overview: overview::Overview::default(),
         window_switcher: switcher::WindowSwitcher::default(),
@@ -686,6 +695,7 @@ pub(in crate::compositor) fn initialize_app(
         windows: Vec::new(),
         next_window_id: 1,
         idle_daemon: WindowIdleDaemon::new(WINDOW_IDLE_THRESHOLDS),
+        titlebar_icons: Default::default(),
         focused_normal_window_id: None,
         shortcuts: input::KeyboardShortcuts::default(),
         search_request: Default::default(),

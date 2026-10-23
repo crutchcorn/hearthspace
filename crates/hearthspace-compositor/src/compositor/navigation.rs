@@ -32,6 +32,8 @@ impl App {
             && !self.overview_active()
             && !self.canvas_search_active()
             && !self.window_switcher_active()
+            && !self.layout_editing()
+            && !self.layout_confirmation_active()
             && !self.keyboard.is_grabbed()
             && !self.pointer.is_grabbed()
             && self.drag.is_none()
@@ -87,31 +89,12 @@ impl App {
         self.focus_window(id)
     }
 
-    pub(super) fn focus_switcher_window(&mut self, id: u64) -> Result<(), String> {
-        let index = self.navigation_window_index(id)?;
-        self.advance_viewport_animation();
-        let output = self
-            .window_switcher_active()
-            .then(|| self.window_switcher_output());
-        if let Some(target) = self.window_reveal_offset(index, true, output) {
-            self.start_owned_viewport_animation(target, self.viewport_scale);
-        } else {
-            // Output-pinned windows need no canvas travel. Stop any previous
-            // selection's pan at its current position instead of finishing it.
-            self.viewport_animation = None;
-        }
-        let index = self.raise_window(index);
-        if let Some(surface) = self.windows[index].surface.wl_surface() {
-            self.set_keyboard_focus_to_window(index, surface);
-        }
-        self.request_redraw();
-        Ok(())
-    }
-
     pub(super) fn close_window(&mut self, id: u64) -> Result<(), String> {
         self.check_navigation_available()?;
         let index = self.navigation_window_index(id)?;
-        self.windows[index].surface.send_close();
+        if !self.request_pinned_window_close(id) {
+            self.windows[index].surface.send_close();
+        }
         Ok(())
     }
 
@@ -173,6 +156,10 @@ impl App {
     }
 
     fn reveal_window(&mut self, index: usize, center: bool) {
+        if self.frame_window_attached(index) {
+            let _ = self.reveal_frame_window(self.windows[index].id);
+            return;
+        }
         if let Some(target) = self.window_reveal_offset(index, center, None) {
             self.viewport_animation = None;
             self.viewport_offset = target;

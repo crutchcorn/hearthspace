@@ -13,6 +13,10 @@ use xilem::{
 
 mod touch_scroll;
 pub use touch_scroll::{TouchScroll, touch_portal};
+mod semantic_button;
+pub use semantic_button::{
+    SemanticButton, SemanticButtonView, semantic_button, semantic_radio_button,
+};
 mod button_surface;
 pub use button_surface::{ButtonSurface, ButtonSurfaceView, button_surface};
 mod theme;

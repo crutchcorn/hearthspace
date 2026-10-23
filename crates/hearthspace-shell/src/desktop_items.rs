@@ -12,6 +12,8 @@ use std::{
 
 use crate::app_catalog::{AppCatalog, launch_command, reap_child};
 
+pub mod actions;
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct DesktopItem {
     pub id: String,

@@ -10,7 +10,9 @@ use smithay::{
     },
 };
 
+mod files;
 mod text;
+pub(in crate::compositor) use text::send_bytes;
 
 #[cfg(feature = "xwayland")]
 use {
@@ -29,6 +31,7 @@ use super::App;
 #[derive(Clone)]
 pub(super) enum SelectionData {
     Text(Arc<[u8]>),
+    Files(Arc<hearthspace_common::desktop_files::FileClipboard>),
     #[cfg(feature = "xwayland")]
     X11(ClipboardSource),
 }
@@ -41,14 +44,16 @@ pub(super) enum SelectionData {
 pub(super) struct ClipboardSource {
     pub(super) xwm: XwmId,
     generation: Arc<()>,
+    mime_types: Arc<[String]>,
 }
 
 #[cfg(feature = "xwayland")]
 impl ClipboardSource {
-    pub(super) fn new(xwm: XwmId) -> Self {
+    pub(super) fn new(xwm: XwmId, mime_types: &[String]) -> Self {
         Self {
             xwm,
             generation: Arc::new(()),
+            mime_types: mime_types.into(),
         }
     }
 
@@ -85,6 +90,11 @@ impl SelectionHandler for App {
     ) {
         match source {
             SelectionData::Text(bytes) => text::send_text(bytes.clone(), &mime_type, fd),
+            SelectionData::Files(files) => {
+                if let Some(bytes) = files.encode(&mime_type) {
+                    send_bytes(bytes.into(), fd);
+                }
+            }
             #[cfg(feature = "xwayland")]
             SelectionData::X11(source) => {
                 self.send_x11_selection(target, mime_type, fd, seat, source)

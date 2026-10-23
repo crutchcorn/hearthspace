@@ -8,11 +8,17 @@ from .control import ControlError
 from .daily_checks import a11y
 from .input import Input
 from .map_checks import SHELL, button_center, corner_surface, selector
+from .shell_surfaces import (
+    CONTROL_WIDGETS,
+    observed_status,
+    widget_surface,
+)
 
 BAR_ICONS = (
     "Select desktop items",
     "Search canvas",
     "Select window group",
+    "Change layout",
     "Apps List",
     "Notifications",
     "Canvas map",
@@ -40,7 +46,9 @@ CONTROL_CORNERS = {
     "Select desktop items": "canvas",
     "Search canvas": "canvas",
     "Select window group": "canvas",
+    "Change layout": "canvas",
     "Canvas map": "canvas",
+    "Canvas tools": "canvas",
     "Apps List": "apps",
 }
 
@@ -92,7 +100,7 @@ def click(smoke, name, kind=None, *, corner=None):
     query = f"{target} | {target}/ancestor::*[@role='frame'][1]"
 
     def geometry():
-        status = smoke.control.status()
+        status = observed_status(smoke)
         if len(status["outputs"]) != 1:
             raise ControlError("shell acceptance needs one active output")
         if kind:
@@ -106,11 +114,24 @@ def click(smoke, name, kind=None, *, corner=None):
             corner_name = corner or CONTROL_CORNERS[name]
             # shell_ready can precede the final corner's initial map. Only an
             # absent corner is pending; duplicates/wrong outputs remain errors.
-            mapped = any(
-                item["corner"] == corner_name
-                for item in status.get("shell_corners", [])
-            )
-            surface = corner_surface(status, corner_name) if mapped else None
+            if "frame_layout" in status:
+                widget = CONTROL_WIDGETS.get(
+                    name, "battery" if name.startswith("Battery:") else None
+                )
+                if widget is None:
+                    raise ControlError(f"no frame widget owns shell control {name}")
+                try:
+                    surface = widget_surface(status, widget)
+                except ControlError as error:
+                    if "not mapped" not in str(error):
+                        raise
+                    surface = None
+            else:
+                mapped = any(
+                    item["corner"] == corner_name
+                    for item in status.get("shell_corners", [])
+                )
+                surface = corner_surface(status, corner_name) if mapped else None
         output = status["outputs"][0]
         output_geometry = {
             key: output[key]
@@ -155,10 +176,11 @@ def click(smoke, name, kind=None, *, corner=None):
 
 def tab_to(smoke, name):
     """Prove real Tab navigation can focus an option without activating it."""
-    target = f"{selector(name, role='button')}[@focused='true']"
+    target = f"{button_selector(name)}[@focused='true']"
     with Input(smoke.control) as inputs:
-        for count in range(1, 9):
-            inputs.chord("tab")
+        for count in range(9):
+            if count:
+                inputs.chord("tab")
             matches = a11y(smoke, "find", target)["elements"]
             if matches:
                 smoke.record(
@@ -178,10 +200,19 @@ def bar(smoke):
             "@name='Notifications' or @name='System tray' or "
             "@name='Canvas tools' or @name='Running apps and Apps List'"
         )
+        names = " or ".join(f"@name='{name}'" for name in BAR_ICONS)
+        # Native Frame nodes need not expose their Winit titles. Identify the
+        # owner through its controls, then include every button in that owner
+        # so duplicate and obsolete actions remain visible to the assertions.
+        owners = (
+            f"{SHELL}//*[(@role='button' or @role='toggle button') "
+            f"and @showing='true' and ({names})]/ancestor::*[@role='frame'][1]"
+        )
+        legacy = f"{SHELL}//*[@role='panel' and ({corner_panels})]"
         buttons = a11y(
             smoke,
             "find",
-            f"{SHELL}//*[@role='panel' and ({corner_panels})]"
+            f"({owners} | {legacy})"
             "//*[(@role='button' or @role='toggle button') and @showing='true']",
         )["elements"]
         # Each corner registers a separate accessibility window. The first
@@ -195,7 +226,7 @@ def bar(smoke):
         name in names for name in REMOVED
     ):
         raise ControlError(f"unexpected corner shell controls: {names}")
-    status = smoke.control.status()
+    status = observed_status(smoke)
     output = status["outputs"][0]
     corners = [
         corner_surface(status, name)
@@ -230,7 +261,7 @@ def bar(smoke):
     for name in BAR_ICONS:
         button = next(item for item in buttons if item["name"] == name)
         button_center(
-            button.get("bounds"), output, corner_surface(status, CONTROL_CORNERS[name])
+            button.get("bounds"), output, widget_surface(status, CONTROL_WIDGETS[name])
         )
     editable = a11y(smoke, "find", f"{SHELL}//*[@showing='true' and @editable='true']")
     if editable["elements"]:

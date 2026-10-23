@@ -80,6 +80,14 @@ impl ShellEvents {
                             pending
                                 .retain(|previous| !matches!(previous, Event::CanvasSearchChanged));
                         }
+                        if matches!(request, Event::WindowSwitcherChanged) {
+                            pending.retain(|previous| {
+                                !matches!(previous, Event::WindowSwitcherChanged)
+                            });
+                        }
+                        if matches!(request, Event::LayoutChanged) {
+                            pending.retain(|previous| !matches!(previous, Event::LayoutChanged));
+                        }
                         pending.push(request);
                     }
                 }
@@ -154,6 +162,8 @@ enum Event {
     Gesture(super::favorite_events::GestureEvent),
     Desktop(super::desktop::Event),
     CanvasSearchChanged,
+    WindowSwitcherChanged,
+    LayoutChanged,
     CanvasSearchAction(u64),
     RetryDrawing,
     ReloadFavorites,
@@ -167,7 +177,11 @@ fn parse_event(bytes: &[u8]) -> Option<Event> {
     if value["version"].as_u64()? != 1 {
         return None;
     }
-    if value["action"] == "canvas-search-changed" {
+    if value["action"] == "layout-changed" {
+        Some(Event::LayoutChanged)
+    } else if value["action"] == "window-switcher-changed" {
+        Some(Event::WindowSwitcherChanged)
+    } else if value["action"] == "canvas-search-changed" {
         Some(Event::CanvasSearchChanged)
     } else if value["action"] == "canvas-search-action" {
         value["token"]
@@ -279,6 +293,8 @@ pub(super) fn shell_events_task()
             Event::Gesture(event) => super::favorite_events::apply(state, event),
             Event::Desktop(event) => super::desktop::apply_event(state, event),
             Event::CanvasSearchChanged => state.canvas_search.refresh.notify_one(),
+            Event::WindowSwitcherChanged => state.window_switcher.refresh.notify_one(),
+            Event::LayoutChanged => state.frame_layout.refresh.notify_one(),
             Event::CanvasSearchAction(token) => super::canvas_search::submit_command(
                 state,
                 format!("canvas-search-event-accept {token}"),
@@ -319,6 +335,16 @@ fn apply_request(state: &mut ShellState, request: ShellRequest) {
             .iter()
             .any(|output| output.key() == key && output.show_search)
     {
+        if super::frame_layout::popups::defer(
+            state,
+            &key,
+            super::frame_layout::popups::Popup::AppsRequest {
+                token: request.token,
+                toggle: request.toggle,
+            },
+        ) {
+            return;
+        }
         state.toggle_search(&key);
         if let Some(output) = state
             .outputs

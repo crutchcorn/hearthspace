@@ -47,6 +47,7 @@ impl App {
             let Some(gesture) = self.desktop.gesture.take() else {
                 return false;
             };
+            let app_drop = self.finish_desktop_drop();
             self.release_desktop_pointer(button, time);
             let mut positions_changed = false;
             match gesture {
@@ -59,7 +60,9 @@ impl App {
                 } => {
                     if moved {
                         positions_changed = true;
-                        if id.starts_with("app:") && self.desktop_over_apps_corner() {
+                        if app_drop {
+                            self.restore_desktop_positions(&positions);
+                        } else if id.starts_with("app:") && self.desktop_over_apps_corner() {
                             self.restore_desktop_positions(&positions);
                             let _ = self.desktop_action("favorite", &id);
                         } else {
@@ -183,13 +186,31 @@ impl App {
         }
     }
 
-    fn desktop_over_apps_corner(&self) -> bool {
+    pub(in crate::compositor) fn desktop_over_apps_corner(&self) -> bool {
         self.windows.iter().enumerate().any(|(index, window)| {
             window.mapped
                 && window.kind == ManagedWindowKind::ShellBar
-                && self.shell_corner(index) == Some(hearthspace_common::ShellCorner::Apps)
+                && (self.shell_corner(index) == Some(hearthspace_common::ShellCorner::Apps)
+                    || self
+                        .frame_widget_identity(index)
+                        .is_some_and(|(_, id)| id == "apps"))
                 && self.shell_bar_logical_origin(index).is_some_and(|origin| {
                     let size = self.window_geometry_size(index);
+                    if self.frame_target_for_window(index).is_some_and(|target| {
+                        self.layout_render_scale(index).is_some()
+                            && self
+                                .layout_editor
+                                .placed
+                                .iter()
+                                .find(|p| p.target == target)
+                                .is_some_and(|p| p.vertical)
+                    }) {
+                        return smithay::utils::Rectangle::new(
+                            (origin.x - 5, origin.y + size.h - 59).into(),
+                            (size.w + 10, 64).into(),
+                        )
+                        .contains(self.pointer_location.to_i32_round());
+                    }
                     // Apps List is the fixed rightmost button; running applications are not drop targets.
                     smithay::utils::Rectangle::new(
                         (origin.x + size.w - 59, origin.y - 5).into(),
@@ -227,7 +248,7 @@ impl App {
                             f64::from(anchor.y - origin.y),
                         )
                             .into();
-                        for (id, origin) in positions {
+                        for (id, origin) in positions.iter() {
                             if let Some(index) = self.desktop_index(id) {
                                 self.windows[index].position =
                                     geometry::moved_position(*origin, delta, false);
@@ -236,6 +257,14 @@ impl App {
                     }
                     self.cursor_surface = None;
                     self.cursor_icon = CursorIcon::Grabbing;
+                    if id.starts_with("file:") {
+                        let files: Vec<_> = positions
+                            .keys()
+                            .filter(|id| id.starts_with("file:"))
+                            .cloned()
+                            .collect();
+                        self.update_desktop_drop(&files);
+                    }
                     self.request_redraw();
                 }
                 *moved

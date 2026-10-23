@@ -22,7 +22,8 @@ impl App {
             return;
         }
         let first = !self.touch_input.has_contacts();
-        if !first && self.touch_pointer_pressed && self.touch_input.has_device_input(device) {
+        if !first && self.touch_pointer_pressed {
+            self.cancel_layout_drag();
             self.cancel_titlebar_pointer();
             self.cancel_desktop_gesture();
         }
@@ -37,19 +38,20 @@ impl App {
         }
         self.begin_ui_touch(device, slot, location, time, first);
         self.touch_input.down(device, slot, location);
-        // An existing switcher owns the whole chord. Suppress even a pending
-        // tap so lifting after Alt is released cannot click the revealed app.
-        // Search uses ordinary single-contact taps for its compositor-owned
-        // previews. Only extra contacts are suppressed; pinch stays blocked.
-        if (self.canvas_search_active() && !first)
+        // Canvas previews accept ordinary single-contact taps. An extra
+        // contact cancels the pending tap without activating the revealed app.
+        if ((self.canvas_search_active() || self.window_switcher_active() || self.layout_editing())
+            && !first)
             || (first
                 && !self.canvas_search_active()
-                && (self.group_touch_suppresses_gestures()
-                    || self.pinch_blocked()
-                    || self.window_switcher_active())
+                && !self.window_switcher_active()
+                && (self.group_touch_suppresses_gestures() || self.pinch_blocked())
                 && !self.session_locked())
         {
             self.cancel_canvas_search_touch();
+            if self.window_switcher_active() {
+                self.cancel_window_switcher_touch();
+            }
             let actions = self.touch_input.interrupt();
             self.apply_touch_actions(actions, time);
         }
@@ -64,7 +66,11 @@ impl App {
         if self.touch_pointer_pressed && self.touch_input.has_device_input(device) {
             self.cancel_titlebar_pointer();
             self.cancel_desktop_gesture();
+            self.cancel_layout_drag();
             self.cancel_canvas_search_touch();
+            if self.window_switcher_active() {
+                self.cancel_window_switcher_touch();
+            }
         }
         self.end_ui_touch(device, None.into(), true, InputTime::now());
         let actions = self.touch_input.remove_device(device);
@@ -75,7 +81,11 @@ impl App {
         self.cancel_titlebar_pointer();
         self.cancel_group_gesture();
         self.cancel_desktop_gesture();
+        self.cancel_layout_drag();
         self.cancel_canvas_search_touch();
+        if self.window_switcher_active() {
+            self.cancel_window_switcher_touch();
+        }
         self.shortcuts.cancel_meta_tap();
         self.cancel_ui_touch();
         self.cancel_pending_search();

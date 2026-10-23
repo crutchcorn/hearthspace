@@ -5,14 +5,13 @@ use super::{
 };
 use hearthspace_common::canvas_search::{Point, Rect};
 use std::{
-    collections::{BTreeMap, HashMap, VecDeque},
+    collections::{HashMap, VecDeque},
     time::Instant,
 };
 
 mod input;
 mod motion;
 mod protocol;
-mod render;
 mod scene;
 
 #[derive(Default)]
@@ -24,13 +23,10 @@ pub(super) struct State {
     session: Option<Session>,
     entries: Vec<Entry>,
     desktop_entries: Vec<Entry>,
-    reduced_motion: bool,
-    poses: BTreeMap<u64, motion::Pose>,
     buttons: HashMap<u32, (Option<String>, Point)>,
     field_buttons: std::collections::HashSet<u32>,
     actions: VecDeque<(u64, Instant, String, Option<String>)>,
     next_action: u64,
-    selection: super::selection::Cache,
 }
 
 struct Session {
@@ -75,9 +71,6 @@ impl App {
                 .as_ref()
                 .is_some_and(|selected| selected == &format!("window:{id}"))
         })
-    }
-    pub(in crate::compositor) fn canvas_search_presenting(&self) -> bool {
-        self.canvas_search_active() || !self.canvas_search.poses.is_empty()
     }
     pub(in crate::compositor) fn is_canvas_search_panel(&self, index: usize) -> bool {
         window_app_id(&self.windows[index].surface)
@@ -131,7 +124,7 @@ impl App {
                 .then(|| self.canvas_search.session.as_ref().unwrap().field)?
         } else {
             self.canvas_search_result_identity(index)?;
-            self.canvas_search_pose(index)?.0
+            self.canvas_preview_pose(index)?.0
         };
         Some(
             smithay::utils::Point::from((rect.x.round() as i32, rect.y.round() as i32))
@@ -179,6 +172,7 @@ impl App {
         self.canvas_search.mode = true;
         self.canvas_search.sequence = self.canvas_search.sequence.wrapping_add(1).max(1);
         let id = self.canvas_search.sequence;
+        self.canvas_preview.owner = Some(super::canvas_preview::Owner::Search);
         self.canvas_search.session = Some(Session {
             id,
             output: output.clone(),
@@ -229,7 +223,7 @@ impl App {
             if let Some((session, _)) = self.canvas_search_result_identity(index) {
                 // Preview cards are inert shell resources. Reusing their buffers
                 // avoids per-window renderer startup on every search opening.
-                self.canvas_search.poses.remove(&window.id);
+                self.canvas_preview.poses.remove(&window.id);
                 if session != 0 {
                     window.surface.send_close();
                 }
@@ -244,12 +238,15 @@ impl App {
         {
             self.set_keyboard_focus_to_window(index, surface);
         }
-        self.retarget_canvas_search_exit(Some(session.view), false);
+        self.retarget_canvas_preview_exit(Some(session.view), false);
         self.canvas_search_changed();
     }
     pub(in crate::compositor) fn reset_canvas_search(&mut self) {
         self.close_canvas_search(false);
-        self.canvas_search.poses.clear();
+        if self.canvas_preview.owner == Some(crate::compositor::canvas_preview::Owner::Search) {
+            self.canvas_preview.poses.clear();
+            self.canvas_preview.owner = None;
+        }
         self.canvas_search.buttons.clear();
         self.canvas_search.field_buttons.clear();
         self.canvas_search.actions.clear();
@@ -303,6 +300,9 @@ impl App {
                 .iter()
                 .position(|w| w.id == id && w.mapped)
                 .ok_or("window is unavailable")?;
+            if self.frame_window_attached(index) {
+                let _ = self.reveal_frame_window(self.windows[index].id);
+            }
             if !self.window_uses_output_coordinates(index) {
                 let output = smithay::utils::Rectangle::new(
                     (view.x.round() as i32, view.y.round() as i32).into(),
@@ -319,7 +319,7 @@ impl App {
             if let Some(surface) = self.windows[index].surface.wl_surface() {
                 self.set_keyboard_focus_to_window(index, surface);
             }
-            self.retarget_canvas_search_exit(Some(view), true);
+            self.retarget_canvas_preview_exit(Some(view), true);
         } else if result.kind == "item" {
             self.desktop_action("activate", &id)?;
         } else {

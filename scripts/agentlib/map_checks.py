@@ -5,6 +5,7 @@ import math
 from .control import ControlError
 from .daily_checks import a11y
 from .input import BUTTONS, Input
+from .shell_surfaces import corner_surface, observed_status
 
 SHELL = "//*[@role='application' and @name='hearthspace-shell']"
 MINIMAP = f"({SHELL}//*[@showing='true' and starts-with(@name,'Canvas minimap:')])[1]"
@@ -64,20 +65,6 @@ def button_center(bounds, output, surface=None):
     return x + surface["x"], y + surface["y"]
 
 
-def corner_surface(status, corner):
-    outputs = status["outputs"]
-    if len(outputs) != 1:
-        raise ControlError("shell corner acceptance requires one active output")
-    matches = [
-        surface
-        for surface in status.get("shell_corners", [])
-        if surface["corner"] == corner and surface.get("output") == outputs[0]["name"]
-    ]
-    if len(matches) != 1:
-        raise ControlError(f"expected one mapped {corner} shell corner")
-    return matches[0]
-
-
 def map_surface(smoke):
     status = smoke.control.status()
     maps = status.get("canvas_maps", [])
@@ -100,7 +87,7 @@ def click(smoke, name, *, on_press=None):
         lambda: a11y(smoke, "find", target)["elements"],
     )
     if name == "Canvas map":
-        status = smoke.control.status()
+        status = observed_status(smoke)
         outputs = status["outputs"]
         if len(outputs) != 1:
             raise ControlError("canvas-map acceptance requires one active output")

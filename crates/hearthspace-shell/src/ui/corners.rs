@@ -139,7 +139,7 @@ pub(super) fn canvas_view(
         flex_row((
             focus(super::desktop::selection_button(state)),
             focus(super::canvas_search::button(state)),
-            focus(super::window_group::button(&state.window_group)),
+            focus(super::window_group::button(state)),
             focus(super::canvas_map::map_button(output)),
         ))
         .main_axis_alignment(MainAxisAlignment::Center)

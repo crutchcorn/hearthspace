@@ -12,6 +12,7 @@ use xilem::{
 const CONTROL: &str = "hearthspace-control";
 const SUBTLE: &str = "hearthspace-subtle-control";
 const PRIMARY: &str = "hearthspace-primary-control";
+const DANGER: &str = "hearthspace-danger-control";
 const SELECTED: &str = "hearthspace-selected";
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -21,6 +22,7 @@ pub enum ButtonSurface {
     Subtle,
     Raised,
     Primary,
+    Danger,
 }
 
 impl ButtonSurface {
@@ -31,6 +33,7 @@ impl ButtonSurface {
             Self::Subtle => SUBTLE,
             Self::Raised => crate::TRANSLUCENT_FOCUS_CLASS,
             Self::Primary => PRIMARY,
+            Self::Danger => DANGER,
         }
     }
 }
@@ -120,6 +123,15 @@ pub(crate) fn properties(
     palette: &crate::Palette,
     focus_ring: xilem::Color,
 ) {
+    properties_for::<Button>(properties, palette, focus_ring);
+    properties_for::<crate::SemanticButton>(properties, palette, focus_ring);
+}
+
+fn properties_for<W: xilem::masonry::core::Widget>(
+    properties: &mut DefaultProperties,
+    palette: &crate::Palette,
+    focus_ring: xilem::Color,
+) {
     let mut stack = PropertyStack::new();
     stack.push_layer(
         Selector::classes(&[CONTROL]),
@@ -193,6 +205,20 @@ pub(crate) fn properties(
         ),
     );
     stack.push_layer(
+        Selector::classes(&[DANGER]),
+        (
+            Background::Color(xilem::Color::from_rgb8(0xba, 0x3b, 0x32)),
+            BorderColor {
+                color: xilem::Color::from_rgb8(0xba, 0x3b, 0x32),
+            },
+            xilem::masonry::properties::ContentColor::new(xilem::Color::WHITE),
+        ),
+    );
+    stack.push_layer(
+        Selector::classes(&[DANGER]).with_hovered(true),
+        Background::Color(xilem::Color::from_rgb8(0xd1, 0x48, 0x3e)),
+    );
+    stack.push_layer(
         Selector::new().with_focused(true),
         BorderColor { color: focus_ring },
     );
@@ -204,7 +230,7 @@ pub(crate) fn properties(
             color: palette.focus_ring_on_accent,
         },
     );
-    properties.insert_stack::<Button>(stack);
+    properties.insert_stack::<W>(stack);
 }
 
 #[cfg(test)]

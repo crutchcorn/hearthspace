@@ -1,7 +1,13 @@
 mod appearance;
 pub mod canvas_search;
 mod desktop;
+pub mod desktop_context;
+pub mod desktop_files;
+pub mod frame_layout;
 mod shell_corners;
+mod window_switcher;
+
+pub use window_switcher::{window_switcher_caption_app_id, window_switcher_caption_from_app_id};
 
 pub use appearance::{AccentColor, Appearance, ColorMode};
 pub use canvas_search::{
@@ -164,6 +170,7 @@ pub fn tray_menu_output_name_from_app_id(app_id: &str) -> Option<Option<String>>
 
 pub fn shell_panel_output_name_from_app_id(app_id: &str) -> Option<Option<String>> {
     launcher_output_name_from_app_id(app_id)
+        .or_else(|| desktop_context::identity(app_id).map(|(_, output)| output))
         .or_else(|| canvas_search_from_app_id(app_id).map(|(_, output)| output))
         .or_else(|| canvas_map_output_name_from_app_id(app_id))
         .or_else(|| notifications_output_name_from_app_id(app_id))

@@ -28,6 +28,7 @@ mod pointer;
 mod recovery;
 mod remote;
 mod scroll;
+mod shell_grab;
 mod titlebar;
 mod touch;
 mod touch_tracker;
@@ -159,7 +160,11 @@ pub(in crate::compositor) fn handle_input_event<B: InputBackend>(
                 vertical = ?scroll_amount_for_axis(&event, Axis::Vertical),
                 "pointer axis input"
             );
-            if state.zoom_from_scroll_amount(scroll_amount_for_axis(&event, Axis::Vertical)) {
+            if state.layout_group_axis(
+                scroll_amount_for_axis(&event, Axis::Horizontal).unwrap_or(0.),
+                scroll_amount_for_axis(&event, Axis::Vertical).unwrap_or(0.),
+            ) || state.zoom_from_scroll_amount(scroll_amount_for_axis(&event, Axis::Vertical))
+            {
                 return;
             }
 
@@ -206,6 +211,9 @@ pub(in crate::compositor) fn handle_input_event<B: InputBackend>(
             {
                 state.cancel_titlebar_pointer();
                 state.cancel_canvas_search_touch();
+                if state.window_switcher_active() {
+                    state.cancel_window_switcher_touch();
+                }
             }
             state.favorite_touch_up(&event.device().id(), event.slot(), true);
             state.end_ui_touch(&event.device().id(), event.slot(), true, event.time());

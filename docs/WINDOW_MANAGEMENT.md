@@ -129,28 +129,34 @@ grab, or session lock. Locking or losing the active native VT dismisses it.
 
 ## Held window switcher
 
-Alt+Tab opens a compact strip of live window previews and selects the next
-application. Keep Alt held and press Tab again to continue; add Shift to move
-backward. The strip stays open until Alt is released. Escape cancels switching
-and restores the previous focus and canvas view.
+Alt+Tab gathers live windows into a centered spatial grid and selects the most
+recently used alternative. Keep Alt held and press Tab again to continue; add
+Shift to move backward. Releasing Alt, pressing Enter, or clicking a preview
+activates it. Escape or an empty-background click cancels switching and restores
+the original presentation.
 
 Swipe four fingers left on a native touchpad, or four/five on a touchscreen,
 to select the next window. Swipe right to select the previous window. The same
-strip remains open while the gesture is held. Continued movement steps through
+grid remains open while the gesture is held. Continued movement steps through
 additional windows, and reversing direction moves back. Lift to keep the chosen
 window. See [canvas gestures](./PINCH_ZOOM.md) for recognition thresholds and the
 native backend's five-finger touchpad limitation.
 
-Each selection focuses and raises the application immediately, then pans the
-canvas to it over 180 ms with easing. A new selection starts from the currently
-displayed position, including during an unfinished pan. The canvas remains
-visible behind the strip; zoom, window positions, sizes, and presentation states
-are preserved. Fullscreen and maximized windows remain pinned to their outputs.
+The original application retains focus while previews are shown. Cycling only
+changes the accent outline and the title badge below the selected preview;
+hovering does not change selection. The viewport and saved window positions,
+sizes, zoom, and presentation states remain unchanged until activation. Existing
+window buffers and decorations animate into the grid over 360 ms, while desktop
+icons move out of view and fade. Corner controls return when switching ends.
+Activation reveals the selected window and animates from its preview into the
+final view. Fullscreen and maximized clients keep their presentation state.
+The shared search motion preference honors reduced animations.
 
-The order stays fixed for the held interaction, with wrapping at either end.
-Closed windows are removed, and the selected preview stays visible when there
-are more windows than fit across the output. Typing, clicks, and scrolling are
-consumed while the strip is open. The keyboard and gesture cannot take over each
+The initial order is front to back with the focused app first, and stays fixed
+for the held interaction, with wrapping at either end. All previews fit into
+rows; closed windows are removed and new windows join the next interaction.
+Typing, arrow keys, and scrolling are consumed while the grid is open. Preview
+clicks never reach application contents. The keyboard and gesture cannot take over each
 other's active switcher. Locking or losing the native VT dismisses it and clears
 the held input state. Unplugging the keyboard cannot leave Alt or its overlay
 stuck; a backend-synthesized release keeps the selection, otherwise removal
@@ -220,8 +226,9 @@ output, and preview/card rectangles in logical screen coordinates. Read that
 state again after windows close or outputs change before acting on a preview.
 
 Unlocked status also includes `window_switcher` with its active input source,
-selected window ID, output, and preview rectangles. `viewport.animating` lets
-agents wait for the smooth focus pan to finish. Both window overlays are omitted
+selected window ID, output, and preview rectangles. `window_switcher.animating`
+lets agents wait for preview motion to finish, including the return animation
+after dismissal. Both window overlays are omitted
 from status while the session is locked.
 
 Window metadata distinguishes canvas position, screen geometry, client content
