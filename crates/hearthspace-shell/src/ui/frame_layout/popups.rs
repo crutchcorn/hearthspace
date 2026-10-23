@@ -4,19 +4,27 @@ use crate::ui::{popup::PopupKind, quick_panel::Kind, state::ShellState};
 #[derive(Clone, Debug)]
 pub(in crate::ui) enum Popup {
     Apps,
-    AppsRequest { token: u64, toggle: bool },
+    AppsRequest {
+        token: u64,
+        toggle: bool,
+    },
     Notifications,
     Power,
     Map,
     Quick(Kind),
     TrayMenu(crate::tray::ItemKey),
+    DockTrayMenu {
+        app: String,
+        item: crate::tray::ItemKey,
+        menu_path: String,
+    },
 }
 
 impl Popup {
     pub(super) fn toggles(&self) -> bool {
         !matches!(
             self,
-            Self::AppsRequest { toggle: false, .. } | Self::TrayMenu(_)
+            Self::AppsRequest { toggle: false, .. } | Self::TrayMenu(_) | Self::DockTrayMenu { .. }
         )
     }
 
@@ -25,6 +33,18 @@ impl Popup {
             (Self::Apps | Self::AppsRequest { .. }, Self::Apps | Self::AppsRequest { .. }) => true,
             (Self::Quick(a), Self::Quick(b)) => a == b,
             (Self::TrayMenu(a), Self::TrayMenu(b)) => a == b,
+            (
+                Self::DockTrayMenu {
+                    app: a,
+                    item: ai,
+                    menu_path: ap,
+                },
+                Self::DockTrayMenu {
+                    app: b,
+                    item: bi,
+                    menu_path: bp,
+                },
+            ) => a == b && ai == bi && ap == bp,
             (Self::Notifications, Self::Notifications)
             | (Self::Power, Self::Power)
             | (Self::Map, Self::Map) => true,
@@ -40,6 +60,9 @@ impl Popup {
             Self::Map => output.show_map,
             Self::Quick(kind) => output.show_controls && output.quick_panel == *kind,
             Self::TrayMenu(item) => output.tray.open && output.tray.item.as_ref() == Some(item),
+            Self::DockTrayMenu { item, .. } => {
+                output.tray.open && output.tray.item.as_ref() == Some(item)
+            }
         }
     }
 
@@ -52,6 +75,7 @@ impl Popup {
                 | (Self::Map, PopupKind::Map)
                 | (Self::Quick(_), PopupKind::Controls)
                 | (Self::TrayMenu(_), PopupKind::Tray)
+                | (Self::DockTrayMenu { .. }, PopupKind::Tray)
         )
     }
 }
@@ -77,8 +101,12 @@ pub(in crate::ui) fn defer(state: &mut ShellState, key: &str, popup: Popup) -> b
         Popup::Notifications => ("notifications", output.notifications_app_id()),
         Popup::Power => ("power", output.power_app_id()),
         Popup::Map => ("tools", output.map_app_id()),
-        Popup::TrayMenu(_) => (
-            "tray",
+        Popup::TrayMenu(_) | Popup::DockTrayMenu { .. } => (
+            if matches!(popup, Popup::DockTrayMenu { .. }) {
+                "apps"
+            } else {
+                "tray"
+            },
             output
                 .output_name
                 .as_deref()
@@ -171,6 +199,11 @@ pub(in crate::ui) fn open(state: &mut ShellState, key: &str, popup: Popup) {
         Popup::Map => state.toggle_map(key),
         Popup::Quick(kind) => state.toggle_quick_panel(key, kind),
         Popup::TrayMenu(item) => crate::ui::tray_state::open_menu(state, key, &item),
+        Popup::DockTrayMenu {
+            app,
+            item,
+            menu_path,
+        } => crate::ui::dock::tray::open_menu(state, key, &app, &item, &menu_path),
     }
     state.frame_layout.opening_popup = false;
 }

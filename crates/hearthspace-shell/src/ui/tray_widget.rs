@@ -25,6 +25,7 @@ pub(super) struct Appearance {
     pub description: String,
     pub image: Option<ImageBrush>,
     pub icon: bool,
+    pub dock: Option<super::dock::icons::Glyph>,
     pub scroll_in_parent: bool,
     pub attention: bool,
     pub enabled: bool,
@@ -43,6 +44,7 @@ impl Default for Appearance {
             description: String::new(),
             image: None,
             icon: false,
+            dock: None,
             scroll_in_parent: false,
             attention: false,
             enabled: true,
@@ -293,6 +295,9 @@ impl Widget for TrayButton {
     ) -> Length {
         if self.appearance.separator {
             return 1.0.px();
+        }
+        if self.appearance.dock.is_some() {
+            return 44.0.px();
         }
         if self.appearance.icon || axis == Axis::Vertical {
             return 34.0.px();

@@ -1,4 +1,4 @@
-//! The real desktop worker, persistent store and retained launcher share this
+//! The real desktop worker, persistent store, dock and launcher share this
 //! boundary. Only compositor authorization is supplied by the socket fixture.
 use super::*;
 use crate::{
@@ -99,21 +99,23 @@ fn app_order(state: &ShellState) -> Vec<String> {
 }
 
 #[test]
-fn context_add_and_remove_update_the_retained_grid_list_and_saved_launcher_order() {
+fn context_favorites_update_the_dock_without_reordering_the_launcher_or_losing_gestures() {
     let directory = tempfile::tempdir().unwrap();
     let mut ui = Ui::new(fixture(directory.path()), view, (650, 560));
     assert_eq!(app_order(&ui.state).len(), 3);
     ui.button("Open: Editor");
+    assert_eq!(crate::ui::dock::desired_width(&ui.state), 44.0);
     ui.state.favorites.error = Some("Previous favorite write failed".into());
     change_favorite(&mut ui.state, 8, true);
     ui.rebuild(&view);
     ui.dispatch(&view);
     assert_eq!(
         app_order(&ui.state),
-        ["Open: Settings", "Open: Editor", "Open: Alpha"]
+        ["Open: Alpha", "Open: Editor", "Open: Settings"]
     );
     assert!(ui.state.favorites.error.is_none());
-    let favorite = ui.button("Open: Editor, favorite");
+    assert_eq!(crate::ui::dock::desired_width(&ui.state), 92.0);
+    let favorite = ui.button("Open: Editor");
     let ordinary = ui.button("Open: Alpha");
     let favorite_bounds = ui
         .harness
@@ -128,14 +130,14 @@ fn context_add_and_remove_update_the_retained_grid_list_and_saved_launcher_order
         .bounding_box()
         .unwrap();
     assert_eq!(favorite_bounds.y0, ordinary_bounds.y0);
-    assert!(favorite_bounds.x1 <= ordinary_bounds.x0);
+    assert!(ordinary_bounds.x1 <= favorite_bounds.x0);
 
     // Reopening the persistent store must retain the same order and old drawing.
     ui.state.favorites.store =
         FavoriteStore::load(directory.path().join("favorites.json")).unwrap();
     assert_eq!(
         app_order(&ui.state),
-        ["Open: Settings", "Open: Editor", "Open: Alpha"]
+        ["Open: Alpha", "Open: Editor", "Open: Settings"]
     );
     assert_eq!(
         ui.state.favorites.store.recognize(SHAPE).unwrap(),
@@ -143,7 +145,7 @@ fn context_add_and_remove_update_the_retained_grid_list_and_saved_launcher_order
     );
     ui.activate(ui.button("Show app list"));
     ui.dispatch(&view);
-    let favorite = ui.button("Open: Editor, favorite");
+    let favorite = ui.button("Open: Editor");
     let ordinary = ui.button("Open: Alpha");
     let favorite_bounds = ui
         .harness
@@ -158,26 +160,27 @@ fn context_add_and_remove_update_the_retained_grid_list_and_saved_launcher_order
         .bounding_box()
         .unwrap();
     assert_eq!(favorite_bounds.x0, ordinary_bounds.x0);
-    assert!(favorite_bounds.y1 <= ordinary_bounds.y0);
+    assert!(ordinary_bounds.y1 <= favorite_bounds.y0);
     search_selection::choose(
         &mut ui.state,
         "eDP-1",
         &search_selection::EntryId::App("editor.desktop".into()),
     );
     change_favorite(&mut ui.state, 9, false);
+    assert_eq!(crate::ui::dock::desired_width(&ui.state), 44.0);
     search_selection::reconcile(&mut ui.state);
     ui.rebuild(&view);
     ui.dispatch(&view);
     assert_eq!(
         app_order(&ui.state),
-        ["Open: Settings", "Open: Alpha", "Open: Editor"]
+        ["Open: Alpha", "Open: Editor", "Open: Settings"]
     );
     assert_eq!(
         ui.state.outputs[0].selected_result,
         Some(search_selection::EntryId::App("editor.desktop".into()))
     );
     ui.button("Open: Editor");
-    ui.button("Open: Settings, favorite");
+    ui.button("Open: Settings");
     let saved = FavoriteStore::load(directory.path().join("favorites.json")).unwrap();
     assert_eq!(saved.entries(), ui.state.favorites.store.entries());
     assert_eq!(
@@ -185,14 +188,14 @@ fn context_add_and_remove_update_the_retained_grid_list_and_saved_launcher_order
         Recognition::Match("settings.desktop".into())
     );
 
-    // Reinsert the badge after removal in the retained list, then return to grid.
+    // Re-pinning preserves the retained list and grid controls.
     change_favorite(&mut ui.state, 10, true);
     ui.rebuild(&view);
     ui.dispatch(&view);
-    ui.button("Open: Editor, favorite");
+    ui.button("Open: Editor");
     ui.activate(ui.button("Show app grid"));
     ui.dispatch(&view);
-    ui.button("Open: Editor, favorite");
+    ui.button("Open: Editor");
 }
 
 #[test]
@@ -234,7 +237,7 @@ fn missing_and_repeated_favorites_keep_all_installed_apps_once_and_search_stays_
     state.favorites.store.add("editor.desktop").unwrap();
     assert_eq!(
         app_order(&state),
-        ["Open: Settings", "Open: Editor", "Open: Alpha"]
+        ["Open: Alpha", "Open: Editor", "Open: Settings"]
     );
     assert_eq!(
         launcher::results(&state, &state.outputs[1]).len(),

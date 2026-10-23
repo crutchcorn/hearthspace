@@ -220,7 +220,7 @@ def launch_mode(smoke):
         lambda: a11y(
             smoke,
             "find",
-            f"{SHELL}//*[@role='button' and @name='Open: {APP_NAME}, favorite']",
+            f"{SHELL}//*[@role='button' and @name='Open: {APP_NAME}']",
         )["elements"],
     )
     checks.click(smoke, "Draw to launch", "search")

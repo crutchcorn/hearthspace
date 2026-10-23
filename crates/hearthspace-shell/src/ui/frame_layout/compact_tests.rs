@@ -47,7 +47,7 @@ fn compact_running_apps_page_inside_remaining_bar_width_and_keep_launcher_reacha
     }
     ui.button("Switch to app1");
     ui.button("Apps List");
-    ui.activate(ui.button("Next running apps (page 1 of 3)"));
+    ui.activate(ui.button("Next apps (page 1 of 3)"));
     ui.dispatch(&apps);
     ui.button("Switch to app2");
     ui.button("Apps List");

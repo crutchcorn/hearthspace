@@ -33,14 +33,9 @@ pub(super) fn row(
     let key = output.key().to_owned();
     let output_name = output.output_name.clone();
     let activation = entry.clone();
-    let label = if entry.is_favorite(state) {
-        format!("{}, favorite", entry.label())
-    } else {
-        entry.label()
-    };
     ResultView {
         key: output.key().into(),
-        label,
+        label: entry.label(),
         entry: Some(entry),
         selected,
         target,

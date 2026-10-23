@@ -5,13 +5,17 @@ The default layout places independent native controls in four corners on each ou
 - **Top left — Notifications:** one button combines the bell with “All clear” or the number of new notifications and opens the notification panel.
 - **Top right — System tray:** application tray icons, clock/calendar, Wi-Fi, brightness, sound, battery when available, and Power. Tray icons appear only while apps publish them; see [application tray](TRAY.md).
 - **Bottom left — Canvas tools:** [desktop-item selection](DESKTOP_ITEMS.md), [canvas search](CANVAS_SEARCH.md), window-group selection, Change layout, and the [canvas map](CANVAS_MAP.md).
-- **Bottom right — App dock and Apps List:** running apps and the installed-app browser.
+- **Bottom right — App dock and Apps List:** favorite and running apps, plus the installed-app browser.
 
-The dock groups windows by application ID. Activating an icon focuses and reveals
-an existing window on the infinite canvas; repeated activation cycles through that
-app's windows. The active app is highlighted, dots indicate running windows, and
-icons update as windows open or close. Apps without desktop icons have a window
-symbol. A page button keeps every running app reachable when space is limited.
+The dock shows favorites in saved order, followed by other running apps. Favorites
+remain visible when closed; activating one launches it on that dock's output.
+Windows matching the same installed desktop entry share one icon, including a
+matching favorite. Activating a running app focuses and reveals an existing window
+on the infinite canvas; repeated activation cycles through that app's windows.
+The active app is highlighted, dots indicate running windows, and closed favorites
+have no dot. Apps without desktop icons have a window symbol. A page button keeps
+every app reachable when space is limited. Matching application status menus share
+their visible dock icon; unmatched or unavailable dock menus retain their tray icon.
 
 Each panel opens beside its control. Top attachments open downward, bottom
 attachments upward, and side attachments inward. Canvas controls use the side
@@ -62,9 +66,9 @@ and App dock on the active output. Super+Shift+F6 moves backward. Tab navigates
 through the independent controls in a group; Enter activates the focused control. Escape closes an open panel
 or returns from the corner to the most recent app without moving the canvas.
 
-An empty query shows favorite applications first in saved order, followed by
-the remaining installed applications alphabetically, in a four-column icon grid.
-Favorites have a pin marker in both icon and list views.
+An empty query shows all installed applications alphabetically in a four-column
+icon grid, with artwork centered above each name. Favorites appear in the dock;
+pinning an app does not change its position or presentation in Apps List.
 The view switch selects an icon grid or a list with app descriptions; narrow
 panels reduce the grid column count. The Draw tab reuses the existing favorite
 gesture pad and matching flow. Typing filters apps

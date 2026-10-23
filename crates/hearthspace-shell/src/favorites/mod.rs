@@ -137,7 +137,8 @@ impl FavoriteStore {
     }
 
     /// Retarget one saved shortcut only when the complete replacement can be
-    /// committed. A different app's existing shortcut is never overwritten.
+    /// committed. Keep the original app pinned in its saved position; a
+    /// different app's existing shortcut is never overwritten.
     pub fn replace_gesture_app(
         &mut self,
         original_id: &str,
@@ -166,12 +167,8 @@ impl FavoriteStore {
         // an in-memory candidate leaves both disk and live state untouched if
         // validation or the final optimistic write fails.
         let mut candidate = Self::in_memory();
-        candidate.entries = self
-            .entries
-            .iter()
-            .filter(|entry| entry.app_id != original_id)
-            .cloned()
-            .collect();
+        candidate.entries = self.entries.clone();
+        candidate.entries[original].gesture = None;
         candidate.set_gesture(app_id, points)?;
         self.replace(candidate.entries)
     }

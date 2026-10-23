@@ -39,18 +39,6 @@ impl Entry {
             Self::App(app) => format!("Open: {}", app.name),
         }
     }
-
-    pub(super) fn is_favorite(&self, state: &ShellState) -> bool {
-        let Self::App(app) = self else {
-            return false;
-        };
-        state
-            .favorites
-            .store
-            .entries()
-            .iter()
-            .any(|favorite| favorite.app_id == app.id)
-    }
 }
 
 pub(super) fn results(state: &ShellState, output: &ShellOutputInstance) -> Vec<Entry> {
@@ -59,17 +47,10 @@ pub(super) fn results(state: &ShellState, output: &ShellOutputInstance) -> Vec<E
         return Vec::new();
     }
     if query.is_empty() {
-        let favorites = state.favorites.store.entries();
-        return favorites
+        return state
+            .catalog
+            .apps()
             .iter()
-            .filter_map(|favorite| state.catalog.app_by_id(&favorite.app_id))
-            .chain(
-                state
-                    .catalog
-                    .apps()
-                    .iter()
-                    .filter(|app| !favorites.iter().any(|favorite| favorite.app_id == app.id)),
-            )
             .cloned()
             .map(|app| Entry::App(Box::new(app)))
             .collect();

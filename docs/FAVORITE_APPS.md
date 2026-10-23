@@ -3,7 +3,8 @@
 Open **Settings → Search → Gestures** to assign a drawn shortcut to an installed
 app. Choose **Add gesture for …**, draw one continuous shape, then save it.
 Cancelling a recording does not add anything. Existing assignments offer
-**Change gesture** and **Remove gesture**; there is no separate favorites list.
+**Change gesture** and **Remove gesture**. Removing a gesture keeps the app pinned
+in the dock; use the desktop app's **Remove from favorites** action to unpin it.
 
 Draw by clicking and dragging with a mouse or one finger on a trackpad, or by
 drawing directly with one finger on a touchscreen. You can redraw before saving.
@@ -13,10 +14,10 @@ ID and the existing safe app launcher, never a saved shell command.
 Open Apps List with Meta, its dock button, or a one-finger upward touchscreen
 swipe starting on the bottom-right dock. Short taps still activate dock buttons;
 horizontal/downward swipes and multi-contact interruptions do not open Apps List.
-The drawing icon at the right of the search input enables **Draw to launch**.
-The adjacent Settings icon opens the Settings app directly on its Search tab.
-Empty search does not list assigned apps. Typing searches applications and open
-windows as usual.
+The **Draw** tab enables **Draw to launch**. Its Settings icon opens the Settings
+app directly on its Search tab. An empty query in the **Apps** tab lists all
+installed apps alphabetically; favorites stay in the dock even when closed.
+Typing searches applications and open windows as usual.
 
 Release the mouse button or lift your finger after drawing: a clear match launches
 the app immediately. An unrecognized or ambiguous shape keeps search open and
@@ -37,8 +38,9 @@ Assignments are saved atomically in
 write errors instead of silently replacing the configuration. Search reloads
 changes automatically. Removed applications remain visible as unavailable
 assignments so they can be removed in Settings. The existing favorites file format
-is retained for compatibility: saved shapes are preserved, while old entries
-without a gesture are hidden and retired on the next successful assignment save.
+is retained: saving a gesture preserves other favorites and their order, including
+apps pinned without a gesture. Settings lists gesture assignments; the dock lists
+installed favorites with or without gestures.
 
 ## Input and automation
 

@@ -1,5 +1,5 @@
 //! Reuse the tray's bounded icon decoder on a worker and expose named glyphs.
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use hearthspace_ui_components as components;
 use xilem::{
@@ -26,21 +26,22 @@ const MAX_ICONS: usize = 128;
 type Icons = BTreeMap<String, Option<TrayPixmap>>;
 
 pub(super) fn requests(state: &ShellState) -> Vec<String> {
-    let mut names = apps(state)
-        .into_iter()
-        .filter_map(|app| app.icon)
-        .collect::<Vec<_>>();
-    names.extend(
-        state
-            .catalog
-            .apps()
-            .iter()
-            .filter_map(|app| app.icon.clone()),
-    );
-    names.sort();
-    names.dedup();
-    names.truncate(MAX_ICONS);
-    names
+    let dock_names = apps(state).into_iter().filter_map(|app| app.icon);
+    let catalog_names = state
+        .catalog
+        .apps()
+        .iter()
+        .filter_map(|app| app.icon.clone());
+    // A large catalog must not evict a visible pin merely because its icon name
+    // sorts late. Keep the returned set sorted for the decoder's cache lookup.
+    let mut names = BTreeSet::new();
+    for name in dock_names.chain(catalog_names) {
+        names.insert(name);
+        if names.len() == MAX_ICONS {
+            break;
+        }
+    }
+    names.into_iter().collect()
 }
 
 pub(in crate::ui) fn task() -> impl View<ShellState, (), ViewCtx, Element = NoElement> + use<> {
@@ -94,7 +95,7 @@ fn image(pixmap: TrayPixmap) -> ImageBrush {
 }
 
 #[derive(Clone, PartialEq)]
-pub(super) enum Glyph {
+pub(in crate::ui) enum Glyph {
     App {
         image: Option<ImageBrush>,
         count: usize,
@@ -202,82 +203,7 @@ impl Widget for IconWidget {
         painter: &mut Painter<'_>,
     ) {
         let palette = *props.get::<components::Palette>(ctx.property_cache());
-        let stroke = Stroke::new(1.6);
-        let center = self.width / 2.0;
-        match &self.glyph {
-            Glyph::App {
-                image,
-                count,
-                focused,
-            } => {
-                if let Some(image) = image {
-                    let scale = 24.0 / f64::from(image.image.width.max(image.image.height).max(1));
-                    painter.draw_image(
-                        image,
-                        Affine::translate((
-                            (self.width - f64::from(image.image.width) * scale) / 2.0,
-                            (30.0 - f64::from(image.image.height) * scale) / 2.0,
-                        )) * Affine::scale(scale),
-                    );
-                } else {
-                    // A recognizable app window replaces missing theme assets.
-                    painter
-                        .stroke(
-                            Rect::new(center - 10.0, 6.0, center + 10.0, 24.0),
-                            &stroke,
-                            palette.text,
-                        )
-                        .draw();
-                    painter
-                        .stroke(
-                            Line::new((center - 10.0, 11.0), (center + 10.0, 11.0)),
-                            &stroke,
-                            palette.text,
-                        )
-                        .draw();
-                    painter
-                        .fill(Circle::new((center - 7.0, 8.5), 0.8), palette.text)
-                        .draw();
-                }
-                let color = if *focused {
-                    palette.accent
-                } else {
-                    palette.text_muted
-                };
-                let dots = (*count).clamp(1, 3);
-                for index in 0..dots {
-                    let x = center + (index as f64 - (dots - 1) as f64 / 2.0) * 6.0;
-                    painter.fill(Circle::new((x, 32.0), 1.5), color).draw();
-                }
-            }
-            Glyph::Next => {
-                if self.width <= 2.0 {
-                    return;
-                }
-                let centers = if self.width < 26.0 {
-                    vec![self.width / 2.0]
-                } else {
-                    vec![center - 3.5, center + 3.5]
-                };
-                let span = ((self.width - 2.0) / 2.0).min(3.0);
-                for x in centers {
-                    painter
-                        .stroke(
-                            Line::new((x - span, 12.0), (x + span, 18.0)),
-                            &stroke,
-                            palette.text,
-                        )
-                        .draw();
-                    painter
-                        .stroke(
-                            Line::new((x + span, 18.0), (x - span, 24.0)),
-                            &stroke,
-                            palette.text,
-                        )
-                        .draw();
-                }
-            }
-        }
+        self.glyph.paint(self.width, 0.0, &palette, painter);
     }
 
     fn accessibility_role(&self) -> Role {
@@ -294,5 +220,94 @@ impl Widget for IconWidget {
 
     fn make_trace_span(&self, id: WidgetId) -> tracing::Span {
         tracing::trace_span!("DockIcon", id = id.trace())
+    }
+}
+
+impl Glyph {
+    pub(in crate::ui) fn paint(
+        &self,
+        width: f64,
+        top: f64,
+        palette: &components::Palette,
+        painter: &mut Painter<'_>,
+    ) {
+        let stroke = Stroke::new(1.6);
+        let center = width / 2.0;
+        match self {
+            Glyph::App {
+                image,
+                count,
+                focused,
+            } => {
+                if let Some(image) = image {
+                    let scale = 24.0 / f64::from(image.image.width.max(image.image.height).max(1));
+                    painter.draw_image(
+                        image,
+                        Affine::translate((
+                            (width - f64::from(image.image.width) * scale) / 2.0,
+                            top + (30.0 - f64::from(image.image.height) * scale) / 2.0,
+                        )) * Affine::scale(scale),
+                    );
+                } else {
+                    // A recognizable app window replaces missing theme assets.
+                    painter
+                        .stroke(
+                            Rect::new(center - 10.0, top + 6.0, center + 10.0, top + 24.0),
+                            &stroke,
+                            palette.text,
+                        )
+                        .draw();
+                    painter
+                        .stroke(
+                            Line::new((center - 10.0, top + 11.0), (center + 10.0, top + 11.0)),
+                            &stroke,
+                            palette.text,
+                        )
+                        .draw();
+                    painter
+                        .fill(Circle::new((center - 7.0, top + 8.5), 0.8), palette.text)
+                        .draw();
+                }
+                let color = if *focused {
+                    palette.accent
+                } else {
+                    palette.text_muted
+                };
+                let dots = (*count).min(3);
+                for index in 0..dots {
+                    let x = center + (index as f64 - (dots - 1) as f64 / 2.0) * 6.0;
+                    painter
+                        .fill(Circle::new((x, top + 32.0), 1.5), color)
+                        .draw();
+                }
+            }
+            Glyph::Next => {
+                if width <= 2.0 {
+                    return;
+                }
+                let centers = if width < 26.0 {
+                    vec![width / 2.0]
+                } else {
+                    vec![center - 3.5, center + 3.5]
+                };
+                let span = ((width - 2.0) / 2.0).min(3.0);
+                for x in centers {
+                    painter
+                        .stroke(
+                            Line::new((x - span, top + 12.0), (x + span, top + 18.0)),
+                            &stroke,
+                            palette.text,
+                        )
+                        .draw();
+                    painter
+                        .stroke(
+                            Line::new((x + span, top + 18.0), (x - span, top + 24.0)),
+                            &stroke,
+                            palette.text,
+                        )
+                        .draw();
+                }
+            }
+        }
     }
 }

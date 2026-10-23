@@ -53,15 +53,7 @@ pub(super) fn content(
                 .iter()
                 .any(|part| part.id == "tray" && part.merged)
     });
-    let desired = widgets::size(
-        state,
-        "tray",
-        vertical,
-        false,
-        grouped,
-        Default::default(),
-        false,
-    );
+    let desired = widgets::tray_size(state, output.key(), vertical, grouped);
     let bounded = layout.map_or(desired, |layout| size(layout, vertical, desired));
     let overflow = !grouped
         && if vertical {
@@ -69,7 +61,7 @@ pub(super) fn content(
         } else {
             desired.0 > bounded.0
         };
-    let strip = crate::ui::tray_view::frame_strip(output, &state.tray, vertical, chain, overflow);
+    let strip = crate::ui::tray_view::frame_strip(output, state, vertical, chain, overflow);
     if grouped {
         strip.boxed()
     } else {

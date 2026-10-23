@@ -39,7 +39,7 @@ pub(super) async fn read(connection: &Connection, key: ItemKey) -> Result<Item, 
 
 pub(super) fn from_properties(key: ItemKey, properties: &Properties) -> Result<Item, String> {
     let id = string(properties, "Id").ok_or("Tray item has no Id")?;
-    let title = string(properties, "Title").unwrap_or(id);
+    let title = string(properties, "Title").unwrap_or_else(|| id.clone());
     let status = match string(properties, "Status").as_deref() {
         Some("Passive") => TrayStatus::Passive,
         Some("NeedsAttention") => TrayStatus::NeedsAttention,
@@ -73,6 +73,7 @@ pub(super) fn from_properties(key: ItemKey, properties: &Properties) -> Result<I
     Ok(Item {
         view: TrayItem {
             key,
+            id,
             title: limit(&title),
             tooltip: limit(&tooltip),
             status,

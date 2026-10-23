@@ -64,8 +64,10 @@ package behavior.
 
 The desktop keeps awareness above and actions below: notifications at the top
 left, system tray and clock at the top right, canvas tools at the bottom left,
-and the running-app dock with Apps List at the bottom right. Click a dock icon
-to reveal an app on the canvas; click again to cycle through its windows.
+and the app dock with Apps List at the bottom right. Favorites stay in the dock
+when closed; click one to launch it. Click a running app to reveal it on the
+canvas; click again to cycle through its windows. Apps List shows the full
+installed catalog alphabetically.
 Super+F6 moves keyboard focus between the corners; add Shift to move backward.
 
 Assign app shortcuts in **Settings → Search → Gestures**. Open Apps List with Meta,

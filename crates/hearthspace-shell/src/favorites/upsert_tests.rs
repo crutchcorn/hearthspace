@@ -76,9 +76,16 @@ fn saving_editing_and_retargeting_gestures_preserves_desktop_favorites() {
         .replace_gesture_app("editor.desktop", "files.desktop", ELBOW)
         .unwrap();
     let saved = FavoriteStore::load(&path).unwrap();
-    assert_eq!(saved.entries().len(), 2);
-    assert_eq!(saved.entries()[0].app_id, "browser.desktop");
+    assert_eq!(
+        saved
+            .entries()
+            .iter()
+            .map(|entry| entry.app_id.as_str())
+            .collect::<Vec<_>>(),
+        ["browser.desktop", "editor.desktop", "files.desktop"]
+    );
     assert!(saved.entries()[0].gesture.is_none());
+    assert!(saved.entries()[1].gesture.is_none());
     assert_eq!(
         saved.recognize(ELBOW).unwrap(),
         Recognition::Match("files.desktop".into())
@@ -128,7 +135,15 @@ fn retargeting_a_shortcut_is_atomic_and_preserves_other_apps_and_external_edits(
         .replace_gesture_app("editor.desktop", "new.desktop", ELBOW)
         .unwrap();
     let saved = FavoriteStore::load(&path).unwrap();
-    assert_eq!(saved.entries().len(), 2);
+    assert_eq!(
+        saved
+            .entries()
+            .iter()
+            .map(|entry| entry.app_id.as_str())
+            .collect::<Vec<_>>(),
+        ["editor.desktop", "browser.desktop", "new.desktop"]
+    );
+    assert!(saved.entries()[0].gesture.is_none());
     assert_eq!(
         saved.recognize(ELBOW).unwrap(),
         Recognition::Match("new.desktop".into())
@@ -148,4 +163,44 @@ fn retargeting_a_shortcut_is_atomic_and_preserves_other_apps_and_external_edits(
     );
     assert_eq!(store.entries(), previous);
     assert_eq!(std::fs::read(path).unwrap(), external);
+}
+
+#[test]
+fn full_store_retarget_keeps_every_pin_and_rejects_a_new_target_atomically() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("favorites.json");
+    let mut store = FavoriteStore::load(&path).unwrap();
+    for index in 0..MAX_FAVORITES {
+        store.add(&format!("favorite-{index}.desktop")).unwrap();
+    }
+    store.set_gesture("favorite-0.desktop", ELBOW).unwrap();
+    let entries = store.entries().to_vec();
+    let before = std::fs::read(&path).unwrap();
+    assert!(
+        store
+            .replace_gesture_app("favorite-0.desktop", "new.desktop", ELBOW)
+            .is_err()
+    );
+    assert_eq!(store.entries(), entries);
+    assert_eq!(std::fs::read(&path).unwrap(), before);
+    store
+        .replace_gesture_app("favorite-0.desktop", "favorite-1.desktop", ELBOW)
+        .unwrap();
+    let saved = FavoriteStore::load(path).unwrap();
+    assert_eq!(
+        saved
+            .entries()
+            .iter()
+            .map(|entry| &entry.app_id)
+            .collect::<Vec<_>>(),
+        entries
+            .iter()
+            .map(|entry| &entry.app_id)
+            .collect::<Vec<_>>()
+    );
+    assert!(saved.entries()[0].gesture.is_none());
+    assert_eq!(
+        saved.recognize(ELBOW).unwrap(),
+        Recognition::Match("favorite-1.desktop".into())
+    );
 }

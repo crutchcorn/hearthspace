@@ -187,6 +187,9 @@ mod tests;
 #[cfg(test)]
 mod picker_tests;
 
+#[cfg(test)]
+mod retarget_tests;
+
 pub(crate) fn theme_properties(
     properties: &mut xilem::masonry::core::DefaultProperties,
     palette: hearthspace_ui_components::Palette,

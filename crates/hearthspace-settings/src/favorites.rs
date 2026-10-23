@@ -77,7 +77,7 @@ impl FavoriteSettings {
         self.store.as_ref().map_or(&[], FavoriteStore::entries)
     }
 
-    /// Old entries with no gesture have no visible meaning in Settings.
+    /// Dock pins without gestures do not appear in the gesture editor.
     pub fn assigned(&self) -> impl Iterator<Item = &Favorite> {
         self.entries()
             .iter()
@@ -93,7 +93,7 @@ impl FavoriteSettings {
     pub fn remove_gesture(&mut self, id: &str) {
         let name = self.name(id);
         if let Some(store) = &mut self.store {
-            match store.remove(id) {
+            match store.clear_gesture(id) {
                 Ok(()) => {
                     if self
                         .recording

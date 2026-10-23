@@ -16,8 +16,14 @@ use xilem::{WidgetView, view::sized_box};
 use super::*;
 use crate::{
     app_catalog::AppCatalog,
-    ui::test_support::{Ui, ids},
+    ui::{
+        test_support::{Ui, ids},
+        window_catalog::RunningWindow,
+    },
 };
+
+#[path = "dock_pinned_tests.rs"]
+mod pinned;
 
 fn state() -> ShellState {
     let mut state = ShellState::new("/unused".into(), vec!["eDP-1".into()]);
@@ -65,7 +71,7 @@ fn windows_group_by_app_and_keep_order_across_focus_and_title_changes() {
             .collect::<Vec<_>>(),
         [4, 9]
     );
-    assert_eq!(groups[1].next_window().id, 4);
+    assert_eq!(groups[1].next_window().unwrap().id, 4);
     assert!(groups[1].label().contains("2 windows, active"));
     let before = groups.into_iter().map(|app| app.key).collect::<Vec<_>>();
     state.windows.reverse();
@@ -109,12 +115,12 @@ fn shell_keyboard_focus_does_not_reset_window_cycling() {
     state.windows[1].focused = false;
     reconcile(&mut state);
     let app = apps(&state).remove(0);
-    assert_eq!(app.next_window().id, 2);
+    assert_eq!(app.next_window().unwrap().id, 2);
     assert!(app.focused());
     state.windows.retain(|window| window.id != 7);
     reconcile(&mut state);
     assert_eq!(state.dock.last_focused_window, None);
-    assert_eq!(apps(&state)[0].next_window().id, 2);
+    assert_eq!(apps(&state)[0].next_window().unwrap().id, 2);
 }
 
 #[test]
@@ -165,7 +171,7 @@ fn narrow_dock_pages_every_app_and_recovers_after_last_page_apps_close() {
                 assert!(bounds.x0 >= 0.0 && bounds.x1 <= 72.0, "{bounds:?}");
             }
         }
-        let next = ui.button(&format!("Next running apps (page {} of 5)", page + 1));
+        let next = ui.button(&format!("Next apps (page {} of 5)", page + 1));
         ui.harness.mouse_click_on(next, None);
         ui.dispatch(&strip);
     }
@@ -175,7 +181,7 @@ fn narrow_dock_pages_every_app_and_recovers_after_last_page_apps_close() {
     ui.rebuild(&strip);
     ui.harness.redraw();
     ui.button("Switch to app2");
-    ui.activate(ui.button("Next running apps (page 2 of 2)"));
+    ui.activate(ui.button("Next apps (page 2 of 2)"));
     ui.dispatch(&strip);
     ui.button("Switch to app1");
 }
@@ -247,7 +253,7 @@ fn sixty_eight_pixel_strip_keeps_compact_pager_and_app_inside_allocation() {
     let mut ui = Ui::new(state, &build, (68, 54));
     for page in 1..=3 {
         let app = ui.button(&format!("Switch to app{page}"));
-        let next = ui.button(&format!("Next running apps (page {page} of 3)"));
+        let next = ui.button(&format!("Next apps (page {page} of 3)"));
         for button in [app, next] {
             let bounds = ui
                 .harness
@@ -284,7 +290,7 @@ fn single_control_fallback_cycles_all_apps_with_keyboard_focus_retained() {
         }
     });
     let mut ui = Ui::new(state, &build, (40, 48));
-    let button = ui.button("Next running app: app1");
+    let button = ui.button("Next app: Switch to app1");
     let bounds = ui
         .harness
         .access_node(button)
@@ -294,7 +300,7 @@ fn single_control_fallback_cycles_all_apps_with_keyboard_focus_retained() {
     assert!(bounds.x0 >= 0.0 && bounds.x1 <= 40.0, "{bounds:?}");
     ui.harness.focus_on(Some(button));
     for id in 1..=3 {
-        assert_eq!(ui.button(&format!("Next running app: app{id}")), button);
+        assert_eq!(ui.button(&format!("Next app: Switch to app{id}")), button);
         ui.harness
             .process_text_event(TextEvent::key_up(KeyboardKey::Named(NamedKey::Enter)));
         ui.dispatch(&build);
@@ -306,6 +312,6 @@ fn single_control_fallback_cycles_all_apps_with_keyboard_focus_retained() {
                 .any(|window| window.id == id && window.focused)
         );
     }
-    ui.button("Next running app: app1");
+    ui.button("Next app: Switch to app1");
     server.join().unwrap();
 }

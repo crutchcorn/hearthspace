@@ -142,3 +142,42 @@ fn long_catalog_keeps_footer_and_layout_controls_visible_while_results_scroll() 
     assert_eq!(bounds(&ui, "Enter to open"), footer);
     assert_eq!(bounds(&ui, "Show app list"), toggle);
 }
+
+#[test]
+fn catalog_artwork_is_centered_over_titles_with_or_without_saved_pins() {
+    for width in [650, 272] {
+        let mut state = long_catalog();
+        state.favorites.store.add("long-00.desktop").unwrap();
+        let ui = Ui::new(state, view, (width, 560));
+        let entries = launcher::results(&ui.state, &ui.state.outputs[0]);
+        for entry in entries
+            .iter()
+            .take(launcher::grid_columns(&ui.state.outputs[0]))
+        {
+            let tile = bounds(&ui, &entry.label());
+            let mut descendants = vec![ui.button(&entry.label())];
+            let mut artwork = None;
+            while let Some(id) = descendants.pop() {
+                let widget = ui.harness.get_widget_with_id(id);
+                if widget
+                    .downcast::<hearthspace_ui_components::icons::IconWidget>()
+                    .is_some()
+                {
+                    artwork = Some(
+                        widget
+                            .ctx()
+                            .window_transform()
+                            .transform_rect_bbox(widget.ctx().border_box()),
+                    );
+                    break;
+                }
+                descendants.extend(widget.children().iter().map(|child| child.id()));
+            }
+            let artwork = artwork.expect("application artwork");
+            assert!(
+                (artwork.center().x - (tile.x0 + tile.x1) / 2.0).abs() <= 1.0,
+                "artwork should be centered in its tile: {artwork:?} in {tile:?}"
+            );
+        }
+    }
+}

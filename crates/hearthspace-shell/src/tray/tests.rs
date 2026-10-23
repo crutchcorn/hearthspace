@@ -5,7 +5,45 @@ mod protocol;
 #[path = "race_tests.rs"]
 mod races;
 #[path = "test_support.rs"]
-mod support;
+pub(crate) mod support;
+
+#[test]
+fn steam_properties_keep_stable_id_separate_from_title_and_icon() {
+    use super::properties::from_properties;
+    use zbus::zvariant::{OwnedObjectPath, Value};
+    let properties = support::Props::from([
+        ("Id".into(), support::text("steam")),
+        ("Title".into(), support::text("Localized Steam title")),
+        ("IconName".into(), support::text("steam_tray_mono")),
+        (
+            "Menu".into(),
+            Value::from(
+                OwnedObjectPath::try_from("/org/ayatana/NotificationItem/steam/Menu").unwrap(),
+            )
+            .try_into()
+            .unwrap(),
+        ),
+    ]);
+    let item = from_properties(
+        ItemKey {
+            owner: ":1.7".into(),
+            path: "/Item".into(),
+            generation: 2,
+        },
+        &properties,
+    )
+    .unwrap()
+    .view;
+    assert_eq!(item.id, "steam");
+    assert_eq!(item.title, "Localized Steam title");
+    assert_eq!(item.icon.name.as_deref(), Some("steam_tray_mono"));
+    assert!(!item.item_is_menu);
+    assert_eq!(
+        item.menu_path.as_deref(),
+        Some("/org/ayatana/NotificationItem/steam/Menu")
+    );
+    assert!(item.menu.is_some());
+}
 
 #[test]
 fn malformed_pixmaps_are_rejected_and_argb_is_converted() {

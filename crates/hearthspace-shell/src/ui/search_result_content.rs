@@ -5,11 +5,11 @@ use hearthspace_ui_components::icons::{Icon, icon};
 use xilem::{
     AnyWidgetView, WidgetView,
     masonry::{
-        layout::{AsUnit, Dim, UnitPoint},
+        layout::{AsUnit, Dim},
         properties::LineBreaking,
     },
     style::Style,
-    view::{CrossAxisAlignment, FlexExt, flex_col, flex_row, image, label, sized_box, zstack},
+    view::{CrossAxisAlignment, FlexExt, flex_col, flex_row, image, label, sized_box},
 };
 
 pub(super) fn view(
@@ -32,15 +32,7 @@ pub(super) fn view(
             format!("Running · {}", window.app_id),
             state
                 .catalog
-                .apps()
-                .iter()
-                .find(|app| {
-                    app.id.strip_suffix(".desktop").unwrap_or(&app.id)
-                        == window
-                            .app_id
-                            .strip_suffix(".desktop")
-                            .unwrap_or(&window.app_id)
-                })
+                .app_for_window(&window.app_id)
                 .and_then(|app| app.icon.as_deref()),
         ),
     };
@@ -68,16 +60,6 @@ pub(super) fn view(
         })
         .border_width(1.0.px())
         .corner_radius(10.0.px());
-    let favorite = entry.is_favorite(state).then(|| {
-        sized_box(icon(Icon::Pin, 12.0).theme_color(Tone::Strong))
-            .padding(3.0.px())
-            .theme_background(Tone::AccentSoft)
-            .theme_border(Tone::AccentBorder)
-            .border_width(1.0.px())
-            .corner_radius(6.0.px())
-    });
-    // Keep the stack's children stable when a favorite is added or removed.
-    let artwork = zstack((artwork, flex_col((favorite,)))).alignment(UnitPoint::TOP_RIGHT);
     let title = label(name)
         .text_size(if grid { 12.0 } else { 14.0 })
         .text_alignment(if grid {

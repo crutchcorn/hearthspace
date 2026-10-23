@@ -10,6 +10,8 @@ use super::state::ShellState;
 
 mod backing;
 mod confirm;
+mod dock;
+pub(super) use dock::{menu_width as dock_menu_width, width as dock_width};
 mod editor;
 mod editor_clock;
 pub(super) mod focus;
@@ -367,7 +369,7 @@ pub(super) fn reconcile(state: &ShellState) {
                     (
                         output.output.clone(),
                         "tray".into(),
-                        super::tray_state::visible(&state.tray.snapshot)
+                        super::tray_state::strip_visible(state, &output.output)
                             .next()
                             .is_some(),
                     ),

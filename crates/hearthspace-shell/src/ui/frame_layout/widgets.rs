@@ -46,7 +46,7 @@ pub(super) fn size(
         "tools" if compact => 44.0,
         "tools" => 236.0,
         "apps" => {
-            44.0 + if state.windows.is_empty() {
+            44.0 + if crate::ui::dock::desired_width(state) == 0.0 {
                 0.0
             } else {
                 4.0 + crate::ui::dock::desired_width(state)
@@ -75,6 +75,22 @@ pub(super) fn size(
     };
     let padding = if grouped { 0.0 } else { 10.0 };
     if vertical && matches!(id, "tools" | "apps" | "tray") {
+        (44.0 + padding, width + padding)
+    } else {
+        (width + padding, 44.0 + padding)
+    }
+}
+
+pub(super) fn tray_size(
+    state: &ShellState,
+    output: &str,
+    vertical: bool,
+    grouped: bool,
+) -> (f64, f64) {
+    let width =
+        (38.0 * crate::ui::tray_state::strip_visible(state, output).count() as f64 - 4.0).max(0.0);
+    let padding = if grouped { 0.0 } else { 10.0 };
+    if vertical {
         (44.0 + padding, width + padding)
     } else {
         (width + padding, 44.0 + padding)
@@ -261,23 +277,9 @@ fn apps(
 ) -> impl WidgetView<ShellState> + use<> {
     let key = output.key().to_owned();
     let desired = crate::ui::dock::desired_width(state);
-    let dock_width = state
-        .frame_layout
-        .snapshot
-        .outputs
-        .iter()
-        .find(|layout| layout.output == output.key())
-        .and_then(|layout| {
-            layout
-                .widgets
-                .iter()
-                .find(|part| part.id == "apps" && part.merged)
-        })
-        .map_or(desired, |part| {
-            (part.rect.width - 48.0).max(1.0).min(desired)
-        });
+    let dock_width = super::dock_width(state, output.key()).unwrap_or(desired);
     flex_row((
-        (!state.windows.is_empty())
+        (desired > 0.0)
             .then(|| crate::ui::dock::frame_view(state, output, dock_width, vertical, chain)),
         focus::item(
             crate::ui::icons::icon_button(
