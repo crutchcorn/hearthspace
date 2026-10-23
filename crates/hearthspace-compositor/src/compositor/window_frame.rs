@@ -14,12 +14,14 @@ use smithay::{
     utils::{Logical, Rectangle},
 };
 
+mod client_shape;
 mod clip;
 mod style;
 use style::{appearance, make_element};
 #[cfg(test)]
 mod tests;
 
+pub(super) use client_shape::FrameKind;
 pub(super) use clip::{RoundedElement, WindowClip, solid_color};
 
 #[derive(Default)]
@@ -113,7 +115,12 @@ impl WindowFrameCache {
             zoom,
             active,
             hovered,
-            server_side,
+            // Existing synthetic CSD fixtures have fully opaque square bodies.
+            if server_side {
+                FrameKind::ServerSide
+            } else {
+                FrameKind::RectangularClient
+            },
             photo,
             false,
             1.,
@@ -129,11 +136,17 @@ impl WindowFrameCache {
         zoom: f64,
         active: bool,
         hovered: bool,
-        server_side: bool,
+        kind: FrameKind,
         photo: bool,
         square: bool,
         opacity: f32,
     ) -> Option<WindowFrameElements> {
+        // Regions outside an opaque hint may still contain client pixels. Do
+        // not invent a radius, draw a square box, or clip uncertain CSD content.
+        if kind == FrameKind::UncertainClient {
+            return None;
+        }
+        let server_side = kind == FrameKind::ServerSide;
         let style = FrameStyle {
             appearance: self.palette.appearance,
             window,

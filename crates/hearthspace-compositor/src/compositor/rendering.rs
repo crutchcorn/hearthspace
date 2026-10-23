@@ -332,6 +332,20 @@ impl App {
                 .then(|| self.normal_window_screen_rect(index))
                 .flatten()
                 .and_then(|rect| {
+                    let kind = if server_side {
+                        window_frame::FrameKind::ServerSide
+                    } else {
+                        let geometry = Rectangle::new(
+                            self.window_surface_geometry_loc(index),
+                            self.window_geometry_size(index),
+                        );
+                        self.windows[index]
+                            .surface
+                            .wl_surface()
+                            .map_or(window_frame::FrameKind::UncertainClient, |root| {
+                                window_frame::FrameKind::for_client(&root, geometry)
+                            })
+                    };
                     self.window_frames.elements_with_opacity(
                         renderer,
                         id,
@@ -339,7 +353,7 @@ impl App {
                         scale,
                         active,
                         !self.canvas_preview_active() && hovered_window == Some(id),
-                        server_side,
+                        kind,
                         self.background_image_path.is_some(),
                         self.windows[index].presentation.focused_view,
                         self.canvas_preview_pose(index)

@@ -185,6 +185,12 @@ Settings and window decorations retain the reference ink and hover tokens.
 Compositor frames update shader uniforms
 and titlebar foreground caches on appearance changes. Geometry-only resizing
 continues to reuse the foreground bitmaps; palette resolution is cached too.
+Client-decorated windows keep their own pixels and corners. The compositor adds
+a rectangular rim and shadow only when a single mapped root surface establishes
+opaque coverage of the full window geometry. Rounded, translucent, and
+multi-surface clients receive no synthetic frame; input regions and opaque
+cutouts are not treated as reliable corner-radius declarations. Server-decorated
+windows retain their rounded compositor frame and clipping.
 Changing modes regenerates the default dot field while retaining decoded user
 wallpapers. See [Settings](SETTINGS.md#linux-appearance-publication) for application
 preferences published through the desktop portal and XSettings.
