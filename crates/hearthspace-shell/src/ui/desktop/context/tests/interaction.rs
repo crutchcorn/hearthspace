@@ -59,6 +59,36 @@ fn state_for_replacement() -> ShellState {
 }
 
 #[test]
+fn returning_from_child_after_leaving_trigger_allows_the_next_hover() {
+    let (state, mut requests) = state(true, 600);
+    let mut ui = Ui::new(state, panel, (340, 320));
+    let trigger = named(&ui, "Open With…", Role::MenuItem);
+    ui.harness.mouse_move_to(trigger);
+    ui.dispatch(&panel);
+    requests.try_recv().unwrap();
+    finished(&mut ui.state, 8, Ok(apps()));
+    ui.rebuild(&panel);
+    ui.dispatch(&panel);
+    ui.harness.mouse_move((-20.0, -20.0));
+    ui.dispatch(&panel);
+    button_event(&mut ui.state, 8, true, 0, ButtonAction::Back);
+    ui.rebuild(&panel);
+    ui.dispatch(&panel);
+    assert!(ui.state.desktop.menu.submenu.is_none());
+    requests.try_recv().unwrap();
+    ui.harness.mouse_move_to(trigger);
+    ui.dispatch(&panel);
+    assert!(ui.state.desktop.menu.submenu.is_some());
+    assert!(matches!(
+        requests.try_recv().unwrap(),
+        task::Request::Context(context_actions::Request {
+            action: Action::OpenWithOptions,
+            ..
+        })
+    ));
+}
+
+#[test]
 fn open_with_anchors_to_the_scrolled_row_and_right_enters_existing_child() {
     let (state, mut requests) = state(true, 130);
     let mut ui = Ui::new(state, panel, (260, 130));

@@ -21,6 +21,7 @@ pub(super) struct State {
     page: Page,
     submenu: Option<Submenu>,
     row_y: Option<u32>,
+    hovered: Option<usize>,
     hover_blocked: bool,
     selected: usize,
     pub busy: bool,
@@ -139,6 +140,13 @@ pub(in crate::ui) fn button_event(
     {
         return;
     }
+    if !submenu && let ButtonAction::Hover(hovered) = action {
+        if hovered {
+            state.desktop.menu.hovered = Some(index);
+        } else if state.desktop.menu.hovered == Some(index) {
+            state.desktop.menu.hovered = None;
+        }
+    }
     if state.desktop.menu.busy
         && !matches!(action, ButtonAction::Dismiss | ButtonAction::Back)
         && !(matches!(action, ButtonAction::Activate)
@@ -245,7 +253,8 @@ fn open_submenu(state: &mut ShellState, parent: usize) {
 
 fn back(state: &mut ShellState, generation: u64) {
     if let Some(submenu) = state.desktop.menu.submenu.take() {
-        state.desktop.menu.hover_blocked = true;
+        state.desktop.menu.hover_blocked =
+            state.desktop.menu.busy || state.desktop.menu.hovered == Some(submenu.parent);
         state.desktop.menu.selected = submenu.parent;
         state.desktop.menu.error = None;
         task::submit(
