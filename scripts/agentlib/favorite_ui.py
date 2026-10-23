@@ -218,7 +218,9 @@ def launch_mode(smoke):
     smoke.until(
         "assigned app remains browsable in Apps List",
         lambda: a11y(
-            smoke, "find", f"{SHELL}//*[@role='button' and @name='Open: {APP_NAME}']"
+            smoke,
+            "find",
+            f"{SHELL}//*[@role='button' and @name='Open: {APP_NAME}, favorite']",
         )["elements"],
     )
     checks.click(smoke, "Draw to launch", "search")

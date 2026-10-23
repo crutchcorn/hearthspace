@@ -7,6 +7,9 @@ use std::{
     os::unix::net::UnixListener,
 };
 
+#[path = "favorite_tests.rs"]
+mod favorites;
+
 fn app() -> DesktopItem {
     DesktopItem {
         id: "app:editor.desktop".into(),

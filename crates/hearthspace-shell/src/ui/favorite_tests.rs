@@ -50,7 +50,7 @@ fn apps_and_draw_tabs_preserve_browsing_and_expose_gesture_settings() {
         .unwrap();
     let mut ui = Ui::new(state, view, (768, 560));
     assert_eq!(launcher::results(&ui.state, &ui.state.outputs[0]).len(), 1);
-    ui.button("Open: Fixture App");
+    ui.button("Open: Fixture App, favorite");
     let editor = ui.harness.focused_widget_id().unwrap();
     let bounds = |id| ui.harness.access_node(id).unwrap().bounding_box().unwrap();
     let input = bounds(editor);
@@ -65,7 +65,7 @@ fn apps_and_draw_tabs_preserve_browsing_and_expose_gesture_settings() {
     ui.activate(ui.button("Back to apps list"));
     ui.dispatch(&view);
     assert_eq!(ui.state.outputs[0].drawing.mode, Mode::Browse);
-    ui.button("Open: Fixture App");
+    ui.button("Open: Fixture App, favorite");
 }
 
 #[test]

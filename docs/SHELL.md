@@ -62,7 +62,9 @@ and App dock on the active output. Super+Shift+F6 moves backward. Tab navigates
 through the independent controls in a group; Enter activates the focused control. Escape closes an open panel
 or returns from the corner to the most recent app without moving the canvas.
 
-An empty query shows installed applications alphabetically in a four-column icon grid.
+An empty query shows favorite applications first in saved order, followed by
+the remaining installed applications alphabetically, in a four-column icon grid.
+Favorites have a pin marker in both icon and list views.
 The view switch selects an icon grid or a list with app descriptions; narrow
 panels reduce the grid column count. The Draw tab reuses the existing favorite
 gesture pad and matching flow. Typing filters apps

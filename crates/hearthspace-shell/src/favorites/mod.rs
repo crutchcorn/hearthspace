@@ -113,24 +113,19 @@ impl FavoriteStore {
         self.replace(entries)
     }
 
-    /// Save an app and its gesture in one transaction. Old favorites without
-    /// gestures no longer have a UI role and are retired only on a successful save.
+    /// Save an app and its gesture in one transaction, retaining the order and
+    /// membership of favorites that launch without a drawing.
     pub fn set_gesture(&mut self, app_id: &str, points: &[Point]) -> Result<(), FavoriteError> {
         validate_id(app_id)?;
         let gesture = Gesture::from_points(points)?;
         self.validate_gesture(app_id, &gesture)?;
-        let mut entries: Vec<_> = self
-            .entries
-            .iter()
-            .filter(|entry| entry.gesture.is_some())
-            .cloned()
-            .collect();
+        let mut entries = self.entries.clone();
         if let Some(entry) = entries.iter_mut().find(|entry| entry.app_id == app_id) {
             entry.gesture = Some(gesture);
         } else {
             if entries.len() >= MAX_FAVORITES {
                 return Err(FavoriteError(format!(
-                    "You can save up to {MAX_FAVORITES} app gestures."
+                    "You can save up to {MAX_FAVORITES} favorite apps, with or without gestures."
                 )));
             }
             entries.push(Favorite {
