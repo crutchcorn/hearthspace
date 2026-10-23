@@ -285,7 +285,9 @@ impl App {
                     10
                 }
             });
-            if layer <= 100 {
+            // Editing guides and highlights sit below frame controls (100)
+            // and their shared glass (99), so they cannot draw across a tool.
+            if layer < 99 {
                 append_layout_outlines(
                     &mut elements,
                     &mut layout.front,
@@ -306,9 +308,9 @@ impl App {
                 continue;
             }
             let front = elements.len();
-            // Desktop editing marks belong to the icon's own stack: ordinary
-            // windows cover them, while a held or frame-pinned icon stays raised.
-            if let Some(outlines) = layout.items.remove(&self.windows[index].id) {
+            // Each icon/control keeps its own selection ring. Higher objects
+            // cover it, while a held object carries its ring above the guides.
+            if let Some(outlines) = layout.objects.remove(&self.windows[index].id) {
                 elements.extend(outlines);
             }
             elements.extend(self.canvas_preview_selection_elements(renderer, index));

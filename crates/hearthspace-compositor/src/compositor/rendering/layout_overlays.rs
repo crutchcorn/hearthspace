@@ -1,4 +1,4 @@
-//! Desktop editing marks follow their native icon instead of covering app windows.
+//! Object-owned outlines follow their surface; frame guides stay below the tools.
 use std::collections::HashMap;
 
 use hearthspace_common::frame_layout::TargetKind;
@@ -13,7 +13,7 @@ pub(super) struct LayoutOverlays {
     pub front: Vec<HearthspaceRenderElement>,
     pub back: Vec<HearthspaceRenderElement>,
     pub modal: Vec<HearthspaceRenderElement>,
-    pub items: HashMap<u64, Vec<HearthspaceRenderElement>>,
+    pub objects: HashMap<u64, Vec<HearthspaceRenderElement>>,
     pub owners: Vec<(usize, u64)>,
 }
 
@@ -33,7 +33,7 @@ impl App {
             front: Vec::new(),
             back: Vec::new(),
             modal: Vec::new(),
-            items: HashMap::new(),
+            objects: HashMap::new(),
             owners: Vec::new(),
         };
         // The cache skips invisible shapes, so retain the corresponding shape
@@ -52,8 +52,11 @@ impl App {
                 result.back.push(element);
             } else {
                 let owner = self.layout_outline_owner(&shape.key);
-                if let Some((id, TargetKind::Item)) = owner {
-                    result.items.entry(id).or_default().push(element);
+                if let Some((id, TargetKind::Item | TargetKind::Widget | TargetKind::Group)) = owner
+                {
+                    // Selection rings belong to the object, including during a
+                    // turn. Independent guides/drop highlights have no owner.
+                    result.objects.entry(id).or_default().push(element);
                 } else {
                     if let Some((id, _)) = owner {
                         result.owners.push((result.front.len(), id));
