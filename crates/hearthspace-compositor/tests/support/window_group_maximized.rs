@@ -44,6 +44,8 @@ fn group_drag_carries_canvas_maximized_bounds_and_restore_home_at_both_scales() 
     for (scale, cancel) in [(1.0, false), (0.8, true)] {
         let mut compositor = HeadlessCompositor::spawn_with_size("1280x800");
         drop(compositor.wait_for_socket());
+        // Keep maximization's neighbor settlement stable before recording drag origins.
+        action(&compositor, "canvas-search-motion false");
         let socket = compositor
             .runtime_dir
             .path()
