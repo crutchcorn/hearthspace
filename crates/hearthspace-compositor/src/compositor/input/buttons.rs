@@ -29,6 +29,29 @@ impl App {
         time: InputTime,
     ) {
         self.shortcuts.cancel_meta_tap();
+        if self.has_window_pointer_grab() {
+            let owner_retired = self.window_pointer_grab_owner_retired();
+            // Route every button to the owner, including releases after its
+            // window disappeared. Neither chrome nor another client may claim
+            // the remainder of this sequence.
+            self.deliver_pointer_button(&ButtonEvent {
+                serial: SERIAL_COUNTER.next_serial(),
+                time,
+                button,
+                state,
+            });
+            self.pointer.clone().frame(self);
+            if !self.has_window_pointer_grab() {
+                self.apply_pointer_motion(self.pointer_location, time);
+                if owner_retired && self.keyboard.current_focus().is_none() {
+                    // Teardown could not restore focus while buttons were held.
+                    // Retry outside pointer dispatch (which holds its mutex),
+                    // preserving newer focus and the usual navigation guard.
+                    self.restore_window_focus();
+                }
+            }
+            return;
+        }
         if state == ButtonState::Pressed {
             self.abandon_released_shell_resize_click();
         }
@@ -101,8 +124,8 @@ impl App {
             self.update_window_pointer_operation();
             self.drag = None;
             self.finish_resize();
-            // A client-initiated move/resize established an implicit grab;
-            // forwarding its release is necessary to end that grab as well.
+            // Client requests are owned by WindowGrab above. This also drains
+            // a pre-existing implicit grab if compositor chrome used it.
             let pointer = self.pointer.clone();
             if self.pressed_pointer_buttons.contains(&button) {
                 self.deliver_pointer_button(&ButtonEvent {

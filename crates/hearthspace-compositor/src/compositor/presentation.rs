@@ -175,7 +175,10 @@ impl App {
             return Ok(());
         }
         self.cancel_canvas_peek_motion(id);
-        self.interrupt_pinch_zoom();
+        // A different window can change presentation while this finger owns
+        // a client move/resize (or has not requested it yet). Stop canvas zoom
+        // without releasing that window's pointer sequence.
+        self.prepare_window_pointer_operation();
         if focused == Some(true) {
             self.advance_viewport_animation();
             self.viewport_animation = None;

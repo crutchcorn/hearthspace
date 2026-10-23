@@ -125,6 +125,9 @@ impl CalloopData {
         if let Some(hex) = text.strip_prefix("clipboard-set ") {
             return self.state.set_clipboard_text(hex);
         }
+        if let Some(reply) = self.run_touch_command(text) {
+            return reply;
+        }
         if let Some(reply) = self.run_automation_command(text) {
             return reply;
         }

@@ -339,22 +339,9 @@ impl XdgShellHandler for App {
         {
             info!(window_id = window.id, kind = ?window.kind, "xdg toplevel destroyed");
             self.idle_daemon.unregister_window(window.id);
-            // A passive OSD expiring must not interrupt a drag of another app.
-            if self
-                .drag
-                .as_ref()
-                .is_some_and(|drag| drag.window_id == window.id)
-            {
-                self.drag = None;
-            }
-            if self
-                .resize
-                .as_ref()
-                .is_some_and(|resize| resize.window_id == window.id)
-            {
-                self.resize = None;
-            }
-            if self.focused_normal_window_id == Some(window.id) {
+            let id = window.id;
+            self.retire_window_pointer_operation(id);
+            if self.focused_normal_window_id == Some(id) {
                 self.focused_normal_window_id = None;
             }
         }

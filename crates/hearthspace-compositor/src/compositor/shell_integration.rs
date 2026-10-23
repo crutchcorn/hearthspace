@@ -16,6 +16,7 @@ mod favorite_drawing;
 mod launch;
 mod launch_environment;
 pub(in crate::compositor) mod search;
+mod touch_control;
 
 pub(in crate::compositor) use command_socket::{
     ControlReply, accept_command_connections, command_socket_path, remove_stale_socket,

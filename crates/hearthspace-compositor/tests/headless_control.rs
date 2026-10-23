@@ -52,6 +52,9 @@ mod grid_snapping;
 #[path = "support/interactive.rs"]
 mod interactive;
 #[cfg(feature = "test-apps")]
+#[path = "support/interactive_grab.rs"]
+mod interactive_grab;
+#[cfg(feature = "test-apps")]
 #[path = "support/layout.rs"]
 mod layout;
 #[cfg(feature = "test-apps")]
@@ -119,6 +122,17 @@ mod x11_popups;
 #[cfg(all(feature = "test-apps", feature = "xwayland"))]
 #[path = "support/xsettings.rs"]
 mod xsettings;
+
+#[cfg(feature = "test-apps")]
+#[path = "support/csd_lifecycle.rs"]
+mod csd_lifecycle;
+#[cfg(all(feature = "test-apps", feature = "xwayland"))]
+#[path = "support/x11_interactive.rs"]
+mod x11_interactive;
+
+#[cfg(feature = "test-apps")]
+#[path = "support/touch_interactive.rs"]
+mod touch_interactive;
 
 const WIDTH: u32 = 320;
 const HEIGHT: u32 = 240;

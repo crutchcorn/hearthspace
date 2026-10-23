@@ -15,6 +15,7 @@ use super::{
 mod clipboard;
 mod dispatch;
 mod handlers;
+mod interactive;
 mod popups;
 
 impl App {
@@ -152,25 +153,25 @@ impl App {
         if let Some(surface) = window.wl_surface() {
             self.clear_keyboard_focus_for_surface(&surface);
         }
-        if let Some(managed) = self
+        if let Some(id) = self
             .windows
             .iter()
             .find(|managed| managed.surface.same_x11(window))
+            .map(|managed| managed.id)
         {
             info!(
-                window_id = managed.id,
+                window_id = id,
                 x11_window = window.window_id(),
                 "X11 window unmapped"
             );
-            self.idle_daemon.unregister_window(managed.id);
-            if self.focused_normal_window_id == Some(managed.id) {
+            self.idle_daemon.unregister_window(id);
+            self.retire_window_pointer_operation(id);
+            if self.focused_normal_window_id == Some(id) {
                 self.focused_normal_window_id = None;
             }
         }
         self.windows
             .retain(|managed| !managed.surface.same_x11(window));
-        self.drag = None;
-        self.resize = None;
         if restore_focus {
             self.restore_window_focus();
         }

@@ -175,7 +175,7 @@ impl XwmHandler for App {
         &mut self,
         _xwm: XwmId,
         window: X11Surface,
-        _button: u32,
+        button: u32,
         resize_edge: X11ResizeEdge,
     ) {
         if self.session_locked() {
@@ -188,7 +188,7 @@ impl XwmHandler for App {
             || self.windows[index].presentation.maximized
             || self.drag.is_some()
             || self.resize.is_some()
-            || !self.pointer_grab_targets_window(index)
+            || !self.valid_x11_pointer_request(index, button)
         {
             return;
         }
@@ -196,7 +196,7 @@ impl XwmHandler for App {
         self.start_resize(index, ResizeEdges::from(resize_edge));
     }
 
-    fn move_request(&mut self, _xwm: XwmId, window: X11Surface, _button: u32) {
+    fn move_request(&mut self, _xwm: XwmId, window: X11Surface, button: u32) {
         if self.session_locked() {
             return;
         }
@@ -207,12 +207,32 @@ impl XwmHandler for App {
             || self.windows[index].presentation.maximized
             || self.drag.is_some()
             || self.resize.is_some()
-            || !self.pointer_grab_targets_window(index)
+            || !self.valid_x11_pointer_request(index, button)
         {
             return;
         }
         let index = self.raise_window(index);
         self.start_client_window_move(index);
+    }
+
+    fn cancel_move_resize_request(&mut self, _xwm: XwmId, window: X11Surface) {
+        if let Some(index) = self.window_index_for_x11(&window) {
+            let id = self.windows[index].id;
+            // A mapped client can still commit the last requested size after
+            // cancellation. Preserve its opposite-edge anchor until then.
+            if self.windows[index].mapped
+                && self
+                    .resize
+                    .as_ref()
+                    .is_some_and(|resize| resize.window_id == id)
+            {
+                self.finish_resize();
+            }
+            // Retire only this owner's remaining operation. Keep WindowGrab
+            // draining held buttons so a late release cannot click a neighbor.
+            self.retire_window_pointer_operation(id);
+            self.request_redraw();
+        }
     }
 
     fn active_window_request(

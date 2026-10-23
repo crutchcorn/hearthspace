@@ -189,6 +189,12 @@ pointer-motion-rel <dx> <dy>
 pointer-button-down <linux-button-code>
 pointer-button-up <linux-button-code>
 axis <horizontal> <vertical>
+touch-down <device> <slot> <logical-x> <logical-y>
+touch-motion <device> <slot> <logical-x> <logical-y>
+touch-up <device> <slot>
+touch-frame <device>
+touch-cancel <device> [slot]
+touch-remove <device>
 screenshot
 capture [output-name]
 status
@@ -209,6 +215,13 @@ zoom-to <scale>
 lock-session
 quit
 ```
+
+Touch commands use the production touch recognizer, UI routing and pointer
+handoff. Coordinates are global output-logical units; down/motion/up are batched
+until `touch-frame`. Cancel and removal flush their cleanup immediately. Injected
+device names are separated from hardware IDs. This permits deterministic delayed
+client requests and frame-order tests, while native uinput tests additionally
+cover libinput and device discovery.
 
 Feature-gated or shell-oriented commands can also be useful in targeted tests:
 

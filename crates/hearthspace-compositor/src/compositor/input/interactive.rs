@@ -30,6 +30,12 @@ impl App {
     }
 
     pub(in crate::compositor) fn pointer_grab_targets_window(&self, window_index: usize) -> bool {
+        if !self.windows[window_index].mapped
+            || self.has_window_pointer_grab()
+            || !self.pressed_pointer_buttons.contains(&0x110)
+        {
+            return false;
+        }
         let Some(start) = self.pointer.grab_start_data() else {
             return false;
         };
@@ -75,6 +81,7 @@ impl App {
             window_start: self.windows[window_index].position,
             visible_start: self.window_canvas_rect(window_index).loc,
         });
+        self.start_window_pointer_grab(window_index);
         // Recognition and the client's request can arrive after the finger has
         // moved. Include that motion instead of leaving the window behind it.
         self.apply_pointer_motion(self.raw_pointer_location, InputTime::now());
@@ -125,6 +132,8 @@ impl App {
                 && window.position != position
             {
                 window.position = position;
+                #[cfg(feature = "xwayland")]
+                self.sync_x11_window_position(id);
                 self.request_redraw();
             }
             return true;

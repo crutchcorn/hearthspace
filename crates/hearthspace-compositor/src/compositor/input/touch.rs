@@ -4,11 +4,11 @@ use smithay::{
     utils::{Logical, Point},
 };
 
-use super::{super::App, pinch::PinchInput, touch_tracker::TouchAction};
+use super::{super::App, pinch::PinchInput, remote::PointerSource, touch_tracker::TouchAction};
 use crate::compositor::switcher::SwitcherSource;
 
 impl App {
-    pub(super) fn touch_down(
+    pub(in crate::compositor) fn touch_down(
         &mut self,
         device: &str,
         slot: TouchSlot,
@@ -69,12 +69,56 @@ impl App {
         }
     }
 
-    pub(super) fn flush_touch_frame(&mut self, device: &str, time: InputTime) {
+    pub(in crate::compositor) fn touch_motion(
+        &mut self,
+        device: &str,
+        slot: TouchSlot,
+        location: Point<f64, Logical>,
+        time: InputTime,
+    ) {
+        if !self.favorite_touch_motion(device, slot, location) {
+            self.motion_ui_touch(device, slot, location, time);
+            self.touch_input.motion(device, slot, location);
+        }
+    }
+
+    pub(in crate::compositor) fn touch_up(
+        &mut self,
+        device: &str,
+        slot: TouchSlot,
+        time: InputTime,
+    ) {
+        if !self.favorite_touch_up(device, slot, false) {
+            self.end_ui_touch(device, slot, false, time);
+            self.touch_input.up(device, slot);
+        }
+    }
+
+    pub(in crate::compositor) fn touch_cancel(
+        &mut self,
+        device: &str,
+        slot: TouchSlot,
+        time: InputTime,
+    ) {
+        if self.touch_pointer_pressed && self.touch_input.has_device_input(device) {
+            self.cancel_titlebar_pointer();
+            self.cancel_canvas_search_touch();
+            if self.window_switcher_active() {
+                self.cancel_window_switcher_touch();
+            }
+        }
+        self.favorite_touch_up(device, slot, true);
+        self.end_ui_touch(device, slot, true, time);
+        self.touch_input.cancel(device, slot);
+        self.flush_touch_frame(device, time);
+    }
+
+    pub(in crate::compositor) fn flush_touch_frame(&mut self, device: &str, time: InputTime) {
         let actions = self.touch_input.frame(device);
         self.apply_touch_actions(actions, time);
     }
 
-    pub(super) fn remove_touch_device(&mut self, device: &str) {
+    pub(in crate::compositor) fn remove_touch_device(&mut self, device: &str) {
         if self.touch_pointer_pressed && self.touch_input.has_device_input(device) {
             self.cancel_titlebar_pointer();
             self.cancel_desktop_gesture();
@@ -183,6 +227,11 @@ impl App {
             return;
         }
         self.touch_pointer_pressed = state == ButtonState::Pressed;
-        self.synthesize_pointer_button(0x110, state);
+        self.handle_pointer_button_from_source(
+            PointerSource::Touch,
+            0x110,
+            state,
+            InputTime::now(),
+        );
     }
 }

@@ -107,6 +107,22 @@ impl App {
         if self.software_cursor_visible && self.pointer_location != previous_location {
             self.request_redraw();
         }
+        if self.has_window_pointer_grab() {
+            // The grab owns client-initiated geometry and keeps Smithay's
+            // location current without returning focus to the client.
+            let pointer = self.pointer.clone();
+            pointer.motion(
+                self,
+                None,
+                &MotionEvent {
+                    location: self.pointer_location,
+                    serial: SERIAL_COUNTER.next_serial(),
+                    time,
+                },
+            );
+            pointer.frame(self);
+            return;
+        }
         if !self.session_locked() && self.layout_pointer_motion() {
             return;
         }

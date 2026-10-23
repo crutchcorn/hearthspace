@@ -56,6 +56,7 @@ impl App {
             initial_bounds,
             moved: false,
         });
+        self.start_window_pointer_grab(window_index);
         if pointer_start != self.raw_pointer_location {
             self.update_resize(self.raw_pointer_location);
         }
@@ -253,7 +254,11 @@ impl App {
                     _ => false,
                 }
             });
-        self.windows[window_index].position = position;
+        if self.windows[window_index].position != position {
+            self.windows[window_index].position = position;
+            #[cfg(feature = "xwayland")]
+            self.sync_x11_window_position(self.windows[window_index].id);
+        }
         if finished {
             self.windows[window_index].pending_resize = None;
         }

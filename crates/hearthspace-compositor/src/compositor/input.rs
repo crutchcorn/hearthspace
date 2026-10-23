@@ -32,6 +32,7 @@ mod titlebar;
 mod touch;
 mod touch_tracker;
 mod ui_touch;
+mod window_grab;
 mod window_switcher;
 
 pub(super) use favorite_drawing::FavoriteDrawing;
@@ -192,33 +193,13 @@ pub(in crate::compositor) fn handle_input_event<B: InputBackend>(
             let output = state.primary_output_logical_rect();
             let location =
                 touch_location_in_primary_output(event.position_transformed(output.size), output);
-            if !state.favorite_touch_motion(&event.device().id(), event.slot(), location) {
-                state.motion_ui_touch(&event.device().id(), event.slot(), location, event.time());
-                state
-                    .touch_input
-                    .motion(&event.device().id(), event.slot(), location);
-            }
+            state.touch_motion(&event.device().id(), event.slot(), location, event.time());
         }
         InputEvent::TouchUp { event } => {
-            if !state.favorite_touch_up(&event.device().id(), event.slot(), false) {
-                state.end_ui_touch(&event.device().id(), event.slot(), false, event.time());
-                state.touch_input.up(&event.device().id(), event.slot());
-            }
+            state.touch_up(&event.device().id(), event.slot(), event.time());
         }
         InputEvent::TouchCancel { event } => {
-            if state.touch_pointer_pressed
-                && state.touch_input.has_device_input(&event.device().id())
-            {
-                state.cancel_titlebar_pointer();
-                state.cancel_canvas_search_touch();
-                if state.window_switcher_active() {
-                    state.cancel_window_switcher_touch();
-                }
-            }
-            state.favorite_touch_up(&event.device().id(), event.slot(), true);
-            state.end_ui_touch(&event.device().id(), event.slot(), true, event.time());
-            state.touch_input.cancel(&event.device().id(), event.slot());
-            state.flush_touch_frame(&event.device().id(), event.time());
+            state.touch_cancel(&event.device().id(), event.slot(), event.time());
         }
         InputEvent::TouchFrame { event } => {
             state.flush_touch_frame(&event.device().id(), event.time())

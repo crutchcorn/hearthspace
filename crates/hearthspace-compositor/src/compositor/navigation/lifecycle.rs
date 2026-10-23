@@ -7,6 +7,21 @@ use wayland_server::protocol::wl_surface::WlSurface;
 use super::super::{App, ManagedSurface};
 
 impl App {
+    /// Unmapping one window must not end another window's interaction. Keep
+    /// the input sequence alive so its eventual release still reaches the grab.
+    pub(in crate::compositor) fn retire_window_pointer_operation(&mut self, id: u64) {
+        if self.drag.as_ref().is_some_and(|drag| drag.window_id == id) {
+            self.drag = None;
+        }
+        if self
+            .resize
+            .as_ref()
+            .is_some_and(|resize| resize.window_id == id)
+        {
+            self.resize = None;
+        }
+    }
+
     /// Mapping follows the root buffer, not subsurface commits or creation of
     /// an empty toplevel. Unmapping and later remapping starts a new focus cycle.
     pub(in crate::compositor) fn refresh_window_mapping(&mut self, root: &WlSurface) {
@@ -31,6 +46,7 @@ impl App {
         }
         let id = self.windows[index].id;
         if !mapped {
+            self.retire_window_pointer_operation(id);
             self.windows[index].pending_resize = None;
             self.favorite_window_unmapped(id);
         }

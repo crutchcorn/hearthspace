@@ -16,6 +16,7 @@ use crate::compositor::{App, input::handle_input_event};
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(in crate::compositor::input) enum PointerSource {
     Local,
+    Touch,
     Remote(VirtualPointerDevice),
 }
 
@@ -55,7 +56,7 @@ impl ButtonSources {
 
     fn remove_remote(&mut self, device: Option<&VirtualPointerDevice>) -> Vec<u32> {
         self.remove_sources(|source| match source {
-            PointerSource::Local => false,
+            PointerSource::Local | PointerSource::Touch => false,
             PointerSource::Remote(candidate) => device.is_none_or(|device| device == candidate),
         })
     }
@@ -230,6 +231,28 @@ fn layout_bounds(rectangles: &[Rectangle<i32, Logical>]) -> Option<Rectangle<i32
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn removing_mouse_does_not_release_an_active_touch_sequence() {
+        let mut sources = ButtonSources::default();
+        assert!(sources.transition(PointerSource::Touch, 0x110, ButtonState::Pressed));
+        assert!(!sources.transition(PointerSource::Local, 0x110, ButtonState::Pressed));
+        assert!(sources.remove_local().is_empty());
+        assert!(!sources.transition(PointerSource::Local, 0x110, ButtonState::Released));
+        assert!(sources.transition(PointerSource::Touch, 0x110, ButtonState::Released));
+        assert!(sources.transition(PointerSource::Local, 0x110, ButtonState::Pressed));
+        assert!(sources.transition(PointerSource::Local, 0x110, ButtonState::Released));
+    }
+
+    #[test]
+    fn touch_cancellation_keeps_a_physical_button_held_until_its_release() {
+        let mut sources = ButtonSources::default();
+        assert!(sources.transition(PointerSource::Local, 0x110, ButtonState::Pressed));
+        assert!(!sources.transition(PointerSource::Touch, 0x110, ButtonState::Pressed));
+        assert!(!sources.transition(PointerSource::Touch, 0x110, ButtonState::Released));
+        assert!(!sources.transition(PointerSource::Touch, 0x110, ButtonState::Released));
+        assert!(sources.transition(PointerSource::Local, 0x110, ButtonState::Released));
+    }
 
     #[test]
     fn removing_local_pointer_releases_held_buttons_and_allows_the_next_press() {

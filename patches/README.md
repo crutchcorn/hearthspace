@@ -171,6 +171,37 @@ See [vendored provenance and refresh steps](../vendor/accesskit_atspi_common/PRO
   the Git-source Cargo patch, vendor directory, and source patch, then refresh
   `Cargo.lock`. Retain the idle-client regression.
 
+## Smithay X11 interactive cancellation
+
+- **Dependency:** the same vendored Smithay 0.7.0 at revision
+  [`5c2ba413`](https://github.com/Smithay/smithay/tree/5c2ba4132556a08abc70ae1771d275ec2cfc031f).
+- **Patch:** [dispatch move/resize cancellation](smithay-xwm-moveresize-cancel.patch).
+  Adds a default `XwmHandler::cancel_move_resize_request` callback and dispatches
+  `_NET_WM_MOVERESIZE` direction 11 to it. Existing implementors need no changes;
+  the compositor retains responsibility for ending and draining its operation.
+- **Reason:** the [EWMH cancellation message](https://specifications.freedesktop.org/wm/latest/ar01s04.html)
+  lets an application end an interactive operation, including when it sees the
+  button release before the window manager establishes its grab. Smithay
+  previously discarded this message, so Hearthspace could not honor it.
+- **Upstream:** checked on 2026-10-22 against
+  [master `24647fc8`](https://github.com/Smithay/smithay/blob/24647fc8d00131eb7f388efed26e35ea316b0018/src/xwayland/xwm/mod.rs).
+  Its dispatch handles directions 0–8 and ignores cancellation. GitHub's upstream
+  issue/PR search for `MOVERESIZE` returned only the unrelated active-window
+  [PR 1863](https://github.com/Smithay/smithay/pull/1863); no cancellation fix was
+  found and no report has been published.
+- **Verification:** run
+  `cargo test -p hearthspace-compositor --features e2e,test-apps --test headless_control x11_csd_`.
+  Real x11rb clients advertise CSD through Motif hints, send move/resize requests
+  after X button events, and check rendered bounds, `TranslateCoordinates`,
+  synthetic `ConfigureNotify`, wrong-button rejection, unrelated popup teardown,
+  and fresh clicks/drags after cancellation. The touch regression uses the same
+  production touch tracker as physical input. The two `cancel_while_held` tests
+  specifically exercise direction 11 for both move and resize.
+- **Removal:** upgrade to a compatible upstream revision with cancellation
+  dispatch, adapt Hearthspace's handler if its API differs, and rerun these
+  regressions without this patch. Keep the vendored dependency and Cargo patch
+  while the separate XSettings fix still requires them.
+
 ## Masonry finite scrollbar geometry
 
 - **Dependency:** Masonry 0.4.0 at Xilem revision
