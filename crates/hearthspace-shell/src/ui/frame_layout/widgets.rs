@@ -20,18 +20,7 @@ use xilem::{
     view::{button, flex_row, label},
 };
 
-pub(super) fn clock(format: ClockDateFormat) -> String {
-    use chrono::Local;
-    let now = Local::now();
-    let date = match format {
-        ClockDateFormat::None => return now.format("%H:%M").to_string(),
-        ClockDateFormat::Weekday => "%a",
-        ClockDateFormat::Short => "%b %-d",
-        ClockDateFormat::Numeric => "%m/%d/%Y",
-        ClockDateFormat::Long => "%B %-d, %Y",
-    };
-    format!("{} · {}", now.format(date), now.format("%H:%M"))
-}
+pub(super) use crate::ui::clock_format::preview as clock;
 
 pub(super) fn size(
     state: &ShellState,

@@ -1,9 +1,8 @@
 //! A session-bound native dialog; only its explicit affirmative action mutates.
-use crate::ui::{search_focus::FocusTarget, state::ShellState};
+use crate::ui::{search_focus::Record, state::ShellState};
 use hearthspace_ui_components as components;
 use xilem::{
-    Pod, ViewCtx, WidgetView, WindowView,
-    core::{MessageCtx, MessageResult, Mut, View, ViewMarker},
+    WidgetView, WindowView,
     dpi::LogicalSize,
     masonry::{
         layout::AsUnit,
@@ -162,43 +161,4 @@ pub(super) fn view(
     )
     .with_dismiss(dismiss)
     .dismiss_directly()
-}
-
-pub(super) struct Record<V> {
-    pub(super) inner: V,
-    pub(super) target: FocusTarget,
-}
-impl<V> ViewMarker for Record<V> {}
-impl<V: WidgetView<ShellState>> View<ShellState, (), ViewCtx> for Record<V> {
-    type Element = Pod<V::Widget>;
-    type ViewState = V::ViewState;
-    fn build(&self, ctx: &mut ViewCtx, state: &mut ShellState) -> (Self::Element, Self::ViewState) {
-        let built = self.inner.build(ctx, state);
-        *self.target.lock().unwrap() = Some(built.0.new_widget.id());
-        built
-    }
-    fn rebuild(
-        &self,
-        prev: &Self,
-        vs: &mut Self::ViewState,
-        ctx: &mut ViewCtx,
-        el: Mut<'_, Self::Element>,
-        state: &mut ShellState,
-    ) {
-        *self.target.lock().unwrap() = Some(el.id());
-        self.inner.rebuild(&prev.inner, vs, ctx, el, state);
-    }
-    fn teardown(&self, vs: &mut Self::ViewState, ctx: &mut ViewCtx, el: Mut<'_, Self::Element>) {
-        *self.target.lock().unwrap() = None;
-        self.inner.teardown(vs, ctx, el);
-    }
-    fn message(
-        &self,
-        vs: &mut Self::ViewState,
-        ctx: &mut MessageCtx,
-        el: Mut<'_, Self::Element>,
-        state: &mut ShellState,
-    ) -> MessageResult<()> {
-        self.inner.message(vs, ctx, el, state)
-    }
 }

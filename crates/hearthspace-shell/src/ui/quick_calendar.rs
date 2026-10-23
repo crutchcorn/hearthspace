@@ -9,7 +9,7 @@ use xilem::{
     view::{CrossAxisAlignment, FlexExt, MainAxisAlignment, flex_col, flex_row, label, sized_box},
 };
 
-pub(super) fn view() -> impl WidgetView<ShellState> + use<> {
+pub(in crate::ui) fn view() -> impl WidgetView<ShellState> + use<> {
     view_for_date(Local::now().date_naive())
 }
 

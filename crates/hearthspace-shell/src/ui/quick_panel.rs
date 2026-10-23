@@ -19,7 +19,7 @@ use xilem::{
 };
 
 #[path = "quick_calendar.rs"]
-mod calendar;
+pub(super) mod calendar;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(super) enum Kind {
@@ -109,6 +109,8 @@ pub(super) fn window(state: &ShellState, output: &ShellOutputInstance) -> Window
             .unwrap_or_else(|| QUICK_PANEL_APP_ID.into()),
         if output.quick_panel == Kind::Tools {
             xilem::dpi::LogicalSize::new(260.0, 232.0)
+        } else if output.quick_panel == Kind::Clock {
+            super::quick_clock::size(state, output)
         } else {
             popup::size(output, PopupKind::Controls, 320.0, 200.0)
         },
@@ -124,13 +126,15 @@ pub(super) fn panel(
     if output.quick_panel == Kind::Tools {
         return super::frame_layout::tool_menu::panel(state, output).boxed();
     }
+    if output.quick_panel == Kind::Clock {
+        return super::quick_clock::panel(state, output).boxed();
+    }
     let content = match output.quick_panel {
         Kind::Wifi => wifi().boxed(),
         Kind::Sound => sound(state, output).boxed(),
         Kind::Brightness => brightness(state, output).boxed(),
         Kind::Battery => battery(state).boxed(),
-        Kind::Clock => calendar::view().boxed(),
-        Kind::Tools => unreachable!("handled before standard status panel"),
+        Kind::Clock | Kind::Tools => unreachable!("handled before standard status panel"),
     };
     popup::panel_named(
         output,

@@ -1,5 +1,6 @@
 //! The compact toolbar exposes the same implemented tools through native rows.
-use super::{ShellState, confirm::Record, focus};
+use super::{ShellState, focus};
+use crate::ui::search_focus::Record;
 use crate::ui::{quick_panel::Kind, state::ShellOutputInstance};
 use hearthspace_ui_components::{
     self as components,

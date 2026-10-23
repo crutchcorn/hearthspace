@@ -13,6 +13,7 @@ impl ShellState {
             .find(|output| output.key() == output_key)
         {
             output.show_controls = false;
+            output.clock_formats.open = false;
         }
     }
 

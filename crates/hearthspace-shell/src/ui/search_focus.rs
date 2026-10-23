@@ -27,6 +27,12 @@ use super::state::ShellState;
 
 pub(super) type FocusTarget = Arc<Mutex<Option<WidgetId>>>;
 
+#[path = "search_focus_record.rs"]
+mod record;
+pub(super) use record::Record;
+#[path = "search_focus_navigation.rs"]
+mod navigation;
+
 pub(super) fn focus_on_activation<V>(
     inner: V,
     target: FocusTarget,
@@ -37,7 +43,9 @@ pub(super) fn focus_on_activation<V>(
         target,
         output_key,
         dismiss: ShellState::dismiss_search,
+        back: None,
         cancel_editor: true,
+        navigation: Vec::new(),
     }
 }
 
@@ -46,10 +54,22 @@ pub(super) struct FocusOnActivation<V> {
     target: FocusTarget,
     output_key: String,
     dismiss: fn(&mut ShellState, &str),
+    back: Option<fn(&mut ShellState, &str)>,
     cancel_editor: bool,
+    navigation: Vec<FocusTarget>,
 }
 
 impl<V> FocusOnActivation<V> {
+    pub(super) fn with_back(mut self, back: Option<fn(&mut ShellState, &str)>) -> Self {
+        self.back = back;
+        self
+    }
+
+    pub(super) fn with_arrow_navigation(mut self, targets: Vec<FocusTarget>) -> Self {
+        self.navigation = targets;
+        self
+    }
+
     /// Dialogs focus a button, so Escape calls their dismissal directly.
     pub(super) fn dismiss_directly(mut self) -> Self {
         self.cancel_editor = false;
@@ -79,6 +99,8 @@ where
             inner: child.new_widget.erased().to_pod(),
             target: self.target.clone(),
             cancel_editor: self.cancel_editor,
+            back: self.back.is_some(),
+            navigation: self.navigation.clone(),
         };
         let pod = Pod::new_with_props(widget, Dimensions::MAX);
         ctx.record_action_source(pod.new_widget.id());
@@ -94,10 +116,13 @@ where
         state: &mut ShellState,
     ) {
         let previous_editor = *element.widget.target.lock().unwrap();
-        let restore_editor =
-            previous_editor.is_none() || element.ctx.focus_target_id() == previous_editor;
+        let restore_editor = !Arc::ptr_eq(&element.widget.target, &self.target)
+            || previous_editor.is_none()
+            || element.ctx.focus_target_id() == previous_editor;
         element.widget.target = self.target.clone();
         element.widget.cancel_editor = self.cancel_editor;
+        element.widget.back = self.back.is_some();
+        element.widget.navigation.clone_from(&self.navigation);
         ctx.with_id(CONTENT, |ctx| {
             self.inner.rebuild(
                 &prev.inner,
@@ -152,6 +177,12 @@ where
                 (self.dismiss)(state, &self.output_key);
                 MessageResult::Action(())
             }
+            None if message.take_message::<GoBack>().is_some() => {
+                if let Some(back) = self.back {
+                    back(state, &self.output_key);
+                }
+                MessageResult::Action(())
+            }
             _ => MessageResult::Stale,
         }
     }
@@ -161,12 +192,16 @@ pub(super) struct SearchFocus {
     inner: WidgetPod<dyn Widget>,
     target: FocusTarget,
     cancel_editor: bool,
+    back: bool,
+    navigation: Vec<FocusTarget>,
 }
 
 #[derive(Debug)]
 struct InitializeSearchFocus;
 #[derive(Debug)]
 struct DismissLauncher;
+#[derive(Debug)]
+struct GoBack;
 
 impl SearchFocus {
     fn child_mut<'a>(this: &'a mut WidgetMut<'_, Self>) -> WidgetMut<'a, dyn Widget> {
@@ -215,6 +250,9 @@ impl Widget for SearchFocus {
         _props: &mut xilem::masonry::core::PropertiesMut<'_>,
         event: &TextEvent,
     ) {
+        if navigation::handle(ctx, event, &self.navigation, self.back) {
+            return;
+        }
         if matches!(event, TextEvent::WindowFocusChange(true))
             && let Some(target) = *self.target.lock().unwrap()
         {
@@ -308,6 +346,8 @@ mod tests {
             inner: contents.prepare().erased().to_pod(),
             target: Arc::new(Mutex::new(Some(search_id))),
             cancel_editor: true,
+            back: false,
+            navigation: Vec::new(),
         }
         .prepare()
         .with_props(Dimensions::MAX);

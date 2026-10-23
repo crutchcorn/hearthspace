@@ -25,6 +25,7 @@ impl ShellOutputInstance {
             show_power: false,
             show_controls: false,
             quick_panel: Default::default(),
+            clock_formats: Default::default(),
             osd: None,
             confirm_logout: false,
             show_notifications: false,
@@ -68,6 +69,7 @@ impl ShellOutputInstance {
         self.show_map = false;
         self.show_power = false;
         self.show_controls = false;
+        self.clock_formats.open = false;
         self.confirm_logout = false;
         self.query.clear();
         self.selected_result = None;

@@ -3,6 +3,8 @@ use super::navigation::{action, keys, query};
 use super::shell_panels::connect;
 use super::*;
 use serde_json::{Value, json};
+#[path = "frame_layout/clock_format.rs"]
+mod clock_format;
 #[path = "frame_layout/corner_orientation.rs"]
 mod corner_orientation;
 #[path = "frame_layout/desktop_layers.rs"]
