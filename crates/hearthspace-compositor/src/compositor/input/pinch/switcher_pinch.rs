@@ -56,6 +56,7 @@ impl App {
         // An idempotent switcher pinch dismissal is also used during session reset.
         // Preserve a three-finger gesture so reset can still roll it back.
         if self.pinch_zoom.interrupt_switcher_pinch() && !self.dispatching_touch {
+            self.gtk_shell.reset_input();
             let actions = self.touch_input.interrupt();
             self.apply_touch_actions(actions, InputTime::now());
         }

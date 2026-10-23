@@ -192,6 +192,7 @@ pub(in crate::compositor) fn run_event_loop(
         data.state.reconcile_window_switcher();
         data.state.advance_canvas_preview();
         data.state.reconcile_layout_editor();
+        data.state.finish_pending_presentation_reveals();
         data.state.maintain_focused_shell_peek();
         data.state.refresh_pending_shell_click();
         data.apply_cursor_icon();

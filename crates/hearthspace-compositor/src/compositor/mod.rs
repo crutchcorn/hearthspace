@@ -20,6 +20,7 @@ mod cursor;
 mod desktop;
 mod focus;
 mod focused_shell_peek;
+mod gtk_shell;
 mod handlers;
 mod idle;
 mod input;
@@ -279,6 +280,7 @@ struct App {
     session_lock: session_lock::LockState,
     remote_input: input::RemoteInput,
     remote_capture: capture::protocol::RemoteCaptureState,
+    gtk_shell: gtk_shell::GtkShellState,
     _seat: Seat<Self>,
     pointer: PointerHandle<Self>,
     touch: TouchHandle<Self>,
@@ -668,6 +670,7 @@ pub(in crate::compositor) fn initialize_app(
         primary_selection_state: PrimarySelectionState::new::<App>(&dh),
         remote_input: input::RemoteInput::new(&dh, options.remote_desktop),
         remote_capture: capture::protocol::RemoteCaptureState::new(&dh, options.remote_desktop),
+        gtk_shell: gtk_shell::GtkShellState::new(&dh),
         session_lock: session_lock::LockState::new(
             &dh,
             !matches!(

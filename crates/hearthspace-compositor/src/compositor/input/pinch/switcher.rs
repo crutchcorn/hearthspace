@@ -169,6 +169,7 @@ impl App {
 
     pub(in crate::compositor) fn interrupt_window_switcher_gesture(&mut self) {
         if self.pinch_zoom.switcher.take().is_some() && !self.dispatching_touch {
+            self.gtk_shell.reset_input();
             let actions = self.touch_input.interrupt();
             self.apply_touch_actions(actions, InputTime::now());
         }

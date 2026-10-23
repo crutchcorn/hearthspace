@@ -14,6 +14,10 @@ use wayland_protocols::xdg::{
 
 #[path = "interactive_client_events.rs"]
 pub(crate) mod events;
+#[path = "gtk_titlebar_client.rs"]
+pub(crate) mod gtk;
+#[path = "client_maximize.rs"]
+mod maximize;
 
 struct Window {
     surface: wl_surface::WlSurface,
@@ -28,6 +32,7 @@ struct Window {
 
 #[derive(Default)]
 struct State {
+    gtk: gtk::State,
     compositor: Option<wl_compositor::WlCompositor>,
     shm: Option<wl_shm::WlShm>,
     wm_base: Option<xdg_wm_base::XdgWmBase>,
@@ -222,7 +227,7 @@ impl InteractiveClient {
         self.sync();
     }
 
-    pub(super) fn request_restore(&mut self, window: usize) {
+    pub(crate) fn request_restore(&mut self, window: usize) {
         self.state.windows[window].toplevel.unset_fullscreen();
         self.state.windows[window].toplevel.unset_maximized();
         self.sync();
@@ -311,6 +316,7 @@ impl Dispatch<xdg_toplevel::XdgToplevel, usize> for State {
             states,
         } = event
         {
+            state.gtk.record_configure(*number, false);
             state.windows[*number].resizing =
                 states.as_chunks::<4>().0.iter().any(|bytes| {
                     u32::from_ne_bytes(*bytes) == xdg_toplevel::State::Resizing as u32
@@ -335,6 +341,7 @@ impl Dispatch<xdg_surface::XdgSurface, usize> for State {
         handle: &QueueHandle<Self>,
     ) {
         if let xdg_surface::Event::Configure { serial } = event {
+            state.gtk.record_configure(*number, true);
             surface.ack_configure(serial);
             state.windows[*number].configure_count += 1;
             if state.windows[*number].mapped {

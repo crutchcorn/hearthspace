@@ -138,7 +138,7 @@ impl App {
                 // Motion can round or clamp to an unchanged logical size.
                 // Smithay compares with the latest pending/acknowledged state,
                 // so identical samples need not enqueue another client frame.
-                surface.send_pending_configure();
+                crate::compositor::gtk_shell::send_pending_configure(surface);
             }
             #[cfg(feature = "xwayland")]
             ManagedSurface::X11(surface) => {
@@ -178,7 +178,7 @@ impl App {
                 surface.with_pending_state(|state| {
                     state.states.unset(xdg_toplevel::State::Resizing);
                 });
-                surface.send_configure()
+                crate::compositor::gtk_shell::send_configure(surface)
             });
             if resize.moved {
                 #[cfg(feature = "xwayland")]

@@ -6,7 +6,7 @@ use super::{
 use serde_json::Value;
 
 #[path = "remote_input_client.rs"]
-mod client;
+pub(super) mod client;
 use client::RemoteClient;
 
 fn socket(compositor: &HeadlessCompositor) -> PathBuf {

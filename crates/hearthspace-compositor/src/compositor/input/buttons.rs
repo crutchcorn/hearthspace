@@ -116,6 +116,7 @@ impl App {
             && (self.drag.is_some() || self.resize.is_some())
         {
             debug!("ending pointer drag/resize from button release");
+            self.gtk_shell.reset_input();
             self.update_window_pointer_operation();
             self.drag = None;
             self.finish_resize();

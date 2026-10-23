@@ -1,63 +1,10 @@
-//! Canvas zoom must remain visible when an ordinary app starts maximized.
+//! Startup-maximized apps remain zoomable after explicitly entering canvas mode.
 use super::navigation::{Editors, action, keys, query, wait_windows};
 use super::*;
-use serde_json::Value;
 
-fn maximized_fixture(
-    compositor: &HeadlessCompositor,
-    name: &str,
-    backend: &str,
-) -> (Editors, PathBuf) {
-    let path = compositor.runtime_dir.path().join(format!("{name}.json"));
-    let log = std::fs::File::create(path.with_extension("log")).unwrap();
-    let mut command = Command::new(env!("CARGO_BIN_EXE_hearthspace-window-test"));
-    command
-        .arg(&path)
-        .env("XDG_RUNTIME_DIR", compositor.runtime_dir.path())
-        .env("GDK_BACKEND", backend)
-        .env("HEARTHSPACE_WINDOW_TEST_MAXIMIZED", "1")
-        .stdin(Stdio::null())
-        .stdout(log.try_clone().unwrap())
-        .stderr(log);
-    if backend == "wayland" {
-        command
-            .env(
-                "WAYLAND_DISPLAY",
-                format!("hearthspace-test-{}", std::process::id()),
-            )
-            .env_remove("DISPLAY");
-    } else {
-        let deadline = Instant::now() + Duration::from_secs(10);
-        let display = loop {
-            let status = query(compositor, "status");
-            if let Some(display) = status["xwayland_display"].as_str() {
-                break display.to_string();
-            }
-            assert!(Instant::now() < deadline, "XWayland not ready");
-            thread::sleep(Duration::from_millis(25));
-        };
-        command
-            .env("DISPLAY", display)
-            .env_remove("WAYLAND_DISPLAY");
-    }
-    let child = command.spawn().unwrap();
-    (Editors(vec![child]), path)
-}
-
-fn wait_state(path: &Path, condition: impl Fn(&Value) -> bool) -> Value {
-    let deadline = Instant::now() + Duration::from_secs(10);
-    loop {
-        let state = std::fs::read(path)
-            .ok()
-            .and_then(|data| serde_json::from_slice(&data).ok())
-            .unwrap_or(Value::Null);
-        if condition(&state) {
-            return state;
-        }
-        assert!(Instant::now() < deadline, "client state timed out: {state}");
-        thread::sleep(Duration::from_millis(25));
-    }
-}
+#[path = "canvas_zoom/fixture.rs"]
+mod fixture;
+use fixture::{maximized_fixture, wait_state};
 
 pub(super) fn wait_scale(compositor: &HeadlessCompositor, target: f64) {
     let deadline = Instant::now() + Duration::from_secs(5);

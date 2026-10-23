@@ -34,6 +34,22 @@ impl App {
         id: u64,
     ) -> Result<(), String> {
         self.check_navigation_available()?;
+        self.toggle_canvas_maximize_for_input(id, false)
+    }
+
+    /// The GTK protocol has validated the seat, serial and input ownership.
+    pub(in crate::compositor) fn toggle_window_canvas_maximize_from_titlebar(
+        &mut self,
+        id: u64,
+    ) -> Result<(), String> {
+        self.toggle_canvas_maximize_for_input(id, true)
+    }
+
+    fn toggle_canvas_maximize_for_input(
+        &mut self,
+        id: u64,
+        preserve_pointer: bool,
+    ) -> Result<(), String> {
         if self.toggle_frame_window_reveal(id)? {
             return Ok(());
         }
@@ -54,17 +70,32 @@ impl App {
             Some(false),
             None,
         )?;
-        self.focus_presentation_window(id)
+        self.focus_presentation_window_for_input(id, preserve_pointer)
     }
 
-    pub(super) fn focus_presentation_window(&mut self, id: u64) -> Result<(), String> {
+    pub(in crate::compositor) fn focus_presentation_window(
+        &mut self,
+        id: u64,
+    ) -> Result<(), String> {
+        self.focus_presentation_window_for_input(id, false)
+    }
+
+    fn focus_presentation_window_for_input(
+        &mut self,
+        id: u64,
+        preserve_pointer: bool,
+    ) -> Result<(), String> {
         let index = self
             .windows
             .iter()
             .position(|window| window.id == id)
             .ok_or_else(|| format!("unknown window {id}"))?;
         if !self.windows[index].presentation.pinned() {
-            return self.focus_window(id);
+            return if preserve_pointer {
+                self.focus_window_with_existing_grab(id)
+            } else {
+                self.focus_window(id)
+            };
         }
         // A client may still have its old full-size buffer here. Revealing that
         // buffer would pan the canvas before its bounded configure is committed.
@@ -102,10 +133,70 @@ impl App {
             .any(|window| window.mapped && window.presentation.focused_view)
     }
 
+    pub(in crate::compositor) fn window_focus_view_pending_for_focus(
+        &self,
+        focused: usize,
+    ) -> bool {
+        self.is_navigable_window(focused)
+            && self.windows.iter().enumerate().any(|(index, window)| {
+                self.is_navigable_window(index)
+                    && window.presentation.focused_view_requested
+                    && !window.presentation.focused_view
+                    && self.window_focus_view_contains_focus(index, focused)
+            })
+    }
+
+    fn window_focus_view_contains_focus(&self, index: usize, focused: usize) -> bool {
+        index == focused || self.transient_descendant_of(focused, self.windows[index].id)
+    }
+
+    pub(in crate::compositor) fn suspend_window_focus_view(&mut self, index: usize) {
+        if self.windows[index].presentation.focused_view {
+            // Remapping may happen during another client's grab. Retain intent
+            // but require actual activation again before taking over the output.
+            self.windows[index].presentation.focused_view = false;
+            self.windows[index].presentation.focused_output_bounds = None;
+            self.configure_window_presentation(index);
+        }
+    }
+
     pub(in crate::compositor) fn leave_window_focus_views(&mut self) {
         for index in 0..self.windows.len() {
+            self.windows[index].presentation.focused_view_requested = false;
             self.leave_window_focus_view(index);
         }
+    }
+
+    pub(super) fn window_owns_focused_presentation(&self, index: usize) -> bool {
+        self.is_navigable_window(index)
+            && (self.windows[index].presentation.focused_view
+                || self.focused_normal_window_id.is_some_and(|id| {
+                    self.windows[index].id == id
+                        || self
+                            .windows
+                            .iter()
+                            .position(|window| window.id == id)
+                            .is_some_and(|focused| {
+                                self.transient_descendant_of(focused, self.windows[index].id)
+                            })
+                }))
+    }
+
+    // Also called under Smithay's keyboard mutex. Freeze at the last presented
+    // viewport rather than advancing animation or dispatching synthetic input:
+    // both can query keyboard focus recursively through pointer hit-testing.
+    pub(super) fn activate_window_focus_view(&mut self, index: usize) -> bool {
+        let state = &mut self.windows[index].presentation;
+        if !state.focused_view_requested || state.focused_view {
+            return false;
+        }
+        state.focused_view = true;
+        self.pinch_zoom = Default::default();
+        self.viewport_animation = None;
+        self.clear_window_group();
+        self.clear_desktop_selection();
+        self.reset_focused_shell_peek();
+        true
     }
 
     // Called under Smithay's keyboard mutex: use the supplied focus, never query
@@ -115,8 +206,12 @@ impl App {
             return;
         };
         for index in 0..self.windows.len() {
-            if index != focused && !self.transient_descendant_of(focused, self.windows[index].id) {
+            if !self.window_focus_view_contains_focus(index, focused) {
                 self.leave_window_focus_view(index);
+            } else if self.is_navigable_window(index) && self.activate_window_focus_view(index) {
+                self.refresh_focused_output_bounds(index);
+                self.configure_window_presentation(index);
+                self.request_redraw();
             }
         }
     }
@@ -126,6 +221,7 @@ impl App {
             return;
         }
         self.windows[index].presentation.focused_view = false;
+        self.windows[index].presentation.focused_view_requested = false;
         self.windows[index].presentation.focused_output_bounds = None;
         self.configure_window_presentation(index);
         self.request_redraw();

@@ -86,7 +86,7 @@ impl App {
             true
         });
         if changed {
-            surface.send_configure();
+            crate::compositor::gtk_shell::send_configure(surface);
         }
     }
 }

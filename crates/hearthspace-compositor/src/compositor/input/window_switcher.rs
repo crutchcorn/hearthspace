@@ -71,6 +71,7 @@ impl App {
     pub(in crate::compositor) fn cancel_window_switcher_touch(&mut self) {
         self.invalidate_window_switcher_tap();
         if self.touch_input.has_contacts() {
+            self.gtk_shell.reset_input();
             let actions = self.touch_input.interrupt();
             self.apply_touch_actions(actions, InputTime::now());
         }

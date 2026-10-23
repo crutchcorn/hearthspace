@@ -284,6 +284,7 @@ impl App {
     }
 
     pub(in crate::compositor) fn cancel_titlebar_pointer(&mut self) {
+        self.gtk_shell.reset_input();
         self.titlebar_input.cancel();
         self.request_redraw();
     }

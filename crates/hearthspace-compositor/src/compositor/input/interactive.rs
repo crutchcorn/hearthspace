@@ -48,6 +48,8 @@ impl App {
     }
 
     pub(in crate::compositor) fn prepare_window_pointer_operation(&mut self) {
+        // The press now belongs to this operation, including after its release.
+        self.gtk_shell.reset_input();
         if self.touch_pointer_pressed {
             // xdg/XWayland requests arrive after touch dispatch has returned.
             // They continue this finger's pointer sequence; interrupting that

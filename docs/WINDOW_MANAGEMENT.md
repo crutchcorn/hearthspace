@@ -17,8 +17,9 @@ view starts at its top-left so its controls remain reachable. Dialogs stay
 centered on their parents. Alt-Tab, search selection, and explicit focus actions
 still navigate to existing windows.
 
-Double-clicking an ordinary title bar expands the window on the canvas. At output
-widths above 760 logical pixels, its outer bounds leave 24 pixels at each side
+Double-clicking a server title bar or a cooperating GTK title bar expands the
+window on the canvas. At output widths above 760 logical pixels, its outer bounds
+leave 24 pixels at each side
 and 96 at the top and bottom; smaller outputs use 12 and 78. The clearances stay
 stable when frame controls move or hide. Maximization fits the current view,
 including its zoom, then keeps that canvas size and location as the view pans
@@ -35,10 +36,28 @@ another header double-click restores the original window. Super+Shift+F offers
 the same focused-view action from the keyboard. Frame-attached windows use both
 header actions to expand or tuck at their existing edge.
 
+Application maximize requests also enter focused view. Their restore requests
+return to the original floating size. This includes native Wayland and XWayland
+applications, whether the request comes from a button, a menu, or application
+code. Repeated maximize requests preserve the current maximized mode. A background
+request does not take focus or suspend canvas navigation; its focused view starts
+when the application becomes active.
+
+GTK clients that send `gtk_surface1.titlebar_gesture` get the separate header
+double-click action: canvas maximize/restore, or focused view back to canvas
+maximization. Other client-drawn headers may send the same generic maximize
+request for both the button and double-click; both enter focused view in that
+case. Super+M and Super+Shift+F remain separate actions for every application.
+Hearthspace does not infer a header gesture from click timing or coordinates.
+GTK's default right/middle header actions remain no-ops; customized right/middle
+actions are not yet supported by the extension. The
+[protocol contract](../crates/hearthspace-compositor/protocols/README.md) documents
+its supported requests and input checks.
+
 Focused view hides the shell until the pointer approaches a corner (within 72
 logical pixels of both adjoining edges). Controls remain visible while in use,
 with a 450 ms grace after leaving them; a touchscreen corner tap grants 2.5
-seconds. The window's own header buttons do not trigger this reveal. Super+F6
+seconds. Server-decorated header buttons do not trigger this reveal. Super+F6
 reveals and focuses shell controls for keyboard use. Escape dismisses a shell
 panel or returns keyboard focus to the application; it does not exit focused
 view. Activating another app, canvas search, or the layout editor leaves focused
@@ -75,7 +94,8 @@ force termination. Drag empty title-bar space to move a floating window, or
 double-click it to toggle canvas maximize/restore, as with Super+M. The expand
 button toggles focused view, as with Super+Shift+F. Both preserve the original
 floating geometry.
-Client-drawn title bars continue to handle their own controls.
+Client-drawn title bars retain their own controls; GTK's explicit title-bar
+gesture protocol lets the compositor distinguish their header double-clicks.
 
 Hold **Alt** while moving a floating window to align its visible top-left corner
 with the canvas dot grid. Hold Alt while resizing an edge or corner to align

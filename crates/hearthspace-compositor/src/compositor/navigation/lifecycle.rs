@@ -48,6 +48,7 @@ impl App {
         if !mapped {
             self.window_pointer_grab_owner_unmapped(id);
             self.retire_window_pointer_operation(id);
+            self.suspend_window_focus_view(index);
             self.windows[index].pending_resize = None;
             self.favorite_window_unmapped(id);
         }
@@ -135,7 +136,7 @@ impl App {
                         changed
                     });
                     if changed {
-                        surface.send_configure();
+                        crate::compositor::gtk_shell::send_configure(surface);
                     }
                 }
                 #[cfg(feature = "xwayland")]

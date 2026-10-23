@@ -20,7 +20,7 @@ impl App {
             return;
         }
         self.configure_toplevel(surface, window.kind, window.shell_output_name.as_deref());
-        surface.send_configure();
+        crate::compositor::gtk_shell::send_configure(surface);
     }
 
     pub(super) fn normal_toplevel_bounds(

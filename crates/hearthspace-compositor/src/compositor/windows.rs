@@ -53,7 +53,7 @@ fn configure_server_side_decoration(toplevel: &ToplevelSurface) {
         state.decoration_mode = Some(DecorationMode::ServerSide);
     });
     if toplevel.is_initial_configure_sent() {
-        toplevel.send_configure();
+        crate::compositor::gtk_shell::send_configure(toplevel);
     }
 }
 
@@ -62,7 +62,7 @@ fn configure_client_side_decoration(toplevel: &ToplevelSurface) {
         state.decoration_mode = Some(DecorationMode::ClientSide);
     });
     if toplevel.is_initial_configure_sent() {
-        toplevel.send_configure();
+        crate::compositor::gtk_shell::send_configure(toplevel);
     }
 }
 
@@ -504,7 +504,7 @@ impl App {
         // The initial empty wl_surface.commit establishes the client's parent,
         // decoration and size hints before its first configure is sent.
         if surface.is_initial_configure_sent() {
-            surface.send_configure();
+            crate::compositor::gtk_shell::send_configure(surface);
         }
     }
 

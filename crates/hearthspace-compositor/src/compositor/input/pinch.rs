@@ -300,6 +300,8 @@ impl App {
     }
 
     pub(in crate::compositor) fn interrupt_pinch_zoom(&mut self) {
+        // Interrupting touch can synthesize a release; it cannot complete a click.
+        self.gtk_shell.reset_input();
         self.cancel_window_switcher_swipe();
         self.pinch_zoom.interrupt();
         if !self.dispatching_touch {

@@ -49,6 +49,9 @@ mod frame_layout;
 #[path = "support/grid_snapping.rs"]
 mod grid_snapping;
 #[cfg(feature = "test-apps")]
+#[path = "support/gtk_titlebar.rs"]
+mod gtk_titlebar;
+#[cfg(feature = "test-apps")]
 #[path = "support/interactive.rs"]
 mod interactive;
 #[cfg(feature = "test-apps")]

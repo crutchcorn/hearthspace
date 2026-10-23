@@ -11,6 +11,7 @@ mod configure;
 mod focused;
 mod geometry;
 mod groups;
+mod restore;
 #[cfg(test)]
 mod tests;
 mod transform;
@@ -21,6 +22,9 @@ pub(super) struct WindowPresentation {
     pub(super) maximized: bool,
     pub(super) fullscreen: bool,
     pub(super) focused_view: bool,
+    // A background/premap client may request focused presentation without
+    // owning the canvas. `focused_view` becomes effective only on activation.
+    focused_view_requested: bool,
     pub(super) maximized_bounds: Option<Rectangle<i32, Logical>>,
     pub(super) output: Option<String>,
     pub(super) restoring: bool,
@@ -65,6 +69,7 @@ impl WindowPresentation {
             self.maximized = maximized;
             if !maximized {
                 self.focused_view = false;
+                self.focused_view_requested = false;
                 self.focused_output_bounds = None;
                 self.maximized_bounds = None;
             }
@@ -111,7 +116,20 @@ impl App {
     }
 
     pub(super) fn set_window_maximized(&mut self, id: u64, enabled: bool) -> Result<(), String> {
-        self.update_window_presentation(id, None, Some(enabled), None)
+        // Client requests carry no control/gesture identity. A new maximization
+        // enters focused view; repeated layout requests keep the current mode,
+        // including canvas maximization selected by an explicit GTK gesture.
+        let window = self
+            .windows
+            .iter()
+            .find(|window| window.id == id)
+            .ok_or_else(|| format!("unknown window {id}"))?;
+        let focused = if enabled && window.presentation.maximized {
+            None
+        } else {
+            Some(enabled)
+        };
+        self.update_window_presentation_with_focus(id, None, Some(enabled), focused, None)
     }
 
     fn update_window_presentation(
@@ -158,7 +176,8 @@ impl App {
             return Err("cannot change state during an interactive move or resize".into());
         }
         let target = self.presentation_output_for_window(index, output.as_deref());
-        if focused.is_none_or(|value| value == self.windows[index].presentation.focused_view)
+        if focused
+            .is_none_or(|value| value == self.windows[index].presentation.focused_view_requested)
             && !self.windows[index]
                 .presentation
                 .changes_for_request(fullscreen, maximized, &target)
@@ -170,18 +189,19 @@ impl App {
             if let ManagedSurface::Xdg(surface) = &self.windows[index].surface
                 && surface.is_initial_configure_sent()
             {
-                surface.send_configure();
+                crate::compositor::gtk_shell::send_configure(surface);
             }
             return Ok(());
         }
         self.cancel_canvas_peek_motion(id);
-        // A different window can change presentation while this finger owns
-        // a client move/resize (or has not requested it yet). Stop canvas zoom
-        // without releasing that window's pointer sequence.
-        self.prepare_window_pointer_operation();
-        if focused == Some(true) {
-            self.advance_viewport_animation();
-            self.viewport_animation = None;
+        let owns_focus = self.window_owns_focused_presentation(index);
+        if owns_focus {
+            // Presentation changes must preserve a delivered touch sequence,
+            // including one owned by another window's move or resize.
+            self.prepare_window_pointer_operation();
+            if focused == Some(true) && !self.windows[index].presentation.focused_view {
+                self.advance_viewport_animation();
+            }
         }
         let size = self.window_geometry_size(index);
         let maximize = maximized.unwrap_or(self.windows[index].presentation.maximized);
@@ -193,7 +213,10 @@ impl App {
         let state = &mut self.windows[index].presentation;
         state.update(fullscreen, maximized, size);
         if let Some(focused) = focused {
-            state.focused_view = focused && state.maximized;
+            state.focused_view_requested = focused && state.maximized;
+            if !state.focused_view_requested {
+                state.focused_view = false;
+            }
         }
         if let Some(bounds) = new_bounds {
             state.maximized_bounds = Some(bounds);
@@ -201,10 +224,8 @@ impl App {
         if state.pinned() {
             state.output = Some(target);
         }
-        if focused == Some(true) {
-            self.clear_window_group();
-            self.clear_desktop_selection();
-            self.reset_focused_shell_peek();
+        if owns_focus {
+            self.activate_window_focus_view(index);
         }
         self.refresh_focused_output_bounds(index);
         self.configure_window_presentation(index);
@@ -271,43 +292,6 @@ impl App {
             }
             self.refresh_focused_output_bounds(index);
             self.configure_window_presentation(index);
-        }
-    }
-
-    pub(super) fn finish_presentation_restore(
-        &mut self,
-        root: &wayland_server::protocol::wl_surface::WlSurface,
-    ) {
-        let Some(index) = self
-            .windows
-            .iter()
-            .position(|window| window.surface.wl_surface().as_ref() == Some(root))
-        else {
-            return;
-        };
-        if !self.windows[index].presentation.restoring {
-            return;
-        }
-        let size = self.window_geometry_size(index);
-        let ready = match &self.windows[index].surface {
-            ManagedSurface::Xdg(surface) => surface.with_committed_state(|state| {
-                state.is_some_and(|state| {
-                    !state.states.contains(xdg_toplevel::State::Fullscreen)
-                        && !state.states.contains(xdg_toplevel::State::Maximized)
-                })
-            }),
-            #[cfg(feature = "xwayland")]
-            ManagedSurface::X11(_) => self.windows[index].presentation.restore_size == Some(size),
-        };
-        if ready && size.w > 0 && size.h > 0 {
-            let reveal = self.windows[index].presentation.reveal_on_restore;
-            self.windows[index].presentation.restoring = false;
-            self.windows[index].presentation.reveal_on_restore = false;
-            self.windows[index].presentation.restore_size = None;
-            let id = self.windows[index].id;
-            if reveal && self.focused_normal_window_id == Some(id) {
-                let _ = self.focus_window(id);
-            }
         }
     }
 

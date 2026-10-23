@@ -15,6 +15,7 @@ impl App {
         location: Point<f64, Logical>,
         time: InputTime,
     ) {
+        self.gtk_shell.reset_input();
         self.shortcuts.cancel_meta_tap();
         let first = !self.touch_input.has_contacts();
         if first && !self.group_touch_blocked() {
@@ -119,6 +120,8 @@ impl App {
     }
 
     pub(in crate::compositor) fn remove_touch_device(&mut self, device: &str) {
+        // A completed tap may outlive the tracker's contacts while GTK replies.
+        self.gtk_shell.reset_input();
         if self.touch_pointer_pressed && self.touch_input.has_device_input(device) {
             self.cancel_titlebar_pointer();
             self.cancel_desktop_gesture();
@@ -134,6 +137,7 @@ impl App {
     }
 
     pub(in crate::compositor) fn cancel_input_gestures(&mut self) {
+        self.gtk_shell.reset_input();
         self.cancel_titlebar_pointer();
         self.cancel_group_gesture();
         self.cancel_desktop_gesture();

@@ -63,7 +63,7 @@ impl XdgShellHandler for App {
             .is_some_and(|id| self.set_window_maximized(id, true).is_ok())
             && surface.is_initial_configure_sent()
         {
-            surface.send_configure();
+            crate::compositor::gtk_shell::send_configure(&surface);
         }
     }
 
@@ -73,7 +73,7 @@ impl XdgShellHandler for App {
             .is_some_and(|id| self.set_window_maximized(id, false).is_ok())
             && surface.is_initial_configure_sent()
         {
-            surface.send_configure();
+            crate::compositor::gtk_shell::send_configure(&surface);
         }
     }
 
@@ -91,7 +91,7 @@ impl XdgShellHandler for App {
             .is_some_and(|id| self.set_window_fullscreen(id, true, output).is_ok())
             && surface.is_initial_configure_sent()
         {
-            surface.send_configure();
+            crate::compositor::gtk_shell::send_configure(&surface);
         }
     }
 
@@ -101,7 +101,7 @@ impl XdgShellHandler for App {
             .is_some_and(|id| self.set_window_fullscreen(id, false, None).is_ok())
             && surface.is_initial_configure_sent()
         {
-            surface.send_configure();
+            crate::compositor::gtk_shell::send_configure(&surface);
         }
     }
 
@@ -548,6 +548,7 @@ impl CompositorHandler for App {
         self.finish_presentation_restore(surface);
         self.refresh_window_mapping(surface);
         self.reanchor_resize(surface);
+        self.refresh_gtk_resize_edges(surface);
         if let Some(window_id) = self.managed_normal_window_id_for_surface(surface) {
             self.idle_daemon
                 .record_activity(window_id, ActivityReason::SurfaceCommit);

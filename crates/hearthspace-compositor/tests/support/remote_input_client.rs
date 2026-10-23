@@ -24,7 +24,7 @@ struct State {
     pointer_manager: Option<zwlr_virtual_pointer_manager_v1::ZwlrVirtualPointerManagerV1>,
 }
 
-pub(super) struct RemoteClient {
+pub(crate) struct RemoteClient {
     queue: EventQueue<State>,
     state: State,
     keyboard: Option<zwp_virtual_keyboard_v1::ZwpVirtualKeyboardV1>,
@@ -33,7 +33,7 @@ pub(super) struct RemoteClient {
 }
 
 impl RemoteClient {
-    pub(super) fn connect(socket: &Path) -> Self {
+    pub(crate) fn connect(socket: &Path) -> Self {
         let connection = Connection::from_socket(UnixStream::connect(socket).unwrap()).unwrap();
         let mut queue = connection.new_event_queue();
         let handle = queue.handle();
@@ -94,14 +94,14 @@ impl RemoteClient {
         self.sync();
     }
 
-    pub(super) fn motion(&mut self, x: u32, y: u32, width: u32, height: u32) {
+    pub(crate) fn motion(&mut self, x: u32, y: u32, width: u32, height: u32) {
         let pointer = self.pointer.as_ref().unwrap();
         pointer.motion_absolute(0, x, y, width, height);
         pointer.frame();
         self.sync();
     }
 
-    pub(super) fn button(&mut self, pressed: bool) {
+    pub(crate) fn button(&mut self, pressed: bool) {
         let pointer = self.pointer.as_ref().unwrap();
         pointer.button(
             0,
@@ -118,6 +118,11 @@ impl RemoteClient {
 
     pub(super) fn destroy_keyboard(&mut self) {
         self.keyboard.take().unwrap().destroy();
+        self.sync();
+    }
+
+    pub(crate) fn destroy_pointer(&mut self) {
+        self.pointer.take().unwrap().destroy();
         self.sync();
     }
 
