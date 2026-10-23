@@ -37,7 +37,6 @@ pub(super) struct Request {
 pub(super) enum Completed {
     Closed(Option<FavoriteStore>),
     OpenWith(Vec<actions::OpenWithApp>),
-    Properties(Vec<(String, String)>),
 }
 
 pub(super) fn perform(
@@ -168,7 +167,7 @@ pub(super) fn perform(
         }
         Action::NewFolder(name) => actions::new_folder(&directory()?, &name)?,
         Action::Trash => actions::trash(&actions::paths(&selected)?)?,
-        Action::Properties => return Ok(Completed::Properties(actions::properties(&selected)?)),
+        Action::Properties => actions::properties(&selected)?,
         Action::Favorite(add) => {
             let DesktopItemKind::App { app_id, .. } = &one()?.kind else {
                 return Err("Only applications can be favorites.".into());

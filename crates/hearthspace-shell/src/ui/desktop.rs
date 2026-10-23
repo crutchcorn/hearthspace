@@ -144,7 +144,7 @@ pub(super) fn windows(state: &ShellState) -> Vec<WindowView<ShellState>> {
             )
         })
         .collect();
-    windows.extend(context::window(state));
+    windows.extend(context::windows(state));
     windows
 }
 

@@ -49,7 +49,9 @@ sudo apt-get install -y build-essential pkg-config clang libclang-dev libwayland
 
 Desktop file menus use GIO for application associations and Trash.
 `libglib2.0-dev` supplies its build interfaces; `libglib2.0-bin` supplies
-`gio launch` for Open With, and `xdg-utils` supplies the default `xdg-open` handler.
+`gio open` for default applications and `gio launch` for Open With. Properties
+uses the session file manager’s `org.freedesktop.FileManager1.ShowItemProperties`
+interface (provided by Nautilus, for example).
 
 Settings and server-decorated titlebars use Liberation Sans to match the browser
 reference's text metrics.

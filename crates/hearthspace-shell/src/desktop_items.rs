@@ -7,10 +7,10 @@ use std::{
     fs, io,
     os::unix::ffi::OsStrExt,
     path::{Path, PathBuf},
-    process::Command,
+    process::{Command, Stdio},
 };
 
-use crate::app_catalog::{AppCatalog, launch_command, reap_child};
+use crate::app_catalog::{AppCatalog, launch_command};
 
 pub mod actions;
 pub(crate) mod artwork;
@@ -133,17 +133,14 @@ pub fn open_path(path: &Path, xwayland_display: Option<&str>) -> Result<(), Stri
     if !path.is_absolute() || !path.exists() {
         return Err("This desktop file or folder is no longer available.".into());
     }
-    let mut command = open_command(path, xwayland_display)?;
-    let child = command
-        .spawn()
-        .map_err(|error| format!("Could not open {}: {error}", path.display()))?;
-    reap_child(child);
-    Ok(())
+    run_opener(open_command(path, xwayland_display)?)
 }
 
 fn open_command(path: &Path, xwayland_display: Option<&str>) -> Result<Command, String> {
+    // Use GIO's desktop-entry parsing and launch status. xdg-open's generic
+    // desktop path uses its own parser and can hide launcher failures.
     let mut command = launch_command(
-        &["xdg-open".into()],
+        &["gio".into(), "open".into(), "--".into()],
         &hearthspace_common::wayland_display_name(),
         &[],
         None,
@@ -157,5 +154,29 @@ fn open_command(path: &Path, xwayland_display: Option<&str>) -> Result<Command, 
     Ok(command)
 }
 
+fn run_opener(mut command: Command) -> Result<(), String> {
+    // Wait for GIO's launch result, not the application. Descendants inherit
+    // these handles; piping their output would wait for the app to close.
+    let status = command
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::inherit())
+        .status()
+        .map_err(|error| format!("Could not open files: {error}"))?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(format!(
+            "Could not open files: the application launcher failed ({status})."
+        ))
+    }
+}
+
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod launch_tests;
+
+#[cfg(test)]
+mod test_support;

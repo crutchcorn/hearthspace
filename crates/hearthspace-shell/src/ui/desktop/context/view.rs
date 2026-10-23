@@ -15,130 +15,162 @@ use xilem::{
 
 mod name_input;
 
-pub(super) fn window(state: &ShellState) -> Option<WindowView<ShellState>> {
+pub(super) fn windows(state: &ShellState) -> Vec<WindowView<ShellState>> {
     let menu = &state.desktop.menu;
-    let context = menu.current.as_ref()?;
+    let Some(context) = &menu.current else {
+        return vec![];
+    };
     let generation = context.generation;
-    Some(popup::window(
-        menu.window?,
+    let mut windows = vec![popup::window(
+        menu.window.expect("active context window"),
         "Desktop context menu",
         hearthspace_common::desktop_context::app_id(generation, context.output.as_deref()),
-        size(state),
+        size(state, false),
         content(state),
         move |state| super::dismiss(state, generation),
-    ))
+    )];
+    if let Some(submenu) = &menu.submenu {
+        windows.push(popup::window(
+            submenu.window,
+            "Open With",
+            hearthspace_common::desktop_context::submenu_app_id(
+                generation,
+                context.output.as_deref(),
+                submenu.row_y,
+            ),
+            size(state, true),
+            panel(state, true),
+            move |state| super::back(state, generation),
+        ));
+    }
+    windows
 }
 
-fn size(state: &ShellState) -> LogicalSize<f64> {
+fn size(state: &ShellState, submenu: bool) -> LogicalSize<f64> {
     let menu = &state.desktop.menu;
     let context = menu.current.as_ref().expect("active desktop menu");
-    let width = if matches!(menu.page, Page::Menu) {
-        260.0
+    let width = if !submenu && matches!(menu.page, Page::Menu) {
+        260.0_f64
     } else {
-        340.0_f64
+        340.0
     }
     .min(context.max_width as f64);
-    let rows = rows::rows(state);
-    let base_height = match &menu.page {
-        Page::Name(_) => 160.0,
-        Page::Properties(info) => 80.0 + info.len() as f64 * 58.0,
-        Page::OpenWith(apps) if apps.is_empty() => 92.0,
-        _ => rows.len() as f64 * 34.0 + 12.0,
+    let count = rows::rows(state, submenu).len();
+    let base_height = if !submenu && matches!(menu.page, Page::Name(_)) {
+        160.0
+    } else if submenu
+        && menu
+            .submenu
+            .as_ref()
+            .is_some_and(|child| child.apps.as_ref().is_none_or(|apps| apps.is_empty()))
+    {
+        112.0
+    } else {
+        count as f64 * 34.0 + 12.0
     };
-    let height = (base_height + if menu.error.is_some() { 76.0 } else { 0.0 })
-        .min(context.max_height as f64);
+    let error = menu.error.is_some() && (submenu || menu.submenu.is_none());
+    let height = (base_height + if error { 76.0 } else { 0.0 }).min(context.max_height as f64);
     LogicalSize::new(width, height)
 }
 
 pub(super) fn content(state: &ShellState) -> impl WidgetView<ShellState> + use<> {
+    panel(state, false)
+}
+
+pub(super) fn panel(state: &ShellState, submenu: bool) -> impl WidgetView<ShellState> + use<> {
     let menu = &state.desktop.menu;
     let generation = menu
         .current
         .as_ref()
         .expect("active desktop menu")
         .generation;
-    let LogicalSize { width, height } = size(state);
-    let rows = rows::rows(state);
-    let content: Box<AnyWidgetView<ShellState>> = match &menu.page {
-        Page::Name(folder) => name_form(state, *folder, generation).boxed(),
-        _ => {
-            let mut views: Vec<Box<AnyWidgetView<ShellState>>> = Vec::new();
-            if let Page::Properties(info) = &menu.page {
-                for (name, value) in info {
-                    views.push(
-                        sized_box(
-                            flex_col((
-                                label(name.clone())
-                                    .text_size(11.0)
-                                    .color(state.appearance.palette.text_muted),
-                                label(value.clone())
-                                    .text_size(13.0)
-                                    .color(state.appearance.palette.text)
-                                    .line_break_mode(LineBreaking::WordWrap),
-                            ))
-                            .cross_axis_alignment(CrossAxisAlignment::Start)
-                            .gap(4.0.px()),
-                        )
-                        .padding(10.0.px())
-                        .boxed(),
-                    );
-                }
-            }
-            if matches!(&menu.page, Page::OpenWith(apps) if apps.is_empty()) {
-                views.push(
-                    sized_box(
-                        label("No applications are associated with this file type.")
-                            .text_size(13.0)
-                            .line_break_mode(LineBreaking::WordWrap),
-                    )
-                    .padding(10.0.px())
-                    .boxed(),
-                );
-            }
-            views.extend(rows.into_iter().enumerate().map(|(index, row)| {
-                let close = matches!(row.action, rows::Choice::Close);
-                let selected = if menu.busy {
-                    close
-                } else {
-                    menu.selected == index
-                };
-                tray_button::ButtonView {
-                    output: String::new(),
-                    target: tray_button::Target::DesktopContext(generation, index),
-                    appearance: Appearance {
-                        name: row.name,
-                        menu: true,
-                        selected,
-                        autofocus: selected,
-                        enabled: !menu.busy || close,
-                        submenu: row.submenu,
-                        ..Default::default()
-                    },
-                }
-                .boxed()
-            }));
-            popup_group::group(
-                "Desktop context menu",
-                flex_col(views)
-                    .cross_axis_alignment(CrossAxisAlignment::Stretch)
-                    .gap(0.0.px()),
-            )
-            .menu()
-            .boxed()
-        }
-    };
-    let error = menu.error.as_ref().map(|error| {
-        popup_group::group(
-            "Desktop action",
-            sized_box(
-                label(error.clone())
-                    .text_size(12.0)
+    let LogicalSize { width, height } = size(state, submenu);
+    let content: Box<AnyWidgetView<ShellState>> = if !submenu && let Page::Name(folder) = &menu.page
+    {
+        name_form(state, *folder, generation).boxed()
+    } else {
+        let mut views: Vec<Box<AnyWidgetView<ShellState>>> = Vec::new();
+        if submenu
+            && let Some(child) = &menu.submenu
+            && child.apps.as_ref().is_none_or(|apps| apps.is_empty())
+        {
+            views.push(
+                sized_box(
+                    label(if child.apps.is_none() && menu.busy {
+                        "Loading applications…"
+                    } else {
+                        "No applications are associated with this file type."
+                    })
+                    .text_size(13.0)
                     .line_break_mode(LineBreaking::WordWrap),
-            )
-            .padding(10.0.px()),
+                )
+                .padding(10.0.px())
+                .boxed(),
+            );
+        }
+        views.extend(
+            rows::rows(state, submenu)
+                .into_iter()
+                .enumerate()
+                .map(|(index, row)| {
+                    let close = matches!(row.action, rows::Choice::Close | rows::Choice::Back);
+                    let selected_index = if submenu {
+                        menu.submenu.as_ref().map_or(0, |child| child.selected)
+                    } else {
+                        menu.selected
+                    };
+                    let selected = if menu.busy {
+                        close
+                    } else {
+                        selected_index == index
+                    };
+                    let expanded = row.submenu.then_some(menu.submenu.is_some());
+                    tray_button::ButtonView {
+                        output: String::new(),
+                        target: tray_button::Target::DesktopContext(generation, submenu, index),
+                        appearance: Appearance {
+                            name: row.name,
+                            menu: true,
+                            selected,
+                            autofocus: selected,
+                            enabled: !menu.busy || close,
+                            submenu: row.submenu,
+                            expanded,
+                            ..Default::default()
+                        },
+                    }
+                    .boxed()
+                }),
+        );
+        popup_group::group(
+            if submenu {
+                "Open With"
+            } else {
+                "Desktop context menu"
+            },
+            flex_col(views)
+                .cross_axis_alignment(CrossAxisAlignment::Stretch)
+                .gap(0.0.px()),
         )
-        .status()
-    });
+        .menu()
+        .boxed()
+    };
+    let error = menu
+        .error
+        .as_ref()
+        .filter(|_| submenu || menu.submenu.is_none())
+        .map(|error| {
+            popup_group::group(
+                "Desktop action",
+                sized_box(
+                    label(error.clone())
+                        .text_size(12.0)
+                        .line_break_mode(LineBreaking::WordWrap),
+                )
+                .padding(10.0.px()),
+            )
+            .status()
+        });
     let panel = material::shell(
         sized_box(
             portal(
@@ -154,13 +186,23 @@ pub(super) fn content(state: &ShellState) -> impl WidgetView<ShellState> + use<>
         .height(height.px()),
         state.appearance.palette,
     );
-    crate::ui::search_focus::focus_on_activation(panel, Default::default(), generation.to_string())
-        .with_dismiss(|state, key| {
-            if let Ok(generation) = key.parse() {
+    crate::ui::search_focus::focus_on_activation(
+        panel,
+        Default::default(),
+        format!("{generation}:{}", u8::from(submenu)),
+    )
+    .with_dismiss(|state, key| {
+        if let Some((generation, child)) = key.split_once(':')
+            && let Ok(generation) = generation.parse()
+        {
+            if child == "1" {
+                super::back(state, generation);
+            } else {
                 super::dismiss(state, generation);
             }
-        })
-        .dismiss_directly()
+        }
+    })
+    .dismiss_directly()
 }
 
 fn name_form(

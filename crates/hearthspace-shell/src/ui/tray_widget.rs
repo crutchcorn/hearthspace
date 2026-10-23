@@ -11,7 +11,7 @@ use xilem::masonry::{
     },
     imaging::Painter,
     kurbo::{Axis, Point, Size},
-    layout::{AsUnit, LenReq, Length},
+    layout::{AsUnit, LenReq, Length, SizeDef},
     peniko::ImageBrush,
     properties::LineBreaking,
     widgets::Label,
@@ -33,6 +33,7 @@ pub(super) struct Appearance {
     pub menu: bool,
     pub separator: bool,
     pub submenu: bool,
+    pub expanded: Option<bool>,
     pub toggle: Option<TrayToggle>,
 }
 impl Default for Appearance {
@@ -50,6 +51,7 @@ impl Default for Appearance {
             menu: false,
             separator: false,
             submenu: false,
+            expanded: None,
             toggle: None,
         }
     }
@@ -61,6 +63,7 @@ pub(super) enum ButtonAction {
     Secondary,
     Scroll { delta: i32, horizontal: bool },
     Hover(bool),
+    MenuAnchor(f64),
     Dismiss,
     Step(i32),
     Back,
@@ -83,6 +86,12 @@ pub(super) struct TrayButton {
 }
 impl TrayButton {
     fn submit(&self, ctx: &mut EventCtx<'_>, action: ButtonAction) {
+        if self.appearance.submenu && matches!(action, ButtonAction::Activate) {
+            ctx.submit_action::<ButtonEvent>(ButtonEvent {
+                target: self.target.clone(),
+                action: ButtonAction::MenuAnchor(ctx.bounding_box().y0),
+            });
+        }
         ctx.submit_action::<ButtonEvent>(ButtonEvent {
             target: self.target.clone(),
             action,
@@ -223,7 +232,15 @@ impl Widget for TrayButton {
         if let Update::HoveredChanged(hovered) = event {
             let hovered = *hovered;
             let target = self.target.clone();
+            let submenu = self.appearance.submenu;
             ctx.mutate_self_later(move |mut widget| {
+                if submenu && hovered {
+                    let y = widget.ctx.bounding_box().y0;
+                    widget.ctx.submit_action::<ButtonEvent>(ButtonEvent {
+                        target: target.clone(),
+                        action: ButtonAction::MenuAnchor(y),
+                    });
+                }
                 widget.ctx.submit_action::<ButtonEvent>(ButtonEvent {
                     target,
                     action: ButtonAction::Hover(hovered),
@@ -289,8 +306,13 @@ impl Widget for TrayButton {
     }
     fn layout(&mut self, ctx: &mut LayoutCtx<'_>, _: &PropertiesRef<'_>, size: Size) {
         if let Some(text) = &mut self.text {
-            ctx.run_layout(text, Size::new((size.width - 48.0).max(0.0), size.height));
-            ctx.place_child(text, Point::new(24.0, 0.0));
+            let available = Size::new((size.width - 48.0).max(0.0), size.height);
+            let measured = ctx.compute_size(text, SizeDef::fit(available), available.into());
+            ctx.run_layout(text, Size::new(available.width, measured.height));
+            ctx.place_child(
+                text,
+                Point::new(24.0, (size.height - measured.height) / 2.0),
+            );
         }
     }
     fn property_changed(&mut self, ctx: &mut UpdateCtx<'_>, property: std::any::TypeId) {
@@ -339,6 +361,9 @@ impl Widget for TrayButton {
         }
         if self.appearance.icon || self.appearance.submenu {
             node.set_has_popup(xilem::masonry::accesskit::HasPopup::Menu);
+        }
+        if let Some(expanded) = self.appearance.expanded {
+            node.set_expanded(expanded);
         }
         node.add_action(Action::Click);
         if self.appearance.icon {

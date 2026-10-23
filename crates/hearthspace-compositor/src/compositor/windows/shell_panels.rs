@@ -78,6 +78,16 @@ impl App {
         if focus == panel {
             return true;
         }
+        if let Some(identity) = window_app_id(&self.windows[panel].surface)
+            .as_deref()
+            .and_then(hearthspace_common::desktop_context::identity)
+            && window_app_id(&self.windows[focus].surface)
+                .as_deref()
+                .and_then(hearthspace_common::desktop_context::identity)
+                == Some(identity)
+        {
+            return true;
+        }
         let target = &self.windows[focus];
         target.kind == ManagedWindowKind::ShellBar
             && self

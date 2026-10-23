@@ -329,6 +329,8 @@ impl XdgShellHandler for App {
         let restore_focus = self.windows.iter().any(|window| {
             window.surface.same_xdg(&surface) && self.focused_normal_window_id == Some(window.id)
         });
+        let retained_context_focus =
+            restore_panel_focus && self.restore_desktop_context_parent(surface.wl_surface());
         self.clear_keyboard_focus_for_surface(surface.wl_surface());
         if let Some(window) = self
             .windows
@@ -361,7 +363,7 @@ impl XdgShellHandler for App {
         if reserved_work_area {
             self.reconcile_window_presentations();
         }
-        if restore_panel_focus {
+        if restore_panel_focus && !retained_context_focus {
             self.restore_focus_after_shell_panel();
         } else if restore_focus {
             self.restore_window_focus();

@@ -66,7 +66,10 @@ fn desktop_objects_preserve_byte_identity_and_do_not_read_file_contents() {
             .all(|item| matches!(item.kind, DesktopItemKind::File { .. }))
     );
     let command = open_command(&first, None).unwrap();
-    assert_eq!(command.get_args().collect::<Vec<_>>(), [first.as_os_str()]);
+    assert_eq!(
+        command.get_args().collect::<Vec<_>>(),
+        [OsStr::new("open"), OsStr::new("--"), first.as_os_str()]
+    );
 }
 
 #[test]
@@ -102,8 +105,11 @@ fn linked_folders_are_items_without_recursively_enumerating_their_children() {
 fn opening_a_filename_passes_one_literal_argument() {
     let path = Path::new("/tmp/Notes $(touch unwanted); ' quote.txt");
     let command = open_command(path, None).unwrap();
-    assert_eq!(command.get_program(), "xdg-open");
-    assert_eq!(command.get_args().collect::<Vec<_>>(), [path.as_os_str()]);
+    assert_eq!(command.get_program(), "gio");
+    assert_eq!(
+        command.get_args().collect::<Vec<_>>(),
+        [OsStr::new("open"), OsStr::new("--"), path.as_os_str()]
+    );
     assert!(command.get_envs().any(|(key, _)| key == "WAYLAND_DISPLAY"));
 }
 

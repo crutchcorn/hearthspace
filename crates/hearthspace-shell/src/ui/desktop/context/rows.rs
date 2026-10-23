@@ -10,8 +10,8 @@ pub(super) enum Choice {
     Action(Action),
     Rename,
     NewFolder,
-    Back,
     Close,
+    Back,
 }
 impl Row {
     fn new(name: &str, action: Choice) -> Self {
@@ -26,9 +26,28 @@ impl Row {
     }
 }
 
-pub(super) fn rows(state: &ShellState) -> Vec<Row> {
-    let mut rows = page_rows(state);
-    if state.desktop.menu.busy && !matches!(state.desktop.menu.page, Page::Name(_)) {
+pub(super) fn rows(state: &ShellState, submenu: bool) -> Vec<Row> {
+    let mut rows = if submenu {
+        state
+            .desktop
+            .menu
+            .submenu
+            .as_ref()
+            .and_then(|menu| menu.apps.as_ref())
+            .into_iter()
+            .flatten()
+            .map(|app| Row::action(&app.name, Action::OpenWith(app.id.clone())))
+            .collect()
+    } else {
+        page_rows(state)
+    };
+    if submenu && rows.is_empty() {
+        rows.push(Row::new("Back", Choice::Back));
+    }
+    if state.desktop.menu.busy
+        && state.desktop.menu.submenu.is_none()
+        && !matches!(state.desktop.menu.page, Page::Name(_))
+    {
         rows.push(Row::new("Close", Choice::Close));
     }
     rows
@@ -37,20 +56,6 @@ pub(super) fn rows(state: &ShellState) -> Vec<Row> {
 fn page_rows(state: &ShellState) -> Vec<Row> {
     let menu = &state.desktop.menu;
     match &menu.page {
-        Page::OpenWith(apps) => {
-            return std::iter::once(Row::new("Back", Choice::Back))
-                .chain(
-                    apps.iter()
-                        .map(|app| Row::action(&app.name, Action::OpenWith(app.id.clone()))),
-                )
-                .collect();
-        }
-        Page::Properties(_) => {
-            return vec![
-                Row::new("Back", Choice::Back),
-                Row::new("Close", Choice::Close),
-            ];
-        }
         Page::Name(_) => return vec![],
         Page::Menu => {}
     }

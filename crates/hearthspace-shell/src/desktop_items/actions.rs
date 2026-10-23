@@ -4,11 +4,12 @@ use gio::prelude::*;
 use std::{
     fs,
     path::{Component, Path, PathBuf},
-    process::{Command, Stdio},
-    time::UNIX_EPOCH,
+    process::Command,
 };
 
+mod properties;
 mod transfer;
+pub use properties::properties;
 pub use transfer::paste;
 
 #[cfg(test)]
@@ -124,16 +125,7 @@ pub fn open_with(paths: &[PathBuf], app_id: &str, x_display: Option<&str>) -> Re
         .ok_or("This application is no longer available.")?;
     // GIO's D-Bus activation reads the process environment, not the launch
     // context's child environment. Run it in the same isolated session as apps.
-    let output = open_with_command(&desktop_file, paths, x_display)?
-        .output()
-        .map_err(|e| format!("Could not open files: {e}"))?;
-    if !output.status.success() {
-        return Err(format!(
-            "Could not open files: the application launcher failed ({}).",
-            output.status
-        ));
-    }
-    Ok(())
+    super::run_opener(open_with_command(&desktop_file, paths, x_display)?)
 }
 
 fn open_with_command(
@@ -154,111 +146,5 @@ fn open_with_command(
     if let Some(display) = x_display {
         command.env("DISPLAY", display);
     }
-    // The launched app inherits these handles. Pipes would make output() wait
-    // for that app to exit, rather than just GIO's immediate launch result.
-    command.stdout(Stdio::null()).stderr(Stdio::inherit());
     Ok(command)
-}
-
-pub fn properties(items: &[DesktopItem]) -> Result<Vec<(String, String)>, String> {
-    if let [
-        DesktopItem {
-            title,
-            kind: DesktopItemKind::App { app_id, .. },
-            ..
-        },
-    ] = items
-    {
-        return Ok(vec![
-            ("Name".into(), title.clone()),
-            ("Type".into(), "Application".into()),
-            ("Desktop entry".into(), app_id.clone()),
-        ]);
-    }
-    let paths = paths(items)?;
-    let metadata = paths
-        .iter()
-        .map(fs::symlink_metadata)
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(|e| e.to_string())?;
-    let mut rows = vec![("Items".into(), paths.len().to_string())];
-    let files = metadata.iter().filter(|m| m.is_file()).count();
-    if paths.len() > 1 {
-        for (label, count) in [
-            ("Files", files),
-            ("Folders", metadata.iter().filter(|m| m.is_dir()).count()),
-            (
-                "Symbolic links",
-                metadata.iter().filter(|m| m.is_symlink()).count(),
-            ),
-        ] {
-            if count > 0 {
-                rows.push((label.into(), count.to_string()));
-            }
-        }
-    }
-    if files > 0 {
-        let bytes = metadata
-            .iter()
-            .filter(|m| m.is_file())
-            .fold(0u64, |bytes, m| bytes.saturating_add(m.len()));
-        rows.push((
-            if paths.len() == 1 {
-                "Size"
-            } else {
-                "File size"
-            }
-            .into(),
-            format!("{bytes} bytes"),
-        ));
-    }
-    if let [path] = paths.as_slice() {
-        let metadata = &metadata[0];
-        rows.insert(0, ("Name".into(), items[0].title.clone()));
-        rows.push(("Location".into(), path.display().to_string()));
-        rows.push((
-            "Type".into(),
-            if metadata.is_symlink() {
-                "Symbolic link".into()
-            } else if metadata.is_dir() {
-                "Folder".into()
-            } else {
-                content_type(path)?
-            },
-        ));
-        if metadata.is_symlink() {
-            rows.push((
-                "Target".into(),
-                fs::read_link(path)
-                    .map_err(|e| e.to_string())?
-                    .display()
-                    .to_string(),
-            ));
-        }
-        if let Ok(modified) = metadata
-            .modified()
-            .and_then(|t| t.duration_since(UNIX_EPOCH).map_err(std::io::Error::other))
-        {
-            let time = chrono::DateTime::from_timestamp(modified.as_secs() as i64, 0)
-                .map(|t| {
-                    t.with_timezone(&chrono::Local)
-                        .format("%Y-%m-%d %H:%M")
-                        .to_string()
-                })
-                .unwrap_or_default();
-            rows.push(("Modified".into(), time));
-        }
-        if !metadata.is_symlink() {
-            rows.push((
-                "Writable".into(),
-                if metadata.permissions().readonly() {
-                    "No"
-                } else {
-                    "Yes"
-                }
-                .into(),
-            ));
-        }
-    }
-    Ok(rows)
 }

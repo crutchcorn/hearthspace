@@ -183,7 +183,22 @@ impl App {
                 (output.size.w - size.w - 8).max(8),
                 (output.size.h - size.h - 8).max(8),
             ));
-        let anchor = self.desktop.context.anchor;
+        let anchor = if let Some(offset) = desktop_context::submenu_offset(&id) {
+            let parent_id = desktop_context::app_id(generation, context.output.as_deref());
+            let parent = self.windows.iter().position(|window| {
+                window.mapped && window_app_id(&window.surface).as_deref() == Some(&parent_id)
+            })?;
+            let parent_loc =
+                self.desktop_context_origin(parent)? + self.window_surface_geometry_loc(parent);
+            let right = parent_loc.x + self.window_geometry_size(parent).w;
+            let left = parent_loc.x - size.w;
+            Point::from((
+                if right <= max.x { right } else { left },
+                parent_loc.y + offset,
+            ))
+        } else {
+            self.desktop.context.anchor
+        };
         Some(
             Point::from((anchor.x.clamp(min.x, max.x), anchor.y.clamp(min.y, max.y)))
                 - self.window_surface_geometry_loc(index),
@@ -227,6 +242,54 @@ impl App {
             self.desktop_changed();
         }
     }
+    /// Closing a child must not briefly clear focus and dismiss its parent.
+    pub(in crate::compositor) fn restore_desktop_context_parent(
+        &mut self,
+        surface: &wayland_server::protocol::wl_surface::WlSurface,
+    ) -> bool {
+        let Some(id) = self
+            .window_index_for_surface(surface)
+            .and_then(|index| window_app_id(&self.windows[index].surface))
+        else {
+            return false;
+        };
+        if desktop_context::submenu_offset(&id).is_none() {
+            return false;
+        }
+        let Some((generation, _)) = desktop_context::identity(&id) else {
+            return false;
+        };
+        self.focus_desktop_context_menu(generation, false)
+    }
+
+    fn focus_desktop_context_menu(&mut self, generation: u64, child: bool) -> bool {
+        let Some(context) = self
+            .desktop
+            .context
+            .current
+            .as_ref()
+            .filter(|context| context.generation == generation)
+        else {
+            return false;
+        };
+        let parent_id = desktop_context::app_id(generation, context.output.as_deref());
+        if let Some(index) = self.windows.iter().position(|window| {
+            window.mapped
+                && window_app_id(&window.surface).is_some_and(|id| {
+                    if child {
+                        desktop_context::identity(&id) == desktop_context::identity(&parent_id)
+                            && desktop_context::submenu_offset(&id).is_some()
+                    } else {
+                        id == parent_id
+                    }
+                })
+        }) && let Some(surface) = self.windows[index].surface.wl_surface()
+        {
+            self.set_keyboard_focus_to_window(index, surface);
+            return true;
+        }
+        false
+    }
 }
 
 impl CalloopData {
@@ -267,6 +330,10 @@ impl CalloopData {
             return Some(ControlReply::Err(
                 "Desktop menu item is no longer available".into(),
             ));
+        }
+        if matches!(command, "desktop-context-parent" | "desktop-context-child") {
+            app.focus_desktop_context_menu(generation, command == "desktop-context-child");
+            return Some(ControlReply::Ok);
         }
         if matches!(command, "desktop-context-copy" | "desktop-context-cut") {
             return Some(

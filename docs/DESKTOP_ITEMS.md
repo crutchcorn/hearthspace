@@ -23,7 +23,9 @@ ring. The accessible button name includes the full filename or app name even
 when the visible label wraps or truncates.
 
 Drop an app shortcut onto Apps List to add a favorite. The desktop icon returns
-to its original position. Files and folders open with `xdg-open`, using the
+to its original position. Favorites appear first in Apps List in their saved
+order, with a pin marker in both icon and list views. Files and folders open
+with `gio open`, using the
 user's default application. They are not executed as commands. Directory and
 catalog changes are refreshed on a worker. A separate artwork worker reuses
 GIO-validated GNOME thumbnails and reads embedded FLAC front covers when no
@@ -45,6 +47,9 @@ Application shortcuts offer Open, favorite management, and Properties.
 Right-click empty canvas for New Folder, Paste, Select All, Arrange Icons,
 Open Desktop Folder, Background, Layout, and Settings. Menus support arrow keys,
 Enter, and Escape, remain inside the output, and scroll on smaller displays.
+Open With opens a separate submenu beside its parent, flipping left near the
+output edge. Left or Escape returns to the parent. Properties opens the file
+manager’s properties window, including the desktop entry for an app shortcut.
 
 Cut and Copy use the ordinary clipboard's file URI formats, including the GNOME
 copied-files format for Cut. Paste preserves existing destination files by
