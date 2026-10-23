@@ -109,6 +109,27 @@ mod tests {
     use super::*;
 
     #[test]
+    fn application_identity_with_a_desktop_suffix_keeps_its_declared_artwork() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir(dir.path().join("applications")).unwrap();
+        std::fs::write(
+            dir.path().join("applications/ai.opencode.desktop.desktop"),
+            "[Desktop Entry]\nType=Application\nName=OpenCode\nExec=/opt/OpenCode/ai.opencode.desktop %U\nIcon=ai.opencode.desktop\nStartupWMClass=ai.opencode.desktop\n",
+        )
+        .unwrap();
+        let catalog = AppCatalog::load_from_data_dirs(vec![dir.path().to_owned()]);
+
+        assert_eq!(
+            icon_name(&catalog, "ai.opencode.desktop"),
+            "ai.opencode.desktop"
+        );
+        assert_eq!(
+            icon_name(&catalog, "ai.opencode.desktop.desktop"),
+            "ai.opencode.desktop"
+        );
+    }
+
+    #[test]
     fn x11_class_resolves_the_desktop_entry_artwork_not_the_class_name() {
         let dir = tempfile::tempdir().unwrap();
         std::fs::create_dir(dir.path().join("applications")).unwrap();

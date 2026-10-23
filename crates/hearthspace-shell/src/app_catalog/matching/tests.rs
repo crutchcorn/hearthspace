@@ -45,6 +45,72 @@ fn startup_class_works_with_unrelated_desktop_and_executable_names() {
 }
 
 #[test]
+fn desktop_suffix_can_be_part_of_the_application_identity() {
+    let catalog = catalog(&[(
+        "ai.opencode.desktop.desktop",
+        "[Desktop Entry]\nType=Application\nName=OpenCode\nExec=/opt/OpenCode/ai.opencode.desktop %U\nIcon=ai.opencode.desktop\nStartupWMClass=ai.opencode.desktop\n",
+    )]);
+
+    assert_eq!(
+        catalog.app_for_window("ai.opencode.desktop").unwrap().id,
+        "ai.opencode.desktop.desktop"
+    );
+    assert_eq!(
+        catalog
+            .app_for_window("ai.opencode.desktop.desktop")
+            .unwrap()
+            .id,
+        "ai.opencode.desktop.desktop"
+    );
+    assert!(catalog.app_for_window("ai.opencode").is_none());
+}
+
+#[test]
+fn literal_application_identity_wins_over_a_desktop_filename_alias() {
+    let catalog = catalog(&[
+        (
+            "org.example.desktop.desktop",
+            "[Desktop Entry]\nType=Application\nName=Desktop\nExec=example-desktop\n",
+        ),
+        (
+            "org.example.desktop",
+            "[Desktop Entry]\nType=Application\nName=Example\nExec=example\n",
+        ),
+    ]);
+
+    assert_eq!(
+        catalog.app_for_window("org.example.desktop").unwrap().id,
+        "org.example.desktop.desktop"
+    );
+}
+
+#[test]
+fn startup_class_retains_a_literal_desktop_suffix() {
+    let catalog = catalog(&[(
+        "com.example.Editor.desktop",
+        "[Desktop Entry]\nType=Application\nName=Editor\nExec=/opt/editor/start\nStartupWMClass=editor.desktop\n",
+    )]);
+
+    assert_eq!(
+        catalog.app_for_window("editor.desktop").unwrap().id,
+        "com.example.Editor.desktop"
+    );
+}
+
+#[test]
+fn executable_identity_retains_a_literal_desktop_suffix() {
+    let catalog = catalog(&[(
+        "com.example.Editor.desktop",
+        "[Desktop Entry]\nType=Application\nName=Editor\nExec=/opt/editor/editor.desktop %U\n",
+    )]);
+
+    assert_eq!(
+        catalog.app_for_window("editor.desktop").unwrap().id,
+        "com.example.Editor.desktop"
+    );
+}
+
+#[test]
 fn desktop_identity_wins_over_other_apps_startup_class() {
     let catalog = catalog(&[
         (
