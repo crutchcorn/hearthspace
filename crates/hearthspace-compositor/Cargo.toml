@@ -81,6 +81,8 @@ waydriver-hearthspace = { path = "../waydriver-hearthspace", optional = true }
 xcursor = "0.3.11"
 
 [dev-dependencies]
+# Exercise the shell runtime's real window lifecycle against the headless server.
+masonry_winit = { git = "https://github.com/linebender/xilem", rev = "271a27a6d4a930f7878d404f9014e3c50a3a9b88" }
 wayland-client = "0.31.15"
 wayland-protocols-misc = { version = "0.3.12", features = ["client"] }
 wayland-protocols-wlr = { version = "0.3.12", features = ["client"] }

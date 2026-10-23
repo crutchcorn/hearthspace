@@ -2561,6 +2561,7 @@ dependencies = [
  "hearthspace-ui-components",
  "image",
  "masonry",
+ "masonry_winit",
  "naga",
  "png",
  "proptest",

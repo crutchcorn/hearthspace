@@ -607,6 +607,8 @@ impl MasonryState {
             .remove(&window_id)
             .unwrap_or_else(|| panic!("could not find window for id {window_id:?}"));
         self.surfaces.remove(&window_id);
+        // Closing a window also cancels its not-yet-presented first frame.
+        self.need_first_frame.retain(|id| *id != window_id);
         let window = self.windows.remove(&window_id).unwrap();
 
         // HACK: When we exit, on some systems (known to happen with Wayland on KDE),
@@ -1152,6 +1154,10 @@ impl MasonryState {
         // If an app creates a visible window, we firstly create it as invisible
         // and then render the first frame before making it visible to avoid flashing.
         for handle_id in std::mem::take(&mut self.need_first_frame) {
+            // Application callbacks can retire windows before this batch drains.
+            if !self.windows.contains_key(&handle_id) {
+                continue;
+            }
             self.redraw(handle_id, app_driver);
             let window = self.windows.get_mut(&handle_id).unwrap();
             window.handle.set_visible(true);
@@ -1160,8 +1166,10 @@ impl MasonryState {
         // If we're processing a lot of actions, we may have a lot of pending redraws.
         // We batch them up to avoid redundant requests.
         for handle_id in need_redraw {
-            let window = self.windows.get(&handle_id).unwrap();
-            window.handle.request_redraw();
+            // A later action in this signal batch may have closed the target.
+            if let Some(window) = self.windows.get(&handle_id) {
+                window.handle.request_redraw();
+            }
         }
     }
 

@@ -360,3 +360,24 @@ No GPU hang, device loss or panic appeared in the session or kernel logs. Cleanu
 restored tty2, removed the runtime, and left the owned service inactive with
 `MainPID=0` and `Result=success`. Existing desktop sessions were preserved; log out
 and choose Hearthspace again to load this release.
+
+### Layout editor redraw crash, 2026-10-23
+
+Moving layout items with a mouse, probably out of a group, restarted the
+installed shell. Its journal identifies a Masonry panic in the deferred redraw
+batch at `event_loop_runner.rs:1163`; the compositor stayed alive and the
+supervisor restarted the shell. This is separate from the earlier Winit
+queued-configure failure. A redraw queued before an application callback can
+outlive the window that callback closes.
+
+The [Masonry lifecycle patch](../patches/README.md#masonry-retired-window-presentation)
+cancels pending first frames on close and ignores retired targets when consuming
+deferred work. Three real-window regressions reproduced the original redraw
+panic and the related first-frame panic before the fix. Afterward, each surviving
+window processed a compositor resize, redrew, and accepted a pointer click.
+The test injects signal ordering through Masonry's real render-root channel;
+it does not claim that a full shell drag deterministically triggers the race.
+
+The installed crash, negative controls, first positive run's corrected resize
+observer, and final positive results are retained in
+`/home/crutchcorn/hearthspace-layout-crash-20261023-135052`.

@@ -8,6 +8,9 @@ use std::{
     time::{Duration, Instant},
 };
 
+#[cfg(feature = "test-apps")]
+#[path = "support/masonry_window_lifecycle.rs"]
+mod masonry_window_lifecycle;
 #[path = "support/serialization.rs"]
 mod serialization;
 #[path = "support/shell_window_lifecycle.rs"]

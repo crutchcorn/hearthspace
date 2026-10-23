@@ -141,6 +141,46 @@ See [vendored provenance and refresh steps](../vendor/accesskit_atspi_common/PRO
   and the source patch; refresh `Cargo.lock` and rerun the CPU and real-window
   appearance checks. Keep the regression until upstream coverage replaces it.
 
+## Masonry retired-window presentation
+
+- **Dependency:** the same vendored `masonry_winit` 0.4.0 at Xilem revision
+  [`271a27a6`](https://github.com/linebender/xilem/tree/271a27a6d4a930f7878d404f9014e3c50a3a9b88).
+- **Patch:** [cancel retired-window presentation](masonry-retired-window-presentation.patch),
+  a local lifecycle repair in `src/event_loop_runner.rs`.
+- **Reason:** a redraw or animation signal queues a native window handle. A
+  subsequent action can reconcile the shell's windows and close that window
+  before the batch drains. Masonry then unwraps the removed entry. On
+  2026-10-23, moving layout items triggered this panic at the final redraw-batch
+  lookup; the compositor survived and the session supervisor restarted the
+  shell. Visible windows created and closed within one callback also leave
+  stale entries in the first-frame queue.
+- **Behavior:** closing a window removes its pending first frame. Deferred
+  first-frame and redraw batches discard retired targets when consumed.
+  Explicit invalid close calls and inconsistent live-window maps remain errors;
+  surviving windows retain their redraws and input. This is independent of
+  Winit's lower-level queued-configure cleanup patch.
+- **Upstream:** checked on 2026-10-23. The current upstream revision is still
+  the pinned revision, whose [runner](https://github.com/linebender/xilem/blob/271a27a6d4a930f7878d404f9014e3c50a3a9b88/masonry_winit/src/event_loop_runner.rs)
+  contains both lifecycle gaps. No matching fix was found and no upstream
+  report has been published. Callback-driven window removal is supported;
+  [issue 1778](https://github.com/linebender/xilem/issues/1778) describes removing
+  windows from the application's returned view list.
+- **Verification:**
+  `cargo test --locked -p hearthspace-compositor --features e2e,test-apps --test headless_control masonry_window_lifecycle`
+  uses a real Masonry event loop and owned headless Wayland server. It queues
+  redraw before self-close, animation before another window closes the target,
+  and creation followed by retirement before first presentation. Each case
+  requires a later resize, render and real pointer activation on the survivor.
+  All three cases reproduced missing-window panics without the patch on
+  2026-10-23 and passed with it. The resize comes from the compositor so the
+  survivor must process a real configure after the retired batch has drained.
+  Also repeat native mouse drags out of and into layout groups, verify the
+  resulting placement, and require an unchanged shell PID.
+- **Removal:** adopt a compatible upstream revision that passes these lifecycle
+  regressions and native group-movement acceptance without this patch. Preserve
+  vendoring and the initial-window-properties patch until that separate repair
+  also meets its removal condition.
+
 ## Smithay XSettings publication
 
 - **Dependency:** Smithay 0.7.0 at pinned revision
