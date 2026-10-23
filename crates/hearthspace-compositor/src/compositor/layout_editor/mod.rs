@@ -116,6 +116,7 @@ impl App {
         self.publish_shell_popup_epoch(true);
     }
 
+    #[cfg(feature = "udev")]
     pub(in crate::compositor) fn invalidate_shell_popup_recovery(&mut self) {
         self.publish_shell_popup_epoch(false);
     }
