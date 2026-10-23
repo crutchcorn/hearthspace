@@ -191,8 +191,11 @@ preferences published through the desktop portal and XSettings.
 
 [Desktop icons](DESKTOP_ITEMS.md) use transparent Xilem shell surfaces in canvas
 coordinates, with compositor-owned placement and input. They reuse the launcher
-catalog and native application artwork. The prototype's simulated apps, layout
-editor, drawing tools, and animations remain separate work.
+catalog and native application artwork. [Canvas search](CANVAS_SEARCH.md) reuses
+these live surfaces and the normal window renderer with temporary compositor
+transforms. Its native field and control previews use the reference's glass
+panel material. The prototype's simulated apps, layout editor and drawing tools
+remain separate work.
 
 ## When To Use A UI Framework
 

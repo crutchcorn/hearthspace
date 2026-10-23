@@ -108,7 +108,8 @@ scripts/hearthspace-agent --session /tmp/hearthspace-run-1 click 400 360 --units
 
 Replace the example window ID with one returned by `windows`. Use
 `focus-next`, `focus-previous`, and `focus-launcher` for navigation without an ID.
-`key super` toggles search; `focus-launcher` explicitly opens it.
+`key super` toggles Apps List; `focus-launcher` explicitly opens it.
+`key ctrl+k` opens [canvas search](./CANVAS_SEARCH.md).
 `fullscreen ID --off` and `maximize ID --off` leave one state;
 `restore ID` clears both. Launch replies confirm that a process started, so wait
 for its mapped window and application-specific readiness before typing.

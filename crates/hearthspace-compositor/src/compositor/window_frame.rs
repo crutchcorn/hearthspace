@@ -6,16 +6,17 @@ use std::collections::{HashMap, HashSet};
 use smithay::{
     backend::renderer::{
         ContextId, Renderer,
-        element::Kind,
         gles::{
-            GlesError, GlesPixelProgram, GlesRenderer, GlesTexture, Uniform, UniformName,
-            UniformType, element::PixelShaderElement,
+            GlesError, GlesPixelProgram, GlesRenderer, GlesTexture, UniformName, UniformType,
+            element::PixelShaderElement,
         },
     },
     utils::{Logical, Rectangle},
 };
 
 mod clip;
+mod style;
+use style::{appearance, make_element};
 #[cfg(test)]
 mod tests;
 
@@ -46,6 +47,8 @@ struct FrameStyle {
     hovered: bool,
     server_side: bool,
     photo: bool,
+    panel: bool,
+    opacity: f32,
 }
 
 struct CachedFrame {
@@ -88,6 +91,7 @@ impl WindowFrameCache {
         self.renderers.clear();
     }
 
+    #[cfg(test)]
     #[allow(clippy::too_many_arguments)]
     pub fn elements(
         &mut self,
@@ -100,7 +104,81 @@ impl WindowFrameCache {
         server_side: bool,
         photo: bool,
     ) -> Option<WindowFrameElements> {
-        if window.is_empty() || !zoom.is_finite() || zoom <= 0.0 {
+        self.elements_with_opacity(
+            renderer,
+            id,
+            window,
+            zoom,
+            active,
+            hovered,
+            server_side,
+            photo,
+            1.,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn elements_with_opacity(
+        &mut self,
+        renderer: &mut GlesRenderer,
+        id: u64,
+        window: Rectangle<i32, Logical>,
+        zoom: f64,
+        active: bool,
+        hovered: bool,
+        server_side: bool,
+        photo: bool,
+        opacity: f32,
+    ) -> Option<WindowFrameElements> {
+        let style = FrameStyle {
+            appearance: self.palette.appearance,
+            window,
+            zoom,
+            active,
+            // Active material overrides hover in the reference. Avoid damage
+            // when the pointer crosses an already active window.
+            hovered: hovered && !active,
+            server_side,
+            photo: photo && server_side,
+            panel: false,
+            opacity,
+        };
+        self.frame(renderer, id, style)
+    }
+
+    /// The compositor owns the halo outside a transparent native panel's buffer.
+    /// Its rounded interior remains empty so glass never sees its own shadow.
+    #[allow(clippy::too_many_arguments)]
+    pub fn panel_shadow(
+        &mut self,
+        renderer: &mut GlesRenderer,
+        id: u64,
+        window: Rectangle<i32, Logical>,
+        zoom: f64,
+        emphasized: bool,
+        opacity: f32,
+    ) -> Option<PixelShaderElement> {
+        let style = FrameStyle {
+            appearance: self.palette.appearance,
+            window,
+            zoom,
+            active: emphasized,
+            hovered: false,
+            server_side: false,
+            photo: false,
+            panel: true,
+            opacity,
+        };
+        self.frame(renderer, id, style).map(|frame| frame.shadow)
+    }
+
+    fn frame(
+        &mut self,
+        renderer: &mut GlesRenderer,
+        id: u64,
+        style: FrameStyle,
+    ) -> Option<WindowFrameElements> {
+        if style.window.is_empty() || !style.zoom.is_finite() || style.zoom <= 0.0 {
             return None;
         }
         let cache = self
@@ -113,17 +191,6 @@ impl WindowFrameCache {
                 windows: HashMap::new(),
             });
         let shaders = cache.shaders.as_ref()?;
-        let style = FrameStyle {
-            appearance: self.palette.appearance,
-            window,
-            zoom,
-            active,
-            // Active material overrides hover in the reference. Avoid damage
-            // when the pointer crosses an already active window.
-            hovered: hovered && !active,
-            server_side,
-            photo: photo && server_side,
-        };
         let cached = cache.windows.entry(id).or_insert_with(|| CachedFrame {
             style,
             rim: make_element(&shaders.frame, style, FrameLayer::Rim, &self.palette),
@@ -133,8 +200,10 @@ impl WindowFrameCache {
         if cached.style != style {
             let geometry_changed = cached.style.window != style.window
                 || cached.style.zoom != style.zoom
-                || cached.style.server_side != style.server_side;
-            let material_changed = cached.style.appearance != style.appearance;
+                || cached.style.server_side != style.server_side
+                || cached.style.panel != style.panel;
+            let material_changed = cached.style.appearance != style.appearance
+                || cached.style.opacity != style.opacity;
             for (element, layer, changed) in [
                 (
                     &mut cached.rim,
@@ -170,13 +239,13 @@ impl WindowFrameCache {
         Some(WindowFrameElements {
             rim: cached.rim.clone(),
             shadow: cached.shadow.clone(),
-            header: server_side.then(|| cached.header.clone()),
-            clip: server_side.then(|| {
+            header: style.server_side.then(|| cached.header.clone()),
+            clip: style.server_side.then(|| {
                 WindowClip::new(
                     shaders.clip.clone(),
-                    window,
+                    style.window,
                     // The border occupies the pixel outside the client geometry.
-                    19.0 * zoom,
+                    19.0 * style.zoom,
                 )
             }),
         })
@@ -189,6 +258,7 @@ impl Shaders {
             frame: renderer.compile_custom_pixel_shader(
                 include_str!("window_frame/frame.frag"),
                 &[
+                    UniformName::new("scene_opacity", UniformType::_1f),
                     UniformName::new("area_size", UniformType::_2f),
                     UniformName::new("window_size", UniformType::_2f),
                     UniformName::new("window_offset", UniformType::_2f),
@@ -197,6 +267,7 @@ impl Shaders {
                     UniformName::new("active", UniformType::_1f),
                     UniformName::new("hovered", UniformType::_1f),
                     UniformName::new("mode", UniformType::_1f),
+                    UniformName::new("panel", UniformType::_1f),
                     UniformName::new("chrome_color", UniformType::_4f),
                     UniformName::new("wash_color", UniformType::_4f),
                     UniformName::new("control_color", UniformType::_4f),
@@ -213,137 +284,4 @@ impl Shaders {
             clip: clip::ClipPrograms::new(renderer)?,
         })
     }
-}
-
-fn make_element(
-    shader: &GlesPixelProgram,
-    style: FrameStyle,
-    layer: FrameLayer,
-    palette: &Palette,
-) -> PixelShaderElement {
-    let (area, uniforms) = appearance(style, layer, palette);
-    PixelShaderElement::new(shader.clone(), area, None, 1.0, uniforms, Kind::Unspecified)
-}
-
-fn appearance(
-    style: FrameStyle,
-    layer: FrameLayer,
-    palette: &Palette,
-) -> (Rectangle<i32, Logical>, Vec<Uniform<'static>>) {
-    // Three sigma of the broadest reference shadow, including its displacement.
-    // The transparent interior is discarded by the shader and opaque clients
-    // let Smithay subtract their body from the damaged shadow regions.
-    let padding = (match layer {
-        FrameLayer::Rim => 1.0,
-        FrameLayer::Shadow => 144.0,
-        FrameLayer::Header => 0.0,
-    } * style.zoom)
-        .ceil() as i32;
-    let mut area = Rectangle::new(
-        (
-            style.window.loc.x.saturating_sub(padding),
-            style.window.loc.y.saturating_sub(padding),
-        )
-            .into(),
-        (
-            style
-                .window
-                .size
-                .w
-                .saturating_add(padding.saturating_mul(2)),
-            style
-                .window
-                .size
-                .h
-                .saturating_add(padding.saturating_mul(2)),
-        )
-            .into(),
-    );
-    if matches!(layer, FrameLayer::Header) {
-        area.size.h = ((f64::from(crate::config::TITLE_BAR_HEIGHT) * style.zoom).round() as i32)
-            .min(style.window.size.h)
-            .max(1);
-    }
-    let mut uniforms = vec![
-        Uniform::new("area_size", (area.size.w as f32, area.size.h as f32)),
-        Uniform::new(
-            "window_size",
-            (style.window.size.w as f32, style.window.size.h as f32),
-        ),
-        Uniform::new(
-            "window_offset",
-            (
-                (style.window.loc.x - area.loc.x) as f32,
-                (style.window.loc.y - area.loc.y) as f32,
-            ),
-        ),
-        Uniform::new("zoom", style.zoom as f32),
-        Uniform::new(
-            "radius",
-            if style.server_side {
-                19.0 * style.zoom as f32
-            } else {
-                0.0
-            },
-        ),
-        Uniform::new("active", if style.active { 1.0f32 } else { 0.0 }),
-        Uniform::new("hovered", if style.hovered { 1.0f32 } else { 0.0 }),
-        Uniform::new(
-            "mode",
-            match layer {
-                FrameLayer::Rim => 0.0f32,
-                FrameLayer::Shadow => 1.0,
-                FrameLayer::Header => 2.0,
-            },
-        ),
-    ];
-    let p = palette.with_photo(style.photo);
-    let raised = style.active || style.hovered;
-    let (broad, near) = if style.active {
-        (
-            p.accent.with_alpha(if p.dark { 0.14 } else { 0.18 }),
-            p.glow_shadow,
-        )
-    } else if style.hovered {
-        (p.panel_shadow, p.panel_accent_shadow)
-    } else {
-        (p.window_shadow, p.window_accent_shadow)
-    };
-    for (name, color) in [
-        ("chrome_color", p.chrome),
-        ("wash_color", p.edge_light),
-        ("control_color", p.surface_control),
-        ("line_color", p.border),
-        ("muted_color", p.muted),
-        (
-            "border_color",
-            if style.active {
-                p.accent_border
-            } else {
-                p.chrome_border
-            },
-        ),
-        (
-            "edge_color",
-            if raised {
-                p.glass_edge_active_top
-            } else {
-                p.glass_edge_top
-            },
-        ),
-        (
-            "edge_all_color",
-            if raised {
-                p.glass_edge_active_border
-            } else {
-                xilem::Color::TRANSPARENT
-            },
-        ),
-        ("broad_shadow_color", broad),
-        ("near_shadow_color", near),
-        ("inset_color", p.edge_light),
-    ] {
-        uniforms.push(Uniform::new(name, color.components));
-    }
-    (area, uniforms)
 }

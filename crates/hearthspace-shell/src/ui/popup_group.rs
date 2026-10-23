@@ -21,21 +21,28 @@ use xilem::{
     },
 };
 
-pub(super) fn group<V: WidgetView<ShellState>>(label: &'static str, inner: V) -> GroupView<V> {
+pub(super) fn group<V: WidgetView<ShellState>>(label: impl Into<String>, inner: V) -> GroupView<V> {
     GroupView {
-        label,
+        label: label.into(),
         inner,
         reset_focus_on_deactivation: false,
         accessibility_bounds: true,
+        status: false,
     }
 }
 pub(super) struct GroupView<V> {
-    label: &'static str,
+    label: String,
     inner: V,
     reset_focus_on_deactivation: bool,
     accessibility_bounds: bool,
+    status: bool,
 }
 impl<V> GroupView<V> {
+    /// Announce changing feedback through the platform's ordinary live region.
+    pub(super) fn status(mut self) -> Self {
+        self.status = true;
+        self
+    }
     /// Corners are separate native windows; do not leave a focused control in
     /// each previously visited corner. Editors and ordinary popups retain focus.
     pub(super) fn reset_focus_on_deactivation(mut self) -> Self {
@@ -59,10 +66,11 @@ impl<V: WidgetView<ShellState>> View<ShellState, (), ViewCtx> for GroupView<V> {
         let (inner, view_state) = ctx.with_id(CONTENT, |ctx| self.inner.build(ctx, state));
         (
             ctx.create_pod(PopupGroup {
-                label: self.label,
+                label: self.label.clone(),
                 inner: inner.new_widget.erased().to_pod(),
                 reset_focus_on_deactivation: self.reset_focus_on_deactivation,
                 accessibility_bounds: self.accessibility_bounds,
+                status: self.status,
             }),
             view_state,
         )
@@ -76,10 +84,14 @@ impl<V: WidgetView<ShellState>> View<ShellState, (), ViewCtx> for GroupView<V> {
         state: &mut ShellState,
     ) {
         if self.label != previous.label {
-            element.widget.label = self.label;
+            element.widget.label.clone_from(&self.label);
             element.ctx.request_accessibility_update();
         }
         element.widget.reset_focus_on_deactivation = self.reset_focus_on_deactivation;
+        if self.status != previous.status {
+            element.widget.status = self.status;
+            element.ctx.request_accessibility_update();
+        }
         if self.accessibility_bounds != previous.accessibility_bounds {
             element.widget.accessibility_bounds = self.accessibility_bounds;
             element.ctx.request_accessibility_update();
@@ -128,10 +140,11 @@ impl<V: WidgetView<ShellState>> View<ShellState, (), ViewCtx> for GroupView<V> {
 }
 
 pub(super) struct PopupGroup {
-    label: &'static str,
+    label: String,
     inner: WidgetPod<dyn Widget>,
     reset_focus_on_deactivation: bool,
     accessibility_bounds: bool,
+    status: bool,
 }
 impl PopupGroup {
     fn child_mut<'a>(this: &'a mut WidgetMut<'_, Self>) -> WidgetMut<'a, dyn Widget> {
@@ -182,10 +195,17 @@ impl Widget for PopupGroup {
     }
     fn paint(&mut self, _: &mut PaintCtx<'_>, _: &PropertiesRef<'_>, _: &mut Painter<'_>) {}
     fn accessibility_role(&self) -> Role {
-        Role::Group
+        if self.status {
+            Role::Status
+        } else {
+            Role::Group
+        }
     }
     fn accessibility(&mut self, _: &mut AccessCtx<'_>, _: &PropertiesRef<'_>, node: &mut Node) {
-        node.set_label(self.label);
+        node.set_label(self.label.clone());
+        if self.status {
+            node.set_live(xilem::masonry::accesskit::Live::Polite);
+        }
         if !self.accessibility_bounds {
             node.clear_bounds();
         }

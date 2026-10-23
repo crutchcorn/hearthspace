@@ -114,6 +114,9 @@ impl App {
             self.lock_pointer_motion(time);
             return;
         }
+        if self.canvas_search_pointer_motion(time) {
+            return;
+        }
         if self.overview_pointer_motion(time) {
             return;
         }

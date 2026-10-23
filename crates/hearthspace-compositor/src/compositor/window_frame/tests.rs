@@ -7,7 +7,7 @@ use smithay::{
             Bind, Color32F, Offscreen,
             damage::OutputDamageTracker,
             element::{
-                Element, render_elements,
+                Element, Kind, render_elements,
                 solid::{SolidColorBuffer, SolidColorRenderElement},
                 texture::{TextureRenderBuffer, TextureRenderElement},
                 utils::{CropRenderElement, Relocate, RelocateRenderElement, RescaleRenderElement},
@@ -34,6 +34,8 @@ render_elements! {
 
 #[path = "header_tests.rs"]
 mod header;
+#[path = "panel_tests.rs"]
+mod panel;
 
 fn renderer() -> GlesRenderer {
     let display = unsafe { EGLDisplay::new(EGLSurfacelessDisplay).unwrap() };

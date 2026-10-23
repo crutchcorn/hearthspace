@@ -75,6 +75,9 @@ enum Gesture {
 }
 
 impl App {
+    pub(in crate::compositor) fn desktop_ordered_ids(&self) -> &[String] {
+        &self.desktop.order
+    }
     pub(in crate::compositor) fn desktop_id(&self, index: usize) -> Option<String> {
         (self.windows[index].kind == ManagedWindowKind::DesktopItem)
             .then(|| window_app_id(&self.windows[index].surface))
@@ -288,6 +291,14 @@ impl App {
         }
     }
 
+    pub(in crate::compositor) fn clear_desktop_for_canvas_search(&mut self) -> bool {
+        self.desktop.selected.clear();
+        self.desktop.keyboard_focus = false;
+        self.disable_desktop_selection();
+        // Search owns the cancelled gesture's eventual release. Leaving this
+        // latch here would consume a later field or desktop click instead.
+        std::mem::take(&mut self.desktop.suppress_release)
+    }
     pub(in crate::compositor) fn disable_desktop_selection(&mut self) {
         self.cancel_desktop_gesture();
         self.desktop.select_mode = false;

@@ -14,6 +14,7 @@ use xilem::{EventLoop, Xilem};
 mod appearance;
 mod battery_view;
 mod canvas_map;
+mod canvas_search;
 mod canvas_task;
 mod command_client;
 mod constants;

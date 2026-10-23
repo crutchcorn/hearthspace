@@ -67,6 +67,7 @@ impl App {
     pub(in crate::compositor) fn run_desktop_key(&mut self, action: Action) {
         match action {
             Action::Toggle => {
+                self.disarm_canvas_search();
                 self.cancel_desktop_gesture();
                 self.desktop.select_mode = true;
                 self.clear_window_group();

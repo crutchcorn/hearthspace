@@ -36,6 +36,7 @@ pub(super) fn focus_on_activation<V>(
         inner,
         target,
         output_key,
+        dismiss: ShellState::dismiss_search,
     }
 }
 
@@ -43,6 +44,14 @@ pub(super) struct FocusOnActivation<V> {
     inner: V,
     target: FocusTarget,
     output_key: String,
+    dismiss: fn(&mut ShellState, &str),
+}
+
+impl<V> FocusOnActivation<V> {
+    pub(super) fn with_dismiss(mut self, dismiss: fn(&mut ShellState, &str)) -> Self {
+        self.dismiss = dismiss;
+        self
+    }
 }
 
 const CONTENT: ViewId = ViewId::new(0x53454152);
@@ -130,7 +139,7 @@ where
                 state,
             ),
             None if message.take_message::<DismissLauncher>().is_some() => {
-                state.dismiss_search(&self.output_key);
+                (self.dismiss)(state, &self.output_key);
                 MessageResult::Action(())
             }
             _ => MessageResult::Stale,

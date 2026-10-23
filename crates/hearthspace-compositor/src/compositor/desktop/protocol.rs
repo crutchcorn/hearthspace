@@ -77,7 +77,11 @@ impl App {
         serde_json::to_vec(&json!({"version":1,"revision":self.desktop.revision,"select_mode":self.desktop.select_mode,"items":items})).expect("serializable desktop state")
     }
 
-    pub(super) fn desktop_action(&mut self, action: &'static str, id: &str) -> Result<(), String> {
+    pub(in crate::compositor) fn desktop_action(
+        &mut self,
+        action: &'static str,
+        id: &str,
+    ) -> Result<(), String> {
         self.check_navigation_available()?;
         if self.desktop_index(id).is_none() {
             return Err("desktop item is unavailable".into());
@@ -123,6 +127,7 @@ impl CalloopData {
             app.desktop_changed();
             Ok(())
         } else if text == "desktop-selection-toggle" {
+            app.disarm_canvas_search();
             app.cancel_desktop_gesture();
             app.desktop.select_mode = !app.desktop.select_mode;
             if app.desktop.select_mode {

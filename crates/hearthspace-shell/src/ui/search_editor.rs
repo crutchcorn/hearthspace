@@ -23,18 +23,33 @@ pub(super) struct SearchEditor {
     pub(super) text: TextArea<true>,
     placeholder: Label,
     composing: bool,
+    font_size: f32,
+    hint: &'static str,
+    accessible_label: &'static str,
 }
 impl SearchEditor {
     pub(super) fn new(text: &str) -> Self {
+        Self::configured(text, "Find an application", PLACEHOLDER, 17.0)
+    }
+
+    pub(super) fn configured(
+        text: &str,
+        hint: &'static str,
+        accessible_label: &'static str,
+        font_size: f32,
+    ) -> Self {
         Self {
             // Preserve the upstream editor's soft wrapping for long queries.
             // Enter still submits; it never inserts a new line.
             text: TextArea::new_editable(text)
                 .with_word_wrap(true)
-                .with_style(xilem::masonry::parley::StyleProperty::FontSize(17.0)),
-            placeholder: Label::new("Find an application")
-                .with_style(xilem::masonry::parley::StyleProperty::FontSize(17.0)),
+                .with_style(xilem::masonry::parley::StyleProperty::FontSize(font_size)),
+            placeholder: Label::new(hint)
+                .with_style(xilem::masonry::parley::StyleProperty::FontSize(font_size)),
             composing: false,
+            font_size,
+            hint,
+            accessible_label,
         }
     }
 
@@ -44,7 +59,9 @@ impl SearchEditor {
         // and any composition, matching TextArea::reset_text's semantics.
         self.text = TextArea::new_editable(text)
             .with_word_wrap(true)
-            .with_style(xilem::masonry::parley::StyleProperty::FontSize(17.0));
+            .with_style(xilem::masonry::parley::StyleProperty::FontSize(
+                self.font_size,
+            ));
         self.composing = false;
     }
 }
@@ -154,7 +171,11 @@ impl Widget for SearchEditor {
         self.text.paint(ctx, props, painter);
     }
     fn accessibility_role(&self) -> Role {
-        Role::TextInput
+        if self.accessible_label == PLACEHOLDER {
+            Role::TextInput
+        } else {
+            Role::SearchInput
+        }
     }
     fn accessibility(
         &mut self,
@@ -163,8 +184,12 @@ impl Widget for SearchEditor {
         node: &mut Node,
     ) {
         self.text.accessibility(ctx, props, node);
-        node.set_label(PLACEHOLDER);
-        node.set_placeholder(PLACEHOLDER);
+        node.set_label(self.accessible_label);
+        node.set_placeholder(if self.accessible_label == PLACEHOLDER {
+            PLACEHOLDER
+        } else {
+            self.hint
+        });
     }
     fn accepts_focus(&self) -> bool {
         true

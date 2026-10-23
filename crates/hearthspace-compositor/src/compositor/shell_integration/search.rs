@@ -17,85 +17,38 @@ use crate::compositor::{App, ManagedWindowKind, switcher::SwitcherSource};
 
 const REQUEST_LIFETIME: Duration = Duration::from_secs(1);
 const MAX_PENDING_KEYS: usize = 64;
+const MAX_CANVAS_PENDING_KEYS: usize = 1024;
 
-pub(in crate::compositor) struct PendingKey {
-    pub source: KeyboardSource,
-    pub modifiers: Option<[u32; 4]>,
-    pub code: Keycode,
-    pub state: KeyState,
-    pub time: InputTime,
-    finish_existing: bool,
-}
-
-struct Pending {
-    token: u64,
-    expires: Instant,
-    accepted: bool,
-    output: Option<String>,
-    keys: Vec<PendingKey>,
-    held_before: HashSet<Keycode>,
-}
-
-#[derive(Default)]
-pub(in crate::compositor) struct SearchRequest {
-    sequence: u64,
-    pending: Option<Pending>,
-}
-
-impl SearchRequest {
-    fn valid(&self) -> bool {
-        self.pending
-            .as_ref()
-            .is_some_and(|pending| Instant::now() < pending.expires)
-    }
-
-    fn accept(&mut self, token: u64) -> Result<(), String> {
-        if !self.valid() {
-            return Err("search request expired or cancelled".into());
-        }
-        let pending = self.pending.as_mut().unwrap();
-        if token != pending.token || pending.accepted {
-            return Err("search request superseded or already accepted".into());
-        }
-        pending.accepted = true;
-        Ok(())
-    }
-
-    fn take_keys(&mut self) -> Vec<PendingKey> {
-        self.pending
-            .take()
-            .map(|pending| pending.keys)
-            .unwrap_or_default()
-    }
-
-    fn push_key(
-        &mut self,
-        source: KeyboardSource,
-        modifiers: Option<[u32; 4]>,
-        code: Keycode,
-        state: KeyState,
-        time: InputTime,
-    ) -> bool {
-        let Some(pending) = self.pending.as_mut() else {
-            return false;
-        };
-        if pending.keys.len() == MAX_PENDING_KEYS {
-            return false;
-        }
-        let finish_existing = state == KeyState::Released && pending.held_before.remove(&code);
-        pending.keys.push(PendingKey {
-            source,
-            modifiers,
-            code,
-            state,
-            time,
-            finish_existing,
-        });
-        true
-    }
-}
+mod model;
+pub(in crate::compositor) use model::SearchRequest;
+use model::{Pending, PendingKey};
 
 impl App {
+    pub(in crate::compositor) fn reserve_canvas_search_input(
+        &mut self,
+        token: u64,
+        output: Option<String>,
+    ) {
+        self.search_request.pending = Some(Pending {
+            token,
+            output,
+            expires: Instant::now() + REQUEST_LIFETIME,
+            accepted: true,
+            canvas: true,
+            cancelled: false,
+            keys: Vec::new(),
+            held_before: self.keyboard.pressed_keys(),
+        });
+    }
+    fn search_input_available(&self) -> bool {
+        self.navigation_available()
+            || (self.canvas_search_active()
+                && self
+                    .search_request
+                    .pending
+                    .as_ref()
+                    .is_none_or(|pending| pending.canvas))
+    }
     pub(in crate::compositor) fn pending_search_reserves_focus(&self) -> bool {
         self.search_request.valid()
     }
@@ -202,6 +155,8 @@ impl App {
             token,
             expires: Instant::now() + REQUEST_LIFETIME,
             accepted: false,
+            canvas: false,
+            cancelled: false,
             output,
             keys: Vec::new(),
             held_before: self.keyboard.pressed_keys(),
@@ -229,11 +184,47 @@ impl App {
         if self.search_request.pending.is_none() {
             return false;
         }
-        if !self.search_request.valid() || !self.navigation_available() {
+        if self
+            .search_request
+            .pending
+            .as_ref()
+            .is_some_and(|pending| pending.canvas)
+            && state == KeyState::Pressed
+        {
+            let escape = self.keyboard.clone().with_xkb_state(self, |context| {
+                let xkb = context.xkb().lock().unwrap();
+                xkb.raw_syms_for_key_in_layout(code, xkb.active_layout())
+                    .iter()
+                    .any(|sym| sym.raw() == smithay::input::keyboard::keysyms::KEY_Escape)
+            });
+            if escape {
+                self.cancel_pending_search();
+                return false;
+            }
+        }
+        if !self.search_request.valid() || !self.search_input_available() {
             self.cancel_pending_search();
             return false;
         }
         let modifiers = self.remote_key_modifiers(source);
+        // Opening shortcut releases precede typing. Apply those immediately so
+        // the newly mapped field does not receive an enter with stale Ctrl/K.
+        // Once typing is queued, keep every modifier transition in that queue.
+        if state == KeyState::Released
+            && self.search_request.pending.as_mut().is_some_and(|pending| {
+                pending.canvas && pending.keys.is_empty() && pending.held_before.remove(&code)
+            })
+        {
+            self.discard_search_key(PendingKey {
+                source,
+                modifiers,
+                code,
+                state,
+                time,
+                finish_existing: true,
+            });
+            return true;
+        }
         if !self
             .search_request
             .push_key(source, modifiers, code, state, time)
@@ -245,6 +236,9 @@ impl App {
     }
 
     pub(in crate::compositor) fn search_mapping_allowed(&mut self, index: usize) -> bool {
+        if self.is_canvas_search_panel(index) {
+            return self.canvas_search_panel_allowed(index);
+        }
         if !self.is_search_panel(index) {
             return true;
         }
@@ -276,7 +270,7 @@ impl App {
 
     pub(in crate::compositor) fn finish_pending_search(&mut self, index: usize) {
         let ready = self.search_request.valid()
-            && self.is_search_panel(index)
+            && (self.is_search_panel(index) || self.canvas_search_panel_allowed(index))
             && self.search_request.pending.as_ref().is_some_and(|pending| {
                 pending.accepted && pending.output == self.windows[index].shell_output_name
             });
@@ -288,7 +282,7 @@ impl App {
         for mut key in keys {
             // A queued shortcut can lock the session or change focus. Stop
             // typing immediately if that happened during replay.
-            if !self.navigation_available() || self.focused_shell_panel_index() != Some(index) {
+            if !self.search_input_available() || self.focused_shell_panel_index() != Some(index) {
                 // Earlier replay may already have forwarded this press before
                 // a shortcut moved focus. Preserve its matching release.
                 if key.state == KeyState::Released && replayed.remove(&(key.source, key.code)) {
@@ -348,7 +342,8 @@ impl App {
         let keep = self.search_request.pending.as_ref().is_some_and(|pending| {
             focus.is_some_and(|index| {
                 (self.windows[index].kind == ManagedWindowKind::ShellBar
-                    || self.is_search_panel(index))
+                    || self.is_search_panel(index)
+                    || (pending.canvas && self.canvas_search_panel_allowed(index)))
                     && self.windows[index].shell_output_name == pending.output
             })
         });
@@ -356,7 +351,7 @@ impl App {
             // This callback runs inside Smithay's keyboard focus lock. Only
             // invalidate here; drain keys at the next input outside that lock.
             if let Some(pending) = self.search_request.pending.as_mut() {
-                pending.expires = Instant::now();
+                pending.cancelled = true;
             }
         }
     }

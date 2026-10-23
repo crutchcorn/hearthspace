@@ -63,7 +63,8 @@ impl App {
         debug!(%command, "running app control action");
         self.advance_viewport_animation();
 
-        if (self.overview_active()
+        if (self.canvas_search_active()
+            || self.overview_active()
             || self.window_switcher_active()
             || self.group_interaction_active())
             && matches!(

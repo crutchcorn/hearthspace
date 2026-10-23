@@ -10,6 +10,8 @@ from .input import Input
 from .map_checks import SHELL, button_center, corner_surface, selector
 
 BAR_ICONS = (
+    "Select desktop items",
+    "Search canvas",
     "Select window group",
     "Apps List",
     "Notifications",
@@ -35,6 +37,8 @@ CONTROL_CORNERS = {
     "Sound settings": "system",
     "Battery status": "system",
     "Date and time": "system",
+    "Select desktop items": "canvas",
+    "Search canvas": "canvas",
     "Select window group": "canvas",
     "Canvas map": "canvas",
     "Apps List": "apps",
@@ -168,8 +172,17 @@ def bar(smoke):
     closed(smoke)
 
     def complete_buttons():
+        # Desktop tiles also expose ToggleButton; only corner controls belong
+        # in this check. Active canvas tools must remain visible to validation.
+        corner_panels = (
+            "@name='Notifications' or @name='System tray' or "
+            "@name='Canvas tools' or @name='Running apps and Apps List'"
+        )
         buttons = a11y(
-            smoke, "find", f"{SHELL}//*[@role='button' and @showing='true']"
+            smoke,
+            "find",
+            f"{SHELL}//*[@role='panel' and ({corner_panels})]"
+            "//*[(@role='button' or @role='toggle button') and @showing='true']",
         )["elements"]
         # Each corner registers a separate accessibility window. The first
         # visible controls can arrive before the final corner has registered.

@@ -21,6 +21,10 @@ mod tests;
 pub(super) use events::{Event, apply_event, parse_event};
 pub(super) use task::task;
 
+pub(super) fn selection_active(state: &ShellState) -> bool {
+    state.desktop.snapshot.select_mode
+}
+
 #[derive(Default)]
 pub(super) struct State {
     items: Vec<Item>,
@@ -75,16 +79,31 @@ pub(super) fn windows(state: &ShellState) -> Vec<WindowView<ShellState>> {
                 },
             };
             let flags = state.desktop.snapshot.items.get(&id);
+            let search = &state.canvas_search.snapshot;
             let view = desktop_item::view(
                 content,
                 desktop_item::TileState {
-                    selected: flags.is_some_and(|item| item.selected),
-                    focused: flags.is_some_and(|item| item.focused),
-                    keyboard_focus: flags.is_some_and(|item| item.keyboard_focus),
-                    hovered: false,
+                    selected: if search.active {
+                        search.selected_id.as_ref() == Some(&id)
+                    } else {
+                        flags.is_some_and(|item| item.selected)
+                    },
+                    focused: !search.active && flags.is_some_and(|item| item.focused),
+                    keyboard_focus: !search.active && flags.is_some_and(|item| item.keyboard_focus),
+                    hovered: search.active && search.hovered_id.as_ref() == Some(&id),
                     photo_background: state.appearance.palette.photo,
                 },
                 move |state: &mut ShellState, action| {
+                    if state.canvas_search.snapshot.active {
+                        match action {
+                            desktop_item::TileAction::Activate => super::canvas_search::activate(state, Some(&id)),
+                            desktop_item::TileAction::Focus => super::canvas_search::submit_command(state, format!(
+                                "canvas-search-select {}",
+                                serde_json::json!({"session":state.canvas_search.snapshot.session,"id":id}),
+                            )),
+                        }
+                        return;
+                    }
                     let command = match action {
                         desktop_item::TileAction::Activate => "desktop-activate",
                         desktop_item::TileAction::Focus => "desktop-focus",

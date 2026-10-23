@@ -191,6 +191,7 @@ pub(super) fn insert_drm_source(
                     if should_redraw
                         || data.state.viewport_animation.is_some()
                         || data.state.group_animating()
+                        || data.state.canvas_search_animating()
                         || data.state.desktop_edge_panning()
                     {
                         data.state.request_redraw();

@@ -29,7 +29,8 @@ impl App {
         // Pinned geometry may differ from the canvas minimum or surface-tree
         // bounds while a client is still handling its configure. Match the
         // current frame and hit rectangles instead of stretching old controls.
-        let pinned = self.window_uses_output_coordinates(index);
+        let pinned =
+            self.window_uses_output_coordinates(index) && self.canvas_search_pose(index).is_none();
         let native = if pinned {
             screen.size
         } else {
@@ -44,7 +45,8 @@ impl App {
                 .filter(|title| !title.trim().is_empty())
                 .unwrap_or_else(|| "Hearthspace".to_string()),
             app_id: window_app_id(&window.surface),
-            active: self.focused_normal_window_id == Some(window.id),
+            active: !self.canvas_search_active()
+                && self.focused_normal_window_id == Some(window.id),
             maximized: window.presentation.maximized,
             hovered,
             pressed,
@@ -83,7 +85,10 @@ impl App {
                         f64::from(screen.loc.y),
                     ),
                     &part.raster.buffer,
-                    None,
+                    Some(
+                        self.canvas_search_pose(index)
+                            .map_or(1., |(_, alpha)| alpha as f32),
+                    ),
                     Some(source),
                     Some(Size::from((
                         (part.width * scale).round() as i32,

@@ -1,8 +1,13 @@
 mod appearance;
+pub mod canvas_search;
 mod desktop;
 mod shell_corners;
 
 pub use appearance::{AccentColor, Appearance, ColorMode};
+pub use canvas_search::{
+    canvas_search_app_id, canvas_search_from_app_id, canvas_search_result_app_id,
+    canvas_search_result_from_app_id,
+};
 pub use desktop::{
     DESKTOP_ITEM_APP_ID, DESKTOP_ITEM_HEIGHT, DESKTOP_ITEM_MARGIN, DESKTOP_ITEM_WIDTH,
     DESKTOP_SURFACE_HEIGHT, DESKTOP_SURFACE_WIDTH, MAX_DESKTOP_ITEMS, desktop_item_app_id,
@@ -10,8 +15,8 @@ pub use desktop::{
 };
 
 pub use shell_corners::{
-    NOTIFICATION_CORNER_WIDTH, SHELL_CORNER_CLEARANCE, SHELL_CORNER_MARGIN, SHELL_CORNER_RADIUS,
-    ShellCorner, shell_corner_app_id, shell_corner_from_app_id,
+    CANVAS_CORNER_WIDTH, NOTIFICATION_CORNER_WIDTH, SHELL_CORNER_CLEARANCE, SHELL_CORNER_MARGIN,
+    SHELL_CORNER_RADIUS, ShellCorner, shell_corner_app_id, shell_corner_from_app_id,
 };
 
 pub const WAYLAND_DISPLAY_NAME: &str = "wayland-99";
@@ -159,6 +164,7 @@ pub fn tray_menu_output_name_from_app_id(app_id: &str) -> Option<Option<String>>
 
 pub fn shell_panel_output_name_from_app_id(app_id: &str) -> Option<Option<String>> {
     launcher_output_name_from_app_id(app_id)
+        .or_else(|| canvas_search_from_app_id(app_id).map(|(_, output)| output))
         .or_else(|| canvas_map_output_name_from_app_id(app_id))
         .or_else(|| notifications_output_name_from_app_id(app_id))
         .or_else(|| power_menu_output_name_from_app_id(app_id))

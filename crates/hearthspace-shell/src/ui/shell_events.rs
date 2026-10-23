@@ -76,6 +76,10 @@ impl ShellEvents {
                                 !matches!(previous, Event::Desktop(super::desktop::Event::Changed))
                             });
                         }
+                        if matches!(request, Event::CanvasSearchChanged) {
+                            pending
+                                .retain(|previous| !matches!(previous, Event::CanvasSearchChanged));
+                        }
                         pending.push(request);
                     }
                 }
@@ -149,6 +153,8 @@ enum Event {
     Request(ShellRequest),
     Gesture(super::favorite_events::GestureEvent),
     Desktop(super::desktop::Event),
+    CanvasSearchChanged,
+    CanvasSearchAction(u64),
     RetryDrawing,
     ReloadFavorites,
 }
@@ -161,7 +167,14 @@ fn parse_event(bytes: &[u8]) -> Option<Event> {
     if value["version"].as_u64()? != 1 {
         return None;
     }
-    if let Some(event) = super::desktop::parse_event(&value) {
+    if value["action"] == "canvas-search-changed" {
+        Some(Event::CanvasSearchChanged)
+    } else if value["action"] == "canvas-search-action" {
+        value["token"]
+            .as_u64()
+            .filter(|token| *token > 0)
+            .map(Event::CanvasSearchAction)
+    } else if let Some(event) = super::desktop::parse_event(&value) {
         Some(Event::Desktop(event))
     } else if value["action"].as_str()? == "favorite-gesture" {
         super::favorite_events::parse(&value).map(Event::Gesture)
@@ -265,6 +278,11 @@ pub(super) fn shell_events_task()
             Event::Request(request) => apply_request(state, request),
             Event::Gesture(event) => super::favorite_events::apply(state, event),
             Event::Desktop(event) => super::desktop::apply_event(state, event),
+            Event::CanvasSearchChanged => state.canvas_search.refresh.notify_one(),
+            Event::CanvasSearchAction(token) => super::canvas_search::submit_command(
+                state,
+                format!("canvas-search-event-accept {token}"),
+            ),
             Event::RetryDrawing => super::favorite_events::retry(state),
             Event::ReloadFavorites => super::favorite_events::reload(state),
         },

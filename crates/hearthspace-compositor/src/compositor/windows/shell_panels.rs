@@ -36,6 +36,7 @@ impl App {
 
     pub(in crate::compositor) fn is_shell_panel(&self, index: usize) -> bool {
         self.windows[index].kind == ManagedWindowKind::Launcher
+            && self.canvas_search_result_identity(index).is_none()
     }
 
     pub(in crate::compositor) fn is_search_panel(&self, index: usize) -> bool {
@@ -99,7 +100,8 @@ impl App {
             if !window.mapped || !self.is_shell_panel(index) {
                 continue;
             }
-            let keep = focus.is_some_and(|focus| self.panel_keeps_focus(index, focus));
+            let keep = (self.canvas_search_active() && self.canvas_search_panel_allowed(index))
+                || focus.is_some_and(|focus| self.panel_keeps_focus(index, focus));
             if !keep {
                 window.surface.send_close();
             }

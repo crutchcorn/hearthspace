@@ -171,16 +171,18 @@ canvas navigation and four-/five-finger overview pinches are separate gestures.
 
 ## Keyboard control
 
-Search is a separate overlay opened by the search icon or a Meta tap. It searches
-applications and running windows by title or app ID; an empty query shows a hint.
-Settings remains discoverable there. [Shell controls](SHELL.md) describes the
-bell, map, and power popovers.
+Apps List opens from its dock button or a Meta tap. It searches installed apps
+and running windows. [Canvas search](CANVAS_SEARCH.md) opens with Ctrl+K or
+Super+K and temporarily arranges matching live objects around its field.
+[Shell controls](SHELL.md) describes both entry points and the corner dropdowns.
 
 | Shortcut | Action |
 | --- | --- |
 | Super+Return | Open a terminal |
-| Meta / Super tap | Toggle search overlay |
-| Super+Space | Open search overlay |
+| Meta / Super tap | Toggle Apps List |
+| Super+Space | Open Apps List |
+| Ctrl+K / Super+K | Open canvas search |
+| / (desktop focus) | Open canvas search |
 | Super+O | Toggle canvas overview |
 | Alt+Tab / Alt+Shift+Tab | Select next / previous application; hold Alt for previews |
 | Alt+F4 | Request that the focused application close |

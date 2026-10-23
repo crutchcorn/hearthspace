@@ -30,6 +30,7 @@ impl App {
     pub(super) fn navigation_available(&self) -> bool {
         !self.session_locked()
             && !self.overview_active()
+            && !self.canvas_search_active()
             && !self.window_switcher_active()
             && !self.keyboard.is_grabbed()
             && !self.pointer.is_grabbed()

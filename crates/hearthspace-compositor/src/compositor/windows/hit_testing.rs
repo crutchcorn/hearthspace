@@ -26,7 +26,12 @@ impl App {
             let output = self
                 .output_logical_rect_for_name(window.shell_output_name.as_deref())
                 .unwrap_or_else(|| self.primary_output_logical_rect());
-            if !window.mapped || !self.shell_visible_on_output(output) {
+            if (self.canvas_search_active() && !self.canvas_search_panel_allowed(window_index))
+                || self.canvas_search_result_identity(window_index).is_some()
+                || !window.mapped
+                || (!self.canvas_search_panel_allowed(window_index)
+                    && !self.shell_visible_on_output(output))
+            {
                 continue;
             }
             match window.kind {
@@ -53,6 +58,9 @@ impl App {
             }
         }
 
+        if self.canvas_search_active() {
+            return None;
+        }
         for (window_index, window) in self.windows.iter().enumerate().rev() {
             if window.kind != ManagedWindowKind::Normal || !window.mapped {
                 continue;

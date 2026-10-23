@@ -1,8 +1,8 @@
 //! Four output-local surfaces keep awareness above and actions below the canvas.
 use crate::ui::appearance::{ThemeStyle as _, Tone};
 use hearthspace_common::{
-    CONTROL_BAR_HEIGHT, NOTIFICATION_CORNER_WIDTH, SHELL_CORNER_RADIUS, ShellCorner,
-    shell_corner_app_id,
+    CANVAS_CORNER_WIDTH, CONTROL_BAR_HEIGHT, NOTIFICATION_CORNER_WIDTH, SHELL_CORNER_RADIUS,
+    ShellCorner, shell_corner_app_id,
 };
 use xilem::{
     WidgetView, WindowView,
@@ -42,7 +42,7 @@ pub(super) fn windows(
         corner_window(
             output,
             ShellCorner::Canvas,
-            150.0,
+            f64::from(CANVAS_CORNER_WIDTH),
             canvas_view(state, output),
         ),
         corner_window(
@@ -138,6 +138,7 @@ pub(super) fn canvas_view(
         "Canvas tools",
         flex_row((
             focus(super::desktop::selection_button(state)),
+            focus(super::canvas_search::button(state)),
             focus(super::window_group::button(&state.window_group)),
             focus(super::canvas_map::map_button(output)),
         ))

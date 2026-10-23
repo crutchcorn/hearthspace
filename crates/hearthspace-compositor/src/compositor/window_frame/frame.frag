@@ -1,6 +1,7 @@
 precision highp float;
 varying vec2 v_coords;
 uniform float alpha;
+uniform float scene_opacity;
 uniform vec2 area_size;
 uniform vec2 window_size;
 uniform vec2 window_offset;
@@ -9,6 +10,7 @@ uniform float radius;
 uniform float active;
 uniform float hovered;
 uniform float mode;
+uniform float panel;
 uniform vec4 chrome_color;
 uniform vec4 wash_color;
 uniform vec4 control_color;
@@ -96,7 +98,7 @@ void main() {
             float near = drop_shadow(p, half_size, vec2(0.0, 8.0), -12.0, 16.0);
             color = over(premultiply(broad_shadow_color.rgb, broad * broad_shadow_color.a),
                 premultiply(near_shadow_color.rgb, near * near_shadow_color.a));
-        } else if (hovered > 0.5) {
+        } else if (hovered > 0.5 || panel > 0.5) {
             // --shadow-panel: the inactive window lifts without gaining the
             // active orange border. CSS lists the uppermost shadow first.
             float broad = drop_shadow(p, half_size, vec2(0.0, 24.0), -22.0, 36.0);
@@ -132,5 +134,5 @@ void main() {
 #if defined(DEBUG_FLAGS)
     if (tint == 1.0) color = vec4(0.0, 0.2, 0.0, 0.2) + color * 0.8;
 #endif
-    gl_FragColor = color * alpha;
+    gl_FragColor = color * alpha * scene_opacity;
 }
