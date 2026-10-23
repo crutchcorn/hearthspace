@@ -46,6 +46,7 @@ impl App {
         }
         let id = self.windows[index].id;
         if !mapped {
+            self.window_pointer_grab_owner_unmapped(id);
             self.retire_window_pointer_operation(id);
             self.windows[index].pending_resize = None;
             self.favorite_window_unmapped(id);

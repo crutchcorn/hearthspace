@@ -141,6 +141,22 @@ impl InteractiveClient {
         self.sync();
     }
 
+    pub(crate) fn remap(&mut self, number: usize) {
+        // Unmap's barriers already acknowledged the fresh initial configure.
+        // Reapply role properties cleared by unmapping, then attach a buffer
+        // to the same wl_surface and xdg_toplevel.
+        let window = &mut self.state.windows[number];
+        window.mapped = true;
+        window
+            .toplevel
+            .set_app_id("dev.hearthspace.InteractiveTest".into());
+        window
+            .toplevel
+            .set_title(format!("Interactive fixture {number}"));
+        self.state.commit_buffer(number, &self.queue.handle());
+        self.sync();
+    }
+
     pub(crate) fn destroy(&mut self, window: usize) {
         let window = &mut self.state.windows[window];
         window.mapped = false;

@@ -11,6 +11,9 @@ use super::*;
 use serde_json::Value;
 use wayland_client::protocol::wl_pointer::{ButtonState, Event};
 
+#[path = "interactive_grab_recovery.rs"]
+mod recovery;
+
 #[derive(Clone, Copy, Debug)]
 enum Operation {
     Move,

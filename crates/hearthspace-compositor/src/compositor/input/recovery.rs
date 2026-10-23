@@ -19,6 +19,9 @@ impl App {
     }
 
     pub(in crate::compositor) fn reset_session_input(&mut self) {
+        // Touch/remote cleanup or direct releases below can drop WindowGrab.
+        // Preserve its deferred handoff until every input grab is reset.
+        let owner_retired = self.window_pointer_grab_owner_retired();
         self.clear_canvas_peek_motion();
         // A complete lock/VT transition can occur between layout polls. Cancel
         // shell-side pending/queued openings as well as compositor input state.
@@ -70,6 +73,7 @@ impl App {
             .clone()
             .unset_grab(self, SERIAL_COUNTER.next_serial(), time);
         self.keyboard.clone().unset_grab(self);
+        self.restore_retired_window_grab_focus(owner_retired);
         self.request_redraw();
     }
 }

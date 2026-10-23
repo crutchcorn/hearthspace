@@ -1,4 +1,6 @@
 //! A client move/resize transfers the pointer sequence to the compositor.
+use std::cell::Cell;
+
 use smithay::{
     backend::input::{ButtonState, InputTime},
     input::pointer::{
@@ -24,13 +26,35 @@ impl App {
         self.pointer
             .with_grab(|_, grab| {
                 grab.downcast_ref::<WindowGrab>().is_some_and(|grab| {
-                    !self
-                        .windows
-                        .iter()
-                        .any(|window| window.id == grab.window_id && window.mapped)
+                    grab.owner_unmapped.get()
+                        || !self
+                            .windows
+                            .iter()
+                            .any(|window| window.id == grab.window_id && window.mapped)
                 })
             })
             .unwrap_or(false)
+    }
+
+    pub(in crate::compositor) fn window_pointer_grab_owner_unmapped(&self, id: u64) {
+        self.pointer.with_grab(|_, grab| {
+            if let Some(grab) = grab.downcast_ref::<WindowGrab>()
+                && grab.window_id == id
+            {
+                // A remap cannot undo the focus handoff deferred by this grab.
+                // Geometry cancellation alone (such as X11 moveresize cancel)
+                // does not retire the owner and must not set this latch.
+                grab.owner_unmapped.set(true);
+            }
+        });
+    }
+
+    pub(super) fn restore_retired_window_grab_focus(&mut self, owner_retired: bool) {
+        if owner_retired && self.keyboard.current_focus().is_none() {
+            // Call only after pointer dispatch returns: navigation checks take
+            // its mutex. They also guard lock state and any surviving grab.
+            self.restore_window_focus();
+        }
     }
 
     /// Reuse the implicit grab's serial and baseline only for a client request.
@@ -53,6 +77,7 @@ impl App {
             self,
             WindowGrab {
                 window_id: self.windows[window_index].id,
+                owner_unmapped: Cell::new(false),
                 start,
             },
             serial,
@@ -75,6 +100,7 @@ impl App {
 
 struct WindowGrab {
     window_id: u64,
+    owner_unmapped: Cell<bool>,
     start: GrabStartData<App>,
 }
 

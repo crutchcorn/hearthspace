@@ -43,12 +43,7 @@ impl App {
             self.pointer.clone().frame(self);
             if !self.has_window_pointer_grab() {
                 self.apply_pointer_motion(self.pointer_location, time);
-                if owner_retired && self.keyboard.current_focus().is_none() {
-                    // Teardown could not restore focus while buttons were held.
-                    // Retry outside pointer dispatch (which holds its mutex),
-                    // preserving newer focus and the usual navigation guard.
-                    self.restore_window_focus();
-                }
+                self.restore_retired_window_grab_focus(owner_retired);
             }
             return;
         }
