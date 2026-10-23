@@ -1,9 +1,8 @@
 # Window management
 
-Hearthspace keeps ordinary application windows on a shared canvas. Window
-management makes those windows reachable without changing their saved canvas
-positions, and offers conventional fullscreen and maximized views for focused
-work.
+Hearthspace keeps ordinary application windows on a shared canvas. Navigation
+reveals existing work, while canvas peeking keeps fully covered work discoverable.
+Fullscreen and maximized views provide room for focused work.
 
 ## Coordinates and window states
 
@@ -90,6 +89,37 @@ Terminals such as Foot may also round the final size to character cells on
 release; the opposite edges remain anchored to the actual accepted size.
 
 ## Focus, dialogs, and recovery
+
+### Covered canvas work
+
+Moving and resizing allow overlap throughout the gesture. After release, a fully
+covered window slides to the nearest position exposing a 24-pixel square. Several
+higher windows can jointly cover it. Even a small visible strip prevents movement;
+peeking preserves window sizes and stacking order. Opening or maximizing a window
+also settles covered work. Windows keep the resulting canvas positions, including
+the translated restore position of a maximized window.
+
+Desktop icons and free canvas controls expose a 32-pixel patch when covered.
+Icons use their 56-pixel artwork, excluding transparent padding and labels, to
+decide coverage. They remember their first position before automatic displacement
+and return when it becomes clear. A window must clear the complete home bounds,
+including labels, before an icon returns. Moving an icon or control yourself
+establishes a new home. Displaced positions and their homes survive session saves.
+
+Change layout placements make room around the dropped object's footprint.
+Background objects and controls leave ordinary foreground windows fixed. A
+deliberate Background placement adopts the affected neighbors' displaced positions
+as new homes. Unrelated temporary displacements retain their original homes.
+Frame attachments do not participate in canvas peeking.
+
+Automatic travel lasts 300 ms and respects reduced motion. Panning and zooming
+preserve the settled canvas coordinates. Search, overview, and window switching
+own their temporary presentation; entering focused view or fullscreen does not
+push surrounding work aside. The geometry policy lives in
+`hearthspace-common::canvas_peek`; the compositor applies final positions and
+projects only the temporary animation offset for rendering and input.
+
+### Activation and recovery
 
 A newly mapped application receives focus. Activation follows actual keyboard
 focus, including menus associated with that application. Closing or unmapping

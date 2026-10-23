@@ -60,9 +60,12 @@ impl App {
         } else if mapped && self.is_navigable_window(index) {
             self.position_transient(index);
             if !self.windows[index].initial_placement_done {
-                self.windows[index].initial_placement_done = true;
+                // Restoring saved placement can reconcile the layout. Keep
+                // this window out of canvas settlement until its final first-
+                // map position is known, rather than exposing the origin.
                 self.register_window_placement(index);
                 self.center_new_window(index);
+                self.windows[index].initial_placement_done = true;
             }
             // An existing popup/drag owns input until it ends. A background app
             // mapping during that interaction must not break its grab.

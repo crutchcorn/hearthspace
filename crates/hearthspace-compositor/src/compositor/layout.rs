@@ -45,6 +45,8 @@ struct Layout {
     frames: std::collections::BTreeMap<String, hearthspace_common::frame_layout::FrameLayout>,
     #[serde(default)]
     allow_hide_tools: bool,
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    peek_homes: std::collections::BTreeMap<String, hearthspace_common::frame_layout::Point>,
 }
 
 impl Default for Layout {
@@ -58,6 +60,7 @@ impl Default for Layout {
             desktop: Default::default(),
             frames: Default::default(),
             allow_hide_tools: false,
+            peek_homes: Default::default(),
         }
     }
 }
@@ -80,6 +83,18 @@ impl Layout {
             })
         {
             return Err("invalid desktop placements");
+        }
+        if self.peek_homes.len() > MAX_DESKTOP_ITEMS + 32 * 32
+            || self.peek_homes.iter().any(|(id, point)| {
+                id.is_empty()
+                    || id.len() > 2048
+                    || !point.x.is_finite()
+                    || !point.y.is_finite()
+                    || point.x.abs() > 1_000_000.
+                    || point.y.abs() > 1_000_000.
+            })
+        {
+            return Err("invalid canvas peek homes");
         }
         if self.frames.len() > 32
             || self.frames.iter().any(|(output, layout)| {
@@ -155,6 +170,12 @@ impl LayoutStore {
 
     pub(super) fn desktop_position(&self, id: &str) -> Option<CanvasPoint> {
         self.layout.desktop.get(id).copied()
+    }
+
+    pub(super) fn peek_homes(
+        &self,
+    ) -> std::collections::BTreeMap<String, hearthspace_common::frame_layout::Point> {
+        self.layout.peek_homes.clone()
     }
 
     pub(super) fn remember_desktop(&mut self, id: &str, point: CanvasPoint) {
@@ -282,6 +303,10 @@ impl App {
             return;
         }
         self.remember_frame_layout();
+        self.layout_store
+            .layout
+            .peek_homes
+            .clone_from(&self.canvas_peek.homes);
         // Only memory changes while the display is active. Disk I/O happens on
         // initialization and normal exit, never inside the render/input loop.
         if self.viewport_animation.is_none() {

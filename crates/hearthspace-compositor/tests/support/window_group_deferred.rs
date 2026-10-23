@@ -1,6 +1,87 @@
-//! Completed inference cannot seize geometry from an interactive move/resize.
+//! Gather completion preserves independent moves and waits for interactive geometry.
 use super::super::{interactive::client::InteractiveClient, navigation::wait_windows};
 use super::*;
+
+#[test]
+fn gather_completion_keeps_independent_seed_moves_pending_for_canvas_peek() {
+    let _guard = headless_test_guard();
+    let server = mock::MockOllama::start();
+    let mut compositor =
+        HeadlessCompositor::spawn_with_command("1280x800", None, None, 1, false, |command| {
+            server.configure_enabled_model(command);
+        });
+    drop(compositor.wait_for_socket());
+    action(&compositor, "canvas-search-motion false");
+    let socket = compositor
+        .runtime_dir
+        .path()
+        .join(format!("hearthspace-test-{}", std::process::id()));
+    let mut client = InteractiveClient::connect_server_chrome(&socket);
+    let windows = wait_windows(&compositor, |windows| windows.len() == 2);
+    let [seed, covered] = [0, 1].map(|number| {
+        windows
+            .iter()
+            .find(|window| window["title"] == format!("Interactive fixture {number}"))
+            .unwrap()["id"]
+            .as_u64()
+            .unwrap()
+    });
+    let mut editors = Editors(Vec::new());
+    let (candidate, _) = editor(&compositor, &mut editors, 0);
+    for (id, x, y) in [
+        (seed, 200, 500),
+        (covered, 900, 500),
+        (candidate, 9000, 9000),
+    ] {
+        action(&compositor, format!("move-window {id} {x} {y}"));
+    }
+    select_by_keyboard(&compositor, seed);
+    action(&compositor, "pan-to 0 0");
+    client.sync();
+    action(&compositor, "group-gather");
+    let unrelated = server.request(&compositor);
+    assert_eq!(
+        unrelated["questions"]["relevant"]["instructions"]["candidate_window_title"],
+        "Interactive fixture 1"
+    );
+    server.reply(0.01);
+    let pending = server.request(&compositor);
+    assert_eq!(
+        pending["questions"]["relevant"]["instructions"]["candidate_window_title"],
+        "Overview editor 0"
+    );
+
+    // Hold inference so the independent move cannot race the candidate's flight.
+    action(&compositor, format!("move-window {seed} 900 500"));
+    client.sync();
+    server.no_request();
+    assert_eq!(group(&compositor)["gathering"], true);
+    assert_eq!(window(&compositor, candidate)["canvas_x"], 9000);
+    assert_eq!(window(&compositor, covered)["canvas_x"], 900);
+    assert_eq!(
+        window(&compositor, covered)["canvas_y"],
+        500,
+        "the covered neighbor must not peek while gathering is busy"
+    );
+
+    server.reply(0.99);
+    let completed = wait_group(&compositor, |status| {
+        status["gathering"] == false && status["animating"] == false
+    });
+    assert_eq!(completed["selected"], json!([seed, candidate]));
+    // Acknowledging all selected IDs here would swallow the seed's move and
+    // leave the unrelated neighbor covered. Identical bounds reveal 24px up.
+    wait_windows(&compositor, |windows| {
+        windows.iter().any(|window| {
+            window["id"] == covered && window["canvas_x"] == 900 && window["canvas_y"] == 476
+        })
+    });
+    assert_eq!(window(&compositor, seed)["canvas_x"], 900);
+    assert_eq!(window(&compositor, seed)["canvas_y"], 500);
+    assert_eq!(window(&compositor, candidate)["visible"], true);
+    action(&compositor, "quit");
+    wait_for_exit(&mut compositor.child);
+}
 
 #[test]
 fn gather_completion_waits_for_group_drag_and_clear_discards_deferred_results() {

@@ -93,6 +93,7 @@ impl App {
                     self.layout_editor.drop_anchor =
                         Some((drag.start, drag.rect, drag.original_vertical));
                     self.commit_layout_drop(&drag);
+                    self.canvas_peek_drop_for_target(&drag.target);
                     self.layout_editor.drop_anchor = None;
                 } else if drag.interrupted {
                     self.layout_editor.layouts = drag.layouts;
@@ -125,6 +126,9 @@ impl App {
             self.layout_changed();
             return true;
         };
+        if let Some(index) = self.target_window_index(&target) {
+            self.grab_canvas_peek_target(index);
+        }
         let rect = self
             .frame_placed(&target)
             .map(|p| {

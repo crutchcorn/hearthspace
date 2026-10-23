@@ -154,6 +154,12 @@ impl App {
                         }
                     })
                 })
+                .map(|mut rect| {
+                    let offset = self.canvas_peek_offset(index);
+                    rect.x += offset.x;
+                    rect.y += offset.y;
+                    rect
+                })
                 .unwrap_or(Rect {
                     x: f64::from(r.loc.x),
                     y: f64::from(r.loc.y),

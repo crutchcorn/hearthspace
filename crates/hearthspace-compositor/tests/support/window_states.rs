@@ -277,17 +277,39 @@ fn window_bounds_wayland_oversized_initial_window_and_dialog_fit_output() {
     let windows = wait_windows(&compositor, |windows| {
         windows.len() == 1 && windows[0]["focused"] == true && fits(&windows[0])
     });
-    let id = windows[0]["id"].as_u64().unwrap();
+    let initial = windows[0].clone();
+    let id = initial["id"].as_u64().unwrap();
     wait_state(&state_path, |state| state["active"] == true);
     keys(&compositor, &[66]); // F8 requests a 1600x1200 transient window.
     let windows = wait_windows(&compositor, |windows| {
         windows.len() == 2
-            && windows.iter().all(fits)
             && windows.iter().any(|window| {
-                window["title"] == "Window fixture dialog" && window["focused"] == true
+                window["title"] == "Window fixture dialog"
+                    && window["focused"] == true
+                    && fits(window)
+            })
+            && windows.iter().any(|window| {
+                window["id"] == id
+                    && window["y"].as_i64() == Some(initial["y"].as_i64().unwrap() - 24)
             })
     });
+    let parent = windows.iter().find(|window| window["id"] == id).unwrap();
     let dialog = windows.iter().find(|window| window["id"] != id).unwrap();
+    // The fitted dialog fully covers its parent. Reveal 24 pixels of the parent
+    // above it without changing either window's initially bounded size.
+    assert_eq!(parent["x"], initial["x"]);
+    assert_eq!(
+        parent["y"].as_i64().unwrap() + 24,
+        dialog["y"].as_i64().unwrap()
+    );
+    assert_eq!(
+        parent["canvas_y"].as_i64().unwrap() + 24,
+        initial["canvas_y"].as_i64().unwrap()
+    );
+    for field in ["width", "height", "content_width", "content_height"] {
+        assert_eq!(parent[field], initial[field], "parent changed {field}");
+        assert_eq!(dialog[field], initial[field], "dialog changed {field}");
+    }
     action(&compositor, format!("close-window {}", dialog["id"]));
     wait_windows(&compositor, |windows| {
         windows.len() == 1 && windows[0]["focused"] == true

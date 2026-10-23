@@ -111,6 +111,7 @@ impl App {
             return Err("restore the parent window before moving its dialog".into());
         }
         self.cancel_group_window_motion(id);
+        self.cancel_canvas_peek_motion(id);
         self.interrupt_pinch_zoom();
         let window = &mut self.windows[index];
         #[cfg(feature = "xwayland")]
@@ -135,6 +136,7 @@ impl App {
         if self.windows[index].presentation.pinned() {
             return Err("restore the window before resizing it".into());
         }
+        self.cancel_canvas_peek_motion(id);
         self.interrupt_pinch_zoom();
         let size = Size::from((width as i32, height as i32));
         let window = &self.windows[index];

@@ -131,6 +131,7 @@ impl App {
             match self.hit_test(self.pointer_location) {
                 Some(HitTarget::TitlebarButton { .. }) => return,
                 Some(HitTarget::TitleBar { window_index }) => {
+                    self.grab_canvas_peek_target(window_index);
                     self.cancel_group_window_motion(self.windows[window_index].id);
                     let window_index = self.raise_window(window_index);
                     if let Some(surface) = self.windows[window_index].surface.wl_surface() {

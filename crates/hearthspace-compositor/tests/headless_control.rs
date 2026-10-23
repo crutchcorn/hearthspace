@@ -25,6 +25,9 @@ mod canvas_map;
 #[path = "support/canvas_map_client.rs"]
 mod canvas_map_client;
 #[cfg(feature = "test-apps")]
+#[path = "support/canvas_peek.rs"]
+mod canvas_peek;
+#[cfg(feature = "test-apps")]
 #[path = "support/canvas_search.rs"]
 mod canvas_search;
 #[cfg(feature = "test-apps")]

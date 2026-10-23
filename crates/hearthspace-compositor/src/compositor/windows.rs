@@ -587,9 +587,9 @@ impl App {
             return Rectangle::new(rect.loc, (rect.size.w, TITLE_BAR_HEIGHT).into());
         }
         let canvas_rect = self.title_bar_canvas_rect(window_index);
-        let origin = self
-            .canvas_to_screen(canvas_rect.loc.to_f64())
-            .to_i32_round();
+        let origin = (self.canvas_to_screen(canvas_rect.loc.to_f64())
+            + self.canvas_peek_offset(window_index))
+        .to_i32_round();
         Rectangle::new(
             origin,
             (

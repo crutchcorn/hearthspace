@@ -41,7 +41,7 @@ impl App {
             return Point::from((
                 rect.x - f64::from(inset.x) * scale,
                 rect.y + f64::from(chrome - inset.y) * scale,
-            ));
+            )) + self.canvas_peek_offset(index);
         }
         if let Some(origin) = self.transient_screen_origin(index) {
             return origin;
@@ -71,6 +71,7 @@ impl App {
             ));
         }
         self.canvas_to_screen(self.content_canvas_origin(index).to_f64())
+            + self.canvas_peek_offset(index)
     }
 
     pub(in crate::compositor) fn window_screen_bounds(
@@ -99,7 +100,7 @@ impl App {
                 .or_else(|| self.layout_target_rect(index))
         {
             return Rectangle::new(
-                (rect.x.round() as i32, rect.y.round() as i32).into(),
+                (Point::from((rect.x, rect.y)) + self.canvas_peek_offset(index)).to_i32_round(),
                 (rect.width.round() as i32, rect.height.round() as i32).into(),
             );
         }
@@ -117,7 +118,8 @@ impl App {
         }
         let canvas = self.window_canvas_rect(index);
         Rectangle::new(
-            self.canvas_to_screen(canvas.loc.to_f64()).to_i32_round(),
+            (self.canvas_to_screen(canvas.loc.to_f64()) + self.canvas_peek_offset(index))
+                .to_i32_round(),
             (
                 (f64::from(canvas.size.w) * self.viewport_scale).round() as i32,
                 (f64::from(canvas.size.h) * self.viewport_scale).round() as i32,

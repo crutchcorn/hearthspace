@@ -33,8 +33,13 @@ impl App {
         let bounds = self
             .layout_motion_rect(index)
             .or_else(|| self.layout_target_rect(index))?;
+        let offset = self.canvas_peek_offset(index);
         Some(Rectangle::new(
-            (bounds.x.round() as i32, bounds.y.round() as i32).into(),
+            (
+                (bounds.x + offset.x).round() as i32,
+                (bounds.y + offset.y).round() as i32,
+            )
+                .into(),
             (bounds.width.round() as i32, bounds.height.round() as i32).into(),
         ))
     }

@@ -10,6 +10,7 @@ use crate::{RunOptions, config::*, geometry::CanvasPoint};
 use hearthspace_shell::app_catalog::AppCatalog;
 
 mod appearance;
+mod canvas_peek;
 mod canvas_preview;
 mod canvas_search;
 mod capture;
@@ -291,6 +292,7 @@ struct App {
     layout_store: layout::LayoutStore,
     layout_editor: layout_editor::State,
     desktop: desktop::State,
+    canvas_peek: canvas_peek::State,
     canvas_search: canvas_search::State,
     canvas_preview: canvas_preview::State,
     viewport_scale: f64,
@@ -645,6 +647,7 @@ pub(in crate::compositor) fn initialize_app(
     let (viewport_offset, viewport_scale) = layout_store.viewport();
     let frame_layouts = layout_store.frame_layouts();
     let allow_hide_tools = layout_store.allow_hide_tools();
+    let peek_homes = layout_store.peek_homes();
     let app = App {
         display_handle: dh.clone(),
         compositor_state,
@@ -687,6 +690,7 @@ pub(in crate::compositor) fn initialize_app(
         layout_store,
         layout_editor: layout_editor::State::from_layouts(frame_layouts, allow_hide_tools),
         desktop: Default::default(),
+        canvas_peek: canvas_peek::State::with_homes(peek_homes),
         canvas_search: Default::default(),
         canvas_preview: Default::default(),
         viewport_animation: None,

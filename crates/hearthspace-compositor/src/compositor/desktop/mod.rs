@@ -83,6 +83,10 @@ enum Gesture {
 }
 
 impl App {
+    pub(in crate::compositor) fn desktop_gesture_active(&self) -> bool {
+        self.desktop.gesture.is_some()
+    }
+
     pub(in crate::compositor) fn desktop_ordered_ids(&self) -> &[String] {
         &self.desktop.order
     }

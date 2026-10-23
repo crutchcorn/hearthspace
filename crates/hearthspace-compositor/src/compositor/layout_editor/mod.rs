@@ -145,6 +145,16 @@ impl App {
             self.layout_changed();
         }
         self.update_layout_emphasis();
+        self.reconcile_canvas_peek();
+    }
+
+    pub(in crate::compositor) fn layout_drag_active(&self) -> bool {
+        self.layout_editor.drag.is_some()
+    }
+
+    pub(in crate::compositor) fn refresh_peek_layout_placements(&mut self) {
+        self.layout_editor.placed = self.frame_placements();
+        self.layout_changed();
     }
 
     pub(in crate::compositor) fn layout_changed(&mut self) {

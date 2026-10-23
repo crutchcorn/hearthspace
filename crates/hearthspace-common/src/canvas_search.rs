@@ -12,7 +12,7 @@ pub use layout::{layout, window_switcher_layout};
 /// Bound both native text drafts and compositor query updates in UTF-8 bytes.
 pub const MAX_QUERY_BYTES: usize = 4096;
 
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Point {
     pub x: f64,
     pub y: f64,

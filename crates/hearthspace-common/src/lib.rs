@@ -1,4 +1,5 @@
 mod appearance;
+pub mod canvas_peek;
 pub mod canvas_search;
 mod desktop;
 pub mod desktop_context;

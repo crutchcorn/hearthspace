@@ -2,6 +2,9 @@
 use super::{App, ObjectPlacement, Target, TargetKind};
 impl App {
     pub(super) fn place_layout_target(&mut self, target: &Target, mut placement: ObjectPlacement) {
+        if let Some(index) = self.target_window_index(target) {
+            self.forget_canvas_peek_home(index);
+        }
         if matches!(target.target.kind, TargetKind::Widget | TargetKind::Group) {
             let current = self
                 .target_window_index(target)
@@ -148,5 +151,6 @@ impl App {
                 );
             }
         }
+        self.canvas_peek_drop_for_target(target);
     }
 }
