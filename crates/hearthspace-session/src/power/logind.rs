@@ -4,6 +4,8 @@ use std::{future::Future, io, os::fd::OwnedFd, time::Duration};
 use futures_util::StreamExt;
 use zbus::{Connection, Proxy, proxy::SignalStream, zvariant::OwnedObjectPath};
 
+use super::action::Action;
+
 const SERVICE: &str = "org.freedesktop.login1";
 const MANAGER_PATH: &str = "/org/freedesktop/login1";
 const MANAGER_INTERFACE: &str = "org.freedesktop.login1.Manager";
@@ -151,6 +153,44 @@ impl Logind {
 
     pub(crate) async fn can_suspend(&self) -> io::Result<String> {
         bounded(self.manager.call("CanSuspend", &())).await
+    }
+
+    pub(super) async fn can_shutdown(&self, action: Action) -> io::Result<String> {
+        let method = match action {
+            Action::Reboot => "CanReboot",
+            Action::PowerOff => "CanPowerOff",
+            Action::Suspend => return Err(io::Error::other("not a shutdown action")),
+        };
+        bounded(self.manager.call(method, &())).await
+    }
+
+    pub(super) async fn preparing_for_shutdown(&self) -> io::Result<bool> {
+        bounded(self.manager.get_property("PreparingForShutdown")).await
+    }
+
+    pub(super) async fn shutdown_blocker(&self) -> io::Result<Option<String>> {
+        type Inhibitor = (String, String, String, String, u32, u32);
+        let inhibitors: Vec<Inhibitor> = bounded(self.manager.call("ListInhibitors", &())).await?;
+        Ok(inhibitors
+            .into_iter()
+            .find_map(|(what, who, why, mode, _, _)| {
+                (what.split(':').any(|kind| kind == "shutdown")
+                    && matches!(mode.as_str(), "block" | "block-weak"))
+                .then(|| format!("Shutdown is blocked by {who}: {why}"))
+            }))
+    }
+
+    /// Never retry or fall back to a weaker request after an ambiguous reply.
+    pub(super) async fn shutdown(&self, action: Action) -> io::Result<()> {
+        let method = match action {
+            Action::Reboot => "RebootWithFlags",
+            Action::PowerOff => "PowerOffWithFlags",
+            Action::Suspend => return Err(io::Error::other("not a shutdown action")),
+        };
+        // SD_LOGIND_ROOT_CHECK_INHIBITORS is the only flag. Respect even weak
+        // inhibitors for privileged callers; do not enable interactive auth,
+        // skip inhibitors, kexec or a soft reboot. logind owns the final check.
+        bounded(self.manager.call(method, &(1_u64,))).await
     }
 
     pub(crate) async fn set_locked_hint(&self, locked: bool) -> io::Result<()> {

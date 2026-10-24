@@ -195,7 +195,7 @@ async fn private_endpoint_routes_one_suspend_through_the_live_coordinator() {
     let server = tokio::spawn(server.run());
     let mut status = Status::default();
     tokio::select! {
-        result = connected(&mut fixture.logind, runtime, &fixture.control.path, &mut status, &shared, &mut requests) => panic!("coordinator exited: {result:?}"),
+        result = connected(&mut fixture.logind, runtime, &fixture.control.path, &mut status, &shared, &mut requests, || false) => panic!("coordinator exited: {result:?}"),
         result = tokio::time::timeout(Duration::from_secs(4), async {
             loop {
                 if request(&endpoint, "status").await["available"] == true { break; }
