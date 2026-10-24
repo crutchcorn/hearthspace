@@ -48,6 +48,9 @@ pub(crate) fn runtime_directories(
     requested: Option<&Path>,
 ) -> Result<(PathBuf, PathBuf), Box<dyn std::error::Error>> {
     let host_runtime_dir = env::var_os(hearthspace_common::HOST_RUNTIME_DIR_ENV)
+        // D-Bus activation cannot unset retired session keys. Its empty
+        // override must not hide the next login's canonical XDG runtime.
+        .filter(|value| !value.is_empty())
         .or_else(|| env::var_os("XDG_RUNTIME_DIR"))
         .ok_or("XDG_RUNTIME_DIR is not set")?;
     let host_runtime_dir = PathBuf::from(host_runtime_dir);

@@ -90,6 +90,13 @@ contains `processes.json`, `power.json`, sockets and `login-guard-ready.json`.
 If login fails, choose Ubuntu and inspect the journal. No display-manager restart
 or global policy change is needed to install or remove the session entry.
 
+An empty inherited `HEARTHSPACE_HOST_XDG_RUNTIME_DIR` is treated as unset, so
+the next login uses its valid `XDG_RUNTIME_DIR`. D-Bus activation cannot remove
+retired environment keys and can leave this empty value behind. A nonempty host
+override still takes precedence and must be an absolute path. The installed
+entry's default runtime allocation is covered by real-supervisor regressions,
+without the explicit `--session-dir` supplied by the native test harness.
+
 ## Acceptance
 
 Installer regressions stage files without sudo and check completeness, ownership,
