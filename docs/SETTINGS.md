@@ -1,8 +1,37 @@
-# Settings Architecture
+# Settings
 
-Hearthspace settings are owned by `hearthspace-settingsd`. Other processes should treat the daemon as the settings authority and should not write the settings file directly.
+Open **Hearthspace Settings** from Apps List to adjust the desktop:
 
-The intended boundary is:
+- **Appearance:** choose Light or Dark and an Orange, Rose, Violet, Blue, Teal,
+  or Olive accent. The default is Light with Orange. Application artwork keeps
+  its own colors; applications decide how to use the published theme preference.
+- **Displays:** arrange connected outputs and choose an integer scale from
+  100–400%. Resolution and refresh rate are reported values, not mode selectors.
+- **Background:** choose a local photo or restore Canvas dots. Repeat with
+  canvas tiles and moves the photo; Stretch fills the output, Contain shows the
+  whole image, and Cover fills it while cropping. The latter three stay still
+  while the canvas moves. A photo does not change window positions or grid snapping.
+- **Gestures:** record [drawn app shortcuts](FAVORITE_APPS.md).
+- **AI:** explicitly enable or remove the local model for
+  [gathering similar windows](WINDOW_GROUPS.md#optional-local-model).
+- **System:** open [Change layout](SHELL.md#change-layout), allow Canvas tools
+  to be hidden, or restore them.
+
+Changes to appearance, background, and display placement save through the session
+daemon and update connected consumers. Errors remain visible in Settings; a local
+preview is not proof that a change was saved. Disconnected monitor preferences
+are retained for their return. Narrow windows expose categories through the
+**Settings categories** button.
+
+## Ownership
+
+`hearthspace-settingsd` owns the appearance, background, and monitor preferences
+in `config.toml`. Clients should use the daemon rather than write that file
+directly. Favorites and gestures use their own atomic store; frame layout belongs
+to the compositor, and model installation belongs to `hearthspace-ai`. Those
+features are presented by Settings but are not fields in the daemon's model.
+
+The daemon's boundary is:
 
 ```text
 settings UI / compositor / shell clients
@@ -21,10 +50,13 @@ This keeps persistence, defaults, request validation, and response formatting in
 The session supervisor gives all child processes the same settings socket path through `HEARTHSPACE_SETTINGS_SOCKET`. In a supervised session this socket lives in the per-session runtime directory:
 
 ```text
-$XDG_RUNTIME_DIR/hearthspace/session-<pid>/settings.sock
+$HEARTHSPACE_SESSION_DIR/settings.sock
 ```
 
-If `HEARTHSPACE_SETTINGS_SOCKET` is not set, `hearthspace-ipc` falls back to:
+The supervisor normally creates that session directory beneath the user's
+original runtime directory. Clients should use the explicit socket variable:
+their `XDG_RUNTIME_DIR` may differ from the supervisor's. If
+`HEARTHSPACE_SETTINGS_SOCKET` is not set, `hearthspace-ipc` falls back to:
 
 ```text
 $XDG_RUNTIME_DIR/hearthspace-settingsd.sock
@@ -120,7 +152,7 @@ MonitorConfig
 - y: i32
 ```
 
-Defaults are deliberately useful in development and headless cases:
+Default monitor rows provide placeholders before live outputs are resolved:
 
 ```text
 test = false
@@ -278,8 +310,8 @@ portal; XSettings still publishes to the compositor's own XWayland display.
 The runtime portal configuration selects Hearthspace for Settings and GTK for
 other portal interfaces. Hearthspace forwards unrelated GTK settings and their
 change signals, with a 500 ms call bound. It filters GTK's competing appearance
-keys: the installed portal 1.21.1
-[forwards every backend's signals](https://github.com/flatpak/xdg-desktop-portal/blob/1.21.1/src/settings.c#L220)
+keys: portal versions such as 1.21.1
+[forward every backend's signals](https://github.com/flatpak/xdg-desktop-portal/blob/1.21.1/src/settings.c#L220)
 even when a higher-priority backend supplied the value returned by `ReadAll`.
 Filtering in the owned backend keeps application caches consistent with reads.
 

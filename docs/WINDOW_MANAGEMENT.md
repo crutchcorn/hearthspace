@@ -2,7 +2,9 @@
 
 Hearthspace keeps ordinary application windows on a shared canvas. Navigation
 reveals existing work, while canvas peeking keeps fully covered work discoverable.
-Fullscreen and maximized views provide room for focused work.
+Fullscreen and maximized views provide room for focused work. For example, you
+can leave a terminal beside a document, pan elsewhere, then use search or Alt+Tab
+to return to either window without permanently arranging them into a grid.
 
 ## Coordinates and window states
 
@@ -120,6 +122,10 @@ release; the opposite edges remain anchored to the actual accepted size.
 
 ### Covered canvas work
 
+If you drop a large window over a smaller one, the window you moved stays where
+you put it. **Peeking** moves the covered work just enough to make it discoverable.
+This is separate from revealing a frame-attached window at the screen edge.
+
 Moving and resizing allow overlap throughout the gesture. After release, a fully
 covered window slides to the nearest position exposing a 24-pixel square. Several
 higher windows can jointly cover it. Even a small visible strip prevents movement;
@@ -172,7 +178,7 @@ actions return an error until the popup is dismissed.
 ## Canvas map
 
 The **Canvas map** button in Canvas tools opens the [canvas map](CANVAS_MAP.md), with a live
-zoomed-out minimap and icon zoom controls. Drag its orange viewport area to move
+zoomed-out minimap and icon zoom controls. Drag its highlighted viewport area to move
 around the canvas without changing the zoom level or window positions.
 
 ## Window switcher
@@ -296,7 +302,7 @@ and its lock state; switching back resumes it. On laptops whose function row def
 to media controls, hold Fn as well to send an F key. Nested and headless sessions
 do not switch the host's TTY. Agents can exercise the native binding through an
 owned uinput keyboard; control-socket key injection remains inside Hearthspace.
-See the [native TTY validation record](VT_TESTING.md) for recovery and lock checks.
+See [native TTY testing](VT_TESTING.md) for recovery and lock checks.
 
 ## Agent control
 
@@ -339,24 +345,13 @@ window's close explicitly removes that attachment. Slots distinguish instances
 of an application, not individual documents.
 
 The private file is `$XDG_STATE_HOME/hearthspace/layout.json`, falling back to
-`~/.local/state/hearthspace/layout.json`. It retains at most 128 placements.
+`~/.local/state/hearthspace/layout.json`. It retains at most 128 ordinary window placements;
+desktop positions and frame layout have separate collections in the same file.
 Invalid files are ignored. A crash can lose layout changes since the last normal
 exit. Set `HEARTHSPACE_LAYOUT_PATH` to an absolute file to choose another layout,
 or `off` to disable persistence. Nested and headless sessions only save when an
 explicit path is supplied. The native agent harness uses `layout.json` inside
 its artifact directory so tests do not alter the user's normal layout.
-
-## Native switcher validation — 2026-10-22
-
-Native switcher acceptance on 2026-10-22 passed all 41 stages in
-`/tmp/hearthspace-icon-switcher.1D06Er`, including keyboard switching and physical
-touchpad/touchscreen pinch events. A subsequent Intel UHD 620 run at 1920×1080,
-scale 1, verified that inward touchscreen pinch leaves the centered switcher
-open after release. Escape and background click preserved focus; pointer click
-and touchscreen tap on another preview activated that app. Captures and exact
-before/after focus assertions are in
-`/tmp/hearthspace-gpu-portal.mwspkdj0/switcher-extra`. Both owned sessions were
-cleaned up; the latter restored tty2 with no GPU loss or panic logged.
 
 ## Contributor rules
 

@@ -1,5 +1,9 @@
 # Canvas search
 
+Find an offscreen window without remembering where you left it. Canvas search
+temporarily gathers matching objects around a text field, keeping their live
+contents and identities. Dismissing it returns to your arrangement.
+
 Choose **Search canvas** in the bottom-left toolbar, then click empty canvas to
 open the field there. **Ctrl+K** or **Super+K** opens it near the upper center of
 the active output. **/** does the same while the desktop or background has
@@ -15,7 +19,8 @@ once the query contains text, ordered from front to back after desktop items.
 Up and Down cycle through results. Enter or a click activates the selected item:
 
 - App shortcuts launch an app; files and folders use their existing default opener.
-- Window previews focus the existing window and center it on the search output.
+- Window previews focus the existing window and center it on the search output;
+  frame-attached windows open at their existing edge.
 - System controls open their existing dropdown or Apps List.
 - Canvas tools select their mode or open the canvas map.
 
@@ -39,7 +44,7 @@ spacing, so selection remains visible even for small previews.
 
 Existing window buffers, decorations and desktop icons move into a temporary
 spatial grid. Nonmatching objects move beyond the nearest output edge and fade.
-Transforms use the reference's 360ms cubic easing; opacity uses its 220ms easing.
+Position and size transitions use 360 ms cubic easing; opacity transitions take 220 ms.
 Query changes continue from the currently displayed position. Activating a
 window animates from its preview directly into its final view, trimming distant
 invisible travel. Preview clicks never reach the app's contents.
@@ -58,7 +63,7 @@ session or new service.
 
 ## Ownership and verification
 
-`hearthspace-common::canvas_search` owns the reference layout and easing math.
+`hearthspace-common::canvas_search` owns the result layout and easing math.
 The compositor's `canvas_search` module owns sessions, matching, selection,
 temporary transforms, input isolation and window activation. The shell's
 `ui/canvas_search` module owns the native field and live control previews.
@@ -97,7 +102,7 @@ touchscreen contacts, multi-contact cancellation, device removal, and the native
 text field:
 
 ```sh
-scripts/canvas-search-touch-smoke --session /tmp/hearthspace-search-touch-1
+scripts/canvas-search-touch-smoke --session "$PWD/artifacts/search-touch-1"
 ```
 
 Use a fresh session directory and follow the ownership and recovery rules in

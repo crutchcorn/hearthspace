@@ -1,12 +1,21 @@
 # Session locking
 
-Hearthspace implements `ext-session-lock-v1` with Smithay. The compositor owns
-input isolation, output presentation, and the transition back to the desktop.
-The workspace's `hearthspace-lock` client owns password authentication through
-PAM. It uses GTK4 and `gtk4-session-lock` for the lock surfaces; the compositor
-launches the binary beside its own executable, keeping installed releases together.
+Press **Super+L** or choose **Power → Lock screen** to protect your session.
+The lock screen shows a clock, your account name, and a password entry over the
+configured background. Enter your account password and press Enter or activate
+**Unlock**. A failed attempt keeps the session locked and shows feedback.
+
+Locking keeps applications in the same session. It also blocks agent capture,
+synthetic input, clipboard changes, and private accessibility access until the
+lock owner authenticates. There is no agent command that bypasses authentication.
 
 ## Locking policy
+
+Hearthspace implements `ext-session-lock-v1` with Smithay. The compositor owns
+input isolation, output presentation, and the transition back to the desktop.
+The `hearthspace-lock` client owns password authentication through PAM. It uses
+GTK4 and `gtk4-session-lock` for lock surfaces; the compositor launches the
+binary beside its own executable, keeping installed releases together.
 
 Super+L, the shell Lock action, and the agent `lock` command launch
 `hearthspace-lock`. The compositor arms an opaque shield before starting the
@@ -14,17 +23,14 @@ process, isolating input and automation even if launching the client fails. Lock
 is confirmed only after an opaque lock frame has been presented on every output.
 Agent status reports these separately as `locked` and `lock_confirmed`.
 
-The lock screen shows a clock, the current user's name, and a password entry
-over the configured background. Type your account password and press Enter or
-activate **Unlock**. Failed authentication leaves the session locked and shows
-feedback for another attempt. The selected account comes from the process's
+The selected account comes from the process's
 Unix identity, not from an editable username or environment override.
 
 Authentication uses only the fixed `/etc/pam.d/hearthspace-lock` service. Both
 PAM authentication and account checks must succeed for the same Unix user.
 Missing policy, expired credentials, account restrictions, and unsupported PAM
 conversations fail closed; the locker never changes a password or opens a PAM
-login session. See [installation](../CONTRIBUTING.md#graphical-login-installation)
+login session. See [installation](LOGIN_SESSION.md)
 for policy ownership and prerequisites.
 
 An opaque screen without the password form can still be the compositor's protective
@@ -118,7 +124,7 @@ installer creates it as root:root, mode `0644`, and preserves an existing
 administrator-managed policy. A different install prefix does not relocate PAM.
 Development sessions build the sibling locker before starting the compositor;
 locking never starts a compiler while the shield is active.
-See [contributing](../CONTRIBUTING.md) for native library prerequisites and
+See [dependencies](DEPENDENCIES.md) for native library prerequisites and
 [native testing](./NATIVE_TESTING.md) for session ownership and recovery.
 
 - Keep authentication in the locker and display isolation in the compositor.

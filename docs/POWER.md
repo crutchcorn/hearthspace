@@ -1,9 +1,17 @@
-# Lid, sleep, and wake recovery
+# Power, battery, and wake recovery
 
-Start a native desktop through `hearthspace-session` (including
-`cargo run -- --dev --no-watch-apps` from a TTY or the native agent harness). Its power coordinator uses
-systemd-logind on the system bus. A standalone compositor, nested desktop, or
-session started with `--no-desktop-services` does not manage host power.
+Use **Power** to suspend, log off, reboot, or turn off the computer. Reboot,
+Turn off, and Log off ask for confirmation, with Cancel focused first. Suspend
+locks the desktop before sleep; after waking, use your account password to
+return to work. Availability depends on the system's logind capabilities and
+authorization.
+
+Suspend, reboot, and power-off require a native desktop managed by `hearthspace-session`.
+Its coordinator uses systemd-logind on the system bus. A standalone compositor,
+nested desktop, or session started with `--no-desktop-services` does not manage
+host power. See [login sessions](LOGIN_SESSION.md) for startup and installation.
+
+## Lid behavior
 
 Close the lid to suspend an active, undocked Hearthspace session. A dock or a
 connected external display keeps the session awake. The coordinator claims
@@ -25,7 +33,7 @@ peripheral batteries are not treated as the system supply. A missing UPower
 service or invalid reading also hides the indicator, and monitoring reconnects
 when the service becomes available.
 
-Low and critical warnings appear through Hearthspace's private notification
+Low and critical warnings appear through Hearthspace's notification
 service. UPower's configured warning levels are authoritative. Only when that
 level is unknown does Hearthspace use 20% for low and 5% for critical. Charging
 and external-power readings suppress warnings. Warnings are deduplicated until
@@ -125,5 +133,5 @@ There is deliberately no unauthenticated unlock command.
 See [session locking](SESSION_LOCK.md), [native suspend acceptance](POWER_TESTING.md),
 and the [logind D-Bus contract](https://www.freedesktop.org/software/systemd/man/latest/org.freedesktop.login1.html).
 The coordinator changes no global logind configuration, sleep service, or
-permanent RTC setting. The lock client's dedicated PAM policy is installed as
-described in [contributing](../CONTRIBUTING.md#graphical-login-installation).
+permanent RTC setting. The lock client's dedicated PAM policy is installed with
+the [login session](LOGIN_SESSION.md).
