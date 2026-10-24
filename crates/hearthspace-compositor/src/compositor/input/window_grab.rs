@@ -1,15 +1,15 @@
-//! A client move/resize transfers the pointer sequence to the compositor.
+//! Drain compositor-owned pointer sequences, including after owner retirement.
 use std::cell::Cell;
 
 use smithay::{
     backend::input::{ButtonState, InputTime},
     input::pointer::{
-        AxisFrame, ButtonEvent, Focus, GestureHoldBeginEvent, GestureHoldEndEvent,
+        AxisFrame, ButtonEvent, ClickGrab, Focus, GestureHoldBeginEvent, GestureHoldEndEvent,
         GesturePinchBeginEvent, GesturePinchEndEvent, GesturePinchUpdateEvent,
         GestureSwipeBeginEvent, GestureSwipeEndEvent, GestureSwipeUpdateEvent, GrabStartData,
         MotionEvent, PointerGrab, PointerInnerHandle, RelativeMotionEvent,
     },
-    utils::{Logical, Point},
+    utils::{Logical, Point, Serial},
 };
 use wayland_server::protocol::wl_surface::WlSurface;
 
@@ -57,6 +57,32 @@ impl App {
         }
     }
 
+    /// An implicit grab must survive its modal surface until all buttons drain.
+    pub(in crate::compositor) fn retain_retiring_window_pointer_grab(&mut self, id: u64) {
+        if self.pressed_pointer_buttons.is_empty() {
+            return;
+        }
+        let Some((serial, start)) = self
+            .pointer
+            .with_grab(|serial, grab| {
+                grab.is::<ClickGrab<App>>()
+                    .then(|| (serial, grab.start_data().clone()))
+            })
+            .flatten()
+        else {
+            return;
+        };
+        if !start.focus.as_ref().is_some_and(|(surface, _)| {
+            self.window_index_for_surface(surface)
+                .is_some_and(|index| self.windows[index].id == id)
+        }) {
+            return;
+        }
+        // The initiating button may already be up while a secondary one is
+        // held. Retirement must not use the left-button move/resize admission.
+        self.install_window_pointer_grab(id, serial, start, true);
+    }
+
     /// Reuse the implicit grab's serial and baseline only for a client request.
     /// Compositor decorations have no client press to take over.
     pub(in crate::compositor) fn start_window_pointer_grab(&mut self, window_index: usize) {
@@ -64,11 +90,22 @@ impl App {
             return;
         }
         let pointer = self.pointer.clone();
-        let Some((serial, mut start)) =
+        let Some((serial, start)) =
             pointer.with_grab(|serial, grab| (serial, grab.start_data().clone()))
         else {
             return;
         };
+        self.install_window_pointer_grab(self.windows[window_index].id, serial, start, false);
+    }
+
+    fn install_window_pointer_grab(
+        &mut self,
+        window_id: u64,
+        serial: Serial,
+        mut start: GrabStartData<App>,
+        owner_unmapped: bool,
+    ) {
+        let pointer = self.pointer.clone();
         // Ownership belongs to the compositor now. Keeping a client surface in
         // start.focus would make Smithay discard the grab on surface teardown,
         // letting an unmatched release escape to the next focused client.
@@ -76,8 +113,8 @@ impl App {
         pointer.set_grab(
             self,
             WindowGrab {
-                window_id: self.windows[window_index].id,
-                owner_unmapped: Cell::new(false),
+                window_id,
+                owner_unmapped: Cell::new(owner_unmapped),
                 start,
             },
             serial,
