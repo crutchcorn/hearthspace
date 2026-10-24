@@ -76,6 +76,7 @@ jobs:
             wayland-protocols \
             wayland-utils \
             wayvnc \
+            xdg-desktop-portal \
             xwayland
 
       - name: Set up Rust
