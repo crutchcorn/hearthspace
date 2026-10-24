@@ -60,9 +60,9 @@ class LockTests(unittest.TestCase):
         with patch("agentlib.cli.Control") as constructor:
             constructor.return_value.status.return_value = {"locked": False}
             constructor.return_value.request.side_effect = ControlError(
-                "missing swaylock"
+                "missing hearthspace-lock"
             )
-            with self.assertRaisesRegex(ControlError, "missing swaylock"):
+            with self.assertRaisesRegex(ControlError, "missing hearthspace-lock"):
                 run(args)
             constructor.return_value.capture.assert_not_called()
 

@@ -147,6 +147,7 @@ class NativeVncTests(unittest.TestCase):
             "hearthspace-compositor",
             "hearthspace-settingsd",
             "hearthspace-shell",
+            "hearthspace-lock",
             "hearthspace-notifications",
             "hearthspace-settings",
         ):

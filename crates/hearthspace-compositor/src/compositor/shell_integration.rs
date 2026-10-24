@@ -95,7 +95,7 @@ impl App {
             }
             ShellCommand::GroupGather => return action_reply(self.start_group_gather()),
             ShellCommand::GroupStatus => return ControlReply::Payload(self.group_status_json()),
-            ShellCommand::LockSession => return action_reply(self.launch_session_locker()),
+            ShellCommand::LockSession => return action_reply(self.lock_shield()),
             ShellCommand::ListWindows => return ControlReply::Payload(self.window_list_json()),
             ShellCommand::FocusWindow(id) => return action_reply(self.focus_window(id)),
             ShellCommand::CloseWindow(id) => return action_reply(self.close_window(id)),

@@ -10,16 +10,18 @@ lid or sleep policy, overwrites a scheduled alarm, or disables sleep inhibitors.
 Build the current native binaries and the lock owner fixture before taking a VT:
 
 ```sh
-cargo build --locked -p hearthspace-session -p hearthspace-compositor -p hearthspace-shell -p hearthspace-settingsd --features hearthspace-compositor/udev
+cargo build --locked -p hearthspace-session -p hearthspace-compositor -p hearthspace-shell -p hearthspace-lock -p hearthspace-settings -p hearthspace-settingsd -p hearthspace-notifications -p waydriver-hearthspace --bins --features hearthspace-compositor/udev
 cargo build --locked -p hearthspace-compositor --example session-lock-fixture
 scripts/power-smoke --session /tmp/hearthspace-power-1 --allow-system-suspend --wake-after 45 --timeout 75 --total-timeout 240
 # A separate run proves the normal locker starts automatically from an unlocked desktop:
-scripts/power-smoke --session /tmp/hearthspace-power-swaylock-1 --allow-system-suspend --locker swaylock --wake-after 45 --timeout 75 --total-timeout 240
+scripts/power-smoke --session /tmp/hearthspace-power-lock-1 --allow-system-suspend --locker hearthspace-lock --wake-after 45 --timeout 75 --total-timeout 240
 ```
 
 Use a fresh artifact directory for every attempt. Acceptance currently requires
-one connected display, Foot, `rtcwake`, noninteractive sudo, logind's unattended
-suspend capability, and readable `/sys/power/suspend_stats` counters. Ordinary
+one connected display, the installed `/etc/pam.d/hearthspace-lock` policy for
+real-locker mode (see [setup](../CONTRIBUTING.md#graphical-login-installation)),
+Foot, `rtcwake`, noninteractive sudo, logind's unattended suspend capability,
+and readable `/sys/power/suspend_stats` counters. Ordinary
 regression tests never suspend the machine:
 
 ```sh
@@ -32,7 +34,7 @@ will wake from sleep. It then starts an owned native session with the independen
 systemd watchdog, launches a terminal, and records its window, core process
 identities, visible marker and page-flip metadata. The protocol fixture owns a
 test lock, including rejection of a second locker. This fixture can release only
-its own lock; it cannot authenticate or unlock swaylock.
+its own lock; it cannot authenticate or unlock `hearthspace-lock`.
 
 Immediately before calling `systemctl suspend`, the test arms an RTC wake alarm
 and verifies the kernel's readback. The default alarm is forty-five seconds away;
@@ -57,20 +59,26 @@ must show the terminal's marker, and typing must produce an exact token in that
 same terminal.
 
 The default `--locker fixture` follows the owner-unlock workflow above.
-`--locker swaylock` instead verifies the desktop begins unlocked with no existing
-owned swaylock process, then lets the real `PrepareForSleep` path launch the
-normal locker. After sleep it requires a swaylock child of the same compositor,
-with the same UID and cgroup, preserved core processes, and confirmed lock/input/
+`--locker hearthspace-lock` instead verifies the desktop begins unlocked with no
+existing owned `hearthspace-lock` process, then lets the real `PrepareForSleep`
+path launch the normal locker. After sleep it requires a `hearthspace-lock` child
+of the same compositor, with the same UID and cgroup, the selected compositor
+sibling executable, preserved core processes, and confirmed lock, input, and
 output recovery. Capture remains denied. Without `--manual-unlock`, this mode
 never waits for authentication, releases the lock, or kills its locker; final
 cleanup stops the owned native session. Report that run as automatic-lock
-acceptance with PAM unlock still untested.
+acceptance with PAM unlock still untested. Linux truncates the locker process
+name to `hearthspace-loc`; the harness verifies that name and the executable
+device/inode, parent, UID, cgroup, PID, and start time. A matching process name
+alone cannot establish ownership. `binaries.json` retains the locker hash.
+The old `--locker swaylock` spelling remains a compatibility alias selecting
+`hearthspace-lock`; it does not launch swaylock.
 
 To include local password authentication, explicitly opt in while someone is
 present at the test machine:
 
 ```sh
-scripts/power-smoke --session /tmp/hearthspace-power-manual-1 --allow-system-suspend --locker swaylock --manual-unlock --unlock-timeout 300 --total-timeout 600
+scripts/power-smoke --session /tmp/hearthspace-power-manual-1 --allow-system-suspend --locker hearthspace-lock --manual-unlock --unlock-timeout 300 --total-timeout 600
 ```
 
 After wake, wait for `manual-unlock-wait` in the test output, then type your
@@ -78,7 +86,7 @@ password on the machine's physical keyboard and press Enter. Do not enter it in
 chat or pass it to a command. Then leave the input devices idle while the harness
 checks the restored desktop. Authenticating before the recorded wait cannot
 establish this test's locked-to-unlocked transition and will fail the attempt.
-The harness first confirms the real owned swaylock and its presented shield,
+The harness first confirms the owned `hearthspace-lock` and its presented shield,
 then observes status and process identity only. It never types a password,
 signals the locker, sends an unlock command, or substitutes the test fixture.
 The same compositor must report an active, recovered, unlocked desktop and the
@@ -87,8 +95,8 @@ existing application identity, geometry, fresh-frame marker and exact typed-toke
 checks then verify the restored desktop. A locker disappearing while the shield
 stays locked is a failure, not authentication evidence.
 
-`--manual-unlock` requires `--locker swaylock`. Its wait defaults to 300 seconds
-and accepts 1–900 seconds; `--unlock-timeout` without manual mode is rejected.
+`--manual-unlock` requires `--locker hearthspace-lock`. Its wait defaults to 300
+seconds and accepts 1–900 seconds; `--unlock-timeout` without manual mode is rejected.
 The default total budget grows from 240 seconds to 240 plus the unlock wait.
 An explicit `--total-timeout` must reserve at least that sum. The human wait may
 exceed the ordinary per-step timeout, but remains within the aggregate deadline
@@ -107,9 +115,12 @@ Retain `artifacts/results.json`, `lock-fixture.log`, PNG/JSON pairs, `session.lo
 `session.json` and `binaries.json`. Report actual GPU, kernel, output scale and
 suspend mode, including all failed attempts. This acceptance proves the real
 logind sleep/resume path with either an established test lock or the automatic
-real locker, depending on the selected mode. Swaylock authentication,
-physical lid-switch operation, external-monitor policy,
+real locker, depending on the selected mode. Real-user PAM authentication needs
+the manual-unlock mode. Physical lid-switch operation, external-monitor policy,
 and firmware wake behavior on other machines need separate evidence.
+
+The dated records below predate the new lock client. Their swaylock results
+remain historical evidence and do not establish `hearthspace-lock` authentication.
 
 ## Acceptance record — 2026-10-14/15
 

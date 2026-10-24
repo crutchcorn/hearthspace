@@ -17,7 +17,7 @@ host configuration.
 ## Battery status and warnings
 
 When a system battery is present, the shell bar shows its percentage and a
-battery icon; a lightning bolt indicates charging. Open the power menu for the
+battery icon; a lightning bolt indicates charging. Open the Battery dropdown for the
 full charging state. UPower supplies the combined reading for systems with
 multiple batteries. A UPS is identified as a UPS. Desktops and VMs without a
 system battery or UPS use no battery-indicator space and receive no battery warnings;
@@ -56,7 +56,7 @@ uses the same private session directory as the compositor control socket.
 You can also run `systemctl suspend` in the desktop terminal. Normal
 logind suspend requests from other programs use the same lock preparation path.
 The coordinator holds a sleep **delay** inhibitor, immediately shields the
-compositor on `PrepareForSleep(true)`, and starts the distribution's `swaylock`.
+compositor on `PrepareForSleep(true)`, and starts `hearthspace-lock`.
 It releases the inhibitor after every connected output has presented the opaque
 lock frame. Lid-initiated requests wait for this presentation before requesting
 sleep. A missing locker executable leaves the shield in place. Only the first
@@ -66,7 +66,7 @@ another client to take over or reveal the desktop.
 A sleep preparation latch keeps the shield active even if the owner authenticates
 during another service's sleep delay. If that owner finishes before sleep, wake
 starts a fresh locker; pre-sleep authentication never reveals the desktop on wake.
-After waking, the session stays locked. Authenticate normally with swaylock to
+After waking, the session stays locked. Authenticate normally with Hearthspace's lock screen to
 resume work. The coordinator rearms the sleep inhibitor and requests explicit
 native recovery even if logind/libseat did not emit a VT deactivate/activate
 pair. Recovery clears held input, cancels gestures and window grabs, refreshes
@@ -81,6 +81,23 @@ The same ownership and lock rules apply after a system-bus/logind disconnect.
 An established session is shielded, connection attempts are bounded and retried,
 and reconnecting refreshes the display in case sleep signals were missed. No
 bus `Unlock` signal or agent command bypasses the lock owner's authentication.
+
+## Reboot and turn off
+
+Choose **Power → Reboot** or **Turn off**, then confirm in the centered dialog.
+Cancel has initial focus; Escape or Cancel dismisses without sending a power
+request. The actions are unavailable when logind requires interactive
+authorization, the session is inactive or remote, another power operation is
+pending, or the compositor is not ready.
+
+The supervisor rechecks those conditions and shutdown inhibitors immediately
+before dispatch. It calls logind's `RebootWithFlags` or `PowerOffWithFlags` with
+`ROOT_CHECK_INHIBITORS` only, never interactive authorization or an inhibitor
+override. An explicit rejection is shown and permits a fresh confirmation.
+An accepted or ambiguous request retains the global busy gate, including across
+bus reconnections, so repeated clicks or a lid closure cannot queue a second
+operation. There are no automatic shutdown retries. Closing a pending dialog
+does not cancel an already dispatched operation.
 
 ## Diagnostics and failure recovery
 
@@ -98,7 +115,7 @@ reactivated, so it may consume the maximum delay while another desktop is active
 fails, and a failed or timed-out suspend call is not retried until a new lid
 closure. Root commands that bypass logind/inhibitors fall outside this contract.
 
-If swaylock or display recovery fails permanently, the desktop remains shielded.
+If the locker or display recovery fails permanently, the desktop remains shielded.
 For an agent-owned test, stop that exact session with
 `scripts/hearthspace-agent --session /absolute/run stop`; the harness restores
 its original VT and ends only its owned applications. For normal sessions,
@@ -107,5 +124,6 @@ There is deliberately no unauthenticated unlock command.
 
 See [session locking](SESSION_LOCK.md), [native suspend acceptance](POWER_TESTING.md),
 and the [logind D-Bus contract](https://www.freedesktop.org/software/systemd/man/latest/org.freedesktop.login1.html).
-No global logind configuration, PAM policy, sleep service, or permanent RTC
-setting is modified by Hearthspace.
+The coordinator changes no global logind configuration, sleep service, or
+permanent RTC setting. The lock client's dedicated PAM policy is installed as
+described in [contributing](../CONTRIBUTING.md#graphical-login-installation).

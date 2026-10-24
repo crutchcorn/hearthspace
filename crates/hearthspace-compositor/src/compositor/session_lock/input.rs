@@ -50,28 +50,18 @@ impl App {
         if !self.session_lock.supported {
             return Err("session locking requires the native or headless backend".into());
         }
-        let child = std::process::Command::new("swaylock")
-            // Show a clear idle target as soon as locking finishes, instead of
-            // requiring an unseen first keypress to reveal the password UI.
-            .args([
-                "--color",
-                "111318",
-                "--indicator-idle-visible",
-                "--indicator-radius",
-                "72",
-                "--ring-color",
-                "8bb8e8",
-                "--show-keyboard-layout",
-                "--indicator-caps-lock",
-                "--show-failed-attempts",
-            ])
+        let executable = std::env::current_exe()
+            .map_err(|error| format!("cannot locate the session locker: {error}"))?
+            .with_file_name("hearthspace-lock");
+        let child = std::process::Command::new(executable)
             .env(
                 crate::config::WAYLAND_DISPLAY_ENV,
                 crate::config::wayland_display_name(),
             )
             .env_remove("WAYLAND_SOCKET")
+            .env("GDK_BACKEND", "wayland")
             .spawn()
-            .map_err(|error| format!("failed to launch swaylock: {error}"))?;
+            .map_err(|error| format!("failed to launch Hearthspace's lock screen: {error}"))?;
         hearthspace_desktop::app_catalog::reap_child(child);
         Ok(())
     }

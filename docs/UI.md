@@ -58,6 +58,15 @@ UI framework app -> Wayland buffer -> Hearthspace composites it
 
 For example, a Xilem-based launcher, settings app, inspector, command palette, or note editor could run as a Wayland client. Hearthspace can recognize it as shell UI and place it in screen-space or canvas-space depending on the surface's role.
 
+The [lock client](SESSION_LOCK.md) uses GTK4's secure password editor and
+`gtk4-session-lock` to acquire the existing `ext-session-lock-v1` role. It is a
+separate process with fixed PAM authentication; it does not use an ordinary
+XDG toplevel or put password handling inside the compositor. Shared palette tokens
+and exported SVG glyphs keep its appearance consistent with the Masonry shell.
+Its opaque background samples only the user's wallpaper, never application pixels.
+The `lock-preview` example displays the same widgets in an ordinary window for
+visual checks and has no authentication or unlock capability.
+
 Embedding a UI framework directly into the compositor render loop is a different tradeoff. It requires the framework to render into a texture, image, or scene that the compositor can consume directly, while the compositor keeps ownership of the event loop, renderer, Wayland protocols, and input routing. Xilem's app driver expects to own the winit application/window/event-loop flow, so the full framework is not a good fit for direct embedding — but its widget layer, Masonry, can rasterize into a buffer the compositor consumes directly, which Hearthspace already does for window title-text (`compositor/masonry_titlebar.rs`).
 
 ## Recommended Boundary
