@@ -70,6 +70,9 @@ impl App {
         &self,
         window_index: usize,
     ) -> Option<Point<i32, Logical>> {
+        if self.is_power_confirmation(window_index) {
+            return self.power_confirmation_origin(window_index);
+        }
         if super::window_app_id(&self.windows[window_index].surface)
             .as_deref()
             .and_then(hearthspace_common::desktop_context::identity)

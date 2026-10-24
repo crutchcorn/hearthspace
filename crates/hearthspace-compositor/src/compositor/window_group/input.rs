@@ -24,6 +24,9 @@ impl App {
         button: u32,
         state: ButtonState,
     ) -> bool {
+        if self.modal_confirmation_active() {
+            return false;
+        }
         if state == ButtonState::Pressed {
             self.dismiss_group_outside_press(self.pointer_location, button == 0x110);
         }
@@ -145,7 +148,8 @@ impl App {
     }
 
     pub(in crate::compositor) fn group_touch_blocked(&self) -> bool {
-        self.group_has_pointer_capture()
+        self.modal_confirmation_active()
+            || self.group_has_pointer_capture()
             || self.drag.is_some()
             || self.resize.is_some()
             || self.pointer.is_grabbed()
@@ -158,7 +162,7 @@ impl App {
         location: Point<f64, Logical>,
         primary: bool,
     ) {
-        if !self.group_active() {
+        if !self.group_active() || self.modal_confirmation_active() {
             return;
         }
         let visible = self
@@ -198,6 +202,9 @@ impl App {
     }
 
     pub(in crate::compositor) fn group_pointer_motion(&mut self, time: InputTime) -> bool {
+        if self.modal_confirmation_active() {
+            return false;
+        }
         if !self.dispatching_touch && self.group_touch_owns_input() {
             self.cancel_ui_touch();
         }

@@ -18,7 +18,7 @@ impl App {
     pub(in crate::compositor) fn update_layout_emphasis(&mut self) {
         let next = if self.session_locked()
             || self.canvas_preview_active()
-            || self.layout_confirmation_active()
+            || self.modal_confirmation_active()
         {
             State::default()
         } else {

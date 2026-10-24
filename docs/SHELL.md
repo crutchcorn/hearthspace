@@ -79,7 +79,11 @@ window focuses its existing ID and brings it into view. Hearthspace Settings is
 available in Apps List. Prebuilt sessions register its desktop entry in their
 private runtime, using the selected binary directory when provided.
 
-Power contains Lock and Log out; Log out requires confirmation and offers Cancel.
+Power contains Lock screen, Suspend, Log off, Reboot, and Turn off. Log off,
+Reboot, and Turn off open a centered confirmation with Cancel initially focused.
+The backdrop blocks desktop interaction until dismissal; Enter initially
+cancels, and Escape closes it. Power capabilities and failures come from the
+native session service. See [power handling](POWER.md).
 Pinch gestures and Alt+Tab open the window switcher. Settings, Lock and Log
 out are reached through Apps List and Power rather than standalone corner buttons.
 

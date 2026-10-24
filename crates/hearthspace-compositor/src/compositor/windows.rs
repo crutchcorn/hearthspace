@@ -26,6 +26,8 @@ mod geometry;
 mod hit_testing;
 mod lifecycle;
 mod ordering;
+mod power_confirmation;
+pub(super) use power_confirmation::PowerConfirmation;
 mod state;
 pub(super) use lifecycle::RetirementCause;
 use ordering::normal_insert_index_for_kinds;
@@ -231,8 +233,7 @@ impl App {
             || self.window_switcher_active()
             || self.is_window_switcher_caption(window_index)
             || self.is_layout_tooltip(window_index)
-            || (self.layout_confirmation_active()
-                && !self.layout_confirmation_surface(window_index))
+            || (self.modal_confirmation_active() && !self.modal_confirmation_surface(window_index))
             || (self.is_layout_surface(window_index) && !self.layout_surface_visible(window_index))
         {
             return;

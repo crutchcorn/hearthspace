@@ -82,7 +82,7 @@ impl App {
                     self.navigation_available()
                         || self.canvas_search_active()
                         || self.layout_editing()
-                        || self.layout_confirmation_active(),
+                        || self.modal_confirmation_active(),
                     apps_identity.as_deref(),
                 );
             if !valid {
