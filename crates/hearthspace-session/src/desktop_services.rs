@@ -22,6 +22,7 @@ use crate::{
 };
 
 mod owned_pid;
+mod shared;
 use owned_pid::OwnedPid;
 
 const DEFINITIONS: &[(&str, &str, Option<&str>)] = &[
@@ -54,7 +55,6 @@ const DEFINITIONS: &[(&str, &str, Option<&str>)] = &[
 
 pub(crate) fn enabled(args: &Args) -> bool {
     !args.no_desktop_services
-        && args.private_session_bus
         && match args.backend {
             Some(Backend::Native) => true,
             Some(Backend::Nested) => false,
@@ -62,7 +62,7 @@ pub(crate) fn enabled(args: &Args) -> bool {
         }
 }
 
-pub(crate) fn prepare(paths: &SessionPaths) -> io::Result<()> {
+pub(crate) fn prepare(paths: &SessionPaths, private_session_bus: bool) -> io::Result<()> {
     let config = paths.session_dir.join("share/xdg-desktop-portal");
     fs::create_dir_all(&config)?;
     fs::write(
@@ -74,6 +74,9 @@ pub(crate) fn prepare(paths: &SessionPaths) -> io::Result<()> {
         config.join("portals/hearthspace.portal"),
         include_str!("../../../data/xdg-desktop-portal/hearthspace.portal"),
     )?;
+    if !private_session_bus {
+        return Ok(());
+    }
     // Prevent a crashed or not-yet-started portal from being auto-spawned outside
     // supervision. These overrides belong only to this private session bus.
     let services = paths.session_dir.join("dbus-1/services");
@@ -95,6 +98,7 @@ pub(crate) fn prepare(paths: &SessionPaths) -> io::Result<()> {
 #[derive(Default)]
 pub(crate) struct DesktopServices {
     entries: Vec<Entry>,
+    shared: shared::SharedServices,
     runtime: PathBuf,
     bus: String,
 }
@@ -112,6 +116,7 @@ impl DesktopServices {
         &mut self,
         paths: &SessionPaths,
         session: &SessionEnv,
+        private_session_bus: bool,
         deadline: Instant,
         cancelled: &AtomicBool,
     ) -> Result<(), Box<dyn std::error::Error>> {
@@ -121,9 +126,18 @@ impl DesktopServices {
             .iter()
             .find(|(key, _)| key == "HEARTHSPACE_SESSION_BUS_ADDRESS")
             .map(|(_, value)| value.clone())
-            .ok_or("desktop services require a private bus")?;
+            .ok_or("desktop services require an explicit session bus")?;
+        if !private_session_bus {
+            // Activation environment and appearance publication must be ready
+            // before refreshing display-dependent user services.
+            self.shared
+                .start(&paths.host_runtime_dir, &self.bus, deadline, cancelled)?;
+        }
         let profile = crate::profile_env::for_session(session)?;
         for &(name, program, bus_name) in DEFINITIONS {
+            if !private_session_bus && bus_name.is_some() {
+                continue;
+            }
             let mut envs = session.vars.clone();
             envs.extend(profile.iter().cloned());
             envs.push(("DBUS_SESSION_BUS_ADDRESS".into(), self.bus.clone()));
@@ -174,7 +188,7 @@ impl DesktopServices {
                 .last_mut()
                 .unwrap()
                 .wait_ready(&self.bus, deadline, cancelled)?;
-            info!(name, "private desktop service ready");
+            info!(name, "supervised desktop service ready");
         }
         Ok(())
     }
@@ -222,13 +236,17 @@ impl DesktopServices {
             entry.reap();
         }
         self.entries.clear();
+        // User services are borrowed; systemd alone controls their lifetime.
+        self.shared.clear();
     }
 
     pub(crate) fn process_json_fields(&self) -> String {
-        self.entries
+        let owned: String = self
+            .entries
             .iter()
             .map(|entry| format!(",\"{}\":{}", entry.spec.name, entry.pid().unwrap_or(0)))
-            .collect()
+            .collect();
+        owned + &self.shared.process_json_fields()
     }
 }
 

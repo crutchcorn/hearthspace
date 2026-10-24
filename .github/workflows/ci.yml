@@ -24,7 +24,8 @@ jobs:
             libxkbcommon-dev libxkbcommon-x11-dev libudev-dev \
             libseat-dev libgbm-dev libegl1-mesa-dev libgles2-mesa-dev \
             libdrm-dev libsystemd-dev libgtk-4-dev \
-            libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev python3 python3-venv dbus
+            libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev python3 python3-venv dbus \
+            xdg-desktop-portal
 
       - name: Set up Rust
         uses: ./.github/actions/setup-rust

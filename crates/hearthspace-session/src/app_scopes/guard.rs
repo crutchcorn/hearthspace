@@ -39,8 +39,9 @@ pub fn run(args: &[String]) -> io::Result<()> {
     while alive(pid, start_time, Path::new(runtime)) {
         thread::sleep(Duration::from_millis(100));
     }
+    let retired = crate::activation_cleanup::retire_from_session_dir(Path::new(runtime), None);
     let _ = fs::remove_file(Path::new(runtime).join(READY_FILE));
-    Ok(())
+    retired
 }
 
 #[cfg(test)]

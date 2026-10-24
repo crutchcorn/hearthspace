@@ -1,11 +1,22 @@
 use std::{env, path::PathBuf};
 
-use crate::process::ProcessSpec;
+use crate::{
+    cli::{Args, Backend},
+    process::ProcessSpec,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum CompositorBackend {
     NativeTty,
     NestedWinit,
+}
+
+pub(crate) fn is_native_session(args: &Args) -> bool {
+    match args.backend {
+        Some(Backend::Native) => true,
+        Some(Backend::Nested) => false,
+        None => select_compositor_backend() == CompositorBackend::NativeTty,
+    }
 }
 
 pub(crate) fn select_compositor_backend() -> CompositorBackend {

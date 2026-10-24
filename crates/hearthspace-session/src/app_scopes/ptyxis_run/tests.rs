@@ -41,7 +41,12 @@ impl Fixture {
     }
 
     fn session(&self) -> io::Result<Session> {
-        Session::load(self.runtime.clone(), self.host.clone(), self.bus.clone())
+        Session::load(
+            self.runtime.clone(),
+            self.runtime.clone(),
+            self.host.clone(),
+            self.bus.clone(),
+        )
     }
 
     fn record(&self) -> PathBuf {
@@ -192,13 +197,23 @@ fn a_private_runtime_and_its_matching_active_owner_are_required() {
         Session::load(
             fixture.host.clone(),
             fixture.host.clone(),
+            fixture.host.clone(),
             fixture.bus.clone()
         )
         .is_err()
     );
-    assert!(Session::load("relative".into(), fixture.host.clone(), fixture.bus.clone()).is_err());
     assert!(
         Session::load(
+            "relative".into(),
+            fixture.runtime.clone(),
+            fixture.host.clone(),
+            fixture.bus.clone()
+        )
+        .is_err()
+    );
+    assert!(
+        Session::load(
+            fixture.runtime.clone(),
             fixture.runtime.clone(),
             fixture.host.clone(),
             "tcp:host=host".into()
@@ -293,4 +308,38 @@ fn ownership_and_closing_marker_symlinks_fail_closed() {
     )
     .unwrap();
     assert!(fixture.session().is_err());
+}
+
+#[test]
+fn activated_terminal_keeps_canonical_runtime_but_records_private_ownership() {
+    let fixture = Fixture::new();
+    let bus = host_bus(&fixture.host);
+    let session = Session::load(
+        fixture.runtime.clone(),
+        fixture.host.clone(),
+        fixture.host.clone(),
+        bus.clone(),
+    )
+    .unwrap();
+    let args = invocation(&[
+        "--",
+        "/bin/sh",
+        "-c",
+        "printf '%s\\n' \"$XDG_RUNTIME_DIR\" \"$DBUS_SESSION_BUS_ADDRESS\"",
+    ]);
+    let scope = scope_invocation(&args).unwrap();
+    let command = session.prepare(&args, &scope).unwrap();
+    assert!(fixture.record().is_file());
+    assert!(!fixture.host.join("app-scopes").exists());
+    let args = command.get_args().collect::<Vec<_>>();
+    let output = Command::new(args[11])
+        .env_clear()
+        .args(&args[12..])
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    assert_eq!(
+        String::from_utf8(output.stdout).unwrap(),
+        format!("{}\n{}\n", fixture.host.display(), bus.to_string_lossy())
+    );
 }

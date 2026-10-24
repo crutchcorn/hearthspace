@@ -1,122 +1,109 @@
+//! Disposable D-Bus integration; no ambient desktop or process environment.
 use super::*;
-use std::ffi::OsStr;
+use std::{collections::BTreeMap, time::Duration};
+
+mod deadlines;
+mod fixture;
+mod manager;
+mod publication;
+mod retirement;
+
+use fixture::{Bus, pairs};
 
 #[test]
-fn native_bootstrap_is_skipped_for_the_harness_nested_mode_and_dry_runs() {
-    assert!(should_bootstrap(true, false, false));
-    assert!(!should_bootstrap(true, true, false));
-    assert!(!should_bootstrap(false, false, false));
-    assert!(!should_bootstrap(true, false, true));
-}
-
-#[test]
-fn bootstrap_gives_the_bus_its_private_runtime_before_starting_it() {
-    let command = bootstrap_command(
-        Path::new("/bin/hearthspace-session"),
-        vec!["--installed".into()],
-        Path::new("/run/user/1000"),
-        Path::new("/run/user/1000/private"),
-        false,
-        false,
-        "wayland-99",
-    );
-    let args = command.get_args().collect::<Vec<_>>();
-    assert_eq!(command.get_program(), "dbus-run-session");
+fn shared_payload_uses_canonical_runtime_absolute_display_and_only_app_inputs() {
+    let bus = Bus::start();
+    let paths = bus.paths("session");
+    let mut session = bus.session(&paths);
+    session.vars.extend(pairs(&[
+        ("RUST_LOG", "trace"),
+        ("ARBITRARY_TEST_VALUE", "must-not-escape"),
+        ("XDG_CONFIG_HOME", "/synthetic/ordinary/config"),
+        ("GSETTINGS_BACKEND", "memory"),
+        ("AT_SPI_BUS_ADDRESS", "unix:path=/synthetic/stale-atspi"),
+        ("WAYLAND_SOCKET", "99"),
+        ("DBUS_SESSION_BUS_PID", "12345"),
+        ("DISPLAY", ":91"),
+    ]));
+    let before = session.vars.clone();
+    let profile = pairs(&[
+        ("XDG_CONFIG_HOME", "/synthetic/isolated/config"),
+        ("GSETTINGS_BACKEND", "keyfile"),
+    ]);
+    let values = environment::values(&paths, &session, false, &profile).unwrap();
     assert_eq!(
-        &args[..3],
-        ["--dbus-daemon", "/bin/hearthspace-session-bus", "--"]
-    );
-    assert!(args.contains(&OsStr::new("--private-session-bus")));
-    assert!(
-        args.windows(2)
-            .any(|pair| pair == ["--session-dir", "/run/user/1000/private"])
-    );
-    assert!(args.windows(2).any(|pair| pair == ["--backend", "native"]));
-    let variables = command
-        .get_envs()
-        .collect::<std::collections::HashMap<_, _>>();
-    assert_eq!(
-        variables[OsStr::new("XDG_RUNTIME_DIR")],
-        Some(OsStr::new("/run/user/1000/private"))
+        values["XDG_RUNTIME_DIR"],
+        paths.host_runtime_dir.to_str().unwrap()
     );
     assert_eq!(
-        variables[OsStr::new("WAYLAND_DISPLAY")],
-        Some(OsStr::new("wayland-99"))
+        values["WAYLAND_DISPLAY"],
+        paths.session_dir.join("wayland-test").to_str().unwrap()
     );
+    assert_eq!(values["DBUS_SESSION_BUS_ADDRESS"], bus.address);
+    assert_eq!(values["DISPLAY"], "");
     for key in [
-        "DISPLAY",
-        "WAYLAND_SOCKET",
-        "DBUS_SESSION_BUS_ADDRESS",
+        "RUST_LOG",
+        "ARBITRARY_TEST_VALUE",
+        "XDG_CONFIG_HOME",
+        "GSETTINGS_BACKEND",
         "AT_SPI_BUS_ADDRESS",
+        "WAYLAND_SOCKET",
+        "DBUS_SESSION_BUS_PID",
     ] {
-        assert_eq!(variables[OsStr::new(key)], None);
+        assert!(!values.contains_key(key), "shared payload contains {key}");
     }
+    for key in [
+        "HEARTHSPACE_SETTINGS_SOCKET",
+        "HEARTHSPACE_SESSION_SOCKET",
+        "HEARTHSPACE_COMMAND_SOCKET",
+        "HEARTHSPACE_SESSION_DIR",
+        "HEARTHSPACE_HOST_XDG_RUNTIME_DIR",
+        "HEARTHSPACE_SESSION_BUS_ADDRESS",
+        "HEARTHSPACE_APP_SCOPE_UNIT",
+        "HEARTHSPACE_DEV",
+        "HEARTHSPACE_REPO_ROOT",
+        "PATH",
+        "XDG_DATA_DIRS",
+        "XDG_CONFIG_DIRS",
+        "GTK_USE_PORTAL",
+    ] {
+        let expected = before.iter().find(|(name, _)| name == key).unwrap();
+        assert_eq!(&values[key], &expected.1, "missing app input {key}");
+    }
+    assert_eq!(session.vars, before);
 }
 
 #[test]
-fn activation_updates_only_the_private_bus_with_session_values() {
-    let command = activation_command(
-        &SessionEnv {
-            wayland_display: "wayland-99".into(),
-            vars: vec![
-                ("XDG_RUNTIME_DIR".into(), "/private/runtime".into()),
-                ("WAYLAND_DISPLAY".into(), "wayland-99".into()),
-                (
-                    "XDG_CONFIG_DIRS".into(),
-                    "/private/desktop-config:/etc/xdg".into(),
-                ),
-                ("XDG_DATA_DIRS".into(), "/private/share:/usr/share".into()),
-                (
-                    "HEARTHSPACE_SESSION_BUS_ADDRESS".into(),
-                    "unix:path=/private/bus".into(),
-                ),
-            ],
-        },
-        &[],
-    );
-    let args = command.get_args().collect::<Vec<_>>();
-    assert!(!args.contains(&OsStr::new("--systemd")));
-    assert!(!args.contains(&OsStr::new("--all")));
-    assert!(args.contains(&OsStr::new("WAYLAND_DISPLAY")));
-    let variables = command
-        .get_envs()
-        .collect::<std::collections::HashMap<_, _>>();
-    assert_eq!(
-        variables[OsStr::new("DBUS_SESSION_BUS_ADDRESS")],
-        Some(OsStr::new("unix:path=/private/bus"))
-    );
-    assert_eq!(variables[OsStr::new("DISPLAY")], Some(OsStr::new("")));
-    assert!(!variables.contains_key(OsStr::new("WAYLAND_SOCKET")));
-    for (key, value) in [
-        ("XDG_CONFIG_DIRS", "/private/desktop-config:/etc/xdg"),
-        ("XDG_DATA_DIRS", "/private/share:/usr/share"),
-    ] {
-        assert!(args.contains(&OsStr::new(key)));
-        assert_eq!(variables[OsStr::new(key)], Some(OsStr::new(value)));
+fn private_payload_uses_explicit_profile_without_reading_ambient_profile_settings() {
+    let bus = Bus::start();
+    let paths = bus.paths("private");
+    let mut session = bus.session(&paths);
+    session.vars.extend(pairs(&[
+        ("XDG_CONFIG_HOME", "/synthetic/ordinary/config"),
+        ("AT_SPI_BUS_ADDRESS", "unix:path=/synthetic/stale-atspi"),
+        ("WAYLAND_SOCKET", "99"),
+    ]));
+    let before = session.vars.clone();
+    let profile = pairs(&[
+        ("XDG_CONFIG_HOME", "/synthetic/isolated/config"),
+        ("XDG_CACHE_HOME", "/synthetic/isolated/cache"),
+        ("XDG_DATA_HOME", "/synthetic/isolated/data"),
+        ("XDG_STATE_HOME", "/synthetic/isolated/state"),
+        ("GSETTINGS_BACKEND", "keyfile"),
+    ]);
+    let private = environment::values(&paths, &session, true, &profile).unwrap();
+    let shared = environment::values(&paths, &session, false, &profile).unwrap();
+    for (key, value) in &profile {
+        assert_eq!(&private[key], value);
+        assert!(!shared.contains_key(key));
     }
-}
-
-#[test]
-fn activation_profile_does_not_mutate_authoritative_session_environment() {
-    let session = SessionEnv {
-        wayland_display: "wayland-99".into(),
-        vars: vec![("XDG_CONFIG_HOME".into(), "/ordinary/config".into())],
-    };
-    let profile = vec![
-        ("XDG_CONFIG_HOME".into(), "/private/config".into()),
-        ("GSETTINGS_BACKEND".into(), "keyfile".into()),
-    ];
-    let command = activation_command(&session, &profile);
-    let variables = command
-        .get_envs()
-        .collect::<std::collections::HashMap<_, _>>();
     assert_eq!(
-        variables[OsStr::new("XDG_CONFIG_HOME")],
-        Some(OsStr::new("/private/config"))
+        private["XDG_RUNTIME_DIR"],
+        paths.session_dir.to_str().unwrap()
     );
-    assert_eq!(
-        variables[OsStr::new("GSETTINGS_BACKEND")],
-        Some(OsStr::new("keyfile"))
-    );
-    assert_eq!(session.vars[0].1, "/ordinary/config");
+    assert_eq!(private["WAYLAND_DISPLAY"], "wayland-test");
+    assert_eq!(private["DISPLAY"], "");
+    assert!(!private.contains_key("AT_SPI_BUS_ADDRESS"));
+    assert!(!private.contains_key("WAYLAND_SOCKET"));
+    assert_eq!(session.vars, before);
 }

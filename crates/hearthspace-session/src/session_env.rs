@@ -7,6 +7,8 @@ use std::{
 
 use crate::cli::{Args, RunMode};
 
+mod bus;
+
 #[derive(Debug)]
 pub(crate) struct SessionPaths {
     pub(crate) host_runtime_dir: PathBuf,
@@ -147,18 +149,16 @@ pub(crate) fn create_session_env(
         crate::gtk_defaults::config_dirs(&paths.session_dir)?,
     ));
 
-    if args.private_session_bus {
-        // The scope adapter becomes available once the native scope owner is
-        // ready. Include its path in private D-Bus activation as well as direct
-        // launches; neither path modifies the shared user-manager environment.
+    if let Some(bus) = bus::selected_address(args, paths)? {
+        // Direct and activated launches use the same selected bus. The adapter
+        // keeps terminal scopes owned by this session on either bus.
         vars.push((
             "PATH".into(),
             crate::app_scopes::command_path(&paths.session_dir, env::var_os("PATH"))?,
         ));
-        let bus = env::var("DBUS_SESSION_BUS_ADDRESS")
-            .map_err(|_| "--private-session-bus requires dbus-run-session")?;
         fs::write(paths.session_dir.join("session-bus.txt"), &bus)?;
-        vars.push(("HEARTHSPACE_SESSION_BUS_ADDRESS".to_string(), bus));
+        vars.push(("DBUS_SESSION_BUS_ADDRESS".into(), bus.clone()));
+        vars.push(("HEARTHSPACE_SESSION_BUS_ADDRESS".into(), bus));
     }
     if crate::desktop_services::enabled(args) {
         // GTK 3 Wayland otherwise reads the host's saved GNOME preferences.
@@ -220,7 +220,7 @@ mod tests {
             ),
         };
         let args = Args {
-            backend: None,
+            backend: Some(crate::cli::Backend::Nested),
             session_dir: None,
             binary_dir: None,
             compositor_binary: None,
@@ -262,7 +262,7 @@ mod tests {
             ),
         };
         let args = Args {
-            backend: None,
+            backend: Some(crate::cli::Backend::Nested),
             session_dir: None,
             binary_dir: None,
             compositor_binary: None,

@@ -307,6 +307,48 @@ class LoginGuardTests(unittest.TestCase):
             command.assert_not_called()
             remove.assert_not_called()
 
+    def test_activation_retirement_precedes_runtime_deletion(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            runtime = Path(temporary)
+            (runtime / "activation-environment.json").write_text("{}")
+            calls = []
+            with (
+                patch.object(guard, "runtime_identity", return_value=(1, 2)),
+                patch.object(guard, "mounted_paths", return_value=[]),
+                patch.object(
+                    guard, "command", side_effect=lambda argv: calls.append(argv)
+                ),
+                patch.object(
+                    guard.shutil, "rmtree", side_effect=lambda path: calls.append(path)
+                ),
+            ):
+                guard.cleanup_runtime(
+                    runtime, self.owner | {"runtime_identity": [1, 2]}
+                )
+            self.assertEqual(calls[0][1:], ["--retire-activation", str(runtime)])
+            self.assertTrue(calls[0][0].endswith("/hearthspace-app-scope-guard"))
+            self.assertEqual(calls[1], runtime)
+
+    def test_failed_activation_retirement_preserves_recovery_record(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            runtime = Path(temporary)
+            record = runtime / "activation-environment.json"
+            record.write_text("{}")
+            with (
+                patch.object(guard, "runtime_identity", return_value=(1, 2)),
+                patch.object(guard, "mounted_paths", return_value=[]),
+                patch.object(
+                    guard, "command", side_effect=RuntimeError("manager unavailable")
+                ),
+                patch.object(guard.shutil, "rmtree") as remove,
+                self.assertRaisesRegex(RuntimeError, "manager unavailable"),
+            ):
+                guard.cleanup_runtime(
+                    runtime, self.owner | {"runtime_identity": [1, 2]}
+                )
+            remove.assert_not_called()
+            self.assertTrue(record.exists())
+
 
 if __name__ == "__main__":
     unittest.main()

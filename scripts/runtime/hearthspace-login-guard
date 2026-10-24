@@ -78,7 +78,7 @@ SESSION_PROPERTIES = (
 
 def selected_gdm_session(pid, root=Path("/proc")):
     # Read the supervisor's launch environment, never the shared user manager's.
-    # Bootstrap rewrites XDG_SESSION_DESKTOP but preserves GDM's own selection.
+    # Session setup rewrites XDG_SESSION_DESKTOP but preserves GDM's selection.
     entries = (root / str(pid) / "environ").read_bytes().split(b"\0")
     values = [
         entry.removeprefix(b"GDMSESSION=")
@@ -268,6 +268,11 @@ def cleanup_runtime(runtime, identity):
         command(["fusermount3", "-u", "-z", "--", str(target)])
     if mounted_paths(runtime):
         raise RuntimeError("login runtime is still mounted; refusing removal")
+    # The app-scope guard also retires this record, but may be racing login
+    # teardown after a supervisor crash. Finish retirement before deleting it.
+    if (runtime / "activation-environment.json").exists():
+        helper = Path(__file__).resolve().with_name("hearthspace-app-scope-guard")
+        command([str(helper), "--retire-activation", str(runtime)])
     shutil.rmtree(runtime)
 
 

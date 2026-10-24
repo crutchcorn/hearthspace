@@ -1,7 +1,7 @@
 # Application tray
 
 Hearthspace's bar displays application tray icons using the freedesktop
-StatusNotifierItem protocol on the desktop session's private D-Bus connection.
+StatusNotifierItem protocol on the selected session D-Bus connection.
 Applications can keep background status and controls available without leaving
 their main window open. The shell hosts `org.kde.StatusNotifierWatcher` and
 renders icons and exported `com.canonical.dbusmenu` menus as ordinary accessible
@@ -38,8 +38,9 @@ icons and animated icon movies are not currently composed.
 The supported interface is StatusNotifierItem (also used by AppIndicator and
 Ayatana libraries). The legacy X11 system-tray window-embedding protocol is not
 implemented. A tray host cannot create an icon for an app that exports neither
-interface. Icons and menus remain inside the owning desktop session; the shell
-does not attach to an unrelated GNOME or SSH session bus.
+interface. Normal native sessions use the standard user bus. The explicit private-bus
+harness isolates its icons and menus from another running desktop. A shell that
+finds an existing StatusNotifierWatcher registers with it without stealing its name.
 
 The pinned AccessKit AT-SPI adapter incorrectly advertises disabled menu items
 as `Enabled`/`Sensitive`. Hearthspace sets the underlying disabled state, excludes

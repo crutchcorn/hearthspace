@@ -10,6 +10,17 @@ impl Fixture {
         fs::create_dir_all(&path).unwrap();
         Self(path)
     }
+
+    fn paths(&self) -> SessionPaths {
+        SessionPaths {
+            host_runtime_dir: self.0.clone(),
+            session_dir: self.0.join("private"),
+            applications_dir: self.0.join("private/share/applications"),
+            settings_socket: self.0.join("private/settings.sock"),
+            session_socket: self.0.join("private/session.sock"),
+            shell_command_socket: self.0.join("private/command.sock"),
+        }
+    }
 }
 impl Drop for Fixture {
     fn drop(&mut self) {
@@ -27,15 +38,8 @@ impl Drop for RunningHelper {
 #[test]
 fn portal_configuration_and_activation_overrides_stay_inside_the_session() {
     let fixture = Fixture::new("configuration");
-    let paths = SessionPaths {
-        host_runtime_dir: fixture.0.clone(),
-        session_dir: fixture.0.join("private"),
-        applications_dir: fixture.0.join("private/share/applications"),
-        settings_socket: fixture.0.join("private/settings.sock"),
-        session_socket: fixture.0.join("private/session.sock"),
-        shell_command_socket: fixture.0.join("private/command.sock"),
-    };
-    prepare(&paths).unwrap();
+    let paths = fixture.paths();
+    prepare(&paths, true).unwrap();
     assert_eq!(
         fs::read_to_string(
             paths
@@ -76,6 +80,53 @@ fn portal_configuration_and_activation_overrides_stay_inside_the_session() {
             .is_file()
     );
     assert!(!fixture.0.join("dbus-1").exists());
+}
+
+#[test]
+fn shared_sessions_generate_portal_configuration_without_activation_overrides() {
+    let fixture = Fixture::new("shared-configuration");
+    let paths = fixture.paths();
+    prepare(&paths, false).unwrap();
+    assert!(
+        paths
+            .session_dir
+            .join("share/xdg-desktop-portal/hearthspace-portals.conf")
+            .is_file()
+    );
+    assert!(
+        paths
+            .session_dir
+            .join("share/xdg-desktop-portal/portals/hearthspace.portal")
+            .is_file()
+    );
+    assert!(!paths.session_dir.join("dbus-1").exists());
+}
+
+#[test]
+fn native_desktop_services_are_enabled_with_shared_and_private_buses() {
+    use clap::Parser;
+    assert!(enabled(&Args::parse_from([
+        "session",
+        "--backend",
+        "native"
+    ])));
+    assert!(enabled(&Args::parse_from([
+        "session",
+        "--backend",
+        "native",
+        "--private-session-bus",
+    ])));
+    assert!(!enabled(&Args::parse_from([
+        "session",
+        "--backend",
+        "native",
+        "--no-desktop-services",
+    ])));
+    assert!(!enabled(&Args::parse_from([
+        "session",
+        "--backend",
+        "nested"
+    ])));
 }
 
 #[test]
