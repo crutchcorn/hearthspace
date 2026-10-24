@@ -7,6 +7,9 @@ bus, isolated XDG configuration/data/cache directories, and memory-only GSetting
 It checks two held-contact movement checkpoints, another drag after release,
 and pointer movement after the finger lifts, at canvas scales 1.0 and 0.8.
 Rendered content must follow the window and its vacated pixels must repaint.
+An owned dark terminal backdrop supplies contrast for those movement checks;
+light GTK content can otherwise resemble correctly repainted wallpaper. Pixel
+thresholds remain unchanged. Inspection and titlebar-maximize modes omit it.
 Touch taps then compute `2 + 3 = 5` in Calculator and increment the GTK 3 counter;
 private AT-SPI results and screenshots establish actual application input.
 Both clients, the input device, and the native session are cleaned up on failure.
@@ -24,6 +27,38 @@ accessibility trees without injecting input. Build the native binaries first
 and run it separately from all other native or GPU-intensive suites.
 
 ## Regression and hardware evidence
+
+### Native Wayland touch delivery
+
+The 2026-10-23 native run used a physical ThinkPad T480s, Intel UHD 620 (`i915`),
+Linux `7.0.0-38-generic`, and eDP-1 at 1920×1080, output scale 1. Chrome 156 used
+its default Wayland backend and a private profile without sandbox-disabling
+flags. Its page telemetry recorded touch scrolling of 562 pixels at canvas scale
+1 and 349 at scale 0.5, both with zero selected characters. The mouse control
+selected 542 characters without scrolling. These are telemetry measurements;
+captures corroborate the visible behavior. Input came from owned uinput devices
+through libinput, not physical fingers. X11 retains pointer fallback.
+
+The same compositor build passed 44 GTK 3, 44 GTK 4, and 20 generic titlebar
+checkpoints. Calculator and the GTK 3 movement fixture then passed all 16 held
+drag checkpoints at scales 1 and 0.8, with content taps and subsequent input
+recovery. Movement captures matched at least 99.49% of translated content samples
+and 100% of vacated samples. Both sessions restored tty2 and removed their owned
+clients, devices, and runtimes; the units were inactive with no process or cgroup.
+
+Evidence is under `/home/crutchcorn/hearthspace-chrome-touch-npd9eano`:
+`CHROME-FINAL.json`, `GTK-FINAL.json`, and `GTK-MOVEMENT-FINAL.json` record final
+results and provenance. The initial `final-gtk-movement` attempt failed because
+light GTK pixels resembled the repainted wallpaper. The contrast-backdrop rerun
+in `final-gtk-movement-contrast` passed with unchanged pixel thresholds; it does
+not establish a compositor rendering defect in the earlier attempt.
+
+The final product passed formatting, Clippy, build, both Rust configurations
+(1,836 E2E and 1,534 CI tests), 571 Python E2E tests, Ruff, and dependency checks
+(with cargo-deny warnings). After the movement-fixture adjustment, all 50 focused
+GTK tests and the full 575-test Python unit run passed, with 14 opt-in E2E tests
+skipped in that unit run. Existing stale-copy rejection remains covered. These
+runs validate the checkout build, not an installed session that has not restarted.
 
 ### CSD maximize and titlebar gestures
 

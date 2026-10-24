@@ -17,6 +17,8 @@ mod authority;
 mod configure;
 #[path = "gtk_titlebar/restore.rs"]
 mod restore;
+#[path = "gtk_titlebar/touch.rs"]
+mod touch;
 
 fn socket(compositor: &HeadlessCompositor) -> PathBuf {
     compositor
