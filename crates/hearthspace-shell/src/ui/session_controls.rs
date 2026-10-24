@@ -1,30 +1,30 @@
 //! Small everyday session controls, kept separate from application search.
-use crate::ui::appearance::{ThemeStyle as _, Tone};
 use std::time::Duration;
 
 use chrono::Local;
-use hearthspace_ui_components::{
-    self as components,
-    icons::{Icon as Glyph, icon},
-};
+#[cfg(test)]
+use xilem::WidgetView;
 use xilem::{
-    WidgetView, WindowView,
+    WindowView,
     core::{MessageProxy, NoElement, View},
-    masonry::{
-        layout::AsUnit,
-        parley::style::FontWeight,
-        properties::{LineBreaking, Padding},
-    },
-    style::Style,
-    view::{CrossAxisAlignment, FlexExt, button, flex_col, flex_row, label, task_raw},
+    view::task_raw,
 };
 
+#[cfg(test)]
+use super::icons::{Icon, icon_button};
 use super::{
     command_client::send_command,
-    icons::{Icon, icon_button},
-    popup::{self, PopupKind},
+    popup,
     state::{ShellOutputInstance, ShellState},
 };
+
+mod power_confirmation;
+mod power_dialog;
+mod power_view;
+pub(super) use power_confirmation::Confirmation;
+#[cfg(test)]
+pub(super) use power_view::size as power_size;
+pub(super) use power_view::{PowerUiState, panel as power_panel};
 
 pub(super) fn current_clock() -> String {
     Local::now().format("%a %b %-d  %H:%M").to_string()
@@ -50,32 +50,6 @@ pub(super) fn clock_task() -> impl View<ShellState, (), xilem::ViewCtx, Element 
     )
 }
 
-fn set_confirmation(state: &mut ShellState, output_key: &str, enabled: bool) {
-    state.canvas_dragging = false;
-    if let Some(output) = state
-        .outputs
-        .iter_mut()
-        .find(|output| output.key() == output_key)
-    {
-        output.confirm_logout = enabled;
-        output.show_power = true;
-        output.launch_error = None;
-    }
-}
-
-fn confirm_logout(state: &mut ShellState, output_key: &str) {
-    if !state
-        .outputs
-        .iter()
-        .any(|output| output.key() == output_key && output.show_power && output.confirm_logout)
-    {
-        return;
-    }
-    if let Err(error) = send_command(&state.command_socket, "quit") {
-        state.finish_launch(output_key, Err(error));
-    }
-}
-
 #[cfg(test)]
 pub(super) fn power_button(output: &ShellOutputInstance) -> impl WidgetView<ShellState> + use<> {
     let key = output.key().to_string();
@@ -85,156 +59,43 @@ pub(super) fn power_button(output: &ShellOutputInstance) -> impl WidgetView<Shel
 }
 
 pub(super) fn power_window(
+    state: &ShellState,
     output: &ShellOutputInstance,
-    power: &super::power_task::PowerState,
 ) -> WindowView<ShellState> {
-    let app_id = output.power_app_id();
+    let (id, app_id) = if output.power_confirmation.is_some() {
+        (
+            output.power_confirm_window_id,
+            output
+                .output_name
+                .as_deref()
+                .map(hearthspace_common::power_confirm_app_id_for_output)
+                .unwrap_or_else(|| hearthspace_common::POWER_CONFIRM_APP_ID.to_owned()),
+        )
+    } else {
+        (output.power_window_id, output.power_app_id())
+    };
     let key = output.key().to_string();
-    let size = popup::size(output, PopupKind::Power, 320.0, 280.0);
+    let size = power_view::size(state, output);
     popup::window(
-        output.power_window_id,
+        id,
         "Hearthspace Power",
         app_id,
         size,
-        power_panel(output, power),
+        power_panel(state, output),
         move |state| state.dismiss_power(&key),
-    )
-}
-
-/// Full-width native buttons retain the shared hover and keyboard focus states.
-fn action<F: Fn(&mut ShellState) + Send + Sync + 'static>(
-    glyph: Glyph,
-    name: &'static str,
-    enabled: bool,
-    confirming: bool,
-    callback: F,
-) -> impl WidgetView<ShellState> + use<F> {
-    let color = if !enabled {
-        Tone::Muted
-    } else if confirming {
-        Tone::Strong
-    } else {
-        Tone::Text
-    };
-    components::button_surface(
-        button(
-            flex_row((
-                icon(glyph, 20.0).theme_color(color),
-                label(name).text_size(14.0).theme_color(color).flex(1.0),
-            ))
-            .gap(12.0.px()),
-            callback,
-        )
-        .disabled(!enabled)
-        .height(48.0.px())
-        .padding(Padding::from_vh(10.0.px(), 14.0.px()))
-        .corner_radius(components::RADIUS_CONTROL.px()),
-        components::ButtonSurface::Control,
-        confirming,
-    )
-}
-
-pub(super) fn power_panel(
-    output: &ShellOutputInstance,
-    power: &super::power_task::PowerState,
-) -> impl WidgetView<ShellState> + use<> {
-    let output_key = output.key().to_string();
-    let cancel_key = output_key.clone();
-    let lock_key = output_key.clone();
-    let suspend_key = output_key.clone();
-    let close_key = output_key.clone();
-    let confirming = output.confirm_logout;
-    let lock = (!confirming).then(|| {
-        action(Glyph::Lock, "Lock", true, false, move |state| {
-            let result = send_command(&state.command_socket, "lock-session");
-            state.finish_launch(&lock_key, result);
-        })
-    });
-    let suspend = (!confirming).then(|| {
-        action(
-            Glyph::Moon,
-            if power.busy() {
-                "Suspending…"
-            } else {
-                "Suspend"
-            },
-            power.can_suspend(),
-            false,
-            move |state| super::power_task::suspend(state, &suspend_key),
-        )
-    });
-    let logout = action(
-        Glyph::LogOut,
-        if confirming {
-            "Confirm log out"
-        } else {
-            "Log out"
-        },
-        true,
-        confirming,
-        move |state| {
-            if confirming {
-                confirm_logout(state, &output_key);
-            } else {
-                set_confirmation(state, &output_key, true);
-            }
-        },
-    );
-    let cancel = confirming.then(|| {
-        action(Glyph::ArrowLeft, "Cancel", true, false, move |state| {
-            set_confirmation(state, &cancel_key, false);
-        })
-    });
-    let hint = confirming.then(|| {
-        components::field_label("Close your apps and end this session?")
-            .line_break_mode(LineBreaking::WordWrap)
-            .theme_color(Tone::Muted)
-    });
-    let error = output
-        .launch_error
-        .clone()
-        .map(|error| components::field_label(error).line_break_mode(LineBreaking::WordWrap));
-    let unavailable = (!confirming && !power.status.available && !power.busy()).then(|| {
-        components::field_label(
-            power
-                .status
-                .error
-                .clone()
-                .unwrap_or_else(|| "Suspend is unavailable in this session.".into()),
-        )
-        .line_break_mode(LineBreaking::WordWrap)
-        .theme_color(Tone::Muted)
-    });
-    popup::panel_with_header(
-        output,
-        PopupKind::Power,
-        flex_row((
-            icon(Glyph::Power, 20.0).theme_color(Tone::Strong),
-            label("Power")
-                .text_size(16.0)
-                .weight(FontWeight::MEDIUM)
-                .flex(1.0),
-            icon_button(Icon::Close, "Close power menu", false, move |state| {
-                state.dismiss_power(&close_key)
-            }),
-        ))
-        .gap(12.0.px()),
-        flex_col((
-            hint,
-            error,
-            unavailable,
-            flex_col((lock, suspend, logout, cancel))
-                .cross_axis_alignment(CrossAxisAlignment::Stretch)
-                .gap(8.0.px()),
-        ))
-        .cross_axis_alignment(CrossAxisAlignment::Stretch)
-        .gap(16.0.px()),
     )
 }
 
 #[cfg(test)]
 #[path = "power_view_tests.rs"]
 mod view_tests;
+
+#[cfg(test)]
+mod test_support;
+
+#[cfg(test)]
+#[path = "power_confirmation_tests.rs"]
+mod confirmation_tests;
 
 #[cfg(test)]
 mod tests {
@@ -251,11 +112,12 @@ mod tests {
         let socket = dir.path().join("control.sock");
         let mut state = ShellState::new(socket.clone(), vec!["eDP-1".into()]);
         // An unarmed request must not even try the missing socket.
-        confirm_logout(&mut state, "eDP-1");
+        power_confirmation::confirm(&mut state, "eDP-1", Confirmation::LogOff);
         assert!(state.outputs[0].launch_error.is_none());
-        set_confirmation(&mut state, "eDP-1", true);
+        state.toggle_power("eDP-1");
+        power_confirmation::open(&mut state, "eDP-1", Confirmation::LogOff);
         state.dismiss_launcher("eDP-1");
-        assert!(!state.outputs[0].confirm_logout);
+        assert!(state.outputs[0].power_confirmation.is_none());
 
         let listener = UnixListener::bind(socket).unwrap();
         let server = thread::spawn(move || {
@@ -265,14 +127,15 @@ mod tests {
             assert_eq!(request, "quit\n");
             stream.write_all(b"err session unavailable\n").unwrap();
         });
-        set_confirmation(&mut state, "eDP-1", true);
-        confirm_logout(&mut state, "eDP-1");
+        state.toggle_power("eDP-1");
+        power_confirmation::open(&mut state, "eDP-1", Confirmation::LogOff);
+        power_confirmation::confirm(&mut state, "eDP-1", Confirmation::LogOff);
         assert_eq!(
             state.outputs[0].launch_error.as_deref(),
             Some("session unavailable")
         );
-        set_confirmation(&mut state, "eDP-1", false);
-        assert!(!state.outputs[0].confirm_logout);
+        state.dismiss_power("eDP-1");
+        assert!(state.outputs[0].power_confirmation.is_none());
         assert!(state.outputs[0].launch_error.is_none());
         server.join().unwrap();
     }

@@ -241,7 +241,7 @@ impl App {
             || self.canvas_search_active()
             || self.window_switcher_active()
             || self.layout_editing()
-            || self.layout_confirmation_active()
+            || self.modal_confirmation_active()
             || self.keyboard.is_grabbed()
             || self.drag.is_some()
             || self.resize.is_some()

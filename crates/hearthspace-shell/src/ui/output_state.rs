@@ -23,11 +23,12 @@ impl ShellOutputInstance {
             show_search: false,
             search_request_token: None,
             show_power: false,
+            power_ui: Default::default(),
             show_controls: false,
             quick_panel: Default::default(),
             clock_formats: Default::default(),
             osd: None,
-            confirm_logout: false,
+            power_confirmation: None,
             show_notifications: false,
             show_map: false,
             launch_error: None,
@@ -46,6 +47,7 @@ impl ShellOutputInstance {
             map_window_id: WindowId::next(),
             notifications_window_id: WindowId::next(),
             power_window_id: WindowId::next(),
+            power_confirm_window_id: WindowId::next(),
             controls_window_id: WindowId::next(),
             osd_window_id: WindowId::next(),
             tray: Default::default(),
@@ -72,7 +74,7 @@ impl ShellOutputInstance {
         self.show_power = false;
         self.show_controls = false;
         self.clock_formats.open = false;
-        self.confirm_logout = false;
+        self.power_confirmation = None;
         self.query.clear();
         self.selected_result = None;
         self.selected_result_index = 0;

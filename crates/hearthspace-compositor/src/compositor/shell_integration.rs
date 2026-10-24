@@ -66,6 +66,7 @@ impl App {
 
         if (self.canvas_search_active()
             || self.window_switcher_active()
+            || self.modal_confirmation_active()
             || self.group_interaction_active())
             && matches!(
                 action,

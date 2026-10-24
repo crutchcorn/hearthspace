@@ -79,6 +79,9 @@ mod navigation;
 #[path = "support/navigation_client.rs"]
 mod navigation_client;
 #[cfg(feature = "test-apps")]
+#[path = "support/power_confirmation.rs"]
+mod power_confirmation;
+#[cfg(feature = "test-apps")]
 #[path = "support/remote_input.rs"]
 mod remote_input;
 #[cfg(feature = "test-apps")]

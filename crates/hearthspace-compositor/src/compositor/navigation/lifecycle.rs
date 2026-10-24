@@ -53,7 +53,9 @@ impl App {
         let Some(index) = self.windows.index(id) else {
             return;
         };
-        if self.is_layout_surface(index) {
+        if self.is_power_confirmation(index) {
+            self.power_confirmation_mapped(index);
+        } else if self.is_layout_surface(index) {
             self.layout_surface_mapped(index);
         } else if self.is_window_switcher_caption(index) {
             if !self.window_switcher_caption_visible(index) {
