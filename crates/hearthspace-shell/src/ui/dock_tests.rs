@@ -150,6 +150,9 @@ fn pointer_and_keyboard_cycle_existing_windows_using_their_ids() {
     let button = ui.button("editor: 2 windows, active. Next: Document 2");
     ui.harness.focus_on(Some(button));
     ui.harness
+        .process_text_event(TextEvent::key_down(KeyboardKey::Named(NamedKey::Enter)));
+    ui.dispatch(&strip);
+    ui.harness
         .process_text_event(TextEvent::key_up(KeyboardKey::Named(NamedKey::Enter)));
     ui.dispatch(&strip);
     assert!(ui.state.windows[0].focused);
@@ -304,6 +307,9 @@ fn single_control_fallback_cycles_all_apps_with_keyboard_focus_retained() {
     ui.harness.focus_on(Some(button));
     for id in 1..=3 {
         assert_eq!(ui.button(&format!("Next app: Switch to app{id}")), button);
+        ui.harness
+            .process_text_event(TextEvent::key_down(KeyboardKey::Named(NamedKey::Enter)));
+        ui.dispatch(&build);
         ui.harness
             .process_text_event(TextEvent::key_up(KeyboardKey::Named(NamedKey::Enter)));
         ui.dispatch(&build);

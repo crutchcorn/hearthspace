@@ -19,6 +19,7 @@ class InstallSessionTests(unittest.TestCase):
         self.temporary = tempfile.TemporaryDirectory()
         self.addCleanup(self.temporary.cleanup)
         self.directory = Path(self.temporary.name)
+        self.system_root = self.directory / "system"
         self.prefix = self.directory / "prefix with spaces"
         self.binaries = self.directory / "build"
         self.binaries.mkdir()
@@ -40,7 +41,9 @@ class InstallSessionTests(unittest.TestCase):
         return bundle
 
     def install(self):
-        return transaction.install(self.bundle(), self.prefix, self.prefix)
+        return transaction.install(
+            self.bundle(), self.prefix, self.prefix, system_root=self.system_root
+        )
 
     def test_staged_layout_contains_complete_runtime_and_gdm_entry(self):
         prefix = Path("/usr/local")
@@ -60,6 +63,11 @@ class InstallSessionTests(unittest.TestCase):
         release = (root / layout.CURRENT).resolve()
         self.assertEqual(apply.call_count, 1)
         self.assertTrue((release / "bin/hearthspace-session-bus").is_file())
+        self.assertTrue((release / "bin/hearthspace-lock").is_file())
+        policy = args.destdir / "etc/pam.d/hearthspace-lock"
+        self.assertEqual(stat.S_IMODE(policy.stat().st_mode), 0o644)
+        self.assertIn("auth include login\naccount include login\n", policy.read_text())
+        self.assertFalse((root / "etc/pam.d/hearthspace-lock").exists())
         for name in (*layout.BINARIES, "hearthspace-login-guard"):
             self.assertEqual(
                 stat.S_IMODE((release / "bin" / name).stat().st_mode), 0o755
@@ -158,7 +166,9 @@ class InstallSessionTests(unittest.TestCase):
             patch.object(transaction, "atomic_write", side_effect=write),
             self.assertRaisesRegex(OSError, "injected"),
         ):
-            transaction.install(bundle, self.prefix, self.prefix)
+            transaction.install(
+                bundle, self.prefix, self.prefix, system_root=self.system_root
+            )
         self.assertEqual((self.prefix / layout.CURRENT).resolve(), old)
         self.assertEqual((self.prefix / layout.MANIFEST).read_bytes(), manifest)
         self.assertEqual(list(old.parent.iterdir()), [old])
@@ -168,6 +178,7 @@ class InstallSessionTests(unittest.TestCase):
         for failure in ("copy", "entry", "manifest"):
             with self.subTest(failure=failure):
                 self.prefix = self.directory / f"first-install-{failure}"
+                self.system_root = self.directory / f"system-{failure}"
                 bundle = self.bundle()
                 original_write = transaction.atomic_write
                 failed = False
@@ -196,10 +207,14 @@ class InstallSessionTests(unittest.TestCase):
                 else:
                     fault = patch.object(transaction, "atomic_write", side_effect=write)
                 with fault, self.assertRaisesRegex(OSError, "first install failure"):
-                    transaction.install(bundle, self.prefix, self.prefix)
+                    transaction.install(
+                        bundle, self.prefix, self.prefix, system_root=self.system_root
+                    )
                 self.assertFalse((self.prefix / layout.CURRENT).is_symlink())
                 self.assertFalse((self.prefix / layout.BASE / "releases").exists())
-                release = transaction.install(bundle, self.prefix, self.prefix)
+                release = transaction.install(
+                    bundle, self.prefix, self.prefix, system_root=self.system_root
+                )
                 self.assertEqual((self.prefix / layout.CURRENT).resolve(), release)
                 transaction.installed(self.prefix, self.prefix)
 
@@ -209,7 +224,7 @@ class InstallSessionTests(unittest.TestCase):
         unrelated.write_text("unrelated")
         foreign = release / "keep.txt"
         foreign.write_text("operator file")
-        transaction.uninstall(self.prefix, self.prefix)
+        transaction.uninstall(self.prefix, self.prefix, system_root=self.system_root)
         self.assertEqual(unrelated.read_text(), "unrelated")
         self.assertEqual(foreign.read_text(), "operator file")
         self.assertFalse((self.prefix / layout.LAUNCHER).exists())
@@ -222,14 +237,18 @@ class InstallSessionTests(unittest.TestCase):
         original = entry.read_bytes()
         entry.write_bytes(original + b"# operator change\n")
         with self.assertRaisesRegex(RuntimeError, "changed or missing"):
-            transaction.uninstall(self.prefix, self.prefix)
+            transaction.uninstall(
+                self.prefix, self.prefix, system_root=self.system_root
+            )
         self.assertTrue((self.prefix / layout.LAUNCHER).exists())
         entry.write_bytes(original)
         with (
             patch.object(transaction, "running_processes", return_value=["123"]),
             self.assertRaisesRegex(RuntimeError, "log out"),
         ):
-            transaction.uninstall(self.prefix, self.prefix)
+            transaction.uninstall(
+                self.prefix, self.prefix, system_root=self.system_root
+            )
         self.assertTrue(entry.exists())
 
     def test_foreign_launcher_and_symlinked_parent_are_never_overwritten(self):
@@ -258,14 +277,18 @@ class InstallSessionTests(unittest.TestCase):
         bundle = self.bundle()
         (bundle / "release/bin/hearthspace-settings").write_text("changed")
         with self.assertRaisesRegex(RuntimeError, "changed or missing"):
-            transaction.install(bundle, self.prefix, self.prefix)
+            transaction.install(
+                bundle, self.prefix, self.prefix, system_root=self.system_root
+            )
         self.assertFalse((self.prefix / layout.CURRENT).exists())
         bundle = self.bundle()
         spec = json.loads((bundle / "bundle.json").read_text())
         spec["files"].pop("bin/hearthspace-settings")
         (bundle / "bundle.json").write_text(json.dumps(spec))
         with self.assertRaisesRegex(RuntimeError, "complete runtime"):
-            transaction.install(bundle, self.prefix, self.prefix)
+            transaction.install(
+                bundle, self.prefix, self.prefix, system_root=self.system_root
+            )
 
     def test_prefix_validation_and_manifest_path_traversal_rejection(self):
         for path in (
@@ -284,7 +307,9 @@ class InstallSessionTests(unittest.TestCase):
         data["files"]["../../outside"] = {"sha256": "unused", "mode": 0o644}
         manifest.write_text(json.dumps(data))
         with self.assertRaisesRegex(RuntimeError, "unsafe"):
-            transaction.uninstall(self.prefix, self.prefix)
+            transaction.uninstall(
+                self.prefix, self.prefix, system_root=self.system_root
+            )
         self.assertTrue((self.prefix / layout.LAUNCHER).exists())
 
     def test_bundle_missing_private_bus_helper_never_activates(self):
@@ -293,7 +318,9 @@ class InstallSessionTests(unittest.TestCase):
         spec["files"].pop("bin/hearthspace-session-bus", None)
         (bundle / "bundle.json").write_text(json.dumps(spec))
         with self.assertRaisesRegex(RuntimeError, "complete runtime"):
-            transaction.install(bundle, self.prefix, self.prefix)
+            transaction.install(
+                bundle, self.prefix, self.prefix, system_root=self.system_root
+            )
         self.assertFalse((self.prefix / layout.CURRENT).exists())
 
     def test_restrictive_umask_does_not_make_system_installation_inaccessible(self):
@@ -329,6 +356,7 @@ class InstallSessionTests(unittest.TestCase):
         self.assertIn("hearthspace-compositor/udev", command)
         self.assertIn("waydriver-hearthspace", command)
         self.assertIn("hearthspace-session", command)
+        self.assertIn("hearthspace-lock", command)
         self.assertIn("--bins", command)
         self.assertNotIn("hearthspace-session-bus", command)
         self.assertIn("--release", command)

@@ -41,9 +41,13 @@ def root_path(args):
 def privileged(args, action, bundle=None):
     if args.destdir is not None or os.geteuid() == 0:
         if action == "uninstall":
-            transaction.uninstall(root_path(args), args.prefix)
+            transaction.uninstall(
+                root_path(args), args.prefix, system_root=args.destdir or Path("/")
+            )
             return None
-        return transaction.install(bundle, root_path(args), args.prefix)
+        return transaction.install(
+            bundle, root_path(args), args.prefix, system_root=args.destdir or Path("/")
+        )
     command = [
         "sudo",
         "--",
@@ -69,7 +73,12 @@ def run(args):
     if args.action == "_apply":
         if args.bundle is None:
             raise RuntimeError("internal apply requires a prepared bundle")
-        transaction.install(args.bundle, root_path(args), args.prefix)
+        transaction.install(
+            args.bundle,
+            root_path(args),
+            args.prefix,
+            system_root=args.destdir or Path("/"),
+        )
         return
     if args.binary_dir is not None and not args.no_build:
         raise RuntimeError("--binary-dir requires --no-build")

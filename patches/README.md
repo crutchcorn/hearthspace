@@ -242,6 +242,53 @@ See [vendored provenance and refresh steps](../vendor/accesskit_atspi_common/PRO
   regressions without this patch. Keep the vendored dependency and Cargo patch
   while the separate XSettings fix still requires them.
 
+## Smithay touch cancellation after a frame
+
+- **Dependency:** the same vendored Smithay 0.7.0 at revision
+  [`5c2ba413`](https://github.com/Smithay/smithay/tree/5c2ba4132556a08abc70ae1771d275ec2cfc031f).
+- **Patch:** [cancel all touch targets](smithay-touch-cancel.patch), a local fix
+  confined to `TouchInternal::cancel` in `src/input/touch/mod.rs`.
+- **Reason:** `down → frame → cancel` leaves the client contact active because
+  cancellation returns when no frame is pending. With a pending frame, it also
+  skips unchanged contacts on other clients. A released contact awaiting its
+  final frame can retain stale work after cancellation.
+- **Behavior:** use the pending marker or allocate a new cancellation marker,
+  visit all active and pending-up targets, and drain the cancelled slots.
+  The existing `WlSurface` client marker deduplicates cancellation across
+  surfaces and contacts. Completed up/frame sequences receive no cancellation;
+  cancelled sequences receive no later frame, motion, up, or pointer event.
+  `TouchDownGrab` continues to release its implicit grab through its existing
+  cancellation path. Public APIs and explicit grab invariants are unchanged.
+- **Upstream:** checked on 2026-10-23. GitHub's master revision is
+  [`24647fc8d00131eb7f388efed26e35ea316b0018`](https://github.com/Smithay/smithay/commit/24647fc8d00131eb7f388efed26e35ea316b0018),
+  whose [cancellation implementation](https://github.com/Smithay/smithay/blob/24647fc8d00131eb7f388efed26e35ea316b0018/src/input/touch/mod.rs#L668)
+  retains both guards. The marker/deduplication rework in
+  [PR 2067](https://github.com/Smithay/smithay/pull/2067) and pending-up framing in
+  [PR 1425](https://github.com/Smithay/smithay/pull/1425) are already in this pin.
+  Upstream issue/PR searches for `touch cancel` and `pending_frame` found no
+  matching fix. No upstream report has been published for this local repair.
+- **Verification:** run
+  `cargo test --locked -p hearthspace-compositor --test smithay_touch_cancel`.
+  The new in-process Smithay server uses real Wayland connections and
+  `WlSurface` targets, including two clients and multiple surfaces. It checks
+  framed cancellation, mixed framed/pending contacts, per-client deduplication,
+  pending-up retirement, completed sequences, stale-input suppression, fresh
+  slot reuse, implicit-grab release, and absence of pointer events. No renderer,
+  compositor process, or existing Hearthspace test fixture is involved.
+  The additional `headless_control touch_cancel::` and `power_confirmation::`
+  regressions exercise cancellation through shell clients and modal input.
+  All six passed with the patch. Restoring only the original cancellation code
+  failed five framed, mixed-client and pending-up regressions; restoring the
+  patch passed all six again. The three
+  `interactive::client::touch::cancellation` headless regressions also passed
+  through the production compositor. Native browser validation is separate
+  from these deterministic protocol checks.
+- **Removal:** adopt a compatible upstream revision that passes these protocol
+  regressions and the compositor/native cancellation checks without this patch.
+  Remove this patch file and ledger entry, preserving the vendored Smithay copy
+  and its separate XSettings and X11 move/resize patches until their own removal
+  conditions are met.
+
 ## Masonry finite scrollbar geometry
 
 - **Dependency:** Masonry 0.4.0 at Xilem revision
@@ -274,7 +321,44 @@ See [vendored provenance and refresh steps](../vendor/accesskit_atspi_common/PRO
   creation and the full ordinary tray workflow passed on Intel UHD 620 with
   normal GPU rendering; see the [native evidence](../docs/TRAY.md#repeated-popup-gpu-hang--2026-10-22).
 - **Removal:** upgrade to a compatible unmodified upstream revision that passes
-  the regression and repeated native tray-menu workflow. Remove the Masonry
-  Git-source patch, vendor directory, and patch file, then refresh `Cargo.lock`.
-  Preserve the independent Xilem and Masonry Winit patches until their own
-  removal conditions are satisfied.
+  the regression and repeated native tray-menu workflow, then remove this patch
+  file. Retain Masonry vendoring and its Git-source patch while the Button
+  keyboard repair below still requires them. Once both fixes are available
+  upstream, remove the vendor directory and Cargo override and refresh
+  `Cargo.lock`. Preserve the independent Xilem and Masonry Winit patches until
+  their own removal conditions are satisfied.
+
+## Masonry Button keyboard press ownership
+
+- **Dependency:** the same vendored Masonry 0.4.0 at Xilem revision
+  [`271a27a6`](https://github.com/linebender/xilem/tree/271a27a6d4a930f7878d404f9014e3c50a3a9b88).
+- **Patch:** [require a matching activation press](masonry-button-key-ownership.patch)
+  in `src/widgets/button.rs`. A focused Button records a non-repeat Enter/Space
+  press and activates once on its matching logical key and physical key-code
+  release. Losing focus, becoming disabled or stashed, and window blur clear the
+  press. Repeated downs cannot arm a newly focused button. Pointer and AccessKit
+  activation retain their existing behavior. Hearthspace's `SemanticButton`
+  forwards lifecycle updates to its embedded native Button so it shares these
+  cancellation rules.
+- **Reason:** Button previously activated on any Enter/Space release. If a power
+  capability update disabled a focused Reboot row between down and up, focus
+  recovered to Lock screen and the release sent `lock-session`. Button now owns
+  its press across event phases; menu focus recovery and navigation remain active.
+- **Upstream:** checked current source, file history, issues, PRs, and the latest
+  release on 2026-10-23. The [latest Button source change, `ef3b6094`](https://github.com/linebender/xilem/blob/ef3b6094ede784d6df5dbdfa72d67e8280a9c619/masonry/src/widgets/button.rs)
+  still activates on an unmatched release. [Release 0.4.0](https://github.com/linebender/xilem/releases/tag/v0.4.0)
+  provides no newer fix. No compatible existing fix was found and no report was
+  published.
+- **Verification:** run
+  `cargo test -p hearthspace-ui-components semantic_button` and
+  `cargo test -p hearthspace-shell ui::session_controls::`.
+  Shared-button regressions cover focus transfer, returning focus, repeat events,
+  disable/re-enable, window blur, mismatched keys, and fresh activation afterward.
+  Separate shell regressions hold Enter and Space on Reboot, revoke capability,
+  dispatch the rebuild and focus recovery, then release. A fake command socket
+  must receive no request and the fake power worker queue must remain empty;
+  a fresh press still opens the expected confirmation.
+- **Removal:** adopt a compatible unmodified upstream revision that passes both
+  filters, then remove this patch file and ledger entry. Retain lifecycle update
+  forwarding in `SemanticButton`. Keep Masonry vendoring and the Cargo override
+  while the independent Portal progress repair still requires them.

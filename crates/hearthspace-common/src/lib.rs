@@ -39,6 +39,7 @@ pub const NOTIFICATIONS_APP_ID: &str = "dev.hearthspace.notifications-panel";
 pub const QUICK_PANEL_APP_ID: &str = "dev.hearthspace.quick-panel";
 pub const CONTROL_OSD_APP_ID: &str = "dev.hearthspace.control-osd";
 pub const POWER_MENU_APP_ID: &str = "dev.hearthspace.power-menu";
+pub const POWER_CONFIRM_APP_ID: &str = "dev.hearthspace.power-confirm";
 pub const TRAY_MENU_APP_ID: &str = "dev.hearthspace.tray-menu";
 pub const SHELL_OUTPUT_WATCHER_APP_ID: &str = "dev.hearthspace.shell-output-watcher";
 pub const CONTROL_BAR_HEIGHT: i32 = 54;
@@ -112,6 +113,10 @@ pub fn power_menu_app_id_for_output(output_name: &str) -> String {
     shell_app_id_for_output(POWER_MENU_APP_ID, output_name)
 }
 
+pub fn power_confirm_app_id_for_output(output_name: &str) -> String {
+    shell_app_id_for_output(POWER_CONFIRM_APP_ID, output_name)
+}
+
 pub fn quick_panel_app_id_for_output(output_name: &str) -> String {
     shell_app_id_for_output(QUICK_PANEL_APP_ID, output_name)
 }
@@ -158,6 +163,10 @@ pub fn power_menu_output_name_from_app_id(app_id: &str) -> Option<Option<String>
     shell_output_name_from_app_id(POWER_MENU_APP_ID, app_id)
 }
 
+pub fn power_confirm_output_name_from_app_id(app_id: &str) -> Option<Option<String>> {
+    shell_output_name_from_app_id(POWER_CONFIRM_APP_ID, app_id)
+}
+
 pub fn quick_panel_output_name_from_app_id(app_id: &str) -> Option<Option<String>> {
     shell_output_name_from_app_id(QUICK_PANEL_APP_ID, app_id)
 }
@@ -177,6 +186,7 @@ pub fn shell_panel_output_name_from_app_id(app_id: &str) -> Option<Option<String
         .or_else(|| canvas_map_output_name_from_app_id(app_id))
         .or_else(|| notifications_output_name_from_app_id(app_id))
         .or_else(|| power_menu_output_name_from_app_id(app_id))
+        .or_else(|| power_confirm_output_name_from_app_id(app_id))
         .or_else(|| tray_menu_output_name_from_app_id(app_id))
         .or_else(|| quick_panel_output_name_from_app_id(app_id))
 }

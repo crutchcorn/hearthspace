@@ -92,7 +92,7 @@ pub(super) fn app_logic(
         }
 
         if output.show_power {
-            windows.push(power_window(output, &state.power));
+            windows.push(power_window(state, output));
             continue;
         }
         let results = launcher::results(state, output);

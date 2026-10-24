@@ -43,7 +43,7 @@ scripts/hearthspace-agent --session /tmp/hearthspace-run-1 status
 scripts/hearthspace-agent --session /tmp/hearthspace-run-1 screenshot /tmp/hearthspace-run-1/desktop.png
 ```
 
-Start builds the session supervisor, native compositor, shell, settings and
+Start builds the session supervisor, native compositor, shell, lock client, settings and
 notification daemons, and accessibility CLI before changing VTs.
 `start --no-build` explicitly uses existing debug
 binaries; use it only after building the required native features. `binaries.json`

@@ -20,6 +20,7 @@ impl App {
         {
             self.resize = None;
         }
+        self.retire_window_ui_touch(id);
     }
 
     /// Mapping follows the root buffer, not subsurface commits or creation of
@@ -52,7 +53,9 @@ impl App {
         let Some(index) = self.windows.index(id) else {
             return;
         };
-        if self.is_layout_surface(index) {
+        if self.is_power_confirmation(index) {
+            self.power_confirmation_mapped(index);
+        } else if self.is_layout_surface(index) {
             self.layout_surface_mapped(index);
         } else if self.is_window_switcher_caption(index) {
             if !self.window_switcher_caption_visible(index) {
@@ -126,7 +129,7 @@ impl App {
         self.layout_focus_changed(id.and_then(|id| self.windows.index(id)));
         self.cancel_search_outside_focus(id.and_then(|id| self.windows.index(id)));
         self.favorite_focus_changed(id);
-        self.ui_touch_focus_changed(id);
+        self.ui_touch_focus_changed(id, focus);
         self.dismiss_shell_panels_outside_focus(id.and_then(|id| self.windows.index(id)));
         self.focused_normal_window_id = id.filter(|id| {
             self.windows

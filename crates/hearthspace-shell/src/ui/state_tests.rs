@@ -88,18 +88,19 @@ fn only_one_panel_can_be_open_across_outputs_and_stale_closes_are_scoped() {
     state.dismiss_search("HDMI-A-1");
     assert!(state.outputs[1].show_notifications);
     state.toggle_power("HDMI-A-1");
-    state.outputs[1].confirm_logout = true;
+    state.outputs[1].power_confirmation =
+        Some(super::super::session_controls::Confirmation::LogOff);
     state.outputs[1].launch_error = Some("retry".into());
     state.dismiss_notifications("HDMI-A-1");
     state.dismiss_search("HDMI-A-1");
     state.dismiss_map("HDMI-A-1");
     assert!(state.outputs[1].show_power);
-    assert!(state.outputs[1].confirm_logout);
+    assert!(state.outputs[1].power_confirmation.is_some());
     assert!(state.outputs[1].launch_error.is_some());
     state.toggle_search("HDMI-A-1");
     state.change_query("HDMI-A-1", "Notes".into());
     state.dismiss_power("HDMI-A-1");
     assert!(state.outputs[1].show_search);
     assert_eq!(state.outputs[1].query, "Notes");
-    assert!(!state.outputs[1].confirm_logout);
+    assert!(state.outputs[1].power_confirmation.is_none());
 }

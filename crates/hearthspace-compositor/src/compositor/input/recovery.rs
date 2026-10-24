@@ -43,6 +43,9 @@ impl App {
             });
         }
         self.clear_pointer_sources();
+        // Source reset also discards mouse buttons swallowed during a native
+        // touch move; no late release may keep that retired capture alive.
+        self.ui_touch = None;
         self.gtk_shell.reset_input();
         self.reset_titlebar_input();
         self.pointer.clone().frame(self);

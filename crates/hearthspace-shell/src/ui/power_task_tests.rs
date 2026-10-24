@@ -17,10 +17,7 @@ use xilem::{WidgetView, view::sized_box};
 fn power(
     state: &ShellState,
 ) -> impl WidgetView<ShellState, Widget = masonry::widgets::SizedBox> + use<> {
-    sized_box(session_controls::power_panel(
-        &state.outputs[0],
-        &state.power,
-    ))
+    sized_box(session_controls::power_panel(state, &state.outputs[0]))
 }
 
 fn bar(
@@ -108,7 +105,10 @@ fn batteryless_desktop_can_suspend_and_repeated_clicks_queue_only_once() {
     );
     ui.harness.mouse_click_on(suspend_button, None);
     ui.dispatch(&power);
-    assert_eq!(commands.try_recv().unwrap(), "DP-1");
+    assert_eq!(
+        commands.try_recv().unwrap(),
+        ("DP-1".to_owned(), Action::Suspend)
+    );
     assert!(ui.state.power.pending);
     assert!(
         ui.harness
@@ -197,9 +197,9 @@ fn power_menu_omits_battery_footer_and_keeps_suspend_feedback_before_actions() {
             .unwrap()
             .is_disabled()
     );
-    let logout = ui
+    let last = ui
         .harness
-        .access_node(ui.button("Log out"))
+        .access_node(ui.button("Turn off"))
         .unwrap()
         .bounding_box()
         .unwrap();
@@ -213,12 +213,12 @@ fn power_menu_omits_battery_footer_and_keeps_suspend_feedback_before_actions() {
     assert!(
         labels
             .iter()
-            .any(|node| node.value().as_deref() == Some("Log out"))
+            .any(|node| node.value().as_deref() == Some("Turn off"))
     );
     for node in labels {
         assert!(
-            node.bounding_box().expect("menu label has bounds").y1 <= logout.y1,
-            "the normal power menu ends with Log out"
+            node.bounding_box().expect("menu label has bounds").y1 <= last.y1,
+            "the normal power menu ends with Turn off"
         );
     }
     ui.state.power.status.available = false;
@@ -244,12 +244,12 @@ fn power_menu_omits_battery_footer_and_keeps_suspend_feedback_before_actions() {
         .unwrap();
     let lock = ui
         .harness
-        .access_node(ui.button("Lock"))
+        .access_node(ui.button("Lock screen"))
         .unwrap()
         .bounding_box()
         .unwrap();
     assert!(
         feedback.y1 <= lock.y0,
-        "suspend feedback stays above the actions, rather than below Log out"
+        "suspend feedback stays above the actions, rather than below Turn off"
     );
 }

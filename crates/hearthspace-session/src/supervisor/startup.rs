@@ -2,6 +2,22 @@
 use super::*;
 
 impl Supervisor {
+    pub(super) fn prepare_development_locker(&self) -> Result<(), Box<dyn std::error::Error>> {
+        if self.mode != RunMode::DevCargo {
+            return Ok(());
+        }
+        // Locking must never compile code while an opaque shield is already up.
+        // Build the sibling binary before starting even a development desktop.
+        crate::dev_cargo::prepare_helper(
+            "hearthspace-lock",
+            &crate::session_env::repo_root(),
+            &self.paths.session_dir,
+            self.startup_deadline,
+            &self.shutdown_requested,
+        )?;
+        Ok(())
+    }
+
     pub(super) fn wait_for_desktop_ready(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         let native = match self.backend {
             Some(Backend::Native) => true,

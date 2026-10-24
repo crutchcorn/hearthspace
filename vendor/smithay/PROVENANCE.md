@@ -11,7 +11,11 @@ the change. Initialization, set, remove, and clear share that publication path.
 It adds no X11 round trip or public API. The
 [move/resize cancellation patch](../../patches/smithay-xwm-moveresize-cancel.patch)
 adds a default XwmHandler callback and forwards EWMH cancellation (direction 11)
-to the compositor; existing handlers retain their behavior.
+to the compositor; existing handlers retain their behavior. The
+[touch cancellation patch](../../patches/smithay-touch-cancel.patch) cancels all
+active and pending-up targets even after their last events were framed, retains
+per-client cancellation deduplication, and retires cancelled slot/frame state.
+It changes only `src/input/touch/mod.rs`, without a public API change.
 
 `Cargo.toml.orig` is the exact upstream manifest. The standalone `Cargo.toml`
 omits upstream workspace members, examples, benchmarks, development-only
@@ -28,6 +32,10 @@ To refresh:
    dependencies and features.
 3. Reapply source patches only if still needed. Follow the verification and
    removal criteria in the [patch ledger](../../patches/README.md).
-4. Refresh `Cargo.lock` and run the idle-X11 and X11 interaction regressions plus
-   the live GTK3 appearance check before removing a patch or changing the pinned
-   revision.
+4. Refresh `Cargo.lock` and run the idle-X11, X11 interaction, and
+   `smithay_touch_cancel` protocol regressions plus the live GTK3 appearance and
+   native touch cancellation checks, plus the headless `touch_cancel::` and
+   `power_confirmation::` regressions, before removing a patch or changing the
+   pinned revision. Touch regressions live in
+   `crates/hearthspace-compositor/tests/smithay_touch_cancel.rs` and its dedicated
+   support module; they use the workspace's existing Wayland client dependency.

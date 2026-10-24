@@ -29,6 +29,20 @@ impl App {
         self.grab_canvas_peek_target(window_index);
         self.prepare_window_pointer_operation();
         let pointer_start = self.window_pointer_start(window_index);
+        self.begin_window_resize_at(window_index, edges, pointer_start);
+        self.start_window_pointer_grab(window_index);
+        if pointer_start != self.raw_pointer_location {
+            self.update_resize(self.raw_pointer_location);
+        }
+        self.request_redraw();
+    }
+
+    pub(in crate::compositor) fn begin_window_resize_at(
+        &mut self,
+        window_index: usize,
+        edges: ResizeEdges,
+        pointer_start: Point<f64, Logical>,
+    ) {
         let initial_bounds = self.window_canvas_rect(window_index);
         let initial_content_size = (
             initial_bounds.size.w,
@@ -56,10 +70,6 @@ impl App {
             initial_bounds,
             moved: false,
         });
-        self.start_window_pointer_grab(window_index);
-        if pointer_start != self.raw_pointer_location {
-            self.update_resize(self.raw_pointer_location);
-        }
         self.request_redraw();
     }
 

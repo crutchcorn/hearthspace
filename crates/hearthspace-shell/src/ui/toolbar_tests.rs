@@ -9,7 +9,7 @@ use crate::ui::{
 fn power(
     state: &ShellState,
 ) -> impl WidgetView<ShellState, Widget = masonry::widgets::SizedBox> + use<> {
-    sized_box(power_panel(&state.outputs[0], &state.power))
+    sized_box(power_panel(state, &state.outputs[0]))
 }
 
 fn search(
@@ -28,20 +28,16 @@ fn power_dropdown_keeps_confirmation_inside_and_cancel_does_not_end_session() {
     let mut state = ShellState::new("/unused".into(), vec!["eDP-1".into()]);
     state.toggle_power("eDP-1");
     let mut ui = Ui::new(state, power, (300, 230));
-    ui.button("Lock");
-    ui.activate(ui.button("Log out"));
+    ui.button("Lock screen");
+    ui.activate(ui.button("Log off"));
     ui.dispatch(&power);
-    assert!(ui.state.outputs[0].confirm_logout);
+    assert!(ui.state.outputs[0].power_confirmation.is_some());
     assert!(ui.state.outputs[0].show_power);
-    ui.button("Confirm log out");
+    ui.button("Log off");
     ui.activate(ui.button("Cancel"));
     ui.dispatch(&power);
-    assert!(!ui.state.outputs[0].confirm_logout);
-    assert!(ui.state.outputs[0].show_power);
+    assert!(ui.state.outputs[0].power_confirmation.is_none());
     assert!(ui.state.outputs[0].launch_error.is_none());
-    ui.button("Lock");
-    ui.activate(ui.button("Close power menu"));
-    ui.dispatch(&power);
     assert!(!ui.state.outputs[0].show_power);
 }
 

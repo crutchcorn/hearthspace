@@ -102,7 +102,7 @@ fn build(app: &gtk::Application, path: PathBuf) {
         })
         .unwrap_or((560, 360));
     let css = gtk::CssProvider::new();
-    css.load_from_data(".fixture-editor, .fixture-editor text {background: #00cc66; color: #000000;} .fixture-popup {background: #dc143c; color: #ffffff; padding: 20px;}");
+    css.load_from_string(".fixture-editor, .fixture-editor text {background: #00cc66; color: #000000;} .fixture-popup {background: #dc143c; color: #ffffff; padding: 20px;}");
     gtk::style_context_add_provider_for_display(
         &gdk::Display::default().unwrap(),
         &css,

@@ -16,6 +16,7 @@ MANIFEST = BASE / "install.json"
 CURRENT = BASE / "current"
 LAUNCHER = Path("bin/hearthspace-login")
 SESSION = Path("share/wayland-sessions/hearthspace.desktop")
+PAM_SOURCE = Path("share/pam.d/hearthspace-lock")
 
 
 def prefix_path(value):
@@ -86,6 +87,7 @@ def bundle(directory, binary_dir, prefix):
     release = directory / "release"
     files = {}
     sources = {Path("bin") / name: binary_dir / name for name in BINARIES}
+    sources[PAM_SOURCE] = REPOSITORY / "data/pam.d/hearthspace-lock"
     sources[Path("bin/hearthspace-login-guard")] = (
         REPOSITORY / "scripts/runtime/hearthspace-login-guard"
     )
@@ -129,7 +131,6 @@ def dependencies():
         "dbus-run-session",
         "systemctl",
         "loginctl",
-        "swaylock",
         "Xwayland",
         "readlink",
         "systemd-run",

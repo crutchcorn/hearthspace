@@ -152,6 +152,11 @@ impl VirtualPointerHandler for App {
 }
 
 impl App {
+    pub(in crate::compositor::input) fn has_pressed_pointer_sources(&self) -> bool {
+        // Includes compositor-consumed buttons that never reached Smithay.
+        !self.remote_input.buttons.0.is_empty()
+    }
+
     fn remote_pointer_seat(&self, device: &VirtualPointerDevice) -> bool {
         self.remote_input.enabled
             && device

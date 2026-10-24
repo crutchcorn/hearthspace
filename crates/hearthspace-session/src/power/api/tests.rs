@@ -61,6 +61,7 @@ async fn private_socket_status_rejection_and_cleanup() {
         available: true,
         busy: false,
         error: None,
+        ..Reply::default()
     });
     assert_eq!(
         exchange(&path, b"{\"command\":\"status\"}\n").await["available"],
@@ -81,17 +82,63 @@ async fn duplicate_requests_are_rejected_while_first_is_owned_by_coordinator() {
         available: true,
         busy: false,
         error: None,
+        ..Reply::default()
     });
     let (sender, mut requests) = mpsc::channel(1);
-    let first = tokio::spawn(suspend(shared.clone(), sender.clone()));
+    let first = tokio::spawn(submit(shared.clone(), sender.clone(), Action::Suspend));
     let request = requests.recv().await.unwrap();
-    let duplicate = suspend(shared.clone(), sender).await;
+    let duplicate = submit(shared.clone(), sender, Action::Suspend).await;
     assert!(!duplicate.ok && duplicate.busy && !duplicate.available);
     request.finish(Err("injected logind refusal".into()));
     let reply = first.await.unwrap();
     assert!(!reply.ok);
     assert_eq!(reply.error.as_deref(), Some("injected logind refusal"));
     assert!(!shared.snapshot().busy);
+}
+
+#[tokio::test]
+async fn all_power_commands_share_one_inflight_gate_and_keep_action_specific_errors() {
+    let dir = Directory::new();
+    let path = dir.0.join("power-control.sock");
+    let (server, shared, mut requests) =
+        Server::bind(&dir.0, &dir.0.join("shell-command.sock")).unwrap();
+    shared.update(Reply {
+        ok: true,
+        available: false,
+        reboot_available: true,
+        power_off_available: false,
+        error: Some("Suspend unsupported".into()),
+        power_off_error: Some("Turn off requires administrator authorization".into()),
+        ..Reply::default()
+    });
+    let server = tokio::spawn(server.run());
+    let denied = exchange(&path, b"{\"command\":\"power_off\"}\n").await;
+    assert_eq!(denied["ok"], false);
+    assert_eq!(
+        denied["error"],
+        "Turn off requires administrator authorization"
+    );
+    assert!(requests.try_recv().is_err());
+    let first = tokio::spawn({
+        let path = path.clone();
+        async move { exchange(&path, b"{\"command\":\"reboot\"}\n").await }
+    });
+    let request = requests.recv().await.unwrap();
+    assert_eq!(request.action, Action::Reboot);
+    for command in ["suspend", "reboot", "power_off"] {
+        let reply = exchange(&path, format!("{{\"command\":\"{command}\"}}\n").as_bytes()).await;
+        assert_eq!(reply["ok"], false);
+        assert_eq!(reply["busy"], true);
+        assert_eq!(reply["available"], false);
+        assert_eq!(reply["reboot_available"], false);
+        assert_eq!(reply["power_off_available"], false);
+    }
+    request.finish(Ok(()));
+    assert_eq!(first.await.unwrap()["ok"], true);
+    assert!(requests.try_recv().is_err());
+    assert!(!shared.snapshot().busy);
+    server.abort();
+    let _ = server.await;
 }
 
 #[tokio::test]

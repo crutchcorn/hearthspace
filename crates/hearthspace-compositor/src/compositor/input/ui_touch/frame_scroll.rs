@@ -26,7 +26,7 @@ impl App {
             Target::FrameScroll { target, last } => (target.clone(), *last, false),
             Target::Client(_)
                 if !self.layout_editing()
-                    && !self.layout_confirmation_active()
+                    && !self.modal_confirmation_active()
                     && scroll_threshold(touch.origin, location) =>
             {
                 let Some(target) =

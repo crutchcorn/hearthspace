@@ -83,20 +83,21 @@ impl App {
             .map(|index| (self.windows[index].id, kind))
     }
 
-    pub(in crate::compositor) fn layout_modal_shape(
+    pub(in crate::compositor) fn modal_confirmation_shape(
         &self,
         output: smithay::utils::Rectangle<i32, smithay::utils::Logical>,
     ) -> Option<OverlayShape> {
-        let session = self.layout_editor.session.as_ref()?;
-        if session.confirmation.is_none()
-            || self.output_logical_rect_for_name(Some(&session.output)) != Some(output)
-        {
+        let layout_confirmation = self.layout_editor.session.as_ref().is_some_and(|session| {
+            session.confirmation.is_some()
+                && self.output_logical_rect_for_name(Some(&session.output)) == Some(output)
+        });
+        if !self.power_confirmation_on_output(output) && !layout_confirmation {
             return None;
         }
         let mut ink = self.palette().text.components;
         ink[3] = 0.18;
         Some(OverlayShape {
-            key: "layout-modal".into(),
+            key: "confirmation-modal".into(),
             bounds: Rect {
                 x: f64::from(output.loc.x),
                 y: f64::from(output.loc.y),

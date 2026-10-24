@@ -82,6 +82,11 @@ impl App {
         if !self.windows[index].mapped {
             return false;
         }
+        if self.is_power_confirmation(index) {
+            return self.power_confirmation_active()
+                && self.power_confirmation_surface(index)
+                && self.power_confirmation_on_output(output);
+        }
         if self.is_layout_surface(index) {
             return self.layout_surface_visible(index);
         }

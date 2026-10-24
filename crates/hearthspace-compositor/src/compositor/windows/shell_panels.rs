@@ -5,8 +5,9 @@
 //! focus and xdg_toplevel.close events for its lifetime.
 use hearthspace_common::{
     canvas_map_output_name_from_app_id, launcher_output_name_from_app_id,
-    notifications_output_name_from_app_id, power_menu_output_name_from_app_id,
-    quick_panel_output_name_from_app_id, tray_menu_output_name_from_app_id,
+    notifications_output_name_from_app_id, power_confirm_output_name_from_app_id,
+    power_menu_output_name_from_app_id, quick_panel_output_name_from_app_id,
+    tray_menu_output_name_from_app_id,
 };
 use serde_json::{Value, json};
 use smithay::utils::{Logical, Point};
@@ -109,7 +110,7 @@ impl App {
     /// actions dismiss it in the shell before running their callback.
     pub(in crate::compositor) fn dismiss_shell_panels_outside_focus(&self, focus: Option<usize>) {
         for (index, window) in self.windows.iter().enumerate() {
-            if !window.mapped || !self.is_shell_panel(index) {
+            if !window.mapped || !self.is_shell_panel(index) || self.is_power_confirmation(index) {
                 continue;
             }
             let keep = (self.canvas_search_active() && self.canvas_search_panel_allowed(index))
@@ -174,7 +175,12 @@ impl App {
             .filter_map(|(index, window)| {
                 let output =
                     self.output_logical_rect_for_name(window.shell_output_name.as_deref())?;
-                if !self.shell_visible_on_output(output) {
+                let visible = if self.is_power_confirmation(index) {
+                    self.window_visible_on_output(index, output)
+                } else {
+                    self.shell_visible_on_output(output)
+                };
+                if !visible {
                     return None;
                 }
                 let origin =
@@ -189,6 +195,8 @@ impl App {
                     "search"
                 } else if notifications_output_name_from_app_id(&app_id).is_some() {
                     "notifications"
+                } else if power_confirm_output_name_from_app_id(&app_id).is_some() {
+                    "power-confirm"
                 } else if power_menu_output_name_from_app_id(&app_id).is_some() {
                     "power"
                 } else if quick_panel_output_name_from_app_id(&app_id).is_some() {

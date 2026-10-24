@@ -16,6 +16,42 @@ impl IconGlyph {
         Self(Geometry::new(icon, filled))
     }
 
+    /// Export the same paths for clients using another native renderer (the
+    /// session locker uses GTK's secure password editor and Wayland lock role).
+    pub fn svg(&self, size: f64, color: Color) -> String {
+        use std::fmt::Write;
+        let rgba = color.to_rgba8();
+        let color = format!("#{:02x}{:02x}{:02x}", rgba.r, rgba.g, rgba.b);
+        let mut svg = format!(
+            "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{size}\" height=\"{size}\" viewBox=\"0 0 24 24\" stroke-linecap=\"square\" stroke-linejoin=\"miter\" stroke-miterlimit=\"2\" opacity=\"{}\">",
+            f64::from(rgba.a) / 255.0
+        );
+        for part in &self.0.0 {
+            let path = part.path.to_svg();
+            if let Some(rule) = part.fill {
+                let rule = if rule == xilem::masonry::peniko::Fill::EvenOdd {
+                    "evenodd"
+                } else {
+                    "nonzero"
+                };
+                write!(
+                    svg,
+                    "<path d=\"{path}\" fill=\"{color}\" fill-rule=\"{rule}\"/>"
+                )
+                .unwrap();
+            } else {
+                write!(
+                    svg,
+                    "<path d=\"{path}\" fill=\"none\" stroke=\"{color}\" stroke-width=\"{}\"/>",
+                    optical_stroke(size)
+                )
+                .unwrap();
+            }
+        }
+        svg.push_str("</svg>");
+        svg
+    }
+
     /// Paint an optional body tint beneath an outline document/folder glyph.
     /// Only the first closed body path is filled; detail strokes stay unfilled.
     pub fn paint(

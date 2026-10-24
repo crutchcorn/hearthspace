@@ -27,7 +27,7 @@ impl App {
         let front_count = shapes.len();
         shapes.extend(back);
         let modal_index = shapes.len();
-        shapes.extend(self.layout_modal_shape(output));
+        shapes.extend(self.modal_confirmation_shape(output));
         let elements = self.layout_editor.overlays.elements(renderer, &shapes);
         let mut result = LayoutOverlays {
             front: Vec::new(),

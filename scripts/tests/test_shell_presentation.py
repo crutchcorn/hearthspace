@@ -66,7 +66,7 @@ class PopupPresentationTests(unittest.TestCase):
         self,
     ):
         visible = self.frame([((0, 20, 100, 100), (221, 219, 214))])
-        result = presentation.raised_tint(self.background, visible, self.surface)
+        result = presentation.material_tint(self.background, visible, self.surface)
         self.assertEqual(result["background"], [90, 80, 70])
         self.assertEqual(result["visible"], [221, 219, 214])
         for wrong in ((250, 249, 246), (90, 80, 70), (20, 20, 20)):
@@ -74,10 +74,29 @@ class PopupPresentationTests(unittest.TestCase):
                 self.subTest(wrong=wrong),
                 self.assertRaisesRegex(ControlError, "tint"),
             ):
-                presentation.raised_tint(
+                presentation.material_tint(
                     self.background,
                     self.frame([((0, 20, 100, 100), wrong)]),
                     self.surface,
+                )
+
+    def test_power_menu_uses_chrome_tint_and_rejects_raised_opaque_or_missing_fill(
+        self,
+    ):
+        surface = self.surface | {"kind": "power"}
+        visible = self.frame([((0, 20, 100, 100), (174, 169, 161))])
+        result = presentation.material_tint(self.background, visible, surface)
+        self.assertEqual(result["background"], [90, 80, 70])
+        self.assertEqual(result["visible"], [174, 169, 161])
+        for wrong in ((221, 219, 214), (246, 244, 239), (90, 80, 70), (20, 20, 20)):
+            with (
+                self.subTest(wrong=wrong),
+                self.assertRaisesRegex(ControlError, "tint"),
+            ):
+                presentation.material_tint(
+                    self.background,
+                    self.frame([((0, 20, 100, 100), wrong)]),
+                    surface,
                 )
 
     def test_changed_output_geometry_is_not_compared(self):

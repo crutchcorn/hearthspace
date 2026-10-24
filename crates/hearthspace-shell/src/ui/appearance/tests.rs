@@ -60,6 +60,9 @@ fn unchanged_appearance_reuses_properties_and_changed_palette_repaints_open_cont
     );
     assert_eq!(ui.state.outputs[0].query, "preserve query");
     ui.harness
+        .process_text_event(TextEvent::key_down(Key::Named(NamedKey::Enter)));
+    ui.dispatch(&apps);
+    ui.harness
         .process_text_event(TextEvent::key_up(Key::Named(NamedKey::Enter)));
     ui.dispatch(&apps);
     assert!(

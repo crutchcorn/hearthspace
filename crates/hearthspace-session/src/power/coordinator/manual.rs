@@ -62,6 +62,7 @@ impl Cycle {
                 available: true,
                 busy: false,
                 error: None,
+                ..Reply::default()
             },
             Err(error) => Reply::unavailable(error),
         }

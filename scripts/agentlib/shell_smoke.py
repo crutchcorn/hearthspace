@@ -131,19 +131,26 @@ def pointer_panels(smoke):
     # Mapping the replacement and destroying the previous Wayland surface are
     # separate events. Require both to finish within the existing deadline.
     checks.opened(smoke, "power", exclusive=True)
-    smoke.until("nested Lock option", lambda: checks.elements(smoke, "Lock"))
-    checks.tab_to(smoke, "Lock")
-    smoke.capture("power-options")
-    checks.click(smoke, "Log out", "power")
     smoke.until(
-        "logout confirmation", lambda: checks.elements(smoke, "Confirm log out")
+        "nested Lock screen option", lambda: checks.elements(smoke, "Lock screen")
+    )
+    checks.tab_to(smoke, "Lock screen")
+    smoke.capture("power-options")
+    checks.click(smoke, "Log off", "power")
+    checks.opened(smoke, "power-confirm", exclusive=True)
+    smoke.until(
+        "log off confirmation",
+        lambda: checks.elements(smoke, "Log off?", role="dialog"),
     )
     smoke.capture("power-logout-confirmation")
     checks.tab_to(smoke, "Cancel")
     with Input(smoke.control) as inputs:
         inputs.chord("enter")
-    smoke.until("logout cancelled", lambda: checks.elements(smoke, "Log out"))
-    checks.click(smoke, "Close power menu", "power")
+    checks.closed(smoke)
+    checks.click(smoke, "Power")
+    checks.opened(smoke, "power", exclusive=True)
+    with Input(smoke.control) as inputs:
+        inputs.chord("esc")
     checks.closed(smoke)
     if smoke.control.status().get("locked"):
         raise ControlError("cancelled power menu unexpectedly locked the session")
@@ -151,8 +158,9 @@ def pointer_panels(smoke):
         "power-menu-verified",
         confirmation_cancelled=True,
         lock_option_present=True,
-        keyboard_focus=["Lock", "Cancel"],
+        keyboard_focus=["Lock screen", "Cancel"],
         keyboard_cancel=True,
+        escape_closes_menu=True,
     )
 
 

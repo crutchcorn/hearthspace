@@ -1,0 +1,4 @@
+# Hearthspace authenticates the current user and checks the account policy.
+# No password changes or PAM login sessions are opened by the lock client.
+auth include login
+account include login

@@ -103,6 +103,7 @@ impl Supervisor {
     }
 
     pub(crate) fn start_compositor(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        self.prepare_development_locker()?;
         let backend = match self.backend {
             Some(Backend::Native) => CompositorBackend::NativeTty,
             Some(Backend::Nested) => CompositorBackend::NestedWinit,

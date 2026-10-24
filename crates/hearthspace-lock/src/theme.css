@@ -1,0 +1,59 @@
+.lock-screen {
+  background: @field@;
+  color: @ink@;
+  font-family: "Liberation Sans", sans-serif;
+  font-size: 13px;
+}
+.lock-screen .content { padding: 28px 32px; }
+.lock-screen.narrow .content { padding: 24px; }
+.lock-screen .status { color: @muted@; font-size: 12px; font-feature-settings: "tnum"; }
+.lock-screen .time { font-size: 112px; font-weight: 300; letter-spacing: -5px; font-feature-settings: "tnum"; }
+.lock-screen.narrow .time { font-size: 68px; letter-spacing: -3px; }
+.lock-screen.compact .time { font-size: 64px; }
+.lock-screen .date { color: @muted@; font-size: 16px; }
+.lock-screen .avatar {
+  min-width: 62px; min-height: 62px;
+  border: 1px solid @accent-border@; border-radius: 20px;
+  background: @surface@;
+  box-shadow: inset 0 1px @edge@, inset 0 -1px @edge-bottom@,
+    0 24px 72px -22px @panel-shadow@, 0 6px 24px -8px @accent-shadow@;
+}
+.lock-screen .name { font-size: 22px; font-weight: 500; letter-spacing: -0.4px; }
+.lock-screen .welcome { color: @muted@; font-size: 13px; }
+.lock-screen .password-row {
+  padding: 5px; border: 1px solid @border@; border-radius: 14px;
+  background: @raised@;
+  box-shadow: inset 0 1px @edge@, inset 0 -1px @edge-bottom@,
+    0 24px 72px -22px @panel-shadow@, 0 6px 24px -8px @accent-shadow@;
+  transition: border-color 160ms ease, box-shadow 160ms ease;
+}
+.lock-screen .password-row:focus-within {
+  border-color: @accent-border@;
+  box-shadow: inset 0 1px @active-edge@,
+    0 28px 88px -18px @glow@, 0 8px 32px -12px @panel-shadow@;
+}
+.lock-screen .password-row.error { border-color: @strong@; }
+.lock-screen entry.password, .lock-screen entry.password text {
+  min-width: 0; min-height: 38px; border: none; outline: none;
+  background: transparent; box-shadow: none; color: @ink@;
+  font-size: 14px; padding: 0; caret-color: @ink@;
+}
+.lock-screen entry.password text { padding: 0 9px; }
+.lock-screen entry.password text placeholder { color: @muted@; }
+.lock-screen button.reveal {
+  min-width: 38px; min-height: 38px; padding: 0; margin: 0;
+  border: none; border-radius: 10px; color: @muted@;
+  background: transparent; box-shadow: none;
+}
+.lock-screen button.reveal:hover { color: @strong@; background: @hover@; }
+.lock-screen button.submit {
+  min-width: 38px; min-height: 38px; padding: 0; margin: 0;
+  border: none; border-radius: 10px; background: @accent@; color: @accent-ink@;
+  box-shadow: inset 0 1px @edge@;
+}
+.lock-screen button.submit:hover { background: @accent-hover@; }
+.lock-screen button.submit:disabled {
+  background: @control@; color: @muted@; box-shadow: none;
+}
+.lock-screen button.submit:focus-visible, .lock-screen button.reveal:focus-visible { outline: 2px solid @strong@; outline-offset: 2px; }
+.lock-screen .feedback { min-height: 18px; color: @muted@; font-size: 12px; }

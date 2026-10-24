@@ -80,17 +80,26 @@ impl App {
         self.grab_canvas_peek_target(window_index);
         self.cancel_group_window_motion(self.windows[window_index].id);
         self.prepare_window_pointer_operation();
-        self.windows[window_index].pending_resize = None;
-        self.drag = Some(DragState {
-            window_id: self.windows[window_index].id,
-            pointer_start: self.window_pointer_start(window_index),
-            window_start: self.windows[window_index].position,
-            visible_start: self.window_canvas_rect(window_index).loc,
-        });
+        self.begin_window_move_at(window_index, self.window_pointer_start(window_index));
         self.start_window_pointer_grab(window_index);
         // Recognition and the client's request can arrive after the finger has
         // moved. Include that motion instead of leaving the window behind it.
         self.apply_pointer_motion(self.raw_pointer_location, InputTime::now());
+        self.request_redraw();
+    }
+
+    pub(in crate::compositor) fn begin_window_move_at(
+        &mut self,
+        window_index: usize,
+        location: Point<f64, Logical>,
+    ) {
+        self.windows[window_index].pending_resize = None;
+        self.drag = Some(DragState {
+            window_id: self.windows[window_index].id,
+            pointer_start: location,
+            window_start: self.windows[window_index].position,
+            visible_start: self.window_canvas_rect(window_index).loc,
+        });
         self.request_redraw();
     }
 
@@ -100,14 +109,28 @@ impl App {
         if self.session_locked() {
             return;
         }
+        if let Some(location) = self.window_touch_operation_position() {
+            self.update_window_operation_at(location);
+            return;
+        }
         if !self.desktop_pointer_motion() && !self.group_pointer_motion(InputTime::now()) {
             self.update_window_pointer_operation();
         }
     }
 
     pub(in crate::compositor) fn update_window_pointer_operation(&mut self) -> bool {
+        if self.has_window_touch_operation() {
+            return true;
+        }
+        self.update_window_operation_at(self.raw_pointer_location)
+    }
+
+    pub(in crate::compositor) fn update_window_operation_at(
+        &mut self,
+        location: Point<f64, Logical>,
+    ) -> bool {
         if let Some(drag) = self.drag.as_ref() {
-            let motion = self.raw_pointer_location - drag.pointer_start;
+            let motion = location - drag.pointer_start;
             let delta = Point::<f64, Logical>::from((
                 motion.x / self.viewport_scale,
                 motion.y / self.viewport_scale,
@@ -147,7 +170,7 @@ impl App {
         if let Some(resize) = self.resize.as_ref() {
             self.cursor_icon = resize_cursor_icon(resize.edges);
             self.cursor_surface = None;
-            self.update_resize(self.raw_pointer_location);
+            self.update_resize(location);
             return true;
         }
         false

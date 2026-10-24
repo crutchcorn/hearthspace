@@ -111,11 +111,16 @@ pub(super) struct Fixture {
 
 impl Fixture {
     pub async fn new() -> Self {
-        let bus = Bus::start();
-        let state = Arc::new(Mutex::new(State {
+        Self::with_state(State {
             active: true,
             ..State::default()
-        }));
+        })
+        .await
+    }
+
+    pub async fn with_state(initial: State) -> Self {
+        let bus = Bus::start();
+        let state = Arc::new(Mutex::new(initial));
         let service = service(&bus, state.clone()).await;
         let logind = Logind::from_connection(bus.connection().await)
             .await
@@ -141,6 +146,7 @@ impl Fixture {
             lid_request: None,
             hint: None,
             manual: Manual::default(),
+            shared: Shared::new(),
         }
     }
 
@@ -149,6 +155,14 @@ impl Fixture {
             .release_name("org.freedesktop.login1")
             .await
             .unwrap();
+    }
+
+    pub async fn connect_logind(&self) -> io::Result<(Logind, zbus::Connection)> {
+        let connection = self._bus.connection().await;
+        let logind = Logind::from_connection(connection.clone())
+            .await
+            .map_err(io::Error::other)?;
+        Ok((logind, connection))
     }
 
     pub async fn tick(&self, cycle: &mut Cycle, snapshot: &Snapshot, status: &mut Status) {

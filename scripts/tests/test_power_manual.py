@@ -20,11 +20,17 @@ LOCKED = {
     "windows": [],
 }
 UNLOCKED = LOCKED | {"locked": False, "lock_confirmed": False}
-OWNER = {"pid": 20, "start_ticks": 400, "parent_pid": 10, "comm": "swaylock"}
+OWNER = {"pid": 20, "start_ticks": 400, "parent_pid": 10, "comm": "hearthspace-loc"}
 COMPOSITOR = {"pid": 10, "start_ticks": 300}
 
 
 class ManualConfigurationTests(unittest.TestCase):
+    def test_old_cli_spelling_selects_only_the_new_locker(self):
+        args = SimpleNamespace(manual_unlock=True, locker="swaylock")
+        power_manual.configure(args)
+        self.assertEqual(args.locker, "hearthspace-lock")
+        self.assertEqual(args.total_timeout, 540)
+
     def test_default_mode_never_waits_for_a_password(self):
         args = SimpleNamespace()
         power_manual.configure(args)
@@ -33,7 +39,7 @@ class ManualConfigurationTests(unittest.TestCase):
         self.assertEqual(args.total_timeout, 240)
 
     def test_manual_opt_in_expands_total_budget_and_keeps_explicit_larger_budget(self):
-        args = SimpleNamespace(manual_unlock=True, locker="swaylock")
+        args = SimpleNamespace(manual_unlock=True, locker="hearthspace-lock")
         power_manual.configure(args)
         self.assertEqual((args.unlock_timeout, args.total_timeout), (300, 540))
         args.unlock_timeout, args.total_timeout = 900, 1200
@@ -44,22 +50,26 @@ class ManualConfigurationTests(unittest.TestCase):
         for values in (
             {"manual_unlock": True, "locker": "fixture"},
             {"unlock_timeout": 300},
-            {"manual_unlock": True, "locker": "swaylock", "unlock_timeout": 0},
-            {"manual_unlock": True, "locker": "swaylock", "unlock_timeout": 901},
+            {"manual_unlock": True, "locker": "hearthspace-lock", "unlock_timeout": 0},
             {
                 "manual_unlock": True,
-                "locker": "swaylock",
+                "locker": "hearthspace-lock",
+                "unlock_timeout": 901,
+            },
+            {
+                "manual_unlock": True,
+                "locker": "hearthspace-lock",
                 "unlock_timeout": float("nan"),
             },
             {
                 "manual_unlock": True,
-                "locker": "swaylock",
+                "locker": "hearthspace-lock",
                 "unlock_timeout": float("inf"),
             },
-            {"manual_unlock": True, "locker": "swaylock", "total_timeout": 539},
+            {"manual_unlock": True, "locker": "hearthspace-lock", "total_timeout": 539},
             {
                 "manual_unlock": True,
-                "locker": "swaylock",
+                "locker": "hearthspace-lock",
                 "total_timeout": float("inf"),
             },
         ):
@@ -96,7 +106,7 @@ class ManualObservationTests(unittest.TestCase):
             )
         )
         self.owners = self.stack.enter_context(
-            patch("agentlib.power_manual.verify.owned_swaylocks", return_value=[OWNER])
+            patch("agentlib.power_manual.verify.owned_lockers", return_value=[OWNER])
         )
         self.smoke = SimpleNamespace(
             args=SimpleNamespace(unlock_timeout=5, timeout=1),
@@ -155,7 +165,7 @@ class ManualObservationTests(unittest.TestCase):
     def test_replaced_locker_or_restarted_compositor_cannot_pass(self):
         self.control.status.return_value = LOCKED
         self.owners.return_value = [OWNER | {"start_ticks": 401}]
-        with self.assertRaisesRegex(ControlError, "swaylock changed"):
+        with self.assertRaisesRegex(ControlError, "hearthspace-lock changed"):
             power_manual.observe(self.smoke)
         self.owners.return_value = [OWNER]
         self.identity.return_value = COMPOSITOR | {"start_ticks": 301}
@@ -180,7 +190,7 @@ class ManualWorkflowTests(unittest.TestCase):
     def test_desktop_checks_follow_successful_observation_only(self):
         for failure in (None, ControlError("local unlock timed out")):
             smoke = object.__new__(PowerSmoke)
-            smoke.locker, smoke.manual_unlock = "swaylock", True
+            smoke.locker, smoke.manual_unlock = "hearthspace-lock", True
             smoke.connect = Mock(
                 return_value={
                     "processes": {

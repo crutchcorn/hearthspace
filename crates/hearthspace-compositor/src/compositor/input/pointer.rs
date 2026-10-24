@@ -55,7 +55,8 @@ impl App {
 
     pub(in crate::compositor) fn synthesize_axis(&mut self, horizontal: f64, vertical: f64) {
         trace!(horizontal, vertical, "synthesizing pointer axis");
-        if self.layout_group_axis(horizontal, vertical)
+        if self.has_window_touch_operation()
+            || self.layout_group_axis(horizontal, vertical)
             || self.zoom_from_scroll_amount(Some(vertical))
         {
             return;
@@ -100,6 +101,14 @@ impl App {
         }
         self.pointer_location = constrained.visible;
         self.raw_pointer_location = constrained.raw;
+        if self.has_window_touch_operation() {
+            // Keep the mouse position for re-entry, without moving the finger's
+            // window or sending hover events through its compositor-owned drag.
+            if self.software_cursor_visible && self.pointer_location != previous_location {
+                self.request_redraw();
+            }
+            return;
+        }
         if !self.dispatching_touch {
             self.focused_shell_pointer(self.pointer_location, false);
         }

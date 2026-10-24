@@ -73,6 +73,7 @@ fn material_keeps_native_button_identity_geometry_and_pointer_keyboard_actions()
         }),
         "keyboard focus must draw outside the native button's measured bounds"
     );
+    harness.process_text_event(TextEvent::key_down(Key::Named(NamedKey::Enter)));
     harness.process_text_event(TextEvent::key_up(Key::Named(NamedKey::Enter)));
     assert_eq!(
         harness.pop_action::<ButtonPress>().unwrap().1,
@@ -165,6 +166,7 @@ fn live_palette_repaints_material_and_keeps_native_focus_and_identity() {
     assert_ne!(before, harness.render());
     assert_eq!(harness.focused_widget_id(), Some(button));
     assert_eq!(harness.access_node(button).unwrap().bounding_box(), bounds);
+    harness.process_text_event(TextEvent::key_down(Key::Named(NamedKey::Enter)));
     harness.process_text_event(TextEvent::key_up(Key::Named(NamedKey::Enter)));
     assert_eq!(harness.pop_action::<ButtonPress>().unwrap().1, button);
 }

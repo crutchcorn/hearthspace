@@ -18,6 +18,8 @@ mod dnd;
 mod pixels;
 #[path = "canvas_map_client/resize.rs"]
 mod resize;
+#[path = "canvas_map_client/touch.rs"]
+mod touch;
 
 struct Window {
     surface: wl_surface::WlSurface,
@@ -33,6 +35,7 @@ struct Window {
 
 #[derive(Default)]
 struct State {
+    touch: touch::State,
     dnd: dnd::State,
     decorations: decoration::State,
     compositor: Option<wl_compositor::WlCompositor>,
