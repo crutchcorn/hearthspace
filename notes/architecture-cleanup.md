@@ -6,8 +6,10 @@ branch is `cleanup`, created from `login-toolchain` at
 `5de99db2cb11d1f0494c7178a9bb7b050f74994a` on 2026-10-23.
 
 Internal structures and wire formats may change. Preserve the existing visible
-behavior unless a listed bug requires correction. This is a working tracker;
-source readiness does not mean validation is complete.
+behavior unless a listed bug requires correction. All 16 items are implemented
+and validated as of 2026-10-23. The item descriptions retain the approved review
+scope; the evidence log is chronological, with final results below. Maintained
+boundaries and migration guidance live in [Architecture](../docs/ARCHITECTURE.md).
 
 ## Boundaries to retain
 
@@ -27,22 +29,22 @@ source readiness does not mean validation is complete.
 
 | ID | Cleanup | Status |
 | --- | --- | --- |
-| C01 | One owned-process cleanup barrier | Implementing |
-| C02 | Atomic asynchronous display preference transactions | Implementing |
-| C03 | Live output observations separate from preferences | Planned |
-| C04 | Durable frame targets with live window bindings | Implementing |
-| C05 | One bounded app/file activation path | Planned |
-| C06 | Consistent ordinary-app environment | Planned |
-| C07 | Shared typed control contracts and bounded framing | Planned |
-| C08 | Shared desktop services and UI primitives | Planned |
-| C09 | Stable window identity and centralized retirement | Planned |
-| C10 | Explicit interaction admission and transitions | Planned |
-| C11 | One sampled presentation projection | Planned |
-| C12 | Authoritative runtime-artifact inventory | Planned |
-| C13 | Valid versioned TOML and legacy migration | Implementing |
-| C14 | Cross-process favorites transaction locking | Implemented; focused checks passed |
-| C15 | Committed preference refresh/notification ownership | Planned |
-| C16 | Documentation and full validation | In progress |
+| C01 | One owned-process cleanup barrier | Complete |
+| C02 | Atomic asynchronous display preference transactions | Complete |
+| C03 | Live output observations separate from preferences | Complete |
+| C04 | Durable frame targets with live window bindings | Complete |
+| C05 | One bounded app/file activation path | Complete |
+| C06 | Consistent ordinary-app environment | Complete |
+| C07 | Shared typed control contracts and bounded framing | Complete |
+| C08 | Shared desktop services and UI primitives | Complete |
+| C09 | Stable window identity and centralized retirement | Complete |
+| C10 | Explicit interaction admission and transitions | Complete |
+| C11 | One sampled presentation projection | Complete |
+| C12 | Authoritative runtime-artifact inventory | Complete |
+| C13 | Valid versioned TOML and legacy migration | Complete |
+| C14 | Cross-process favorites transaction locking | Complete |
+| C15 | Committed preference refresh/notification ownership | Complete |
+| C16 | Documentation and full validation | Complete |
 
 ## C01: One owned-process cleanup barrier
 
@@ -74,7 +76,7 @@ appearance/background changes and newer local previews must survive.
 
 Acceptance: first save of a third display, invalid transaction leaves the whole
 file unchanged, concurrent edits, local preview/selection preservation, and
-persisted success followed by failed compositor reload.
+successful persistence while the compositor is unavailable.
 
 ## C03: Live output observations separate from preferences
 
@@ -255,7 +257,6 @@ lifecycle/security boundaries independently. Commit validated increments; no
 push is implied by this task.
 
 ## Implementation and evidence log
-
 - 2026-10-23: fetched `login-toolchain`, confirmed reviewed SHA, created `cleanup`.
   C01/C02/C04/C13 implementation and focused regressions are in progress. No
   execution validation or completion claim yet.
@@ -263,3 +264,128 @@ push is implied by this task.
   bounded at 500 ms. The 33 focused favorites tests pass, including competing
   subprocesses and timeout/retry. Shell library/test Clippy passed with warnings
   denied. Full workspace and subsequent extraction validation remain required.
+- C01: the installed cleanup helper and supervisor now share the persisted-intent
+  app-scope barrier. Focused Rust helper/supervisor tests and all 25 login-guard
+  Python tests pass. Native scope-order acceptance is still pending.
+- C02/C13: 174 IPC, Settings, and daemon tests passed after atomic display
+  transactions and real TOML migration. C15 extends these files; rerun required.
+- C03: common 97, Settings 131, and Wayland observer 14 tests passed. A subsequent
+  position-observation addition had a dispatch-arm compile error, corrected by
+  root; its final rerun remains pending. No native hotplug evidence yet.
+- C07/C08: shared desktop services passed 110 unit and six integration tests;
+  UI components passed 48. Typed IPC contracts passed 29 tests, and the shell
+  library passed 430. New C05/C15 integrations require subsequent reruns.
+- C12: session binary 120 tests passed (one existing ignored), plus seven artifact
+  preparation regressions. Four inventory and eight dev-app Python tests passed.
+  Full Python suite passed 586 tests, with 14 skips; no host installation occurred.
+- C04/C09/C10/C11: durable bindings, window store/retirement, interaction policy,
+  and sampled projection source is ready. Compositor compile/headless validation
+  and independent lifecycle/projection review remain required.
+- C15: 33 IPC, 135 Settings, and 41 daemon tests passed. Picker cancellation and
+  failure regressions were added afterward; compositor subscription and consumer
+  reruns remain pending. The idle-X11 integration now requires committed changes
+  without sending a reload command.
+- C05/C06: source is ready and desktop tests passed. Integrated session checks
+  exposed non-private fixture directories under umask 0002 and asynchronous portal
+  name release; fixtures and explicit release have been corrected, rerun pending.
+- C10/C11 independent review found no policy issue. Two preview gaps are being
+  repaired: modal hit selection must use the saved render sample, and the terminal
+  animation sample must schedule its final redraw even after the wall-time deadline.
+- Integrated validation: all 514 compositor library tests passed, including the
+  ten cached-preview/final-frame regressions. Real-client runs passed 26 grab
+  lifecycle cases, 12 X11 interaction cases, and the new family/remap/ID case.
+  The frame filter passed 35/36: the remaining fixture overlaps the default
+  system group during intentional ungrouping; a separate canonical drop review
+  finding is being repaired with a regression.
+- Settings review repairs now pass all 141 Settings and 42 daemon tests: retained
+  disconnected drafts, independent primary-metadata retry, equality/generation
+  acknowledgment ordering, and both response-encoding limits. The shared
+  observer's 14 tests pass. Independent repair review is running.
+- Integrated session rerun passed 129 tests (one pre-existing ignored). The
+  launch/environment review identified inherited nested activation ownership,
+  complementary audio overrides, and launch queuing behind desktop filesystem
+  work; repairs and five asynchronous UI fixture migrations are in progress.
+- Python Ruff check and format checks pass for all 195 files. Full workspace
+  checks, native acceptance, documentation finalization, and commits remain.
+- C04 repair: all 38 frame-layout real-client tests pass. Deliberate drops resolve
+  canonical slots before settlement; absent and transient targets retain their
+  intended behavior. Independent review found no remaining issue.
+- C10/C11: focused real-client suites pass: canvas settlement 15, canvas search
+  11, switcher 7, remote input 4, CSD lifecycle 7, and session locking 5. The
+  preview repair review found no remaining issue.
+- C15: idle X11 appearance updates now pass without a reload command. Display
+  acknowledgment review requires post-commit reconciliation for ambiguous
+  observations and generation advancement even on identical reconnect reads;
+  the final narrow correction remains under validation.
+- C01/C12 independent source review passed. The activation-failure, eight cleanup
+  barrier, two scope-guard, and seven artifact-preparation tests pass after test
+  directories were made explicitly private instead of depending on umask.
+- Recorded `2ce341d` for shared IPC and transactional settings, and `298a4ad` for
+  output observation/identity. Package Clippy with warnings denied and formatting
+  passed for these boundaries. No push performed.
+- C05/C06 integration: desktop 118 unit plus six integration tests, session 131
+  unit tests (one pre-existing ignored), and shell 436 library tests pass. Nested
+  selected-bus inheritance and caller-lifetime cancellation during preparation
+  remain the final launch review repairs; audio publication/retirement passed
+  both real broker/manager tests and source review.
+- Final launch lifetime review found no remaining issue. Caller deadlines and
+  cancellation reach pre-spawn admission; legacy half-close/capture and internal
+  launch semantics remain intact. Settings now passes all 145 tests, including
+  same-cursor reconnect reconciliation. Workspace rustfmt, Ruff, and Clippy with
+  warnings denied pass; the full build and execution suites are running.
+- Final workspace gate passes formatting, Ruff, warning-free Clippy, full build,
+  and 1,986 Rust tests across 52 suites (one existing isolated helper ignored).
+  The first full Python run executed 586 tests and found two failures: obsolete
+  missing-program error wording and pending launch feedback shifting the favorite
+  drawing pad. The error assertion now checks the preserved ENOENT diagnostic.
+  Pending drawing feedback uses its reserved slot; both rendered regressions
+  fail with the original row and pass with the repair. Real workflow and full
+  Python reruns are in progress. Evidence is retained under
+  `/tmp/hearthspace-cleanup-final-e2e` and `/tmp/hearthspace-cleanup-final-e2e-2`.
+- The focused real favorite workflow passes, including cancelled/unknown drawings
+  and scaled immediate launch. The following full Python run passed its other
+  585 tests but correctly rejected reuse of that focused run's evidence directory.
+  No product change was needed; the complete suite is rerunning in a fresh
+  `/tmp/hearthspace-cleanup-final-e2e-3` directory. Implementation is committed
+  as `e494532`; native acceptance and final documentation are still pending.
+- Final Python run passes all 586 tests with E2E/accessibility/tray requirements
+  enabled and no skips. Native presentation and shell workflows pass; the
+  switcher passes all 41 keyboard/touchpad/touchscreen stages. Each session
+  restored tty2, stopped owned scopes, and removed its runtime.
+- The exclusive-login-guard crash fixture was inconclusive: its allocation-lock
+  lease also delayed the native stop path. The child exited while runtime remained;
+  eventual recovery completed, but that does not prove which cleanup owner removed
+  the directory. Preserve attempt `hearthspace-cleanup-native-barrier-acceptance-20261023-1`.
+  The separate shared-helper and ordinary crash runs below replace this test
+  strategy. The failed attempt remains preserved; no production repair was needed.
+
+## Final validation
+
+All implementation and review repairs are committed through `e494532`; maintained
+architecture/migration documentation is committed as `d6a4d41`. No push occurred.
+
+- Workspace rustfmt, Ruff check/format, warning-free Clippy, and full build pass.
+  Cargo checks used `--locked --workspace --all-targets` and
+  `--features udev,e2e,test-apps`; Clippy used `-D warnings`.
+- Rust: **1,986 passed**, zero failed, one existing isolated helper ignored across
+  52 suites. [Rust/build/lint evidence](/tmp/hearthspace-cleanup-final-e2e-2).
+- Python: **586 passed**, zero skipped, with E2E, accessibility, and tray checks
+  required. [Fresh full-run evidence](/tmp/hearthspace-cleanup-final-e2e-3).
+- Native presentation, shell/Settings, and 41 switcher input stages pass:
+  [presentation](/tmp/hearthspace-cleanup-native-success-20261023-1),
+  [shell](/tmp/hearthspace-cleanup-native-shell-20261023-1), and
+  [switcher](/tmp/hearthspace-cleanup-native-switcher-20261023-1).
+- The [installed shared helper](/tmp/hearthspace-cleanup-native-live-helper-20261023-1)
+  remained pending after the delayed app exited, then succeeded 54 ms later.
+  The original runtime and supervisor survived until normal harness stop.
+- [Composed crash recovery](/tmp/hearthspace-cleanup-native-crash-20261023-1)
+  positively observed app exit with the original runtime still present, then
+  removal 18 ms later and matching `login-cleaned`. Both cases retained every
+  child runtime check, preserved the unrelated sentinel, and cleaned all owned
+  processes/runtime with tty2 restored. They do not claim exclusive guard removal;
+  actual-guard deterministic tests establish its call-before-delete boundary.
+- Hardware: Linux `7.0.0-38-generic`, physical AMD Strix Radeon 880M/890M,
+  `amdgpu`, one 2560×1600 eDP output; native captures cover scales 1 and 2.
+  Multi-output hotplug is covered by protocol tests, not physical unplugging.
+  Crash cases use a private bus; shared activation uses isolated broker tests.
+  No host packages or configuration were changed by this cleanup.
