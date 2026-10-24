@@ -127,6 +127,9 @@ fn closed_pin_launches_on_its_output_then_pointer_and_keyboard_cycle_existing_wi
     );
     ui.harness.focus_on(Some(running));
     ui.harness
+        .process_text_event(TextEvent::key_down(KeyboardKey::Named(NamedKey::Enter)));
+    ui.dispatch(&build);
+    ui.harness
         .process_text_event(TextEvent::key_up(KeyboardKey::Named(NamedKey::Enter)));
     ui.dispatch(&build);
     assert!(ui.state.windows[1].focused);
@@ -225,6 +228,9 @@ fn compact_control_reaches_every_closed_pin_and_running_app_without_losing_focus
         "Switch to uninstalled",
     ] {
         assert_eq!(ui.button(&format!("Next app: {label}")), button);
+        ui.harness
+            .process_text_event(TextEvent::key_down(KeyboardKey::Named(NamedKey::Enter)));
+        ui.dispatch(&build);
         ui.harness
             .process_text_event(TextEvent::key_up(KeyboardKey::Named(NamedKey::Enter)));
         ui.dispatch(&build);
