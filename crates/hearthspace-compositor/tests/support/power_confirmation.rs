@@ -10,6 +10,9 @@ use hearthspace_common::{
 };
 use serde_json::Value;
 
+#[path = "power_confirmation/lifecycle.rs"]
+mod lifecycle;
+
 const COLOR: [u8; 4] = [0x66, 0xcc, 0, 0xff];
 
 fn panel(compositor: &HeadlessCompositor, kind: &str) -> Value {

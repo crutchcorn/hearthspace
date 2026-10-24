@@ -28,6 +28,11 @@ impl App {
             && self
                 .active_shell_panel_index()
                 .is_some_and(|index| self.windows[index].id == id);
+        if power_confirmation {
+            // Preserve the click before focus callbacks or surface teardown can
+            // discard Smithay's implicit grab and redirect its held releases.
+            self.retain_retiring_window_pointer_grab(id);
+        }
         let retained_context_focus = restore_panel_focus
             && surface
                 .as_ref()
