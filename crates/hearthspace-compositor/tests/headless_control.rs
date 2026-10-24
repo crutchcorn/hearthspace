@@ -137,6 +137,9 @@ mod csd_lifecycle;
 mod x11_interactive;
 
 #[cfg(feature = "test-apps")]
+#[path = "support/touch_cancel.rs"]
+mod touch_cancel;
+#[cfg(feature = "test-apps")]
 #[path = "support/touch_interactive.rs"]
 mod touch_interactive;
 

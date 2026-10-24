@@ -45,7 +45,7 @@ masonry_winit = { path = "vendor/masonry_winit" }
 masonry = { path = "vendor/masonry" }
 
 [patch."https://github.com/Smithay/smithay"]
-# Publish XSettings promptly and dispatch X11 move/resize cancellation.
+# Publish XSettings and correctly dispatch X11 and touch cancellation.
 # Provenance and removal conditions: patches/README.md.
 smithay = { path = "vendor/smithay" }
 
