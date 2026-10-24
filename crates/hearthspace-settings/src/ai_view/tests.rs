@@ -192,6 +192,8 @@ fn keyboard_off_requires_confirmation_defaults_to_keep_and_restores_switch_focus
         modal::button(&ui, "Keep AI")
     );
     ui.harness
+        .process_text_event(TextEvent::key_down(Key::Named(NamedKey::Enter)));
+    ui.harness
         .process_text_event(TextEvent::key_up(Key::Named(NamedKey::Enter)));
     ui.dispatch(&view);
     assert!(!ui.state.ai.confirm_off);
@@ -201,6 +203,8 @@ fn keyboard_off_requires_confirmation_defaults_to_keep_and_restores_switch_focus
         .process_text_event(TextEvent::key_up(Key::Character(" ".into())));
     ui.dispatch(&view);
     modal::focus(&mut ui, "Turn off and delete");
+    ui.harness
+        .process_text_event(TextEvent::key_down(Key::Named(NamedKey::Enter)));
     ui.harness
         .process_text_event(TextEvent::key_up(Key::Named(NamedKey::Enter)));
     ui.dispatch(&view);
