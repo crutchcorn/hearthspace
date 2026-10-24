@@ -275,6 +275,8 @@ See [vendored provenance and refresh steps](../vendor/accesskit_atspi_common/PRO
   pending-up retirement, completed sequences, stale-input suppression, fresh
   slot reuse, implicit-grab release, and absence of pointer events. No renderer,
   compositor process, or existing Hearthspace test fixture is involved.
+  The additional `headless_control touch_cancel::` and `power_confirmation::`
+  regressions exercise cancellation through shell clients and modal input.
   All six passed with the patch. Restoring only the original cancellation code
   failed five framed, mixed-client and pending-up regressions; restoring the
   patch passed all six again. The three

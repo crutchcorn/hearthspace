@@ -34,7 +34,8 @@ To refresh:
    removal criteria in the [patch ledger](../../patches/README.md).
 4. Refresh `Cargo.lock` and run the idle-X11, X11 interaction, and
    `smithay_touch_cancel` protocol regressions plus the live GTK3 appearance and
-   native touch cancellation checks before removing a patch or changing the
+   native touch cancellation checks, plus the headless `touch_cancel::` and
+   `power_confirmation::` regressions, before removing a patch or changing the
    pinned revision. Touch regressions live in
    `crates/hearthspace-compositor/tests/smithay_touch_cancel.rs` and its dedicated
    support module; they use the workspace's existing Wayland client dependency.
