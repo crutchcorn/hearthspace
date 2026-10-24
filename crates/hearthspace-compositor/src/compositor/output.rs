@@ -260,6 +260,13 @@ impl App {
         self.outputs.primary.logical_rect()
     }
 
+    pub(super) fn primary_output_name(&self) -> Option<&str> {
+        self.outputs
+            .primary
+            .advertised
+            .then_some(self.outputs.primary.name.as_str())
+    }
+
     pub(super) fn minimum_output_client_logical_width(&self) -> i32 {
         self.outputs.minimum_client_logical_width()
     }

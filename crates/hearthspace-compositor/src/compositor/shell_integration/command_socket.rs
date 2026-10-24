@@ -11,7 +11,7 @@ use smithay::reexports::calloop::LoopHandle;
 use tracing::{debug, error, info, warn};
 
 use crate::config::{SHELL_COMMAND_SOCKET_ENV, SHELL_COMMAND_SOCKET_NAME};
-use hearthspace_shell::ShellCommand;
+use hearthspace_ipc::command::ShellCommand;
 
 use super::runtime_path;
 use crate::compositor::CalloopData;
@@ -23,7 +23,7 @@ mod source;
 mod tests;
 
 use reply::Limits;
-use source::CommandSource;
+pub(in crate::compositor::shell_integration) use source::CommandSource;
 
 thread_local! {
     // All listeners on this compositor thread share the same memory/connection budget.
@@ -89,6 +89,12 @@ pub(in crate::compositor) enum ControlReply {
     Err(String),
     /// Completed asynchronously, for example after a native page flip.
     Deferred(Receiver<ControlReply>),
+    /// Only a socket-attached launch is cancelled with its caller. Internal
+    /// actions may drop this reply and retain the worker's own bounded lifetime.
+    Launch(
+        Receiver<ControlReply>,
+        std::sync::Arc<super::launch::pending::Lifetime>,
+    ),
 }
 
 impl CalloopData {

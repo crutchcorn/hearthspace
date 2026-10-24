@@ -63,10 +63,11 @@ impl App {
                 })
             })
             .collect();
+        let canonical = self.canonical_layout_target(&target.target);
         if matches!(target.target.kind, TargetKind::Window | TargetKind::Item) {
             for (output, layout) in &mut self.layout_editor.layouts {
                 if *output != target.output {
-                    layout.remove_target(&target.target);
+                    layout.remove_target(&canonical);
                 }
             }
         }
@@ -74,7 +75,7 @@ impl App {
             .layouts
             .get_mut(&target.output)
             .unwrap()
-            .set_placement(&target.target, placement);
+            .set_placement(&canonical, placement);
         self.layout_editor.placed = self.frame_placements();
         if self.settle_frame_overlaps() {
             self.layout_editor.placed = self.frame_placements();

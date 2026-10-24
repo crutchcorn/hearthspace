@@ -367,10 +367,7 @@ impl CalloopData {
             return Some(ControlReply::Ok);
         }
         if command == "desktop-context-background" {
-            return Some(
-                app.open_background_settings(context.output.as_deref())
-                    .map_or_else(ControlReply::Err, |_| ControlReply::Ok),
-            );
+            return Some(app.open_background_settings_reply(context.output.as_deref()));
         }
         if command != "desktop-context-read" {
             return Some(ControlReply::Err("Invalid desktop menu command".into()));

@@ -325,9 +325,12 @@ class LoginGuardTests(unittest.TestCase):
                 guard.cleanup_runtime(
                     runtime, self.owner | {"runtime_identity": [1, 2]}
                 )
-            self.assertEqual(calls[0][1:], ["--retire-activation", str(runtime)])
+            self.assertEqual(
+                calls[0][1:], ["--stop-app-scopes", str(runtime), "/run/user/1000"]
+            )
             self.assertTrue(calls[0][0].endswith("/hearthspace-app-scope-guard"))
-            self.assertEqual(calls[1], runtime)
+            self.assertEqual(calls[1][1:], ["--retire-activation", str(runtime)])
+            self.assertEqual(calls[2], runtime)
 
     def test_failed_activation_retirement_preserves_recovery_record(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -338,7 +341,9 @@ class LoginGuardTests(unittest.TestCase):
                 patch.object(guard, "runtime_identity", return_value=(1, 2)),
                 patch.object(guard, "mounted_paths", return_value=[]),
                 patch.object(
-                    guard, "command", side_effect=RuntimeError("manager unavailable")
+                    guard,
+                    "command",
+                    side_effect=["", RuntimeError("manager unavailable")],
                 ),
                 patch.object(guard.shutil, "rmtree") as remove,
                 self.assertRaisesRegex(RuntimeError, "manager unavailable"),

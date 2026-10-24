@@ -77,18 +77,7 @@ impl App {
             }
             let selected = cycle_target(&ids, ids.first().copied(), reverse)
                 .ok_or("no mapped application windows")?;
-            if source == SwitcherSource::Keyboard {
-                self.interrupt_pinch_zoom();
-            }
-            self.cancel_pending_search();
-            self.cancel_desktop_gesture();
-            self.clear_window_group();
-            if self.active_shell_panel_index().is_some() {
-                self.dismiss_active_shell_panel();
-                self.restore_focus_after_shell_panel();
-            }
-            self.advance_viewport_animation();
-            self.viewport_animation = None;
+            self.prepare_window_switcher_entry(source);
             let outputs = self.capture_outputs();
             let output = outputs
                 .iter()

@@ -37,7 +37,7 @@ pub(super) struct TitlebarState {
     pub appearance: hearthspace_ipc::Appearance,
     pub title: String,
     pub app_id: Option<String>,
-    pub icon: Option<Arc<hearthspace_shell::tray::TrayPixmap>>,
+    pub icon: Option<Arc<hearthspace_desktop::artwork::RasterImage>>,
     pub active: bool,
     pub maximized: bool,
     pub hovered: Option<TitlebarButton>,

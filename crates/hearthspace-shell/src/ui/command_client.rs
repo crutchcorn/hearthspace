@@ -1,5 +1,4 @@
 use std::{
-    io::Read,
     path::Path,
     time::{Duration, Instant},
 };
@@ -7,6 +6,7 @@ use std::{
 use tracing::{debug, error};
 
 use crate::ShellCommand;
+use hearthspace_ipc::transport::launch::Cancellation;
 
 pub(super) fn launch_app(
     command_socket: &Path,
@@ -24,16 +24,40 @@ pub(super) fn launch_app(
 }
 
 pub(super) fn send_command(command_socket: &Path, command: &str) -> Result<(), String> {
+    send_command_with_timeout(command_socket, command, command_timeout(command))
+}
+
+pub(super) fn send_command_with_timeout(
+    command_socket: &Path,
+    command: &str,
+    timeout: Duration,
+) -> Result<(), String> {
     debug!(path = %command_socket.display(), command, "sending shell command");
     let response = hearthspace_ipc::transport::request_line(
         command_socket,
         &format!("{command}\n"),
-        Duration::from_millis(750),
+        timeout,
     )
     .map_err(|error| {
         error!(path = %command_socket.display(), command, %error, "shell command transport failed");
         format!("Could not confirm the command: {error}")
     })?;
+    parse_reply(command_socket, command, &response)
+}
+
+pub(super) fn send_launch_until(
+    command_socket: &Path,
+    command: &str,
+    deadline: Instant,
+    cancelled: &Cancellation,
+) -> Result<(), String> {
+    let response =
+        hearthspace_ipc::transport::launch::request(command_socket, command, deadline, cancelled)
+            .map_err(|error| format!("Could not confirm the command: {error}"))?;
+    parse_reply(command_socket, command, &response)
+}
+
+fn parse_reply(command_socket: &Path, command: &str, response: &str) -> Result<(), String> {
     match response.trim_end() {
         "ok" => Ok(()),
         response => {
@@ -43,6 +67,29 @@ pub(super) fn send_command(command_socket: &Path, command: &str) -> Result<(), S
             error!(path = %command_socket.display(), command, %error, "shell command failed");
             Err(error.to_string())
         }
+    }
+}
+
+fn command_timeout(command: &str) -> Duration {
+    let deferred = matches!(
+        crate::ShellCommand::parse(command),
+        Some(
+            crate::ShellCommand::LaunchApp(_)
+                | crate::ShellCommand::LaunchAppOnOutput { .. }
+                | crate::ShellCommand::OpenSearchSettings { .. }
+        )
+    ) || command.starts_with("favorite-gesture-launch ")
+        || command.starts_with("desktop-context-background ");
+    if deferred {
+        Duration::from_secs(10)
+    } else if matches!(
+        crate::ShellCommand::parse(command),
+        Some(crate::ShellCommand::ReloadSettings)
+    ) {
+        // A bounded watch may finish before the explicit GET is acknowledged.
+        Duration::from_secs(2)
+    } else {
+        Duration::from_millis(750)
     }
 }
 
@@ -111,65 +158,18 @@ pub(super) fn query_payload_bounded(
     timeout: Duration,
     max_response_bytes: usize,
 ) -> std::io::Result<Vec<u8>> {
-    use hearthspace_ipc::transport::{connect_until, write_until};
-    use std::io::{self, ErrorKind};
-
-    let deadline = Instant::now() + timeout;
-    let remaining = || {
-        deadline
-            .checked_duration_since(Instant::now())
-            .filter(|time| !time.is_zero())
-            .ok_or_else(|| io::Error::new(ErrorKind::TimedOut, "command deadline exceeded"))
-    };
-    let mut stream = connect_until(command_socket, deadline)?;
-    write_until(&mut stream, format!("{command}\n").as_bytes(), deadline)?;
-    let mut header = Vec::new();
-    loop {
-        if header.len() >= 4096 {
-            return Err(io::Error::new(
-                ErrorKind::InvalidData,
-                "oversized command response header",
-            ));
-        }
-        stream.set_read_timeout(Some(remaining()?))?;
-        let mut byte = [0];
-        stream.read_exact(&mut byte)?;
-        if byte[0] == b'\n' {
-            break;
-        }
-        header.push(byte[0]);
-    }
-    let header = std::str::from_utf8(&header)
-        .map_err(|error| io::Error::new(ErrorKind::InvalidData, error))?;
-    if let Some(message) = header.strip_prefix("err ") {
-        return Err(io::Error::other(message));
-    }
-    let size = header
-        .strip_prefix("ok ")
-        .and_then(|size| size.parse::<usize>().ok())
-        .filter(|size| *size <= max_response_bytes)
-        .ok_or_else(|| {
-            io::Error::new(
-                ErrorKind::InvalidData,
-                "invalid or oversized command response",
-            )
-        })?;
-    let mut payload = vec![0; size];
-    let mut received = 0;
-    while received < size {
-        stream.set_read_timeout(Some(remaining()?))?;
-        let count = stream.read(&mut payload[received..])?;
-        if count == 0 {
-            return Err(ErrorKind::UnexpectedEof.into());
-        }
-        received += count;
-    }
-    Ok(payload)
+    hearthspace_ipc::transport::request_payload(
+        command_socket,
+        command,
+        timeout,
+        max_response_bytes,
+    )
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::time::Instant;
     use std::{
         io::{Read, Write},
         os::unix::net::UnixListener,
@@ -196,6 +196,28 @@ mod tests {
             assert_eq!(launch_app(&path, "app.desktop", None).is_ok(), succeeds);
             server.join().unwrap();
         }
+    }
+
+    #[test]
+    fn cold_app_acceptance_can_outlive_the_short_control_timeout() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("control.sock");
+        let listener = UnixListener::bind(&path).unwrap();
+        let server = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut request = String::new();
+            stream.read_to_string(&mut request).unwrap();
+            assert_eq!(request, "launch-app app.desktop\n");
+            thread::sleep(Duration::from_millis(850));
+            stream
+                .write_all(b"err application refused activation\n")
+                .unwrap();
+        });
+        assert_eq!(
+            launch_app(&path, "app.desktop", None).unwrap_err(),
+            "application refused activation"
+        );
+        server.join().unwrap();
     }
 
     #[test]

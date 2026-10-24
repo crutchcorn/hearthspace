@@ -1,141 +1,27 @@
 use smithay::utils::{Logical, Point, Rectangle};
 
-use crate::{compositor::App, config::TITLE_BAR_HEIGHT};
+use crate::compositor::App;
 
 impl App {
     pub(in crate::compositor) fn window_surface_screen_origin(
         &self,
         index: usize,
     ) -> Point<f64, Logical> {
-        let origin = self.base_window_surface_screen_origin(index);
-        if let Some((pose, _)) = self.canvas_preview_pose(index) {
-            let base = self.base_window_screen_bounds(index);
-            let scale = pose.width / f64::from(base.size.w.max(1));
-            return Point::from((
-                pose.x + (origin.x - f64::from(base.loc.x)) * scale,
-                pose.y + (origin.y - f64::from(base.loc.y)) * scale,
-            ));
-        }
-        origin
-    }
-    pub(in crate::compositor) fn base_window_surface_screen_origin(
-        &self,
-        index: usize,
-    ) -> Point<f64, Logical> {
-        #[cfg(feature = "xwayland")]
-        if let Some(origin) = self.x11_popup_screen_origin(index) {
-            return origin;
-        }
-        if !self.windows[index].presentation.pinned()
-            && let Some(rect) = self
-                .layout_motion_rect(index)
-                .or_else(|| self.layout_target_rect(index))
-        {
-            let inset = self.window_surface_geometry_loc(index);
-            let chrome = if self.has_compositor_chrome(index) {
-                TITLE_BAR_HEIGHT
-            } else {
-                0
-            };
-            let scale = self.layout_render_scale(index).unwrap_or(1.);
-            return Point::from((
-                rect.x - f64::from(inset.x) * scale,
-                rect.y + f64::from(chrome - inset.y) * scale,
-            )) + self.canvas_peek_offset(index);
-        }
-        if let Some(origin) = self.transient_screen_origin(index) {
-            return origin;
-        }
-        if let Some(output) = self.presentation_output_rect(index) {
-            let fullscreen = self.windows[index].presentation.fullscreen;
-            let chrome = if self.has_compositor_chrome(index) {
-                TITLE_BAR_HEIGHT
-            } else {
-                0
-            };
-            let size = self.window_geometry_size(index);
-            let inset = self.window_surface_geometry_loc(index);
-            return Point::from((
-                f64::from(output.loc.x - inset.x)
-                    + if fullscreen {
-                        f64::from((output.size.w - size.w).max(0)) / 2.0
-                    } else {
-                        0.0
-                    },
-                f64::from(output.loc.y + chrome - inset.y)
-                    + if fullscreen {
-                        f64::from((output.size.h - size.h).max(0)) / 2.0
-                    } else {
-                        0.0
-                    },
-            ));
-        }
-        self.canvas_to_screen(self.content_canvas_origin(index).to_f64())
-            + self.canvas_peek_offset(index)
+        self.window_projection(index).origin
     }
 
     pub(in crate::compositor) fn window_screen_bounds(
         &self,
         index: usize,
     ) -> Rectangle<i32, Logical> {
-        if let Some((pose, _)) = self.canvas_preview_pose(index) {
-            return Rectangle::new(
-                (pose.x.round() as i32, pose.y.round() as i32).into(),
-                (pose.width.round() as i32, pose.height.round() as i32).into(),
-            );
-        }
-        self.base_window_screen_bounds(index)
+        self.window_projection(index).bounds
     }
+
     pub(in crate::compositor) fn base_window_screen_bounds(
         &self,
         index: usize,
     ) -> Rectangle<i32, Logical> {
-        #[cfg(feature = "xwayland")]
-        if let Some(bounds) = self.x11_popup_screen_bounds(index) {
-            return bounds;
-        }
-        if !self.windows[index].presentation.pinned()
-            && let Some(rect) = self
-                .layout_motion_rect(index)
-                .or_else(|| self.layout_target_rect(index))
-        {
-            return Rectangle::new(
-                (Point::from((rect.x, rect.y)) + self.canvas_peek_offset(index)).to_i32_round(),
-                (rect.width.round() as i32, rect.height.round() as i32).into(),
-            );
-        }
-        if self.window_uses_output_coordinates(index) {
-            let chrome = if self.has_compositor_chrome(index) {
-                TITLE_BAR_HEIGHT
-            } else {
-                0
-            };
-            let size = self.window_geometry_size(index);
-            let origin = self.base_window_surface_screen_origin(index).to_i32_round()
-                + self.window_surface_geometry_loc(index)
-                - Point::from((0, chrome));
-            return Rectangle::new(origin, (size.w, size.h + chrome).into());
-        }
-        let canvas = self.window_canvas_rect(index);
-        Rectangle::new(
-            (self.canvas_to_screen(canvas.loc.to_f64()) + self.canvas_peek_offset(index))
-                .to_i32_round(),
-            (
-                (f64::from(canvas.size.w) * self.viewport_scale).round() as i32,
-                (f64::from(canvas.size.h) * self.viewport_scale).round() as i32,
-            )
-                .into(),
-        )
-    }
-
-    pub(in crate::compositor) fn window_screen_to_surface(
-        &self,
-        index: usize,
-        screen: Point<f64, Logical>,
-    ) -> Point<f64, Logical> {
-        let origin = self.window_surface_screen_origin(index);
-        let scale = self.window_render_scale(index);
-        Point::from(((screen.x - origin.x) / scale, (screen.y - origin.y) / scale))
+        self.base_window_projection(index).bounds
     }
 
     pub(in crate::compositor) fn fullscreen_on_output(

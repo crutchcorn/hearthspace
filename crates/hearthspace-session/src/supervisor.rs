@@ -121,6 +121,7 @@ impl Supervisor {
         {
             self.app_scopes = crate::app_scopes::AppScopes::start(
                 &self.paths,
+                self.mode,
                 self.binary_dir.as_deref(),
                 self.startup_deadline,
                 &self.shutdown_requested,
@@ -342,9 +343,9 @@ impl Supervisor {
             None => crate::session_bus::retire_persisted(&self.paths.session_dir),
         };
         self.activation_environment.take();
-        if let Some(owner) = &self.app_scopes {
-            owner.shutdown()?;
-        }
+        // Startup records intent before the manager call, so cleanup must also
+        // cover a failed start that never returned an in-memory owner.
+        crate::app_scopes::shutdown(&self.paths.session_dir, &self.paths.host_runtime_dir)?;
         retired?;
 
         // Do not traverse/remove a still-mounted desktop filesystem on failure.

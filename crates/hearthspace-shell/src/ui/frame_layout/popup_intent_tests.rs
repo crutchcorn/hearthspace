@@ -157,10 +157,7 @@ fn confirmation_takeover_permanently_cancels_a_queued_open() {
     let now = Instant::now();
     let opening = fixture.notification(now);
     let mut confirming = fixture.snapshot.clone();
-    confirming.confirmation = Some(Confirmation {
-        kind: "close".into(),
-        window_id: Some(7),
-    });
+    confirming.confirmation = Some(Confirmation::CloseWindow { window_id: 7 });
     frame_layout::apply(&mut fixture.state, confirming);
     opening.clone().deliver(&mut fixture.state, now);
     frame_layout::apply(&mut fixture.state, fixture.snapshot.clone());

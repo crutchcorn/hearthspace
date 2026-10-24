@@ -2,7 +2,7 @@ use super::{
     favorite_actions as actions, favorite_state::Mode, launcher, state::ShellState,
     test_support::Ui,
 };
-use crate::{app_catalog::AppCatalog, favorites::FavoriteStore};
+use hearthspace_desktop::{app_catalog::AppCatalog, favorites::FavoriteStore};
 use std::{
     io::{Read, Write},
     os::unix::net::UnixListener,
@@ -11,6 +11,9 @@ use std::{
 use xilem::{WidgetView, view::sized_box};
 
 const SHAPE: [[f64; 2]; 3] = [[30.0, 30.0], [30.0, 130.0], [130.0, 130.0]];
+
+#[path = "favorite_launch_tests.rs"]
+mod launch_geometry;
 
 fn state(dir: &std::path::Path) -> ShellState {
     let apps = dir.join("applications");
@@ -186,8 +189,7 @@ fn clear_match_launches_immediately_by_id_and_launch_failure_keeps_feedback() {
         let listener = UnixListener::bind(&state.command_socket).unwrap();
         let server = thread::spawn(move || {
             let (mut stream, _) = listener.accept().unwrap();
-            let mut request = String::new();
-            stream.read_to_string(&mut request).unwrap();
+            let request = super::launch::tests::worker::read_request(&mut stream);
             assert!(request.contains("fixture.desktop"));
             assert!(
                 !request.contains("true"),
@@ -202,13 +204,20 @@ fn clear_match_launches_immediately_by_id_and_launch_failure_keeps_feedback() {
                 .unwrap();
         });
         actions::start(&mut state, "eDP-1", Mode::Launch);
+        let mut queue = super::launch::tests::launch_test_queue(&mut state);
+        let generation = state.outputs[0].drawing.generation;
         actions::complete(
             &mut state,
             "eDP-1",
             vec![[80.0, 20.0], [80.0, 100.0], [160.0, 100.0]],
-            1,
+            generation,
             1,
         );
+        assert!(
+            state.outputs[0].show_search,
+            "launch callback must not wait for acceptance"
+        );
+        super::launch::tests::finish_next(&mut state, &mut queue);
         assert_eq!(state.outputs[0].show_search, !accepted);
         assert_eq!(state.outputs[0].launch_error.is_some(), !accepted);
         server.join().unwrap();

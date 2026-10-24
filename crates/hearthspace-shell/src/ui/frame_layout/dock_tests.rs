@@ -1,7 +1,6 @@
 use super::super::{Output, Rect, Snapshot, Widget as Part, apply, widget_key};
 use super::*;
 use crate::{
-    app_catalog::AppCatalog,
     tray::{TrayWorker, channel},
     ui::{
         dock,
@@ -11,6 +10,7 @@ use crate::{
     },
 };
 use hearthspace_common::frame_layout::FrameEdge;
+use hearthspace_desktop::app_catalog::AppCatalog;
 use masonry::{
     accesskit::{Action, ActionRequest, Role, TreeId},
     core::{
@@ -106,11 +106,8 @@ fn view(
 
 #[test]
 fn closed_pin_with_status_menu_launches_on_its_output() {
-    use std::{
-        io::{Read, Write},
-        os::unix::net::UnixListener,
-        thread,
-    };
+    use crate::ui::launch::tests::worker as launch_worker;
+    use std::{io::Write, os::unix::net::UnixListener, thread};
     let dir = tempfile::tempdir().unwrap();
     let (mut state, _worker) = fixture(dir.path());
     state.windows.clear();
@@ -118,14 +115,14 @@ fn closed_pin_with_status_menu_launches_on_its_output() {
     let listener = UnixListener::bind(&state.command_socket).unwrap();
     let server = thread::spawn(move || {
         let (mut stream, _) = listener.accept().unwrap();
-        let mut command = String::new();
-        stream.read_to_string(&mut command).unwrap();
+        let command = launch_worker::read_request(&mut stream);
         let launch = crate::ShellCommand::LaunchAppOnOutput {
             app_id: "steam_steam.desktop".into(),
             output_name: "DP-1".into(),
         };
         assert_eq!(command, format!("{}\n", launch.wire_name()));
         stream.write_all(b"ok\n").unwrap();
+        launch_worker::reply_active(&listener);
     });
     let build = |state: &ShellState| {
         sized_box(super::super::widgets::content(
@@ -138,11 +135,15 @@ fn closed_pin_with_status_menu_launches_on_its_output() {
             &Default::default(),
         ))
     };
+    let mut worker = launch_worker::launch(&mut state);
     let mut ui = Ui::new(state, &build, (500, 54));
     ui.harness.mouse_click_on(
         ui.button("Open Steam, pinned"),
         Some(PointerButton::Primary),
     );
+    ui.dispatch(&build);
+    worker.complete(&mut ui.state);
+    ui.rebuild(&build);
     ui.dispatch(&build);
     assert!(!ui.state.outputs[1].show_search);
     assert!(!ui.state.outputs[1].tray.open);

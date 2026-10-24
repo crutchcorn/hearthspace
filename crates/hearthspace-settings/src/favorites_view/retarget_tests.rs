@@ -1,6 +1,6 @@
 use super::tests::{draw, state, view};
 use crate::test_support::Ui;
-use hearthspace_shell::favorites::{FavoriteStore, Recognition};
+use hearthspace_desktop::favorites::{FavoriteStore, Recognition};
 use masonry::{accesskit::Role, core::pointer::PointerButton};
 
 #[test]

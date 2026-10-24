@@ -12,7 +12,14 @@ impl App {
         // EWMH uses X button numbers, not evdev codes. Zero leaves the button
         // unspecified; the live implicit grab still has to be a left press.
         // Other buttons cannot start an operation terminated by left release.
-        matches!(button, 0 | 1) && self.pointer_grab_targets_window(window_index)
+        use crate::compositor::input::policy::{Action, Phase, Source};
+        matches!(button, 0 | 1)
+            && self.interaction_allowed(
+                Action::ClientWindowOperation,
+                Source::Client,
+                Phase::Continue,
+            )
+            && self.pointer_grab_targets_window(window_index)
     }
 
     pub(in crate::compositor) fn sync_x11_window_position(&self, id: u64) {

@@ -1,6 +1,7 @@
 //! Process-only regression: no real user manager, desktop or GPU is needed.
 use std::{
     fs,
+    os::unix::fs::DirBuilderExt,
     process::{Child, Command},
     thread,
     time::{Duration, Instant},
@@ -18,7 +19,7 @@ impl Fixture {
             "hearthspace-app-guard-{}-{name}",
             std::process::id()
         ));
-        fs::create_dir(&runtime).unwrap();
+        fs::DirBuilder::new().mode(0o700).create(&runtime).unwrap();
         let parent = Command::new("/usr/bin/sleep").arg("30").spawn().unwrap();
         let stat = fs::read_to_string(format!("/proc/{}/stat", parent.id())).unwrap();
         let start = stat

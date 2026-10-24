@@ -1,7 +1,7 @@
 use super::worker::registration_commands;
 use super::*;
 use crate::desktop_items::DesktopItemKind;
-use crate::favorites::FavoriteStore;
+use hearthspace_desktop::favorites::FavoriteStore;
 use std::{
     io::{BufRead, BufReader, Write},
     os::unix::net::UnixListener,
@@ -257,3 +257,6 @@ fn favorite_completion_updates_shared_state_without_reopening_an_inactive_menu()
     assert_eq!(state.favorites.store.entries()[0].app_id, "editor.desktop");
     assert!(state.desktop.menu.current.is_none());
 }
+
+#[path = "launch_tests.rs"]
+mod launches;

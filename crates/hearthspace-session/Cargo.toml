@@ -16,6 +16,7 @@ tokio = { version = "1.53.3", features = ["macros", "rt", "time", "net", "io-uti
 zbus = { version = "5.19.0", default-features = false, features = ["async-io"] }
 ctrlc = { version = "3.5.2", features = ["termination"] }
 hearthspace-common = { path = "../hearthspace-common" }
+hearthspace-desktop = { path = "../hearthspace-desktop" }
 hearthspace-ipc = { path = "../hearthspace-ipc" }
 hearthspace-ai = { path = "../hearthspace-ai" }
 nix = { version = "0.31.3", features = ["signal", "process", "socket", "fs", "user"] }

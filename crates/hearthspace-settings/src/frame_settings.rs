@@ -27,10 +27,22 @@ impl Operation {
         match self {
             Self::Refresh => None,
             Self::OpenEditor => Some("layout-tool".into()),
-            Self::AllowHideTools(allow) => {
-                Some(format!("frame-settings {{\"allow_hide_tools\":{allow}}}"))
-            }
-            Self::RestoreTools => Some("frame-settings {\"restore_tools\":true}".into()),
+            Self::AllowHideTools(allow) => Some(format!(
+                "frame-settings {}",
+                serde_json::to_string(&hearthspace_ipc::frame_layout::Settings {
+                    allow_hide_tools: Some(allow),
+                    restore_tools: None
+                })
+                .unwrap()
+            )),
+            Self::RestoreTools => Some(format!(
+                "frame-settings {}",
+                serde_json::to_string(&hearthspace_ipc::frame_layout::Settings {
+                    allow_hide_tools: None,
+                    restore_tools: Some(true)
+                })
+                .unwrap()
+            )),
         }
     }
 }

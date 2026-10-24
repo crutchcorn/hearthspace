@@ -7,6 +7,20 @@ use smithay::{
 fn contains(r: Rect, p: Point) -> bool {
     p.x >= r.x && p.x < r.x + r.width && p.y >= r.y && p.y < r.y + r.height
 }
+
+impl super::Session {
+    fn target_at(
+        &self,
+        preview: &crate::compositor::canvas_preview::State,
+        p: Point,
+    ) -> Option<String> {
+        self.results.iter().find_map(|result| {
+            let (rect, alpha) = preview.pose(result.window?)?;
+            (alpha > 0.05 && contains(rect, p)).then(|| result.id.clone())
+        })
+    }
+}
+
 impl App {
     pub(in crate::compositor) fn cancel_canvas_search_touch(&mut self) {
         if self.touch_pointer_pressed
@@ -24,15 +38,7 @@ impl App {
             x: self.pointer_location.x,
             y: self.pointer_location.y,
         };
-        s.results.iter().find_map(|result| {
-            let window = result.window?;
-            let (rect, alpha) = self
-                .canvas_preview
-                .poses
-                .get(&window)?
-                .current(std::time::Instant::now());
-            (alpha > 0.05 && contains(rect, p)).then(|| result.id.clone())
-        })
+        s.target_at(&self.canvas_preview, p)
     }
     fn pointer_on_canvas_search_field(&self) -> bool {
         self.canvas_search.session.as_ref().is_some_and(|s| {
@@ -202,5 +208,118 @@ impl App {
             }
             _ => {}
         }
+    }
+}
+
+#[cfg(test)]
+mod sampling_tests {
+    use super::*;
+    use crate::compositor::canvas_preview::test_support::held_preview;
+
+    fn session() -> super::super::Session {
+        super::super::Session {
+            id: 1,
+            output: None,
+            view: Rect::default(),
+            anchor: Point { x: 0., y: 0. },
+            query: String::new(),
+            field: Rect::default(),
+            above: false,
+            selected: None,
+            results: vec![super::super::ResultItem {
+                id: "window:7".into(),
+                title: "Preview".into(),
+                kind: "window",
+                window: Some(7),
+                natural: Rect::default(),
+                search_text: String::new(),
+            }],
+            previous_focus: None,
+            signature: None,
+        }
+    }
+
+    #[test]
+    fn search_selection_holds_fractional_frame_bounds_after_wall_time_advances() {
+        let session = session();
+        let (mut preview, now) = held_preview();
+        let (bounds, _) = preview.pose(7).unwrap();
+        let p = Point {
+            x: bounds.x + 0.001,
+            y: bounds.y + bounds.height / 2.,
+        };
+        assert!(!contains(preview.poses[&7].current(now).0, p));
+        assert_eq!(session.target_at(&preview, p).as_deref(), Some("window:7"));
+        assert_eq!(
+            session.target_at(
+                &preview,
+                Point {
+                    x: bounds.x - 0.001,
+                    ..p
+                }
+            ),
+            None
+        );
+        assert_eq!(
+            session
+                .target_at(
+                    &preview,
+                    Point {
+                        x: bounds.x + bounds.width - 0.001,
+                        ..p
+                    }
+                )
+                .as_deref(),
+            Some("window:7")
+        );
+        assert_eq!(
+            session.target_at(
+                &preview,
+                Point {
+                    x: bounds.x + bounds.width,
+                    ..p
+                }
+            ),
+            None
+        );
+        preview.advance(now, true);
+        assert_eq!(session.target_at(&preview, p), None);
+        let endpoint = preview.pose(7).unwrap().0;
+        assert_eq!(
+            session
+                .target_at(
+                    &preview,
+                    Point {
+                        x: endpoint.x + 0.001,
+                        y: endpoint.y + 0.001
+                    }
+                )
+                .as_deref(),
+            Some("window:7")
+        );
+    }
+
+    #[test]
+    fn search_selection_uses_sampled_opacity_and_skips_missing_poses() {
+        let mut session = session();
+        let mut missing = session.results[0].clone();
+        missing.window = Some(99);
+        missing.id = "missing".into();
+        session.results.insert(0, missing);
+        let (mut preview, now) = held_preview();
+        let pose = preview.poses.get_mut(&7).unwrap();
+        pose.from = pose.to;
+        pose.from_opacity = 0.;
+        pose.to_opacity = 1.;
+        let started = pose.started;
+        let p = Point {
+            x: pose.to.x + 0.001,
+            y: pose.to.y + 0.001,
+        };
+        preview.advance(started, true);
+        assert_eq!(preview.poses[&7].current(now).1, 1.);
+        assert_eq!(session.target_at(&preview, p), None);
+        preview.advance(now, true);
+        assert_eq!(session.target_at(&preview, p).as_deref(), Some("window:7"));
     }
 }

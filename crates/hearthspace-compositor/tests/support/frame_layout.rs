@@ -25,6 +25,8 @@ mod input;
 mod member_hit;
 #[path = "frame_layout/pending_click.rs"]
 mod pending_click;
+#[path = "frame_layout/persistence.rs"]
+mod persistence;
 #[path = "frame_layout/pointer_grab.rs"]
 mod pointer_grab;
 #[path = "frame_layout/popup_epoch.rs"]

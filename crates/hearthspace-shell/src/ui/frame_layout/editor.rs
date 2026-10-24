@@ -6,6 +6,7 @@ use crate::ui::{
 use hearthspace_common::frame_layout::{
     EXPANDABLE_WIDGETS, LayoutTarget, ObjectPlacement, TargetKind, layout_editor_app_id,
 };
+use hearthspace_ipc::frame_layout::Action;
 use hearthspace_ui_components::{
     self as components, Palette,
     icons::{Icon, icon},
@@ -38,7 +39,7 @@ pub(super) fn window(state: &ShellState) -> Option<WindowView<ShellState>> {
         layout_editor_app_id(layout.snapshot.session, layout.snapshot.output.as_deref()),
         LogicalSize::new(size.0, size.1),
         view(state),
-        |state| super::command(state, "done", serde_json::json!({})),
+        |state| super::command(state, Action::Done),
     ))
 }
 
@@ -124,12 +125,18 @@ pub(super) fn view(state: &ShellState) -> impl WidgetView<ShellState> + use<> {
                 } else {
                     "Remove"
                 },
-                "remove",
+                |state| super::selected_command(state, |target| Action::Remove { target }),
                 false,
                 palette,
             )
         }),
-        action(Icon::Check, "Done changing layout", "done", false, palette),
+        action(
+            Icon::Check,
+            "Done changing layout",
+            |state| super::command(state, Action::Done),
+            false,
+            palette,
+        ),
     ))
     .gap(4.0.px())
     .height(44.0.px());
@@ -148,7 +155,7 @@ pub(super) fn view(state: &ShellState) -> impl WidgetView<ShellState> + use<> {
                 } else {
                     "Show details"
                 },
-                "toggle-expanded",
+                |state| super::selected_command(state, |target| Action::ToggleExpanded { target }),
                 palette,
             )
             .flex(1.0)
@@ -166,7 +173,7 @@ pub(super) fn view(state: &ShellState) -> impl WidgetView<ShellState> + use<> {
                 } else {
                     "Remove from group"
                 },
-                "ungroup",
+                |state| super::selected_command(state, |target| Action::Ungroup { target }),
                 palette,
             )
             .flex(1.0)
@@ -265,26 +272,27 @@ fn separated<V: WidgetView<ShellState>>(
 fn action(
     glyph: Icon,
     name: &'static str,
-    action: &'static str,
+    action: fn(&mut ShellState),
     selected: bool,
     palette: Palette,
 ) -> impl WidgetView<ShellState> + use<> {
     super::tooltip::hint(
         sized_box(crate::ui::canvas_search::material::control(
-            button(
-                icon(glyph, 19.0).color(palette.text).label(name),
-                move |state: &mut ShellState| super::command(state, action, serde_json::json!({})),
-            )
-            .width(44.0.px())
-            .height(44.0.px())
-            .padding(10.0.px())
-            .corner_radius(15.0.px()),
+            button(icon(glyph, 19.0).color(palette.text).label(name), action)
+                .width(44.0.px())
+                .height(44.0.px())
+                .padding(10.0.px())
+                .corner_radius(15.0.px()),
             selected,
             palette,
         ))
         .fixed_width(44.0.px())
         .fixed_height(44.0.px()),
-        if action == "done" { "Done" } else { name },
+        if name == "Done changing layout" {
+            "Done"
+        } else {
+            name
+        },
     )
 }
 
@@ -292,7 +300,7 @@ fn text_action(
     glyph: Icon,
     name: &'static str,
     accessible_name: &'static str,
-    action: &'static str,
+    action: fn(&mut ShellState),
     palette: Palette,
 ) -> impl WidgetView<ShellState> + use<> {
     crate::ui::canvas_search::material::control(
@@ -308,7 +316,7 @@ fn text_action(
             .gap(8.0.px()),
             accessible_name,
             None,
-            move |state: &mut ShellState| super::command(state, action, serde_json::json!({})),
+            action,
         )
         .height(44.0.px())
         .padding(10.0.px())
@@ -336,15 +344,17 @@ fn placement_button(
                 name,
                 Some(selected),
                 move |state: &mut ShellState| {
-                    if surface == "frame" {
-                        super::command(state, "attach", serde_json::json!({}))
-                    } else {
-                        super::command(
-                            state,
-                            "place",
-                            serde_json::json!({"placement":{"surface":surface}}),
-                        )
-                    }
+                    super::selected_command(state, |target| match surface {
+                        "frame" => Action::Attach { target },
+                        "background" => Action::Place {
+                            target,
+                            placement: ObjectPlacement::background(),
+                        },
+                        _ => Action::Place {
+                            target,
+                            placement: ObjectPlacement::canvas(),
+                        },
+                    });
                 },
             )
             .height(44.0.px())

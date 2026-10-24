@@ -18,10 +18,22 @@ pub(super) fn wrap(instance: &str, command: Vec<String>) -> Result<Vec<String>, 
 pub(super) fn prefix(instance: &str, identity: &[String]) -> Result<Vec<String>, String> {
     let owner = env::var("HEARTHSPACE_APP_SCOPE_UNIT")
         .map_err(|_| "Snap launch requires a supervised native app scope owner".to_string())?;
-    let runtime = env::var("XDG_RUNTIME_DIR").map_err(|error| error.to_string())?;
+    let runtime = env::var(hearthspace_common::SESSION_DIR_ENV)
+        .or_else(|_| env::var("XDG_RUNTIME_DIR"))
+        .map_err(|error| error.to_string())?;
     let host =
         env::var(hearthspace_common::HOST_RUNTIME_DIR_ENV).map_err(|error| error.to_string())?;
     let bus = env::var("HEARTHSPACE_SESSION_BUS_ADDRESS").map_err(|error| error.to_string())?;
+    super::super::launch_environment::ensure_snap_instance_name(instance)
+        .map_err(|error| error.to_string())?;
+    let socket = super::super::launch_environment::snap_wayland_socket_path(
+        Path::new(&host),
+        instance,
+        &hearthspace_common::wayland_display_name(),
+    );
+    if let Some(directory) = socket.parent() {
+        fs::create_dir_all(directory).map_err(|error| error.to_string())?;
+    }
     let uuid =
         fs::read_to_string("/proc/sys/kernel/random/uuid").map_err(|error| error.to_string())?;
     let wrapped = wrap_with(

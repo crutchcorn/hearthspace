@@ -11,13 +11,13 @@ use xilem::{
 };
 
 use super::{
-    command_client::{launch_app, send_command},
+    command_client::send_command,
     constants::MAX_RESULTS,
     search_focus::{FocusTarget, focus_on_activation},
     state::{ShellOutputInstance, ShellState},
     window_catalog::RunningWindow,
 };
-use crate::app_catalog::DesktopApp;
+use hearthspace_desktop::app_catalog::DesktopApp;
 
 #[derive(Clone)]
 pub(super) enum Entry {
@@ -84,7 +84,10 @@ pub(super) fn select(
     entry: &Entry,
 ) {
     let result = match entry {
-        Entry::App(app) => launch_app(&state.command_socket, &app.id, output_name),
+        Entry::App(app) => {
+            super::launch::app(state, output_key, &app.id, output_name, false);
+            return;
+        }
         Entry::Window(window) => send_command(
             &state.command_socket,
             &format!("focus-window {}", window.id),
@@ -200,6 +203,11 @@ pub(super) fn launcher_view(
                 .boxed()
             }));
         }
+    }
+    // Drawing owns measured geometry until final launch admission. Its pending
+    // feedback uses the reserved space below the pad instead of shifting it.
+    if output.launch_pending.is_some() && !output.drawing.active() {
+        rows.insert(0, components::field_label("Opening application…").boxed());
     }
     if let Some(error) = output.launch_error.as_ref().or(windows_error.as_ref()) {
         rows.insert(

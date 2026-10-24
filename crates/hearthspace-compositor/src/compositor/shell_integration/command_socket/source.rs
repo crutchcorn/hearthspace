@@ -15,7 +15,7 @@ use super::{
 
 /// A socket and timer share one lifecycle. Removing a disconnected or expired
 /// client also cancels its timer and releases its connection/output reservations.
-pub(super) struct CommandSource {
+pub(in crate::compositor::shell_integration) struct CommandSource {
     socket: Generic<UnixStream>,
     socket_registered: bool,
     timer: Timer,

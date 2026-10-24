@@ -25,7 +25,7 @@ impl App {
                 })
                 .map(|p| {
                     (
-                        p.target.target.clone(),
+                        self.canonical_layout_target(&p.target.target),
                         if p.target.target.kind == TargetKind::Window {
                             self.pinned_reveal_rect(p)
                         } else {
@@ -42,8 +42,9 @@ impl App {
         changed
     }
     pub(super) fn separate_frame_target(&mut self, target: &Target) {
+        let canonical = self.canonical_layout_target(&target.target);
         let Some(group) = self.layout_editor.layouts[&target.output]
-            .group_for(&target.target)
+            .group_for(&canonical)
             .cloned()
         else {
             return;
@@ -65,7 +66,7 @@ impl App {
         let members = if target.target.kind == TargetKind::Group {
             group.members
         } else {
-            vec![target.target.clone()]
+            vec![canonical.clone()]
         };
         let measured: Vec<_> = members
             .iter()
@@ -142,7 +143,7 @@ impl App {
             .layouts
             .get_mut(&target.output)
             .unwrap()
-            .ungroup(&target.target);
+            .ungroup(&canonical);
         for (member, rect) in placements {
             let first = frame_layout::frame_bounds(
                 ObjectPlacement::frame(edge, 0.),
@@ -189,13 +190,13 @@ impl App {
         let members: Vec<_> = group
             .members
             .iter()
-            .filter_map(|member| {
+            .map(|member| {
                 let target = Target {
                     output: target.output.clone(),
                     target: member.clone(),
                 };
-                let rect = self.frame_placed(&target)?.rect;
-                Some((target, rect))
+                let rect = self.frame_placed(&target).map(|placed| placed.rect);
+                (target, rect)
             })
             .collect();
         self.layout_editor
@@ -204,24 +205,26 @@ impl App {
             .unwrap()
             .ungroup(&target.target);
         for (target, rect) in members {
-            let point = crate::geometry::screen_to_canvas(
-                (rect.x, rect.y).into(),
-                self.viewport_offset,
-                self.viewport_scale,
-            );
+            let point = rect.map(|rect| {
+                crate::geometry::screen_to_canvas(
+                    (rect.x, rect.y).into(),
+                    self.viewport_offset,
+                    self.viewport_scale,
+                )
+            });
             self.place_layout_target(
                 &target,
                 if background {
                     ObjectPlacement::Background {
-                        x: Some(point.x),
-                        y: Some(point.y),
+                        x: point.map(|point| point.x),
+                        y: point.map(|point| point.y),
                         width: None,
                         height: None,
                     }
                 } else {
                     ObjectPlacement::Canvas {
-                        x: Some(point.x),
-                        y: Some(point.y),
+                        x: point.map(|point| point.x),
+                        y: point.map(|point| point.y),
                         width: None,
                         height: None,
                     }

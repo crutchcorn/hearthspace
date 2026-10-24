@@ -107,17 +107,18 @@ impl App {
     }
 
     fn ui_touch_geometry(&self, index: usize) -> [f64; 5] {
+        let projection = self.window_projection(index);
         let origin = match self.windows[index].kind {
             ManagedWindowKind::ShellBar => self.shell_bar_logical_origin(index).map(|p| p.to_f64()),
             ManagedWindowKind::Launcher => self.launcher_logical_origin(index).map(|p| p.to_f64()),
             _ => None,
         }
-        .unwrap_or_else(|| self.window_surface_screen_origin(index));
+        .unwrap_or(projection.origin);
         let size = self.window_geometry_size(index);
         [
             origin.x,
             origin.y,
-            self.window_render_scale(index),
+            projection.scale,
             f64::from(size.w),
             f64::from(size.h),
         ]

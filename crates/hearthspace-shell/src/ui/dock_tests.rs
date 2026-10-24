@@ -1,3 +1,4 @@
+use hearthspace_desktop::app_catalog::AppCatalog;
 use std::{
     io::{Read, Write},
     os::unix::net::UnixListener,
@@ -14,12 +15,9 @@ use masonry::{
 use xilem::{WidgetView, view::sized_box};
 
 use super::*;
-use crate::{
-    app_catalog::AppCatalog,
-    ui::{
-        test_support::{Ui, ids},
-        window_catalog::RunningWindow,
-    },
+use crate::ui::{
+    test_support::{Ui, ids},
+    window_catalog::RunningWindow,
 };
 
 #[path = "dock_pinned_tests.rs"]

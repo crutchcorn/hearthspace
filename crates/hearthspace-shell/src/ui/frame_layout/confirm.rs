@@ -1,5 +1,6 @@
 //! A session-bound native dialog; only its explicit affirmative action mutates.
 use crate::ui::{search_focus::Record, state::ShellState};
+use hearthspace_ipc::frame_layout::{Action, Confirmation};
 use hearthspace_ui_components as components;
 use xilem::{
     WidgetView, WindowView,
@@ -22,7 +23,7 @@ pub(super) fn window(state: &ShellState) -> Option<WindowView<ShellState>> {
     let width = layout.snapshot.confirmation_max_width.clamp(120.0, 420.0);
     let height = layout
         .confirm_height
-        .unwrap_or(if confirmation.kind == "hide-tools" {
+        .unwrap_or(if matches!(confirmation, Confirmation::HideTools) {
             300.0
         } else {
             220.0
@@ -37,12 +38,12 @@ pub(super) fn window(state: &ShellState) -> Option<WindowView<ShellState>> {
         ),
         LogicalSize::new(width, height),
         view(state, width, height),
-        |state| super::command(state, "cancel", serde_json::json!({})),
+        |state| super::command(state, Action::Cancel),
     ))
 }
 
 fn dismiss(state: &mut ShellState, _: &str) {
-    super::command(state, "cancel", serde_json::json!({}));
+    super::command(state, Action::Cancel);
 }
 
 pub(super) fn view(
@@ -55,7 +56,7 @@ pub(super) fn view(
         .snapshot
         .confirmation
         .as_ref()
-        .is_some_and(|confirmation| confirmation.kind == "hide-tools");
+        .is_some_and(|confirmation| matches!(confirmation, Confirmation::HideTools));
     let (title, body, affirm) = if tools {
         (
             "Keep a way back to your canvas",
@@ -77,7 +78,7 @@ pub(super) fn view(
                     .font("Liberation Sans")
                     .text_size(13.0)
                     .color(state.appearance.palette.text),
-                |state: &mut ShellState| super::command(state, "cancel", serde_json::json!({})),
+                |state: &mut ShellState| super::command(state, Action::Cancel),
             )
             .padding(Padding::from_vh(10.0.px(), 14.0.px()))
             .border_width(0.0.px())
@@ -97,7 +98,7 @@ pub(super) fn view(
                 } else {
                     xilem::Color::WHITE
                 }),
-            |state: &mut ShellState| super::command(state, "confirm", serde_json::json!({})),
+            |state: &mut ShellState| super::command(state, Action::Confirm),
         )
         .padding(Padding::from_vh(10.0.px(), 14.0.px()))
         .border_width(0.0.px())

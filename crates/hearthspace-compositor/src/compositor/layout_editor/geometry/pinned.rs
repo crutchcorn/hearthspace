@@ -42,7 +42,11 @@ impl App {
                 self.layout_editor
                     .layouts
                     .get(&target.output)
-                    .is_some_and(|layout| layout.group_for(&target.target).is_some())
+                    .is_some_and(|layout| {
+                        layout
+                            .group_for(&self.canonical_layout_target(&target.target))
+                            .is_some()
+                    })
             });
             let height =
                 frame_layout::editor_height(selected.map(|target| &target.target), grouped);

@@ -11,7 +11,7 @@ pub(super) const MAX_REPLY_BYTES: usize = 64 * 1024 * 1024;
 const MAX_TOTAL_REPLY_BYTES: usize = 128 * 1024 * 1024;
 
 #[derive(Default)]
-pub(super) struct Limits {
+pub(in crate::compositor::shell_integration) struct Limits {
     pub connections: Cell<usize>,
     pub output_bytes: Cell<usize>,
 }
@@ -44,7 +44,9 @@ impl Output {
                     .collect();
                 (format!("err {message}\n").into_bytes(), Vec::new())
             }
-            ControlReply::Deferred(_) => (b"err nested deferred reply\n".to_vec(), Vec::new()),
+            ControlReply::Deferred(_) | ControlReply::Launch(_, _) => {
+                (b"err nested deferred reply\n".to_vec(), Vec::new())
+            }
         };
         limits
             .output_bytes

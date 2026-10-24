@@ -150,7 +150,12 @@ impl<V: WidgetView<ShellState>> View<ShellState, (), ViewCtx> for Boundary<V> {
                         state,
                         format!(
                             "frame-focus-next {}",
-                            serde_json::json!({"output":self.output,"target":self.target,"reverse":reverse})
+                            serde_json::to_string(&hearthspace_ipc::frame_layout::Focus {
+                                output: self.output.clone(),
+                                target: self.target.clone(),
+                                reverse
+                            })
+                            .unwrap()
                         ),
                     );
                     MessageResult::Action(())
@@ -160,7 +165,17 @@ impl<V: WidgetView<ShellState>> View<ShellState, (), ViewCtx> for Boundary<V> {
                         state,
                         format!(
                             "frame-focus-region {}",
-                            serde_json::json!({"output":self.output,"target":self.target,"rect":{"x":rect.x0,"y":rect.y0,"width":rect.width(),"height":rect.height()}})
+                            serde_json::to_string(&hearthspace_ipc::frame_layout::FocusRegion {
+                                output: self.output.clone(),
+                                target: self.target.clone(),
+                                rect: super::Rect {
+                                    x: rect.x0,
+                                    y: rect.y0,
+                                    width: rect.width(),
+                                    height: rect.height()
+                                }
+                            })
+                            .unwrap()
                         ),
                     );
                     MessageResult::Action(())

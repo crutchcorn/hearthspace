@@ -57,7 +57,10 @@ impl Fixture {
                 .copied()
                 .chain(["host", "host/systemd", "bin", "services"])
         {
-            fs::create_dir(fixture.root.join(directory)).unwrap();
+            fs::DirBuilder::new()
+                .mode(0o700)
+                .create(fixture.root.join(directory))
+                .unwrap();
         }
         // dbus-update --systemd requires XDG_RUNTIME_DIR/systemd to exist.
         // Its private socket stays absent, so app-scope startup is disabled.

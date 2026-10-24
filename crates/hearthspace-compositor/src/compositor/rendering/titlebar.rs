@@ -18,6 +18,7 @@ impl App {
         &mut self,
         renderer: &mut GlesRenderer,
         index: usize,
+        projection: crate::compositor::presentation::Projection,
     ) -> Vec<MemoryRenderBufferRenderElement<GlesRenderer>> {
         if !self.has_compositor_chrome(index) {
             return Vec::new();
@@ -29,8 +30,7 @@ impl App {
         // Pinned geometry may differ from the canvas minimum or surface-tree
         // bounds while a client is still handling its configure. Match the
         // current frame and hit rectangles instead of stretching old controls.
-        let pinned =
-            self.window_uses_output_coordinates(index) && self.canvas_preview_pose(index).is_none();
+        let pinned = self.window_uses_output_coordinates(index) && projection.preview.is_none();
         let native = if pinned {
             screen.size
         } else {
@@ -59,10 +59,9 @@ impl App {
         // on high-density outputs. Zoom is still applied by the scene transform.
         // One density for all intersecting outputs prevents cache churn when a
         // window straddles monitors with different scales.
-        let raster_scale = (f64::from(self.titlebar_output_scale(screen))
-            * self.window_render_scale(index))
-        .ceil()
-        .clamp(1.0, 8.0) as i32;
+        let raster_scale = (f64::from(self.titlebar_output_scale(screen)) * projection.scale)
+            .ceil()
+            .clamp(1.0, 8.0) as i32;
         if let Some(cache) = &mut self.windows[index].titlebar {
             cache.update(state, raster_scale);
         } else {
@@ -88,10 +87,7 @@ impl App {
                         f64::from(screen.loc.y),
                     ),
                     &part.raster.buffer,
-                    Some(
-                        self.canvas_preview_pose(index)
-                            .map_or(1., |(_, alpha)| alpha as f32),
-                    ),
+                    Some(projection.opacity),
                     Some(source),
                     Some(Size::from((
                         (part.width * scale).round() as i32,

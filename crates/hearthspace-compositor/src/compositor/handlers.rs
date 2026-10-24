@@ -115,18 +115,11 @@ impl XdgShellHandler for App {
         let spawn_output_name = (kind == ManagedWindowKind::Normal)
             .then(|| self.next_spawn_output_name.take())
             .flatten();
-        let id = self.next_window_id;
-        self.next_window_id += 1;
-        info!(
-            window_id = id,
-            ?kind,
-            ?shell_output_name,
-            "new xdg toplevel"
-        );
-        self.windows.push(ManagedWindow {
+        let position = position_for_new_window(kind, self.viewport_offset);
+        let id = self.windows.insert_new(|id| ManagedWindow {
             id,
             surface: ManagedSurface::Xdg(surface.clone()),
-            position: position_for_new_window(kind, self.viewport_offset),
+            position,
             kind,
             shell_output_name: shell_output_name.clone(),
             decoration: decoration_for_new_window(kind),
@@ -139,6 +132,12 @@ impl XdgShellHandler for App {
             pending_resize: None,
             advertised_fractional_scale: 0.0,
         });
+        info!(
+            window_id = id,
+            ?kind,
+            ?shell_output_name,
+            "new xdg toplevel"
+        );
         if kind == ManagedWindowKind::Normal {
             self.idle_daemon.register_window(id);
         }
@@ -313,104 +312,25 @@ impl XdgShellHandler for App {
     }
 
     fn toplevel_destroyed(&mut self, surface: ToplevelSurface) {
-        if let Some(index) = self.window_index_for_surface(surface.wl_surface())
-            && self.desktop_id(index).is_some()
-        {
-            self.windows[index].mapped = false;
-            self.desktop_mapped(index);
+        if let Some(id) = self.xdg_window_id(&surface) {
+            self.retire_window(id, super::windows::RetirementCause::Destroyed);
         }
-        let reserved_work_area = self
-            .window_index_for_surface(surface.wl_surface())
-            .is_some_and(|index| self.reserves_shell_work_area(index));
-        let restore_panel_focus = !self.pending_search_reserves_focus()
-            && self
-                .active_shell_panel_index()
-                .is_some_and(|index| self.windows[index].surface.same_xdg(&surface));
-        let restore_focus = self.windows.iter().any(|window| {
-            window.surface.same_xdg(&surface) && self.focused_normal_window_id == Some(window.id)
-        });
-        let retained_context_focus =
-            restore_panel_focus && self.restore_desktop_context_parent(surface.wl_surface());
-        self.clear_keyboard_focus_for_surface(surface.wl_surface());
-        if let Some(window) = self
-            .windows
-            .iter()
-            .find(|window| window.surface.same_xdg(&surface))
-        {
-            info!(window_id = window.id, kind = ?window.kind, "xdg toplevel destroyed");
-            self.idle_daemon.unregister_window(window.id);
-            let id = window.id;
-            self.retire_window_pointer_operation(id);
-            if self.focused_normal_window_id == Some(id) {
-                self.focused_normal_window_id = None;
-            }
-        }
-        self.windows
-            .retain(|window| !window.surface.same_xdg(&surface));
-        if reserved_work_area {
-            self.reconcile_window_presentations();
-        }
-        if restore_panel_focus && !retained_context_focus {
-            self.restore_focus_after_shell_panel();
-        } else if restore_focus {
-            self.restore_window_focus();
-        }
-        self.request_redraw();
     }
 
     fn app_id_changed(&mut self, surface: ToplevelSurface) {
         let kind = window_kind_for_toplevel(&surface);
         let shell_output_name = shell_output_name_for_toplevel(&surface);
-        if let Some(window_index) = self
-            .windows
-            .iter()
-            .position(|window| window.surface.same_xdg(&surface))
-        {
-            let mut window = self.windows.remove(window_index);
-            let old_kind = window.kind;
-            let old_shell_output_name = window.shell_output_name.clone();
-            window.kind = kind;
-            window.shell_output_name = shell_output_name.clone();
-            info!(
-                window_id = window.id,
-                from = ?old_kind,
-                to = ?kind,
-                from_output = ?old_shell_output_name,
-                to_output = ?shell_output_name,
-                "toplevel app id changed window kind"
-            );
-            window.position = position_for_new_window(kind, window.position);
-            if kind.is_shell_chrome() || kind == ManagedWindowKind::DesktopItem {
-                window.decoration = WindowDecoration::ClientSide;
-            }
-            if old_kind == ManagedWindowKind::Normal && kind != ManagedWindowKind::Normal {
-                self.idle_daemon.unregister_window(window.id);
-                if self.focused_normal_window_id == Some(window.id) {
-                    self.focused_normal_window_id = None;
-                }
-            } else if old_kind != ManagedWindowKind::Normal && kind == ManagedWindowKind::Normal {
-                self.idle_daemon.register_window(window.id);
-            }
-            let insert_index = match kind {
-                ManagedWindowKind::DesktopItem => 0,
-                ManagedWindowKind::Normal => self.normal_insert_index(),
-                ManagedWindowKind::ShellBar
-                | ManagedWindowKind::Launcher
-                | ManagedWindowKind::ShellWatcher
-                | ManagedWindowKind::ControlOsd => self.windows.len(),
-            };
-            let wl_surface = window.surface.wl_surface();
-            self.windows.insert(insert_index, window);
-            if kind.is_shell_chrome() {
-                if let Some(surface) = &wl_surface {
-                    self.enter_shell_output(surface, shell_output_name.as_deref());
-                }
-            } else if let Some(surface) = &wl_surface {
-                self.enter_output(surface, None);
-            }
-            self.configure_toplevel(&surface, kind, shell_output_name.as_deref());
-            self.request_redraw();
+        let Some(id) = self.xdg_window_id(&surface) else {
+            return;
+        };
+        self.reclassify_window(id, kind, shell_output_name.clone());
+        if kind.is_shell_chrome() {
+            self.enter_shell_output(surface.wl_surface(), shell_output_name.as_deref());
+        } else {
+            self.enter_output(surface.wl_surface(), None);
         }
+        self.configure_toplevel(&surface, kind, shell_output_name.as_deref());
+        self.request_redraw();
     }
 
     fn title_changed(&mut self, _surface: ToplevelSurface) {

@@ -1,5 +1,6 @@
 use super::*;
 use crate::ShellCommand;
+use crate::ui::launch::tests::worker as launch_worker;
 
 fn fixture(directory: &std::path::Path) -> ShellState {
     let applications = directory.join("applications");
@@ -100,17 +101,21 @@ fn closed_pin_launches_on_its_output_then_pointer_and_keyboard_cycle_existing_wi
             "focus-window 7\n".into(),
         ] {
             let (mut stream, _) = listener.accept().unwrap();
-            let mut command = String::new();
-            stream.read_to_string(&mut command).unwrap();
+            let command = launch_worker::read_request(&mut stream);
             assert_eq!(command, expected);
             stream.write_all(b"ok\n").unwrap();
+            if expected.starts_with("launch-app") {
+                launch_worker::reply_active(&listener);
+            }
         }
     });
+    let mut worker = launch_worker::launch(&mut state);
     let mut ui = Ui::new(state, &build, (188, 48));
     assert_eq!(desired_width(&ui.state), 44.0);
     let pin = ui.button("Open Editor, pinned");
     ui.harness.mouse_click_on(pin, None);
     ui.dispatch(&build);
+    worker.complete(&mut ui.state);
     ui.state.windows = vec![window(7, "EditorClass", false), window(2, "editor", false)];
     ui.rebuild(&build);
     ui.dispatch(&build);
@@ -143,8 +148,7 @@ fn rejected_pin_launch_retains_the_pin_and_exposes_the_error() {
     let listener = UnixListener::bind(&state.command_socket).unwrap();
     let server = thread::spawn(move || {
         let (mut stream, _) = listener.accept().unwrap();
-        let mut command = String::new();
-        stream.read_to_string(&mut command).unwrap();
+        let command = launch_worker::read_request(&mut stream);
         assert_eq!(
             command,
             format!(
@@ -157,9 +161,14 @@ fn rejected_pin_launch_retains_the_pin_and_exposes_the_error() {
             )
         );
         stream.write_all(b"err missing executable\n").unwrap();
+        launch_worker::reply_active(&listener);
     });
+    let mut worker = launch_worker::launch(&mut state);
     let mut ui = Ui::new(state, strip, (72, 48));
     ui.activate(ui.button("Open Editor, pinned"));
+    ui.dispatch(&strip);
+    worker.complete(&mut ui.state);
+    ui.rebuild(&strip);
     ui.dispatch(&strip);
     assert!(ui.state.outputs[0].show_search);
     assert!(
@@ -198,12 +207,15 @@ fn compact_control_reaches_every_closed_pin_and_running_app_without_losing_focus
             "focus-window 9".into(),
         ] {
             let (mut stream, _) = listener.accept().unwrap();
-            let mut request = String::new();
-            stream.read_to_string(&mut request).unwrap();
+            let request = launch_worker::read_request(&mut stream);
             assert_eq!(request, format!("{command}\n"));
             stream.write_all(b"ok\n").unwrap();
+            if command.starts_with("launch-app") {
+                launch_worker::reply_active(&listener);
+            }
         }
     });
+    let mut worker = launch_worker::launch(&mut state);
     let mut ui = Ui::new(state, &build, (40, 48));
     let button = ui.button("Next app: Open Editor, pinned");
     ui.harness.focus_on(Some(button));
@@ -215,6 +227,9 @@ fn compact_control_reaches_every_closed_pin_and_running_app_without_losing_focus
         assert_eq!(ui.button(&format!("Next app: {label}")), button);
         ui.harness
             .process_text_event(TextEvent::key_up(KeyboardKey::Named(NamedKey::Enter)));
+        ui.dispatch(&build);
+        worker.complete(&mut ui.state);
+        ui.rebuild(&build);
         ui.dispatch(&build);
         assert_eq!(ui.harness.focused_widget_id(), Some(button));
     }

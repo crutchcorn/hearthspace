@@ -162,9 +162,14 @@ impl App {
         &mut self,
         target: &super::super::layout_editor::Target,
     ) {
+        // Group release supplies durable app slots; settlement owns live IDs.
+        // Absent slots have no drop, while transient runtime targets still resolve.
+        let Some(live) = self.live_layout_target(&target.target) else {
+            return;
+        };
         let id = self.windows.iter().enumerate().find_map(|(index, w)| {
             let matches = match target.target.kind {
-                TargetKind::Window => target.target.id == w.id.to_string(),
+                TargetKind::Window => live.id == w.id.to_string(),
                 TargetKind::Item => self.desktop_id(index).as_deref() == Some(&target.target.id),
                 TargetKind::Widget => self
                     .frame_widget_identity(index)

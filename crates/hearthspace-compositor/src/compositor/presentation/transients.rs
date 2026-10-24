@@ -120,12 +120,13 @@ impl App {
         {
             output = self.usable_output(output);
         }
-        let mut origin = self
-            .window_screen_to_surface(index, output.loc.to_f64())
+        let projection = self.window_projection(index);
+        let mut origin = projection
+            .screen_to_surface(output.loc.to_f64())
             .to_i32_round();
         origin -= self.window_surface_geometry_loc(index);
         origin -= get_popup_toplevel_coords(&kind);
-        let scale = self.window_render_scale(index);
+        let scale = projection.scale;
         let target = Rectangle::new(
             origin,
             (

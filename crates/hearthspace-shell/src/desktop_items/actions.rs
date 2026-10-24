@@ -124,5 +124,5 @@ pub fn open_with(
     app_id: &str,
     output: Option<&str>,
 ) -> Result<(), String> {
-    super::file_launch::Request::for_app(paths, app_id, output)?.send(socket)
+    hearthspace_desktop::file_launch::Request::for_app(paths, app_id, output)?.send(socket)
 }

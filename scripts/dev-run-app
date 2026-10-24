@@ -1,12 +1,30 @@
-#!/usr/bin/env bash
-set -euo pipefail
+#!/usr/bin/env python3
+"""Build a development app, then execute Cargo's exact artifact with literal argv."""
 
-APP="${1:?usage: dev-run-app <app-binary> [arguments...]}"
-shift
-REPO_ROOT="${HEARTHSPACE_REPO_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
+import os
+import subprocess
+import sys
+from pathlib import Path
 
-cd "$REPO_ROOT"
+from runtime_artifacts import build_executable
 
-cargo build -p "$APP"
 
-exec "$REPO_ROOT/target/debug/$APP" "$@"
+def main():
+    if len(sys.argv) < 2:
+        raise ValueError("usage: dev-run-app <app-binary> [arguments...]")
+    repository = Path(
+        os.environ.get("HEARTHSPACE_REPO_ROOT", Path(__file__).resolve().parents[1])
+    ).resolve()
+    executable = build_executable(sys.argv[1], repository)
+    os.chdir(repository)
+    os.execv(executable, [str(executable), *sys.argv[2:]])
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except subprocess.CalledProcessError as error:
+        raise SystemExit(error.returncode) from None
+    except (OSError, ValueError, RuntimeError) as error:
+        print(f"dev-run-app: {error}", file=sys.stderr)
+        raise SystemExit(1) from None

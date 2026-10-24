@@ -31,6 +31,7 @@ impl ShellOutputInstance {
             show_notifications: false,
             show_map: false,
             launch_error: None,
+            launch_pending: None,
             #[cfg(test)]
             corner_window_ids: std::array::from_fn(|_| WindowId::next()),
             #[cfg(test)]
@@ -61,6 +62,7 @@ impl ShellOutputInstance {
     }
 
     pub(super) fn dismiss_panels(&mut self) {
+        self.launch_pending = None;
         self.tray.dismiss();
         self.drawing = Default::default();
         self.show_search = false;

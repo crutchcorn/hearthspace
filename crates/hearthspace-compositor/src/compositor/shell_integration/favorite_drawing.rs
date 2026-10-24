@@ -102,9 +102,12 @@ impl CalloopData {
                 generation,
                 stroke,
                 app_id,
-            } => self
-                .state
-                .launch_favorite_drawing(generation, stroke, &app_id),
+            } => {
+                return Some(
+                    self.state
+                        .launch_favorite_drawing(generation, stroke, &app_id),
+                );
+            }
         };
         Some(result.map_or_else(ControlReply::Err, |_| ControlReply::Ok))
     }

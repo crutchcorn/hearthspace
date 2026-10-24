@@ -162,14 +162,7 @@ impl App {
             height: f64::from(target.logical_height),
         };
         let output = Some(target.name.clone());
-        self.cancel_input_gestures();
-        let desktop_release = self.clear_desktop_for_canvas_search();
-        self.clear_window_group();
-        self.advance_viewport_animation();
-        self.viewport_animation = None;
-        self.cancel_pending_search();
-        let previous_focus = self.focused_normal_window_id;
-        self.clear_keyboard_focus();
+        let (desktop_release, previous_focus) = self.prepare_canvas_search_entry();
         self.canvas_search.mode = true;
         self.canvas_search.sequence = self.canvas_search.sequence.wrapping_add(1).max(1);
         let id = self.canvas_search.sequence;

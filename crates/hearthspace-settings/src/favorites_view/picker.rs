@@ -31,7 +31,7 @@ enum PickerAction {
     Choose(String),
 }
 
-fn choice(state: &SettingsApp, app: &hearthspace_shell::app_catalog::DesktopApp) -> Choice {
+fn choice(state: &SettingsApp, app: &hearthspace_desktop::app_catalog::DesktopApp) -> Choice {
     Choice {
         id: app.id.clone(),
         name: app.name.clone(),

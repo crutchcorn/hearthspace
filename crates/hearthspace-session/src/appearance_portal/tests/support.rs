@@ -97,13 +97,40 @@ impl Daemon {
                             .unwrap();
                         let mut request = String::new();
                         stream.read_to_string(&mut request).unwrap();
-                        assert_eq!(request, "get\n");
-                        let settings = hearthspace_ipc::Settings {
-                            appearance: *current.lock().unwrap(),
-                            ..Default::default()
+                        use hearthspace_ipc::settings_snapshot::{
+                            SettingsSnapshot, WatchRequest, snapshot_response,
                         };
-                        let _ = stream
-                            .write_all(hearthspace_ipc::settings_response(settings).as_bytes());
+                        let watch = request
+                            .trim()
+                            .strip_prefix("watch settings ")
+                            .map(|payload| WatchRequest::parse(payload).unwrap());
+                        assert!(watch.is_some() || request == "get snapshot\n");
+                        let deadline = Instant::now()
+                            + Duration::from_millis(
+                                watch.as_ref().map_or(0, |watch| watch.wait_ms),
+                            );
+                        loop {
+                            let settings = hearthspace_ipc::Settings {
+                                appearance: *current.lock().unwrap(),
+                                ..Default::default()
+                            };
+                            let snapshot = SettingsSnapshot::new(0, settings).unwrap();
+                            if watch
+                                .as_ref()
+                                .is_none_or(|watch| watch.after != snapshot.cursor())
+                            {
+                                let _ = stream.write_all(
+                                    snapshot_response(Some(snapshot)).unwrap().as_bytes(),
+                                );
+                                break;
+                            }
+                            if Instant::now() >= deadline || stop.load(Ordering::SeqCst) {
+                                let _ =
+                                    stream.write_all(snapshot_response(None).unwrap().as_bytes());
+                                break;
+                            }
+                            thread::sleep(Duration::from_millis(2));
+                        }
                     }
                     Err(error) if error.kind() == io::ErrorKind::WouldBlock => {
                         thread::sleep(Duration::from_millis(2));

@@ -24,13 +24,7 @@ pub struct TrayIcon {
     pub pixmap: Option<TrayPixmap>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct TrayPixmap {
-    pub width: u32,
-    pub height: u32,
-    /// Unpremultiplied RGBA, converted from the protocol's network-order ARGB.
-    pub rgba: Vec<u8>,
-}
+pub use hearthspace_desktop::artwork::RasterImage as TrayPixmap;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TrayItem {

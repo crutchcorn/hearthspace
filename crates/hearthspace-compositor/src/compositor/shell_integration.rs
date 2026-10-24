@@ -1,11 +1,11 @@
 use std::{env, path::PathBuf, process::Command};
 
-use hearthspace_shell::{ShellCommand, SpawnTarget};
+use hearthspace_ipc::command::{ShellCommand, SpawnTarget};
 use smithay::{
     backend::input::{ButtonState, KeyState},
     utils::Point,
 };
-use tracing::{debug, error, warn};
+use tracing::{debug, error};
 
 use super::App;
 use crate::config::*;
@@ -48,7 +48,7 @@ pub(super) fn spawn_shell(command_socket_path: &PathBuf) {
         .spawn()
     {
         Ok(child) => {
-            hearthspace_shell::app_catalog::reap_child(child);
+            hearthspace_desktop::app_catalog::reap_child(child);
             debug!(path = %current_exe.display(), "spawned shell process");
         }
         Err(error) => error!(path = %current_exe.display(), %error, "failed to spawn shell"),
@@ -132,21 +132,17 @@ impl App {
                     .map_or_else(ControlReply::Err, |_| ControlReply::Ok);
             }
             ShellCommand::LaunchApp(app_id) => {
-                return self
-                    .launch_app(&app_id, None)
-                    .map_or_else(ControlReply::Err, |_| ControlReply::Ok);
+                return self.launch_app_reply(&app_id, None);
             }
             ShellCommand::ListApps => return ControlReply::Payload(self.list_apps_json()),
             ShellCommand::OpenSearchSettings { output_name } => {
-                return action_reply(self.open_search_settings(output_name.as_deref()));
+                return self.open_search_settings_reply(output_name.as_deref());
             }
             ShellCommand::LaunchAppOnOutput {
                 app_id,
                 output_name,
             } => {
-                return self
-                    .launch_app(&app_id, Some(&output_name))
-                    .map_or_else(ControlReply::Err, |_| ControlReply::Ok);
+                return self.launch_app_reply(&app_id, Some(&output_name));
             }
             ShellCommand::PanLeft => self.pan_viewport_by(-self.horizontal_pan_step(), 0),
             ShellCommand::PanRight => self.pan_viewport_by(self.horizontal_pan_step(), 0),
@@ -156,7 +152,7 @@ impl App {
             ShellCommand::ZoomIn => self.animate_zoom_around_viewport_center(ZOOM_STEP),
             ShellCommand::ZoomOut => self.animate_zoom_around_viewport_center(1.0 / ZOOM_STEP),
             ShellCommand::ZoomTo(scale) => return action_reply(self.zoom_viewport_to(scale)),
-            ShellCommand::ReloadSettings => self.reload_settings(),
+            ShellCommand::ReloadSettings => return self.settings_subscription.refresh(),
             ShellCommand::LogAccessibilityTree => {
                 crate::accessibility::log_accessibility_tree(self.accessibility_window_snapshot())
             }
@@ -183,21 +179,6 @@ impl App {
         }
         self.request_redraw();
         ControlReply::Ok
-    }
-
-    fn reload_settings(&mut self) {
-        match hearthspace_ipc::client_get_settings() {
-            Ok(settings) => {
-                let refresh = self.apply_settings(settings);
-                debug!(
-                    output_layout_changed = refresh.output_layout_changed,
-                    background_changed = refresh.background_changed,
-                    appearance_changed = refresh.appearance_changed,
-                    "reloaded compositor settings"
-                );
-            }
-            Err(error) => warn!(%error, "failed to reload compositor settings"),
-        }
     }
 }
 

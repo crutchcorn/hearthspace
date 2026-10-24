@@ -77,10 +77,12 @@ pub(super) fn windows(state: &ShellState) -> Vec<WindowView<ShellState>> {
                 button(
                     icon(Icon::Grip, 14.0).label("Move group"),
                     move |state: &mut ShellState| {
-                        super::command(
+                        super::command_on_output(
                             state,
-                            "select",
-                            serde_json::json!({"output":output_name,"target":target}),
+                            output_name.clone(),
+                            hearthspace_ipc::frame_layout::Action::Select {
+                                target: target.clone(),
+                            },
                         )
                     },
                 )

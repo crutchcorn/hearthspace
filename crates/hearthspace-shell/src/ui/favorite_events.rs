@@ -2,7 +2,7 @@
 //! to launch: completed input must still be authorized by the active compositor.
 use std::time::{Duration, Instant};
 
-use crate::favorites::Point;
+use hearthspace_desktop::favorites::Point;
 
 use super::{command_client::send_command, favorite_state::Incoming, state::ShellState};
 
@@ -186,7 +186,7 @@ pub(super) fn retry(state: &mut ShellState) {
 pub(super) fn reload(state: &mut ShellState) {
     if state.favorites.refresh() {
         if state.favorites.tracks_installed_apps {
-            state.catalog = crate::app_catalog::AppCatalog::load();
+            state.catalog = hearthspace_desktop::app_catalog::AppCatalog::load();
         }
         // Never recognize an in-flight shape against an assignment that changed
         // after the user started drawing it.

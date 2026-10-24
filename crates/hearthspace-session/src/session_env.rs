@@ -143,13 +143,42 @@ pub(crate) fn create_session_env(
         ),
     ];
 
-    vars.extend(crate::audio_env::audio_environment(&host_runtime_dir));
+    let private_clients = args.private_session_bus || !crate::compositor::is_native_session(args);
+    let (app_runtime, app_display) = hearthspace_desktop::environment::connection(
+        &paths.host_runtime_dir,
+        &paths.session_dir,
+        &wayland_display,
+        private_clients,
+    )?;
+    vars.extend([
+        (
+            hearthspace_desktop::environment::APP_RUNTIME.into(),
+            app_runtime,
+        ),
+        (
+            hearthspace_desktop::environment::APP_DISPLAY.into(),
+            app_display,
+        ),
+    ]);
+    vars.extend(crate::audio_env::audio_environment(&host_runtime_dir)?);
     vars.push((
         "XDG_CONFIG_DIRS".into(),
         crate::gtk_defaults::config_dirs(&paths.session_dir)?,
     ));
 
     if let Some(bus) = bus::selected_address(args, paths)? {
+        let generation = fs::read_to_string("/proc/sys/kernel/random/uuid")?;
+        hearthspace_desktop::activation::initialize_display(
+            &paths.host_runtime_dir,
+            &paths.session_dir,
+            &bus,
+            args.private_session_bus,
+            generation.trim(),
+        )?;
+        vars.push((
+            hearthspace_desktop::activation::MARKER.into(),
+            generation.trim().into(),
+        ));
         // Direct and activated launches use the same selected bus. The adapter
         // keeps terminal scopes owned by this session on either bus.
         vars.push((
@@ -204,94 +233,4 @@ pub(crate) fn repo_root() -> PathBuf {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn session_env_uses_private_runtime_dir() {
-        let paths = SessionPaths {
-            host_runtime_dir: PathBuf::from("/tmp/hearthspace-test"),
-            session_dir: PathBuf::from("/tmp/hearthspace-test/session-1"),
-            applications_dir: PathBuf::from("/tmp/hearthspace-test/session-1/share/applications"),
-            settings_socket: PathBuf::from("/tmp/hearthspace-test/session-1/settings.sock"),
-            session_socket: PathBuf::from("/tmp/hearthspace-test/session-1/session.sock"),
-            shell_command_socket: PathBuf::from(
-                "/tmp/hearthspace-test/session-1/shell-command.sock",
-            ),
-        };
-        let args = Args {
-            backend: Some(crate::cli::Backend::Nested),
-            session_dir: None,
-            binary_dir: None,
-            compositor_binary: None,
-            private_session_bus: false,
-            startup_timeout: 120,
-            dev: false,
-            vnc: false,
-            vnc_port: 5900,
-            installed: true,
-            login_session: false,
-            wayland_display: Some("hearthspace-test".to_string()),
-            watch_apps: false,
-            no_watch_apps: false,
-            no_shell_restart: false,
-            no_settingsd_restart: false,
-            no_desktop_services: false,
-            log_level: "info".to_string(),
-            print_env: false,
-            dry_run: false,
-        };
-
-        let env = create_session_env(&args, RunMode::InstalledBinaries, &paths).unwrap();
-
-        assert!(env.vars.iter().any(|(key, value)| {
-            key == "XDG_RUNTIME_DIR" && value == "/tmp/hearthspace-test/session-1"
-        }));
-    }
-
-    #[test]
-    fn session_env_uses_stable_default_wayland_display() {
-        let paths = SessionPaths {
-            host_runtime_dir: PathBuf::from("/tmp/hearthspace-test"),
-            session_dir: PathBuf::from("/tmp/hearthspace-test/session-1"),
-            applications_dir: PathBuf::from("/tmp/hearthspace-test/session-1/share/applications"),
-            settings_socket: PathBuf::from("/tmp/hearthspace-test/session-1/settings.sock"),
-            session_socket: PathBuf::from("/tmp/hearthspace-test/session-1/session.sock"),
-            shell_command_socket: PathBuf::from(
-                "/tmp/hearthspace-test/session-1/shell-command.sock",
-            ),
-        };
-        let args = Args {
-            backend: Some(crate::cli::Backend::Nested),
-            session_dir: None,
-            binary_dir: None,
-            compositor_binary: None,
-            private_session_bus: false,
-            startup_timeout: 120,
-            dev: false,
-            vnc: false,
-            vnc_port: 5900,
-            installed: true,
-            login_session: false,
-            wayland_display: None,
-            watch_apps: false,
-            no_watch_apps: false,
-            no_shell_restart: false,
-            no_settingsd_restart: false,
-            no_desktop_services: false,
-            log_level: "info".to_string(),
-            print_env: false,
-            dry_run: false,
-        };
-
-        let env = create_session_env(&args, RunMode::InstalledBinaries, &paths).unwrap();
-
-        assert_eq!(
-            env.wayland_display,
-            hearthspace_common::WAYLAND_DISPLAY_NAME
-        );
-        assert!(env.vars.iter().any(|(key, value)| {
-            key == hearthspace_common::HOST_RUNTIME_DIR_ENV && value == "/tmp/hearthspace-test"
-        }));
-    }
-}
+mod tests;

@@ -5,6 +5,9 @@ import os
 import subprocess
 import time
 
+from runtime_artifacts import development_commands as artifact_development_commands
+from runtime_artifacts import runtime_build_command
+
 from .common import BINARIES, ROOT, save
 
 
@@ -30,29 +33,7 @@ def build(args, session):
         required += ("hearthspace-login-guard",)
     if not args.no_build:
         with (session / "build.log").open("w") as log:
-            command = [
-                "cargo",
-                "build",
-                "--locked",
-                "--target-dir",
-                str(ROOT / "target"),
-                "-p",
-                "hearthspace-session",
-                "-p",
-                "hearthspace-compositor",
-                "-p",
-                "hearthspace-shell",
-                "-p",
-                "hearthspace-settings",
-                "-p",
-                "hearthspace-settingsd",
-                "-p",
-                "waydriver-hearthspace",
-                "-p",
-                "hearthspace-notifications",
-                "--features",
-                "hearthspace-compositor/udev",
-            ]
+            command = runtime_build_command(ROOT / "target")
             # Pin the artifact path even if the caller sets CARGO_TARGET_DIR.
             if args.binary_dir.resolve() != ROOT / "target/debug":
                 raise ValueError("a custom --binary-dir requires --no-build")
@@ -90,20 +71,4 @@ def build(args, session):
 
 
 def development_commands():
-    # Each cargo-run child resolves features independently. A single workspace
-    # build unifies features and leaves expensive recompilation until after the
-    # VT switch. Warm the exact child graphs before recording binary provenance.
-    prefix = ["cargo", "build", "--locked", "--target-dir", str(ROOT / "target")]
-    commands = [prefix + ["-p", "hearthspace-session", "-p", "waydriver-hearthspace"]]
-    for package in (
-        "hearthspace-compositor",
-        "hearthspace-settingsd",
-        "hearthspace-shell",
-        "hearthspace-notifications",
-        "hearthspace-settings",
-    ):
-        command = prefix + ["-p", package]
-        if package == "hearthspace-compositor":
-            command.extend(["--features", "udev"])
-        commands.append(command)
-    return commands
+    return artifact_development_commands(ROOT / "target")

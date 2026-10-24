@@ -1,8 +1,7 @@
 //! Native frame parts stay alive while the compositor owns their placement.
 use std::{collections::BTreeMap, sync::Arc};
 
-use hearthspace_common::frame_layout::{FrameLayout, LayoutTarget};
-use serde::Deserialize;
+use hearthspace_common::frame_layout::LayoutTarget;
 use tokio::sync::{Notify, mpsc};
 use xilem::{WindowId, WindowView};
 
@@ -37,117 +36,12 @@ pub(super) fn task()
     xilem::core::fork(task::task(), tooltip::task())
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Deserialize)]
-#[serde(default)]
-pub(super) struct Rect {
-    pub x: f64,
-    pub y: f64,
-    pub width: f64,
-    pub height: f64,
-}
-
-#[derive(Clone, Debug, Default, PartialEq, Deserialize)]
-#[serde(default)]
-pub(super) struct Widget {
-    pub id: String,
-    pub group: Option<String>,
-    pub orientation: String,
-    pub rect: Rect,
-    pub expanded: bool,
-    pub merged: bool,
-}
-
-#[derive(Clone, Debug, Default, PartialEq, Deserialize)]
-#[serde(default)]
-pub(super) struct Group {
-    pub id: String,
-    pub rect: Rect,
-    pub grip: Rect,
-    #[serde(default = "group_scale")]
-    pub scale: f64,
-    pub orientation: String,
-    pub hovered: bool,
-    pub focused: bool,
-    #[serde(default = "group_material")]
-    pub material: bool,
-    pub backing_only: bool,
-}
-
-fn group_scale() -> f64 {
-    1.0
-}
-
-fn group_material() -> bool {
-    true
-}
-
-#[derive(Clone, Debug, Default, PartialEq, Deserialize)]
-#[serde(default)]
-pub(super) struct Output {
-    pub output: String,
-    pub rect: Rect,
-    pub compact: bool,
-    pub layout: FrameLayout,
-    pub widgets: Vec<Widget>,
-    pub groups: Vec<Group>,
-}
-
-#[derive(Clone, Debug, PartialEq, Deserialize)]
-pub(super) struct Selection {
-    pub output: String,
-    pub target: LayoutTarget,
-}
-
-#[derive(Clone, Debug, PartialEq, Deserialize)]
-pub(super) struct FocusRequest {
-    pub serial: u64,
-    pub output: String,
-    pub target: LayoutTarget,
-    pub reverse: bool,
-}
-
-#[derive(Clone, Debug, PartialEq, Deserialize)]
-pub(super) struct PinnedWindow {
-    pub id: u64,
-    pub title: String,
-    pub app_id: String,
-    pub output: String,
-    pub rect: Rect,
-    pub expanded: bool,
-    pub hovered: bool,
-    pub edge: Option<hearthspace_common::frame_layout::FrameEdge>,
-}
-
-#[derive(Clone, Debug, PartialEq, Deserialize)]
-pub(super) struct Confirmation {
-    pub kind: String,
-    pub window_id: Option<u64>,
-}
-
-#[derive(Clone, Debug, Default, PartialEq, Deserialize)]
-#[serde(default)]
-pub(super) struct Snapshot {
-    pub version: u32,
-    pub revision: u64,
-    pub popup_epoch: u64,
-    pub editing: bool,
-    pub session: u64,
-    pub output: Option<String>,
-    pub selected: Option<Selection>,
-    pub selected_title: String,
-    pub confirmation: Option<Confirmation>,
-    #[serde(default = "confirm_width")]
-    pub confirmation_max_width: f64,
-    #[serde(default = "editor_height")]
-    pub confirmation_max_height: f64,
-    pub outputs: Vec<Output>,
-    pub pinned_windows: Vec<PinnedWindow>,
-    pub focus_request: Option<FocusRequest>,
-    #[serde(default = "editor_width")]
-    pub editor_max_width: f64,
-    #[serde(default = "editor_height")]
-    pub editor_max_height: f64,
-}
+use hearthspace_ipc::frame_layout::{Action, Command};
+#[cfg(test)]
+pub(super) use hearthspace_ipc::frame_layout::{Confirmation, Group, Selection, Widget};
+pub(super) use hearthspace_ipc::frame_layout::{
+    FocusRequest, Output, PinnedWindow, Rect, Snapshot,
+};
 
 #[derive(Default)]
 pub(super) struct State {
@@ -184,19 +78,41 @@ pub(super) fn submit(state: &mut ShellState, command: String) {
     }
 }
 
-pub(super) fn command(state: &mut ShellState, action: &str, data: serde_json::Value) {
-    let snapshot = &state.frame_layout.snapshot;
-    let output = snapshot
+pub(super) fn command(state: &mut ShellState, action: Action) {
+    let output = state
+        .frame_layout
+        .snapshot
         .selected
         .as_ref()
-        .map(|selected| selected.output.as_str())
-        .or(snapshot.output.as_deref());
-    let mut request = serde_json::json!({"session":snapshot.session,"output":output,
-        "action":action,"target":snapshot.selected.as_ref().map(|value| &value.target)});
-    if let (Some(request), Some(data)) = (request.as_object_mut(), data.as_object()) {
-        request.extend(data.clone());
+        .map(|selected| selected.output.clone())
+        .or_else(|| state.frame_layout.snapshot.output.clone());
+    if let Some(output) = output {
+        command_on_output(state, output, action);
     }
-    submit(state, format!("layout-command {request}"));
+}
+
+pub(super) fn command_on_output(state: &mut ShellState, output: String, action: Action) {
+    let request = Command {
+        session: state.frame_layout.snapshot.session,
+        output,
+        action,
+    };
+    submit(
+        state,
+        format!(
+            "layout-command {}",
+            serde_json::to_string(&request).expect("serializable frame action")
+        ),
+    );
+}
+
+pub(super) fn selected_command(
+    state: &mut ShellState,
+    action: impl FnOnce(LayoutTarget) -> Action,
+) {
+    if let Some(selected) = &state.frame_layout.snapshot.selected {
+        command(state, action(selected.target.clone()));
+    }
 }
 
 fn apply(state: &mut ShellState, mut snapshot: Snapshot) {
@@ -340,17 +256,6 @@ fn material<V: xilem::WidgetView<ShellState>>(
     } else {
         inner.boxed()
     }
-}
-
-fn editor_width() -> f64 {
-    260.0
-}
-fn editor_height() -> f64 {
-    452.0
-}
-
-fn confirm_width() -> f64 {
-    420.0
 }
 
 pub(super) fn reconcile(state: &ShellState) {

@@ -7,7 +7,6 @@ use super::{
 use hearthspace_common::frame_layout::{
     FrameLayout, LayoutTarget, ObjectPlacement, Point, Rect, TargetKind,
 };
-use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap};
 
 mod actions;
@@ -27,6 +26,7 @@ mod protocol;
 mod render;
 mod render_turn;
 mod settlement;
+mod status;
 mod surfaces;
 mod tooltip;
 mod turn;
@@ -36,11 +36,8 @@ mod turn_input;
 mod turn_members;
 pub(in crate::compositor) use turn_element::TurnElement;
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub(super) struct Target {
-    pub output: String,
-    pub target: LayoutTarget,
-}
+use hearthspace_ipc::frame_layout::FocusRequest;
+pub(super) use hearthspace_ipc::frame_layout::Selection as Target;
 
 #[derive(Clone, Debug, PartialEq)]
 pub(super) struct PlacedTarget {
@@ -51,16 +48,9 @@ pub(super) struct PlacedTarget {
     pub vertical: bool,
 }
 
-#[derive(Clone, Serialize)]
-struct FocusRequest {
-    serial: u64,
-    output: String,
-    target: LayoutTarget,
-    reverse: bool,
-}
-
 #[derive(Default)]
 pub(super) struct State {
+    // Durable app-slot targets are canonical; placed/session targets are live IDs.
     pub layouts: BTreeMap<String, FrameLayout>,
     pub allow_hide_tools: bool,
     pub revision: u64,
@@ -198,13 +188,14 @@ impl App {
     }
 
     fn target_window_index(&self, target: &Target) -> Option<usize> {
+        let live = self.live_layout_target(&target.target)?;
         self.windows.iter().enumerate().find_map(|(index, window)| {
             if !window.mapped {
                 return None;
             }
             let matches = match target.target.kind {
                 TargetKind::Window => {
-                    self.is_navigable_window(index) && target.target.id == window.id.to_string()
+                    self.is_navigable_window(index) && live.id == window.id.to_string()
                 }
                 TargetKind::Item => {
                     self.desktop_id(index).as_deref() == Some(target.target.id.as_str())
@@ -237,10 +228,11 @@ impl App {
     }
 
     fn frame_placed(&self, target: &Target) -> Option<&PlacedTarget> {
+        let live = self.live_layout_target(&target.target)?;
         self.layout_editor
             .placed
             .iter()
-            .find(|item| item.target == *target)
+            .find(|item| item.target.output == target.output && item.target.target == live)
     }
 
     fn target_placement(&self, target: &Target) -> ObjectPlacement {
@@ -252,7 +244,7 @@ impl App {
         self.layout_editor
             .layouts
             .get(&target.output)
-            .map(|layout| layout.placement(&target.target))
+            .map(|layout| layout.placement(&self.canonical_layout_target(&target.target)))
             .unwrap_or_else(|| hearthspace_common::frame_layout::default_placement(&target.target))
     }
 }

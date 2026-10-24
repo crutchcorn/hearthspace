@@ -4,6 +4,7 @@ use std::{
     net::Shutdown,
     os::{fd::AsRawFd, unix::net::UnixStream},
     path::Path,
+    sync::atomic::{AtomicBool, Ordering},
     thread,
     time::{Duration, Instant},
 };
@@ -16,6 +17,7 @@ use nix::{
 pub const MAX_REQUEST_BYTES: usize = 16 * 1024;
 pub const MAX_RESPONSE_BYTES: usize = 64 * 1024;
 
+pub mod launch;
 mod payload;
 pub use payload::request_payload;
 
@@ -68,10 +70,19 @@ pub fn read_line_until(
     max_bytes: usize,
     deadline: Instant,
 ) -> io::Result<String> {
+    read_line_cancellable(stream, max_bytes, deadline, None)
+}
+
+fn read_line_cancellable(
+    stream: &mut UnixStream,
+    max_bytes: usize,
+    deadline: Instant,
+    cancelled: Option<&AtomicBool>,
+) -> io::Result<String> {
     let mut response = Vec::new();
     let mut buffer = [0; 4096];
     loop {
-        stream.set_read_timeout(Some(remaining(deadline)?))?;
+        stream.set_read_timeout(Some(io_budget(deadline, cancelled)?))?;
         match stream.read(&mut buffer) {
             Ok(0) => {
                 return Err(io::Error::new(
@@ -97,9 +108,18 @@ pub fn read_line_until(
     }
 }
 
-pub fn write_until(stream: &mut UnixStream, mut bytes: &[u8], deadline: Instant) -> io::Result<()> {
+pub fn write_until(stream: &mut UnixStream, bytes: &[u8], deadline: Instant) -> io::Result<()> {
+    write_cancellable(stream, bytes, deadline, None)
+}
+
+fn write_cancellable(
+    stream: &mut UnixStream,
+    mut bytes: &[u8],
+    deadline: Instant,
+    cancelled: Option<&AtomicBool>,
+) -> io::Result<()> {
     while !bytes.is_empty() {
-        stream.set_write_timeout(Some(remaining(deadline)?))?;
+        stream.set_write_timeout(Some(io_budget(deadline, cancelled)?))?;
         match stream.write(bytes) {
             Ok(0) => return Err(io::ErrorKind::WriteZero.into()),
             Ok(count) => bytes = &bytes[count..],
@@ -108,6 +128,18 @@ pub fn write_until(stream: &mut UnixStream, mut bytes: &[u8], deadline: Instant)
         }
     }
     Ok(())
+}
+
+fn io_budget(deadline: Instant, cancelled: Option<&AtomicBool>) -> io::Result<Duration> {
+    if cancelled.is_some_and(|flag| flag.load(Ordering::Acquire)) {
+        return Err(io::Error::other("Application launch was cancelled."));
+    }
+    let remaining = remaining(deadline)?;
+    Ok(if cancelled.is_some() {
+        remaining.min(Duration::from_millis(20))
+    } else {
+        remaining
+    })
 }
 
 fn retryable(error: &io::Error) -> bool {

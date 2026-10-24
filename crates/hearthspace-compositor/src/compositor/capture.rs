@@ -249,6 +249,13 @@ impl CalloopData {
             ["capture"] => Some(self.request_capture(None, true)),
             ["capture", name] => Some(self.request_capture(Some(name), true)),
             ["status"] => Some(ControlReply::Payload(self.automation_status())),
+            ["output-primary"] => Some(ControlReply::Payload(
+                serde_json::to_vec(&hearthspace_ipc::outputs::PrimaryOutput {
+                    version: 1,
+                    primary: self.state.primary_output_name().map(str::to_owned),
+                })
+                .expect("serializable primary output"),
+            )),
             _ => None,
         }
     }

@@ -16,6 +16,7 @@ impl App {
         let members: Vec<_> = group
             .members
             .iter()
+            .filter_map(|member| self.live_layout_target(member))
             .filter(|member| {
                 member.kind != TargetKind::Widget
                     || self.frame_widget_available(&target.output, &member.id)
@@ -25,7 +26,7 @@ impl App {
                     || self
                         .target_window_index(&Target {
                             output: target.output.clone(),
-                            target: (*member).clone(),
+                            target: member.clone(),
                         })
                         .is_some()
             })

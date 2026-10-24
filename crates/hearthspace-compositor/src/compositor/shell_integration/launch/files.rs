@@ -1,20 +1,16 @@
-use super::{App, snap_scope};
+use super::pending::Execution;
+use super::{App, apps, pending, snap_scope};
 use crate::compositor::shell_integration::{
     ControlReply, launch_environment::launch_environment_for_app,
 };
-use hearthspace_shell::desktop_items::file_launch::{self, Request};
-use std::{path::PathBuf, process::Command, time::Duration};
-
-mod pending;
+use hearthspace_desktop::file_launch::{self, Request};
+use std::{process::Command, time::Duration};
 
 struct Prepared {
     request: Request,
-    paths: Vec<PathBuf>,
-    app: file_launch::Application,
     snap_instance: Option<String>,
-    prefix: Vec<String>,
     environment: Vec<(String, String)>,
-    activation_helper: Option<PathBuf>,
+    command: Command,
 }
 
 /// All probes of user-selected files, desktop directories and executable paths
@@ -34,19 +30,29 @@ fn prepare(request: Request) -> Result<Prepared, String> {
         .unwrap_or_default();
     let environment = launch_environment_for_app(&request.app_id)
         .map_err(|error| format!("failed to prepare app environment: {error}"))?;
-    let activation_helper = app
-        .dbus_activatable
-        .then(std::env::current_exe)
-        .transpose()
-        .map_err(|error| format!("Could not locate file launcher: {error}"))?;
+    let envs = environment
+        .iter()
+        .map(|(k, v)| (k.as_str(), v.as_str()))
+        .collect::<Vec<_>>();
+    let command = if app.dbus_activatable {
+        let helper = std::env::current_exe().map_err(|error| error.to_string())?;
+        if snap_instance.is_some()
+            || environment
+                .iter()
+                .any(|(key, _)| key == "GSETTINGS_BACKEND")
+        {
+            file_launch::scoped_gio_command(&app.desktop_file, &paths, &prefix, "", &envs, &helper)?
+        } else {
+            file_launch::native_gio_command(&app.desktop_file, &paths, "", &envs, &helper)?
+        }
+    } else {
+        file_launch::gio_command(&app.desktop_file, &paths, &prefix, "", &envs)?
+    };
     Ok(Prepared {
         request,
-        paths,
-        app,
         snap_instance,
-        prefix,
         environment,
-        activation_helper,
+        command,
     })
 }
 
@@ -61,15 +67,23 @@ impl App {
                 return ControlReply::Err(format!("Invalid file launch request: {error}"));
             }
         };
-        pending::start(
+        let output = request.output_name.clone();
+        pending::start_checked(
             &self.loop_handle,
             Duration::from_secs(8),
             move || prepare(request),
             |prepared, _, data| data.state.configure_file_launch(prepared),
+            move |display, data| {
+                apps::check_display(display, data)?;
+                apps::admit(data, output.as_deref())?;
+                data.state.prepare_spawn_output(output.as_deref());
+                Ok(())
+            },
+            |result, _| result,
         )
     }
 
-    fn configure_file_launch(&mut self, prepared: Prepared) -> Result<Command, String> {
+    fn configure_file_launch(&mut self, mut prepared: Prepared) -> Result<Execution, String> {
         if self.session_locked() {
             return Err("session is locked".into());
         }
@@ -85,40 +99,15 @@ impl App {
             prepared.snap_instance.as_deref(),
             prepared.environment,
         )?;
-        let envs = environment
-            .variables
-            .iter()
-            .map(|(key, value)| (key.as_str(), value.as_str()))
-            .collect::<Vec<_>>();
-        let command = if let Some(helper) = &prepared.activation_helper {
-            if prepared.snap_instance.is_some() {
-                file_launch::scoped_gio_command(
-                    &prepared.app.desktop_file,
-                    &prepared.paths,
-                    &prepared.prefix,
-                    &environment.wayland_display,
-                    &envs,
-                    helper,
-                )?
-            } else {
-                file_launch::native_gio_command(
-                    &prepared.app.desktop_file,
-                    &prepared.paths,
-                    &environment.wayland_display,
-                    &envs,
-                    helper,
-                )?
-            }
-        } else {
-            file_launch::gio_command(
-                &prepared.app.desktop_file,
-                &prepared.paths,
-                &prepared.prefix,
-                &environment.wayland_display,
-                &envs,
-            )?
-        };
-        self.prepare_spawn_output(prepared.request.output_name.as_deref());
-        Ok(command)
+        prepared
+            .command
+            .env("WAYLAND_DISPLAY", environment.wayland_display)
+            .envs(environment.variables);
+        let mut execution = Execution::helper(prepared.command);
+        execution.display = super::display::snapshot(self.xwayland_display_name());
+        Ok(execution)
     }
 }
+
+#[cfg(test)]
+pub(super) mod tests;

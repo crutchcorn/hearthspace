@@ -56,7 +56,7 @@ fn steam_game_shortcut_without_snap_metadata_gets_an_owned_snap_scope() {
     fs::create_dir(&applications).unwrap();
     fs::write(applications.join("Pepper Grinder.desktop"),
         "[Desktop Entry]\nType=Application\nName=Pepper Grinder\nExec=steam steam://rungameid/2076580\nTerminal=false\n").unwrap();
-    let catalog = hearthspace_shell::app_catalog::AppCatalog::load_from_data_dirs(vec![
+    let catalog = hearthspace_desktop::app_catalog::AppCatalog::load_from_data_dirs(vec![
         fixture.root.path().into(),
     ]);
     let app = catalog.app_by_id("Pepper Grinder.desktop").unwrap();

@@ -1,14 +1,12 @@
 use std::path::PathBuf;
 
-use hearthspace_ipc::{Settings, client_get_settings};
+use hearthspace_ipc::{MonitorConfig, Settings, client_get_settings};
 use xilem::tokio::sync::mpsc::UnboundedSender;
 
-use crate::{
-    monitors::{LiveOutput, settings_with_live_outputs},
-    wayland_outputs::live_wayland_outputs,
-};
+use crate::monitors::LiveOutput;
 
 pub(crate) struct SettingsApp {
+    pub(crate) preferences: crate::settings_refresh::RefreshState,
     pub(crate) running: bool,
     pub(crate) navigation: crate::ui::navigation::State,
     pub(crate) appearance_theme: crate::appearance::Theme,
@@ -16,7 +14,12 @@ pub(crate) struct SettingsApp {
     pub(crate) ai: crate::ai::AiSettings,
     pub(crate) favorites: crate::favorites::FavoriteSettings,
     pub(crate) frame_settings: crate::frame_settings::State,
+    pub(crate) display_layout: crate::settings_backend::DisplayLayoutState,
+    /// Non-display preferences plus the connected, editable display projection.
     pub(crate) settings: Settings,
+    /// Complete authoritative display preferences, including disconnected outputs.
+    pub(crate) saved_monitors: Vec<MonitorConfig>,
+    pub(crate) output_observation: crate::wayland_outputs::Observation,
     pub(crate) live_outputs: Vec<LiveOutput>,
     pub(crate) selected_category: SettingsCategory,
     pub(crate) selected_monitor_id: Option<String>,
@@ -73,33 +76,30 @@ pub(crate) enum BackgroundPickerResponse {
 }
 
 pub(crate) fn initial_state(selected_category: SettingsCategory) -> SettingsApp {
-    let (mut settings, mut status) = match client_get_settings() {
+    let (settings, status) = match client_get_settings() {
         Ok(settings) => (settings, "Connected to hearthspace-settingsd".to_string()),
         Err(error) => (
             Settings::default(),
             format!("Settings backend unavailable: {error}"),
         ),
     };
-    let live_outputs = match live_wayland_outputs() {
-        Ok(outputs) => outputs,
-        Err(error) => {
-            status.push_str(&format!("; live monitors unavailable: {error}"));
-            Vec::new()
-        }
-    };
-    settings = settings_with_live_outputs(settings, &live_outputs);
+    let saved_monitors = settings.monitors.clone();
     let selected_monitor_id = settings.monitors.first().map(|monitor| monitor.id.clone());
 
     SettingsApp {
         running: true,
+        preferences: Default::default(),
         appearance_theme: Default::default(),
         navigation: Default::default(),
         activation_listener: None,
         ai: crate::ai::AiSettings::default(),
         favorites: crate::favorites::FavoriteSettings::load(),
         frame_settings: Default::default(),
+        display_layout: Default::default(),
         settings,
-        live_outputs,
+        saved_monitors,
+        output_observation: Default::default(),
+        live_outputs: Vec::new(),
         selected_category,
         selected_monitor_id,
         background_preview: Default::default(),

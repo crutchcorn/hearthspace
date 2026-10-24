@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use hearthspace_shell::{ShellCommand, SpawnTarget};
+use hearthspace_ipc::command::{ShellCommand, SpawnTarget};
 use smithay::{
     backend::input::{InputTime, KeyState},
     input::keyboard::{FilterResult, KeyboardSource, Keycode, ModifiersState, keysyms},

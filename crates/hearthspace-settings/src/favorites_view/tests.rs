@@ -19,13 +19,17 @@ pub(crate) fn state() -> (tempfile::TempDir, SettingsApp) {
         dir,
         SettingsApp {
             running: true,
+            preferences: Default::default(),
             appearance_theme: Default::default(),
             navigation: Default::default(),
             frame_settings: Default::default(),
+            display_layout: Default::default(),
             activation_listener: None,
             ai: crate::ai::AiSettings::default(),
             favorites,
             settings: Settings::default(),
+            saved_monitors: hearthspace_ipc::Settings::default().monitors,
+            output_observation: Default::default(),
             live_outputs: vec![],
             selected_category: SettingsCategory::Gestures,
             selected_monitor_id: None,
@@ -149,7 +153,7 @@ fn long_app_names_keep_list_actions_and_editor_controls_inside_narrow_content() 
     )
     .unwrap();
     state.favorites.catalog =
-        hearthspace_shell::app_catalog::AppCatalog::load_from_data_dirs(vec![
+        hearthspace_desktop::app_catalog::AppCatalog::load_from_data_dirs(vec![
             directory.path().to_owned(),
         ]);
     state
@@ -330,7 +334,7 @@ fn remove_gesture_button_reoffers_add_gesture_and_preserves_the_dock_pin() {
     assert_eq!(ui.state.favorites.entries()[0].app_id, "Alpha.desktop");
     assert!(ui.state.favorites.entries()[0].gesture.is_none());
     assert_eq!(
-        hearthspace_shell::favorites::FavoriteStore::load(dir.path().join("favorites.json"))
+        hearthspace_desktop::favorites::FavoriteStore::load(dir.path().join("favorites.json"))
             .unwrap()
             .entries(),
         ui.state.favorites.entries()

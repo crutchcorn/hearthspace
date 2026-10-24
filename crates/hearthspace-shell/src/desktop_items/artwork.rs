@@ -12,16 +12,16 @@ use std::{
 
 use gio::prelude::*;
 
-use crate::{
+use hearthspace_desktop::{
     app_icon,
-    tray::{TrayIcon, TrayPixmap},
+    artwork::{IconSource, RasterImage},
 };
 
 mod cover;
 #[cfg(test)]
 mod tests;
 
-pub(crate) type Images = BTreeMap<String, Arc<TrayPixmap>>;
+pub(crate) type Images = BTreeMap<String, Arc<RasterImage>>;
 pub(crate) type Files = BTreeMap<String, PathBuf>;
 
 // One poll cannot decode a directory full of media at once. Remaining items
@@ -31,12 +31,12 @@ const MAX_PREVIEWS_PER_POLL: usize = 8;
 #[derive(Default)]
 pub(crate) struct Cache {
     entries: BTreeMap<PathBuf, Entry>,
-    icons: BTreeMap<String, Option<Arc<TrayPixmap>>>,
+    icons: BTreeMap<String, Option<Arc<RasterImage>>>,
 }
 
 struct Entry {
     source: Source,
-    image: Option<Arc<TrayPixmap>>,
+    image: Option<Arc<RasterImage>>,
     preview_loaded: bool,
 }
 
@@ -102,7 +102,7 @@ impl Source {
         })
     }
 
-    fn preview(&self, path: &Path) -> Option<TrayPixmap> {
+    fn preview(&self, path: &Path) -> Option<RasterImage> {
         self.thumbnail
             .as_ref()
             // Freedesktop cache validation uses whole-second mtimes. A file
@@ -180,7 +180,7 @@ impl Cache {
                     self.icons
                         .entry(name.clone())
                         .or_insert_with(|| {
-                            app_icon::resolve(&TrayIcon {
+                            app_icon::resolve(&IconSource {
                                 name: Some(name.clone()),
                                 ..Default::default()
                             })

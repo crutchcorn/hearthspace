@@ -103,7 +103,12 @@ pub(in crate::ui) fn defer(state: &mut ShellState, key: &str, popup: Popup) -> b
     };
     let command = format!(
         "frame-popup-anchor {}",
-        serde_json::json!({"app_id":app_id,"output":output.key(),"target":hearthspace_common::frame_layout::LayoutTarget::widget(id)})
+        serde_json::to_string(&hearthspace_ipc::frame_layout::Anchor {
+            app_id: app_id.clone(),
+            output: output.key().into(),
+            target: hearthspace_common::frame_layout::LayoutTarget::widget(id)
+        })
+        .unwrap()
     );
     if let Some(prior) =
         state

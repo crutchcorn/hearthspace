@@ -3,7 +3,7 @@ use std::{io, path::Path, sync::atomic::AtomicBool, time::Instant};
 
 use crate::session_env::{SessionEnv, SessionPaths};
 
-mod cleanup;
+use hearthspace_desktop::activation as cleanup;
 mod environment;
 mod publish;
 
@@ -50,9 +50,15 @@ pub(crate) fn update_activation_environment(
     } else {
         Vec::new()
     };
-    let values = environment::values(paths, session, private_session_bus, &profile)?;
+    let mut values = environment::values(paths, session, private_session_bus, &profile)?;
     let bus = values["DBUS_SESSION_BUS_ADDRESS"].clone();
     if private_session_bus {
+        let _lock = cleanup::operations::lock(&paths.host_runtime_dir, deadline, cancelled)?;
+        if let Some(generation) = values.get(cleanup::MARKER)
+            && let Some(display) = cleanup::latest_display(&paths.session_dir, generation)?
+        {
+            values.insert("DISPLAY".into(), display);
+        }
         cleanup::operations::update(&bus, &values, false, deadline, cancelled)?;
         return Ok(None);
     }

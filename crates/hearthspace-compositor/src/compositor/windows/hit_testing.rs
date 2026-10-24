@@ -64,6 +64,7 @@ impl App {
             {
                 continue;
             }
+            let projection = self.window_projection(window_index);
             match window.kind {
                 ManagedWindowKind::ShellBar | ManagedWindowKind::Launcher => {
                     let origin = if window.kind == ManagedWindowKind::ShellBar {
@@ -76,7 +77,7 @@ impl App {
                             window_index,
                             location,
                             origin,
-                            self.window_render_scale(window_index),
+                            projection.scale,
                         )
                     {
                         return Some(target);
@@ -84,16 +85,13 @@ impl App {
                     continue;
                 }
                 ManagedWindowKind::DesktopItem => {
-                    if !self
-                        .window_screen_bounds(window_index)
-                        .contains(location.to_i32_round())
-                    {
+                    if !projection.bounds.contains(location.to_i32_round()) {
                         continue;
                     }
                     let Some(root) = window.surface.wl_surface() else {
                         continue;
                     };
-                    let local = self.window_screen_to_surface(window_index, location);
+                    let local = projection.screen_to_surface(location);
                     if let Some((surface, origin)) =
                         under_from_surface_tree(&root, local, (0, 0), WindowSurfaceType::ALL)
                     {
@@ -119,7 +117,7 @@ impl App {
             {
                 continue;
             }
-            let local = self.window_screen_to_surface(window_index, location);
+            let local = projection.screen_to_surface(location);
 
             // Popups (menus) sit above this window's content and chrome, so
             // they are hit-tested first. Their location comes from the popup's
@@ -171,16 +169,14 @@ impl App {
             // is grabbable for resizing. This applies to both server- and
             // client-side-decorated windows; for the latter `window_canvas_rect`
             // tracks the visible geometry so the band sits on the real edge.
-            let window_rect = self.window_screen_bounds(window_index);
+            let window_rect = projection.bounds;
             if !self.window_uses_output_coordinates(window_index)
                 && !self.windows[window_index].presentation.maximized
                 && let Some(edges) = resize_edges_at(
                     window_rect,
                     location,
-                    (f64::from(RESIZE_HANDLE_OUTSET) * self.window_render_scale(window_index))
-                        .round() as i32,
-                    (f64::from(RESIZE_HANDLE_INSET) * self.window_render_scale(window_index))
-                        .round() as i32,
+                    (f64::from(RESIZE_HANDLE_OUTSET) * projection.scale).round() as i32,
+                    (f64::from(RESIZE_HANDLE_INSET) * projection.scale).round() as i32,
                 )
             {
                 return Some(HitTarget::ResizeBorder {

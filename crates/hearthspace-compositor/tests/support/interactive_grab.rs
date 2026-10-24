@@ -13,6 +13,8 @@ use wayland_client::protocol::wl_pointer::{ButtonState, Event};
 
 #[path = "interactive_grab_recovery.rs"]
 mod recovery;
+#[path = "interactive_window_lifecycle.rs"]
+mod window_lifecycle;
 
 #[derive(Clone, Copy, Debug)]
 enum Operation {

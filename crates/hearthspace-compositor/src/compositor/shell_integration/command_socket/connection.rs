@@ -2,11 +2,17 @@ use std::{
     io::{self, ErrorKind, Read},
     os::unix::net::UnixStream,
     rc::Rc,
-    sync::mpsc::{Receiver, TryRecvError},
+    sync::{
+        Arc,
+        mpsc::{Receiver, TryRecvError},
+    },
     time::{Duration, Instant},
 };
 
 use smithay::reexports::calloop::Interest;
+
+use super::super::launch::pending::Lifetime;
+use hearthspace_ipc::transport::launch::Envelope;
 
 use super::{
     ControlReply,
@@ -23,10 +29,19 @@ pub(super) struct Connection {
     input: Vec<u8>,
     output: Option<Output>,
     pending: Option<Receiver<ControlReply>>,
+    launch: Option<Arc<Lifetime>>,
     eof: bool,
     close_after_reply: bool,
     deadline: Instant,
     limits: Rc<Limits>,
+}
+
+impl Drop for Connection {
+    fn drop(&mut self) {
+        if let Some(launch) = &self.launch {
+            launch.cancel();
+        }
+    }
 }
 
 impl Connection {
@@ -35,6 +50,7 @@ impl Connection {
             input: Vec::new(),
             output: None,
             pending: None,
+            launch: None,
             eof: false,
             close_after_reply: false,
             deadline: now + COMMAND_TIMEOUT,
@@ -81,13 +97,25 @@ impl Connection {
             };
             if let Some(reply) = reply {
                 self.pending = None;
+                self.launch = None;
                 // Deferred chains are not allowed to extend a command's deadline.
                 self.output = Some(Output::new(reply, self.limits.clone()));
                 self.deadline = now + COMMAND_TIMEOUT;
             }
         }
+        if let Some(launch) = &self.launch
+            && let Err(error) = launch.check()
+        {
+            self.pending = None;
+            self.launch = None;
+            self.close_after_reply = true;
+            self.set_reply(ControlReply::Err(error), now);
+        }
         if now >= self.deadline {
             if self.pending.take().is_some() {
+                if let Some(launch) = self.launch.take() {
+                    launch.cancel();
+                }
                 self.close_after_reply = true;
                 self.set_reply(ControlReply::Err("command timed out".into()), now);
             } else {
@@ -125,8 +153,34 @@ impl Connection {
             let Some(length) = line_length else {
                 return Ok(!self.eof);
             };
-            let line = self.input.drain(..length).collect();
-            self.set_reply(run(line), now);
+            let line: Vec<u8> = self.input.drain(..length).collect();
+            let (line, deadline) = match Envelope::decode(&line) {
+                Ok(Some(envelope)) => (
+                    format!("{}\n", envelope.command).into_bytes(),
+                    Some(envelope.deadline),
+                ),
+                Ok(None) => (line, None),
+                Err(error) => {
+                    self.close_after_reply = true;
+                    self.set_reply(ControlReply::Err(error.to_string()), now);
+                    continue;
+                }
+            };
+            let reply = run(line);
+            if let ControlReply::Launch(_, lifetime) = &reply {
+                if let Err(error) = lifetime.attach(stream, deadline) {
+                    lifetime.cancel();
+                    self.set_reply(ControlReply::Err(error), now);
+                    continue;
+                }
+                // Keep the transport bounded by the same deadline as preparation.
+                self.set_reply(reply, now);
+                if let Some(deadline) = deadline {
+                    self.deadline = self.deadline.min(deadline);
+                }
+            } else {
+                self.set_reply(reply, now);
+            }
         }
         Ok(true)
     }
@@ -135,6 +189,10 @@ impl Connection {
         self.deadline = now + COMMAND_TIMEOUT;
         match reply {
             ControlReply::Deferred(receiver) => self.pending = Some(receiver),
+            ControlReply::Launch(receiver, lifetime) => {
+                self.pending = Some(receiver);
+                self.launch = Some(lifetime);
+            }
             reply => self.output = Some(Output::new(reply, self.limits.clone())),
         }
     }

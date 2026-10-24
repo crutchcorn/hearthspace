@@ -162,6 +162,7 @@ impl App {
         // The nested dispatcher drops the XWM only after its current batch.
         // Dropping it here lets a pending clipboard pipe callback reach None.
         self.xdisplay = None;
+        self.publish_xwayland_display();
         let windows = self
             .windows
             .iter()
@@ -173,7 +174,7 @@ impl App {
             })
             .collect::<Vec<_>>();
         for window in windows {
-            self.unmap_x11_window(&window);
+            self.retire_x11_window(&window, super::RetirementCause::Destroyed);
         }
         warn!(?xwm, "XWayland disconnected");
     }

@@ -22,9 +22,13 @@ impl App {
         let Some(seat) = Seat::<Self>::from_resource(seat) else {
             return false;
         };
+        use super::policy::{Action, Phase, Source};
         seat == self._seat
-            && self.drag.is_none()
-            && self.resize.is_none()
+            && self.interaction_allowed(
+                Action::ClientWindowOperation,
+                Source::Client,
+                Phase::Continue,
+            )
             && self.pointer.has_grab(serial)
             && self.pointer_grab_targets_window(window_index)
     }

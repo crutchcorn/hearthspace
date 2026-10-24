@@ -49,7 +49,12 @@ impl Worker {
             if self.published_availability.get(&key) != Some(&available) {
                 let command = format!(
                     "frame-widget-available {}",
-                    serde_json::json!({"output":output,"id":id,"available":available})
+                    serde_json::to_string(&hearthspace_ipc::frame_layout::Available {
+                        output,
+                        id,
+                        available
+                    })
+                    .unwrap()
                 );
                 if command_client::send_command(path, &command).is_ok() {
                     self.published_availability.insert(key, available);

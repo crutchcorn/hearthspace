@@ -1,6 +1,6 @@
 //! Saved gestures and their editor use the same real catalog and recorder.
 use crate::{state::SettingsApp, typography::label};
-use hearthspace_shell::gesture_pad::thumbnail_sized;
+use hearthspace_ui_components::gesture_pad::thumbnail_sized;
 use hearthspace_ui_components::{
     self as components,
     icons::{Icon, icon},

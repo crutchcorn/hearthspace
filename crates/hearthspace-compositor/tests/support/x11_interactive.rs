@@ -10,6 +10,8 @@ mod assertions;
 mod cancellation;
 #[path = "x11_interactive/client.rs"]
 mod client;
+#[path = "frame_layout/x11_persistence.rs"]
+mod frame_persistence;
 #[path = "x11_interactive/identity.rs"]
 mod identity;
 #[path = "x11_interactive/presentation.rs"]

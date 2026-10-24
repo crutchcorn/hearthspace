@@ -25,11 +25,12 @@ pub(super) fn view(
                 right: 10.0.px(),
             }),
         crate::ui::clock_format::choices(selected, palette, None, |state, format| {
-            super::command(
-                state,
-                "clock-date-format",
-                serde_json::json!({"value":format}),
-            );
+            super::selected_command(state, |target| {
+                hearthspace_ipc::frame_layout::Action::ClockDateFormat {
+                    target,
+                    value: format,
+                }
+            });
         }),
     ))
     .cross_axis_alignment(CrossAxisAlignment::Stretch)

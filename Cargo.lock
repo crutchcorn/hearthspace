@@ -2556,6 +2556,7 @@ dependencies = [
  "gtk4",
  "hearthspace-ai",
  "hearthspace-common",
+ "hearthspace-desktop",
  "hearthspace-ipc",
  "hearthspace-shell",
  "hearthspace-ui-components",
@@ -2585,6 +2586,29 @@ dependencies = [
  "wayland-server",
  "xcursor",
  "xilem",
+]
+
+[[package]]
+name = "hearthspace-desktop"
+version = "0.1.0"
+dependencies = [
+ "dirs 6.0.0",
+ "freedesktop-icons",
+ "gio",
+ "gio-unix",
+ "hearthspace-common",
+ "hearthspace-ipc",
+ "image",
+ "nix",
+ "resvg",
+ "rstest",
+ "rustix 1.1.5",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "tracing",
+ "zbus",
 ]
 
 [[package]]
@@ -2625,6 +2649,7 @@ dependencies = [
  "gio",
  "hearthspace-ai",
  "hearthspace-common",
+ "hearthspace-desktop",
  "hearthspace-ipc",
  "nix",
  "serde",
@@ -2642,9 +2667,10 @@ version = "0.1.0"
 dependencies = [
  "hearthspace-ai",
  "hearthspace-common",
+ "hearthspace-desktop",
  "hearthspace-ipc",
- "hearthspace-shell",
  "hearthspace-ui-components",
+ "hearthspace-wayland-client",
  "image",
  "masonry",
  "png",
@@ -2677,17 +2703,17 @@ dependencies = [
  "accesskit_atspi_common",
  "chrono",
  "dirs 6.0.0",
- "freedesktop-icons",
  "futures-util",
  "gio",
  "gio-unix",
  "hearthspace-common",
+ "hearthspace-desktop",
  "hearthspace-ipc",
  "hearthspace-ui-components",
+ "hearthspace-wayland-client",
  "image",
  "lofty",
  "masonry",
- "resvg",
  "rstest",
  "rustix 1.1.5",
  "serde",

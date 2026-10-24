@@ -14,7 +14,7 @@ use lofty::{
     picture::PictureType,
 };
 
-use crate::tray::TrayPixmap;
+use hearthspace_desktop::artwork::RasterImage;
 
 const MAX_METADATA_BYTES: u64 = 16 * 1024 * 1024;
 const MAX_IMAGE_BYTES: u64 = 8 * 1024 * 1024;
@@ -32,7 +32,7 @@ fn open_regular(path: &Path) -> Option<File> {
     file.metadata().ok()?.is_file().then_some(file)
 }
 
-pub(super) fn flac(path: &Path) -> Option<TrayPixmap> {
+pub(super) fn flac(path: &Path) -> Option<RasterImage> {
     let file = open_regular(path)?;
     let length = file.metadata().ok()?.len();
     let reader = LimitedReader::new(file, length);
@@ -62,7 +62,7 @@ pub(super) fn flac(path: &Path) -> Option<TrayPixmap> {
         .find_map(|(picture, _)| image_bytes(picture.data()))
 }
 
-pub(super) fn image_file(path: &Path) -> Option<TrayPixmap> {
+pub(super) fn image_file(path: &Path) -> Option<RasterImage> {
     let file = open_regular(path)?;
     if file.metadata().ok()?.len() > MAX_IMAGE_BYTES {
         return None;
@@ -74,7 +74,7 @@ pub(super) fn image_file(path: &Path) -> Option<TrayPixmap> {
     image_bytes(&bytes)
 }
 
-fn image_bytes(bytes: &[u8]) -> Option<TrayPixmap> {
+fn image_bytes(bytes: &[u8]) -> Option<RasterImage> {
     if bytes.len() as u64 > MAX_IMAGE_BYTES {
         return None;
     }
@@ -98,7 +98,7 @@ fn image_bytes(bytes: &[u8]) -> Option<TrayPixmap> {
         .ok()?
         .thumbnail(ICON_SIZE, ICON_SIZE)
         .to_rgba8();
-    Some(TrayPixmap {
+    Some(RasterImage {
         width: image.width(),
         height: image.height(),
         rgba: image.into_raw(),

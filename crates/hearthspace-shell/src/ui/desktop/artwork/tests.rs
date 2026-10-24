@@ -1,5 +1,6 @@
 use super::*;
-use crate::{desktop_items::DesktopItem, tray::TrayPixmap};
+use crate::desktop_items::DesktopItem;
+use hearthspace_desktop::artwork::RasterImage;
 use std::{path::PathBuf, sync::Arc};
 
 fn item(id: &str) -> DesktopItem {
@@ -15,7 +16,7 @@ fn item(id: &str) -> DesktopItem {
 fn pixels(id: &str, color: [u8; 4]) -> Images {
     BTreeMap::from([(
         id.into(),
-        Arc::new(TrayPixmap {
+        Arc::new(RasterImage {
             width: 1,
             height: 1,
             rgba: color.to_vec(),

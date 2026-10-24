@@ -70,6 +70,13 @@ fn spawn_child(
 ) -> Result<Child, Box<dyn std::error::Error>> {
     info!(name = spec.name, program = %spec.program, args = ?spec.args, "starting process");
     let mut command = Command::new(&spec.program);
+    // A nested session must never inherit its parent's activation generation.
+    // Explicit session values below restore ownership only for a selected bus.
+    // Keep the ordinary borrowed DBUS_SESSION_BUS_ADDRESS for managed services;
+    // it must not opt a nested compositor into parent application activation.
+    command
+        .env_remove(hearthspace_desktop::activation::MARKER)
+        .env_remove("HEARTHSPACE_SESSION_BUS_ADDRESS");
     for key in &spec.env_removals {
         command.env_remove(key);
     }

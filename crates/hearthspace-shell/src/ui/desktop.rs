@@ -16,7 +16,7 @@ mod context_actions;
 #[path = "desktop/events.rs"]
 mod events;
 #[path = "desktop/task.rs"]
-mod task;
+pub(in crate::ui) mod task;
 #[cfg(test)]
 #[path = "desktop/tests.rs"]
 mod tests;

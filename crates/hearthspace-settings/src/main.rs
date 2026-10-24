@@ -20,6 +20,7 @@ mod monitor_layout_widget;
 mod monitors;
 mod page_components;
 mod settings_backend;
+mod settings_refresh;
 mod state;
 mod system_view;
 mod typography;

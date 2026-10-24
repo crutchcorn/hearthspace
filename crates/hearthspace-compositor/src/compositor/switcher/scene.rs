@@ -7,6 +7,24 @@ use crate::compositor::{
 use hearthspace_common::canvas_search::{park, window_switcher_layout};
 use std::collections::{HashMap, HashSet};
 
+impl Session {
+    fn window_at(
+        &self,
+        preview: &crate::compositor::canvas_preview::State,
+        location: smithay::utils::Point<f64, smithay::utils::Logical>,
+    ) -> Option<u64> {
+        self.ids.iter().find_map(|id| {
+            let (r, alpha) = preview.pose(*id)?;
+            (alpha > 0.05
+                && location.x >= r.x
+                && location.x < r.x + r.width
+                && location.y >= r.y
+                && location.y < r.y + r.height)
+                .then_some(*id)
+        })
+    }
+}
+
 impl App {
     pub(in crate::compositor) fn window_switcher_output(
         &self,
@@ -133,19 +151,76 @@ impl App {
         &self,
         location: smithay::utils::Point<f64, smithay::utils::Logical>,
     ) -> Option<u64> {
-        let s = self.window_switcher.session.as_ref()?;
-        s.ids.iter().find_map(|id| {
-            let (r, alpha) = self
-                .canvas_preview
-                .poses
-                .get(id)?
-                .current(std::time::Instant::now());
-            (alpha > 0.05
-                && location.x >= r.x
-                && location.x < r.x + r.width
-                && location.y >= r.y
-                && location.y < r.y + r.height)
-                .then_some(*id)
-        })
+        self.window_switcher
+            .session
+            .as_ref()?
+            .window_at(&self.canvas_preview, location)
+    }
+}
+
+#[cfg(test)]
+mod sampling_tests {
+    use super::*;
+    use crate::compositor::canvas_preview::test_support::held_preview;
+
+    fn session() -> Session {
+        Session {
+            id: 1,
+            source: SwitcherSource::Keyboard,
+            output: None,
+            view: Rect::default(),
+            ids: vec![99, 7],
+            selected: 7,
+            previous_focus: None,
+            caption_width: None,
+            caption_title: String::new(),
+            caption_preview: Rect::default(),
+        }
+    }
+
+    #[test]
+    fn switcher_selection_holds_fractional_frame_bounds_after_wall_time_advances() {
+        let session = session();
+        let (mut preview, now) = held_preview();
+        let (bounds, _) = preview.pose(7).unwrap();
+        let p = (bounds.x + 0.001, bounds.y + bounds.height / 2.).into();
+        assert!(bounds.x + 0.001 < preview.poses[&7].current(now).0.x);
+        assert_eq!(session.window_at(&preview, p), Some(7));
+        assert_eq!(
+            session.window_at(&preview, (bounds.x - 0.001, p.y).into()),
+            None
+        );
+        assert_eq!(
+            session.window_at(&preview, (bounds.x + bounds.width - 0.001, p.y).into()),
+            Some(7)
+        );
+        assert_eq!(
+            session.window_at(&preview, (bounds.x + bounds.width, p.y).into()),
+            None
+        );
+        preview.advance(now, true);
+        assert_eq!(session.window_at(&preview, p), None);
+        let endpoint = preview.pose(7).unwrap().0;
+        assert_eq!(
+            session.window_at(&preview, (endpoint.x + 0.001, endpoint.y + 0.001).into()),
+            Some(7)
+        );
+    }
+
+    #[test]
+    fn switcher_selection_uses_sampled_opacity_and_skips_missing_poses() {
+        let session = session();
+        let (mut preview, now) = held_preview();
+        let pose = preview.poses.get_mut(&7).unwrap();
+        pose.from = pose.to;
+        pose.from_opacity = 0.;
+        pose.to_opacity = 1.;
+        let started = pose.started;
+        let p = (pose.to.x + 0.001, pose.to.y + 0.001).into();
+        preview.advance(started, true);
+        assert_eq!(preview.poses[&7].current(now).1, 1.);
+        assert_eq!(session.window_at(&preview, p), None);
+        preview.advance(now, true);
+        assert_eq!(session.window_at(&preview, p), Some(7));
     }
 }

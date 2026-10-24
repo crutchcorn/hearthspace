@@ -1,8 +1,6 @@
 //! Compact native artwork strips mirror the reference's secondary detail row.
-use crate::{
-    app_catalog::DesktopApp,
-    ui::{desktop, dock, state::ShellState},
-};
+use crate::ui::{desktop, dock, state::ShellState};
+use hearthspace_desktop::app_catalog::DesktopApp;
 use hearthspace_ui_components::icons::{Icon, icon};
 use xilem::{
     AnyWidgetView, WidgetView,
@@ -110,8 +108,9 @@ mod tests {
             .unwrap();
         }
         let mut state = ShellState::new("/unused".into(), vec!["test".into()]);
-        state.catalog =
-            crate::app_catalog::AppCatalog::load_from_data_dirs(vec![directory.path().into()]);
+        state.catalog = hearthspace_desktop::app_catalog::AppCatalog::load_from_data_dirs(vec![
+            directory.path().into(),
+        ]);
         let names = |state: &ShellState| {
             preview_apps(state)
                 .iter()

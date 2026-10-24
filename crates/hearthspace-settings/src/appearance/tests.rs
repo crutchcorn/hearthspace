@@ -26,13 +26,17 @@ fn state() -> (tempfile::TempDir, SettingsApp) {
         directory,
         SettingsApp {
             running: true,
+            preferences: Default::default(),
             appearance_theme: Default::default(),
             navigation: Default::default(),
             frame_settings: Default::default(),
+            display_layout: Default::default(),
             activation_listener: None,
             ai: Default::default(),
             favorites,
             settings: Settings::default(),
+            saved_monitors: hearthspace_ipc::Settings::default().monitors,
+            output_observation: Default::default(),
             live_outputs: vec![],
             selected_category: SettingsCategory::Appearance,
             selected_monitor_id: None,
@@ -167,17 +171,24 @@ fn refresh_ignores_a_read_queued_before_save_and_errors_keep_the_previous_theme(
         color_mode: ColorMode::Dark,
         accent_color: AccentColor::Teal,
     };
-    state
-        .appearance_theme
-        .revision
-        .fetch_add(1, Ordering::SeqCst);
-    apply_refresh(&mut state, (0, before));
+    crate::settings_refresh::local_save_finished(&mut state);
+    let snapshot = |appearance| {
+        hearthspace_ipc::settings_snapshot::SettingsSnapshot::new(
+            1,
+            Settings {
+                appearance,
+                ..Settings::default()
+            },
+        )
+        .unwrap()
+    };
+    crate::settings_refresh::apply_refresh(&mut state, (0, snapshot(before)));
     assert_eq!(state.settings.appearance.accent_color, AccentColor::Teal);
     let external = Appearance {
         color_mode: ColorMode::Light,
         accent_color: AccentColor::Violet,
     };
-    apply_refresh(&mut state, (1, external));
+    crate::settings_refresh::apply_refresh(&mut state, (1, snapshot(external)));
     assert_eq!(state.settings.appearance, external);
 }
 

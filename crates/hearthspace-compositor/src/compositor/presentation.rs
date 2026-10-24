@@ -10,6 +10,8 @@ use super::{App, ManagedSurface, ManagedWindowKind};
 mod configure;
 mod focused;
 mod geometry;
+mod projection;
+pub(in crate::compositor) use projection::Projection;
 mod groups;
 mod restore;
 #[cfg(test)]

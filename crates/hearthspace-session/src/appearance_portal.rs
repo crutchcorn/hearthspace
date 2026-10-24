@@ -92,16 +92,12 @@ impl Worker {
             .name("appearance-portal".into())
             .spawn(move || {
                 runtime.block_on(async {
-                    tokio::select! {
-                        _ = stopped => Ok(()),
-                        result = serve(&bus, &socket, ready.clone(), reannounce) => {
-                            if let Err(error) = &result {
-                                let _ = ready.try_send(Err(error.to_string()));
-                                tracing::error!(%error, "appearance portal stopped");
-                            }
-                            result
-                        }
+                    let result = serve(&bus, &socket, ready.clone(), reannounce, stopped).await;
+                    if let Err(error) = &result {
+                        let _ = ready.try_send(Err(error.to_string()));
+                        tracing::error!(%error, "appearance portal stopped");
                     }
+                    result
                 })
             })?;
         let worker = Self {
@@ -138,23 +134,38 @@ async fn serve(
     socket: &std::path::Path,
     ready: mpsc::SyncSender<Result<(), String>>,
     reannounce: bool,
+    mut stopped: oneshot::Receiver<()>,
 ) -> io::Result<()> {
     // This bounded IPC runs only on this dedicated worker, never on a UI or
     // supervisor thread. A temporarily unavailable daemon retains the last
     // published value rather than broadcasting a spurious reset.
-    let initial = hearthspace_ipc::client_get_settings_at(socket)?.appearance;
-    let fallback = tokio::time::timeout(Duration::from_secs(2), fallback::Fallback::connect(bus))
+    use hearthspace_ipc::settings_snapshot::{client_get_snapshot_at, client_wait_for_change_at};
+    let setup = async {
+        let path = socket.to_path_buf();
+        let initial = tokio::task::spawn_blocking(move || client_get_snapshot_at(&path))
+            .await
+            .map_err(io::Error::other)??;
+        let cursor = Some(initial.cursor());
+        let initial = initial.settings.appearance;
+        let fallback =
+            tokio::time::timeout(Duration::from_secs(2), fallback::Fallback::connect(bus))
+                .await
+                .map_err(io::Error::other)?
+                .map_err(io::Error::other)?;
+        let shared = Settings::with_fallback(initial, fallback.clone());
+        let connection = tokio::time::timeout(
+            Duration::from_secs(2),
+            settings::connect(bus, shared.clone()),
+        )
         .await
         .map_err(io::Error::other)?
         .map_err(io::Error::other)?;
-    let shared = Settings::with_fallback(initial, fallback.clone());
-    let connection = tokio::time::timeout(
-        Duration::from_secs(2),
-        settings::connect(bus, shared.clone()),
-    )
-    .await
-    .map_err(io::Error::other)?
-    .map_err(io::Error::other)?;
+        Ok::<_, io::Error>((cursor, fallback, shared, connection))
+    };
+    let (mut cursor, fallback, shared, connection) = tokio::select! {
+        _ = &mut stopped => return Ok(()),
+        result = setup => result?,
+    };
     if reannounce {
         // Existing clients retain their cached settings when a backend owner
         // disappears. Recover changes made while this worker was unavailable.
@@ -166,19 +177,42 @@ async fn serve(
     ready
         .send(Ok(()))
         .map_err(|_| io::Error::other("appearance startup was cancelled"))?;
-    let mut refresh = tokio::time::interval(Duration::from_millis(250));
-    refresh.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
-    let forwarded = fallback.forward(&connection);
-    tokio::pin!(forwarded);
-    loop {
-        tokio::select! {
-            _ = connection.closed() => return Err(io::Error::other("private appearance bus closed")),
-            result = &mut forwarded => return result.map_err(io::Error::other),
-            _ = refresh.tick() => {
-                if let Ok(settings) = hearthspace_ipc::client_get_settings_at(socket) {
-                    shared.publish(&connection, settings.appearance).await.map_err(io::Error::other)?;
+    let result = {
+        let forwarded = fallback.forward(&connection);
+        tokio::pin!(forwarded);
+        loop {
+            tokio::select! {
+                _ = &mut stopped => break Ok(()),
+                _ = connection.closed() => break Err(io::Error::other("private appearance bus closed")),
+                result = &mut forwarded => break result.map_err(io::Error::other),
+                result = async {
+                    let path = socket.to_path_buf();
+                    let after = cursor.clone();
+                    tokio::task::spawn_blocking(move || match after {
+                        Some(after) => client_wait_for_change_at(&path, &after, Duration::from_millis(500)),
+                        None => client_get_snapshot_at(&path).map(Some),
+                    }).await
+                } => {
+                    match result {
+                        Ok(Ok(Some(snapshot))) => {
+                            cursor = Some(snapshot.cursor());
+                            if let Err(error) = shared.publish(&connection, snapshot.settings.appearance).await {
+                                break Err(io::Error::other(error));
+                            }
+                        },
+                        Ok(Ok(None)) => {},
+                        _ => {
+                            cursor = None;
+                            tokio::time::sleep(Duration::from_secs(1)).await;
+                        },
+                    }
                 }
             }
         }
-    }
+    };
+    // Explicitly retire the name before the worker joins. Dropping a zbus
+    // connection schedules asynchronous teardown and is not an ownership barrier.
+    let _ = tokio::time::timeout(Duration::from_millis(500), connection.release_name(NAME)).await;
+    let _ = connection.close().await;
+    result
 }
