@@ -1,5 +1,17 @@
 # Desktop notifications
 
+Open **Notifications** to read active messages and recent history. Its bell
+shows the active count, or **All clear** when nothing is active. Use a message's
+action buttons to respond through its application, or **Dismiss** to close it.
+Escape, the close button, or an outside click closes the panel. Closing the panel
+does not dismiss its messages.
+
+Messages arrive from applications on the session bus. They contain plain text
+and optional actions; application-supplied images, sounds, and rich markup are
+not supported. Recent history lasts only while the notification service runs.
+
+## Service and application contract
+
 Native sessions run `hearthspace-notifications` on the selected session D-Bus (the standard user bus by default).
 The supervisor starts it before the portal backend and shell, records its PID,
 restarts it at most twice, and stops it on logout. The daemon never takes over an

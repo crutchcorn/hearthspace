@@ -4,12 +4,15 @@
 retains evidence for each assertion. Build the native binaries first using the
 [hardware testing guide](NATIVE_TESTING.md), and follow the
 [native-control skill](../.agents/skills/hearthspace-native-control/SKILL.md) to
-coordinate ownership of the seat. The script always uses `--no-build` and never
-attaches to an existing session. Keep GPU-heavy suites stopped during the run.
+coordinate ownership of the seat. This is a repeatable check of everyday desktop
+behavior; a pass covers the listed assertions on the tested environment, not
+long-term reliability or every application. The script always uses `--no-build`
+and never attaches to an existing session. Keep GPU-heavy suites stopped during the run.
 
 ```bash
+daily_run="$(mktemp -d -t hearthspace-daily.XXXXXX)"
 scripts/daily-smoke \
-  --session /tmp/hearthspace-daily-acceptance-1 \
+  --session "$daily_run" \
   --timeout 45 --total-timeout 240 --captures 5 --notifications
 ```
 
@@ -22,8 +25,8 @@ The workflow checks:
 
 - Super+Return launches and focuses Foot; typed commands work without a click.
 - Explicit clipboard paste delivers exact Unicode bytes into a saved file.
-- A Meta tap opens search and finds a uniquely titled running terminal and selects its original
-  ID without starting another instance.
+- A Meta tap opens search, finds a uniquely titled running terminal, and selects
+  its original ID without starting another instance.
 - A window moved outside every output can be recovered by its stable ID.
 - Maximize, fullscreen, return to maximized, and restore report the expected state.
 - Sequential captures on every output are page-flip presentations with increasing

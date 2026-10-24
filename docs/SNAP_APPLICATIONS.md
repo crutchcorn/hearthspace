@@ -1,6 +1,15 @@
 # Snap applications in a native session
 
-Snap requires each confined application to run in a systemd tracking scope.
+Launch installed Snap applications from **Apps List**, the app dock, or their
+desktop shortcuts. This uses Hearthspace's managed launch path, including the
+Wayland socket and application scope required for confinement. File opening
+through desktop-item Open and Open With uses the same scope preparation.
+Launching a Snap command directly in a terminal or through an external portal
+does not receive this catalog wrapper.
+
+## Scope and bus ownership
+
+Snap applications require a systemd tracking scope.
 Catalog launches create the proper `snap.INSTANCE.APP-UUID.scope` through the
 user manager, then restore the application's runtime and selected desktop bus
 before executing its original command. Normal native sessions use the standard
@@ -10,8 +19,8 @@ confinement remain enforced in both modes.
 
 The explicit private session bus uses a unique Linux abstract Unix socket named
 `/tmp/dbus-hearthspace-UUID`. Snap gives applications a separate `/tmp` mount,
-which hides the pathname socket normally selected by `dbus-run-session` on
-this distribution. An abstract socket remains reachable across those mount
+which can hide a pathname socket used by a private bus.
+An abstract socket remains reachable across those mount
 namespaces and is supported by Snap's existing desktop D-Bus policy.
 `hearthspace-session-bus` directly executes the system `dbus-daemon` with an
 address override; the distribution's session policy, authentication, activation,
@@ -50,7 +59,7 @@ user bus and systemd user manager.
 Private diagnostic sessions without a user manager cannot create managed Snap
 scopes. Nested sessions do not create this native scope owner.
 
-Current acceptance limits remain explicit:
+## Limits and compatibility checks
 
 - This integration covers catalog launches using `/snap/bin/APP` or
   `snap run APP`, including exported commands with leading `env` assignments.

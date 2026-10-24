@@ -7,6 +7,11 @@ The default layout places independent native controls in four corners on each ou
 - **Bottom left — Canvas tools:** [desktop-item selection](DESKTOP_ITEMS.md), [canvas search](CANVAS_SEARCH.md), window-group selection, Change layout, and the [canvas map](CANVAS_MAP.md).
 - **Bottom right — App dock and Apps List:** favorite and running apps, plus the installed-app browser.
 
+These positions are a starting arrangement. **Change layout** lets you keep a
+folder at an edge, move the clock beside the dock, or place controls on the
+canvas. An edge attachment stays in reach while you pan; an object on the canvas
+moves with your work. Moving a control preserves its purpose and identity.
+
 The dock shows favorites in saved order, followed by other running apps. Favorites
 remain visible when closed; activating one launches it on that dock's output.
 Windows matching the same installed desktop entry share one icon, including a
@@ -21,21 +26,7 @@ appear in the dock.
 Each panel opens beside its control. Top attachments open downward, bottom
 attachments upward, and side attachments inward. Canvas controls use the side
 with more room; popups stay within the output. Opening one closes the previous panel.
-Escape, the close icon, an outside click, or the active corner button dismisses it.
-An acknowledged opening survives transient layout-query failures for at most five
-seconds. Queries retain their 750 ms deadline and never replay the anchor command.
-A shared cancellation ticket covers both pending work and queued UI delivery;
-dismissal, replacement, output removal, lock/VT recovery, and layout editing revoke
-it. Permanent transport or invalid-snapshot failures cancel it immediately.
-
-The 2026-10-22 reproduction confirmed that a synchronous software-rendered
-capture could outlast a layout query and lose an acknowledged notification
-opening. With recovery, the same query timed out, retained the opening, and
-delivered it on the next successful observation. Evidence is retained in
-`/tmp/hs-notify-helper-recovery`. The complete shell headless workflow then
-passed in 285.81 seconds, including 323 AT-SPI subprocess calls and 33 captures
-(`/tmp/hearthspace-main-recovery-timed-360`). Its total test budget is now 360
-seconds; assertions and individual IPC deadlines are unchanged.
+Escape, the close icon, an outside click, or the active control dismisses it.
 
 Panels have rounded transparent corners and shrink to fit their content. Long
 lists scroll within the available height; Apps List keeps its heading, input,
@@ -87,8 +78,8 @@ native session service. See [power handling](POWER.md).
 Pinch gestures and Alt+Tab open the window switcher. Settings, Lock and Log
 out are reached through Apps List and Power rather than standalone corner buttons.
 
-Wi-Fi shows the network tray handoff until a network-management backend is
-available; it does not invent nearby networks or connection state.
+Wi-Fi directs you to a network tray application. Hearthspace does not currently
+provide its own network scanning or connection controls.
 [Brightness and Sound](AUDIO_AND_BRIGHTNESS.md) open separate slider dropdowns
 using the existing hardware readings. Battery details appear in the Battery
 dropdown. Missing hardware has an explicit unavailable state. The clock dropdown
@@ -101,8 +92,9 @@ returns to the calendar and saves that output's clock preference. Time remains
 
 Open **Change layout** from Canvas tools, canvas Search, or Settings → System.
 Select a control, desktop item, window, or group, then use its editor to choose
-Background, Canvas, or Frame. Background and Canvas follow the viewport; Frame
-stays attached to an output edge. Wi-Fi, clock, sound, brightness, battery,
+Background, Canvas, or Frame. Background and Canvas move as you pan; Background
+is the lower canvas layer. Icons and controls on either remain beneath ordinary
+windows. Frame stays attached to an output edge. Wi-Fi, clock, sound, brightness, battery,
 application tray and power can be separated from the default system group.
 Canvas tools and the app dock remain composite controls.
 
@@ -115,15 +107,23 @@ Drag toward an edge or one of its corner guides to attach an item. Corner drops
 preserve the tool's current horizontal or vertical orientation. Guides and drop
 highlights sit beneath frame tools; each tool retains its own selection outline.
 Hold Alt to align the along-edge position with the canvas grid. Dropping onto
-another frame item forms an ordered group. Separate releases one member; Ungroup releases all.
+another frame item forms an ordered group. Use the group's grip to move the
+whole strip; select a member to change its options or choose **Separate**.
+**Ungroup** releases all members. Groups remain flat, so merging two strips
+produces one ordered strip rather than nested groups.
 Moving a group onto Canvas or Background releases its members at their displayed
 positions. Removing a group hides its controls and returns its windows and desktop
-items to the canvas; it does not close applications or delete files.
+items to the canvas; it does not close applications or delete files. Ordinary
+window movement does not attach a window to the frame: placement changes belong
+to Change layout.
 
 Pinned windows retain their live application buffers. Their edge strip expands
-on hover and opens fully when activated. Focusing elsewhere collapses it. Search,
+on hover and opens fully when activated, including with a touchscreen tap.
+During layout editing, the resting strip stays stable for selection and movement.
+Focusing elsewhere collapses it. Search,
 Alt+Tab and dock activation reveal the existing pinned window without panning the
-canvas. A close request prompts for confirmation. Desktop items become compact
+canvas. A close request prompts for confirmation; removing the attachment instead
+returns the still-open window to the canvas. Desktop items become compact
 frame tiles, retaining their normal activation and accessible names.
 
 Done and Escape retain completed edits. Escape during a drag restores the drag's
@@ -136,6 +136,14 @@ Reopened windows recover attachments through their existing application slots.
 Settings → System can permit hiding Canvas tools and restore them. Until that
 permission is enabled, removing the tools opens an explanation with a Settings
 link. Search remains a way to find and restore hidden controls.
+
+## Popup ownership
+
+An acknowledged opening survives transient layout-query failures for at most five
+seconds. Queries retain their 750 ms deadline and never replay the anchor command.
+A shared cancellation ticket covers both pending work and queued UI delivery;
+dismissal, replacement, output removal, lock/VT recovery, and layout editing revoke
+it. Permanent transport or invalid-snapshot failures cancel it immediately.
 
 ## Agent control
 
@@ -185,7 +193,7 @@ The fixture owns its compositor, shell, notification service and private
 accessibility bus. It posts notifications through the standard D-Bus `Notify`
 method with `gdbus`; native acceptance uses `notify-send`. This avoids changing
 Ubuntu's `notify-send` AppArmor policy for the temporary headless bus path.
-`HEARTHSPACE_SHELL_EVIDENCE=/tmp/hearthspace-shell-headless-1`
+Setting `HEARTHSPACE_SHELL_EVIDENCE` to a fresh absolute directory
 retains its screenshots, status and semantic observations outside temporary
 runtime cleanup. The main workflow uses a 2560×1600 output at scale 2. A second
 800×600 output at scale 1 checks popup geometry and pixels, storing evidence in
@@ -194,7 +202,7 @@ the `small-output` subdirectory. Choose a fresh evidence directory for each atte
 The same assertions run on real hardware through the existing native harness:
 
 ```sh
-scripts/shell-smoke --session /tmp/hearthspace-shell-native-1
+scripts/shell-smoke --session "$PWD/artifacts/shell-native-1"
 ```
 
 Follow the [native control skill](../.agents/skills/hearthspace-native-control/SKILL.md)
@@ -214,197 +222,16 @@ the gap below the final accessible content. Search highlight assertions require
 both the old and new rows to change visibly. Screenshots and cleanup evidence are
 retained on failure. The backdrop is closed before the application workflows.
 
-### Hardware evidence, 2026-10-15
+<a id="layout-editor-crash-2026-10-22"></a>
+<a id="layout-editor-redraw-crash-2026-10-23"></a>
 
-The full workspace passed 570 Rust tests with native, E2E and test-app features,
-298 Python tests with E2E enabled, warnings-denied Clippy, Rustfmt, Ruff, and
-the full build. `/tmp/hearthspace-shell-headless-settings` retains the final
-headless shell workflow, including the Settings launch. Earlier
-`/tmp/hearthspace-shell-headless-1` retains a failed notification attempt blocked
-by the host's `notify-send` AppArmor profile; the fixture now uses the explicit
-private-bus D-Bus client described above, without changing host policy.
+## Transient surface lifecycle
 
-Tests used the physical GPD laptop, AMD Radeon 890M (`amdgpu`), kernel
-`7.0.0-38-generic`, and eDP-1 at 2560×1600 with scale 2. The agent stayed in its
-background service while each owned desktop used TTY7 and restored TTY2.
-
-`/tmp/hearthspace-shell-map-native-1` passed live minimap updates, both zoom
-buttons, pointer dragging, and touchscreen dragging through a temporary uinput
-device. Page-flip screenshots, geometry assertions and an independent libinput
-trace are retained. This was automated single-output acceptance, not a manual
-physical-finger test. Cleanup confirmed that the service stopped, its runtime
-was removed, and the original VT was active.
-
-`/tmp/hearthspace-shell-native-1` retains the first shell attempt. Exact Meta
-search text and no leakage into the terminal were observed, but the native
-prebuilt session had no Settings desktop entry. The waiting test was interrupted
-after preserving a screenshot and accessibility snapshot; owned-session cleanup
-completed and restored TTY2.
-
-`/tmp/hearthspace-shell-native-2` passed the complete shell workflow after the
-Settings fix. Captures and semantic assertions confirm the four icons, exact
-Meta query text with zero terminal leakage, Settings launch and close, running
-window selection, notification delivery and dismissal, and keyboard cancellation
-of logout. Cleanup reports `complete: true`; TTY2 was restored, the runtime was
-removed, and the service has no remaining main process or cgroup. The stopped
-unit retains a failed diagnostic because the supervisor attempted to stop an
-already collected app-scope owner during shutdown; `session.log` and
-`service-stop-journal.log` retain that separate cleanup-reporting issue.
-
-Release `69c4718835bb` was installed with `scripts/install-session install`.
-Installed compositor, shell, session and Settings hashes match the optimized
-build. Existing sessions keep their running binaries; log out and log back in
-to load the new bar.
-
-### Popup and search evidence, 2026-10-15
-
-The popup changes passed all 584 Rust tests and 314 Python tests, with native,
-E2E, test-app and required accessibility checks enabled. The full workspace
-build, warnings-denied Clippy, Rustfmt, Ruff lint and formatting also passed.
-`/tmp/hearthspace-popup-headless-final` retains the headless acceptance and its
-`small-output` case. Search measured 768 logical pixels wide on a 1280-pixel
-output and 480 on an 800-pixel output. All four popup corners matched the dark
-backdrop, with opaque interior pixels checked independently. Content had a
-13-pixel bottom gap; clearing the search shrank it from 326 to 128 pixels high.
-Up/Down visibly moved the selected row, and Enter focused the selected existing
-window without changing the set of open windows.
-
-The first headless attempt, `/tmp/hearthspace-popup-headless-1`, could not prove
-transparency against its white backdrop; the fixture now supplies an owned dark
-terminal. The second attempt exposed an AccessKit interface-removal failure
-when clearing results after the popup grew. A semantic group around each
-scrollable popup body fixes the accessible hierarchy. Regression tests now feed
-the changing trees through the real AT-SPI adapter, including result removal.
-`/tmp/hearthspace-popup-headless-2` retains that failure; subsequent runs passed.
-
-Native acceptance used the same physical GPD laptop, AMD Radeon 890M (`amdgpu`),
-kernel `7.0.0-38-generic`, and eDP-1 at 2560×1600 with scale 2. Both owned sessions
-used TTY7 and restored the user's existing Hearthspace session on TTY3.
-`/tmp/hearthspace-popup-native-1` passed the complete shell workflow, including
-rounded-corner pixel checks, content sizing, visible arrow-key selection,
-search clearing, Enter activation, Settings launch, notifications and logout
-cancellation. `/tmp/hearthspace-popup-map-native-1` passed live minimap updates,
-both zoom buttons, pointer dragging and temporary-uinput touchscreen dragging.
-These are automated native tests, not manual physical-finger acceptance.
-
-Both runs retain page-flip screenshots and semantic observations. Cleanup
-reported all steps complete with no errors; both services are inactive with
-`Result=success`, no main process or cgroup, and their runtimes removed. TTY3
-was confirmed active after each run.
-
-Release `752a8d9aad4c` was installed with `scripts/install-session install`.
-All eight installed executables match both the optimized build and installation
-manifest hashes. The user's running session was preserved; log out and back in
-to load these popup and search changes.
-
-### Layout editor crash, 2026-10-22
-
-The installed shell panicked in Winit 0.30.13 while dragging Canvas tools in
-the layout editor. A transient window's queued Wayland configure survived its
-destruction, and the next event-loop iteration unwrapped the removed window.
-The compositor remained responsive while the shell's surfaces disappeared.
-The [Winit patch ledger](../patches/README.md#winit-wayland-destroyed-window-updates)
-records the upstream cleanup fix, exact backport, provenance, and removal condition.
-
-The real Wayland regression creates and drops a transient window during an
-application callback, then requires a subsequent resize on a surviving window.
-It reproduced the missing-window panic before the patch and passed afterward,
-with isolated process environments and llvmpipe rendering. Logs and the original
-installed-session crash are retained in `/tmp/hearthspace-layout-crash-20261022`.
-
-The full workspace passed 1,404 Rust tests with native, E2E, test-app and required
-accessibility checks enabled, the full build, warnings-denied Clippy, Rustfmt,
-and Ruff lint and formatting. The full Python E2E run completed 428 tests with
-423 passing and five failures: the terminal workflow's shared deadline,
-duplicate creation of the desktop restart evidence directory, two waits for
-search after bare Meta, and a tray icon update wait. These results are retained
-in `python-tests.log`; this run does not establish a fully passing Python suite.
-A diagnostic run of the unchanged terminal assertions with a 120-second budget
-passed in 71.42 seconds, including 45.08 seconds spent decoding full-resolution
-PNGs. Its timings and retained artifacts are in `terminal-timing/` beneath the
-same evidence directory; the repository's test deadline was not changed here.
-
-Native acceptance used a physical ThinkPad T480s, Intel UHD 620 (`i915`), kernel
-`7.0.0-38-generic`, and eDP-1 at 1920×1080 with scale 1. The final run in
-`/tmp/hearthspace-layout-native-20261022-3` completed 15 real pointer drags across
-all four frame edges and the canvas, including grouping with Notifications and
-retiring the group. Geometry and orientation assertions match the page-flip
-captures. Escape closed the editor, and Ctrl+K followed by `Foot` returned the
-three expected Foot entries. The shell PID stayed unchanged throughout and the
-session log contains no panic.
-
-The earlier `-1` native run used the old release and did not reproduce the
-intermittent crash. Run `-2` completed the same drags, then was stopped because
-its final search check expected obsolete `shell_panels` metadata. Its screenshot
-showed a working Canvas Search; run `-3` checks `canvas-search-status` and the
-exact typed query instead. All owned native runs completed cleanup, stopped
-their session and app scopes, removed their runtimes, and restored TTY2.
-
-Release `5e565c6a0812` was installed with `scripts/install-session install`.
-All 13 installed runtime files match the manifest hashes, modes, and root
-ownership; compiled binaries also match the optimized build. Start a new
-Hearthspace login session to load this fix.
-
-### Icon and stability release, 2026-10-22
-
-Release `99123250698f` includes the direct application-icon strip, centered
-gesture-driven window switcher, desktop/titlebar icon resolution, FLAC artwork,
-and the Portal, shutdown, popup-recovery and drawing-layout fixes. See
-[tray evidence](TRAY.md), [desktop artwork](DESKTOP_ITEMS.md),
-[window switching](WINDOW_MANAGEMENT.md), and [drawing stability](FAVORITE_APPS.md).
-
-The final workspace run passed all 1,495 Rust tests, formatting, warnings-denied
-Clippy and the all-target build. Python lint/format and the CI dependency checks
-passed. The complete Python run passed 468 of 469 tests; the remaining tray
-workflow exceeded its shared budget. After the measured budget correction, its
-unchanged assertions passed in 120.68 seconds. Thus all 469 tests were validated
-across the full run and corrected tray rerun. Logs are retained under
-`/tmp/hearthspace-icon-final-*` and `/tmp/hearthspace-tray-budget-verified`.
-
-The optimized release was installed and all nine compiled binaries matched its
-installed hashes. Native acceptance in `/tmp/hearthspace-icon-installed.FTb68g`
-used Intel UHD 620/i915, Linux `7.0.0-38-generic`, and eDP-1 at 1920×1080, scale 1.
-Both real FLAC covers passed canvas/frame color checks, keyboard selection, and
-light/orange and dark/blue theme checks. Updater and Z.A.T.O. used their declared
-icons; the latter declares Steam. Notifications opened through the observed
-AT-SPI toggle and closed with Escape. Source FLACs and cached thumbnails remained
-unchanged. Page-flip captures, manifest hashes and cleanup evidence are retained.
-
-No GPU hang, device loss or panic appeared in the session or kernel logs. Cleanup
-restored tty2, removed the runtime, and left the owned service inactive with
-`MainPID=0` and `Result=success`. Existing desktop sessions were preserved; log out
-and choose Hearthspace again to load this release.
-
-### Layout editor redraw crash, 2026-10-23
-
-Moving layout items with a mouse, probably out of a group, restarted the
-installed shell. Its journal identifies a Masonry panic in the deferred redraw
-batch at `event_loop_runner.rs:1163`; the compositor stayed alive and the
-supervisor restarted the shell. This is separate from the earlier Winit
-queued-configure failure. A redraw queued before an application callback can
-outlive the window that callback closes.
-
-The [Masonry lifecycle patch](../patches/README.md#masonry-retired-window-presentation)
-cancels pending first frames on close and ignores retired targets when consuming
-deferred work. Three real-window regressions reproduced the original redraw
-panic and the related first-frame panic before the fix. Afterward, each surviving
-window processed a compositor resize, redrew, and accepted a pointer click.
-The test injects signal ordering through Masonry's real render-root channel;
-it does not claim that a full shell drag deterministically triggers the race.
-
-Native acceptance also exposed a separate selection defect: a late-mapped group
-grip used the whole group's rectangle for fallback hit testing, intercepting
-member presses. Grip hit testing now retains its own bounds. Real Wayland
-regressions cover member detachment/regrouping with mouse and touch, plus group
-movement and cancellation through the actual grip.
-
-Native pointer acceptance on Intel UHD 620/i915 at 1920×1080, scale 1, completed
-12 member drags across canvas, group and edge placements, three editor lifecycles,
-and Wi-Fi/Sound/calendar checks. Reviewed page-flip captures retained the controls;
-shell/compositor PIDs stayed unchanged. Cleanup restored tty2 and removed every
-owned process/runtime. The supervisor reported an already-absent application
-scope during stop; the harness completed cleanup despite that exit status.
-
-The installed crash, negative controls, first positive run's corrected resize
-observer, and final positive results are retained in
-`/home/crutchcorn/hearthspace-layout-crash-20261023-135052`.
+Layout editing creates and retires shell surfaces while the UI event loop still
+has work queued. The [Winit cleanup patch](../patches/README.md#winit-wayland-destroyed-window-updates)
+discards configure updates for destroyed windows. The
+[Masonry lifecycle patch](../patches/README.md#masonry-retired-window-presentation)
+cancels pending first frames and skips retired targets in deferred redraw work.
+Their regressions require a surviving window to keep resizing, drawing, and
+receiving input after another surface closes. Preserve these contracts when
+updating UI dependencies or changing layout-editor window ownership.

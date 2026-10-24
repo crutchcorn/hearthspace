@@ -1,14 +1,15 @@
-# Remote Development Desktop
+# Remote desktop for development
 
-Hearthspace can share its physical native desktop through WayVNC. Remote keyboard,
-pointer buttons, movement, and scrolling use the compositor's regular input
+Hearthspace can share its physical native desktop through an opt-in WayVNC
+development session. Remote keyboard, pointer buttons, movement and scrolling
+use the compositor's regular input
 handling, including window focus, dragging, and desktop shortcuts.
 
 ## Start and connect
 
-Install [the optional dependencies](../CONTRIBUTING.md#remote-development-with-wayvnc)
-on the Hearthspace machine. WayVNC 0.9 or newer is required for the standard
-image-copy-capture protocol (Ubuntu 26.04 supplies 0.9.1). From a Linux TTY:
+Install [the optional dependencies](DEPENDENCIES.md) on the Hearthspace machine.
+WayVNC 0.9 or newer is required for the standard image-copy-capture protocol.
+From the repository root on a Linux TTY:
 
 ```sh
 cargo run -- --dev --no-watch-apps --vnc
@@ -33,24 +34,27 @@ listens only on the Hearthspace machine's IPv4 loopback interface. Its launch
 uses an explicit empty configuration, so personal WayVNC settings cannot change
 the listening address or authentication policy.
 
-The development host's current addresses are `10.0.0.179` on the local network
-and `100.90.91.81` on Tailscale, with user `crutchcorn`. Check `ip -br addr`
-if an address changes. A tunnel command for this host is:
+For launching from SSH without a foreground Linux TTY, use the owned
+[native launcher](NATIVE_TESTING.md) with development sharing enabled:
 
 ```sh
-ssh -N -o ExitOnForwardFailure=yes -L 5900:127.0.0.1:5900 crutchcorn@100.90.91.81
+remote_run="$(mktemp -d -t hearthspace-remote.XXXXXX)"
+scripts/hearthspace-native start --session "$remote_run" --dev --vnc --watchdog 600
+scripts/hearthspace-native status --session "$remote_run"
+# Always stop the same owned session when finished:
+scripts/hearthspace-native stop --session "$remote_run"
 ```
 
-For launching from SSH without a foreground Linux TTY, use the native launcher
-example in CONTRIBUTING. Its watchdog restores the original VT if the session
-is abandoned; normal cleanup is the launcher's `stop` command.
+The watchdog bounds the session if the caller disappears and restores the
+original VT through the harness recovery path. Keep the agent and SSH connection
+outside the desktop being tested. See [development modes](DEVELOPMENT.md) for
+Cargo-managed children and watch behavior.
 
 ### macOS client
 
-Use TigerVNC on macOS. Apple's built-in Screen Sharing has a
-[documented RFB version compatibility problem](https://github.com/any1/neatvnc/issues/48)
-with the WayVNC/NeatVNC 0.9.1 setup used here. Its generic communication error
-can occur even when the SSH tunnel works; `open vnc://...` launches that client.
+The following example uses TigerVNC on macOS. Viewer protocol compatibility
+matters independently of the tunnel; a generic communication error does not
+by itself establish an SSH failure.
 
 Install [TigerVNC with Homebrew](https://formulae.brew.sh/cask/tigervnc):
 
@@ -112,17 +116,22 @@ received by the terminal. The E2E workflow installs WayVNC and runs this test
 with the other headless regressions. Native presentation validation follows
 [the native testing workflow](./NATIVE_TESTING.md).
 
-The software-rendering variables match the full
-[headless suite](./E2E_TESTING.md#ci-coverage-and-evidence); `GSK_RENDERER=cairo`
-keeps GTK fixtures on shared-memory buffers when running that broader suite.
+This fixture starts no shell. For the broader
+[headless suite](E2E_TESTING.md#ci-coverage-and-evidence), also select Lavapipe for
+the Vulkan shell and keep GTK fixtures on shared-memory buffers with
+`GSK_RENDERER=cairo`.
 
-Native acceptance on the physical GPD host (AMD Strix Radeon 880M/890M,
-`amdgpu`, Linux `7.0.0-38-generic`) used `eDP-1` at 2560×1600, scale 2.
-RFB keyboard input opened Foot with Super+Return and wrote the exact text
-`WayVNC native input 123!`; an RFB pointer drag moved it by 40×30 logical pixels.
-The VNC image included the hardware cursor and agreed with a page-flip-confirmed
-native capture. Locking denied further capture and input while WayVNC retained
-its last frame. Stopping the owned session removed its runtime and listener,
-restored `tty2`, and left the background T3 service active. Artifacts, screenshots,
-binary provenance, and cleanup records are in
-`/tmp/hearthspace-wayvnc-native.BK4Kpv/` on that host.
+For native acceptance, use an owned session and verify each boundary:
+
+1. Open Foot through remote keyboard input and assert an exact typed marker.
+2. Drag its window through remote pointer input and compare logical geometry.
+3. Compare the VNC image, including its cursor, with a fresh native capture.
+4. Lock locally and verify that new capture and remote input are denied. A cached
+   pre-lock image in the viewer is not a new capture or an unlock path.
+5. Stop the owned session and require the listener, processes and runtime to be
+   gone, with the original VT restored.
+
+Retain RFB assertions, unlocked captures, binary provenance and cleanup records
+with the run artifacts. [Tested environments](TESTED_ENVIRONMENTS.md) centralizes
+environment coverage. A headless RFB pass does not establish physical output
+presentation, lock recovery or connectivity from another machine.

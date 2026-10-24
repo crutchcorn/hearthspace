@@ -2,9 +2,10 @@
 
 Native tests exercise seat ownership, DRM/KMS presentation, and recovery on a
 real Linux virtual terminal (VT). Headless tests remain the default for
-deterministic application and compositor regressions. A native capture proves
-that the captured output completed a page flip; application-specific assertions
-must still establish that the UI responded correctly.
+deterministic application and compositor regressions. Use native tests to evaluate
+Hearthspace for everyday use on a particular display and input setup. A native capture proves that the captured output completed a page
+flip; application-specific assertions must still establish that the UI responded
+correctly. A smoke pass is not a long-term reliability guarantee.
 
 The agent harness consists of a session launcher, a control CLI, and an acceptance
 test. It runs the desktop as the current user while a transient system service
@@ -13,8 +14,7 @@ background user service, including T3 Code, throughout the test.
 
 ## Host Requirements
 
-Follow [CONTRIBUTING.md](../CONTRIBUTING.md#native-agent-testing) for system
-dependencies and permissions. Run these checks before starting:
+Follow [dependency setup](DEPENDENCIES.md) for system dependencies and permissions. Run these checks before starting:
 
 ```sh
 sudo -n true
@@ -35,18 +35,20 @@ manager.
 
 ## Start and Inspect a Session
 
-Use a new artifact directory for every run:
+Run commands from the repository root. Use a new artifact directory for every
+run, and keep its path for inspection and cleanup:
 
 ```sh
-scripts/hearthspace-agent --session /tmp/hearthspace-run-1 --timeout 45 start --watchdog 300
-scripts/hearthspace-agent --session /tmp/hearthspace-run-1 status
-scripts/hearthspace-agent --session /tmp/hearthspace-run-1 screenshot /tmp/hearthspace-run-1/desktop.png
+native_run="$(mktemp -d -t hearthspace-native.XXXXXX)"
+scripts/hearthspace-agent --session "$native_run" --timeout 45 start --watchdog 300
+scripts/hearthspace-agent --session "$native_run" status
+scripts/hearthspace-agent --session "$native_run" screenshot "$native_run/desktop.png"
 ```
 
-Start builds the session supervisor, native compositor, shell, lock client, settings and
-notification daemons, and accessibility CLI before changing VTs.
-`start --no-build` explicitly uses existing debug
-binaries; use it only after building the required native features. `binaries.json`
+Start builds the runtime binaries in the
+[artifact inventory](../scripts/runtime-artifacts.json) before changing VTs.
+`start --no-build` explicitly uses existing debug binaries; build the required
+native features first. `binaries.json`
 records binary paths and hashes. The session manifest records runtime/socket
 paths, VT identity, process IDs, and output metadata. Readiness requires
 responsive control and settings sockets, a mapped shell surface, and a successful
@@ -62,7 +64,7 @@ nonempty absolute paths without control characters. The manifest records it as
 `xdg_data_dirs`. With `--login-session`, the selected release's `share` directory
 is prepended so its installed assets take precedence.
 
-For a clean demo or settings test, add `start --isolated-profile`. This opt-in
+For a fresh desktop or settings test, add `start --isolated-profile`. This opt-in
 creates fresh `XDG_CONFIG_HOME`, `XDG_CACHE_HOME`, `XDG_DATA_HOME`, and
 `XDG_STATE_HOME` beneath the artifact directory's `profile/` before starting the
 private D-Bus session. Settings, compositor, and application profiles start fresh,
@@ -81,9 +83,10 @@ For custom binaries or failure injection, the lower-level launcher accepts
 `--binary-dir` with `--no-build` and `--compositor`:
 
 ```sh
-scripts/hearthspace-native start --session /tmp/hearthspace-run-2 --no-build --watchdog 120
-scripts/hearthspace-native status --session /tmp/hearthspace-run-2
-scripts/hearthspace-native stop --session /tmp/hearthspace-run-2
+custom_run="$(mktemp -d -t hearthspace-native-custom.XXXXXX)"
+scripts/hearthspace-native start --session "$custom_run" --no-build --watchdog 120
+scripts/hearthspace-native status --session "$custom_run"
+scripts/hearthspace-native stop --session "$custom_run"
 ```
 
 ## Observe and Act
@@ -101,19 +104,19 @@ process. The `focus`, `close`, `move`, `resize`, `maximize`, `fullscreen`, and
 for canvas coordinates, keyboard shortcuts, and restoration behavior.
 
 ```sh
-scripts/hearthspace-agent --session /tmp/hearthspace-run-1 apps
-scripts/hearthspace-agent --session /tmp/hearthspace-run-1 windows
-scripts/hearthspace-agent --session /tmp/hearthspace-run-1 focus 3
-scripts/hearthspace-agent --session /tmp/hearthspace-run-1 maximize 3
-scripts/hearthspace-agent --session /tmp/hearthspace-run-1 restore 3
-scripts/hearthspace-agent --session /tmp/hearthspace-run-1 launch foot
-scripts/hearthspace-agent --session /tmp/hearthspace-run-1 click 200 180
-scripts/hearthspace-agent --session /tmp/hearthspace-run-1 type 'hello from the agent'
-scripts/hearthspace-agent --session /tmp/hearthspace-run-1 key enter
-scripts/hearthspace-agent --session /tmp/hearthspace-run-1 paste 'Café 日本語 🦀' --shortcut ctrl+shift+v
-scripts/hearthspace-agent --session /tmp/hearthspace-run-1 drag 300 100 350 150 --save /tmp/hearthspace-run-1/moved.png
-scripts/hearthspace-agent --session /tmp/hearthspace-run-1 scroll -15
-scripts/hearthspace-agent --session /tmp/hearthspace-run-1 click 400 360 --units pixels --metadata /tmp/hearthspace-run-1/desktop.json
+scripts/hearthspace-agent --session "$native_run" apps
+scripts/hearthspace-agent --session "$native_run" windows
+scripts/hearthspace-agent --session "$native_run" focus 3
+scripts/hearthspace-agent --session "$native_run" maximize 3
+scripts/hearthspace-agent --session "$native_run" restore 3
+scripts/hearthspace-agent --session "$native_run" launch foot
+scripts/hearthspace-agent --session "$native_run" click 200 180
+scripts/hearthspace-agent --session "$native_run" type 'hello from the agent'
+scripts/hearthspace-agent --session "$native_run" key enter
+scripts/hearthspace-agent --session "$native_run" paste 'Café 日本語 🦀' --shortcut ctrl+shift+v
+scripts/hearthspace-agent --session "$native_run" drag 300 100 350 150 --save "$native_run/moved.png"
+scripts/hearthspace-agent --session "$native_run" scroll -15
+scripts/hearthspace-agent --session "$native_run" click 400 360 --units pixels --metadata "$native_run/desktop.json"
 ```
 
 Replace the example window ID with one returned by `windows`. Use
@@ -142,8 +145,8 @@ move or animation can change pixels, so use a targeted assertion, window status,
 or accessibility result to verify the intended action. For explicit waits:
 
 ```sh
-scripts/hearthspace-agent --session /tmp/hearthspace-run-1 --timeout 10 wait
-scripts/hearthspace-agent --session /tmp/hearthspace-run-1 --timeout 10 wait --change-from /tmp/hearthspace-run-1/desktop.png
+scripts/hearthspace-agent --session "$native_run" --timeout 10 wait
+scripts/hearthspace-agent --session "$native_run" --timeout 10 wait --change-from "$native_run/desktop.png"
 ```
 
 `lock` instead waits for `locked` and `lock_confirmed`: protected frames must be
@@ -160,22 +163,19 @@ cursor policy, and presentation type. Images are upright; convert pixels with
 bounds do not change that scale. Frame IDs are per output and per compositor
 process; never compare IDs across sessions.
 
-Native images contain the software/client cursor already in the framebuffer, or
-an overlay sampled from the actual hardware cursor image and position during
-rendering. `cursor_source` distinguishes those paths. Hardware cursor movement is
-independent of KMS page flips, so `cursor_sample: render` identifies that sampling
-boundary. Captures are limited to 16 megapixels and four pending requests, with a
-five-second completion deadline. Native GPU readback runs on the compositor
-thread; PNG compression runs on one CPU worker with at most two jobs, including
-completed images awaiting presentation. A reply requires both compression and
-the captured frame's page flip. Input and other control clients remain responsive
-during compression. Paused sessions, removed outputs, locks, and failed
-presentation discard outstanding captures and return errors.
+Native captures include the software/client cursor or overlay the hardware cursor
+once. `cursor_source` identifies the path and `cursor_sample: render` identifies
+the hardware cursor sampling boundary, which is independent of KMS page flips.
+Captures allow at most 16,777,216 pixels and four pending requests, with a
+five-second deadline. GPU readback stays on the compositor thread; PNG encoding
+uses one worker with two bounded jobs. Replies require both encoding and the
+captured frame's page flip. Locking, output loss, inactivity or failed presentation
+invalidates pending captures. See the [capture contract](E2E_TESTING.md#control-socket).
 
 ## Stop and Recover
 
 ```sh
-scripts/hearthspace-agent --session /tmp/hearthspace-run-1 stop
+scripts/hearthspace-agent --session "$native_run" stop
 ```
 
 Stop is idempotent. Recovery restores the recorded original VT, terminates the
@@ -203,12 +203,13 @@ resolve it with the recorded session's `stop` command first.
 Build before invoking the smoke suite, which deliberately uses `--no-build`:
 
 ```sh
-cargo build --locked --workspace --all-targets --features udev,e2e,test-apps
-scripts/native-smoke --session /tmp/hearthspace-smoke-success --case success --timeout 90
-scripts/native-smoke --session /tmp/hearthspace-smoke-startup --case startup-failure
-scripts/native-smoke --session /tmp/hearthspace-smoke-crash --case compositor-failure
-scripts/native-smoke --session /tmp/hearthspace-smoke-watchdog --case watchdog
-scripts/native-smoke --session /tmp/hearthspace-smoke-interrupted --case agent-interruption
+cargo build --locked --target-dir target --workspace --all-targets --features udev,e2e,test-apps
+smoke_runs="$(mktemp -d -t hearthspace-smoke.XXXXXX)"
+scripts/native-smoke --session "$smoke_runs/success" --case success --timeout 90
+scripts/native-smoke --session "$smoke_runs/startup" --case startup-failure
+scripts/native-smoke --session "$smoke_runs/crash" --case compositor-failure
+scripts/native-smoke --session "$smoke_runs/watchdog" --case watchdog
+scripts/native-smoke --session "$smoke_runs/interrupted" --case agent-interruption
 ```
 
 The success case launches `foot`, types a visible marker, tracks its pixel
@@ -219,8 +220,10 @@ outputs. Recovery cases inject failed startup,
 compositor death, a frozen compositor (`SIGSTOP`) recovered by the watchdog, and
 an owning agent killed with `SIGKILL` after readiness. Each run preserves commands, results,
 screenshots, and metadata under its artifact directory and checks VT/runtime
-restoration. Record GPU, driver, kernel, display scale, and whether the run used
-a VM or real hardware when reporting results.
+restoration. Record GPU, driver, kernel, display scale and virtualization status
+with the run artifacts. The [tested environments](TESTED_ENVIRONMENTS.md) page
+centralizes environment coverage; a passing run applies only to the assertions
+and configuration it exercised.
 
 The startup-failure case requires a fresh artifact directory and evidence that
 the injected failing compositor actually ran in its allocated PAM/VT session.
@@ -228,34 +231,34 @@ A preflight failure, such as missing sudo access, fails the test. Run native
 validation separately from GPU-intensive headless suites so concurrent workload
 does not obscure capture and presentation failures.
 
-The [gesture acceptance tests](../CONTRIBUTING.md#optional-native-pinch-testing)
+The [gesture acceptance tests](PINCH_ZOOM.md)
 use temporary uinput touchpad and touchscreen devices to exercise libinput input
 and verify rendered three-finger canvas panning, zoom and combined movement.
 Run `scripts/pan-smoke` and `scripts/pinch-smoke` separately from the smoke cases
 above.
 
-`scripts/window-switcher-smoke --session /tmp/hearthspace-window-switcher-1`
-checks held Alt+Tab/Alt+Shift+Tab and left/right swipes with four touchpad contacts
-and four/five touchscreen contacts. It observes intermediate preview geometry
-during the grid animation, verifies unchanged focus and viewport while held,
-checks each client's colored live pixels, and captures the revealed window after
-release. Input ownership,
-Escape rollback, stale gesture events, and a touchscreen contact held across Alt
-release are checked too. A temporary keyboard is unplugged with Alt held; the
-test checks overlay cleanup and types a file-writing command to prove modifier
-recovery. Independent libinput traces establish the delivered
-gesture type, direction, and contact count. Run it separately from headless GPU
-tests; it owns and cleans up its native session and temporary input devices.
-Pinch cases use four touchpad contacts and four/five touchscreen contacts. They
-check that successful inward completion leaves the switcher open after release,
-outward completion dismisses it, and subthreshold inward gestures leave it closed.
-Four-contact cases also test cancellation; subthreshold outward pinches preserve
-the open switcher. They check that pinches do not change a keyboard-owned session and
-repeating an inward pinch does not cycle the selection. Focused-view cases open
-with inward pinch, dismiss outward without leaving focused view, then reopen and
-commit with Enter, leaving the previous app bounded on the canvas.
-Preview clicks/taps and Escape/background interaction need the additional acceptance
-steps below. These cases do not establish physical finger feel on the hardware.
+For switcher acceptance, allocate a fresh run:
+
+```sh
+switcher_run="$(mktemp -d -t hearthspace-switcher.XXXXXX)"
+scripts/window-switcher-smoke --session "$switcher_run"
+```
+
+It checks held Alt+Tab/Alt+Shift+Tab and left/right swipes with four touchpad
+contacts or four/five touchscreen contacts. Focus, viewport and stored geometry
+must stay fixed while live previews animate. Captured client markers and the
+revealed window establish rendering, alongside input-ownership and cancellation
+checks. A contact held across Alt release must not click the revealed client;
+unplugging an Alt-held keyboard must clear the overlay and permit exact input.
+
+Pinch cases use the same contact counts. Inward completion leaves the switcher
+open; outward completion dismisses it. Subthreshold gestures preserve the prior
+open/closed state. Cancellation, repeated inward gestures, keyboard-owned sessions
+and focused-view transitions have separate assertions. Independent libinput
+traces record gesture type, direction and contact count. The script owns its
+session and devices; it does not establish physical finger feel. Use the
+[persistent switcher steps](#persistent-switcher-acceptance) for preview activation
+and background dismissal.
 
 Unlocked `status.window_switcher` describes selection separately from presentation:
 
@@ -282,58 +285,12 @@ persistent session opened by a pinch. The full status omits `window_switcher`
 while locked. The separate shell-facing `window-switcher-status` command omits
 `scene`, `items`, and `window_ids`; use full `status` for preview inspection.
 
-Window-switcher acceptance on the physical GPD laptop, AMD Radeon 890M (`amdgpu`),
-kernel `7.0.0-38-generic`, eDP-1 at 2560×1600 and scale 2, passed in
-`/tmp/hearthspace-window-switcher-native-2`: held Alt+Tab and reverse selection,
-four-contact touchpad swipes, four/five-contact touchscreen swipes in both
-directions, intermediate animated viewport positions, live preview pixel proof,
-released-window captures, Escape rollback, and input ownership. A touchscreen
-contact held across Alt release did not click the revealed client's close button.
-The keyboard-unplug trace shows libinput synthesizing Alt release before device
-removal; the selected window remained focused, the overlay closed, and a typed
-file-writing command proved modifier recovery. The native fixture uses temporary
-uinput devices and does not establish physical finger feel or multi-output behavior.
-
-`/tmp/hearthspace-window-switcher-native-1` also passed before the text alpha fix
-and keyboard-unplug fixture were added. Final screenshots in the second run
-verify clean text blending.
-
-`/tmp/hearthspace-window-switcher-pan-regression-2` passed three-finger cardinal
-and diagonal panning, combined zoom, cancellation, ignored two-contact input,
-maximized-window restoration, and fullscreen preservation on both device types.
-The first pan run was deliberately interrupted after review found its obsolete
-requirement that every recognizer stop after a fourth contact. The corrected test
-requires the original canvas transform and no open overlay while allowing a fresh
-many-finger candidate. Both attempts retain their evidence and completed cleanup.
-All runs restored tty2 and removed their owned sessions, app scopes, and runtimes.
-
-The optimized session release `6f679aab710b` is installed; compositor, shell, and
-session hashes match `target/release`. Final host checks show GNOME on tty2,
-Mutter display power on, and both background T3 services active.
-Final switcher checks passed: 513 Rust tests with E2E/accessibility enabled,
-269 Python tests with E2E enabled, rustfmt, Clippy with warnings denied, Ruff, and
-the full native/test-target build.
-
-The spatial switcher refresh passed all 12 native smoke steps on 2026-10-21 in
-`/tmp/hearthspace-window-switcher/native-vt-kdgury8l`, on the same AMD/amdgpu laptop
-with kernel `7.0.0-38` and eDP-1 at 2560×1600, scale 2. The updated proof checks
-fixed focus, viewport, and saved window geometry while held; stable MRU order;
-intermediate live preview poses; and activation only on release. Keyboard,
-touchpad, four/five-contact touchscreen, cancellation, competing input, late touch
-release, and keyboard unplug recovery passed. Page-flip captures retain the live
-client markers and selected title badge. Cleanup restored tty2 and removed the
-owned service and runtime. Separate native-shell screenshot reviews covered
-light/dark themes, photo backgrounds, 1×/2× scales, a 700×600 output, and reduced
-motion under `/tmp/hearthspace-window-switcher/native-review-3`,
-`native-compact-1`, and `native-reduced-1`.
-
-`scripts/touch-drag-smoke --session /tmp/hearthspace-touch-drag-1` tests one-finger
-window movement through the same uinput/libinput touchscreen path. It uses a
+`scripts/touch-drag-smoke` tests one-finger window movement through the same uinput/libinput touchscreen path. It uses a
 fresh native Firefox profile and a decorated Foot terminal, checking continued
 movement, drop/repeat, client edge resizing, zoomed coordinates, second-contact
 cancellation and device removal. Window geometry and captured landmarks must
 agree. It requires the native Firefox package and touch-fixture dependencies
-documented in [contributing](../CONTRIBUTING.md), plus one output at least
+documented in [dependency setup](DEPENDENCIES.md), plus one output at least
 960×650 logical pixels. It owns and cleans up its VT session and temporary apps.
 
 [GTK touchscreen acceptance](GTK_TOUCH_TESTING.md) covers native GTK 3/4
@@ -344,7 +301,9 @@ The [physical suspend acceptance test](POWER_TESTING.md) uses `scripts/power-smo
 with explicit opt-in, a checked RTC wake alarm, a protocol-owned test lock, and
 the independent native watchdog. It verifies lock presentation across real
 sleep/resume, preserved applications, post-resume input and page flips, and
-original-VT recovery. Read its prerequisites before attempting physical sleep.
+original-VT recovery. Its real-locker mode separately checks automatic locking
+and, with local user participation, password unlock. Read its prerequisites
+before attempting physical sleep.
 
 For a capture timeout, use `--log-level
 'info,hearthspace_compositor::compositor::capture=debug'` when starting the owned
@@ -353,21 +312,15 @@ encoding time, page-flip confirmation and reply delivery. Timeout warnings name
 the unfinished phase. PNG encoding uses the fastest lossless preset; the capture
 deadline and bounded encoding queue still apply.
 
-Run automated regressions without taking a VT:
-
-```sh
-cargo fmt --all --check
-cargo clippy --workspace --all-targets --features udev,e2e,test-apps -- -D warnings
-HEARTHSPACE_E2E=1 HEARTHSPACE_REQUIRE_ATSPI=1 cargo test --workspace --all-targets --features udev,e2e,test-apps -- --test-threads=1
-cargo build --workspace --all-targets --features udev,e2e,test-apps
-HEARTHSPACE_E2E=1 python3 -m unittest discover -s scripts/tests -v
-```
+Run deterministic regressions using the software renderer configuration in
+[E2E testing](E2E_TESTING.md#headless-compositor). Keep that GPU workload separate
+from native presentation tests.
 
 ### Persistent switcher acceptance
 
 The pinch smoke cases cover gesture recognition and ownership. The following
 additional native acceptance steps verify interaction after a successful inward
-pinch; they are not established by the historical held-switcher records above.
+pinch. Record them separately from the automated gesture-recognition checks.
 Use an owned session following the [native control skill](../.agents/skills/hearthspace-native-control/SKILL.md)
 and record status plus fresh presented captures for each result.
 
@@ -398,41 +351,30 @@ compositor.start(None, None).await?;
 compositor.stop().await?; // Detaches; launcher stop owns native teardown.
 ```
 
-The launcher creates a private D-Bus session. Use its recorded
-`dbus_session_bus_address` for `SessionAccessibility`; semantic targeting must not
-fall back to the host desktop's accessibility bus. Call `enable(timeout)` once
-before discovery to activate the accessibility bridges on that private bus.
-`snapshot(timeout)` returns XML,
-`find(xpath, timeout)` returns matches, and `activate(xpath, timeout)` requires
-exactly one match. For example, `//*[@name='Save']` can locate an exposed Save
-control. Verify the action through the resulting UI as with pointer input.
+Use the manifest's `dbus_session_bus_address` for `SessionAccessibility`; never
+fall back to the host desktop bus. Call `enable(timeout)` before discovery.
+`snapshot(timeout)` returns XML, `find(xpath, timeout)` returns matches, and
+`activate(xpath, timeout)` requires exactly one match. Verify the resulting UI;
+accepted actions are not application-specific success evidence.
 
 The agent CLI also exposes these semantic operations directly:
 
 ```sh
-scripts/hearthspace-agent --session /tmp/hearthspace-run-1 a11y snapshot
-scripts/hearthspace-agent --session /tmp/hearthspace-run-1 a11y find "//*[@name='Save']"
-scripts/hearthspace-agent --session /tmp/hearthspace-run-1 a11y activate "//PushButton[@name='Save']"
+scripts/hearthspace-agent --session "$native_run" a11y snapshot
+scripts/hearthspace-agent --session "$native_run" a11y find "//*[@name='Save']"
+scripts/hearthspace-agent --session "$native_run" a11y activate "//PushButton[@name='Save']"
 ```
 
-The harness builds and records `hearthspace-a11y` alongside the session binaries.
-These commands require a live session manifest with a private bus address;
-`--socket` alone cannot select accessibility. Activation requires exactly one
-match and obtains a fresh capture afterward. Acceptance is not proof of an
-application-specific result; inspect the resulting state as usual.
+These commands require the manifest's private bus address; `--socket` alone
+cannot select accessibility. Activation requires one match and obtains a fresh
+capture. A newly enabled bridge may need bounded retries before its tree appears.
+Snapshots resolve numeric AT-SPI roles and normalize duplicate attributes without
+replacing object identity. Use observed names and roles (`Button` and `PushButton`
+can differ by toolkit). Accessibility bounds are toolkit-relative; use capture
+metadata to establish pointer coordinates.
 
-Snapshots resolve numeric AT-SPI roles when a toolkit such as AccessKit omits
-role-name methods, and normalize duplicate toolkit attributes without replacing
-the canonical object identity. Enabling a bridge does not synchronously publish
-its tree; retry discovery within a deadline when an application has just appeared.
-Use the observed role and accessible name when building a
-selector; different toolkits may call a button `Button` or `PushButton`.
-Accessibility bounds are toolkit-relative; use capture metadata for pointer
-coordinates instead of treating those bounds as screen coordinates.
-
-The terminal CLI is sufficient for an agent to operate this workflow. An MCP
-wrapper and a Wayland image-copy-capture frontend can reuse these boundaries when
-needed; neither is required for native testing.
+The terminal CLI provides native automation without an MCP wrapper. For bounded
+screen recordings and their capture limitations, see [native recording](NATIVE_RECORDING.md).
 
 ## CSD Titlebar Regression Coverage
 
@@ -440,7 +382,8 @@ The headless `csd_` cases drive real Wayland and XWayland clients through touch
 frames and client move/resize requests. They check focus handoff, release draining,
 mixed mouse/touch ownership, cancellation and device removal, unrelated window
 teardown, X11 root-coordinate synchronization, and delayed resize buffers.
-Run them without a native session active:
+Use the [headless renderer environment](E2E_TESTING.md#headless-compositor) and
+run them without a native session active:
 
 ```sh
 cargo test --locked -p hearthspace-compositor --features udev,e2e,test-apps \
@@ -452,11 +395,12 @@ content through libinput at canvas scales 1.0 and 0.8, including second-contact
 cancellation and touchscreen unplug:
 
 ```sh
-scripts/touch-drag-smoke --session /tmp/hearthspace-touch-drag
+touch_run="$(mktemp -d -t hearthspace-touch-drag.XXXXXX)"
+scripts/touch-drag-smoke --session "$touch_run"
 ```
 
 For Steam, use an owned native session and the optional
-[Steam setup](../CONTRIBUTING.md#native-steam-touch-testing). Check repeated CSD
+[Steam dependencies](DEPENDENCIES.md). Check repeated CSD
 titlebar drags at both canvas scales, a physical mouse click while touch remains
 held, second-contact cancellation, and touchscreen removal. After each sequence,
 verify that movement stops on release and another drag works. Also exercise

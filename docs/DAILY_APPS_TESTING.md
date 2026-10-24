@@ -9,24 +9,34 @@ display, and private D-Bus belong to the test.
 
 ## Temporary Firefox setup
 
-Use Mozilla's native DEB for the complete browser/file-chooser/URI workflow;
-its installation is recorded in [CONTRIBUTING](../CONTRIBUTING.md#native-firefox-package).
+Use the native Firefox package described in [dependency setup](DEPENDENCIES.md)
+for browser, file-chooser and URI acceptance.
 Keep a separate Snap probe to verify confined catalog launch and owned-scope
 cleanup. Both need an explicit new profile: a new XDG configuration directory
 alone does not isolate Firefox's legacy profile storage. Never inspect, reuse,
 or modify an existing browser profile for these tests.
 
-Copy `scripts/fixtures/daily-browser/` into a `fixtures` subdirectory of that new
-profile, and retain another copy in the run artifacts. These local pages make no
-network requests. The optional profile-local `user.js` setting
+Run setup commands from the repository root. Prepare a new run and local fixtures:
+
+```sh
+app_run="$(mktemp -d -t hearthspace-apps.XXXXXX)"
+mkdir "$app_run/native-firefox-profile" "$app_run/workspace"
+cp -R scripts/fixtures/daily-browser "$app_run/native-firefox-profile/fixtures"
+cp -R scripts/fixtures/daily-browser "$app_run/browser-fixtures"
+```
+
+Keep the value of `app_run` for startup, application commands and cleanup. These
+local pages make no network requests. The optional profile-local `user.js` setting
 `user_pref("browser.aboutwelcome.enabled", false);` suppresses the initial welcome
 page ([Mozilla onboarding documentation](https://firefox-source-docs.mozilla.org/browser/components/asrouter/docs/first-run.html)).
 
 ### Native package
 
-Create a new `RUN/native-firefox-profile` directory and copy the fixtures there.
-Create `~/.local/share/applications/dev.hearthspace.NativeFirefoxProbe.desktop`
-only if absent, substituting absolute paths:
+Create `dev.hearthspace.NativeFirefoxProbe.desktop` in
+`$HOME/.local/share/applications` only if absent. These interactive instructions
+use the harness without `--isolated-profile`; a different XDG data layout needs
+entries in the compositor's actual catalog search path. Substitute the absolute value of `app_run` in this desktop entry;
+`/absolute/RUN` is a placeholder, not a shell variable:
 
 ```ini
 [Desktop Entry]
@@ -50,19 +60,21 @@ to select the temporary entry explicitly.
 After creating the probe entries, refresh their MIME registration:
 
 ```sh
-update-desktop-database "$HOME/.local/share/applications"
+probe_apps="$HOME/.local/share/applications"
+update-desktop-database "$probe_apps"
 gio mime x-scheme-handler/https
 ```
 
 The chooser uses this cache, so `MimeType` in the entry alone is insufficient.
-Confirm the probe IDs appear and the default browser is unchanged. This command
+Confirm the native probe appears as an HTTPS handler and the default browser is
+unchanged. The Snap entry below is a launch probe without MIME registration. This command
 regenerates `mimeinfo.cache`; it does not set defaults in `mimeapps.list`.
 
 Harness runs also isolate the portal's `XDG_DATA_HOME`. Once native startup
 reports its owned runtime, copy the two probe entries into
 `RUNTIME/activated-app-profile/data/applications/` and run
 `update-desktop-database` on that directory too. Verify the runtime against
-`RUN/session.json`, require destination entries to be absent, and compare the
+`$app_run/session.json`, require destination entries to be absent, and compare the
 copies with the hashes in `app-probe-ownership.json`. Record their exact private
 paths in the manifest. Check `gio mime` with the portal's own `XDG_DATA_HOME` and
 `XDG_DATA_DIRS`; registering only the user's ordinary applications directory
@@ -72,9 +84,11 @@ their cache are removed with the owned runtime at shutdown.
 ### Snap package
 
 Create its new profile under
-`~/snap/firefox/common/hearthspace-native-probe-UNIQUE` so Snap can access it.
-Create `~/.local/share/applications/dev.hearthspace.FirefoxProbe.desktop` only if
-it does not already exist. Substitute the absolute new profile and fixture URL:
+`~/snap/firefox/common/hearthspace-native-probe-UNIQUE` so Snap can access it. Copy
+`scripts/fixtures/daily-browser/` into that profile's `fixtures` subdirectory too.
+Create `dev.hearthspace.FirefoxProbe.desktop` in the same applications directory
+only if it does not already exist. Substitute the absolute new profile and
+fixture URL:
 
 ```ini
 [Desktop Entry]
@@ -92,35 +106,35 @@ X-SnapInstanceName=firefox
 the compositor create the Snap-accessible Wayland listener before spawning the
 app. The `--profile` path and `--no-remote` argument keep this probe separate from
 ordinary browsing ([Mozilla command-line reference](https://firefox-source-docs.mozilla.org/browser/CommandLineParameters.html)).
-Validate the entry with `desktop-file-validate` before native startup.
+Validate both entries with `desktop-file-validate` before native startup.
 
-The first native run uncovered an additional Snap integration requirement:
-Snap tries to create its tracking scope through the session bus, while the
-private Hearthspace bus intentionally has no user systemd manager. Firefox
-therefore exited before displaying a window. The Snap-accessible Wayland socket
-alone does not establish browser support. Hearthspace now has an
-[owned app-scope integration](SNAP_APPLICATIONS.md) for catalog launches;
-native acceptance must still verify its launch and cleanup. Snap's
-[tracking implementation](https://github.com/canonical/snapd/blob/2.76/sandbox/cgroup/tracking.go)
-and [launcher](https://github.com/canonical/snapd/blob/2.76/cmd/snap/cmd_run.go)
-recognize a preexisting `snap.firefox.firefox-UUID.scope`. A diagnostic may create
-that scope, but normal acceptance must use the integrated catalog launch and
-verify its owner service, `BindsTo` relationship, scope descendants, and cleanup.
-Never substitute the host desktop bus for Firefox's private bus or disable Snap
-confinement. Terminal commands and portal application launches currently bypass
-the catalog's tracking-scope integration.
+A Snap-accessible Wayland socket is only part of the launch contract. Use
+Hearthspace's [owned app-scope integration](SNAP_APPLICATIONS.md) through the
+catalog, then verify its owner service, `BindsTo` relationship, scope descendants
+and cleanup. The host user manager creates the tracking scope; the app itself
+receives the Hearthspace runtime and selected session bus. Do not substitute the
+host desktop bus for the private test bus or disable Snap confinement. A direct
+terminal or portal launch is a separate path and cannot stand in for catalog
+scope acceptance. Compositor-mediated file launches also use the scope wrapper.
 
-Snap also expects the document portal at `/run/user/UID/doc`, whereas Hearthspace
-mounts its private portal beneath the private runtime. Confined file-chooser
-support remains unresolved; a mapped browser window is not evidence for it.
+Snap expects the document portal at `/run/user/UID/doc`. A private harness session
+mounts its portal beneath its private runtime, so confined Firefox file selection
+through that portal remains an acceptance gap. A mapped browser window is not
+evidence for it. Installed logins use the shared user bus and require separate
+portal acceptance; do not generalize a private-harness result to that environment.
 
-Record the exact entry path and SHA-256, new profile path, a unique ownership
-marker inside that profile, and whether the compositor's dedicated
-`~/.local/state/hearthspace/apps/dev.hearthspace.FirefoxProbe.desktop` directory
-already existed. Record the equivalent paths for the native entry too. Keep this
-record in the run's `app-probe-ownership.json`. Each prepared run includes the
-manifest, fixture copies, a `workspace` directory, and an ownership-checking
-`cleanup-app-probes.py` with the actual unique paths.
+Before launching, record each entry's exact path and SHA-256, each new profile
+path and ownership marker, and whether its dedicated compositor app-profile
+directory already existed. The latter is under
+`${XDG_STATE_HOME:-$HOME/.local/state}/hearthspace/apps/APP_ID`, using the
+compositor's environment. Keep this record as `app-probe-ownership.json` in the
+run directory. It is a manual ownership manifest; no repository command generates
+or cleans up these interactive probes automatically.
+
+Start an owned native session with `--session "$app_run"` after preparing the
+entries, following [native testing](NATIVE_TESTING.md). Choose a watchdog that
+covers the planned checks. Do not assume XDG isolation alone protects an
+application's non-XDG profile storage.
 
 ## Workflows and evidence
 
@@ -131,7 +145,8 @@ work. It starts a fresh session with `--no-build` and always attempts owned
 session cleanup:
 
 ```sh
-scripts/firefox-smoke --session "$(mktemp -d /tmp/hearthspace-firefox.XXXXXX)" --total-timeout 420
+firefox_run="$(mktemp -d -t hearthspace-firefox.XXXXXX)"
+scripts/firefox-smoke --session "$firefox_run" --total-timeout 420
 ```
 
 This fixture uses native `/usr/bin/firefox`, one active output, and its English
@@ -177,37 +192,11 @@ profile for diagnosis. The normal 420-second aggregate budget reserves a separat
 45 seconds for native cleanup; each touch-worker reply also respects its step's
 deadline.
 
-The complete Firefox 158.0.1 workflow passed on 2026-10-22 on the physical
-ThinkPad T480s with Intel UHD 620 (`i915`), Linux `7.0.0-38-generic`, and
-`eDP-1` at 1920×1080, output scale 1. Evidence is retained under
-`/home/crutchcorn/hearthspace-csd-recovery-xm_vd6xe/native-firefox-hclbjol6`.
-It verifies focused entry with retained, repainted client chrome and hidden shell
-widgets; CSD restore and physical edge resizing; shell, touchpad and touchscreen
-zoom; cancellation with saved floating geometry; and F11 pinning followed by
-restoration of the previous canvas maximization.
-
-The run used the same compositor and shell binaries as the
-[108 GTK/generic checkpoints](GTK_TOUCH_TESTING.md), with no concurrent native
-or GPU-heavy suite. Cleanup restored tty2, removed the private runtime, browser
-profile and virtual devices, and left the owned unit inactive with PID 0 and no
-cgroup. Earlier failed attempts and their cleanup evidence remain available;
-their fixture corrections are covered by regressions. This worktree validation
-does not install or replace the deployed release.
-
-After integration with the upstream CSD grab and focus-recovery changes, the
-entire Firefox workflow passed again on 2026-10-23 in `native-firefox-olut1zg5`
-under the same evidence root and hardware configuration. All nine recorded
-session binaries match the successful `native-gtk-o006m9ss` run. Cleanup again
-restored tty2, removed the owned profile and runtime, and left no service process
-or cgroup.
-
-The separate `native-touch-drag-eq0q_2mn` run passed decorated-terminal movement
-and Firefox CSD movement at canvas scales 1.0 and 0.8, including continued drag,
-release/repeat, edge resize, second-contact cancellation, and device removal.
-It used the same binaries and completed the same VT, client, device, profile,
-and runtime cleanup. Its unit retained a failed status because shutdown tried to
-stop an application-anchor unit that was already unloaded; the compositor exited
-normally and the final service had PID 0 and no cgroup.
+This covers the fixture's native Firefox window, zoom and input assertions.
+Browser compatibility, file selection, URI handling and other application workflows
+still need the checks below. Record the Firefox version and binary provenance
+with each run; environment coverage belongs in
+[tested environments](TESTED_ENVIRONMENTS.md).
 
 ### Interactive application checks
 
@@ -226,11 +215,12 @@ screenshots and their native presentation metadata for the following checks:
   and exact text including `HEARTHSPACE_UPLOAD_OK`. A dialog merely opening is
   not proof that file selection worked.
 
-For Visual Studio Code, run this from the owned native Foot terminal, replacing
-`RUN` with the absolute artifact directory:
+For Visual Studio Code, run this from the owned native Foot terminal. Set
+`app_run` there to the same absolute artifact directory used during setup; a
+variable in the calling agent's shell is not automatically available in Foot:
 
 ```sh
-code --new-window --user-data-dir RUN/code-user-data --extensions-dir RUN/code-extensions RUN/workspace
+code --new-window --user-data-dir "$app_run/code-user-data" --extensions-dir "$app_run/code-extensions" "$app_run/workspace"
 ```
 
 The separate user-data directory avoids forwarding the command to an ordinary
@@ -238,13 +228,13 @@ Code instance. Open `daily-note.txt`, enter a unique line, save it, and compare
 the file bytes from the agent. Close and reopen it to verify persistence. Keep
 the workspace and Code data in the run artifacts.
 
-GNOME Text Editor and Nautilus are available as `org.gnome.TextEditor.desktop`
-and `org.gnome.Nautilus.desktop`. From the owned terminal they can also open the
+When installed, GNOME Text Editor and Nautilus use the desktop-entry IDs
+`org.gnome.TextEditor.desktop` and `org.gnome.Nautilus.desktop`. From the owned terminal they can also open the
 fixture directly:
 
 ```sh
-gnome-text-editor --new-window RUN/workspace/daily-note.txt
-nautilus --new-window RUN/workspace
+gnome-text-editor --new-window "$app_run/workspace/daily-note.txt"
+nautilus --new-window "$app_run/workspace"
 ```
 
 In Text Editor, append a second unique line and verify the saved file's exact
@@ -262,22 +252,21 @@ verify `cleanup.complete`, original-VT restoration, and runtime removal. Check
 that no Firefox process still has the exact new profile path in its arguments;
 do not use a broad process-name kill that could affect ordinary browsing.
 
-For the prepared run, execute:
+Use `app-probe-ownership.json` to remove only setup created for this run:
 
-```sh
-python3 RUN/cleanup-app-probes.py
-```
+1. Require successful native cleanup and no live process using either recorded
+   Firefox profile. Check the exact command arguments, not just the process name.
+2. Verify each profile's expected parent, name and ownership marker. Preserve a
+   path that was replaced, became a symlink or no longer matches its record.
+3. Compare desktop-entry hashes before removing the owned entries. Leave a
+   preexisting or changed entry for manual review.
+4. Remove dedicated compositor app-profile directories only if the manifest says
+   they did not preexist and they still belong to this run. Preserve screenshots,
+   fixture copies, logs and edited workspace files as acceptance evidence.
+5. Refresh the same applications directory with
+   `update-desktop-database "$probe_apps"`. Verify the probe IDs are absent from
+   `mimeinfo.cache` and the browser defaults remain unchanged.
 
-The helper requires successful native cleanup, validates the exact profile
-parent/name and ownership marker, refuses to remove a changed desktop entry,
-and refuses while an owned Firefox profile is still in use. It removes only
-the recorded entries, new Firefox profiles, and dedicated compositor app-profile
-directories that did not preexist. It retains run artifacts,
-screenshots, fixture copies, and edited workspace files. For later runs, apply
-the same ownership checks to their recorded paths; never remove a preexisting
-entry or profile.
-
-After removing the owned entries, run `update-desktop-database` on the same
-applications directory again. Verify their IDs are absent from `mimeinfo.cache`
-and browser defaults remain unchanged. The prepared cleanup helper does this
-before marking temporary setup removal complete.
+The copies beneath the verified private runtime are removed by harness shutdown.
+If any ownership check fails, retain the affected setup and report it; do not
+replace these checks with a broad process kill or recursive deletion by name.

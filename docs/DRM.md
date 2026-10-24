@@ -1,55 +1,19 @@
-# DRM/KMS Backend
+# DRM/KMS backend
 
-This document explains Hearthspace's display backend model: what changes when we
-run nested inside another desktop versus when we own the display natively, what
-DRM/KMS is responsible for, and which boundaries contributors should preserve.
+Hearthspace can run inside another desktop or own a Linux seat and its displays.
+The compositor keeps the same window, canvas, and input policies in either mode;
+the backend supplies device access, rendering targets, and presentation timing.
+This guide is for contributors changing that boundary.
 
-The policy is:
+## Backend modes
 
-- Keep compositor behavior backend-neutral wherever possible.
-- Use the nested winit backend for everyday development inside an existing
-  desktop session.
-- Use the native udev/DRM/KMS backend when Hearthspace owns a seat, reads input
-  devices directly, and presents frames directly to displays.
-- Treat native display ownership as an operating-system integration boundary,
-  not just another windowing mode.
+| Mode | Display and input ownership | Typical use |
+| --- | --- | --- |
+| `winit` | A host Wayland/X11 desktop supplies a window and input events | Nested development and interaction checks |
+| `headless` | An offscreen renderer supplies the output | Deterministic integration tests and capture |
+| `udev` / DRM/KMS | Hearthspace acquires seat devices and presents to KMS | Native desktop sessions |
 
-## The Mental Model
-
-Hearthspace has one compositor core and multiple display backends.
-
-The compositor core owns:
-
-- Wayland protocol handling.
-- Window management, stacking, hit testing, and focus.
-- Canvas and viewport state.
-- Shell command handling.
-- Shared scene construction and rendering logic.
-
-A display backend owns:
-
-- How pixels reach a display target.
-- How input events enter the compositor.
-- How frame timing is paced.
-- How renderer buffers are acquired and submitted.
-- Which OS resources need to be opened, paused, resumed, or released.
-
-Keep those concerns separate. A window drag, resize edge, popup, client commit,
-or viewport animation should not need to know whether Hearthspace is nested in a
-host compositor or running as the native compositor on a VT.
-
-## Backend Modes
-
-Hearthspace supports three display modes:
-
-- `winit`: nested backend for normal development. Hearthspace is a client of an
-  existing Wayland/X11 desktop and renders into a host-managed window.
-- `headless`: offscreen backend for screenshots, command-socket tests, and e2e
-  automation.
-- `udev`/DRM/KMS: native backend. Hearthspace owns a session, opens DRM and input
-  devices, renders into scanout-capable buffers, and presents directly to KMS.
-
-Backend selection is intentionally explicit when requested:
+Explicit compositor flags select the backend:
 
 ```text
 --headless -> headless
@@ -58,212 +22,153 @@ Backend selection is intentionally explicit when requested:
 auto       -> winit when WAYLAND_DISPLAY or DISPLAY is set, otherwise udev
 ```
 
-Native smoke and triage commands live in `docs/NATIVE_TESTING.md`.
+The selected backend must be enabled in the build. Nested and native support use
+`winit` and `udev` features respectively. See [development](DEVELOPMENT.md) for
+build and run commands, and [native testing](NATIVE_TESTING.md) for VT ownership,
+recovery, and acceptance procedures.
 
-## Nested vs Native Ownership
+## Compositor and backend ownership
 
-The nested backend borrows a display from another compositor. The native backend
-owns the display stack directly.
+The compositor core owns Wayland protocols, window identity and stacking, hit
+testing, focus, the canvas viewport, shell requests, and scene construction.
+A drag or resize should use those shared policies regardless of the display
+backend.
 
-| Concern | Nested winit | Native udev/DRM/KMS |
+The backend owns how input enters the event loop, how render buffers are
+acquired, how they reach a display, and which OS resources must pause or resume.
+Native display ownership includes hotplug, modes, page flips, and device access;
+it is more than replacing a nested window's framebuffer.
+
+| Concern | Nested winit | Native DRM/KMS |
 | --- | --- | --- |
-| Display ownership | Host compositor owns outputs | Hearthspace owns KMS outputs |
-| Presentation | Submit to a host window | Commit GBM buffers to CRTC/connector targets |
-| Input | Host windowing system translates input | libinput reads devices through the active session |
-| Frame pacing | Host/window events drive redraws | Vblank/page-flip completion paces redraws |
-| Cursor | Host cursor presentation | Hearthspace-owned hardware/software cursor policy |
-| Screenshots | Renderer readback | Requires native readback support |
+| Outputs | Host manages physical displays | Hearthspace manages connector/CRTC targets |
+| Rendering target | Host window surface | GBM buffers suitable for scanout |
+| Input | Host-translated events | libinput through the active seat session |
+| Presentation pacing | Host/window events and buffer submission | Pending frames and DRM completion events |
+| Named cursor | Host window cursor | Hardware cursor with software fallback |
+| Capture | Renderer readback | Output readback associated with presentation, with cursor overlay when needed |
 
-This ownership difference is why native mode has more failure modes. It must
-handle session activation, session pause, DRM hotplug, input-device access, mode
-selection, scanout buffers, and page-flip completion. Nested mode delegates most
-of that to the host desktop.
+## Native display concepts
 
-## Native Display Stack
+DRM/KMS is the kernel API for configuring displays and presenting buffers.
+A connector represents a display connection, such as HDMI or DisplayPort. A CRTC
+is a scanout engine driving a mode on a connector. A mode describes resolution
+and refresh timing. Planes carry scanout layers; the primary plane holds the main
+framebuffer and a cursor plane can carry a separate pointer image.
 
-DRM/KMS is the Linux kernel display API used for native presentation.
+GBM allocates renderable scanout buffers. EGL creates the graphics context, GLES
+renders the scene, and a KMS commit submits the buffer for presentation. A
+page-flip completion is evidence about the submitted frame reaching scanout;
+finishing GLES scene construction is not.
 
-The key concepts are:
+Render ownership and scanout ownership remain separate roles even when they use
+the same DRM node. The renderer owns imports and texture resources; scanout owns
+connectors, CRTCs, output surfaces, and pending flips. Preserve that distinction
+when extending device support.
 
-- DRM device: kernel device node representing a GPU/display device.
-- Connector: physical or virtual display connection, such as HDMI, DisplayPort,
-  or a VM display connector.
-- CRTC: scanout engine that drives a mode on a connector.
-- Mode: display resolution and refresh timing.
-- Plane: scanout layer. The primary plane carries the main framebuffer; cursor
-  planes may carry hardware cursor buffers.
-- KMS commit: request to present a framebuffer or update display state.
-- Vblank/page flip: completion signal that a submitted frame reached scanout.
+## Outputs and scaling
 
-GBM and EGL/GLES sit beside DRM/KMS:
+The native backend selects one primary DRM device and renders its connected
+output targets. Each target has its own GBM surface, damage tracker, and pending
+frame state. The compositor publishes the corresponding Wayland outputs and
+renders the desktop rectangle belonging to each one.
 
-- GBM allocates buffers that can be rendered into and scanned out.
-- EGL creates the rendering context over the native device.
-- GLES renders Hearthspace's scene into the acquired buffer.
-- KMS presents that buffer to the selected output.
+Multiple outputs on that device are supported. Additional DRM devices are
+discovered but are not independent rendering targets; cross-device rendering and
+GPU handoff remain limitations. Do not describe a second GPU's connected outputs
+as available merely because device discovery found it.
 
-Keep this split in mind: rendering produces pixels; KMS presents buffers; vblank
-tells us when presentation completed.
+Output records own client-visible mode, scale, and logical placement. KMS targets
+own physical scanout dimensions. The output view is logical, and rendering applies
+its integer scale to reach the framebuffer. Pointer bounds, per-output shell
+surfaces, lock surfaces, and captures must be reconciled when geometry changes.
+See [size units](SIZE_UNITS.md).
 
-## Session And Device Access
+Saved preferences can outlive a disconnected connector. Live outputs and saved
+monitor rows therefore have separate lifetimes; hotplug must not erase user
+preferences or manufacture a currently connected output from a saved row.
 
-Native mode must not open input and DRM devices as arbitrary files. It uses a
-seat/session manager so device access follows Linux desktop rules.
+## Session and device access
 
-The session layer is responsible for:
+Native mode uses Smithay's libseat session integration for DRM and input-device
+access. Device use follows the active seat session. It must not bypass that
+ownership by treating device nodes as ordinary files available at all times.
 
-- Granting access to DRM and input device fds.
-- Telling Hearthspace which seat is active.
-- Pausing device use when the VT/session is no longer active.
-- Re-activating device use when the session returns.
+On session pause, Hearthspace stops native commits and direct input, resets active
+input sequences, and invalidates capture and lock-presentation evidence. Wayland
+clients remain connected. An inactive VT is an expected session state, not a
+request to retire every application window.
 
-When the session pauses, native code should stop committing to DRM and stop
-processing direct input. Wayland clients remain connected; the compositor is
-paused at the display/input boundary, not logically torn down.
+Activation rebuilds or reactivates devices and output surfaces, reconciles output
+state, and requests a redraw. System-sleep recovery also has an explicit path:
+a wake signal alone is not proof that libseat paused and resumed the devices.
+Recovery uses bounded retries and requires presentation on the expected outputs
+before declaring success. Driver calls are synchronous, so a retry budget cannot
+guarantee a hard upper bound on a blocked driver call.
 
-When the session activates again, native code should re-open or reactivate
-devices as needed, rescan connectors, recreate KMS surfaces if required, and
-force a redraw.
+Locking retains an opaque fallback while outputs are unavailable or being rebuilt.
+A fresh lock presentation must satisfy the current output barrier; a stale page
+flip cannot acknowledge it. See [session locking](SESSION_LOCK.md).
 
-## Output Model
+## Event loop and pacing
 
-Wayland clients see `wl_output` globals. Native KMS sees connectors, CRTCs, and
-modes. Hearthspace bridges those with compositor-owned output records.
+All backends share the calloop-driven compositor loop. Native mode adds session,
+udev, libinput, and DRM event sources. The loop imports pending dmabufs, advances
+state, applies cursor policy, renders dirty work, and dispatches client events.
 
-The output model should preserve these rules:
+For each native output:
 
-- Client-visible output state is compositor state.
-- KMS connector state is backend state.
-- A KMS connector can update, disappear, or reappear without changing the rest of
-  the compositor model.
-- Pointer bounds, shell bars, and output layout should be reconciled when output
-  geometry changes.
+1. A state change marks work dirty.
+2. If no frame is pending, the backend acquires a scanout buffer.
+3. The shared renderer draws that output's logical view at its output scale.
+4. The backend queues the buffer and records a pending frame.
+5. A matching completion releases the pending frame and allows further work.
 
-Hearthspace's native path is intentionally staged: render through a selected
-primary DRM device and primary output target first, while keeping client-visible
-output state capable of representing connected secondary outputs. Future
-multi-output rendering should preserve the same boundary: KMS owns scanout
-surfaces; compositor output records own client-visible geometry.
+Dirty work arriving during a pending flip is retained. Input and window-management
+handlers request redraws; they do not submit KMS frames themselves. Completion
+handling rejects events from retired surfaces, and an untimed modeset event can
+unblock the buffer queue without proving capture or lock presentation. Those
+paths request a fresh, verifiable frame.
 
-## Render And Scanout Ownership
+## Dmabuf feedback
 
-Native rendering has two separate ownership roles, even when one implementation
-backs both roles with the same DRM node:
+GPU clients need device and format information for compatible allocation.
+Hearthspace advertises renderer-importable dmabuf formats and uses the native
+renderer device as the feedback main device. Imported buffers are then sampled
+by that renderer.
 
-- Render ownership: EGL/GLES renderer, dmabuf imports, texture sampling, and
-  scene rendering.
-- Scanout ownership: KMS resources, connector/CRTC/mode state, GBM surfaces, and
-  page flips.
+Import failures are client/rendering compatibility failures, distinct from KMS
+mode-setting failures. Useful diagnostics include dimensions, format, planes,
+modifiers, and the selected device. An advertised format is not a promise that
+every allocation from every driver will import. See
+[rendering](RENDERING.md#client-buffers-and-readiness) for readiness and synchronization.
 
-Keep those roles separate in the code model. That makes future work easier for
-render nodes, scanout nodes, multiple GPUs, per-output allocators, and device
-handoff.
+## Damage tracking and KMS damage
 
-The normal native frame flow is:
+Renderer damage describes regions that must be redrawn in a framebuffer. KMS
+damage clips describe changed regions passed to the kernel for presentation.
+They serve different consumers and can be enabled independently.
 
-1. Something marks compositor state dirty.
-2. The event loop asks the native backend for a scanout buffer.
-3. The shared renderer draws the scene for the output's logical render view.
-4. The native backend queues the buffer for KMS presentation.
-5. Page-flip/vblank completion marks that output ready for another frame.
-6. Deferred redraws or animations schedule the next frame after completion.
+Hearthspace retains renderer-side damage tracking but submits native frames
+without KMS damage clips. This avoids relying on optional driver behavior for
+correct presentation. A future KMS-damage optimization needs device-appropriate
+validation and a fallback when the driver rejects it; it must not disable ordinary
+renderer damage as a side effect.
 
-Do not submit endless native frames just because the event loop is awake. Native
-mode should be paced by vblank/page-flip completion so it does not render ahead
-of scanout.
+## Failure and diagnostics
 
-## Event Loop And Pacing
+Initialization can fail when required seat, graphics, or output resources cannot
+be created. During a running session, client import failures, hotplug changes, or
+individual submissions can be recoverable. Keep clients connected where possible,
+retain dirty work, and log the affected device or output. Remaining alive does not
+by itself prove that presentation recovered.
 
-All backends share the same calloop-driven compositor loop. Native mode adds OS
-event sources for:
+Native captures use renderer readback and presentation acknowledgement. Lock,
+output reconfiguration, device removal, and inactive-session transitions invalidate
+pending capture state. A screenshot should not be reported as a newly presented
+frame on the basis of stale pixels alone.
 
-- Session pause/activation.
-- DRM device hotplug and connector changes.
-- Direct input through libinput.
-- DRM page-flip/vblank completion.
-
-The event loop should remain the coordination point. It imports pending client
-dmabufs, advances compositor state, applies cursor state, renders when dirty,
-flushes clients, and cleans transient Wayland state.
-
-In native mode, redraw requests are dirty-state requests, not immediate page
-flips. If a KMS frame is already pending, the backend should remember that more
-work is dirty and submit the next frame after the current page flip completes.
-
-## Dmabuf Feedback
-
-GPU clients need to know which device and formats they should allocate buffers
-for. Hearthspace advertises linux-dmabuf feedback based on the renderer backend.
-
-The rule is: client buffers should be compatible with the renderer that will
-sample them.
-
-For native mode, the advertised main device comes from the opened DRM/render
-device. The renderer's importable formats become the advertised dmabuf formats.
-Client dmabufs are imported into the native renderer before they are composited.
-
-Import failures are recoverable client/rendering compatibility failures, not KMS
-mode-setting failures. Logs should include enough detail to debug them: size,
-format, plane count, modifier presence, and node.
-
-See `docs/RENDERING.md` for client-buffer readiness and dmabuf synchronization.
-
-## Damage Tracking And KMS Damage
-
-There are two different damage concepts:
-
-- Renderer damage: regions the compositor needs to redraw into its render target.
-- KMS damage clips: regions the backend asks the kernel/display stack to treat as
-  changed for scanout.
-
-Renderer-side damage tracking is useful and should stay enabled. It reduces GLES
-work when the scene only changes partially.
-
-KMS damage clips are a separate optimization and should be treated as optional.
-Some virtual or driver stacks reject framebuffer damage clips during commits. If
-KMS damage clips are unreliable on a device, the compositor should submit the
-frame without KMS damage clips and keep running.
-
-Hearthspace's native policy is conservative: keep renderer-side damage, but do
-not forward damage clips to KMS by default. Enabling KMS damage should be per
-output/device and should fall back cleanly if a commit fails with an
-unsupported-parameter error.
-
-## Failure Model
-
-Native backend errors fall into two broad classes:
-
-- Initialization failures: required resources cannot be created, so native mode
-  cannot start correctly.
-- Live/recoverable failures: a client import, frame callback, flush, hotplug
-  update, or individual render submission fails while the compositor can keep
-  running.
-
-Prefer keeping the compositor alive for live recoverable failures. Mark affected
-state dirty, force a full redraw when appropriate, log enough context to debug
-the device/client, and continue serving Wayland clients.
-
-Session pause is not an error. It is expected OS behavior. During pause, DRM
-commits and direct input should stop. During activation, device and output state
-should be rebuilt enough to resume presentation.
-
-Useful native safety exits are documented in `docs/NATIVE_TESTING.md` and include
-the emergency keyboard chords plus `SIGINT`, `SIGTERM`, and timed exits.
-
-## Contributor Rules
-
-Use these rules when changing native display code:
-
-- Keep compositor behavior backend-neutral unless the behavior is truly about OS
-  display/input integration.
-- Keep session/device access behind the native backend.
-- Do not let input handlers or window-management code submit KMS frames directly.
-- Treat redraw requests as dirty state; let backend pacing decide when a frame is
-  submitted.
-- Keep render ownership and scanout ownership separate even if a backend shares a
-  DRM fd between them.
-- Keep renderer damage and KMS damage clips conceptually separate.
-- Prefer recoverable handling for live native failures.
-- Update `docs/NATIVE_TESTING.md` when changing native run commands, expected
-  logs, or failure triage.
-- See `docs/CURSOR.md` for cursor-specific native presentation policy.
+Use [native testing](NATIVE_TESTING.md) for safety exits and failure triage,
+[cursor handling](CURSOR.md) for native cursor fallback, and
+[tested environments](TESTED_ENVIRONMENTS.md) for recorded environments. A nested
+or headless pass does not establish native device compatibility.
