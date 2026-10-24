@@ -6,8 +6,11 @@ rust-version = "1.99.0"
 license = "Apache-2.0"
 
 [dependencies]
+sha2 = "0.10"
 hearthspace-common = { path = "../hearthspace-common" }
 nix = { version = "0.31.3", features = ["socket"] }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
 
 [dev-dependencies]
 tempfile = "3.27.0"

@@ -16,6 +16,9 @@ use nix::{
 pub const MAX_REQUEST_BYTES: usize = 16 * 1024;
 pub const MAX_RESPONSE_BYTES: usize = 64 * 1024;
 
+mod payload;
+pub use payload::request_payload;
+
 /// Exchange exactly one newline-terminated message within one absolute budget.
 /// The response does not require EOF: services may retain their connection.
 pub fn request_line(path: &Path, request: &str, timeout: Duration) -> io::Result<String> {

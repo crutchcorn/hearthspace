@@ -1,16 +1,20 @@
 use hearthspace_common::{AccentColor, Appearance, ColorMode};
+use serde::{Deserialize, Serialize};
 use std::str::FromStr;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Settings {
     pub test: bool,
+    #[serde(with = "crate::settings_snapshot::appearance")]
     pub appearance: Appearance,
     pub background_mode: BackgroundMode,
     pub background_image_path: Option<String>,
     pub monitors: Vec<MonitorConfig>,
 }
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
 pub enum BackgroundMode {
     #[default]
     RepeatWithCanvas,
@@ -58,7 +62,8 @@ impl FromStr for BackgroundMode {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct MonitorConfig {
     pub id: String,
     pub name: String,
@@ -108,6 +113,15 @@ pub enum SettingsRequest {
     SetAccentColor(AccentColor),
     SetBackgroundMode(BackgroundMode),
     SetBackgroundImagePath(Option<String>),
-    SetMonitorPosition { id: String, x: i32, y: i32 },
-    SetMonitorScale { id: String, scale: i32 },
+    /// One complete connected layout; disconnected preferences remain saved.
+    SetDisplayLayout(Vec<MonitorConfig>),
+    SetMonitorPosition {
+        id: String,
+        x: i32,
+        y: i32,
+    },
+    SetMonitorScale {
+        id: String,
+        scale: i32,
+    },
 }

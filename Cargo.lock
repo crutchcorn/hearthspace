@@ -2593,6 +2593,9 @@ version = "0.1.0"
 dependencies = [
  "hearthspace-common",
  "nix",
+ "serde",
+ "serde_json",
+ "sha2",
  "tempfile",
 ]
 
@@ -2659,7 +2662,10 @@ dependencies = [
  "hearthspace-common",
  "hearthspace-ipc",
  "nix",
+ "serde",
+ "serde_json",
  "tempfile",
+ "toml",
  "tracing",
  "tracing-subscriber",
 ]

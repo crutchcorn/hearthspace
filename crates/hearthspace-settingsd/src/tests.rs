@@ -65,8 +65,8 @@ fn appearance_persists_across_requests_and_rejects_invalid_changes() {
             assert!(response.contains("background-mode cover"));
             assert_eq!(response, round_trip("get\n", &config));
             let contents = fs::read_to_string(&config).unwrap();
-            assert!(contents.contains(&format!("color_mode = {mode}\n")));
-            assert!(contents.contains(&format!("accent_color = {accent}\n")));
+            assert!(contents.contains(&format!("color_mode = \"{mode}\"\n")));
+            assert!(contents.contains(&format!("accent_color = \"{accent}\"\n")));
         }
     }
     let original = fs::read(&config).unwrap();
@@ -106,10 +106,11 @@ fn set_test_writes_config_and_returns_saved_settings() {
             "ok test true background-mode repeat-with-canvas background-image-path default monitor primary 1920 1080 1 0 0 Primary"
         ));
     let contents = fs::read_to_string(config_path).unwrap();
-    assert!(contents.starts_with("test = true\n"));
-    assert!(contents.contains("background_mode = repeat-with-canvas\n"));
-    assert!(contents.contains("background_image_path = default\n"));
-    assert!(contents.contains("[[monitor]]\nid = primary\n"));
+    assert!(contents.contains("version = 1\n"));
+    assert!(contents.contains("test = true\n"));
+    assert!(contents.contains("background_mode = \"repeat-with-canvas\"\n"));
+    assert!(!contents.contains("background_image_path ="));
+    assert!(contents.contains("[[monitor]]\nid = \"primary\"\n"));
     assert!(contents.contains("scale = 1\n"));
 }
 
@@ -124,7 +125,7 @@ fn set_background_mode_writes_config_and_returns_saved_settings() {
             "ok test false background-mode cover background-image-path default monitor primary 1920 1080 1 0 0 Primary"
         ));
     let contents = fs::read_to_string(config_path).unwrap();
-    assert!(contents.contains("background_mode = cover\n"));
+    assert!(contents.contains("background_mode = \"cover\"\n"));
 }
 
 #[test]
@@ -141,7 +142,7 @@ fn set_background_image_path_writes_config_and_returns_saved_settings() {
             "ok test false background-mode repeat-with-canvas background-image-path %2Ftmp%2Fwallpaper.png monitor primary 1920 1080 1 0 0 Primary"
         ));
     let contents = fs::read_to_string(config_path).unwrap();
-    assert!(contents.contains("background_image_path = /tmp/wallpaper.png\n"));
+    assert!(contents.contains("background_image_path = \"/tmp/wallpaper.png\"\n"));
 }
 
 #[test]
@@ -155,7 +156,7 @@ fn set_background_image_path_default_clears_saved_path() {
             "ok test false background-mode repeat-with-canvas background-image-path default monitor primary 1920 1080 1 0 0 Primary"
         ));
     let contents = fs::read_to_string(config_path).unwrap();
-    assert!(contents.contains("background_image_path = default\n"));
+    assert!(!contents.contains("background_image_path ="));
 }
 
 #[test]
@@ -167,7 +168,7 @@ fn set_monitor_position_writes_config_and_returns_layout() {
 
     assert!(response.contains("monitor secondary 1920 1080 1 -1600 90 Secondary"));
     let contents = fs::read_to_string(config_path).unwrap();
-    assert!(contents.contains("id = secondary\n"));
+    assert!(contents.contains("id = \"secondary\"\n"));
     assert!(contents.contains("x = -1600\n"));
     assert!(contents.contains("y = 90\n"));
 }
@@ -181,7 +182,7 @@ fn set_monitor_scale_writes_config_and_returns_layout() {
 
     assert!(response.contains("monitor secondary 1920 1080 2 1920 0 Secondary"));
     let contents = fs::read_to_string(config_path).unwrap();
-    assert!(contents.contains("id = secondary\n"));
+    assert!(contents.contains("id = \"secondary\"\n"));
     assert!(contents.contains("scale = 2\n"));
 }
 
@@ -244,7 +245,7 @@ fn bind_keeps_a_live_socket_with_a_full_backlog() {
     assert!(socket_path.exists());
 }
 
-fn round_trip(request: &str, config_path: &Path) -> String {
+pub(super) fn round_trip(request: &str, config_path: &Path) -> String {
     let (server, mut client) = UnixStream::pair().unwrap();
     client.write_all(request.as_bytes()).unwrap();
     client.shutdown(Shutdown::Write).unwrap();
