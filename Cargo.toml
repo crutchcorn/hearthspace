@@ -11,6 +11,7 @@ members = [
     "crates/hearthspace-settingsd",
     "crates/hearthspace-shell",
     "crates/hearthspace-ui-storybook",
+    "crates/hearthspace-wayland-client",
     "crates/ui-components",
     "crates/waydriver-hearthspace",
     "crates/xilem-storybook",

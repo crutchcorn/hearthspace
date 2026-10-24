@@ -1,0 +1,17 @@
+[package]
+name = "hearthspace-wayland-client"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.99.0"
+license = "Apache-2.0"
+
+[dependencies]
+rustix = { version = "1.1.5", features = ["fs"] }
+tokio = { version = "1.53.3", features = ["io-util", "macros", "net", "rt", "sync", "time"] }
+wayland-client = "0.31.15"
+
+[lints.rust]
+unsafe_op_in_unsafe_fn = "deny"
+
+[lints.clippy]
+all = { level = "deny", priority = -1 }

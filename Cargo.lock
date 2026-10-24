@@ -2720,6 +2720,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "hearthspace-wayland-client"
+version = "0.1.0"
+dependencies = [
+ "rustix 1.1.5",
+ "tokio",
+ "wayland-client",
+]
+
+[[package]]
 name = "heck"
 version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
