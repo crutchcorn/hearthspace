@@ -44,8 +44,15 @@ desktop after each run. See [Native Testing](./docs/NATIVE_TESTING.md).
 I develop Hearthspace on Ubuntu 26.04 LTS, and the following packages are required to build and run the compositor and shell:
 
 ```sh
-sudo apt-get install -y build-essential pkg-config clang libclang-dev libwayland-dev wayland-protocols wayland-utils libinput-dev libxkbcommon-dev libxkbcommon-x11-dev libudev-dev libseat-dev libgbm-dev libegl1-mesa-dev libgles2-mesa-dev libdrm-dev libsystemd-dev libglib2.0-dev libglib2.0-bin xdg-utils
+sudo apt-get install -y build-essential pkg-config clang libclang-dev libwayland-dev wayland-protocols wayland-utils libinput-dev libxkbcommon-dev libxkbcommon-x11-dev libudev-dev libseat-dev libgbm-dev libegl1-mesa-dev libgles2-mesa-dev libdrm-dev libsystemd-dev libglib2.0-dev libglib2.0-bin libgtk-4-dev libgtk4-session-lock-dev libgtk4-layer-shell-dev libpam0g-dev xdg-utils
 ```
+
+The lock client requires GTK4 **4.12 or newer**, the native gtk4-session-lock **1.3** library, and
+PAM development headers. The lock-screen integration installed
+`libgtk4-session-lock-dev`, `libgtk4-layer-shell-dev`, and `libpam0g-dev` on the
+development host; GTK4 was already available. `gtk4-session-lock` **0.4.1** uses
+these native libraries alongside the Rust GTK4 **0.11.5** bindings. These are
+required desktop dependencies, including for builds without `test-apps`.
 
 Desktop file menus use GIO for application associations and Trash.
 `libglib2.0-dev` supplies its build interfaces; `libglib2.0-bin` supplies
@@ -107,15 +114,39 @@ elevates only the installation step. It installs into `/usr/local`:
 - `bin/hearthspace-login`: the graphical-session entry point.
 - `share/wayland-sessions/hearthspace.desktop`: the GDM session chooser entry.
 - `lib/hearthspace/releases/CONTENT_HASH/`: a complete runtime containing the
-  session supervisor, compositor, shell, Settings, settings daemon, notifications,
+  session supervisor, compositor, shell, lock client, Settings, settings daemon, notifications,
   accessibility CLI, app-scope guard, Python login guard, Settings desktop entry,
   and icon. Wallpaper and cursors are embedded in the compositor.
 - `lib/hearthspace/current`: an atomically updated relative symlink to the
   selected release; `install.json` records the exact owned files and hashes.
 
+The installer also manages one fixed system file outside the prefix:
+`/etc/pam.d/hearthspace-lock`. If absent, it installs the policy from
+`data/pam.d/hearthspace-lock` as root:root, mode `0644`. Authentication and account
+checks include Ubuntu's existing `login` stacks; no password or session rules
+are added. Creation is rolled back if release activation fails. `install.json`
+records the policy hash separately, so uninstall removes only the verified
+policy created by that installation. A policy already owned by another prefix
+is rejected instead of shared across independent uninstall lifetimes.
+
+An existing regular root:root `0644` administrator policy is preserved, even
+when identical to the supplied policy, and is never removed by the installer.
+Symlinks, unsafe ownership/modes, or changes to a previously managed policy
+stop installation or removal for administrator review. The installer does not
+overwrite custom PAM rules. Staged installations put this file under
+`DESTDIR/etc/pam.d/hearthspace-lock`, with the staging user's ownership; a system
+package must install it as root:root. `--prefix` never changes the runtime PAM path.
+
+During initial lock-screen development, the previously absent policy was
+provisioned from `data/pam.d/hearthspace-lock` using `sudo install -o root -g root
+-m 0644 data/pam.d/hearthspace-lock /etc/pam.d/hearthspace-lock`. Existing PAM
+files were unchanged. That manually provisioned file is treated as an
+administrator policy by the installer; new deployments should use the
+transactional installer above.
+
 GDM on the development host discovers `/usr/local/share/wayland-sessions`.
-No files under `/usr/share`, GDM/PAM configuration, system-wide default session,
-or automatic-login settings are changed. Existing Ubuntu/GNOME remains available.
+The existing login/GDM PAM stacks, system-wide default session, and automatic-login
+settings are unchanged. Existing Ubuntu/GNOME remains available.
 The launcher resolves one release before startup, so updates do not mix binaries
 in an existing session. Older releases remain installed until uninstall.
 
@@ -142,7 +173,7 @@ scripts/install-session uninstall
 
 Removal verifies the ownership manifest and refuses modified tracked files.
 It preserves untracked files, user settings, application data, other desktops,
-and system policy.
+and administrator-managed policy.
 See [graphical login](docs/LOGIN_SESSION.md) for operation and acceptance details.
 
 ### Native Agent Testing
@@ -169,7 +200,8 @@ Each run creates a transient `hearthspace-native-*.service`, a PAM/logind sessio
 root-owned recovery records under `/run/hearthspace-native/`, and a private runtime
 under `/run/user/UID/hearthspace-native-ID/`. The unit switches to an unused VT,
 runs the desktop as the user, and has an independent maximum lifetime and cleanup
-hook. No persistent service units or PAM configuration are installed. Stop a run
+hook. The native harness installs no persistent service units or PAM configuration;
+the lock client's policy is provisioned separately by the session installer. Stop a run
 through the harness to restore its original VT and remove the private runtime;
 recovery records under `/run` disappear on reboot. User-selected artifact
 directories retain logs and screenshots until explicitly removed.
@@ -442,12 +474,17 @@ Merge these rules with an existing local override instead of replacing it. The
 profile stays enforced; the extension allows only notification capability/close
 methods and action/closure signals on their standard session-bus object.
 
-Session locking uses the distribution's `swaylock` client and its packaged PAM
-configuration. Install it with `sudo apt-get install -y swaylock`. Version
-`1.8.4-1` was installed on the physical development host for this integration;
-`/etc/pam.d/swaylock` includes the existing login authentication policy. No PAM
-or password configuration was modified. The compositor handles screen isolation
-through `ext-session-lock-v1`; the locker handles authentication.
+Session locking uses the workspace's `hearthspace-lock` client. The installer
+builds and installs it beside the compositor and provisions the fixed PAM policy
+as described under [graphical installation](#graphical-login-installation).
+Source-tree native runs also need that system policy; after building the complete
+native set, `scripts/install-session install --no-build --binary-dir "$PWD/target/debug"`
+can provision it through the same checked installation transaction. Do not
+replace a customized policy with an unchecked copy. Swaylock is no longer a
+runtime dependency; an existing swaylock package and its PAM policy are left
+untouched. The compositor owns screen isolation through `ext-session-lock-v1`;
+the lock client owns authentication. Real-account unlock acceptance uses only a
+local user's physical input, never an agent-supplied password.
 
 For native audio validation, `pulseaudio-utils` and its `libpulsedsp` dependency
 (`1:17.0+dfsg1-2ubuntu4`) were also installed. `pactl info` verifies a launched
@@ -472,9 +509,9 @@ after an unexpected exit and stopping them with the session.
 nested sessions also leave it disabled.
 
 Native sessions also coordinate logind lid/suspend and wake recovery. They use
-session-owned inhibitors and the packaged swaylock; no `/etc/systemd/logind.conf`,
-PAM, or persistent RTC changes are needed. `--no-desktop-services` disables this
-coordinator as well. See [power behavior](docs/POWER.md) and the opt-in
+session-owned inhibitors and `hearthspace-lock` with the policy above; no
+`/etc/systemd/logind.conf` or persistent RTC changes are needed.
+`--no-desktop-services` disables this coordinator as well. See [power behavior](docs/POWER.md) and the opt-in
 [physical suspend test](docs/POWER_TESTING.md), which temporarily owns an otherwise
 unused RTC alarm and removes it after testing.
 
@@ -715,6 +752,7 @@ Common packages:
 crates/hearthspace-session      session supervisor; root cargo run target
 crates/hearthspace-compositor   Smithay compositor; binary: hearthspace-compositor
 crates/hearthspace-shell        Xilem shell client; binary: hearthspace-shell
+crates/hearthspace-lock         GTK4 session-lock client with fixed PAM authentication
 crates/hearthspace-settingsd    settings daemon; binary: hearthspace-settingsd
 crates/hearthspace-notifications notification daemon; binary: hearthspace-notifications
 crates/hearthspace-settings     settings app; binary: hearthspace-settings

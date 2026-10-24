@@ -5,6 +5,39 @@ use serde_json::Value;
 #[path = "lock_client.rs"]
 pub(super) mod lock_client;
 
+fn compositor_without_locker(size: &str) -> HeadlessCompositor {
+    let executable_dir = tempfile::tempdir().expect("create isolated compositor directory");
+    let executable = executable_dir.path().join("hearthspace");
+    // The production locker is found beside current_exe(), independently of
+    // PATH. A hard link (or copy across filesystems) keeps that lookup here;
+    // a symlink would resolve back beside the real locker in the build directory.
+    std::fs::hard_link(env!("CARGO_BIN_EXE_hearthspace"), &executable)
+        .or_else(|_| std::fs::copy(env!("CARGO_BIN_EXE_hearthspace"), &executable).map(|_| ()))
+        .expect("isolate compositor executable without its sibling locker");
+    let mut compositor = HeadlessCompositor::spawn_with_executable(
+        size,
+        None,
+        Some(executable_dir.path()),
+        1,
+        false,
+        &executable,
+        |_| {},
+    );
+    // Keep the executable present until after the compositor is stopped. This
+    // directory is cleaned up even when failure logs in runtime_dir are retained.
+    compositor._executable_dir = Some(executable_dir);
+    compositor
+}
+
+fn assert_locker_launch_failed(compositor: &HeadlessCompositor, command: &str) {
+    let response = compositor.send_text_command(command);
+    assert!(
+        response.starts_with("err failed to launch Hearthspace's lock screen:")
+            && response.ends_with("(os error 2)\n"),
+        "{command} must fail because the sibling locker is missing: {response}"
+    );
+}
+
 fn editor(compositor: &HeadlessCompositor) -> (Editors, PathBuf) {
     let input = compositor.runtime_dir.path().join("private-editor.txt");
     let state = compositor.runtime_dir.path().join("private-editor.json");
@@ -134,9 +167,7 @@ fn sleep_shield_survives_locker_launch_failure_and_admits_only_its_first_owner()
     use super::interactive::client::InteractiveClient;
 
     let _guard = headless_test_guard();
-    let empty_path = tempfile::tempdir().unwrap();
-    let mut compositor =
-        HeadlessCompositor::spawn_with_layout_and_path("1280x800", None, Some(empty_path.path()));
+    let mut compositor = compositor_without_locker("1280x800");
     drop(compositor.wait_for_socket());
     let socket = compositor
         .runtime_dir
@@ -155,11 +186,7 @@ fn sleep_shield_survives_locker_launch_failure_and_admits_only_its_first_owner()
     );
     action(&compositor, "pointer-button-down 272");
     assert!(client.released_buttons().is_empty());
-    let response = compositor.send_text_command("lock-shield");
-    assert!(
-        response.starts_with("err failed to launch swaylock"),
-        "{response}"
-    );
+    assert_locker_launch_failed(&compositor, "lock-shield");
     let deadline = Instant::now() + Duration::from_secs(5);
     while query(&compositor, "status")["lock_confirmed"] != true {
         assert!(Instant::now() < deadline, "opaque shield did not present");
@@ -183,11 +210,7 @@ fn sleep_shield_survives_locker_launch_failure_and_admits_only_its_first_owner()
     wait_windows(&compositor, |windows| windows.len() == 2);
     assert!(compositor.take_screenshot().starts_with(b"\x89PNG"));
 
-    assert!(
-        compositor
-            .send_text_command("lock-shield")
-            .starts_with("err failed to launch swaylock")
-    );
+    assert_locker_launch_failed(&compositor, "lock-shield");
     let mut owner = lock_client::LockClient::connect(&socket);
     owner.wait_locked();
     drop(owner);
@@ -220,9 +243,7 @@ fn session_lock_client_disconnect_keeps_the_session_closed() {
 #[test]
 fn authentication_before_sleep_never_unlocks_the_resumed_desktop() {
     let _guard = headless_test_guard();
-    let empty_path = tempfile::tempdir().unwrap();
-    let mut compositor =
-        HeadlessCompositor::spawn_with_layout_and_path("1280x800", None, Some(empty_path.path()));
+    let mut compositor = compositor_without_locker("1280x800");
     drop(compositor.wait_for_socket());
     let (_editor, _) = editor(&compositor);
     let before = wait_windows(&compositor, |windows| windows.len() == 1);
@@ -237,11 +258,7 @@ fn authentication_before_sleep_never_unlocks_the_resumed_desktop() {
     owner.unlock();
     assert_locked(&compositor);
     // Missing replacement authentication UI is an error, never an unlock.
-    assert!(
-        compositor
-            .send_text_command("session-resume")
-            .starts_with("err failed to launch swaylock")
-    );
+    assert_locker_launch_failed(&compositor, "session-resume");
     assert_locked(&compositor);
     let mut owner = lock_client::LockClient::connect(&socket);
     owner.wait_locked();
@@ -258,9 +275,7 @@ fn authentication_before_sleep_never_unlocks_the_resumed_desktop() {
 #[test]
 fn resume_preserves_live_locker_and_never_replaces_a_crashed_sleep_owner() {
     let _guard = headless_test_guard();
-    let empty_path = tempfile::tempdir().unwrap();
-    let mut compositor =
-        HeadlessCompositor::spawn_with_layout_and_path("800x600", None, Some(empty_path.path()));
+    let mut compositor = compositor_without_locker("800x600");
     drop(compositor.wait_for_socket());
     let socket = compositor
         .runtime_dir
@@ -275,11 +290,7 @@ fn resume_preserves_live_locker_and_never_replaces_a_crashed_sleep_owner() {
     assert_eq!(query(&compositor, "status")["locked"], false);
 
     // A launch error still arms the latch before the first owner arrives.
-    assert!(
-        compositor
-            .send_text_command("prepare-sleep")
-            .starts_with("err failed to launch swaylock")
-    );
+    assert_locker_launch_failed(&compositor, "prepare-sleep");
     let mut owner = lock_client::LockClient::connect(&socket);
     owner.wait_locked();
     drop(owner);

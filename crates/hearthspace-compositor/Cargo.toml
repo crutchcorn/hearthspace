@@ -43,7 +43,7 @@ async-io = "2.6.0"
 atspi = { version = "0.30.0", features = ["zbus"] }
 calloop = { version = "0.14.5", features = ["signals"] }
 cursor-icon = "1.2.0"
-gtk = { package = "gtk4", version = "0.11.5", optional = true }
+gtk = { package = "gtk4", version = "0.11.5", features = ["v4_12"], optional = true }
 hearthspace-ai = { path = "../hearthspace-ai" }
 hearthspace-common = { path = "../hearthspace-common" }
 hearthspace-ipc = { path = "../hearthspace-ipc" }

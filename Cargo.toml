@@ -6,6 +6,7 @@ members = [
     "crates/hearthspace-common",
     "crates/hearthspace-desktop",
     "crates/hearthspace-ipc",
+    "crates/hearthspace-lock",
     "crates/hearthspace-notifications",
     "crates/hearthspace-session",
     "crates/hearthspace-settings",

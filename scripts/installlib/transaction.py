@@ -11,32 +11,20 @@ import tempfile
 from contextlib import contextmanager
 from pathlib import Path
 
+from .filesystem import atomic_write, directories, no_symlinks
 from .layout import (
     BASE,
     BINARIES,
     CURRENT,
     LAUNCHER,
     MANIFEST,
+    PAM_SOURCE,
     SESSION,
     digest,
     launcher,
     session_entry,
 )
-
-
-def no_symlinks(path, *, leaf=True):
-    for candidate in [*reversed(path.parents), *([path] if leaf else [])]:
-        if candidate.is_symlink():
-            raise RuntimeError(f"refusing symlink in installation path: {candidate}")
-
-
-def directories(path):
-    """New system directories must remain traversable even under umask 077."""
-    no_symlinks(path)
-    for directory in [*reversed(path.parents), path]:
-        if not directory.exists():
-            directory.mkdir(mode=0o755)
-            directory.chmod(0o755)
+from .pam import Policy
 
 
 def relative_path(value):
@@ -48,21 +36,6 @@ def relative_path(value):
     ):
         raise RuntimeError(f"unowned installation manifest path: {value}")
     return path
-
-
-def atomic_write(path, content, mode):
-    no_symlinks(path)
-    directories(path.parent)
-    descriptor, temporary = tempfile.mkstemp(prefix=".hearthspace-", dir=path.parent)
-    try:
-        with os.fdopen(descriptor, "wb") as stream:
-            stream.write(content)
-            os.fchmod(stream.fileno(), mode)
-            stream.flush()
-            os.fsync(stream.fileno())
-        os.replace(temporary, path)
-    finally:
-        Path(temporary).unlink(missing_ok=True)
 
 
 def replace_current(root, target):
@@ -141,6 +114,7 @@ def verify_bundle(bundle, prefix):
         "share/applications/dev.hearthspace.Settings.desktop",
         "share/icons/hicolor/scalable/apps/hearthspace.svg",
         "share/icons/hicolor/scalable/apps/hearthspace-settings.svg",
+        str(PAM_SOURCE),
     }
     if set(spec["files"]) != expected_names:
         raise RuntimeError("bundle does not contain the complete runtime file set")
@@ -160,10 +134,12 @@ def verify_bundle(bundle, prefix):
     return spec
 
 
-def install(bundle, root, prefix):
+def install(bundle, root, prefix, *, system_root):
     spec = verify_bundle(bundle, prefix)
     with locked(root):
         previous = installed(root, prefix)
+        policy = Policy(system_root, prefix, previous.get("pam"))
+        policy.verify_owned()
         stable = {
             LAUNCHER: (launcher(prefix), 0o755),
             SESSION: (session_entry(prefix), 0o644),
@@ -211,6 +187,7 @@ def install(bundle, root, prefix):
             files.update(
                 {str(release / name): info for name, info in spec["files"].items()}
             )
+            policy.install((destination / PAM_SOURCE).read_bytes())
             for name, (content, mode) in stable.items():
                 if name == SESSION:
                     replace_current(root, "releases/" + spec["release"])
@@ -222,6 +199,7 @@ def install(bundle, root, prefix):
                 "prefix": str(prefix),
                 "files": files,
                 "current": current,
+                "pam": policy.record,
             }
             atomic_write(
                 root / MANIFEST,
@@ -243,6 +221,8 @@ def install(bundle, root, prefix):
                 shutil.rmtree(destination)
             raise
         finally:
+            if not completed:
+                policy.rollback()
             if stage is not None:
                 shutil.rmtree(stage)
             if not completed and previous["current"] is None:
@@ -270,17 +250,20 @@ def running_processes(root):
     return found
 
 
-def uninstall(root, prefix):
+def uninstall(root, prefix, *, system_root):
     if not (root / MANIFEST).exists():
         raise RuntimeError("no owned Hearthspace installation was found")
     with locked(root):
         previous = installed(root, prefix)
+        policy = Policy(system_root, prefix, previous.get("pam"))
+        policy.verify_owned()
         running = running_processes(root)
         if running:
             raise RuntimeError(
                 "log out of installed Hearthspace before uninstalling; running PIDs: "
                 + ", ".join(running)
             )
+        policy.remove()
         directories = {root / BASE / "releases", root / BASE}
         for name in previous["files"]:
             path = root / relative_path(name)
