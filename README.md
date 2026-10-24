@@ -1,129 +1,102 @@
 <div align="center">
-<h1>Hearthspace</h1>
-
-<picture>
-    <img width="256" alt="A cube with a chunk taken out and a fire inside" src="https://raw.githubusercontent.com/crutchcorn/hearthspace/refs/heads/main/assets/logo.svg">
-</picture>
-
-<p>A spatial Linux desktop for persistent, local-first computing.</p>
-
+  <img width="192" src="assets/logo.svg" alt="Hearthspace: a warm fire inside an open cube">
+  <h1>Hearthspace</h1>
+  <p>A Linux desktop with room for your work.</p>
 </div>
 
-<hr />
+Keep your editor beside a terminal. Put your reference material a little farther
+to the right. Zoom out to see the whole project, or bring one window forward
+and settle in.
 
-Hearthspace is an experimental Wayland compositor and shell built around an infinite canvas for applications and agent control.
+Hearthspace gives your applications a continuous canvas. You can move around it,
+group related windows, and keep the things you use most attached to the edge of
+the screen. Your work has a place, even when it isn't on screen.
 
-<div align="center">
+[![Watch Hearthspace in use](assets/demo-poster.png)](assets/demo.mp4)
 
-https://github.com/user-attachments/assets/b3e8d3fc-f47c-4ad8-baff-7f79327cb5ad
+**Hearthspace is becoming a daily driver.** It's in regular hands-on use and
+active development. You can try real applications, a configurable desktop,
+notifications, and a themed lock screen today. There are still rough edges;
+read the [known limits and next steps](docs/ROADMAP.md) and
+[tested environments](docs/TESTED_ENVIRONMENTS.md) before making it your only
+desktop.
 
-</div>
+## Make space for a project
 
-Instead of treating windows as temporary rectangles that pile up until you clean them away, Hearthspace explores a different model: applications live in a large spatial canvas, can be organized by context, and will eventually become easier to search, suspend, restore, and reason about.
+Windows can live beyond the edges of your display. Pan to reach them, pinch to
+zoom, or search when you don't remember where you put something. The map gives
+you a small view of the bigger picture.
 
-**Hearthspace is experimental.** Browser, editor, terminal, and file-manager workflows have been exercised on native AMD hardware. The [daily usability record](./todos/DAILY_USABILITY.md) tracks acceptance evidence and remaining limits; this does not establish compatibility with every application or GPU.
+Search and the window switcher temporarily bring work together so you can choose
+it. Closing them restores your arrangement. You don't have to tidy your desktop
+just to find a window.
 
-## Try the desktop
+## Keep familiar things close
 
-After [setting up the development dependencies](./CONTRIBUTING.md), start a full
-session with `cargo run -- --dev --no-watch-apps`. From a real Linux TTY this uses
-the native DRM/KMS backend; inside another desktop it opens a nested window.
+The screen's edges form a configurable frame. Attach a reference window, move
+your app dock to a side, or group controls into a bar. **Change layout** lets you
+decide what stays nearby as you move across the canvas.
 
-To control the physical development desktop remotely, install WayVNC and start
-with `cargo run -- --dev --no-watch-apps --vnc` from a Linux TTY. Connect a VNC
-viewer through SSH as described in [remote desktop setup](./docs/REMOTE_DESKTOP.md).
+The starting arrangement puts notifications at the top left, system controls at
+the top right, canvas tools at the bottom left, and apps at the bottom right.
+It's a starting point you can make your own.
 
-To choose Hearthspace at the graphical login screen, run
-`scripts/install-session install` as your normal user, then log out and select
-**Hearthspace** in the session chooser. The installer builds an optimized native
-release before requesting sudo. See [graphical login](./docs/LOGIN_SESSION.md)
-for installation, updates, removal, and the remaining local acceptance checks.
+## Use the apps you already know
 
-Super+Return opens a terminal. Tap Meta (Super), press Super+Space, or click the
-Apps List button to browse installed applications or search apps and running
-windows. Alt+Tab gathers live windows into a centered grid until Alt is released to
-activate the selection. Alt+Shift+Tab moves
-backward. Super+arrow keys pan the canvas,
-and Super+M / Super+F toggle maximize / fullscreen.
-Slide three fingers to pan the canvas; pinch them to zoom. Swipe four fingers
-left/right on a touchpad, or four/five on a touchscreen, to switch windows with
-the same previews until you lift. Activation animates into the selected window.
-Pinch inward with four fingers on a native touchpad, or four/five on a
-touchscreen, then lift to keep the same window switcher open. It opens only
-after the pinch completes successfully. Click or tap a preview, or press Enter,
-to activate the selection. An outward pinch, Escape, or a click/tap on the
-background dismisses it. The native libinput backend does not emit five-finger
-touchpad gestures. Native sessions provide
-notifications, locking, and [lid/suspend recovery](./docs/POWER.md);
-the bell icon opens notifications, the map icon opens the canvas minimap, and
-the power menu contains Lock screen, Suspend, Log off, Reboot, and Turn off,
-with confirmations for ending the session or shutting down. The native lock
-screen uses PAM authentication and follows the selected theme. Settings is available in
-Apps List. See [the four-corner shell](./docs/SHELL.md) and
-[window management](./docs/WINDOW_MANAGEMENT.md) for keyboard controls and
-[app compatibility](./docs/APPS.md) for profile and
-package behavior.
+Hearthspace runs Linux applications, including Wayland and X11 apps. Browse the
+installed catalog, keep favorites in the dock, and return to a running app with
+a click. You can also assign a simple drawing to an app and draw it to launch.
 
-The desktop keeps awareness above and actions below: notifications at the top
-left, system tray and clock at the top right, canvas tools at the bottom left,
-and the app dock with Apps List at the bottom right. Favorites stay in the dock
-when closed; click one to launch it. Click a running app to reveal it on the
-canvas; click again to cycle through its windows. Apps List shows the full
-installed catalog alphabetically.
-Super+F6 moves keyboard focus between the corners; add Shift to move backward.
+Light and dark themes, coordinated accent colors, and photo backgrounds make
+the desktop yours. Apps keep their own identities. Optional local AI can help
+gather related windows; the rest of the desktop works without a model download.
 
-Assign app shortcuts in **Settings → Search → Gestures**. Open Apps List with Meta,
-the Apps List button, or an upward touchscreen swipe from the dock. The **Draw**
-tab enables **Draw to launch**; its Settings icon opens the Settings app's Search
-tab. Return to **Apps** to browse or search. Click and drag with a mouse or
-trackpad, or draw with one touchscreen finger; a clear match launches immediately
-on release.
-Use one finger to scroll Settings and search results outside the drawing area.
-See [search gestures](./docs/FAVORITE_APPS.md) for assignment and recognition details.
+## Try it
 
-Agents can start an owned native session on a spare VT, inspect apps and stable
-window IDs, send input or Unicode paste, and verify screenshots or accessibility
-state through `scripts/hearthspace-agent`. Follow [native testing](./docs/NATIVE_TESTING.md)
-for watchdogs, session ownership, and recovery, or run the repeatable
-[daily smoke workflow](./docs/DAILY_SMOKE.md).
+Hearthspace currently builds from source. Ubuntu 26.04 is the documented setup;
+see [dependencies](docs/DEPENDENCIES.md) before installing.
 
-## Goals
+From the repository, run:
 
-Hearthspace is an experiment in rethinking the desktop around context.
+```sh
+scripts/install-session install
+```
 
-The long-term goal is a Linux-based environment where your workspace is spatial, persistent, local-first, and intelligent by design. This means:
+Run the installer as your normal user. It builds an optimized release, then asks
+for administrator access to install it. Log out and select **Hearthspace** at
+the login screen. [The installation guide](docs/LOGIN_SESSION.md) covers updates,
+removal, and what the installer changes.
 
-* Applications live in a persistent spatial workspace
-* Windows and groups can be searched, restored, and organized by context
-* Local AI understands real desktop objects instead of acting like a separate chatbot
-* Inactive applications can eventually be quieted down without forcing users to manually manage everything
-* The system stays grounded in Linux, Wayland, and native desktop technologies
+Want to explore inside your current desktop first? Follow the
+[nested development setup](CONTRIBUTING.md#run-it). That gives you a window to
+try the canvas in, with some system features reserved for a full login session.
 
-## Technology
+For your first few minutes:
 
-Hearthspace is written in Rust.
+| Do this | With this |
+| --- | --- |
+| Open apps | Tap **Super**, or click **Apps List**. |
+| Open a terminal | **Super+Return**. |
+| Switch windows | **Alt+Tab**; add **Shift** to go backward. |
+| Move around the canvas | Slide three fingers, or use **Super+arrow keys**. |
+| Zoom | Pinch with three fingers, or use the map's zoom controls. |
+| Make the layout yours | Choose **Change layout** in Canvas tools. |
 
-The compositor is built with [`smithay`](https://github.com/Smithay/smithay), a Rust library for building Wayland compositors.
+The [first-session guide](docs/GETTING_STARTED.md) introduces the rest, including
+mouse and keyboard navigation.
 
-The shell UI is built with [`xilem`](https://github.com/linebender/xilem), an experimental Rust UI framework from the Linebender project.
+## Help shape it
 
-## Roadmap
+Reports from real work are especially useful: the app you were using, what you
+expected, and what happened instead. [Open an issue](https://github.com/crutchcorn/hearthspace/issues)
+for a reproducible problem or a workflow that feels awkward.
 
-The rough direction is:
-
-1. Build a stable compositor foundation
-2. Add enough shell UI to use Hearthspace directly
-3. Make the canvas useful for real workflows
-4. Persist windows, groups, applications, and workspace state
-5. Explore smarter application lifecycle management
-6. Add local AI as a layer over the workspace model
-
-The first milestone is not to build the full vision. It is to make Hearthspace usable enough to dogfood, learn from, and iterate on.
-
-Planned work is tracked under [todos/](./todos/).
+Want to contribute code, design, or documentation? Start with
+[CONTRIBUTING.md](CONTRIBUTING.md). The [documentation catalog](docs/README.md)
+has feature guides and deeper technical explanations.
 
 ## License
 
-Hearthspace code is licensed under the Apache License 2.0.
-
-The Hearthspace name and logo are not covered by the Apache-2.0 license. You may not use them to imply endorsement of a modified version, commercial product, or unrelated project without permission.
+The code is licensed under [Apache 2.0](LICENSE.md). The Hearthspace name and logo
+aren't covered by that license; don't use them to imply endorsement of a
+modified version, commercial product, or unrelated project without permission.
