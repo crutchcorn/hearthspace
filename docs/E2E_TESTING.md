@@ -54,11 +54,17 @@ software renderer variables do not carry into a later native session. Set
 Run headless regressions with the `e2e` feature:
 
 ```sh
+export TMPDIR="$(mktemp -d -t hs-e2e.XXXXXX)"
 export LIBGL_ALWAYS_SOFTWARE=1 GSK_RENDERER=cairo
 export VK_DRIVER_FILES=/usr/share/vulkan/icd.d/lvp_icd.json
 cargo test --locked -p hearthspace-compositor --features e2e --test headless_control -- --test-threads=1
 cargo test --locked -p hearthspace-compositor --features e2e --test waydriver_hearthspace -- --test-threads=1
 ```
+
+Keep `TMPDIR` short: fixtures append private runtime and socket names, which must
+fit Linux's Unix-socket path limit. A long artifact-directory name can make a
+child exit before accessibility registration. Store descriptive run logs outside
+that short temporary root if needed.
 
 Add `test-apps` when exercising the optional GTK client. Pure transport,
 coordinate mapping, input cleanup, and timeout tests belong below the native
