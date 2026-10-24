@@ -84,19 +84,23 @@ def rounded(background, visible, surface):
     return corners
 
 
-def raised_tint(background, visible, surface):
+def material_tint(background, visible, surface):
     """Blank frame padding must retain the underlying desktop through its tint."""
     compatible(background, visible)
     left, top, _, bottom = visible.rect(surface)
     point = (left + round(4 * visible.metadata["scale"]), (top + bottom) // 2)
     behind = background.rgb(*point)
-    # CHROME_RAISED is #faf9f6 at 209/255 opacity (82%). This point is beside
-    # content, away from the one-pixel border and all rounded corners. Sample
+    # The power menu uses CHROME (#f6f4ef at 54%); other popups retain
+    # CHROME_RAISED (#faf9f6 at 82%). This point is beside content, away from
+    # the one-pixel border and all rounded corners. Sample
     # the side padding over the uniform oversized fixture: a nearby window edge
     # would let genuine blur mix in wallpaper, invalidating a raw-pixel alpha check.
+    tint, alpha = (
+        ((246, 244, 239), 138) if surface["kind"] == "power" else ((250, 249, 246), 209)
+    )
     expected = [
-        round((tint * 209 + source * 46) / 255)
-        for tint, source in zip((250, 249, 246), behind)
+        round((channel * alpha + source * (255 - alpha)) / 255)
+        for channel, source in zip(tint, behind)
     ]
     observed = list(visible.rgb(*point))
     if difference(observed, expected) > 4:
@@ -214,9 +218,9 @@ def panels(smoke, output):
             "Enter to open",
         ),
         ("notifications", "Notifications", "No notifications yet"),
-        # Include capability feedback as well as the action rows when
-        # measuring the complete semantic content group.
-        ("power", "Power", "Session controls"),
+        # Capability feedback precedes the rows; the final action stays visible
+        # even when unavailable and marks the bottom of the complete menu.
+        ("power", "Power", "Turn off"),
         ("map", "Canvas map", "Zoom in"),
     ):
         checks.click(smoke, button)
@@ -242,14 +246,14 @@ def panels(smoke, output):
         if checks.panel(smoke, kind) != surface:
             raise ControlError(f"{kind} popup changed geometry during capture")
         corners = rounded(background, visible, surface)
-        tint = raised_tint(background, visible, surface)
+        tint = material_tint(background, visible, surface)
         smoke.record(
             "shell-popup-presentation",
             kind=kind,
             surface=surface,
             content_bottom_gap=gap,
             transparent_corners=corners,
-            raised_tint=tint,
+            material_tint=tint,
         )
         with Input(smoke.control) as inputs:
             inputs.chord("esc")

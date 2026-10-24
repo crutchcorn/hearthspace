@@ -21,16 +21,24 @@ if role == "cargo":
     assert "--locked" in sys.argv
     binary = sys.argv[sys.argv.index("--bin") + 1]
     if sys.argv[1] == "build":
-        assert binary == "hearthspace-app-scope-guard"
-        assert sys.argv[sys.argv.index("-p") + 1] == "hearthspace-session"
+        if binary == "hearthspace-lock":
+            package = "hearthspace-lock"
+            prefix = "locker-"
+            artifact = Path(os.environ["LOCKER_ARTIFACT_PATH"])
+            mode = os.environ["LOCKER_ARTIFACT_MODE"]
+        else:
+            assert binary == "hearthspace-app-scope-guard"
+            package = "hearthspace-session"
+            prefix = ""
+            artifact = Path(os.environ["ARTIFACT_PATH"])
+            mode = os.environ["ARTIFACT_MODE"]
+        assert sys.argv[sys.argv.index("-p") + 1] == package
         assert "--features" not in sys.argv
         assert "--message-format=json-render-diagnostics" in sys.argv
-        (root / "build-called").write_text(json.dumps(sys.argv[1:]))
-        mode = os.environ.get("ARTIFACT_MODE", "fresh")
+        (root / f"{prefix}build-called").write_text(json.dumps(sys.argv[1:]))
         if mode == "hang":
-            (root / "build-pid").write_text(str(os.getpid()))
+            (root / f"{prefix}build-pid").write_text(str(os.getpid()))
             time.sleep(30)
-        artifact = Path(os.environ["ARTIFACT_PATH"])
         if mode == "fresh":
             artifact.parent.mkdir(parents=True, exist_ok=True)
             artifact.write_text("#!/bin/sh\n# fresh helper\nexit 0\n")
