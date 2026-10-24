@@ -116,6 +116,15 @@ impl RemoteClient {
         self.sync();
     }
 
+    pub(crate) fn axis(&mut self, horizontal: f64, vertical: f64) {
+        let pointer = self.pointer.as_ref().unwrap();
+        pointer.axis_source(wl_pointer::AxisSource::Wheel);
+        pointer.axis(0, wl_pointer::Axis::HorizontalScroll, horizontal);
+        pointer.axis(0, wl_pointer::Axis::VerticalScroll, vertical);
+        pointer.frame();
+        self.sync();
+    }
+
     pub(super) fn destroy_keyboard(&mut self) {
         self.keyboard.take().unwrap().destroy();
         self.sync();

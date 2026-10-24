@@ -1,22 +1,25 @@
-//! Preserve real touch identity for Hearthspace UI; other apps retain pointer emulation.
+//! Route bound clients through wl_touch while retaining compositor gesture ownership.
 use std::time::Instant;
 
 use smithay::{
     backend::input::{ButtonState, InputTime, TouchSlot},
     input::touch::{DownEvent, MotionEvent, UpEvent},
-    utils::{Logical, Point, Rectangle, SERIAL_COUNTER},
+    utils::{Logical, Point, Rectangle, SERIAL_COUNTER, Serial},
 };
-use wayland_server::protocol::wl_surface::WlSurface;
+use wayland_server::{Resource, protocol::wl_surface::WlSurface};
 
 use super::touch_tracker::TouchAction;
 use crate::compositor::{
-    App, HitTarget, ManagedWindowKind, idle::ActivityReason, windows::window_app_id,
+    App, HitTarget, ManagedSurface, ManagedWindowKind, idle::ActivityReason, windows::window_app_id,
 };
 
 mod frame_scroll;
 mod groups;
+mod lifecycle;
 mod model;
+mod operation;
 use model::{BarAction, BarSwipe};
+use operation::WindowOperation;
 
 type Position = Point<f64, Logical>;
 type RunningAppIdentity = Vec<(u64, Option<String>)>;
@@ -24,13 +27,20 @@ type RunningAppIdentity = Vec<(u64, Option<String>)>;
 enum Target {
     Group,
     GroupCancelled,
-    Client(WlSurface),
+    Client(ClientTouch),
+    WindowOperation(WindowOperation),
     FrameScroll {
         target: crate::compositor::layout_editor::Target,
         last: Position,
     },
     Bar(BarSwipe),
     Cancelled,
+}
+
+struct ClientTouch {
+    surface: WlSurface,
+    serial: Serial,
+    location: Position,
 }
 
 pub(in crate::compositor) struct UiTouch {
@@ -56,6 +66,10 @@ impl UiTouch {
     }
 
     fn cancel(&mut self) -> bool {
+        if let Target::WindowOperation(operation) = &mut self.target {
+            operation.active = false;
+            return false;
+        }
         let client = matches!(self.target, Target::Client(_));
         self.target = if matches!(self.target, Target::Group | Target::GroupCancelled) {
             Target::GroupCancelled
@@ -92,38 +106,6 @@ impl UiTouch {
 }
 
 impl App {
-    fn running_app_touch_identity(&self) -> RunningAppIdentity {
-        // Match the catalog shown in the dock. Stacking/focus changes leave
-        // this signature unchanged; window replacement or regrouping does not.
-        let mut identity: Vec<_> = self
-            .windows
-            .iter()
-            .enumerate()
-            .filter(|(index, _)| self.is_navigable_window(*index))
-            .map(|(_, window)| (window.id, window_app_id(&window.surface)))
-            .collect();
-        identity.sort_unstable_by_key(|(id, _)| *id);
-        identity
-    }
-
-    fn ui_touch_geometry(&self, index: usize) -> [f64; 5] {
-        let projection = self.window_projection(index);
-        let origin = match self.windows[index].kind {
-            ManagedWindowKind::ShellBar => self.shell_bar_logical_origin(index).map(|p| p.to_f64()),
-            ManagedWindowKind::Launcher => self.launcher_logical_origin(index).map(|p| p.to_f64()),
-            _ => None,
-        }
-        .unwrap_or(projection.origin);
-        let size = self.window_geometry_size(index);
-        [
-            origin.x,
-            origin.y,
-            projection.scale,
-            f64::from(size.w),
-            f64::from(size.h),
-        ]
-    }
-
     pub(super) fn begin_ui_touch(
         &mut self,
         device: &str,
@@ -135,7 +117,16 @@ impl App {
         if !first {
             // A client receives wl_touch.cancel before the existing tracker
             // recognizes any multi-finger canvas gesture.
-            self.cancel_ui_touch();
+            if self
+                .ui_touch
+                .as_ref()
+                .is_some_and(|touch| touch.device == device && touch.slot != slot)
+            {
+                self.cancel_ui_touch();
+            }
+            return;
+        }
+        if self.has_window_touch_operation() {
             return;
         }
         if self.begin_group_ui_touch(device, slot, location, time) {
@@ -174,10 +165,16 @@ impl App {
                 })
                 .is_some()
             || bar
-            || self.is_shell_panel(window_index)
-            || window_app_id(&self.windows[window_index].surface).as_deref()
-                == Some("dev.hearthspace.Settings");
-        if !supported {
+            || self.is_shell_panel(window_index);
+        let bound = surface
+            .client()
+            .is_some_and(|client| self.touch.client_touch(&client).next().is_some());
+        // XWayland's binding cannot identify which X11 clients support native
+        // touch. Keep their established pointer fallback, including core clients.
+        if !matches!(self.windows[window_index].surface, ManagedSurface::Xdg(_))
+            || (!supported
+                && !(bound && self.windows[window_index].kind == ManagedWindowKind::Normal))
+        {
             return;
         }
         let Some(output) = self
@@ -190,6 +187,7 @@ impl App {
         let window = self.windows[window_index].id;
         let geometry = self.ui_touch_geometry(window_index);
         let local = location - surface_location;
+        let serial = SERIAL_COUNTER.next_serial();
         if !bar {
             let index = self.raise_window(window_index);
             if let Some(root) = self.windows[index].surface.wl_surface() {
@@ -202,7 +200,7 @@ impl App {
                 &DownEvent {
                     slot,
                     location: local,
-                    serial: SERIAL_COUNTER.next_serial(),
+                    serial,
                     time,
                 },
             );
@@ -225,9 +223,16 @@ impl App {
                     self.shell_corner(window_index),
                 ))
             } else {
-                Target::Client(surface)
+                Target::Client(ClientTouch {
+                    surface: surface.clone(),
+                    serial,
+                    location,
+                })
             },
         });
+        if !bar {
+            self.record_gtk_touch_down(device, slot, &surface, serial, window);
+        }
     }
 
     pub(super) fn motion_ui_touch(
@@ -262,8 +267,9 @@ impl App {
         let local = touch.local_position(location);
         match &mut touch.target {
             Target::Bar(swipe) => swipe.motion(location),
-            Target::Client(surface) => {
-                let surface = surface.clone();
+            Target::Client(client) => {
+                client.location = location;
+                let surface = client.surface.clone();
                 self.touch.clone().motion(
                     self,
                     Some((surface, (0.0, 0.0).into())),
@@ -274,6 +280,7 @@ impl App {
                     },
                 );
             }
+            Target::WindowOperation(_) => self.motion_window_touch_operation(location),
             Target::Group
             | Target::GroupCancelled
             | Target::FrameScroll { .. }
@@ -303,14 +310,24 @@ impl App {
         let origin = touch.origin;
         match &touch.target {
             Target::Group => self.finish_group_ui_touch(time),
-            Target::Client(_) => self.touch.clone().up(
-                self,
-                &UpEvent {
-                    slot,
-                    serial: SERIAL_COUNTER.next_serial(),
-                    time,
-                },
-            ),
+            Target::Client(client) => {
+                let serial = client.serial;
+                let surface = client.surface.clone();
+                let owned = self.ui_touch_has_client_grab(&surface, serial);
+                self.touch.clone().up(
+                    self,
+                    &UpEvent {
+                        slot,
+                        serial: SERIAL_COUNTER.next_serial(),
+                        time,
+                    },
+                );
+                self.record_gtk_touch_up(device, slot, serial, owned);
+            }
+            Target::WindowOperation(_) => {
+                self.finish_window_touch_operation();
+                return;
+            }
             Target::Bar(swipe) => match swipe.finish(Instant::now()) {
                 BarAction::OpenSearch => {
                     self.apply_pointer_motion(origin, time);
@@ -329,77 +346,6 @@ impl App {
         }
         if let Some(touch) = self.ui_touch.as_mut() {
             touch.target = Target::Cancelled;
-        }
-    }
-
-    pub(in crate::compositor) fn cancel_ui_touch(&mut self) {
-        if self.group_touch_owns_input() {
-            self.finish_group_pointer_sequence(true);
-        }
-        if let Some(touch) = self.ui_touch.as_mut()
-            && touch.cancel()
-        {
-            self.touch.clone().cancel(self);
-        }
-    }
-
-    pub(in crate::compositor) fn maintain_ui_touch(&mut self) {
-        // Group movement changes its members' geometry by design. Ownership
-        // lasts until release/cancel even if the group is cleared meanwhile.
-        if self.group_touch_suppresses_gestures() {
-            return;
-        }
-        if self.maintain_frame_scroll_ui_touch() {
-            return;
-        }
-        if let Some(touch) = self.ui_touch.as_ref() {
-            // Bar taps become a pointer press/release only after touch-up. A
-            // fixed-width dock can replace a tile meanwhile without changing
-            // its surface geometry; never deliver that tap to the replacement.
-            let apps_identity = touch
-                .apps_identity
-                .as_ref()
-                .map(|_| self.running_app_touch_identity());
-            let geometry = self
-                .windows
-                .iter()
-                .position(|window| window.id == touch.window && window.mapped)
-                .map(|index| self.ui_touch_geometry(index));
-            let valid = touch.valid(
-                geometry,
-                &self.output_logical_rects(),
-                self.navigation_available()
-                    || self.canvas_search_active()
-                    || self.layout_editing()
-                    || self.layout_confirmation_active(),
-                apps_identity.as_deref(),
-            );
-            if !valid {
-                self.cancel_ui_touch();
-            }
-        }
-    }
-
-    pub(in crate::compositor) fn ui_touch_focus_changed(&mut self, window: Option<u64>) {
-        // Called under Smithay's keyboard lock; do not query keyboard state here.
-        if self.ui_touch.as_ref().is_some_and(|touch| {
-            !matches!(touch.target, Target::Group | Target::GroupCancelled)
-                && Some(touch.window) != window
-        }) {
-            self.cancel_ui_touch();
-        }
-    }
-
-    pub(super) fn suppress_ui_touch_pointer(&self, device: &str, action: &TouchAction) -> bool {
-        self.ui_touch
-            .as_ref()
-            .is_some_and(|touch| touch.suppresses_pointer(device, action))
-    }
-
-    pub(super) fn finish_ui_touch_frame(&mut self) {
-        self.touch.clone().frame(self);
-        if !self.touch_input.has_contacts() {
-            self.ui_touch = None;
         }
     }
 }

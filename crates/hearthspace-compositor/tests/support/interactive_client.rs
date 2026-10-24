@@ -20,6 +20,8 @@ mod frame_persistence;
 pub(crate) mod gtk;
 #[path = "client_maximize.rs"]
 mod maximize;
+#[path = "client_touch.rs"]
+mod touch;
 
 struct Window {
     surface: wl_surface::WlSurface,
@@ -35,6 +37,7 @@ struct Window {
 #[derive(Default)]
 struct State {
     gtk: gtk::State,
+    touch: touch::State,
     compositor: Option<wl_compositor::WlCompositor>,
     shm: Option<wl_shm::WlShm>,
     wm_base: Option<xdg_wm_base::XdgWmBase>,

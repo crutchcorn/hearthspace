@@ -163,10 +163,12 @@ pub(in crate::compositor) fn handle_input_event<B: InputBackend>(
                 vertical = ?scroll_amount_for_axis(&event, Axis::Vertical),
                 "pointer axis input"
             );
-            if state.layout_group_axis(
-                scroll_amount_for_axis(&event, Axis::Horizontal).unwrap_or(0.),
-                scroll_amount_for_axis(&event, Axis::Vertical).unwrap_or(0.),
-            ) || state.zoom_from_scroll_amount(scroll_amount_for_axis(&event, Axis::Vertical))
+            if state.has_window_touch_operation()
+                || state.layout_group_axis(
+                    scroll_amount_for_axis(&event, Axis::Horizontal).unwrap_or(0.),
+                    scroll_amount_for_axis(&event, Axis::Vertical).unwrap_or(0.),
+                )
+                || state.zoom_from_scroll_amount(scroll_amount_for_axis(&event, Axis::Vertical))
             {
                 return;
             }

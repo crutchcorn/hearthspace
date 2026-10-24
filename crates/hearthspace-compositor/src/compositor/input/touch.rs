@@ -98,6 +98,7 @@ impl App {
         slot: TouchSlot,
         time: InputTime,
     ) {
+        self.cancel_gtk_touch(device, slot);
         if self.touch_pointer_pressed && self.touch_input.has_device_input(device) {
             self.cancel_titlebar_pointer();
             self.cancel_canvas_search_touch();
