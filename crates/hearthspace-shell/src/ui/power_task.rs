@@ -157,15 +157,42 @@ pub(super) fn request_action(state: &mut ShellState, output_key: &str, action: A
         if let Some(output) = state
             .outputs
             .iter_mut()
-            .find(|output| output.key() == output_key)
+            .find(|output| output.key() == output_key && output.show_power)
         {
             output.launch_error = None;
         }
     } else {
-        state.finish_launch(
+        finish_power(
+            state,
             output_key,
             Err("Power controls are busy. Try again shortly.".into()),
         );
+    }
+}
+
+/// Power replies cannot dismiss or replace feedback from a newer panel.
+fn finish_power(state: &mut ShellState, output_key: &str, result: Result<(), String>) {
+    let Some(output) = state
+        .outputs
+        .iter_mut()
+        .find(|output| output.key() == output_key && output.show_power)
+    else {
+        return;
+    };
+    match result {
+        Ok(()) => state.dismiss_power(output_key),
+        Err(error) => output.launch_error = Some(error),
+    }
+}
+
+fn apply(state: &mut ShellState, update: Update) {
+    match update {
+        Update::Status(status) => state.power.status = status,
+        Update::Finished(key, result) => {
+            state.power.pending = false;
+            state.power.pending_action = None;
+            finish_power(state, &key, result);
+        }
     }
 }
 
@@ -199,14 +226,7 @@ pub(super) fn task() -> impl View<ShellState, (), xilem::ViewCtx, Element = NoEl
                 }
             }
         },
-        |state: &mut ShellState, update| match update {
-            Update::Status(status) => state.power.status = status,
-            Update::Finished(key, result) => {
-                state.power.pending = false;
-                state.power.pending_action = None;
-                state.finish_launch(&key, result);
-            }
-        },
+        apply,
     )
 }
 
@@ -226,3 +246,7 @@ pub(super) fn test_channel(
 #[cfg(test)]
 #[path = "power_actions_tests.rs"]
 mod action_tests;
+
+#[cfg(test)]
+#[path = "power_completion_tests.rs"]
+mod completion_tests;
