@@ -11,6 +11,8 @@ use serde::{Deserialize, Serialize};
 
 use super::{Favorite, FavoriteError, FavoriteStore, MAX_FAVORITES, validate_id};
 
+mod transaction;
+
 const MAX_FILE_BYTES: u64 = 256 * 1024;
 static NEXT_FILE: AtomicU64 = AtomicU64::new(0);
 
@@ -56,6 +58,9 @@ pub(super) fn save(
     entries: &[Favorite],
     previous: Option<&[u8]>,
 ) -> Result<Vec<u8>, FavoriteError> {
+    // Lock a stable sibling inode, not the data inode replaced by rename. The
+    // optimistic comparison and commit are one cross-process transaction.
+    let _transaction = transaction::lock(path).map_err(|e| error(path, e))?;
     // A second shell/editor's work is preserved, including a deleted file. The
     // user can reopen the shell to reload instead of silently losing that work.
     if read(path)?.as_deref() != previous {

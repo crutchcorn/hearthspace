@@ -40,7 +40,7 @@ source readiness does not mean validation is complete.
 | C11 | One sampled presentation projection | Planned |
 | C12 | Authoritative runtime-artifact inventory | Planned |
 | C13 | Valid versioned TOML and legacy migration | Implementing |
-| C14 | Cross-process favorites transaction locking | Planned |
+| C14 | Cross-process favorites transaction locking | Implemented; focused checks passed |
 | C15 | Committed preference refresh/notification ownership | Planned |
 | C16 | Documentation and full validation | In progress |
 
@@ -259,3 +259,7 @@ push is implied by this task.
 - 2026-10-23: fetched `login-toolchain`, confirmed reviewed SHA, created `cleanup`.
   C01/C02/C04/C13 implementation and focused regressions are in progress. No
   execution validation or completion claim yet.
+- C14: added a stable private advisory lock spanning comparison through rename,
+  bounded at 500 ms. The 33 focused favorites tests pass, including competing
+  subprocesses and timeout/retry. Shell library/test Clippy passed with warnings
+  denied. Full workspace and subsequent extraction validation remain required.

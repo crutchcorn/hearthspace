@@ -144,7 +144,15 @@ fn persistent_mutations_roundtrip_with_private_atomic_files() {
     );
     assert_eq!(
         std::fs::read_dir(path.parent().unwrap()).unwrap().count(),
-        1
+        2 // data and the stable transaction lock, with no temporary files
+    );
+    assert_eq!(
+        std::fs::metadata(path.with_file_name("favorites.json.lock"))
+            .unwrap()
+            .permissions()
+            .mode()
+            & 0o777,
+        0o600
     );
     store.clear_gesture("editor.desktop").unwrap();
     assert!(

@@ -42,6 +42,13 @@ is retained: saving a gesture preserves other favorites and their order, includi
 apps pinned without a gesture. Settings lists gesture assignments; the dock lists
 installed favorites with or without gestures.
 
+Writers serialize the disk comparison and atomic rename with the persistent
+`favorites.json.lock` sibling. The lock is private and released when its writer
+exits; the file remains so concurrent processes always lock the same inode.
+A save waits at most 500 ms for another writer, then reports a retryable busy
+error. A stale editor must reload before saving; a failed save preserves both
+its local assignments and the other process's committed file.
+
 ## Input and automation
 
 Hearthspace UI uses standard Wayland touch events for direct manipulation; other
