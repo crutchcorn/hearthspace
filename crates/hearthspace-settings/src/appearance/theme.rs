@@ -1,10 +1,7 @@
 //! Cache native defaults by appearance without replacing the window's widgets.
 use hearthspace_ipc::Appearance;
 use hearthspace_ui_components::{self as components, Palette, PropertyStyle};
-use std::{
-    cell::RefCell,
-    sync::{Arc, atomic::AtomicU64},
-};
+use std::{cell::RefCell, sync::Arc};
 use xilem::masonry::{
     core::{DefaultProperties, PropertyStack, Selector},
     properties::{CaretColor, ContentColor, SelectionColor},
@@ -14,7 +11,6 @@ use xilem::masonry::{
 #[derive(Default)]
 pub(crate) struct Theme {
     cached: RefCell<Option<Resolved>>,
-    pub(super) revision: Arc<AtomicU64>,
 }
 
 struct Resolved {
@@ -59,7 +55,6 @@ pub(crate) fn properties(palette: Palette) -> DefaultProperties {
     crate::page_components::theme_properties(properties, palette);
     crate::favorites_view::theme_properties(properties, palette);
     crate::ai_view::theme_properties(properties, palette);
-    hearthspace_shell::gesture_pad::theme_properties(properties, palette);
     properties.insert::<crate::favorites_search::Editor, _>(ContentColor::new(palette.text));
     properties.insert::<crate::favorites_search::Editor, _>(CaretColor {
         color: palette.text,

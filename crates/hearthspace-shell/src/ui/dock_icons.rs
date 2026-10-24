@@ -20,13 +20,13 @@ use xilem::{
 };
 
 use super::{ShellState, apps};
-use crate::{
+use hearthspace_desktop::{
     app_catalog::DesktopApp,
-    tray::{TrayIcon, TrayPixmap},
+    artwork::{IconSource, RasterImage},
 };
 
 const MAX_ICONS: usize = 128;
-type Icons = BTreeMap<CacheKey, Option<TrayPixmap>>;
+type Icons = BTreeMap<CacheKey, Option<RasterImage>>;
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub(super) enum CacheKey {
@@ -92,8 +92,8 @@ fn decode_requests(mut cache: Icons, requests: Vec<Request>) -> Icons {
     cache.retain(|key, _| requests.contains_key(key));
     for (key, request) in requests {
         cache.entry(key).or_insert_with(|| match request {
-            Request::App(app) => crate::app_icon::resolve_app(&app),
-            Request::Named(name) => crate::app_icon::resolve(&TrayIcon {
+            Request::App(app) => hearthspace_desktop::app_icon::resolve_app(&app),
+            Request::Named(name) => hearthspace_desktop::app_icon::resolve(&IconSource {
                 name: Some(name),
                 ..Default::default()
             }),
@@ -132,7 +132,7 @@ pub(in crate::ui) fn task() -> impl View<ShellState, (), ViewCtx, Element = NoEl
     )
 }
 
-fn image(pixmap: TrayPixmap) -> ImageBrush {
+fn image(pixmap: RasterImage) -> ImageBrush {
     ImageData {
         data: pixmap.rgba.into(),
         format: ImageFormat::Rgba8,

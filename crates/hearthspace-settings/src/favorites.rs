@@ -1,6 +1,6 @@
 //! Settings owns app gesture editing. Recording never launches an application.
 //! The legacy favorites store remains the compatible persistence format.
-use hearthspace_shell::{
+use hearthspace_desktop::{
     app_catalog::AppCatalog,
     favorites::{Favorite, FavoriteError, FavoriteStore, Gesture, Point},
 };
@@ -176,7 +176,7 @@ impl FavoriteSettings {
         // The drawing view bounds input; validate again before enabling Save.
         let result = Gesture::from_points(&points);
         recording.valid = result.is_ok();
-        recording.points = if points.len() <= hearthspace_shell::favorites::MAX_STROKE_POINTS {
+        recording.points = if points.len() <= hearthspace_desktop::favorites::MAX_STROKE_POINTS {
             points
         } else {
             vec![]

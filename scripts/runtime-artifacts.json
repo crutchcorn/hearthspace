@@ -1,0 +1,43 @@
+[
+  {
+    "package": "hearthspace-session",
+    "binaries": ["hearthspace-session", "hearthspace-session-bus", "hearthspace-app-scope-guard"],
+    "native_features": []
+  },
+  {
+    "package": "hearthspace-compositor",
+    "binaries": ["hearthspace-compositor"],
+    "native_features": ["udev"]
+  },
+  {
+    "package": "hearthspace-shell",
+    "binaries": ["hearthspace-shell"],
+    "native_features": []
+  },
+  {
+    "package": "hearthspace-settingsd",
+    "binaries": ["hearthspace-settingsd"],
+    "native_features": []
+  },
+  {
+    "package": "hearthspace-settings",
+    "binaries": ["hearthspace-settings"],
+    "native_features": []
+  },
+  {
+    "package": "hearthspace-notifications",
+    "binaries": ["hearthspace-notifications"],
+    "native_features": []
+  },
+  {
+    "package": "waydriver-hearthspace",
+    "binaries": ["hearthspace-a11y"],
+    "native_features": []
+  },
+  {
+    "package": "hearthspace-ui-storybook",
+    "binaries": ["hearthspace-ui-storybook"],
+    "native_features": [],
+    "development_only": true
+  }
+]

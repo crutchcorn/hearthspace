@@ -40,6 +40,7 @@ impl ShellState {
             .iter_mut()
             .find(|output| output.key() == output_key && output.show_search)
         {
+            output.launch_pending = None;
             output.show_search = false;
             output.search_request_token = None;
             output.query.clear();

@@ -49,6 +49,7 @@ impl App {
         )?;
         self.xwm = Some(xwm);
         self.xdisplay = Some(display_number);
+        self.publish_xwayland_display();
         self.publish_xsettings();
         Ok(())
     }

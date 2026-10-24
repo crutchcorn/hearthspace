@@ -33,9 +33,6 @@ pub(super) fn grip_rect(rect: Rect, edge: Option<frame_layout::FrameEdge>) -> Re
         },
     }
 }
-pub(super) fn json_rect(rect: Rect) -> serde_json::Value {
-    serde_json::json!({"x":rect.x,"y":rect.y,"width":rect.width,"height":rect.height})
-}
 impl App {
     pub(super) fn layout_grip_rect(&self, placed: &PlacedTarget) -> Rect {
         let scale = if placed.placement.is_frame() {
@@ -247,6 +244,9 @@ impl App {
                 if placement == ObjectPlacement::Hidden {
                     continue;
                 }
+                let Some(target) = self.live_layout_target(&target) else {
+                    continue;
+                };
                 let vertical = self
                     .layout_drag_vertical(&Target {
                         output: output.clone(),

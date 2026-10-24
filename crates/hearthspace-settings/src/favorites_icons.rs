@@ -1,6 +1,6 @@
 //! Decode installed application artwork away from layout and input handling.
 use crate::{favorites::FavoriteSettings, state::SettingsApp};
-use hearthspace_shell::tray::{TrayIcon, TrayPixmap};
+use hearthspace_desktop::artwork::{IconSource, RasterImage};
 use std::collections::BTreeMap;
 use xilem::{
     AnyWidgetView, ViewCtx, WidgetView,
@@ -30,7 +30,7 @@ pub(crate) fn requests(favorites: &FavoriteSettings) -> Vec<String> {
 
 pub(crate) fn task() -> impl View<SettingsApp, (), ViewCtx, Element = NoElement> + use<> {
     task_raw(
-        |proxy: MessageProxy<BTreeMap<String, Option<TrayPixmap>>>, state: &mut SettingsApp| {
+        |proxy: MessageProxy<BTreeMap<String, Option<RasterImage>>>, state: &mut SettingsApp| {
             let (sender, mut receiver) =
                 xilem::tokio::sync::watch::channel(requests(&state.favorites));
             state.favorites.icon_requests = Some(sender);
@@ -42,7 +42,7 @@ pub(crate) fn task() -> impl View<SettingsApp, (), ViewCtx, Element = NoElement>
                         cache.retain(|name, _| names.binary_search(name).is_ok());
                         for name in names {
                             cache.entry(name.clone()).or_insert_with(|| {
-                                hearthspace_shell::app_icon::resolve(&TrayIcon {
+                                hearthspace_desktop::app_icon::resolve(&IconSource {
                                     name: Some(name),
                                     ..Default::default()
                                 })

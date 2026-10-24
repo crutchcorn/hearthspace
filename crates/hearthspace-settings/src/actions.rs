@@ -2,12 +2,10 @@ use std::path::PathBuf;
 
 use hearthspace_ipc::{
     BackgroundMode, MonitorConfig, client_set_background_image_path, client_set_background_mode,
-    client_set_monitor_scale,
 };
 
 use crate::{
-    monitors::{recalculate_monitor_positions_for_scale, settings_with_live_outputs},
-    settings_backend::{notify_compositor_settings_changed, save_monitor_positions},
+    monitors::recalculate_monitor_positions_for_scale, settings_backend::save_display_layout,
     state::SettingsApp,
 };
 
@@ -36,26 +34,13 @@ pub(crate) fn apply_monitor_editor_action(state: &mut SettingsApp, action: Monit
             monitors,
             commit,
         } => {
+            state.display_layout.invalidate_preview();
             let moved_monitor_exists = monitors.iter().any(|monitor| monitor.id == moved_id);
             state.selected_monitor_id = Some(moved_id.clone());
             state.settings.monitors = monitors;
 
             if commit {
-                match save_monitor_positions(&state.settings.monitors) {
-                    Ok(Some(settings)) => {
-                        state.settings = settings_with_live_outputs(settings, &state.live_outputs);
-                        keep_selected_monitor_available(state);
-                        state.status = status_after_compositor_reload(format!(
-                            "Saved monitor layout for {moved_id}"
-                        ));
-                    }
-                    Ok(None) => {
-                        state.status = status_after_compositor_reload(
-                            "Saved empty monitor layout".to_string(),
-                        );
-                    }
-                    Err(error) => state.status = format!("Failed to save monitor layout: {error}"),
-                }
+                save_display_layout(state);
             } else if moved_monitor_exists {
                 state.status.clear();
             } else {
@@ -65,7 +50,7 @@ pub(crate) fn apply_monitor_editor_action(state: &mut SettingsApp, action: Monit
     }
 }
 
-fn keep_selected_monitor_available(state: &mut SettingsApp) {
+pub(crate) fn keep_selected_monitor_available(state: &mut SettingsApp) {
     if state.selected_monitor_id.as_ref().is_some_and(|id| {
         state
             .settings
@@ -83,50 +68,11 @@ fn keep_selected_monitor_available(state: &mut SettingsApp) {
 }
 
 pub(crate) fn save_monitor_scale(state: &mut SettingsApp, id: &str, scale: i32) {
-    let previous = state.settings.clone();
     let mut monitors = state.settings.monitors.clone();
     recalculate_monitor_positions_for_scale(&mut monitors, id, scale);
-    state.settings.monitors = monitors.clone();
-
-    match client_set_monitor_scale(id, scale) {
-        Ok(_) => match save_monitor_positions(&monitors) {
-            Ok(Some(settings)) => {
-                state.settings = settings_with_live_outputs(settings, &state.live_outputs);
-                state.selected_monitor_id = Some(id.to_string());
-                keep_selected_monitor_available(state);
-                state.status = status_after_compositor_reload(format!(
-                    "Saved monitor scale for {id}: {scale}x"
-                ));
-            }
-            Ok(None) => {
-                state.settings.monitors = monitors;
-                state.selected_monitor_id = Some(id.to_string());
-                state.status = status_after_compositor_reload(format!(
-                    "Saved monitor scale for {id}: {scale}x"
-                ));
-            }
-            Err(error) => {
-                let _ = previous
-                    .monitors
-                    .iter()
-                    .find(|monitor| monitor.id == id)
-                    .map(|monitor| client_set_monitor_scale(id, monitor.scale));
-                state.settings = previous;
-                state.status = format!("Failed to save monitor positions after scale: {error}");
-            }
-        },
-        Err(error) => {
-            state.settings = previous;
-            state.status = format!("Failed to save monitor scale: {error}");
-        }
-    }
-}
-
-fn status_after_compositor_reload(saved_message: String) -> String {
-    match notify_compositor_settings_changed() {
-        Ok(()) => String::new(),
-        Err(error) => format!("{saved_message}; compositor reload failed: {error}"),
-    }
+    state.settings.monitors = monitors;
+    state.selected_monitor_id = Some(id.to_string());
+    save_display_layout(state);
 }
 
 pub(crate) fn save_background_image_path(state: &mut SettingsApp, path: Option<PathBuf>) {
@@ -145,14 +91,12 @@ pub(crate) fn save_background_image_path(state: &mut SettingsApp, path: Option<P
 
     match client_set_background_image_path(path.as_deref()) {
         Ok(settings) => {
-            state.settings = settings_with_live_outputs(settings, &state.live_outputs);
+            crate::settings_refresh::local_save_finished(state);
+            state.settings.background_image_path = settings.background_image_path;
             state
                 .background_preview
                 .refresh(state.settings.background_image_path.as_deref());
-            state.status = match notify_compositor_settings_changed() {
-                Ok(()) => String::new(),
-                Err(error) => format!("Saved background image; compositor reload failed: {error}"),
-            };
+            state.status.clear();
         }
         Err(error) => {
             state.settings.background_image_path = previous;
@@ -167,13 +111,9 @@ pub(crate) fn save_background_mode(state: &mut SettingsApp, mode: BackgroundMode
 
     match client_set_background_mode(mode) {
         Ok(settings) => {
-            state.settings = settings_with_live_outputs(settings, &state.live_outputs);
-            state.status = match notify_compositor_settings_changed() {
-                Ok(()) => String::new(),
-                Err(error) => {
-                    format!("Saved background mode: {mode}; compositor reload failed: {error}")
-                }
-            };
+            crate::settings_refresh::local_save_finished(state);
+            state.settings.background_mode = settings.background_mode;
+            state.status.clear();
         }
         Err(error) => {
             state.settings.background_mode = previous;

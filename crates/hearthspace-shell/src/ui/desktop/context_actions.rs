@@ -1,10 +1,8 @@
 //! Context actions validate the live compositor menu before touching files.
+use crate::desktop_items::{self, DesktopItem, DesktopItemKind, actions};
 use crate::ui::command_client;
-use crate::{
-    desktop_items::{self, DesktopItem, DesktopItemKind, actions},
-    favorites::FavoriteStore,
-};
 use hearthspace_common::{desktop_context::DesktopContext, desktop_files::FileClipboard};
+use hearthspace_desktop::favorites::FavoriteStore;
 use std::{path::Path, time::Duration};
 
 #[derive(Clone, Debug)]
@@ -28,9 +26,9 @@ pub(super) enum Action {
     Layout,
 }
 
-pub(super) struct Request {
+pub(in crate::ui) struct Request {
     pub generation: u64,
-    pub action: Action,
+    pub(super) action: Action,
 }
 
 #[derive(Debug)]

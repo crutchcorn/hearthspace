@@ -106,9 +106,11 @@ fn category_navigation_works_while_loading_and_reentry_keeps_the_cached_preview(
     let (_directory, favorites) = crate::favorites::tests::fixture();
     let mut state = SettingsApp {
         running: true,
+        preferences: Default::default(),
         appearance_theme: Default::default(),
         navigation: Default::default(),
         frame_settings: Default::default(),
+        display_layout: Default::default(),
         activation_listener: None,
         ai: Default::default(),
         favorites,
@@ -116,6 +118,8 @@ fn category_navigation_works_while_loading_and_reentry_keeps_the_cached_preview(
             background_image_path: Some("/missing/photo.png".into()),
             ..Settings::default()
         },
+        saved_monitors: hearthspace_ipc::Settings::default().monitors,
+        output_observation: Default::default(),
         live_outputs: vec![],
         selected_category: SettingsCategory::Background,
         selected_monitor_id: None,

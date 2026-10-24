@@ -7,20 +7,13 @@ import subprocess
 import time
 from pathlib import Path
 
+from runtime_artifacts import BINARIES
+
+__all__ = ["BINARIES"]
+
 ROOT = Path(__file__).resolve().parents[2]
 ENTRY = ROOT / "scripts/hearthspace-native"
 STATE_ROOT = Path("/run/hearthspace-native")
-BINARIES = (
-    "hearthspace-session",
-    "hearthspace-session-bus",
-    "hearthspace-app-scope-guard",
-    "hearthspace-compositor",
-    "hearthspace-shell",
-    "hearthspace-settings",
-    "hearthspace-settingsd",
-    "hearthspace-a11y",
-    "hearthspace-notifications",
-)
 MAX_REPLY = 128 * 1024 * 1024
 
 

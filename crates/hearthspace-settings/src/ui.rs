@@ -28,6 +28,8 @@ pub(crate) fn app_logic(state: &mut SettingsApp) -> impl WidgetView<SettingsApp>
         .synchronize_path(state.settings.background_image_path.as_deref());
     let content = settings_view(state);
     let content = fork(content, crate::frame_settings::task());
+    let content = fork(content, crate::settings_backend::task());
+    let content = fork(content, crate::wayland_outputs::task());
     let content = fork(
         fork(
             fork(content, crate::activation::task()),
@@ -63,6 +65,7 @@ pub(crate) fn app_logic(state: &mut SettingsApp) -> impl WidgetView<SettingsApp>
             },
             |state: &mut SettingsApp, response| {
                 state.background_picker_pending = false;
+                crate::settings_refresh::local_save_finished(state);
                 match response {
                     BackgroundPickerResponse::Selected(path) => {
                         save_background_image_path(state, Some(path));

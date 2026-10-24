@@ -1,5 +1,6 @@
 use super::*;
-use crate::{ShellCommand, app_catalog::AppCatalog};
+use crate::ShellCommand;
+use hearthspace_desktop::app_catalog::AppCatalog;
 use masonry::core::WindowEvent;
 use std::fs;
 
@@ -66,21 +67,23 @@ fn blank_catalog_explains_empty_state_and_has_no_selected_result() {
 
 #[test]
 fn browsing_scrolls_through_all_apps_and_enter_launches_on_the_opened_output() {
+    use crate::ui::launch::tests::worker as launch_worker;
     let directory = tempfile::tempdir().unwrap();
     let mut state = installed_apps(14);
     state.command_socket = directory.path().join("control.sock");
     let listener = UnixListener::bind(&state.command_socket).unwrap();
     let server = thread::spawn(move || {
         let (mut stream, _) = listener.accept().unwrap();
-        let mut request = String::new();
-        stream.read_to_string(&mut request).unwrap();
+        let request = launch_worker::read_request(&mut stream);
         let command = ShellCommand::LaunchAppOnOutput {
             app_id: "app-13.desktop".into(),
             output_name: "eDP-1".into(),
         };
         assert_eq!(request, format!("{}\n", command.wire_name()));
         stream.write_all(b"ok\n").unwrap();
+        launch_worker::reply_active(&listener);
     });
+    let mut worker = launch_worker::launch(&mut state);
     let mut ui = Ui::new(state, view, (360, 360));
     let input = ui.harness.focused_widget_id().unwrap();
     assert_eq!(selected(&ui), ["Open: App 00"]);
@@ -101,6 +104,13 @@ fn browsing_scrolls_through_all_apps_and_enter_launches_on_the_opened_output() {
     assert!(ui.state.outputs[0].query.is_empty());
     ui.harness
         .process_text_event(TextEvent::key_down(Key::Named(NamedKey::Enter)));
+    ui.dispatch(&view);
+    assert!(
+        ui.state.outputs[0].show_search,
+        "acceptance has not been dispatched yet"
+    );
+    worker.complete(&mut ui.state);
+    ui.rebuild(&view);
     ui.dispatch(&view);
     assert!(!ui.state.outputs[0].show_search);
     server.join().unwrap();

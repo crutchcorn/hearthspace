@@ -306,6 +306,12 @@ Transient dialogs keep following their parents. Application settings remain
 responsible for window content and size; Hearthspace does not reopen apps or save
 their titles, documents, or text.
 
+Frame attachments retain application-slot identities separately from live window
+IDs. A disconnected or destroyed window leaves its saved attachment available
+for a replacement; absent slots have no visible geometry. Confirming a pinned
+window's close explicitly removes that attachment. Slots distinguish instances
+of an application, not individual documents.
+
 The private file is `$XDG_STATE_HOME/hearthspace/layout.json`, falling back to
 `~/.local/state/hearthspace/layout.json`. It retains at most 128 placements.
 Invalid files are ignored. A crash can lose layout changes since the last normal

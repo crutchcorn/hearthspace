@@ -39,12 +39,23 @@ pub(super) enum Owner {
     Switcher,
 }
 
-#[derive(Default)]
 pub(super) struct State {
     pub owner: Option<Owner>,
+    sampled_at: Instant,
     pub poses: BTreeMap<u64, Pose>,
     pub reduced_motion: bool,
     pub selection: super::selection::Cache,
+}
+impl Default for State {
+    fn default() -> Self {
+        Self {
+            owner: None,
+            sampled_at: Instant::now(),
+            poses: BTreeMap::new(),
+            reduced_motion: false,
+            selection: Default::default(),
+        }
+    }
 }
 mod render;
 pub(in crate::compositor) fn rect(
@@ -57,6 +68,33 @@ pub(in crate::compositor) fn rect(
         height: f64::from(value.size.h),
     }
 }
+impl State {
+    /// Input and rendering read the same fractional pose by stable window ID.
+    pub(in crate::compositor) fn pose(&self, id: u64) -> Option<(Rect, f64)> {
+        self.poses
+            .get(&id)
+            .map(|pose| pose.current(self.sampled_at))
+    }
+
+    fn needs_animation_frame(&self) -> bool {
+        // Wall time may have passed the deadline since the last frame. Keep
+        // scheduling until an advance samples the endpoint and requests redraw.
+        self.poses
+            .values()
+            .any(|pose| self.sampled_at.saturating_duration_since(pose.started) < DURATION)
+    }
+
+    pub(in crate::compositor) fn advance(&mut self, now: Instant, active: bool) -> bool {
+        let needs_redraw = self.needs_animation_frame();
+        self.sampled_at = now;
+        if !active && !self.needs_animation_frame() && !self.poses.is_empty() {
+            self.poses.clear();
+            self.owner = None;
+            return true;
+        }
+        needs_redraw
+    }
+}
 impl App {
     pub(in crate::compositor) fn canvas_preview_active(&self) -> bool {
         self.canvas_search_active() || self.window_switcher_active()
@@ -65,13 +103,15 @@ impl App {
         self.canvas_preview_active() || !self.canvas_preview.poses.is_empty()
     }
     pub(in crate::compositor) fn advance_canvas_preview(&mut self) {
-        if self.canvas_preview_animating() {
-            self.request_redraw();
-        } else if !self.canvas_preview_active() && !self.canvas_preview.poses.is_empty() {
-            self.canvas_preview.poses.clear();
-            self.canvas_preview.owner = None;
+        let active = self.canvas_preview_active();
+        if self.canvas_preview.advance(Instant::now(), active) {
             self.request_redraw();
         }
+    }
+
+    pub(in crate::compositor) fn canvas_preview_needs_animation_frame(&self) -> bool {
+        self.canvas_preview.needs_animation_frame()
+            || (!self.canvas_preview_active() && !self.canvas_preview.poses.is_empty())
     }
 
     pub(in crate::compositor) fn canvas_preview_motion_start(&self) -> Instant {
@@ -85,10 +125,7 @@ impl App {
         }
     }
     pub(in crate::compositor) fn canvas_preview_pose(&self, index: usize) -> Option<(Rect, f64)> {
-        self.canvas_preview
-            .poses
-            .get(&self.windows[index].id)
-            .map(|pose| pose.current(Instant::now()))
+        self.canvas_preview.pose(self.windows[index].id)
     }
     pub(in crate::compositor) fn canvas_preview_animating(&self) -> bool {
         self.canvas_preview
@@ -141,3 +178,8 @@ impl App {
         }
     }
 }
+
+#[cfg(test)]
+mod sampling_tests;
+#[cfg(test)]
+pub(in crate::compositor) mod test_support;

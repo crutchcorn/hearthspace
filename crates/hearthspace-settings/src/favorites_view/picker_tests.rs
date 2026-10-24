@@ -264,7 +264,7 @@ fn popup_touch_scroll_does_not_select_and_tracks_resize_then_closes_with_editor(
         .unwrap();
     }
     state.favorites.catalog =
-        hearthspace_shell::app_catalog::AppCatalog::load_from_data_dirs(vec![
+        hearthspace_desktop::app_catalog::AppCatalog::load_from_data_dirs(vec![
             dir.path().to_owned(),
         ]);
     state.favorites.start("Extra19.desktop");

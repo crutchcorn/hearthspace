@@ -1,5 +1,4 @@
 //! Live compositor metadata for finding running applications from the launcher.
-use serde_json::Value;
 use xilem::{
     core::{MessageProxy, NoElement, View},
     view::task_raw,
@@ -37,38 +36,16 @@ impl RunningWindow {
 }
 
 fn parse_windows(bytes: &[u8]) -> Result<Vec<RunningWindow>, String> {
-    let value: Value =
-        serde_json::from_slice(bytes).map_err(|error| format!("Invalid window list: {error}"))?;
-    let windows = value
-        .get("windows")
-        .and_then(Value::as_array)
-        .ok_or("Invalid window list")?;
-    windows
-        .iter()
-        .map(|window| {
-            Ok(RunningWindow {
-                id: window
-                    .get("id")
-                    .and_then(Value::as_u64)
-                    .filter(|id| *id > 0)
-                    .ok_or("Invalid window ID")?,
-                title: window
-                    .get("title")
-                    .and_then(Value::as_str)
-                    .unwrap_or_default()
-                    .to_string(),
-                app_id: window
-                    .get("app_id")
-                    .and_then(Value::as_str)
-                    .unwrap_or_default()
-                    .to_string(),
-                focused: window
-                    .get("focused")
-                    .and_then(Value::as_bool)
-                    .unwrap_or(false),
-            })
+    Ok(hearthspace_ipc::windows::WindowList::decode(bytes)?
+        .windows
+        .into_iter()
+        .map(|window| RunningWindow {
+            id: window.id,
+            title: window.title.unwrap_or_default(),
+            app_id: window.app_id.unwrap_or_default(),
+            focused: window.focused,
         })
-        .collect()
+        .collect())
 }
 
 pub(super) fn window_catalog_task()
@@ -120,12 +97,12 @@ mod tests {
 
     #[test]
     fn running_windows_match_live_title_and_application_with_stable_ids() {
-        let windows = parse_windows(br#"{"windows":[{"id":42,"title":"Project Notes","app_id":"org.editor","focused":true},{"id":43,"title":null,"app_id":null}]}"#).unwrap();
+        let windows = parse_windows(br#"{"version":1,"windows":[{"id":42,"title":"Project Notes","app_id":"org.editor","focused":true},{"id":43,"title":null,"app_id":null}]}"#).unwrap();
         assert_eq!(windows[0].id, 42);
         assert!(windows[0].matches("EDITOR notes"));
         assert!(!windows[0].matches("missing"));
         assert_eq!(windows[1].label(), "Window: Untitled window");
-        assert!(parse_windows(br#"{"windows":[{"id":0}]}"#).is_err());
+        assert!(parse_windows(br#"{"version":1,"windows":[{"id":0}]}"#).is_err());
         assert!(parse_windows(br#"{"wrong":[]}"#).is_err());
     }
 
@@ -139,8 +116,10 @@ mod tests {
         apply_window_catalog(&mut state, Err("initial connection failed".into()));
         assert!(launcher::results(&state, &state.outputs[0]).is_empty());
 
-        let windows =
-            parse_windows(br#"{"windows":[{"id":42,"title":"Notes","app_id":"editor"}]}"#).unwrap();
+        let windows = parse_windows(
+            br#"{"version":1,"windows":[{"id":42,"title":"Notes","app_id":"editor"}]}"#,
+        )
+        .unwrap();
         apply_window_catalog(&mut state, Ok(windows));
         apply_window_catalog(&mut state, Err("capture delayed query".into()));
         assert!(

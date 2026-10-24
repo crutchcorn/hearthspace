@@ -155,13 +155,17 @@ fn photo_fit_selection_and_reset_keep_keyboard_focus() {
     let (_directory, favorites) = crate::favorites::tests::fixture();
     let state = SettingsApp {
         running: true,
+        preferences: Default::default(),
         appearance_theme: Default::default(),
         navigation: Default::default(),
         frame_settings: Default::default(),
+        display_layout: Default::default(),
         activation_listener: None,
         ai: Default::default(),
         favorites,
         settings,
+        saved_monitors: hearthspace_ipc::Settings::default().monitors,
+        output_observation: Default::default(),
         live_outputs: vec![],
         selected_category: SettingsCategory::Background,
         selected_monitor_id: None,
@@ -290,9 +294,11 @@ fn popup_flips_and_clamps_to_the_window_and_cleans_up_when_disabled_or_page_chan
     let (_directory, favorites) = crate::favorites::tests::fixture();
     let state = SettingsApp {
         running: true,
+        preferences: Default::default(),
         appearance_theme: Default::default(),
         navigation: Default::default(),
         frame_settings: Default::default(),
+        display_layout: Default::default(),
         activation_listener: None,
         ai: Default::default(),
         favorites,
@@ -300,6 +306,8 @@ fn popup_flips_and_clamps_to_the_window_and_cleans_up_when_disabled_or_page_chan
             background_image_path: Some("photo.png".into()),
             ..Settings::default()
         },
+        saved_monitors: hearthspace_ipc::Settings::default().monitors,
+        output_observation: Default::default(),
         live_outputs: vec![],
         selected_category: SettingsCategory::Background,
         selected_monitor_id: None,

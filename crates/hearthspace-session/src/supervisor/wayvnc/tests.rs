@@ -8,6 +8,7 @@ fn supervisor(name: &str, body: &str) -> Supervisor {
     let directory =
         std::env::temp_dir().join(format!("hearthspace-wayvnc-{name}-{}", std::process::id()));
     fs::create_dir_all(&directory).unwrap();
+    fs::set_permissions(&directory, fs::Permissions::from_mode(0o700)).unwrap();
     let script = directory.join("fake-wayvnc");
     fs::write(&script, format!("#!/usr/bin/python3\n{body}")).unwrap();
     fs::set_permissions(&script, fs::Permissions::from_mode(0o700)).unwrap();

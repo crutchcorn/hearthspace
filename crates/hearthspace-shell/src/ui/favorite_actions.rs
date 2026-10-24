@@ -1,9 +1,12 @@
 //! Drawing is an explicit search mode; configuration belongs to Settings.
 use super::{command_client::send_command, favorite_state::Mode, state::ShellState};
-use crate::favorites::{Point, Recognition};
+use hearthspace_desktop::favorites::{Point, Recognition};
 
 pub(super) fn cancel(state: &mut ShellState, key: &str) {
     if let Some(output) = state.outputs.iter_mut().find(|output| output.key() == key) {
+        if output.drawing.active() {
+            output.launch_pending = None;
+        }
         if output.drawing.armed {
             let _ = send_command(
                 &state.command_socket,
@@ -95,11 +98,13 @@ pub(super) fn manage(state: &mut ShellState, key: &str) {
         .iter()
         .find(|o| o.key() == key)
         .and_then(|o| o.output_name.clone());
-    let result = send_command(
-        &state.command_socket,
-        &crate::ShellCommand::OpenSearchSettings { output_name: name }.wire_name(),
+    super::launch::submit(
+        state,
+        key,
+        crate::ShellCommand::OpenSearchSettings { output_name: name }.wire_name(),
+        None,
+        false,
     );
-    state.finish_launch(key, result);
 }
 
 fn launch(state: &mut ShellState, key: &str, id: &str, generation: u64, stroke: u64) {
@@ -111,14 +116,16 @@ fn launch(state: &mut ShellState, key: &str, id: &str, generation: u64, stroke: 
         );
         return;
     }
-    let result = send_command(
-        &state.command_socket,
-        &format!(
+    super::launch::submit(
+        state,
+        key,
+        format!(
             "favorite-gesture-launch {generation} {stroke} {}",
             serde_json::to_string(id).expect("string is JSON serializable")
         ),
+        Some(generation),
+        false,
     );
-    state.finish_launch(key, result);
 }
 
 fn feedback(state: &mut ShellState, key: &str, message: String) {

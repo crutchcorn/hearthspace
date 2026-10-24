@@ -1,6 +1,6 @@
 //! Substitute the systemd manager boundary, retaining both env transitions and GIO.
 use super::*;
-use hearthspace_shell::desktop_items::file_launch::{gio_command, run_opener};
+use hearthspace_desktop::file_launch::{gio_command, run_opener};
 use std::{
     ffi::OsString,
     os::unix::ffi::OsStringExt,

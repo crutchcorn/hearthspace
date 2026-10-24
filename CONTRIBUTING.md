@@ -249,10 +249,16 @@ this explicit mode when running alongside another desktop. Ordinary shared-bus
 mode assumes one graphical desktop for the user; it refreshes that user's GTK
 and frontend portal services for Hearthspace's display.
 
-Build the complete helper set with
-`cargo build --locked -p hearthspace-session --bins` before launching the
-supervisor directly; `cargo run --bin hearthspace-session` alone does not build
-its helpers. The installer and native build include them. Both bus modes supply
+The runtime package, binary, and native-feature inventory lives in
+`scripts/runtime-artifacts.json`. The installer and native harness derive their
+build commands from it; development native runs prepare each package separately,
+including session helper binaries, before acquiring a VT. The `--dev` supervisor
+also asks Cargo to prepare its scope guard before startup, then uses the executable
+path in Cargo's JSON artifact response. It never accepts an old sibling as a
+fallback after a failed build. `scripts/dev-run-app` uses the same artifact
+resolution, including `CARGO_TARGET_DIR` and Cargo configuration. Installed
+sessions still use their immutable release's sibling binaries and need no checkout
+or Cargo. Both bus modes supply
 `DBUS_SESSION_BUS_ADDRESS` and `HEARTHSPACE_SESSION_BUS_ADDRESS` consistently.
 Owned components keep their private runtime and sockets. Once the compositor is
 ready, shared activation imports a bounded allowlist into D-Bus and the user
@@ -715,7 +721,9 @@ crates/hearthspace-settings     settings app; binary: hearthspace-settings
 crates/hearthspace-ui-storybook UI component gallery app; binary: hearthspace-ui-storybook
 crates/ui-components            shared Hearthspace Xilem UI components/theme
 crates/xilem-storybook          generic Storybook-like state model for Xilem apps
-crates/hearthspace-ipc          settings IPC protocol/types
+crates/hearthspace-ipc          typed settings/control contracts and bounded clients
+crates/hearthspace-desktop      catalogs, favorites, artwork, and app/file launch services
+crates/hearthspace-wayland-client coherent live output observation without UI dependencies
 crates/hearthspace-common       shared environment/path constants
 crates/waydriver-hearthspace    WayDriver backend adapter
 ```

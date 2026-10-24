@@ -38,7 +38,10 @@ impl Fixture {
             root,
         };
         for directory in ["host-runtime", "supplied", "bin", "home", "data", "config"] {
-            fs::create_dir(fixture.root.join(directory)).unwrap();
+            fs::DirBuilder::new()
+                .mode(0o700)
+                .create(fixture.root.join(directory))
+                .unwrap();
         }
         for role in ["settingsd", "compositor"] {
             script(

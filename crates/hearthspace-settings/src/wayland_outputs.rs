@@ -1,178 +1,212 @@
-use wayland_client::{
-    Connection, Dispatch, QueueHandle, WEnum,
-    globals::{GlobalListContents, registry_queue_init},
-    protocol::{wl_output, wl_registry},
+//! Settings adapter: observations update connected rows, never persisted preferences.
+use hearthspace_ipc::MonitorConfig;
+use hearthspace_wayland_client::{OutputInfo, connect_wayland, watch_outputs};
+use xilem::{
+    core::{MessageProxy, NoElement, View},
+    tokio,
+    view::task_raw,
 };
 
-use crate::monitors::{EMPTY_MONITOR_CANVAS_HEIGHT, EMPTY_MONITOR_CANVAS_WIDTH, LiveOutput};
+mod primary;
 
-pub(crate) fn live_wayland_outputs() -> std::io::Result<Vec<LiveOutput>> {
-    let connection = Connection::connect_to_env().map_err(std::io::Error::other)?;
-    let (globals, mut event_queue) =
-        registry_queue_init::<OutputProbe>(&connection).map_err(std::io::Error::other)?;
-    let queue_handle = event_queue.handle();
-    let mut probe = OutputProbe::default();
-    for global in globals.contents().clone_list() {
-        if global.interface == "wl_output" {
-            globals.registry().bind::<wl_output::WlOutput, _, _>(
-                global.name,
-                global.version.min(4),
-                &queue_handle,
-                OutputGlobal { name: global.name },
-            );
-        }
-    }
-    event_queue
-        .roundtrip(&mut probe)
-        .map_err(std::io::Error::other)?;
-    Ok(probe.live_outputs())
-}
+use crate::{
+    monitors::{LiveOutput, monitor_logical_width, monitors_for_live_outputs},
+    state::SettingsApp,
+};
 
 #[derive(Default)]
-struct OutputProbe {
-    outputs: Vec<OutputState>,
+pub(crate) struct Observation {
+    received: bool,
+    primary: Option<String>,
+    // Includes disconnected drafts until their edit is committed successfully.
+    preview: Vec<MonitorConfig>,
 }
 
-struct OutputGlobal {
-    name: u32,
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct Snapshot {
+    pub(crate) outputs: Vec<LiveOutput>,
+    pub(crate) primary: Option<String>,
 }
 
 #[derive(Debug)]
-struct OutputState {
-    global_name: u32,
-    name: Option<String>,
-    description: Option<String>,
-    width: Option<i32>,
-    height: Option<i32>,
-    refresh_millihertz: Option<i32>,
-    scale: Option<i32>,
+enum Message {
+    Changed(Snapshot),
+    Unavailable(String),
 }
 
-impl OutputState {
-    fn current_mode(
-        &mut self,
-        flags: WEnum<wl_output::Mode>,
-        width: i32,
-        height: i32,
-        refresh: i32,
-    ) {
-        if output_size_is_current(flags) {
-            self.width = Some(width);
-            self.height = Some(height);
-            self.refresh_millihertz = (refresh > 0).then_some(refresh);
-        }
-    }
-}
-
-impl OutputProbe {
-    fn output_mut(&mut self, global_name: u32) -> &mut OutputState {
-        if let Some(index) = self
-            .outputs
-            .iter()
-            .position(|output| output.global_name == global_name)
-        {
-            return &mut self.outputs[index];
-        }
-        self.outputs.push(OutputState {
-            global_name,
-            name: None,
-            description: None,
-            width: None,
-            height: None,
-            refresh_millihertz: None,
-            scale: None,
-        });
-        self.outputs.last_mut().unwrap()
-    }
-
-    fn live_outputs(self) -> Vec<LiveOutput> {
-        self.outputs
-            .into_iter()
-            .map(|output| {
-                let fallback = format!("output-{}", output.global_name);
-                let id = output.name.clone().unwrap_or_else(|| fallback.clone());
-                LiveOutput {
-                    id: id.clone(),
-                    name: output.description.or(output.name).unwrap_or(id),
-                    width: output.width.unwrap_or(EMPTY_MONITOR_CANVAS_WIDTH),
-                    height: output.height.unwrap_or(EMPTY_MONITOR_CANVAS_HEIGHT),
-                    scale: output.scale.unwrap_or(1).max(1),
-                    refresh_millihertz: output.refresh_millihertz,
-                }
-            })
-            .collect()
-    }
-}
-
-impl Dispatch<wl_registry::WlRegistry, GlobalListContents> for OutputProbe {
-    fn event(
-        _state: &mut Self,
-        _proxy: &wl_registry::WlRegistry,
-        _event: wl_registry::Event,
-        _data: &GlobalListContents,
-        _connection: &Connection,
-        _queue_handle: &QueueHandle<Self>,
-    ) {
-    }
-}
-
-impl Dispatch<wl_output::WlOutput, OutputGlobal> for OutputProbe {
-    fn event(
-        state: &mut Self,
-        _proxy: &wl_output::WlOutput,
-        event: wl_output::Event,
-        data: &OutputGlobal,
-        _connection: &Connection,
-        _queue_handle: &QueueHandle<Self>,
-    ) {
-        let output = state.output_mut(data.name);
-        match event {
-            wl_output::Event::Name { name } => output.name = Some(name),
-            wl_output::Event::Description { description } => {
-                output.description = Some(description);
+pub(crate) fn task() -> impl View<SettingsApp, (), xilem::ViewCtx, Element = NoElement> + use<> {
+    task_raw(
+        |proxy: MessageProxy<Message>, _state: &mut SettingsApp| async move {
+            let (sender, receiver) = tokio::sync::watch::channel(None);
+            let observe = async {
+                let connection = connect_wayland().await?;
+                watch_outputs(connection, move |outputs| {
+                    sender.send(Some(outputs)).map_err(std::io::Error::other)
+                })
+                .await
+            };
+            let socket =
+                crate::settings_backend::command_socket_path().map_err(|error| error.to_string());
+            let deliver = primary::deliver(receiver, socket, |snapshot| {
+                proxy.message(Message::Changed(snapshot)).is_ok()
+            });
+            tokio::select! {
+                result = observe => {
+                    if let Err(error) = result { drop(proxy.message(Message::Unavailable(error.to_string()))); }
+                },
+                _ = deliver => {},
             }
-            wl_output::Event::Mode {
-                flags,
+        },
+        |state: &mut SettingsApp, message| match message {
+            Message::Changed(snapshot) => apply_snapshot(state, snapshot),
+            Message::Unavailable(error) => {
+                if !state.output_observation.received {
+                    state.status = format!("Live monitors unavailable: {error}");
+                }
+            }
+        },
+    )
+}
+
+fn live_outputs(outputs: Vec<OutputInfo>) -> Vec<LiveOutput> {
+    outputs
+        .into_iter()
+        .filter_map(|output| {
+            let (width, height) = output.size?;
+            let id = output.connector();
+            Some(LiveOutput {
+                name: output
+                    .description
+                    .or(output.name)
+                    .unwrap_or_else(|| id.clone()),
+                id,
                 width,
                 height,
-                refresh,
-            } => output.current_mode(flags, width, height, refresh),
-            wl_output::Event::Scale { factor } => output.scale = Some(factor.max(1)),
-            _ => {}
-        }
-    }
+                scale: output.scale,
+                refresh_millihertz: output.refresh_millihertz,
+            })
+        })
+        .collect()
 }
 
-fn output_size_is_current(flags: WEnum<wl_output::Mode>) -> bool {
-    matches!(flags, WEnum::Value(flags) if flags.contains(wl_output::Mode::Current))
+pub(crate) fn apply_snapshot(state: &mut SettingsApp, snapshot: Snapshot) {
+    state.live_outputs = snapshot.outputs;
+    state.output_observation.received = true;
+    state.output_observation.primary = snapshot.primary;
+    refresh_monitor_rows(state);
+}
+
+/// Called both by live observation and successful transaction completion.
+/// Every recomputation starts from retained preferences, with local drafts overlaid.
+pub(crate) fn refresh_monitor_rows(state: &mut SettingsApp) {
+    if !state.output_observation.received {
+        return;
+    }
+    if state.display_layout.has_current_edit() {
+        for monitor in &state.settings.monitors {
+            if let Some(draft) = state
+                .output_observation
+                .preview
+                .iter_mut()
+                .find(|draft| draft.id == monitor.id)
+            {
+                *draft = monitor.clone();
+            } else {
+                state.output_observation.preview.push(monitor.clone());
+            }
+        }
+    }
+    state
+        .display_layout
+        .retain_disconnected_preview(!state.output_observation.preview.is_empty());
+    let mut rows = monitors_for_live_outputs(
+        &state.saved_monitors,
+        &state.live_outputs,
+        state.output_observation.primary.as_deref(),
+    );
+    for row in &mut rows {
+        if let Some(draft) = state
+            .output_observation
+            .preview
+            .iter()
+            .find(|draft| draft.id == row.id)
+        {
+            row.x = draft.x;
+            row.y = draft.y;
+            row.scale = draft.scale;
+        }
+    }
+    // Newly connected screens must not displace the in-progress drag. Place them
+    // beyond existing draft edges while leaving surviving draft coordinates intact.
+    if state
+        .output_observation
+        .preview
+        .iter()
+        .any(|draft| rows.iter().any(|row| row.id == draft.id))
+    {
+        let mut next_x = rows
+            .iter()
+            .filter(|row| {
+                state
+                    .output_observation
+                    .preview
+                    .iter()
+                    .any(|draft| draft.id == row.id)
+                    || state
+                        .settings
+                        .monitors
+                        .iter()
+                        .any(|previous| previous.id == row.id)
+            })
+            .map(|row| row.x.saturating_add(monitor_logical_width(row)))
+            .max()
+            .unwrap_or(0);
+        for row in &mut rows {
+            if !state
+                .output_observation
+                .preview
+                .iter()
+                .any(|draft| draft.id == row.id)
+                && !state
+                    .settings
+                    .monitors
+                    .iter()
+                    .any(|previous| previous.id == row.id)
+            {
+                row.x = next_x;
+                row.y = 0;
+                next_x = next_x.saturating_add(monitor_logical_width(row));
+            }
+        }
+    }
+    state.settings.monitors = rows;
+    crate::actions::keep_selected_monitor_available(state);
+}
+
+/// A successful connected-layout save acknowledges only the submitted connectors.
+/// Failed or unsent drafts for disconnected outputs remain available on replug.
+pub(crate) fn acknowledge_preview(state: &mut SettingsApp, submitted: &[MonitorConfig]) {
+    state
+        .output_observation
+        .preview
+        .retain(|draft| !submitted.iter().any(|row| row.id == draft.id));
+    state
+        .display_layout
+        .retain_disconnected_preview(!state.output_observation.preview.is_empty());
+}
+
+pub(crate) fn saved_monitors_changed(
+    state: &mut SettingsApp,
+    monitors: Vec<MonitorConfig>,
+    accepted_edit: bool,
+) {
+    state.saved_monitors = monitors;
+    if accepted_edit && !state.output_observation.received {
+        state.settings.monitors = state.saved_monitors.clone();
+        crate::actions::keep_selected_monitor_available(state);
+    }
+    refresh_monitor_rows(state);
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn refresh_rate_comes_only_from_the_advertised_current_mode() {
-        let mut probe = OutputProbe::default();
-        let output = probe.output_mut(3);
-        output.current_mode(WEnum::Value(wl_output::Mode::Current), 1920, 1080, 59_940);
-        output.current_mode(
-            WEnum::Value(wl_output::Mode::Preferred),
-            2560,
-            1440,
-            144_000,
-        );
-        let output = &probe.live_outputs()[0];
-        assert_eq!((output.width, output.height), (1920, 1080));
-        assert_eq!(output.refresh_millihertz, Some(59_940));
-    }
-
-    #[test]
-    fn unreported_frequency_is_not_invented() {
-        let mut probe = OutputProbe::default();
-        probe
-            .output_mut(3)
-            .current_mode(WEnum::Value(wl_output::Mode::Current), 1920, 1080, 0);
-        assert_eq!(probe.live_outputs()[0].refresh_millihertz, None);
-    }
-}
+mod tests;

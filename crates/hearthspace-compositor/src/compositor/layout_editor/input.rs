@@ -208,12 +208,13 @@ impl App {
                     y: origin.y.round() as i32 - (bounds.loc.y - previous.y),
                 };
             }
+            let canonical = self.canonical_layout_target(&target.target);
             self.layout_editor
                 .layouts
                 .get_mut(&target.output)
                 .unwrap()
                 .set_placement(
-                    &target.target,
+                    &canonical,
                     ObjectPlacement::Canvas {
                         x: Some(origin.x),
                         y: Some(origin.y),

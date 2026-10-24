@@ -153,19 +153,13 @@ impl PinchZoom {
 
 impl App {
     pub(super) fn pinch_blocked(&self) -> bool {
-        if self.session_locked() || self.canvas_search_active() || self.layout_confirmation_active()
-        {
-            return true;
-        }
-        self.drag.is_some()
-            || self.resize.is_some()
-            || self.group_interaction_active()
-            || self.pointer.is_grabbed()
-            || self.keyboard.is_grabbed()
+        use super::policy::{Action, Phase, Source};
+        !self.interaction_allowed(Action::SwitcherGesture, Source::Touch, Phase::Continue)
     }
 
     fn canvas_pinch_blocked(&self) -> bool {
-        self.pinch_blocked() || self.window_focus_view_active()
+        use super::policy::{Action, Phase, Source};
+        !self.interaction_allowed(Action::CanvasGesture, Source::Touch, Phase::Continue)
     }
 
     pub(super) fn begin_touchpad_gesture(

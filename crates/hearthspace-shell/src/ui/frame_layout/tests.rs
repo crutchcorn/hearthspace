@@ -219,10 +219,7 @@ fn placement_inspector_sends_session_guarded_actions_and_real_date_choices() {
 #[test]
 fn confirmation_focuses_cancel_and_does_not_enable_hiding_tools_implicitly() {
     let mut state = state();
-    state.frame_layout.snapshot.confirmation = Some(Confirmation {
-        kind: "hide-tools".into(),
-        window_id: None,
-    });
+    state.frame_layout.snapshot.confirmation = Some(Confirmation::HideTools);
     let (sender, mut requests) = mpsc::channel(8);
     state.frame_layout.requests = Some(sender);
     let mut ui = Ui::new(state, dialog, (420, 300));

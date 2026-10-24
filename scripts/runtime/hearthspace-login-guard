@@ -264,15 +264,33 @@ def cleanup_runtime(runtime, identity):
     allowed = {(runtime / "doc", "fuse.portal"), (runtime / "gvfs", "fuse.gvfsd-fuse")}
     if any(mount not in allowed for mount in mounts):
         raise RuntimeError("unknown mount inside login runtime; refusing removal")
+    # logind's session scope excludes apps tracked by the independent user
+    # manager. Await the supervisor's same stop barrier before touching their
+    # runtime, even if the app-scope watchdog has already exited/been collected.
+    helper = Path(__file__).resolve().with_name("hearthspace-app-scope-guard")
+    command(
+        [str(helper), "--stop-app-scopes", str(runtime), f"/run/user/{identity['uid']}"]
+    )
+    if runtime_identity(runtime, identity["uid"]) != tuple(
+        identity["runtime_identity"]
+    ):
+        raise RuntimeError("runtime directory was replaced; refusing removal")
+    # Retirement can race the independent watchdog after a supervisor crash.
+    # Its generation-aware cleanup must succeed before removing its record.
+    if (runtime / "activation-environment.json").exists():
+        command([str(helper), "--retire-activation", str(runtime)])
+    if runtime_identity(runtime, identity["uid"]) != tuple(
+        identity["runtime_identity"]
+    ):
+        raise RuntimeError("runtime directory was replaced; refusing removal")
+    # Scopes may have changed mounts while their shutdown was in progress.
+    mounts = mounted_paths(runtime)
+    if any(mount not in allowed for mount in mounts):
+        raise RuntimeError("unknown mount inside login runtime; refusing removal")
     for target, _ in mounts:
         command(["fusermount3", "-u", "-z", "--", str(target)])
     if mounted_paths(runtime):
         raise RuntimeError("login runtime is still mounted; refusing removal")
-    # The app-scope guard also retires this record, but may be racing login
-    # teardown after a supervisor crash. Finish retirement before deleting it.
-    if (runtime / "activation-environment.json").exists():
-        helper = Path(__file__).resolve().with_name("hearthspace-app-scope-guard")
-        command([str(helper), "--retire-activation", str(runtime)])
     shutil.rmtree(runtime)
 
 

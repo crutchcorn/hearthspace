@@ -59,12 +59,14 @@ impl App {
         };
         let candidate = self.layout_drop_candidate(drag, &output, point);
         if let Some(destination) = candidate {
+            let canonical = self.canonical_layout_target(&target.target);
+            let destination_target = self.canonical_layout_target(&destination.target.target);
             if output != drag.target.output {
                 self.layout_editor
                     .layouts
                     .get_mut(&drag.target.output)
                     .unwrap()
-                    .remove_target(&drag.target.target);
+                    .remove_target(&canonical);
             }
             let before = if destination.vertical {
                 point.y < destination.rect.y + destination.rect.height / 2.
@@ -78,8 +80,8 @@ impl App {
                 }
             }
             if let Some(group) = self.layout_editor.layouts.get_mut(&output).unwrap().merge(
-                &target.target,
-                &destination.target.target,
+                &canonical,
+                &destination_target,
                 before,
             ) {
                 self.layout_editor.session.as_mut().unwrap().selected = Some(Target {
@@ -249,7 +251,7 @@ impl App {
         );
         let placement = if drag.layouts.get(&drag.target.output).is_some_and(|l| {
             matches!(
-                l.placement(&drag.target.target),
+                l.placement(&self.canonical_layout_target(&drag.target.target)),
                 ObjectPlacement::Background { .. }
             )
         }) {

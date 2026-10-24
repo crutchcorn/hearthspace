@@ -1,15 +1,9 @@
 //! Dialogs are modal independently of whether the frame editor is open.
 use hearthspace_common::frame_layout::{LayoutTarget, TargetKind, layout_confirm_from_app_id};
-use serde::Serialize;
 
 use super::{App, Session, Target, window_app_id};
 
-#[derive(Clone, Copy, Serialize)]
-#[serde(tag = "kind", rename_all = "kebab-case")]
-pub(super) enum Confirmation {
-    HideTools,
-    CloseWindow { window_id: u64 },
-}
+pub(super) use hearthspace_ipc::frame_layout::Confirmation;
 
 impl App {
     pub(in crate::compositor) fn layout_confirmation_active(&self) -> bool {
@@ -154,8 +148,9 @@ impl App {
                     return Err("window is no longer pinned".into());
                 }
                 let target = LayoutTarget::new(TargetKind::Window, window_id.to_string());
+                let canonical = self.canonical_layout_target(&target);
                 for layout in self.layout_editor.layouts.values_mut() {
-                    layout.remove_target(&target);
+                    layout.remove_target(&canonical);
                 }
                 if self.layout_editor.expanded_window == Some(window_id) {
                     self.layout_editor.expanded_window = None;

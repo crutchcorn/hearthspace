@@ -5,7 +5,6 @@ use smithay::{
 };
 
 use super::{super::App, pinch::PinchInput, remote::PointerSource, touch_tracker::TouchAction};
-use crate::compositor::switcher::SwitcherSource;
 
 impl App {
     pub(in crate::compositor) fn touch_down(
@@ -51,16 +50,14 @@ impl App {
         self.touch_input.down(device, slot, location);
         // Canvas previews accept ordinary single-contact taps. An extra
         // contact cancels the pending tap without activating the revealed app.
-        if ((self.canvas_search_active()
-            || self.window_switcher_source() == Some(SwitcherSource::Keyboard)
-            || self.layout_editing())
-            && !first)
-            || (first
-                && !self.canvas_search_active()
-                && !self.window_switcher_active()
-                && (self.group_touch_suppresses_gestures() || self.pinch_blocked())
-                && !self.session_locked())
-        {
+        use super::policy::{Action, Phase, Source};
+        if !self.interaction_allowed(
+            Action::TouchRecognition {
+                group_suppressed: self.group_touch_suppresses_gestures(),
+            },
+            Source::Touch,
+            if first { Phase::Begin } else { Phase::Continue },
+        ) {
             self.cancel_canvas_search_touch();
             if self.window_switcher_active() {
                 self.cancel_window_switcher_touch();

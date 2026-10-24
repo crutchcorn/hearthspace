@@ -1,5 +1,5 @@
-use super::file_launch::{self, Request};
 use super::{actions, open_path, test_support::*};
+use hearthspace_desktop::file_launch::{self, Request};
 use std::{
     fs,
     io::{BufRead, BufReader, Write},

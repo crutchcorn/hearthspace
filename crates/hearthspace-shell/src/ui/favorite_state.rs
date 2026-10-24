@@ -1,5 +1,5 @@
 //! Favorites are shared between outputs; an intentional drawing session is not.
-use crate::favorites::{FavoriteStore, Point};
+use hearthspace_desktop::favorites::{FavoriteStore, Point};
 use std::sync::atomic::{AtomicU64, Ordering};
 
 pub(super) struct Favorites {

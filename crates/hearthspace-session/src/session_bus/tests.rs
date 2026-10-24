@@ -2,7 +2,9 @@
 use super::*;
 use std::{collections::BTreeMap, time::Duration};
 
+mod audio;
 mod deadlines;
+mod display;
 mod fixture;
 mod manager;
 mod publication;

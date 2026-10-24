@@ -8,28 +8,9 @@ import shutil
 import subprocess
 from pathlib import Path
 
+from runtime_artifacts import BINARIES, runtime_build_command
+
 REPOSITORY = Path(__file__).resolve().parents[2]
-BINARIES = (
-    "hearthspace-session",
-    "hearthspace-session-bus",
-    "hearthspace-app-scope-guard",
-    "hearthspace-compositor",
-    "hearthspace-shell",
-    "hearthspace-settingsd",
-    "hearthspace-settings",
-    "hearthspace-notifications",
-    "hearthspace-a11y",
-)
-PACKAGES = tuple(
-    name
-    for name in BINARIES
-    if name
-    not in (
-        "hearthspace-session-bus",
-        "hearthspace-app-scope-guard",
-        "hearthspace-a11y",
-    )
-) + ("waydriver-hearthspace",)
 BASE = Path("lib/hearthspace")
 MANIFEST = BASE / "install.json"
 CURRENT = BASE / "current"
@@ -96,20 +77,7 @@ def session_entry(prefix):
 def build(profile):
     if os.geteuid() == 0:
         raise RuntimeError("build as your normal user; do not run cargo through sudo")
-    command = [
-        "cargo",
-        "build",
-        "--locked",
-        "--target-dir",
-        str(REPOSITORY / "target"),
-        "--bins",
-        "--features",
-        "hearthspace-compositor/udev",
-    ]
-    if profile == "release":
-        command.append("--release")
-    for package in PACKAGES:
-        command.extend(["-p", package])
+    command = runtime_build_command(REPOSITORY / "target", release=profile == "release")
     subprocess.run(command, cwd=REPOSITORY, check=True)
 
 

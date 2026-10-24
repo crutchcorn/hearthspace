@@ -1,6 +1,6 @@
-use super::protocol::Command;
 use super::{App, FocusRequest, LayoutTarget, ObjectPlacement, Session, Target, TargetKind};
-use hearthspace_common::frame_layout::{self, ClockDateFormat, FrameEdge};
+use hearthspace_common::frame_layout::{self, FrameEdge};
+use hearthspace_ipc::frame_layout::{Action, Command};
 
 impl App {
     pub(in crate::compositor) fn open_layout_editor(&mut self) -> Result<(), String> {
@@ -57,6 +57,9 @@ impl App {
         if !target.target.valid() || !self.layout_editor.layouts.contains_key(&target.output) {
             return Err("invalid layout target".into());
         }
+        if target.target.kind == TargetKind::Window && target.target.id.parse::<u64>().is_err() {
+            return Err("window commands require a live window ID".into());
+        }
         if matches!(target.target.kind, TargetKind::Window | TargetKind::Item)
             && self.target_window_index(target).is_none()
         {
@@ -80,11 +83,11 @@ impl App {
         {
             return Err("layout editing session expired".into());
         }
-        if command.action == "cancel" {
+        if matches!(command.action, Action::Cancel) {
             self.cancel_layout_confirmation();
             return Ok(());
         }
-        if command.action == "confirm" {
+        if matches!(command.action, Action::Confirm) {
             return self.confirm_layout_action();
         }
         if self.layout_confirmation_active() {
@@ -93,34 +96,31 @@ impl App {
         if !self.layout_editing() {
             return Err("layout editor is not open".into());
         }
-        if command.action == "done" {
+        if matches!(command.action, Action::Done) {
             self.finish_layout_editor();
             return Ok(());
         }
-        if command.action == "allow-hide-tools" {
-            self.apply_frame_settings(
-                Some(
-                    command
-                        .value
-                        .and_then(|v| v.as_bool())
-                        .ok_or("expected boolean")?,
-                ),
-                false,
-            );
+        if let Action::AllowHideTools { value } = command.action {
+            self.apply_frame_settings(Some(value), false);
             return Ok(());
         }
         let target = Target {
             output: command.output,
-            target: command.target.ok_or("missing layout target")?,
+            target: command
+                .action
+                .target()
+                .cloned()
+                .ok_or("missing layout target")?,
         };
         self.check_layout_target(&target)?;
-        match command.action.as_str() {
-            "select" => self.layout_editor.session.as_mut().unwrap().selected = Some(target),
-            "place" => {
-                let placement = command
-                    .placement
-                    .filter(|p| p.valid())
-                    .ok_or("invalid placement")?;
+        match command.action {
+            Action::Select { .. } => {
+                self.layout_editor.session.as_mut().unwrap().selected = Some(target)
+            }
+            Action::Place { placement, .. } => {
+                if !placement.valid() {
+                    return Err("invalid placement".into());
+                }
                 if target.target.kind == TargetKind::Group
                     && matches!(
                         placement,
@@ -136,7 +136,7 @@ impl App {
                     self.place_layout_target(&target, placement);
                 }
             }
-            "attach" => {
+            Action::Attach { .. } => {
                 let view = self
                     .frame_output_rect(&target.output)
                     .ok_or("missing output")?;
@@ -161,7 +161,7 @@ impl App {
                     .unwrap_or(ObjectPlacement::frame(FrameEdge::Top, 0.5));
                 self.place_layout_target(&target, placement);
             }
-            "remove" => {
+            Action::Remove { .. } => {
                 if self.layout_removal_hides_protected_tools(&target) {
                     self.request_tools_confirmation();
                 } else {
@@ -176,25 +176,24 @@ impl App {
                     self.layout_editor.session.as_mut().unwrap().selected = None;
                 }
             }
-            "ungroup" => self.separate_frame_target(&target),
-            "toggle-expanded" => {
+            Action::Ungroup { .. } => self.separate_frame_target(&target),
+            Action::ToggleExpanded { .. } => {
                 self.layout_editor
                     .layouts
                     .get_mut(&target.output)
                     .unwrap()
                     .toggle_expanded(&target.target.id);
             }
-            "clock-date-format" => {
-                let format: ClockDateFormat =
-                    serde_json::from_value(command.value.ok_or("missing date format")?)
-                        .map_err(|_| "invalid date format")?;
+            Action::ClockDateFormat { value: format, .. } => {
                 self.layout_editor
                     .layouts
                     .get_mut(&target.output)
                     .unwrap()
                     .clock_date_format = format;
             }
-            _ => return Err("invalid layout action".into()),
+            Action::Done | Action::Cancel | Action::Confirm | Action::AllowHideTools { .. } => {
+                unreachable!("handled before selecting a target")
+            }
         }
         self.reconcile_layout_editor();
         self.layout_changed();

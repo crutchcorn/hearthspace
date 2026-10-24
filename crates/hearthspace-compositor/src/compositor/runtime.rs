@@ -124,7 +124,7 @@ pub(in crate::compositor) fn run_event_loop(
             .then_some(())
             .and_then(|()| {
                 (data.state.viewport_animation.is_some()
-                    || data.state.canvas_preview_animating()
+                    || data.state.canvas_preview_needs_animation_frame()
                     || data.state.canvas_peek_needs_animation_frame()
                     || data.state.group_animating()
                     || data.state.layout_needs_animation_frame()

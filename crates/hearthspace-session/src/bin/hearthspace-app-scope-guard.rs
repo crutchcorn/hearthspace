@@ -1,11 +1,18 @@
-#[path = "../session_bus/cleanup.rs"]
-mod activation_cleanup;
+use hearthspace_desktop::activation as activation_cleanup;
+#[path = "../app_scopes/cleanup.rs"]
+mod app_scope_cleanup;
+#[path = "../bounded_command.rs"]
+mod bounded_command;
 #[path = "../app_scopes/guard.rs"]
 mod guard;
 #[path = "../app_scopes/identity.rs"]
 mod identity;
 #[path = "../app_scopes/ptyxis_run.rs"]
 mod ptyxis_run;
+
+// The standalone helper reuses the same deadline/cancellation contract without
+// pulling in the supervisor's desktop readiness implementation.
+use activation_cleanup::operations as readiness;
 
 fn main() -> std::io::Result<()> {
     let mut args = std::env::args_os();
@@ -26,6 +33,14 @@ fn main() -> std::io::Result<()> {
         && flag == "--retire-activation"
     {
         return activation_cleanup::retire_from_session_dir(std::path::Path::new(runtime), None);
+    }
+    if let [flag, runtime, host_runtime] = args.as_slice()
+        && flag == "--stop-app-scopes"
+    {
+        return app_scope_cleanup::shutdown(
+            std::path::Path::new(runtime),
+            std::path::Path::new(host_runtime),
+        );
     }
     guard::run(&args)
 }

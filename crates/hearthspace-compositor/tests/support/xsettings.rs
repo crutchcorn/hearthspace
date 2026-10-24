@@ -255,13 +255,13 @@ fn xsettings_publishes_saved_startup_theme_and_idle_live_changes() {
     observer.settle();
 
     settings.set_mode(ColorMode::Light);
-    action(&compositor, "reload-settings");
+    // Committed preferences must reach an idle compositor through its subscription.
+    // No reload command or other compositor/XWM traffic may prompt this update.
     observer.wait_for_change_without_requests();
     assert_eq!(observer.theme(), "Adwaita");
     observer.settle();
 
     settings.set_mode(ColorMode::Dark);
-    action(&compositor, "reload-settings");
     observer.wait_for_change_without_requests();
     assert_eq!(observer.theme(), "Adwaita-dark");
     action(&compositor, "quit");

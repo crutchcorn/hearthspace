@@ -41,6 +41,7 @@ pub fn hearthspace_properties(palette: Palette, style: PropertyStyle) -> Default
         PropertyStyle::Opaque => palette.focus_ring,
     };
     let mut properties = default_property_set();
+    crate::gesture_pad::theme_properties(&mut properties, palette);
     properties.insert::<settings_material::widget::MaterialWidget, _>(palette);
     properties.insert::<icons::IconWidget, _>(ContentColor::new(palette.text));
     crate::palette::classes::properties(&mut properties, &palette);

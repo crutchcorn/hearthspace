@@ -14,6 +14,8 @@ use wayland_protocols::xdg::{
 
 #[path = "interactive_client_events.rs"]
 pub(crate) mod events;
+#[path = "frame_layout/transient_persistence.rs"]
+mod frame_persistence;
 #[path = "gtk_titlebar_client.rs"]
 pub(crate) mod gtk;
 #[path = "client_maximize.rs"]

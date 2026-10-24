@@ -1,11 +1,11 @@
 //! Failed display-manager bootstrap must clean its own runtime before returning.
-use std::{fs, process::Command};
+use std::{fs, os::unix::fs::DirBuilderExt, process::Command};
 
 #[test]
 fn missing_login_guard_cleans_prepared_runtime_without_starting_desktop() {
     let root =
         std::env::temp_dir().join(format!("hearthspace-login-failure-{}", std::process::id()));
-    fs::create_dir(&root).unwrap();
+    fs::DirBuilder::new().mode(0o700).create(&root).unwrap();
     let runtime = root.join("session");
     let output = Command::new(env!("CARGO_BIN_EXE_hearthspace-session"))
         .args([

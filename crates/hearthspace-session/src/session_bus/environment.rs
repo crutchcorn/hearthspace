@@ -25,19 +25,39 @@ pub(super) fn values(
     if private {
         values.extend(profile.iter().cloned());
     } else {
-        values.insert("XDG_RUNTIME_DIR".into(), path(&paths.host_runtime_dir)?);
-        values.insert(
-            "WAYLAND_DISPLAY".into(),
-            path(&paths.session_dir.join(&session.wayland_display))?,
-        );
-        values.insert(MARKER.into(), path(&paths.session_dir)?);
+        let (runtime, display) = hearthspace_desktop::environment::connection(
+            &paths.host_runtime_dir,
+            &paths.session_dir,
+            &session.wayland_display,
+            false,
+        )?;
+        values.insert("XDG_RUNTIME_DIR".into(), runtime);
+        values.insert("WAYLAND_DISPLAY".into(), display);
+        values
+            .entry(MARKER.into())
+            .or_insert(path(&paths.session_dir)?);
         // Absence in this launch must not retain another session's integration.
         for key in KEYS {
-            if !matches!(*key, "WAYLAND_SOCKET" | "AT_SPI_BUS_ADDRESS") {
+            if !matches!(
+                *key,
+                "WAYLAND_SOCKET"
+                    | "AT_SPI_BUS_ADDRESS"
+                    | "PULSE_SERVER"
+                    | "PULSE_RUNTIME_PATH"
+                    | "PIPEWIRE_RUNTIME_DIR"
+                    | "PIPEWIRE_REMOTE"
+                    | "PIPEWIRE_CORE"
+            ) {
                 values.entry((*key).into()).or_default();
             }
         }
     }
+    // Resolve the same complete audio routing as direct children. D-Bus only
+    // updates keys, so omitting a complement can preserve a stale host endpoint.
+    let audio = crate::audio_env::resolved(&path(&paths.host_runtime_dir)?, |key| {
+        values.get(key).cloned()
+    });
+    values.extend(audio);
     values.insert("DISPLAY".into(), String::new());
     // Empty is not unset: libwayland interprets WAYLAND_SOCKET as an FD; GTK4
     // treats even an empty AT_SPI_BUS_ADDRESS as overriding bus discovery.

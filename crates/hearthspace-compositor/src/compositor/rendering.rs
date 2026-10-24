@@ -313,9 +313,10 @@ impl App {
             if let Some(outlines) = layout.objects.remove(&self.windows[index].id) {
                 elements.extend(outlines);
             }
-            elements.extend(self.canvas_preview_selection_elements(renderer, index));
+            let projection = self.window_projection(index);
+            elements.extend(self.canvas_preview_selection_elements(renderer, index, projection));
             // Popups (e.g. menus) render above their window's content and chrome.
-            for popup in self.popup_render_elements(renderer, index) {
+            for popup in self.popup_render_elements(renderer, index, projection) {
                 elements.push(popup);
             }
 
@@ -325,7 +326,7 @@ impl App {
                 elements.extend(outline);
             }
 
-            let scale = self.window_render_scale(index);
+            let scale = projection.scale;
             let server_side = self.has_compositor_chrome(index);
             let id = self.windows[index].id;
             let active = !self.canvas_preview_active() && self.focused_normal_window_id == Some(id);
@@ -358,8 +359,7 @@ impl App {
                         kind,
                         self.background_image_path.is_some(),
                         self.windows[index].presentation.focused_view,
-                        self.canvas_preview_pose(index)
-                            .map_or(1., |(_, alpha)| alpha as f32),
+                        projection.opacity,
                     )
                 });
             if let Some(frame) = &frame {
@@ -368,7 +368,7 @@ impl App {
 
             // Masonry-rasterized title bar foreground (app identity and controls)
             // layered above the window's content.
-            for titlebar in self.titlebar_elements(renderer, index) {
+            for titlebar in self.titlebar_elements(renderer, index, projection) {
                 if let Some(clip) = frame.as_ref().and_then(|frame| frame.clip.as_ref()) {
                     elements.push(HearthspaceRenderElement::from(clip.wrap(titlebar, None)));
                 } else {
@@ -386,12 +386,14 @@ impl App {
                 }
                 ManagedWindowKind::ShellWatcher => Vec::new(),
                 ManagedWindowKind::Normal | ManagedWindowKind::DesktopItem => {
-                    vec![self.surface_screen_origin(index)]
+                    vec![projection.origin.to_i32_round().to_physical(1)]
                 }
             };
             let surface_scale = self.layout_backing_scale(index).unwrap_or(scale.into());
             for origin in origins {
-                for surface in self.window_render_elements_at(renderer, index, origin) {
+                for surface in
+                    self.window_render_elements_at(renderer, index, origin, projection.opacity)
+                {
                     let solid = window_frame::solid_color(&surface);
                     let element =
                         RescaleRenderElement::from_element(surface, origin, surface_scale);
@@ -422,7 +424,7 @@ impl App {
                     1.,
                 ))
             } else if self.canvas_search_result_visible(index)
-                && let Some((pose, alpha)) = self.canvas_preview_pose(index)
+                && let Some(pose) = projection.preview
             {
                 Some((
                     Rectangle::new(
@@ -431,7 +433,7 @@ impl App {
                     ),
                     scale,
                     self.canvas_search_result_emphasized(index),
-                    alpha as f32,
+                    projection.opacity,
                 ))
             } else {
                 None
@@ -483,9 +485,7 @@ impl App {
                     },
                     modal: false,
                     zoom: scale,
-                    opacity: self
-                        .canvas_preview_pose(index)
-                        .map_or(1., |(_, alpha)| alpha as f32),
+                    opacity: projection.opacity,
                 });
             }
             if let Some(rect) = self.layout_glass_rect(index) {
@@ -674,13 +674,18 @@ impl App {
         &self,
         renderer: &mut GlesRenderer,
         window_index: usize,
+        projection: super::presentation::Projection,
     ) -> Vec<HearthspaceRenderElement> {
         let window = &self.windows[window_index];
         let Some(parent) = window.surface.wl_surface() else {
             return Vec::new();
         };
-        let base = self.surface_screen_origin(window_index);
-        let scale = self.window_render_scale(window_index);
+        let base = if self.windows[window_index].kind.is_shell_chrome() {
+            self.surface_screen_origin(window_index)
+        } else {
+            projection.origin.to_i32_round().to_physical(1)
+        };
+        let scale = projection.scale;
         let geometry_loc = self.window_surface_geometry_loc(window_index);
 
         let mut elements = Vec::new();
@@ -717,6 +722,7 @@ impl App {
         renderer: &mut GlesRenderer,
         window_index: usize,
         origin: Point<i32, Physical>,
+        opacity: f32,
     ) -> Vec<WaylandSurfaceRenderElement<GlesRenderer>> {
         let window = &self.windows[window_index];
         let Some(root) = window.surface.wl_surface() else {
@@ -729,47 +735,13 @@ impl App {
             // Built at native scale; the viewport zoom is applied by wrapping
             // these elements in a `RescaleRenderElement` in the caller.
             1.0,
-            self.canvas_preview_pose(window_index)
-                .map_or(1.0, |(_, alpha)| alpha as f32),
+            opacity,
             Kind::Unspecified,
         )
     }
 
     pub(super) fn window_render_scale(&self, window_index: usize) -> f64 {
-        #[cfg(feature = "xwayland")]
-        if let Some((parent, _)) = self.x11_popup_anchor(window_index) {
-            return self.window_render_scale(parent);
-        }
-        if let Some((pose, _)) = self.canvas_preview_pose(window_index) {
-            if self.canvas_search_result_identity(window_index).is_some() {
-                return pose.width / 240.;
-            }
-            let base = self.base_window_screen_bounds(window_index);
-            return self.base_window_render_scale(window_index) * pose.width
-                / f64::from(base.size.w.max(1));
-        }
-        if !self.windows[window_index].presentation.pinned()
-            && let Some(pose) = self.layout_motion_rect(window_index)
-            && let Some(target) = self.layout_target_rect(window_index)
-        {
-            return self.base_window_render_scale(window_index) * pose.width / target.width.max(1.);
-        }
-        self.base_window_render_scale(window_index)
-    }
-    pub(super) fn base_window_render_scale(&self, window_index: usize) -> f64 {
-        if !self.windows[window_index].presentation.pinned()
-            && let Some(scale) = self.layout_render_scale(window_index)
-        {
-            return scale;
-        }
-        match self.windows[window_index].kind {
-            ManagedWindowKind::Normal if self.window_uses_output_coordinates(window_index) => 1.0,
-            ManagedWindowKind::Normal | ManagedWindowKind::DesktopItem => self.viewport_scale,
-            ManagedWindowKind::ShellBar
-            | ManagedWindowKind::Launcher
-            | ManagedWindowKind::ControlOsd => 1.0,
-            ManagedWindowKind::ShellWatcher => 1.0,
-        }
+        self.window_projection(window_index).scale
     }
 }
 

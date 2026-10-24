@@ -8,12 +8,15 @@ license = "Apache-2.0"
 [dependencies]
 hearthspace-common = { path = "../hearthspace-common" }
 hearthspace-ipc = { path = "../hearthspace-ipc" }
-nix = { version = "0.31.3", features = ["poll"] }
+nix = { version = "0.31.3", features = ["poll", "inotify", "fs"] }
+serde = { version = "1.0.229", features = ["derive"] }
+toml = "1.1.8"
+tempfile = "3.27.0"
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
 
 [dev-dependencies]
-tempfile = "3.27.0"
+serde_json = "1.0.154"
 
 [lints.rust]
 unsafe_op_in_unsafe_fn = "deny"

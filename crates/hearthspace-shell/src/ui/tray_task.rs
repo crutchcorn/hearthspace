@@ -27,7 +27,13 @@ pub(super) fn task() -> impl View<ShellState, (), xilem::ViewCtx, Element = NoEl
                                 {
                                     pixmap.clone()
                                 } else {
-                                    let value = crate::app_icon::resolve(&icon);
+                                    let value = hearthspace_desktop::app_icon::resolve(
+                                        &hearthspace_desktop::artwork::IconSource {
+                                            name: icon.name.clone(),
+                                            theme_path: icon.theme_path.clone(),
+                                            pixmap: icon.pixmap.clone(),
+                                        },
+                                    );
                                     if cache.len() >= 128 {
                                         cache.remove(0);
                                     }

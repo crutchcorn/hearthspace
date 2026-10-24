@@ -55,7 +55,8 @@ impl RemoteInput {
 
 impl App {
     pub(in crate::compositor) fn remote_input_available(&self) -> bool {
-        self.remote_input.enabled && self.remote_input.active && !self.session_locked()
+        use super::policy::{Action, Phase, Source};
+        self.interaction_allowed(Action::Input, Source::Remote, Phase::Begin)
     }
 
     pub(in crate::compositor) fn set_remote_input_active(&mut self, active: bool) {

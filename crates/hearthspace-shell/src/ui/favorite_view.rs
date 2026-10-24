@@ -22,6 +22,11 @@ pub(super) fn drawing(
 ) -> Box<AnyWidgetView<ShellState>> {
     let settings_key = output.key().to_owned();
     let retry_key = settings_key.clone();
+    let message = if output.launch_pending.is_some() {
+        Some("Opening application…".to_owned())
+    } else {
+        output.drawing.message.clone()
+    };
     let prompt = output.drawing.preview.is_empty().then(|| {
         flex_col((
             icon(Icon::Pencil, 30.0).theme_color(Tone::Strong),
@@ -35,11 +40,7 @@ pub(super) fn drawing(
     let pad = super::gesture_pad::GesturePad {
         output_key: output.key().to_owned(),
         context: output.drawing.generation,
-        status: output
-            .drawing
-            .message
-            .clone()
-            .unwrap_or_else(|| "Ready to draw".into()),
+        status: message.clone().unwrap_or_else(|| "Ready to draw".into()),
         preview: output.drawing.preview.clone(),
         capture_locally: false,
         on_stroke: super::favorite_events::local_stroke,
@@ -98,7 +99,7 @@ pub(super) fn drawing(
     let feedback = flex_row((
         sized_box(label("")).dims(Dimensions::fixed(0.0.px(), 44.0.px())),
         flex_row((
-            label(output.drawing.message.clone().unwrap_or_default())
+            label(message.unwrap_or_default())
                 .text_size(11.0)
                 .line_break_mode(LineBreaking::WordWrap)
                 .theme_color(Tone::Muted)

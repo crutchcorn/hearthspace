@@ -86,7 +86,7 @@ fn flac_without_artwork_keeps_its_mime_icon_and_recovers_after_cover_is_added() 
         .icons
         .iter()
         .find_map(|name| {
-            app_icon::resolve(&TrayIcon {
+            app_icon::resolve(&IconSource {
                 name: Some(name.clone()),
                 ..Default::default()
             })

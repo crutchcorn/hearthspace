@@ -24,7 +24,12 @@ mod bounds;
 mod control_osd;
 mod geometry;
 mod hit_testing;
+mod lifecycle;
 mod ordering;
+mod state;
+pub(super) use lifecycle::RetirementCause;
+use ordering::normal_insert_index_for_kinds;
+pub(super) use state::State;
 mod resize;
 mod resize_grid;
 mod resize_limits;
@@ -36,7 +41,6 @@ mod shell_size;
 mod titlebar_controls;
 
 pub(super) use geometry::{ResizeEdges, resize_cursor_icon};
-use ordering::normal_insert_index_for_kinds;
 pub(super) use titlebar_controls::{TitlebarButton, titlebar_button_rect};
 
 use geometry::{content_canvas_origin_for, title_bar_canvas_rect_for, window_canvas_rect_for};
@@ -298,9 +302,7 @@ impl App {
     }
 
     pub(super) fn window_mut_by_id(&mut self, window_id: u64) -> Option<&mut ManagedWindow> {
-        self.windows
-            .iter_mut()
-            .find(|window| window.id == window_id)
+        self.windows.by_id_mut(window_id)
     }
 
     pub(super) fn managed_normal_window_id_for_surface(&self, surface: &WlSurface) -> Option<u64> {
@@ -370,52 +372,56 @@ impl App {
             .collect()
     }
 
+    /// Compatibility adapter for synchronous hit-test callers. Capture identity
+    /// before mutation and resolve its new index immediately afterwards.
     pub(super) fn raise_window(&mut self, window_index: usize) -> usize {
-        if self.windows[window_index].kind != ManagedWindowKind::Normal
-            && self.layout_render_layer(window_index) != Some(10)
-        {
-            return window_index;
-        }
+        let id = self.windows[window_index].id;
+        self.raise_window_id(id)
+            .expect("raised window remains live")
+    }
 
-        let window_id = self.windows[window_index].id;
-        let children: Vec<_> = self
+    pub(in crate::compositor) fn raise_window_id(&mut self, id: u64) -> Option<usize> {
+        let index = self.windows.index(id)?;
+        if self.windows[index].kind != ManagedWindowKind::Normal
+            && self.layout_render_layer(index) != Some(10)
+        {
+            return Some(index);
+        }
+        let mut family = vec![id];
+        family.extend(
+            self.windows
+                .iter()
+                .enumerate()
+                .filter(|(index, _)| self.transient_descendant_of(*index, id))
+                .map(|(_, window)| window.id),
+        );
+        let before = self.normal_stack_boundary(&family);
+        self.windows.restack(&family, before);
+        self.request_redraw();
+        self.windows.index(id)
+    }
+
+    /// First surviving shell layer; canvas/background controls belong with apps.
+    fn normal_stack_boundary(&self, excluded: &[u64]) -> Option<u64> {
+        let remaining: Vec<_> = self
             .windows
             .iter()
             .enumerate()
-            .filter(|(index, _)| self.transient_descendant_of(*index, window_id))
-            .map(|(_, window)| window.id)
+            .filter(|(_, window)| !excluded.contains(&window.id))
+            .map(|(index, window)| {
+                let kind = if self
+                    .layout_render_layer(index)
+                    .is_some_and(|layer| layer <= 10)
+                {
+                    ManagedWindowKind::Normal
+                } else {
+                    window.kind
+                };
+                (window.id, kind)
+            })
             .collect();
-        let mut family = vec![self.windows.remove(window_index)];
-        for child in children {
-            if let Some(index) = self.windows.iter().position(|window| window.id == child) {
-                family.push(self.windows.remove(index));
-            }
-        }
-        let insert_index = self.normal_insert_index();
-        for (offset, window) in family.into_iter().enumerate() {
-            self.windows.insert(insert_index + offset, window);
-        }
-        debug!(
-            window_id,
-            from_index = window_index,
-            to_index = insert_index,
-            "raised window"
-        );
-        self.request_redraw();
-        insert_index
-    }
-
-    pub(super) fn normal_insert_index(&self) -> usize {
-        normal_insert_index_for_kinds(self.windows.iter().enumerate().map(|(index, window)| {
-            if self
-                .layout_render_layer(index)
-                .is_some_and(|layer| layer <= 10)
-            {
-                ManagedWindowKind::Normal
-            } else {
-                window.kind
-            }
-        }))
+        let index = normal_insert_index_for_kinds(remaining.iter().map(|(_, kind)| *kind));
+        remaining.get(index).map(|(id, _)| *id)
     }
 
     pub(super) fn configure_toplevel(

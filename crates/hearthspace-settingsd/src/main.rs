@@ -5,13 +5,16 @@ use std::{
     time::{Duration, Instant},
 };
 
-use hearthspace_ipc::{SettingsRequest, error_response, settings_response, settings_socket_path};
+#[cfg(test)]
+use hearthspace_ipc::error_response;
+use hearthspace_ipc::{SettingsRequest, settings_response, settings_socket_path};
 use tracing::{info, warn};
 
+mod mutation;
 mod server;
 mod storage;
 
-use storage::{load_settings_from_path, save_settings_to_path};
+use storage::load_settings_from_path;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     initialize_tracing();
@@ -97,67 +100,15 @@ fn handle_connection_with_config_path(
 }
 
 fn handle_request(request: SettingsRequest, config_path: &Path) -> io::Result<String> {
-    match request {
-        SettingsRequest::Get => Ok(settings_response(load_settings_from_path(config_path)?)),
-        SettingsRequest::SetTest(test) => {
-            let mut settings = load_settings_from_path(config_path)?;
-            settings.test = test;
-            save_settings_to_path(settings.clone(), config_path)?;
-            Ok(settings_response(settings))
-        }
-        SettingsRequest::SetColorMode(mode) => {
-            let mut settings = load_settings_from_path(config_path)?;
-            settings.appearance.color_mode = mode;
-            save_settings_to_path(settings.clone(), config_path)?;
-            Ok(settings_response(settings))
-        }
-        SettingsRequest::SetAccentColor(accent) => {
-            let mut settings = load_settings_from_path(config_path)?;
-            settings.appearance.accent_color = accent;
-            save_settings_to_path(settings.clone(), config_path)?;
-            Ok(settings_response(settings))
-        }
-        SettingsRequest::SetBackgroundMode(mode) => {
-            let mut settings = load_settings_from_path(config_path)?;
-            settings.background_mode = mode;
-            save_settings_to_path(settings.clone(), config_path)?;
-            Ok(settings_response(settings))
-        }
-        SettingsRequest::SetBackgroundImagePath(path) => {
-            let mut settings = load_settings_from_path(config_path)?;
-            settings.background_image_path = path;
-            save_settings_to_path(settings.clone(), config_path)?;
-            Ok(settings_response(settings))
-        }
-        SettingsRequest::SetMonitorPosition { id, x, y } => {
-            let mut settings = load_settings_from_path(config_path)?;
-            let Some(monitor) = settings
-                .monitors
-                .iter_mut()
-                .find(|monitor| monitor.id == id)
-            else {
-                return Ok(error_response(format!("unknown monitor id: {id}")));
-            };
-            monitor.x = x;
-            monitor.y = y;
-            save_settings_to_path(settings.clone(), config_path)?;
-            Ok(settings_response(settings))
-        }
-        SettingsRequest::SetMonitorScale { id, scale } => {
-            let mut settings = load_settings_from_path(config_path)?;
-            let Some(monitor) = settings
-                .monitors
-                .iter_mut()
-                .find(|monitor| monitor.id == id)
-            else {
-                return Ok(error_response(format!("unknown monitor id: {id}")));
-            };
-            monitor.scale = scale;
-            save_settings_to_path(settings.clone(), config_path)?;
-            Ok(settings_response(settings))
-        }
+    if request == SettingsRequest::Get {
+        return Ok(settings_response(load_settings_from_path(config_path)?));
     }
+    let snapshot = storage::update(config_path, |settings| mutation::apply(settings, request))?;
+    Ok(settings_response(snapshot.settings))
 }
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod transactions;

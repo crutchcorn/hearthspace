@@ -93,7 +93,7 @@ impl XwmHandler for App {
     }
 
     fn unmapped_window(&mut self, _xwm: XwmId, window: X11Surface) {
-        self.unmap_x11_window(&window);
+        self.retire_x11_window(&window, super::RetirementCause::X11Unmapped);
         if !window.is_override_redirect()
             && let Err(error) = window.set_mapped(false)
         {
@@ -102,7 +102,7 @@ impl XwmHandler for App {
     }
 
     fn destroyed_window(&mut self, _xwm: XwmId, window: X11Surface) {
-        self.unmap_x11_window(&window);
+        self.retire_x11_window(&window, super::RetirementCause::Destroyed);
     }
 
     fn configure_request(

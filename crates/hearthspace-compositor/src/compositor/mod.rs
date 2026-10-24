@@ -7,7 +7,7 @@ use std::{
 };
 
 use crate::{RunOptions, config::*, geometry::CanvasPoint};
-use hearthspace_shell::app_catalog::AppCatalog;
+use hearthspace_desktop::app_catalog::AppCatalog;
 
 mod appearance;
 mod canvas_peek;
@@ -34,6 +34,7 @@ mod rendering;
 mod runtime;
 mod selection;
 mod session_lock;
+mod settings_watch;
 mod shell_integration;
 mod switcher;
 #[cfg(feature = "udev")]
@@ -302,9 +303,9 @@ struct App {
     window_group: window_group::WindowGroup,
     switcher_input: input::SwitcherInput,
     pinch_zoom: input::PinchZoom,
-    windows: Vec<ManagedWindow>,
-    next_window_id: u64,
+    windows: windows::State,
     idle_daemon: WindowIdleDaemon,
+    settings_subscription: settings_watch::Subscription,
     titlebar_icons: masonry_titlebar::icons::State,
     focused_normal_window_id: Option<u64>,
     shortcuts: input::KeyboardShortcuts,
@@ -699,9 +700,9 @@ pub(in crate::compositor) fn initialize_app(
         window_group: window_group::WindowGroup::default(),
         switcher_input: input::SwitcherInput::default(),
         pinch_zoom: input::PinchZoom::default(),
-        windows: Vec::new(),
-        next_window_id: 1,
+        windows: windows::State::default(),
         idle_daemon: WindowIdleDaemon::new(WINDOW_IDLE_THRESHOLDS),
+        settings_subscription: settings_watch::subscribe(&handle)?,
         titlebar_icons: Default::default(),
         focused_normal_window_id: None,
         shortcuts: input::KeyboardShortcuts::default(),

@@ -23,8 +23,16 @@ pub(super) fn shared(
     cancelled: &AtomicBool,
 ) -> io::Result<ActivationEnvironment> {
     let lock = operations::lock(&paths.host_runtime_dir, deadline, cancelled)?;
-    let generation = fs::read_to_string("/proc/sys/kernel/random/uuid")?;
-    values.insert(MARKER.into(), generation.trim().into());
+    if values
+        .get(MARKER)
+        .is_none_or(|value| value.len() != 36 || value.contains('/'))
+    {
+        let generation = fs::read_to_string("/proc/sys/kernel/random/uuid")?;
+        values.insert(MARKER.into(), generation.trim().into());
+    }
+    if let Some(display) = cleanup::latest_display(&paths.session_dir, &values[MARKER])? {
+        values.insert("DISPLAY".into(), display);
+    }
     let mut guard = ActivationEnvironment { record: None };
     let result = operations::bounded(deadline, cancelled, async {
         let manager = Manager::connect(bus).await?;
@@ -35,6 +43,7 @@ pub(super) fn shared(
             session_dir: paths.session_dir.clone(),
             published: values.clone(),
             previous,
+            pending_display: None,
         };
         let bytes = serde_json::to_vec(&record)
             .map_err(|_| io::Error::other("cannot encode activation record"))?;
@@ -107,7 +116,14 @@ fn baseline(mut current: BTreeMap<String, String>) -> BTreeMap<String, String> {
         && record.published.get(MARKER) == Some(&previous_generation)
     {
         for (key, published) in record.published {
-            if key != MARKER && current.get(&key) == Some(&published) {
+            if key != MARKER
+                && (current.get(&key) == Some(&published)
+                    || (key == "DISPLAY"
+                        && record
+                            .pending_display
+                            .as_ref()
+                            .is_some_and(|previous| current.get(&key) == Some(previous))))
+            {
                 match record.previous.get(&key) {
                     Some(value) => {
                         current.insert(key, value.clone());

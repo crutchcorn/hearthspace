@@ -1,5 +1,5 @@
 use crate::{
-    monitors::{LiveOutput, settings_with_live_outputs},
+    monitors::{LiveOutput, monitors_for_live_outputs},
     state::{SettingsApp, SettingsCategory},
     test_support::{Ui, ids},
 };
@@ -30,16 +30,27 @@ fn display_identity_keeps_product_names_and_shows_each_connector_once_without_po
         refresh_millihertz: [Some(60_000), Some(59_940), None][index],
     })
     .collect();
-    let settings = settings_with_live_outputs(Settings::default(), &live_outputs);
+    let settings = Settings {
+        monitors: monitors_for_live_outputs(
+            &Settings::default().monitors,
+            &live_outputs,
+            Some("eDP-1"),
+        ),
+        ..Settings::default()
+    };
     let state = SettingsApp {
         running: true,
+        preferences: Default::default(),
         appearance_theme: Default::default(),
         navigation: Default::default(),
         frame_settings: Default::default(),
+        display_layout: Default::default(),
         activation_listener: None,
         ai: Default::default(),
         favorites,
         settings,
+        saved_monitors: hearthspace_ipc::Settings::default().monitors,
+        output_observation: Default::default(),
         live_outputs,
         selected_category: SettingsCategory::Displays,
         selected_monitor_id: None,
@@ -93,87 +104,26 @@ fn display_identity_keeps_product_names_and_shows_each_connector_once_without_po
 }
 
 #[test]
-fn scale_popup_keeps_page_geometry_and_saves_the_keyboard_choice_to_the_backend() {
-    use hearthspace_ipc::SettingsRequest;
+fn scale_popup_keeps_page_geometry_and_queues_the_keyboard_choice() {
     use masonry::core::{
         TextEvent,
         keyboard::{Key, NamedKey},
     };
-    use std::{
-        io::{BufRead, BufReader, Write},
-        os::unix::net::UnixListener,
-        process::Command,
-    };
-
-    const CHILD: &str = "HEARTHSPACE_TEST_DISPLAY_SELECT";
-    if std::env::var_os(CHILD).is_none() {
-        let directory = tempfile::tempdir().unwrap();
-        let result = Command::new(std::env::current_exe().unwrap())
-            .args([
-                "--exact",
-                "display_view::tests::scale_popup_keeps_page_geometry_and_saves_the_keyboard_choice_to_the_backend",
-                "--nocapture",
-            ])
-            .env(CHILD, "1")
-            .env(hearthspace_common::SETTINGS_SOCKET_ENV, directory.path().join("settings.sock"))
-            .env(hearthspace_common::SHELL_COMMAND_SOCKET_ENV, directory.path().join("no-compositor.sock"))
-            .output()
-            .unwrap();
-        assert!(
-            result.status.success(),
-            "{}\n{}",
-            String::from_utf8_lossy(&result.stdout),
-            String::from_utf8_lossy(&result.stderr)
-        );
-        return;
-    }
-    let listener = UnixListener::bind(hearthspace_ipc::settings_socket_path().unwrap()).unwrap();
-    let backend = std::thread::spawn(move || {
-        let mut settings = Settings::default();
-        // A scale update and the two existing monitor positions use the real IPC path.
-        for _ in 0..3 {
-            let (mut stream, _) = listener.accept().unwrap();
-            stream
-                .set_read_timeout(Some(std::time::Duration::from_secs(3)))
-                .unwrap();
-            let mut request = String::new();
-            BufReader::new(&stream).read_line(&mut request).unwrap();
-            match hearthspace_ipc::parse_settings_request(&request).unwrap() {
-                SettingsRequest::SetMonitorScale { id, scale } => {
-                    settings
-                        .monitors
-                        .iter_mut()
-                        .find(|monitor| monitor.id == id)
-                        .unwrap()
-                        .scale = scale;
-                }
-                SettingsRequest::SetMonitorPosition { id, x, y } => {
-                    let monitor = settings
-                        .monitors
-                        .iter_mut()
-                        .find(|monitor| monitor.id == id)
-                        .unwrap();
-                    monitor.x = x;
-                    monitor.y = y;
-                }
-                request => panic!("unexpected display request: {request:?}"),
-            }
-            stream
-                .write_all(hearthspace_ipc::settings_response(settings.clone()).as_bytes())
-                .unwrap();
-        }
-        settings
-    });
+    let (sender, mut receiver) = xilem::tokio::sync::mpsc::unbounded_channel();
     let (_directory, favorites) = crate::favorites::tests::fixture();
     let state = SettingsApp {
         running: true,
+        preferences: Default::default(),
         appearance_theme: Default::default(),
         navigation: Default::default(),
         frame_settings: Default::default(),
+        display_layout: Default::default(),
         activation_listener: None,
         ai: Default::default(),
         favorites,
         settings: Settings::default(),
+        saved_monitors: hearthspace_ipc::Settings::default().monitors,
+        output_observation: Default::default(),
         live_outputs: vec![],
         selected_category: SettingsCategory::Displays,
         selected_monitor_id: None,
@@ -183,6 +133,7 @@ fn scale_popup_keeps_page_geometry_and_saves_the_keyboard_choice_to_the_backend(
         status: String::new(),
     };
     let mut ui = Ui::new(state, view, (470, 490));
+    ui.state.display_layout.sender = Some(sender);
     let select = ids(&ui.harness)
         .into_iter()
         .find(|&id| {
@@ -227,9 +178,13 @@ fn scale_popup_keeps_page_geometry_and_saves_the_keyboard_choice_to_the_backend(
         Some(false)
     );
     assert_eq!(ui.harness.focused_widget_id(), Some(select));
-    let saved = backend.join().unwrap();
-    assert_eq!(saved.monitors[0].scale, 2);
-    assert_eq!(saved.monitors[1].x, saved.monitors[0].width / 2);
+    let request = receiver.try_recv().unwrap();
+    assert_eq!(request.monitors[0].scale, 2);
+    assert_eq!(request.monitors[1].x, request.monitors[0].width / 2);
+    assert!(
+        receiver.try_recv().is_err(),
+        "one complete transaction per scale edit"
+    );
 }
 
 #[test]
@@ -237,13 +192,17 @@ fn monitor_preview_keeps_its_reference_aspect_when_settings_content_narrows() {
     let (_directory, favorites) = crate::favorites::tests::fixture();
     let state = SettingsApp {
         running: true,
+        preferences: Default::default(),
         appearance_theme: Default::default(),
         navigation: Default::default(),
         frame_settings: Default::default(),
+        display_layout: Default::default(),
         activation_listener: None,
         ai: Default::default(),
         favorites,
         settings: Settings::default(),
+        saved_monitors: hearthspace_ipc::Settings::default().monitors,
+        output_observation: Default::default(),
         live_outputs: vec![],
         selected_category: SettingsCategory::Displays,
         selected_monitor_id: None,

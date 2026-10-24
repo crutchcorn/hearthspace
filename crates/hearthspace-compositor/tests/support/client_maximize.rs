@@ -11,6 +11,8 @@ use serde_json::{Value, json};
 
 #[path = "client_maximize/focus.rs"]
 mod focus;
+#[path = "client_maximize/window_lifecycle.rs"]
+mod window_lifecycle;
 
 fn fixture() -> (HeadlessCompositor, InteractiveClient, [u64; 2]) {
     let mut compositor = HeadlessCompositor::spawn_with_size("1280x800");

@@ -115,7 +115,10 @@ class HeadlessIntegrationTests(unittest.TestCase):
         self.assertIn("missing-program.desktop", [app["id"] for app in apps])
         for command, message in [
             ("launch-app nonexistent-id.desktop", "unknown desktop application"),
-            ("launch-app missing-program.desktop", "failed to spawn"),
+            (
+                "launch-app missing-program.desktop",
+                "Could not launch application:.*No such file or directory",
+            ),
             (
                 f"launch-app-on-output {b'missing-output'.hex()} missing-program.desktop",
                 "unknown launch output",

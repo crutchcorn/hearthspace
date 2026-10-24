@@ -10,10 +10,10 @@ use xilem::{
 };
 
 use super::{
-    command_client::{launch_app, send_command},
+    command_client::send_command,
     state::{ShellOutputInstance, ShellState},
 };
-use crate::app_catalog::DesktopApp;
+use hearthspace_desktop::app_catalog::DesktopApp;
 
 #[path = "dock_apps.rs"]
 mod applications;
@@ -291,8 +291,9 @@ fn activate(state: &mut ShellState, output_key: &str, key: &Key) {
                 .outputs
                 .iter()
                 .find(|output| output.key() == output_key)
-                .and_then(|output| output.output_name.as_deref());
-            launch_app(&state.command_socket, &id, output_name)
+                .and_then(|output| output.output_name.clone());
+            super::launch::app(state, output_key, &id, output_name.as_deref(), true);
+            return;
         } else {
             Err("This app has closed".into())
         }

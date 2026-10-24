@@ -52,57 +52,70 @@ pub(crate) fn recalculate_monitor_positions_for_scale(
     }
 }
 
-pub(crate) fn settings_with_live_outputs(
-    mut settings: Settings,
-    live_outputs: &[LiveOutput],
-) -> Settings {
-    if live_outputs.is_empty() {
-        return settings;
-    }
-
-    settings.monitors = monitors_for_live_outputs(&settings.monitors, live_outputs);
-    settings
-}
-
-fn monitors_for_live_outputs(
+/// Derive connected rows; the caller retains the complete saved preference list.
+pub(crate) fn monitors_for_live_outputs(
     saved_monitors: &[MonitorConfig],
     live_outputs: &[LiveOutput],
+    selected_primary: Option<&str>,
 ) -> Vec<MonitorConfig> {
-    let mut monitors = Vec::with_capacity(live_outputs.len());
-    let mut next_x = 0;
-    let saved_monitors_are_placeholders = default_placeholder_monitors(saved_monitors);
-    for (index, output) in live_outputs.iter().enumerate() {
-        let role_id = monitor_role_id(index);
-        let saved = (!saved_monitors_are_placeholders)
-            .then(|| {
-                saved_monitors
-                    .iter()
-                    .find(|monitor| monitor.id == output.id || monitor.name == output.name)
-                    .or_else(|| saved_monitors.iter().find(|monitor| monitor.id == role_id))
-            })
-            .flatten();
-        let (id, scale, x, y) = if let Some(saved) = saved {
-            (saved.id.clone(), saved.scale.max(1), saved.x, saved.y)
-        } else if saved_monitors_are_placeholders && index < 2 {
-            (role_id, output.scale.max(1), next_x, 0)
-        } else {
-            (output.id.clone(), output.scale.max(1), next_x, 0)
-        };
-        monitors.push(MonitorConfig {
-            id,
+    use hearthspace_common::output_identity::{
+        SavedOutput, ordered_connectors, resolve_preferences,
+    };
+    let connectors: Vec<_> = live_outputs
+        .iter()
+        .map(|output| output.id.as_str())
+        .collect();
+    let defaults = Settings::default().monitors;
+    let saved: Vec<_> = saved_monitors
+        .iter()
+        .map(|monitor| SavedOutput {
+            id: &monitor.id,
+            name: &monitor.name,
+            placeholder: defaults.contains(monitor),
+        })
+        .collect();
+    let preferences = resolve_preferences(&saved, &connectors, selected_primary);
+    let mut rows = Vec::with_capacity(live_outputs.len());
+    let mut unplaced = Vec::new();
+    for connector in ordered_connectors(&connectors, selected_primary) {
+        let index = live_outputs
+            .iter()
+            .position(|output| output.id == connector)
+            .unwrap();
+        let output = &live_outputs[index];
+        let preference = preferences[index].map(|index| &saved_monitors[index]);
+        let row = MonitorConfig {
+            // Every new transaction uses connector identity, even when a legacy role supplied its preferences.
+            id: output.id.clone(),
             name: output.name.clone(),
             width: output.width,
             height: output.height,
-            scale,
-            x,
-            y,
-        });
-        next_x += logical_dimension(output.width, scale);
+            scale: preference.map_or(output.scale, |saved| saved.scale).max(1),
+            x: preference.map_or(0, |saved| saved.x),
+            y: preference.map_or(0, |saved| saved.y),
+        };
+        // The selected primary falls back to the origin; only unconfigured
+        // secondaries follow the rightmost configured/primary edge.
+        if preference.is_none() && !rows.is_empty() {
+            unplaced.push(rows.len());
+        }
+        rows.push(row);
     }
-    if monitors_overlap(&monitors) {
-        place_monitors_edge_to_edge(&mut monitors);
+    let mut next_x = rows
+        .iter()
+        .enumerate()
+        .filter(|(index, _)| !unplaced.contains(index))
+        .map(|(_, monitor)| monitor.x.saturating_add(monitor_logical_width(monitor)))
+        .max()
+        .unwrap_or(0);
+    for index in unplaced {
+        rows[index].x = next_x;
+        next_x = next_x.saturating_add(monitor_logical_width(&rows[index]));
     }
-    monitors
+    if monitors_overlap(&rows) {
+        place_monitors_edge_to_edge(&mut rows);
+    }
+    rows
 }
 
 fn place_monitors_edge_to_edge(monitors: &mut [MonitorConfig]) {
@@ -144,213 +157,5 @@ fn logical_dimension(size: i32, scale: i32) -> i32 {
     ((i64::from(size) + i64::from(scale) - 1) / i64::from(scale)).max(1) as i32
 }
 
-fn default_placeholder_monitors(monitors: &[MonitorConfig]) -> bool {
-    monitors == Settings::default().monitors
-}
-
-fn monitor_role_id(index: usize) -> String {
-    if index == 0 {
-        "primary".to_string()
-    } else if index == 1 {
-        "secondary".to_string()
-    } else {
-        format!("secondary-{index}")
-    }
-}
-
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn offset_monitor(monitors: &mut [MonitorConfig], id: &str, x: i32, y: i32) {
-        if let Some(monitor) = monitors.iter_mut().find(|monitor| monitor.id == id) {
-            monitor.x = x;
-            monitor.y = y;
-        }
-    }
-
-    #[test]
-    fn live_outputs_hide_saved_disconnected_monitors() {
-        let monitors = monitors_for_live_outputs(
-            &Settings::default().monitors,
-            &[LiveOutput {
-                id: "eDP-1".to_string(),
-                name: "Built-in Display".to_string(),
-                width: 2256,
-                height: 1504,
-                scale: 1,
-                refresh_millihertz: None,
-            }],
-        );
-
-        assert_eq!(monitors.len(), 1);
-        assert_eq!(monitors[0].id, "primary");
-        assert_eq!(monitors[0].name, "Built-in Display");
-        assert_eq!((monitors[0].width, monitors[0].height), (2256, 1504));
-    }
-
-    #[test]
-    fn live_outputs_do_not_reuse_placeholder_positions_for_mixed_resolutions() {
-        let monitors = monitors_for_live_outputs(
-            &Settings::default().monitors,
-            &[
-                LiveOutput {
-                    id: "eDP-1".to_string(),
-                    name: "Built-in Display".to_string(),
-                    width: 2560,
-                    height: 1440,
-                    scale: 1,
-                    refresh_millihertz: None,
-                },
-                LiveOutput {
-                    id: "HDMI-A-1".to_string(),
-                    name: "External Monitor".to_string(),
-                    width: 1366,
-                    height: 768,
-                    scale: 1,
-                    refresh_millihertz: None,
-                },
-            ],
-        );
-
-        assert_eq!(monitors[0].id, "primary");
-        assert_eq!((monitors[0].x, monitors[0].y), (0, 0));
-        assert_eq!(monitors[1].id, "secondary");
-        assert_eq!((monitors[1].x, monitors[1].y), (2560, 0));
-    }
-
-    #[test]
-    fn live_outputs_repair_overlapping_saved_active_monitors() {
-        let saved = vec![
-            MonitorConfig {
-                id: "primary".to_string(),
-                name: "Primary".to_string(),
-                width: 1920,
-                height: 1080,
-                scale: 1,
-                x: -1280,
-                y: -736,
-            },
-            MonitorConfig {
-                id: "secondary".to_string(),
-                name: "Secondary".to_string(),
-                width: 1920,
-                height: 1080,
-                scale: 1,
-                x: -1920,
-                y: -540,
-            },
-        ];
-
-        let monitors = monitors_for_live_outputs(
-            &saved,
-            &[
-                LiveOutput {
-                    id: "eDP-1".to_string(),
-                    name: "Built-in Display".to_string(),
-                    width: 2560,
-                    height: 1440,
-                    scale: 1,
-                    refresh_millihertz: None,
-                },
-                LiveOutput {
-                    id: "HDMI-A-1".to_string(),
-                    name: "External Monitor".to_string(),
-                    width: 1366,
-                    height: 768,
-                    scale: 1,
-                    refresh_millihertz: None,
-                },
-            ],
-        );
-
-        assert_eq!((monitors[0].x, monitors[0].y), (0, 0));
-        assert_eq!((monitors[1].x, monitors[1].y), (2560, 0));
-        assert!(!monitors_overlap(&monitors));
-    }
-
-    #[test]
-    fn live_outputs_preserve_saved_connector_positions() {
-        let saved = vec![MonitorConfig {
-            id: "HDMI-A-1".to_string(),
-            name: "HDMI-A-1".to_string(),
-            width: 1920,
-            height: 1080,
-            scale: 2,
-            x: -1920,
-            y: 200,
-        }];
-
-        let monitors = monitors_for_live_outputs(
-            &saved,
-            &[LiveOutput {
-                id: "HDMI-A-1".to_string(),
-                name: "External Monitor".to_string(),
-                width: 2560,
-                height: 1440,
-                scale: 1,
-                refresh_millihertz: None,
-            }],
-        );
-
-        assert_eq!(monitors.len(), 1);
-        assert_eq!(monitors[0].id, "HDMI-A-1");
-        assert_eq!(monitors[0].name, "External Monitor");
-        assert_eq!((monitors[0].x, monitors[0].y), (-1920, 200));
-        assert_eq!((monitors[0].width, monitors[0].height), (2560, 1440));
-        assert_eq!(monitors[0].scale, 2);
-    }
-
-    #[test]
-    fn live_outputs_use_reported_scale_for_new_monitors() {
-        let monitors = monitors_for_live_outputs(
-            &[],
-            &[LiveOutput {
-                id: "eDP-1".to_string(),
-                name: "Built-in Display".to_string(),
-                width: 2560,
-                height: 1440,
-                scale: 2,
-                refresh_millihertz: None,
-            }],
-        );
-
-        assert_eq!(monitors[0].scale, 2);
-        assert_eq!(monitor_logical_width(&monitors[0]), 1280);
-    }
-
-    #[test]
-    fn scaling_monitor_moves_neighbors_to_scaled_logical_edge() {
-        let mut monitors = Settings::default().monitors;
-
-        recalculate_monitor_positions_for_scale(&mut monitors, "primary", 2);
-
-        let primary = monitors
-            .iter()
-            .find(|monitor| monitor.id == "primary")
-            .unwrap();
-        let secondary = monitors
-            .iter()
-            .find(|monitor| monitor.id == "secondary")
-            .unwrap();
-        assert_eq!(primary.scale, 2);
-        assert_eq!(monitor_logical_width(primary), 960);
-        assert_eq!((secondary.x, secondary.y), (960, 0));
-        assert!(!monitors_overlap(&monitors));
-    }
-
-    #[test]
-    fn scaling_monitor_moves_outputs_below_to_scaled_logical_edge() {
-        let mut monitors = Settings::default().monitors;
-        offset_monitor(&mut monitors, "secondary", 0, 1080);
-
-        recalculate_monitor_positions_for_scale(&mut monitors, "primary", 2);
-
-        let secondary = monitors
-            .iter()
-            .find(|monitor| monitor.id == "secondary")
-            .unwrap();
-        assert_eq!((secondary.x, secondary.y), (0, 540));
-        assert!(!monitors_overlap(&monitors));
-    }
-}
+mod tests;

@@ -9,7 +9,7 @@ use wayland_server::DisplayHandle;
 
 use super::{
     App, ManagedSurface, ManagedWindow, ManagedWindowKind, WindowDecoration,
-    windows::position_for_new_window,
+    windows::{RetirementCause, position_for_new_window},
 };
 
 mod clipboard;
@@ -93,8 +93,6 @@ impl App {
         if !override_redirect {
             identity::remember_process(&window);
         }
-        let id = self.next_window_id;
-        self.next_window_id += 1;
         let geometry = window.geometry();
         let position = if override_redirect {
             crate::geometry::CanvasPoint {
@@ -110,16 +108,8 @@ impl App {
             WindowDecoration::ServerSide
         };
 
-        info!(
-            window_id = id,
-            x11_window = window.window_id(),
-            title = %window.title(),
-            class = %window.class(),
-            override_redirect,
-            "new X11 window"
-        );
         let spawn_output_name = self.next_spawn_output_name.take();
-        self.windows.push(ManagedWindow {
+        let id = self.windows.insert_new(|id| ManagedWindow {
             id,
             surface: ManagedSurface::X11(Box::new(window.clone())),
             position,
@@ -135,6 +125,14 @@ impl App {
             pending_resize: None,
             advertised_fractional_scale: 0.0,
         });
+        info!(
+            window_id = id,
+            x11_window = window.window_id(),
+            title = %window.title(),
+            class = %window.class(),
+            override_redirect,
+            "new X11 window"
+        );
         self.idle_daemon.register_window(id);
         self.enter_output(&wl_surface, spawn_output_name.as_deref());
         self.refresh_window_content_bbox(&wl_surface);
@@ -150,13 +148,7 @@ impl App {
         self.request_redraw();
     }
 
-    fn unmap_x11_window(&mut self, window: &X11Surface) {
-        let restore_focus = self.windows.iter().any(|managed| {
-            managed.surface.same_x11(window) && self.focused_normal_window_id == Some(managed.id)
-        });
-        if let Some(surface) = window.wl_surface() {
-            self.clear_keyboard_focus_for_surface(&surface);
-        }
+    fn retire_x11_window(&mut self, window: &X11Surface, cause: RetirementCause) {
         if let Some(id) = self
             .windows
             .iter()
@@ -166,20 +158,11 @@ impl App {
             info!(
                 window_id = id,
                 x11_window = window.window_id(),
-                "X11 window unmapped"
+                ?cause,
+                "X11 window retired"
             );
-            self.idle_daemon.unregister_window(id);
-            self.retire_window_pointer_operation(id);
-            if self.focused_normal_window_id == Some(id) {
-                self.focused_normal_window_id = None;
-            }
+            self.retire_window(id, cause);
         }
-        self.windows
-            .retain(|managed| !managed.surface.same_x11(window));
-        if restore_focus {
-            self.restore_window_focus();
-        }
-        self.request_redraw();
     }
 
     fn window_index_for_x11(&self, window: &X11Surface) -> Option<usize> {
@@ -198,7 +181,10 @@ impl App {
         if !self.is_navigable_window(window_index) {
             return;
         }
-        let window_index = self.raise_window(window_index);
+        let id = self.windows[window_index].id;
+        let Some(window_index) = self.raise_window_id(id) else {
+            return;
+        };
         if let Some(surface) = self.windows[window_index].surface.wl_surface() {
             self.set_keyboard_focus_to_window(window_index, surface);
         }

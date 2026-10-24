@@ -25,33 +25,7 @@ impl App {
         // Touch/remote cleanup or direct releases below can drop WindowGrab.
         // Preserve its deferred handoff until every input grab is reset.
         let owner_retired = self.window_pointer_grab_owner_retired();
-        self.cancel_presentation_reveals();
-        self.gtk_shell.reset_input();
-        self.clear_canvas_peek_motion();
-        // A complete lock/VT transition can occur between layout polls. Cancel
-        // shell-side pending/queued openings as well as compositor input state.
-        self.invalidate_shell_popups();
-        self.cancel_pending_shell_click();
-        self.cancel_titlebar_pointer();
-        self.reset_focused_shell_peek();
-        self.reset_window_group_input();
-        self.reset_desktop_input();
-        self.reset_layout_editor();
-        self.reset_layout_pointer_captures();
-        self.reset_canvas_search();
-        self.reset_favorite_input();
-        // Drain queued search modifiers before releasing held keys; otherwise
-        // recovery can buffer its own releases or replay a chord on return.
-        self.cancel_pending_search();
-        self.control_events.clear();
-        self.shortcuts.cancel_device_repeat();
-        self.dismiss_control_osds();
-        self.reset_window_switcher();
-        self.switcher_input.clear();
-        self.cancel_input_gestures();
-        self.viewport_animation = None;
-        self.drag = None;
-        self.finish_resize();
+        self.reset_interaction_modes();
         let time = InputTime::now();
         self.reset_remote_input();
         // Deliver releases to the existing focus/grab before dismissing it.

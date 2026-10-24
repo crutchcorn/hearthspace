@@ -1,15 +1,13 @@
 //! The real desktop worker, persistent store, dock and launcher share this
 //! boundary. Only compositor authorization is supplied by the socket fixture.
 use super::*;
-use crate::{
-    favorites::{Point, Recognition},
-    ui::{
-        desktop::{context, context_actions},
-        favorite_state::{Incoming, Mode},
-        launcher, search_selection,
-        test_support::Ui,
-    },
+use crate::ui::{
+    desktop::{context, context_actions},
+    favorite_state::{Incoming, Mode},
+    launcher, search_selection,
+    test_support::Ui,
 };
+use hearthspace_desktop::favorites::{Point, Recognition};
 use xilem::{WidgetView, view::sized_box};
 
 const SHAPE: &[Point] = &[[30.0, 30.0], [30.0, 130.0], [130.0, 130.0]];

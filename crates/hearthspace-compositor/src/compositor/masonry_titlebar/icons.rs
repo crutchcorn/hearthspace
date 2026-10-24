@@ -5,13 +5,13 @@ use std::{
 };
 
 use calloop::channel;
-use hearthspace_shell::{app_catalog::AppCatalog, tray::TrayPixmap};
+use hearthspace_desktop::{app_catalog::AppCatalog, artwork::RasterImage};
 
 use crate::compositor::App;
 
 const MAX_ICONS: usize = 128;
 const MAX_PENDING: usize = 32;
-type Artwork = Option<Arc<TrayPixmap>>;
+type Artwork = Option<Arc<RasterImage>>;
 
 #[derive(Default)]
 pub(in crate::compositor) struct State {
@@ -73,7 +73,7 @@ impl App {
                 let catalog = AppCatalog::load();
                 while let Ok(id) = receive.recv() {
                     let icon =
-                        hearthspace_shell::app_icon::resolve_window(&catalog, &id).map(Arc::new);
+                        hearthspace_desktop::app_icon::resolve_window(&catalog, &id).map(Arc::new);
                     if complete.send((id, icon)).is_err() {
                         break;
                     }

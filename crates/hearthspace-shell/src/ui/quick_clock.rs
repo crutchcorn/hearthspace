@@ -89,7 +89,11 @@ fn choose(state: &mut ShellState, key: &str, format: ClockDateFormat) {
         state,
         format!(
             "frame-clock-format {}",
-            serde_json::json!({"output":key,"value":format})
+            serde_json::to_string(&hearthspace_ipc::frame_layout::ClockFormat {
+                output: key.into(),
+                value: format
+            })
+            .unwrap()
         ),
     );
     set_open(state, key, false);

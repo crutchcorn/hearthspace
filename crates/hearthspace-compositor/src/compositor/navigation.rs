@@ -28,16 +28,8 @@ impl App {
     }
 
     pub(super) fn navigation_available(&self) -> bool {
-        !self.session_locked()
-            && !self.canvas_search_active()
-            && !self.window_switcher_active()
-            && !self.layout_editing()
-            && !self.layout_confirmation_active()
-            && !self.keyboard.is_grabbed()
-            && !self.pointer.is_grabbed()
-            && self.drag.is_none()
-            && self.resize.is_none()
-            && !self.group_interaction_active()
+        use super::input::policy::{Action, Phase, Source};
+        self.interaction_allowed(Action::Navigation, Source::Local, Phase::Begin)
     }
 
     pub(in crate::compositor) fn check_navigation_available(&self) -> Result<(), String> {

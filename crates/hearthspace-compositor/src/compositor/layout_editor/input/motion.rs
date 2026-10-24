@@ -57,9 +57,10 @@ impl App {
                 y: y.round() as i32 - (bounds.loc.y - position.y),
             };
         }
+        let canonical = self.canonical_layout_target(&drag.target.target);
         let placement = if drag.layouts.get(&drag.target.output).is_some_and(|layout| {
             matches!(
-                layout.placement(&drag.target.target),
+                layout.placement(&canonical),
                 ObjectPlacement::Background { .. }
             )
         }) {
@@ -81,7 +82,7 @@ impl App {
             .layouts
             .get_mut(&drag.target.output)
             .unwrap()
-            .set_placement(&drag.target.target, placement);
+            .set_placement(&canonical, placement);
         self.layout_editor.drag = Some(drag.clone());
         self.layout_editor.placed = self.frame_placements();
         if turning && let Some(placed) = self.frame_placed(&drag.target).cloned() {
@@ -185,7 +186,7 @@ impl App {
                 .layout_editor
                 .layouts
                 .get(&target.output)
-                .and_then(|l| l.group_for(&target.target))
+                .and_then(|l| l.group_for(&self.canonical_layout_target(&target.target)))
                 .is_some_and(|g| {
                     drag.target.output == target.output
                         && drag.target.target.kind == TargetKind::Group

@@ -22,7 +22,7 @@ fn resolved_application_artwork_replaces_fallback_without_tinting_or_rerasterizi
     let mut cache = TitlebarBuffer::new(state.clone(), 2);
     let title = Arc::clone(&cache.title);
     let fallback = Arc::clone(&cache.app);
-    state.icon = Some(Arc::new(hearthspace_shell::tray::TrayPixmap {
+    state.icon = Some(Arc::new(hearthspace_desktop::artwork::RasterImage {
         width: 2,
         height: 2,
         rgba: [255, 120, 0, 255].repeat(4),

@@ -44,6 +44,43 @@ or profile option if it would otherwise reuse a window on the other desktop.
   alone does not establish confined portal/file access.
 - Terminal apps should go through `xdg-terminal-exec` when available, with `xdg-terminals.list` fallback behavior.
 
+## Launch services and environment
+
+The shell queues launcher, dock, gesture, and Settings requests on a bounded
+launch task, independent of desktop filesystem work. The compositor shares one
+bounded preparation queue for apps and files; filesystem/catalog work and GIO
+activation do not run in the input loop. It rechecks session, lock, output, and
+drawing ownership before accepting a prepared launch. Activation helpers have deadlines; a successfully spawned application
+has its own lifetime. Errors are returned to the requesting UI.
+
+Shell launch requests carry their original ten-second click deadline through the
+`launch-request-v1` envelope. The compositor's eight-second preparation limit can
+shorten that budget but cannot renew it. Cancelling the UI request closes its
+registered connection immediately; preparation checks the caller before creating
+a child. Legacy command clients retain their half-close protocol, and internal
+fire-and-forget launches do not acquire an artificial caller lifetime.
+
+`hearthspace-desktop` owns desktop-entry parsing, argument expansion, file/app GIO
+activation, favorites, and neutral artwork types. `DBusActivatable` entries may
+omit `Exec`. Terminal entries and Settings arguments preserve their direct command
+semantics, including literal arguments and working directories.
+
+Ordinary applications in shared native sessions use the canonical user runtime
+and an absolute path to Hearthspace's Wayland socket, whether launched directly
+or through D-Bus. Private and nested sessions retain their isolated connection
+policy. Nested supervisors clear inherited activation ownership and selected-bus
+metadata before applying their own explicit values. Native GIO activation requires
+that selected bus; it cannot silently borrow a parent desktop's activation route.
+Ownership records and Hearthspace control sockets remain under
+`HEARTHSPACE_SESSION_DIR`; explicit audio overrides remain intact.
+
+Shared activation publication has a generation-owned journal. XWayland readiness
+and disconnection update `DISPLAY` through that same ownership boundary, off the
+compositor loop. Launch synchronizes publication before GIO activation. Retirement
+rereads the latest journal and preserves independently changed manager values.
+The transient `activation-display.json` record belongs to the verified session
+runtime and is removed with it after the process-cleanup barriers.
+
 ## GNOME Terminal / Ptyxis
 
 Ubuntu 26.04's **Terminal** entry is `org.gnome.Ptyxis.desktop` (Ptyxis 50.1).

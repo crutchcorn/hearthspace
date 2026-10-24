@@ -1,6 +1,6 @@
-use std::{fs, io, process::Command, sync::Arc};
+use std::{io, process::Command, sync::Arc};
 
-use hearthspace_shell::app_catalog::{AppCatalog, reap_child, spawn_argv_with_options};
+use hearthspace_desktop::app_catalog::reap_child;
 use smithay::reexports::calloop::{Interest, Mode as CalloopMode, PostAction, generic::Generic};
 use tracing::{debug, error, info, warn};
 use wayland_server::ListeningSocket;
@@ -9,7 +9,10 @@ use super::{App, launch_environment::*};
 use crate::compositor::client::ClientState;
 use crate::config::*;
 
+mod apps;
+mod display;
 mod files;
+pub(super) mod pending;
 mod snap_scope;
 
 struct ApplicationEnvironment {
@@ -76,132 +79,6 @@ impl App {
         Ok(())
     }
 
-    pub(in crate::compositor) fn launch_app(
-        &mut self,
-        app_id: &str,
-        output_name: Option<&str>,
-    ) -> Result<(), String> {
-        let existing = (app_id == "dev.hearthspace.Settings.desktop")
-            .then(|| self.existing_settings_window())
-            .flatten();
-        self.launch_app_with_arguments(app_id, output_name, &[], existing)
-    }
-
-    fn existing_settings_window(&self) -> Option<u64> {
-        self.windows.iter().enumerate().find_map(|(index, window)| {
-            (self.is_navigable_window(index)
-                && crate::compositor::windows::window_app_id(&window.surface).as_deref()
-                    == Some("dev.hearthspace.Settings"))
-            .then_some(window.id)
-        })
-    }
-
-    pub(super) fn open_search_settings(&mut self, output_name: Option<&str>) -> Result<(), String> {
-        let existing = self.existing_settings_window();
-        self.launch_app_with_arguments(
-            "dev.hearthspace.Settings.desktop",
-            output_name,
-            &["--page", "gestures"],
-            existing,
-        )
-    }
-
-    pub(in crate::compositor) fn open_layout_settings(
-        &mut self,
-        output_name: Option<&str>,
-    ) -> Result<(), String> {
-        let existing = self.existing_settings_window();
-        self.launch_app_with_arguments(
-            "dev.hearthspace.Settings.desktop",
-            output_name,
-            &["--page", "system"],
-            existing,
-        )
-    }
-
-    pub(in crate::compositor) fn open_background_settings(
-        &mut self,
-        output_name: Option<&str>,
-    ) -> Result<(), String> {
-        let existing = self.existing_settings_window();
-        self.launch_app_with_arguments(
-            "dev.hearthspace.Settings.desktop",
-            output_name,
-            &["--page", "background"],
-            existing,
-        )
-    }
-
-    fn launch_app_with_arguments(
-        &mut self,
-        app_id: &str,
-        output_name: Option<&str>,
-        arguments: &[&str],
-        existing_window: Option<u64>,
-    ) -> Result<(), String> {
-        // Resolve current installed entries so new favorites work and removed apps cannot launch stale commands.
-        self.app_catalog = AppCatalog::load();
-        let app = self
-            .app_catalog
-            .app_by_id(app_id)
-            .cloned()
-            .ok_or_else(|| format!("unknown desktop application: {app_id}"))?;
-        if let Some(name) = output_name
-            && self.output_logical_rect_for_name(Some(name)).is_none()
-        {
-            return Err(format!("unknown launch output: {name}"));
-        }
-        let mut app_command = app.launch_argv()?;
-        app_command.extend(arguments.iter().map(|argument| (*argument).to_string()));
-        let snap_instance = snap_scope::resolve(
-            app.snap_instance_name.as_deref(),
-            &mut app_command,
-            app.working_directory.as_deref(),
-        )?;
-        let app_command = if let Some(instance) = &snap_instance {
-            snap_scope::wrap(instance, app_command)?
-        } else {
-            app_command
-        };
-        let command = if app.terminal {
-            self.app_catalog.terminal_command_for(app_command)?
-        } else {
-            app_command
-        };
-        let ApplicationEnvironment {
-            wayland_display,
-            variables: launch_env,
-        } = self.application_environment(app_id, snap_instance.as_deref())?;
-        let launch_env_refs = launch_env
-            .iter()
-            .map(|(key, value)| (key.as_str(), value.as_str()))
-            .collect::<Vec<_>>();
-        if existing_window.is_none() {
-            self.prepare_spawn_output(output_name);
-        }
-        spawn_argv_with_options(
-            &command,
-            &wayland_display,
-            &launch_env_refs,
-            app.working_directory.as_deref(),
-        )?;
-        if let Some(id) = existing_window {
-            self.focus_window(id)?;
-        }
-        info!(app_id, wayland_display, argv = ?command, "launched desktop app");
-        Ok(())
-    }
-
-    fn application_environment(
-        &mut self,
-        app_id: &str,
-        snap_instance: Option<&str>,
-    ) -> Result<ApplicationEnvironment, String> {
-        let launch_env = launch_environment_for_app(app_id)
-            .map_err(|error| format!("failed to prepare app environment: {error}"))?;
-        self.finish_application_environment(app_id, snap_instance, launch_env)
-    }
-
     fn finish_application_environment(
         &mut self,
         app_id: &str,
@@ -212,7 +89,11 @@ impl App {
             self.ensure_snap_wayland_listener(instance_name)
                 .map_err(|error| format!("failed to prepare Snap Wayland socket: {error}"))?
         } else {
-            wayland_display_name()
+            if let Ok(runtime) = std::env::var(hearthspace_desktop::environment::APP_RUNTIME) {
+                launch_env.push(("XDG_RUNTIME_DIR".into(), runtime));
+            }
+            std::env::var(hearthspace_desktop::environment::APP_DISPLAY)
+                .unwrap_or_else(|_| wayland_display_name())
         };
         if app_id == "dev.hearthspace.Settings.desktop" {
             launch_env.push((
@@ -266,10 +147,6 @@ impl App {
         if self.snap_wayland_socket_paths.contains(&socket_path) {
             return Ok(wayland_display);
         }
-        if let Some(parent) = socket_path.parent() {
-            fs::create_dir_all(parent)?;
-        }
-
         let socket = ListeningSocket::bind_absolute(socket_path.clone()).map_err(|error| {
             io::Error::other(format!(
                 "failed to bind Snap Wayland socket {}: {error}",

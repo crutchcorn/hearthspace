@@ -1,12 +1,10 @@
 //! Blocking desktop operations, including bounded private IPC transactions.
 use super::Request;
+use crate::desktop_items::{self, DesktopItem, DesktopItemKind};
 use crate::ui::command_client;
-use crate::{
-    app_catalog::AppCatalog,
-    desktop_items::{self, DesktopItem, DesktopItemKind},
-    favorites::FavoriteStore,
-};
 use hearthspace_common::MAX_DESKTOP_ITEMS;
+use hearthspace_desktop::app_catalog::AppCatalog;
+use hearthspace_desktop::favorites::FavoriteStore;
 use serde::Deserialize;
 use std::{path::Path, time::Duration};
 

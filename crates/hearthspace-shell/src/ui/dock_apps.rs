@@ -2,7 +2,8 @@
 use std::collections::BTreeMap;
 
 use super::{ShellState, icons::Request};
-use crate::{app_catalog::DesktopApp, ui::window_catalog::RunningWindow};
+use crate::ui::window_catalog::RunningWindow;
+use hearthspace_desktop::app_catalog::DesktopApp;
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub(super) enum Key {

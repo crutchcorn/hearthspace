@@ -5,7 +5,7 @@ mod dismissal;
 
 use xilem::{AppState, WindowId};
 
-use crate::app_catalog::AppCatalog;
+use hearthspace_desktop::app_catalog::AppCatalog;
 
 use super::{minimap::CanvasSnapshot, notifications::Notification, window_catalog::RunningWindow};
 
@@ -16,6 +16,7 @@ pub(super) struct ShellState {
     pub(super) tray: super::tray_state::TrayState,
     pub(super) dock: super::dock::State,
     pub(super) desktop: super::desktop::State,
+    pub(super) launch_requests: Option<tokio::sync::mpsc::Sender<super::launch::Request>>,
     pub(super) canvas_search: super::canvas_search::State,
     pub(super) frame_layout: super::frame_layout::State,
     pub(super) window_switcher: super::window_switcher::State,
@@ -63,6 +64,7 @@ pub(super) struct ShellOutputInstance {
     pub(super) show_notifications: bool,
     pub(super) show_map: bool,
     pub(super) launch_error: Option<String>,
+    pub(super) launch_pending: Option<super::launch::Pending>,
     #[cfg(test)]
     pub(super) corner_window_ids: [WindowId; 4],
     #[cfg(test)]
@@ -95,6 +97,7 @@ impl ShellState {
             tray: Default::default(),
             dock: Default::default(),
             desktop: Default::default(),
+            launch_requests: None,
             canvas_search: Default::default(),
             window_switcher: Default::default(),
             frame_layout: Default::default(),
@@ -125,6 +128,9 @@ impl ShellState {
     }
 
     pub(super) fn stop(&mut self) {
+        for output in &mut self.outputs {
+            output.launch_pending = None;
+        }
         self.frame_layout.intents.cancel();
         self.running = false;
     }
@@ -261,6 +267,13 @@ impl ShellState {
     }
 
     pub(super) fn change_query(&mut self, output_key: &str, query: String) {
+        if let Some(output) = self
+            .outputs
+            .iter_mut()
+            .find(|output| output.key() == output_key)
+        {
+            output.launch_pending = None;
+        }
         self.frame_layout.intents.cancel();
         super::favorite_actions::cancel(self, output_key);
         self.canvas_dragging = false;

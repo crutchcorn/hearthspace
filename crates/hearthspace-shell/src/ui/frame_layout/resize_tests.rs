@@ -50,10 +50,7 @@ fn confirmation_natural_height_hides_rounding_scrollbar_but_preserves_real_overf
     use masonry::core::WindowEvent;
     for scale in [1.0, 2.0] {
         let mut state = state();
-        state.frame_layout.snapshot.confirmation = Some(Confirmation {
-            kind: "close-window".into(),
-            window_id: Some(1),
-        });
+        state.frame_layout.snapshot.confirmation = Some(Confirmation::CloseWindow { window_id: 1 });
         let mut ui = Ui::new(state, measured_confirmation, (420, 220));
         let height = ui.state.frame_layout.confirm_height.unwrap();
         ui.harness.process_window_event(WindowEvent::Rescale(scale));

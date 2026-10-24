@@ -39,6 +39,8 @@ pub fn run(args: &[String]) -> io::Result<()> {
     while alive(pid, start_time, Path::new(runtime)) {
         thread::sleep(Duration::from_millis(100));
     }
+    // This watchdog must exit to trigger BindsTo stops. Only an outside cleanup
+    // caller can run the app-scope barrier, which also awaits this service.
     let retired = crate::activation_cleanup::retire_from_session_dir(Path::new(runtime), None);
     let _ = fs::remove_file(Path::new(runtime).join(READY_FILE));
     retired

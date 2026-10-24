@@ -2556,6 +2556,7 @@ dependencies = [
  "gtk4",
  "hearthspace-ai",
  "hearthspace-common",
+ "hearthspace-desktop",
  "hearthspace-ipc",
  "hearthspace-shell",
  "hearthspace-ui-components",
@@ -2588,11 +2589,37 @@ dependencies = [
 ]
 
 [[package]]
+name = "hearthspace-desktop"
+version = "0.1.0"
+dependencies = [
+ "dirs 6.0.0",
+ "freedesktop-icons",
+ "gio",
+ "gio-unix",
+ "hearthspace-common",
+ "hearthspace-ipc",
+ "image",
+ "nix",
+ "resvg",
+ "rstest",
+ "rustix 1.1.5",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "tracing",
+ "zbus",
+]
+
+[[package]]
 name = "hearthspace-ipc"
 version = "0.1.0"
 dependencies = [
  "hearthspace-common",
  "nix",
+ "serde",
+ "serde_json",
+ "sha2",
  "tempfile",
 ]
 
@@ -2622,6 +2649,7 @@ dependencies = [
  "gio",
  "hearthspace-ai",
  "hearthspace-common",
+ "hearthspace-desktop",
  "hearthspace-ipc",
  "nix",
  "serde",
@@ -2639,9 +2667,10 @@ version = "0.1.0"
 dependencies = [
  "hearthspace-ai",
  "hearthspace-common",
+ "hearthspace-desktop",
  "hearthspace-ipc",
- "hearthspace-shell",
  "hearthspace-ui-components",
+ "hearthspace-wayland-client",
  "image",
  "masonry",
  "png",
@@ -2659,7 +2688,10 @@ dependencies = [
  "hearthspace-common",
  "hearthspace-ipc",
  "nix",
+ "serde",
+ "serde_json",
  "tempfile",
+ "toml",
  "tracing",
  "tracing-subscriber",
 ]
@@ -2671,17 +2703,17 @@ dependencies = [
  "accesskit_atspi_common",
  "chrono",
  "dirs 6.0.0",
- "freedesktop-icons",
  "futures-util",
  "gio",
  "gio-unix",
  "hearthspace-common",
+ "hearthspace-desktop",
  "hearthspace-ipc",
  "hearthspace-ui-components",
+ "hearthspace-wayland-client",
  "image",
  "lofty",
  "masonry",
- "resvg",
  "rstest",
  "rustix 1.1.5",
  "serde",
@@ -2711,6 +2743,15 @@ dependencies = [
  "hearthspace-ui-components",
  "xilem",
  "xilem-storybook",
+]
+
+[[package]]
+name = "hearthspace-wayland-client"
+version = "0.1.0"
+dependencies = [
+ "rustix 1.1.5",
+ "tokio",
+ "wayland-client",
 ]
 
 [[package]]

@@ -44,7 +44,6 @@ pub(super) fn properties(palette: Palette) -> DefaultProperties {
     };
     let mut properties =
         hearthspace_ui_components::hearthspace_properties(palette, PropertyStyle::Glass);
-    crate::gesture_pad::theme_properties(&mut properties, palette);
     properties.insert_stack::<Label>(classes::properties(&palette));
     properties.insert_stack::<SizedBox>(classes::properties(&palette));
     properties.insert_stack::<hearthspace_ui_components::icons::IconWidget>(classes::properties(
@@ -77,21 +76,37 @@ pub(super) fn properties(palette: Palette) -> DefaultProperties {
 pub(super) fn task() -> impl View<ShellState, (), xilem::ViewCtx, Element = NoElement> + use<> {
     task_raw(
         |proxy: MessageProxy<Palette>, _: &mut ShellState| async move {
+            use hearthspace_ipc::settings_snapshot::{client_get_snapshot, client_wait_for_change};
             let mut previous = None;
+            let mut cursor = None;
             loop {
-                if let Ok(Ok(settings)) =
-                    tokio::task::spawn_blocking(hearthspace_ipc::client_get_settings).await
-                {
-                    let palette = Palette::new(settings.appearance)
-                        .with_photo(settings.background_image_path.is_some());
-                    if previous != Some(palette) {
-                        previous = Some(palette);
-                        if proxy.message(palette).is_err() {
-                            return;
+                let after = cursor.clone();
+                let result = tokio::task::spawn_blocking(move || match after {
+                    Some(after) => {
+                        client_wait_for_change(&after, std::time::Duration::from_millis(500))
+                    }
+                    None => client_get_snapshot().map(Some),
+                })
+                .await;
+                match result {
+                    Ok(Ok(Some(snapshot))) => {
+                        cursor = Some(snapshot.cursor());
+                        let settings = snapshot.settings;
+                        let palette = Palette::new(settings.appearance)
+                            .with_photo(settings.background_image_path.is_some());
+                        if previous != Some(palette) {
+                            previous = Some(palette);
+                            if proxy.message(palette).is_err() {
+                                return;
+                            }
                         }
                     }
+                    Ok(Ok(None)) => {}
+                    _ => {
+                        cursor = None;
+                        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+                    }
                 }
-                tokio::time::sleep(std::time::Duration::from_millis(500)).await;
             }
         },
         |state, palette| state.appearance.update(palette),

@@ -9,11 +9,11 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use crate::app_catalog::AppCatalog;
+use hearthspace_desktop::app_catalog::AppCatalog;
 
 pub mod actions;
 pub(crate) mod artwork;
-pub mod file_launch;
+use hearthspace_desktop::file_launch;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct DesktopItem {

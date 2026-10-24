@@ -168,7 +168,11 @@ impl Bus {
     pub fn paths(&self, name: &str) -> SessionPaths {
         let host_runtime_dir = self.directory.0.clone();
         let session_dir = host_runtime_dir.join(name);
-        fs::create_dir_all(&session_dir).unwrap();
+        fs::DirBuilder::new()
+            .recursive(true)
+            .mode(0o700)
+            .create(&session_dir)
+            .unwrap();
         SessionPaths {
             settings_socket: session_dir.join("settings.sock"),
             session_socket: session_dir.join("session.sock"),
@@ -295,6 +299,11 @@ const PROBE_KEYS: &[&str] = &[
     "XDG_RUNTIME_DIR",
     "WAYLAND_DISPLAY",
     "DISPLAY",
+    "PULSE_SERVER",
+    "PULSE_RUNTIME_PATH",
+    "PIPEWIRE_RUNTIME_DIR",
+    "PIPEWIRE_REMOTE",
+    "PIPEWIRE_CORE",
     "DBUS_SESSION_BUS_ADDRESS",
     "PATH",
     "XDG_DATA_DIRS",

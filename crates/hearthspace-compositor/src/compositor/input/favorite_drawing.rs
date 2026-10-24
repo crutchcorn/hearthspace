@@ -94,16 +94,32 @@ impl App {
         generation: u64,
         stroke: u64,
         app_id: &str,
-    ) -> Result<(), String> {
-        self.accept_favorite_drawing(generation, stroke)?;
+    ) -> crate::compositor::shell_integration::ControlReply {
+        if let Err(error) = self.accept_favorite_drawing(generation, stroke) {
+            return crate::compositor::shell_integration::ControlReply::Err(error);
+        }
         let output = self
             .favorite_drawing
             .arm
             .as_ref()
             .and_then(|arm| arm.output.clone());
-        // This handler runs atomically in the compositor event loop: no focus,
-        // lock or seat switch can occur between authorization and safe launch.
-        self.launch_app(app_id, output.as_deref())
+        self.launch_drawing_reply(app_id, output.as_deref(), generation)
+    }
+
+    pub(in crate::compositor) fn validate_drawing_launch(
+        &mut self,
+        generation: u64,
+    ) -> Result<(), String> {
+        self.maintain_favorite_drawing();
+        if self
+            .favorite_drawing
+            .arm
+            .as_ref()
+            .is_none_or(|arm| arm.generation != generation)
+        {
+            return Err("drawing was cancelled or superseded before launch".into());
+        }
+        Ok(())
     }
 
     pub(in crate::compositor) fn maintain_favorite_drawing(&mut self) {

@@ -1,3 +1,4 @@
+use hearthspace_common::output_identity::{SavedOutput, compare_connectors, resolve_preferences};
 use smithay::utils::{Logical, Physical, Point, Rectangle, Size};
 use tracing::debug;
 
@@ -13,51 +14,31 @@ impl OutputLayout {
         Self { monitors }
     }
 
-    pub(super) fn location_for(
-        &self,
-        output_name: &str,
-        role_id: &str,
-    ) -> Option<Point<i32, Logical>> {
-        let use_role_fallback = !default_placeholder_monitors(&self.monitors);
-        self.monitor_for(output_name, role_id, use_role_fallback)
+    pub(super) fn location_for(&self, output_name: &str) -> Option<Point<i32, Logical>> {
+        self.monitor_for(output_name)
             .map(|monitor| Point::from((monitor.x, monitor.y)))
     }
 
-    fn physical_location_for(
-        &self,
-        output_name: &str,
-        role_id: &str,
-    ) -> Option<Point<i32, Logical>> {
-        let use_role_fallback = !default_placeholder_monitors(&self.monitors);
-        self.monitor_for(output_name, role_id, use_role_fallback)
-            .map(|monitor| {
-                Point::from((
-                    physical_axis_position_to_logical(&self.monitors, monitor.x, Axis::X),
-                    physical_axis_position_to_logical(&self.monitors, monitor.y, Axis::Y),
-                ))
-            })
+    fn physical_location_for(&self, output_name: &str) -> Option<Point<i32, Logical>> {
+        self.monitor_for(output_name).map(|monitor| {
+            Point::from((
+                physical_axis_position_to_logical(&self.monitors, monitor.x, Axis::X),
+                physical_axis_position_to_logical(&self.monitors, monitor.y, Axis::Y),
+            ))
+        })
     }
 
-    pub(super) fn scale_for(&self, output_name: &str, role_id: &str) -> Option<i32> {
-        let use_role_fallback = !default_placeholder_monitors(&self.monitors);
-        self.monitor_for(output_name, role_id, use_role_fallback)
+    pub(super) fn scale_for(&self, output_name: &str) -> Option<i32> {
+        self.monitor_for(output_name)
             .map(|monitor| monitor.scale.max(1))
     }
 
-    fn monitor_for(
-        &self,
-        output_name: &str,
-        role_id: &str,
-        use_role_fallback: bool,
-    ) -> Option<&hearthspace_ipc::MonitorConfig> {
+    fn monitor_for(&self, output_name: &str) -> Option<&hearthspace_ipc::MonitorConfig> {
+        // These accessors consume only the already-resolved active layout.
+        // Reapplying display-name aliases here could bind one saved row twice.
         self.monitors
             .iter()
-            .find(|monitor| monitor.id == output_name || monitor.name == output_name)
-            .or_else(|| {
-                use_role_fallback
-                    .then(|| self.monitors.iter().find(|monitor| monitor.id == role_id))
-                    .flatten()
-            })
+            .find(|monitor| monitor.id == output_name)
     }
 }
 
@@ -120,10 +101,6 @@ fn scaled_offset(offset: i32, scale: i32) -> i32 {
     (offset + scale - 1) / scale
 }
 
-fn default_placeholder_monitors(monitors: &[hearthspace_ipc::MonitorConfig]) -> bool {
-    monitors == hearthspace_ipc::Settings::default().monitors
-}
-
 #[derive(Clone)]
 pub(super) struct OutputGeometry {
     pub(super) name: String,
@@ -182,22 +159,48 @@ pub(super) fn output_locations_for_layout(
     mut secondary: Vec<OutputGeometry>,
     layout: &OutputLayout,
 ) -> OutputLayoutPlan {
-    secondary.sort_by(|a, b| a.name.cmp(&b.name));
-    if let Some(scale) = layout.scale_for(&primary.name, "primary") {
+    secondary.sort_by(|a, b| compare_connectors(&a.name, &b.name, Some(&primary.name)));
+    // Resolve only connected preferences before physical-coordinate compatibility
+    // conversion; disconnected history and starter rows are not active geometry.
+    let connectors: Vec<_> = std::iter::once(primary.name.as_str())
+        .chain(secondary.iter().map(|output| output.name.as_str()))
+        .collect();
+    let defaults = hearthspace_ipc::Settings::default().monitors;
+    let saved: Vec<_> = layout
+        .monitors
+        .iter()
+        .map(|monitor| SavedOutput {
+            id: &monitor.id,
+            name: &monitor.name,
+            placeholder: defaults.contains(monitor),
+        })
+        .collect();
+    let resolved = resolve_preferences(&saved, &connectors, Some(&primary.name));
+    let active = OutputLayout::from_monitors(
+        resolved
+            .into_iter()
+            .enumerate()
+            .filter_map(|(output, preference)| {
+                let mut monitor = layout.monitors.get(preference?)?.clone();
+                monitor.id = connectors[output].into();
+                Some(monitor)
+            })
+            .collect(),
+    );
+    let layout = &active;
+
+    if let Some(scale) = layout.scale_for(&primary.name) {
         primary.scale = scale;
     }
-    for (index, output) in secondary.iter_mut().enumerate() {
-        let role_id = secondary_role_id(index);
-        if let Some(scale) = layout.scale_for(&output.name, &role_id) {
+    for output in &mut secondary {
+        if let Some(scale) = layout.scale_for(&output.name) {
             output.scale = scale;
         }
     }
     let fallback_primary = primary.clone();
     let fallback_secondary = secondary.clone();
 
-    let primary_location = layout
-        .location_for(&primary.name, "primary")
-        .unwrap_or((0, 0).into());
+    let primary_location = layout.location_for(&primary.name).unwrap_or((0, 0).into());
     let mut placed = vec![OutputPlacement {
         name: primary.name.clone(),
         size: primary.logical_size(),
@@ -206,9 +209,8 @@ pub(super) fn output_locations_for_layout(
     }];
     let mut unplaced = Vec::new();
 
-    for (index, output) in secondary.into_iter().enumerate() {
-        let role_id = secondary_role_id(index);
-        if let Some(location) = layout.location_for(&output.name, &role_id) {
+    for output in secondary {
+        if let Some(location) = layout.location_for(&output.name) {
             let size = output.logical_size();
             placed.push(OutputPlacement {
                 name: output.name,
@@ -297,7 +299,7 @@ fn output_placements_for_physical_positions(
     layout: &OutputLayout,
 ) -> Vec<OutputPlacement> {
     let primary_location = layout
-        .physical_location_for(&primary.name, "primary")
+        .physical_location_for(&primary.name)
         .unwrap_or((0, 0).into());
     let mut placed = vec![OutputPlacement {
         name: primary.name.clone(),
@@ -307,9 +309,8 @@ fn output_placements_for_physical_positions(
     }];
     let mut unplaced = Vec::new();
 
-    for (index, output) in secondary.into_iter().enumerate() {
-        let role_id = secondary_role_id(index);
-        if let Some(location) = layout.physical_location_for(&output.name, &role_id) {
+    for output in secondary {
+        if let Some(location) = layout.physical_location_for(&output.name) {
             let size = output.logical_size();
             placed.push(OutputPlacement {
                 name: output.name,
@@ -437,14 +438,6 @@ fn placement_debug(placements: &[OutputPlacement]) -> Vec<(String, i32, i32, i32
         .collect()
 }
 
-fn secondary_role_id(index: usize) -> String {
-    if index == 0 {
-        "secondary".to_string()
-    } else {
-        format!("secondary-{}", index + 1)
-    }
-}
-
 /// Native layout policy: selected primary at (0, 0), all other connectors placed
 /// horizontally to the right in stable connector-name order.
 #[cfg(feature = "udev")]
@@ -457,7 +450,7 @@ pub(super) fn secondary_descriptors_for_layout(
         .skip(1)
         .filter(|descriptor| descriptor.name != primary_name)
         .collect::<Vec<_>>();
-    secondary.sort_by(|a, b| a.name.cmp(&b.name));
+    secondary.sort_by(|a, b| compare_connectors(&a.name, &b.name, Some(primary_name)));
     secondary
 }
 
@@ -758,3 +751,7 @@ mod tests {
         assert_eq!(plan.secondary_location("HDMI-A-1"), Point::from((200, 0)));
     }
 }
+
+#[cfg(test)]
+#[path = "layout/identity_tests.rs"]
+mod identity_tests;

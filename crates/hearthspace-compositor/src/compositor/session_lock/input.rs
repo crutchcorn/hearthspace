@@ -72,7 +72,7 @@ impl App {
             .env_remove("WAYLAND_SOCKET")
             .spawn()
             .map_err(|error| format!("failed to launch swaylock: {error}"))?;
-        hearthspace_shell::app_catalog::reap_child(child);
+        hearthspace_desktop::app_catalog::reap_child(child);
         Ok(())
     }
 }

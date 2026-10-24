@@ -8,15 +8,16 @@ impl App {
         &mut self,
         renderer: &mut GlesRenderer,
         index: usize,
+        projection: crate::compositor::presentation::Projection,
     ) -> Vec<HearthspaceRenderElement> {
         let switching = self.window_switcher_selected_id() == Some(self.windows[index].id);
         if !self.canvas_search_window_selected(self.windows[index].id) && !switching {
             return Vec::new();
         }
-        let Some((pose, alpha)) = self.canvas_preview_pose(index) else {
+        let Some(pose) = projection.preview else {
             return Vec::new();
         };
-        let window_scale = self.window_render_scale(index);
+        let window_scale = projection.scale;
         let outline_scale = if switching { window_scale } else { 1. };
         let padding = 7. * outline_scale;
         let bounds = if switching {
@@ -44,7 +45,7 @@ impl App {
             )
         };
         let mut ink = self.palette().accent.components;
-        ink[3] *= alpha as f32;
+        ink[3] *= projection.opacity;
         let style = Style {
             ink,
             radius: (20. * window_scale + padding) as f32,

@@ -1,9 +1,9 @@
+use hearthspace_desktop::app_catalog::AppCatalog;
 use std::{env, fs, path::Path, process::Command};
 
 use super::*;
-use crate::{
-    app_catalog::AppCatalog,
-    ui::{dock, launcher::Entry, search_result, test_support::Ui, window_catalog::RunningWindow},
+use crate::ui::{
+    dock, launcher::Entry, search_result, test_support::Ui, window_catalog::RunningWindow,
 };
 use xilem::{
     WidgetView,
@@ -141,7 +141,8 @@ fn shared_application_artwork_in_child() {
             "every dock group reaches its decoded artwork"
         );
     }
-    let expected = crate::app_icon::resolve_window(&state.catalog, "FirstGame").unwrap();
+    let expected =
+        hearthspace_desktop::app_icon::resolve_window(&state.catalog, "FirstGame").unwrap();
     assert_eq!(first_image.image.data.data(), expected.rgba.as_slice());
     let colors = [pixel(&first_image), pixel(&second_image)];
 
@@ -171,7 +172,7 @@ fn shared_application_artwork_in_child() {
     assert!(!updated.contains_key(&CacheKey::app(&first)));
     assert_eq!(
         updated[&CacheKey::app(&changed)],
-        crate::app_icon::resolve_app(&changed)
+        hearthspace_desktop::app_icon::resolve_app(&changed)
     );
     let mut changed_exec = first.clone();
     changed_exec.exec = "steam steam://rungameid/9876543210987654321".into();

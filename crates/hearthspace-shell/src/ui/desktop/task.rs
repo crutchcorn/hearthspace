@@ -1,4 +1,5 @@
 //! Filesystem discovery, launch authorization and favorite writes stay off the UI.
+use hearthspace_desktop::app_catalog::AppCatalog;
 use std::{path::Path, time::Duration};
 
 use xilem::{
@@ -6,10 +7,7 @@ use xilem::{
     view::task_raw,
 };
 
-use crate::{
-    app_catalog::AppCatalog,
-    desktop_items::{self, DesktopItem},
-};
+use crate::desktop_items::{self, DesktopItem};
 
 use super::{ShellState, events};
 use crate::ui::{command_client, control_worker};
@@ -18,7 +16,7 @@ use crate::ui::{command_client, control_worker};
 mod worker;
 use worker::{Completed, Failure, discover, perform, register};
 
-pub(super) enum Request {
+pub(in crate::ui) enum Request {
     Command(String),
     Accept(u64),
     Context(super::context_actions::Request),
@@ -41,18 +39,18 @@ pub(super) fn submit(state: &mut ShellState, request: Request) {
         Request::Context(request) => Some(request.generation),
         _ => None,
     };
-    if state
-        .desktop
-        .requests
-        .as_ref()
-        .is_none_or(|sender| sender.try_send(request).is_err())
-    {
+    let failure = match &state.desktop.requests {
+        Some(sender) => sender
+            .try_send(request)
+            .err()
+            .map(|error| error.into_inner()),
+        None => Some(request),
+    };
+    if failure.is_some() {
         let error = "Desktop items are busy. Try again shortly.".to_string();
         if let Some(generation) = menu_generation {
             super::context::finished(state, generation, Err(error));
         } else if accepts_token {
-            // An event can still be queued after lock or VT loss. Only a worker
-            // that confirms an active session may open feedback for it.
             state.desktop.error = Some(error);
         } else {
             super::feedback(state, error);
@@ -62,7 +60,10 @@ pub(super) fn submit(state: &mut ShellState, request: Request) {
 
 pub(in crate::ui) fn task() -> impl View<ShellState, (), xilem::ViewCtx, Element = NoElement> + use<>
 {
-    xilem::core::fork(operations(), super::artwork::task())
+    xilem::core::fork(
+        operations(),
+        xilem::core::fork(super::artwork::task(), crate::ui::launch::task::task()),
+    )
 }
 
 fn operations() -> impl View<ShellState, (), xilem::ViewCtx, Element = NoElement> + use<> {

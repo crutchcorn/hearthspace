@@ -80,23 +80,9 @@ pub struct Bus {
 
 impl Bus {
     pub fn start(root: &Path) -> Self {
-        Self::with_service_directory(root, None)
-    }
-
-    pub fn start_with_services(root: &Path) -> Self {
-        let services = root.join("services");
-        fs::create_dir_all(&services).unwrap();
-        Self::with_service_directory(root, Some(&services))
-    }
-
-    fn with_service_directory(root: &Path, services: Option<&Path>) -> Self {
         let config = root.join("bus.conf");
-        // Only an explicitly supplied fixture directory may activate a service;
-        // neither mode loads host applications or standard service directories.
-        let services = services
-            .map(|path| format!("<servicedir>{}</servicedir>", path.display()))
-            .unwrap_or_default();
-        fs::write(&config, format!("<busconfig><type>session</type><listen>unix:tmpdir=/tmp</listen>{services}<policy context=\"default\"><allow own=\"*\"/><allow send_destination=\"*\"/><allow receive_sender=\"*\"/></policy></busconfig>")).unwrap();
+        // Shell file-manager fixtures may not activate host applications.
+        fs::write(&config, "<busconfig><type>session</type><listen>unix:tmpdir=/tmp</listen><policy context=\"default\"><allow own=\"*\"/><allow send_destination=\"*\"/><allow receive_sender=\"*\"/></policy></busconfig>").unwrap();
         let mut child = Command::new("dbus-daemon")
             .arg("--config-file")
             .arg(config)

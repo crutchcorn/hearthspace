@@ -1,6 +1,6 @@
 use super::{controls, passive::passive, picker};
 use crate::{state::SettingsApp, typography::label};
-use hearthspace_shell::gesture_pad::GesturePad;
+use hearthspace_ui_components::gesture_pad::GesturePad;
 use hearthspace_ui_components::icons::{Icon, icon};
 use xilem::{
     AnyWidgetView, WidgetView,

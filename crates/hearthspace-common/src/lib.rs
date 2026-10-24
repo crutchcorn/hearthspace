@@ -5,6 +5,7 @@ mod desktop;
 pub mod desktop_context;
 pub mod desktop_files;
 pub mod frame_layout;
+pub mod output_identity;
 mod shell_corners;
 mod window_switcher;
 

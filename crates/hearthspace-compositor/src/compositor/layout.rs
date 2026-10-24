@@ -287,6 +287,11 @@ impl App {
         if self.transient_parent_index(index).is_some() {
             return;
         }
+        // A replacement may arrive before the next remember pass releases the
+        // destroyed client's slot. Only live window records reserve slots.
+        self.layout_store
+            .claimed
+            .retain(|id, _| self.windows.iter().any(|window| window.id == *id));
         let window = &self.windows[index];
         let id = window.id;
         let Some(app_id) = window_app_id(&window.surface) else {
