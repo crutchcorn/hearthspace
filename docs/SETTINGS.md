@@ -32,7 +32,7 @@ $XDG_RUNTIME_DIR/hearthspace-settingsd.sock
 
 The daemon creates the socket parent directory, checks whether an existing listener is already running, removes stale socket files, and accepts one-line requests on a Unix domain socket. A second daemon instance exits cleanly when a live listener exists, including when its connection backlog is full.
 
-Connections are nonblocking and bounded: unfinished clients do not hold up other requests. The daemon accepts at most 32 simultaneous clients and expires incomplete exchanges after 250 ms. Requests must end with a newline and fit within 16 KiB; responses fit within 64 KiB. Settings updates remain serialized so concurrent changes cannot overwrite one another's fields.
+Connections are nonblocking and bounded: the daemon accepts 32 clients, with at most 16 waiting subscriptions and eight incomplete requests. Incomplete exchanges expire after 250 ms. Requests end with a newline and fit within 16 KiB; responses fit within 64 KiB. Waiting subscribers leave capacity for setters.
 
 `hearthspace-session` restarts `hearthspace-settingsd` up to the configured restart limit. If the daemon exits and cannot be restarted, the session treats that as a fatal settings backend failure.
 
@@ -50,41 +50,47 @@ If `XDG_CONFIG_HOME` is not set, Hearthspace uses:
 ~/.config/hearthspace/config.toml
 ```
 
-`hearthspace-settingsd` reads this file on every request. A missing file is not an error; the daemon returns `Settings::default()` and does not create the file until the first successful write.
+A missing file is not an error; the daemon returns `Settings::default()` without creating it. Directory notifications wake waiting subscribers after atomic replacement, including changes made by another session daemon or valid hand edits.
+
+A stable private `config.toml.lock` advisory lock spans loading, mutation, validation, revision allocation, and saving, including across daemon processes sharing a profile. Do not remove this lock file while a daemon may use it. Acquisition is bounded; an unavailable lock reports failure without partially applying the request.
 
 Writes are atomic at the file level. The daemon writes the complete formatted settings to a temporary file next to the config file, syncs that temporary file, and renames it over `config.toml`. Failed renames clean up the temporary file when possible.
 
-The file is named `config.toml` and uses Hearthspace's settings schema. The current implementation uses a small parser and formatter in `hearthspace-settingsd` rather than a general TOML library, so the daemon should remain the compatibility boundary for the file format.
+The file is valid, versioned TOML, parsed and serialized by the `toml` crate.
+Strings are quoted and escaped, including paths containing `#`, quotes, Unicode,
+or newlines. An unset image path is omitted:
 
-The daemon currently formats the file like this:
-
-```text
+```toml
+version = 1
+revision = 1
 test = false
-background_mode = repeat-with-canvas
-background_image_path = default
-color_mode = light
-accent_color = orange
+background_mode = "repeat-with-canvas"
+color_mode = "light"
+accent_color = "orange"
 
 [[monitor]]
-id = primary
-name = Primary
+id = "primary"
+name = "Primary"
 width = 1920
 height = 1080
 scale = 1
 x = 0
 y = 0
-
-[[monitor]]
-id = secondary
-name = Secondary
-width = 1920
-height = 1080
-scale = 1
-x = 1920
-y = 0
 ```
 
-Unknown top-level keys and unknown monitor keys are ignored. Invalid booleans, invalid appearance choices, invalid background modes, invalid integers, invalid positive integers, and malformed key/value lines make parsing fail for that request. Monitor entries without an `id` are dropped. If no valid monitors remain, the daemon restores the default monitor list.
+Legacy unquoted settings are still readable. Reads leave the file untouched;
+the next successful update validates the entire candidate and migrates it with
+an atomic replacement. Malformed data, invalid monitor values, unknown fields,
+and unsupported versions return an error rather than overwriting the file with
+defaults. Keep the daemon as the compatibility boundary for persistence.
+
+Committed snapshots contain a monotonically allocated revision and a SHA-256
+fingerprint of the canonical settings payload. The optional TOML revision defaults
+to zero for existing files. The lock file retains the allocation high-water mark;
+failed writes may leave revision gaps but publish no change. Valid hand edits can
+change the fingerprint without changing the revision. Compare cursors by equality,
+not numeric ordering. Subscriptions coalesce to the latest state; they are not an
+event history.
 
 ## Settings Model
 
@@ -126,18 +132,27 @@ primary: 1920x1080 scale 1 at 0,0
 secondary: 1920x1080 scale 1 at 1920,0
 ```
 
-Monitor `x` and `y` are logical desktop positions. `scale` must be positive. Monitor IDs cannot be empty or contain whitespace when sent through the IPC client helpers.
+Monitor `x` and `y` are logical desktop positions. `scale` must be positive. Legacy per-monitor setters reject empty IDs or whitespace. Complete display-layout transactions accept whitespace within IDs but reject blank IDs and NUL bytes.
 
 Monitor layout and background settings are active compositor consumers today. `background_mode` and `background_image_path` are persisted, returned through IPC, exposed by the settings app, and reloaded by the compositor when settings change. Legacy config files with `background_moves_with_canvas = true` load as `repeat-with-canvas`; `false` loads as `cover`.
 
 ## IPC Protocol
 
-The wire protocol is intentionally small and line-oriented. Clients send one request line, shut down the write side of the socket, and read through the response's terminating newline. Connecting, writing, and reading share one absolute deadline, so trickled data or a full socket backlog cannot extend the exchange indefinitely. Settings reads have a 50 ms budget to limit disruption to compositor refresh; writes and the settings app's compositor reload request have a 500 ms budget. A timeout reports failure and leaves the consumer's previous settings available.
+The wire protocol is line-oriented. Connecting, writing, and reading share one
+absolute deadline. Legacy reads use 50 ms, snapshot reads 500 ms, and writes allow 1 second,
+including display commits returning a cursor. A watch may
+wait up to 30 seconds plus 500 ms transport slack.
+UI and compositor subscriptions run on workers with shorter waits for bounded
+cancellation. Errors retain the last committed state; reconnect starts with a fresh
+snapshot. Acknowledged commits do not require a writer-issued compositor reload.
 
 Supported requests are:
 
 ```text
 get
+get snapshot
+watch settings {"version":1,"after":{"revision":1,"fingerprint":"<sha256>"},"wait_ms":500}
+commit set display-layout {"version":1,"monitors":[...]}
 set test <true|false>
 set color-mode <light|dark>
 set accent-color <orange|rose|violet|blue|teal|olive>
@@ -145,13 +160,34 @@ set background-mode <repeat-with-canvas|stretch|contains|cover>
 set background-image-path <default|percent-encoded-path>
 set monitor <id> <x> <y>
 set monitor-scale <id> <scale>
+set display-layout {"version":1,"monitors":[...]}
 ```
 
-Successful responses start with `ok` and include a complete settings snapshot:
+The display-layout request contains complete `MonitorConfig` rows. Validation
+precedes every write, and all submitted scales, positions, dimensions, and new
+connector identities commit together. Saved disconnected monitors are retained;
+other preference domains are unchanged. Settings sends these transactions through
+one background worker above the page switcher. Old completions cannot replace a
+newer drag preview or unrelated appearance/background edits. The committed
+response includes its cursor. Local observation generations and cursor equality
+identify acknowledgments that overlap another observation, including an identical
+reconnect read or a hand edit that resets the persisted revision. Ambiguous
+acknowledgments retain the local layout until a post-commit read reconciles it;
+that read cannot erase a newer local edit. Only submitted connector
+drafts are acknowledged; unsaved disconnected drafts survive another monitor's
+successful save. Compositor availability does not change save success.
+
+Legacy `get` and `set` responses start with `ok` and include the complete settings:
 
 ```text
 ok test false background-mode repeat-with-canvas background-image-path default monitor primary 1920 1080 1 0 0 Primary monitor secondary 1920 1080 1 1920 0 Secondary color-mode light accent-color orange
 ```
+
+Snapshot reads, watches, and `commit set display-layout` return
+`ok snapshot {"version":1,"snapshot":...}`. The snapshot contains `revision`,
+`fingerprint`, and `settings`; an unchanged watch expiry returns `snapshot: null`.
+The daemon validates both supported response encodings before committing, so a
+large accumulated configuration cannot commit and then fail its response limit.
 
 Error responses start with `err`:
 
@@ -173,9 +209,13 @@ client_set_background_mode(mode)
 client_set_background_image_path(path)
 client_set_monitor_position(id, x, y)
 client_set_monitor_scale(id, scale)
+client_set_display_layout(monitors)
+settings_snapshot::client_set_display_layout_snapshot_at(path, monitors)
+settings_snapshot::client_get_snapshot()
+settings_snapshot::client_wait_for_change(cursor, wait)
 ```
 
-These helpers resolve the socket path, validate client-side inputs where appropriate, send the request, parse the response, and return a full `Settings` value.
+These helpers resolve the socket path, validate client-side inputs where appropriate, send the request, and parse the response. Ordinary getters/setters return `Settings`. Snapshot reads and cursor-bearing display commits return `SettingsSnapshot`; watches return `Option<SettingsSnapshot>`, with `None` indicating an unchanged expiry.
 
 ## Settings App
 
@@ -195,24 +235,26 @@ On startup, the settings app:
 
 - Calls `client_get_settings()`.
 - Falls back to `Settings::default()` if the daemon is unavailable.
-- Probes live Wayland outputs through `wl_output` globals.
-- Merges live output geometry with saved monitor placement and scale.
+- Starts the shared cancellable Wayland output observer.
+- Keeps live output observations, saved monitor preferences, and local drafts separate.
+- Watches committed snapshots for changes made by other Settings windows or sessions.
 
 The app never writes `config.toml` directly. User actions update local UI state optimistically, then call the daemon through `hearthspace-ipc`:
 
 - Appearance mode and accent choices call `client_set_color_mode()` and `client_set_accent_color()`.
 - The background fit dropdown calls `client_set_background_mode()`.
 - The background image controls call `client_set_background_image_path()`.
-- Dragging a monitor commits positions through `client_set_monitor_position()` for each monitor.
-- Changing monitor scale calls `client_set_monitor_scale()` and then saves recalculated monitor positions.
+- Dragging a monitor or changing scale queues one complete display-layout transaction.
+- Live hotplug/mode observations update the open Displays page while retaining disconnected preferences and pending edits.
 
 On success, the app merges the returned settings with live output data. Appearance saves update only the appearance fields, preserving pending edits elsewhere in Settings. On failure, it restores the previous local state where needed and shows the error in the status label.
 
 The default appearance remains light/orange. Old files and older IPC responses
 without appearance fields receive that default. The shell and open Settings
-windows refresh appearance on a background task every 500 ms, retaining the
-last palette on errors. A generation check prevents an in-flight read from
-undoing a newer local save. Saving in Settings also requests compositor reload.
+windows watch committed snapshots on background tasks, retaining the last palette
+on errors. A generation check prevents an in-flight observation from undoing a
+newer local save. Background-picker completion refetches deferred changes even
+when selection was cancelled.
 
 ## Linux Appearance Publication
 
@@ -224,8 +266,8 @@ choose how to interpret these preferences; a toolkit may map the accent to its
 own palette.
 
 The session supervisor owns `org.freedesktop.impl.portal.desktop.hearthspace` on
-the selected session bus. A dedicated worker reads the explicit settings socket every
-250 ms with the usual 50 ms IPC budget, updates the published snapshot, and emits
+the selected session bus. A dedicated worker watches the explicit settings socket,
+updates the published snapshot, and emits
 `SettingChanged` only for changed keys. Unavailable settingsd reads retain the
 last snapshot. The worker starts before the public portal, releases its bus name
 at shutdown, and has two restart attempts after failure. A restarted worker
@@ -279,9 +321,9 @@ secondary-2
 secondary-3
 ```
 
-If the saved monitor list is still the default placeholder list, the first two live outputs keep the `primary` and `secondary` role IDs. Otherwise, live output IDs are preferred for newly discovered outputs.
+The shared resolver reserves matching connector IDs/names before applying legacy roles, so a saved row cannot bind two connected outputs. The compositor reports its selected primary connector through `output-primary`; registry enumeration order is not a primary flag. Legacy roles use that primary and sorted secondary connectors. Primary metadata retries independently of hardware changes; temporary errors retain a known connected primary, while a successful empty result clears it. Newly discovered outputs receive connector identities; untouched placeholder rows do not displace saved connector preferences. After resolution, compositor projection uses exact connector IDs rather than applying aliases a second time.
 
-The compositor loads monitor layout through `client_get_settings()` and converts the returned monitors into an `OutputLayout`. On the native udev backend, it refreshes the settings-backed output layout periodically and applies changes without restarting the compositor. When output geometry changes, the compositor reconfigures shell bars, reconciles the pointer, and schedules a redraw.
+The compositor loads initial settings and subscribes to committed snapshots. Its worker performs transport; Calloop applies the resulting `OutputLayout` without restarting the compositor. When output geometry changes, the compositor reconfigures shell bars, reconciles the pointer, and schedules a redraw.
 
 Layout application follows these rules:
 
@@ -293,7 +335,7 @@ Layout application follows these rules:
 - Normalize the resulting layout so the minimum x/y starts at zero.
 - Repair overlapping active monitor layouts by falling back to edge-to-edge placement.
 
-If the daemon is unavailable, the compositor logs the error and uses its default output layout.
+If the daemon is unavailable at startup, the compositor uses its default layout. Later failures retain the last committed layout; reconnection applies the current snapshot.
 
 ## Failure Behavior
 

@@ -36,8 +36,10 @@ See [session locking](SESSION_LOCK.md) and [power handling](POWER.md).
 ## Startup, shutdown, and diagnostics
 
 The installed launcher selects the native backend explicitly, creates a private
-desktop D-Bus/runtime through the existing supervisor, and uses the login's
-logind seat. It leaves the shared systemd user-manager environment untouched.
+Hearthspace runtime, and uses the login's logind seat and shared user bus. It
+publishes the ordinary-application environment with generation-owned restoration.
+Explicit private harness sessions retain their private bus and never publish into
+the shared user manager. See [launch environments](APPS.md#launch-services-and-environment).
 Startup waits for the shell to map and for fresh native presentation on every
 connected output, within the configured startup deadline. Failed startup cleans
 up its children and returns control to GDM.
@@ -58,8 +60,12 @@ gnome-session or use its private registration convention. This follows the
 The `--login-session` supervisor mode owns an entire Hearthspace login. Its
 separate cleanup guard tracks exact process and logind identities; when the
 supervisor ends, the guard terminates only that login scope, including detached
-descendants. It then removes the verified private runtime, safely detaching known
-portal mounts. Snap and Ptyxis app scopes also retain their independent supervisor
+descendants. Before removing the verified runtime or detaching portal mounts, it
+also waits for the owned user-manager application scopes to stop. Normal shutdown
+and crash recovery use the same persisted-intent barrier, including partial
+startup without an in-memory scope owner. Failed cleanup retains runtime and
+recovery records for a later attempt. Runtime identity and mounts are rechecked
+after waiting. Snap and Ptyxis app scopes retain their independent supervisor
 guard; see [terminal scope integration](APPS.md#gnome-terminal--ptyxis).
 GDM can leave logind's `Desktop` property empty because it opens PAM before
 exporting the selected desktop. In that case, the guard additionally requires a

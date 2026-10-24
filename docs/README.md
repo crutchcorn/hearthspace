@@ -4,6 +4,8 @@ Start with the [project overview](../README.md) and
 [development setup](../CONTRIBUTING.md). These guides describe maintained behavior;
 [working notes](../notes/README.md) contain provisional investigations and plans.
 
+- [Architecture and ownership](ARCHITECTURE.md)
+
 ## Session and applications
 
 - [Login sessions](LOGIN_SESSION.md)
