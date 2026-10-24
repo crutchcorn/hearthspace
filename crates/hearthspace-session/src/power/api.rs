@@ -18,21 +18,48 @@ use tokio::{
     task::JoinSet,
 };
 
-#[derive(Clone, Debug, Serialize)]
+use super::action::Action;
+
+#[derive(Clone, Debug, Default, Serialize)]
 pub(super) struct Reply {
     pub ok: bool,
     pub available: bool,
     pub busy: bool,
     pub error: Option<String>,
+    pub reboot_available: bool,
+    pub power_off_available: bool,
+    pub reboot_error: Option<String>,
+    pub power_off_error: Option<String>,
 }
 
 impl Reply {
     pub fn unavailable(reason: impl Into<String>) -> Self {
+        let reason = reason.into();
         Self {
             ok: true,
             available: false,
             busy: false,
-            error: Some(reason.into()),
+            error: Some(reason.clone()),
+            reboot_error: Some(reason.clone()),
+            power_off_error: Some(reason),
+            ..Self::default()
+        }
+    }
+
+    fn can_action(&self, action: Action) -> bool {
+        !self.busy
+            && match action {
+                Action::Suspend => self.available,
+                Action::Reboot => self.reboot_available,
+                Action::PowerOff => self.power_off_available,
+            }
+    }
+
+    fn action_error(&self, action: Action) -> Option<String> {
+        match action {
+            Action::Suspend => self.error.clone(),
+            Action::Reboot => self.reboot_error.clone(),
+            Action::PowerOff => self.power_off_error.clone(),
         }
     }
 }
@@ -41,6 +68,9 @@ impl Reply {
 pub(super) struct Shared {
     reply: Arc<Mutex<Reply>>,
     inflight: Arc<AtomicBool>,
+    // The supervisor owns this latch across logind connections. Losing the
+    // transport cannot establish that a dispatched shutdown was rejected.
+    shutdown_dispatched: Arc<AtomicBool>,
 }
 
 impl Shared {
@@ -50,6 +80,7 @@ impl Shared {
                 "Power service is connecting",
             ))),
             inflight: Arc::new(AtomicBool::new(false)),
+            shutdown_dispatched: Arc::new(AtomicBool::new(false)),
         }
     }
 
@@ -57,17 +88,28 @@ impl Shared {
         *self.reply.lock().unwrap() = reply;
     }
 
+    pub fn shutdown_dispatched(&self) -> bool {
+        self.shutdown_dispatched.load(Ordering::SeqCst)
+    }
+
+    pub fn set_shutdown_dispatched(&self, dispatched: bool) {
+        self.shutdown_dispatched.store(dispatched, Ordering::SeqCst);
+    }
+
     fn snapshot(&self) -> Reply {
         let mut reply = self.reply.lock().unwrap().clone();
-        if self.inflight.load(Ordering::SeqCst) {
+        if self.inflight.load(Ordering::SeqCst) || self.shutdown_dispatched() {
             reply.busy = true;
             reply.available = false;
+            reply.reboot_available = false;
+            reply.power_off_available = false;
         }
         reply
     }
 }
 
 pub(super) struct Request {
+    pub action: Action,
     reply: Option<oneshot::Sender<Reply>>,
     shared: Shared,
 }
@@ -75,11 +117,17 @@ pub(super) struct Request {
 impl Request {
     #[cfg(test)]
     pub fn test_request() -> (Self, oneshot::Receiver<Reply>) {
+        Self::test_action(Action::Suspend)
+    }
+
+    #[cfg(test)]
+    pub fn test_action(action: Action) -> (Self, oneshot::Receiver<Reply>) {
         let shared = Shared::new();
         shared.inflight.store(true, Ordering::SeqCst);
         let (reply, receiver) = oneshot::channel();
         (
             Self {
+                action,
                 reply: Some(reply),
                 shared,
             },
@@ -105,7 +153,10 @@ impl Drop for Request {
     fn drop(&mut self) {
         self.shared.inflight.store(false, Ordering::SeqCst);
         if let Some(sender) = self.reply.take() {
-            let mut reply = Reply::unavailable("Power connection changed; suspend was cancelled");
+            let mut reply = Reply::unavailable(format!(
+                "Power connection changed; {} was cancelled",
+                self.action.label()
+            ));
             reply.ok = false;
             let _ = sender.send(reply);
         }
@@ -226,7 +277,9 @@ async fn serve(
     .map_err(|_| io::Error::new(io::ErrorKind::TimedOut, "power request timed out"))?;
     let reply = match command {
         Ok(command) if command.command == "status" => shared.snapshot(),
-        Ok(command) if command.command == "suspend" => suspend(shared, requests).await,
+        Ok(command) if Action::parse(&command.command).is_some() => {
+            submit(shared, requests, Action::parse(&command.command).unwrap()).await
+        }
         result => {
             let reason = result
                 .err()
@@ -243,9 +296,9 @@ async fn serve(
         .map_err(|_| io::Error::new(io::ErrorKind::TimedOut, "power reply timed out"))?
 }
 
-async fn suspend(shared: Shared, requests: mpsc::Sender<Request>) -> Reply {
+async fn submit(shared: Shared, requests: mpsc::Sender<Request>, action: Action) -> Reply {
     let mut unavailable = shared.snapshot();
-    if !unavailable.available
+    if !unavailable.can_action(action)
         || shared
             .inflight
             .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
@@ -253,16 +306,17 @@ async fn suspend(shared: Shared, requests: mpsc::Sender<Request>) -> Reply {
     {
         unavailable.ok = false;
         unavailable.error = Some(if unavailable.busy {
-            "Suspend is already in progress".into()
+            "A power action is already in progress".into()
         } else {
             unavailable
-                .error
-                .unwrap_or_else(|| "Suspend is unavailable".into())
+                .action_error(action)
+                .unwrap_or_else(|| format!("{} is unavailable", action.label()))
         });
         return unavailable;
     }
     let (reply, receiver) = oneshot::channel();
     let request = Request {
+        action,
         reply: Some(reply),
         shared,
     };
@@ -274,9 +328,10 @@ async fn suspend(shared: Shared, requests: mpsc::Sender<Request>) -> Reply {
     match tokio::time::timeout(Duration::from_secs(14), receiver).await {
         Ok(Ok(reply)) => reply,
         _ => {
-            let mut reply = Reply::unavailable(
-                "Suspend response timed out; it will not be retried automatically",
-            );
+            let mut reply = Reply::unavailable(format!(
+                "{} response timed out; it will not be retried automatically",
+                action.label()
+            ));
             reply.ok = false;
             reply
         }

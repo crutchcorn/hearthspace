@@ -8,6 +8,7 @@ use std::{
 use tokio::time::Instant;
 
 use super::{
+    action::Action,
     api::{Reply, Request, Shared},
     control,
     logind::{Event, Logind, Snapshot},
@@ -16,13 +17,33 @@ use super::{
 };
 
 mod manual;
+mod shutdown;
 use manual::Manual;
 
 pub(super) async fn run(
     runtime: PathBuf,
     socket: PathBuf,
     shared: Shared,
+    requests: tokio::sync::mpsc::Receiver<Request>,
+) {
+    run_with_connector(
+        runtime,
+        socket,
+        shared,
+        requests,
+        Logind::connect,
+        external_display,
+    )
+    .await;
+}
+
+async fn run_with_connector<F: std::future::Future<Output = io::Result<Logind>>>(
+    runtime: PathBuf,
+    socket: PathBuf,
+    shared: Shared,
     mut requests: tokio::sync::mpsc::Receiver<Request>,
+    mut connect: impl FnMut() -> F,
+    external: impl Fn() -> bool,
 ) {
     let mut status = Status {
         phase: "connecting",
@@ -30,7 +51,7 @@ pub(super) async fn run(
     };
     loop {
         status.save(&runtime);
-        let result = match Logind::connect().await {
+        let result = match connect().await {
             Ok(mut logind) => {
                 connected(
                     &mut logind,
@@ -39,6 +60,7 @@ pub(super) async fn run(
                     &mut status,
                     &shared,
                     &mut requests,
+                    &external,
                 )
                 .await
             }
@@ -73,6 +95,7 @@ struct Cycle {
     lid_request: Option<Instant>,
     hint: Option<bool>,
     manual: Manual,
+    shared: Shared,
 }
 
 async fn connected(
@@ -82,6 +105,7 @@ async fn connected(
     status: &mut Status,
     shared: &Shared,
     requests: &mut tokio::sync::mpsc::Receiver<Request>,
+    external: impl Fn() -> bool,
 ) -> io::Result<()> {
     let first = logind.snapshot().await?;
     if !first.local_seat {
@@ -100,6 +124,7 @@ async fn connected(
         lid_request: None,
         hint: None,
         manual: Manual::default(),
+        shared: shared.clone(),
     };
     cycle.policy.reset();
     let reconnecting = !status.session_id.is_empty();
@@ -137,14 +162,16 @@ async fn connected(
                 )
                 .await?;
         }
-        cycle.tick(&snapshot, logind, socket, status).await?;
+        cycle
+            .tick_with_display_probe(&snapshot, logind, socket, status, &external)
+            .await?;
         status.sleep_inhibited = cycle.delay.is_some();
         status.lid_owned = cycle.lid.is_some();
         status.save(runtime);
-        shared.update(cycle.manual_capability(logind, &snapshot, status).await);
+        shared.update(cycle.capabilities(logind, &snapshot, status).await);
         tokio::select! {
             Some(request) = requests.recv() => {
-                cycle.request_suspend(request, logind, socket, status).await;
+                cycle.request_power(request, logind, socket, status).await;
             },
             event = logind.next_event() => match event? {
                 Event::PrepareForSleep(preparing) => {
@@ -213,17 +240,6 @@ impl Cycle {
         Ok(())
     }
 
-    async fn tick(
-        &mut self,
-        snapshot: &Snapshot,
-        logind: &Logind,
-        socket: &Path,
-        status: &mut Status,
-    ) -> io::Result<()> {
-        self.tick_with_display_probe(snapshot, logind, socket, status, external_display)
-            .await
-    }
-
     async fn tick_with_display_probe(
         &mut self,
         snapshot: &Snapshot,
@@ -249,7 +265,7 @@ impl Cycle {
             external_display: external(),
             controls_lid: self.lid.is_some(),
         });
-        if closing && !self.sleeping && !self.manual.busy() {
+        if closing && !self.sleeping && !self.manual.busy() && !self.shared.shutdown_dispatched() {
             tracing::info!("lid closed in active undocked session; preparing lock");
             self.lid_request = Some(Instant::now() + Duration::from_secs(10));
             if let Err(error) = control::command(socket, "lock-shield").await {

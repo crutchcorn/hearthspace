@@ -10,6 +10,7 @@ use std::{
     time::Duration,
 };
 
+mod action;
 mod api;
 mod control;
 mod coordinator;

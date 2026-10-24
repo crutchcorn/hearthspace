@@ -7,6 +7,7 @@ use std::{
 };
 
 pub(in crate::power) const SESSION_PATH: &str = "/org/freedesktop/login1/session/test";
+pub(in crate::power) type Inhibitor = (String, String, String, String, u32, u32);
 
 pub(in crate::power) struct Bus {
     child: Child,
@@ -51,6 +52,7 @@ pub(in crate::power) struct State {
     pub(in crate::power) active: bool,
     pub(in crate::power) remote: bool,
     pub(in crate::power) closed: bool,
+    pub(in crate::power) lid_reads: u64,
     pub(in crate::power) docked: bool,
     pub(in crate::power) preparing: bool,
     pub(in crate::power) locked: bool,
@@ -58,6 +60,14 @@ pub(in crate::power) struct State {
     pub(in crate::power) fail_suspend: bool,
     pub(in crate::power) can_suspend: Option<&'static str>,
     pub(in crate::power) suspend_calls: Vec<bool>,
+    pub(in crate::power) can_reboot: Option<&'static str>,
+    pub(in crate::power) can_power_off: Option<&'static str>,
+    pub(in crate::power) preparing_shutdown: bool,
+    pub(in crate::power) fail_shutdown: bool,
+    pub(in crate::power) slow_shutdown: bool,
+    pub(in crate::power) deactivate_on_shutdown_query: bool,
+    pub(in crate::power) shutdown_calls: Vec<(Action, u64)>,
+    pub(in crate::power) shutdown_inhibitors: Vec<Inhibitor>,
     pub(in crate::power) inhibitors: Vec<(String, String, UnixStream)>,
 }
 
@@ -75,7 +85,9 @@ impl Manager {
 
     #[zbus(property)]
     fn lid_closed(&self) -> bool {
-        self.0.lock().unwrap().closed
+        let mut state = self.0.lock().unwrap();
+        state.lid_reads += 1;
+        state.closed
     }
 
     #[zbus(property)]
@@ -86,6 +98,35 @@ impl Manager {
     #[zbus(property)]
     fn preparing_for_sleep(&self) -> bool {
         self.0.lock().unwrap().preparing
+    }
+
+    #[zbus(property)]
+    fn preparing_for_shutdown(&self) -> bool {
+        self.0.lock().unwrap().preparing_shutdown
+    }
+
+    fn can_reboot(&self) -> String {
+        let mut state = self.0.lock().unwrap();
+        if state.deactivate_on_shutdown_query {
+            state.active = false;
+        }
+        state.can_reboot.unwrap_or("yes").into()
+    }
+
+    fn can_power_off(&self) -> String {
+        self.0.lock().unwrap().can_power_off.unwrap_or("yes").into()
+    }
+
+    fn list_inhibitors(&self) -> Vec<Inhibitor> {
+        self.0.lock().unwrap().shutdown_inhibitors.clone()
+    }
+
+    async fn reboot_with_flags(&self, flags: u64) -> zbus::fdo::Result<()> {
+        record_shutdown(&self.0, Action::Reboot, flags).await
+    }
+
+    async fn power_off_with_flags(&self, flags: u64) -> zbus::fdo::Result<()> {
+        record_shutdown(&self.0, Action::PowerOff, flags).await
     }
 
     #[zbus(property)]
@@ -126,6 +167,27 @@ impl Manager {
         }
         Ok(())
     }
+}
+
+async fn record_shutdown(
+    state: &Mutex<State>,
+    action: Action,
+    flags: u64,
+) -> zbus::fdo::Result<()> {
+    let slow = {
+        let mut state = state.lock().unwrap();
+        state.shutdown_calls.push((action, flags));
+        if state.fail_shutdown {
+            return Err(zbus::fdo::Error::AccessDenied(
+                "injected shutdown denial".into(),
+            ));
+        }
+        state.slow_shutdown
+    };
+    if slow {
+        std::future::pending::<()>().await;
+    }
+    Ok(())
 }
 
 struct Session(Arc<Mutex<State>>);
