@@ -17,13 +17,15 @@ XML modifications. No generated-code license exception is assumed.
 
 Hearthspace advertises GTK shell v5; v6 additionally promises surface-offset
 support. Valid explicit double-click requests use canvas maximization. Serial
-authority comes from the latest delivered primary-button press, expires after
-one second, and is consumed once across all wrappers. The originating surface and
-seat must match. Completed clicks remain eligible briefly because GTK's request
-can arrive after release; conflicting grabs and navigation/lock ownership still
-block the operation. Completion requires the original implicit click grab before
-the release is delivered. Accepted move/resize operations, cancellation, device
-removal and session input reset invalidate outstanding authority.
+authority comes from the latest delivered primary-button press or native touch
+down, expires after one second, and is consumed once across all wrappers. The
+originating surface and seat must match; touch also retains its device and
+contact. Completed clicks and taps remain eligible briefly because GTK's request
+can arrive after release. Completion requires the original implicit input grab
+before release. Native touch requires the actual keyboard-focused surface without
+moving pointer focus. Conflicting grabs and navigation/lock ownership still block
+the operation. Accepted move/resize operations, cancellation, device removal and
+session input reset invalidate outstanding authority.
 
 GTK v5 also routes right/middle titlebar actions to the compositor without a
 fallback response. Their current default visible behavior is preserved: GTK's

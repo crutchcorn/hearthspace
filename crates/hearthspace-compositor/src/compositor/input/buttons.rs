@@ -29,6 +29,9 @@ impl App {
         time: InputTime,
     ) {
         self.shortcuts.cancel_meta_tap();
+        if self.capture_window_touch_pointer_button(button, state, time) {
+            return;
+        }
         if self.has_window_pointer_grab() {
             let owner_retired = self.window_pointer_grab_owner_retired();
             // Route every button to the owner, including releases after its

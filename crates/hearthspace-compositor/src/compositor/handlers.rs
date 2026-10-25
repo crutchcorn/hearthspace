@@ -180,10 +180,11 @@ impl XdgShellHandler for App {
             return;
         };
 
+        let touch_request = self.valid_window_touch_request(window_index, &seat, serial);
         if self.windows[window_index].kind != ManagedWindowKind::Normal
             || self.window_uses_output_coordinates(window_index)
             || self.windows[window_index].presentation.maximized
-            || !self.valid_window_pointer_request(window_index, &seat, serial)
+            || !(touch_request || self.valid_window_pointer_request(window_index, &seat, serial))
         {
             return;
         }
@@ -196,7 +197,11 @@ impl XdgShellHandler for App {
             window_id = self.windows[window_index].id,
             "client requested window move"
         );
-        self.start_client_window_move(window_index);
+        if touch_request {
+            self.start_touch_window_move(window_index);
+        } else {
+            self.start_client_window_move(window_index);
+        }
     }
 
     fn resize_request(
@@ -221,10 +226,11 @@ impl XdgShellHandler for App {
             return;
         };
 
+        let touch_request = self.valid_window_touch_request(window_index, &seat, serial);
         if self.windows[window_index].kind != ManagedWindowKind::Normal
             || self.window_uses_output_coordinates(window_index)
             || self.windows[window_index].presentation.maximized
-            || !self.valid_window_pointer_request(window_index, &seat, serial)
+            || !(touch_request || self.valid_window_pointer_request(window_index, &seat, serial))
         {
             return;
         }
@@ -238,7 +244,11 @@ impl XdgShellHandler for App {
             ?edges,
             "client requested window resize"
         );
-        self.start_resize(window_index, edges);
+        if touch_request {
+            self.start_touch_window_resize(window_index, edges);
+        } else {
+            self.start_resize(window_index, edges);
+        }
     }
 
     fn grab(&mut self, surface: PopupSurface, seat: wl_seat::WlSeat, serial: Serial) {

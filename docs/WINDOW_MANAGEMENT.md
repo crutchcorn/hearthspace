@@ -224,18 +224,44 @@ VT dismisses it and clears the held input state. Unplugging the keyboard cannot 
 stuck; a backend-synthesized release keeps the selection, otherwise removal
 cancels the held switch.
 
-## Touchscreen movement and resizing
+## Touchscreen scrolling, page zoom, movement and resizing
+
+Native Wayland applications that bind touch receive touch contacts, including their
+surface coordinates at the current canvas zoom. A one-finger swipe over ordinary
+browser content can therefore scroll the page instead of selecting text as a
+mouse drag. X11 applications and Wayland clients that do not bind touch retain
+pointer emulation. The delivery mode is chosen when the finger lands and does
+not change during that contact.
+
+Two fingers in an ordinary touch-aware Wayland application stay with that
+application. Chrome can use them to pinch-zoom the web page without changing
+Hearthspace's canvas scale. Both contacts retain the original application's
+touch target, including when the first finger lifts before the second. A third
+contact cancels application delivery before the canvas gesture recognizer takes
+over. Shell controls retain their own touch behavior; X11 applications still use
+pointer emulation and do not receive native two-finger page zoom.
 
 Drag a floating window's title bar with one finger to move it, then lift to drop
 it. This works with compositor decorations and application-drawn title bars,
 including Firefox's empty tab-strip area and GTK headerbars such as Calculator's.
 Drag a resizable window's edge to resize it. Restore maximized windows first.
 
-Movement begins after eight logical pixels and includes that initial movement.
-The window follows the finger's screen distance at any canvas zoom. Adding a
+Compositor controls and pointer emulation recognize movement after eight logical
+pixels; touch-aware applications recognize their own title-bar gestures. Both
+include movement preceding an accepted move/resize request. The window follows
+the finger's screen distance at any canvas zoom. Adding a
 second contact ends the drag and suppresses that touch sequence until all fingers
 lift; touch cancellation or device removal also releases the window. Three-finger
 canvas navigation and four-/five-finger switcher pinches are separate gestures.
+Once a client touch sequence includes two contacts, it cannot authorize a window
+move or resize, even after either finger lifts. Lift all fingers before starting
+a fresh one-finger window gesture.
+
+When the compositor takes over a client touch sequence, it cancels that sequence
+once. The remaining motion and lift belong to the compositor; they do not become
+a replacement mouse press. A physical mouse cannot move or finish a window
+operation owned by a finger. Wheel input is also consumed during that operation,
+until the contacts and any mouse buttons pressed during it have been released.
 
 ## Keyboard control
 
@@ -341,8 +367,10 @@ cleaned up; the latter restored tty2 with no GPU loss or panic logged.
 - Keep compositor control presses owned until release, including cancellation.
   Device removal and session recovery must clear their button-source state
   without activating the control or sending an unmatched release to a client.
-- Client move/resize requests continue the originating pointer grab, including
-  touchscreen pointer emulation. Validate the Wayland seat, button serial and
-  window; stale or overlapping requests must not restart an operation.
+- Client move/resize requests continue the originating pointer or touch grab.
+  Validate the Wayland seat, input serial, surface and owning window; native
+  touch also retains its device/contact owner. X11 requests without a serial
+  require a live grab for that exact window. Stale or overlapping requests must
+  not restart an operation.
 - Exercise real Wayland and X11 clients at non-unit canvas zoom when changing
   window state, geometry, or transient placement.

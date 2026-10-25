@@ -7,7 +7,7 @@ import shutil
 import subprocess
 import tempfile
 import uuid
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from pathlib import Path
 
 from . import gtk_titlebar
@@ -15,6 +15,7 @@ from . import gtk_touch_checks as checks
 from .control import ControlError, Deadline
 from .daily import DailySmoke
 from .daily_checks import a11y
+from .shell_backdrop import backdrop
 from .smoke import Smoke
 
 
@@ -180,8 +181,19 @@ class GtkTouchSmoke(DailySmoke):
             else ("calculator", "gtk3")
         )
         kinds = defaults if self.args.case == "all" else (self.args.case,)
-        for kind in kinds:
-            self.step(f"{kind}-workflow", lambda smoke, kind=kind: smoke.client(kind))
+        # Pale GTK content can match the wallpaper even after correct repainting.
+        # Keep the existing pixel thresholds and supply an owned contrast surface
+        # through every app's lifecycle, including failure capture and cleanup.
+        contrast = (
+            nullcontext()
+            if self.args.titlebar_maximize or self.args.inspect_only
+            else backdrop(self, self.output)
+        )
+        with contrast:
+            for kind in kinds:
+                self.step(
+                    f"{kind}-workflow", lambda smoke, kind=kind: smoke.client(kind)
+                )
 
     def client(self, kind):
         with application(self, kind):
