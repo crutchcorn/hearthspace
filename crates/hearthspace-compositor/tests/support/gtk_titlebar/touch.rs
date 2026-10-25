@@ -161,9 +161,94 @@ fn removed_touch_device_cannot_authorize_titlebar_gesture() {
     cancelled_token("touch-remove gtk-native");
 }
 
+fn multi_contact_token(lifted: &[i32]) {
+    let _guard = headless_test_guard();
+    let (compositor, mut client, id) = native_fixture();
+    let original = down(&compositor, &mut client, id);
+    let w = window(&compositor, id);
+    action(
+        &compositor,
+        format!(
+            "touch-down gtk-native 1 {} {}",
+            w["x"].as_f64().unwrap() + 140.0,
+            w["y"].as_f64().unwrap() + 60.0
+        ),
+    );
+    frame(&compositor);
+    let events = client.take_touch_events();
+    assert!(
+        matches!(events.as_slice(), [Event::Down { surface, id: 1, x, y, .. }, Event::Frame]
+            if surface == client.surface(0) && (*x, *y) == (140.0, 60.0)),
+        "second native contact must arrive without cancellation: {events:?}",
+    );
+    let second = client.touch_down_serial();
+    assert_ne!(original, second);
+    for slot in lifted {
+        action(&compositor, format!("touch-up gtk-native {slot}"));
+        frame(&compositor);
+        let events = terminal_events(&mut client);
+        assert!(matches!(events.as_slice(), [Event::Up { id, .. }] if id == slot));
+    }
+
+    // First request occurs at this stage: an earlier rejection must not consume
+    // the token and hide accidental authority revival after either finger lifts.
+    for serial in [original, second] {
+        client.gtk_gesture(0, serial, Gesture::DoubleClick);
+        state(&compositor, &mut client, id, false, false);
+    }
+    assert!(terminal_events(&mut client).is_empty());
+    for slot in [0, 1] {
+        if lifted.contains(&slot) {
+            continue;
+        }
+        action(
+            &compositor,
+            format!(
+                "touch-motion gtk-native {slot} {} {}",
+                w["x"].as_f64().unwrap() + 80.0,
+                w["y"].as_f64().unwrap() + 50.0
+            ),
+        );
+        action(&compositor, format!("touch-up gtk-native {slot}"));
+        frame(&compositor);
+        let events = terminal_events(&mut client);
+        assert!(
+            matches!(events.as_slice(), [
+                Event::Motion { id: moved, x, y, .. }, Event::Up { id: ended, .. },
+            ] if *moved == slot && *ended == slot && (*x, *y) == (80.0, 50.0)),
+            "rejected GTK gesture must preserve native contact completion: {events:?}",
+        );
+    }
+    for serial in [original, second] {
+        client.gtk_gesture(0, serial, Gesture::DoubleClick);
+        state(&compositor, &mut client, id, false, false);
+    }
+    fresh_gesture(&compositor, &mut client, id);
+}
+
 #[test]
 fn second_contact_revokes_touch_titlebar_authority() {
-    cancelled_token("touch-down gtk-native 1 240 210");
+    multi_contact_token(&[]);
+}
+
+#[test]
+fn touch_titlebar_authority_stays_revoked_after_original_contact_lifts() {
+    multi_contact_token(&[0]);
+}
+
+#[test]
+fn touch_titlebar_authority_stays_revoked_after_second_contact_lifts() {
+    multi_contact_token(&[1]);
+}
+
+#[test]
+fn touch_titlebar_authority_stays_revoked_after_original_contact_completes_last() {
+    multi_contact_token(&[1, 0]);
+}
+
+#[test]
+fn touch_titlebar_authority_stays_revoked_after_second_contact_completes_last() {
+    multi_contact_token(&[0, 1]);
 }
 
 fn claimed_token(resize: bool) {

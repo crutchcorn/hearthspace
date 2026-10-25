@@ -224,7 +224,7 @@ VT dismisses it and clears the held input state. Unplugging the keyboard cannot 
 stuck; a backend-synthesized release keeps the selection, otherwise removal
 cancels the held switch.
 
-## Touchscreen scrolling, movement and resizing
+## Touchscreen scrolling, page zoom, movement and resizing
 
 Native Wayland applications that bind touch receive touch contacts, including their
 surface coordinates at the current canvas zoom. A one-finger swipe over ordinary
@@ -232,6 +232,14 @@ browser content can therefore scroll the page instead of selecting text as a
 mouse drag. X11 applications and Wayland clients that do not bind touch retain
 pointer emulation. The delivery mode is chosen when the finger lands and does
 not change during that contact.
+
+Two fingers in an ordinary touch-aware Wayland application stay with that
+application. Chrome can use them to pinch-zoom the web page without changing
+Hearthspace's canvas scale. Both contacts retain the original application's
+touch target, including when the first finger lifts before the second. A third
+contact cancels application delivery before the canvas gesture recognizer takes
+over. Shell controls retain their own touch behavior; X11 applications still use
+pointer emulation and do not receive native two-finger page zoom.
 
 Drag a floating window's title bar with one finger to move it, then lift to drop
 it. This works with compositor decorations and application-drawn title bars,
@@ -245,6 +253,9 @@ the finger's screen distance at any canvas zoom. Adding a
 second contact ends the drag and suppresses that touch sequence until all fingers
 lift; touch cancellation or device removal also releases the window. Three-finger
 canvas navigation and four-/five-finger switcher pinches are separate gestures.
+Once a client touch sequence includes two contacts, it cannot authorize a window
+move or resize, even after either finger lifts. Lift all fingers before starting
+a fresh one-finger window gesture.
 
 When the compositor takes over a client touch sequence, it cancels that sequence
 once. The remaining motion and lift belong to the compositor; they do not become

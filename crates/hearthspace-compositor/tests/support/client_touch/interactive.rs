@@ -1,6 +1,9 @@
 //! Native touch serials authorize CSD operations without a pointer press.
 use super::*;
 
+#[path = "two_contact_authority.rs"]
+mod two_contact;
+
 #[derive(Clone, Copy, Debug)]
 enum Operation {
     Move,

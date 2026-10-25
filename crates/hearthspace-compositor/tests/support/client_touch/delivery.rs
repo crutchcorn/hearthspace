@@ -2,6 +2,9 @@
 use super::*;
 use wayland_client::protocol::wl_pointer::{ButtonState, Event as PointerEvent};
 
+#[path = "two_contact_delivery.rs"]
+mod two_contact;
+
 fn native_drag(scale: f64, inset: (i32, i32)) {
     let _guard = headless_test_guard();
     let (compositor, mut client) = fixture(inset, scale);

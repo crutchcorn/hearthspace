@@ -28,7 +28,9 @@ impl App {
         let Target::Client(client) = &touch.target else {
             return false;
         };
-        client.serial == serial
+        client.single_contact_authority
+            && client.slots.as_slice() == [touch.slot]
+            && client.serial == serial
             && client.surface == *surface
             && surface.is_alive()
             && self

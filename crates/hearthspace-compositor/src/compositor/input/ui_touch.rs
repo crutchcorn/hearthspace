@@ -13,6 +13,7 @@ use crate::compositor::{
     App, HitTarget, ManagedSurface, ManagedWindowKind, idle::ActivityReason, windows::window_app_id,
 };
 
+mod client;
 mod frame_scroll;
 mod groups;
 mod lifecycle;
@@ -41,6 +42,9 @@ struct ClientTouch {
     surface: WlSurface,
     serial: Serial,
     location: Position,
+    slots: Vec<TouchSlot>,
+    accepts_second_contact: bool,
+    single_contact_authority: bool,
 }
 
 pub(in crate::compositor) struct UiTouch {
@@ -62,7 +66,11 @@ impl UiTouch {
     }
 
     fn owns(&self, device: &str, slot: TouchSlot) -> bool {
-        self.device == device && self.slot == slot
+        self.device == device
+            && match &self.target {
+                Target::Client(client) => client.slots.contains(&slot),
+                _ => self.slot == slot,
+            }
     }
 
     fn cancel(&mut self) -> bool {
@@ -115,15 +123,7 @@ impl App {
         first: bool,
     ) {
         if !first {
-            // A client receives wl_touch.cancel before the existing tracker
-            // recognizes any multi-finger canvas gesture.
-            if self
-                .ui_touch
-                .as_ref()
-                .is_some_and(|touch| touch.device == device && touch.slot != slot)
-            {
-                self.cancel_ui_touch();
-            }
+            self.begin_additional_ui_touch(device, slot, location, time);
             return;
         }
         if self.has_window_touch_operation() {
@@ -188,6 +188,7 @@ impl App {
         let geometry = self.ui_touch_geometry(window_index);
         let local = location - surface_location;
         let serial = SERIAL_COUNTER.next_serial();
+        let accepts_second_contact = !supported && self.navigation_available();
         if !bar {
             let index = self.raise_window(window_index);
             if let Some(root) = self.windows[index].surface.wl_surface() {
@@ -227,6 +228,9 @@ impl App {
                     surface: surface.clone(),
                     serial,
                     location,
+                    slots: vec![slot],
+                    accepts_second_contact,
+                    single_contact_authority: true,
                 })
             },
         });
@@ -268,7 +272,9 @@ impl App {
         match &mut touch.target {
             Target::Bar(swipe) => swipe.motion(location),
             Target::Client(client) => {
-                client.location = location;
+                if slot == touch.slot {
+                    client.location = location;
+                }
                 let surface = client.surface.clone();
                 self.touch.clone().motion(
                     self,
@@ -296,11 +302,9 @@ impl App {
         time: InputTime,
     ) {
         self.maintain_ui_touch();
-        let Some(touch) = self
-            .ui_touch
-            .as_ref()
-            .filter(|touch| touch.device == device && (touch.slot == slot || i32::from(slot) < 0))
-        else {
+        let Some(touch) = self.ui_touch.as_ref().filter(|touch| {
+            touch.owns(device, slot) || (touch.device == device && i32::from(slot) < 0)
+        }) else {
             return;
         };
         if cancelled {
@@ -310,19 +314,9 @@ impl App {
         let origin = touch.origin;
         match &touch.target {
             Target::Group => self.finish_group_ui_touch(time),
-            Target::Client(client) => {
-                let serial = client.serial;
-                let surface = client.surface.clone();
-                let owned = self.ui_touch_has_client_grab(&surface, serial);
-                self.touch.clone().up(
-                    self,
-                    &UpEvent {
-                        slot,
-                        serial: SERIAL_COUNTER.next_serial(),
-                        time,
-                    },
-                );
-                self.record_gtk_touch_up(device, slot, serial, owned);
+            Target::Client(_) => {
+                self.end_client_ui_touch(device, slot, time);
+                return;
             }
             Target::WindowOperation(_) => {
                 self.finish_window_touch_operation();
