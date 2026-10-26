@@ -22,7 +22,7 @@ impl App {
         if let Some(index) = index {
             self.reveal_layout_member(index, None);
         }
-        if self.layout_editing() || self.layout_confirmation_active() {
+        if self.layout_editing() || self.modal_confirmation_active() {
             return;
         }
         let focused = index.map(|i| self.windows[i].id);

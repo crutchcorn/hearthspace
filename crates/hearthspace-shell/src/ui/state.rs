@@ -56,11 +56,12 @@ pub(super) struct ShellOutputInstance {
     pub(super) show_search: bool,
     pub(super) search_request_token: Option<u64>,
     pub(super) show_power: bool,
+    pub(super) power_ui: super::session_controls::PowerUiState,
     pub(super) show_controls: bool,
     pub(super) quick_panel: super::quick_panel::Kind,
     pub(super) clock_formats: super::quick_clock::State,
     pub(super) osd: Option<super::control_osd::Osd>,
-    pub(super) confirm_logout: bool,
+    pub(super) power_confirmation: Option<super::session_controls::Confirmation>,
     pub(super) show_notifications: bool,
     pub(super) show_map: bool,
     pub(super) launch_error: Option<String>,
@@ -74,6 +75,7 @@ pub(super) struct ShellOutputInstance {
     pub(super) map_window_id: WindowId,
     pub(super) notifications_window_id: WindowId,
     pub(super) power_window_id: WindowId,
+    pub(super) power_confirm_window_id: WindowId,
     pub(super) controls_window_id: WindowId,
     pub(super) osd_window_id: WindowId,
 }
@@ -293,7 +295,7 @@ impl ShellState {
             output.show_power = false;
             output.show_notifications = false;
             output.show_controls = false;
-            output.confirm_logout = false;
+            output.power_confirmation = None;
             output.launch_error = None;
         }
     }

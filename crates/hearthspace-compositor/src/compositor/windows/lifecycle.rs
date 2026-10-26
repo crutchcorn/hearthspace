@@ -21,12 +21,18 @@ impl App {
         let remove = cause != RetirementCause::Unmapped;
         let surface = window.surface.wl_surface();
         let restore_focus = self.focused_normal_window_id == Some(id);
+        let power_confirmation = self.power_confirmation_surface(index);
         let reserved_work_area = self.reserves_shell_work_area(index);
         let restore_panel_focus = remove
             && !self.pending_search_reserves_focus()
             && self
                 .active_shell_panel_index()
                 .is_some_and(|index| self.windows[index].id == id);
+        if power_confirmation {
+            // Preserve the click before focus callbacks or surface teardown can
+            // discard Smithay's implicit grab and redirect its held releases.
+            self.retain_retiring_window_pointer_grab(id);
+        }
         let retained_context_focus = restore_panel_focus
             && surface
                 .as_ref()
@@ -50,7 +56,7 @@ impl App {
                 self.suspend_window_focus_view(index);
             }
         }
-        if (remove || restore_focus)
+        if (remove || restore_focus || power_confirmation)
             && let Some(surface) = &surface
         {
             self.clear_keyboard_focus_for_surface(surface);
@@ -66,7 +72,9 @@ impl App {
         if reserved_work_area {
             self.reconcile_window_presentations();
         }
-        if restore_panel_focus && !retained_context_focus {
+        if power_confirmation {
+            self.finish_power_confirmation(id);
+        } else if restore_panel_focus && !retained_context_focus {
             self.restore_focus_after_shell_panel();
         } else if restore_focus {
             // Automatic recovery retains viewport and any user-owned animation.

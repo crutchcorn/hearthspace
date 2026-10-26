@@ -89,7 +89,7 @@ impl App {
     pub(in crate::compositor) fn layout_scroll_group_at(&self, point: Point) -> Option<Target> {
         if self.session_locked()
             || self.canvas_preview_active()
-            || self.layout_confirmation_active()
+            || self.modal_confirmation_active()
             || self.layout_editor.drag.is_some()
         {
             return None;

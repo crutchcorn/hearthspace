@@ -73,7 +73,7 @@ impl ShellState {
             .find(|output| output.key() == output_key && output.show_power)
         {
             output.show_power = false;
-            output.confirm_logout = false;
+            output.power_confirmation = None;
             output.launch_error = None;
         }
     }

@@ -1,0 +1,25 @@
+[package]
+name = "hearthspace-lock"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.99.0"
+license = "Apache-2.0"
+
+[dependencies]
+gtk = { package = "gtk4", version = "0.11.5", features = ["v4_12"] }
+gtk4-session-lock = { version = "0.4.1", features = ["v1_2"] }
+hearthspace-common = { path = "../hearthspace-common" }
+hearthspace-ipc = { path = "../hearthspace-ipc" }
+hearthspace-shell = { path = "../hearthspace-shell" }
+hearthspace-ui-components = { path = "../ui-components" }
+image = { version = "0.25.10", default-features = false, features = ["png", "jpeg"] }
+nix = { version = "0.31.3", features = ["user"] }
+pam-client = { version = "0.5.0", default-features = false }
+tokio = { version = "1.53.3", features = ["rt", "time", "sync"] }
+zeroize = "1.8.2"
+
+[dev-dependencies]
+tempfile = "3.27.0"
+
+[lints]
+workspace = true

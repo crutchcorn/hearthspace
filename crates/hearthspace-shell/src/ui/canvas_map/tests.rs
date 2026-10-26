@@ -219,6 +219,11 @@ fn popover_icons_have_accessible_names_and_dispatch_zoom_commands() {
             ui.harness.press_tab_key(false);
             assert_eq!(ui.harness.focused_widget_id(), Some(ui.button("Zoom in")));
             ui.harness
+                .process_text_event(masonry::core::TextEvent::key_down(
+                    masonry::core::keyboard::Key::Named(masonry::core::keyboard::NamedKey::Enter),
+                ));
+            ui.dispatch(&panel_view);
+            ui.harness
                 .process_text_event(masonry::core::TextEvent::key_up(
                     masonry::core::keyboard::Key::Named(masonry::core::keyboard::NamedKey::Enter),
                 ));

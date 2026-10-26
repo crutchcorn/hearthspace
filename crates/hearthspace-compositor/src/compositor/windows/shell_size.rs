@@ -2,7 +2,7 @@
 //! Apps List retains its requested width, capped to the output's corner margins.
 use hearthspace_common::{
     SHELL_CORNER_CLEARANCE, SHELL_CORNER_MARGIN, launcher_output_name_from_app_id,
-    shell_corner_from_app_id,
+    power_confirm_output_name_from_app_id, shell_corner_from_app_id,
 };
 use smithay::{
     utils::{Logical, Size},
@@ -51,13 +51,24 @@ impl App {
             .as_deref()
             .and_then(launcher_output_name_from_app_id)
             .is_some();
-        let Some(mut size) = corner
-            .map(|corner| super::shell_corners::corner_size(corner, Some(requested), output))
-            .or_else(|| palette_size(requested, requested, output, search))
+        let power_confirmation = app_id
+            .as_deref()
+            .and_then(power_confirm_output_name_from_app_id)
+            .is_some();
+        let Some(mut size) = power_confirmation
+            .then(|| super::power_confirmation::power_confirmation_size(requested, output))
+            .or_else(|| {
+                corner
+                    .map(|corner| {
+                        super::shell_corners::corner_size(corner, Some(requested), output)
+                    })
+                    .or_else(|| palette_size(requested, requested, output, search))
+            })
         else {
             return;
         };
-        if corner.is_none()
+        if !power_confirmation
+            && corner.is_none()
             && !matches!(
                 window.kind,
                 ManagedWindowKind::ControlOsd | ManagedWindowKind::DesktopItem

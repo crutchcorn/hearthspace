@@ -274,8 +274,7 @@ fn photo_fit_selection_and_reset_keep_keyboard_focus() {
     assert_eq!(ui.harness.focused_widget_id(), Some(opener));
     ui.harness
         .focus_on(Some(ui.button("Use default background")));
-    ui.harness
-        .process_text_event(TextEvent::key_up(Key::Named(NamedKey::Enter)));
+    key(&mut ui, NamedKey::Enter);
     ui.dispatch(&view);
     assert_eq!(
         ui.button("Upload photo"),

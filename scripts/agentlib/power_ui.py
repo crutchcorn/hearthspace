@@ -162,7 +162,8 @@ def run(smoke):
     checks.click(smoke, "Suspend", "power")
     checks.opened(smoke, "power")
     smoke.capture("suspend-unavailable")
-    checks.click(smoke, "Close power menu", "power")
+    with Input(smoke.control) as inputs:
+        inputs.chord("esc")
     checks.closed(smoke)
     if peer.power.suspend_events() != events:
         raise ControlError("disabled Suspend action reached the coordinator")

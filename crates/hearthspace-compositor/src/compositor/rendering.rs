@@ -266,15 +266,18 @@ impl App {
         let hovered_window = self.hovered_normal_window_id();
         let mut ordered = order::render_order(self.windows.iter().map(|window| window.kind));
         ordered.sort_by_key(|index| {
-            std::cmp::Reverse(self.layout_render_layer(*index).unwrap_or_else(|| {
-                match self.windows[*index].kind {
-                    ManagedWindowKind::ControlOsd => 130,
-                    ManagedWindowKind::Launcher => 110,
-                    ManagedWindowKind::ShellBar | ManagedWindowKind::ShellWatcher => 100,
-                    ManagedWindowKind::Normal => 10,
-                    ManagedWindowKind::DesktopItem => 0,
-                }
-            }))
+            std::cmp::Reverse((
+                self.is_power_confirmation(*index),
+                self.layout_render_layer(*index).unwrap_or_else(|| {
+                    match self.windows[*index].kind {
+                        ManagedWindowKind::ControlOsd => 130,
+                        ManagedWindowKind::Launcher => 110,
+                        ManagedWindowKind::ShellBar | ManagedWindowKind::ShellWatcher => 100,
+                        ManagedWindowKind::Normal => 10,
+                        ManagedWindowKind::DesktopItem => 0,
+                    }
+                }),
+            ))
         });
         let mut window_spans = Vec::new();
         for index in ordered {
@@ -533,7 +536,7 @@ impl App {
                 }
             }
             window_spans.push((id, front..elements.len()));
-            if self.layout_confirmation_surface(index) && !layout.modal.is_empty() {
+            if self.modal_confirmation_surface(index) && !layout.modal.is_empty() {
                 let front = elements.len();
                 elements.append(&mut layout.modal);
                 window_backdrops.push(window_backdrop::BackdropRequest {

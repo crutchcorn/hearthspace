@@ -22,6 +22,7 @@ impl App {
         let mut order: Vec<_> = (0..self.windows.len()).collect();
         order.sort_by_key(|index| {
             (
+                self.is_power_confirmation(*index),
                 self.layout_render_layer(*index).unwrap_or_else(|| {
                     match self.windows[*index].kind {
                         ManagedWindowKind::DesktopItem => 1,
@@ -45,8 +46,7 @@ impl App {
             {
                 continue;
             }
-            if self.layout_confirmation_active() && !self.layout_confirmation_surface(window_index)
-            {
+            if self.modal_confirmation_active() && !self.modal_confirmation_surface(window_index) {
                 continue;
             }
             let output = self

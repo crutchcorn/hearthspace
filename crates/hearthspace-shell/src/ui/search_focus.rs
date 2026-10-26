@@ -45,6 +45,7 @@ pub(super) fn focus_on_activation<V>(
         dismiss: ShellState::dismiss_search,
         back: None,
         cancel_editor: true,
+        recover_focus: false,
         navigation: Vec::new(),
     }
 }
@@ -56,6 +57,7 @@ pub(super) struct FocusOnActivation<V> {
     dismiss: fn(&mut ShellState, &str),
     back: Option<fn(&mut ShellState, &str)>,
     cancel_editor: bool,
+    recover_focus: bool,
     navigation: Vec<FocusTarget>,
 }
 
@@ -80,6 +82,12 @@ impl<V> FocusOnActivation<V> {
         self.dismiss = dismiss;
         self
     }
+
+    /// Restore the target if disabling/removing a focused control leaves no focus.
+    pub(super) fn with_focus_recovery(mut self) -> Self {
+        self.recover_focus = true;
+        self
+    }
 }
 
 const CONTENT: ViewId = ViewId::new(0x53454152);
@@ -99,6 +107,7 @@ where
             inner: child.new_widget.erased().to_pod(),
             target: self.target.clone(),
             cancel_editor: self.cancel_editor,
+            recover_focus: self.recover_focus,
             back: self.back.is_some(),
             navigation: self.navigation.clone(),
         };
@@ -121,6 +130,7 @@ where
             || element.ctx.focus_target_id() == previous_editor;
         element.widget.target = self.target.clone();
         element.widget.cancel_editor = self.cancel_editor;
+        element.widget.recover_focus = self.recover_focus;
         element.widget.back = self.back.is_some();
         element.widget.navigation.clone_from(&self.navigation);
         ctx.with_id(CONTENT, |ctx| {
@@ -192,12 +202,15 @@ pub(super) struct SearchFocus {
     inner: WidgetPod<dyn Widget>,
     target: FocusTarget,
     cancel_editor: bool,
+    recover_focus: bool,
     back: bool,
     navigation: Vec<FocusTarget>,
 }
 
 #[derive(Debug)]
 struct InitializeSearchFocus;
+#[derive(Debug)]
+struct RecoverSearchFocus;
 #[derive(Debug)]
 struct DismissLauncher;
 #[derive(Debug)]
@@ -226,6 +239,14 @@ impl Widget for SearchFocus {
                     .ctx
                     .submit_untyped_action(Box::new(InitializeSearchFocus));
             });
+        } else if self.recover_focus && matches!(event, Update::ChildFocusChanged(false)) {
+            // Wait for the focus pass to finish before checking its new target.
+            // Only a loss queues recovery; gaining focus cannot queue it again.
+            ctx.mutate_child_later(&mut self.inner, |mut child| {
+                child
+                    .ctx
+                    .submit_untyped_action(Box::new(RecoverSearchFocus));
+            });
         }
     }
 
@@ -238,6 +259,15 @@ impl Widget for SearchFocus {
     ) {
         if source == self.inner.id() && action.is::<InitializeSearchFocus>() {
             if let Some(target) = *self.target.lock().unwrap() {
+                ctx.set_focus(target);
+            }
+            ctx.set_handled();
+        } else if source == self.inner.id() && action.is::<RecoverSearchFocus>() {
+            // Moving focus to a sibling must never be overridden.
+            if self.recover_focus
+                && ctx.focus_target_id().is_none()
+                && let Some(target) = *self.target.lock().unwrap()
+            {
                 ctx.set_focus(target);
             }
             ctx.set_handled();
@@ -346,6 +376,7 @@ mod tests {
             inner: contents.prepare().erased().to_pod(),
             target: Arc::new(Mutex::new(Some(search_id))),
             cancel_editor: true,
+            recover_focus: false,
             back: false,
             navigation: Vec::new(),
         }

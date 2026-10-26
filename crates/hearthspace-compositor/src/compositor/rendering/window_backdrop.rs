@@ -100,7 +100,7 @@ impl App {
             })
             .map(|(_, window)| window.id)
             .collect();
-        if self.layout_confirmation_active() {
+        if self.modal_confirmation_active() {
             live.insert(u64::MAX);
         }
         let outputs: HashSet<_> = self

@@ -13,6 +13,14 @@ session remains on its original release until logout. To remove the installation
 log out of Hearthspace first, then run `scripts/install-session uninstall` from
 another desktop. User settings and application data are preserved.
 
+Each release includes `hearthspace-lock`. The installer also creates the fixed
+`/etc/pam.d/hearthspace-lock` policy when absent, owned by root:root with mode
+`0644`, and records it for rollback and verified uninstall. Its authentication
+and account rules include the existing `login` stacks. An existing secure
+administrator-managed policy is preserved and stays outside installer ownership;
+modified managed policies stop updates and uninstall for administrator review.
+The login stack and GDM's PAM configuration are unchanged.
+
 ## Use from GDM
 
 1. Save your work and log out of the current desktop.
@@ -27,10 +35,10 @@ desktop is selected by default; GDM manages your saved session selection.
 This host already has automatic login enabled. Its configuration is preserved;
 logging out allows you to make an explicit session selection.
 
-Super+L and the shell's **Power → Lock** action start the distribution's swaylock.
-Its blue indicator remains visible while idle; typing shows password-entry feedback,
-keyboard layout, and Caps Lock state. Enter your normal account password and
-press Enter. Agents cannot enter or capture passwords or bypass authentication.
+Super+L and the shell's **Power → Lock screen** action start the release's `hearthspace-lock`.
+The lock screen shows the clock, your name, and a password entry over the desktop
+background. Enter your normal account password and press Enter or activate
+**Unlock**. Agents cannot enter or capture passwords or bypass authentication.
 See [session locking](SESSION_LOCK.md) and [power handling](POWER.md).
 
 ## Startup, shutdown, and diagnostics
@@ -98,6 +106,12 @@ entry's default runtime allocation is covered by real-supervisor regressions,
 without the explicit `--session-dir` supplied by the native test harness.
 
 ## Acceptance
+
+The historical native records below used swaylock and do not establish native
+authentication acceptance for `hearthspace-lock`. Current local-user acceptance
+uses `scripts/power-smoke --locker hearthspace-lock --manual-unlock` with the
+other required [power-test options](POWER_TESTING.md). The harness observes local
+authentication and leaves capture and synthetic-input denial in force while locked.
 
 Installer regressions stage files without sudo and check completeness, ownership,
 release pinning, updates, rollback and uninstall. Supervisor regressions cover

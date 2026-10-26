@@ -129,13 +129,15 @@ impl App {
         if self.has_window_touch_operation() {
             return;
         }
-        if self.begin_group_ui_touch(device, slot, location, time) {
+        if !self.modal_confirmation_active()
+            && self.begin_group_ui_touch(device, slot, location, time)
+        {
             return;
         }
         if !self.navigation_available()
             && !self.canvas_search_active()
             && !self.layout_editing()
-            && !self.layout_confirmation_active()
+            && !self.modal_confirmation_active()
         {
             return;
         }
@@ -151,7 +153,7 @@ impl App {
             && !window_app_id(&self.windows[window_index].surface).is_some_and(|id| {
                 hearthspace_common::frame_layout::layout_editor_from_app_id(&id).is_some()
             })
-            && !self.layout_confirmation_surface(window_index)
+            && !self.modal_confirmation_surface(window_index)
         {
             return;
         }

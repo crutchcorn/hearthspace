@@ -15,6 +15,11 @@
     "native_features": []
   },
   {
+    "package": "hearthspace-lock",
+    "binaries": ["hearthspace-lock"],
+    "native_features": []
+  },
+  {
     "package": "hearthspace-settingsd",
     "binaries": ["hearthspace-settingsd"],
     "native_features": []

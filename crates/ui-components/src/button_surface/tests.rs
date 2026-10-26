@@ -80,6 +80,7 @@ fn selected_surface_rebuild_keeps_hover_focus_geometry_and_activation() {
         crate::FOCUS_RING_ON_GLASS,
         "selection must not mask keyboard focus"
     );
+    harness.process_text_event(TextEvent::key_down(Key::Named(NamedKey::Enter)));
     harness.process_text_event(TextEvent::key_up(Key::Named(NamedKey::Enter)));
     assert!(harness.pop_action::<ButtonPress>().is_some());
 }
@@ -193,6 +194,7 @@ fn pointer_and_keyboard_focus_use_orange_without_changing_native_activation() {
             changed.iter().any(|[r, g, b, a]| *a > 0 && r > g && g > b),
             "the visible focus edge must be orange, not neutral text ink"
         );
+        harness.process_text_event(TextEvent::key_down(Key::Named(NamedKey::Enter)));
         harness.process_text_event(TextEvent::key_up(Key::Named(NamedKey::Enter)));
         assert!(harness.pop_action::<ButtonPress>().is_some());
     }

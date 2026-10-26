@@ -3,7 +3,6 @@
 import argparse
 import json
 import shlex
-import shutil
 import subprocess
 from pathlib import Path
 
@@ -50,8 +49,8 @@ class PowerSmoke(DailySmoke):
             raise ControlError(
                 "build the compositor session-lock-fixture example first"
             )
-        if self.locker == "swaylock" and shutil.which("swaylock") is None:
-            raise ControlError("automatic locker acceptance requires swaylock")
+        if self.locker == "hearthspace-lock":
+            verify.locker_ready(ROOT / "target/debug/hearthspace-lock")
         command(["sudo", "-n", "true"])
         local = command(["timedatectl", "show", "--property=LocalRTC", "--value"])
         if local["stdout"].strip() != "no":
@@ -112,10 +111,10 @@ class PowerSmoke(DailySmoke):
         self.step("ready", DailySmoke.ready)
         self.step("power-ready", PowerSmoke.power_ready)
         self.step("preserved-app", PowerSmoke.application)
-        if self.locker == "swaylock":
+        if self.locker == "hearthspace-lock":
             self.step("unlocked-before-sleep", PowerSmoke.unlocked)
             self.step("suspend-resume", PowerSmoke.suspend)
-            self.step("automatic-swaylock", PowerSmoke.automatic_locker)
+            self.step("automatic-hearthspace-lock", PowerSmoke.automatic_locker)
             if self.manual_unlock:
                 power_manual.observe(self)
                 self.step("recovered-desktop", PowerSmoke.desktop)
@@ -155,10 +154,12 @@ class PowerSmoke(DailySmoke):
             or status.get("lock_confirmed") is not False
         ):
             raise ControlError(
-                "automatic swaylock test must begin from an unlocked desktop"
+                "automatic hearthspace-lock test must begin from an unlocked desktop"
             )
-        if verify.owned_swaylocks(self.manifest["compositor_pid"]):
-            raise ControlError("a swaylock process already exists in the owned session")
+        if verify.owned_lockers(self.manifest["compositor_pid"]):
+            raise ControlError(
+                "a hearthspace-lock process already exists in the owned session"
+            )
         self.record("unlocked-before-sleep", status=status)
 
     def preserved_processes(self):
@@ -170,13 +171,13 @@ class PowerSmoke(DailySmoke):
     def automatic_locker(self):
         self.preserved_processes()
         lockers = self.until(
-            "real swaylock child in the owned compositor session",
-            lambda: verify.owned_swaylocks(self.manifest["compositor_pid"]),
+            "real hearthspace-lock child in the owned compositor session",
+            lambda: verify.owned_lockers(self.manifest["compositor_pid"]),
         )
         self.locked()
         self.owned_lockers = lockers
         self.record(
-            "automatic-swaylock-confirmed",
+            "automatic-hearthspace-lock-confirmed",
             lockers=lockers,
             authenticated_unlock_tested=False,
             cleanup="owned-native-session-stop",
@@ -322,11 +323,16 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--session", type=Path, required=True)
     parser.add_argument("--allow-system-suspend", action="store_true")
-    parser.add_argument("--locker", choices=("fixture", "swaylock"), default="fixture")
+    parser.add_argument(
+        "--locker",
+        choices=("fixture", "hearthspace-lock", "swaylock"),
+        default="fixture",
+        help="swaylock is a compatibility alias for hearthspace-lock",
+    )
     parser.add_argument(
         "--manual-unlock",
         action="store_true",
-        help="with --locker swaylock, wait for local user authentication and verify the restored desktop",
+        help="with --locker hearthspace-lock, wait for local user authentication and verify the restored desktop",
     )
     parser.add_argument(
         "--unlock-timeout",

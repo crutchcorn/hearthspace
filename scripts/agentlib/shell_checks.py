@@ -33,6 +33,10 @@ REMOVED = (
     "Settings",
     "Lock",
     "Log out",
+    "Lock screen",
+    "Log off",
+    "Reboot",
+    "Turn off",
     "Control center",
 )
 CONTROL_CORNERS = {

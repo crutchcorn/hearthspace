@@ -1,4 +1,4 @@
-"""Bounded, read-only observation of a user's local swaylock authentication."""
+"""Bounded, read-only observation of a user's local hearthspace-lock authentication."""
 
 import math
 import time
@@ -11,10 +11,12 @@ DEFAULT_UNLOCK_TIMEOUT = 300
 
 
 def configure(args):
+    if getattr(args, "locker", "fixture") == "swaylock":
+        args.locker = "hearthspace-lock"
     manual = getattr(args, "manual_unlock", False)
     unlock = getattr(args, "unlock_timeout", None)
-    if manual and getattr(args, "locker", "fixture") != "swaylock":
-        raise ControlError("--manual-unlock requires --locker swaylock")
+    if manual and getattr(args, "locker", "fixture") != "hearthspace-lock":
+        raise ControlError("--manual-unlock requires --locker hearthspace-lock")
     if not manual and unlock is not None:
         raise ControlError("--unlock-timeout requires --manual-unlock")
     if manual:
@@ -48,7 +50,7 @@ def observe(smoke):
     expected = smoke.owned_lockers
     if len(expected) != 1:
         raise ControlError(
-            "manual unlock requires exactly one confirmed owned swaylock"
+            "manual unlock requires exactly one confirmed owned hearthspace-lock"
         )
 
     def remaining():
@@ -58,7 +60,9 @@ def observe(smoke):
                 raise ControlError("desktop verification budget is reserved")
             return min(deadline.remaining(), available)
         except ControlError as error:
-            raise ControlError("timed out waiting for local swaylock unlock") from error
+            raise ControlError(
+                "timed out waiting for local hearthspace-lock unlock"
+            ) from error
 
     def sample():
         # Each status exchange is short, even though a human may take minutes.
@@ -69,9 +73,9 @@ def observe(smoke):
         if verify.process_identity(compositor["pid"]) != compositor:
             raise ControlError("compositor changed while waiting for manual unlock")
         status = smoke.control.status()
-        lockers = verify.owned_swaylocks(compositor["pid"])
+        lockers = verify.owned_lockers(compositor["pid"])
         if any(locker != expected[0] for locker in lockers):
-            raise ControlError("owned swaylock changed during manual unlock")
+            raise ControlError("owned hearthspace-lock changed during manual unlock")
         remaining()
         return status, lockers
 
@@ -79,7 +83,9 @@ def observe(smoke):
     verify.locked(initial)
     verify.recovery_ready(initial)
     if lockers != expected:
-        raise ControlError("confirmed swaylock exited before the manual unlock wait")
+        raise ControlError(
+            "confirmed hearthspace-lock exited before the manual unlock wait"
+        )
     smoke.record("step-start", name="manual-unlock", budget=budget)
     smoke.record(
         "manual-unlock-wait",

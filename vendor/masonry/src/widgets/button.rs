@@ -9,7 +9,7 @@ use include_doc_path::include_doc_path;
 use tracing::{Span, trace, trace_span};
 
 use crate::core::MeasureCtx;
-use crate::core::keyboard::{Key, NamedKey};
+use crate::core::keyboard::{Code, Key, NamedKey};
 use crate::core::pointer::PointerButton;
 use crate::core::{
     AccessCtx, AccessEvent, ChildrenIds, EventCtx, LayoutCtx, NewWidget, PaintCtx,
@@ -33,6 +33,7 @@ use crate::widgets::Label;
 )]
 pub struct Button {
     child: WidgetPod<dyn Widget>,
+    keyboard_press: Option<(Key, Code)>,
 }
 
 // --- MARK: BUILDERS
@@ -53,6 +54,7 @@ impl Button {
     pub fn new(child: NewWidget<impl Widget + ?Sized>) -> Self {
         Self {
             child: child.erased().to_pod(),
+            keyboard_press: None,
         }
     }
 
@@ -134,12 +136,25 @@ impl Widget for Button {
     ) {
         match event {
             TextEvent::Keyboard(event)
-                if event.state.is_up()
+                if ctx.is_focus_target()
                     && (matches!(&event.key, Key::Character(c) if c == " ")
                         || event.key == Key::Named(NamedKey::Enter)) =>
             {
-                ctx.submit_action::<Self::Action>(ButtonPress { button: None });
+                if event.state.is_down() {
+                    // A repeat can arrive after focus moved from another button.
+                    // Only the original press establishes activation ownership.
+                    if !event.repeat {
+                        self.keyboard_press = Some((event.key.clone(), event.code));
+                    }
+                } else if self
+                    .keyboard_press
+                    .take()
+                    .is_some_and(|(key, code)| key == event.key && code == event.code)
+                {
+                    ctx.submit_action::<Self::Action>(ButtonPress { button: None });
+                }
             }
+            TextEvent::WindowFocusChange(false) => self.keyboard_press = None,
             _ => (),
         }
     }
@@ -158,12 +173,15 @@ impl Widget for Button {
         }
     }
 
-    fn update(
-        &mut self,
-        _ctx: &mut UpdateCtx<'_>,
-        _props: &mut PropertiesMut<'_>,
-        _event: &Update,
-    ) {
+    fn update(&mut self, _ctx: &mut UpdateCtx<'_>, _props: &mut PropertiesMut<'_>, event: &Update) {
+        if matches!(
+            event,
+            Update::FocusChanged(false)
+                | Update::DisabledChanged(true)
+                | Update::StashedChanged(true)
+        ) {
+            self.keyboard_press = None;
+        }
     }
 
     fn register_children(&mut self, ctx: &mut RegisterCtx<'_>) {

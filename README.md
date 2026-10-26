@@ -56,7 +56,9 @@ background dismisses it. The native libinput backend does not emit five-finger
 touchpad gestures. Native sessions provide
 notifications, locking, and [lid/suspend recovery](./docs/POWER.md);
 the bell icon opens notifications, the map icon opens the canvas minimap, and
-the power menu contains Lock and confirmed Log out. Settings is available in
+the power menu contains Lock screen, Suspend, Log off, Reboot, and Turn off,
+with confirmations for ending the session or shutting down. The native lock
+screen uses PAM authentication and follows the selected theme. Settings is available in
 Apps List. See [the four-corner shell](./docs/SHELL.md) and
 [window management](./docs/WINDOW_MANAGEMENT.md) for keyboard controls and
 [app compatibility](./docs/APPS.md) for profile and

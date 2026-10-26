@@ -114,6 +114,9 @@ fn apps_list_has_visible_keyboard_focus_and_opens_with_enter() {
         components::FOCUS_RING_ON_GLASS
     );
     ui.harness
+        .process_text_event(TextEvent::key_down(Key::Named(NamedKey::Enter)));
+    ui.dispatch(&apps);
+    ui.harness
         .process_text_event(TextEvent::key_up(Key::Named(NamedKey::Enter)));
     ui.dispatch(&apps);
     assert!(ui.state.outputs[0].show_search);

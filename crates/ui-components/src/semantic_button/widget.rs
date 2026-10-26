@@ -2,8 +2,8 @@ use xilem::masonry::{
     accesskit::{Node, Role, Toggled},
     core::{
         AccessCtx, AccessEvent, ChildrenIds, EventCtx, LayoutCtx, MeasureCtx, NewWidget, PaintCtx,
-        PointerEvent, PropertiesMut, PropertiesRef, RegisterCtx, TextEvent, Widget, WidgetMut,
-        WidgetPod,
+        PointerEvent, PropertiesMut, PropertiesRef, RegisterCtx, TextEvent, Update, UpdateCtx,
+        Widget, WidgetMut, WidgetPod,
     },
     imaging::Painter,
     kurbo::{Axis, Size},
@@ -69,6 +69,9 @@ impl Widget for SemanticButton {
     ) {
         self.behavior.on_access_event(ctx, props, event);
     }
+    fn update(&mut self, ctx: &mut UpdateCtx<'_>, props: &mut PropertiesMut<'_>, event: &Update) {
+        self.behavior.update(ctx, props, event);
+    }
     fn measure(
         &mut self,
         ctx: &mut MeasureCtx<'_>,
@@ -133,6 +136,10 @@ impl Widget for SemanticButton {
         ChildrenIds::from_slice(&[self.child.id()])
     }
 }
+
+#[cfg(test)]
+#[path = "keyboard_tests.rs"]
+mod keyboard_tests;
 
 #[cfg(test)]
 mod tests {

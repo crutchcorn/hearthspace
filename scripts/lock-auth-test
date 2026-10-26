@@ -1,0 +1,317 @@
+#!/usr/bin/env python3
+"""Opt-in real PAM regression suite; requires root, cc, libpam headers, unshare.
+
+Build the hearthspace-lock test binary separately, then run:
+  sudo python3 scripts/lock-auth-test --uid "$(id -u)" --test-binary "$LOCK_TEST_BINARY"
+
+The runner compiles only its synthetic C module. Each case executes the prebuilt
+ignored Rust test as the explicit non-root UID. Policy files exist only in a
+temporary directory bound over /etc/pam.d (and /usr/lib/pam.d when present) in a
+private mount namespace. Host policy and accounts are never edited. No host
+password is requested or used.
+"""
+
+import argparse
+import os
+import pwd
+import secrets
+import signal
+import stat
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+
+CASES = (
+    "success",
+    "wrong",
+    "expired",
+    "new_authtok",
+    "auth_userchange",
+    "account_userchange",
+    "second_prompt",
+    "echo_prompt",
+    "error_then_success",
+    "missing_policy",
+    "unreadable_policy",
+    "invalid_owner",
+    "invalid_mode",
+)
+TEST = "auth::private_policy_tests::real_pam_private_policy"
+MODULE = "pam_hearthspace_lock_fixture.so"
+SPOOFED_USER = "hearthspace-lock-spoofed-environment-user"
+ENVIRONMENT = {
+    "PATH": "/usr/bin:/bin",
+    "LANG": "C",
+    "LC_ALL": "C",
+    "PYTHONDONTWRITEBYTECODE": "1",
+}
+
+
+class SuiteFailure(Exception):
+    """Only case/results are printed; child output may contain sensitive data."""
+
+
+def require(condition):
+    if not condition:
+        raise SuiteFailure()
+
+
+def bounded(command, timeout, *, new_group=False, visible=False, **kwargs):
+    child = subprocess.Popen(
+        command,
+        stdin=subprocess.DEVNULL,
+        stdout=None if visible else subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        start_new_session=new_group,
+        **kwargs,
+    )
+    try:
+        return child.wait(timeout=timeout)
+    finally:
+        # The outside supervisor owns the namespace's entire process group.
+        # Killing it also removes the bind mount when its last process exits.
+        if new_group:
+            try:
+                os.killpg(child.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+        elif child.poll() is None:
+            child.kill()
+        child.wait(timeout=5)
+
+
+def owned_file(path, text, *, mode=0o644, uid=0, gid=0):
+    # Every parent directory is root-owned and non-writable by the test user.
+    # O_EXCL and O_NOFOLLOW avoid following any existing temporary file/link.
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, mode)
+    with os.fdopen(fd, "w", encoding="utf-8") as stream:
+        os.fchown(stream.fileno(), uid, gid)
+        os.fchmod(stream.fileno(), mode)
+        stream.write(text)
+
+
+def trusted_directory(path):
+    metadata = path.lstat()
+    require(stat.S_ISDIR(metadata.st_mode))
+    require(metadata.st_uid == 0 and metadata.st_mode & 0o022 == 0)
+
+
+def private_mounts():
+    for line in Path("/proc/self/mountinfo").read_text().splitlines():
+        columns = line.split()
+        optional = columns[6 : columns.index("-")]
+        require(
+            not any(
+                item.startswith(("shared:", "master:", "propagate_from:"))
+                for item in optional
+            )
+        )
+
+
+def policy(case):
+    module = f"/etc/pam.d/{MODULE}"
+    return (
+        f"auth required {module} {case}\n"
+        f"account required {module} {case}\n"
+        f"password required {module} {case}\n"
+        f"session required {module} {case}\n"
+    )
+
+
+def run_case(args, source, account, case, mode=0o664):
+    for name in ("hearthspace-lock", ".events", ".completed", ".hearthspace-lock-test"):
+        (source / name).unlink(missing_ok=True)
+    if case != "missing_policy":
+        owned_file(source / "hearthspace-lock", policy(case))
+        if case == "invalid_owner":
+            os.chown(source / "hearthspace-lock", account.pw_uid, account.pw_gid)
+        if case == "invalid_mode":
+            os.chmod(source / "hearthspace-lock", mode)
+        if case == "unreadable_policy":
+            os.chmod(source / "hearthspace-lock", 0o600)
+    for name in (".events", ".completed"):
+        owned_file(
+            source / name, "", mode=0o600, uid=account.pw_uid, gid=account.pw_gid
+        )
+    marker = (
+        "\n".join(
+            (
+                "hearthspace-lock-private-pam-v1",
+                args.nonce,
+                args.parent_mnt,
+                os.readlink("/proc/self/ns/mnt"),
+                str(account.pw_uid),
+                case,
+                str(source),
+            )
+        )
+        + "\n"
+    )
+    owned_file(source / ".hearthspace-lock-test", marker, mode=0o444)
+    environment = dict(
+        ENVIRONMENT,
+        USER=SPOOFED_USER,
+        LOGNAME=SPOOFED_USER,
+        HEARTHSPACE_LOCK_TEST_NONCE=args.nonce,
+    )
+    status = bounded(
+        [str(args.test_binary), "--ignored", "--exact", TEST, "--test-threads=1"],
+        10,
+        env=environment,
+        cwd="/",
+        user=account.pw_uid,
+        group=account.pw_gid,
+        extra_groups=[],
+    )
+    return status == 0 and (source / ".completed").read_text() == f"{case}\n"
+
+
+def namespace_suite(args, account):
+    # Internal mode is not itself authorization to mount anything. Verify the
+    # live parent's namespace differs and all propagation is private first.
+    namespace = os.readlink("/proc/self/ns/mnt")
+    parent = os.readlink(f"/proc/{os.getppid()}/ns/mnt")
+    require(parent == args.parent_mnt and namespace != parent)
+    private_mounts()
+    root = Path(args.root_dir)
+    require(
+        root.parent == Path("/tmp") and root.name.startswith("hearthspace-lock-pam-")
+    )
+    source = root / "pam.d"
+    trusted_directory(root)
+    trusted_directory(source)
+    destinations = [Path("/etc/pam.d")]
+    vendor = Path("/usr/lib/pam.d")
+    if vendor.exists():
+        destinations.append(vendor)
+    for destination in destinations:
+        trusted_directory(destination)
+        require(
+            bounded(
+                ["/usr/bin/mount", "--bind", "--", str(source), str(destination)],
+                10,
+                env=ENVIRONMENT,
+            )
+            == 0
+        )
+        require(os.path.samestat(source.stat(), destination.stat()))
+    private_mounts()
+    failed = False
+    for case in CASES:
+        try:
+            if case == "invalid_mode":
+                passed = True
+                for mode in (0o664, 0o646):
+                    passed = run_case(args, source, account, case, mode) and passed
+            else:
+                passed = run_case(args, source, account, case)
+        except (OSError, SuiteFailure, subprocess.TimeoutExpired):
+            passed = False
+        print(f"{case}: {'PASS' if passed else 'FAIL'}", flush=True)
+        failed |= not passed
+    return int(failed)
+
+
+def supervisor(args, account):
+    script = Path(__file__).resolve()
+    fixture = (
+        script.parent.parent / "crates/hearthspace-lock/tests/fixtures/private_policy.c"
+    )
+    with tempfile.TemporaryDirectory(
+        prefix="hearthspace-lock-pam-", dir="/tmp"
+    ) as temporary:
+        root = Path(temporary)
+        source = root / "pam.d"
+        source.mkdir(mode=0o755)
+        os.chmod(source, 0o755)
+        require(
+            bounded(
+                [
+                    "/usr/bin/cc",
+                    "-shared",
+                    "-fPIC",
+                    "-O2",
+                    "-std=c11",
+                    "-Wall",
+                    "-Wextra",
+                    "-Werror",
+                    "-Wl,-z,relro,-z,now",
+                    str(fixture),
+                    "-lpam",
+                    "-o",
+                    str(source / MODULE),
+                ],
+                30,
+                new_group=True,
+                env=ENVIRONMENT,
+            )
+            == 0
+        )
+        os.chmod(source / MODULE, 0o644)
+        # Missing/unreadable policy cases check an empty journal, then prove
+        # this prompt-and-accept `other` fallback actually accepts.
+        owned_file(source / "other", policy("success"))
+        os.chmod(root, 0o755)
+        command = [
+            "/usr/bin/unshare",
+            "--mount",
+            "--propagation",
+            "private",
+            "--",
+            sys.executable,
+            str(script),
+            "--namespace",
+            "--root-dir",
+            str(root),
+            "--parent-mnt",
+            os.readlink("/proc/self/ns/mnt"),
+            "--nonce",
+            secrets.token_hex(24),
+            "--uid",
+            str(account.pw_uid),
+            "--test-binary",
+            str(args.test_binary),
+        ]
+        status = bounded(command, 180, new_group=True, visible=True, env=ENVIRONMENT)
+        print(f"suite: {'PASS' if status == 0 else 'FAIL'}", flush=True)
+        return int(status != 0)
+
+
+def interrupted(_signum, _frame):
+    # Turn normal termination into unwinding so the supervisor kills its child
+    # process group before TemporaryDirectory removes the fixture files.
+    raise KeyboardInterrupt()
+
+
+def main():
+    for stop_signal in (signal.SIGTERM, signal.SIGHUP):
+        signal.signal(stop_signal, interrupted)
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--test-binary", type=Path, required=True)
+    parser.add_argument("--uid", type=int, required=True)
+    parser.add_argument("--namespace", action="store_true", help=argparse.SUPPRESS)
+    for internal in ("root-dir", "parent-mnt", "nonce"):
+        parser.add_argument(f"--{internal}", help=argparse.SUPPRESS)
+    args = parser.parse_args()
+    try:
+        require(os.getuid() == 0 and os.geteuid() == 0 and args.uid > 0)
+        account = pwd.getpwuid(args.uid)
+        require(account.pw_name != SPOOFED_USER)
+        require(pwd.getpwnam(account.pw_name).pw_uid == args.uid)
+        args.test_binary = args.test_binary.resolve(strict=True)
+        require(args.test_binary.is_file() and os.access(args.test_binary, os.X_OK))
+        if args.namespace:
+            require(all((args.root_dir, args.parent_mnt, args.nonce)))
+            return namespace_suite(args, account)
+        return supervisor(args, account)
+    except (OSError, KeyError, SuiteFailure, subprocess.TimeoutExpired):
+        print("setup: FAIL", flush=True)
+        return 1
+    except KeyboardInterrupt:
+        print("suite: INTERRUPTED", flush=True)
+        return 130
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

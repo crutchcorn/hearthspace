@@ -40,6 +40,7 @@ impl App {
         // A complete lock/VT transition can occur between layout polls. Cancel
         // shell-side pending/queued openings as well as compositor input state.
         self.invalidate_shell_popups();
+        self.reset_power_confirmation();
         self.cancel_pending_shell_click();
         self.cancel_titlebar_pointer();
         self.reset_focused_shell_peek();

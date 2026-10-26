@@ -79,6 +79,9 @@ mod navigation;
 #[path = "support/navigation_client.rs"]
 mod navigation_client;
 #[cfg(feature = "test-apps")]
+#[path = "support/power_confirmation.rs"]
+mod power_confirmation;
+#[cfg(feature = "test-apps")]
 #[path = "support/remote_input.rs"]
 mod remote_input;
 #[cfg(feature = "test-apps")]
@@ -137,6 +140,9 @@ mod csd_lifecycle;
 mod x11_interactive;
 
 #[cfg(feature = "test-apps")]
+#[path = "support/touch_cancel.rs"]
+mod touch_cancel;
+#[cfg(feature = "test-apps")]
 #[path = "support/touch_interactive.rs"]
 mod touch_interactive;
 
@@ -157,6 +163,7 @@ struct HeadlessCompositor {
     child: Child,
     runtime_dir: tempfile::TempDir,
     command_socket_path: PathBuf,
+    _executable_dir: Option<tempfile::TempDir>,
 }
 
 impl HeadlessCompositor {
@@ -203,12 +210,32 @@ impl HeadlessCompositor {
         remote_desktop: bool,
         configure: impl FnOnce(&mut Command),
     ) -> Self {
+        Self::spawn_with_executable(
+            size,
+            layout,
+            path,
+            scale,
+            remote_desktop,
+            Path::new(env!("CARGO_BIN_EXE_hearthspace")),
+            configure,
+        )
+    }
+
+    fn spawn_with_executable(
+        size: &str,
+        layout: Option<&Path>,
+        path: Option<&Path>,
+        scale: i32,
+        remote_desktop: bool,
+        executable: &Path,
+        configure: impl FnOnce(&mut Command),
+    ) -> Self {
         let runtime_dir = tempfile::tempdir().expect("create headless runtime dir");
         let command_socket_path = runtime_dir.path().join("command.sock");
         let wayland_display = format!("hearthspace-test-{}", std::process::id());
         let log = std::fs::File::create(runtime_dir.path().join("compositor.log"))
             .expect("create compositor log");
-        let mut command = Command::new(env!("CARGO_BIN_EXE_hearthspace"));
+        let mut command = Command::new(executable);
         command
             .args(["--headless", "--no-shell", "--headless-size", size])
             .arg(format!("--headless-scale={scale}"))
@@ -240,6 +267,7 @@ impl HeadlessCompositor {
             child,
             runtime_dir,
             command_socket_path,
+            _executable_dir: None,
         }
     }
 

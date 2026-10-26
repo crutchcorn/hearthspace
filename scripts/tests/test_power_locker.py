@@ -16,7 +16,7 @@ from agentlib.power import PowerSmoke
 class AutomaticLockerTests(unittest.TestCase):
     def test_automatic_mode_never_launches_or_releases_the_test_fixture(self):
         smoke = object.__new__(PowerSmoke)
-        smoke.locker = "swaylock"
+        smoke.locker = "hearthspace-lock"
         smoke.manual_unlock = False
         smoke.connect = Mock(
             return_value={
@@ -43,7 +43,7 @@ class AutomaticLockerTests(unittest.TestCase):
                 "preserved-app",
                 "unlocked-before-sleep",
                 "suspend-resume",
-                "automatic-swaylock",
+                "automatic-hearthspace-lock",
             ],
         )
         smoke.control.request.assert_not_called()
@@ -64,12 +64,12 @@ class AutomaticLockerTests(unittest.TestCase):
                 PowerSmoke.unlocked(smoke)
         smoke.record.assert_not_called()
 
-    def test_preexisting_swaylock_cannot_prove_prepare_for_sleep_launched_it(self):
+    def test_preexisting_locker_cannot_prove_prepare_for_sleep_launched_it(self):
         smoke = Mock()
         smoke.manifest = {"compositor_pid": 10}
         smoke.control.status.return_value = {"locked": False, "lock_confirmed": False}
         with (
-            patch("agentlib.power.verify.owned_swaylocks", return_value=[{"pid": 20}]),
+            patch("agentlib.power.verify.owned_lockers", return_value=[{"pid": 20}]),
             self.assertRaisesRegex(ControlError, "already exists"),
         ):
             PowerSmoke.unlocked(smoke)
@@ -92,27 +92,50 @@ class AutomaticLockerTests(unittest.TestCase):
             root = Path(directory)
             compositor = root / "10"
             compositor.mkdir()
+            binaries = root / "bin"
+            binaries.mkdir()
+            executable = binaries / "hearthspace-lock"
+            executable.write_bytes(b"owned locker")
+            impostor = binaries / "impostor"
+            impostor.write_bytes(b"unrelated executable")
+            (compositor / "exe").symlink_to(binaries / "hearthspace-compositor")
             group = "0::/user.slice/session-103.scope\n"
             (compositor / "cgroup").write_text(group)
             for pid, ppid, uid, cgroup, name in (
-                (20, 10, os.getuid(), group, "swaylock"),
-                (21, 10, os.getuid(), "0::/other.scope\n", "swaylock"),
-                (22, 11, os.getuid(), group, "swaylock"),
+                (20, 10, os.getuid(), group, verify.LOCKER_COMM),
+                (21, 10, os.getuid(), "0::/other.scope\n", verify.LOCKER_COMM),
+                (22, 11, os.getuid(), group, verify.LOCKER_COMM),
                 (23, 10, os.getuid(), group, "fake"),
-                (24, 10, os.getuid() + 1, group, "swaylock"),
+                (24, 10, os.getuid() + 1, group, verify.LOCKER_COMM),
+                (25, 10, os.getuid(), group, verify.LOCKER_COMM),
+                (26, 10, os.getuid(), group, "hearthspace-lock"),
             ):
                 path = root / str(pid)
                 path.mkdir()
                 (path / "comm").write_text(name)
+                (path / "exe").symlink_to(impostor if pid == 25 else executable)
                 (path / "status").write_text(
                     f"PPid:\t{ppid}\nUid:\t{uid} {uid} {uid} {uid}\n"
                 )
                 (path / "cgroup").write_text(cgroup)
                 (path / "stat").write_text(f"{pid} ({name}) S " + "0 " * 18 + "444")
-            found = verify.owned_swaylocks(10, root)
+            found = verify.owned_lockers(10, root)
             self.assertEqual([item["pid"] for item in found], [20])
             self.assertEqual(found[0]["start_ticks"], 444)
             self.assertEqual(found[0]["cgroup"], group)
+            self.assertEqual(found[0]["comm"], "hearthspace-loc")
+            self.assertEqual(found[0]["exe"], str(executable))
+            self.assertEqual(found[0]["exe_inode"], executable.stat().st_ino)
+            # The running executable may survive a rebuild at the same pathname.
+            # Its old inode must not count as the binary selected for this run.
+            original = binaries / "old-locker"
+            executable.rename(original)
+            (root / "20/exe").unlink()
+            (root / "20/exe").symlink_to(original)
+            executable.write_bytes(b"replacement build")
+            self.assertNotIn(
+                20, [item["pid"] for item in verify.owned_lockers(10, root)]
+            )
 
 
 if __name__ == "__main__":

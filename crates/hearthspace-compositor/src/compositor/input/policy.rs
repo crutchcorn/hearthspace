@@ -96,7 +96,7 @@ impl App {
             switcher: self.window_switcher_active(),
             keyboard_switcher: self.window_switcher_source() == Some(SwitcherSource::Keyboard),
             layout: self.layout_editing(),
-            confirmation: self.layout_confirmation_active(),
+            confirmation: self.modal_confirmation_active(),
             keyboard_grab: self.keyboard.is_grabbed(),
             pointer_grab: self.pointer.is_grabbed(),
             window_operation: self.drag.is_some() || self.resize.is_some(),

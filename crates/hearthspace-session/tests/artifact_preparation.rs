@@ -16,6 +16,8 @@ use std::{
 struct Fixture {
     root: PathBuf,
     artifact: PathBuf,
+    locker_artifact: PathBuf,
+    locker_mode: &'static str,
     child: Option<Child>,
     _manager: UnixListener,
 }
@@ -59,6 +61,8 @@ impl Fixture {
             .unwrap();
         Self {
             artifact: root.join("custom target/debug/hearthspace-app-scope-guard"),
+            locker_artifact: root.join("custom target/debug/hearthspace-lock"),
+            locker_mode: "fresh",
             root,
             child: None,
             _manager: manager,
@@ -71,6 +75,12 @@ impl Fixture {
         fs::set_permissions(&self.artifact, fs::Permissions::from_mode(0o700)).unwrap();
     }
 
+    fn stale_locker_sibling(&mut self) {
+        self.locker_artifact = self.root.join("bin/hearthspace-lock");
+        fs::write(&self.locker_artifact, "#!/bin/sh\n# stale locker\nexit 0\n").unwrap();
+        fs::set_permissions(&self.locker_artifact, fs::Permissions::from_mode(0o700)).unwrap();
+    }
+
     fn start(&mut self, development: bool, mode: &str) {
         let mut command = Command::new(self.root.join("bin/hearthspace-session"));
         command
@@ -78,6 +88,8 @@ impl Fixture {
             .env("HEARTHSPACE_ARTIFACT_TEST_ROOT", &self.root)
             .env("ARTIFACT_PATH", &self.artifact)
             .env("ARTIFACT_MODE", mode)
+            .env("LOCKER_ARTIFACT_PATH", &self.locker_artifact)
+            .env("LOCKER_ARTIFACT_MODE", self.locker_mode)
             .env("CARGO_TARGET_DIR", self.root.join("custom target"))
             .env("HEARTHSPACE_REPO_ROOT", "/nonexistent/installed-checkout")
             .env("HOME", self.root.join("home"))
@@ -101,7 +113,11 @@ impl Fixture {
                 "--no-desktop-services",
                 "--no-watch-apps",
                 "--startup-timeout",
-                if mode == "hang" { "1" } else { "5" },
+                if mode == "hang" || self.locker_mode == "hang" {
+                    "1"
+                } else {
+                    "5"
+                },
             ])
             .arg("--session-dir")
             .arg(self.root.join("session"));
@@ -163,7 +179,7 @@ impl Drop for Fixture {
 }
 
 #[test]
-fn clean_dev_start_prepares_guard_at_cargos_custom_artifact_path() {
+fn clean_dev_start_prepares_locker_and_guard_at_cargos_custom_artifact_paths() {
     let mut fixture = Fixture::new();
     fixture.start(true, "fresh");
     assert!(
@@ -179,6 +195,13 @@ fn clean_dev_start_prepares_guard_at_cargos_custom_artifact_path() {
             .contains("fresh helper")
     );
     assert!(fixture.root.join("build-called").exists());
+    assert!(fixture.root.join("locker-build-called").exists());
+    assert!(
+        fs::read_to_string(&fixture.locker_artifact)
+            .unwrap()
+            .contains("fresh helper")
+    );
+    assert!(!fixture.root.join("bin/hearthspace-lock").exists());
     assert!(
         !fixture.root.join("session").exists(),
         "{}",
@@ -247,6 +270,7 @@ fn missing_reported_guard_prevents_owner_submission() {
 fn installed_mode_uses_release_sibling_without_consulting_cargo() {
     let mut fixture = Fixture::new();
     fixture.stale_sibling();
+    fixture.locker_mode = "fail";
     fixture.start(false, "fail");
     assert!(!fixture.wait().success());
     assert_eq!(
@@ -254,6 +278,7 @@ fn installed_mode_uses_release_sibling_without_consulting_cargo() {
         fixture.artifact.to_str()
     );
     assert!(!fixture.root.join("build-called").exists());
+    assert!(!fixture.root.join("locker-build-called").exists());
 }
 
 #[test]
@@ -268,6 +293,61 @@ fn stalled_guard_build_cannot_outlive_startup_deadline() {
     );
     let pid = fs::read_to_string(fixture.root.join("build-pid")).unwrap();
     assert!(!PathBuf::from(format!("/proc/{pid}")).exists());
+    assert!(!fixture.root.join("owner-submitted").exists());
+    assert!(!fixture.root.join("session").exists());
+}
+
+#[test]
+fn failed_locker_build_never_accepts_a_stale_sibling_or_prepares_the_guard() {
+    let mut fixture = Fixture::new();
+    fixture.stale_locker_sibling();
+    fixture.locker_mode = "fail";
+    fixture.start(true, "fresh");
+    assert!(!fixture.wait().success());
+    assert!(
+        fixture.output().contains("hearthspace-lock build failed"),
+        "{}",
+        fixture.output()
+    );
+    assert!(fixture.root.join("locker-build-called").exists());
+    assert!(!fixture.root.join("build-called").exists());
+    assert!(!fixture.root.join("owner-submitted").exists());
+    assert!(!fixture.root.join("session").exists());
+}
+
+#[test]
+fn missing_locker_artifact_report_never_accepts_a_stale_sibling() {
+    let mut fixture = Fixture::new();
+    fixture.stale_locker_sibling();
+    fixture.locker_mode = "no-message";
+    fixture.start(true, "fresh");
+    assert!(!fixture.wait().success());
+    assert!(
+        fixture
+            .output()
+            .contains("did not report one executable for required helper hearthspace-lock"),
+        "{}",
+        fixture.output()
+    );
+    assert!(!fixture.root.join("build-called").exists());
+    assert!(!fixture.root.join("owner-submitted").exists());
+    assert!(!fixture.root.join("session").exists());
+}
+
+#[test]
+fn stalled_locker_build_cannot_outlive_startup_deadline() {
+    let mut fixture = Fixture::new();
+    fixture.locker_mode = "hang";
+    fixture.start(true, "fresh");
+    assert!(!fixture.wait().success());
+    assert!(
+        fixture.output().contains("deadline"),
+        "{}",
+        fixture.output()
+    );
+    let pid = fs::read_to_string(fixture.root.join("locker-build-pid")).unwrap();
+    assert!(!PathBuf::from(format!("/proc/{pid}")).exists());
+    assert!(!fixture.root.join("build-called").exists());
     assert!(!fixture.root.join("owner-submitted").exists());
     assert!(!fixture.root.join("session").exists());
 }

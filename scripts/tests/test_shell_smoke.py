@@ -9,7 +9,7 @@ import unittest
 from functools import partial
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import Mock, patch
+from unittest.mock import Mock, call, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from agentlib import daily_checks, shell_checks, shell_smoke
@@ -227,27 +227,53 @@ class ShellEvidenceTests(unittest.TestCase):
     def test_power_workflow_only_checks_lock_and_cancels_logout(self):
         smoke = Mock(marker="FIXTURE")
         smoke.control.status.return_value = {"locked": False}
+        flow = Mock()
         with (
             patch.object(shell_smoke.checks, "click") as click,
             patch.object(shell_smoke.checks, "opened") as opened,
-            patch.object(shell_smoke.checks, "closed"),
+            patch.object(shell_smoke.checks, "closed") as closed,
             patch.object(shell_smoke.checks, "elements", return_value=[]),
             patch.object(shell_smoke.checks, "panel", return_value=None),
             patch.object(shell_smoke.checks, "tab_to") as tab,
             patch.object(shell_smoke, "Input") as input_type,
         ):
+            flow.attach_mock(click, "click")
+            flow.attach_mock(opened, "opened")
+            flow.attach_mock(closed, "closed")
+            flow.attach_mock(
+                input_type.return_value.__enter__.return_value.chord, "chord"
+            )
             shell_smoke.pointer_panels(smoke)
         names = [call.args[1] for call in click.call_args_list]
-        self.assertIn("Log out", names)
+        # The menu and affirmative share a label. Exactly one click opens the
+        # dialog; no second click may confirm log off.
+        self.assertEqual(names.count("Log off"), 1)
         self.assertNotIn("Cancel", names)
+        self.assertNotIn("Lock screen", names)
+        self.assertNotIn("Reboot", names)
+        self.assertNotIn("Turn off", names)
         self.assertNotIn("Confirm log out", names)
         self.assertNotIn("Lock", names)
+        self.assertNotIn("Log out", names)
+        self.assertNotIn("Close power menu", names)
         opened.assert_any_call(smoke, "power", exclusive=True)
+        opened.assert_any_call(smoke, "power-confirm", exclusive=True)
         self.assertEqual(
-            [call.args[1] for call in tab.call_args_list], ["Lock", "Cancel"]
+            [call.args[1] for call in tab.call_args_list], ["Lock screen", "Cancel"]
         )
-        input_type.return_value.__enter__.return_value.chord.assert_called_once_with(
-            "enter"
+        self.assertEqual(
+            input_type.return_value.__enter__.return_value.chord.call_args_list,
+            [call("enter"), call("esc")],
+        )
+        flow.assert_has_calls(
+            [
+                call.chord("enter"),
+                call.closed(smoke),
+                call.click(smoke, "Power"),
+                call.opened(smoke, "power", exclusive=True),
+                call.chord("esc"),
+                call.closed(smoke),
+            ]
         )
         smoke.control.request.assert_not_called()
 
@@ -258,10 +284,13 @@ class ShellEvidenceTests(unittest.TestCase):
             patch.object(
                 shell_checks,
                 "a11y",
-                side_effect=[{"elements": []}, {"elements": [{"name": "Lock"}]}],
+                side_effect=[
+                    {"elements": []},
+                    {"elements": [{"name": "Lock screen"}]},
+                ],
             ) as a11y,
         ):
-            shell_checks.tab_to(smoke, "Lock")
+            shell_checks.tab_to(smoke, "Lock screen")
         self.assertEqual(
             [
                 call.args
@@ -270,7 +299,7 @@ class ShellEvidenceTests(unittest.TestCase):
             [("tab",)],
         )
         self.assertIn("@focused='true'", a11y.call_args.args[2])
-        self.assertIn("@name='Lock'", a11y.call_args.args[2])
+        self.assertIn("@name='Lock screen'", a11y.call_args.args[2])
         smoke.record.assert_called_once()
 
     def test_keyboard_focus_failure_stops_after_eight_tabs(self):

@@ -65,17 +65,20 @@ impl App {
             self.layout_editor.suppress_release = false;
             return true;
         }
-        if self.layout_confirmation_active() {
+        if self.modal_confirmation_active() {
             if self
                 .pointer
                 .grab_start_data()
                 .and_then(|start| start.focus)
                 .and_then(|(surface, _)| self.window_index_for_surface(&surface))
-                .is_some_and(|index| self.layout_confirmation_surface(index))
+                .is_some_and(|index| self.modal_confirmation_surface(index))
             {
                 return false;
             }
-            let consumed=!self.hit_test(self.pointer_location).is_some_and(|hit| matches!(hit,crate::compositor::HitTarget::Client{window_index,..} if self.layout_confirmation_surface(window_index)));
+            let consumed = !self.hit_test(self.pointer_location).is_some_and(|hit| {
+                matches!(hit, crate::compositor::HitTarget::Client { window_index, .. }
+                    if self.modal_confirmation_surface(window_index))
+            });
             if consumed && state == ButtonState::Pressed {
                 self.layout_editor.consumed_buttons.insert(button);
             }
