@@ -24,7 +24,7 @@ Passive indicators are hidden. Active and attention-requesting indicators remain
 visible. App exit removes its icon and closes an open menu belonging to it.
 Restarting an app registers a fresh item without leaving a duplicate behind.
 The bar shows the app icons directly, without an extra tray button or list.
-Application tray icons remain in the top system group even when the same app is
+By default, application tray icons remain in the top system group even when the same app is
 running or pinned in the bottom dock. Each tray icon retains its original artwork,
 status, and menu; the dock icon launches the app or focuses its windows.
 
@@ -37,17 +37,17 @@ icons and animated icon movies are not currently composed.
 
 The supported interface is StatusNotifierItem (also used by AppIndicator and
 Ayatana libraries). The legacy X11 system-tray window-embedding protocol is not
-implemented. A tray host cannot create an icon for an app that exports neither
-interface. Normal native sessions use the standard user bus. The explicit private-bus
+implemented. Apps must export StatusNotifierItem to appear in Hearthspace's tray.
+Normal native sessions use the standard user bus. The explicit private-bus
 harness isolates its icons and menus from another running desktop. A shell that
 finds an existing StatusNotifierWatcher registers with it without stealing its name.
 
 The pinned AccessKit AT-SPI adapter incorrectly advertises disabled menu items
 as `Enabled`/`Sensitive`. Hearthspace sets the underlying disabled state, excludes
 these rows from keyboard focus, and rejects pointer and semantic activation.
-[AccessKit PR 788](https://github.com/AccessKit/accesskit/pull/788) fixes the adapter
-in `accesskit_atspi_common` 0.21.0; adopting it requires upgrading the pinned Xilem
-and AccessKit family from the current 0.18.1 adapter. Acceptance records this
+[AccessKit PR 788](https://github.com/AccessKit/accesskit/pull/788) addresses the adapter;
+adopting it requires a compatible Xilem and AccessKit upgrade from the pinned
+0.18.1 adapter. Acceptance records this
 limitation explicitly and verifies disabled actions never reach the app, with
 an enabled action immediately afterwards proving that the transport works.
 
@@ -57,7 +57,7 @@ Build the real shell, compositor, agent helpers, and independent tray peer:
 
 ```sh
 cargo build --locked --workspace --all-targets --features udev,e2e,test-apps
-HEARTHSPACE_E2E=1 HEARTHSPACE_TRAY_EVIDENCE=/tmp/hearthspace-tray-headless \
+HEARTHSPACE_E2E=1 HEARTHSPACE_TRAY_EVIDENCE="$PWD/artifacts/tray-headless-1" \
   python3 -m unittest discover -s scripts/tests -p test_tray_headless.py -v
 ```
 
@@ -91,7 +91,7 @@ flag is set.
 The same workflow runs on an owned native VT:
 
 ```sh
-scripts/tray-smoke --session /tmp/hearthspace-tray-native
+scripts/tray-smoke --session "$PWD/artifacts/tray-native-1"
 ```
 
 Read [native control](../.agents/skills/hearthspace-native-control/SKILL.md) and
@@ -114,97 +114,13 @@ pairs, accessibility snapshots, workflow `results.json`, and the session manifes
 The fixture process is terminated in a `finally` path, including failed assertions;
 the outer harness also tears down the owned desktop session.
 
-## Validation record — 2026-10-15
+<a id="repeated-popup-gpu-hang--2026-10-22"></a>
 
-- `cargo fmt --all -- --check`, workspace/all-target Clippy with `-D warnings`,
-  and workspace/all-target builds passed with `udev,e2e,test-apps` enabled.
-- All **615 Rust tests** passed with `HEARTHSPACE_E2E=1`,
-  `HEARTHSPACE_REQUIRE_ATSPI=1`, and `--test-threads=1`.
-- All **322 Python tests** passed with `HEARTHSPACE_E2E=1`; Ruff check/format and
-  `git diff --check` passed. Final headless tray evidence is under
-  `/tmp/hearthspace-tray-headless-final`, with the other shell workflows under
-  `/tmp/hearthspace-tray-shell-final`.
-- `scripts/tray-smoke --session /tmp/hearthspace-tray-native-1` passed on the
-  physical GPD laptop: kernel `7.0.0-38-generic`, AMD Radeon 880M/890M with
-  `amdgpu`, eDP-1 at 2560×1600 and scale 2. All 17 retained native captures
-  completed page flips. Mouse, keyboard, private AT-SPI actions, and owned
-  uinput touchscreen taps reached the independent app. The installed
-  Ayatana 0.5.94/GTK 3.24.52 libraries exported a real named icon and working menu.
-- The harness used VT7 and restored the VT recorded at launch, **TTY3** (an
-  earlier preflight observed TTY2). Cleanup reports complete, the runtime and
-  temporary touchscreen are gone, and the owned unit has `MainPID=0` and an
-  empty control group. The unit retains an `exit-code` failure record because
-  shutdown tried to stop an already absent app-scope guard; the compositor
-  exited normally and all cleanup checks passed. Its logs remain available.
+## Finite menu geometry
 
-Earlier headless attempts are retained separately: attempt 1 exposed the fixed
-DBusMenu array signature; attempt 2 was interrupted for that fix; attempt 3
-exposed the documented upstream disabled-state flag; attempts 4/5 passed before
-strengthening icon assertions; attempt 6 verified the corrected Ayatana glyph
-but was interrupted for GPU test coordination. Only the complete final suite
-and native run above are the final acceptance record.
-
-The optimized build was installed with `scripts/install-session install` as
-release `8c62c1b1dc73`. Installed binary hashes were compared against the release
-build and the installation manifest was verified. The user's existing desktop
-session was not restarted. No additional OS packages were needed.
-
-## Repeated popup GPU hang — 2026-10-22
-
-On the physical ThinkPad T480s, repeated tray-menu creation hung the Intel UHD
-620 (`8086:5917`, i915, kernel `7.0.0-38-generic`). A first opening succeeded;
-another opening after unregister/register could hang the shell GPU context.
-Checked Vello shaders did not prevent it. CPU preprocessing instead exposed a
-NaN assertion, and an instrumented diagnostic captured non-finite coordinates
-already in the input path. Its evidence is retained in
-`/tmp/hearthspace-gpu-capture.vfc1gr61/flatten-nan.txt`.
-
-The [Masonry Portal repair](../patches/README.md#masonry-finite-scrollbar-geometry)
-keeps scrollbar progress finite when focus reveal occurs at an exact fit and a
-later resize exposes the hidden bar. A renderer-free regression fails on the
-original dependency and passes with this repair. Production Vello and shader
-settings remain unchanged.
-
-The targeted native comparison passed first opening and unregister/register
-followed by another opening in the same shell process, with normal GPU
-rendering. Evidence is in `/tmp/hearthspace-gpu-portal.mwspkdj0`, with exact
-binary provenance in `target/gpu-portal/provenance.json`. An initial harness
-attempt lacked its copied tray fixture and stopped before interaction; the
-retained `single-ready` and `reregister` attempts both passed. No GPU loss or
-panic appeared in the session or kernel logs. Output eDP-1 was 1920×1080 at
-scale 1. Cleanup restored tty2, stopped the session and app scopes, removed the
-runtime, and left the owned unit inactive with `MainPID=0`.
-
-The later `/tmp/hearthspace-tray-portal.c687y_3p` run passed the complete ordinary
-tray workflow, including real touchscreen actions and the required installed
-Ayatana indicator library. Its additional standalone-overflow phase stopped
-during setup with `tray frame widget is not mapped`, before overflow input was
-tested. Evidence and complete cleanup are retained; this run does not count as
-overflow acceptance.
-
-Standalone overflow subsequently passed in
-`/tmp/hearthspace-tray-overflow-verified.f9Q5om`: 59 registered icons on both the
-top and left edges, wheel navigation to both endpoints, every Tab/Shift+Tab
-focus-and-reveal step, reverse entry at the trailing icon, and physical touch
-dragging. Pixel checks verified the revealed icons; no application callbacks,
-menus, or canvas movement leaked from scrolling. Session/kernel logs contain no
-GPU loss or panic. Cleanup restored tty2, removed the runtime and temporary
-touchscreen devices, and left the owned service inactive with `MainPID=0`.
-
-The intervening `/tmp/hearthspace-tray-overflow-final.UpeyFQ` attempt exhausted
-its initial-readiness deadline because it required every fixture in one AT-SPI
-snapshot. AccessKit intentionally omits offscreen Portal children. Readiness now
-accepts the observed clipped subset while rejecting duplicate/unknown names and
-requiring actual clipping. Registration still accounts for all 59 fixtures, and
-the complete forward/reverse traversal proves each is reachable. Both failed
-attempts retain their evidence and completed cleanup.
-
-The final software-rendered headless suite reached the Ayatana menu snapshot
-with only 0.046 seconds left in its shared 120-second budget. The complete
-unchanged workflow then passed in 123.83 seconds under a diagnostic budget;
-workflow-only time was 120.95 seconds. It included 240 AT-SPI subprocesses,
-26 captures, and nine PNG decodes. Those categories overlap and are not additive.
-Evidence is retained in `/tmp/hearthspace-icon-final-e2e.rpc4my38/tray` and
-`/tmp/hearthspace-tray-final-timed-180`. The headless test now allows 180 seconds
-in total; all delivery, removal, pixel and menu assertions, and individual IPC
-deadlines, remain unchanged.
+Tray menus depend on the [Masonry scrollbar geometry patch](../patches/README.md#masonry-finite-scrollbar-geometry).
+Focus reveal at an exact fit must leave finite coordinates when a later resize
+exposes a scrollbar. Invalid geometry can reach the renderer during repeated
+popup creation. Keep unregister/register, repeated opening, and overflow checks
+when updating the UI dependencies; a single successful menu opening does not
+exercise that lifecycle.

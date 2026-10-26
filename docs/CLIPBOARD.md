@@ -1,5 +1,12 @@
 # Clipboard
 
+Copy and paste between Wayland and X11 applications with their usual shortcuts.
+Selecting text and middle-clicking uses a separate primary selection, leaving
+the ordinary clipboard unchanged. Hearthspace keeps no clipboard history, so
+closing the application that owns copied data can make that data unavailable.
+
+## Selection ownership
+
 Hearthspace uses Smithay's `wl_data_device` selection handling for ordinary
 Wayland copy/paste and its XWM selection bridge for XWayland interoperability.
 Keyboard focus controls which Wayland client receives the clipboard offer;
@@ -8,13 +15,12 @@ X11 applications share the same X server, so this is an XWM-level access check.
 
 The bridge forwards advertised MIME types and transfers data through Smithay's
 file-descriptor APIs. Hearthspace does not read application clipboard contents
-into its window metadata or retain a clipboard history. The owning application
-supplies the data; closing it can leave the clipboard unavailable until another copy.
-Primary selection uses Smithay's primary-selection protocol and the XWM bridge.
-Selecting text and middle-clicking pastes that selection independently of the
-ordinary Ctrl+C/Ctrl+V clipboard, including between Wayland and XWayland apps.
-Both selection offers follow keyboard focus. Cross-protocol drag-and-drop remains
-separate work.
+into its window metadata. The owning application supplies the data.
+Primary selection uses Smithay's primary-selection protocol and the XWM bridge,
+including transfers between Wayland and XWayland apps.
+Both selection offers follow keyboard focus. General application-to-application
+cross-protocol drag-and-drop is not implemented. Hearthspace separately supports
+dragging its own [desktop files](DESKTOP_ITEMS.md) into Wayland or X11 applications.
 
 Agents can explicitly replace the clipboard with `hearthspace-agent clipboard-set`
 or replace it and send a paste shortcut with `hearthspace-agent paste`. These
@@ -25,9 +31,9 @@ that explicit payload until replaced, and serves it through bounded asynchronous
 transfers so a stalled paste recipient cannot freeze the desktop. The `type`
 command retains its keyboard-event behavior and US ASCII mapping.
 
-Large X11 transfers use Smithay's INCR protocol support. The upstream dependency
-is pinned to a revision containing the INCR header fix; no local fork or vendored
-copy is used.
+Large X11 transfers use Smithay's INCR protocol support. The vendored Smithay base
+includes the upstream INCR header fix. Its local changes and refresh conditions
+are recorded in the [dependency patch ledger](../patches/README.md).
 
 ## Regression workflow
 
@@ -40,8 +46,8 @@ depend on the automation CLI's ASCII typing support.
 
 For X11 Ctrl+C selections larger than 64 KiB, the fixture offers UTF-8 bytes
 through GDK's normal clipboard API. This avoids a GTK 4.22 string serializer
-deadlock fixed by [GTK commit `420845f7`](https://github.com/GNOME/gtk/commit/420845f7bd4ede96d72d175d159110a5b48181af)
-in GTK 4.24. The transfer still uses X11 INCR and ordinary destination paste;
+deadlock addressed by [GTK commit `420845f7`](https://github.com/GNOME/gtk/commit/420845f7bd4ede96d72d175d159110a5b48181af).
+The transfer still uses X11 INCR and ordinary destination paste;
 small copies, cuts, and Wayland copies retain GtkTextView's standard bindings.
 Fixture JSON records the last copy/cut's `clipboard_serialization` as
 `gdk-utf8-bytes` or `gtk-text-view` (`none` before the first copy/cut). This is
@@ -71,11 +77,11 @@ Run the same clipboard workflow on a spare native VT, separately from headless
 GPU tests:
 
 ```sh
-scripts/clipboard-smoke --session /tmp/hearthspace-clipboard-1 --timeout 120
+scripts/clipboard-smoke --session "$PWD/artifacts/clipboard-native-1" --timeout 120
 ```
 
-This command uses the binaries already built above, starts an owned native
-session, and stops it on success or failure. The launcher retains its independent
+Choose a fresh session path. This command uses the binaries already built above,
+starts an owned native session, and stops it on success or failure. The launcher retains its independent
 watchdog. It preserves app logs, input text, observed editor state, command/results
 JSON, and PNG/metadata captures; the final result requires VT restoration and
 complete session cleanup. See [Native Testing](NATIVE_TESTING.md) for host

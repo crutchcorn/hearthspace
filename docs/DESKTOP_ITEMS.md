@@ -3,7 +3,9 @@
 Every installed application in Apps List also has a permanent desktop shortcut.
 Favorites remain a separate choice: removing a favorite does not remove its
 desktop icon. Files and folders come from the user's configured XDG desktop
-directory. Hearthspace does not create the experiment's sample files.
+directory. These are the user's real files and installed applications.
+
+## Select and move
 
 Choose **Select desktop items** in Canvas tools, or press **V** while the desktop
 has focus. A click selects an icon; double-click or press Enter to open it.
@@ -13,14 +15,15 @@ intersecting icons with a rectangle. Hold Alt while dragging to align the
 grabbed icon with the dot grid, preserving the spacing between selected items.
 Pressing or releasing Alt updates the alignment even when the pointer is still.
 The same grid aligns [window movement and resizing](WINDOW_MANAGEMENT.md).
-Escape cancels a move and restores its starting
-positions, or clears selection when no drag is active.
+Escape cancels a move and restores its starting positions, or clears selection when no drag is active.
 
 Tab and Shift+Tab move keyboard focus between desktop icons. Arrow keys move to
 an icon in that direction; Space selects the focused icon. Keyboard focus has a
 visible accent ring, while clicking preserves native focus without adding that
 ring. The accessible button name includes the full filename or app name even
 when the visible label wraps or truncates.
+
+## Open items and manage favorites
 
 Drop an app shortcut onto Apps List to add a favorite. The desktop icon returns
 to its original position. Favorites remain pinned in the app dock in their saved
@@ -29,23 +32,14 @@ Files and folders use GIO to select the user's default application. Both Open
 and Open With ask the compositor to launch the selected installed desktop entry,
 using the same application environment and owned Snap scope as app shortcuts.
 GIO expands the entry's file arguments; filenames are never executed as commands.
-Launch preparation runs outside the compositor event loop, with at most four
-workers and an eight-second preparation/launch deadline. Native D-Bus handlers
-keep a supervised GIO connection until the application acknowledges the file
-request. Snap handlers inherit their prepared scope instead of relying on an
-unscoped bus activation. Directory and
-catalog changes are refreshed on a worker. A separate artwork worker reuses
-GIO-validated GNOME thumbnails and reads embedded FLAC front covers when no
-usable thumbnail exists. Files without usable artwork use their themed MIME
-icons. Opening Settings and changing themes reuse the retained artwork.
-The desktop supports up to 4,096 combined items; exceeding that limit reports
-an error in Apps List while keeping its complete application catalog available.
 
 Drag selected files or folders onto an application's content to offer their
 local file URIs through Wayland drag-and-drop or X11 XDND. Applications choose
 whether to accept the files. Dropping onto an application leaves the desktop
 icons in their original positions; dropping onto the canvas moves them. Escape
 cancels the transfer without sending the files.
+
+## File actions
 
 Right-click an icon, or press Menu / Shift+F10 while it has keyboard focus, to
 open its context menu. Files support Open, Open With, Cut, Copy, Rename, Move to
@@ -65,12 +59,27 @@ Linux trash implementation. File operations run off the UI thread, and failures
 remain visible in the menu. Closing a menu during a transfer dismisses the menu;
 it does not cancel a file operation already in progress.
 
-Icons stay beneath application windows and move and zoom with the canvas.
-Each is an ordinary Xilem-rendered shell surface with the website's 88 by 96
+## Placement and appearance
+
+Canvas icons stay beneath application windows and move and zoom with the canvas.
+Each is an ordinary Xilem-rendered shell surface with an 88 by 96
 logical-pixel tile. Native file, folder and Settings glyphs use filled pale
 accent variants over a photo; labels become white with shadows. Real application
 artwork and file previews retain their colors. Themes and accent changes update
 existing surfaces.
+
+## Launch and artwork contracts
+
+Launch preparation runs outside the compositor event loop, with at most four
+workers and an eight-second preparation/launch deadline. Native D-Bus handlers
+keep a supervised GIO connection until the application acknowledges the file
+request. Snap handlers inherit their prepared scope instead of relying on an
+unscoped bus activation. Directory and catalog changes are refreshed on a worker. A separate artwork worker reuses
+GIO-validated GNOME thumbnails and reads embedded FLAC front covers when no
+usable thumbnail exists. Files without usable artwork use their themed MIME
+icons. Opening Settings and changing themes reuse the retained artwork.
+The desktop supports up to 4,096 combined items; exceeding that limit reports
+an error in Apps List while keeping its complete application catalog available.
 
 Application artwork is shared by desktop tiles, Apps List, the dock, and matched
 window decorations. Requests retain the desktop application's identity, so two
@@ -84,21 +93,20 @@ JPEG decoding retains the application's existing size and allocation limits.
 
 File previews do not write to the user's files or thumbnail cache. Lofty reads
 FLAC picture metadata; the existing `image` decoder handles PNG and JPEG covers.
-The shell uses Lofty 0.25.4 with its default features and enables the `png` and
-`jpeg` codecs in `image`.
 Reads stay within the first 16 MiB of metadata, each picture is limited to 8 MiB,
 and raster dimensions/allocation are bounded. At most eight previews are loaded
 per worker pass. Both successful and missing previews are retained until the
 source or its validated thumbnail changes; file identity and nanosecond timestamps
 also detect replacements with a preserved filename or modification time.
 
+## Ownership and persistence
+
 The compositor owns selection, hit testing, canvas positions, and drag movement.
 The shell owns accessible controls, icons, labels, catalog discovery, and app
 activation. This keeps dragging independent of shell repaint or IPC latency.
 Compositor-owned surfaces negotiate server decoration ownership without drawing
 a titlebar. This avoids initializing a hidden client frame for every icon.
-Desktop surfaces never enter the app dock,
-window switcher or window-group selection.
+Desktop surfaces never enter the app dock, window switcher or window-group selection.
 
 Positions use stable application IDs and desktop filenames. They are recorded
 alongside the existing spatial layout and saved on normal compositor shutdown.
@@ -107,32 +115,13 @@ can opt in with `HEARTHSPACE_LAYOUT_PATH`. Missing applications do not erase
 saved positions, so reinstalling an app restores its placement.
 
 [Canvas search](CANVAS_SEARCH.md) can temporarily bring matching icons into view
-without changing their saved positions. Frame attachment, layout editing and
-peeking remain separate prototype features.
+without changing their saved positions. [Change layout](SHELL.md#change-layout)
+can attach icons to an output edge as compact tiles. On the canvas,
+[peeking](WINDOW_MANAGEMENT.md#covered-canvas-work) exposes covered icons and
+returns them to their home positions when space becomes available.
 
 Implementation: `hearthspace-shell/src/desktop_items.rs` discovers real objects;
 `ui/desktop` coordinates shell surfaces and worker tasks; `ui/desktop_item`
 paints the native tiles; the compositor's `desktop` module manages canvas
 interaction. The headless desktop workflow exercises native input, accessibility,
 application opening, and canvas transforms together.
-
-## Native artwork validation — 2026-10-22
-
-The physical Intel UHD 620 session at 1920×1080, scale 1, displayed both real
-Desktop FLAC covers on canvas tiles and attached frame tiles. Tab, Shift+Tab,
-and Space selected each file without opening it. Color probes passed for the
-32×32 frame covers in light/orange and dark/blue themes; settings and placements
-were restored afterwards. A first fixed-delay capture caught the tiles before
-their final resize. The follow-up waited within a ten-second bound for the
-same exact artwork probes and passed on its second capture; both theme checks
-passed on their first capture. No pixel tolerances were relaxed.
-
-Software Updater displayed its configured theme icon. Z.A.T.O. displayed the
-Steam artwork declared by its installed launcher; that historical check did not
-validate the game's own artwork, now supported by the application-aware fallback
-above. Opening VLC from its desktop
-icon with Enter produced a focused X11 window with a 44-pixel server titlebar
-and the VLC cone in its titlebar. Evidence, page-flip metadata, state snapshots,
-and source-file hashes are under
-`/tmp/hearthspace-gpu-portal.mwspkdj0/icon-acceptance`. Both FLAC files and their
-existing GNOME thumbnails retained their original hashes and recorded metadata.

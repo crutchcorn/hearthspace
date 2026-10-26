@@ -52,6 +52,8 @@ jobs:
             clang \
             dbus \
             foot \
+            gir1.2-gtk-3.0 \
+            gir1.2-gtk-4.0 \
             libayatana-appindicator3-1 \
             libclang-dev \
             libdrm-dev \
@@ -59,11 +61,15 @@ jobs:
             libgbm-dev \
             libgl1-mesa-dri \
             libgles2-mesa-dev \
+            libglib2.0-bin \
             libgstreamer-plugins-base1.0-dev \
             libgstreamer1.0-dev \
             libgtk-4-dev \
             libgtk-3-0t64 \
+            libgtk4-layer-shell-dev \
+            libgtk4-session-lock-dev \
             libinput-dev \
+            libpam0g-dev \
             libseat-dev \
             libsystemd-dev \
             libudev-dev \
@@ -73,6 +79,7 @@ jobs:
             mesa-vulkan-drivers \
             pkg-config \
             python3 \
+            python3-gi \
             wayland-protocols \
             wayland-utils \
             wayvnc \

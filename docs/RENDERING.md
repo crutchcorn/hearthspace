@@ -1,102 +1,110 @@
-# Rendering & Client Buffers
+# Rendering and client buffers
 
-Evergreen notes on how Hearthspace composites client buffers, how we handle
-GPU (dmabuf) clients, and a known performance artifact that only appears under
-software rendering in the development VM.
+Hearthspace composes application buffers, native shell surfaces, and compositor
+chrome into one desktop. This guide explains the boundaries that matter when
+changing that path: buffer readiness, displayed geometry, damage, and presentation.
+For output ownership and frame pacing, see [DRM/KMS](DRM.md).
 
-## How clients hand us pixels
+## Client buffers and readiness
 
-Wayland clients deliver frames as either:
+Wayland clients supply their own pixels. Hearthspace supports shared-memory
+(`wl_shm`) buffers and GPU buffers through `zwp_linux_dmabuf_v1`.
 
-- **SHM buffers:** plain shared-memory pixels. The client has already finished
-  drawing by the time it commits, so the buffer is immediately ready and cheap
-  for us to upload/sample.
-- **dmabuf buffers:** GPU-side buffers (e.g. GTK4's GL renderer, Firefox, the
-  Xilem shell). These come with an *implicit-sync fence* that only signals
-  once the client's GPU work has actually finished. We advertise
-  `zwp_linux_dmabuf_v1` so these clients can hand us hardware buffers instead of
-  failing EGL setup.
+Shared-memory buffers contain pixels the client has prepared for the compositor.
+They still require renderer import or upload; shared memory does not make drawing
+free. A dmabuf shares a buffer with the renderer and can carry outstanding GPU
+work through implicit synchronization. Its availability for import and its
+readiness for sampling are separate concerns.
 
-Because our `GlesRenderer` is not reachable from the Wayland handlers (it lives
-on `CalloopData`, a sibling of the `App` handler state), dmabuf imports are
-*deferred*: `DmabufHandler::dmabuf_imported` pushes the buffer onto
-`App.pending_dmabuf_imports`, which the event loop drains and imports via
-`process_pending_dmabuf_imports`.
+The Wayland handlers queue dmabuf import requests. The event loop imports them
+through the active backend's renderer and reports success or failure to the
+client. This keeps renderer ownership in the backend while the protocol handlers
+retain responsibility for the request. Advertised formats and device feedback
+must describe what that renderer can import.
 
-## Deferring commits until buffers are ready (the readiness blocker)
+Before applying a surface commit, Hearthspace asks Smithay for a dmabuf readiness
+blocker. When a wait is needed, a calloop source watches the buffer's readiness
+and releases the blocked transaction. An already-ready buffer needs no blocker.
+This avoids deliberately blocking the event loop while waiting for a client to
+finish drawing. Failure to register the readiness source is logged and must be
+treated as a synchronization problem when investigating corrupted output.
 
-A GPU client can commit a dmabuf before its fence has signalled. If we
-composited it immediately we could sample a half-drawn buffer (tearing /
-corruption). To avoid that, `CompositorHandler::new_surface` installs a
-pre-commit hook on every surface that:
+This path uses implicit synchronization. Import support alone does not establish
+support for every format, modifier, synchronization protocol, or driver pairing.
+Keep compatibility failures distinct from native mode-setting failures.
 
-1. Reads the pending buffer and, if it is a dmabuf, calls
-   `dmabuf.generate_blocker(Interest::READ)`.
-2. Attaches a `DmabufBlocker` to the commit (`add_blocker`) and registers the
-   one-shot `DmabufSource` (which polls the fence fd) on the calloop loop.
-3. When the source fires, `blocker_cleared` releases the transaction and the
-   commit is applied.
+## One displayed geometry for drawing and input
 
-This is the standard Smithay/anvil pattern and mirrors how Mutter and KWin defer
-compositing until client buffers are ready — the fence wait happens
-asynchronously on the event loop instead of blocking it. `App` stores a
-`LoopHandle<'static, CalloopData>` so the hook can register the fence source.
+A window has a saved canvas home and a displayed position. Search, switching,
+frame attachment, and focused view can change its presentation without replacing
+that home or its Wayland surface.
 
-`generate_blocker` returns `AlreadyReady` (an `Err`) when the fence is already
-signalled, which is the common steady-state case; we then skip the blocker and
-apply the commit immediately.
+The compositor resolves a window's presentation into one projection: surface
+origin, visible bounds, scale, opacity, and any preview pose. Rendering and inverse
+input transforms use that projection. Animation reads use the sampled animation
+time, so an input event targets the visible window rather than a different point
+in its transition.
 
-## Known artifact: ~1.5s stall on the first frame of a GPU client (lavapipe VM only)
+Keep output scale separate from canvas zoom. The canvas transform places content
+in desktop logical coordinates; the output transform maps that view into its
+framebuffer. Shell surfaces attached to the frame stay in screen space. See
+[size units](SIZE_UNITS.md) for the conversion rules and
+[window management](WINDOW_MANAGEMENT.md) for presentation states.
 
-### Symptom
+## Damage and presentation
 
-Launching a GPU/dmabuf client (GNOME Calculator, Firefox, the Xilem shell)
-freezes the whole shell for ~1.5 seconds **once per client**. Input typed during
-the freeze is buffered and applied late (e.g. typing "firefox" shows up as
-`fffffffffffffffffi`). SHM clients (e.g. `foot`) do **not** trigger it.
+Smithay's damage tracker identifies which parts of a render target need updating.
+Buffer age describes how much history that particular target needs. Importing a
+dmabuf can change the current EGL surface; Hearthspace forces a full redraw after
+imports instead of trusting a back-buffer-age query for the wrong surface.
 
-### Root cause (verified by instrumentation)
+Native outputs have separate scanout buffers and damage trackers. Each output
+renders its logical desktop rectangle at its own scale. A pending page flip holds
+additional work as dirty state until that output can submit again. Renderer damage
+remains enabled, while KMS damage clips are omitted from native submissions.
+These are separate optimizations, as [the backend guide](DRM.md#damage-tracking-and-kms-damage)
+explains.
 
-The stall is entirely inside `backend.submit()` (`eglSwapBuffers`), and it is
-**not** the client-fence wait:
+Compositor effects also own caches. Glass backdrops cache the content beneath a
+surface, including a sampling margin; titlebar foregrounds retain their rasterized
+text and icons across geometry-only resizes. Cache keys and damage must include
+changes to geometry, output scale, appearance, and the sampled content. See
+[UI boundaries](UI.md) for material and decoration ownership.
 
-- With the readiness blocker installed, the slow submit happens on the *import*
-  frame — while the client's content commit is still deferred by the blocker.
-- When the content actually composites (after the blocker clears), that submit
-  is fast.
+## Locking and capture
 
-So the cost is **our own GL context realizing the freshly-imported dmabuf at
-swap time**, paid once per GPU client. Under lavapipe (llvmpipe + virtio-gpu)
-there is no real GPU timeline, so the "GPU" work runs synchronously on the
-single-threaded event loop. A decisive experiment confirmed this: inserting a
-3-second `sleep` after the import (before compositing) dropped the subsequent
-submit from ~1.5s to ~92µs, because the software driver finished the work in the
-background during the sleep.
+A locked session uses a separate scene with an opaque black clear and eligible
+lock surfaces. Ordinary applications, shell panels, and their glass backdrops are
+excluded. A missing or transparent lock surface therefore cannot reveal the
+desktop. Lock acknowledgement waits for the required output presentation barrier;
+constructing a frame is not proof that it reached the display.
 
-### Why this is a dev-VM artifact, not a real bug
+Native capture reads rendered output pixels and can add the hardware cursor,
+which is otherwise outside the framebuffer. A requested cursor-free remote frame
+uses the corresponding cursor-free scene. Capture requests are invalidated during
+lock and session loss. See [session locking](SESSION_LOCK.md) and
+[native testing](NATIVE_TESTING.md) for the security and capture contracts.
 
-On real hardware, dmabuf import is a zero-copy `EGLImage` bind and sampling is
-asynchronous on the GPU, so this freeze should not occur. The ~1.5s is the
-classic llvmpipe + virtio-gpu software path doing a CPU copy/detile of the
-client buffer. It is specific to the nested development VM, which uses software
-rendering (lavapipe) over a virtio-GPU render node.
+## Investigating slow frames
 
-### Why we are not "fixing" it with a render thread
+A client readiness wait, buffer import, scene render, readback, and presentation
+submit can each take time. Measure them separately before assigning a cause.
+Asynchronous readiness handling does not guarantee that driver calls elsewhere
+in the render loop are nonblocking.
 
-Moving compositing to a dedicated CPU render thread fights Smithay's design:
+Software renderers can make import, upload, and submission expensive. Hardware
+acceleration can also stall, depending on the driver, synchronization, format, and
+workload. Switching from nested to native presentation does not by itself prove
+that either rendering or client import is accelerated.
 
-- `GlesRenderer` is explicitly `!Send` (`_not_send: PhantomData<*mut ()>`), so
-  the existing renderer cannot be moved to another thread. A render thread would
-  have to bypass `winit::init`, build the EGL context/surface by hand from the
-  raw winit window (both `EGLContext` and `EGLSurface` *are* `Send`), and
-  construct the renderer on the render thread.
-- Render elements (`WaylandSurfaceRenderElement`) are tied to both the
-  renderer's textures and live Wayland surface state on the main thread, so the
-  scene would have to be snapshotted into `Send` data every frame.
+When reporting a rendering issue, record the backend, renderer and driver,
+output scale, client buffer type, and operation that stalls. Compare a
+shared-memory client with a dmabuf client where useful, and separate first-frame
+cost from sustained frame pacing. Keep timing evidence with the investigation;
+only measured conclusions should become documented performance expectations.
 
-None of Smithay's own backends (winit, udev) use a CPU render thread — their
-parallelism *is* the GPU (async KMS/GL submit), which does not exist under
-lavapipe. The real fix is real hardware (or the native DRM backend, see
-[DRM.md](./DRM.md)), where the work is offloaded to the GPU. The readiness
-blocker above is already the correct real-hardware behavior; we accept the
-one-time-per-client stall as a known limitation of the software-rendered VM.
+A renderer-thread change requires an explicit ownership design: the GLES renderer
+is thread-bound, and render elements refer to renderer resources and live Wayland
+state. Preserve those lifetimes and the event loop's synchronization model when
+evaluating such a change. A slow frame alone is not evidence for a particular
+threading architecture.

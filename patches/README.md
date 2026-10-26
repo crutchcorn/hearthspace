@@ -32,8 +32,8 @@
   passed with the backport, using llvmpipe and isolated process environments.
   Native acceptance passed 15 Canvas tools drags, frame grouping and removal,
   and subsequent keyboard search with an unchanged shell PID and no panic.
-  [The shell evidence](../docs/SHELL.md#layout-editor-crash-2026-10-22) records
-  hardware, artifacts, cleanup, and the broader suite's validation limits.
+  The [shell lifecycle guidance](../docs/SHELL.md#layout-editor-crash-2026-10-22)
+  describes the retained contract and how to repeat this acceptance workflow.
 - **Removal:** upgrade the Winit version used by Xilem/Masonry to a compatible
   upstream release containing this fix. Remove the Cargo patch, vendored package,
   and patch file, refresh `Cargo.lock`, and rerun the regression and native
@@ -301,8 +301,8 @@ See [vendored provenance and refresh steps](../vendor/accesskit_atspi_common/PRO
   layout clamps the viewport, including hidden scrollbars and unchanged offsets.
 - **Reason:** focus reveal divides by zero when content fits the viewport exactly.
   The resulting NaN can remain in a hidden scrollbar, then become visible when
-  a later popup configure shrinks the viewport. Repeated tray-menu opening on
-  Intel UHD 620 produced GPU hangs; a CPU-preprocessing diagnostic captured NaN
+  a later popup configure shrinks the viewport. Repeated native tray-menu opening
+  produced GPU hangs; a CPU-preprocessing diagnostic captured NaN
   coordinates already in the input path. The deterministic regression reproduces
   non-finite rounded-rectangle paint without creating a renderer or GPU device.
   Vello and its shader settings remain unchanged.
@@ -318,8 +318,9 @@ See [vendored provenance and refresh steps](../vendor/accesskit_atspi_common/PRO
   298×18 and validates actual paint with `ValidatingSink`. The unmodified
   dependency fails with `NonFinite { what: "Geometry::RoundedRect" }`; the patch
   passes alongside the existing touch-scroll regressions. Native repeated menu
-  creation and the full ordinary tray workflow passed on Intel UHD 620 with
-  normal GPU rendering; see the [native evidence](../docs/TRAY.md#repeated-popup-gpu-hang--2026-10-22).
+  creation and the full ordinary tray workflow passed with native GPU rendering.
+  The [tray lifecycle guidance](../docs/TRAY.md#repeated-popup-gpu-hang--2026-10-22)
+  describes the regression boundary and repeatable native checks.
 - **Removal:** upgrade to a compatible unmodified upstream revision that passes
   the regression and repeated native tray-menu workflow, then remove this patch
   file. Retain Masonry vendoring and its Git-source patch while the Button

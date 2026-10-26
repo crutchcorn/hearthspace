@@ -1,5 +1,9 @@
 # Window groups
 
+Select related windows to move them together without changing their sizes or
+relative spacing. This is a temporary canvas selection; persistent strips at
+the screen edge belong to [frame groups](SHELL.md#change-layout).
+
 Use **Select window group** in the bottom-left Canvas tools, or **Super+G**, then
 draw a freeform lasso around windows on the canvas. Windows inside or crossed by the
 enclosed shape are selected. Releasing the pointer or lifting your finger
@@ -22,7 +26,8 @@ The floating overlapping-window button beside the group, **Gather similar
 windows**, searches other open windows for related titles. Its moving highlight
 shows that the decision model is working. Related windows fly from their
 original locations to staggered positions on the current output and join the
-group. Groups are temporary canvas selections, not saved workspaces.
+group. Gathering changes their actual canvas positions, unlike the temporary
+previews used by search and window switching. The selection itself is not saved.
 
 Keyboard selection remains available: after **Super+G**, **Tab** and
 **Shift+Tab** choose a window, **Space** toggles its selection, **Enter** finishes,
@@ -45,13 +50,16 @@ and registers a separate `hearthspace-d1:latest` model in Ollama. Downloading is
 always explicit. Login and gathering never download a model. The downloaded
 model lives under `$XDG_CACHE_HOME/hearthspace/ai` (normally
 `~/.cache/hearthspace/ai`), and Ollama keeps its own imported copy. Delete removes
-Hearthspace's model and cache without deleting other Ollama models.
+Hearthspace's model and cache without deleting other Ollama models. If Ollama is
+unavailable during removal, the download cache can be deleted while its imported
+copy remains; Settings reports the error so removal can be retried when the runtime
+is available.
 
 Once enabled, the session warms D1 after desktop startup and keeps it ready
 while logged in, renewing a five-minute warm lease every two minutes. Normal
 logout requests unloading; the lease also expires after an interrupted session.
 Loading and inference run on background workers. Automatic device selection is
-the default; existing device preferences are retained. The model supports a
+the default; existing device preferences are retained. The integration configures a
 32,768-token context; this feature submits only window titles, with bounded input sizes.
 Memory and latency depend on the hardware, context, quantization, and runtime;
 the model size is not a fixed total-memory guarantee.

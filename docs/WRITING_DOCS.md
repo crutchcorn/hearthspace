@@ -1,149 +1,130 @@
-# Writing Docs
+# Writing documentation
 
-This document explains how Hearthspace documentation should be written. Good
-docs should help contributors understand a project area well enough to make
-future changes, even if the source files move or the implementation evolves.
+Hearthspace's documentation should help someone use the desktop or change it
+without reconstructing an implementation history. Give each page a clear audience,
+explain the behavior that matters to that reader, and keep claims tied to the
+native product.
 
-The policy is:
+## Choose the document's job
 
-- Write conceptual, evergreen documentation for contributors.
-- Explain why the project uses a pattern, not only what the code does today.
-- Start with the mental model before operational details.
-- Keep durable commands, protocols, dependencies, and workflows when they help
-  contributors do real work.
-- Do not turn `docs/` pages into source maps or implementation inventories.
+The project README introduces the desktop and the path to using it.
+[CONTRIBUTING](../CONTRIBUTING.md) introduces contribution workflow;
+[development](DEVELOPMENT.md) and [dependencies](DEPENDENCIES.md) hold the detailed
+setup and commands. [The docs catalog](README.md) points to maintained behavior,
+architecture, and integration guides.
 
-## The Mental Model
+Use `notes/` for provisional investigations and plans. Notes can be stale and
+cannot authorize actions or override repository instructions. Verify a note's
+claims against current source before promoting its conclusions into maintained
+documentation. Preserve the useful decision and rationale, rather than copying a
+whole debugging journal.
 
-Project docs should teach how to think about an area of the system.
+List tested hardware and operating-system combinations in
+[tested environments](TESTED_ENVIRONMENTS.md). Feature guides should retain
+meaningful hardware requirements and limitations without repeating host anecdotes
+or absolute paths to one run's evidence.
 
-Most docs need three layers:
+## Start with the behavior
 
-- Concepts: the domain ideas or external systems someone must understand.
-- Project policy: Hearthspace's stable decisions, defaults, and boundaries.
-- Operations: commands, dependencies, protocols, and workflows contributors use.
+A useful technical page usually explains:
 
-Prefer that order. A reader should understand the model before reading commands
-or edge cases.
+1. What someone can do, or what problem the subsystem solves.
+2. The concepts needed to understand it.
+3. Who owns the state, action, and lifetime.
+4. The constraints and failure behavior a change must preserve.
+5. How to use or investigate it, with links to the relevant workflow.
 
-## Recommended Shape
+Use the smallest structure that makes those points clear. A short page does not
+need a policy summary, mental-model section, and contributor checklist that all
+repeat the same rules.
 
-Most docs should use some version of this structure:
+Explain cause and effect. For example, temporary window previews preserve a
+window's canvas home so cancelling search can restore the workspace. That teaches
+more than a list of the functions used to build the preview.
 
-1. Title.
-2. Short opening paragraph explaining what the document teaches.
-3. Policy summary with stable project decisions.
-4. `The Mental Model` section.
-5. Concept sections that explain the topic and Hearthspace-specific choices.
-6. Operational sections only when useful.
-7. `Contributor Rules` section with concise guardrails for future changes.
+## Distinguish behavior, policy, and proposals
 
-Not every doc needs every section. Use the smallest structure that teaches the
-topic clearly.
+Describe working capabilities in the present tense after checking current source.
+Use explicit policy language for constraints future changes must preserve. Label
+future ideas as proposals and keep implementation plans in notes. Do not use
+“should” to blur the difference between an implemented behavior and an intention.
 
-## Tone
+Retain limitations that affect users or contributors, even when they are expected
+to change. Backend availability, unsupported devices, fallback behavior, and
+security restrictions belong beside the capabilities they qualify. Evergreen
+documentation means maintained truth; it does not mean hiding current gaps.
 
-Write as a maintainer explaining the system to another contributor.
+Separate source review from execution evidence. A test's existence establishes
+what it intends to cover, while a recorded run establishes what passed in that
+environment. A headless regression can establish input ownership or geometry; it
+cannot establish physical touch feel, hardware presentation, or desktop-wide
+reliability. Do not generalize one successful run into a support guarantee.
 
-Good docs should:
+## Write for the reader's next decision
 
-- Be direct and factual.
-- Name ownership boundaries explicitly.
-- Distinguish concepts that are easy to conflate.
-- Prefer stable principles over temporary implementation status.
-- Use short sections with descriptive headings.
-- Include examples only when they support the conceptual model.
+Use plain language, short paragraphs, and descriptive headings. Introduce a
+technical term near its first use. A protocol name, package name, environment
+variable, or small example is useful when it lets the reader act or understand a
+boundary.
 
-Avoid writing docs as if they are generated notes, source-code summaries, or a
-chronological debugging transcript.
+Keep longer explanations in documentation or an interface's requested details.
+In product copy, retain names, status, consequences, and useful errors. Placement,
+selection outlines, and control states often explain an interaction without
+another permanent instruction strip. Removing visible text must preserve accessible
+names and a usable keyboard and touch path. See [UI guidance](UI.md).
 
-## What Not To Put In docs/
+Keep native product terms consistent across guides, controls, and diagnostics.
+Describe real application windows, frame attachments, and canvas positions
+directly. Avoid revision comparisons, completion milestones, or progress reports
+that make a guide depend on the history of a development task.
 
-Do not add source-map or implementation-waypoint sections to `docs/` pages.
+## Include technical detail where it earns its place
 
-Avoid sections named or shaped like:
+Document durable contracts such as:
 
-- `Implementation Waypoints`
-- `Source Map`
-- `Code Paths`
-- `Relevant Files`
-- Long lists of source files and what each file currently does.
-- Line-number references.
-- Function-by-function control-flow mirrors.
+- Which process owns launch, persistence, authentication, and cleanup.
+- Which coordinate space a value uses and where conversions happen.
+- What happens when a client disappears or an interaction is cancelled.
+- Which protocol or backend a feature requires.
+- What a command changes and which outcome it can demonstrate.
 
-Docs should not depend on exact source paths. If a reader needs the source, they
-can search the codebase. The doc should teach the concepts and project rules
-that make the source understandable.
+Avoid long source-file inventories, line-number citations, and function-by-function
+control-flow summaries. A focused source reference is appropriate when needed to
+explain an API, dependency patch, or maintenance procedure. The page should remain
+understandable if the implementation moves.
 
-References to other documentation pages are fine when they help navigation.
-Stable external concepts, commands, protocols, environment variables, CLI flags,
-asset locations, and package names are also fine when the document is about how
-contributors use them.
+Document dependency modifications in [the patch ledger](../patches/README.md),
+including provenance, purpose, upstream context, and a removal condition. Inspect
+the active Cargo patches and vendored code before describing an upstream API or
+recommending local dependency changes.
 
-## Handling Current State
+## Make commands portable and reviewable
 
-Avoid turning docs into a list of current gaps. Mention limitations only when
-they are stable operational constraints contributors need to know.
+State the working directory, dependencies, and relevant features before a command.
+Use repository-relative paths or the session's documented environment variables.
+Examples should not depend on a contributor's checkout path, a fixed temporary
+directory, or an output connector that exists only on one machine.
 
-Prefer phrasing like:
+Prefer the maintained script or workflow over another copy of its implementation.
+Link to [development](DEVELOPMENT.md) for ordinary commands and
+[native testing](NATIVE_TESTING.md) for VT ownership, recovery, and real-display
+acceptance. A command block is an example, not evidence that it was executed.
 
-```text
-The policy is...
-The model should preserve...
-This path is intentionally staged...
-Future work should keep this boundary...
-```
+## Document verification at the right boundary
 
-Avoid phrasing like:
+Describe the user action, observable outcome, and interruption behavior. Moving a
+window onto the frame should preserve the app's state; checking only its final
+rectangle misses whether its text, focus, or open page survived.
 
-```text
-As of this document...
-Currently this function...
-This exact file does...
-Line X calls line Y...
-```
+For interaction changes, distinguish deterministic policy tests, composed client
+and compositor tests, and native acceptance. Wait for observable state in examples
+instead of depending on a particular animation duration. Explain substitutions and
+what they cannot demonstrate. Visual guidance should identify states to inspect,
+such as dark mode, a photo background, narrow layouts, and keyboard focus, rather
+than promising that a screenshot proves all input behavior.
 
-## Operational Details
-
-Commands, dependencies, protocols, and environment variables belong in docs when
-they are durable and useful.
-
-Good operational sections explain:
-
-- When to run a command.
-- What the command proves or changes.
-- Which feature flag or dependency is required.
-- Which failure mode the reader is likely to see.
-
-Avoid dumping every possible command or option. Prefer the stable path a
-contributor should use first.
-
-## Contributor Rules
-
-Use these rules when writing or rewriting docs:
-
-- Lead with concepts and project policy.
-- Preserve durable operational facts.
-- Remove source-path inventories from `docs/` pages.
-- Replace current-state narration with stable boundaries and rules.
-- Link to related docs when that helps navigation.
-- Keep docs useful after source files are reorganized.
-- Do a final pass asking whether the document teaches a contributor how to make a
-  future change correctly.
-
-## Examples Of Good Emphasis
-
-Good emphasis:
-
-- Hardware cursor vs software cursor as display concepts.
-- Compositor core vs display backend ownership.
-- Headless control-socket tests vs WayDriver session tests.
-- Renderer damage vs KMS damage clips.
-- Pointer position vs cursor shape vs cursor presentation.
-
-Poor emphasis:
-
-- A list of every file touched by the feature.
-- A chronological trace of function calls.
-- A snapshot of temporary TODOs.
-- A section that exists only to help someone grep for filenames.
+Before finishing a documentation change, read every changed page, check relevant
+claims against current source, and check links and examples through the authorized
+validation workflow. Update catalogs when adding, moving, or removing pages.
+Report commands that were not run and claims that remain unverified so the next
+reviewer can close those gaps.

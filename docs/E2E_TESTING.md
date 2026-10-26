@@ -4,35 +4,11 @@ This document explains Hearthspace's end-to-end testing model: what an E2E test
 is allowed to prove, why the harness runs a real compositor and real clients,
 and which boundaries contributors should preserve.
 
-The policy is:
-
-- Test user-visible behavior through real compositor boundaries whenever
-  possible.
-- Prefer accessibility-driven discovery over compositor-private test hooks for
-  UI semantics.
-- Keep test runtime state isolated from the developer's desktop session.
-- Use the headless backend for deterministic regression tests.
-- Keep native seat, KMS, cursor-plane, and VT recovery tests in a separate,
-  explicitly invoked suite.
-- Keep low-level control-socket tests separate from WayDriver session tests.
-
-## The Mental Model
-
-E2E tests sit above unit tests and integration tests. They should exercise the
-same boundaries a user or external automation tool would cross:
-
-- A compositor process starts.
-- A Wayland display exists.
-- A real Wayland client connects.
-- Input is routed through the compositor seat.
-- Frames are rendered into a framebuffer.
-- Screenshots are captured from compositor output.
-- UI semantics are discovered through AT-SPI accessibility trees where possible.
-
-Do not use E2E tests to assert small internal implementation details. Use them to
-prove that whole systems still compose correctly: compositor startup, client
-launch, input delivery, rendering, screenshot capture, accessibility exposure,
-and teardown.
+Tests cross the compositor's process, Wayland, input, rendering, and accessibility
+boundaries. Use them to verify that a real client starts, receives input, paints,
+and shuts down correctly. Small internal decisions belong in unit tests.
+Prefer AT-SPI accessibility discovery for UI semantics, private runtimes for
+isolation, and headless rendering for deterministic regression checks.
 
 ## Test Layers
 
@@ -52,8 +28,9 @@ Hearthspace has three complementary E2E layers:
 
 Keep these layers distinct. The control-socket tests prove our direct test
 surface works. The WayDriver tests prove an external automation harness can drive
-Hearthspace like a compositor under test. Native tests prove the host-dependent
-display and session boundaries that an offscreen framebuffer cannot exercise.
+Hearthspace like a compositor under test. Native tests exercise display and
+session boundaries that an offscreen framebuffer cannot cover. Their results are specific to the tested configuration;
+none of these layers alone establishes daily-driver reliability.
 
 ## Headless Compositor
 
@@ -69,14 +46,25 @@ Headless mode is the right E2E default because it is:
 - Close enough to production compositor behavior to exercise Wayland clients,
   input routing, rendering, and screenshots.
 
+Run these commands from the repository root in a dedicated test shell, so the
+software renderer variables do not carry into a later native session. Set
+`VK_DRIVER_FILES` to the installed Lavapipe ICD; the path below is the Ubuntu
+26.04 package layout. Build the intended checkout before running Python fixtures.
+
 Run headless regressions with the `e2e` feature:
 
 ```sh
+export TMPDIR="$(mktemp -d -t hs-e2e.XXXXXX)"
 export LIBGL_ALWAYS_SOFTWARE=1 GSK_RENDERER=cairo
 export VK_DRIVER_FILES=/usr/share/vulkan/icd.d/lvp_icd.json
-cargo test -p hearthspace-compositor --features e2e --test headless_control
-cargo test -p hearthspace-compositor --features e2e --test waydriver_hearthspace
+cargo test --locked -p hearthspace-compositor --features e2e --test headless_control -- --test-threads=1
+cargo test --locked -p hearthspace-compositor --features e2e --test waydriver_hearthspace -- --test-threads=1
 ```
+
+Keep `TMPDIR` short: fixtures append private runtime and socket names, which must
+fit Linux's Unix-socket path limit. A long artifact-directory name can make a
+child exit before accessibility registration. Store descriptive run logs outside
+that short temporary root if needed.
 
 Add `test-apps` when exercising the optional GTK client. Pure transport,
 coordinate mapping, input cleanup, and timeout tests belong below the native
@@ -98,11 +86,12 @@ both Rust and Python. Required accessibility or deployed
 Ayatana libraries cannot silently skip their coverage. Native VT/device tests
 remain a separate hardware workflow.
 
-When running locally with a target directory shared by multiple worktrees, set
-`HEARTHSPACE_BINARY="$PWD/target/debug/hearthspace"` after building the intended
-checkout. Adapter tests embed a fallback path at compile time; a reused test
-artifact can otherwise look for the executable beneath a previous worktree.
-The explicit override selects the binary under test without changing assertions.
+Build and test the intended checkout. The adapter
+[attachment tests](../crates/waydriver-hearthspace/tests/attached_session.rs) and
+several Python fixtures accept `HEARTHSPACE_BINARY` as an explicit executable
+path. Set it to the built binary when using those fixtures with a shared target
+directory. This is not a workspace-wide override: other Rust tests use Cargo
+executable paths, and some Python fixtures require `target/debug/hearthspace`.
 
 `GSK_RENDERER=cairo` keeps GTK fixtures on software-rendered shared-memory
 buffers while the compositor uses Mesa's software GLES renderer. Setting only
@@ -111,19 +100,19 @@ this software compositor cannot import reliably. The shell also uses Vulkan;
 `VK_DRIVER_FILES` keeps it on the software device. The path above is provided
 by Ubuntu 26.04's `mesa-vulkan-drivers`; adjust it to your installed Lavapipe ICD
 on other distributions. Use these settings for local headless suites, including
-on machines with a physical GPU. They do not change the renderer used by normal
-native desktop sessions; native GPU and DMA-BUF validation remains part of the
-hardware workflow.
+on machines with a physical GPU. Keep them scoped to the test shell: exporting them into a native session would
+change its renderer selection. Native GPU and DMA-BUF validation remains part of
+the hardware workflow.
 
 GTK fixtures must work without an inherited desktop session bus. The shell-bar
 fixture sets an explicit program-name fallback and verifies its outgoing Wayland
 app ID with the host bus removed. Render checks wait for visible client pixels;
 mapped/maximized state alone does not establish that a buffer has been painted.
 
-The E2E job owns `/tmp/hearthspace-e2e` and uploads `headless-e2e-evidence` for
-seven days on both success and failure. It includes test logs, Python workflow
+The [E2E job](../.github/workflows/e2e.yml) uses a dedicated temporary artifact
+root and uploads `headless-e2e-evidence` for seven days on both success and failure. It includes test logs, Python workflow
 screenshots/accessibility snapshots, and retained Rust failure directories.
-Artifacts are limited to test-created log, JSON, PNG, XML, and text files;
+Artifacts are limited to test-created log, JSON/JSONL, PNG, XML, and text files;
 ordinary session sockets and the host desktop are excluded.
 
 ## Native Validation
@@ -136,9 +125,9 @@ fail, and teardown must release all owned desktop processes and runtime files.
 Use the [native testing workflow](NATIVE_TESTING.md) for host prerequisites,
 `scripts/native-smoke` cases, recovery checks, and artifact interpretation.
 Record the GPU/driver, output configuration, cursor presentation path, and
-session setup alongside results. A passing VM run establishes coverage for that
-virtual DRM stack; record real-hardware validation separately. A headless pass
-does not certify native presentation or recovery.
+session setup alongside results. Keep environment coverage in
+[tested environments](TESTED_ENVIRONMENTS.md), and retain detailed assertions with
+the run artifacts. A headless pass does not establish native presentation or recovery.
 
 ## Runtime Isolation
 
@@ -313,11 +302,13 @@ partial payloads. Invalid commands return `err`; output loss, inactive sessions,
 and capture deadlines also fail explicitly. Queues and operation lifetimes are
 bounded, so clients must set deadlines and handle disconnects rather than assume
 an incomplete image succeeded. Continuous video is outside this capture contract.
+[Native recording](NATIVE_RECORDING.md) documents bounded recording built on
+individual captures and the evidence it can provide.
 
 ## WayDriver Adapter
 
-WayDriver is the higher-level automation boundary. The adapter maps WayDriver's compositor, input, and capture
-traits onto Hearthspace's runtime and control socket.
+WayDriver is the higher-level automation boundary. The adapter maps its
+compositor, input and capture traits onto Hearthspace's runtime and control socket.
 
 The adapter owns these responsibilities:
 
@@ -329,8 +320,8 @@ The adapter owns these responsibilities:
 - Capture screenshots through the control socket instead of PipeWire/GStreamer.
 - Stop an owned compositor through `quit` and kill it if it does not exit.
 
-The adapter defaults to have no shell launched so app-focused tests start with only the
-client under test. Use the adapter's shell-enabled mode for tests that need
+The adapter starts without a shell by default, so app-focused tests launch only
+the client under test. Use the adapter's shell-enabled mode for tests that need
 Hearthspace shell chrome.
 
 Ownership is explicit. `HearthspaceCompositor::new(binary)` owns its headless
@@ -376,11 +367,10 @@ session environment. `activate` requires exactly one XPath match. An accepted
 accessibility action still needs an application-specific assertion or fresh
 capture to verify its visible result.
 
-Important accessible root names:
-
-- The Xilem shell appears as `hearthspace`.
-- The GTK test app appears as `hearthspace-gtk-test-app` because GTK uses
-  `argv[0]` for the AT-SPI application root.
+Discover root names from a fresh snapshot. Native shell fixtures target
+`hearthspace-shell`; the optional GTK test app uses `hearthspace-gtk-test-app`.
+Toolkit and executable identity affect these names, so do not reuse a selector
+without checking the current tree.
 
 ## Test App Strategy
 
@@ -389,32 +379,25 @@ known accessibility tree. It should be used when a test needs to prove client
 launch, client rendering, AT-SPI discovery, input, and screenshot capture across
 the whole compositor/client boundary.
 
-The GTK test app is behind the `test-apps` Cargo feature. Keep it optional so
-normal builds do not require GTK development headers.
+The GTK test app is behind the `test-apps` Cargo feature. A compositor-only build
+can omit it and its GTK dependency. Full workspace and desktop builds still need
+GTK development headers for `hearthspace-lock`; see [dependencies](DEPENDENCIES.md).
 
 When a test needs only compositor control-socket behavior, do not launch the GTK
 app. Use the lower-level headless control tests instead.
 
-## Contributor Rules
+## Maintaining coverage
 
-Use these rules when changing E2E tests or harness code:
+Keep attachment separate from ownership: detaching must never stop an externally
+managed session. Preserve private runtimes, sockets, and accessibility buses;
+serialize tests that share process-wide environment or deterministic names.
+Add keysym mappings in the WayDriver adapter when tests need more keyboard
+coverage, and keep optional GTK clients behind `test-apps`.
 
-- Use E2E tests for cross-boundary behavior, not small internal logic.
-- Keep headless control-socket tests and WayDriver session tests conceptually
-  separate, and invoke native validation separately from deterministic CI.
-- Keep attachment distinct from ownership; detaching must never terminate an
-  externally managed session.
-- Require page-flip evidence for native presentation claims, and retain recovery
-  results as well as screenshots.
-- Keep runtime directories, command sockets, and AT-SPI buses isolated.
-- Prefer AT-SPI/XPath for semantic UI lookup.
-- Use screenshots as output artifacts and visual assertions; do not introduce a
-  video dependency unless Hearthspace actually needs video capture semantics.
-- Add keysym mappings in the WayDriver adapter when tests need more keyboard
-  coverage.
-- Keep optional clients behind `test-apps`.
-- Update this document when changing headless flags, control-socket protocol,
-  WayDriver adapter behavior, accessibility setup, or E2E test layout.
+Require both targeted application assertions and page-flip evidence for native
+presentation claims. Retain failed assertions and cleanup results alongside
+screenshots. Update this guide when changing the control protocol, adapter
+lifecycle, accessibility setup, or test entrypoints.
 
-The [compact shell acceptance](SHELL.md#acceptance) runs the same icon, search,
-notification and power-menu checks headlessly and on an owned native VT.
+The [compact shell acceptance](SHELL.md#acceptance) runs icon, search, notification,
+and power-menu checks headlessly and on an owned native VT.

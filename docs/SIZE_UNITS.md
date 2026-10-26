@@ -1,134 +1,121 @@
-# Size Units
+# Size units
 
-Hearthspace uses several size and coordinate spaces at once. The important rule is to name the space before doing math. Values with the same number type are not interchangeable.
+A display mode, a window configure, and a canvas position can all contain the
+number `2560` while describing different things. Name the coordinate space before
+doing math, and apply each scale once.
 
-## Spaces
+## Physical output pixels
 
-### Physical Output Pixels
+Physical pixels describe a backend's framebuffer. DRM/KMS modes, GBM allocations,
+and scanout damage use this space. A `2560 × 1600` output mode has that many
+framebuffer pixels regardless of the scale advertised to clients.
 
-Physical output pixels are hardware or backend pixels.
+`MonitorConfig.width` and `height`, and `OutputRecord::size`, store physical mode
+dimensions. Physical panel dimensions in millimeters are separate metadata.
 
-Use them for:
+## Desktop logical coordinates
 
-- DRM/KMS modes and scanout buffers.
-- GBM surfaces and damage trackers tied to a framebuffer.
-- Native output descriptors, such as a panel mode of `2560x1600`.
-
-In code, these are commonly `smithay::utils::Physical` sizes or raw mode sizes. Example: `OutputRecord::size` stores the physical mode size.
-
-### Hearthspace Layout Coordinates
-
-Hearthspace layout coordinates describe output placement and the compositor's screen-space map. Today these intentionally use physical-sized output extents even though Smithay's type parameter is `Logical` in several places.
-
-Use them for:
-
-- Monitor arrangement positions from settings.
-- Output rectangles used for pointer clamping and native output render views.
-- Screen-space placement of per-output shell chrome.
-
-Example: a `2560x1600` output at `4x` still occupies `2560x1600` in Hearthspace layout coordinates. A second monitor to the right begins at `x = 2560`, not `x = 640`.
-
-This keeps pointer movement, monitor arrangement, and KMS output views aligned with physical desktop geometry.
-
-### Client Logical Coordinates
-
-Client logical coordinates are the sizes and positions Wayland clients see before their output scale is applied.
-
-Use them for:
-
-- `xdg_toplevel` configure sizes and bounds.
-- Shell clients, settings clients, and any other toolkit-rendered surface size requests.
-- Avoiding GPU texture allocations that exceed device limits.
-
-Formula:
+Output placement, pointer bounds, screen-space shell placement, and output render
+views use logical coordinates. An output's logical extent is its physical mode
+size divided by its integer output scale, rounded up:
 
 ```text
-client_logical = ceil(physical_pixels / output_scale)
+logical_extent = ceil(physical_extent / output_scale)
 ```
 
-Example: a `2560` physical-pixel-wide output at `4x` is `640` client logical pixels wide. If Hearthspace configures a shell client to `2560` logical pixels instead, the client may allocate a `10240` pixel-wide buffer and fail.
+A `2560 × 1600` output at `4×` occupies `640 × 400` logical units. A monitor placed
+immediately to its right starts at `x = 640` when the first monitor starts at zero.
+The Settings arrangement preview uses those same logical extents.
 
-### Client Buffer Pixels
+`MonitorConfig.x` and `y` are logical placement coordinates; `scale` is the
+advertised integer output scale. `OutputRecord::logical_size` and
+`client_logical_size` agree, and the monitor layout helpers divide mode dimensions
+by scale. Do not treat these as physical-sized desktop rectangles.
 
-Client buffer pixels are the actual pixels submitted by a Wayland client.
+The active layout normalizes its origin. It also has a compatibility path for old
+saved positions expressed in physical coordinates: if the direct interpretation
+is disconnected, a connected, nonoverlapping converted layout may be used.
+Overlapping active layouts fall back to a side-by-side arrangement. This recovery
+behavior is not a reason to write new physical-coordinate placements.
 
-Formula:
+## Client logical coordinates and buffer pixels
+
+Wayland surface coordinates and `xdg_toplevel` configure sizes describe client
+logical geometry. Configure a window to the logical size it should occupy;
+passing the physical mode size can make a high-scale client allocate an oversized
+buffer.
+
+For a client rendering at an integer buffer scale without an additional viewport
+transform:
 
 ```text
-buffer_pixels = client_logical * output_scale
+buffer_pixels = surface_logical_size × buffer_scale
 ```
 
-Use them when reasoning about:
+For example, a `640 × 48` logical surface rendered at `4×` uses a `2560 × 192`
+pixel buffer. This is a sizing example, not a fixed shell-panel height or a
+promise that every renderer accepts that allocation.
 
-- Client-submitted `wl_buffer` sizes.
-- WGPU/Vello texture limits in shell clients.
-- Whether a configured logical surface size is safe for high-scale outputs.
+A client's chosen buffer scale need not equal every intersecting output's scale.
+Surface buffer scale, buffer transform, and viewport state determine how its
+buffer maps to surface coordinates. Let Smithay resolve those protocol details;
+do not infer a surface's logical geometry from raw buffer dimensions alone.
 
-The compositor usually receives these through Wayland surfaces rather than calculating them directly.
+Output scale affects pixel density. Canvas zoom affects the displayed size and
+position of work. Neither changes the other, and applying both as buffer-scale
+multipliers would scale content twice.
 
-### Canvas Coordinates
+## Canvas coordinates
 
-Canvas coordinates are Hearthspace's infinite workspace coordinates for normal app windows and canvas-space compositor chrome.
+Canvas coordinates locate ordinary windows, desktop items, and canvas-attached
+controls in the workspace. The viewport offset and zoom map them to desktop
+logical coordinates. Panning and zooming change the view while preserving the
+item's canonical canvas home.
 
-Use them for:
+Frame attachment, fullscreen, focused view, and temporary search/switcher previews
+have their own presentation policy. Use the compositor's resolved presentation
+for rendering and inverse input transforms rather than assuming every window
+uses the canvas transform directly. See [rendering](RENDERING.md) and
+[window management](WINDOW_MANAGEMENT.md).
 
-- Normal window positions.
-- Window dragging and resizing.
-- Viewport pan and zoom.
-- Compositor-owned canvas-space decorations.
+## Output-local render coordinates
 
-Canvas coordinates are transformed to screen/layout coordinates by `viewport_offset` and `viewport_scale`.
-
-### Render Coordinates
-
-Render coordinates are the coordinates used by a specific backend render pass.
-
-Use them for:
-
-- Renderer element locations.
-- Output-local rendering after subtracting the output view origin.
-- Damage tracking and framebuffer submission.
-
-For native multi-output rendering, each output view has a Hearthspace layout location and physical-sized extent. Rendering relocates elements relative to that output's framebuffer.
-
-## Conversion Guide
+Each native output renders a logical rectangle of the desktop into its physical
+framebuffer. For an unrotated output, the basic conversion is:
 
 ```text
-physical output size + output scale -> client logical size
-client logical size * output scale -> client buffer pixels
-canvas point + viewport transform -> Hearthspace layout/screen point
-Hearthspace layout point - output location -> output-local render point
+output_local_logical = desktop_logical - output_logical_origin
+framebuffer_pixels = output_local_logical × output_scale
 ```
 
-Prefer explicit helper functions at conversion boundaries. Do not rely on type names alone, because current Hearthspace layout coordinates may be typed as Smithay `Logical` while still representing physical-sized desktop extents.
+Keep the framebuffer extent physical and the render view logical. A renderer may
+stage elements at unit scale and apply output scaling later; converting those
+elements to physical pixels early would apply density twice.
 
-## Current Project Conventions
+Pointer hit testing uses logical positions. Hardware cursor placement converts
+that position into output-local pixels and subtracts a hotspot in the same pixel
+space. Nested touchscreen input similarly converts host-window physical positions
+to the compositor's logical output rectangle. See [cursor handling](CURSOR.md).
 
-- `MonitorConfig.width` and `MonitorConfig.height` are physical output sizes.
-- `MonitorConfig.x` and `MonitorConfig.y` are Hearthspace layout coordinates.
-- `MonitorConfig.scale` is the Wayland integer output scale to advertise.
-- `monitor_logical_width` and `monitor_logical_height` currently return physical-sized layout extents, not client logical dimensions.
-- `OutputRecord::logical_size` currently returns physical-sized layout extents.
-- `OutputRecord::client_logical_size` is for Wayland client configure sizing.
-- Shell bar configure sizes must use client logical dimensions, not Hearthspace layout dimensions.
-- Native output render views use Hearthspace layout rectangles so monitor arrangement maps directly to real output positions.
+## Conversion example
 
-## Common Mistakes
+For a `2560 × 1600` output at `4×`, placed at logical `(640, 0)`:
 
-- Do not pass physical-sized layout widths to `xdg_toplevel` configure when output scale is greater than `1`.
-- Do not divide monitor arrangement positions by output scale unless the feature explicitly operates in client logical coordinates.
-- Do not use client buffer pixels for pointer clamping or monitor arrangement.
-- Do not assume every `Logical` typed value means client logical size in Hearthspace code.
+| Quantity | Value |
+| --- | --- |
+| Physical framebuffer | `2560 × 1600` pixels |
+| Desktop logical extent | `640 × 400` units |
+| Logical point at output center | `(960, 200)` |
+| Output-local logical point | `(320, 200)` |
+| Framebuffer point | `(1280, 800)` pixels |
 
-## Example
+Round at the boundary that requires integer coordinates. Retain fractional input
+motion and animation values until then so repeated small updates do not disappear.
 
-Given an internal display at `2560x1600` with output scale `4`:
+## Rules for changes
 
-```text
-physical output size:        2560 x 1600
-Hearthspace layout extent:   2560 x 1600
-client logical size:          640 x 400
-client buffer size:          2560 x 1600
-```
-
-A shell bar mirrored across that output should be configured to `640x48` client logical units. The client will submit a buffer around `2560x192` pixels at `4x`, which stays within the output and GPU texture limits.
+- Use logical sizes for client configures and monitor arrangement.
+- Use physical sizes for framebuffer allocation and scanout.
+- Keep surface buffer scale, output density, and canvas zoom distinct.
+- Use the same displayed projection for painting and input hit testing.
+- Check mixed output scales and nonzero output origins when changing conversions.
