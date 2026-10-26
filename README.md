@@ -1,77 +1,47 @@
 <div align="center">
   <img width="192" src="assets/logo.svg" alt="Hearthspace: a warm fire inside an open cube">
   <h1>Hearthspace</h1>
-  <p>A Linux desktop with room for your work.</p>
 </div>
 
-Keep your editor beside a terminal. Put your reference material a little farther
-to the right. Zoom out to see the whole project, or bring one window forward
-and settle in.
+Hearthspace is a Linux desktop where your windows can extend beyond the edges
+of your screen. You move around by panning and zooming, much like you would on
+a map.
 
-Hearthspace gives your applications a continuous canvas. You can move around it,
-group related windows, and keep the things you use most attached to the edge of
-the screen. Your work has a place, even when it isn't on screen.
+You might keep a document next to your notes and a browser, then move to another
+part of the canvas for something else. When you come back, those windows are
+still where you left them.
 
 [![Watch Hearthspace in use](assets/demo-poster.png)](assets/demo.mp4)
 
-**Hearthspace is becoming a daily driver.** It's in regular hands-on use and
-active development. You can try real applications, a configurable desktop,
-notifications, and a themed lock screen today. There are still rough edges;
-read the [known limits and next steps](docs/ROADMAP.md) and
-[tested environments](docs/TESTED_ENVIRONMENTS.md) before making it your only
-desktop.
+## Finding your windows
 
-## Make space for a project
+Zoom out to see more at once, or use the canvas map to move to another area.
+You can also search for a window or switch with **Alt+Tab**. Both let you choose
+a window without changing the arrangement you made.
 
-Windows can live beyond the edges of your display. Pan to reach them, pinch to
-zoom, or search when you don't remember where you put something. The map gives
-you a small view of the bigger picture.
-
-Search and the window switcher temporarily bring work together so you can choose
-it. Closing them restores your arrangement. You don't have to tidy your desktop
-just to find a window.
-
-## Keep familiar things close
-
-The screen's edges form a configurable frame. Attach a reference window, move
-your app dock to a side, or group controls into a bar. **Change layout** lets you
-decide what stays nearby as you move across the canvas.
-
-The starting arrangement puts notifications at the top left, system controls at
-the top right, canvas tools at the bottom left, and apps at the bottom right.
-It's a starting point you can make your own.
-
-## Use the apps you already know
-
-Hearthspace runs Linux applications, including Wayland and X11 apps. Browse the
-installed catalog, keep favorites in the dock, and return to a running app with
-a click. You can also assign a simple drawing to an app and draw it to launch.
-
-Light and dark themes, coordinated accent colors, and photo backgrounds make
-the desktop yours. Apps keep their own identities. Optional local AI can help
-gather related windows; the rest of the desktop works without a model download.
+Some things are useful wherever you're working. Choose **Change layout** to
+attach a window, the dock, or desktop controls to an edge of the screen. They'll
+stay there as you move around the canvas.
 
 ## Try it
 
-Hearthspace currently builds from source. Ubuntu 26.04 is the documented setup;
-see [dependencies](docs/DEPENDENCIES.md) before installing.
-
-From the repository, run:
+Hearthspace builds from source. Clone this repository and install the
+[dependencies](docs/DEPENDENCIES.md), then run this from the repository folder:
 
 ```sh
 scripts/install-session install
 ```
 
-Run the installer as your normal user. It builds an optimized release, then asks
-for administrator access to install it. Log out and select **Hearthspace** at
-the login screen. [The installation guide](docs/LOGIN_SESSION.md) covers updates,
-removal, and what the installer changes.
+Run it as your normal user; it'll ask for administrator access when needed.
+Once it's installed, save your work, log out, and select **Hearthspace** at the
+login screen. The [installation guide](docs/LOGIN_SESSION.md) also covers updates
+and removal.
 
-Want to explore inside your current desktop first? Follow the
-[nested development setup](CONTRIBUTING.md#run-it). That gives you a window to
-try the canvas in, with some system features reserved for a full login session.
+To try it in a window inside your current desktop, follow the
+[development setup](CONTRIBUTING.md#run-it). Some system controls are only
+available when you log into Hearthspace directly.
 
-For your first few minutes:
+Once you're in:
 
 | Do this | With this |
 | --- | --- |
@@ -80,20 +50,19 @@ For your first few minutes:
 | Switch windows | **Alt+Tab**; add **Shift** to go backward. |
 | Move around the canvas | Slide three fingers, or use **Super+arrow keys**. |
 | Zoom | Pinch with three fingers, or use the map's zoom controls. |
-| Make the layout yours | Choose **Change layout** in Canvas tools. |
+| Change the layout | Choose **Change layout** in Canvas tools. |
 
 The [first-session guide](docs/GETTING_STARTED.md) introduces the rest, including
 mouse and keyboard navigation.
 
-## Help shape it
+## Feedback and contributions
 
-Reports from real work are especially useful: the app you were using, what you
-expected, and what happened instead. [Open an issue](https://github.com/crutchcorn/hearthspace/issues)
-for a reproducible problem or a workflow that feels awkward.
+If something doesn't work as you expect, [open an issue](https://github.com/crutchcorn/hearthspace/issues).
+Include what you were trying to do and what happened, along with the app's name
+if one was involved.
 
-Want to contribute code, design, or documentation? Start with
-[CONTRIBUTING.md](CONTRIBUTING.md). The [documentation catalog](docs/README.md)
-has feature guides and deeper technical explanations.
+For code, design, or documentation changes, see [CONTRIBUTING.md](CONTRIBUTING.md).
+The [documentation](docs/README.md) has more on using and developing Hearthspace.
 
 ## License
 
