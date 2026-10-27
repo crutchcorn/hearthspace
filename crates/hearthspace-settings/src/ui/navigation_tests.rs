@@ -66,7 +66,7 @@ where
 }
 // Native scroll portals/bars are also keyboard stops. The actionable sequence
 // must remain identical to the reference, in both directions.
-fn next_button<V: WidgetView<SettingsApp>>(ui: &mut Ui<V>, reverse: bool) -> WidgetId
+pub(super) fn next_button<V: WidgetView<SettingsApp>>(ui: &mut Ui<V>, reverse: bool) -> WidgetId
 where
     V::Widget: Sized,
 {
@@ -117,7 +117,7 @@ fn exact_breakpoint_and_compact_overlay_geometry_keep_hidden_nodes_out_of_access
     key(&mut ui, NamedKey::Enter);
     ui.dispatch(&view);
     let navigation = role(&ui, Role::Navigation).unwrap();
-    assert_eq!(bounds(&ui, navigation), Rect::new(0.0, 49.0, 559.0, 331.0));
+    assert_eq!(bounds(&ui, navigation), Rect::new(0.0, 49.0, 559.0, 376.0));
     assert_eq!(bounds(&ui, appearance), Rect::new(8.0, 57.0, 551.0, 97.0));
     assert_eq!(ui.harness.focused_widget_id(), Some(toggle));
     let controlled: Vec<_> = ui
@@ -132,7 +132,7 @@ fn exact_breakpoint_and_compact_overlay_geometry_keep_hidden_nodes_out_of_access
         vec![ui.harness.access_node(navigation).unwrap().id()]
     );
     resize(&mut ui, (400, 420), &view);
-    assert_eq!(bounds(&ui, navigation), Rect::new(0.0, 49.0, 400.0, 331.0));
+    assert_eq!(bounds(&ui, navigation), Rect::new(0.0, 49.0, 400.0, 376.0));
     assert_eq!(bounds(&ui, appearance).x1, 392.0);
     key(&mut ui, NamedKey::Escape);
     ui.dispatch(&view);
@@ -157,6 +157,7 @@ fn keyboard_category_order_and_boundaries_remain_native_without_a_focus_trap() {
         "Displays",
         "Background",
         "Gestures",
+        "Keyboard shortcuts",
         "AI",
         "System",
     ] {
@@ -344,7 +345,8 @@ fn short_overlay_scrolls_without_selecting_a_category_during_touch_drag() {
         ("move", 150.0),
         ("move", 100.0),
         ("move", 60.0),
-        ("up", 60.0),
+        ("move", 25.0),
+        ("up", 25.0),
     ] {
         ui.harness.process_pointer_event(touch(kind, 200.0, y));
     }

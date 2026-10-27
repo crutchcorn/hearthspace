@@ -7,7 +7,7 @@ use crate::{state::SettingsApp, test_support::Ui};
 use masonry::core::{WidgetId, keyboard::NamedKey};
 use xilem::WidgetView;
 
-fn has_header_ring<V: WidgetView<SettingsApp>>(ui: &mut Ui<V>, toggle: WidgetId) -> bool
+pub(super) fn has_header_ring<V: WidgetView<SettingsApp>>(ui: &mut Ui<V>, toggle: WidgetId) -> bool
 where
     V::Widget: Sized,
 {

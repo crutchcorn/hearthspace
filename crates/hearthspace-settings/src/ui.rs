@@ -9,7 +9,7 @@ use xilem::{
     masonry::{
         layout::AsUnit,
         parley::style::{FontWeight, LineHeight},
-        properties::Padding,
+        properties::{LineBreaking, Padding},
     },
     style::Style,
     view::{CrossAxisAlignment, flex_col, flex_item, flex_row, resize_observer, sized_box, worker},
@@ -110,6 +110,7 @@ fn sidebar_view(state: &SettingsApp) -> impl WidgetView<SettingsApp> + use<> {
         (SettingsCategory::Displays, Icon::Monitor),
         (SettingsCategory::Background, Icon::Photo),
         (SettingsCategory::Gestures, Icon::GestureStroke),
+        (SettingsCategory::KeyboardShortcuts, Icon::List),
         (SettingsCategory::Ai, Icon::Processor),
         (SettingsCategory::System, Icon::Sliders),
     ]
@@ -120,30 +121,43 @@ fn sidebar_view(state: &SettingsApp) -> impl WidgetView<SettingsApp> + use<> {
         } else {
             palette.muted
         };
+        let title = label(category.label()).text_size(11.0);
+        let title = if category == SettingsCategory::KeyboardShortcuts {
+            title.line_height(LineHeight::FontSizeRelative(1.0))
+        } else {
+            title
+        };
+        let title = title
+            .color(if selected {
+                palette.text
+            } else {
+                palette.muted
+            })
+            .line_break_mode(if category == SettingsCategory::KeyboardShortcuts {
+                LineBreaking::WordWrap
+            } else {
+                LineBreaking::Overflow
+            });
         components::settings_button(
             crate::page_components::disclosure(
                 category.label(),
                 false,
                 false,
-                flex_row((
-                    icon(glyph, 16.0).color(tint),
-                    flex_item(
-                        label(category.label()).text_size(11.0).color(if selected {
-                            palette.text
-                        } else {
-                            palette.muted
-                        }),
-                        1.0,
-                    ),
-                ))
-                .gap(10.0.px()),
+                flex_row((icon(glyph, 16.0).color(tint), flex_item(title, 1.0))).gap(10.0.px()),
                 move |state: &mut SettingsApp| state.select_category(category),
             )
             .current_page(selected)
             .corner_radius(components::RADIUS_CONTROL.px())
             .height(40.0.px())
             .border_width(1.0.px())
-            .padding(Padding::from_vh(9.0.px(), 10.0.px())),
+            .padding(Padding::from_vh(
+                if category == SettingsCategory::KeyboardShortcuts {
+                    8.0.px()
+                } else {
+                    9.0.px()
+                },
+                10.0.px(),
+            )),
             components::SettingsButton::Bare,
             selected,
         )
@@ -202,6 +216,7 @@ fn selected_category_view(state: &SettingsApp) -> Box<AnyWidgetView<SettingsApp>
         SettingsCategory::Displays => crate::display_view::view(state),
         SettingsCategory::Background => crate::background_view::view(state),
         SettingsCategory::Gestures => crate::favorites_view::view(state),
+        SettingsCategory::KeyboardShortcuts => crate::shortcuts_view::view(state),
         SettingsCategory::Ai => crate::ai_view::view(state),
         SettingsCategory::System => crate::system_view::view(state),
     }
@@ -227,3 +242,6 @@ mod navigation_focus_tests;
 
 #[cfg(test)]
 mod system_tests;
+
+#[cfg(test)]
+mod shortcuts_tests;
