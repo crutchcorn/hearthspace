@@ -1,5 +1,13 @@
 # Dependency patches
 
+## Portal-wlr session policy and capture lifecycle
+
+The pinned external ScreenCast backend has an opt-in patch for a dedicated
+D-Bus name and fresh source consent, a Start-response correction, and a capture
+lifecycle repair for resize, pause, and teardown. See the
+[policy patch record](xdg-desktop-portal-wlr-session-policy.md) for the upstream
+basis, regression boundary, installation, and removal conditions.
+
 ## Winit Wayland destroyed-window updates
 
 - **Dependency:** `winit` 0.30.13, published source preserved in

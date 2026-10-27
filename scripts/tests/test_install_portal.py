@@ -2,16 +2,20 @@
 
 import hashlib
 import json
-import os
-import subprocess
 import sys
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from installlib.portal import BACKENDS, compatible, validate_backend
+from installlib.portal import (
+    LIFECYCLE_PATCH,
+    POLICY_PATCH,
+    REVISION,
+    START_PATCH,
+    patch_digest,
+    validate_backend,
+)
 
 
 class PortalDependencyTests(unittest.TestCase):
@@ -30,6 +34,10 @@ class PortalDependencyTests(unittest.TestCase):
                     {
                         "version": version,
                         "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+                        "source_revision": REVISION,
+                        "session_policy_sha256": patch_digest(POLICY_PATCH),
+                        "start_session_sha256": patch_digest(START_PATCH),
+                        "capture_lifecycle_sha256": patch_digest(LIFECYCLE_PATCH),
                     }
                 )
             )
@@ -55,37 +63,31 @@ class PortalDependencyTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "requires a verified"):
             validate_backend((old, new))
 
-    def test_package_version_checked_without_starting_backend(self):
-        original_access = os.access
-        for version, accepted in (("0.8.1-1", False), ("0.8.4-1ubuntu1", True)):
-            with self.subTest(version=version):
-                result = subprocess.CompletedProcess(
-                    ["dpkg-query"], 0, f"install ok installed\n{version}", ""
-                )
-                with (
-                    patch(
-                        "installlib.portal.os.access",
-                        side_effect=lambda path, mode: (
-                            path == BACKENDS[1] or original_access(path, mode)
-                        ),
-                    ),
-                    patch("installlib.portal.Path.is_file", return_value=False),
-                    patch(
-                        "installlib.portal.subprocess.run", return_value=result
-                    ) as run,
-                ):
-                    if accepted:
-                        self.assertEqual(validate_backend((BACKENDS[1],)), BACKENDS[1])
+    def test_unpatched_or_different_source_receipt_is_rejected(self):
+        path = self.backend("policy", "0.8.4")
+        receipt = path.with_name(path.name + ".json")
+        correct = json.loads(receipt.read_text())
+        for key in (
+            "source_revision",
+            "session_policy_sha256",
+            "start_session_sha256",
+            "capture_lifecycle_sha256",
+        ):
+            for replacement in (None, "incorrect"):
+                with self.subTest(key=key, replacement=replacement):
+                    data = correct.copy()
+                    if replacement is None:
+                        del data[key]
                     else:
-                        with self.assertRaises(RuntimeError):
-                            validate_backend((BACKENDS[1],))
-                    self.assertEqual(run.call_args.args[0][0], "dpkg-query")
+                        data[key] = replacement
+                    receipt.write_text(json.dumps(data))
+                    with self.assertRaisesRegex(RuntimeError, "session-policy patch"):
+                        validate_backend((path,))
 
-    def test_distribution_versions_and_future_releases(self):
-        for version in ("0.8.4", "1:0.8.4-1", "0.8.5+git123", "1.0.0"):
-            self.assertTrue(compatible(version), version)
-        for version in ("", "garbage", "0.8.3", "0.8.4~rc1"):
-            self.assertFalse(compatible(version), version)
+    def test_unverified_future_backend_is_not_assumed_to_support_policy(self):
+        path = self.backend("future", "0.8.5")
+        with self.assertRaisesRegex(RuntimeError, "session-policy patch"):
+            validate_backend((path,))
 
 
 if __name__ == "__main__":

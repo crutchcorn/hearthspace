@@ -1,0 +1,12 @@
+diff --git a/src/screencast/screencast.c b/src/screencast/screencast.c
+index a8fdc109653099770dfb916bbac10e0edec91290..422b51f76bbc34d463242280eeacc25dc63cd442 100644
+--- a/src/screencast/screencast.c
++++ b/src/screencast/screencast.c
+@@ -583,6 +583,7 @@
+ 		if (strcmp(sess->session_handle, session_handle) == 0) {
+ 				logprint(DEBUG, "dbus: start: found matching session %s", sess->session_handle);
+ 				cast = sess->screencast_data.screencast_instance;
++				break;
+ 		}
+ 	}
+ 	if (!cast) {

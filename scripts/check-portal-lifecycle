@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+# Exercise the pinned backend's real callbacks with transport substitutes.
+set -euo pipefail
+if [[ $# != 2 ]]; then
+  printf 'Usage: %s PATCHED_BACKEND_SOURCE FRESH_OUTPUT_DIRECTORY\n' "$0" >&2
+  exit 2
+fi
+backend=$(realpath -e -- "$1")
+fixture_dir=$(cd -- "$(dirname -- "$0")/portal_checklib/lifecycle" && pwd)
+test -f "$backend/src/screencast/ext_image_copy.c"
+test -d "$backend/build/protocols"
+mkdir -m 700 -- "$2"
+output=$(realpath -e -- "$2")
+read -r -a dependencies <<< "$(pkg-config --cflags --libs wayland-client libpipewire-0.3 libsystemd gbm libdrm)"
+flags=(-std=c11 -D_GNU_SOURCE -DHAVE_LIBSYSTEMD=1 -UNDEBUG -g -O1
+  -ffunction-sections -fdata-sections -fno-omit-frame-pointer
+  -fsanitize=address,undefined -I"$backend" -I"$backend/include" -I"$backend/build/protocols")
+support=("$backend/src/core/timer.c" "$backend/src/core/timespec_util.c"
+  "$backend/src/screencast/screencast_common.c"
+  "$backend"/build/protocols/*-protocol.c)
+for fixture in capture-lifecycle constraints-failure wayland-dispatch; do
+  timeout --kill-after=2s 60s cc "${flags[@]}" "$fixture_dir/$fixture.c" "${support[@]}" \
+    "${dependencies[@]}" -Wl,--gc-sections -lrt -lm -o "$output/$fixture"
+done
+export ASAN_OPTIONS=detect_leaks=1:halt_on_error=1
+export UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1
+for backend_kind in ext wlr; do
+  for scenario in pause-timer pause-active pause-remove-timer pause-remove-active \
+    pause-close remove-timer remove-active remove-reentry error close starved starved-close \
+    duplicate destroy-timer destroy-active destroy-starved; do
+    printf '%s %s\n' "$backend_kind" "$scenario"
+    timeout --kill-after=2s 5s "$output/capture-lifecycle" "$scenario" "$backend_kind"
+  done
+done
+timeout --kill-after=2s 5s "$output/constraints-failure"
+timeout --kill-after=2s 5s "$output/wayland-dispatch"
+printf '%s\n' '34 fixture invocations passed'

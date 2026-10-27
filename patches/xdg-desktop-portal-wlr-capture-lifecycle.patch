@@ -1,0 +1,360 @@
+diff --git a/include/screencast_common.h b/include/screencast_common.h
+--- a/include/screencast_common.h
++++ b/include/screencast_common.h
+@@ -186,6 +186,7 @@
+ 	uint32_t refcount;
+ 	struct xdpw_screencast_context *ctx;
+ 	bool initialized;
++	bool destroying;
+ 	struct xdpw_frame current_frame;
+ 	struct wl_list buffer_list;
+ 	bool avoid_dmabufs;
+@@ -199,6 +200,7 @@
+ 	bool pwr_stream_state;
+ 	uint32_t framerate;
+ 	struct xdpw_timer *process_retry;
++	struct xdpw_timer *capture_timer;
+ 
+ 	// wlroots
+ 	union {
+diff --git a/include/wlr_screencast.h b/include/wlr_screencast.h
+--- a/include/wlr_screencast.h
++++ b/include/wlr_screencast.h
+@@ -25,6 +25,7 @@
+ 		struct xdpw_screencast_restore_data *data);
+ 
+ void xdpw_wlr_frame_capture(struct xdpw_screencast_instance *cast);
++void xdpw_wlr_frame_capture_cancel(struct xdpw_screencast_instance *cast);
+ int xdpw_wlr_session_init(struct xdpw_screencast_instance *cast);
+ void xdpw_wlr_session_close(struct xdpw_screencast_instance *cast);
+ 
+diff --git a/src/core/main.c b/src/core/main.c
+--- a/src/core/main.c
++++ b/src/core/main.c
+@@ -51,6 +51,20 @@
+ 	return 1;
+ }
+ 
++// Called after poll reports readability. Dispatching only live callbacks can
++// block on a late event for a cancelled frame and starve PipeWire renegotiation.
++static int xdpw_wl_dispatch(struct wl_display *display) {
++	while (wl_display_prepare_read(display) != 0) {
++		if (wl_display_dispatch_pending(display) < 0) {
++			return -1;
++		}
++	}
++	if (wl_display_read_events(display) < 0) {
++		return -1;
++	}
++	return wl_display_dispatch_pending(display);
++}
++
+ int main(int argc, char *argv[]) {
+ 	struct xdpw_config config = {0};
+ 	char *configfile = NULL;
+@@ -274,9 +288,9 @@
+ 
+ 		if (pollfds[EVENT_LOOP_WAYLAND].revents & POLLIN) {
+ 			logprint(TRACE, "event-loop: got wayland event");
+-			ret = wl_display_dispatch(state.wl_display);
++			ret = xdpw_wl_dispatch(state.wl_display);
+ 			if (ret < 0) {
+-				logprint(ERROR, "wl_display_dispatch failed: %s", strerror(errno));
++				logprint(ERROR, "Wayland dispatch failed: %s", strerror(errno));
+ 				goto error;
+ 			}
+ 		}
+diff --git a/src/screencast/ext_image_copy.c b/src/screencast/ext_image_copy.c
+--- a/src/screencast/ext_image_copy.c
++++ b/src/screencast/ext_image_copy.c
+@@ -236,6 +236,10 @@
+ 	case EXT_IMAGE_COPY_CAPTURE_FRAME_V1_FAILURE_REASON_BUFFER_CONSTRAINTS:
+ 		logprint(ERROR, "ext: frame capture failed: buffer constraint mismatch");
+ 		xdpw_pwr_enqueue_buffer(cast);
++		cast->current_frame.damage.size = 0;
++		if (cast->pwr_stream_state && !cast->destroying) {
++			pw_stream_trigger_process(cast->stream);
++		}
+ 		return;
+ 	case EXT_IMAGE_COPY_CAPTURE_FRAME_V1_FAILURE_REASON_STOPPED:
+ 		logprint(INFO, "ext: frame capture failed: capture session stopped");
+diff --git a/src/screencast/pipewire_screencast.c b/src/screencast/pipewire_screencast.c
+--- a/src/screencast/pipewire_screencast.c
++++ b/src/screencast/pipewire_screencast.c
+@@ -353,9 +353,15 @@
+ 	cast->process_retry = NULL;
+ }
+ 
++static void pwr_handle_stream_on_process(void *data);
++static void pwr_arm_process_retry(struct xdpw_screencast_instance *cast);
++
+ static void pwr_handle_stream_state_changed(void *data,
+ 		enum pw_stream_state old, enum pw_stream_state state, const char *error) {
+ 	struct xdpw_screencast_instance *cast = data;
++	if (cast->destroying) {
++		return;
++	}
+ 	cast->node_id = pw_stream_get_node_id(cast->stream);
+ 
+ 	logprint(INFO, "pipewire: stream state changed to \"%s\"",
+@@ -365,17 +371,19 @@
+ 	switch (state) {
+ 	case PW_STREAM_STATE_STREAMING:
+ 		cast->pwr_stream_state = true;
+-		xdpw_pwr_dequeue_buffer(cast);
+-		xdpw_wlr_frame_capture(cast);
++		if (cast->current_frame.pw_buffer) {
++			// Resume the cancelled capture unless PipeWire replaced its buffer.
++			xdpw_wlr_frame_capture(cast);
++		} else {
++			pwr_handle_stream_on_process(cast);
++		}
+ 		break;
+-	case PW_STREAM_STATE_PAUSED:
+-		if (old == PW_STREAM_STATE_STREAMING && cast->current_frame.pw_buffer) {
+-			xdpw_pwr_enqueue_buffer(cast);
+-		}
+-		// fall through
+ 	default:
+ 		cast->pwr_stream_state = false;
+ 		pwr_disarm_process_retry(cast);
++		// Retain the buffer for resume: an unfinished first frame has a zero
++		// timestamp, which can stall consumers when real timestamps follow.
++		xdpw_wlr_frame_capture_cancel(cast);
+ 		break;
+ 	}
+ }
+@@ -580,19 +588,26 @@
+ 
+ 	logprint(DEBUG, "pipewire: remove buffer event handle");
+ 
++	bool current = cast->current_frame.pw_buffer == buffer;
++	if (current) {
++		xdpw_wlr_frame_capture_cancel(cast);
++		cast->current_frame.pw_buffer = NULL;
++		cast->current_frame.xdpw_buffer = NULL;
++	}
+ 	struct xdpw_buffer *xdpw_buffer = buffer->user_data;
+ 	if (xdpw_buffer) {
+ 		wl_list_remove(&xdpw_buffer->link);
+ 		xdpw_buffer_destroy(xdpw_buffer);
+ 	}
+-	if (cast->current_frame.pw_buffer == buffer) {
+-		cast->current_frame.pw_buffer = NULL;
+-		cast->current_frame.xdpw_buffer = NULL;
+-	}
+ 	for (uint32_t plane = 0; plane < buffer->buffer->n_datas; plane++) {
+ 		buffer->buffer->datas[plane].fd = -1;
+ 	}
+ 	buffer->user_data = NULL;
++	if (current) {
++		// clear_buffers emits removal before clearing its dequeue queue. A
++		// synchronous trigger here could dequeue an already removed buffer.
++		pwr_arm_process_retry(cast);
++	}
+ }
+ 
+ static uint64_t pwr_process_retry_delay(struct xdpw_screencast_instance *cast) {
+@@ -610,7 +625,7 @@
+ static void pwr_process_retry(void *data);
+ 
+ static void pwr_arm_process_retry(struct xdpw_screencast_instance *cast) {
+-	if (cast->process_retry) {
++	if (cast->destroying || !cast->pwr_stream_state || cast->process_retry) {
+ 		return;
+ 	}
+ 	cast->process_retry = xdpw_add_timer(cast->ctx->state,
+@@ -623,6 +638,9 @@
+ static void pwr_process_retry(void *data) {
+ 	struct xdpw_screencast_instance *cast = data;
+ 	cast->process_retry = NULL; // timer destroyed in event loop
++	if (cast->destroying || !cast->pwr_stream_state) {
++		return;
++	}
+ 	pwr_arm_process_retry(cast);
+ 	pw_stream_trigger_process(cast->stream);
+ }
+@@ -632,7 +650,7 @@
+ 
+ 	logprint(TRACE, "pipewire: on process event handle");
+ 
+-	if (!cast->pwr_stream_state) {
++	if (cast->destroying || !cast->pwr_stream_state) {
+ 		logprint(INFO, "pipewire: not streaming");
+ 		return;
+ 	}
+@@ -705,6 +723,10 @@
+ }
+ 
+ void xdpw_pwr_stream_destroy(struct xdpw_screencast_instance *cast) {
++	cast->destroying = true;
++	cast->pwr_stream_state = false;
++	pwr_disarm_process_retry(cast);
++	xdpw_wlr_frame_capture_cancel(cast);
+ 	if (!cast->stream) {
+ 		return;
+ 	}
+diff --git a/src/screencast/screencast.c b/src/screencast/screencast.c
+--- a/src/screencast/screencast.c
++++ b/src/screencast/screencast.c
+@@ -87,12 +87,11 @@
+ }
+ 
+ void xdpw_screencast_instance_destroy(struct xdpw_screencast_instance *cast) {
+-	struct xdpw_timer *timer, *ttmp;
+-	wl_list_for_each_safe(timer, ttmp, &cast->ctx->state->timers, link) {
+-		if (timer->user_data == cast) {
+-			xdpw_destroy_timer(timer);
+-		}
+-	}
++	cast->destroying = true;
++	cast->pwr_stream_state = false;
++	xdpw_wlr_session_close(cast);
++	xdpw_destroy_timer(cast->process_retry);
++	cast->process_retry = NULL;
+ 	struct xdpw_session *sess, *stmp;
+ 	wl_list_for_each_safe(sess, stmp, &cast->ctx->state->xdpw_sessions, link) {
+ 		if (sess->screencast_data.screencast_instance == cast) {
+@@ -104,8 +103,6 @@
+ 		}
+ 	}
+ 
+-	xdpw_wlr_session_close(cast);
+-
+ 	assert(cast->refcount == 0); // Fails assert if called by screencast_finish
+ 	logprint(DEBUG, "xdpw: destroying cast instance");
+ 
+@@ -118,9 +115,9 @@
+ 		}
+ 	}
+ 
+-	free(cast->target);
+ 	wl_list_remove(&cast->link);
+ 	xdpw_pwr_stream_destroy(cast);
++	free(cast->target);
+ 	assert(wl_list_length(&cast->buffer_list) == 0);
+ 	wl_array_release(&cast->current_frame.damage);
+ 
+diff --git a/src/screencast/wlr_screencast.c b/src/screencast/wlr_screencast.c
+--- a/src/screencast/wlr_screencast.c
++++ b/src/screencast/wlr_screencast.c
+@@ -26,7 +26,22 @@
+ #include "logger.h"
+ #include "fps_limit.h"
+ 
++static bool wlr_frame_capture_available(struct xdpw_screencast_instance *cast) {
++	if (cast->destroying || !cast->pwr_stream_state || cast->capture_timer ||
++			!cast->current_frame.pw_buffer || !cast->current_frame.xdpw_buffer) {
++		return false;
++	}
++	if (cast->ctx->ext_image_copy_capture_manager
++			&& cast->ctx->ext_output_image_capture_source_manager) {
++		return cast->ext_session.frame == NULL;
++	}
++	return cast->wlr_session.wlr_frame == NULL;
++}
++
+ static void wlr_frame_capture_start(struct xdpw_screencast_instance *cast) {
++	if (!wlr_frame_capture_available(cast)) {
++		return;
++	}
+ 	fps_limit_measure_start(&cast->fps_limit, cast->framerate);
+ 	if (cast->ctx->ext_image_copy_capture_manager
+ 			&& cast->ctx->ext_output_image_capture_source_manager) {
+@@ -37,19 +52,44 @@
+ }
+ 
+ static void wlr_frame_capture_timer(void *data) {
+-	wlr_frame_capture_start((struct xdpw_screencast_instance *)data);
++	struct xdpw_screencast_instance *cast = data;
++	cast->capture_timer = NULL; // timer destroyed in event loop
++	wlr_frame_capture_start(cast);
+ }
+ 
+ void xdpw_wlr_frame_capture(struct xdpw_screencast_instance *cast) {
++	if (!wlr_frame_capture_available(cast)) {
++		return;
++	}
+ 	uint64_t delay_ns = fps_limit_measure_end(&cast->fps_limit, cast->framerate);
+ 	if (delay_ns > 0) {
+-		xdpw_add_timer(cast->ctx->state, delay_ns, wlr_frame_capture_timer, cast);
++		cast->capture_timer = xdpw_add_timer(cast->ctx->state, delay_ns,
++			wlr_frame_capture_timer, cast);
++		if (!cast->capture_timer) {
++			wlr_frame_capture_start(cast);
++		}
+ 	} else {
+ 		wlr_frame_capture_start(cast);
+ 	}
+ }
+ 
++void xdpw_wlr_frame_capture_cancel(struct xdpw_screencast_instance *cast) {
++	xdpw_destroy_timer(cast->capture_timer);
++	cast->capture_timer = NULL;
++	if (cast->ctx->ext_image_copy_capture_manager
++			&& cast->ctx->ext_output_image_capture_source_manager) {
++		if (cast->ext_session.frame) {
++			ext_image_copy_capture_frame_v1_destroy(cast->ext_session.frame);
++			cast->ext_session.frame = NULL;
++		}
++	} else if (cast->ctx->screencopy_manager) {
++		xdpw_wlr_sc_session_close(cast);
++	}
++	cast->current_frame.damage.size = 0;
++}
++
+ void xdpw_wlr_session_close(struct xdpw_screencast_instance *cast) {
++	xdpw_wlr_frame_capture_cancel(cast);
+ 	if (cast->ctx->ext_image_copy_capture_manager
+ 			&& cast->ctx->ext_output_image_capture_source_manager) {
+ 		xdpw_ext_ic_session_close(cast);
+diff --git a/src/screencast/wlr_screencopy.c b/src/screencast/wlr_screencopy.c
+--- a/src/screencast/wlr_screencopy.c
++++ b/src/screencast/wlr_screencopy.c
+@@ -137,16 +137,16 @@
+ 
+ 	if (!cast->current_frame.xdpw_buffer) {
+ 		logprint(WARN, "wlroots: no current buffer");
++		wlr_frame_finish(cast);
+ 		xdpw_pwr_enqueue_buffer(cast);
+-		wlr_frame_finish(cast);
+ 		return;
+ 	}
+ 
+ 	if (!check_constraints(&cast->current_constraints, cast->current_frame.xdpw_buffer)) {
+ 		logprint(DEBUG, "wlroots: buffer constraints changed");
+ 		pwr_update_stream_param(cast);
++		wlr_frame_finish(cast);
+ 		xdpw_pwr_enqueue_buffer(cast);
+-		wlr_frame_finish(cast);
+ 		return;
+ 	}
+ 
+@@ -199,8 +199,8 @@
+ 	cast->current_frame.completed = true;
+ 	logprint(TRACE, "wlroots: timestamp %"PRIu64":%"PRIu32, cast->current_frame.tv_sec, cast->current_frame.tv_nsec);
+ 
++	wlr_frame_finish(cast);
+ 	xdpw_pwr_enqueue_buffer(cast);
+-	wlr_frame_finish(cast);
+ }
+ 
+ static void wlr_frame_failed(void *data,
+@@ -212,8 +212,8 @@
+ 
+ 	logprint(TRACE, "wlroots: failed event handler");
+ 
++	wlr_frame_finish(cast);
+ 	xdpw_pwr_enqueue_buffer(cast);
+-	wlr_frame_finish(cast);
+ }
+ 
+ static const struct zwlr_screencopy_frame_v1_listener wlr_frame_listener = {
+@@ -231,6 +231,7 @@
+ 
+ 	struct zwlr_screencopy_frame_v1 *frame = zwlr_screencopy_manager_v1_capture_output(
+ 		cast->ctx->screencopy_manager, cast->target->with_cursor, cast->target->output->output);
++	cast->wlr_session.wlr_frame = frame;
+ 	zwlr_screencopy_frame_v1_add_listener(frame, &wlr_frame_listener, cast);
+ 	logprint(TRACE, "wlroots: callbacks registered");
+ }
