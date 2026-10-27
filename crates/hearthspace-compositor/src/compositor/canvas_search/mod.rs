@@ -152,7 +152,7 @@ impl App {
         if self.canvas_search_active() {
             self.close_canvas_search(true);
         }
-        self.check_navigation_available()?;
+        self.check_canvas_tool_available()?;
         self.disarm_canvas_pan();
         self.leave_window_focus_views();
         let outputs = self.capture_outputs();

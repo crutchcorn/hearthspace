@@ -6,8 +6,10 @@ use hearthspace_ipc::command::{ShellCommand, SpawnTarget};
 impl App {
     pub(super) fn run_shortcut(&mut self, shortcut: Shortcut) {
         match shortcut {
-            Shortcut::CanvasPan => {
-                let _ = self.select_canvas_tool(hearthspace_ipc::command::CanvasTool::Pan);
+            Shortcut::Canvas(action) => {
+                if let Err(error) = self.run_canvas_shortcut(action) {
+                    tracing::debug!(%error, "canvas shortcut unavailable");
+                }
                 return;
             }
             Shortcut::CanvasPanCancel => {
@@ -82,7 +84,7 @@ impl App {
         }
         let command = match shortcut {
             Shortcut::DeviceControl(_)
-            | Shortcut::CanvasPan
+            | Shortcut::Canvas(_)
             | Shortcut::CanvasPanCancel
             | Shortcut::CanvasSearch(_)
             | Shortcut::Desktop(_)

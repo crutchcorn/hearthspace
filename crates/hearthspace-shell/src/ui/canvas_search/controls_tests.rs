@@ -3,6 +3,21 @@ use crate::ui::test_support::Ui;
 use xilem::view::sized_box;
 
 #[test]
+fn accepted_map_action_toggles_the_requested_output_and_dismisses_other_panels() {
+    let mut state = ShellState::new("/unused".into(), vec!["left".into(), "right".into()]);
+    state.outputs[0].show_notifications = true;
+    activate(&mut state, "tool:map", Some("right"));
+    assert!(!state.outputs[0].show_notifications);
+    assert!(!state.outputs[0].show_map);
+    assert!(state.outputs[1].show_map);
+    activate(&mut state, "tool:map", Some("right"));
+    assert!(!state.outputs[1].show_map);
+    activate(&mut state, "tool:map", Some("left"));
+    assert!(state.outputs[0].show_map);
+    assert!(!state.outputs[1].show_map);
+}
+
+#[test]
 fn accepted_pan_action_requires_the_frame_worker_and_does_not_select_optimistically() {
     let mut state = ShellState::new("/unused".into(), vec!["test".into()]);
     state.frame_layout.snapshot.canvas_tool = Some(CanvasTool::Search);

@@ -1,5 +1,6 @@
 use std::collections::HashSet;
 
+use hearthspace_ipc::shortcuts::CanvasAction;
 use smithay::{
     backend::input::{InputTime, KeyState},
     input::keyboard::{FilterResult, KeyboardSource, Keycode, ModifiersState, keysyms},
@@ -9,6 +10,7 @@ use smithay::{
 use crate::compositor::{App, idle::ActivityReason, switcher::SwitcherSource};
 
 mod actions;
+mod canvas;
 mod device_control;
 mod groups;
 mod meta;
@@ -24,7 +26,7 @@ pub(in crate::compositor) struct KeyboardShortcuts {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Shortcut {
     CanvasSearch(i32),
-    CanvasPan,
+    Canvas(CanvasAction),
     CanvasPanCancel,
     Desktop(crate::compositor::desktop::Action),
     Group(groups::Action),
@@ -143,13 +145,15 @@ impl App {
         {
             return;
         }
+        // Discarding pending search input can activate another source's map.
+        // Restore this event's keymap and modifiers before normal filtering.
+        if !self.activate_keyboard_source(source) {
+            return;
+        }
         let keyboard = self.keyboard.clone();
         let available = self.navigation_available();
+        let canvas_available = self.canvas_shortcuts_available();
         let pan_escape = self.canvas_pan_captured();
-        let desktop_keyboard = keyboard
-            .current_focus()
-            .and_then(|focus| self.window_index_for_surface(focus.surface()))
-            .is_none_or(|index| self.desktop_id(index).is_some());
         let mut toggle_launcher = false;
         let mut layout_escape = false;
         let mut power_escape = false;
@@ -180,20 +184,6 @@ impl App {
                             .insert(code)
                             .then_some(Shortcut::CanvasPanCancel),
                     )
-                } else if available
-                    && desktop_keyboard
-                    && !modifiers.ctrl
-                    && !modifiers.alt
-                    && !modifiers.logo
-                    && state == KeyState::Pressed
-                    && matches!(symbol, keysyms::KEY_h | keysyms::KEY_H)
-                {
-                    FilterResult::Intercept(
-                        app.shortcuts
-                            .intercepted
-                            .insert(code)
-                            .then_some(Shortcut::CanvasPan),
-                    )
                 } else if app.power_confirmation_active() {
                     if state == KeyState::Pressed && symbol == keysyms::KEY_Escape {
                         power_escape = app.shortcuts.intercepted.insert(code);
@@ -206,6 +196,16 @@ impl App {
                         .device_filter(code, state, symbol, !app.session_locked())
                 {
                     result
+                } else if canvas_available
+                    && state == KeyState::Pressed
+                    && let Some(action) = canvas::shortcut(modifiers, symbol)
+                {
+                    FilterResult::Intercept(
+                        app.shortcuts
+                            .intercepted
+                            .insert(code)
+                            .then_some(Shortcut::Canvas(action)),
+                    )
                 } else if (app.layout_editing() || app.layout_confirmation_active())
                     && state == KeyState::Pressed
                     && symbol == 0xff1b
@@ -315,7 +315,6 @@ fn shortcut(modifiers: &ModifiersState, symbol: u32) -> Option<Shortcut> {
         return None;
     }
     match symbol {
-        keysyms::KEY_g => Some(Shortcut::Group(groups::Action::Toggle)),
         keysyms::KEY_l => Some(Shortcut::Lock),
         keysyms::KEY_Return => Some(Shortcut::Terminal),
         keysyms::KEY_space => Some(Shortcut::Launcher),

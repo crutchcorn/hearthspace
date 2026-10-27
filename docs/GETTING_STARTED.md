@@ -30,9 +30,10 @@ the canvas currently visible on screen.
 | Zoom with touch | Pinch with three fingers. |
 | Change zoom from the map | Use its minus and plus buttons. |
 
-Press **H** while the desktop has focus to choose Pan canvas, or **V** to return
-to desktop selection. The [canvas map](CANVAS_MAP.md) provides another way to pan
-by dragging its highlighted viewport.
+Hold **Meta** and press **H** to choose Pan canvas, or **V** to return
+to desktop selection. Meta is also called Super or the Windows key. The
+[canvas map](CANVAS_MAP.md) provides another way to pan by dragging its
+highlighted viewport.
 
 Panning moves your view; it doesn't rearrange windows. Zooming out helps you see
 more work at once. [Pan and zoom](PINCH_ZOOM.md) covers gesture cancellation,
@@ -44,7 +45,7 @@ window states, and device differences.
 Tab to move forward, or Shift+Tab to move backward. Release Alt to choose; Escape
 cancels. The arrangement you made remains intact.
 
-**Ctrl+K** or **Super+K** opens canvas search. Type a window title, app, file,
+**Meta+K** opens canvas search. Type a window title, app, file,
 folder, or control name, then choose a result. File results come from your Desktop
 directory, not a full-disk content index. Closing search restores the canvas.
 
@@ -55,9 +56,10 @@ for the full interaction.
 
 ## Make the edges useful
 
-Choose **Change layout** from Canvas tools at the bottom left. Select a control,
-window, or desktop item. Drag it to an edge to keep it within reach while the
-canvas moves, or choose Canvas or Background to put it back with your work.
+Choose **Change layout** from Canvas tools at the bottom left, or press
+**Meta+A**. Select a control, window, or desktop item. Drag it to an edge to keep
+it within reach while the canvas moves, or choose Canvas or Background to put
+it back with your work.
 
 Drop frame attachments together to group them. Side controls turn vertically,
 keeping their icons upright. Pinned windows leave a narrow visible strip until
@@ -66,6 +68,10 @@ you open them. Press Escape or Done when you're finished.
 If you move or hide a control, search can find it again. Settings → System also
 opens Change layout and restores Canvas tools. [Shell controls](SHELL.md)
 explains removal, grouping, and narrow-screen behavior.
+
+The full canvas-tool shortcut list is in **Settings → Keyboard shortcuts**.
+These bindings are fixed for now. **Meta+O** opens the canvas map, and **Meta+G**
+selects the window-group tool.
 
 ## Personalize the desktop
 

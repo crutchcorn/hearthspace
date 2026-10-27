@@ -2,7 +2,7 @@
 
 from .control import ControlError
 from .daily_checks import a11y
-from .input import Input
+from .input import Input, keycode
 from .map_checks import SHELL, button_center
 from .shell_surfaces import observed_status, widget_surface
 
@@ -84,6 +84,40 @@ def wait_tool(smoke, name):
             else None
         ),
     )
+
+
+def shortcut(smoke, key, tool, *, meta_first=False):
+    """Observe tool activation on press and persistence through both releases."""
+    previous = smoke.control.query("layout-status").get("canvas_tool")
+    prefix = f"canvas-meta-{key}-{'meta-first' if meta_first else 'key-first'}"
+
+    def observe(phase, expected):
+        layout = wait_tool(smoke, expected)
+        smoke.capture(f"{prefix}-{phase}")
+        status = smoke.control.status()
+        if any(panel["kind"] == "search" for panel in status.get("shell_panels", [])):
+            raise ControlError(f"Meta+{key.upper()} {phase} opened Apps List")
+        # Re-read after presentation: an asynchronous release effect must not
+        # silently deselect the tool after the first successful status query.
+        if smoke.control.query("layout-status").get("canvas_tool") != expected:
+            raise ControlError(f"Meta+{key.upper()} {phase} changed the selected tool")
+        smoke.record(
+            "canvas-tool-key-phase",
+            chord=f"Meta+{key.upper()}",
+            phase=phase,
+            layout=layout,
+            meta_first=meta_first,
+        )
+
+    with Input(smoke.control) as inputs:
+        inputs.down("key", keycode("meta"))
+        observe("meta-down", previous)
+        inputs.down("key", keycode(key))
+        observe("key-down", tool)
+        releases = ("meta", key) if meta_first else (key, "meta")
+        for released in releases:
+            inputs.up("key", keycode(released))
+            observe("meta-up" if released == "meta" else "key-up", tool)
 
 
 def wait_trigger(smoke, title):

@@ -175,6 +175,7 @@ class PanTargetTests(unittest.TestCase):
         self.assertIn("@role='toggle button'", query)
         self.assertIn("@name='Pan canvas'", query)
         self.assertNotIn("@name='H'", query)
+        self.assertNotIn("@name='Meta+H'", query)
         self.assertIn("Pan canvas, choose canvas tool", ui.TRIGGERS)
 
     def test_blank_target_excludes_client_frame_and_transformed_desktop_tiles(self):

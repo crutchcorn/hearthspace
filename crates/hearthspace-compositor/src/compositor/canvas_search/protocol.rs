@@ -51,7 +51,7 @@ impl App {
         }
         serde_json::to_vec(&status).unwrap()
     }
-    pub(super) fn issue_canvas_search_action(
+    pub(in crate::compositor) fn issue_canvas_search_action(
         &mut self,
         id: String,
         output: Option<String>,

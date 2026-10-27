@@ -10,8 +10,12 @@ use wayland_client::protocol::wl_pointer::ButtonState;
 
 #[path = "canvas_pan/desktop.rs"]
 mod desktop;
+#[path = "canvas_pan/keyboard.rs"]
+mod keyboard;
 #[path = "canvas_pan/lifecycle.rs"]
 mod lifecycle;
+#[path = "canvas_pan/map_shortcut.rs"]
+mod map_shortcut;
 #[path = "canvas_pan/presentation.rs"]
 mod presentation;
 #[path = "canvas_pan/sources.rs"]
@@ -152,7 +156,7 @@ fn canvas_pan_preserves_application_geometry_focus_and_keyboard_delivery() {
 }
 
 #[test]
-fn canvas_pan_h_is_desktop_scoped_and_select_commands_are_idempotent() {
+fn canvas_tools_require_meta_on_desktop_and_select_commands_are_idempotent() {
     let _guard = headless_test_guard();
     let compositor = fixture(false);
     let mut client = clients(&compositor);
@@ -163,7 +167,13 @@ fn canvas_pan_h_is_desktop_scoped_and_select_commands_are_idempotent() {
     finish(&compositor); // Empty canvas gives keyboard authority to the desktop.
     client.take_keyboard_events();
     keys(&compositor, &[35]);
+    assert_eq!(tool(&compositor), "select");
+    keys(&compositor, &[125, 35]);
     assert_eq!(tool(&compositor), "pan");
+    keys(&compositor, &[47]);
+    keys(&compositor, &[53]);
+    assert_eq!(tool(&compositor), "pan");
+    assert_eq!(query(&compositor, "canvas-search-status")["active"], false);
     assert!(client.take_keyboard_events().is_empty());
     for selected in ["pan", "select", "group", "search", "layout", "select"] {
         action(&compositor, format!("canvas-tool {selected}"));

@@ -5,9 +5,8 @@ temporarily gathers matching objects around a text field, keeping their live
 contents and identities. Dismissing it returns to your arrangement.
 
 Choose **Search canvas** from the first Canvas tools button, then click empty
-canvas to open the field there. **Ctrl+K** or **Super+K** opens it near the upper center of
-the active output. **/** does the same while the desktop or background has
-keyboard focus; applications keep their own slash input.
+canvas to open the field there. **Meta+K** opens it near the upper center of
+the active output. Applications keep their own slash and Ctrl+K input.
 
 Type to find desktop app shortcuts, files, folders, open windows, system controls,
 and the available canvas tools together. Every query word must match, in any

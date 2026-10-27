@@ -1,6 +1,7 @@
 pub mod command;
 pub mod frame_layout;
 pub mod outputs;
+pub mod shortcuts;
 pub mod transport;
 pub mod windows;
 

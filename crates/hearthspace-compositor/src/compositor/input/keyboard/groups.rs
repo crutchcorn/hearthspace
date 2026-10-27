@@ -2,7 +2,6 @@ use super::*;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum Action {
-    Toggle,
     Clear,
     Done,
     Next,
@@ -57,7 +56,7 @@ impl App {
     pub(super) fn run_group_shortcut(&mut self, action: Action) {
         match action {
             Action::Clear => self.clear_window_group(),
-            Action::Toggle | Action::Done => {
+            Action::Done => {
                 let _ = self.toggle_group_selection();
             }
             Action::Next | Action::Previous => {

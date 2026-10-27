@@ -5,6 +5,7 @@ use wayland_client::protocol::wl_touch;
 #[derive(Default)]
 pub(super) struct State {
     down: Vec<(usize, (f64, f64))>,
+    up: Vec<i32>,
     cancelled: usize,
 }
 
@@ -28,6 +29,11 @@ impl MapClient {
         self.sync();
         self.state.touch.cancelled
     }
+
+    pub(in super::super) fn touch_releases(&mut self) -> &[i32] {
+        self.sync();
+        &self.state.touch.up
+    }
 }
 
 impl Dispatch<wl_touch::WlTouch, ()> for super::State {
@@ -45,6 +51,7 @@ impl Dispatch<wl_touch::WlTouch, ()> for super::State {
                     state.touch.down.push((index, (x, y)));
                 }
             }
+            wl_touch::Event::Up { id, .. } => state.touch.up.push(id),
             wl_touch::Event::Cancel => state.touch.cancelled += 1,
             _ => {}
         }

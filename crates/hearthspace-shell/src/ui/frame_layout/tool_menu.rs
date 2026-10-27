@@ -1,7 +1,7 @@
 //! Primary canvas choices share one picker; compact layouts include every tool.
 use super::{ShellState, focus};
 use crate::ui::{quick_panel::Kind, search_focus::Record, state::ShellOutputInstance};
-use hearthspace_ipc::command::CanvasTool;
+use hearthspace_ipc::{command::CanvasTool, shortcuts::CanvasAction};
 use hearthspace_ui_components::{
     self as components,
     icons::{Icon, icon},
@@ -21,7 +21,6 @@ struct Entry {
     title: &'static str,
     glyph: Icon,
     tool: Option<CanvasTool>,
-    shortcut: &'static str,
 }
 
 const TOOLS: [Entry; 6] = [
@@ -29,37 +28,31 @@ const TOOLS: [Entry; 6] = [
         title: "Select desktop items",
         glyph: Icon::Cursor,
         tool: Some(CanvasTool::Select),
-        shortcut: "V",
     },
     Entry {
         title: "Pan canvas",
         glyph: Icon::Pan,
         tool: Some(CanvasTool::Pan),
-        shortcut: "H",
     },
     Entry {
         title: "Search canvas",
         glyph: Icon::Search,
         tool: Some(CanvasTool::Search),
-        shortcut: "/",
     },
     Entry {
         title: "Select window group",
         glyph: Icon::Lasso,
         tool: Some(CanvasTool::Group),
-        shortcut: "",
     },
     Entry {
         title: "Change layout",
         glyph: Icon::FrameLayout,
         tool: Some(CanvasTool::Layout),
-        shortcut: "",
     },
     Entry {
         title: "Canvas map",
         glyph: Icon::Map,
         tool: None,
-        shortcut: "",
     },
 ];
 const ROW_HEIGHT: f64 = 44.0;
@@ -235,9 +228,17 @@ pub(in crate::ui) fn panel(
                     label(entry.title)
                         .font("Liberation Sans")
                         .text_size(12.0)
-                        .line_break_mode(LineBreaking::Clip)
+                        .line_break_mode(LineBreaking::WordWrap)
                         .flex(1.0),
-                    label(entry.shortcut).text_size(11.0).color(palette.muted),
+                    label(
+                        entry
+                            .tool
+                            .map_or(CanvasAction::Map, CanvasAction::Tool)
+                            .shortcut()
+                            .chord(),
+                    )
+                    .text_size(11.0)
+                    .color(palette.muted),
                     sized_box(icon(Icon::Check, 14.0).color(if selected {
                         palette.accent
                     } else {

@@ -4,7 +4,7 @@ Select related windows to move them together without changing their sizes or
 relative spacing. This is a temporary canvas selection; persistent strips at
 the screen edge belong to [frame groups](SHELL.md#change-layout).
 
-Use **Select window group** in the bottom-left Canvas tools, or **Super+G**, then
+Use **Select window group** in the bottom-left Canvas tools, or **Meta+G**, then
 draw a freeform lasso around windows on the canvas. Windows inside or crossed by the
 enclosed shape are selected. Releasing the pointer or lifting your finger
 finishes selection immediately; the last point connects to the first. Drawing
@@ -29,7 +29,7 @@ original locations to staggered positions on the current output and join the
 group. Gathering changes their actual canvas positions, unlike the temporary
 previews used by search and window switching. The selection itself is not saved.
 
-Keyboard selection remains available: after **Super+G**, **Tab** and
+Keyboard selection remains available: after **Meta+G**, **Tab** and
 **Shift+Tab** choose a window, **Space** toggles its selection, **Enter** finishes,
 and **G** gathers while selecting.
 

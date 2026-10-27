@@ -115,12 +115,14 @@ def desktop_keys(smoke):
         "blank desktop owns keyboard focus",
         lambda: not any(item["focused"] for item in smoke.control.status()["windows"]),
     )
-    for key, tool in (("h", "pan"), ("v", "select"), ("h", "pan")):
-        with Input(smoke.control) as inputs:
-            inputs.chord(key)
-        ui.wait_tool(smoke, tool)
+    for key, tool, meta_first in (
+        ("h", "pan", False),
+        ("v", "select", True),
+        ("h", "pan", True),
+    ):
+        ui.shortcut(smoke, key, tool, meta_first=meta_first)
     smoke.capture("canvas-pan-desktop-shortcuts")
-    smoke.record("canvas-pan-desktop-shortcuts", keys=["H", "V", "H"])
+    smoke.record("canvas-pan-desktop-shortcuts", keys=["Meta+H", "Meta+V", "Meta+H"])
 
 
 def client_input(smoke):

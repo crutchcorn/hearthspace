@@ -180,6 +180,12 @@ pub(super) fn activate(state: &mut ShellState, id: &str, output: Option<&str>) {
     let Some(key) = key else {
         return;
     };
+    if id == "tool:map" {
+        // Keyboard invocations can arrive while Overview is already open.
+        // Its toggle owns dismissal and must see the current popup state.
+        state.toggle_map(&key);
+        return;
+    }
     state.dismiss_panels();
     if let Some(tool) = tool(id) {
         crate::ui::frame_layout::select_tool(state, tool);
@@ -194,7 +200,6 @@ pub(super) fn activate(state: &mut ShellState, id: &str, output: Option<&str>) {
         "control:brightness" => state.toggle_quick_panel(&key, Kind::Brightness),
         "control:battery" => state.toggle_quick_panel(&key, Kind::Battery),
         "control:clock" => state.toggle_quick_panel(&key, Kind::Clock),
-        "tool:map" => state.toggle_map(&key),
         // Closing search reveals the existing canvas toolbar in its corner.
         "control:canvas" => {}
         _ => {}

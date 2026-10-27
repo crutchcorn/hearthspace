@@ -194,7 +194,7 @@ fn popup_grabs_keep_shortcuts_and_their_releases() {
 }
 
 #[test]
-fn removed_super_o_shortcut_is_available_to_the_client() {
+fn overview_chord_uses_canvas_admission_instead_of_global_navigation() {
     assert_eq!(
         shortcut(
             &ModifiersState {
@@ -204,5 +204,15 @@ fn removed_super_o_shortcut_is_available_to_the_client() {
             keysyms::KEY_o
         ),
         None
+    );
+    assert_eq!(
+        canvas::shortcut(
+            &ModifiersState {
+                logo: true,
+                ..Default::default()
+            },
+            keysyms::KEY_o
+        ),
+        Some(CanvasAction::Map)
     );
 }

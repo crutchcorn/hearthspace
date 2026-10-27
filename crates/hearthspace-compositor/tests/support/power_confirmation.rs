@@ -132,9 +132,25 @@ fn power_confirmation_blocks_background_input_until_escape_is_acknowledged() {
     click(&compositor, 400., 400.); // Exposed background application.
     touch(&compositor, 10., 20.);
     touch(&compositor, 400., 400.);
-    for chord in [&[125][..], &[125, 57], &[125, 106], &[56, 15], &[56, 62]] {
+    for chord in [
+        &[125][..],
+        &[125, 57],
+        &[125, 106],
+        &[56, 15],
+        &[56, 62],
+        &[125, 47],
+        &[125, 35],
+        &[125, 37],
+        &[125, 34],
+        &[125, 30],
+        &[125, 24],
+    ] {
         keys(&compositor, chord);
     }
+    assert_eq!(
+        query(&compositor, "layout-status")["canvas_tool"],
+        layout["canvas_tool"]
+    );
     action(&compositor, "key-down 125");
     action(&compositor, "axis 0 -120");
     action(&compositor, "key-up 125");

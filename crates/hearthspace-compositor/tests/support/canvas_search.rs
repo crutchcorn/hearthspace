@@ -5,6 +5,8 @@ use super::shell_panels::{click, connect};
 use super::*;
 use serde_json::{Value, json};
 
+#[path = "canvas_search/keyboard.rs"]
+mod keyboard;
 #[path = "canvas_search/lifecycle.rs"]
 mod lifecycle;
 #[path = "canvas_search/persistent.rs"]
@@ -130,7 +132,7 @@ fn canvas_search_shortcut_replays_early_typing_into_its_field_and_restores_focus
     drop(compositor.wait_for_socket());
     let mut client = connect(&compositor);
     let (normal, _) = normal(&mut client, &compositor, "dev.hearthspace.SearchTyping");
-    keys(&compositor, &[29, 37]); // Ctrl+K follows the physical key policy.
+    keys(&compositor, &[125, 37]); // Meta+K follows the physical key policy.
     let opened = search(&compositor);
     assert_eq!(opened["active"], true);
     keys(&compositor, &[30]); // 'a' arrives before the shell maps the field.

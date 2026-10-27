@@ -1,6 +1,6 @@
 # Canvas map
 
-Choose **Canvas map** in Canvas tools to open a popover containing a live,
+Choose **Canvas map** in Canvas tools, or press **Meta+O**, to open a popover containing a live,
 zoomed-out **Overview** of the canvas. The percentage beside the heading shows
 the current zoom. Use the controls below the map to reset zoom to 100%, zoom out,
 or zoom in. These controls keep the center of the output that opened the map
@@ -22,7 +22,7 @@ underneath it. Dragging preserves the zoom level and window positions.
 
 Opening the map does not change the viewport or move windows. Zoom controls
 keep the popover open. Click the map icon again, click elsewhere on the canvas,
-or press Escape to dismiss it. Switching to another shell panel also
+or press Escape or Meta+O to dismiss it. Switching to another shell panel also
 closes the map. The map stays in screen coordinates as the canvas zooms.
 
 ## Implementation
