@@ -343,7 +343,10 @@ impl XdgShellHandler for App {
         self.request_redraw();
     }
 
-    fn title_changed(&mut self, _surface: ToplevelSurface) {
+    fn title_changed(&mut self, surface: ToplevelSurface) {
+        if let Some(id) = self.xdg_window_id(&surface) {
+            self.sync_capture_toplevel(id);
+        }
         self.request_redraw();
     }
 }

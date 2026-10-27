@@ -38,11 +38,17 @@ pub(crate) struct LockClient {
 impl LockClient {
     pub(crate) fn connect(socket: &Path) -> Self {
         let connection = Connection::from_socket(UnixStream::connect(socket).unwrap()).unwrap();
+        Self::before_lock(connection, || {})
+    }
+
+    /// Queue preceding protocol work on this connection immediately before lock.
+    pub(crate) fn before_lock(connection: Connection, before: impl FnOnce()) -> Self {
         let mut queue = connection.new_event_queue();
         let handle = queue.handle();
         let _registry = connection.display().get_registry(&handle, ());
         let mut state = State::default();
         queue.roundtrip(&mut state).unwrap();
+        before();
         let lock = state
             .manager
             .as_ref()

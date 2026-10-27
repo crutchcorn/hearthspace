@@ -167,6 +167,7 @@ impl XwmHandler for App {
                 } else {
                     WindowDecoration::ServerSide
                 };
+            self.sync_capture_toplevel(self.windows[index].id);
             self.request_redraw();
         }
     }

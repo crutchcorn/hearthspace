@@ -38,6 +38,7 @@ impl App {
                 .as_ref()
                 .is_some_and(|surface| self.restore_desktop_context_parent(surface));
         tracing::debug!(window_id = id, ?cause, remove, "retiring window ownership");
+        self.remote_capture.retire_toplevel(id);
 
         // Keep Smithay's grab alive to drain every held release. Only its owner
         // is latched/cancelled; unrelated shell or popup teardown must be inert.
@@ -122,5 +123,6 @@ impl App {
             _ => None,
         };
         self.windows.restack(&[id], before);
+        self.sync_capture_toplevel(id);
     }
 }

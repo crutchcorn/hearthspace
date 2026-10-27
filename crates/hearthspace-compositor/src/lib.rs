@@ -22,6 +22,8 @@ pub struct RunOptions {
     pub scroll_zooms_without_super: bool,
     /// Expose capture and virtual input protocols to local remote-desktop clients.
     pub remote_desktop: bool,
+    /// Expose output/window capture to trusted local clients without virtual input.
+    pub screen_cast: bool,
     pub backend: BackendSelection,
     pub headless_output_size: Option<(i32, i32)>,
     pub headless_output_scale: Option<i32>,
@@ -34,6 +36,7 @@ impl Default for RunOptions {
         Self {
             scroll_zooms_without_super: false,
             remote_desktop: false,
+            screen_cast: false,
             backend: BackendSelection::Auto,
             headless_output_size: None,
             headless_output_scale: None,

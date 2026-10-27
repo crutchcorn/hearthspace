@@ -155,6 +155,10 @@ const CLIENT_HEIGHT: u32 = 600;
 
 static HEADLESS_TEST_LOCK: Mutex<()> = Mutex::new(());
 
+#[cfg(feature = "test-apps")]
+#[path = "support/screen_cast.rs"]
+mod screen_cast;
+
 fn headless_test_guard() -> std::sync::MutexGuard<'static, ()> {
     serialization::lock_after_cleanup(&HEADLESS_TEST_LOCK)
 }

@@ -217,6 +217,7 @@ impl CaptureState {
 impl CalloopData {
     pub(super) fn maintain_captures(&mut self) {
         self.state.maintain_remote_capture(self.capture_active());
+        self.capture_toplevels();
         self.capture_remote_offscreen();
         if self.state.session_locked() {
             self.captures.invalidate("session is locked");

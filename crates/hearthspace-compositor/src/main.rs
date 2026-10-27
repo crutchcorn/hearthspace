@@ -29,6 +29,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     debug!(?args, "parsed compositor arguments");
 
     let options = hearthspace_compositor::RunOptions {
+        screen_cast: args
+            .iter()
+            .any(|arg| arg == hearthspace_compositor::config::SCREEN_CAST_FLAG),
         remote_desktop: args
             .iter()
             .any(|arg| arg == hearthspace_compositor::config::REMOTE_DESKTOP_FLAG),

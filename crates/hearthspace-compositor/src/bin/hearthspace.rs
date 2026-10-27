@@ -47,6 +47,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let headless_output_scale = parse_headless_output_scale(&args)?;
         let exit_after = parse_exit_after(&args)?;
         let options = hearthspace_compositor::RunOptions {
+            screen_cast: args
+                .iter()
+                .any(|arg| arg == hearthspace_compositor::config::SCREEN_CAST_FLAG),
             remote_desktop: args
                 .iter()
                 .any(|arg| arg == hearthspace_compositor::config::REMOTE_DESKTOP_FLAG),
