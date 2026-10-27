@@ -30,8 +30,8 @@ the canvas currently visible on screen.
 | Zoom with touch | Pinch with three fingers. |
 | Change zoom from the map | Use its minus and plus buttons. |
 
-Hold **Meta** and press **H** to choose Pan canvas, or **V** to return
-to desktop selection. Meta is also called Super or the Windows key. The
+Press **❖ + H** to choose Pan canvas, or **❖ + V** to return to desktop
+selection. **❖** means Meta, also called Super or the Windows key. The
 [canvas map](CANVAS_MAP.md) provides another way to pan by dragging its
 highlighted viewport.
 
@@ -45,7 +45,7 @@ window states, and device differences.
 Tab to move forward, or Shift+Tab to move backward. Release Alt to choose; Escape
 cancels. The arrangement you made remains intact.
 
-**Meta+K** opens canvas search. Type a window title, app, file,
+**❖ + K** opens canvas search. Type a window title, app, file,
 folder, or control name, then choose a result. File results come from your Desktop
 directory, not a full-disk content index. Closing search restores the canvas.
 
@@ -57,7 +57,7 @@ for the full interaction.
 ## Make the edges useful
 
 Choose **Change layout** from Canvas tools at the bottom left, or press
-**Meta+A**. Select a control, window, or desktop item. Drag it to an edge to keep
+**❖ + A**. Select a control, window, or desktop item. Drag it to an edge to keep
 it within reach while the canvas moves, or choose Canvas or Background to put
 it back with your work.
 
@@ -70,7 +70,7 @@ opens Change layout and restores Canvas tools. [Shell controls](SHELL.md)
 explains removal, grouping, and narrow-screen behavior.
 
 The full canvas-tool shortcut list is in **Settings → Keyboard shortcuts**.
-These bindings are fixed for now. **Meta+O** opens the canvas map, and **Meta+G**
+These bindings are fixed for now. **❖ + O** opens the canvas map, and **❖ + G**
 selects the window-group tool.
 
 ## Personalize the desktop

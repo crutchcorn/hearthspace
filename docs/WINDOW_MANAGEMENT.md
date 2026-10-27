@@ -178,13 +178,13 @@ actions return an error until the popup is dismissed.
 ## Pan canvas with a mouse
 
 Open the first Canvas tools button and choose **Pan canvas**, or press
-**Meta+H**. Drag empty canvas or a canvas desktop icon to move your view. The
+**❖ + H**. Drag empty canvas or a canvas desktop icon to move your view. The
 open hand closes while you drag. Windows and desktop items keep their canvas
 positions, including when zoomed in or out.
 
 Application contents, titlebars, frame attachments, and shell controls keep
 their normal interaction. Plain **H** still types into an application. Choose
-**Select desktop items** or press **Meta+V** to move or select icons
+**Select desktop items** or press **❖ + V** to move or select icons
 again.
 
 Release the mouse button to stop. **Escape** stops an active pan at its current
@@ -292,7 +292,7 @@ until the contacts and any mouse buttons pressed during it have been released.
 ## Keyboard control
 
 Apps List opens from its dock button or a Meta tap. It searches installed apps
-and running windows. [Canvas search](CANVAS_SEARCH.md) opens with Meta+K and
+and running windows. [Canvas search](CANVAS_SEARCH.md) opens with ❖ + K and
 temporarily arranges matching live objects around its field.
 [Shell controls](SHELL.md) describes both entry points and the corner dropdowns.
 
@@ -301,12 +301,12 @@ temporarily arranges matching live objects around its field.
 | Super+Return | Open a terminal |
 | Meta / Super tap | Toggle Apps List |
 | Super+Space | Open Apps List |
-| Meta+V | Select desktop items |
-| Meta+H | Select Pan canvas |
-| Meta+K | Select Search and open canvas search |
-| Meta+G | Select window group |
-| Meta+A | Open Change layout |
-| Meta+O | Toggle the canvas map |
+| ❖ + V | Select desktop items |
+| ❖ + H | Select Pan canvas |
+| ❖ + K | Select Search and open canvas search |
+| ❖ + G | Select window group |
+| ❖ + A | Open Change layout |
+| ❖ + O | Toggle the canvas map |
 | Alt+Tab / Alt+Shift+Tab | Select next / previous application; hold Alt for previews |
 | Alt+F4 | Request that the focused application close |
 | Super+arrow keys | Pan the canvas |
@@ -316,8 +316,8 @@ temporarily arranges matching live objects around its field.
 | Super+L | Lock the native session |
 | Ctrl+Alt+F1–F12 | Switch to Linux TTY1–TTY12 in a native session |
 
-Meta is also called Super or the Windows key. Hold it while pressing the tool
-key; releasing it leaves the selected tool active. **Settings → Keyboard
+❖ represents Meta, also called Super or the Windows key. Hold it while pressing
+the tool key; releasing it leaves the selected tool active. **Settings → Keyboard
 shortcuts** lists these fixed canvas bindings. Bare H, V, and `/` are left to
 applications, as is Ctrl+K.
 

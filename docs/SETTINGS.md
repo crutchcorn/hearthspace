@@ -26,23 +26,24 @@ are retained for their return. Narrow windows expose categories through the
 
 ## Keyboard shortcuts
 
-Hold **Meta** while pressing a tool's key. Meta is also called Super or the
-Windows key; on an Apple keyboard it is usually Command. Releasing Meta leaves
-the selected tool active. These shortcuts are read-only for now.
+The **❖** symbol represents **Meta**. Hold it while pressing a tool's key.
+Meta is also called Super or the Windows key; on an Apple keyboard it is usually
+Command. Releasing Meta leaves the selected tool active. These shortcuts are
+read-only for now.
 
 | Shortcut | Action |
 | --- | --- |
-| Meta+V | Select desktop items |
-| Meta+H | Pan canvas |
-| Meta+K | Select Search and open its field |
-| Meta+G | Select window group |
-| Meta+A | Open Change layout |
-| Meta+O | Open or close the canvas map (Overview) |
+| ❖ + V | Select desktop items |
+| ❖ + H | Pan canvas |
+| ❖ + K | Select Search and open its field |
+| ❖ + G | Select window group |
+| ❖ + A | Open Change layout |
+| ❖ + O | Open or close the canvas map (Overview) |
 
 The shortcuts work while an application has focus. A lock screen, modal dialog,
 or an input operation can prevent switching tools; finish or cancel that
 interaction first. Bare H, V, and `/`, and Ctrl+K, remain available to apps.
-Fullscreen (Meta+F), maximize (Meta+M), and lock (Meta+L) keep their existing keys.
+Fullscreen (❖ + F), maximize (❖ + M), and lock (❖ + L) keep their existing keys.
 If Hearthspace runs inside another desktop, that desktop may intercept Meta.
 
 ## Ownership

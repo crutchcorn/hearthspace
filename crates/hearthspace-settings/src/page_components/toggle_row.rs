@@ -9,7 +9,7 @@ use xilem::masonry::{
     kurbo::{Axis, Point, Size},
     layout::{AsUnit, LayoutSize, LenReq, Length, SizeDef},
     parley::{
-        FontFamily, FontFamilyName, StyleProperty,
+        StyleProperty,
         style::{FontWeight, LineHeight},
     },
     properties::LineBreaking,
@@ -45,9 +45,7 @@ pub(super) struct RowContent {
 fn label(text: &'static str, size: f32) -> Label {
     Label::new(text)
         .with_style(StyleProperty::FontSize(size))
-        .with_style(FontFamily::Single(FontFamilyName::Named(
-            crate::typography::FONT.into(),
-        )))
+        .with_style(crate::typography::FONT_FAMILY)
 }
 
 impl RowContent {

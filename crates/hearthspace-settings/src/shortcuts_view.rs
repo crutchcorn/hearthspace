@@ -22,7 +22,7 @@ pub(crate) fn view(state: &SettingsApp) -> Box<AnyWidgetView<SettingsApp>> {
         .collect();
     flex_col((
         flex_col((
-            note(palette, "Hold Meta (Super, Windows, or Command) and press a key. You can release both keys after choosing a tool."),
+            note(palette, "❖ means Meta (Super, Windows, or Command). Hold it and press a key. You can release both keys after choosing a tool."),
             note(palette, "These shortcuts cannot be changed yet."),
         ))
         .cross_axis_alignment(CrossAxisAlignment::Stretch)

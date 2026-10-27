@@ -41,7 +41,7 @@ pub(crate) fn view(state: &SettingsApp) -> Box<AnyWidgetView<SettingsApp>> {
             flex_col((
                 toggle_row(
                     "Make canvas tools hide-able",
-                    Some("Removing canvas tools hides their buttons. Press Meta+K to find and restore them with search."),
+                    Some("Removing canvas tools hides their buttons. Press ❖ + K to find and restore them with search."),
                     state.frame_settings.snapshot.is_some_and(|snapshot| snapshot.allow_hide_tools),
                     !state.frame_settings.enabled(),
                     |state, allow| state.frame_settings.request(Operation::AllowHideTools(allow)),

@@ -7,7 +7,7 @@ directory. These are the user's real files and installed applications.
 
 ## Select and move
 
-Choose **Select desktop items** in Canvas tools, or press **Meta+V**. A click selects an icon; double-click or press Enter to open it.
+Choose **Select desktop items** in Canvas tools, or press **❖ + V**. A click selects an icon; double-click or press Enter to open it.
 Shift, Ctrl, or Super adds or removes an item from the selection. Dragging a
 selected icon moves the selected items together. Drag empty canvas to select
 intersecting icons with a rectangle. Hold Alt while dragging to align the

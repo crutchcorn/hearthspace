@@ -45,7 +45,7 @@ extend the deadline. Cancellation, output/token matching, and the bounded input
 queue still apply, so slow startup can preserve early typing without accepting a
 stale or cancelled launcher. Canvas search retains its explicit session lifetime.
 
-Meta+K opens canvas search, which temporarily arranges matching desktop
+❖ + K opens canvas search, which temporarily arranges matching desktop
 objects and live windows around a native search field. Its toolbar button arms
 click-to-open Search mode. This is independent of Apps List.
 
@@ -93,14 +93,14 @@ returns to the calendar and saves that output's clock preference. Time remains
 The first button chooses between **Select desktop items**, **Pan canvas**, and
 **Search canvas**. Click the selected tool to open its choices. After using
 another tool, the first click returns to your last choice; click again to open
-the menu. **Meta+V** selects desktop items and **Meta+H** selects Pan canvas.
+the menu. **❖ + V** selects desktop items and **❖ + H** selects Pan canvas.
 The letters alone remain ordinary text. Search also finds these tools by name.
-**Meta+K** selects Search and opens its field immediately.
+**❖ + K** selects Search and opens its field immediately.
 
 The remaining buttons select window groups, open Change layout, and toggle
 Overview. On narrow outputs, **Canvas tools** opens one menu with all six choices.
 Selection is shared across outputs; each output keeps its own popup.
-**Meta+G** selects window groups, **Meta+A** opens Change layout, and **Meta+O**
+**❖ + G** selects window groups, **❖ + A** opens Change layout, and **❖ + O**
 toggles Overview. The fixed bindings are listed in
 [Settings → Keyboard shortcuts](SETTINGS.md#keyboard-shortcuts).
 

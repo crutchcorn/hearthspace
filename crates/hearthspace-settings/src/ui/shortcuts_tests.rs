@@ -80,9 +80,11 @@ fn keyboard_navigation_opens_read_only_shortcuts_and_scrolls_to_the_last_row() {
                     Some(AriaCurrent::Page)
                 );
             }
-            for shortcut in CANVAS_SHORTCUTS {
-                let chord = shortcut.chord();
-                for value in [shortcut.label, shortcut.description, chord.as_str()] {
+            for (shortcut, chord) in CANVAS_SHORTCUTS
+                .iter()
+                .zip(["❖ + V", "❖ + H", "❖ + K", "❖ + G", "❖ + A", "❖ + O"])
+            {
+                for value in [shortcut.label, shortcut.description, chord] {
                     let node = ui.harness.access_node(text(&ui, value)).unwrap();
                     assert!(!node.data().supports_action(Action::Click));
                     assert!(!node.is_disabled(), "shortcut text remains readable");
@@ -90,7 +92,7 @@ fn keyboard_navigation_opens_read_only_shortcuts_and_scrolls_to_the_last_row() {
             }
             text(
                 &ui,
-                "Hold Meta (Super, Windows, or Command) and press a key. You can release both keys after choosing a tool.",
+                "❖ means Meta (Super, Windows, or Command). Hold it and press a key. You can release both keys after choosing a tool.",
             );
             text(&ui, "These shortcuts cannot be changed yet.");
 

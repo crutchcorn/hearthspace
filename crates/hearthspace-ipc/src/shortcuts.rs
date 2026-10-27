@@ -17,7 +17,7 @@ pub struct CanvasShortcut {
 
 impl CanvasShortcut {
     pub fn chord(&self) -> String {
-        format!("Meta+{}", self.key.to_ascii_uppercase())
+        format!("❖ + {}", self.key.to_ascii_uppercase())
     }
 }
 

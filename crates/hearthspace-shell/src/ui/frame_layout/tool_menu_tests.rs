@@ -80,7 +80,7 @@ fn primary_choices_have_names_hints_native_keyboard_and_confirmed_pressed_state(
         .filter_map(|id| ui.harness.access_node(id))
         .filter_map(|node| node.label().or_else(|| node.value()))
         .collect();
-    for hint in ["Meta+V", "Meta+H", "Meta+K"] {
+    for hint in ["❖ + V", "❖ + H", "❖ + K"] {
         assert!(names.iter().any(|name| name == hint), "missing {hint}");
     }
     let buttons = ids(&ui.harness)
@@ -227,14 +227,13 @@ fn compact_menu_keeps_all_six_rows_reachable_when_height_is_constrained() {
         xilem::dpi::LogicalSize::new(216.0, 136.0)
     );
     let mut ui = Ui::new(state, menu, (216, 136));
-    for shortcut in hearthspace_ipc::shortcuts::CANVAS_SHORTCUTS {
+    for hint in ["❖ + V", "❖ + H", "❖ + K", "❖ + G", "❖ + A", "❖ + O"] {
         assert!(
             ids(&ui.harness)
                 .into_iter()
                 .filter_map(|id| ui.harness.access_node(id))
-                .any(|node| node.label().or_else(|| node.value()) == Some(shortcut.chord())),
-            "missing compact hint {}",
-            shortcut.chord()
+                .any(|node| node.label().or_else(|| node.value()).as_deref() == Some(hint)),
+            "missing compact hint {hint}"
         );
     }
     for name in [

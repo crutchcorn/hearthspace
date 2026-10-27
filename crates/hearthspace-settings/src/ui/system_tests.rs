@@ -69,7 +69,7 @@ fn hide_tools_switch_waits_for_confirmation_and_live_refresh_preserves_focus() {
     assert_eq!(
         node.description().as_deref(),
         Some(
-            "Removing canvas tools hides their buttons. Press Meta+K to find and restore them with search."
+            "Removing canvas tools hides their buttons. Press ❖ + K to find and restore them with search."
         )
     );
     ui.harness.focus_on(Some(switch));
