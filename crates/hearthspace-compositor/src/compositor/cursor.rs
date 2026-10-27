@@ -28,6 +28,8 @@ const NS_RESIZE_CURSOR: &[u8] = include_bytes!("../../../../assets/cursors/ns-re
 const EW_RESIZE_CURSOR: &[u8] = include_bytes!("../../../../assets/cursors/ew-resize");
 const NWSE_RESIZE_CURSOR: &[u8] = include_bytes!("../../../../assets/cursors/nwse-resize");
 const NESW_RESIZE_CURSOR: &[u8] = include_bytes!("../../../../assets/cursors/nesw-resize");
+const GRAB_CURSOR: &[u8] = include_bytes!("../../../../assets/cursors/grab");
+const GRABBING_CURSOR: &[u8] = include_bytes!("../../../../assets/cursors/grabbing");
 const DESIRED_CURSOR_SIZE: u32 = 24;
 
 pub(super) fn cursor_icon_from_smithay(icon: SmithayCursorIcon) -> CursorIcon {
@@ -37,6 +39,8 @@ pub(super) fn cursor_icon_from_smithay(icon: SmithayCursorIcon) -> CursorIcon {
         SmithayCursorIcon::EwResize => CursorIcon::EwResize,
         SmithayCursorIcon::NwseResize => CursorIcon::NwseResize,
         SmithayCursorIcon::NeswResize => CursorIcon::NeswResize,
+        SmithayCursorIcon::Grab => CursorIcon::Grab,
+        SmithayCursorIcon::Grabbing => CursorIcon::Grabbing,
         _ => CursorIcon::Default,
     }
 }
@@ -83,6 +87,8 @@ pub(in crate::compositor) fn cursor_image_for_icon_at_size(
         CursorIcon::EwResize => cursor_image_from_xcursor(EW_RESIZE_CURSOR, desired_size),
         CursorIcon::NwseResize => cursor_image_from_xcursor(NWSE_RESIZE_CURSOR, desired_size),
         CursorIcon::NeswResize => cursor_image_from_xcursor(NESW_RESIZE_CURSOR, desired_size),
+        CursorIcon::Grab => cursor_image_from_xcursor(GRAB_CURSOR, desired_size),
+        CursorIcon::Grabbing => cursor_image_from_xcursor(GRABBING_CURSOR, desired_size),
         _ => cursor_image_from_xcursor(DEFAULT_CURSOR, desired_size),
     }
 }
@@ -111,12 +117,14 @@ fn cursor_image_from_xcursor(contents: &[u8], desired_size: u32) -> CursorImage 
 mod tests {
     use super::*;
 
-    const NAMED_ICONS: [CursorIcon; 5] = [
+    const NAMED_ICONS: [CursorIcon; 7] = [
         CursorIcon::Default,
         CursorIcon::NsResize,
         CursorIcon::EwResize,
         CursorIcon::NwseResize,
         CursorIcon::NeswResize,
+        CursorIcon::Grab,
+        CursorIcon::Grabbing,
     ];
 
     #[test]
@@ -142,5 +150,28 @@ mod tests {
             assert!(image.hotspot.0 >= 0 && image.hotspot.0 as u32 <= image.width);
             assert!(image.hotspot.1 >= 0 && image.hotspot.1 as u32 <= image.height);
         }
+    }
+
+    #[test]
+    fn pan_cursors_have_distinct_visible_shapes_on_both_backgrounds() {
+        let arrow = cursor_image_for_icon(CursorIcon::Default);
+        let grab = cursor_image_for_icon(CursorIcon::Grab);
+        let grabbing = cursor_image_for_icon(CursorIcon::Grabbing);
+        assert_ne!(grab.pixels_rgba, arrow.pixels_rgba);
+        assert_ne!(grabbing.pixels_rgba, grab.pixels_rgba);
+        for image in [grab, grabbing] {
+            let pixels = image.pixels_rgba.as_chunks::<4>().0;
+            assert!(pixels.iter().any(|p| p[3] == 0));
+            assert!(pixels.iter().any(|p| p[3] == 255 && p[0] < 32));
+            assert!(pixels.iter().any(|p| p[3] == 255 && p[0] > 223));
+        }
+        assert_eq!(
+            cursor_icon_from_smithay(SmithayCursorIcon::Grab),
+            CursorIcon::Grab
+        );
+        assert_eq!(
+            cursor_icon_from_smithay(SmithayCursorIcon::Grabbing),
+            CursorIcon::Grabbing
+        );
     }
 }

@@ -59,11 +59,13 @@ Window-management hit testing selects the desired shape. Resize borders and acti
 resize operations use horizontal, vertical, or diagonal resize cursors. Other
 interactions can request semantic shapes such as grab or crosshair.
 
-The embedded native asset set contains the default pointer and four resize
-shapes: `ns-resize`, `ew-resize`, `nwse-resize`, and `nesw-resize`. The native and
-headless asset lookup falls back to the default pointer for other named shapes.
-The host cursor path can represent a broader set. Smithay named-cursor events are
-also mapped to the supported default/resize set.
+The embedded native asset set contains the default pointer, `grab` and
+`grabbing` hands, and four resize shapes: `ns-resize`, `ew-resize`, `nwse-resize`,
+and `nesw-resize`. Pan canvas uses the open hand over an eligible canvas target
+and the closed hand while dragging. Native and headless rendering share these
+assets. Smithay named-cursor events map to the same supported set; other named
+shapes fall back to the default pointer. The host cursor path can represent a
+broader set.
 
 This means backend-neutral intent does not imply identical artwork on every
 backend. Extend the shared asset lookup when adding a native named shape; do not
@@ -115,7 +117,7 @@ With ImageMagick and `xcursorgen` installed, regenerate one resize cursor from t
 workspace root:
 
 ```sh
-magick assets/cursors/source/ns-resize.svg assets/cursors/source/ns-resize.png
+magick -background none assets/cursors/source/ns-resize.svg assets/cursors/source/ns-resize.png
 (
     cd assets/cursors/source
     xcursorgen ns-resize.cursor ../ns-resize
@@ -123,5 +125,7 @@ magick assets/cursors/source/ns-resize.svg assets/cursors/source/ns-resize.png
 ```
 
 Running `xcursorgen` from the source directory lets it resolve the PNG named in
-the configuration. Repeat the same steps for the other resize shapes when
-changing the set. See [dependencies](DEPENDENCIES.md) for tool setup.
+the configuration. Repeat the same steps for the other shapes when changing the
+set. Keep strokes explicitly opaque and the background transparent; inspect the
+result on both light and dark backgrounds before regenerating the Xcursor file.
+See [dependencies](DEPENDENCIES.md) for tool setup.
