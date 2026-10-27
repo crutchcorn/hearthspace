@@ -33,7 +33,7 @@ fn session_env_uses_private_runtime_dir() {
         dry_run: false,
     };
 
-    let env = create_session_env(&args, RunMode::InstalledBinaries, &paths).unwrap();
+    let env = create_session_env(&args, RunMode::InstalledBinaries, &paths, None).unwrap();
 
     assert!(env.vars.iter().any(|(key, value)| {
         key == "XDG_RUNTIME_DIR" && value == "/tmp/hearthspace-test/session-1"
@@ -73,7 +73,7 @@ fn session_env_uses_stable_default_wayland_display() {
         dry_run: false,
     };
 
-    let env = create_session_env(&args, RunMode::InstalledBinaries, &paths).unwrap();
+    let env = create_session_env(&args, RunMode::InstalledBinaries, &paths, None).unwrap();
 
     assert_eq!(
         env.wayland_display,

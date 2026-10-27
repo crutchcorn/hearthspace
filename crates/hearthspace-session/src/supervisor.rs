@@ -23,6 +23,8 @@ use crate::{
 mod activation;
 mod commands;
 mod notifications;
+mod private_bus;
+mod shutdown;
 mod startup;
 mod wayvnc;
 
@@ -43,6 +45,7 @@ pub(crate) struct Supervisor {
     shell: Option<ManagedProcess>,
     watcher: Option<ManagedProcess>,
     notifications: Option<ManagedProcess>,
+    session_bus: Option<ManagedProcess>,
     desktop_services: crate::desktop_services::DesktopServices,
     appearance_portal: Option<crate::appearance_portal::AppearancePortal>,
     app_scopes: Option<crate::app_scopes::AppScopes>,
@@ -78,6 +81,7 @@ impl Supervisor {
             shell: None,
             watcher: None,
             notifications: None,
+            session_bus: None,
             desktop_services: crate::desktop_services::DesktopServices::default(),
             appearance_portal: None,
             app_scopes: None,
@@ -269,6 +273,8 @@ impl Supervisor {
                 return Ok(());
             }
 
+            self.check_session_bus()?;
+
             if let Some(status) = poll_process(&mut self.compositor)? {
                 info!(%status, "compositor exited; ending session");
                 return if status.success() {
@@ -318,51 +324,8 @@ impl Supervisor {
         }
     }
 
-    pub(crate) fn shutdown(&mut self) -> std::io::Result<()> {
-        info!("shutting down Hearthspace session processes");
-        self.ai.take();
-        self.power.take();
-        terminate_process(&mut self.wayvnc);
-        terminate_process(&mut self.shell);
-        terminate_process(&mut self.compositor);
-        terminate_process(&mut self.settingsd);
-        terminate_process(&mut self.watcher);
-        terminate_process(&mut self.notifications);
-
-        self.desktop_services.shutdown();
-        self.appearance_portal.take();
-
-        wait_then_kill_process(&mut self.wayvnc);
-        wait_then_kill_process(&mut self.shell);
-        wait_then_kill_process(&mut self.compositor);
-        wait_then_kill_process(&mut self.settingsd);
-        wait_then_kill_process(&mut self.watcher);
-        wait_then_kill_process(&mut self.notifications);
-
-        let retired = match &mut self.activation_environment {
-            Some(activation) => activation.retire(),
-            None => crate::session_bus::retire_persisted(&self.paths.session_dir),
-        };
-        self.activation_environment.take();
-        // Startup records intent before the manager call, so cleanup must also
-        // cover a failed start that never returned an in-memory owner.
-        crate::app_scopes::shutdown(&self.paths.session_dir, &self.paths.host_runtime_dir)?;
-        retired?;
-
-        // Do not traverse/remove a still-mounted desktop filesystem on failure.
-        crate::portal_cleanup::unmount_runtime(&self.paths.session_dir)?;
-
-        match fs::remove_dir_all(&self.paths.session_dir) {
-            Ok(()) => {
-                info!(path = %self.paths.session_dir.display(), "removed session runtime directory")
-            }
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-            Err(error) => return Err(error),
-        }
-        Ok(())
-    }
-
-    fn check_startup_deadline(&self, child: &str) -> Result<(), Box<dyn std::error::Error>> {
+    fn check_startup_deadline(&mut self, child: &str) -> Result<(), Box<dyn std::error::Error>> {
+        self.check_session_bus()?;
         crate::readiness::check_startup_deadline(
             self.startup_deadline,
             self.shutdown_requested.load(Ordering::SeqCst),

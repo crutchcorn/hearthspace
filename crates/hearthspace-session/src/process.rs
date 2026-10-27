@@ -25,6 +25,7 @@ pub(crate) struct ManagedProcess {
     spec: ProcessSpec,
     child: Child,
     output_activity: Arc<Mutex<Instant>>,
+    parent_bound: bool,
     pub(crate) restarts: usize,
     pub(crate) max_restarts: usize,
 }
@@ -40,12 +41,29 @@ impl ManagedProcess {
         spec: ProcessSpec,
         max_restarts: usize,
     ) -> Result<Self, Box<dyn std::error::Error>> {
+        Self::spawn_inner(spec, max_restarts, false)
+    }
+
+    /// The private broker must not survive a crashed supervisor. Other managed
+    /// children retain their existing lifetime and recovery semantics.
+    pub(crate) fn spawn_parent_bound(
+        spec: ProcessSpec,
+    ) -> Result<Self, Box<dyn std::error::Error>> {
+        Self::spawn_inner(spec, 0, true)
+    }
+
+    fn spawn_inner(
+        spec: ProcessSpec,
+        max_restarts: usize,
+        parent_bound: bool,
+    ) -> Result<Self, Box<dyn std::error::Error>> {
         let output_activity = Arc::new(Mutex::new(Instant::now()));
-        let child = spawn_child(&spec, Arc::clone(&output_activity))?;
+        let child = spawn_child(&spec, Arc::clone(&output_activity), parent_bound)?;
         Ok(Self {
             spec,
             child,
             output_activity,
+            parent_bound,
             restarts: 0,
             max_restarts,
         })
@@ -59,7 +77,11 @@ impl ManagedProcess {
         kill_group(self);
         self.restarts += 1;
         record_output_activity(&self.output_activity);
-        self.child = spawn_child(&self.spec, Arc::clone(&self.output_activity))?;
+        self.child = spawn_child(
+            &self.spec,
+            Arc::clone(&self.output_activity),
+            self.parent_bound,
+        )?;
         Ok(())
     }
 }
@@ -67,6 +89,7 @@ impl ManagedProcess {
 fn spawn_child(
     spec: &ProcessSpec,
     output_activity: Arc<Mutex<Instant>>,
+    parent_bound: bool,
 ) -> Result<Child, Box<dyn std::error::Error>> {
     info!(name = spec.name, program = %spec.program, args = ?spec.args, "starting process");
     let mut command = Command::new(&spec.program);
@@ -91,10 +114,24 @@ fn spawn_child(
     // entire background group, stopping the compositor and every client in it.
     // A new POSIX session removes the terminal while retaining PID == PGID for
     // our existing group cleanup; logind/cgroup session ownership is unchanged.
-    // SAFETY: setsid is async-signal-safe, and conversion of its errno does not
-    // allocate or acquire locks between fork and exec.
+    let parent = nix::unistd::getpid();
+    // SAFETY: only Linux system calls and errno conversion run between fork and
+    // exec; no allocation or locks. Capture the expected parent before fork:
+    // arming PDEATHSIG alone misses a parent that died before the prctl call.
     unsafe {
-        command.pre_exec(|| nix::unistd::setsid().map(|_| ()).map_err(io::Error::from));
+        command.pre_exec(move || {
+            nix::unistd::setsid().map_err(io::Error::from)?;
+            if parent_bound {
+                if nix::libc::prctl(nix::libc::PR_SET_PDEATHSIG, nix::libc::SIGKILL, 0, 0, 0) == -1
+                {
+                    return Err(io::Error::last_os_error());
+                }
+                if nix::unistd::getppid() != parent {
+                    return Err(io::Error::from_raw_os_error(nix::libc::ESRCH));
+                }
+            }
+            Ok(())
+        });
     }
     if let Some(current_dir) = &spec.current_dir {
         command.current_dir(current_dir);
