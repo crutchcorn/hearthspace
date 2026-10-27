@@ -115,6 +115,10 @@ checks; Steam opening successfully does not establish the rest.
 
 ## Checking application workflows
 
+Desktop Discord and browser screen sharing use the ScreenCast portal and
+PipeWire. See [screen and window sharing](SCREEN_SHARING.md) for the backend,
+chooser, setup, and request diagnostics.
+
 [Native app acceptance](DAILY_APPS_TESTING.md) describes repeatable browser,
 editor, clipboard, and file-selection checks. Use exact saved or transferred
 content as well as visible application state when evaluating a workflow.
