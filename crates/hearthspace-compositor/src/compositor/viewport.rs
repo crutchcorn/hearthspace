@@ -1,8 +1,9 @@
 use std::time::Instant;
 
+use hearthspace_ipc::command::ZoomOperation;
 use smithay::{
     backend::input::InputTime,
-    utils::{Logical, Point},
+    utils::{Logical, Point, Rectangle},
 };
 use tracing::{debug, trace};
 
@@ -169,11 +170,47 @@ impl App {
         if self.window_focus_view_active() {
             return;
         }
-        debug!(multiplier, "zooming viewport around center");
-        let primary_output = self.primary_output_logical_rect();
+        self.animate_zoom_around_output_center(self.primary_output_logical_rect(), multiplier);
+    }
+
+    pub(super) fn zoom_viewport_on_output(
+        &mut self,
+        output_name: &str,
+        operation: ZoomOperation,
+    ) -> Result<(), String> {
+        if self.window_focus_view_active() {
+            return Err("canvas navigation is unavailable in focused view".into());
+        }
+        let output = self
+            .output_logical_rect_for_name(Some(output_name))
+            .ok_or_else(|| format!("output is unavailable: {output_name}"))?;
+        if let ZoomOperation::To(scale) = operation
+            && (!scale.is_finite()
+                || !(crate::config::MIN_ZOOM..=crate::config::MAX_ZOOM).contains(&scale))
+        {
+            return Err("zoom must be between 0.5 and 2".into());
+        }
+        // Resolve and validate before sampling: a stale map output must not
+        // change the viewport or cancel an interaction on a surviving output.
+        self.advance_viewport_animation();
+        let multiplier = match operation {
+            ZoomOperation::In => crate::config::ZOOM_STEP,
+            ZoomOperation::Out => 1.0 / crate::config::ZOOM_STEP,
+            ZoomOperation::To(scale) => scale / self.viewport_scale,
+        };
+        self.animate_zoom_around_output_center(output, multiplier);
+        Ok(())
+    }
+
+    fn animate_zoom_around_output_center(
+        &mut self,
+        output: Rectangle<i32, Logical>,
+        multiplier: f64,
+    ) {
+        debug!(multiplier, ?output, "zooming viewport around output center");
         let center_screen = Point::<f64, Logical>::from((
-            f64::from(primary_output.loc.x) + f64::from(primary_output.size.w) / 2.0,
-            f64::from(primary_output.loc.y) + f64::from(primary_output.size.h) / 2.0,
+            f64::from(output.loc.x) + f64::from(output.size.w) / 2.0,
+            f64::from(output.loc.y) + f64::from(output.size.h) / 2.0,
         ));
         let (viewport_offset, viewport_scale) = zoom_around_screen_point(
             self.viewport_offset,

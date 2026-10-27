@@ -95,6 +95,7 @@ impl App {
             .filter(|(index, window)| {
                 window.mapped
                     && (self.has_compositor_chrome(*index)
+                        || self.is_canvas_map_panel(*index)
                         || window_app_id(&window.surface).as_deref() == Some(SETTINGS_APP_ID)
                         || self.layout_glass_rect(*index).is_some())
             })

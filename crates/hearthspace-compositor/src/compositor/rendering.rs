@@ -244,6 +244,7 @@ impl App {
                 .filter(|(index, window)| {
                     window.mapped
                         && (window.kind == ManagedWindowKind::Normal
+                            || self.is_canvas_map_panel(*index)
                             || self.canvas_search_panel_allowed(*index)
                             || self.canvas_search_result_visible(*index)
                             || self.window_switcher_caption_visible(*index)
@@ -412,7 +413,8 @@ impl App {
             {
                 elements.push(HearthspaceRenderElement::from(frame.shadow));
             }
-            let panel = if self.canvas_search_panel_allowed(index)
+            let overview = self.is_canvas_map_panel(index);
+            let panel = if (self.canvas_search_panel_allowed(index) || overview)
                 && let Some(origin) = self.launcher_logical_origin(index)
             {
                 let rect = Rectangle::new(
@@ -422,8 +424,9 @@ impl App {
                 Some((
                     rect,
                     1.,
-                    self.focused_shell_panel_index() == Some(index)
-                        || point_in_logical_rect(self.pointer_location, rect),
+                    !overview
+                        && (self.focused_shell_panel_index() == Some(index)
+                            || point_in_logical_rect(self.pointer_location, rect)),
                     1.,
                 ))
             } else if self.canvas_search_result_visible(index)
@@ -447,6 +450,22 @@ impl App {
                     .panel_shadow(renderer, id, rect, zoom, emphasized, opacity)
             {
                 elements.push(HearthspaceRenderElement::from(shadow));
+            }
+            if overview && let Some(origin) = self.launcher_logical_origin(index) {
+                window_backdrops.push(window_backdrop::BackdropRequest {
+                    id,
+                    front,
+                    after: elements.len(),
+                    window: Rectangle::new(
+                        origin + self.window_surface_geometry_loc(index),
+                        self.window_geometry_size(index),
+                    ),
+                    region: None,
+                    radius: 20.,
+                    modal: false,
+                    zoom: 1.,
+                    opacity: 1.,
+                });
             }
             if self.window_switcher_caption_visible(index)
                 && let Some(caption) = self.window_switcher_caption_rect()

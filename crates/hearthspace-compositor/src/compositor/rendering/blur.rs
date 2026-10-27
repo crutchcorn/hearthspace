@@ -74,7 +74,10 @@ impl App {
         let mut regions = Vec::new();
         for (index, window) in self.windows.iter().enumerate() {
             let corner = self.shell_corner(index).is_some();
-            let panel = window.kind == ManagedWindowKind::Launcher;
+            // Overview uses the shared 40px window-glass backdrop, including
+            // photo-aware saturation, rather than the lighter corner blur.
+            let panel =
+                window.kind == ManagedWindowKind::Launcher && !self.is_canvas_map_panel(index);
             if !window.mapped || (!corner && !panel) {
                 continue;
             }

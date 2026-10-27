@@ -119,5 +119,5 @@ def closed(smoke):
 
 
 def close(smoke):
-    click(smoke, "Close canvas map")
+    click(smoke, "Canvas map")
     closed(smoke)

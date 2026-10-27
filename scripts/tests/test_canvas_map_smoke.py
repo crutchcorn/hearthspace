@@ -13,7 +13,7 @@ from unittest.mock import Mock, patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from agentlib import map_checks, map_drag, map_touch
 from agentlib.control import ControlError
-from agentlib.map_smoke import MapSmoke, map_pixels, percentage
+from agentlib.map_smoke import MapSmoke, map_pixels, percentage, verify_reset
 from test_agent_visual import capture
 
 
@@ -77,12 +77,38 @@ class MapCoordinateTests(unittest.TestCase):
         with patch("agentlib.map_smoke.a11y", return_value={"elements": [{}]}) as a11y:
             percentage(smoke)
         self.assertIn("@name='85%'", a11y.call_args.args[2])
+        self.assertIn("@name='Current canvas zoom'", a11y.call_args.args[2])
         self.assertEqual(smoke.control.status.call_count, 2)
 
     def test_map_button_selector_excludes_popover_heading_with_same_name(self):
         self.assertIn(
             "@role='button'", map_checks.selector("Canvas map", role="button")
         )
+
+    def test_zoom_percentage_refreshes_its_target_when_zoom_starts_after_status(self):
+        smoke = Mock()
+        smoke.control.status.side_effect = [
+            {"viewport": {"animating": False, "scale": 1}},
+            {"viewport": {"animating": True, "scale": 0.9}},
+            {"viewport": {"animating": False, "scale": 0.8}},
+        ]
+
+        def until(_name, condition):
+            for _ in range(3):
+                result = condition()
+                if result:
+                    return result
+            self.fail("label did not follow the new settled zoom")
+
+        smoke.until.side_effect = until
+        with patch(
+            "agentlib.map_smoke.a11y",
+            side_effect=[{"elements": []}, {"elements": [{"name": "80%"}]}],
+        ) as a11y:
+            percentage(smoke)
+        self.assertIn("@name='100%'", a11y.call_args_list[0].args[2])
+        self.assertIn("@name='80%'", a11y.call_args_list[1].args[2])
+        self.assertEqual(smoke.record.call_args.kwargs["scale"], 0.8)
 
     def test_minimap_pixel_proof_excludes_unrelated_client_changes(self):
         metadata = {
@@ -111,6 +137,16 @@ class MapCoordinateTests(unittest.TestCase):
 
 
 class MapLifecycleTests(unittest.TestCase):
+    def test_close_uses_the_existing_map_toggle_and_waits_for_dismissal(self):
+        smoke = Mock()
+        with (
+            patch.object(map_checks, "click") as click,
+            patch.object(map_checks, "closed") as closed,
+        ):
+            map_checks.close(smoke)
+        click.assert_called_once_with(smoke, "Canvas map")
+        closed.assert_called_once_with(smoke)
+
     def test_failure_stops_and_verifies_owned_native_session(self):
         with (
             tempfile.TemporaryDirectory() as directory,
@@ -145,6 +181,31 @@ class MapLifecycleTests(unittest.TestCase):
             self.assertEqual([entry[0] for entry in operations], ["start", "stop"])
             self.assertIn("--no-build", operations[0][1])
             restored.assert_called_once()
+
+
+class MapResetTests(unittest.TestCase):
+    def setUp(self):
+        self.output = {
+            "logical_x": -100,
+            "logical_y": 30,
+            "logical_width": 1280,
+            "logical_height": 800,
+        }
+        self.before = {"x": 800, "y": -300, "scale": 0.8}
+        self.after = {"x": 935, "y": -192, "scale": 1}
+
+    def test_reset_preserves_center_with_integer_offset_rounding(self):
+        verify_reset(self.before, self.after, self.output)
+
+    def test_reset_rejects_home_and_unchanged_offset_despite_100_percent(self):
+        for after in (
+            {"x": 0, "y": 0, "scale": 1},
+            self.before | {"scale": 1},
+            self.after | {"x": 937},
+            self.after | {"scale": 0.99},
+        ):
+            with self.subTest(after=after), self.assertRaises(ControlError):
+                verify_reset(self.before, after, self.output)
 
 
 class MapDragTests(unittest.TestCase):

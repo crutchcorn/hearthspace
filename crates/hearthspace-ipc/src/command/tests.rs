@@ -118,6 +118,56 @@ fn search_settings_command_preserves_output_and_rejects_malformed_arguments() {
 }
 
 #[test]
+fn output_zoom_round_trips_operations_and_encoded_output_names() {
+    for output_name in ["eDP-1", "Virtual output 二", "Display\nwith\ttabs"] {
+        for operation in [
+            ZoomOperation::In,
+            ZoomOperation::Out,
+            ZoomOperation::To(1.0),
+        ] {
+            let command = ShellCommand::ZoomOnOutput {
+                output_name: output_name.into(),
+                operation,
+            };
+            let wire = command.wire_name();
+            assert!(!wire.contains(['\n', '\t']));
+            assert_eq!(ShellCommand::parse(&wire), Some(command));
+            assert_eq!(ShellCommand::parse(&format!("{wire} extra")), None);
+        }
+    }
+    assert_eq!(
+        ShellCommand::ZoomOnOutput {
+            output_name: "eDP-1".into(),
+            operation: ZoomOperation::To(1.0),
+        }
+        .wire_name(),
+        "zoom-on-output 6544502d31 to 1"
+    );
+    assert_eq!(ShellCommand::ZoomIn.wire_name(), "zoom-in");
+    assert_eq!(ShellCommand::ZoomOut.wire_name(), "zoom-out");
+    assert_eq!(ShellCommand::ZoomTo(1.0).wire_name(), "zoom-to 1");
+}
+
+#[test]
+fn output_zoom_rejects_missing_or_malformed_arguments() {
+    for invalid in [
+        "zoom-on-output",
+        "zoom-on-output 6544502d31",
+        "zoom-on-output in",
+        "zoom-on-output 1 in",
+        "zoom-on-output gg out",
+        "zoom-on-output ff to 1",
+        "zoom-on-output 6544502d31 reset",
+        "zoom-on-output 6544502d31 to",
+        "zoom-on-output 6544502d31 to NaN",
+        "zoom-on-output 6544502d31 to inf",
+        "zoom-on-output 6544502d31 in 1",
+    ] {
+        assert_eq!(ShellCommand::parse(invalid), None, "accepted {invalid}");
+    }
+}
+
+#[test]
 fn waydriver_input_commands_parse() {
     assert_eq!(
         ShellCommand::parse("key-down 30"),

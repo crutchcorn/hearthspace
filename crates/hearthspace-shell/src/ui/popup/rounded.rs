@@ -1,5 +1,9 @@
 //! Clip full-bleed popup contents without changing their layout or semantics.
 use super::ShellState;
+use hearthspace_ui_components::{
+    Palette,
+    settings_material::{edge_light_with_palette, glass_edge_with_palette},
+};
 use xilem::{
     Pod, ViewCtx, WidgetView,
     core::{MessageCtx, MessageResult, Mut, View, ViewId, ViewMarker, ViewPathTracker},
@@ -7,20 +11,21 @@ use xilem::{
         accesskit::{Node, Role},
         core::{
             AccessCtx, ChildrenIds, LayoutCtx, MeasureCtx, NoAction, PaintCtx, PropertiesRef,
-            RegisterCtx, Widget, WidgetId, WidgetMut, WidgetPod,
+            RegisterCtx, UpdateCtx, UsesProperty, Widget, WidgetId, WidgetMut, WidgetPod,
         },
         imaging::{ClipRef, Painter},
-        kurbo::{Axis, Point, Size},
+        kurbo::{Axis, Point, Size, Stroke},
         layout::{LenReq, Length},
     },
 };
 
-pub(super) fn clip<V: WidgetView<ShellState>>(inner: V) -> RoundedView<V> {
-    RoundedView { inner }
+pub(super) fn clip<V: WidgetView<ShellState>>(inner: V, glass: bool) -> RoundedView<V> {
+    RoundedView { inner, glass }
 }
 
 pub(super) struct RoundedView<V> {
     inner: V,
+    glass: bool,
 }
 
 const CONTENT: ViewId = ViewId::new(0);
@@ -34,6 +39,7 @@ impl<V: WidgetView<ShellState>> View<ShellState, (), ViewCtx> for RoundedView<V>
         (
             ctx.create_pod(RoundedFrame {
                 inner: inner.new_widget.erased().to_pod(),
+                glass: self.glass,
             }),
             view_state,
         )
@@ -47,6 +53,10 @@ impl<V: WidgetView<ShellState>> View<ShellState, (), ViewCtx> for RoundedView<V>
         mut element: Mut<'_, Self::Element>,
         state: &mut ShellState,
     ) {
+        if self.glass != previous.glass {
+            element.widget.glass = self.glass;
+            element.ctx.request_paint_only();
+        }
         ctx.with_id(CONTENT, |ctx| {
             self.inner.rebuild(
                 &previous.inner,
@@ -92,9 +102,11 @@ impl<V: WidgetView<ShellState>> View<ShellState, (), ViewCtx> for RoundedView<V>
     }
 }
 
-pub(super) struct RoundedFrame {
+pub(in crate::ui) struct RoundedFrame {
     inner: WidgetPod<dyn Widget>,
+    glass: bool,
 }
+impl UsesProperty<Palette> for RoundedFrame {}
 impl RoundedFrame {
     fn child_mut<'a>(this: &'a mut WidgetMut<'_, Self>) -> WidgetMut<'a, dyn Widget> {
         this.ctx.get_mut(&mut this.widget.inner)
@@ -121,10 +133,30 @@ impl Widget for RoundedFrame {
         ctx.place_child(&mut self.inner, Point::ORIGIN);
         ctx.derive_baselines(&self.inner);
     }
-    fn paint(&mut self, ctx: &mut PaintCtx<'_>, _: &PropertiesRef<'_>, painter: &mut Painter<'_>) {
+    fn property_changed(&mut self, ctx: &mut UpdateCtx<'_>, property_type: std::any::TypeId) {
+        Palette::prop_changed(ctx, property_type);
+    }
+    fn paint(
+        &mut self,
+        ctx: &mut PaintCtx<'_>,
+        props: &PropertiesRef<'_>,
+        painter: &mut Painter<'_>,
+    ) {
         // LayoutCtx clips only rectangles in the pinned Masonry version.
         // Its paint and post_paint passes bracket all descendant painting.
         painter.push_clip(ClipRef::fill(ctx.border_box().to_rounded_rect(20.0)));
+        if self.glass {
+            // Blur and unclipped outer shadows are supplied by the compositor.
+            let palette = props.get::<Palette>(ctx.property_cache());
+            let rect = ctx.border_box();
+            let shape = rect.inset(-0.5).to_rounded_rect(19.5);
+            painter.fill(shape, palette.chrome).draw();
+            edge_light_with_palette(painter, rect, 20.0, palette);
+            glass_edge_with_palette(painter, rect, 20.0, false, palette);
+            painter
+                .stroke(shape, &Stroke::new(1.0), palette.chrome_border)
+                .draw();
+        }
     }
     fn post_paint(
         &mut self,

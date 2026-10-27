@@ -27,7 +27,7 @@ fn harness(scale: f64) -> TestHarness<Minimap> {
     TestHarness::create_with_size(
         crate::ui::appearance::properties(hearthspace_ui_components::Palette::default()),
         Minimap::new(Some(snapshot(scale)), Some("HDMI-A-1".into())).prepare(),
-        (312, 190),
+        (310, 168),
     )
 }
 
@@ -47,7 +47,7 @@ fn mouse_drag_uses_frozen_map_scale_and_leaves_windows_and_zoom_unchanged() {
         let mut harness = harness(zoom);
         let start = center(&harness);
         let before = harness.root_widget().snapshot.clone().unwrap();
-        let map = Projection::new(Some(&before), Size::new(312.0, 190.0));
+        let map = Projection::new(Some(&before), Size::new(310.0, 168.0));
         harness.mouse_move(start);
         harness.mouse_button_press(Some(PointerButton::Primary));
         assert_eq!(drain(&mut harness), [MapAction::Begin]);
@@ -151,13 +151,8 @@ fn touch_drag_cancels_cleanly_and_next_contact_can_drag() {
 }
 
 #[test]
-fn only_selected_viewport_can_start_a_drag_and_focus_loss_stops_it() {
+fn focus_loss_stops_drag_without_applying_another_position() {
     let mut harness = harness(1.0);
-    harness.mouse_move((5.0, 5.0));
-    harness.mouse_button_press(Some(PointerButton::Primary));
-    harness.mouse_move((15.0, 15.0));
-    harness.mouse_button_release(Some(PointerButton::Primary));
-    assert!(drain(&mut harness).is_empty());
     let start = center(&harness);
     harness.mouse_move(start);
     harness.mouse_button_press(Some(PointerButton::Primary));
@@ -172,7 +167,7 @@ fn only_selected_viewport_can_start_a_drag_and_focus_loss_stops_it() {
 #[test]
 fn movement_clamps_to_compositor_bounds_and_projection_stays_frozen() {
     let mut widget = Minimap::new(Some(snapshot(1.0)), Some("HDMI-A-1".into()));
-    widget.size = Size::new(312.0, 190.0);
+    widget.size = Size::new(310.0, 168.0);
     let map = Projection::new(widget.snapshot.as_ref(), widget.size);
     let start = widget.viewport(&map).unwrap().center();
     assert!(widget.begin(start, Some(PointerId::PRIMARY)));
@@ -206,3 +201,8 @@ fn secondary_release_cannot_leave_a_drag_running_after_capture_is_lost() {
     harness.mouse_button_release(Some(PointerButton::Primary));
     assert!(harness.root_widget().drag.is_none());
 }
+
+#[path = "widget_tests/appearance.rs"]
+mod appearance;
+#[path = "widget_tests/interaction.rs"]
+mod interaction;

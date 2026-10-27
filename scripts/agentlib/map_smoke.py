@@ -15,6 +15,8 @@ from .daily_checks import a11y, terminal
 from .input import Input
 from .png import crop
 
+RESET = "Reset canvas zoom to 100%"
+
 
 def map_pixels(capture, surface, bounds):
     """Crop the observed image, excluding buttons, cursor, and unrelated clients."""
@@ -37,21 +39,78 @@ def map_pixels(capture, surface, bounds):
 
 
 def percentage(smoke):
-    viewport = smoke.until(
-        "settled canvas zoom",
+    def current_label():
+        viewport = smoke.control.status()["viewport"]
+        if viewport["animating"]:
+            return None
+        scale = viewport["scale"]
+        label = f"{scale * 100:.0f}%"
+        elements = a11y(
+            smoke,
+            "find",
+            f"{checks.selector('Current canvas zoom')}"
+            f"//*[@showing='true' and @name='{label}']",
+        )["elements"]
+        return (scale, label, elements) if elements else None
+
+    scale, label, elements = smoke.until(
+        "current settled canvas zoom percentage", current_label
+    )
+    smoke.record("map-zoom-percentage", scale=scale, label=label, elements=elements)
+
+
+def verify_reset(before, after, output):
+    if not math.isclose(after["scale"], 1.0, rel_tol=0, abs_tol=1e-6):
+        raise ControlError("map reset did not restore 100% zoom")
+    for axis, dimension in (("x", "width"), ("y", "height")):
+        screen_center = output[f"logical_{axis}"] + output[f"logical_{dimension}"] / 2
+        center_before = before[axis] + screen_center / before["scale"]
+        center_after = after[axis] + screen_center / after["scale"]
+        # zoom-to preserves the center and rounds the new canvas offset to an
+        # integer. Resetting pan or returning home would lose this position.
+        if not math.isclose(center_before, center_after, rel_tol=0, abs_tol=0.5):
+            raise ControlError(f"map reset changed the canvas {axis} center")
+
+
+def reset_zoom(smoke):
+    _, output = checks.map_surface(smoke)
+    before = smoke.control.status()
+    if math.isclose(before["viewport"]["scale"], 1.0, rel_tol=0, abs_tol=1e-6):
+        raise ControlError("map reset acceptance requires a non-100% canvas zoom")
+    checks.click(smoke, RESET)
+    after = smoke.until(
+        "map reset settles at 100% zoom",
         lambda: (
-            view
-            if not (view := smoke.control.status()["viewport"])["animating"]
+            status
+            if not (status := smoke.control.status())["viewport"]["animating"]
+            and math.isclose(status["viewport"]["scale"], 1.0, rel_tol=0, abs_tol=1e-6)
             else None
         ),
     )
-    scale = viewport["scale"]
-    label = f"{scale * 100:.0f}%"
-    elements = smoke.until(
-        "current canvas zoom percentage",
-        lambda: a11y(smoke, "find", checks.selector(label))["elements"],
+    verify_reset(before["viewport"], after["viewport"], output)
+    if checks.window_geometry(before) != checks.window_geometry(after):
+        raise ControlError("map reset changed application window geometry")
+    if not after.get("canvas_maps"):
+        raise ControlError("map reset dismissed the popover")
+    percentage(smoke)
+    disabled = smoke.until(
+        "reset becomes disabled at 100% zoom",
+        # AccessKit's AT-SPI enabled flag is unreliable; disabled native
+        # buttons leave keyboard traversal, as in the tray acceptance checks.
+        lambda: a11y(
+            smoke,
+            "find",
+            f"{checks.selector(RESET, role='button')}[not(@focusable='true')]",
+        )["elements"],
     )
-    smoke.record("map-zoom-percentage", scale=scale, label=label, elements=elements)
+    smoke.capture("map-zoom-reset", output["name"])
+    smoke.record(
+        "map-reset-preserves-center",
+        before=before["viewport"],
+        after=after["viewport"],
+        disabled=disabled,
+    )
+    return after["viewport"]
 
 
 def outside_client(smoke):
@@ -160,11 +219,25 @@ def run(smoke):
     ):
         checks.click(smoke, "Canvas map")
         checks.opened(smoke)
+        scale = smoke.control.status()["viewport"]["scale"]
+        checks.click(smoke, "Zoom out")
+        smoke.until(
+            "map drag setup zooms out",
+            lambda scale=scale: smoke.control.status()["viewport"]["scale"] < scale,
+        )
+        percentage(smoke)
         dragged = map_drag.run(smoke, touchscreen=touchscreen)
         checks.close(smoke)
-        final_viewport = smoke.control.status()["viewport"]
-        if any(final_viewport[key] != dragged[key] for key in ("x", "y", "scale")):
+        dismissed = smoke.control.status()["viewport"]
+        if any(dismissed[key] != dragged[key] for key in ("x", "y", "scale")):
             raise ControlError("dismissing the map lost its dragged canvas position")
+        checks.click(smoke, "Canvas map")
+        checks.opened(smoke)
+        reset = reset_zoom(smoke)
+        checks.close(smoke)
+        final_viewport = smoke.control.status()["viewport"]
+        if any(final_viewport[key] != reset[key] for key in ("x", "y", "scale")):
+            raise ControlError("dismissing the map lost its reset canvas position")
     if set(checks.window_geometry(smoke.control.status())) != set(
         checks.window_geometry(before)
     ):
@@ -174,8 +247,8 @@ def run(smoke):
         "canvas-map-verified",
         live_pixels=True,
         zoom_directions=2,
+        reset_preserves_center=True,
         dismissals=[
-            "Close canvas map",
             "Escape",
             "Canvas map toggle",
             "outside client",

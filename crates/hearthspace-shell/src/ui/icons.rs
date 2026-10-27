@@ -23,8 +23,6 @@ pub(super) enum Icon {
     Volume {
         muted: bool,
     },
-    ZoomIn,
-    ZoomOut,
     Close,
     #[cfg(test)]
     Battery {
@@ -48,8 +46,6 @@ impl Icon {
             Self::Brightness => Glyph::Sun,
             Self::Volume { muted: false } => Glyph::Volume,
             Self::Volume { muted: true } => Glyph::VolumeMuted,
-            Self::ZoomIn => Glyph::ZoomIn,
-            Self::ZoomOut => Glyph::ZoomOut,
             Self::Close => Glyph::X,
             #[cfg(test)]
             Self::Battery {

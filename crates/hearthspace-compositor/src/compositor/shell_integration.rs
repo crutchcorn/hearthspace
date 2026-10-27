@@ -62,7 +62,10 @@ impl App {
         }
         let command = action.wire_name();
         debug!(%command, "running app control action");
-        self.advance_viewport_animation();
+        // Qualified zoom validates its output before sampling the viewport.
+        if !matches!(action, ShellCommand::ZoomOnOutput { .. }) {
+            self.advance_viewport_animation();
+        }
 
         if (self.canvas_search_active()
             || self.window_switcher_active()
@@ -78,6 +81,7 @@ impl App {
                     | ShellCommand::ZoomIn
                     | ShellCommand::ZoomOut
                     | ShellCommand::ZoomTo(_)
+                    | ShellCommand::ZoomOnOutput { .. }
             )
         {
             return ControlReply::Err(
@@ -153,6 +157,12 @@ impl App {
             ShellCommand::ZoomIn => self.animate_zoom_around_viewport_center(ZOOM_STEP),
             ShellCommand::ZoomOut => self.animate_zoom_around_viewport_center(1.0 / ZOOM_STEP),
             ShellCommand::ZoomTo(scale) => return action_reply(self.zoom_viewport_to(scale)),
+            ShellCommand::ZoomOnOutput {
+                output_name,
+                operation,
+            } => {
+                return action_reply(self.zoom_viewport_on_output(&output_name, operation));
+            }
             ShellCommand::ReloadSettings => return self.settings_subscription.refresh(),
             ShellCommand::LogAccessibilityTree => {
                 crate::accessibility::log_accessibility_tree(self.accessibility_window_snapshot())

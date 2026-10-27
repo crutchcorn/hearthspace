@@ -1,25 +1,18 @@
-use xilem::{
-    Pod, ViewCtx,
-    core::{MessageCtx, MessageResult, Mut, View, ViewMarker},
-    masonry::{
-        accesskit::{Node, Role},
-        core::{
-            AccessCtx, ChildrenIds, CursorIcon, EventCtx, LayoutCtx, MeasureCtx, PaintCtx,
-            PointerEvent, PropertiesMut, PropertiesRef, QueryCtx, RegisterCtx, TextEvent, Widget,
-            WidgetId,
-            pointer::{PointerButton, PointerId},
-        },
-        imaging::Painter,
-        kurbo::{Axis, Point, Rect, Size},
-        layout::{LenReq, Length},
+use xilem::masonry::{
+    accesskit::{Node, Role},
+    core::{
+        AccessCtx, ChildrenIds, CursorIcon, EventCtx, LayoutCtx, MeasureCtx, PaintCtx,
+        PointerEvent, PropertiesMut, PropertiesRef, QueryCtx, RegisterCtx, TextEvent, Update,
+        UpdateCtx, Widget, WidgetId,
+        pointer::{PointerButton, PointerId},
     },
+    imaging::Painter,
+    kurbo::{Axis, Point, Rect, Size},
+    layout::{LenReq, Length},
 };
 
 use super::{CanvasSnapshot, Projection, description, render};
-use crate::{
-    ShellCommand,
-    ui::{command_client::send_command, state::ShellState},
-};
+use hearthspace_ui_components::settings_material::FocusIndicator;
 
 #[derive(Debug, PartialEq)]
 pub(super) enum MapAction {
@@ -28,89 +21,8 @@ pub(super) enum MapAction {
     End,
 }
 
-pub(super) struct MinimapView {
-    pub(super) snapshot: Option<CanvasSnapshot>,
-    pub(super) output_name: Option<String>,
-}
-
-impl ViewMarker for MinimapView {}
-
-impl View<ShellState, (), ViewCtx> for MinimapView {
-    type Element = Pod<Minimap>;
-    type ViewState = ();
-
-    fn build(&self, ctx: &mut ViewCtx, _: &mut ShellState) -> (Self::Element, ()) {
-        (
-            ctx.with_action_widget(|ctx| {
-                ctx.create_pod(Minimap::new(
-                    self.snapshot.clone(),
-                    self.output_name.clone(),
-                ))
-            }),
-            (),
-        )
-    }
-
-    fn rebuild(
-        &self,
-        prev: &Self,
-        _: &mut (),
-        _: &mut ViewCtx,
-        mut element: Mut<'_, Self::Element>,
-        _: &mut ShellState,
-    ) {
-        if self.snapshot != prev.snapshot || self.output_name != prev.output_name {
-            element.widget.snapshot = self.snapshot.clone();
-            element.widget.output_name = self.output_name.clone();
-            element.ctx.request_render();
-            element.ctx.request_accessibility_update();
-        }
-    }
-
-    fn teardown(&self, _: &mut (), _: &mut ViewCtx, _: Mut<'_, Self::Element>) {}
-
-    fn message(
-        &self,
-        _: &mut (),
-        message: &mut MessageCtx,
-        mut element: Mut<'_, Self::Element>,
-        state: &mut ShellState,
-    ) -> MessageResult<()> {
-        match message.take_message::<MapAction>().map(|action| *action) {
-            Some(MapAction::Begin) => state.canvas_dragging = true,
-            Some(MapAction::End) => state.canvas_dragging = false,
-            Some(MapAction::PanTo { x, y }) => {
-                match send_command(
-                    &state.command_socket,
-                    &ShellCommand::PanTo { x, y }.wire_name(),
-                ) {
-                    Ok(()) => {
-                        state
-                            .canvas_revision
-                            .fetch_add(1, std::sync::atomic::Ordering::Release);
-                        if let Some(snapshot) = &mut state.canvas {
-                            snapshot.set_offset(x, y);
-                        }
-                        state.canvas_error = None;
-                    }
-                    Err(error) => {
-                        state.canvas_error = Some(error);
-                        state.canvas_dragging = false;
-                        element.widget.drag = None;
-                        element.widget.snapshot = state.canvas.clone();
-                        element.ctx.request_render();
-                        element.ctx.request_cursor_icon_change();
-                    }
-                }
-            }
-            None => return MessageResult::Stale,
-        }
-        MessageResult::Action(())
-    }
-}
-
 #[derive(Clone, Debug)]
-struct Drag {
+pub(super) struct Drag {
     projection: Projection,
     pointer: Option<PointerId>,
     start: Point,
@@ -118,10 +30,11 @@ struct Drag {
 }
 
 pub(super) struct Minimap {
-    snapshot: Option<CanvasSnapshot>,
-    output_name: Option<String>,
+    pub(super) snapshot: Option<CanvasSnapshot>,
+    pub(super) output_name: Option<String>,
     size: Size,
-    drag: Option<Drag>,
+    pub(super) drag: Option<Drag>,
+    focus: FocusIndicator,
 }
 
 impl Minimap {
@@ -131,6 +44,7 @@ impl Minimap {
             output_name,
             size: Size::ZERO,
             drag: None,
+            focus: FocusIndicator::default(),
         }
     }
 
@@ -148,16 +62,20 @@ impl Minimap {
             return false;
         }
         let projection = Projection::new(self.snapshot.as_ref(), self.size);
-        if !self
-            .viewport(&projection)
-            .is_some_and(|rect| rect.inflate(3.0, 3.0).contains(point))
-        {
+        let Some(viewport) = self.viewport(&projection) else {
             return false;
-        }
+        };
+        // Presses inside the viewport retain their grab offset. Everywhere else
+        // uses its center as the anchor, including outputs with negative origins.
+        let start = if viewport.inflate(1.0, 1.0).contains(point) {
+            point
+        } else {
+            viewport.center()
+        };
         self.drag = Some(Drag {
             projection,
             pointer,
-            start: point,
+            start,
             offset: self.snapshot.as_ref().unwrap().offset,
         });
         true
@@ -199,17 +117,24 @@ impl Widget for Minimap {
         _: &mut PropertiesMut<'_>,
         event: &PointerEvent,
     ) {
+        self.focus.pointer(event);
+        ctx.request_paint_only();
         match event {
             PointerEvent::Down(event)
                 if !ctx.is_disabled()
                     && matches!(event.button, None | Some(PointerButton::Primary)) =>
             {
-                if self.begin(
-                    ctx.local_position(event.state.position),
-                    event.pointer.pointer_id,
-                ) {
+                let point = ctx.local_position(event.state.position);
+                if self.begin(point, event.pointer.pointer_id) {
                     ctx.capture_pointer();
+                    ctx.request_focus();
                     ctx.submit_action::<MapAction>(MapAction::Begin);
+                    if self.drag.as_ref().is_some_and(|drag| drag.start != point)
+                        && let Some(action) = self.pan(point)
+                    {
+                        ctx.submit_action::<MapAction>(action);
+                        ctx.request_accessibility_update();
+                    }
                     ctx.request_render();
                     ctx.request_cursor_icon_change();
                     ctx.set_handled();
@@ -244,7 +169,12 @@ impl Widget for Minimap {
                 self.finish(ctx);
                 ctx.set_handled();
             }
-            PointerEvent::Cancel(_) => self.finish(ctx),
+            PointerEvent::Cancel(_) if self.drag.is_some() => {
+                // Even an unrelated cancellation drops Masonry's capture.
+                self.finish(ctx);
+                ctx.set_handled();
+            }
+            _ if self.drag.is_some() => ctx.set_handled(),
             _ => {}
         }
     }
@@ -255,11 +185,27 @@ impl Widget for Minimap {
         _: &mut PropertiesMut<'_>,
         event: &TextEvent,
     ) {
+        self.focus.text(event);
+        ctx.request_paint_only();
         if matches!(event, TextEvent::WindowFocusChange(false)) && self.drag.is_some() {
             if ctx.is_active() {
                 ctx.release_pointer();
             }
             self.finish(ctx);
+        }
+    }
+
+    fn update(&mut self, ctx: &mut UpdateCtx<'_>, _: &mut PropertiesMut<'_>, event: &Update) {
+        self.focus.update(event);
+        if matches!(event, Update::FocusChanged(false)) && self.drag.take().is_some() {
+            ctx.submit_action::<MapAction>(MapAction::End);
+            ctx.request_cursor_icon_change();
+        }
+        if matches!(
+            event,
+            Update::FocusChanged(_) | Update::HoveredChanged(_) | Update::DisabledChanged(_)
+        ) {
+            ctx.request_paint_only();
         }
     }
 
@@ -272,18 +218,21 @@ impl Widget for Minimap {
         _: Option<Length>,
     ) -> Length {
         match request {
+            LenReq::MinContent if axis == Axis::Horizontal => Length::const_px(28.0),
             LenReq::FitContent(space) => space,
             _ => Length::const_px(if axis == Axis::Horizontal {
-                312.0
+                310.0
             } else {
-                190.0
+                168.0
             }),
         }
     }
 
     fn layout(&mut self, ctx: &mut LayoutCtx<'_>, _: &PropertiesRef<'_>, size: Size) {
         self.size = size;
-        ctx.set_clip_path(size.to_rect());
+        // The renderer clips map content, leaving room for the exterior focus
+        // ring and glow without expanding hit bounds or projection coordinates.
+        ctx.set_paint_insets(24.0);
     }
 
     fn property_changed(
@@ -306,23 +255,24 @@ impl Widget for Minimap {
             self.snapshot.as_ref(),
             self.output_name.as_deref(),
             self.drag.as_ref().map(|drag| &drag.projection),
+            render::Interaction {
+                emphasized: !ctx.is_disabled()
+                    && (ctx.is_hovered() || ctx.is_focus_target() || self.drag.is_some()),
+                focused: !ctx.is_disabled() && ctx.is_focus_target() && self.focus.visible(),
+            },
             &palette,
         );
     }
 
-    fn get_cursor(&self, ctx: &QueryCtx<'_>, point: Point) -> CursorIcon {
+    fn get_cursor(&self, _: &QueryCtx<'_>, _: Point) -> CursorIcon {
         if self.drag.is_some() {
             return CursorIcon::Grabbing;
         }
-        let map = Projection::new(self.snapshot.as_ref(), self.size);
-        if self
-            .viewport(&map)
-            .is_some_and(|rect| rect.inflate(3.0, 3.0).contains(ctx.to_local(point)))
-        {
-            CursorIcon::Grab
-        } else {
-            CursorIcon::Default
-        }
+        CursorIcon::Grab
+    }
+
+    fn accepts_focus(&self) -> bool {
+        true
     }
 
     fn accessibility_role(&self) -> Role {
@@ -333,7 +283,7 @@ impl Widget for Minimap {
             self.snapshot.as_ref(),
             self.output_name.as_deref(),
         ));
-        node.set_description("Drag the accented viewport rectangle to pan the canvas.");
+        node.set_description("Drag the accented viewport to pan the canvas. Press elsewhere on the map to center the viewport there, then drag.");
     }
     fn children_ids(&self) -> ChildrenIds {
         ChildrenIds::new()

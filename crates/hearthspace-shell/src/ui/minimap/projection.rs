@@ -3,6 +3,7 @@ use xilem::kurbo::{Point, Rect, Size};
 use super::CanvasSnapshot;
 
 const MAP_PADDING: f64 = 14.0;
+pub(super) const MAP_BORDER: f64 = 1.0;
 const WORLD_GRID: f64 = 1024.0;
 
 /// A stable, wide canvas neighborhood with room for nearby offscreen windows.
@@ -10,6 +11,7 @@ const WORLD_GRID: f64 = 1024.0;
 /// panning. Distant windows and viewports expand it in coarse world-space steps.
 #[derive(Clone, Debug)]
 pub(super) struct Projection {
+    #[cfg(test)]
     pub(super) world: Rect,
     pub(super) scale: f64,
     origin: Point,
@@ -32,13 +34,17 @@ impl Projection {
             (world.x1 / WORLD_GRID).ceil() * WORLD_GRID,
             (world.y1 / WORLD_GRID).ceil() * WORLD_GRID,
         );
-        let scale = ((size.width - MAP_PADDING * 2.0).max(1.0) / world.width())
-            .min((size.height - MAP_PADDING * 2.0).max(1.0) / world.height());
+        // `size` is the complete map border box. Deduct its border exactly once;
+        // the centered origin keeps painting and pointer input in widget space.
+        let inset = MAP_PADDING + MAP_BORDER;
+        let scale = ((size.width - inset * 2.0).max(1.0) / world.width())
+            .min((size.height - inset * 2.0).max(1.0) / world.height());
         let origin = Point::new(
             (size.width - world.width() * scale) / 2.0 - world.x0 * scale,
             (size.height - world.height() * scale) / 2.0 - world.y0 * scale,
         );
         Self {
+            #[cfg(test)]
             world,
             scale,
             origin,

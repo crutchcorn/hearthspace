@@ -62,15 +62,54 @@ def compatible(first, second):
         raise ControlError("shell screenshot output geometry changed during comparison")
 
 
+def map_shadow(background, visible, point):
+    """Bound observed shadow by the default light panel's two tint layers."""
+    behind = background.rgb(*point)
+    observed = visible.rgb(*point)
+    # The owned fixture uses the default light/orange palette. Even at full
+    # coverage, #354e3b at 43/255 and the accent at 16% cannot exceed these
+    # channel changes. Gaussian falloff can only reduce their contribution.
+    layers = (((53, 78, 59), 43 / 255), ((233, 100, 42), 0.16))
+    delta = [shade - source for shade, source in zip(observed, behind)]
+    for index, change in enumerate(delta):
+        contributions = [
+            (color[index] - behind[index]) * alpha for color, alpha in layers
+        ]
+        minimum = sum(min(value, 0) for value in contributions)
+        maximum = sum(max(value, 0) for value in contributions)
+        if not minimum - 2 <= change <= maximum + 2:
+            raise ControlError(
+                f"map popup corner is opaque beyond its shadow at {point}"
+            )
+    return delta
+
+
 def rounded(background, visible, surface):
-    """Rounded panels reveal the actual background at all four outside corners."""
+    """Rounded corners reveal the backdrop, including any surrounding shadow."""
     compatible(background, visible)
     left, top, right, bottom = visible.rect(surface)
     corners = []
     for x, dx in ((left, 1), (right - 1, -1)):
         for y, dy in ((top, 1), (bottom - 1, -1)):
             patch = [(x + dx * i, y + dy * j) for i in range(2) for j in range(2)]
-            if any(difference(background.rgb(*p), visible.rgb(*p)) > 2 for p in patch):
+
+            def expected(point, dx=dx, dy=dy):
+                behind = background.rgb(*point)
+                if surface["kind"] != "map":
+                    return behind
+                # Overview now has a diffuse compositor shadow. Compare each
+                # corner with the shadow immediately outside the surface, not
+                # with the shadow-free frame. Two physical pixels put every
+                # sample outside while retaining the same shadow intensity.
+                outside = (point[0] - 2 * dx, point[1] - 2 * dy)
+                return [
+                    channel + change
+                    for channel, change in zip(
+                        behind, map_shadow(background, visible, outside)
+                    )
+                ]
+
+            if any(difference(expected(p), visible.rgb(*p)) > 2 for p in patch):
                 raise ControlError(
                     f"{surface['kind']} popup corner is opaque at {(x, y)}"
                 )
@@ -90,13 +129,15 @@ def material_tint(background, visible, surface):
     left, top, _, bottom = visible.rect(surface)
     point = (left + round(4 * visible.metadata["scale"]), (top + bottom) // 2)
     behind = background.rgb(*point)
-    # The power menu uses CHROME (#f6f4ef at 54%); other popups retain
+    # Power and Overview use CHROME (#f6f4ef at 54%); other popups retain
     # CHROME_RAISED (#faf9f6 at 82%). This point is beside content, away from
     # the one-pixel border and all rounded corners. Sample
     # the side padding over the uniform oversized fixture: a nearby window edge
     # would let genuine blur mix in wallpaper, invalidating a raw-pixel alpha check.
     tint, alpha = (
-        ((246, 244, 239), 138) if surface["kind"] == "power" else ((250, 249, 246), 209)
+        ((246, 244, 239), 138)
+        if surface["kind"] in ("power", "map")
+        else ((250, 249, 246), 209)
     )
     expected = [
         round((channel * alpha + source * (255 - alpha)) / 255)

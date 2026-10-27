@@ -30,6 +30,7 @@ pub(super) fn group<V: WidgetView<ShellState>>(label: impl Into<String>, inner: 
         status: false,
         dialog: false,
         menu: false,
+        heading: None,
     }
 }
 pub(super) struct GroupView<V> {
@@ -40,8 +41,13 @@ pub(super) struct GroupView<V> {
     status: bool,
     dialog: bool,
     menu: bool,
+    heading: Option<usize>,
 }
 impl<V> GroupView<V> {
+    pub(super) fn heading(mut self, level: usize) -> Self {
+        self.heading = Some(level);
+        self
+    }
     pub(super) fn menu(mut self) -> Self {
         self.menu = true;
         self
@@ -88,6 +94,7 @@ impl<V: WidgetView<ShellState>> View<ShellState, (), ViewCtx> for GroupView<V> {
                 status: self.status,
                 dialog: self.dialog,
                 menu: self.menu,
+                heading: self.heading,
             }),
             view_state,
         )
@@ -105,6 +112,10 @@ impl<V: WidgetView<ShellState>> View<ShellState, (), ViewCtx> for GroupView<V> {
             element.ctx.request_accessibility_update();
         }
         element.widget.reset_focus_on_deactivation = self.reset_focus_on_deactivation;
+        if self.heading != previous.heading {
+            element.widget.heading = self.heading;
+            element.ctx.request_accessibility_update();
+        }
         if self.menu != previous.menu {
             element.widget.menu = self.menu;
             element.ctx.request_accessibility_update();
@@ -172,6 +183,7 @@ pub(super) struct PopupGroup {
     status: bool,
     dialog: bool,
     menu: bool,
+    heading: Option<usize>,
 }
 impl PopupGroup {
     fn child_mut<'a>(this: &'a mut WidgetMut<'_, Self>) -> WidgetMut<'a, dyn Widget> {
@@ -222,7 +234,9 @@ impl Widget for PopupGroup {
     }
     fn paint(&mut self, _: &mut PaintCtx<'_>, _: &PropertiesRef<'_>, _: &mut Painter<'_>) {}
     fn accessibility_role(&self) -> Role {
-        if self.dialog {
+        if self.heading.is_some() {
+            Role::Heading
+        } else if self.dialog {
             Role::Dialog
         } else if self.menu {
             Role::Menu
@@ -234,6 +248,9 @@ impl Widget for PopupGroup {
     }
     fn accessibility(&mut self, _: &mut AccessCtx<'_>, _: &PropertiesRef<'_>, node: &mut Node) {
         node.set_label(self.label.clone());
+        if let Some(level) = self.heading {
+            node.set_level(level);
+        }
         if self.dialog {
             node.set_modal();
         }

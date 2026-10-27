@@ -150,9 +150,10 @@ it. Permanent transport or invalid-snapshot failures cancel it immediately.
 Buttons retain descriptive accessible names despite showing icons: `Apps List`,
 `Notifications`, `Search canvas`, `Canvas map`, `Select window group`, `Wi-Fi settings`,
 `Brightness settings`, `Sound settings`, `Date and time`, and `Power`.
-Close controls include `Close apps list`, `Close notifications`, `Close canvas map`,
+Close controls include `Close apps list`, `Close notifications`,
 and `Close power menu`. Dock names include the app, window count, active state,
 and next window when cycling.
+`Canvas map` toggles Overview open and closed; Escape also closes it.
 The power choices are `Lock`, `Log out`, `Confirm log out`, and `Cancel`.
 Search rows retain button roles and the names `Open: APP NAME` or `Window:
 WINDOW TITLE`; the current result exposes the accessibility `selected` state.

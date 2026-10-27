@@ -12,6 +12,7 @@ use xilem::{
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(in crate::ui) enum Tone {
     Text,
+    Disabled,
     Muted,
     Accent,
     Strong,
@@ -28,8 +29,9 @@ pub(in crate::ui) enum Tone {
     Transparent,
 }
 impl Tone {
-    const ALL: [Self; 15] = [
+    const ALL: [Self; 16] = [
         Self::Text,
+        Self::Disabled,
         Self::Muted,
         Self::Accent,
         Self::Strong,
@@ -48,6 +50,7 @@ impl Tone {
     fn name(self) -> &'static str {
         match self {
             Self::Text => "shell-text",
+            Self::Disabled => "shell-disabled-text",
             Self::Muted => "shell-muted",
             Self::Accent => "shell-accent",
             Self::Strong => "shell-strong",
@@ -67,6 +70,7 @@ impl Tone {
     fn color(self, p: &Palette) -> Color {
         match self {
             Self::Text => p.text,
+            Self::Disabled => p.text.multiply_alpha(0.35),
             Self::Muted => p.text_muted,
             Self::Accent => p.accent,
             Self::Strong => p.accent_strong,
