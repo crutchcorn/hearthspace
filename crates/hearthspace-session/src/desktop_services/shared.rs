@@ -46,23 +46,7 @@ pub(super) struct SharedServices {
 }
 
 impl SharedServices {
-    pub(super) fn start(
-        &mut self,
-        host_runtime: &Path,
-        bus: &str,
-        deadline: Instant,
-        cancelled: &AtomicBool,
-    ) -> io::Result<()> {
-        self.start_with_systemctl(
-            Path::new("systemctl"),
-            host_runtime,
-            bus,
-            deadline,
-            cancelled,
-        )
-    }
-
-    fn start_with_systemctl(
+    pub(super) fn start_with_systemctl(
         &mut self,
         systemctl: &Path,
         host_runtime: &Path,

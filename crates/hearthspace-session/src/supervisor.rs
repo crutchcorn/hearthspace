@@ -14,7 +14,7 @@ use tracing::{info, warn};
 
 use crate::{
     cli::{Args, Backend, RunMode},
-    compositor::{CompositorBackend, configure_compositor_environment, select_compositor_backend},
+    compositor::{CompositorBackend, select_compositor_backend},
     process::{ManagedProcess, poll_process, terminate_process, wait_then_kill_process},
     session_env::{SessionEnv, SessionPaths},
     settingsd::settingsd_ping,
@@ -30,6 +30,7 @@ pub(crate) struct Supervisor {
     mode: RunMode,
     backend: Option<Backend>,
     private_session_bus: bool,
+    screen_cast_enabled: bool,
     activation_environment: Option<crate::session_bus::ActivationEnvironment>,
     binary_dir: Option<PathBuf>,
     compositor_binary: Option<PathBuf>,
@@ -65,6 +66,7 @@ impl Supervisor {
             mode,
             backend: args.backend,
             private_session_bus: args.private_session_bus,
+            screen_cast_enabled: crate::desktop_services::enabled(args),
             activation_environment: None,
             binary_dir: args.binary_dir.clone(),
             compositor_binary: args.compositor_binary.clone(),
@@ -109,10 +111,6 @@ impl Supervisor {
             Some(Backend::Nested) => CompositorBackend::NestedWinit,
             None => select_compositor_backend(),
         };
-        let backend_flag = match backend {
-            CompositorBackend::NativeTty => "--tty",
-            CompositorBackend::NestedWinit => "--winit",
-        };
         if backend == CompositorBackend::NativeTty
             && self
                 .session_env
@@ -133,12 +131,7 @@ impl Supervisor {
                     .push((crate::app_scopes::OWNER_ENV.into(), owner.unit().into()));
             }
         }
-        let mut compositor_args = vec![hearthspace_common::NO_SHELL_FLAG, backend_flag];
-        if self.wayvnc_config.is_some() {
-            compositor_args.push("--remote-desktop");
-        }
-        let mut spec = self.binary_spec("hearthspace-compositor", &compositor_args, false);
-        configure_compositor_environment(&mut spec, backend);
+        let spec = self.compositor_spec(backend);
         self.compositor = Some(ManagedProcess::spawn(spec, 0)?);
         self.record_processes()?;
         Ok(())
@@ -181,7 +174,11 @@ impl Supervisor {
         self.desktop_services.start(
             &self.paths,
             &self.session_env,
-            self.private_session_bus,
+            crate::desktop_services::Configuration {
+                mode: self.mode,
+                binary_dir: self.binary_dir.as_deref(),
+                private_session_bus: self.private_session_bus,
+            },
             self.startup_deadline,
             &self.shutdown_requested,
         )?;

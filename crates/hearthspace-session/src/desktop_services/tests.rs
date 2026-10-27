@@ -1,8 +1,8 @@
 use super::*;
 
-struct Fixture(PathBuf);
+pub(super) struct Fixture(pub(super) PathBuf);
 impl Fixture {
-    fn new(label: &str) -> Self {
+    pub(super) fn new(label: &str) -> Self {
         let path = env::temp_dir().join(format!(
             "hearthspace-services-{}-{label}",
             std::process::id()
@@ -47,7 +47,7 @@ fn portal_configuration_and_activation_overrides_stay_inside_the_session() {
                 .join("share/xdg-desktop-portal/hearthspace-portals.conf")
         )
         .unwrap(),
-        "[preferred]\ndefault=gtk\norg.freedesktop.impl.portal.Settings=hearthspace\n"
+        "[preferred]\ndefault=gtk\norg.freedesktop.impl.portal.Settings=hearthspace\norg.freedesktop.impl.portal.ScreenCast=wlr\n"
     );
     let implementation = fs::read_to_string(
         paths
@@ -57,6 +57,29 @@ fn portal_configuration_and_activation_overrides_stay_inside_the_session() {
     .unwrap();
     assert!(implementation.contains(&format!("DBusName={}\n", crate::appearance_portal::NAME)));
     assert!(implementation.contains("Interfaces=org.freedesktop.impl.portal.Settings;"));
+    assert_eq!(
+        fs::read_to_string(
+            paths
+                .session_dir
+                .join("share/xdg-desktop-portal/portals/wlr.portal")
+        )
+        .unwrap(),
+        "[portal]\nDBusName=org.freedesktop.impl.portal.desktop.hearthspace_wlr\nInterfaces=org.freedesktop.impl.portal.ScreenCast;\nUseIn=Hearthspace\n"
+    );
+    let wlr_activation = fs::read_to_string(
+        paths
+            .session_dir
+            .join(format!("dbus-1/services/{}.service", screencast::BUS_NAME)),
+    )
+    .unwrap();
+    assert!(wlr_activation.contains("Exec=/usr/bin/false\n"));
+    assert!(!wlr_activation.contains("SystemdService="));
+    assert!(
+        !paths
+            .session_dir
+            .join("dbus-1/services/org.freedesktop.impl.portal.desktop.wlr.service")
+            .exists()
+    );
     for (_, _, bus) in DEFINITIONS {
         if let Some(bus) = bus {
             let service = fs::read_to_string(
@@ -100,6 +123,15 @@ fn shared_sessions_generate_portal_configuration_without_activation_overrides() 
             .is_file()
     );
     assert!(!paths.session_dir.join("dbus-1").exists());
+    assert_eq!(
+        fs::read_to_string(
+            paths
+                .session_dir
+                .join("share/xdg-desktop-portal/portals/wlr.portal")
+        )
+        .unwrap(),
+        screencast::DESCRIPTOR
+    );
 }
 
 #[test]
