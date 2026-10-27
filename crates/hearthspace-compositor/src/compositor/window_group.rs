@@ -56,6 +56,36 @@ impl WindowGroup {
 }
 
 impl App {
+    pub(in crate::compositor) fn disarm_group_selection(&mut self) {
+        self.cancel_group_gesture();
+        self.window_group.selecting = false;
+        self.window_group.invalidate();
+        self.layout_changed();
+    }
+
+    pub(in crate::compositor) fn select_group_tool(&mut self) {
+        self.disarm_canvas_pan();
+        self.disarm_canvas_search();
+        self.disable_desktop_selection();
+        self.interrupt_pinch_zoom();
+        self.viewport_animation = None;
+        self.window_group.selecting = true;
+        self.window_group.invalidate();
+        self.window_group.keyboard_target = self.focused_normal_window_id;
+        self.window_group.output = self
+            .capture_outputs()
+            .into_iter()
+            .find(|output| {
+                Rectangle::new(
+                    (output.logical_x, output.logical_y).into(),
+                    (output.logical_width, output.logical_height).into(),
+                )
+                .contains(self.pointer_location.to_i32_round())
+            })
+            .map(|output| output.name);
+        self.layout_changed();
+    }
+
     pub(super) fn group_window_eligible(&self, index: usize) -> bool {
         self.is_navigable_window(index)
             && !self.window_uses_output_coordinates(index)
@@ -80,26 +110,11 @@ impl App {
 
     pub(super) fn toggle_group_selection(&mut self) -> Result<(), String> {
         self.disarm_canvas_search();
-        self.check_navigation_available()?;
-        self.interrupt_pinch_zoom();
-        self.viewport_animation = None;
-        self.window_group.selecting = !self.window_group.selecting;
-        self.window_group.gesture = None;
+        self.check_canvas_tool_available()?;
         if self.window_group.selecting {
-            self.disable_desktop_selection();
-            self.window_group.invalidate();
-            self.window_group.keyboard_target = self.focused_normal_window_id;
-            self.window_group.output = self
-                .capture_outputs()
-                .into_iter()
-                .find(|output| {
-                    Rectangle::new(
-                        (output.logical_x, output.logical_y).into(),
-                        (output.logical_width, output.logical_height).into(),
-                    )
-                    .contains(self.pointer_location.to_i32_round())
-                })
-                .map(|output| output.name);
+            self.disarm_group_selection();
+        } else {
+            self.select_group_tool();
         }
         self.request_redraw();
         Ok(())
@@ -112,7 +127,7 @@ impl App {
         self.window_group.keyboard_target = None;
         self.window_group.gesture = None;
         self.window_group.flights.clear();
-        self.request_redraw();
+        self.layout_changed();
     }
 
     pub(super) fn cancel_group_gesture(&mut self) {

@@ -17,6 +17,7 @@ use crate::config::WHEEL_SCROLL_PIXEL_EQUIVALENT;
 use super::{App, HitTarget, idle::ActivityReason};
 
 mod buttons;
+mod canvas_pan;
 mod favorite_drawing;
 mod interactive;
 mod keyboard;
@@ -37,6 +38,7 @@ mod ui_touch;
 mod window_grab;
 mod window_switcher;
 
+pub(super) use canvas_pan::CanvasPan;
 pub(super) use favorite_drawing::FavoriteDrawing;
 pub(super) use keyboard::KeyboardShortcuts;
 #[cfg(feature = "winit")]
@@ -135,7 +137,7 @@ pub(in crate::compositor) fn handle_input_event<B: InputBackend>(
             let time = event.time();
             let location = event.position_transformed(state.output_logical_size());
             trace!(?location, ?time, "absolute pointer motion input");
-            state.apply_pointer_motion(location, time);
+            state.apply_pointer_motion_from_source(remote::PointerSource::Local, location, time);
         }
         InputEvent::PointerMotion { event } => {
             trace!(delta = ?event.delta(), time = ?event.time(), "relative pointer motion input");
@@ -149,7 +151,8 @@ pub(in crate::compositor) fn handle_input_event<B: InputBackend>(
             // the delta made the HiDPI pointer track at 1/scale speed, so the
             // rendered cursor drifted away from where input was actually being
             // routed.
-            state.apply_pointer_motion(
+            state.apply_pointer_motion_from_source(
+                remote::PointerSource::Local,
                 relative_pointer_location(state.raw_pointer_location, event.delta()),
                 event.time(),
             );
@@ -163,7 +166,8 @@ pub(in crate::compositor) fn handle_input_event<B: InputBackend>(
                 vertical = ?scroll_amount_for_axis(&event, Axis::Vertical),
                 "pointer axis input"
             );
-            if state.has_window_touch_operation()
+            if state.canvas_pan_captured()
+                || state.has_window_touch_operation()
                 || state.layout_group_axis(
                     scroll_amount_for_axis(&event, Axis::Horizontal).unwrap_or(0.),
                     scroll_amount_for_axis(&event, Axis::Vertical).unwrap_or(0.),

@@ -90,6 +90,7 @@ impl App {
         }
 
         match action {
+            ShellCommand::CanvasTool(tool) => return action_reply(self.select_canvas_tool(tool)),
             ShellCommand::GroupSelectionToggle => {
                 return action_reply(self.toggle_group_selection());
             }

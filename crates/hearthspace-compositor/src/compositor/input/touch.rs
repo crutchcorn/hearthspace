@@ -135,6 +135,7 @@ impl App {
     }
 
     pub(in crate::compositor) fn cancel_input_gestures(&mut self) {
+        self.cancel_canvas_pan();
         self.gtk_shell.reset_input();
         self.cancel_titlebar_pointer();
         self.cancel_group_gesture();

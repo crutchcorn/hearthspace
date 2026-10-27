@@ -59,6 +59,8 @@ pub(super) struct ShellOutputInstance {
     pub(super) power_ui: super::session_controls::PowerUiState,
     pub(super) show_controls: bool,
     pub(super) quick_panel: super::quick_panel::Kind,
+    pub(super) tool_menu_targets: [super::search_focus::FocusTarget; 6],
+    pub(super) tool_error: Option<String>,
     pub(super) clock_formats: super::quick_clock::State,
     pub(super) osd: Option<super::control_osd::Osd>,
     pub(super) power_confirmation: Option<super::session_controls::Confirmation>,

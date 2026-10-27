@@ -100,6 +100,7 @@ pub(super) fn submit_command(state: &mut ShellState, command: String) {
     }
 }
 
+#[cfg(test)]
 pub(super) fn button(state: &ShellState) -> impl xilem::WidgetView<ShellState> + use<> {
     super::icons::icon_button(
         super::icons::Icon::Search,

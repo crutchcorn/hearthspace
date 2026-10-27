@@ -175,6 +175,26 @@ use the client's Wayland positioner constraints to flip, slide, or resize into
 the available output area. Active popup grabs retain input authority; window
 actions return an error until the popup is dismissed.
 
+## Pan canvas with a mouse
+
+Open the first Canvas tools button and choose **Pan canvas**, or press **H**
+while the desktop has focus. Drag empty canvas or a canvas desktop icon to move
+your view. The open hand closes while you drag. Windows and desktop items keep
+their canvas positions, including when zoomed in or out.
+
+Application contents, titlebars, frame attachments, and shell controls keep
+their normal interaction. Plain **H** still types into an application. Choose
+**Select desktop items** or press **V** with desktop focus to move or select icons
+again.
+
+Release the mouse button to stop. **Escape** stops an active pan at its current
+position and leaves Pan selected; held buttons must be released before another
+drag can start. Switching tools, losing the session, or entering a modal operation
+also cancels the drag without moving back to an obsolete view.
+
+This mouse tool does not replace three-finger touch navigation. See
+[canvas gestures](PINCH_ZOOM.md) for the touch controls.
+
 ## Canvas map
 
 The **Canvas map** button in Canvas tools opens the [canvas map](CANVAS_MAP.md), with a live

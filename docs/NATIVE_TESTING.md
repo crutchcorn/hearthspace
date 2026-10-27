@@ -237,6 +237,19 @@ and verify rendered three-finger canvas panning, zoom and combined movement.
 Run `scripts/pan-smoke` and `scripts/pinch-smoke` separately from the smoke cases
 above.
 
+For the mouse tool, run:
+
+```sh
+canvas_pan_run="$(mktemp -d -t hearthspace-canvas-pan.XXXXXX)"
+scripts/canvas-pan-smoke --session "$canvas_pan_run"
+```
+
+This uses an isolated profile and the visible Canvas tools chooser. It checks
+viewport movement and presented terminal markers at 80%, 100%, and 200% zoom,
+Escape cancellation with held buttons, desktop H/V shortcuts, and normal client
+input and titlebar movement while Pan remains selected. It uses the compositor's
+agent input path; three-finger libinput coverage remains in `scripts/pan-smoke`.
+
 For switcher acceptance, allocate a fresh run:
 
 ```sh

@@ -1,6 +1,39 @@
 use super::*;
 
 #[test]
+fn canvas_tools_round_trip_explicit_commands_and_lowercase_status() {
+    for (tool, name) in [
+        (CanvasTool::Select, "select"),
+        (CanvasTool::Pan, "pan"),
+        (CanvasTool::Search, "search"),
+        (CanvasTool::Group, "group"),
+        (CanvasTool::Layout, "layout"),
+    ] {
+        let command = ShellCommand::CanvasTool(tool);
+        assert_eq!(command.wire_name(), format!("canvas-tool {name}"));
+        assert_eq!(ShellCommand::parse(&command.wire_name()), Some(command));
+        assert_eq!(serde_json::to_value(tool).unwrap(), name);
+        assert_eq!(
+            serde_json::from_value::<CanvasTool>(name.into()).unwrap(),
+            tool
+        );
+        assert_eq!(
+            ShellCommand::parse(&format!("canvas-tool {name} extra")),
+            None
+        );
+    }
+    for invalid in [
+        "canvas-tool",
+        "canvas-tool hand",
+        "canvas-tool Pan",
+        "canvas-tool map",
+    ] {
+        assert_eq!(ShellCommand::parse(invalid), None);
+    }
+    assert!(serde_json::from_str::<CanvasTool>("\"Pan\"").is_err());
+}
+
+#[test]
 fn window_commands_round_trip_without_ignoring_extra_arguments() {
     for command in [
         ShellCommand::LockSession,

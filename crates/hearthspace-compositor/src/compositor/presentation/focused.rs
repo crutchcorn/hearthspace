@@ -209,6 +209,7 @@ impl App {
             return false;
         }
         state.focused_view = true;
+        self.revoke_canvas_pan();
         self.pinch_zoom = Default::default();
         self.viewport_animation = None;
         self.clear_window_group();

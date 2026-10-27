@@ -13,6 +13,8 @@ mod resize;
 mod startup;
 #[path = "status_tests.rs"]
 mod status;
+#[path = "tool_menu_tests.rs"]
+mod tool_menu_tests;
 #[path = "tray_tests.rs"]
 mod tray;
 
@@ -76,7 +78,7 @@ fn native_tab_traverses_toolbar_controls_then_requests_the_next_surface() {
     let mut state = state();
     let (sender, mut requests) = mpsc::channel(8);
     state.frame_layout.requests = Some(sender);
-    let mut ui = Ui::new(state, tools, (236, 44));
+    let mut ui = Ui::new(state, tools, (188, 44));
     ui.state.frame_layout.snapshot.focus_request = Some(FocusRequest {
         serial: 1,
         output: "test".into(),
@@ -86,8 +88,7 @@ fn native_tab_traverses_toolbar_controls_then_requests_the_next_surface() {
     ui.rebuild(&tools);
     ui.dispatch(&tools);
     for name in [
-        "Select desktop items",
-        "Search canvas",
+        "Select desktop items, choose canvas tool",
         "Select window group",
         "Change layout",
         "Canvas map",
@@ -113,7 +114,7 @@ fn native_tab_traverses_toolbar_controls_then_requests_the_next_surface() {
         }
     };
     assert_eq!(
-        revealed, 5,
+        revealed, 4,
         "every focused toolbar control must be revealed"
     );
     assert!(request.command.starts_with("frame-focus-next "));
@@ -376,13 +377,22 @@ fn compact_tools_open_same_native_actions_and_use_current_tool_focus() {
     let menu = |state: &ShellState| sized_box(tool_menu::panel(state, &state.outputs[0]));
     let (sender, mut requests) = mpsc::channel(8);
     ui.state.frame_layout.requests = Some(sender);
-    let mut menu_ui = Ui::new(ui.state, menu, (260, 232));
+    let mut menu_ui = Ui::new(ui.state, menu, (260, 276));
     assert_eq!(
         menu_ui.harness.focused_widget_id(),
         Some(menu_ui.button("Select desktop items"))
     );
     menu_ui.activate(menu_ui.button("Change layout"));
     menu_ui.dispatch(&menu);
+    assert!(menu_ui.state.outputs[0].show_controls);
+    let request = requests.try_recv().unwrap();
+    assert_eq!(request.command, "canvas-tool layout");
+    let mut snapshot = menu_ui.state.frame_layout.snapshot.clone();
+    snapshot.canvas_tool = Some(CanvasTool::Layout);
+    apply(&mut menu_ui.state, snapshot);
+    request
+        .selection
+        .unwrap()
+        .complete(&mut menu_ui.state, Ok(()));
     assert!(!menu_ui.state.outputs[0].show_controls);
-    assert_eq!(requests.try_recv().unwrap().command, "layout-tool");
 }

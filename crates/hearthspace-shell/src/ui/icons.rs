@@ -12,8 +12,9 @@ use super::state::ShellState;
 pub(super) enum Icon {
     Apps,
     Map,
-    SelectGroup,
+    #[cfg(test)]
     SelectDesktop,
+    #[cfg(test)]
     Search,
     #[cfg(test)]
     Wifi,
@@ -36,8 +37,9 @@ impl Icon {
         match self {
             Self::Apps => Glyph::AppsGrid,
             Self::Map => Glyph::Map,
-            Self::SelectGroup => Glyph::Lasso,
+            #[cfg(test)]
             Self::SelectDesktop => Glyph::Cursor,
+            #[cfg(test)]
             Self::Search => Glyph::Search,
             #[cfg(test)]
             Self::Wifi => Glyph::Wifi,

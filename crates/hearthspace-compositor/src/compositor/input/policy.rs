@@ -6,6 +6,7 @@ pub(in crate::compositor) enum Action {
     Navigation,
     SwitcherGesture,
     CanvasGesture,
+    CanvasPan,
     TouchRecognition { group_suppressed: bool },
     ClientWindowOperation,
     Input,
@@ -57,6 +58,13 @@ impl Policy {
             && !self.keyboard_grab;
         match action {
             Action::Navigation => gesture && !self.switcher && !self.layout,
+            Action::CanvasPan => {
+                gesture
+                    && !self.switcher
+                    && !self.layout
+                    && !self.focused_view
+                    && source != Source::Touch
+            }
             // Focused view still permits the switcher gesture, while canvas
             // navigation cannot move an output-pinned scene underneath it.
             Action::SwitcherGesture => gesture,

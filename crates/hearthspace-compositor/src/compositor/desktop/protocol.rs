@@ -179,6 +179,7 @@ impl CalloopData {
             app.desktop_changed();
             Ok(())
         } else if text == "desktop-selection-toggle" {
+            app.disarm_canvas_pan();
             app.disarm_canvas_search();
             app.cancel_desktop_gesture();
             app.desktop.select_mode = !app.desktop.select_mode;
@@ -186,6 +187,7 @@ impl CalloopData {
                 app.clear_window_group();
             }
             app.desktop_changed();
+            app.layout_changed();
             Ok(())
         } else if let Some(token) = text
             .strip_prefix("desktop-event-accept ")

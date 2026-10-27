@@ -41,6 +41,7 @@ impl ViewportAnimation {
 
 impl App {
     pub(super) fn start_viewport_animation(&mut self, to_offset: CanvasPoint, to_scale: f64) {
+        self.cancel_canvas_pan();
         // Explicit shell/scroll navigation supersedes an in-progress pinch.
         self.interrupt_pinch_zoom();
         self.start_owned_viewport_animation(to_offset, to_scale);
@@ -127,6 +128,7 @@ impl App {
         if !(-1_000_000..=1_000_000).contains(&x) || !(-1_000_000..=1_000_000).contains(&y) {
             return Err("canvas coordinates must be between -1000000 and 1000000".into());
         }
+        self.cancel_canvas_pan();
         if self.pinch_zoom.is_active() {
             self.interrupt_pinch_zoom();
         }

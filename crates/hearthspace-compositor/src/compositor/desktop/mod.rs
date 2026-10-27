@@ -83,6 +83,20 @@ enum Gesture {
 }
 
 impl App {
+    pub(in crate::compositor) fn desktop_selection_mode(&self) -> bool {
+        self.desktop.select_mode
+    }
+
+    pub(in crate::compositor) fn select_desktop_tool(&mut self) {
+        self.disarm_canvas_pan();
+        self.disarm_canvas_search();
+        self.cancel_desktop_gesture();
+        self.desktop.select_mode = true;
+        self.clear_window_group();
+        self.desktop_changed();
+        self.layout_changed();
+    }
+
     pub(in crate::compositor) fn desktop_gesture_active(&self) -> bool {
         self.desktop.gesture.is_some()
     }

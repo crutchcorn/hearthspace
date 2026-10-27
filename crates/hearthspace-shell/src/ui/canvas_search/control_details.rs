@@ -1,6 +1,7 @@
 //! Compact native artwork strips mirror the reference's secondary detail row.
 use crate::ui::{desktop, dock, state::ShellState};
 use hearthspace_desktop::app_catalog::DesktopApp;
+use hearthspace_ipc::command::CanvasTool;
 use hearthspace_ui_components::icons::{Icon, icon};
 use xilem::{
     AnyWidgetView, WidgetView,
@@ -73,8 +74,18 @@ fn tools(state: &ShellState) -> impl WidgetView<ShellState> + use<> {
     let palette = state.appearance.palette;
     let tools = [
         (Icon::Cursor, desktop::selection_active(state)),
-        (Icon::Search, state.canvas_search.snapshot.mode),
-        (Icon::Lasso, state.window_group.selecting),
+        (
+            Icon::Pan,
+            state.frame_layout.snapshot.canvas_tool == Some(CanvasTool::Pan),
+        ),
+        (
+            Icon::Search,
+            state.frame_layout.snapshot.canvas_tool == Some(CanvasTool::Search),
+        ),
+        (
+            Icon::Lasso,
+            state.frame_layout.snapshot.canvas_tool == Some(CanvasTool::Group),
+        ),
         (
             Icon::Map,
             state.outputs.iter().any(|output| output.show_map),

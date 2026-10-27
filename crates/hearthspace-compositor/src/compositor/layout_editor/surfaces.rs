@@ -133,6 +133,11 @@ impl App {
 }
 
 impl App {
+    pub(in crate::compositor) fn layout_target_on_frame(&self, index: usize) -> bool {
+        self.frame_target_for_window(index)
+            .is_some_and(|target| self.target_placement(&target).is_frame())
+    }
+
     pub(in crate::compositor) fn layout_render_scale(&self, index: usize) -> Option<f64> {
         let target = self.frame_target_for_window(index)?;
         let placement = self.target_placement(&target);

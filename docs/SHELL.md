@@ -4,7 +4,7 @@ The default layout places independent native controls in four corners on each ou
 
 - **Top left — Notifications:** one button combines the bell with “All clear” or the number of new notifications and opens the notification panel.
 - **Top right — System tray:** application tray icons, clock/calendar, Wi-Fi, brightness, sound, battery when available, and Power. Tray icons appear only while apps publish them; see [application tray](TRAY.md).
-- **Bottom left — Canvas tools:** [desktop-item selection](DESKTOP_ITEMS.md), [canvas search](CANVAS_SEARCH.md), window-group selection, Change layout, and the [canvas map](CANVAS_MAP.md).
+- **Bottom left — Canvas tools:** a chooser for [desktop-item selection](DESKTOP_ITEMS.md), [Pan canvas](WINDOW_MANAGEMENT.md#pan-canvas-with-a-mouse), and [canvas search](CANVAS_SEARCH.md), followed by window-group selection, Change layout, and the [canvas map](CANVAS_MAP.md).
 - **Bottom right — App dock and Apps List:** favorite and running apps, plus the installed-app browser.
 
 These positions are a starting arrangement. **Change layout** lets you keep a
@@ -88,6 +88,19 @@ Short date, Numeric date and Long date, with live previews. Choosing a format
 returns to the calendar and saves that output's clock preference. Time remains
 24-hour; the same choices are available in Change layout.
 
+## Canvas tools
+
+The first button chooses between **Select desktop items**, **Pan canvas**, and
+**Search canvas**. Click the selected tool to open its choices. After using
+another tool, the first click returns to your last choice; click again to open
+the menu. With desktop focus, **V** selects desktop items and **H** selects Pan
+canvas; these letters remain ordinary text inside applications. Search also
+finds these tools by name.
+
+The remaining buttons select window groups, open Change layout, and toggle
+Overview. On narrow outputs, **Canvas tools** opens one menu with all six choices.
+Selection is shared across outputs; each output keeps its own popup.
+
 ## Change layout
 
 Open **Change layout** from Canvas tools, canvas Search, or Settings → System.
@@ -163,6 +176,11 @@ Unlocked `status.shell_corners` describes legacy corner surfaces when present, w
 frame surfaces instead. Use `layout-status` for their measured bounds, orientation,
 visibility and group identity, plus pinned windows, editor selection and animation
 state. These bounds use global output-logical coordinates.
+
+`canvas-tool select|pan|search|group|layout` explicitly selects a tool; repeating
+the same choice does not toggle it off. `layout-status.canvas_tool` reports the
+confirmed choice or `null` when no tool is selected or available. Legacy toggle
+commands remain supported.
 
 `frame-clock-format {"output":"eDP-1","value":"long"}` changes an active output's
 clock format without opening Change layout. Values are `none`, `weekday`, `short`,

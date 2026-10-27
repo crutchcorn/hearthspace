@@ -6,11 +6,7 @@ use xilem::{
     view::task_raw,
 };
 
-use super::{
-    command_client::{query_group, send_command},
-    icons::{Icon, icon_button},
-    state::ShellState,
-};
+use super::{command_client::query_group, state::ShellState};
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub(super) struct GroupState {
@@ -40,16 +36,7 @@ impl GroupState {
 }
 
 pub(super) fn button(state: &ShellState) -> impl WidgetView<ShellState> + use<> {
-    icon_button(
-        Icon::SelectGroup,
-        "Select window group",
-        state.window_group.selecting && !state.frame_layout.snapshot.editing,
-        |state| {
-            state.dismiss_panels();
-            state.window_group.error =
-                send_command(&state.command_socket, "group-selection-toggle").err();
-        },
-    )
+    super::frame_layout::tool_menu::button(state, hearthspace_ipc::command::CanvasTool::Group)
 }
 
 fn parse(bytes: &[u8]) -> Result<GroupState, String> {
@@ -104,41 +91,6 @@ pub(super) fn task() -> impl View<ShellState, (), xilem::ViewCtx, Element = NoEl
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ui::test_support::Ui;
-    use std::{
-        io::{Read, Write},
-        os::unix::net::UnixListener,
-    };
-    use xilem::view::sized_box;
-
-    fn view(
-        state: &ShellState,
-    ) -> impl WidgetView<ShellState, Widget = masonry::widgets::SizedBox> + use<> {
-        sized_box(button(state))
-    }
-
-    #[test]
-    fn selection_button_sends_command_and_dismisses_other_popups() {
-        let directory = tempfile::tempdir().unwrap();
-        let socket = directory.path().join("control.sock");
-        let listener = UnixListener::bind(&socket).unwrap();
-        let server = std::thread::spawn(move || {
-            let (mut stream, _) = listener.accept().unwrap();
-            let mut request = String::new();
-            stream.read_to_string(&mut request).unwrap();
-            assert_eq!(request, "group-selection-toggle\n");
-            stream.write_all(b"ok\n").unwrap();
-        });
-        let mut state = ShellState::new(socket, vec!["eDP-1".into()]);
-        state.toggle_map("eDP-1");
-        let mut ui = Ui::new(state, view, (48, 48));
-        ui.activate(ui.button("Select window group"));
-        ui.dispatch(&view);
-        assert!(!ui.state.outputs[0].show_map);
-        assert!(ui.state.window_group.error.is_none());
-        server.join().unwrap();
-    }
-
     #[test]
     fn status_tracks_selection_busy_and_error_without_window_titles() {
         let mut group = parse(

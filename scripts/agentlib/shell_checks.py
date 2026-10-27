@@ -15,8 +15,7 @@ from .shell_surfaces import (
 )
 
 BAR_ICONS = (
-    "Select desktop items",
-    "Search canvas",
+    "Select desktop items, choose canvas tool",
     "Select window group",
     "Change layout",
     "Apps List",
@@ -27,6 +26,8 @@ BAR_ICONS = (
     "Power",
 )
 REMOVED = (
+    "Select desktop items",
+    "Search canvas",
     "Overview",
     "Reset view",
     "Windows",
@@ -47,8 +48,9 @@ CONTROL_CORNERS = {
     "Sound settings": "system",
     "Battery status": "system",
     "Date and time": "system",
-    "Select desktop items": "canvas",
-    "Search canvas": "canvas",
+    "Select desktop items, choose canvas tool": "canvas",
+    "Pan canvas, choose canvas tool": "canvas",
+    "Search canvas, choose canvas tool": "canvas",
     "Select window group": "canvas",
     "Change layout": "canvas",
     "Canvas map": "canvas",

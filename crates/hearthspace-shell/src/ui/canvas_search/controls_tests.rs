@@ -3,6 +3,24 @@ use crate::ui::test_support::Ui;
 use xilem::view::sized_box;
 
 #[test]
+fn accepted_pan_action_requires_the_frame_worker_and_does_not_select_optimistically() {
+    let mut state = ShellState::new("/unused".into(), vec!["test".into()]);
+    state.frame_layout.snapshot.canvas_tool = Some(CanvasTool::Search);
+    state.outputs[0].show_map = true;
+    activate(&mut state, "tool:pan", Some("test"));
+    assert!(!state.outputs[0].show_map);
+    assert_eq!(
+        state.frame_layout.snapshot.canvas_tool,
+        Some(CanvasTool::Search)
+    );
+    assert_eq!(
+        state.frame_layout.error.as_deref(),
+        Some("Canvas tools are not ready. Try again shortly.")
+    );
+    assert!(state.canvas_search.error.is_none());
+}
+
+#[test]
 fn previews_use_live_status_and_open_the_matching_output_dropdown() {
     let mut state = ShellState::new("/unused".into(), vec!["left".into(), "right".into()]);
     state.clock = "October 21, 12:34".into();
@@ -98,4 +116,12 @@ fn registration_has_only_implemented_controls_and_unique_surface_ids() {
             .iter()
             .any(|entry| entry["id"] == "tool:draw" || entry["id"] == "tool:layout")
     );
+    let pan = registration()
+        .into_iter()
+        .find(|entry| entry["id"] == "tool:pan")
+        .unwrap();
+    assert_eq!(pan["title"], "Pan canvas");
+    for keyword in ["hand", "grab", "drag", "navigate"] {
+        assert!(pan["search_text"].as_str().unwrap().contains(keyword));
+    }
 }

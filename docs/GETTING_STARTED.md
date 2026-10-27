@@ -24,11 +24,15 @@ the canvas currently visible on screen.
 | Navigation | How |
 | --- | --- |
 | Pan with a keyboard | **Super+arrow keys**. |
-| Pan with a mouse | Open **Canvas map** in Canvas tools; drag its highlighted viewport. |
+| Pan with a mouse | Choose **Pan canvas** from the first Canvas tools button, then drag empty canvas. |
 | Pan with touch | Slide three fingers on a touchpad or touchscreen. |
 | Zoom with a mouse | Hold **Super** while scrolling. |
 | Zoom with touch | Pinch with three fingers. |
 | Change zoom from the map | Use its minus and plus buttons. |
+
+Press **H** while the desktop has focus to choose Pan canvas, or **V** to return
+to desktop selection. The [canvas map](CANVAS_MAP.md) provides another way to pan
+by dragging its highlighted viewport.
 
 Panning moves your view; it doesn't rearrange windows. Zooming out helps you see
 more work at once. [Pan and zoom](PINCH_ZOOM.md) covers gesture cancellation,

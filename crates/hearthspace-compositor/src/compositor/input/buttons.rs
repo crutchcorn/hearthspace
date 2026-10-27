@@ -29,6 +29,9 @@ impl App {
         time: InputTime,
     ) {
         self.shortcuts.cancel_meta_tap();
+        if self.canvas_pan_button(button, state, time) {
+            return;
+        }
         if self.capture_window_touch_pointer_button(button, state, time) {
             return;
         }

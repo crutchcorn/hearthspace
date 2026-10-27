@@ -72,6 +72,12 @@ pub(super) const ENTRIES: &[Entry] = &[
         icon: Icon::Cursor,
     },
     Entry {
+        id: "tool:pan",
+        title: "Pan canvas",
+        keywords: "hand grab drag navigate canvas pan",
+        icon: Icon::Pan,
+    },
+    Entry {
         id: "tool:search",
         title: "Search canvas",
         keywords: "find lookup",

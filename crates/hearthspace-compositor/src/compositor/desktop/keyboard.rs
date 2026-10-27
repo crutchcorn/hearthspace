@@ -78,11 +78,7 @@ impl App {
                 let _ = self.open_desktop_context(self.desktop.focused.clone(), true);
             }
             Action::Toggle => {
-                self.disarm_canvas_search();
-                self.cancel_desktop_gesture();
-                self.desktop.select_mode = true;
-                self.clear_window_group();
-                self.desktop_changed();
+                self.select_desktop_tool();
             }
             Action::Cancel => {
                 if self.desktop.gesture.is_some() {

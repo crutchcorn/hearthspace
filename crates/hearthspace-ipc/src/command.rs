@@ -1,4 +1,7 @@
 //! Shared compositor control commands. Presentation labels belong to clients.
+mod canvas_tool;
+pub use canvas_tool::CanvasTool;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SpawnTarget {
     A11yTest,
@@ -32,6 +35,7 @@ pub enum ZoomOperation {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ShellCommand {
+    CanvasTool(CanvasTool),
     GroupSelectionToggle,
     GroupClear,
     GroupGather,
@@ -113,6 +117,7 @@ pub enum ShellCommand {
 impl ShellCommand {
     pub fn wire_name(&self) -> String {
         match self {
+            Self::CanvasTool(tool) => format!("canvas-tool {}", tool.wire_name()),
             Self::GroupSelectionToggle => "group-selection-toggle".into(),
             Self::GroupClear => "group-clear".into(),
             Self::GroupGather => "group-gather".into(),
@@ -202,6 +207,7 @@ impl ShellCommand {
         let command = parts.next()?;
 
         let parsed = match command {
+            "canvas-tool" => Self::CanvasTool(CanvasTool::parse(parts.next()?)?),
             "open-search-settings" => Self::OpenSearchSettings {
                 output_name: match parts.next() {
                     Some(encoded) => {

@@ -118,8 +118,15 @@ class ShellCornerTests(unittest.TestCase):
             (icons + ["Apps List"], False),
             (icons + ["Search canvas"], False),
             (icons + ["Select desktop items"], False),
-            ([name for name in icons if name != "Search canvas"], False),
-            ([name for name in icons if name != "Select desktop items"], False),
+            (icons + ["Select desktop items, choose canvas tool"], False),
+            (
+                [
+                    name
+                    for name in icons
+                    if name != "Select desktop items, choose canvas tool"
+                ],
+                False,
+            ),
             ([name for name in icons if name != "Brightness settings"], False),
             (icons[:-1], False),
         ]:
@@ -142,7 +149,10 @@ class ShellCornerTests(unittest.TestCase):
                             shell_checks.bar(smoke)
 
     def test_each_new_canvas_control_must_fit_inside_its_actual_surface(self):
-        for target in ("Select desktop items", "Search canvas"):
+        for target in (
+            "Select desktop items, choose canvas tool",
+            "Select window group",
+        ):
             with self.subTest(target=target):
                 smoke = Mock()
                 smoke.control.status.return_value = corner_status()

@@ -31,7 +31,11 @@ impl App {
         location: Point<f64, Logical>,
     ) {
         trace!(?location, "synthesizing absolute pointer motion");
-        self.apply_pointer_motion(location, InputTime::now());
+        self.apply_pointer_motion_from_source(
+            super::remote::PointerSource::Local,
+            location,
+            InputTime::now(),
+        );
     }
 
     pub(in crate::compositor) fn synthesize_pointer_motion_rel(
@@ -39,7 +43,8 @@ impl App {
         delta: Point<f64, Logical>,
     ) {
         trace!(?delta, "synthesizing relative pointer motion");
-        self.apply_pointer_motion(
+        self.apply_pointer_motion_from_source(
+            super::remote::PointerSource::Local,
             relative_pointer_location(self.raw_pointer_location, delta),
             InputTime::now(),
         );
@@ -55,7 +60,8 @@ impl App {
 
     pub(in crate::compositor) fn synthesize_axis(&mut self, horizontal: f64, vertical: f64) {
         trace!(horizontal, vertical, "synthesizing pointer axis");
-        if self.has_window_touch_operation()
+        if self.canvas_pan_captured()
+            || self.has_window_touch_operation()
             || self.layout_group_axis(horizontal, vertical)
             || self.zoom_from_scroll_amount(Some(vertical))
         {
@@ -80,6 +86,9 @@ impl App {
         location: Point<f64, Logical>,
         time: InputTime,
     ) {
+        if self.dispatching_touch && self.canvas_pan_captured() {
+            return;
+        }
         let previous_location = self.pointer_location;
         let output_rects = self.output_logical_rects();
         let previous_output = rect_index_containing_point(previous_location, &output_rects);
@@ -101,6 +110,12 @@ impl App {
         }
         self.pointer_location = constrained.visible;
         self.raw_pointer_location = constrained.raw;
+        if self.canvas_pan_pointer_motion(time) {
+            if self.software_cursor_visible && self.pointer_location != previous_location {
+                self.request_redraw();
+            }
+            return;
+        }
         if self.has_window_touch_operation() {
             // Keep the mouse position for re-entry, without moving the finger's
             // window or sending hover events through its compositor-owned drag.
@@ -154,6 +169,9 @@ impl App {
         if self.window_switcher_pointer_motion(time) {
             return;
         }
+        if self.canvas_pan_hover(time) {
+            return;
+        }
         if self.group_pointer_motion(time) {
             return;
         }
@@ -204,6 +222,7 @@ impl App {
     }
 
     pub(in crate::compositor) fn reconcile_pointer_after_output_geometry_change(&mut self) {
+        self.cancel_canvas_pan();
         // The old screen anchor is no longer meaningful after output changes.
         self.interrupt_pinch_zoom();
         let output_rects = self.output_logical_rects();

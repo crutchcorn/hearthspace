@@ -17,6 +17,10 @@ Pressing or releasing Alt updates the alignment even when the pointer is still.
 The same grid aligns [window movement and resizing](WINDOW_MANAGEMENT.md).
 Escape cancels a move and restores its starting positions, or clears selection when no drag is active.
 
+With **Pan canvas** selected, dragging a canvas icon moves the view instead of
+the icon. Return to **Select desktop items** to move or open it normally.
+Frame-attached icons retain their normal behavior.
+
 Tab and Shift+Tab move keyboard focus between desktop icons. Arrow keys move to
 an icon in that direction; Space selects the focused icon. Keyboard focus has a
 visible accent ring, while clicking preserves native focus without adding that
