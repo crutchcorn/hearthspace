@@ -111,6 +111,7 @@ def verify_bundle(bundle, prefix):
         raise RuntimeError("invalid release identifier")
     expected_names = {f"bin/{name}" for name in BINARIES} | {
         "bin/hearthspace-login-guard",
+        "bin/hearthspace-share-picker",
         "share/applications/dev.hearthspace.Settings.desktop",
         "share/icons/hicolor/scalable/apps/hearthspace.svg",
         "share/icons/hicolor/scalable/apps/hearthspace-settings.svg",

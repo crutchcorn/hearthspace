@@ -10,6 +10,8 @@ from pathlib import Path
 
 from runtime_artifacts import BINARIES, runtime_build_command
 
+from .portal import validate_backend
+
 REPOSITORY = Path(__file__).resolve().parents[2]
 BASE = Path("lib/hearthspace")
 MANIFEST = BASE / "install.json"
@@ -91,6 +93,9 @@ def bundle(directory, binary_dir, prefix):
     sources[Path("bin/hearthspace-login-guard")] = (
         REPOSITORY / "scripts/runtime/hearthspace-login-guard"
     )
+    sources[Path("bin/hearthspace-share-picker")] = (
+        REPOSITORY / "scripts/runtime/hearthspace-share-picker"
+    )
     sources[Path("share/applications/dev.hearthspace.Settings.desktop")] = (
         REPOSITORY / "data/applications/dev.hearthspace.Settings.desktop"
     )
@@ -135,6 +140,7 @@ def dependencies():
         "readlink",
         "systemd-run",
         "fusermount3",
+        "zenity",
     ]
     absolute = [
         "/usr/libexec/xdg-permission-store",
@@ -147,3 +153,4 @@ def dependencies():
     missing.extend(name for name in absolute if not os.access(name, os.X_OK))
     if missing:
         raise RuntimeError("missing session dependencies: " + ", ".join(missing))
+    validate_backend()

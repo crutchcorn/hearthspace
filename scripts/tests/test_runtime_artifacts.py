@@ -79,6 +79,10 @@ class RuntimeArtifactTests(unittest.TestCase):
             root = Path(directory)
             binaries = root / "target/debug"
             binaries.mkdir(parents=True)
+            picker = root / "scripts/runtime/hearthspace-share-picker"
+            picker.parent.mkdir(parents=True)
+            picker.write_text("#!/usr/bin/python3\n")
+            picker.chmod(0o755)
             session = root / "run"
             session.mkdir()
             for name in artifacts.BINARIES:
