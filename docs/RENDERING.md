@@ -40,6 +40,22 @@ This path uses implicit synchronization. Import support alone does not establish
 support for every format, modifier, synchronization protocol, or driver pairing.
 Keep compatibility failures distinct from native mode-setting failures.
 
+## Shell renderer resources
+
+The shell is one Wayland client with multiple live surfaces for desktop items,
+frame widgets, and panels. Each GPU swapchain can retain several device and
+buffer file descriptors. Before creating its UI, the shell raises its own soft
+`RLIMIT_NOFILE` to its inherited hard limit. It preserves that hard ceiling and
+does not change the supervisor, compositor, or system defaults. Direct helpers
+spawned by the shell inherit its adjusted soft limit.
+
+This follows [systemd's application-owned limit guidance](https://www.freedesktop.org/software/systemd/man/latest/systemd.exec.html#LimitNOFILE=)
+for software whose event loops support descriptors above 1023. The shell logs the
+adjustment and warns if the kernel refuses it. A restrictive hard limit still
+applies; a generic GPU surface-initialization error can conceal `EMFILE`, so check
+the process's actual limits and failed descriptor allocations before changing
+graphics backends or reducing visible UI.
+
 ## One displayed geometry for drawing and input
 
 A window has a saved canvas home and a displayed position. Search, switching,
