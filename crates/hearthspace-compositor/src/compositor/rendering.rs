@@ -283,7 +283,7 @@ impl App {
         let mut window_backdrops = Vec::new();
         let hovered_window = self.hovered_normal_window_id();
         let mut ordered = order::render_order(self.windows.iter().map(|window| window.kind));
-        ordered.sort_by_key(|index| {
+        ordered.sort_by_cached_key(|index| {
             std::cmp::Reverse((
                 self.is_power_confirmation(*index),
                 self.layout_render_layer(*index).unwrap_or_else(|| {
