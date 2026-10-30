@@ -22,6 +22,50 @@ def read_state(path):
     return load(path)
 
 
+def record_state(state_file, state):
+    """Keep privileged ownership authoritative without replacing a newer owner."""
+    save(state_file, state)
+    Path(state_file).chmod(0o644)
+    current = STATE_ROOT / "current.json"
+    if not current.exists() or load(current).get("id") == state["id"]:
+        save(current, state)
+    manifest = Path(state["session_dir"]) / "session.json"
+    try:
+        retained = load(manifest)
+    except (OSError, ValueError):
+        retained = {}
+    retained.update(state)
+    save(manifest, retained, state["uid"])
+    return retained
+
+
+def unit_stopped(unit, timeout=2):
+    """Inactive is insufficient while a queued start/stop job still exists."""
+    result = run(
+        [
+            "systemctl",
+            "show",
+            unit,
+            "--all",
+            "--property=LoadState,ActiveState,SubState,Job,MainPID,ControlPID",
+        ],
+        check=False,
+        timeout=timeout,
+    )
+    info = dict(
+        line.split("=", 1) for line in result.stdout.splitlines() if "=" in line
+    )
+    if result.returncode and info.get("LoadState") != "not-found":
+        raise RuntimeError(f"cannot verify stopped native unit {unit}: {result.stderr}")
+    return (
+        info.get("ActiveState") in ("inactive", "failed")
+        and info.get("SubState") in ("dead", "failed")
+        and info.get("Job") in ("", "0")
+        and info.get("MainPID", "0") == "0"
+        and info.get("ControlPID", "0") == "0"
+    )
+
+
 def budget(deadline, maximum=1):
     remaining = deadline - time.monotonic()
     if remaining <= 0:
@@ -179,30 +223,37 @@ def recover(state_file, lock=True):
         cleanup=cleanup,
         stopped_at=time.time(),
     )
-    manifest = Path(state["session_dir"]) / "session.json"
-    try:
-        retained = load(manifest)
-    except (OSError, ValueError):
-        retained = {}
-    retained.update(state)
-    save(manifest, retained, state["uid"])
-    save(state_file, state)
-    Path(state_file).chmod(0o644)
-    save(STATE_ROOT / "current.json", state)
-    return retained
+    return record_state(state_file, state)
 
 
 def stop(state_file):
-    state = read_state(state_file)
-    uid = int(os.environ.get("SUDO_UID", "0"))
-    if uid not in (0, state["uid"]):
-        raise RuntimeError("the native session belongs to another user")
-    if unit_info(state["unit"]).get("ActiveState") in (
-        "active",
-        "activating",
-        "deactivating",
-    ):
-        run(["systemctl", "stop", state["unit"]], timeout=30, check=False)
+    # _start may outlive its sudo wrapper. Its submission must settle before
+    # even an absent-unit observation can be trusted. Never wait for systemd
+    # while holding this lock: ExecStopPost takes it to recover the session.
+    with allocation_lock():
+        state = read_state(state_file)
+        uid = int(os.environ.get("SUDO_UID", "0"))
+        if uid not in (0, state["uid"]):
+            raise RuntimeError("the native session belongs to another user")
+        deadline = time.monotonic() + 30
+        completed = False
+        if state.get("cleanup", {}).get("complete"):
+            try:
+                completed = unit_stopped(state["unit"], timeout=budget(deadline, 2))
+            except (OSError, RuntimeError, subprocess.TimeoutExpired):
+                pass  # Invalidate an unverifiable certificate before cancellation.
+        if not completed:
+            state.update(status="stopping", cleanup={"complete": False})
+            record_state(state_file, state)
+        # Cancel queued activation as well as running units, including an
+        # accepted StartTransientUnit whose submitting client lost its reply.
+        run(
+            ["systemctl", "stop", "--no-block", state["unit"]],
+            timeout=budget(deadline, 5),
+            check=False,
+        )
+    while not unit_stopped(state["unit"], timeout=budget(deadline, 2)):
+        time.sleep(0.1)
     result = recover(state_file)
     if not result["cleanup"]["complete"]:
         raise RuntimeError(f"native recovery is incomplete: {result['cleanup']}")
