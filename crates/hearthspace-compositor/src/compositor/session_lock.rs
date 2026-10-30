@@ -23,6 +23,8 @@ mod input;
 mod power;
 mod surfaces;
 
+pub(in crate::compositor) use surfaces::send_lock_frame_callbacks;
+
 pub(super) struct LockState {
     manager: SessionLockManagerState,
     supported: bool,
@@ -152,6 +154,12 @@ impl App {
 
     pub(super) fn lock_frame_generation(&self) -> Option<u64> {
         self.session_lock.barrier.generation()
+    }
+
+    #[cfg(feature = "udev")]
+    pub(super) fn set_native_lock_outputs_available(&mut self, available: bool) {
+        self.session_lock.barrier.set_outputs_available(available);
+        // Reconfiguration updates the output set before considering confirmation.
     }
 
     /// Called only after a backend confirms presentation of the tagged frame.

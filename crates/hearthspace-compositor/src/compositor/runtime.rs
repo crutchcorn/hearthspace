@@ -6,15 +6,14 @@ use smithay::{
         damage::OutputDamageTracker,
         gles::{GlesRenderbuffer, GlesRenderer},
     },
-    desktop::PopupManager,
     reexports::{calloop::EventLoop, wayland_server::Display},
     utils::{Physical, Size, Transform},
 };
 use tracing::{debug, error, info, trace, warn};
 
-use super::{
-    ANIMATION_FRAME_INTERVAL, App, cursor::CursorIcon, rendering::send_frames_surface_tree,
-};
+use super::{ANIMATION_FRAME_INTERVAL, App, cursor::CursorIcon};
+
+mod dmabuf_imports;
 
 pub(in crate::compositor) enum Backend {
     #[cfg(feature = "winit")]
@@ -277,46 +276,38 @@ impl CalloopData {
     }
 
     pub(super) fn process_pending_dmabuf_imports(&mut self) {
-        if self.state.pending_dmabuf_imports.is_empty() {
-            return;
+        let CalloopData {
+            state,
+            backend,
+            full_redraw,
+            ..
+        } = self;
+        match backend {
+            #[cfg(feature = "winit")]
+            Backend::Winit(backend) => dmabuf_imports::process(
+                state,
+                full_redraw,
+                || Ok(Some(backend.renderer())),
+                |renderer, dmabuf| renderer.import_dmabuf(dmabuf, None).map(|_| ()),
+            ),
+            Backend::Headless(backend) => dmabuf_imports::process(
+                state,
+                full_redraw,
+                || Ok(Some(&mut backend.renderer)),
+                |renderer, dmabuf| renderer.import_dmabuf(dmabuf, None).map(|_| ()),
+            ),
+            #[cfg(feature = "udev")]
+            Backend::Udev(backend) => dmabuf_imports::process(
+                state,
+                full_redraw,
+                || backend.acquire_import_renderer(),
+                |renderer, dmabuf| {
+                    // Validate the raw GLES importer that renders the scene.
+                    // MultiRenderer's cross-GPU import fallback is not enough.
+                    renderer.as_mut().import_dmabuf(dmabuf, None).map(|_| ())
+                },
+            ),
         }
-        debug!(
-            count = self.state.pending_dmabuf_imports.len(),
-            "processing pending client dmabuf imports"
-        );
-        let CalloopData { state, backend, .. } = self;
-        for (dmabuf, notifier) in state.pending_dmabuf_imports.drain(..) {
-            let import = match backend {
-                #[cfg(feature = "winit")]
-                Backend::Winit(backend) => backend.renderer().import_dmabuf(&dmabuf, None),
-                Backend::Headless(backend) => backend.renderer.import_dmabuf(&dmabuf, None),
-                #[cfg(feature = "udev")]
-                Backend::Udev(backend) => {
-                    match backend.import_dmabuf(&dmabuf) {
-                        Ok(()) => {
-                            let _ = notifier.successful::<App>();
-                        }
-                        Err(error) => {
-                            warn!(%error, "failed to import client dmabuf");
-                            notifier.failed();
-                        }
-                    }
-                    continue;
-                }
-            };
-            match import {
-                Ok(_texture) => {
-                    let _ = notifier.successful::<App>();
-                }
-                Err(error) => {
-                    warn!(%error, "failed to import client dmabuf");
-                    notifier.failed();
-                }
-            }
-        }
-        // Importing made the renderer's EGL context surfaceless, so skip the
-        // next frame's back-buffer-age query and redraw it fully instead.
-        self.full_redraw = self.full_redraw.max(1);
     }
 
     fn render(&mut self) -> Result<(), Box<dyn std::error::Error>> {
@@ -395,38 +386,6 @@ impl CalloopData {
         if send_callbacks_now && let Err(error) = self.send_frame_callbacks() {
             warn!(%error, "failed to send frame callbacks");
         }
-
-        Ok(())
-    }
-
-    pub(in crate::compositor) fn send_frame_callbacks(
-        &mut self,
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        if self.state.session_locked() {
-            self.state
-                .send_lock_frame_callbacks(self.start_time.elapsed().as_millis() as u32);
-            self.display.flush_clients()?;
-            return Ok(());
-        }
-        for window in &self.state.windows {
-            let Some(root) = window.surface.wl_surface() else {
-                continue;
-            };
-            send_frames_surface_tree(&root, self.start_time.elapsed().as_millis() as u32);
-            // Popups (e.g. client menus) are tracked separately from the window
-            // surface tree, so they need their own frame callbacks. Without
-            // these the client (e.g. GTK4) throttles and never repaints the
-            // popup after its first frame, so keyboard navigation highlights
-            // never appear.
-            for (popup, _) in PopupManager::popups_for_surface(&root) {
-                send_frames_surface_tree(
-                    popup.wl_surface(),
-                    self.start_time.elapsed().as_millis() as u32,
-                );
-            }
-        }
-
-        self.display.flush_clients()?;
 
         Ok(())
     }

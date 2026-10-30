@@ -17,10 +17,7 @@ use smithay::{
     desktop::PopupManager,
     input::pointer::CursorImageAttributes,
     utils::{IsAlive, Logical, Physical, Point, Rectangle, Size},
-    wayland::{
-        compositor::{SurfaceAttributes, TraversalAction, with_states, with_surface_tree_downward},
-        shell::xdg::SurfaceCachedState,
-    },
+    wayland::{compositor::with_states, shell::xdg::SurfaceCachedState},
 };
 use std::sync::Mutex;
 use wayland_server::protocol::wl_surface;
@@ -837,26 +834,6 @@ pub(super) fn toplevel_geometry_size(
             .geometry
             .map(|geometry| geometry.size)
     })
-}
-
-pub(super) fn send_frames_surface_tree(surface: &wl_surface::WlSurface, time: u32) {
-    with_surface_tree_downward(
-        surface,
-        (),
-        |_, _, &()| TraversalAction::DoChildren(()),
-        |_surf, states, &()| {
-            for callback in states
-                .cached_state
-                .get::<SurfaceAttributes>()
-                .current()
-                .frame_callbacks
-                .drain(..)
-            {
-                callback.done(time);
-            }
-        },
-        |_, _, &()| true,
-    );
 }
 
 #[cfg(test)]

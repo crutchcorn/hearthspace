@@ -72,10 +72,11 @@ independent of temporary previews, frame attachment, and output presentation.
 See [rendering](RENDERING.md).
 
 Output records own client-visible geometry; the backend owns scanout resources.
-The native backend renders connected outputs on one selected DRM device, with
-per-output surfaces and pacing. Rendering across multiple DRM devices is not
-implemented. Desktop placement uses logical dimensions derived from the
-physical mode and output scale. See [DRM/KMS](DRM.md) and [size units](SIZE_UNITS.md).
+The native backend owns scanout resources on each seat GPU, with per-output
+surfaces and client pacing. One canonical GPU renders the scene; Smithay
+transfers completed images to outputs attached to other GPUs. Desktop placement
+uses logical dimensions derived from the physical mode and output scale. See
+[DRM/KMS](DRM.md) for transfer and recovery boundaries and [size units](SIZE_UNITS.md).
 
 ## Settings and observations
 

@@ -297,6 +297,46 @@ See [vendored provenance and refresh steps](../vendor/accesskit_atspi_common/PRO
   and its separate XSettings and X11 move/resize patches until their own removal
   conditions are met.
 
+## Smithay dmabuf feedback format updates
+
+- **Dependency:** the same vendored Smithay 0.7.0 at revision
+  [`5c2ba413`](https://github.com/Smithay/smithay/tree/5c2ba4132556a08abc70ae1771d275ec2cfc031f).
+- **Patch:** [share updated dmabuf validation formats](smithay-dmabuf-feedback-formats.patch),
+  confined to `src/wayland/dmabuf/{mod.rs,dispatch.rs}` with no public API change.
+- **Reason:** `set_default_feedback` advertised new GPU formats while existing
+  bound globals and buffer params retained an immutable creation whitelist.
+  A client following the new feedback could receive fatal `InvalidFormat`
+  before the compositor's import handler ran. Replacing the advertised global
+  alone cannot repair existing resources.
+- **Behavior:** share validation formats through a mutex and extend them before
+  publishing new default feedback. Retain earlier advertised formats so stale
+  allocations reach the import handler, which still decides compatibility.
+  New legacy bindings receive only the current main-tranche formats. Never
+  advertised Fourcc values remain protocol errors. `params.create` import
+  failures remain nonfatal; `create_immed` retains its protocol-defined fatal
+  failure behavior. Hearthspace separately updates all live surface-feedback
+  states through Smithay's existing API, including roleless surfaces.
+- **Upstream:** checked on 2026-10-30. Current upstream
+  [feedback state](https://github.com/Smithay/smithay/blob/master/src/wayland/dmabuf/mod.rs)
+  and [request dispatch](https://github.com/Smithay/smithay/blob/master/src/wayland/dmabuf/dispatch.rs)
+  retain the immutable whitelist. No matching upstream fix was found and no
+  report has been published.
+- **Verification:** run
+  `cargo test --locked -p hearthspace-compositor --lib --features udev compositor::udev::gpu::feedback::tests -- --test-threads=1`.
+  These real Wayland regressions dispatch through Hearthspace's actual `App`,
+  reusing its existing service-free test constructor. They cover disjoint GPU
+  formats, new Fourcc values on already bound globals and preexisting params,
+  nonfatal stale allocations,
+  current-only legacy advertisement, version 4/6 surface feedback, destruction
+  and client-disconnect cleanup without GPU changes, empty-format rejection,
+  and the no-GPU startup global upgrade. Only GPU import is replaced at the
+  pending-import drain with a recorded rejection; these checks do not establish
+  native GPU import or presentation.
+- **Removal:** adopt a compatible upstream revision that passes these protocol
+  regressions without this patch, then remove its source patch and ledger entry.
+  Keep the other Smithay repairs and vendoring until their separate removal
+  conditions are met. Retain Hearthspace's surface-feedback refresh adapter.
+
 ## Masonry finite scrollbar geometry
 
 - **Dependency:** Masonry 0.4.0 at Xilem revision

@@ -1,7 +1,7 @@
 use super::*;
 use wayland_protocols::ext::image_copy_capture::v1::client::ext_image_copy_capture_frame_v1::Event;
 
-mod client;
+use super::test_client as client;
 mod server;
 
 use client::Client;

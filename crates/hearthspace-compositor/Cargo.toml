@@ -16,8 +16,8 @@ udev = [
     "smithay/backend_libinput",
     "smithay/backend_session_libseat",
     "smithay/backend_udev",
-    # Native mode still renders through one primary GPU, but Smithay's dmabuf
-    # import path needs renderer_multi available for client buffers.
+    # Keep scene rendering on one GPU and use Smithay's transfer path for
+    # outputs attached to another device.
     "smithay/renderer_multi",
 ]
 winit = ["smithay/backend_winit"]

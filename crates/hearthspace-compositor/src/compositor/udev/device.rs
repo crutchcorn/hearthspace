@@ -5,42 +5,54 @@ use smithay::{
         allocator::gbm::{GbmAllocator, GbmBufferFlags, GbmDevice},
         allocator::{Format, Fourcc},
         drm::{DrmDevice, DrmDeviceFd, GbmBufferedSurface},
-        egl::{EGLContext, EGLDisplay},
-        renderer::{ImportDma, damage::OutputDamageTracker, gles::GlesRenderer},
-        session::{Session, libseat::LibSeatSession},
+        renderer::damage::OutputDamageTracker,
         udev::{UdevBackend, all_gpus},
     },
     output::{PhysicalProperties, Subpixel},
     reexports::{
         drm::control::{Device as ControlDevice, Mode, connector, crtc},
-        rustix::fs::{OFlags, stat},
+        rustix::fs::stat,
     },
-    utils::{DeviceFd, Physical, Size, Transform},
+    utils::{Physical, Size, Transform},
 };
 use tracing::{debug, error, info, warn};
 
 mod cursor;
+mod open;
+mod session_fd;
 
 use super::event_cutoff::SurfaceEventCutoff;
-use cursor::{HardwareCursor, create_hardware_cursor};
+use super::{
+    identity::{ConnectorNames, DeviceToken},
+    presentation::OutputPresentation,
+    transfer::SceneBuffer,
+};
+use cursor::HardwareCursor;
+pub(super) use open::create_udev_device;
+use smithay::{backend::drm::DrmNode, reexports::calloop::RegistrationToken};
 
 pub(super) struct UdevDevice {
     pub(super) path: PathBuf,
-    pub(super) render_node: RenderNode,
-    pub(super) scanout_node: ScanoutNode,
+    pub(super) identity: String,
+    pub(super) token: DeviceToken,
+    pub(super) node: DrmNode,
+    pub(super) source: Option<RegistrationToken>,
     pub(super) active: bool,
+    // Scanout repair only. Incomplete discovery independently keeps backend
+    // recovery/lock readiness blocked without replacing healthy surfaces.
+    pub(super) recovery_needed: bool,
+    pub(super) discovery_complete: bool,
     pub(super) output_targets: Vec<KmsOutputTarget>,
-    pub(super) output_target: Option<KmsOutputTarget>,
     pub(super) output_surfaces: Vec<KmsOutputSurface>,
     hardware_cursor: Option<HardwareCursor>,
     hardware_cursor_initialized: bool,
     hardware_cursor_crtc: Option<crtc::Handle>,
     hardware_cursor_position: Option<(i32, i32)>,
-}
-
-pub(super) struct RenderNode {
-    pub(super) drm_fd: DrmDeviceFd,
-    pub(super) renderer: GlesRenderer,
+    pub(super) gbm_device: GbmDevice<DrmDeviceFd>,
+    pub(super) renderer_formats: Vec<Format>,
+    pub(super) scanout_node: ScanoutNode,
+    // Last field: release libseat ownership after every DRM/GBM holder drops.
+    _session_fd: session_fd::SessionFd,
 }
 
 pub(super) struct ScanoutNode {
@@ -52,11 +64,8 @@ pub(super) struct KmsOutputSurface {
     pub(super) target: KmsOutputTarget,
     pub(super) gbm_surface: GbmBufferedSurface<GbmAllocator<DrmDeviceFd>, ()>,
     pub(super) damage_tracker: OutputDamageTracker,
-    pub(super) frame_pending: bool,
-    pub(super) presented_once: bool,
-    pub(super) lock_frame_generation: Option<u64>,
-    pub(super) frame_dirty: bool,
-    pub(super) event_cutoff: SurfaceEventCutoff,
+    pub(super) presentation: OutputPresentation,
+    pub(super) scene: Option<SceneBuffer>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -65,9 +74,11 @@ pub(super) struct KmsOutputTarget {
     pub(super) crtc: crtc::Handle,
     pub(super) mode: Mode,
     connector_name: String,
+    connector_label: String,
     physical_size_mm: (i32, i32),
 }
 
+#[derive(Clone)]
 pub(super) struct UdevDeviceInfo {
     pub(super) device_id: u64,
     pub(super) path: PathBuf,
@@ -86,7 +97,7 @@ impl KmsOutputTarget {
                 size: self.physical_size_mm.into(),
                 subpixel: Subpixel::Unknown,
                 make: "DRM".into(),
-                model: self.connector_name.clone(),
+                model: self.connector_label.clone(),
                 serial_number: self.connector_name.clone(),
             },
             size: self.output_size(),
@@ -110,15 +121,16 @@ impl KmsOutputTarget {
 
 impl UdevDevice {
     pub(super) fn output_descriptors(&self) -> Vec<super::super::OutputDescriptor> {
-        self.output_targets
+        self.output_surfaces
             .iter()
-            .map(KmsOutputTarget::output_descriptor)
+            .map(|surface| surface.target.output_descriptor())
             .collect()
     }
 
     pub(super) fn connected_output_targets(
         &self,
-    ) -> Result<Vec<KmsOutputTarget>, Box<dyn std::error::Error>> {
+        names: &mut ConnectorNames,
+    ) -> Result<(Vec<KmsOutputTarget>, bool), Box<dyn std::error::Error>> {
         let resources = self.scanout_node.drm_device.resource_handles()?;
 
         let crtcs = resources.crtcs();
@@ -130,6 +142,7 @@ impl UdevDevice {
         );
 
         let mut targets = Vec::new();
+        let mut complete = true;
         let mut used_crtcs = Vec::new();
         for connector_handle in resources.connectors() {
             let info = self
@@ -137,6 +150,9 @@ impl UdevDevice {
                 .drm_device
                 .get_connector(*connector_handle, true)?;
             let connected = info.state() == connector::State::Connected;
+            if connected && info.modes().is_empty() {
+                complete = false;
+            }
             debug!(
                 connector = ?connector_handle,
                 interface = ?info.interface(),
@@ -186,17 +202,19 @@ impl UdevDevice {
                             )
                         })
                         .unwrap_or((0, 0));
+                    let connector_label =
+                        format!("{}-{}", info.interface().as_str(), info.interface_id());
                     targets.push(KmsOutputTarget {
                         connector: *connector_handle,
                         crtc,
                         mode: *mode,
-                        connector_name: format!(
-                            "{}-{}",
-                            info.interface().as_str(),
-                            info.interface_id()
-                        ),
+                        connector_name: names.assign(&self.identity, &connector_label),
+                        connector_label,
                         physical_size_mm,
                     });
+                } else {
+                    complete = false;
+                    warn!(connector = ?connector_handle, "connected DRM output has no usable CRTC");
                 }
             }
         }
@@ -205,7 +223,7 @@ impl UdevDevice {
         } else {
             warn!("no connected DRM connector with a usable CRTC was found");
         }
-        Ok(targets)
+        Ok((targets, complete))
     }
 
     pub(super) fn rebuild_output_surfaces(
@@ -216,7 +234,6 @@ impl UdevDevice {
         // Dropping active surfaces completes their blocking DRM reset, but their
         // flip events can remain queued until the next event-loop dispatch.
         let event_cutoff = SurfaceEventCutoff::now();
-        self.output_target = targets.first().cloned();
         self.hardware_cursor_initialized = false;
         self.hardware_cursor_crtc = None;
         self.hardware_cursor_position = None;
@@ -230,8 +247,10 @@ impl UdevDevice {
         for target in targets {
             match create_output_surface(
                 &mut self.scanout_node,
-                &self.render_node,
+                &self.gbm_device,
+                &self.renderer_formats,
                 target.clone(),
+                self.token,
                 event_cutoff,
             ) {
                 Ok(surface) => self.output_surfaces.push(surface),
@@ -253,27 +272,29 @@ impl UdevDevice {
 
     pub(super) fn mark_all_surfaces_dirty(&mut self) {
         for surface in &mut self.output_surfaces {
-            surface.frame_dirty = true;
+            surface.presentation.dirty = true;
         }
     }
 
     pub(super) fn any_frame_pending(&self) -> bool {
         self.output_surfaces
             .iter()
-            .any(|surface| surface.frame_pending)
+            .any(|surface| surface.presentation.pending)
     }
 
     pub(super) fn any_frame_dirty(&self) -> bool {
         self.output_surfaces
             .iter()
-            .any(|surface| surface.frame_dirty)
+            .any(|surface| surface.presentation.dirty)
     }
 }
 
 fn create_output_surface(
     scanout_node: &mut ScanoutNode,
-    render_node: &RenderNode,
+    gbm_device: &GbmDevice<DrmDeviceFd>,
+    renderer_formats: &[Format],
     target: KmsOutputTarget,
+    token: DeviceToken,
     event_cutoff: SurfaceEventCutoff,
 ) -> Result<KmsOutputSurface, Box<dyn std::error::Error>> {
     let surface = scanout_node.drm_device.create_surface(
@@ -283,70 +304,30 @@ fn create_output_surface(
     )?;
     info!(connector = ?target.connector, crtc = ?target.crtc, mode = ?target.mode, "created DRM surface");
 
-    let gbm_device = GbmDevice::new(render_node.drm_fd.clone())?;
     let gbm_allocator = GbmAllocator::new(
-        gbm_device,
+        gbm_device.clone(),
         GbmBufferFlags::SCANOUT | GbmBufferFlags::RENDERING,
     );
-    let renderer_formats = render_node
-        .renderer
-        .dmabuf_formats()
-        .into_iter()
-        .collect::<Vec<Format>>();
     let gbm_surface = GbmBufferedSurface::new(
         surface,
         gbm_allocator,
         &[Fourcc::Argb8888, Fourcc::Xrgb8888],
-        renderer_formats,
+        renderer_formats.iter().copied(),
     )?;
     info!(connector = ?target.connector, crtc = ?target.crtc, "created GBM buffered surface");
 
     Ok(KmsOutputSurface {
         damage_tracker: OutputDamageTracker::new(target.output_size(), 1.0, Transform::Normal),
-        frame_pending: false,
-        presented_once: false,
-        lock_frame_generation: None,
-        frame_dirty: true,
-        event_cutoff,
+        presentation: OutputPresentation::new(
+            token,
+            target.crtc.into(),
+            target.connector_name().to_owned(),
+            event_cutoff,
+        ),
+        scene: None,
         target,
         gbm_surface,
     })
-}
-
-pub(super) fn create_udev_device(
-    session: &mut LibSeatSession,
-    path: PathBuf,
-    active: bool,
-) -> Result<(UdevDevice, smithay::backend::drm::DrmDeviceNotifier), Box<dyn std::error::Error>> {
-    info!(path = %path.display(), active, "opening udev DRM device");
-    let fd = session.open(&path, OFlags::RDWR | OFlags::CLOEXEC)?;
-    let drm_fd = DrmDeviceFd::new(DeviceFd::from(fd));
-    let gbm_device = GbmDevice::new(drm_fd.clone())?;
-    let egl_display = unsafe { EGLDisplay::new(gbm_device.clone())? };
-    let context = EGLContext::new(&egl_display)?;
-    let renderer = unsafe { GlesRenderer::new(context)? };
-    // Avoid disabling existing connectors until the first real frame commit path is in place.
-    let (drm_device, notifier) = DrmDevice::new(drm_fd.clone(), false)?;
-    let mut device = UdevDevice {
-        path,
-        render_node: RenderNode {
-            drm_fd: drm_fd.clone(),
-            renderer,
-        },
-        scanout_node: ScanoutNode { drm_fd, drm_device },
-        active,
-        output_targets: Vec::new(),
-        output_target: None,
-        output_surfaces: Vec::new(),
-        hardware_cursor: None,
-        hardware_cursor_initialized: false,
-        hardware_cursor_crtc: None,
-        hardware_cursor_position: None,
-    };
-    device.hardware_cursor = create_hardware_cursor(&device.scanout_node);
-    device.output_targets = device.connected_output_targets()?;
-    device.rebuild_output_surfaces(device.output_targets.clone())?;
-    Ok((device, notifier))
 }
 
 pub(super) fn initial_device_list(udev_backend: &UdevBackend) -> Vec<UdevDeviceInfo> {

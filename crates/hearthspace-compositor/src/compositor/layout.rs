@@ -127,6 +127,11 @@ pub(super) struct LayoutStore {
 }
 
 impl LayoutStore {
+    #[cfg(test)]
+    pub(in crate::compositor) fn in_memory() -> Self {
+        Self::load(None)
+    }
+
     pub(super) fn from_environment(native: bool) -> Self {
         let path = match std::env::var_os("HEARTHSPACE_LAYOUT_PATH") {
             Some(value) if value == "off" => None,

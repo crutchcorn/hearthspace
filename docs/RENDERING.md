@@ -22,6 +22,13 @@ client. This keeps renderer ownership in the backend while the protocol handlers
 retain responsibility for the request. Advertised formats and device feedback
 must describe what that renderer can import.
 
+Native seat pause or temporary renderer unavailability leaves those requests
+queued. The backend acquires the canonical scene renderer before consuming a
+batch, so recovery does not turn a valid pending request into a client protocol
+error. An unavailable secondary GPU does not block imports through a healthy
+scene renderer. Actual buffer import failures still follow the protocol's
+failure rules.
+
 Before applying a surface commit, Hearthspace asks Smithay for a dmabuf readiness
 blocker. When a wait is needed, a calloop source watches the buffer's readiness
 and releases the blocked transaction. An already-ready buffer needs no blocker.
@@ -65,6 +72,20 @@ remains enabled, while KMS damage clips are omitted from native submissions.
 These are separate optimizations, as [the backend guide](DRM.md#damage-tracking-and-kms-damage)
 explains.
 
+The final composition also returns a GPU completion fence. Native submission
+passes that fence to Smithay, which supplies a KMS input fence when supported or
+waits for rendering before submitting. Finishing CPU-side scene construction
+does not mean the GPU has finished writing the buffer. This dependency is
+required even when KMS damage clips are disabled, and is separate from the
+client-buffer readiness checks above.
+
+When scanout belongs to another GPU, the scene texture and target buffer belong
+to different renderer contexts. Smithay transfers the completed scene through
+its multi-GPU drawing API and returns the target GPU's completion fence for KMS.
+The source texture has its own damage history; target swapchain age must not be
+used for that persistent texture. See [multi-GPU output ownership](DRM.md#outputs-and-scaling)
+for the transfer and fallback boundaries.
+
 Compositor effects also own caches. Glass backdrops cache the content beneath a
 surface, including a sampling margin; titlebar foregrounds retain their rasterized
 text and icons across geometry-only resizes. Cache keys and damage must include
@@ -102,6 +123,18 @@ output scale, client buffer type, and operation that stalls. Compare a
 shared-memory client with a dmabuf client where useful, and separate first-frame
 cost from sustained frame pacing. Keep timing evidence with the investigation;
 only measured conclusions should become documented performance expectations.
+
+At TRACE level, `hearthspace_compositor::compositor::frame_callbacks` emits
+`native frame callback batch` with the completed output, elapsed microseconds,
+lock state, and number of `wl_callback.done` events sent. Empty batches are
+recorded too. Compare these with native queue and completion events to separate
+client callback starvation from slow rendering. A sent callback is not proof
+that a client has processed it.
+
+Include a movement interval without screenshots or screen recording when
+investigating flashing. GPU readback can wait for outstanding rendering and hide
+a missing synchronization dependency. A clean compositor capture does not by
+itself rule out corruption during physical scanout.
 
 A renderer-thread change requires an explicit ownership design: the GLES renderer
 is thread-bound, and render elements refer to renderer resources and live Wayland

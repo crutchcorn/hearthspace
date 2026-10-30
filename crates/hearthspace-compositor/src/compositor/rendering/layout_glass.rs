@@ -6,7 +6,7 @@ use smithay::utils::{Logical, Rectangle, Scale};
 impl App {
     /// An empty material backing tracks its group while the native resize commits.
     /// Client controls keep their own scale and are never stretched with it.
-    pub(super) fn layout_backing_scale(&self, index: usize) -> Option<Scale<f64>> {
+    pub(in crate::compositor) fn layout_backing_scale(&self, index: usize) -> Option<Scale<f64>> {
         self.frame_group_identity(index)?;
         let bounds = self
             .layout_motion_rect(index)

@@ -68,15 +68,26 @@ when extending device support.
 
 ## Outputs and scaling
 
-The native backend selects one primary DRM device and renders its connected
-output targets. Each target has its own GBM surface, damage tracker, and pending
-frame state. The compositor publishes the corresponding Wayland outputs and
-renders the desktop rectangle belonging to each one.
+The native backend opens the seat's DRM devices and keeps their scanout resources
+separate. Each target has its own GBM surface, damage history, and pending frame
+state. The compositor publishes outputs backed by successfully created surfaces
+and renders the desktop rectangle belonging to each one. Discovery alone does
+not establish that a connected display can present.
 
-Multiple outputs on that device are supported. Additional DRM devices are
-discovered but are not independent rendering targets; cross-device rendering and
-GPU handoff remain limitations. Do not describe a second GPU's connected outputs
-as available merely because device discovery found it.
+One GPU owns the GLES scene renderer, application imports, and effect caches.
+Outputs attached to that GPU render directly into its scanout buffers. For an
+output on another GPU, Hearthspace renders into a persistent scene texture and
+uses Smithay's multi-GPU renderer to transfer the completed image into a buffer
+allocated by the display's own GPU. Smithay can fall back to CPU copying when
+the drivers cannot share a compatible GPU buffer. This provides a compatibility
+path; it does not guarantee equal performance across driver combinations.
+
+DRM connector and CRTC handles are local to a device. Completion events therefore
+carry device identity and incarnation as well as the CRTC. Native output IDs
+combine the connector with its physical GPU path, so discovery order cannot
+give one GPU another GPU's saved preferences. Settings shows a short display
+name; commands use the complete ID reported by `status`. Changing the primary
+display does not change which GPU renders the scene.
 
 Output records own client-visible mode, scale, and logical placement. KMS targets
 own physical scanout dimensions. The output view is logical, and rendering applies
@@ -87,6 +98,9 @@ See [size units](SIZE_UNITS.md).
 Saved preferences can outlive a disconnected connector. Live outputs and saved
 monitor rows therefore have separate lifetimes; hotplug must not erase user
 preferences or manufacture a currently connected output from a saved row.
+Older bare connector preferences apply only when the known output identities
+identify one owner. Ambiguous preferences remain stored and unapplied; saving
+the display arrangement in Settings records the qualified IDs.
 
 ## Session and device access
 
@@ -105,6 +119,15 @@ a wake signal alone is not proof that libseat paused and resumed the devices.
 Recovery uses bounded retries and requires presentation on the expected outputs
 before declaring success. Driver calls are synchronous, so a retry budget cannot
 guarantee a hard upper bound on a blocked driver call.
+
+Device recovery retains healthy GPUs while retrying failed devices. Removing the
+scene GPU selects an available renderer and invalidates scene textures, effect
+caches, and dmabuf feedback. Allocation feedback updates existing surface
+subscriptions as well as the default. Existing protocol bindings accept newly
+advertised formats, while previously advertised allocations still reach the
+renderer for validation. Existing client buffers must import on the new
+renderer; device failover cannot guarantee compatibility for allocations a
+client made on the removed GPU.
 
 Locking retains an opaque fallback while outputs are unavailable or being rebuilt.
 A fresh lock presentation must satisfy the current output barrier; a stale page
@@ -130,6 +153,14 @@ handling rejects events from retired surfaces, and an untimed modeset event can
 unblock the buffer queue without proving capture or lock presentation. Those
 paths request a fresh, verifiable frame.
 
+Every verified output completion services that output's application frame
+callbacks, even while another display has a frame pending. A window tree and its
+popups use one output's cadence, selected by projected overlap with deterministic
+primary-output ties. Hidden and offscreen managed windows retain a fallback
+cadence. While locked, only ready lock surfaces on the completed output receive
+callbacks. The compositor's aggregate redraw decision is separate from this
+client pacing.
+
 ## Dmabuf feedback
 
 GPU clients need device and format information for compatible allocation.
@@ -154,6 +185,12 @@ without KMS damage clips. This avoids relying on optional driver behavior for
 correct presentation. A future KMS-damage optimization needs device-appropriate
 validation and a fallback when the driver rejects it; it must not disable ordinary
 renderer damage as a side effect.
+
+Cross-GPU composition keeps source-texture history separate from the target's
+rotating GBM buffers. The persistent source has age one after a successful render
+and age zero when invalidated. The initial transfer path copies the full output,
+so it does not depend on the destination buffer's age. Rendering, image transfer,
+and KMS submission preserve their completion fences in that order.
 
 ## Failure and diagnostics
 
