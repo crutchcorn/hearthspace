@@ -247,7 +247,9 @@ scripts/canvas-pan-smoke --session "$canvas_pan_run"
 This uses an isolated profile and the visible Canvas tools chooser. It checks
 viewport movement and presented terminal markers at 80%, 100%, and 200% zoom,
 Escape cancellation with held buttons, ❖ + H/❖ + V shortcuts, and normal client
-input and titlebar movement while Pan remains selected. It uses the compositor's
+input and titlebar movement while Pan remains selected. It also checks temporary
+❖ + left-drag from empty canvas, selected-tool retention, both modifier/button
+release orders, and ordinary dragging afterward. It uses the compositor's
 agent input path; three-finger libinput coverage remains in `scripts/pan-smoke`.
 
 For switcher acceptance, allocate a fresh run:

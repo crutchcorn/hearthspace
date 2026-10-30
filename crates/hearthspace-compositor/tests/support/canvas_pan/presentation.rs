@@ -11,8 +11,12 @@ fn window(compositor: &HeadlessCompositor, id: u64) -> Value {
         .clone()
 }
 
-#[test]
-fn canvas_pan_client_maximize_stops_drag_drains_buttons_and_allows_reselection() {
+#[rstest::rstest]
+#[case::selected_pan(false)]
+#[case::temporary_meta(true)]
+fn canvas_pan_client_maximize_stops_drag_drains_buttons_and_allows_reselection(
+    #[case] temporary: bool,
+) {
     let _guard = headless_test_guard();
     let compositor = fixture(false);
     let mut client = clients(&compositor);
@@ -25,7 +29,11 @@ fn canvas_pan_client_maximize_stops_drag_drains_buttons_and_allows_reselection()
         .as_u64()
         .unwrap();
     action(&compositor, format!("focus-window {id}"));
-    action(&compositor, "canvas-tool pan");
+    if temporary {
+        action(&compositor, "key-down 125");
+    } else {
+        action(&compositor, "canvas-tool pan");
+    }
     start(&compositor, (500., 500.));
     motion(&compositor, (550., 550.));
     action(&compositor, "pointer-button-down 273");
@@ -41,6 +49,9 @@ fn canvas_pan_client_maximize_stops_drag_drains_buttons_and_allows_reselection()
         &mut client,
         "focused presentation stole the held pan sequence",
     );
+    if temporary {
+        action(&compositor, "key-up 125");
+    }
 
     // Selecting Pan again exits focused view even while the cancelled sequence
     // drains. It cannot revive the old drag or deliver its releases to the app.
@@ -72,8 +83,12 @@ fn canvas_pan_client_maximize_stops_drag_drains_buttons_and_allows_reselection()
     assert_buttons(&client.take_pointer_events(), &[]);
 }
 
-#[test]
-fn canvas_pan_outside_palette_press_drains_when_restored_focus_activates_pending_maximize() {
+#[rstest::rstest]
+#[case::selected_pan(false)]
+#[case::temporary_meta(true)]
+fn canvas_pan_outside_palette_press_drains_when_restored_focus_activates_pending_maximize(
+    #[case] temporary: bool,
+) {
     let _guard = headless_test_guard();
     let compositor = fixture(false);
     let mut client = clients(&compositor);
@@ -85,7 +100,9 @@ fn canvas_pan_outside_palette_press_drains_when_restored_focus_activates_pending
         .unwrap()["id"]
         .as_u64()
         .unwrap();
-    action(&compositor, "canvas-tool pan");
+    if !temporary {
+        action(&compositor, "canvas-tool pan");
+    }
     let mut shell = crate::shell_panels::connect(&compositor);
     let panel = shell.add(
         hearthspace_common::TRAY_MENU_APP_ID.into(),
@@ -97,10 +114,13 @@ fn canvas_pan_outside_palette_press_drains_when_restored_focus_activates_pending
     client.gtk_request_maximized(1, true);
     assert_eq!(window(&compositor, id)["maximized"], true);
     assert_eq!(window(&compositor, id)["focused_view"], false);
-    assert_eq!(tool(&compositor), "pan");
+    assert_eq!(tool(&compositor), if temporary { "select" } else { "pan" });
     // The canvas-maximized client leaves a 24px margin. The outside press
     // starts on blank canvas; restoring focus expands the client over it.
     motion(&compositor, (20., 500.));
+    if temporary {
+        action(&compositor, "key-down 125");
+    }
     client.take_pointer_events();
     let stopped = viewport(&compositor);
     action(&compositor, "pointer-button-down 272");
@@ -122,6 +142,9 @@ fn canvas_pan_outside_palette_press_drains_when_restored_focus_activates_pending
         "outside palette press became client input before draining",
     );
     action(&compositor, "pointer-button-up 273");
+    if temporary {
+        action(&compositor, "key-up 125");
+    }
     assert_buttons(&client.take_pointer_events(), &[]);
     // The next complete click belongs to the newly focused app.
     start(&compositor, (90., 570.));

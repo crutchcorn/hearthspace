@@ -66,7 +66,7 @@ impl RemoteClient {
         self.keyboard.is_some() && self.pointer.is_some()
     }
 
-    pub(super) fn set_keymap(&mut self, text: &str) {
+    pub(crate) fn set_keymap(&mut self, text: &str) {
         let mut file = tempfile::tempfile().unwrap();
         file.write_all(text.as_bytes()).unwrap();
         file.write_all(&[0]).unwrap();
@@ -86,7 +86,7 @@ impl RemoteClient {
         self.sync();
     }
 
-    pub(super) fn modifiers(&mut self, depressed: u32) {
+    pub(crate) fn modifiers(&mut self, depressed: u32) {
         self.keyboard
             .as_ref()
             .unwrap()

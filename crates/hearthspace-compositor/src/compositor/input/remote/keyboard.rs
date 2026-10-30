@@ -165,6 +165,7 @@ impl App {
         source: KeyboardSource,
         masks: [u32; 4],
     ) {
+        let previous_modifiers = self.keyboard.modifier_state();
         if !self.activate_keyboard_source(source) {
             return;
         }
@@ -184,6 +185,9 @@ impl App {
                 );
             }
         }
+        // Absolute virtual masks need not have a matching key event. Reconcile
+        // after with_xkb_state releases its mutex, including source activation.
+        self.refresh_canvas_pan_modifiers(&previous_modifiers, InputTime::now());
     }
 
     fn keyboard_modifier_masks(&self) -> [u32; 4] {

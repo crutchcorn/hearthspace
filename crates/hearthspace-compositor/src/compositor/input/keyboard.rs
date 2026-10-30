@@ -281,6 +281,7 @@ impl App {
         if previous_modifiers.alt && !keyboard.modifier_state().alt {
             self.finish_window_switcher(SwitcherSource::Keyboard, false);
         }
+        self.refresh_canvas_pan_modifiers(&previous_modifiers, time);
     }
 }
 
