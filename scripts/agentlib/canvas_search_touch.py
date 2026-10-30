@@ -26,7 +26,7 @@ def require(condition, message):
 def early_typing(smoke):
     started = time.monotonic()
     with Input(smoke.control) as inputs:
-        inputs.chord("ctrl+k")
+        inputs.chord("meta+k")
         inputs.type(smoke.marker)
     current = smoke.until(
         "uppercase early typing",
@@ -45,7 +45,7 @@ def early_typing(smoke):
 
 def opened(smoke):
     with Input(smoke.control) as inputs:
-        inputs.chord("ctrl+k")
+        inputs.chord("meta+k")
     smoke.until(
         "native search editor",
         lambda: (

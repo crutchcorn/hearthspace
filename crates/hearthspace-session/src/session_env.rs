@@ -8,6 +8,7 @@ use std::{
 use crate::cli::{Args, RunMode};
 
 mod bus;
+pub(crate) use bus::automatic_private;
 
 #[derive(Debug)]
 pub(crate) struct SessionPaths {
@@ -93,6 +94,7 @@ pub(crate) fn create_session_env(
     args: &Args,
     mode: RunMode,
     paths: &SessionPaths,
+    owned_bus_address: Option<&str>,
 ) -> Result<SessionEnv, Box<dyn std::error::Error>> {
     let wayland_display = args
         .wayland_display
@@ -169,7 +171,7 @@ pub(crate) fn create_session_env(
         crate::gtk_defaults::config_dirs(&paths.session_dir)?,
     ));
 
-    if let Some(bus) = bus::selected_address(args, paths)? {
+    if let Some(bus) = bus::selected_address(args, paths, owned_bus_address)? {
         let generation = fs::read_to_string("/proc/sys/kernel/random/uuid")?;
         hearthspace_desktop::activation::initialize_display(
             &paths.host_runtime_dir,

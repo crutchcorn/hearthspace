@@ -25,7 +25,7 @@ pub(super) use events::{Event, apply_event, parse_event};
 pub(super) use task::task;
 
 pub(super) fn selection_active(state: &ShellState) -> bool {
-    state.desktop.snapshot.select_mode
+    state.frame_layout.snapshot.canvas_tool == Some(hearthspace_ipc::command::CanvasTool::Select)
 }
 
 #[derive(Default)]
@@ -151,6 +151,7 @@ pub(super) fn windows(state: &ShellState) -> Vec<WindowView<ShellState>> {
     windows
 }
 
+#[cfg(test)]
 pub(super) fn selection_button(state: &ShellState) -> impl xilem::WidgetView<ShellState> + use<> {
     super::icons::icon_button(
         super::icons::Icon::SelectDesktop,

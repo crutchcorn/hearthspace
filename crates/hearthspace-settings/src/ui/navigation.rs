@@ -20,7 +20,7 @@ use widget::{Close, NavigationLayout};
 
 pub(super) const BREAKPOINT: f64 = 560.0;
 pub(super) const HEADER_HEIGHT: f64 = 49.0;
-pub(super) const MENU_HEIGHT: f64 = 282.0;
+pub(super) const MENU_HEIGHT: f64 = 327.0;
 
 pub(crate) struct State {
     pub(crate) open: bool,

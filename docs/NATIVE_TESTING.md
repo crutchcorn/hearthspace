@@ -122,7 +122,7 @@ scripts/hearthspace-agent --session "$native_run" click 400 360 --units pixels -
 Replace the example window ID with one returned by `windows`. Use
 `focus-next`, `focus-previous`, and `focus-launcher` for navigation without an ID.
 `key super` toggles Apps List; `focus-launcher` explicitly opens it.
-`key ctrl+k` opens [canvas search](./CANVAS_SEARCH.md).
+`key super+k` opens [canvas search](./CANVAS_SEARCH.md).
 `fullscreen ID --off` and `maximize ID --off` leave one state;
 `restore ID` clears both. Launch replies confirm that a process started, so wait
 for its mapped window and application-specific readiness before typing.
@@ -236,6 +236,19 @@ use temporary uinput touchpad and touchscreen devices to exercise libinput input
 and verify rendered three-finger canvas panning, zoom and combined movement.
 Run `scripts/pan-smoke` and `scripts/pinch-smoke` separately from the smoke cases
 above.
+
+For the mouse tool, run:
+
+```sh
+canvas_pan_run="$(mktemp -d -t hearthspace-canvas-pan.XXXXXX)"
+scripts/canvas-pan-smoke --session "$canvas_pan_run"
+```
+
+This uses an isolated profile and the visible Canvas tools chooser. It checks
+viewport movement and presented terminal markers at 80%, 100%, and 200% zoom,
+Escape cancellation with held buttons, ❖ + H/❖ + V shortcuts, and normal client
+input and titlebar movement while Pan remains selected. It uses the compositor's
+agent input path; three-finger libinput coverage remains in `scripts/pan-smoke`.
 
 For switcher acceptance, allocate a fresh run:
 

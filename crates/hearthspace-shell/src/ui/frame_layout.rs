@@ -24,6 +24,7 @@ mod task;
 mod tests;
 mod text_metrics;
 pub(super) mod tool_menu;
+mod tool_selection;
 mod tooltip;
 mod tray;
 mod vertical_text;
@@ -36,11 +37,14 @@ pub(super) fn task()
     xilem::core::fork(task::task(), tooltip::task())
 }
 
-use hearthspace_ipc::frame_layout::{Action, Command};
 #[cfg(test)]
 pub(super) use hearthspace_ipc::frame_layout::{Confirmation, Group, Selection, Widget};
 pub(super) use hearthspace_ipc::frame_layout::{
     FocusRequest, Output, PinnedWindow, Rect, Snapshot,
+};
+use hearthspace_ipc::{
+    command::{CanvasTool, ShellCommand},
+    frame_layout::{Action, Command},
 };
 
 #[derive(Default)]
@@ -60,22 +64,34 @@ pub(super) struct State {
     confirm_window: Option<WindowId>,
     confirm_height: Option<f64>,
     confirm_target: super::search_focus::FocusTarget,
-    tool_menu_target: super::search_focus::FocusTarget,
+    last_primary_tool: Option<CanvasTool>,
     pub error: Option<String>,
 }
 
 pub(super) fn submit(state: &mut ShellState, command: String) {
-    if command == "layout-tool" {
+    if command == "layout-tool"
+        || command == ShellCommand::CanvasTool(CanvasTool::Layout).wire_name()
+    {
         state.frame_layout.intents.cancel();
     }
     if let Some(requests) = &state.frame_layout.requests
         && let Err(error) = requests.try_send(task::Request {
             command,
             open: None,
+            selection: None,
         })
     {
         state.frame_layout.error = Some(format!("Layout request could not be queued: {error}"));
     }
+}
+
+pub(super) fn select_tool(state: &mut ShellState, tool: CanvasTool) {
+    state.dismiss_panels();
+    if state.frame_layout.requests.is_none() {
+        state.frame_layout.error = Some("Canvas tools are not ready. Try again shortly.".into());
+        return;
+    }
+    submit(state, ShellCommand::CanvasTool(tool).wire_name());
 }
 
 pub(super) fn command(state: &mut ShellState, action: Action) {
@@ -211,6 +227,11 @@ fn apply(state: &mut ShellState, mut snapshot: Snapshot) {
     }
     if snapshot.editing && (!state.frame_layout.snapshot.editing || new_session) {
         state.dismiss_panels();
+    }
+    if let Some(tool @ (CanvasTool::Select | CanvasTool::Pan | CanvasTool::Search)) =
+        snapshot.canvas_tool
+    {
+        state.frame_layout.last_primary_tool = Some(tool);
     }
     state.frame_layout.snapshot = snapshot;
 }

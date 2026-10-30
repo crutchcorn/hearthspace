@@ -174,32 +174,10 @@ impl App {
                 _ => None,
             };
         }
-        if !self.navigation_available() {
-            return None;
-        }
-        if (modifiers.ctrl || modifiers.logo)
-            && !modifiers.alt
-            && matches!(symbol, keysyms::KEY_k | keysyms::KEY_K)
-        {
-            return Some(0);
-        }
-        let desktop = self
-            .keyboard
-            .current_focus()
-            .and_then(|f| self.window_index_for_surface(f.surface()))
-            .is_none_or(|i| self.desktop_id(i).is_some());
-        (desktop
-            && !modifiers.ctrl
-            && !modifiers.logo
-            && !modifiers.alt
-            && symbol == keysyms::KEY_slash)
-            .then_some(0)
+        None
     }
     pub(in crate::compositor) fn run_canvas_search_key(&mut self, action: i32) {
         match action {
-            0 => {
-                let _ = self.open_canvas_search(None, None);
-            }
             1 => self.close_canvas_search(true),
             2 => self.step_canvas_search(-1),
             3 => self.step_canvas_search(1),

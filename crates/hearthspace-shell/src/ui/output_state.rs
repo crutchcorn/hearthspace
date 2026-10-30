@@ -26,6 +26,8 @@ impl ShellOutputInstance {
             power_ui: Default::default(),
             show_controls: false,
             quick_panel: Default::default(),
+            tool_menu_targets: Default::default(),
+            tool_error: None,
             clock_formats: Default::default(),
             osd: None,
             power_confirmation: None,
@@ -73,6 +75,7 @@ impl ShellOutputInstance {
         self.show_map = false;
         self.show_power = false;
         self.show_controls = false;
+        self.tool_error = None;
         self.clock_formats.open = false;
         self.power_confirmation = None;
         self.query.clear();

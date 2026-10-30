@@ -17,6 +17,7 @@ impl App {
 
     /// Gesture switching keeps its live recognizer; keyboard switching cancels it.
     pub(in crate::compositor) fn prepare_window_switcher_entry(&mut self, source: SwitcherSource) {
+        self.cancel_canvas_pan();
         if source == SwitcherSource::Keyboard {
             self.interrupt_pinch_zoom();
         }
@@ -34,6 +35,7 @@ impl App {
     /// Revoke modal feature state before the seat reset drains held input.
     /// Never unset Smithay grabs here: recovery must deliver their releases first.
     pub(super) fn reset_interaction_modes(&mut self) {
+        self.disarm_canvas_pan();
         self.cancel_presentation_reveals();
         self.gtk_shell.reset_input();
         self.clear_canvas_peek_motion();

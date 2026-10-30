@@ -15,6 +15,7 @@ mod gtk_defaults;
 mod login_session;
 mod portal_cleanup;
 mod power;
+mod private_bus_address;
 mod privileges;
 mod process;
 mod profile_env;
@@ -34,18 +35,24 @@ use supervisor::Supervisor;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     privileges::clear_inherited()?;
-    let args = Args::parse();
+    let mut args = Args::parse();
     login_session::validate(&args)?;
     initialize_tracing(&args.log_level);
 
     let wayvnc = wayvnc::prepare(&args)?;
 
     let mode = resolve_mode(&args);
+    let owned_bus = session_env::automatic_private(&args, mode)
+        .then(private_bus_address::generate)
+        .transpose()?;
+    if owned_bus.is_some() {
+        args.private_session_bus = true;
+    }
     let paths = create_session_paths(args.session_dir.as_deref(), args.private_session_bus)?;
     if desktop_services::enabled(&args) {
         desktop_services::prepare(&paths, args.private_session_bus)?;
     }
-    let session_env = create_session_env(&args, mode, &paths)?;
+    let session_env = create_session_env(&args, mode, &paths, owned_bus.as_deref())?;
     gtk_defaults::prepare(&paths.session_dir, &session_env);
 
     generate_desktop_entries(&paths, mode, args.binary_dir.as_deref())?;
@@ -68,6 +75,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Supervisor::new(mode, paths, session_env, shutdown_requested, &args, wayvnc);
 
     let monitor_result = (|| {
+        supervisor.start_session_bus(owned_bus.as_deref())?;
         if args.login_session {
             supervisor.start_login_guard(&args)?;
         }

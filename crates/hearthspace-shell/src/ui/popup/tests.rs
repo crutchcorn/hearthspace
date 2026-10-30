@@ -267,3 +267,39 @@ fn full_bleed_launcher_and_notification_content_preserve_rounded_corners() {
         assert_eq!(harness.focused_widget_id(), Some(button));
     }
 }
+
+#[test]
+fn overview_glass_uses_live_translucent_palette_without_an_opaque_backing() {
+    use hearthspace_common::{Appearance, ColorMode};
+    for scheme in [ColorMode::Light, ColorMode::Dark] {
+        let palette = components::Palette::new(Appearance {
+            color_mode: scheme,
+            ..Default::default()
+        });
+        let runtime = xilem::tokio::runtime::Builder::new_current_thread()
+            .build()
+            .unwrap();
+        let mut ctx = ViewCtx::new(Arc::new(NoMessages), Arc::new(runtime));
+        let view = sized_box(frame(PopupKind::Map, label("Overview")));
+        let (root, _) = view.build(&mut ctx, &mut state());
+        let mut harness = TestHarness::create_with(
+            crate::ui::appearance::properties(palette),
+            root.new_widget,
+            TestHarnessParams::default()
+                .with_size((352, 312))
+                .with_background(Color::TRANSPARENT),
+        );
+        let image = harness.render();
+        assert_eq!(image.get_pixel(0, 0).0[3], 0);
+        let alpha = image.get_pixel(176, 250).0[3];
+        let expected = palette.chrome.to_rgba8().a;
+        assert!(
+            alpha.abs_diff(expected) <= 1,
+            "glass alpha {alpha} != {expected}"
+        );
+        assert!(
+            image.get_pixel(176, 1).0[3] > alpha,
+            "inset top edge should catch the light"
+        );
+    }
+}

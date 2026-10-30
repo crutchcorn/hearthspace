@@ -1,160 +1,54 @@
-use std::{
-    io::{BufRead, BufReader, Write},
-    os::unix::net::UnixListener,
-    sync::{Arc, mpsc},
-    thread,
-    time::{Duration, Instant},
-};
-
-use masonry::{
-    accesskit::{Action, ActionRequest, Role, TreeId},
-    core::{Widget, WidgetId},
-    testing::TestHarness,
-};
+use masonry::{accesskit::Role, core::WidgetId};
 use serde_json::json;
-use xilem::{
-    ViewCtx,
-    core::{DynMessage, MessageCtx, MessageResult, RawProxy, ViewPathTracker},
-};
+use xilem::view::sized_box;
 
 use super::*;
-use crate::ui::minimap::parse_snapshot;
+use crate::ui::{
+    minimap::parse_snapshot,
+    test_support::{Ui, ids},
+};
 
-#[derive(Debug)]
-struct NoMessages;
+mod interaction;
+mod layout;
 
-impl RawProxy for NoMessages {
-    fn send_message(
-        &self,
-        _path: Arc<[xilem::core::ViewId]>,
-        _message: xilem::core::SendMessage,
-    ) -> Result<(), xilem::core::ProxyError> {
-        panic!("map views must not start background tasks")
-    }
+const RESET: &str = "Reset canvas zoom to 100%";
 
-    fn dyn_debug(&self) -> &dyn std::fmt::Debug {
-        self
-    }
+fn snapshot(scale: f64) -> CanvasSnapshot {
+    parse_snapshot(
+        &serde_json::to_vec(&json!({
+            "viewport": {"x": -200, "y": 300, "scale": scale},
+            "outputs": [{"name":"eDP-1", "logical_x":0, "logical_y":0,
+                "logical_width":1280, "logical_height":800}], "windows": []
+        }))
+        .unwrap(),
+    )
+    .unwrap()
 }
 
-struct Ui<V: WidgetView<ShellState>>
-where
-    V::Widget: Sized,
-{
-    view: V,
-    view_state: V::ViewState,
-    state: ShellState,
-    ctx: ViewCtx,
-    harness: TestHarness<V::Widget>,
+fn state(scale: f64) -> ShellState {
+    let mut state = ShellState::new("/unused".into(), vec!["eDP-1".into()]);
+    state.outputs[0].show_map = true;
+    state.canvas = Some(snapshot(scale));
+    state
 }
 
-impl<V: WidgetView<ShellState>> Ui<V>
-where
-    V::Widget: Sized,
-{
-    fn new(mut state: ShellState, build: impl Fn(&ShellState) -> V, width: u32) -> Self {
-        let runtime = xilem::tokio::runtime::Builder::new_current_thread()
-            .build()
-            .unwrap();
-        let mut ctx = ViewCtx::new(Arc::new(NoMessages), Arc::new(runtime));
-        let view = build(&state);
-        let (root, view_state) = view.build(&mut ctx, &mut state);
-        let harness = TestHarness::create_with_size(
-            crate::ui::appearance::properties(hearthspace_ui_components::Palette::default()),
-            root.new_widget,
-            (width, 336),
-        );
-        let mut ui = Self {
-            view,
-            view_state,
-            state,
-            ctx,
-            harness,
-        };
-        ui.dispatch(&build);
-        ui
-    }
-
-    fn rebuild(&mut self, build: &impl Fn(&ShellState) -> V) {
-        let next = build(&self.state);
-        self.harness.edit_root_widget(|root| {
-            next.rebuild(
-                &self.view,
-                &mut self.view_state,
-                &mut self.ctx,
-                root,
-                &mut self.state,
-            );
-        });
-        self.view = next;
-    }
-
-    fn dispatch(&mut self, build: &impl Fn(&ShellState) -> V) {
-        while let Some((action, id)) = self.harness.pop_action_erased() {
-            let path = self.ctx.get_id_path(id).unwrap().clone();
-            let mut message = MessageCtx::new(
-                std::mem::take(self.ctx.environment()),
-                path,
-                DynMessage(action),
-            );
-            let result = self.harness.edit_root_widget(|root| {
-                self.view
-                    .message(&mut self.view_state, &mut message, root, &mut self.state)
-            });
-            assert!(matches!(
-                result,
-                MessageResult::Action(()) | MessageResult::RequestRebuild
-            ));
-            let (environment, _, _) = message.finish();
-            *self.ctx.environment() = environment;
-            self.rebuild(build);
-        }
-        self.harness.redraw();
-    }
-
-    fn activate(&mut self, id: WidgetId) {
-        self.harness.process_access_event(ActionRequest {
-            action: Action::Click,
-            target_tree: TreeId::ROOT,
-            target_node: id.to_raw().into(),
-            data: None,
-        });
-    }
-
-    fn button(&self, name: &str) -> WidgetId {
-        ids(&self.harness)
-            .into_iter()
-            .find(|id| {
-                self.harness.access_node(*id).is_some_and(|node| {
-                    node.role() == Role::Button && node.label().as_deref() == Some(name)
-                })
+fn named(ui: &Ui<impl WidgetView<ShellState, Widget: Sized>>, name: &str) -> WidgetId {
+    ids(&ui.harness)
+        .into_iter()
+        .find(|id| {
+            ui.harness.access_node(*id).is_some_and(|node| {
+                node.label().as_deref() == Some(name) || node.value().as_deref() == Some(name)
             })
-            .unwrap_or_else(|| panic!("Missing accessible button: {name}"))
-    }
-
-    fn has_text(&self, text: &str) -> bool {
-        ids(&self.harness).into_iter().any(|id| {
-            self.harness
-                .access_node(id)
-                .is_some_and(|node| node.value().as_deref() == Some(text))
         })
-    }
+        .unwrap_or_else(|| panic!("Missing accessible content: {name}"))
 }
 
-fn ids<W: Widget>(harness: &TestHarness<W>) -> Vec<WidgetId> {
-    let mut result = vec![];
-    let mut pending = vec![harness.root_id()];
-    while let Some(id) = pending.pop() {
-        pending.extend(
-            harness
-                .get_widget_with_id(id)
-                .children()
-                .iter()
-                .map(|child| child.id()),
-        );
-        result.push(id);
-    }
-    result
+fn has_text(ui: &Ui<impl WidgetView<ShellState, Widget: Sized>>, text: &str) -> bool {
+    ids(&ui.harness).into_iter().any(|id| {
+        ui.harness
+            .access_node(id)
+            .is_some_and(|node| node.value().as_deref() == Some(text))
+    })
 }
 
 fn panel_view(
@@ -176,7 +70,7 @@ fn button_view(
 #[test]
 fn map_icon_is_named_and_toggles_after_rebuilding() {
     let state = ShellState::new("/unused".into(), vec!["eDP-1".into()]);
-    let mut ui = Ui::new(state, button_view, 80);
+    let mut ui = Ui::new(state, button_view, (80, 80));
     let id = ui.button("Canvas map");
     ui.activate(id);
     ui.dispatch(&button_view);
@@ -184,64 +78,6 @@ fn map_icon_is_named_and_toggles_after_rebuilding() {
     ui.harness.mouse_click_on(ui.button("Canvas map"), None);
     ui.dispatch(&button_view);
     assert!(!ui.state.outputs[0].show_map);
-}
-
-#[test]
-fn popover_icons_have_accessible_names_and_dispatch_zoom_commands() {
-    let dir = tempfile::tempdir().unwrap();
-    let socket = dir.path().join("control.sock");
-    let listener = UnixListener::bind(&socket).unwrap();
-    listener.set_nonblocking(true).unwrap();
-    let (sent, received) = mpsc::channel();
-    let server = thread::spawn(move || {
-        let deadline = Instant::now() + Duration::from_secs(3);
-        let mut count = 0;
-        while Instant::now() < deadline && count < 2 {
-            if let Ok((mut stream, _)) = listener.accept() {
-                let mut request = String::new();
-                BufReader::new(&stream).read_line(&mut request).unwrap();
-                stream.write_all(b"ok\n").unwrap();
-                sent.send(request).unwrap();
-                count += 1;
-            } else {
-                thread::sleep(Duration::from_millis(5));
-            }
-        }
-    });
-    let mut state = ShellState::new(socket, vec!["eDP-1".into()]);
-    state.outputs[0].show_map = true;
-    let mut ui = Ui::new(state, panel_view, 340);
-    assert!(!ui.has_text("Drag the blue area to move your view"));
-    assert!(!ui.has_text("Map unavailable · retrying…"));
-    for label in ["Zoom out", "Zoom in"] {
-        if label == "Zoom in" {
-            ui.harness.focus_on(Some(ui.button("Zoom out")));
-            ui.harness.press_tab_key(false);
-            assert_eq!(ui.harness.focused_widget_id(), Some(ui.button("Zoom in")));
-            ui.harness
-                .process_text_event(masonry::core::TextEvent::key_down(
-                    masonry::core::keyboard::Key::Named(masonry::core::keyboard::NamedKey::Enter),
-                ));
-            ui.dispatch(&panel_view);
-            ui.harness
-                .process_text_event(masonry::core::TextEvent::key_up(
-                    masonry::core::keyboard::Key::Named(masonry::core::keyboard::NamedKey::Enter),
-                ));
-        } else {
-            ui.activate(ui.button(label));
-        }
-        ui.dispatch(&panel_view);
-        assert!(ui.state.canvas_error.is_none());
-        assert!(ui.state.outputs[0].show_map);
-    }
-    ui.activate(ui.button("Close canvas map"));
-    ui.dispatch(&panel_view);
-    assert!(!ui.state.outputs[0].show_map);
-    server.join().unwrap();
-    assert_eq!(
-        received.try_iter().collect::<Vec<_>>(),
-        ["zoom-out\n", "zoom-in\n"]
-    );
 }
 
 #[test]
@@ -253,7 +89,7 @@ fn live_minimap_rebuild_updates_accessibility_and_pixels() {
             "logical_width":1280, "logical_height":800}], "windows": []
     });
     state.canvas = Some(parse_snapshot(&serde_json::to_vec(&value).unwrap()).unwrap());
-    let mut ui = Ui::new(state, panel_view, 340);
+    let mut ui = Ui::new(state, panel_view, (352, 312));
     let before = ui.harness.render();
     let mut changed = value;
     changed["windows"] = json!([{"id": 1, "title": "Remote Notes", "app_id": "editor",
@@ -286,11 +122,32 @@ fn live_minimap_rebuild_updates_accessibility_and_pixels() {
 #[test]
 fn small_output_keeps_zoom_controls_reachable_by_scrolling() {
     let state = ShellState::new("/missing-map-test-socket".into(), vec!["eDP-1".into()]);
-    let mut ui = Ui::new(state, panel_view, 320);
+    let mut ui = Ui::new(state, panel_view, (320, 312));
     ui.harness
         .process_window_event(masonry::core::WindowEvent::Resize((320, 192).into()));
+    ui.dispatch(&panel_view);
     let zoom = ui.button("Zoom out");
+    let before = ui
+        .harness
+        .access_node(zoom)
+        .unwrap()
+        .bounding_box()
+        .unwrap();
+    assert!(before.y1 > 192.0, "footer initially needs scrolling");
     ui.harness.scroll_into_view(zoom);
+    // ScrollIntoView updates layout/compose but the harness publishes the
+    // resulting accessibility bounds only on redraw.
+    ui.dispatch(&panel_view);
+    let visible = ui
+        .harness
+        .access_node(zoom)
+        .unwrap()
+        .bounding_box()
+        .unwrap();
+    // The padding scrolls with Overview's content, leaving painting space for
+    // the map's exterior focus ring. The button must stay within the border.
+    assert!(visible.y0 >= 1.0 && visible.y1 <= 191.0, "{visible:?}");
+    assert_eq!(visible.height(), 44.0);
     // This checks hit testing and clipping, unlike an accessibility action
     // which is intentionally allowed to activate offscreen controls.
     ui.harness.mouse_click_on(zoom, None);
@@ -300,14 +157,14 @@ fn small_output_keeps_zoom_controls_reachable_by_scrolling() {
         "the visible button must attempt its command"
     );
     assert!(
-        ui.has_text("Map unavailable · retrying…"),
+        has_text(&ui, "Map unavailable · retrying…"),
         "a failed map command must retain its unavailable feedback"
     );
     ui.state.canvas_error = None;
     ui.rebuild(&panel_view);
     ui.dispatch(&panel_view);
-    assert!(!ui.has_text("Map unavailable · retrying…"));
-    assert!(!ui.has_text("Drag the blue area to move your view"));
+    assert!(!has_text(&ui, "Map unavailable · retrying…"));
+    assert!(!has_text(&ui, "Drag the blue area to move your view"));
     ui.button("Zoom out");
     ui.button("Zoom in");
 }

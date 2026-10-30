@@ -16,6 +16,13 @@ use super::window_app_id;
 use crate::compositor::{App, HitTarget, ManagedWindowKind};
 
 impl App {
+    pub(in crate::compositor) fn is_canvas_map_panel(&self, index: usize) -> bool {
+        self.windows[index].kind == ManagedWindowKind::Launcher
+            && window_app_id(&self.windows[index].surface)
+                .as_deref()
+                .and_then(canvas_map_output_name_from_app_id)
+                .is_some()
+    }
     pub(in crate::compositor) fn restore_focus_after_shell_panel(&mut self) {
         if !self.navigation_available() {
             return;

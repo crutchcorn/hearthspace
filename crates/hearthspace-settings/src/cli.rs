@@ -2,9 +2,9 @@ use std::ffi::OsString;
 
 use crate::state::SettingsCategory;
 
-pub(crate) const USAGE: &str = "Usage: hearthspace-settings [--page PAGE]
+pub(crate) const USAGE: &str = "Usage: hearthspace-settings [--page PAGE | --category PAGE]
 
-Pages: appearance (default), displays, background, gestures, ai, system
+Pages: appearance (default), displays, background, gestures, shortcuts, ai, system
 Aliases: display, search, advanced
 Options: --help, -h";
 
@@ -24,13 +24,16 @@ pub(crate) fn parse(args: impl IntoIterator<Item = OsString>) -> Result<Startup,
         .ok_or_else(|| format!("Arguments must be valid UTF-8.\n{USAGE}"))?;
     let startup = match argument {
         "--help" | "-h" => Startup::Help,
-        "--page" => {
+        "--page" | "--category" => {
             let page = args
                 .next()
-                .ok_or_else(|| format!("--page requires a page name.\n{USAGE}"))?;
+                .ok_or_else(|| format!("{argument} requires a page name.\n{USAGE}"))?;
             Startup::Page(parse_page(page.to_str().unwrap_or_default())?)
         }
-        argument => match argument.strip_prefix("--page=") {
+        argument => match argument
+            .strip_prefix("--page=")
+            .or_else(|| argument.strip_prefix("--category="))
+        {
             Some(page) => Startup::Page(parse_page(page)?),
             None => return Err(format!("Unknown argument: {argument}.\n{USAGE}")),
         },
@@ -47,6 +50,9 @@ pub(crate) fn parse_page(page: &str) -> Result<SettingsCategory, String> {
         "appearance" => Ok(SettingsCategory::Appearance),
         "background" => Ok(SettingsCategory::Background),
         "search" | "gestures" => Ok(SettingsCategory::Gestures),
+        "shortcuts" | "keyboard-shortcuts" | "keyboard shortcuts" => {
+            Ok(SettingsCategory::KeyboardShortcuts)
+        }
         "ai" => Ok(SettingsCategory::Ai),
         "advanced" | "system" => Ok(SettingsCategory::System),
         _ => Err(format!("Unknown settings page: {page:?}.\n{USAGE}")),
@@ -78,13 +84,24 @@ mod tests {
             ("appearance", SettingsCategory::Appearance),
             ("search", SettingsCategory::Gestures),
             ("gestures", SettingsCategory::Gestures),
+            ("shortcuts", SettingsCategory::KeyboardShortcuts),
+            ("keyboard-shortcuts", SettingsCategory::KeyboardShortcuts),
+            ("keyboard shortcuts", SettingsCategory::KeyboardShortcuts),
             ("ai", SettingsCategory::Ai),
             ("advanced", SettingsCategory::System),
             ("system", SettingsCategory::System),
         ] {
             assert_eq!(arguments(&["--page", name]), Ok(Startup::Page(category)));
             assert_eq!(
+                arguments(&["--category", name]),
+                Ok(Startup::Page(category))
+            );
+            assert_eq!(
                 arguments(&[&format!("--page={name}")]),
+                Ok(Startup::Page(category))
+            );
+            assert_eq!(
+                arguments(&[&format!("--category={name}")]),
                 Ok(Startup::Page(category))
             );
         }
@@ -102,9 +119,12 @@ mod tests {
             vec!["--page"],
             vec!["--page", "favorites"],
             vec!["--page="],
+            vec!["--category"],
+            vec!["--category="],
             vec!["search"],
             vec!["--unknown"],
             vec!["--page", "search", "--page", "display"],
+            vec!["--page", "shortcuts", "--category", "system"],
             vec!["--help", "--unknown"],
         ] {
             assert!(arguments(&args).is_err(), "accepted {args:?}");

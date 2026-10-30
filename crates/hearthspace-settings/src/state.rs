@@ -35,6 +35,7 @@ pub(crate) enum SettingsCategory {
     Displays,
     Background,
     Gestures,
+    KeyboardShortcuts,
     Ai,
     System,
 }
@@ -46,6 +47,7 @@ impl SettingsCategory {
             Self::Appearance => "Appearance",
             Self::Background => "Background",
             Self::Gestures => "Gestures",
+            Self::KeyboardShortcuts => "Keyboard shortcuts",
             Self::Ai => "AI",
             Self::System => "System",
         }
@@ -57,6 +59,7 @@ impl SettingsCategory {
             Self::Appearance => "Light and color, shaped around your space.",
             Self::Background => "A backdrop for your workspace.",
             Self::Gestures => "Draw shortcuts for your apps.",
+            Self::KeyboardShortcuts => "Fixed shortcuts for the canvas tools.",
             Self::Ai => "Find related windows across your canvas.",
             Self::System => "Your system tray and canvas controls.",
         }

@@ -260,7 +260,11 @@ def accessibility(smoke):
         lambda: smoke.control.status()["viewport"]["scale"] < before,
     )
     smoke.capture("semantic-map-zoom")
-    a11y(smoke, "activate", "//*[@role='button' and @name='Close canvas map']")
+    a11y(smoke, "activate", selector)
+    smoke.until(
+        "semantic map toggle dismisses the popover",
+        lambda: not smoke.control.status().get("canvas_maps"),
+    )
     smoke.record("semantic-action-verified", selector=selector, elements=matches)
 
 

@@ -25,12 +25,13 @@ impl Supervisor {
         fs::write(
             self.paths.session_dir.join("processes.json"),
             format!(
-                "{{\"supervisor\":{},\"settingsd\":{},\"compositor\":{},\"shell\":{},\"notifications\":{},\"wayvnc\":{}{}}}\n",
+                "{{\"supervisor\":{},\"settingsd\":{},\"compositor\":{},\"shell\":{},\"notifications\":{},\"session_bus\":{},\"wayvnc\":{}{}}}\n",
                 std::process::id(),
                 pid(&self.settingsd),
                 pid(&self.compositor),
                 pid(&self.shell),
                 pid(&self.notifications),
+                pid(&self.session_bus),
                 pid(&self.wayvnc),
                 self.desktop_services.process_json_fields(),
             ),

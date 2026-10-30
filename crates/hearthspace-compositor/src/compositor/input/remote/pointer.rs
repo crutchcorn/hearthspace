@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use smithay::{
     backend::input::{
         AbsolutePositionEvent, ButtonState, Event, InputEvent, InputTime, PointerButtonEvent,
+        PointerMotionEvent,
     },
     input::Seat,
     utils::{Logical, Point, Rectangle, Transform},
@@ -118,7 +119,11 @@ impl VirtualPointerHandler for App {
                     (rect, Transform::Normal)
                 };
                 let location = absolute_location((event.x(), event.y()).into(), rect, transform);
-                self.apply_pointer_motion(location, event.time());
+                self.apply_pointer_motion_from_source(
+                    PointerSource::Remote(device),
+                    location,
+                    event.time(),
+                );
             }
             InputEvent::PointerButton { event } => {
                 if self.remote_input.pointers.contains_key(&event.device()) {
@@ -133,9 +138,13 @@ impl VirtualPointerHandler for App {
             InputEvent::PointerMotion { event }
                 if self.remote_input.pointers.contains_key(&event.device()) =>
             {
-                handle_input_event(
-                    self,
-                    InputEvent::<VirtualPointerBackend>::PointerMotion { event },
+                self.apply_pointer_motion_from_source(
+                    PointerSource::Remote(event.device()),
+                    super::super::pointer::relative_pointer_location(
+                        self.raw_pointer_location,
+                        event.delta(),
+                    ),
+                    event.time(),
                 );
             }
             InputEvent::PointerAxis { event }
@@ -176,7 +185,21 @@ impl App {
             // a held button without producing another Wayland press.
             self.gtk_shell.reset_input();
         }
-        if self.remote_input.buttons.transition(source, button, state) {
+        let fresh = !self.has_pressed_pointer_sources();
+        // Stop the origin's transform even when another source keeps the same
+        // logical button held, so aggregation emits no Smithay release yet.
+        if state == ButtonState::Released {
+            self.canvas_pan_source_released(&source, button);
+        }
+        if self
+            .remote_input
+            .buttons
+            .transition(source.clone(), button, state)
+        {
+            if fresh && state == ButtonState::Pressed && self.begin_canvas_pan(source, button, time)
+            {
+                return;
+            }
             self.handle_pointer_button_policy(button, state, time);
         }
     }
@@ -186,6 +209,7 @@ impl App {
     }
 
     fn release_remote_pointer(&mut self, device: Option<&VirtualPointerDevice>) {
+        self.cancel_remote_canvas_pan(device);
         // Smithay emits synthetic releases before DeviceRemoved, so the source
         // map can already be empty. Destruction still revokes gesture authority.
         self.gtk_shell.reset_input();
@@ -194,6 +218,7 @@ impl App {
     }
 
     pub(in crate::compositor::input) fn release_local_pointer(&mut self) {
+        self.cancel_canvas_pan_source(&PointerSource::Local);
         self.gtk_shell.reset_input();
         let released = self.remote_input.buttons.remove_local();
         self.release_removed_pointer_buttons(released);

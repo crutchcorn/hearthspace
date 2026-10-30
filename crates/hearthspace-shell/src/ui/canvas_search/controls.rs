@@ -1,6 +1,7 @@
 //! Searchable controls open the same native dropdowns as their corner buttons.
 use crate::ui::{quick_panel::Kind, state::ShellState};
 use hearthspace_common::canvas_search_result_app_id;
+use hearthspace_ipc::command::CanvasTool;
 use hearthspace_ui_components::icons::{Icon, icon};
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
@@ -158,8 +159,11 @@ fn detail(state: &ShellState, entry: &Entry) -> (Icon, Option<String>) {
             )),
             "control:clock" => Some(state.clock.clone()),
             "control:wifi" => Some("Network controls".into()),
-            "tool:search" if state.canvas_search.snapshot.mode => Some("Selected".into()),
-            "tool:freeform" if state.window_group.selecting => Some("Selected".into()),
+            id if tool(id)
+                .is_some_and(|tool| state.frame_layout.snapshot.canvas_tool == Some(tool)) =>
+            {
+                Some("Selected".into())
+            }
             _ => None,
         };
     (glyph, text)
@@ -176,7 +180,17 @@ pub(super) fn activate(state: &mut ShellState, id: &str, output: Option<&str>) {
     let Some(key) = key else {
         return;
     };
+    if id == "tool:map" {
+        // Keyboard invocations can arrive while Overview is already open.
+        // Its toggle owns dismissal and must see the current popup state.
+        state.toggle_map(&key);
+        return;
+    }
     state.dismiss_panels();
+    if let Some(tool) = tool(id) {
+        crate::ui::frame_layout::select_tool(state, tool);
+        return;
+    }
     match id {
         "control:notifications" => state.toggle_notifications(&key),
         "control:apps" => state.toggle_search(&key),
@@ -186,13 +200,19 @@ pub(super) fn activate(state: &mut ShellState, id: &str, output: Option<&str>) {
         "control:brightness" => state.toggle_quick_panel(&key, Kind::Brightness),
         "control:battery" => state.toggle_quick_panel(&key, Kind::Battery),
         "control:clock" => state.toggle_quick_panel(&key, Kind::Clock),
-        "tool:map" => state.toggle_map(&key),
-        "tool:cursor" => super::submit_command(state, "desktop-selection-toggle".into()),
-        "tool:search" => super::submit_command(state, "canvas-search-tool".into()),
-        "tool:freeform" => super::submit_command(state, "group-selection-toggle".into()),
         // Closing search reveals the existing canvas toolbar in its corner.
         "control:canvas" => {}
         _ => {}
+    }
+}
+
+fn tool(id: &str) -> Option<CanvasTool> {
+    match id {
+        "tool:cursor" => Some(CanvasTool::Select),
+        "tool:pan" => Some(CanvasTool::Pan),
+        "tool:search" => Some(CanvasTool::Search),
+        "tool:freeform" => Some(CanvasTool::Group),
+        _ => None,
     }
 }
 

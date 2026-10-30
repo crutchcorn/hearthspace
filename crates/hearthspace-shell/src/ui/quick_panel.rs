@@ -108,7 +108,7 @@ pub(super) fn window(state: &ShellState, output: &ShellOutputInstance) -> Window
             .map(quick_panel_app_id_for_output)
             .unwrap_or_else(|| QUICK_PANEL_APP_ID.into()),
         if output.quick_panel == Kind::Tools {
-            xilem::dpi::LogicalSize::new(260.0, 232.0)
+            super::frame_layout::tool_menu::size(state, output)
         } else if output.quick_panel == Kind::Clock {
             super::quick_clock::size(state, output)
         } else {

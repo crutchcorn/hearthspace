@@ -60,7 +60,7 @@ pub(super) fn view(
     let (title, body, affirm) = if tools {
         (
             "Keep a way back to your canvas",
-            "Canvas tools can be removed after you enable “Make canvas tools hide-able” in Settings. You can find them again with / or Ctrl+K search, or restore them from Settings.",
+            "Canvas tools can be removed after you enable “Make canvas tools hide-able” in Settings. You can find them again with ❖ + K search, or restore them from Settings.",
             "Open settings",
         )
     } else {

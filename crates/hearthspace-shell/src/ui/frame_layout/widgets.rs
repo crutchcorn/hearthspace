@@ -17,7 +17,7 @@ use xilem::{
         properties::{LineBreaking, Padding},
     },
     style::Style,
-    view::{button, flex_row, label},
+    view::{flex_row, label},
 };
 
 pub(super) use crate::ui::clock_format::preview as clock;
@@ -33,7 +33,7 @@ pub(super) fn size(
 ) -> (f64, f64) {
     let width = match id {
         "tools" if compact => 44.0,
-        "tools" => 236.0,
+        "tools" => 188.0,
         "apps" => {
             44.0 + if crate::ui::dock::desired_width(state) == 0.0 {
                 0.0
@@ -234,31 +234,16 @@ fn tools(
     chain: &focus::Chain,
 ) -> impl WidgetView<ShellState> + use<> {
     let children: Vec<Box<AnyWidgetView<ShellState>>> = vec![
-        focus::item(crate::ui::desktop::selection_button(state), chain, 0).boxed(),
-        focus::item(crate::ui::canvas_search::button(state), chain, 1).boxed(),
-        focus::item(crate::ui::window_group::button(state), chain, 2).boxed(),
-        focus::item(layout_button(state), chain, 3).boxed(),
-        focus::item(crate::ui::canvas_map::map_button(output), chain, 4).boxed(),
+        super::tool_menu::trigger(state, output, chain).boxed(),
+        focus::item(crate::ui::window_group::button(state), chain, 1).boxed(),
+        focus::item(layout_button(state), chain, 2).boxed(),
+        focus::item(crate::ui::canvas_map::map_button(output), chain, 3).boxed(),
     ];
     flex_row(children).direction(axis(vertical)).gap(4.0.px())
 }
 
 pub(super) fn layout_button(state: &ShellState) -> impl WidgetView<ShellState> + use<> {
-    components::button_surface(
-        button(
-            icon(Icon::FrameLayout, 20.0).label("Change layout"),
-            |state: &mut ShellState| {
-                state.dismiss_panels();
-                super::submit(state, "layout-tool".into());
-            },
-        )
-        .padding(11.0.px())
-        .width(44.0.px())
-        .height(44.0.px())
-        .corner_radius(15.0.px()),
-        components::ButtonSurface::Bare,
-        state.frame_layout.snapshot.editing,
-    )
+    super::tool_menu::button(state, hearthspace_ipc::command::CanvasTool::Layout)
 }
 
 fn apps(

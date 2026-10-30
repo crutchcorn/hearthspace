@@ -1,14 +1,14 @@
 //! A lightweight live map of the infinite canvas, kept separate from the
 //! compositor's window previews. All drawing remains in the shell client.
 
-use crate::ui::appearance::{ThemeStyle as _, Tone};
-use xilem::{WidgetView, masonry::layout::AsUnit, style::Style, view::sized_box};
+use xilem::{WidgetView, masonry::layout::AsUnit, view::sized_box};
 
 use super::state::ShellState;
 
 mod model;
 mod projection;
 mod render;
+mod view;
 mod widget;
 
 pub(super) use model::{CanvasSnapshot, parse_snapshot};
@@ -21,15 +21,12 @@ pub(super) fn minimap_view(
     snapshot: Option<&CanvasSnapshot>,
     output_name: Option<&str>,
 ) -> impl WidgetView<ShellState> + use<> {
-    sized_box(widget::MinimapView {
+    // The widget owns its border and material; this is the complete border box.
+    sized_box(view::MinimapView {
         snapshot: snapshot.cloned(),
         output_name: output_name.map(str::to_owned),
     })
-    .fixed_height(190.0.px())
-    .theme_background(Tone::Subtle)
-    .theme_border(Tone::Border)
-    .border_width(1.0.px())
-    .corner_radius(6.0.px())
+    .fixed_height(168.0.px())
 }
 
 fn description(snapshot: Option<&CanvasSnapshot>, output_name: Option<&str>) -> String {

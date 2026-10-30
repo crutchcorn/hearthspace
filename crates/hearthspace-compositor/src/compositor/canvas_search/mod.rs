@@ -62,6 +62,19 @@ struct ResultItem {
 }
 
 impl App {
+    pub(in crate::compositor) fn canvas_search_mode(&self) -> bool {
+        self.canvas_search.mode
+    }
+
+    pub(in crate::compositor) fn select_canvas_search_tool(&mut self) {
+        self.disarm_canvas_pan();
+        self.cancel_desktop_gesture();
+        self.clear_window_group();
+        self.canvas_search.mode = true;
+        self.canvas_search_changed();
+        self.layout_changed();
+    }
+
     pub(in crate::compositor) fn canvas_search_active(&self) -> bool {
         self.canvas_search.session.is_some()
     }
@@ -139,7 +152,8 @@ impl App {
         if self.canvas_search_active() {
             self.close_canvas_search(true);
         }
-        self.check_navigation_available()?;
+        self.check_canvas_tool_available()?;
+        self.disarm_canvas_pan();
         self.leave_window_focus_views();
         let outputs = self.capture_outputs();
         let target = outputs
@@ -251,6 +265,7 @@ impl App {
         if self.canvas_search.mode {
             self.canvas_search.mode = false;
             self.canvas_search_changed();
+            self.layout_changed();
         }
     }
     fn step_canvas_search(&mut self, step: i32) {

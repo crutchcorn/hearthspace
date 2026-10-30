@@ -108,7 +108,8 @@ whether to supply Snap's scope and Wayland socket. If `steam` resolves to
 ordinary executables are preserved.
 
 The private-session bus is reachable across Snap's private temporary-file mount;
-normal native sessions use the standard user bus. See
+installed native sessions use the standard user bus; native development sessions
+start a private bus. See
 [Snap applications](SNAP_APPLICATIONS.md) for ownership and portal limitations.
 Game launch, gameplay, controller input, and file access are separate compatibility
 checks; Steam opening successfully does not establish the rest.

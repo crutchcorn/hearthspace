@@ -3,6 +3,37 @@ use super::*;
 use hearthspace_common::frame_layout::{layout_confirm_app_id, layout_editor_app_id};
 
 #[test]
+fn canvas_chords_preserve_a_layout_editors_client_pointer_grab() {
+    let _guard = headless_test_guard();
+    let mut compositor = HeadlessCompositor::spawn_with_size("1280x800");
+    drop(compositor.wait_for_socket());
+    keys(&compositor, &[125, 30]);
+    let opened = layout(&compositor);
+    let mut client = connect(&compositor);
+    let editor = client.add(
+        layout_editor_app_id(
+            opened["session"].as_u64().unwrap(),
+            opened["output"].as_str(),
+        ),
+        (260, 156),
+        (0, 0),
+        COLOR,
+    );
+    action(&compositor, "pointer-motion-abs 640 110");
+    action(&compositor, "pointer-button-down 272");
+    assert_eq!(client.presses().last().unwrap().0, editor);
+    keys(&compositor, &[125, 35]);
+    assert_eq!(layout(&compositor)["editing"], true);
+    assert_eq!(layout(&compositor)["canvas_tool"], "layout");
+    assert!(!client.closed().contains(&editor));
+    action(&compositor, "pointer-button-up 272");
+    assert_eq!(client.releases().last().unwrap().0, editor);
+    keys(&compositor, &[125, 35]);
+    assert_eq!(layout(&compositor)["editing"], false);
+    assert_eq!(layout(&compositor)["canvas_tool"], "pan");
+}
+
+#[test]
 fn frame_layout_background_and_modal_capture_all_buttons_without_stealing_native_drags() {
     let _guard = headless_test_guard();
     let mut compositor = HeadlessCompositor::spawn_with_size("1280x800");

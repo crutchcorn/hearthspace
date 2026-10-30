@@ -19,6 +19,7 @@ impl App {
         if !available {
             return snapshot;
         }
+        snapshot.canvas_tool = self.selected_canvas_tool();
         snapshot.animating = self.layout_animating();
         snapshot.outputs = state
             .layouts

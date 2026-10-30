@@ -12,7 +12,11 @@ not supported. Recent history lasts only while the notification service runs.
 
 ## Service and application contract
 
-Native sessions run `hearthspace-notifications` on the selected session D-Bus (the standard user bus by default).
+Native sessions run `hearthspace-notifications` on the selected session D-Bus.
+Installed sessions use the standard user bus and bind
+`org.freedesktop.Notifications`. Native `--dev` sessions start a private bus so
+notifications work alongside another logged-in desktop. The explicit
+`--private-session-bus` option uses an existing dedicated bus instead.
 The supervisor starts it before the portal backend and shell, records its PID,
 restarts it at most twice, and stops it on logout. The daemon never takes over an
 existing notification service. Nested sessions and `--no-desktop-services`
@@ -81,3 +85,15 @@ application connections, and control clients. It checks replacement, sender
 ownership, action delivery, expiry, dismissal, application withdrawal, history,
 and duplicate-daemon refusal without a display or host bus. The native harness
 can additionally validate the shell's visible notifications and action buttons.
+
+The session supervisor also has an opt-in test using the actual notification
+executable alongside an existing provider on a separate disposable bus. Build
+that executable explicitly, then pass its absolute path:
+
+```sh
+cargo build --locked -p hearthspace-notifications --target-dir target
+HEARTHSPACE_TEST_NOTIFICATIONS_BIN="$PWD/target/debug/hearthspace-notifications" \
+  cargo test --locked -p hearthspace-session --bin hearthspace-session \
+  actual_notifications_bind_privately_and_leave_the_existing_provider_alive \
+  -- --ignored --test-threads=1
+```

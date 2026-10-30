@@ -130,6 +130,7 @@ pub(in crate::ui) fn defer(state: &mut ShellState, key: &str, popup: Popup) -> b
     let request = super::task::Request {
         command,
         open: Some(intent),
+        selection: None,
     };
     if let Some(requests) = &state.frame_layout.requests {
         if let Err(error) = requests.try_send(request) {

@@ -1,4 +1,7 @@
 //! Shared compositor control commands. Presentation labels belong to clients.
+mod canvas_tool;
+pub use canvas_tool::CanvasTool;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SpawnTarget {
     A11yTest,
@@ -22,8 +25,17 @@ impl SpawnTarget {
     }
 }
 
+/// Relative steps are resolved by the compositor; `To` is an absolute canvas scale.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum ZoomOperation {
+    In,
+    Out,
+    To(f64),
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum ShellCommand {
+    CanvasTool(CanvasTool),
     GroupSelectionToggle,
     GroupClear,
     GroupGather,
@@ -33,36 +45,71 @@ pub enum ShellCommand {
     ListWindows,
     FocusWindow(u64),
     CloseWindow(u64),
-    MoveWindow { id: u64, x: i32, y: i32 },
-    ResizeWindow { id: u64, width: u32, height: u32 },
+    MoveWindow {
+        id: u64,
+        x: i32,
+        y: i32,
+    },
+    ResizeWindow {
+        id: u64,
+        width: u32,
+        height: u32,
+    },
     FocusNextWindow,
     FocusPreviousWindow,
     FocusLauncher,
     AcceptShellEvent(u64),
-    FullscreenWindow { id: u64, enabled: bool },
-    MaximizeWindow { id: u64, enabled: bool },
+    FullscreenWindow {
+        id: u64,
+        enabled: bool,
+    },
+    MaximizeWindow {
+        id: u64,
+        enabled: bool,
+    },
     RestoreWindow(u64),
     Spawn(SpawnTarget),
     LaunchApp(String),
-    LaunchAppOnOutput { app_id: String, output_name: String },
-    OpenSearchSettings { output_name: Option<String> },
+    LaunchAppOnOutput {
+        app_id: String,
+        output_name: String,
+    },
+    OpenSearchSettings {
+        output_name: Option<String>,
+    },
     PanLeft,
     PanRight,
     PanUp,
     PanDown,
-    PanTo { x: i32, y: i32 },
+    PanTo {
+        x: i32,
+        y: i32,
+    },
     ZoomIn,
     ZoomOut,
     ZoomTo(f64),
+    ZoomOnOutput {
+        output_name: String,
+        operation: ZoomOperation,
+    },
     ReloadSettings,
     LogAccessibilityTree,
     KeyDown(u32),
     KeyUp(u32),
-    PointerMotionAbs { x: f64, y: f64 },
-    PointerMotionRel { dx: f64, dy: f64 },
+    PointerMotionAbs {
+        x: f64,
+        y: f64,
+    },
+    PointerMotionRel {
+        dx: f64,
+        dy: f64,
+    },
     PointerButtonDown(u32),
     PointerButtonUp(u32),
-    Axis { horizontal: f64, vertical: f64 },
+    Axis {
+        horizontal: f64,
+        vertical: f64,
+    },
     Screenshot,
     Quit,
 }
@@ -70,6 +117,7 @@ pub enum ShellCommand {
 impl ShellCommand {
     pub fn wire_name(&self) -> String {
         match self {
+            Self::CanvasTool(tool) => format!("canvas-tool {}", tool.wire_name()),
             Self::GroupSelectionToggle => "group-selection-toggle".into(),
             Self::GroupClear => "group-clear".into(),
             Self::GroupGather => "group-gather".into(),
@@ -109,6 +157,17 @@ impl ShellCommand {
             Self::ZoomIn => "zoom-in".to_string(),
             Self::ZoomOut => "zoom-out".to_string(),
             Self::ZoomTo(scale) => format!("zoom-to {scale}"),
+            Self::ZoomOnOutput {
+                output_name,
+                operation,
+            } => {
+                let operation = match operation {
+                    ZoomOperation::In => "in".into(),
+                    ZoomOperation::Out => "out".into(),
+                    ZoomOperation::To(scale) => format!("to {scale}"),
+                };
+                format!("zoom-on-output {} {operation}", hex_encode(output_name))
+            }
             Self::ReloadSettings => "reload-settings".to_string(),
             Self::LogAccessibilityTree => "log-a11y-tree".to_string(),
             Self::KeyDown(keycode) => format!("key-down {keycode}"),
@@ -148,6 +207,7 @@ impl ShellCommand {
         let command = parts.next()?;
 
         let parsed = match command {
+            "canvas-tool" => Self::CanvasTool(CanvasTool::parse(parts.next()?)?),
             "open-search-settings" => Self::OpenSearchSettings {
                 output_name: match parts.next() {
                     Some(encoded) => {
@@ -204,6 +264,22 @@ impl ShellCommand {
             "zoom-in" => Self::ZoomIn,
             "zoom-out" => Self::ZoomOut,
             "zoom-to" => Self::ZoomTo(parts.next()?.parse().ok()?),
+            "zoom-on-output" => {
+                let output_name = hex_decode_to_string(parts.next()?)?;
+                if output_name.is_empty() {
+                    return None;
+                }
+                let operation = match parts.next()? {
+                    "in" => ZoomOperation::In,
+                    "out" => ZoomOperation::Out,
+                    "to" => ZoomOperation::To(parse_f64(parts.next()?)?),
+                    _ => return None,
+                };
+                Self::ZoomOnOutput {
+                    output_name,
+                    operation,
+                }
+            }
             "reload-settings" => Self::ReloadSettings,
             "log-a11y-tree" => Self::LogAccessibilityTree,
             "key-down" => Self::KeyDown(parse_u32(parts.next()?)?),

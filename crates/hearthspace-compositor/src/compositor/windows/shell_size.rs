@@ -1,8 +1,9 @@
 //! Shell palettes request their measured content height through xdg constraints.
 //! Apps List retains its requested width, capped to the output's corner margins.
 use hearthspace_common::{
-    SHELL_CORNER_CLEARANCE, SHELL_CORNER_MARGIN, launcher_output_name_from_app_id,
-    power_confirm_output_name_from_app_id, shell_corner_from_app_id,
+    SHELL_CORNER_CLEARANCE, SHELL_CORNER_MARGIN, canvas_map_output_name_from_app_id,
+    launcher_output_name_from_app_id, power_confirm_output_name_from_app_id,
+    shell_corner_from_app_id,
 };
 use smithay::{
     utils::{Logical, Size},
@@ -55,6 +56,10 @@ impl App {
             .as_deref()
             .and_then(power_confirm_output_name_from_app_id)
             .is_some();
+        let canvas_map = app_id
+            .as_deref()
+            .and_then(canvas_map_output_name_from_app_id)
+            .is_some();
         let Some(mut size) = power_confirmation
             .then(|| super::power_confirmation::power_confirmation_size(requested, output))
             .or_else(|| {
@@ -67,6 +72,9 @@ impl App {
         else {
             return;
         };
+        if canvas_map {
+            size.w = map_width(requested.w, output.w);
+        }
         if !power_confirmation
             && corner.is_none()
             && !matches!(
@@ -102,6 +110,12 @@ impl App {
     }
 }
 
+fn map_width(requested: i32, output: i32) -> i32 {
+    // Leave the Overview's twelve-pixel anchored margin visible even when its
+    // preferred width does not fit. Keep narrow/short content scrollable.
+    requested.min(output.saturating_sub(28).max(1)).max(1)
+}
+
 pub(super) fn fixed_size(root: &WlSurface) -> Option<Size<i32, Logical>> {
     let hints = with_states(root, |states| {
         *states.cached_state.get::<SurfaceCachedState>().current()
@@ -135,6 +149,13 @@ fn palette_size(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn map_keeps_its_margin_on_narrow_and_scaled_outputs() {
+        for (output, expected) in [(1280, 352), (640, 352), (375, 347), (320, 292), (20, 1)] {
+            assert_eq!(map_width(352, output), expected);
+        }
+    }
 
     #[test]
     fn fixed_palettes_follow_changing_content_and_stay_inside_the_output() {

@@ -4,7 +4,7 @@ The default layout places independent native controls in four corners on each ou
 
 - **Top left — Notifications:** one button combines the bell with “All clear” or the number of new notifications and opens the notification panel.
 - **Top right — System tray:** application tray icons, clock/calendar, Wi-Fi, brightness, sound, battery when available, and Power. Tray icons appear only while apps publish them; see [application tray](TRAY.md).
-- **Bottom left — Canvas tools:** [desktop-item selection](DESKTOP_ITEMS.md), [canvas search](CANVAS_SEARCH.md), window-group selection, Change layout, and the [canvas map](CANVAS_MAP.md).
+- **Bottom left — Canvas tools:** a chooser for [desktop-item selection](DESKTOP_ITEMS.md), [Pan canvas](WINDOW_MANAGEMENT.md#pan-canvas-with-a-mouse), and [canvas search](CANVAS_SEARCH.md), followed by window-group selection, Change layout, and the [canvas map](CANVAS_MAP.md).
 - **Bottom right — App dock and Apps List:** favorite and running apps, plus the installed-app browser.
 
 These positions are a starting arrangement. **Change layout** lets you keep a
@@ -45,7 +45,7 @@ extend the deadline. Cancellation, output/token matching, and the bounded input
 queue still apply, so slow startup can preserve early typing without accepting a
 stale or cancelled launcher. Canvas search retains its explicit session lifetime.
 
-Ctrl+K or Super+K opens canvas search, which temporarily arranges matching desktop
+❖ + K opens canvas search, which temporarily arranges matching desktop
 objects and live windows around a native search field. Its toolbar button arms
 click-to-open Search mode. This is independent of Apps List.
 
@@ -87,6 +87,22 @@ shows the current month. Its **Date format** menu offers Time only, Weekday,
 Short date, Numeric date and Long date, with live previews. Choosing a format
 returns to the calendar and saves that output's clock preference. Time remains
 24-hour; the same choices are available in Change layout.
+
+## Canvas tools
+
+The first button chooses between **Select desktop items**, **Pan canvas**, and
+**Search canvas**. Click the selected tool to open its choices. After using
+another tool, the first click returns to your last choice; click again to open
+the menu. **❖ + V** selects desktop items and **❖ + H** selects Pan canvas.
+The letters alone remain ordinary text. Search also finds these tools by name.
+**❖ + K** selects Search and opens its field immediately.
+
+The remaining buttons select window groups, open Change layout, and toggle
+Overview. On narrow outputs, **Canvas tools** opens one menu with all six choices.
+Selection is shared across outputs; each output keeps its own popup.
+**❖ + G** selects window groups, **❖ + A** opens Change layout, and **❖ + O**
+toggles Overview. The fixed bindings are listed in
+[Settings → Keyboard shortcuts](SETTINGS.md#keyboard-shortcuts).
 
 ## Change layout
 
@@ -150,9 +166,10 @@ it. Permanent transport or invalid-snapshot failures cancel it immediately.
 Buttons retain descriptive accessible names despite showing icons: `Apps List`,
 `Notifications`, `Search canvas`, `Canvas map`, `Select window group`, `Wi-Fi settings`,
 `Brightness settings`, `Sound settings`, `Date and time`, and `Power`.
-Close controls include `Close apps list`, `Close notifications`, `Close canvas map`,
+Close controls include `Close apps list`, `Close notifications`,
 and `Close power menu`. Dock names include the app, window count, active state,
 and next window when cycling.
+`Canvas map` toggles Overview open and closed; Escape also closes it.
 The power choices are `Lock`, `Log out`, `Confirm log out`, and `Cancel`.
 Search rows retain button roles and the names `Open: APP NAME` or `Window:
 WINDOW TITLE`; the current result exposes the accessibility `selected` state.
@@ -162,6 +179,11 @@ Unlocked `status.shell_corners` describes legacy corner surfaces when present, w
 frame surfaces instead. Use `layout-status` for their measured bounds, orientation,
 visibility and group identity, plus pinned windows, editor selection and animation
 state. These bounds use global output-logical coordinates.
+
+`canvas-tool select|pan|search|group|layout` explicitly selects a tool; repeating
+the same choice does not toggle it off. `layout-status.canvas_tool` reports the
+confirmed choice or `null` when no tool is selected or available. Legacy toggle
+commands remain supported.
 
 `frame-clock-format {"output":"eDP-1","value":"long"}` changes an active output's
 clock format without opening Change layout. Values are `none`, `weekday`, `short`,

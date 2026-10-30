@@ -24,10 +24,10 @@ fn a_second_launch_delivers_the_requested_page_to_the_existing_endpoint() {
             })
     });
     assert!(matches!(
-        start_at(&path, SettingsCategory::Gestures).unwrap(),
+        start_at(&path, SettingsCategory::KeyboardShortcuts).unwrap(),
         Startup::Forwarded
     ));
-    assert_eq!(server.join().unwrap(), SettingsCategory::Gestures);
+    assert_eq!(server.join().unwrap(), SettingsCategory::KeyboardShortcuts);
     assert!(path.exists());
     drop(endpoint);
     assert!(!path.exists());

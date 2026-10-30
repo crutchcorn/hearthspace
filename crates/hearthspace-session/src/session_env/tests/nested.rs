@@ -119,7 +119,7 @@ fn run_nested() {
         "--wayland-display",
         "nested-test",
     ]);
-    let session = create_session_env(&args, RunMode::InstalledBinaries, &paths).unwrap();
+    let session = create_session_env(&args, RunMode::InstalledBinaries, &paths, None).unwrap();
     assert!(!session.vars.iter().any(|(key, _)| key == MARKER));
     run_child(session.vars.clone(), "child");
     let mut owned = session.vars;

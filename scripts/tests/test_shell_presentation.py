@@ -53,6 +53,33 @@ class PopupPresentationTests(unittest.TestCase):
         with self.assertRaisesRegex(ControlError, "no visible interior"):
             presentation.rounded(self.background, self.background, self.surface)
 
+    def test_map_corners_retain_shadow_but_reject_square_fill(self):
+        surface = self.surface | {"kind": "map"}
+        shadow = [((-3, 17, 103, 103), (96, 84, 72))]
+        visible = shadow + self.rounded
+        self.assertEqual(
+            len(presentation.rounded(self.background, self.frame(visible), surface)), 4
+        )
+        for x, y in ((0, 20), (0, 99), (99, 20), (99, 99)):
+            with (
+                self.subTest(x=x, y=y),
+                self.assertRaisesRegex(ControlError, "corner is opaque"),
+            ):
+                presentation.rounded(
+                    self.background,
+                    self.frame(visible + [((x, y, x + 1, y + 1), (174, 169, 161))]),
+                    surface,
+                )
+
+    def test_map_fill_leaking_outside_the_surface_cannot_masquerade_as_shadow(self):
+        surface = self.surface | {"kind": "map"}
+        visible = self.frame([((-3, 17, 103, 103), (174, 169, 161))])
+        # This leaked rectangle has the correct material color and reaches
+        # every exterior sample. It must still fail the corner assertion.
+        presentation.material_tint(self.background, visible, surface)
+        with self.assertRaisesRegex(ControlError, "opaque beyond its shadow"):
+            presentation.rounded(self.background, visible, surface)
+
     def test_visible_panel_can_blend_into_wallpaper_above_the_dark_backdrop(self):
         # The first eight logical pixels match the surrounding wallpaper. The
         # panel remains clearly visible over the darker app below that edge.
@@ -80,24 +107,25 @@ class PopupPresentationTests(unittest.TestCase):
                     self.surface,
                 )
 
-    def test_power_menu_uses_chrome_tint_and_rejects_raised_opaque_or_missing_fill(
+    def test_power_and_map_use_chrome_and_reject_raised_opaque_or_missing_fill(
         self,
     ):
-        surface = self.surface | {"kind": "power"}
-        visible = self.frame([((0, 20, 100, 100), (174, 169, 161))])
-        result = presentation.material_tint(self.background, visible, surface)
-        self.assertEqual(result["background"], [90, 80, 70])
-        self.assertEqual(result["visible"], [174, 169, 161])
-        for wrong in ((221, 219, 214), (246, 244, 239), (90, 80, 70), (20, 20, 20)):
-            with (
-                self.subTest(wrong=wrong),
-                self.assertRaisesRegex(ControlError, "tint"),
-            ):
-                presentation.material_tint(
-                    self.background,
-                    self.frame([((0, 20, 100, 100), wrong)]),
-                    surface,
-                )
+        for kind in ("power", "map"):
+            surface = self.surface | {"kind": kind}
+            visible = self.frame([((0, 20, 100, 100), (174, 169, 161))])
+            result = presentation.material_tint(self.background, visible, surface)
+            self.assertEqual(result["background"], [90, 80, 70])
+            self.assertEqual(result["visible"], [174, 169, 161])
+            for wrong in ((221, 219, 214), (246, 244, 239), (90, 80, 70), (20, 20, 20)):
+                with (
+                    self.subTest(kind=kind, wrong=wrong),
+                    self.assertRaisesRegex(ControlError, "tint"),
+                ):
+                    presentation.material_tint(
+                        self.background,
+                        self.frame([((0, 20, 100, 100), wrong)]),
+                        surface,
+                    )
 
     def test_changed_output_geometry_is_not_compared(self):
         visible = presentation.Frame(

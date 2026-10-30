@@ -13,6 +13,13 @@ use super::state::{ShellOutputInstance, ShellState};
 
 mod rounded;
 
+pub(super) fn theme_properties(
+    properties: &mut xilem::masonry::core::DefaultProperties,
+    palette: components::Palette,
+) {
+    properties.insert::<rounded::RoundedFrame, _>(palette);
+}
+
 const PADDING: f64 = 20.0;
 const BORDER: f64 = 1.0;
 const HEADER_GAP: f64 = 8.0;
@@ -155,12 +162,28 @@ fn frame<V: WidgetView<ShellState>>(
 ) -> impl WidgetView<ShellState> + use<V> {
     rounded::clip(
         sized_box(content)
-            .padding(kind.padding().px())
+            .padding(
+                if matches!(kind, PopupKind::Map) {
+                    0.0
+                } else {
+                    kind.padding()
+                }
+                .px(),
+            )
             // A steady tint keeps the text legible over arbitrary client content.
-            .theme_background(Tone::Chrome)
-            .theme_border(Tone::ChromeBorder)
+            .theme_background(if matches!(kind, PopupKind::Map) {
+                Tone::Transparent
+            } else {
+                Tone::Chrome
+            })
+            .theme_border(if matches!(kind, PopupKind::Map) {
+                Tone::Transparent
+            } else {
+                Tone::ChromeBorder
+            })
             .border_width(BORDER.px())
             .corner_radius(20.0.px()),
+        matches!(kind, PopupKind::Map),
     )
 }
 
@@ -182,10 +205,22 @@ pub(super) fn panel_named<V: WidgetView<ShellState>>(
     // its current window height, so short content can shrink after a long list.
     frame(
         kind,
-        components::touch_portal(super::popup_group::group(
-            name,
-            observed(output, kind, false, content),
-        ))
+        // Overview's map paints an exterior focus ring and glow. Keep its
+        // spacing inside the scroll viewport so those sides are not clipped.
+        components::touch_portal(
+            sized_box(super::popup_group::group(
+                name,
+                observed(output, kind, false, content),
+            ))
+            .padding(
+                if matches!(kind, PopupKind::Map) {
+                    PADDING
+                } else {
+                    0.0
+                }
+                .px(),
+            ),
+        )
         .constrain_horizontal(true)
         .must_fill(false),
     )

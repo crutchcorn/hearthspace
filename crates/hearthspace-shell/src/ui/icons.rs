@@ -12,8 +12,9 @@ use super::state::ShellState;
 pub(super) enum Icon {
     Apps,
     Map,
-    SelectGroup,
+    #[cfg(test)]
     SelectDesktop,
+    #[cfg(test)]
     Search,
     #[cfg(test)]
     Wifi,
@@ -23,8 +24,6 @@ pub(super) enum Icon {
     Volume {
         muted: bool,
     },
-    ZoomIn,
-    ZoomOut,
     Close,
     #[cfg(test)]
     Battery {
@@ -38,8 +37,9 @@ impl Icon {
         match self {
             Self::Apps => Glyph::AppsGrid,
             Self::Map => Glyph::Map,
-            Self::SelectGroup => Glyph::Lasso,
+            #[cfg(test)]
             Self::SelectDesktop => Glyph::Cursor,
+            #[cfg(test)]
             Self::Search => Glyph::Search,
             #[cfg(test)]
             Self::Wifi => Glyph::Wifi,
@@ -48,8 +48,6 @@ impl Icon {
             Self::Brightness => Glyph::Sun,
             Self::Volume { muted: false } => Glyph::Volume,
             Self::Volume { muted: true } => Glyph::VolumeMuted,
-            Self::ZoomIn => Glyph::ZoomIn,
-            Self::ZoomOut => Glyph::ZoomOut,
             Self::Close => Glyph::X,
             #[cfg(test)]
             Self::Battery {

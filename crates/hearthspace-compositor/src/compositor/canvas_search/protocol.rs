@@ -51,7 +51,7 @@ impl App {
         }
         serde_json::to_vec(&status).unwrap()
     }
-    pub(super) fn issue_canvas_search_action(
+    pub(in crate::compositor) fn issue_canvas_search_action(
         &mut self,
         id: String,
         output: Option<String>,
@@ -151,11 +151,8 @@ impl CalloopData {
                 }
                 Ok(())
             } else if text == "canvas-search-tool" {
-                app.check_navigation_available()?;
-                app.cancel_desktop_gesture();
-                app.clear_window_group();
-                app.canvas_search.mode = true;
-                app.canvas_search_changed();
+                app.check_canvas_tool_available()?;
+                app.select_canvas_search_tool();
                 Ok(())
             } else if text == "canvas-search-open" {
                 app.open_canvas_search(None, None)

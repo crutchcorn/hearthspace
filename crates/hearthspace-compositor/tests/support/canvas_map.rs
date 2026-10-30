@@ -8,6 +8,11 @@ use serde_json::{Value, json};
 
 use super::canvas_map_client::MapClient;
 
+#[path = "canvas_map/glass.rs"]
+mod glass;
+#[path = "canvas_map/zoom.rs"]
+mod zoom;
+
 const GREEN: [u8; 4] = [0x66, 0xcc, 0, 0xff];
 
 fn connect(compositor: &HeadlessCompositor) -> MapClient {
@@ -238,10 +243,10 @@ fn canvas_map_clamps_to_scaled_small_output_and_resizes_in_logical_pixels() {
     );
     assert_eq!(
         map_bounds(&compositor),
-        json!({"output": output, "x": 0, "y": 54, "width": 320, "height": 186})
+        json!({"output": output, "x": 16, "y": 54, "width": 292, "height": 186})
     );
     click(&compositor, 100.0, 100.0);
-    assert_eq!(client.presses().last(), Some(&(map, (100.0, 46.0))));
+    assert_eq!(client.presses().last(), Some(&(map, (84.0, 46.0))));
     client.resize(map, (160, 100));
     assert_eq!(
         map_bounds(&compositor),

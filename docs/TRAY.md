@@ -38,9 +38,10 @@ icons and animated icon movies are not currently composed.
 The supported interface is StatusNotifierItem (also used by AppIndicator and
 Ayatana libraries). The legacy X11 system-tray window-embedding protocol is not
 implemented. Apps must export StatusNotifierItem to appear in Hearthspace's tray.
-Normal native sessions use the standard user bus. The explicit private-bus
-harness isolates its icons and menus from another running desktop. A shell that
-finds an existing StatusNotifierWatcher registers with it without stealing its name.
+Installed native sessions use the standard user bus. Native development and the
+private-bus harness isolate their icons and menus from another running desktop.
+A shell that finds an existing StatusNotifierWatcher registers with it without
+stealing its name.
 
 The pinned AccessKit AT-SPI adapter incorrectly advertises disabled menu items
 as `Enabled`/`Sensitive`. Hearthspace sets the underlying disabled state, excludes

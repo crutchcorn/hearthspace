@@ -10,7 +10,7 @@ fn canvas_search_cancels_marquee_release_without_stealing_later_field_drags() {
     action(&compositor, "pointer-motion-abs 20 600");
     action(&compositor, "pointer-button-down 272");
     action(&compositor, "pointer-motion-abs 180 650");
-    keys(&compositor, &[29, 37]);
+    keys(&compositor, &[125, 37]);
     let opened = search(&compositor);
     assert_eq!(opened["active"], true);
     let field_number = field(&mut client, &opened);

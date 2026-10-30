@@ -7,7 +7,9 @@ impl App {
         if self.layout_editing() {
             return Ok(());
         }
-        self.check_navigation_available()?;
+        self.check_canvas_tool_available()?;
+        self.disarm_canvas_pan();
+        self.disarm_canvas_search();
         self.leave_window_focus_views();
         self.cancel_desktop_gesture();
         self.clear_window_group();

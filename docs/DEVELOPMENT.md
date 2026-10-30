@@ -54,6 +54,16 @@ native backend; inside another graphical desktop it chooses nested mode.
 Backend selection is explicit in the child command, so stale inherited display
 variables don't choose it accidentally.
 
+Native development starts its own session bus, so it can run from a TTY while
+another desktop is still logged in. Notifications, portals, and application
+activation use that private bus without taking over the other desktop's
+services. The supervisor stops its bus when the session ends. An explicitly
+supplied `--private-session-bus` remains externally owned.
+
+Installed login sessions continue using the standard user bus, where Hearthspace
+provides `org.freedesktop.Notifications`. Development isolation does not disable
+notifications or change that installed-session binding.
+
 Nested mode is useful for fast UI work, but the host can intercept keys and
 mouse gestures. It doesn't establish native display, power, or lock behavior.
 Prefer an explicit host-shortcut change you can undo over copying a global

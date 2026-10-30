@@ -94,6 +94,8 @@ pub enum Confirmation {
 #[serde(default)]
 pub struct Snapshot {
     pub version: u32,
+    #[serde(default)]
+    pub canvas_tool: Option<crate::command::CanvasTool>,
     pub animating: bool,
     pub allow_hide_tools: bool,
     pub revision: u64,

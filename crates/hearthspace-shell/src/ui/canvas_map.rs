@@ -1,13 +1,19 @@
-//! Right-hand canvas navigation popover, rendered as ordinary shell UI.
+//! The Overview popover, rendered as ordinary shell UI.
+use components::icons::{Icon as Glyph, icon};
+use hearthspace_ipc::command::{ShellCommand, ZoomOperation};
 use hearthspace_ui_components as components;
 use xilem::{
     WidgetView, WindowView,
-    masonry::layout::AsUnit,
+    masonry::{
+        layout::AsUnit,
+        parley::style::{FontWeight, LineHeight},
+    },
     style::Style,
-    view::{CrossAxisAlignment, FlexSpacer, flex_col, flex_row, sized_box},
+    view::{CrossAxisAlignment, FlexSpacer, button, flex_col, flex_row, label},
 };
 
 use super::{
+    appearance::{ThemeStyle as _, Tone},
     command_client::send_command,
     icons::{Icon, icon_button},
     minimap::{CanvasSnapshot, minimap_view},
@@ -32,7 +38,7 @@ pub(super) fn map_window(
 ) -> WindowView<ShellState> {
     let app_id = output.map_app_id();
     let key = output.key().to_string();
-    let size = popup::size(output, PopupKind::Map, 340.0, 336.0);
+    let size = popup::size(output, PopupKind::Map, 352.0, 312.0);
     popup::window(
         output.map_window_id,
         "Hearthspace Canvas Map",
@@ -48,46 +54,110 @@ fn panel(
     snapshot: Option<&CanvasSnapshot>,
     error: Option<&str>,
 ) -> impl WidgetView<ShellState> + use<> {
-    let key = output.key().to_string();
     let zoom = snapshot
         .map(|snapshot| format!("{:.0}%", snapshot.scale() * 100.0))
         .unwrap_or_else(|| "—".into());
-    let close = icon_button(Icon::Close, "Close canvas map", false, move |state| {
-        state.dismiss_map(&key)
-    });
-    let footer = flex_row((
-        components::muted_text("Zoom"),
+    let reset_disabled = snapshot.is_none_or(|snapshot| (snapshot.scale() - 1.0).abs() <= 1e-6);
+    let header = flex_row((
+        super::popup_group::group(
+            "Overview",
+            label("Overview")
+                .font("Liberation Sans")
+                .text_size(24.0)
+                .weight(FontWeight::new(450.0))
+                .letter_spacing(-0.7)
+                .line_height(LineHeight::Absolute(28.0))
+                .theme_color(Tone::Text),
+        )
+        .heading(2),
         FlexSpacer::Flex(1.0),
-        zoom_button(Icon::ZoomOut, "Zoom out", "zoom-out"),
-        sized_box(components::field_label(zoom)).fixed_width(48.0.px()),
-        zoom_button(Icon::ZoomIn, "Zoom in", "zoom-in"),
+        super::popup_group::group(
+            "Current canvas zoom",
+            label(zoom)
+                .font("Liberation Sans")
+                .text_size(14.0)
+                .line_height(LineHeight::Absolute(16.0))
+                .theme_color(Tone::Muted),
+        )
+        .status(),
     ))
-    .gap(8.0.px());
+    .gap(15.0.px());
+    let footer = flex_row((
+        FlexSpacer::Flex(1.0),
+        zoom_button(
+            Glyph::RotateCcw,
+            "Reset canvas zoom to 100%",
+            output.output_name.as_deref(),
+            ZoomOperation::To(1.0),
+            reset_disabled,
+        ),
+        zoom_button(
+            Glyph::ZoomOut,
+            "Zoom out",
+            output.output_name.as_deref(),
+            ZoomOperation::Out,
+            false,
+        ),
+        zoom_button(
+            Glyph::ZoomIn,
+            "Zoom in",
+            output.output_name.as_deref(),
+            ZoomOperation::In,
+            false,
+        ),
+    ))
+    .gap(2.0.px());
     let unavailable = error.map(|_| components::muted_text("Map unavailable · retrying…"));
     popup::panel(
         output,
         PopupKind::Map,
         flex_col((
-            flex_row((
-                components::section_title("Canvas map"),
-                FlexSpacer::Flex(1.0),
-                close,
-            )),
-            minimap_view(snapshot, output.output_name.as_deref()),
-            unavailable,
-            footer,
+            header,
+            flex_col((
+                minimap_view(snapshot, output.output_name.as_deref()),
+                unavailable,
+                footer,
+            ))
+            .cross_axis_alignment(CrossAxisAlignment::Stretch)
+            .gap(12.0.px()),
         ))
         .cross_axis_alignment(CrossAxisAlignment::Stretch)
-        .gap(8.0.px()),
+        .gap(18.0.px()),
     )
 }
 
 fn zoom_button(
-    icon: Icon,
+    glyph: Glyph,
     name: &'static str,
-    command: &'static str,
+    output_name: Option<&str>,
+    operation: ZoomOperation,
+    disabled: bool,
 ) -> impl WidgetView<ShellState> + use<> {
-    icon_button(icon, name, false, move |state| {
-        state.canvas_error = send_command(&state.command_socket, command).err();
-    })
+    let command = output_name.map(|output_name| {
+        ShellCommand::ZoomOnOutput {
+            output_name: output_name.to_owned(),
+            operation,
+        }
+        .wire_name()
+    });
+    let disabled = disabled || command.is_none();
+    components::button_surface(
+        button(
+            icon(glyph, 18.0).label(name).theme_color(if disabled {
+                Tone::Disabled
+            } else {
+                Tone::Text
+            }),
+            move |state: &mut ShellState| {
+                if let Some(command) = &command {
+                    state.canvas_error = send_command(&state.command_socket, command).err();
+                }
+            },
+        )
+        .disabled(disabled)
+        .padding(12.0.px())
+        .corner_radius(10.0.px()),
+        components::ButtonSurface::Bare,
+        false,
+    )
 }

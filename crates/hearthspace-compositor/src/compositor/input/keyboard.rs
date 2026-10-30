@@ -1,16 +1,16 @@
 use std::collections::HashSet;
 
-use hearthspace_ipc::command::{ShellCommand, SpawnTarget};
+use hearthspace_ipc::shortcuts::CanvasAction;
 use smithay::{
     backend::input::{InputTime, KeyState},
     input::keyboard::{FilterResult, KeyboardSource, Keycode, ModifiersState, keysyms},
     utils::SERIAL_COUNTER,
 };
 
-use crate::compositor::{
-    App, idle::ActivityReason, shell_integration::ControlReply, switcher::SwitcherSource,
-};
+use crate::compositor::{App, idle::ActivityReason, switcher::SwitcherSource};
 
+mod actions;
+mod canvas;
 mod device_control;
 mod groups;
 mod meta;
@@ -26,6 +26,8 @@ pub(in crate::compositor) struct KeyboardShortcuts {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Shortcut {
     CanvasSearch(i32),
+    Canvas(CanvasAction),
+    CanvasPanCancel,
     Desktop(crate::compositor::desktop::Action),
     Group(groups::Action),
     DeviceControl(crate::compositor::shell_integration::device_control::DeviceControl),
@@ -143,8 +145,15 @@ impl App {
         {
             return;
         }
+        // Discarding pending search input can activate another source's map.
+        // Restore this event's keymap and modifiers before normal filtering.
+        if !self.activate_keyboard_source(source) {
+            return;
+        }
         let keyboard = self.keyboard.clone();
         let available = self.navigation_available();
+        let canvas_available = self.canvas_shortcuts_available();
+        let pan_escape = self.canvas_pan_captured();
         let mut toggle_launcher = false;
         let mut layout_escape = false;
         let mut power_escape = false;
@@ -168,7 +177,14 @@ impl App {
                     .shortcuts
                     .meta
                     .observe(code, state, modifiers, symbol, available);
-                if app.power_confirmation_active() {
+                if pan_escape && state == KeyState::Pressed && symbol == keysyms::KEY_Escape {
+                    FilterResult::Intercept(
+                        app.shortcuts
+                            .intercepted
+                            .insert(code)
+                            .then_some(Shortcut::CanvasPanCancel),
+                    )
+                } else if app.power_confirmation_active() {
                     if state == KeyState::Pressed && symbol == keysyms::KEY_Escape {
                         power_escape = app.shortcuts.intercepted.insert(code);
                         FilterResult::Intercept(None)
@@ -180,6 +196,16 @@ impl App {
                         .device_filter(code, state, symbol, !app.session_locked())
                 {
                     result
+                } else if canvas_available
+                    && state == KeyState::Pressed
+                    && let Some(action) = canvas::shortcut(modifiers, symbol)
+                {
+                    FilterResult::Intercept(
+                        app.shortcuts
+                            .intercepted
+                            .insert(code)
+                            .then_some(Shortcut::Canvas(action)),
+                    )
                 } else if (app.layout_editing() || app.layout_confirmation_active())
                     && state == KeyState::Pressed
                     && symbol == 0xff1b
@@ -256,118 +282,6 @@ impl App {
             self.finish_window_switcher(SwitcherSource::Keyboard, false);
         }
     }
-
-    fn run_shortcut(&mut self, shortcut: Shortcut) {
-        match shortcut {
-            Shortcut::CanvasSearch(action) => {
-                self.run_canvas_search_key(action);
-                return;
-            }
-            Shortcut::Desktop(action) => {
-                self.run_desktop_key(action);
-                return;
-            }
-            Shortcut::Group(action) => {
-                self.run_group_shortcut(action);
-                return;
-            }
-            Shortcut::DeviceControl(action) => {
-                if let Err(error) = self.send_device_control(action) {
-                    tracing::debug!(%error, "device control unavailable");
-                }
-                return;
-            }
-            Shortcut::Next | Shortcut::Previous => {
-                if let Err(error) = self
-                    .cycle_window_switcher(SwitcherSource::Keyboard, shortcut == Shortcut::Previous)
-                {
-                    tracing::debug!(%error, "window switching unavailable");
-                }
-                return;
-            }
-            Shortcut::SwitcherCommit => {
-                self.dismiss_window_switcher(false);
-                return;
-            }
-            Shortcut::SwitcherCancel => {
-                self.dismiss_window_switcher(true);
-                return;
-            }
-            Shortcut::ShellPanelDismiss => {
-                self.invalidate_shell_popups();
-                // Revoke before the asynchronous close reaches the shell: a
-                // held drawing button may be released in the same input batch.
-                self.clear_favorite_drawing();
-                self.cancel_ui_touch();
-                if self.active_shell_panel_index().is_some() {
-                    self.dismiss_active_shell_panel();
-                } else {
-                    self.restore_focus_after_shell_panel();
-                }
-                return;
-            }
-            Shortcut::ShellCornerCycle { reverse } => {
-                self.cycle_shell_corner(reverse);
-                return;
-            }
-            _ => {}
-        }
-        if matches!(shortcut, Shortcut::FocusedView | Shortcut::Maximize) {
-            if let Some(id) = self.focused_normal_window_id {
-                let result = if shortcut == Shortcut::FocusedView {
-                    self.toggle_window_focus_view(id)
-                } else {
-                    self.toggle_window_canvas_maximize(id)
-                };
-                if let Err(error) = result {
-                    tracing::debug!(%error, "window presentation shortcut unavailable");
-                }
-            }
-            return;
-        }
-        let command = match shortcut {
-            Shortcut::DeviceControl(_)
-            | Shortcut::CanvasSearch(_)
-            | Shortcut::Desktop(_)
-            | Shortcut::Group(_)
-            | Shortcut::SwitcherCommit
-            | Shortcut::SwitcherCancel
-            | Shortcut::ShellPanelDismiss
-            | Shortcut::ShellCornerCycle { .. }
-            | Shortcut::Next
-            | Shortcut::FocusedView
-            | Shortcut::Maximize
-            | Shortcut::Previous => unreachable!(),
-            Shortcut::Lock => ShellCommand::LockSession,
-            Shortcut::Terminal => ShellCommand::Spawn(SpawnTarget::Foot),
-            Shortcut::Launcher => ShellCommand::FocusLauncher,
-            Shortcut::Close => {
-                let Some(id) = self.focused_normal_window_id else {
-                    return;
-                };
-                ShellCommand::CloseWindow(id)
-            }
-            Shortcut::Left => ShellCommand::PanLeft,
-            Shortcut::Right => ShellCommand::PanRight,
-            Shortcut::Up => ShellCommand::PanUp,
-            Shortcut::Down => ShellCommand::PanDown,
-            Shortcut::Fullscreen => {
-                let Some(id) = self.focused_normal_window_id else {
-                    return;
-                };
-                let Some(window) = self.windows.iter().find(|window| window.id == id) else {
-                    return;
-                };
-                ShellCommand::FullscreenWindow {
-                    id,
-                    enabled: !window.presentation.fullscreen,
-                }
-            }
-        };
-        if let ControlReply::Err(error) = self.run_control_action(command) {
-            tracing::warn!(%error, ?shortcut, "keyboard action failed");
-        }
-    }
 }
 
 fn shortcut(modifiers: &ModifiersState, symbol: u32) -> Option<Shortcut> {
@@ -401,7 +315,6 @@ fn shortcut(modifiers: &ModifiersState, symbol: u32) -> Option<Shortcut> {
         return None;
     }
     match symbol {
-        keysyms::KEY_g => Some(Shortcut::Group(groups::Action::Toggle)),
         keysyms::KEY_l => Some(Shortcut::Lock),
         keysyms::KEY_Return => Some(Shortcut::Terminal),
         keysyms::KEY_space => Some(Shortcut::Launcher),

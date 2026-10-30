@@ -137,6 +137,65 @@ fn remote_keyboard_keymaps_modifiers_disconnects_and_lock_preserve_local_input()
 }
 
 #[test]
+fn canvas_search_cancellation_restores_local_keymap_after_remote_queue() {
+    let _guard = headless_test_guard();
+    let mut compositor =
+        HeadlessCompositor::spawn_with_remote_options("1280x800", None, None, 1, true);
+    drop(compositor.wait_for_socket());
+    let (_editor, output) = editor(&compositor);
+    let mut remote = RemoteClient::connect(&socket(&compositor));
+    remote.set_keymap(
+        r#"xkb_keymap {
+            xkb_keycodes { include "evdev+aliases(azerty)" };
+            xkb_types { include "complete" };
+            xkb_compatibility { include "complete" };
+            xkb_symbols { include "pc+fr+inet(evdev)" };
+        };"#,
+    );
+    action(&compositor, "key-down 125");
+    action(&compositor, "key-down 37");
+    let pending = query(&compositor, "canvas-search-status");
+    assert_eq!(pending["active"], true);
+    // French Z is not a canvas chord. Its pair waits for the unmapped field.
+    remote.key(17, true);
+    remote.key(17, false);
+    assert_eq!(
+        query(&compositor, "canvas-search-status")["session"],
+        pending["session"]
+    );
+    action(&compositor, "key-down 30");
+    // Draining the remote pair must not interpret local A as French Q.
+    assert_eq!(query(&compositor, "layout-status")["editing"], true);
+    assert_eq!(query(&compositor, "layout-status")["canvas_tool"], "layout");
+    assert_eq!(query(&compositor, "canvas-search-status")["active"], false);
+    action(&compositor, "key-up 125");
+    action(&compositor, "key-up 37");
+    action(&compositor, "key-down 30");
+    action(&compositor, "key-up 30");
+    let mut client = super::shell_panels::connect(&compositor);
+    let late = client.add(
+        hearthspace_common::canvas_search_app_id(
+            pending["session"].as_u64().unwrap(),
+            pending["output"].as_str(),
+        ),
+        (420, 54),
+        (0, 0),
+        [255, 255, 255, 255],
+    );
+    assert!(client.closed().contains(&late));
+    assert!(client.keys().is_empty());
+    keys(&compositor, &[125, 47]);
+    wait_text(&output, "");
+    keys(&compositor, &[30]);
+    wait_text(&output, "a");
+    remote.key(17, true);
+    remote.key(17, false);
+    wait_text(&output, "az");
+    keys(&compositor, &[30]);
+    wait_text(&output, "aza");
+}
+
+#[test]
 fn remote_keyboard_disconnect_preserves_active_search_previews_and_selection() {
     let _guard = headless_test_guard();
     let mut compositor =

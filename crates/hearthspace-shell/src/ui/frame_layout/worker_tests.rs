@@ -13,6 +13,7 @@ enum Reply {
     Reject,
     Timeout,
     Snapshot,
+    Tool(hearthspace_ipc::command::CanvasTool),
     Epoch(u64),
     Truncated,
     InvalidHeader,
@@ -61,8 +62,12 @@ impl Server {
                     Reply::Truncated => stream.write_all(b"ok 200\n{}").unwrap(),
                     Reply::InvalidHeader => stream.write_all(b"invalid\n").unwrap(),
                     Reply::MalformedSnapshot => stream.write_all(b"ok 1\n{").unwrap(),
-                    Reply::Snapshot | Reply::Epoch(_) => {
+                    Reply::Snapshot | Reply::Epoch(_) | Reply::Tool(_) => {
                         let bytes = match reply {
+                            Reply::Tool(tool) => serde_json::to_vec(&serde_json::json!({
+                                "version":1,"canvas_tool":tool,"outputs":[{"output":"eDP-1"}]
+                            }))
+                            .unwrap(),
                             Reply::Epoch(epoch) => serde_json::to_vec(&serde_json::json!({
                                 "version":1,"popup_epoch":epoch,"outputs":[{"output":"eDP-1"}]
                             }))
@@ -110,6 +115,8 @@ fn setup(path: &Path) -> (ShellState, tokio::sync::mpsc::Receiver<Request>) {
 mod outside;
 #[path = "worker_toggle_tests.rs"]
 mod toggles;
+#[path = "worker_tool_tests.rs"]
+mod tools;
 
 #[test]
 fn acknowledged_popup_recovers_after_real_query_timeout_without_replaying_anchor() {

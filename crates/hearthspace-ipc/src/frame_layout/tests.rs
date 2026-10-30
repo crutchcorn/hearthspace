@@ -2,6 +2,21 @@ use super::*;
 use hearthspace_common::frame_layout::{ClockDateFormat, LayoutTarget, ObjectPlacement};
 
 #[test]
+fn canvas_tool_status_preserves_selection_and_accepts_older_snapshots() {
+    let legacy: Snapshot = serde_json::from_str(r#"{"version":1}"#).unwrap();
+    assert_eq!(legacy.canvas_tool, None);
+    let selected: Snapshot = serde_json::from_str(r#"{"version":1,"canvas_tool":"pan"}"#).unwrap();
+    assert_eq!(selected.canvas_tool, Some(crate::command::CanvasTool::Pan));
+    assert_eq!(
+        serde_json::to_value(&selected).unwrap()["canvas_tool"],
+        "pan"
+    );
+    let inactive: Snapshot = serde_json::from_str(r#"{"version":1,"canvas_tool":null}"#).unwrap();
+    assert_eq!(inactive.canvas_tool, None);
+    assert!(serde_json::from_str::<Snapshot>(r#"{"version":1,"canvas_tool":"unknown"}"#).is_err());
+}
+
+#[test]
 fn editor_actions_have_one_shared_wire_contract_and_required_payloads() {
     let target = LayoutTarget::widget("clock");
     for action in [

@@ -26,6 +26,8 @@ namespaces and is supported by Snap's existing desktop D-Bus policy.
 address override; the distribution's session policy, authentication, activation,
 and file-descriptor passing remain in effect. `dbus-run-session` still owns and
 reaps the daemon. This is the private Hearthspace bus, not the shared user bus.
+Native development uses the same address format, with the session supervisor
+starting and stopping its broker directly.
 These are the supported
 [`dbus-daemon --address`](https://dbus.freedesktop.org/doc/dbus-daemon.1.html)
 and [`dbus-run-session --dbus-daemon`](https://dbus.freedesktop.org/doc/dbus-run-session.1.html)
