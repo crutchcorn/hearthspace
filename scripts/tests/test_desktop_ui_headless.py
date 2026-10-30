@@ -109,7 +109,8 @@ class DesktopUiHeadlessTests(unittest.TestCase):
             restarted = directory / "restarted"
             restarted.mkdir()
             restored_evidence = evidence / "restarted"
-            restored_evidence.mkdir()
+            # Without external evidence storage, both paths intentionally coincide.
+            restored_evidence.mkdir(exist_ok=True)
 
             @contextlib.contextmanager
             def restored_services(*args):

@@ -153,7 +153,11 @@ class NativeLoginTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             values = args(directory, True)
             values.binary_dir.mkdir()
-            for name in (*common.BINARIES, "hearthspace-login-guard"):
+            for name in (
+                *common.BINARIES,
+                "hearthspace-login-guard",
+                "hearthspace-share-picker",
+            ):
                 executable = values.binary_dir / name
                 executable.write_text("#!/bin/sh\nexit 1\n")
                 executable.chmod(0o755)

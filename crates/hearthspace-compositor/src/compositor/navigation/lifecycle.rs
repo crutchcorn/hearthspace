@@ -44,6 +44,7 @@ impl App {
             return;
         }
         self.windows[index].mapped = true;
+        self.sync_capture_toplevel(id);
         if self.windows[index].kind == super::super::ManagedWindowKind::DesktopItem {
             self.desktop_mapped(index);
         }

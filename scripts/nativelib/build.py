@@ -2,6 +2,7 @@
 
 import hashlib
 import os
+import shutil
 import subprocess
 import time
 
@@ -67,6 +68,29 @@ def build(args, session):
             "sha256": digest,
             "mtime": path.stat().st_mtime,
         }
+    # Cargo does not stage script helpers. The default checkout target is ours
+    # to prepare, while a custom/installed release must already be complete.
+    name = "hearthspace-share-picker"
+    source = ROOT / "scripts/runtime" / name
+    path = args.binary_dir.resolve() / name
+    if getattr(args, "dev", False):
+        path = source
+    elif args.binary_dir.resolve() == ROOT / "target/debug":
+        if path.is_symlink():
+            raise RuntimeError(
+                f"refusing to stage sharing picker through symlink: {path}"
+            )
+        shutil.copyfile(source, path)
+        path.chmod(0o755)
+    if not path.is_file() or not os.access(path, os.X_OK):
+        raise RuntimeError(
+            f"missing executable {path}; prepare the complete runtime before switching VTs"
+        )
+    binaries[name] = {
+        "path": str(path),
+        "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+        "mtime": path.stat().st_mtime,
+    }
     save(session / "binaries.json", binaries)
 
 

@@ -1,4 +1,4 @@
-//! Standard output capture, using Smithay's protocol validation and lifetime handling.
+//! Standard output/window capture with Smithay's protocol and lifetime handling.
 use std::{
     sync::Arc,
     time::{Duration, Instant},
@@ -8,9 +8,10 @@ use smithay::{
     output::{Output, WeakOutput},
     utils::{Buffer, IsAlive, Rectangle, Size, Transform},
     wayland::{
+        foreign_toplevel_list::{ForeignToplevelListGlobalData, ForeignToplevelListHandler},
         image_capture_source::{
             ImageCaptureSource, ImageCaptureSourceHandler, OutputCaptureSourceHandler,
-            OutputCaptureSourceState,
+            OutputCaptureSourceState, ToplevelCaptureSourceHandler,
         },
         image_copy_capture::{
             BufferConstraints, CaptureFailureReason as Failure, Frame, FrameRef,
@@ -18,13 +19,19 @@ use smithay::{
         },
     },
 };
-use wayland_server::{DisplayHandle, protocol::wl_shm};
+use wayland_protocols::ext::foreign_toplevel_list::v1::server::ext_foreign_toplevel_list_v1::ExtForeignToplevelListV1;
+use wayland_server::{DisplayHandle, GlobalDispatch, protocol::wl_shm};
 
 use super::super::App;
 
+mod lifecycle;
 mod shm;
 #[cfg(test)]
 mod tests;
+mod toplevel;
+mod window;
+mod window_scene;
+mod window_tree;
 
 const MAX_SESSIONS: usize = 8;
 const FRAME_TIMEOUT: Duration = Duration::from_secs(5);
@@ -39,10 +46,13 @@ struct Request {
 }
 
 pub(in crate::compositor) struct RemoteCaptureState {
+    enabled: bool,
     output_source: OutputCaptureSourceState,
+    toplevels: toplevel::Toplevels,
     copy: ImageCopyCaptureState,
     sessions: Vec<Session>,
     requests: Vec<Request>,
+    window_requests: Vec<window::WindowRequest>,
 }
 
 impl RemoteCaptureState {
@@ -50,17 +60,24 @@ impl RemoteCaptureState {
         Self::new_for::<App>(display, enabled)
     }
 
-    fn new_for<D: OutputCaptureSourceHandler + ImageCopyCaptureHandler>(
-        display: &DisplayHandle,
-        enabled: bool,
-    ) -> Self {
+    fn new_for<D>(display: &DisplayHandle, enabled: bool) -> Self
+    where
+        D: OutputCaptureSourceHandler
+            + ImageCopyCaptureHandler
+            + ForeignToplevelListHandler
+            + ToplevelCaptureSourceHandler
+            + GlobalDispatch<ExtForeignToplevelListV1, ForeignToplevelListGlobalData>,
+    {
         Self {
+            enabled,
+            toplevels: toplevel::Toplevels::new::<D>(display, enabled),
             output_source: OutputCaptureSourceState::new_with_filter::<D, _>(display, move |_| {
                 enabled
             }),
             copy: ImageCopyCaptureState::new_with_filter::<D, _>(display, move |_| enabled),
             sessions: Vec::new(),
             requests: Vec::new(),
+            window_requests: Vec::new(),
         }
     }
 
@@ -68,6 +85,11 @@ impl RemoteCaptureState {
         self.requests
             .iter()
             .map(|r| r.deadline.saturating_duration_since(Instant::now()))
+            .chain(
+                self.window_requests
+                    .iter()
+                    .map(|r| r.deadline.saturating_duration_since(Instant::now())),
+            )
             .min()
     }
 
@@ -151,6 +173,7 @@ impl RemoteCaptureState {
         // Dropping sessions sends stopped and fails their frames before releasing pixels.
         self.sessions.clear();
         self.requests.clear();
+        self.window_requests.clear();
     }
 
     fn request(&mut self, session: &SessionRef, frame: Frame, name: String) {
@@ -158,7 +181,7 @@ impl RemoteCaptureState {
             frame.fail(Failure::Stopped);
             return;
         };
-        if self.requests.len() >= MAX_SESSIONS {
+        if self.requests.len() + self.window_requests.len() >= MAX_SESSIONS {
             frame.fail(Failure::Unknown);
             return;
         }
@@ -187,62 +210,6 @@ fn constraints(size: Size<i32, Buffer>) -> Option<BufferConstraints> {
     })
 }
 
-impl App {
-    pub(in crate::compositor) fn maintain_remote_capture(&mut self, active: bool) {
-        if !active || !self.remote_input_available() {
-            self.remote_capture.stop();
-            return;
-        }
-        let outputs = self.capture_output_handles();
-        self.remote_capture.sessions.retain(|session| {
-            session.alive()
-                && source_output(&session.source()).is_some_and(|o| {
-                    outputs.contains(&o)
-                        && o.current_mode().is_some_and(|mode| {
-                            constraints((mode.size.w, mode.size.h).into()).is_some()
-                        })
-                })
-        });
-        self.remote_capture.requests.retain(|request| {
-            request.session.alive()
-                && !request.frame.has_failed()
-                && request.deadline > Instant::now()
-        });
-        for session in &self.remote_capture.sessions {
-            let Some(output) = source_output(&session.source()) else {
-                continue;
-            };
-            let Some(mode) = output.current_mode() else {
-                continue;
-            };
-            let size = Size::from((mode.size.w, mode.size.h));
-            if session
-                .current_constraints()
-                .is_some_and(|old| old.size != size)
-            {
-                if let Some(constraints) = constraints(size) {
-                    session.update_constraints(constraints);
-                }
-                for request in self
-                    .remote_capture
-                    .requests
-                    .extract_if(.., |request| request.session == session.as_ref())
-                {
-                    request.frame.fail(Failure::BufferConstraints);
-                }
-            }
-        }
-        if self
-            .remote_capture
-            .requests
-            .iter()
-            .any(|r| r.pixels.is_none())
-        {
-            self.request_redraw();
-        }
-    }
-}
-
 impl ImageCaptureSourceHandler for App {}
 
 impl OutputCaptureSourceHandler for App {
@@ -261,15 +228,10 @@ impl ImageCopyCaptureHandler for App {
     }
 
     fn capture_constraints(&mut self, source: &ImageCaptureSource) -> Option<BufferConstraints> {
-        if !self.remote_input_available() || self.remote_capture.sessions.len() >= MAX_SESSIONS {
+        if !self.capture_available() || self.remote_capture.sessions.len() >= MAX_SESSIONS {
             return None;
         }
-        let output = source_output(source)?;
-        if !self.capture_output_handles().contains(&output) {
-            return None;
-        }
-        let size = output.current_mode()?.size;
-        constraints((size.w, size.h).into())
+        self.capture_source_constraints(source)
     }
 
     fn new_session(&mut self, session: Session) {
@@ -277,25 +239,38 @@ impl ImageCopyCaptureHandler for App {
     }
 
     fn frame(&mut self, session: &SessionRef, frame: Frame) {
-        if !self.remote_input_available() {
+        if !self.capture_available() {
             frame.fail(Failure::Stopped);
             return;
         }
-        let Some(output) = source_output(&session.source()) else {
+        if let Some(output) = source_output(&session.source()) {
+            if !self.capture_output_handles().contains(&output) {
+                frame.fail(Failure::Stopped);
+                return;
+            }
+            self.remote_capture.request(session, frame, output.name());
+        } else if let Some((_, geometry)) = self.capture_window_geometry(&session.source()) {
+            self.remote_capture.request_window(session, frame, geometry);
+        } else {
             frame.fail(Failure::Stopped);
             return;
-        };
-        self.remote_capture.request(session, frame, output.name());
+        }
         self.request_redraw();
     }
 
     fn frame_aborted(&mut self, frame: FrameRef) {
+        self.remote_capture
+            .window_requests
+            .retain(|r| r.frame != frame);
         self.remote_capture
             .requests
             .retain(|request| request.frame != frame);
     }
 
     fn session_destroyed(&mut self, session: SessionRef) {
+        self.remote_capture
+            .window_requests
+            .retain(|r| r.session != session);
         self.remote_capture.sessions.retain(|s| *s != session);
         self.remote_capture
             .requests

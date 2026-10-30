@@ -68,7 +68,11 @@ class InstallSessionTests(unittest.TestCase):
         self.assertEqual(stat.S_IMODE(policy.stat().st_mode), 0o644)
         self.assertIn("auth include login\naccount include login\n", policy.read_text())
         self.assertFalse((root / "etc/pam.d/hearthspace-lock").exists())
-        for name in (*layout.BINARIES, "hearthspace-login-guard"):
+        for name in (
+            *layout.BINARIES,
+            "hearthspace-login-guard",
+            "hearthspace-share-picker",
+        ):
             self.assertEqual(
                 stat.S_IMODE((release / "bin" / name).stat().st_mode), 0o755
             )

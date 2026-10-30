@@ -13,6 +13,16 @@ use smithay::{
 use tracing::{debug, trace, warn};
 
 impl UdevBackendState {
+    pub(in crate::compositor) fn capture_toplevels(&mut self, state: &mut crate::compositor::App) {
+        if !self.capture_active() || !state.capture_available() {
+            state.remote_capture.stop();
+            return;
+        }
+        if let Some(device) = &mut self.primary_device {
+            state.render_window_captures(&mut device.render_node.renderer);
+        }
+    }
+
     pub(in crate::compositor) fn capture_active(&self) -> bool {
         self.session_active
             && !self.drm_commits_paused

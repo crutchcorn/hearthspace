@@ -19,6 +19,20 @@ pub(super) struct State {
 }
 
 impl ImageCaptureSourceHandler for State {}
+impl ForeignToplevelListHandler for State {
+    fn foreign_toplevel_list_state(
+        &mut self,
+    ) -> &mut smithay::wayland::foreign_toplevel_list::ForeignToplevelListState {
+        &mut self.remote.toplevels.list
+    }
+}
+impl ToplevelCaptureSourceHandler for State {
+    fn toplevel_capture_source_state(
+        &mut self,
+    ) -> &mut smithay::wayland::image_capture_source::ToplevelCaptureSourceState {
+        &mut self.remote.toplevels.source
+    }
+}
 impl OutputCaptureSourceHandler for State {
     fn output_capture_source_state(&mut self) -> &mut OutputCaptureSourceState {
         &mut self.remote.output_source

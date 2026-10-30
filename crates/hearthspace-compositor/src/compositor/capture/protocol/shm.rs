@@ -18,8 +18,8 @@ fn layout(
 ) -> Result<(usize, usize, usize), Failure> {
     let invalid = Failure::BufferConstraints;
     if !matches!(data.format, Format::Argb8888 | Format::Xrgb8888)
-        || data.width < size.w
-        || data.height < size.h
+        || data.width != size.w
+        || data.height != size.h
         || size.w <= 0
         || size.h <= 0
     {

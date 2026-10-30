@@ -24,7 +24,9 @@ Don't run Cargo as root.
 The repository's `rust-toolchain.toml` selects Rust and its components through
 rustup. `Cargo.lock` records dependencies. The
 [patch ledger](patches/README.md) explains vendored fixes and when they can be
-removed; no separately cloned dependency source is required.
+removed. Cargo fetches Rust dependencies or uses the sources vendored here;
+separate Rust dependency clones are unnecessary. Native screen sharing also
+requires the separately built, patched [portal backend](docs/SCREEN_SHARING.md#runtime-requirements).
 
 ## Run it
 

@@ -1,5 +1,46 @@
 //! Internal SHM content edges isolate blur tests from window decorations.
-use super::{MapClient, Window};
+use super::{MapClient, QueueHandle, State, Window, wl_shm};
+use std::{io::Write, os::fd::AsFd};
+
+impl State {
+    pub(super) fn commit_buffer(&mut self, number: usize, handle: &QueueHandle<Self>) {
+        let window = &self.windows[number];
+        if !window.alive {
+            return;
+        }
+        let width = window.size.0 + window.inset.0 * 2;
+        let height = window.size.1 + window.inset.1 * 2;
+        let size = width as usize * height as usize * 4;
+        let mut file = tempfile::tempfile().unwrap();
+        file.set_len(size as u64).unwrap();
+        file.write_all(&paint(window)).unwrap();
+        let pool = self
+            .shm
+            .as_ref()
+            .unwrap()
+            .create_pool(file.as_fd(), size as i32, handle, ());
+        let buffer = pool.create_buffer(
+            0,
+            width,
+            height,
+            width * 4,
+            wl_shm::Format::Argb8888,
+            handle,
+            (),
+        );
+        window.xdg_surface.set_window_geometry(
+            window.inset.0,
+            window.inset.1,
+            window.size.0,
+            window.size.1,
+        );
+        window.surface.attach(Some(&buffer), 0, 0);
+        window.surface.damage_buffer(0, 0, width, height);
+        window.surface.commit();
+        pool.destroy();
+        self.buffers.push((file, buffer));
+    }
+}
 
 pub(super) struct ColoredRectangle {
     bounds: (i32, i32, i32, i32),

@@ -20,10 +20,14 @@ class NativeLockerTests(unittest.TestCase):
         self.directory = Path(temporary.name)
         self.binary_dir = self.directory / "target/debug"
         self.binary_dir.mkdir(parents=True)
-        for name in common.BINARIES:
+        for name in (*common.BINARIES, "hearthspace-share-picker"):
             binary = self.binary_dir / name
             binary.write_bytes(name.encode())
             binary.chmod(0o755)
+        source = self.directory / "scripts/runtime/hearthspace-share-picker"
+        source.parent.mkdir(parents=True)
+        source.write_text("#!/usr/bin/python3\n")
+        source.chmod(0o755)
         self.args = cli.parser().parse_args(
             [
                 "start",

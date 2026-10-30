@@ -671,7 +671,10 @@ pub(in crate::compositor) fn initialize_app(
         data_device_state: DataDeviceState::new::<App>(&dh),
         primary_selection_state: PrimarySelectionState::new::<App>(&dh),
         remote_input: input::RemoteInput::new(&dh, options.remote_desktop),
-        remote_capture: capture::protocol::RemoteCaptureState::new(&dh, options.remote_desktop),
+        remote_capture: capture::protocol::RemoteCaptureState::new(
+            &dh,
+            options.remote_desktop || options.screen_cast,
+        ),
         gtk_shell: gtk_shell::GtkShellState::new(&dh),
         session_lock: session_lock::LockState::new(
             &dh,

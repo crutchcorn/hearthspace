@@ -41,13 +41,17 @@ A full native session uses logind/libseat and these runtime packages:
 ```sh
 sudo apt-get install -y \
   mate-polkit xdg-desktop-portal xdg-desktop-portal-gtk fuse3 \
-  gsettings-desktop-schemas pulseaudio-utils upower xwayland foot
+  gsettings-desktop-schemas pulseaudio-utils upower xwayland foot zenity
 ```
 
 - MATE polkit supplies a Wayland-capable authentication agent. Don't substitute
   an agent that assumes X11 window handles.
 - The GTK portal backend provides file dialogs and related desktop integration.
-  `zenity` is an optional file-dialog fallback for nested or diagnostic sessions.
+  `zenity` provides the explicit screen/window sharing chooser and the optional
+  file-dialog fallback. Screen sharing also requires portal-wlr 0.8.4 with the
+  Hearthspace backend patches and PipeWire; follow
+  [screen-sharing setup](SCREEN_SHARING.md#runtime-requirements) to build and
+  install the pinned backend.
 - `pactl` from `pulseaudio-utils` must support JSON output (version 16 or newer).
   It works with PulseAudio or PipeWire's PulseAudio service; no second audio
   server is needed. See [sound and brightness](AUDIO_AND_BRIGHTNESS.md).
@@ -65,8 +69,9 @@ source-tree native run also needs that service. Use the installer rather than
 copying an unchecked PAM file. Missing or unreadable policy makes locking
 unavailable; never add an authentication bypass for development.
 
-Shared-session portals remain user-manager services. Private test sessions own
-their separate helpers and profiles. Read [application integration](APPS.md)
+Shared permission/document and GTK/frontend portals remain user-manager services.
+The screen-sharing backend is session-owned in both modes. Private test sessions
+own their separate helpers and profiles. Read [application integration](APPS.md)
 before diagnosing bus, audio, or portal routing by changing global environment
 variables. Hearthspace doesn't require persistent logind configuration, new
 backlight permissions, or disabling application sandboxes.

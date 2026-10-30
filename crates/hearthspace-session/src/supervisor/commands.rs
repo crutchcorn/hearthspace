@@ -2,6 +2,23 @@ use super::*;
 use crate::{dev_cargo::dev_cargo_args, process::ProcessSpec, session_env::repo_root};
 
 impl Supervisor {
+    pub(super) fn compositor_spec(&self, backend: CompositorBackend) -> ProcessSpec {
+        let backend_flag = match backend {
+            CompositorBackend::NativeTty => "--tty",
+            CompositorBackend::NestedWinit => "--winit",
+        };
+        let mut args = vec![hearthspace_common::NO_SHELL_FLAG, backend_flag];
+        if self.screen_cast_enabled {
+            args.push("--screen-cast");
+        }
+        if self.wayvnc_config.is_some() {
+            args.push("--remote-desktop");
+        }
+        let mut spec = self.binary_spec("hearthspace-compositor", &args, false);
+        crate::compositor::configure_compositor_environment(&mut spec, backend);
+        spec
+    }
+
     pub(super) fn record_processes(&self) -> std::io::Result<()> {
         let pid =
             |process: &Option<ManagedProcess>| process.as_ref().map_or(0, ManagedProcess::pid);
@@ -147,3 +164,6 @@ impl Supervisor {
         None
     }
 }
+
+#[cfg(test)]
+mod tests;

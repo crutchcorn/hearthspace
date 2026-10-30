@@ -1,5 +1,5 @@
 //! Small protocol fixture: fixed-size shell palettes with real pointer/focus events.
-use std::{fs::File, io::Write, os::fd::AsFd, os::unix::net::UnixStream, path::Path};
+use std::{fs::File, os::unix::net::UnixStream, path::Path};
 
 use wayland_client::{
     Connection, Dispatch, EventQueue, QueueHandle, WEnum, delegate_noop,
@@ -10,6 +10,10 @@ use wayland_client::{
 };
 use wayland_protocols::xdg::shell::client::{xdg_surface, xdg_toplevel, xdg_wm_base};
 
+#[path = "canvas_map_client/capture.rs"]
+mod capture;
+#[path = "canvas_map_client/capture_tree.rs"]
+mod capture_tree;
 #[path = "canvas_map_client/decoration.rs"]
 mod decoration;
 #[path = "canvas_map_client/dnd.rs"]
@@ -35,6 +39,7 @@ struct Window {
 
 #[derive(Default)]
 struct State {
+    capture_tree: capture_tree::State,
     touch: touch::State,
     dnd: dnd::State,
     decorations: decoration::State,
@@ -188,46 +193,6 @@ impl MapClient {
     }
 }
 
-impl State {
-    fn commit_buffer(&mut self, number: usize, handle: &QueueHandle<Self>) {
-        let window = &self.windows[number];
-        if !window.alive {
-            return;
-        }
-        let width = window.size.0 + window.inset.0 * 2;
-        let height = window.size.1 + window.inset.1 * 2;
-        let size = width as usize * height as usize * 4;
-        let mut file = tempfile::tempfile().unwrap();
-        file.set_len(size as u64).unwrap();
-        file.write_all(&pixels::paint(window)).unwrap();
-        let pool = self
-            .shm
-            .as_ref()
-            .unwrap()
-            .create_pool(file.as_fd(), size as i32, handle, ());
-        let buffer = pool.create_buffer(
-            0,
-            width,
-            height,
-            width * 4,
-            wl_shm::Format::Argb8888,
-            handle,
-            (),
-        );
-        window.xdg_surface.set_window_geometry(
-            window.inset.0,
-            window.inset.1,
-            window.size.0,
-            window.size.1,
-        );
-        window.surface.attach(Some(&buffer), 0, 0);
-        window.surface.damage_buffer(0, 0, width, height);
-        window.surface.commit();
-        pool.destroy();
-        self.buffers.push((file, buffer));
-    }
-}
-
 impl Dispatch<wl_registry::WlRegistry, ()> for State {
     fn event(
         state: &mut Self,
@@ -243,6 +208,7 @@ impl Dispatch<wl_registry::WlRegistry, ()> for State {
             version,
         } = event
         {
+            capture_tree::global(state, registry, name, &interface, handle);
             match interface.as_str() {
                 "wl_compositor" => {
                     state.compositor = Some(registry.bind(name, version.min(4), handle, ()))
@@ -256,7 +222,7 @@ impl Dispatch<wl_registry::WlRegistry, ()> for State {
                 }
                 "wl_seat" => {
                     let seat: wl_seat::WlSeat = registry.bind(name, version.min(7), handle, ());
-                    seat.get_pointer(handle, ());
+                    state.capture_tree.pointer = Some(seat.get_pointer(handle, ()));
                     seat.get_keyboard(handle, ());
                     state.dnd.seat = Some(seat);
                 }
@@ -275,6 +241,7 @@ impl Dispatch<wl_pointer::WlPointer, ()> for State {
         _: &Connection,
         _: &QueueHandle<Self>,
     ) {
+        capture_tree::pointer_event(state, &event);
         match event {
             wl_pointer::Event::Enter {
                 surface,

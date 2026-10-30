@@ -1,0 +1,101 @@
+diff --git a/include/xdpw.h b/include/xdpw.h
+index 7a6421faaf626b85f53222c744335ba8335d4062..75a65dc17f32fd9d7c755ee949210ebfe0fad8b8 100644
+--- a/include/xdpw.h
++++ b/include/xdpw.h
+@@ -24,6 +24,7 @@ struct xdpw_state {
+ 	uint32_t screencast_cursor_modes; // bitfield of enum cursor_modes
+ 	uint32_t screencast_version;
+ 	uint32_t screenshot_version;
++	bool no_restore;
+ 	struct xdpw_config *config;
+ 	int timer_poll_fd;
+ 	struct wl_list timers;
+diff --git a/src/core/main.c b/src/core/main.c
+index e27d261c12f1e0817fbd2ff307b045bdce73bce9..5ae4bfb7686b7cab8f9be03b1e04cf628e420fac 100644
+--- a/src/core/main.c
++++ b/src/core/main.c
+@@ -18,7 +18,12 @@ enum event_loop_fd {
+ 	EVENT_LOOP_TIMER,
+ };
+ 
+-static const char service_name[] = "org.freedesktop.impl.portal.desktop.wlr";
++enum cli_option {
++	OPT_BUS_NAME = 256,
++	OPT_NO_RESTORE,
++};
++
++static const char default_service_name[] = "org.freedesktop.impl.portal.desktop.wlr";
+ 
+ static int xdpw_usage(FILE *stream, int rc) {
+ 	static const char *usage =
+@@ -28,6 +33,10 @@ static int xdpw_usage(FILE *stream, int rc) {
+ 		"                                     QUIET, ERROR, WARN, INFO, DEBUG, TRACE\n"
+ 		"    -c, --config=<config file>	      Select config file.\n"
+ 		"                                     (default is $XDG_CONFIG_HOME/xdg-desktop-portal-wlr/config)\n"
++		"        --bus-name=NAME              Own this well-known D-Bus service name.\n"
++		"                                     (default is org.freedesktop.impl.portal.desktop.wlr)\n"
++		"        --no-restore                 Ignore restore data and use the configured chooser.\n"
++		"                                     Never persist selections, regardless of XDPW_PERSIST_MODE.\n"
+ 		"    -r, --replace                    Replace a running instance.\n"
+ 		"    -h, --help                       Get help (this text).\n"
+ 		"\n";
+@@ -45,13 +54,17 @@ static int handle_name_lost(sd_bus_message *m, void *userdata, sd_bus_error *ret
+ int main(int argc, char *argv[]) {
+ 	struct xdpw_config config = {0};
+ 	char *configfile = NULL;
++	const char *service_name = default_service_name;
+ 	enum LOGLEVEL loglevel = DEFAULT_LOGLEVEL;
+ 	bool replace = false;
++	bool no_restore = false;
+ 
+ 	static const char *shortopts = "l:o:c:f:rh";
+ 	static const struct option longopts[] = {
+ 		{ "loglevel", required_argument, NULL, 'l' },
+ 		{ "config", required_argument, NULL, 'c' },
++		{ "bus-name", required_argument, NULL, OPT_BUS_NAME },
++		{ "no-restore", no_argument, NULL, OPT_NO_RESTORE },
+ 		{ "replace", no_argument, NULL, 'r' },
+ 		{ "help", no_argument, NULL, 'h' },
+ 		{ NULL, 0, NULL, 0 }
+@@ -70,6 +83,16 @@ int main(int argc, char *argv[]) {
+ 		case 'c':
+ 			configfile = strdup(optarg);
+ 			break;
++		case OPT_BUS_NAME:
++			if (sd_bus_service_name_is_valid(optarg) <= 0 || optarg[0] == ':') {
++				fprintf(stderr, "Invalid well-known D-Bus service name: %s\n", optarg);
++				return EXIT_FAILURE;
++			}
++			service_name = optarg;
++			break;
++		case OPT_NO_RESTORE:
++			no_restore = true;
++			break;
+ 		case 'r':
+ 			replace = true;
+ 			break;
+@@ -120,6 +143,7 @@ int main(int argc, char *argv[]) {
+ 		.screencast_cursor_modes = HIDDEN | EMBEDDED,
+ 		.screencast_version = XDP_CAST_PROTO_VER,
+ 		.screenshot_version = XDP_SHOT_PROTO_VER,
++		.no_restore = no_restore,
+ 		.config = &config,
+ 	};
+ 
+diff --git a/src/screencast/screencast.c b/src/screencast/screencast.c
+index a8fdc109653099770dfb916bbac10e0edec91290..2c30ec6ae462c3b4f3876085c71ea4cb28c18231 100644
+--- a/src/screencast/screencast.c
++++ b/src/screencast/screencast.c
+@@ -132,6 +132,12 @@ void xdpw_screencast_instance_destroy(struct xdpw_screencast_instance *cast) {
+ bool setup_target(struct xdpw_screencast_context *ctx, struct xdpw_session *sess, struct xdpw_screencast_restore_data *data, uint32_t type_mask) {
+ 	bool target_initialized = false;
+ 
++	if (ctx->state->no_restore) {
++		data = NULL;
++		// The environment policy below only lowers this persistence limit.
++		sess->screencast_data.persist_mode = PERSIST_NONE;
++	}
++
+ 	type_mask &= ctx->state->screencast_source_types;
+ 	if (type_mask == 0) {
+ 		logprint(ERROR, "wlroots: No supported targets specified");

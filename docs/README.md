@@ -19,6 +19,7 @@ maintained behavior. The [roadmap](ROADMAP.md) covers remaining work;
 - [Audio and brightness](AUDIO_AND_BRIGHTNESS.md)
 - [Clipboard](CLIPBOARD.md)
 - [Remote desktop](REMOTE_DESKTOP.md)
+- [Screen and window sharing](SCREEN_SHARING.md)
 
 ## Canvas and shell
 

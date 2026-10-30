@@ -1,0 +1,97 @@
+#!/usr/bin/python3
+"""Explicit, cancelable GTK consent for portal-wlr's dmenu source protocol."""
+
+import os
+import re
+import subprocess
+import sys
+
+MAX_INPUT = 256 * 1024
+MAX_SOURCES = 512
+
+
+def choices(stream):
+    data = stream.read(MAX_INPUT + 1)
+    if len(data) > MAX_INPUT:
+        raise ValueError("too many sharing sources")
+    lines = data.decode("utf-8", errors="strict").removesuffix("\n").split("\n")
+    if lines == [""]:
+        return []
+    if len(lines) > MAX_SOURCES or len(set(lines)) != len(lines):
+        raise ValueError("ambiguous sharing sources")
+    result = []
+    for line in lines:
+        if any(ord(char) < 32 or ord(char) == 127 for char in line):
+            raise ValueError("invalid sharing source")
+        if line.startswith("Monitor: ") and line.removeprefix("Monitor: ").strip():
+            label = "Screen: " + line.removeprefix("Monitor: ")
+        elif match := re.fullmatch(r"Window: (.*) \(([^()\s]+)\)", line):
+            label = "Window: " + (match[1].strip() or "Untitled window")
+        else:
+            raise ValueError("invalid sharing source")
+        result.append((line, label))
+    labels = [label for _, label in result]
+    result = [
+        (line, line if labels.count(label) > 1 else label) for line, label in result
+    ]
+    if len({label for _, label in result}) != len(result):
+        # A title can itself end with another window's identifier. The original
+        # wire labels were checked for uniqueness before any display shortening.
+        return [(line, line) for line, _ in result]
+    return result
+
+
+def select(sources):
+    if not sources:
+        return None
+    # Keep untrusted titles out of argv, markup and shell evaluation. A hidden
+    # numeric column maps the user's selection back to the unchanged wire label.
+    rows = "".join(f"{label}\n{index}\n" for index, (_, label) in enumerate(sources))
+    environment = os.environ.copy()
+    environment.update(GDK_BACKEND="wayland", GTK_USE_PORTAL="0")
+    process = subprocess.run(
+        [
+            "zenity",
+            "--list",
+            "--title=Share a screen or window",
+            "--text=Choose what the requesting application may see.",
+            "--column=Source",
+            "--column=Selection",
+            "--hide-column=2",
+            "--print-column=2",
+            "--ok-label=Share",
+            "--cancel-label=Cancel",
+            "--no-markup",
+            "--width=640",
+            "--height=420",
+        ],
+        input=rows,
+        text=True,
+        stdout=subprocess.PIPE,
+        env=environment,
+        timeout=300,
+        check=False,
+    )
+    if process.returncode != 0:
+        return None
+    selected = process.stdout.strip()
+    if not re.fullmatch(r"0|[1-9][0-9]{0,2}", selected):
+        return None
+    index = int(selected)
+    return sources[index][0] if index < len(sources) else None
+
+
+def main():
+    try:
+        selected = select(choices(sys.stdin.buffer))
+        if selected is not None:
+            print(selected)
+    except (OSError, UnicodeError, ValueError, subprocess.TimeoutExpired) as error:
+        # Empty stdout is cancellation. Never select a fallback on dialog failure.
+        print(f"hearthspace-share-picker: {error}", file=sys.stderr)
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

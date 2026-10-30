@@ -1,0 +1,292 @@
+#!/usr/bin/python3
+"""Exercise real wlr restoration on an owned broker, compositor and PipeWire."""
+
+import argparse
+import hashlib
+import json
+import os
+import selectors
+import signal
+import subprocess
+import tempfile
+import time
+import uuid
+from pathlib import Path
+
+import gi
+
+gi.require_version("Gio", "2.0")
+from gi.repository import Gio, GLib
+
+from portal_checklib import OwnedProcess, cleanup, fixture_environment
+
+parser = argparse.ArgumentParser()
+parser.add_argument(
+    "output", type=Path, help="fresh directory for logs and result.json"
+)
+parser.add_argument(
+    "--backend", type=Path, default=Path("/usr/local/libexec/xdg-desktop-portal-wlr")
+)
+parser.add_argument(
+    "--compositor",
+    type=Path,
+    default=Path(__file__).resolve().parents[1] / "target/debug/hearthspace",
+)
+args = parser.parse_args()
+args.output.mkdir(exist_ok=False)
+args.output = args.output.resolve()
+backend = args.backend.resolve(strict=True)
+compositor_binary = args.compositor.resolve(strict=True)
+children = []
+logs = []
+report = {"cases": [], "success": False}
+report["binaries"] = {
+    str(p): hashlib.sha256(p.read_bytes()).hexdigest()
+    for p in (backend, compositor_binary)
+}
+runtime = tempfile.TemporaryDirectory(prefix="hs-policy-")
+directory = Path(runtime.name)
+env = fixture_environment(os.environ, directory)
+
+
+def interrupted(signum, frame):
+    raise TimeoutError("policy check interrupted")
+
+
+signal.signal(signal.SIGTERM, interrupted)
+signal.signal(signal.SIGALRM, interrupted)
+signal.alarm(100)
+
+
+def spawn(name, command, custom_env=None, stdout=None):
+    log = (args.output / (name + ".log")).open("wb")
+    logs.append(log)
+    child = OwnedProcess(
+        command,
+        env=custom_env or env,
+        stdin=subprocess.DEVNULL,
+        stdout=stdout if stdout is not None else log,
+        stderr=log,
+    )
+    children.append(child)
+    return child
+
+
+def wait_for(predicate, child, label):
+    end = time.monotonic() + 8
+    while time.monotonic() < end:
+        if child.poll() is not None:
+            raise RuntimeError(label + " exited")
+        if predicate():
+            return
+        time.sleep(0.025)
+    raise TimeoutError(label)
+
+
+def require(condition, detail):
+    if not condition:
+        raise RuntimeError(f"backend policy regression: {detail}")
+
+
+connection = None
+try:
+    config = directory / "bus.conf"
+    config.write_text(
+        "<busconfig><type>session</type><listen>unix:tmpdir="
+        + str(directory)
+        + '</listen><auth>EXTERNAL</auth><policy context="default"><allow send_destination="*"/>'
+        '<allow receive_sender="*"/><allow own="*"/></policy></busconfig>'
+    )
+    bus = spawn(
+        "bus",
+        [
+            "dbus-daemon",
+            "--nofork",
+            "--print-address=1",
+            "--config-file=" + str(config),
+        ],
+        stdout=subprocess.PIPE,
+    )
+    with selectors.DefaultSelector() as selector:
+        selector.register(bus.stdout, selectors.EVENT_READ)
+        if not selector.select(5):
+            raise TimeoutError("broker address")
+        address = bus.stdout.readline().decode().strip()
+    env["DBUS_SESSION_BUS_ADDRESS"] = address
+    env["HEARTHSPACE_SESSION_BUS_ADDRESS"] = address
+    connection = Gio.DBusConnection.new_for_address_sync(
+        address,
+        Gio.DBusConnectionFlags.AUTHENTICATION_CLIENT
+        | Gio.DBusConnectionFlags.MESSAGE_BUS_CONNECTION,
+        None,
+        None,
+    )
+    compositor = spawn(
+        "compositor",
+        [
+            str(compositor_binary),
+            "--headless",
+            "--no-shell",
+            "--headless-size",
+            "320x240",
+            "--screen-cast",
+        ],
+    )
+    wait_for(
+        lambda: (directory / "policy-wayland").is_socket(),
+        compositor,
+        "Wayland readiness",
+    )
+    pipewire = spawn(
+        "pipewire", ["pipewire", "-c", "/usr/share/pipewire/pipewire.conf"]
+    )
+    wait_for(
+        lambda: (directory / "pipewire-0").is_socket(), pipewire, "PipeWire readiness"
+    )
+    picker = directory / "picker.py"
+    picker.write_text(
+        '#!/usr/bin/python3\nimport os,sys\nfrom pathlib import Path\ndata=sys.stdin.read()\nPath(os.environ["CHOOSER_LOG"]).write_text(data)\nif os.environ["CHOOSER_MODE"]=="accept": print(data.splitlines()[0])\n'
+    )
+    picker.chmod(0o700)
+    settings = directory / "wlr.conf"
+    settings.write_text(
+        "[screencast]\nmax_fps=10\nchooser_type=dmenu\nchooser_cmd="
+        + str(picker)
+        + "\n"
+    )
+    service = "org.freedesktop.impl.portal.desktop.hearthspace_wlr"
+    interface = "org.freedesktop.impl.portal.ScreenCast"
+    path = "/org/freedesktop/portal/desktop"
+
+    def call(method, signature, values):
+        return connection.call_sync(
+            service,
+            path,
+            interface,
+            method,
+            GLib.Variant(signature, values),
+            None,
+            Gio.DBusCallFlags.NO_AUTO_START,
+            8000,
+            None,
+        ).unpack()
+
+    def ready():
+        try:
+            return connection.call_sync(
+                "org.freedesktop.DBus",
+                "/org/freedesktop/DBus",
+                "org.freedesktop.DBus",
+                "NameHasOwner",
+                GLib.Variant("(s)", (service,)),
+                None,
+                Gio.DBusCallFlags.NONE,
+                500,
+                None,
+            ).unpack()[0]
+        except GLib.Error:
+            return False
+
+    for label, no_restore, mode, expected in [
+        ("restoration-control", False, "cancel", 0),
+        ("fresh-consent-cancel", True, "cancel", 1),
+        ("fresh-consent-accept", True, "accept", 0),
+    ]:
+        choice_log = args.output / (label + "-choices.txt")
+        case_env = env | {"CHOOSER_LOG": str(choice_log), "CHOOSER_MODE": mode}
+        command = [
+            str(backend),
+            "--bus-name=" + service,
+            "-c",
+            str(settings),
+            "-l",
+            "INFO",
+        ]
+        if no_restore:
+            command.append("--no-restore")
+        process = spawn(label, command, case_env)
+        wait_for(ready, process, "backend name")
+        token = uuid.uuid4().hex
+        session = "/org/freedesktop/portal/desktop/session/policy/s" + token
+        request = "/org/freedesktop/portal/desktop/request/policy/r" + token
+        require(
+            call(
+                "CreateSession",
+                "(oosa{sv})",
+                (request, session, "dev.hearthspace.PolicyCheck", {}),
+            )[0]
+            == 0,
+            (label, "CreateSession failed"),
+        )
+        restore = GLib.Variant(
+            "(suv)",
+            (
+                "wlroots",
+                1,
+                GLib.Variant(
+                    "a{sv}", {"output_name": GLib.Variant("s", "hearthspace-0")}
+                ),
+            ),
+        )
+        selected = call(
+            "SelectSources",
+            "(oosa{sv})",
+            (
+                request,
+                session,
+                "dev.hearthspace.PolicyCheck",
+                {
+                    "types": GLib.Variant("u", 1),
+                    "persist_mode": GLib.Variant("u", 2),
+                    "restore_data": restore,
+                },
+            ),
+        )
+        require(selected[0] == expected, (label, selected))
+        require(
+            choice_log.exists() == no_restore, (label, "unexpected chooser behavior")
+        )
+        case = {
+            "name": label,
+            "selection": selected,
+            "chooser_invoked": choice_log.exists(),
+        }
+        report["cases"].append(case)
+        if expected == 0:
+            started = call(
+                "Start",
+                "(oossa{sv})",
+                (request, session, "dev.hearthspace.PolicyCheck", "", {}),
+            )
+            case["started"] = started
+            require(started[0] == 0, started)
+            require(started[1]["persist_mode"] == (0 if no_restore else 2), started)
+            require(("restore_data" in started[1]) == (not no_restore), started)
+        process.stop()
+        wait_for(lambda: not ready(), bus, "backend name release")
+    report["success"] = True
+except BaseException as error:
+    report["error"] = f"{type(error).__name__}: {error}"
+    raise
+finally:
+    # Teardown has its own bounded waits; a second signal must not skip it.
+    signal.alarm(0)
+    for signum in (signal.SIGALRM, signal.SIGTERM, signal.SIGINT):
+        signal.signal(signum, signal.SIG_IGN)
+    actions = []
+    if connection is not None and not connection.is_closed():
+        actions.append(("D-Bus connection", lambda: connection.close_sync(None)))
+    actions.extend(
+        (f"process group {child.pid}", child.stop) for child in reversed(children)
+    )
+    actions.extend(
+        (f"stdout {child.pid}", child.stdout.close)
+        for child in children
+        if child.stdout is not None
+    )
+    actions.extend((f"log {log.name}", log.close) for log in logs)
+    actions.append(("runtime directory", runtime.cleanup))
+    try:
+        cleanup(actions, report)
+    finally:
+        (args.output / "result.json").write_text(json.dumps(report, indent=2))
