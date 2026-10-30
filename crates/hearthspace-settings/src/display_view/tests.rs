@@ -15,8 +15,12 @@ fn view(state: &SettingsApp) -> impl WidgetView<SettingsApp, Widget: Sized> + us
 fn display_identity_keeps_product_names_and_shows_each_connector_once_without_position() {
     let (_directory, favorites) = crate::favorites::tests::fixture();
     let live_outputs: Vec<_> = [
-        ("eDP-1", "DRM - eDP-1 - eDP-1"),
-        ("DP-1", "DELL - U2723QE - DP-1"),
+        (
+            "eDP-1@pci-internal",
+            "DRM - eDP-1 - eDP-1 (eDP-1@pci-internal)",
+        ),
+        ("DP-1@pci-a", "DELL - U2723QE - DP-1"),
+        ("DP-1@pci-b", "DELL - U2723QE - DP-1"),
         ("HDMI-A-1", "DRM - HDMI-A-1 - HDMI-A-1"),
     ]
     .into_iter()
@@ -27,14 +31,14 @@ fn display_identity_keeps_product_names_and_shows_each_connector_once_without_po
         width: 1920,
         height: 1080,
         scale: 1,
-        refresh_millihertz: [Some(60_000), Some(59_940), None][index],
+        refresh_millihertz: [Some(60_000), Some(59_940), Some(120_000), None][index],
     })
     .collect();
     let settings = Settings {
         monitors: monitors_for_live_outputs(
             &Settings::default().monitors,
             &live_outputs,
-            Some("eDP-1"),
+            Some("eDP-1@pci-internal"),
         ),
         ..Settings::default()
     };
@@ -63,7 +67,8 @@ fn display_identity_keeps_product_names_and_shows_each_connector_once_without_po
     for (index, name, connector) in [
         (0, "Built-in display", "eDP-1"),
         (1, "DELL U2723QE", "DP-1"),
-        (2, "External display", "HDMI-A-1"),
+        (2, "DELL U2723QE", "DP-1"),
+        (3, "External display", "HDMI-A-1"),
     ] {
         ui.state.selected_monitor_id = Some(ui.state.settings.monitors[index].id.clone());
         ui.rebuild(&view);
@@ -90,7 +95,7 @@ fn display_identity_keeps_product_names_and_shows_each_connector_once_without_po
             1,
             "the connector should appear once: {labels:?}"
         );
-        let refresh = ["60 Hz", "59.94 Hz", "Not reported"][index];
+        let refresh = ["60 Hz", "59.94 Hz", "120 Hz", "Not reported"][index];
         let refresh_node = ui.harness.access_node(ui.button(refresh)).unwrap();
         assert!(
             refresh_node.is_disabled(),
@@ -99,6 +104,27 @@ fn display_identity_keeps_product_names_and_shows_each_connector_once_without_po
         assert!(
             labels.iter().all(|label| !label.starts_with("Position:")),
             "desktop coordinates should not be a visible settings row"
+        );
+        assert!(
+            labels.iter().all(|label| !label.contains('@')),
+            "{labels:?}"
+        );
+        let canvas = ids(&ui.harness)
+            .into_iter()
+            .find_map(|id| {
+                let node = ui.harness.access_node(id)?;
+                (node.role() == Role::Canvas)
+                    .then(|| node.description())
+                    .flatten()
+            })
+            .unwrap();
+        assert!(
+            canvas.starts_with(&format!("Display {}: {name}.", index + 1)),
+            "{canvas}"
+        );
+        assert!(
+            !canvas.contains('@'),
+            "GPU routing IDs are not accessible labels"
         );
     }
 }

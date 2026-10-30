@@ -15,6 +15,42 @@ pub(crate) struct LiveOutput {
     pub(crate) refresh_millihertz: Option<i32>,
 }
 
+/// Human-facing connector text; routing and saved preferences keep the full ID.
+pub(crate) fn connector_label(id: &str) -> &str {
+    hearthspace_common::output_identity::qualified_connector(id).unwrap_or(id)
+}
+
+pub(crate) fn built_in_display(description: &str, id: &str) -> bool {
+    let connector = connector_label(id);
+    connector.starts_with("eDP")
+        || connector.starts_with("LVDS")
+        || description.to_lowercase().contains("built-in")
+}
+
+pub(crate) fn display_name(description: &str, id: &str) -> String {
+    if built_in_display(description, id) {
+        return "Built-in display".into();
+    }
+    let connector = connector_label(id);
+    // Smithay appends the exact output ID to its make/model description. Keep
+    // product names while avoiding internal GPU paths and repeated connectors.
+    let description = description
+        .trim()
+        .strip_suffix(&format!(" ({id})"))
+        .unwrap_or(description.trim());
+    let name = description
+        .split(" - ")
+        .map(str::trim)
+        .filter(|part| !part.is_empty() && *part != connector && *part != id && *part != "DRM")
+        .collect::<Vec<_>>()
+        .join(" ");
+    if name.is_empty() {
+        "External display".into()
+    } else {
+        name
+    }
+}
+
 pub(crate) fn recalculate_monitor_positions_for_scale(
     monitors: &mut [MonitorConfig],
     id: &str,
