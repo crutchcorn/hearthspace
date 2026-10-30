@@ -88,7 +88,7 @@ impl UdevBackendState {
                 usize::from(buffer_age)
             };
             let mut capture = None;
-            let damage = {
+            let rendered = {
                 let mut framebuffer = renderer.bind(&mut dmabuf)?;
                 // When scanout contains a software cursor, obtain a cursor-free
                 // scene first for sessions that did not request PaintCursors.
@@ -120,7 +120,7 @@ impl UdevBackendState {
                 } else {
                     None
                 };
-                let damage = state.render_frame_at(
+                let rendered = state.render_frame_at(
                     renderer,
                     &mut framebuffer,
                     &mut output.damage_tracker,
@@ -157,13 +157,17 @@ impl UdevBackendState {
                         }
                     }
                 }
-                damage
+                rendered
             };
             // Keep damage tracking for renderer-side redraw minimization, but do not
             // forward damage clips to KMS yet. Some virtual DRM stacks reject
             // FB_DAMAGE_CLIPS on page flip with EINVAL under client redraw load.
-            let _damage = damage;
-            if let Err(error) = output.gbm_surface.queue_buffer(None, None, ()) {
+            // Rendering may still be in flight. Let Smithay pass its fence to
+            // KMS, or wait if this surface cannot accept an explicit fence.
+            if let Err(error) = output
+                .gbm_surface
+                .queue_buffer(Some(rendered.sync), None, ())
+            {
                 captures.fail(&view.name, &format!("native presentation failed: {error}"));
                 state.remote_capture.fail_output(&view.name);
                 return Err(error.into());

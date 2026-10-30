@@ -335,7 +335,11 @@ impl CalloopData {
                 } else {
                     backend.buffer_age().unwrap_or(0)
                 };
-                let damage = {
+                // EGL's window swap owns presentation synchronization here.
+                let super::rendering::RenderedFrame {
+                    damage,
+                    sync: _sync,
+                } = {
                     let (renderer, mut framebuffer) = backend.bind()?;
                     self.state.render_frame(
                         renderer,
@@ -357,7 +361,11 @@ impl CalloopData {
             Backend::Headless(backend) => {
                 self.full_redraw = 0;
                 let mut framebuffer = backend.renderer.bind(&mut backend.buffer)?;
-                self.state.render_frame(
+                // Offscreen readbacks stay ordered in this renderer's context.
+                let super::rendering::RenderedFrame {
+                    sync: _sync,
+                    damage: _damage,
+                } = self.state.render_frame(
                     &mut backend.renderer,
                     &mut framebuffer,
                     &mut self.damage_tracker,
