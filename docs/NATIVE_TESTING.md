@@ -184,6 +184,14 @@ artifacts, manifests, and logs remain available. The independent systemd watchdo
 uses the same recovery path after a hung compositor or interrupted agent.
 Privileged recovery uses the root-owned state under `/run/hearthspace-native/`.
 
+The launcher records ownership before allocating the private runtime. Stop
+serializes with service submission, cancels the exact unit even when its start
+is still queued, and waits for the unit and pending job to finish before
+recovering resources. It releases the allocation lock while waiting so
+`ExecStopPost` can perform recovery. An interrupted startup or uncertain stop
+keeps ownership incomplete and blocks another allocation; a timeout is not
+evidence that the session never started.
+
 Before systemd terminates the private bus wrapper, its stop hook gives the
 session supervisor up to six seconds to exit normally. It verifies the unit's
 current main process and its direct supervisor child by executable, UID, and
@@ -230,6 +238,23 @@ the injected failing compositor actually ran in its allocated PAM/VT session.
 A preflight failure, such as missing sudo access, fails the test. Run native
 validation separately from GPU-intensive headless suites so concurrent workload
 does not obscure capture and presentation failures.
+
+For displays attached to different GPUs, compare connected DRM connectors with
+the harness's live `status` outputs before testing interaction. Capture each
+output separately, move one real application between them, and verify its visible
+content after resizing, panning, and zooming. Open Settings → Displays and check
+that every live connector is available there too. A connector discovered in
+sysfs without a corresponding live output is a failure, not successful hotplug.
+
+Keep a separate movement interval without captures or recordings for flashing
+and frame-pacing measurements. Capture readback can synchronize outstanding GPU
+work and hide a scanout race. This excludes harness readbacks, not internal
+readback required by a cross-GPU CPU-copy fallback; report that fallback when it
+is active. Use the same binary profile, output arrangement, and workload
+for comparisons; report added outputs or changed resolution as a changed workload.
+The [rendering guide](RENDERING.md#investigating-slow-frames) describes callback
+traces and the limits of screenshot evidence. A successful multi-GPU session
+does not establish unplug/replug, suspend, or compatibility with other drivers.
 
 The [gesture acceptance tests](PINCH_ZOOM.md)
 use temporary uinput touchpad and touchscreen devices to exercise libinput input
