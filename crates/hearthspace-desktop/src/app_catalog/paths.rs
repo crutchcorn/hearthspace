@@ -2,7 +2,7 @@ use std::{env, path::PathBuf};
 
 pub(super) fn xdg_data_dirs() -> Vec<PathBuf> {
     let mut dirs = Vec::new();
-    if let Some(xdg_data_home) = env::var_os("XDG_DATA_HOME") {
+    if let Some(xdg_data_home) = env::var_os("XDG_DATA_HOME").filter(|path| !path.is_empty()) {
         dirs.push(PathBuf::from(xdg_data_home));
     } else if let Some(home) = env::var_os("HOME") {
         dirs.push(PathBuf::from(home).join(".local/share"));
