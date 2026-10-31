@@ -107,7 +107,7 @@ impl Renderer for DeviceRenderer {
 }
 
 impl Bind<Dmabuf> for DeviceRenderer {
-    fn bind<'buffer>(&mut self, buffer: &'buffer mut Dmabuf) -> Result<Image, io::Error> {
+    fn bind(&mut self, buffer: &mut Dmabuf) -> Result<Image, io::Error> {
         Ok(Image::from_buffer(buffer))
     }
 

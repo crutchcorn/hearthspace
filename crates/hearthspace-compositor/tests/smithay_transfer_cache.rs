@@ -30,7 +30,7 @@ fn alternating_output_sizes_allocate_exactly_two_intermediates() {
     assert_eq!(fixture.allocations(), 2);
     let stats = fixture.stats.lock().unwrap();
     assert_eq!(stats.direct_samples.len(), 258);
-    for samples in stats.direct_samples.chunks_exact(2) {
+    for samples in stats.direct_samples.as_chunks::<2>().0 {
         assert_eq!(samples, &[first.clone(), second.clone()]);
     }
     assert_eq!(stats.downloads, 0);

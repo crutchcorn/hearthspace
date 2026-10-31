@@ -28,6 +28,8 @@ impl OutputTransfer {
 #[derive(Debug, Default)]
 pub(crate) struct Completion(Option<SyncPoint>);
 
+type FinishedDraw<E> = Result<(Result<(), E>, SyncPoint), E>;
+
 impl Completion {
     /// Retain completion before propagating a draw error or attempting readback
     /// and KMS submission. Those later failures do not undo submitted GPU work.
@@ -36,7 +38,7 @@ impl Completion {
         &mut self,
         mut frame: F,
         draw: impl FnOnce(&mut F) -> Result<(), F::Error>,
-    ) -> Result<(Result<(), F::Error>, SyncPoint), F::Error> {
+    ) -> FinishedDraw<F::Error> {
         let drawn = draw(&mut frame);
         // Always finish explicitly, including partially submitted failed draws.
         self.0 = None;
