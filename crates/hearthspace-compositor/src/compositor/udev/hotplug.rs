@@ -7,7 +7,7 @@ use super::{
     ConnectorSync, UdevBackendState,
     connector_policy::refresh_targets,
     device::{UdevDevice, UdevDeviceInfo, create_udev_device, current_device_list},
-    identity::DeviceToken,
+    identity::{DeviceToken, device_identity},
     insert_libinput_source,
     recovery::insert_drm_source,
 };
@@ -188,10 +188,12 @@ impl UdevBackendState {
     }
 
     pub(super) fn open_missing_devices(&mut self) {
-        if !self.session_active || !self.session.is_active() {
-            return;
-        }
-        for info in self.devices.clone() {
+        let devices = self.renderer_preference.opening_order(
+            &self.devices,
+            self.session_active && self.session.is_active(),
+            device_identity,
+        );
+        for info in devices {
             if self.opened_devices.contains_key(&info.device_id) {
                 continue;
             }
@@ -213,6 +215,11 @@ impl UdevBackendState {
                     match insert_drm_source(&self.loop_handle, token, notifier) {
                         Ok(source) => device.source = Some(source),
                         Err(error) => {
+                            self.renderer_preference.open_failed(
+                                token.id,
+                                "DRM notifier registration failed",
+                                &error,
+                            );
                             error!(%error, device_id = token.id, "failed to register DRM notifier");
                             self.gpus.manager.as_mut().remove_node(&device.node);
                             let _ = self.gpus.manager.devices_mut();
@@ -222,15 +229,23 @@ impl UdevBackendState {
                     self.gpus
                         .incarnations
                         .insert(device.node, (token, device.identity.clone()));
-                    if self.gpus.scene_node.is_none() {
-                        self.gpus.select_scene(Some(device.node));
-                    }
+                    let scene_node = self.renderer_preference.scene_after_open(
+                        self.gpus.scene_node,
+                        device.node,
+                        &device.identity,
+                    );
+                    self.gpus.select_scene(Some(scene_node));
                     info!(device_id = token.id, incarnation = token.incarnation,
                         scene_node = ?self.gpus.scene_node, target_node = ?device.node,
                         outputs = device.output_targets.len(), "opened seat DRM device");
                     self.opened_devices.insert(token.id, device);
                 }
                 Err(error) => {
+                    self.renderer_preference.open_failed(
+                        token.id,
+                        "DRM device initialization failed",
+                        &error,
+                    );
                     error!(%error, device_id = token.id, "failed to open seat DRM device; retaining healthy GPUs")
                 }
             }

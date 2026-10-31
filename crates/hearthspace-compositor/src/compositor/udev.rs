@@ -12,6 +12,7 @@ mod native_shortcuts;
 mod output_sync;
 mod presentation;
 mod recovery;
+mod renderer_preference;
 mod rendering;
 mod startup;
 mod transfer;
@@ -47,6 +48,7 @@ pub(super) struct UdevBackendState {
     recovery_exhausted: bool,
     opened_devices: BTreeMap<u64, UdevDevice>,
     devices: Vec<UdevDeviceInfo>,
+    renderer_preference: renderer_preference::StartupRendererPreference,
     gpus: gpu::GpuState,
     connector_names: identity::ConnectorNames,
     published_outputs: PublishedOutputs,

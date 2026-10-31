@@ -16,7 +16,9 @@ use super::{
     gpu::GpuState,
     identity::ConnectorNames,
     native_shortcuts::NativeShortcuts,
-    recovery, udev_backend_mut,
+    recovery,
+    renderer_preference::StartupRendererPreference,
+    udev_backend_mut,
 };
 use crate::{
     RunOptions,
@@ -31,6 +33,8 @@ pub fn run_udev(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> {
     let mut devices = initial_device_list(&udev_backend);
     let preferred = primary_gpu(&seat_name)?;
     devices.sort_by_key(|device| (Some(&device.path) != preferred.as_ref(), device.device_id));
+    // Validate against this seat's enumeration before acquiring any DRM device.
+    let renderer_preference = StartupRendererPreference::from_environment(&devices)?;
     log_device_list(&seat_name, &devices);
     let session_active = session.is_active();
     let display: Display<crate::compositor::App> = Display::new()?;
@@ -108,6 +112,7 @@ pub fn run_udev(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> {
         recovery_exhausted: false,
         opened_devices: BTreeMap::new(),
         devices,
+        renderer_preference,
         gpus: GpuState::new()?,
         connector_names: ConnectorNames::default(),
         published_outputs: PublishedOutputs::default(),
