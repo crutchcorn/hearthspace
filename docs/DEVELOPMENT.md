@@ -36,6 +36,60 @@ helper, update that contract and its tests. Development launchers use Cargo's
 reported executable rather than assuming `target/debug`; installed releases use
 adjacent binaries and don't depend on a checkout.
 
+## Guarded builds
+
+For local release builds on a shared desktop, run Cargo through
+[`scripts/guarded-cargo`](../scripts/guarded-cargo). It starts a uniquely named
+normal-user systemd service with one Cargo job, one permitted logical CPU,
+a 50% CPU quota, lower scheduling
+priority, a 12 GiB memory soft threshold, a 16 GiB hard ceiling, no swap, and a
+45-minute runtime limit. The CPU quota means half a CPU's worth of aggregate time;
+compiler and linker threads can still exist concurrently. Release profiles and
+compiler flags remain unchanged. Configured compiler wrappers and their caching
+routes are disabled, while Clippy retains its local driver. Shared daemons remain
+untouched. The policy does not contain arbitrary external services invoked by
+custom compilers or build scripts.
+
+Use a fresh evidence directory outside the checkout on persistent local storage:
+
+```sh
+mkdir -p "$HOME/.local/state/hearthspace-builds"
+scripts/guarded-cargo \
+  --evidence "$HOME/.local/state/hearthspace-builds/compositor-$(date +%Y%m%d-%H%M%S)" \
+  build --release --locked -p hearthspace-compositor --features udev \
+  --bin hearthspace-compositor
+```
+
+Build additional binaries in separate, serial invocations. The wrapper supports
+`build`, `check`, and `clippy`; it is not a native-session or test launcher. It
+requires a running user systemd manager with delegated cgroup v2 CPU, memory,
+and process controllers. The current temperature monitor requires a readable
+`k10temp` sensor labeled `Tctl`. Unsupported prerequisites fail before Cargo
+starts; do not bypass the guard or automatically increase its limits.
+
+The service checks the actual kernel controls before execution and waits for
+the external monitor to acknowledge readiness. The monitor records CPU
+temperature, host memory/pressure, and service resource usage every second.
+An 85°C Tctl reading stops the owned build. This is a conservative operational
+cutoff, not a documented hardware limit or a guarantee against firmware resets.
+The monitor runs outside the build's memory limit. An in-service relay renews
+systemd's ten-second watchdog only after a fresh, successful monitoring sample.
+Loss of monitoring therefore stops the build even if the monitor cannot run its
+cleanup handler. Systemd also bounds the service lifetime independently.
+
+Evidence includes source hashes, command and boot identity, verified controls,
+build output, telemetry, and the terminal result. Failed attempts are retained;
+existing evidence directories and memory-backed filesystems such as `/tmp` are
+rejected. Interrupting the wrapper stops only its recorded service, and cleanup
+must verify that its cgroup is empty. These controls apply to the build service
+and require no permanent system configuration changes.
+
+After an unclean reboot, preserve the logs and inspect build artifacts before
+using them. A file's name, size, or modification time does not establish that
+its contents survived. Remove only affected build-cache entries and rebuild
+under the guard; never run an invalid executable or treat a successful earlier
+test suite as validation of the interrupted build.
+
 ## Run the complete desktop
 
 ```sh
