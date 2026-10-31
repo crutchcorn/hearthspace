@@ -11,6 +11,7 @@ use hearthspace_common::SHELL_COMMAND_SOCKET_ENV;
 use tracing::{error, info};
 use xilem::{EventLoop, Xilem};
 
+mod app_context;
 mod appearance;
 mod battery_view;
 mod canvas_map;

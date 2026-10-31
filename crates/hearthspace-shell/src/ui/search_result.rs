@@ -20,6 +20,9 @@ use widget::{FocusedResult, ResultButton, Reveal};
 
 #[path = "search_result_content.rs"]
 mod content;
+#[path = "search_result_theme.rs"]
+mod theme;
+pub(super) use theme::theme_properties;
 
 pub(super) fn row(
     state: &ShellState,
@@ -33,6 +36,23 @@ pub(super) fn row(
     let key = output.key().to_owned();
     let output_name = output.output_name.clone();
     let activation = entry.clone();
+    let context = match &entry {
+        Entry::App(app) => Some(super::app_context::Target {
+            app_id: app.id.clone(),
+            output_name: output.output_name.clone(),
+            source_app_id: output.launcher_app_id(),
+        }),
+        Entry::Window(window) => {
+            state
+                .catalog
+                .app_for_window(&window.app_id)
+                .map(|app| super::app_context::Target {
+                    app_id: app.id.clone(),
+                    output_name: output.output_name.clone(),
+                    source_app_id: output.launcher_app_id(),
+                })
+        }
+    };
     ResultView {
         key: output.key().into(),
         label: entry.label(),
@@ -42,6 +62,8 @@ pub(super) fn row(
         inner,
         columns: launcher::grid_columns(output),
         pressed: None,
+        raised: false,
+        context,
         action: move |state: &mut ShellState| {
             launcher::select(state, &key, output_name.as_deref(), &activation)
         },
@@ -87,6 +109,8 @@ pub(super) fn focusing_control<
         inner,
         columns: 1,
         pressed,
+        raised: false,
+        context: None,
         action,
     }
 }
@@ -100,6 +124,8 @@ struct ResultView<V, F> {
     inner: V,
     columns: usize,
     pressed: Option<bool>,
+    raised: bool,
+    context: Option<super::app_context::Target>,
     action: F,
 }
 const CONTENT: ViewId = ViewId::new(0);
@@ -114,7 +140,7 @@ impl<V: WidgetView<ShellState>, F: Fn(&mut ShellState) + Send + Sync + 'static>
         let (inner, view_state) = ctx.with_id(CONTENT, |ctx| self.inner.build(ctx, state));
         (
             ctx.with_action_widget(|ctx| {
-                ctx.create_pod(ResultButton {
+                let mut pod = ctx.create_pod(ResultButton {
                     label: label.clone(),
                     text: inner.new_widget.erased().to_pod(),
                     selected: self.selected,
@@ -122,7 +148,17 @@ impl<V: WidgetView<ShellState>, F: Fn(&mut ShellState) + Send + Sync + 'static>
                     columns: self.columns,
                     pressed: self.pressed,
                     navigation: self.entry.is_some(),
-                })
+                    raised: self.raised,
+                    context: self.context.clone(),
+                    input: Default::default(),
+                });
+                if self.raised {
+                    pod.new_widget = pod.new_widget.with_class(theme::RAISED);
+                    if self.selected {
+                        pod.new_widget = pod.new_widget.with_class(theme::SELECTED);
+                    }
+                }
+                pod
             }),
             view_state,
         )
@@ -141,6 +177,13 @@ impl<V: WidgetView<ShellState>, F: Fn(&mut ShellState) + Send + Sync + 'static>
             element.ctx.request_accessibility_update();
         }
         element.widget.target = self.target.clone();
+        if previous.entry.as_ref().map(Entry::id) != self.entry.as_ref().map(Entry::id)
+            || previous.context != self.context
+            || previous.label != self.label
+        {
+            element.widget.input.cancel();
+        }
+        element.widget.context = self.context.clone();
         element.widget.columns = self.columns;
         if previous.pressed != self.pressed {
             element.widget.pressed = self.pressed;
@@ -158,6 +201,13 @@ impl<V: WidgetView<ShellState>, F: Fn(&mut ShellState) + Send + Sync + 'static>
         if previous.selected != self.selected {
             element.widget.selected = self.selected;
             element.ctx.request_accessibility_update();
+            if self.raised {
+                if self.selected {
+                    element.ctx.add_class(theme::SELECTED);
+                } else {
+                    element.ctx.remove_class(theme::SELECTED);
+                }
+            }
             if self.selected {
                 let xilem::masonry::core::WidgetMut { widget, ctx, .. } = &mut element;
                 ctx.mutate_child_later(&mut widget.text, |mut child| {
@@ -172,6 +222,7 @@ impl<V: WidgetView<ShellState>, F: Fn(&mut ShellState) + Send + Sync + 'static>
         ctx: &mut ViewCtx,
         mut element: Mut<'_, Self::Element>,
     ) {
+        element.widget.input.cancel();
         ctx.with_id(CONTENT, |ctx| {
             self.inner.teardown(
                 view_state,
@@ -196,7 +247,11 @@ impl<V: WidgetView<ShellState>, F: Fn(&mut ShellState) + Send + Sync + 'static>
                 state,
             );
         }
-        if message.take_message::<FocusedResult>().is_some() {
+        if let Some(request) = message.take_message::<super::app_context::Request>() {
+            if self.context.as_ref() == Some(&request.target) {
+                super::app_context::request(state, *request);
+            }
+        } else if message.take_message::<FocusedResult>().is_some() {
             if let Some(entry) = &self.entry {
                 search_selection::choose(state, &self.key, &entry.id());
             }
@@ -213,11 +268,28 @@ impl<V: WidgetView<ShellState>, F: Fn(&mut ShellState) + Send + Sync + 'static>
     }
 }
 
-pub(super) fn theme_properties(
-    properties: &mut xilem::masonry::core::DefaultProperties,
-    palette: hearthspace_ui_components::Palette,
-    stack: xilem::masonry::core::PropertyStack,
-) {
-    properties.insert::<widget::ResultButton, _>(palette);
-    properties.insert_stack::<widget::ResultButton>(stack);
+pub(super) fn app_control<V, F>(
+    name: String,
+    selected: bool,
+    context: Option<super::app_context::Target>,
+    inner: V,
+    action: F,
+) -> impl WidgetView<ShellState, Widget: Sized> + use<V, F>
+where
+    V: WidgetView<ShellState>,
+    F: Fn(&mut ShellState) + Send + Sync + 'static,
+{
+    ResultView {
+        key: String::new(),
+        label: name,
+        entry: None,
+        selected,
+        target: Default::default(),
+        inner,
+        columns: 1,
+        pressed: None,
+        raised: true,
+        context,
+        action,
+    }
 }

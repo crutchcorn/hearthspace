@@ -1,7 +1,6 @@
-//! Real task-tree regression with discovery blocked on a disposable FIFO.
+//! Real task-tree regression with the serial desktop worker blocked on IPC.
 use crate::ui::{desktop, launch, launch::tests::worker, state::ShellState};
 use std::{
-    fs,
     io::Write,
     os::unix::net::UnixListener,
     process::{Command, Stdio},
@@ -13,13 +12,13 @@ use std::{
     time::{Duration, Instant},
 };
 
-const CHILD: &str = "HEARTHSPACE_STALLED_DISCOVERY_PROBE";
-const NAME: &str = "ui::desktop::task::tests::launches::stalled_discovery_does_not_delay_launch_acceptance_or_completion";
+const CHILD: &str = "HEARTHSPACE_STALLED_DESKTOP_PROBE";
+const NAME: &str = "ui::desktop::task::tests::launches::stalled_desktop_work_does_not_delay_launch_acceptance_or_completion";
 
 #[test]
-fn stalled_discovery_does_not_delay_launch_acceptance_or_completion() {
+fn stalled_desktop_work_does_not_delay_launch_acceptance_or_completion() {
     if let Some(directory) = std::env::var_os(CHILD) {
-        run_stalled_discovery(std::path::Path::new(&directory));
+        run_stalled_desktop_work(std::path::Path::new(&directory));
         return;
     }
     let directory = tempfile::tempdir().unwrap();
@@ -52,30 +51,21 @@ fn stalled_discovery_does_not_delay_launch_acceptance_or_completion() {
     }
 }
 
-fn run_stalled_discovery(directory: &std::path::Path) {
+fn run_stalled_desktop_work(directory: &std::path::Path) {
     let mut state = ShellState::new(directory.join("control.sock"), vec!["eDP-1".into()]);
     state.favorites.tracks_installed_apps = true;
     state.outputs[0].show_search = true;
     state.outputs[0].query = "editor".into();
-    // Create the blocking catalog entry after initial ShellState discovery.
-    let applications = directory.join("applications");
-    fs::create_dir(&applications).unwrap();
-    let fifo = applications.join("stalled.desktop");
-    rustix::fs::mkfifoat(
-        rustix::fs::CWD,
-        &fifo,
-        rustix::fs::Mode::RUSR | rustix::fs::Mode::WUSR,
-    )
-    .unwrap();
     let listener = UnixListener::bind(&state.command_socket).unwrap();
     listener.set_nonblocking(true).unwrap();
     let stopping = Arc::new(AtomicBool::new(false));
     let stop = stopping.clone();
     let (launched, received) = mpsc::channel();
+    let (blocked, held) = mpsc::channel();
     let server = std::thread::spawn(move || {
         while !stop.load(Ordering::Acquire) {
             match listener.accept() {
-                Ok((stream, _)) => serve(stream, &launched),
+                Ok((stream, _)) => serve(stream, &launched, &blocked),
                 Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
                     std::thread::sleep(Duration::from_millis(1))
                 }
@@ -84,46 +74,48 @@ fn run_stalled_discovery(directory: &std::path::Path) {
         }
     });
     let mut task = worker::Worker::new(desktop::task(), &mut state);
-    // A nonblocking writer succeeds only when real discovery has opened the
-    // FIFO. Keeping it open without data holds that worker in read_to_string.
-    let deadline = Instant::now() + Duration::from_secs(3);
-    let writer = loop {
-        match rustix::fs::openat(
-            rustix::fs::CWD,
-            &fifo,
-            rustix::fs::OFlags::WRONLY | rustix::fs::OFlags::NONBLOCK | rustix::fs::OFlags::CLOEXEC,
-            rustix::fs::Mode::empty(),
-        ) {
-            Ok(fd) => break fs::File::from(fd),
-            Err(rustix::io::Errno::NXIO) if Instant::now() < deadline => {
-                std::thread::sleep(Duration::from_millis(1))
-            }
-            Err(error) => panic!("discovery did not reach FIFO: {error}"),
-        }
-    };
+    // The bounded reader now deliberately skips FIFOs. Hold an actual IPC
+    // acknowledgement instead, at the same serial desktop-worker boundary.
+    // This command has a ten-second budget; the independent launch must finish
+    // while its connection is still waiting for this fixture's acknowledgement.
+    desktop::task::submit(
+        &mut state,
+        desktop::task::Request::Command("desktop-context-background 1".into()),
+    );
+    let (mut held_request, blocked_at) = held
+        .recv_timeout(Duration::from_secs(3))
+        .expect("desktop worker reached the blocked external operation");
     launch::app(&mut state, "eDP-1", "editor.desktop", Some("eDP-1"), false);
     assert!(state.outputs[0].launch_pending.is_some());
     received
         .recv_timeout(Duration::from_secs(2))
-        .expect("launch must reach control while discovery is still blocked");
+        .expect("launch must reach control while desktop work is still blocked");
     task.complete(&mut state);
     assert!(!state.outputs[0].show_search);
     assert!(state.outputs[0].launch_error.is_none());
     assert!(state.outputs[0].launch_pending.is_none());
-    // Release the filesystem boundary only after the launch UI completion.
-    fs::remove_file(&fifo).unwrap();
-    drop(writer);
+    assert!(blocked_at.elapsed() < Duration::from_secs(10));
+    // The worker has received no response yet. Successful acknowledgement on
+    // the still-live connection follows, never precedes, launch UI completion.
+    held_request.write_all(b"ok\n").unwrap();
+    drop(held_request);
     drop(task);
     stopping.store(true, Ordering::Release);
     server.join().unwrap();
 }
 
-fn serve(mut stream: std::os::unix::net::UnixStream, launched: &mpsc::Sender<()>) {
+fn serve(
+    mut stream: std::os::unix::net::UnixStream,
+    launched: &mpsc::Sender<()>,
+    blocked: &mpsc::Sender<(std::os::unix::net::UnixStream, Instant)>,
+) {
     stream
         .set_read_timeout(Some(Duration::from_secs(2)))
         .unwrap();
     let request = worker::read_request(&mut stream);
-    if request.starts_with("launch-app") {
+    if request == "desktop-context-background 1\n" {
+        blocked.send((stream, Instant::now())).unwrap();
+    } else if request.starts_with("launch-app") {
         assert_eq!(
             request,
             format!(
@@ -150,7 +142,8 @@ fn serve(mut stream: std::os::unix::net::UnixStream, launched: &mpsc::Sender<()>
     } else {
         // Initial catalog registration may resume while the task is torn down.
         assert!(
-            request.starts_with("desktop-"),
+            request.starts_with("desktop-")
+                || request.starts_with("canvas-search-desktop-register "),
             "unexpected request: {request}"
         );
         let _ = stream.write_all(b"ok\n");

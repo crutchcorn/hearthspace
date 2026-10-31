@@ -14,9 +14,10 @@ use crate::ui::{command_client, control_worker};
 
 #[path = "worker.rs"]
 mod worker;
-use worker::{Completed, Failure, discover, perform, register};
+use worker::{AppRegistration, Completed, Failure, discover, perform, register};
 
 pub(in crate::ui) enum Request {
+    AppContext(crate::ui::app_context::Request),
     Command(String),
     Accept(u64),
     Context(super::context_actions::Request),
@@ -33,7 +34,7 @@ enum Update {
 #[path = "task_tests.rs"]
 mod tests;
 
-pub(super) fn submit(state: &mut ShellState, request: Request) {
+pub(in crate::ui) fn submit(state: &mut ShellState, request: Request) {
     let accepts_token = matches!(request, Request::Accept(_));
     let menu_generation = match &request {
         Request::Context(request) => Some(request.generation),
@@ -48,6 +49,10 @@ pub(super) fn submit(state: &mut ShellState, request: Request) {
     };
     if failure.is_some() {
         let error = "Desktop items are busy. Try again shortly.".to_string();
+        if let Some(Request::AppContext(request)) = failure {
+            crate::ui::app_context::finished(state, request, Err(error));
+            return;
+        }
         if let Some(generation) = menu_generation {
             super::context::finished(state, generation, Err(error));
         } else if accepts_token {
@@ -81,6 +86,7 @@ fn operations() -> impl View<ShellState, (), xilem::ViewCtx, Element = NoElement
                 let mut previous_snapshot = None;
                 let mut previous_error = None;
                 let mut registered = None;
+                let mut registered_apps = AppRegistration::default();
                 let mut initialized = false;
                 let mut poll = tokio::time::interval(Duration::from_secs(2));
                 poll.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
@@ -93,15 +99,18 @@ fn operations() -> impl View<ShellState, (), xilem::ViewCtx, Element = NoElement
                             let socket = socket.clone();
                             let worker_socket = socket.clone();
                             let known = items.clone();
+                            let worker_catalog = catalog.clone();
+                            let mut apps = std::mem::take(&mut registered_apps);
                             let store = favorites.clone();
                             let mut pending = tokio::task::spawn_blocking(move || {
-                                perform(&worker_socket, request, &known, store, runtime)
+                                let result = perform(&worker_socket, request, &known, &worker_catalog, store, runtime, &mut apps);
+                                (result, apps)
                             });
                             // Large transfers stay serial, but must not hold desktop
                             // snapshots hostage: outside clicks and lock still close menus.
-                            let result = loop {
+                            let (result, apps) = loop {
                                 tokio::select! {
-                                    result = &mut pending => break result.unwrap_or_else(|error| Err(Failure::report(format!("Desktop action failed: {error}")))),
+                                    result = &mut pending => break result.unwrap_or_else(|error| (Err(Failure::report(format!("Desktop action failed: {error}"))), AppRegistration::default())),
                                     _ = refresh.notified() => {
                                         if !refresh_snapshot(&socket, &proxy, &mut previous_snapshot).await { return; }
                                     }
@@ -110,8 +119,12 @@ fn operations() -> impl View<ShellState, (), xilem::ViewCtx, Element = NoElement
                                     }
                                 }
                             };
+                            registered_apps = apps;
                             if let Ok(Completed::Favorite(store) | Completed::Context(_, Ok(super::context_actions::Completed::Closed(Some(store))))) = &result {
                                 favorites = store.clone();
+                            }
+                            if let Ok(Completed::Context(_, Ok(super::context_actions::Completed::GpuPreference(saved)))) = &result {
+                                catalog = saved.clone();
                             }
                             if changed_files { poll.reset_immediately(); }
                             let active = control_worker::session(socket).await.available;
@@ -130,6 +143,22 @@ fn operations() -> impl View<ShellState, (), xilem::ViewCtx, Element = NoElement
                                 discover(catalog, directory.as_deref(), &previous_items)
                             }).await;
                             if let Ok((next_catalog, next_items, mut error)) = source {
+                                // Catalog membership changes even when the tile cap
+                                // leaves the same files on the desktop. Serialize the
+                                // entire registration before taking another request.
+                                let mut apps = std::mem::take(&mut registered_apps);
+                                let worker_catalog = next_catalog.clone();
+                                let worker_socket = socket.clone();
+                                match tokio::task::spawn_blocking(move || {
+                                    let result = apps.sync(&worker_socket, &worker_catalog);
+                                    (apps, result)
+                                }).await {
+                                    Ok((apps, result)) => {
+                                        registered_apps = apps;
+                                        if let Err(message) = result { error = Some(message); }
+                                    }
+                                    Err(failure) => error = Some(format!("Application registration failed: {failure}")),
+                                }
                                 if registered.as_ref() != Some(&next_items) {
                                     let worker_items = next_items.clone();
                                     let worker_socket = socket.clone();
@@ -177,6 +206,9 @@ fn operations() -> impl View<ShellState, (), xilem::ViewCtx, Element = NoElement
 
 fn apply_completed(state: &mut ShellState, completed: Completed, active: bool) {
     match completed {
+        Completed::AppContext(request, result) => {
+            crate::ui::app_context::finished(state, request, result);
+        }
         Completed::Favorite(store) => {
             state.favorites.store = store;
             state.favorites.error = None;
@@ -191,6 +223,10 @@ fn apply_completed(state: &mut ShellState, completed: Completed, active: bool) {
                     state.favorites.store = store;
                     state.favorites.error = None;
                     Ok(super::context_actions::Completed::Closed(None))
+                }
+                Ok(super::context_actions::Completed::GpuPreference(catalog)) => {
+                    state.catalog = catalog.clone();
+                    Ok(super::context_actions::Completed::GpuPreference(catalog))
                 }
                 result => result,
             };

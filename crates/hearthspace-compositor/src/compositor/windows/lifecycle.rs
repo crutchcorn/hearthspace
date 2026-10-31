@@ -33,10 +33,9 @@ impl App {
             // discard Smithay's implicit grab and redirect its held releases.
             self.retain_retiring_window_pointer_grab(id);
         }
-        let retained_context_focus = restore_panel_focus
-            && surface
-                .as_ref()
-                .is_some_and(|surface| self.restore_desktop_context_parent(surface));
+        let retained_context_focus = surface
+            .as_ref()
+            .is_some_and(|surface| self.restore_desktop_context_parent(surface));
         tracing::debug!(window_id = id, ?cause, remove, "retiring window ownership");
         self.remote_capture.retire_toplevel(id);
 

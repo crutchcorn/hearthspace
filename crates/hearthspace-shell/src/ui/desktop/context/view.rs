@@ -49,7 +49,8 @@ pub(super) fn windows(state: &ShellState) -> Vec<WindowView<ShellState>> {
 fn size(state: &ShellState, submenu: bool) -> LogicalSize<f64> {
     let menu = &state.desktop.menu;
     let context = menu.current.as_ref().expect("active desktop menu");
-    let width = if !submenu && matches!(menu.page, Page::Menu) {
+    let gpu = !submenu && rows::gpu_preference(state).is_some();
+    let width = if !submenu && matches!(menu.page, Page::Menu) && !gpu {
         260.0_f64
     } else {
         340.0
@@ -69,7 +70,8 @@ fn size(state: &ShellState, submenu: bool) -> LogicalSize<f64> {
         count as f64 * 34.0 + 12.0
     };
     let error = menu.error.is_some() && (submenu || menu.submenu.is_none());
-    let height = (base_height + if error { 76.0 } else { 0.0 }).min(context.max_height as f64);
+    let height = (base_height + if gpu { 72.0 } else { 0.0 } + if error { 76.0 } else { 0.0 })
+        .min(context.max_height as f64);
     LogicalSize::new(width, height)
 }
 
@@ -130,10 +132,18 @@ pub(super) fn panel(state: &ShellState, submenu: bool) -> impl WidgetView<ShellS
                         target: tray_button::Target::DesktopContext(generation, submenu, index),
                         appearance: Appearance {
                             name: row.name,
+                            description: if row.checked.is_some() {
+                                rows::GPU_HELP.into()
+                            } else {
+                                String::new()
+                            },
+                            toggle: row.checked.map(crate::tray::TrayToggle::Check),
+                            wrap_label: row.checked.is_some(),
                             menu: true,
                             selected,
                             autofocus: selected,
                             enabled: !menu.busy || close,
+                            activate_on_key_release: true,
                             submenu: row.submenu,
                             expanded,
                             ..Default::default()
@@ -171,10 +181,29 @@ pub(super) fn panel(state: &ShellState, submenu: bool) -> impl WidgetView<ShellS
             )
             .status()
         });
+    let gpu_help = (!submenu && rows::gpu_preference(state).is_some()).then(|| {
+        let message = if menu.saving_gpu {
+            format!("Saving graphics preference… {}", rows::GPU_HELP)
+        } else if menu.saved_gpu {
+            format!("Saved. {}", rows::GPU_HELP)
+        } else {
+            rows::GPU_HELP.into()
+        };
+        popup_group::group(
+            "Graphics preference",
+            sized_box(
+                label(message)
+                    .text_size(12.0)
+                    .line_break_mode(LineBreaking::WordWrap),
+            )
+            .padding(10.0.px()),
+        )
+        .status()
+    });
     let panel = material::shell(
         sized_box(
             portal(
-                flex_col((content, error))
+                flex_col((content, gpu_help, error))
                     .cross_axis_alignment(CrossAxisAlignment::Stretch)
                     .gap(4.0.px()),
             )

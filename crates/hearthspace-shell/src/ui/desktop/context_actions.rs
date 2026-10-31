@@ -2,6 +2,7 @@
 use crate::desktop_items::{self, DesktopItem, DesktopItemKind, actions};
 use crate::ui::command_client;
 use hearthspace_common::{desktop_context::DesktopContext, desktop_files::FileClipboard};
+use hearthspace_desktop::app_catalog::AppCatalog;
 use hearthspace_desktop::favorites::FavoriteStore;
 use std::{path::Path, time::Duration};
 
@@ -17,6 +18,7 @@ pub(super) enum Action {
     Trash,
     Properties,
     Favorite(bool),
+    GpuPreference(bool),
     NewFolder(String),
     SelectAll,
     Arrange,
@@ -35,12 +37,14 @@ pub(in crate::ui) struct Request {
 pub(super) enum Completed {
     Closed(Option<FavoriteStore>),
     OpenWith(Vec<actions::OpenWithApp>),
+    GpuPreference(hearthspace_desktop::app_catalog::AppCatalog),
 }
 
 pub(super) fn perform(
     socket: &Path,
     request: Request,
     known: &[DesktopItem],
+    catalog: &AppCatalog,
     mut favorites: FavoriteStore,
     runtime: bool,
 ) -> Result<Completed, String> {
@@ -61,10 +65,7 @@ pub(super) fn perform(
         .ids
         .iter()
         .map(|id| {
-            known
-                .iter()
-                .find(|item| &item.id == id)
-                .cloned()
+            super::context_items::resolve(id, catalog, known)
                 .ok_or("This item is no longer available.".to_owned())
         })
         .collect::<Result<_, _>>()?;
@@ -165,7 +166,7 @@ pub(super) fn perform(
         }
         Action::NewFolder(name) => actions::new_folder(&directory()?, &name)?,
         Action::Trash => actions::trash(&actions::paths(&selected)?)?,
-        Action::Properties => actions::properties(&selected)?,
+        Action::Properties => actions::properties(&selected, catalog)?,
         Action::Favorite(add) => {
             let DesktopItemKind::App { app_id, .. } = &one()?.kind else {
                 return Err("Only applications can be favorites.".into());
@@ -180,6 +181,16 @@ pub(super) fn perform(
             }
             .map_err(|e| e.to_string())?;
             return Ok(Completed::Closed(Some(favorites)));
+        }
+        Action::GpuPreference(enabled) => {
+            let DesktopItemKind::App { app_id, .. } = &one()?.kind else {
+                return Err("Select an application to change its graphics preference.".into());
+            };
+            hearthspace_desktop::app_catalog::set_app_prefers_non_default_gpu(app_id, enabled)
+                .map_err(|error| format!("Could not save graphics preference: {error}. Select the option again to retry."))?;
+            return Ok(Completed::GpuPreference(
+                hearthspace_desktop::app_catalog::AppCatalog::load(),
+            ));
         }
         Action::SelectAll => command_client::send_command(
             socket,

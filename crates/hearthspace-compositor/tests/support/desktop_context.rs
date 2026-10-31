@@ -8,6 +8,8 @@ use super::{
 use hearthspace_common::desktop_context;
 use serde_json::{Value, json};
 
+#[path = "desktop_context/apps.rs"]
+mod apps;
 #[path = "desktop_context/submenus.rs"]
 mod submenus;
 
@@ -220,6 +222,51 @@ fn desktop_context_keyboard_escape_rejects_late_and_stale_menu_surfaces() {
     client.destroy(surface);
     assert_eq!(client.focus(), Some(items[1]));
     finish(&mut compositor);
+}
+
+fn app_icon_teardown_before_close(unmap_first: bool) {
+    let _guard = headless_test_guard();
+    let (mut compositor, mut client, _, _) = fixture();
+    let icon = client.add(
+        hearthspace_common::desktop_item_app_id("app:test.desktop"),
+        (100, 108),
+        (0, 0),
+        [0, 255, 0, 255],
+    );
+    action(
+        &compositor,
+        "desktop-register {\"offset\":0,\"ids\":[\"file:61\",\"file:62\",\"app:test.desktop\"]}",
+    );
+    right_click(&compositor, point(&compositor, "app:test.desktop"));
+    let menu = context(&compositor);
+    assert_eq!(menu["ids"], json!(["app:test.desktop"]));
+    let surface = map_menu(&mut client, &menu);
+    assert_eq!(client.focus(), Some(surface));
+    if unmap_first {
+        client.unmap(surface);
+    } else {
+        client.destroy(surface);
+    }
+    assert_eq!(client.focus(), Some(icon));
+    assert!(context(&compositor).is_null());
+    // A saved graphics preference can delay close IPC behind the worker.
+    close(&compositor, &menu);
+    assert_eq!(client.focus(), Some(icon));
+    if unmap_first {
+        client.destroy(surface);
+        assert_eq!(client.focus(), Some(icon));
+    }
+    finish(&mut compositor);
+}
+
+#[test]
+fn desktop_context_destroy_before_close_restores_app_icon() {
+    app_icon_teardown_before_close(false);
+}
+
+#[test]
+fn desktop_context_unmap_before_close_restores_app_icon() {
+    app_icon_teardown_before_close(true);
 }
 
 #[test]

@@ -233,6 +233,13 @@ impl App {
                 } else if let Some(source) = app.window_switcher_source() {
                     app.shortcuts
                         .filter_switcher(code, state, modifiers, symbol, source)
+                } else if state == KeyState::Pressed
+                    && symbol == keysyms::KEY_Escape
+                    && app.desktop_context_takes_escape()
+                {
+                    FilterResult::Intercept(app.shortcuts.intercepted.insert(code).then_some(
+                        Shortcut::Desktop(crate::compositor::desktop::Action::CancelContext),
+                    ))
                 } else if shell_panel_focused {
                     app.shortcuts
                         .filter_shell_panel(code, state, modifiers, symbol, available)

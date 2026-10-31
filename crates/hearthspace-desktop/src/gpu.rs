@@ -107,7 +107,7 @@ fn select_environment(
         return Err(io::Error::other("Invalid GPU launch environment"));
     }
     let mut result = Vec::new();
-    for pair in values.chunks_exact(2) {
+    for pair in values.as_chunks::<2>().0 {
         let (key, value) = (&pair[0], &pair[1]);
         if key.is_empty()
             || key.len() > 256
