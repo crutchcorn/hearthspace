@@ -20,6 +20,50 @@ Keep detailed captures and logs with the issue or test artifact. Use this page
 as the single inventory of named test systems; feature guides describe how to
 repeat the checks.
 
+## Native cursor and pointer zoom, 2026-10-31
+
+The pointer-anchored Super+wheel change at `76711670` and native cursor repair
+at `62a891c8` passed the complete format, lint, all-targets debug build and
+Rust suite: 2,510 passed, 26 ignored, with 45 new regressions. Python reported
+720 passes and one affinity-dependent skip; that case passed separately with
+two permitted CPUs. The 22 ignored transfer-cache fixtures also passed in a
+separate explicit run. Four other Rust ignores remain unchanged. Dependency
+checks passed with the same 74 categorized warnings as the preceding run.
+
+The completed `full-2` run used one permitted logical CPU and serial commands;
+its source endpoint manifests match. An earlier unrestricted run was stopped
+after a sampled Tctl of 90.625°C and is not passing evidence. GLES damage and
+headless interaction tests used the RTX 3070 Ti's NVIDIA renderer despite
+requested software-rendering variables. They validate pixels, buffer-age
+history, input ownership and animation geometry, not physical cursor smoothness.
+
+Native attempts used the GPD on kernel `7.0.0-42-generic`, NVIDIA `595.99.02`,
+AMD eDP-1 at 2560×1600, and NVIDIA DP-8/DP-9 at 3840×2160 and 2560×3200.
+All three outputs used scale 1 and approximately 60 Hz. GNOME's recorded modes
+also used approximately 60 Hz; this is not a measured frame-rate comparison.
+The workload injected mouse motion and dragging through the control socket.
+
+The debug baseline stopped during setup at 86.125°C. A subsequent guarded
+optimization-level-3 compositor build completed with a sampled peak of 69.25°C,
+verified cleanup, and an independently frozen executable. Native runs used that
+executable with separately identified historical debug companion binaries.
+The first completed four cursor phases on eDP-1, then stopped at 85°C after
+14.56 seconds while processing a capture on DP-8. The second constrained only
+the diagnostic runner to CPU 4; it stopped at 85.625°C after 13 seconds, during
+the second eDP-1 phase. Live compositor executable verification completed in
+both runs. These observations do not identify the source of the temperature
+rise or establish a responsiveness improvement.
+
+Both optimized attempts restored tty2 and removed the owned runtime and
+recorded processes. Each log nevertheless retains two DRM previous-state
+restoration errors during teardown. NVIDIA cursor phases and native
+pointer-zoom acceptance remain incomplete; further native runs were withheld
+after the repeated thermal stops. No physical-jitter, GNOME-relative performance,
+or complete native acceptance claim follows from these attempts. Evidence is
+retained under the persistent `20261031-cursor-smoothness` investigation directory,
+including `full-2`, `focused-3`, `release-1`, `native-cursor-optimized-1` and
+`native-cursor-optimized-2`.
+
 ## Hybrid GPU responsiveness investigation, 2026-10-31
 
 After reboot, the same three-output GPD setup selected AMD as its scene GPU.
