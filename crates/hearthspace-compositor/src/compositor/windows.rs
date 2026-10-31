@@ -24,6 +24,7 @@ mod bounds;
 mod control_osd;
 mod geometry;
 mod hit_testing;
+pub(super) mod identity;
 mod lifecycle;
 mod ordering;
 mod power_confirmation;

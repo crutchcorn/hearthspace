@@ -24,15 +24,17 @@ the canvas currently visible on screen.
 | Navigation | How |
 | --- | --- |
 | Pan with a keyboard | **Super+arrow keys**. |
-| Pan with a mouse | Choose **Pan canvas** from the first Canvas tools button, then drag empty canvas. |
+| Pan with a mouse | Hold **❖** and left-drag empty canvas. |
 | Pan with touch | Slide three fingers on a touchpad or touchscreen. |
-| Zoom with a mouse | Hold **Super** while scrolling. |
+| Zoom with a mouse | Hold **❖** while scrolling. |
 | Zoom with touch | Pinch with three fingers. |
 | Change zoom from the map | Use its minus and plus buttons. |
 
-Press **❖ + H** to choose Pan canvas, or **❖ + V** to return to desktop
-selection. **❖** means Meta, also called Super or the Windows key. The
-[canvas map](CANVAS_MAP.md) provides another way to pan by dragging its
+**❖** means Meta, also called Super or the Windows key. Hold it before starting
+the drag; releasing the mouse button ends the pan, and your selected tool stays
+unchanged. For repeated panning without holding a key, choose **Pan canvas**
+from Canvas tools or press **❖ + H**. Press **❖ + V** to return to desktop
+selection. The [canvas map](CANVAS_MAP.md) provides another way to pan by dragging its
 highlighted viewport.
 
 Panning moves your view; it doesn't rearrange windows. Zooming out helps you see

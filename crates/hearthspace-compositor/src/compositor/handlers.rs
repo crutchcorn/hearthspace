@@ -119,6 +119,7 @@ impl XdgShellHandler for App {
         let id = self.windows.insert_new(|id| ManagedWindow {
             id,
             surface: ManagedSurface::Xdg(surface.clone()),
+            identity: Default::default(),
             position,
             kind,
             shell_output_name: shell_output_name.clone(),
@@ -380,6 +381,18 @@ impl DmabufHandler for App {
         &mut self.dmabuf_state
     }
 
+    #[cfg(feature = "udev")]
+    fn new_surface_feedback(
+        &mut self,
+        surface: &WlSurface,
+        _global: &DmabufGlobal,
+    ) -> Option<smithay::wayland::dmabuf::DmabufFeedback> {
+        // Feedback can precede a role or mapping. Track the protocol resource,
+        // rather than only managed windows, so GPU changes reach every client.
+        self.dmabuf_feedback_surfaces.push(surface.downgrade());
+        None
+    }
+
     fn dmabuf_imported(
         &mut self,
         _global: &DmabufGlobal,
@@ -459,6 +472,14 @@ impl CompositorHandler for App {
                 error!(%error, "failed to install dmabuf commit blocker source");
             }
         });
+    }
+
+    #[cfg(feature = "udev")]
+    fn destroyed(&mut self, surface: &WlSurface) {
+        // Also runs on client disconnect. Retire feedback registrations even
+        // when the scene GPU never changes, including nested/headless sessions.
+        self.dmabuf_feedback_surfaces
+            .retain(|tracked| tracked.id() != surface.id() && tracked.is_alive());
     }
 
     fn commit(&mut self, surface: &WlSurface) {

@@ -1,6 +1,7 @@
 //! Isolated child environment exercises preparation without launching user apps.
 use super::*;
 use std::{fs, path::PathBuf, process::Command};
+mod gpu;
 const CHILD: &str =
     "compositor::shell_integration::launch::apps::tests::prepare_in_isolated_environment";
 
@@ -48,6 +49,7 @@ fn launcher_preparation_preserves_terminal_settings_and_activation_only_entries(
         "snap.desktop",
         "[Desktop Entry]\nType=Application\nName=Snap\nExec=/snap/bin/firefox\nX-SnapInstanceName=firefox\n",
     );
+    gpu::write_entries(&root.path().join("data/applications"));
     fs::write(
         root.path().join("config/xdg-terminals.list"),
         "terminal.desktop\n",
@@ -168,4 +170,5 @@ fn prepare_in_isolated_environment() {
         1
     );
     assert!(!root.join("runtime/app-scopes").exists());
+    gpu::assert_preparation(&root);
 }

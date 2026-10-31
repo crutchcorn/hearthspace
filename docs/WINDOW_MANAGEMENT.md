@@ -177,6 +177,11 @@ actions return an error until the popup is dismissed.
 
 ## Pan canvas with a mouse
 
+Hold **❖** and left-drag empty canvas to pan temporarily. Press the modifier
+before the mouse button; your selected canvas tool stays unchanged. The drag
+continues if you release ❖ first and ends when you release the mouse button.
+**❖ + Scroll** zooms the canvas.
+
 Open the first Canvas tools button and choose **Pan canvas**, or press
 **❖ + H**. Drag empty canvas or a canvas desktop icon to move your view. The
 open hand closes while you drag. Windows and desktop items keep their canvas
@@ -188,7 +193,7 @@ their normal interaction. Plain **H** still types into an application. Choose
 again.
 
 Release the mouse button to stop. **Escape** stops an active pan at its current
-position and leaves Pan selected; held buttons must be released before another
+position and keeps your selected tool; held buttons must be released before another
 drag can start. Switching tools, losing the session, or entering a modal operation
 also cancels the drag without moving back to an obsolete view.
 

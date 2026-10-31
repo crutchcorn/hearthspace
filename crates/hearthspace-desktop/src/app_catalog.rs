@@ -1,20 +1,39 @@
-use std::{collections::HashSet, fs, path::PathBuf};
+use std::{collections::HashSet, path::PathBuf};
 
 use tracing::debug;
 
 mod desktop_entry;
 mod exec;
+pub(crate) mod gpu_preference;
 mod matching;
 mod paths;
 mod search;
 mod spawn;
 mod terminal;
 
+pub use gpu_preference::set_app_prefers_non_default_gpu;
 pub use spawn::launch_command;
 pub use spawn::{
     reap_child, spawn_argv, spawn_argv_with_env, spawn_argv_with_options,
     spawn_argv_with_wayland_display,
 };
+
+/// Resolve current XDG precedence without GIO's process-wide directory cache.
+/// MIME handlers can have NoDisplay=true, so this must not use the visible catalog.
+pub(crate) fn desktop_file_by_id(id: &str) -> Option<PathBuf> {
+    for directory in paths::xdg_data_dirs() {
+        let applications = directory.join("applications");
+        let Ok(files) = desktop_entry::desktop_files_under(&applications) else {
+            continue;
+        };
+        if let Some(path) = files.into_iter().find(|path| {
+            desktop_entry::desktop_entry_id(&applications, path).as_deref() == Some(id)
+        }) {
+            return Some(path);
+        }
+    }
+    None
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DesktopApp {
@@ -25,6 +44,8 @@ pub struct DesktopApp {
     pub keywords: Vec<String>,
     pub exec: String,
     pub dbus_activatable: bool,
+    /// A next-start hint; false leaves ordinary application GPU selection intact.
+    pub prefers_non_default_gpu: bool,
     pub icon: Option<String>,
     pub terminal: bool,
     pub path: PathBuf,
@@ -67,7 +88,7 @@ impl AppCatalog {
                 }
                 seen_ids.insert(id.clone());
 
-                let Ok(contents) = fs::read_to_string(&path) else {
+                let Ok(Some(contents)) = desktop_entry::read_desktop_file(&path) else {
                     continue;
                 };
                 let Some(app) = DesktopApp::from_desktop_entry(id, path, &contents) else {

@@ -13,6 +13,7 @@ use super::{desktop_item, state::ShellState};
 mod artwork;
 pub(in crate::ui) mod context;
 mod context_actions;
+mod context_items;
 #[path = "desktop/events.rs"]
 mod events;
 #[path = "desktop/task.rs"]

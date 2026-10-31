@@ -409,7 +409,7 @@ impl NodeWrapper<'_> {
     }
 
     fn supports_action(&self) -> bool {
-        self.0.is_clickable(&filter)
+        self.actions().next().is_some()
     }
 
     fn supports_component(&self) -> bool {
@@ -464,19 +464,26 @@ impl NodeWrapper<'_> {
         }
     }
 
+    fn actions(&self) -> impl Iterator<Item = (Action, &'static str)> + '_ {
+        // Keep the default click action first when both actions are supported.
+        [
+            (Action::Click, "click"),
+            (Action::ShowContextMenu, "showContextMenu"),
+        ]
+        .into_iter()
+        .filter(|(action, _)| self.0.supports_action(*action, &filter))
+    }
+
+    fn action_at_index(&self, index: i32) -> Option<(Action, &'static str)> {
+        self.actions().nth(usize::try_from(index).ok()?)
+    }
+
     fn n_actions(&self) -> i32 {
-        if self.0.is_clickable(&filter) { 1 } else { 0 }
+        self.actions().count() as i32
     }
 
     fn get_action_name(&self, index: i32) -> String {
-        if index != 0 {
-            return String::new();
-        }
-        String::from(if self.0.is_clickable(&filter) {
-            "click"
-        } else {
-            ""
-        })
+        self.action_at_index(index).map_or("", |(_, name)| name).into()
     }
 
     fn raw_bounds_and_transform(&self) -> (Option<Rect>, Affine) {
@@ -978,15 +985,24 @@ impl PlatformNode {
     }
 
     pub fn do_action(&self, index: i32) -> Result<bool> {
-        if index != 0 {
+        if index < 0 {
             return Ok(false);
         }
-        self.do_action_internal(self.id, |_, _, target_node, target_tree| ActionRequest {
-            action: Action::Click,
+        let context = self.upgrade_context()?;
+        let tree = context.read_tree();
+        let node = tree.state().node_by_id(self.id).ok_or(Error::Defunct)?;
+        let Some((action, _)) = NodeWrapper(&node).action_at_index(index) else {
+            return Ok(false);
+        };
+        let (target_node, target_tree) = node.locate();
+        let request = ActionRequest {
+            action,
             target_tree,
             target_node,
             data: None,
-        })?;
+        };
+        drop(tree);
+        context.do_action(request);
         Ok(true)
     }
 

@@ -11,3 +11,4 @@ pub mod artwork;
 pub mod environment;
 pub mod favorites;
 pub mod file_launch;
+pub mod gpu;

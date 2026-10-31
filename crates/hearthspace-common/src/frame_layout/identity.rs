@@ -59,6 +59,8 @@ pub fn layout_tooltip_from_app_id(app_id: &str) -> Option<(u64, Option<String>)>
 }
 
 fn parse_session_app_id(prefix: &str, app_id: &str) -> Option<(u64, Option<String>)> {
+    // Reject other surface families before scanning their encoded output names.
+    app_id.strip_prefix(prefix)?.strip_prefix('.')?;
     let (base, session) = app_id.rsplit_once(".session-")?;
     let session = session.parse::<u64>().ok().filter(|id| *id > 0)?;
     Some((session, parse_output(prefix, base)?))
@@ -85,6 +87,8 @@ fn target_app_id(base: &str, output: Option<&str>, id: &str) -> String {
 }
 
 fn parse_target_app_id(base: &str, app_id: &str) -> Option<(Option<String>, String)> {
+    // The delimiter also distinguishes frame-group from frame-group-grip.
+    app_id.strip_prefix(base)?.strip_prefix('.')?;
     let (prefix, id) = app_id.rsplit_once(".target-")?;
     if id.is_empty() || id.len() > 2048 {
         return None;

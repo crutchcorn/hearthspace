@@ -115,6 +115,9 @@ impl CalloopData {
         if !text.starts_with("desktop-") {
             return None;
         }
+        if let Some(reply) = self.run_desktop_app_context_command(text) {
+            return Some(reply);
+        }
         if let Some(reply) = self.run_desktop_context_command(text) {
             return Some(reply);
         }
@@ -161,6 +164,17 @@ impl CalloopData {
             match serde_json::from_str::<Registration>(registration) {
                 Ok(value) => app.register_desktop_files(value.offset, value.entries),
                 Err(_) => Err("invalid desktop file registration".into()),
+            }
+        } else if let Some(registration) = text.strip_prefix("desktop-app-register ") {
+            #[derive(serde::Deserialize)]
+            #[serde(deny_unknown_fields)]
+            struct Registration {
+                offset: usize,
+                ids: Vec<String>,
+            }
+            match serde_json::from_str::<Registration>(registration) {
+                Ok(value) => app.register_desktop_app_ids(value.offset, value.ids),
+                Err(_) => Err("invalid application registration".into()),
             }
         } else if let Some(registration) = text.strip_prefix("desktop-register ") {
             #[derive(serde::Deserialize)]

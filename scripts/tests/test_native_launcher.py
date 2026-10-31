@@ -50,9 +50,6 @@ class NativeServiceTests(unittest.TestCase):
                 patch.object(service.os, "geteuid", return_value=0),
                 patch.dict(os.environ, {"SUDO_UID": str(os.getuid())}),
                 patch.object(
-                    service, "unit_info", return_value={"ActiveState": "failed"}
-                ),
-                patch.object(
                     recovery, "recover", return_value={"cleanup": {"complete": False}}
                 ),
                 patch.object(service, "choose_vt") as claim,

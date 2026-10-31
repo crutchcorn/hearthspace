@@ -5,16 +5,18 @@ use xilem::masonry::{
     accesskit::{Action, Node, Role, Toggled},
     core::{
         AccessCtx, AccessEvent, ActionCtx, ChildrenIds, ErasedAction, EventCtx, LayoutCtx,
-        MeasureCtx, PaintCtx, PointerButton, PointerButtonEvent, PointerEvent, PropertiesMut,
-        PropertiesRef, RegisterCtx, TextEvent, Update, UpdateCtx, Widget, WidgetId, WidgetMut,
-        WidgetPod,
-        keyboard::{Key, NamedKey},
+        MeasureCtx, PaintCtx, PointerEvent, PropertiesMut, PropertiesRef, RegisterCtx, TextEvent,
+        Update, UpdateCtx, Widget, WidgetId, WidgetMut, WidgetPod,
     },
     imaging::Painter,
     kurbo::{Axis, Point, Size, Stroke},
     layout::{LayoutSize, LenReq, Length},
     widgets::ButtonPress,
 };
+
+#[path = "search_result_input.rs"]
+mod input;
+pub(super) use input::Input;
 
 #[derive(Debug)]
 pub(super) struct Reveal;
@@ -28,6 +30,9 @@ pub(super) struct ResultButton {
     pub(super) columns: usize,
     pub(super) pressed: Option<bool>,
     pub(super) navigation: bool,
+    pub(super) raised: bool,
+    pub(super) context: Option<crate::ui::app_context::Target>,
+    pub(super) input: Input,
 }
 impl ResultButton {
     pub(super) fn child_mut<'a>(this: &'a mut WidgetMut<'_, Self>) -> WidgetMut<'a, dyn Widget> {
@@ -53,27 +58,10 @@ impl Widget for ResultButton {
         _: &mut PropertiesMut<'_>,
         event: &PointerEvent,
     ) {
-        match event {
-            PointerEvent::Down(PointerButtonEvent {
-                button: None | Some(PointerButton::Primary),
-                ..
-            }) => {
-                ctx.capture_pointer();
-                ctx.request_render();
-                if let Some(target) = *self.target.lock().unwrap() {
-                    ctx.set_focus(target);
-                } else {
-                    ctx.request_focus();
-                }
-            }
-            PointerEvent::Up(PointerButtonEvent { button, .. })
-                if ctx.is_active() && ctx.is_hovered() =>
-            {
-                ctx.submit_action::<ButtonPress>(ButtonPress { button: *button });
-                ctx.request_render();
-            }
-            _ => {}
-        }
+        self.pointer_input(ctx, event);
+    }
+    fn on_anim_frame(&mut self, ctx: &mut UpdateCtx<'_>, _: &mut PropertiesMut<'_>, interval: u64) {
+        self.touch_frame(ctx, interval);
     }
     fn on_text_event(
         &mut self,
@@ -81,42 +69,7 @@ impl Widget for ResultButton {
         _: &mut PropertiesMut<'_>,
         event: &TextEvent,
     ) {
-        if let TextEvent::Keyboard(event) = event {
-            if self.navigation
-                && event.state.is_down()
-                && !event.modifiers.ctrl()
-                && !event.modifiers.alt()
-                && !event.modifiers.meta()
-                && !event.modifiers.shift()
-                && let Key::Named(
-                    key @ (NamedKey::ArrowDown
-                    | NamedKey::ArrowUp
-                    | NamedKey::ArrowLeft
-                    | NamedKey::ArrowRight),
-                ) = event.key
-            {
-                if let Some(target) = *self.target.lock().unwrap() {
-                    ctx.set_focus(target);
-                }
-                let delta = match key {
-                    NamedKey::ArrowDown => self.columns as i32,
-                    NamedKey::ArrowUp => -(self.columns as i32),
-                    NamedKey::ArrowLeft => -1,
-                    _ => 1,
-                };
-                ctx.submit_untyped_action(Box::new(SelectionStep(delta)));
-                ctx.set_handled();
-            } else if event.state.is_up()
-                && (event.key == Key::Named(NamedKey::Enter)
-                    || event.key == Key::Character(" ".into()))
-            {
-                if let Some(target) = *self.target.lock().unwrap() {
-                    ctx.set_focus(target);
-                }
-                ctx.submit_action::<ButtonPress>(ButtonPress { button: None });
-                ctx.set_handled();
-            }
-        }
+        self.text_input(ctx, event);
     }
     fn on_access_event(
         &mut self,
@@ -124,14 +77,25 @@ impl Widget for ResultButton {
         _: &mut PropertiesMut<'_>,
         event: &AccessEvent,
     ) {
-        if event.action == Action::Click {
+        if event.action == Action::ShowContextMenu && self.context.is_some() {
+            ctx.request_focus();
+            self.open_context(ctx, crate::ui::app_context::Intent::Accessibility);
+        } else if event.action == Action::Click {
             if let Some(target) = *self.target.lock().unwrap() {
                 ctx.set_focus(target);
             }
             ctx.submit_action::<ButtonPress>(ButtonPress { button: None });
         }
     }
+
     fn update(&mut self, ctx: &mut UpdateCtx<'_>, _: &mut PropertiesMut<'_>, event: &Update) {
+        if matches!(
+            event,
+            Update::DisabledChanged(true) | Update::StashedChanged(true)
+        ) || (matches!(event, Update::FocusChanged(false)) && !ctx.is_active())
+        {
+            self.input.cancel();
+        }
         if matches!(event, Update::FocusChanged(_) | Update::HoveredChanged(_)) {
             ctx.request_render();
         }
@@ -193,6 +157,10 @@ impl Widget for ResultButton {
         props: &PropertiesRef<'_>,
         painter: &mut Painter<'_>,
     ) {
+        if self.raised {
+            // Masonry paints the border/background from the raised selectors.
+            return;
+        }
         let palette = *props.get::<components::Palette>(ctx.property_cache());
         let bounds = ctx.border_box().inset(-1.0).to_rounded_rect(10.0);
         if ctx.is_hovered() && !self.selected && self.pressed != Some(true) {
@@ -219,6 +187,13 @@ impl Widget for ResultButton {
             node.set_selected(self.selected);
         }
         node.add_action(Action::Click);
+        if self.context.is_some() {
+            node.add_action(Action::ShowContextMenu);
+            node.set_has_popup(xilem::masonry::accesskit::HasPopup::Menu);
+            node.set_description(
+                "Open the app menu with a secondary click, touch and hold, or Shift+F10.",
+            );
+        }
     }
     fn accepts_focus(&self) -> bool {
         true

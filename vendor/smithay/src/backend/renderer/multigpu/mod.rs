@@ -80,6 +80,9 @@ use wayland_server::protocol::{wl_buffer, wl_shm, wl_surface::WlSurface};
 #[cfg(all(feature = "backend_gbm", feature = "backend_egl", feature = "renderer_gl"))]
 pub mod gbm;
 
+mod cache;
+pub use cache::TransferCache;
+
 /// Tracks available gpus from a given [`GraphicsApi`]
 #[derive(Debug)]
 pub struct GpuManager<A: GraphicsApi> {
@@ -266,6 +269,7 @@ impl<A: GraphicsApi> GpuManager<A> {
     ///
     /// See [`Renderer::invalidate_caches`]. Beyond the per-device caches this also drops the
     /// buffers cached for copying between a render- and a target-node.
+    /// Caller-owned [`TransferCache`]s are unaffected and must be cleared separately.
     ///
     /// Invalidation is best-effort: every device is attempted even if one of them fails, every
     /// failure is logged, and the first error is returned.

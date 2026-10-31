@@ -114,6 +114,56 @@ basis, regression boundary, installation, and removal conditions.
   Preserve the separate adapter-order patch until its own removal condition is
   met.
 
+## AccessKit AT-SPI context-menu actions
+
+- **Dependency:** the same vendored `accesskit_atspi_common` 0.18.1, published
+  from upstream revision
+  [`f40dfc01a0c0e76de535969f82fb35e19513737d`](https://github.com/AccessKit/accesskit/tree/f40dfc01a0c0e76de535969f82fb35e19513737d/platforms/atspi-common).
+- **Patch:** [expose and dispatch context-menu actions](accesskit-atspi-context-menu.patch),
+  a local fix in `src/node.rs` with inherited-action registration refresh in
+  `src/adapter.rs` and `src/adapter/filter_updates.rs`. Apply it after the
+  clipped-node patch. Paths are relative to the repository root; existing
+  vendored formatting and repairs are preserved.
+- **Reason:** shell app controls advertise and handle AccessKit's
+  `ShowContextMenu`, but the AT-SPI adapter lists only `click`, exposes the Action
+  interface only for clickable nodes, and always dispatches `Click` for index
+  zero. Assistive technology therefore cannot request these context menus.
+  Also, changing only a parent's advertised child actions does not update the
+  unchanged children's registered interfaces, leaving the Action interface
+  absent after addition or stale after the last inherited action is removed.
+- **Behavior:** one supported-action mapping drives interface exposure, action
+  count, names, and dispatch. `click` keeps index zero when present;
+  `showContextMenu` follows it, or takes index zero on context-menu-only nodes.
+  Preserve the consumer's parent-advertised child actions. Resolve the current
+  action and original tree/node target under one tree read, releasing the read
+  before calling the action handler. Unsupported, negative, and out-of-range
+  indices return false without sending a request. Changes to parent-advertised
+  Click or ShowContextMenu refresh direct children in the old and new filtered
+  trees, including children below transparent containers. Reuse the existing
+  update deduplication and clipping rules; unrelated parent changes do not
+  trigger this refresh, and clipped subtrees remain excluded.
+- **Upstream:** checked on 2026-10-30 against current main
+  [`f3026222559c7f5f46d8f25cb7404de68eb149f0`](https://github.com/AccessKit/accesskit/blob/f3026222559c7f5f46d8f25cb7404de68eb149f0/adapters/atspi-common/src/node.rs).
+  Its action enumeration, interface test, and dispatch retain the same
+  click-only limitation. Searches of upstream issues and pull requests for
+  `ShowContextMenu` and context menus found no matching AT-SPI fix; no upstream
+  report has been published for this repair.
+- **Verification:**
+  `cargo test --locked -p hearthspace-shell --test accesskit_context_menu --test accesskit_adapter_order --test accesskit_clipped_nodes`
+  exercises the real adapter action API and `ActionHandler`, including click
+  plus context menu, either action alone, no mapped actions, invalid indices,
+  removal/reindexing/re-registration, parent-only child-action changes,
+  transparent containers, inherited actions entering a clip, and request
+  targets in a grafted tree. The new regression crosses action
+  enumeration and dispatch; it does not inject widget action requests or
+  establish D-Bus/native acceptance. On the real private AT-SPI bus, enumerate
+  the shell app control's actions, invoke `showContextMenu` by its enumerated
+  index, and verify that its menu opens. Also verify default click behavior.
+- **Removal:** remove this patch after a compatible upstream release passes
+  the action regressions and real private-bus context-menu acceptance without
+  it. Preserve the adapter-order and clipped-node repairs until their separate
+  removal conditions are met.
+
 See [vendored provenance and refresh steps](../vendor/accesskit_atspi_common/PROVENANCE.md).
 
 ## Xilem initial window properties
@@ -296,6 +346,103 @@ See [vendored provenance and refresh steps](../vendor/accesskit_atspi_common/PRO
   Remove this patch file and ledger entry, preserving the vendored Smithay copy
   and its separate XSettings and X11 move/resize patches until their own removal
   conditions are met.
+
+## Smithay dmabuf feedback format updates
+
+- **Dependency:** the same vendored Smithay 0.7.0 at revision
+  [`5c2ba413`](https://github.com/Smithay/smithay/tree/5c2ba4132556a08abc70ae1771d275ec2cfc031f).
+- **Patch:** [share updated dmabuf validation formats](smithay-dmabuf-feedback-formats.patch),
+  confined to `src/wayland/dmabuf/{mod.rs,dispatch.rs}` with no public API change.
+- **Reason:** `set_default_feedback` advertised new GPU formats while existing
+  bound globals and buffer params retained an immutable creation whitelist.
+  A client following the new feedback could receive fatal `InvalidFormat`
+  before the compositor's import handler ran. Replacing the advertised global
+  alone cannot repair existing resources.
+- **Behavior:** share validation formats through a mutex and extend them before
+  publishing new default feedback. Retain earlier advertised formats so stale
+  allocations reach the import handler, which still decides compatibility.
+  New legacy bindings receive only the current main-tranche formats. Never
+  advertised Fourcc values remain protocol errors. `params.create` import
+  failures remain nonfatal; `create_immed` retains its protocol-defined fatal
+  failure behavior. Hearthspace separately updates all live surface-feedback
+  states through Smithay's existing API, including roleless surfaces.
+- **Upstream:** checked on 2026-10-30. Current upstream
+  [feedback state](https://github.com/Smithay/smithay/blob/master/src/wayland/dmabuf/mod.rs)
+  and [request dispatch](https://github.com/Smithay/smithay/blob/master/src/wayland/dmabuf/dispatch.rs)
+  retain the immutable whitelist. No matching upstream fix was found and no
+  report has been published.
+- **Verification:** run
+  `cargo test --locked -p hearthspace-compositor --lib --features udev compositor::udev::gpu::feedback::tests -- --test-threads=1`.
+  These real Wayland regressions dispatch through Hearthspace's actual `App`,
+  reusing its existing service-free test constructor. They cover disjoint GPU
+  formats, new Fourcc values on already bound globals and preexisting params,
+  nonfatal stale allocations,
+  current-only legacy advertisement, version 4/6 surface feedback, destruction
+  and client-disconnect cleanup without GPU changes, empty-format rejection,
+  and the no-GPU startup global upgrade. Only GPU import is replaced at the
+  pending-import drain with a recorded rejection; these checks do not establish
+  native GPU import or presentation.
+- **Removal:** adopt a compatible upstream revision that passes these protocol
+  regressions without this patch, then remove its source patch and ledger entry.
+  Keep the other Smithay repairs and vendoring until their separate removal
+  conditions are met. Retain Hearthspace's surface-feedback refresh adapter.
+
+## Smithay caller-owned multi-GPU intermediates
+
+- **Dependency:** the same vendored Smithay 0.7.0 at revision
+  [`5c2ba413`](https://github.com/Smithay/smithay/tree/5c2ba4132556a08abc70ae1771d275ec2cfc031f).
+- **Patch:** [caller-owned transfer cache](smithay-multigpu-transfer-cache.patch),
+  an independent local repair confined to `src/backend/renderer/multigpu/`.
+  Paths in the patch are relative to `vendor/smithay`; existing patches and
+  notices remain intact.
+- **Reason:** one manager cache slot per GPU pair alternates allocation sizes
+  when two differently sized outputs share that pair. The measured baseline at
+  Hearthspace `aba99007` recreated the intermediate on 1,598 output-switch
+  transfers, while 111 consecutive transfers to one output reused it. The
+  repair retains one intermediate per live output, without a retirement list.
+  Those baseline observations are not a measurement of this repair.
+- **Behavior:** opaque, non-Clone `TransferCache` owns the intermediate and its
+  direct/CPU-copy choice, bound to both DRM nodes and renderer context IDs.
+  `MultiRenderer::with_transfer_cache` selects that cache's borrowed slot.
+  Existing callers keep the manager pair cache; both paths use the existing
+  size/Fourcc invalidation and the same allocation, negotiation, drawing, and
+  fallback implementation. Clearing the manager does not clear caller caches.
+  Hearthspace's output owner retains target completion across draw/readback/KMS
+  errors, waits before storage reuse, and resets storage and completion together
+  on lifecycle changes or missing completion. Vulkan integration is unchanged.
+- **Upstream:** the latest inspected multigpu file commit
+  [`347b2b30225b0425f0b44dc4c590e768f7dbe73e`](https://github.com/Smithay/smithay/blob/347b2b30225b0425f0b44dc4c590e768f7dbe73e/src/backend/renderer/multigpu/mod.rs)
+  still has the pair-keyed `dmabuf_cache`. This is a local ownership extension,
+  not an upstream backport; no upstream report is published by this repair.
+- **Verification:** a separate run on a host meeting the fixture prerequisite
+  below is required:
+  `cargo test --locked -p hearthspace-compositor --features udev --test smithay_transfer_cache -- --ignored --test-threads=1`.
+  These cases are explicitly ignored in ordinary workspace/CI runs to preserve
+  software-only coverage. Report this invocation's executed/passed/failed counts
+  separately from the default run's ignored count; a default pass does not
+  establish transfer-cache regression coverage. See the
+  [test guidance](../docs/E2E_TESTING.md#smithay-transfer-cache-regressions).
+  The fixtures exercise real `GpuManager`, `MultiRenderer::render`, and
+  `MultiFrame::finish`, with a counting allocator and distinct DMA-BUF handles
+  at the device boundary. They cover alternating and same-size owners, the
+  unchanged default pair behavior, size/Fourcc/node/context changes, drop and
+  explicit invalidation, the real CPU fallback branch, failed waits, and
+  completion retention after errors. The production output completion helper
+  is included directly in this integration target. Smithay is excluded from
+  the workspace, so tests in the vendored package would not be sufficient.
+  Native mixed-size cross-GPU output acceptance and timing remain required; these
+  boundary substitutes do not validate hardware behavior or performance.
+  **Fixture prerequisite:** pinned drm-rs validates node construction through
+  sysfs and has no synthetic-node constructor. The fixture reads two distinct
+  validated `/sys/class/drm` identities (primary/render nodes of one GPU suffice),
+  without opening devices or issuing GPU commands. An explicit `--ignored` run
+  still fails with a prerequisite message if fewer than two exist; it does not
+  silently skip or bypass validation.
+- **Removal:** adopt a compatible upstream revision with caller-owned
+  intermediates that passes these regressions and native acceptance without
+  this patch. Adapt the per-output owner to that API and retain its completion
+  dependency. Remove only this patch and ledger entry; preserve the other
+  Smithay repairs and vendoring until their separate conditions are met.
 
 ## Masonry finite scrollbar geometry
 

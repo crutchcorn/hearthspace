@@ -1,5 +1,6 @@
 //! Stable native surface identities and visibility are distinct from canvas placement.
 use super::{App, LayoutTarget, Target, TargetKind, window_app_id};
+use crate::compositor::windows::identity::FrameKind;
 use hearthspace_common::frame_layout::*;
 use smithay::utils::{Logical, Point};
 
@@ -11,19 +12,18 @@ impl App {
         &self,
         index: usize,
     ) -> Option<(String, String)> {
-        let (output, id) = frame_widget_from_app_id(&window_app_id(&self.windows[index].surface)?)?;
+        let (output, id) = self.windows[index].frame_identity(FrameKind::Widget)?;
         Some((self.resolved_frame_output(output)?, id))
     }
     pub(in crate::compositor) fn frame_group_identity(
         &self,
         index: usize,
     ) -> Option<(String, String)> {
-        let (output, id) = frame_group_from_app_id(&window_app_id(&self.windows[index].surface)?)?;
+        let (output, id) = self.windows[index].frame_identity(FrameKind::Group)?;
         Some((self.resolved_frame_output(output)?, id))
     }
     pub(super) fn frame_grip_identity(&self, index: usize) -> Option<(String, String)> {
-        let (output, id) =
-            frame_group_grip_from_app_id(&window_app_id(&self.windows[index].surface)?)?;
+        let (output, id) = self.windows[index].frame_identity(FrameKind::Grip)?;
         Some((self.resolved_frame_output(output)?, id))
     }
     pub(in crate::compositor) fn frame_target_for_window(&self, index: usize) -> Option<Target> {
@@ -56,15 +56,13 @@ impl App {
             .map(|p| p.target.clone())
     }
     pub(in crate::compositor) fn is_layout_surface(&self, index: usize) -> bool {
-        window_app_id(&self.windows[index].surface).is_some_and(|id| {
-            frame_widget_from_app_id(&id).is_some()
-                || frame_group_from_app_id(&id).is_some()
-                || frame_group_grip_from_app_id(&id).is_some()
-                || layout_editor_from_app_id(&id).is_some()
-                || layout_tooltip_from_app_id(&id).is_some()
-                || pinned_window_reveal_from_app_id(&id).is_some()
-                || layout_confirm_from_app_id(&id).is_some()
-        })
+        self.windows[index].is_frame_surface()
+            || window_app_id(&self.windows[index].surface).is_some_and(|id| {
+                layout_editor_from_app_id(&id).is_some()
+                    || layout_tooltip_from_app_id(&id).is_some()
+                    || pinned_window_reveal_from_app_id(&id).is_some()
+                    || layout_confirm_from_app_id(&id).is_some()
+            })
     }
     pub(in crate::compositor) fn layout_surface_visible(&self, index: usize) -> bool {
         if self.session_locked() || self.canvas_preview_active() {

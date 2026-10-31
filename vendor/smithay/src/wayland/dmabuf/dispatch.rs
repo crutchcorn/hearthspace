@@ -198,7 +198,18 @@ where
         //
         // These events are deprecated in version 4 of the protocol.
         if zwp_dmabuf.version() < zwp_linux_dmabuf_v1::REQ_GET_DEFAULT_FEEDBACK_SINCE {
-            for (fourcc, modifiers) in &*self.formats {
+            // Validation retains history for outstanding allocations, but a new
+            // legacy binding should only allocate from the current main tranche.
+            let formats = if let Some(feedback) = &self.default_feedback {
+                let mut formats = indexmap::IndexMap::<_, indexmap::IndexSet<_>>::new();
+                for format in feedback.lock().unwrap().main_formats() {
+                    formats.entry(format.code).or_default().insert(format.modifier);
+                }
+                formats
+            } else {
+                self.formats.lock().unwrap().clone()
+            };
+            for (fourcc, modifiers) in &formats {
                 // Modifier support got added in version 3
                 if zwp_dmabuf.version() < zwp_linux_dmabuf_v1::EVT_MODIFIER_SINCE {
                     if modifiers.contains(&Modifier::Invalid) || modifiers.contains(&Modifier::Linear) {

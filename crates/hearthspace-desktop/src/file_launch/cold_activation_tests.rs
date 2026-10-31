@@ -9,6 +9,7 @@ use std::{
     time::Instant,
 };
 
+mod gpu;
 mod ordinary;
 
 const APP: &str = "org.hearthspace.ColdPlayer";
@@ -48,6 +49,7 @@ fn fixture() -> Fixture {
     fs::write(&recorder, r#"#!/bin/sh
 printf '%s\0' "$@" > "$HEARTHSPACE_TEST_FILE_ACTION_ROOT/arguments"
 printf '%s\n' "$DBUS_SESSION_BUS_ADDRESS" "$XDG_CONFIG_HOME" "$WAYLAND_DISPLAY" "$DISPLAY" "$HEARTHSPACE_TEST_SCOPE" > "$HEARTHSPACE_TEST_FILE_ACTION_ROOT/environment"
+printf '%s\n' "$DRI_PRIME" "$__NV_PRIME_RENDER_OFFLOAD" > "$HEARTHSPACE_TEST_FILE_ACTION_ROOT/gpu-environment"
 touch "$HEARTHSPACE_TEST_FILE_ACTION_ROOT/ready"
 "#).unwrap();
     fs::set_permissions(&recorder, fs::Permissions::from_mode(0o700)).unwrap();
@@ -190,17 +192,29 @@ fn launch_in_isolated_environment() {
     } else {
         vec![filename(&root)]
     };
-    let mut command = if mode == "scoped" {
+    let gpu_environment = if mode == "scoped-gpu" {
+        assert!(app.prefers_non_default_gpu);
+        crate::gpu::launch_environment(app.prefers_non_default_gpu)
+    } else {
+        Vec::new()
+    };
+    let mut command = if mode.starts_with("scoped") {
         let profile = root.join("private-profile");
+        let mut environment = vec![
+            ("DISPLAY", ":91"),
+            ("XDG_CONFIG_HOME", profile.to_str().unwrap()),
+        ];
+        environment.extend(
+            gpu_environment
+                .iter()
+                .map(|(key, value)| (key.as_str(), value.as_str())),
+        );
         scoped_gio_command(
             &app.desktop_file,
             &paths,
             &["/usr/bin/env".into(), "HEARTHSPACE_TEST_SCOPE=owned".into()],
             "wayland-scoped",
-            &[
-                ("DISPLAY", ":91"),
-                ("XDG_CONFIG_HOME", profile.to_str().unwrap()),
-            ],
+            &environment,
             &root.join("helper"),
         )
         .unwrap()

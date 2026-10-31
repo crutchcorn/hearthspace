@@ -184,6 +184,14 @@ artifacts, manifests, and logs remain available. The independent systemd watchdo
 uses the same recovery path after a hung compositor or interrupted agent.
 Privileged recovery uses the root-owned state under `/run/hearthspace-native/`.
 
+The launcher records ownership before allocating the private runtime. Stop
+serializes with service submission, cancels the exact unit even when its start
+is still queued, and waits for the unit and pending job to finish before
+recovering resources. It releases the allocation lock while waiting so
+`ExecStopPost` can perform recovery. An interrupted startup or uncertain stop
+keeps ownership incomplete and blocks another allocation; a timeout is not
+evidence that the session never started.
+
 Before systemd terminates the private bus wrapper, its stop hook gives the
 session supervisor up to six seconds to exit normally. It verifies the unit's
 current main process and its direct supervisor child by executable, UID, and
@@ -231,6 +239,58 @@ A preflight failure, such as missing sudo access, fails the test. Run native
 validation separately from GPU-intensive headless suites so concurrent workload
 does not obscure capture and presentation failures.
 
+For displays attached to different GPUs, compare connected DRM connectors with
+the harness's live `status` outputs before testing interaction. Capture each
+output separately, move one real application between them, and verify its visible
+content after resizing, panning, and zooming. Open Settings → Displays and check
+that every live connector is available there too. A connector discovered in
+sysfs without a corresponding live output is a failure, not successful hotplug.
+
+Record the transfer route as well as the displayed pixels. The native transfer
+module's TRACE events distinguish `completed native Vulkan image transfer` from
+`completed native cross-GPU image transfer`; the latter uses Smithay, whose logs
+identify CPU fallback. A created Vulkan slot alone does not prove a completed
+copy or KMS presentation. Correlate route events with that output's verified
+presentation and captures. Preserve a compatible reverse-direction sharing case
+when changing allocation or format negotiation. Test padded rows, channel order,
+changing contents and repeated buffer reuse before relying on a new copy route.
+
+To exercise a particular direction, use the
+[startup renderer preference](DRM.md#outputs-and-scaling). A retained compositor
+wrapper can set `HEARTHSPACE_DRM_RENDER_DEVICE` to the selected seat GPU's exact
+physical identity and `exec` the verified compositor with its original arguments.
+Pass that wrapper through `--compositor` with `--no-build --binary-dir`; do not
+assume the launcher's environment crosses the service boundary. Record the
+wrapper and underlying executable hashes separately. Confirm the actual selected
+renderer in the log: successful startup through fallback does not satisfy a test
+that requires the requested transfer direction.
+
+Keep a separate movement interval without captures or recordings for flashing
+and frame-pacing measurements. Capture readback can synchronize outstanding GPU
+work and hide a scanout race. This excludes harness readbacks, not internal
+readback required by a cross-GPU CPU-copy fallback; report that fallback when it
+is active. Use the same binary profile, output arrangement, and workload
+for comparisons; report added outputs or changed resolution as a changed workload.
+The [rendering guide](RENDERING.md#investigating-slow-frames) describes callback
+traces and the limits of screenshot evidence. A successful multi-GPU session
+does not establish unplug/replug, suspend, or compatibility with other drivers.
+
+For application graphics preferences, use an additive desktop-entry fixture and
+the harness's isolated data directory. Open the actual app menu from Apps List,
+the dock and a desktop shortcut; save, dismiss and reopen it. Verify that the
+installed entry stays unchanged and that only the intended application's next
+child receives the environment returned by switcheroo-control. Check both enabling
+and clearing the preference, plus an unrelated launch. Receipt timestamps must
+follow the intended launch action. An environment receipt does not establish the
+GPU an application actually selected or migrate an existing process.
+
+Exercise the private AT-SPI context-menu action while another application has
+keyboard focus, and verify focus restoration after dismissal. A direct widget
+action in a headless fixture does not establish that the Linux accessibility
+adapter exports it. Inspect native Light and Dark captures; record constrained
+widget-size coverage separately when it was rendered offscreen. Keep native
+input observations distinct from deterministic held-key and cancellation tests.
+
 The [gesture acceptance tests](PINCH_ZOOM.md)
 use temporary uinput touchpad and touchscreen devices to exercise libinput input
 and verify rendered three-finger canvas panning, zoom and combined movement.
@@ -247,7 +307,9 @@ scripts/canvas-pan-smoke --session "$canvas_pan_run"
 This uses an isolated profile and the visible Canvas tools chooser. It checks
 viewport movement and presented terminal markers at 80%, 100%, and 200% zoom,
 Escape cancellation with held buttons, ❖ + H/❖ + V shortcuts, and normal client
-input and titlebar movement while Pan remains selected. It uses the compositor's
+input and titlebar movement while Pan remains selected. It also checks temporary
+❖ + left-drag from empty canvas, selected-tool retention, both modifier/button
+release orders, and ordinary dragging afterward. It uses the compositor's
 agent input path; three-finger libinput coverage remains in `scripts/pan-smoke`.
 
 For switcher acceptance, allocate a fresh run:

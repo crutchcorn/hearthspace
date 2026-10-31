@@ -13,6 +13,8 @@ use crate::config::*;
 mod command_socket;
 pub(in crate::compositor) mod device_control;
 mod favorite_drawing;
+#[cfg(test)]
+mod keyboard_tests;
 mod launch;
 mod launch_environment;
 pub(in crate::compositor) mod search;
@@ -168,8 +170,16 @@ impl App {
             ShellCommand::LogAccessibilityTree => {
                 crate::accessibility::log_accessibility_tree(self.accessibility_window_snapshot())
             }
-            ShellCommand::KeyDown(keycode) => self.synthesize_key(keycode, KeyState::Pressed),
-            ShellCommand::KeyUp(keycode) => self.synthesize_key(keycode, KeyState::Released),
+            // The shared keyboard path requests redraws for compositor actions;
+            // ordinary client keys need no additional frame before their commit.
+            ShellCommand::KeyDown(keycode) => {
+                self.synthesize_key(keycode, KeyState::Pressed);
+                return ControlReply::Ok;
+            }
+            ShellCommand::KeyUp(keycode) => {
+                self.synthesize_key(keycode, KeyState::Released);
+                return ControlReply::Ok;
+            }
             ShellCommand::PointerMotionAbs { x, y } => {
                 self.synthesize_pointer_motion_abs(Point::from((x, y)))
             }

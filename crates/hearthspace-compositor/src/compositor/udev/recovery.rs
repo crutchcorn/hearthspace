@@ -14,7 +14,7 @@ use smithay::{
 };
 use tracing::{error, info, trace, warn};
 
-use super::{UdevBackendState, apply_connector_sync, udev_backend_mut};
+use super::{UdevBackendState, apply_connector_sync, identity::DeviceToken, udev_backend_mut};
 use crate::compositor::{CalloopData, shell_integration::ControlReply};
 
 const RECOVERY_INTERVAL: Duration = Duration::from_millis(250);
@@ -62,17 +62,15 @@ impl RecoveryBudget {
 
 impl UdevBackendState {
     pub(in crate::compositor) fn recovery_complete(&self) -> bool {
-        self.session_active
-            && self.session.is_active()
+        self.native_outputs_ready()
             && self.input_source.is_some()
-            && !self.recovery_needed
-            && self.primary_device.as_ref().is_some_and(|device| {
+            && self.opened_devices.values().all(|device| {
                 device.output_surfaces.len() == device.output_targets.len()
                     && (device.output_targets.is_empty() || !self.drm_commits_paused)
                     && device
                         .output_surfaces
                         .iter()
-                        .all(|output| output.presented_once)
+                        .all(|output| output.presentation.presented_once)
             })
     }
 }
@@ -85,6 +83,7 @@ impl CalloopData {
         if !backend.session_active || !backend.session.is_active() {
             // A different VT still owns the devices. Its eventual libseat
             // activation will rebuild our scanout without disturbing that VT.
+            self.state.set_native_lock_outputs_available(false);
             self.state.reset_session_input();
             self.state.invalidate_lock_presentation();
             return ControlReply::Ok;
@@ -96,7 +95,8 @@ impl CalloopData {
 }
 
 pub(super) fn activate_session(data: &mut CalloopData) {
-    let mut budget = RecoveryBudget::new(Instant::now());
+    let budget = RecoveryBudget::new(Instant::now());
+    data.state.set_native_lock_outputs_available(false);
     data.state.set_remote_input_active(false);
     data.state.remote_capture.stop();
     data.state.reset_session_input();
@@ -109,67 +109,98 @@ pub(super) fn activate_session(data: &mut CalloopData) {
         backend.loop_handle.remove(token);
     }
     backend.recovery_progress_at = None;
+    backend.recovery_exhausted = false;
     let connector_sync = backend.activate_session();
-    let retry = !backend.recovery_complete();
-    let handle = backend.loop_handle.clone();
     apply_connector_sync(data, connector_sync);
     data.state.request_redraw();
-    if !retry {
-        return;
+    if let Some(backend) = udev_backend_mut(data) {
+        backend.start_recovery_timer(budget);
+    }
+}
+
+pub(super) fn schedule_recovery(data: &mut CalloopData) {
+    if let Some(backend) = udev_backend_mut(data) {
+        // A new hotplug event may resolve the condition that exhausted retries.
+        backend.recovery_exhausted = false;
+        backend.schedule_recovery_timer();
+    }
+}
+
+impl UdevBackendState {
+    pub(super) fn schedule_recovery_timer(&mut self) {
+        self.start_recovery_timer(RecoveryBudget::new(Instant::now()));
     }
 
-    match handle.insert_source(
-        Timer::from_duration(RECOVERY_INTERVAL),
-        move |_, _, data| {
-            let Some(backend) = udev_backend_mut(data) else {
-                return TimeoutAction::Drop;
-            };
-            if !backend.session_active || !backend.session.is_active() {
-                backend.recovery_source = None;
-                return TimeoutAction::Drop;
-            }
-            if backend.recovery_complete() {
-                backend.recovery_source = None;
-                info!("native session recovery presented on every output");
-                return TimeoutAction::Drop;
-            }
-            match budget.next_step(Instant::now(), backend.recovery_progress_at) {
-                RecoveryStep::Wait => return TimeoutAction::ToDuration(RECOVERY_INTERVAL),
-                RecoveryStep::Exhausted => {
+    fn start_recovery_timer(&mut self, mut budget: RecoveryBudget) {
+        if self.recovery_source.is_some()
+            || self.recovery_exhausted
+            || self.recovery_complete()
+            || !self.session_active
+        {
+            return;
+        }
+        match self.loop_handle.insert_source(
+            Timer::from_duration(RECOVERY_INTERVAL),
+            move |_, _, data| {
+                let Some(backend) = udev_backend_mut(data) else {
+                    return TimeoutAction::Drop;
+                };
+                if !backend.session_active || !backend.session.is_active() {
                     backend.recovery_source = None;
-                    error!("native session recovery exhausted its bounded retries");
                     return TimeoutAction::Drop;
                 }
-                RecoveryStep::Rebuild => {}
-            }
-            // Setup success alone is insufficient: a failed first render or a
-            // missing page flip must retry too, without depending on new input.
-            let sync = backend.activate_session();
-            data.state.invalidate_lock_presentation();
-            apply_connector_sync(data, sync);
-            data.state.request_redraw();
-            TimeoutAction::ToDuration(RECOVERY_INTERVAL)
-        },
-    ) {
-        Ok(token) => {
-            if let Some(backend) = udev_backend_mut(data) {
-                backend.recovery_source = Some(token);
-            }
+                if backend.recovery_complete() {
+                    backend.recovery_source = None;
+                    info!("native session recovery presented on every output");
+                    return TimeoutAction::Drop;
+                }
+                match budget.next_step(Instant::now(), backend.recovery_progress_at) {
+                    RecoveryStep::Wait => return TimeoutAction::ToDuration(RECOVERY_INTERVAL),
+                    RecoveryStep::Exhausted => {
+                        backend.recovery_source = None;
+                        backend.recovery_exhausted = true;
+                        error!("native session recovery exhausted its bounded retries");
+                        return TimeoutAction::Drop;
+                    }
+                    RecoveryStep::Rebuild => {}
+                }
+                // Setup success alone is insufficient: a failed first render or a
+                // missing page flip must retry too, without depending on new input.
+                data.state.set_native_lock_outputs_available(false);
+                let Some(backend) = udev_backend_mut(data) else {
+                    return TimeoutAction::Drop;
+                };
+                let sync = backend.activate_session();
+                data.state.invalidate_lock_presentation();
+                apply_connector_sync(data, sync);
+                data.state.request_redraw();
+                TimeoutAction::ToDuration(RECOVERY_INTERVAL)
+            },
+        ) {
+            Ok(token) => self.recovery_source = Some(token),
+            Err(error) => error!(%error, "failed to schedule native session recovery"),
         }
-        Err(error) => error!(%error, "failed to schedule native session recovery"),
     }
 }
 
 pub(super) fn insert_drm_source(
     handle: &LoopHandle<'static, CalloopData>,
+    token: DeviceToken,
     notifier: DrmDeviceNotifier,
 ) -> Result<RegistrationToken, Box<dyn std::error::Error>> {
     Ok(
-        handle.insert_source(notifier, |event, metadata, data| match event {
+        handle.insert_source(notifier, move |event, metadata, data| match event {
             DrmEvent::VBlank(crtc) => {
-                trace!(?crtc, ?metadata, "DRM vblank");
+                trace!(
+                    device_id = token.id,
+                    incarnation = token.incarnation,
+                    ?crtc,
+                    ?metadata,
+                    "DRM vblank"
+                );
                 let submitted = if let super::super::Backend::Udev(backend) = &mut data.backend {
                     match backend.frame_submitted(
+                        token,
                         crtc,
                         metadata.as_ref(),
                         &mut data.state,
@@ -178,29 +209,47 @@ pub(super) fn insert_drm_source(
                         Ok(result) => result,
                         Err(error) => {
                             error!(%error, "failed to mark native frame submitted");
+                            backend.device_failed(token);
+                            data.state.set_native_lock_outputs_available(backend.native_outputs_ready());
+                            data.state.invalidate_lock_presentation();
                             None
                         }
                     }
                 } else {
                     None
                 };
-                if let Some(should_redraw) = submitted {
-                    if let Err(error) = data.send_frame_callbacks() {
-                        warn!(%error, "failed to send native frame callbacks");
-                    }
-                    if should_redraw
-                        || data.state.viewport_animation.is_some()
-                        || data.state.group_animating()
-                        || data.state.canvas_preview_needs_animation_frame()
-                        || data.state.canvas_peek_needs_animation_frame()
-                        || data.state.layout_needs_animation_frame()
-                        || data.state.desktop_edge_panning()
+                if let Some(completion) = submitted {
+                    let redraw = match completion
+                        .dispatch(|output| data.send_output_frame_callbacks(output))
+                    {
+                        Ok(redraw) => redraw,
+                        Err(error) => {
+                            warn!(%error, "failed to send native frame callbacks");
+                            completion.redraw
+                        }
+                    };
+                    if let Some(should_redraw) = redraw
+                        && (should_redraw
+                            || data.state.viewport_animation.is_some()
+                            || data.state.group_animating()
+                            || data.state.canvas_preview_needs_animation_frame()
+                            || data.state.canvas_peek_needs_animation_frame()
+                            || data.state.layout_needs_animation_frame()
+                            || data.state.desktop_edge_panning())
                     {
                         data.state.request_redraw();
                     }
                 }
             }
-            DrmEvent::Error(error) => error!(%error, "DRM event error"),
+            DrmEvent::Error(error) => {
+                error!(%error, device_id = token.id, incarnation = token.incarnation, "DRM event error");
+                if let Some(backend) = udev_backend_mut(data) {
+                    backend.device_failed(token);
+                    let available = backend.native_outputs_ready();
+                    data.state.set_native_lock_outputs_available(available);
+                }
+                data.state.invalidate_lock_presentation();
+            }
         })?,
     )
 }

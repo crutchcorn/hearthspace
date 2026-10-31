@@ -49,6 +49,7 @@ pub fn role_for_connector(
 
 /// Prefer the connector ID even when an earlier legacy row has the same name.
 /// A name match must be unique; role fallback is only supplied with known primary.
+/// Qualified native IDs require `resolve_preferences` for bare-name migration.
 pub fn preference_index(
     saved: &[SavedOutput<'_>],
     connector: &str,
@@ -61,16 +62,17 @@ pub fn preference_index(
             let mut matches = saved
                 .iter()
                 .enumerate()
-                .filter(|(_, saved)| !saved.placeholder && saved.name == connector);
+                .filter(|(_, saved)| name_matches(saved, connector));
             let (index, _) = matches.next()?;
             matches.next().is_none().then_some(index)
         })
         .or_else(|| {
-            role.and_then(|role| {
-                saved
-                    .iter()
-                    .position(|saved| !saved.placeholder && saved.id == role)
-            })
+            role.filter(|_| qualified_connector(connector).is_none())
+                .and_then(|role| {
+                    saved
+                        .iter()
+                        .position(|saved| !saved.placeholder && saved.id == role)
+                })
         })
 }
 
@@ -93,22 +95,64 @@ pub fn resolve_preferences(
             used[index] = true;
         }
     }
-    for (output, connector) in connectors.iter().enumerate() {
-        if matched[output].is_some() {
+    // Native IDs qualify the connector with a physical GPU identity. Migrate a
+    // bare legacy ID/name only when the complete known set identifies one owner.
+    // Count already-matched live outputs and disconnected saved identities too:
+    // neither may release an ambiguous legacy row for a different GPU to claim.
+    let aliases: Vec<_> = connectors
+        .iter()
+        .map(|connector| {
+            let legacy = qualified_connector(connector)?;
+            let ambiguous = connectors.iter().any(|other| {
+                *other != *connector && qualified_connector(other).unwrap_or(other) == legacy
+            }) || saved
+                .iter()
+                .filter(|saved| !saved.placeholder)
+                .any(|saved| {
+                    [saved.id, saved.name].into_iter().any(|known| {
+                        known != *connector && qualified_connector(known) == Some(legacy)
+                    })
+                });
+            (!ambiguous).then_some(legacy)
+        })
+        .collect();
+    // Resolve every ID before any friendly-name alias can consume its row.
+    for (output, legacy) in aliases.iter().enumerate() {
+        if matched[output].is_some() || legacy.is_none() {
             continue;
         }
-        let mut names = saved.iter().enumerate().filter(|(index, saved)| {
-            !used[*index] && !saved.placeholder && saved.name == *connector
-        });
-        if let Some((index, _)) = names.next()
-            && names.next().is_none()
-        {
+        if let Some(index) = saved.iter().enumerate().position(|(index, saved)| {
+            !used[index] && !saved.placeholder && Some(saved.id) == *legacy
+        }) {
             matched[output] = Some(index);
             used[index] = true;
         }
     }
+    for names in [
+        connectors.iter().copied().map(Some).collect::<Vec<_>>(),
+        aliases,
+    ] {
+        for (output, name) in names.into_iter().enumerate() {
+            if matched[output].is_some() {
+                continue;
+            }
+            let Some(name) = name else {
+                continue;
+            };
+            let mut matches = saved
+                .iter()
+                .enumerate()
+                .filter(|(index, saved)| !used[*index] && name_matches(saved, name));
+            if let Some((index, _)) = matches.next()
+                && matches.next().is_none()
+            {
+                matched[output] = Some(index);
+                used[index] = true;
+            }
+        }
+    }
     for (output, connector) in connectors.iter().enumerate() {
-        if matched[output].is_some() {
+        if matched[output].is_some() || qualified_connector(connector).is_some() {
             continue;
         }
         let role = role_for_connector(connector, connectors, primary);
@@ -122,9 +166,29 @@ pub fn resolve_preferences(
     matched
 }
 
+/// Plain connector component for display labels, never a persisted identity.
+/// The native backend escapes both components, so '@' is an unambiguous separator.
+pub fn qualified_connector(id: &str) -> Option<&str> {
+    id.split_once('@')
+        .filter(|(connector, device)| !connector.is_empty() && !device.is_empty())
+        .map(|(connector, _)| connector)
+}
+
+fn name_matches(saved: &SavedOutput<'_>, connector: &str) -> bool {
+    !saved.placeholder && qualified_connector(saved.id).is_none() && saved.name == connector
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn preference<'a>(id: &'a str, name: &'a str) -> SavedOutput<'a> {
+        SavedOutput {
+            id,
+            name,
+            placeholder: false,
+        }
+    }
 
     #[test]
     fn selected_primary_and_secondary_roles_ignore_enumeration_order() {
@@ -217,6 +281,87 @@ mod tests {
         assert_eq!(
             resolve_preferences(&saved, &["eDP-1", "DP-1"], Some("eDP-1")),
             [Some(2), None]
+        );
+    }
+
+    #[test]
+    fn duplicate_native_connector_legacy_preferences_ignore_discovery_and_role_order() {
+        let saved = [preference("DP-1", "Display"), preference("primary", "DP-1")];
+        let first = ["DP-1@pci-a", "DP-1@pci-b"];
+        let reversed = [first[1], first[0]];
+        assert_eq!(
+            resolve_preferences(&saved, &first, Some(first[0])),
+            [None, None]
+        );
+        assert_eq!(
+            resolve_preferences(&saved, &reversed, Some(first[1])),
+            [None, None]
+        );
+        assert_eq!(preference_index(&saved, first[0], Some("primary")), None);
+    }
+
+    #[test]
+    fn unique_native_legacy_id_wins_and_unique_name_migrates_without_role_reuse() {
+        let saved = [preference("primary", "DP-1"), preference("DP-1", "Display")];
+        let connected = ["eDP-1@pci-b", "DP-1@pci-a"];
+        assert_eq!(
+            resolve_preferences(&saved, &connected, Some(connected[0])),
+            [None, Some(1)]
+        );
+        assert_eq!(
+            resolve_preferences(&saved[..1], &connected, Some(connected[0])),
+            [None, Some(0)]
+        );
+    }
+
+    #[test]
+    fn retained_qualified_owner_blocks_legacy_reassignment_after_disconnect() {
+        let saved = [
+            preference("DP-1", "Display"),
+            preference("DP-1@pci-b", "DP-1"),
+        ];
+        assert_eq!(
+            resolve_preferences(&saved, &["DP-1@pci-a", "DP-1@pci-b"], None),
+            [None, Some(1)]
+        );
+        assert_eq!(resolve_preferences(&saved, &["DP-1@pci-a"], None), [None]);
+        assert_eq!(resolve_preferences(&saved[1..], &["DP-1"], None), [None]);
+        assert_eq!(
+            resolve_preferences(&saved, &["DP-1@pci-b"], None),
+            [Some(1)]
+        );
+    }
+
+    #[test]
+    fn ambiguous_legacy_names_and_unidentified_roles_are_not_native_preferences() {
+        let aliases = [
+            preference("primary", "DP-1"),
+            preference("secondary", "DP-1"),
+        ];
+        assert_eq!(
+            resolve_preferences(&aliases, &["DP-1@pci-a"], Some("DP-1@pci-a")),
+            [None]
+        );
+        let roles = [
+            preference("primary", "Primary"),
+            preference("secondary", "Secondary"),
+        ];
+        assert_eq!(
+            resolve_preferences(&roles, &["eDP-1@pci-a", "DP-1@pci-b"], Some("eDP-1@pci-a")),
+            [None, None]
+        );
+    }
+
+    #[test]
+    fn legacy_id_claim_precedes_another_outputs_friendly_name_in_either_order() {
+        let saved = [preference("DP-2", "DP-1")];
+        assert_eq!(
+            resolve_preferences(&saved, &["DP-1@a", "DP-2@b"], None),
+            [None, Some(0)]
+        );
+        assert_eq!(
+            resolve_preferences(&saved, &["DP-2@b", "DP-1@a"], None),
+            [Some(0), None]
         );
     }
 }

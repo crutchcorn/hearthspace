@@ -351,7 +351,7 @@ impl Widget for MonitorLayoutWidget {
             .iter()
             .enumerate()
             .find(|(_, monitor)| self.selected_monitor_id.as_ref() == Some(&monitor.id));
-        node.set_description(selected.map_or_else(|| "No display selected.".into(), |(index, monitor)| format!("Display {}: {}. Space selects the next display. Arrow keys place it beside another display.", index+1, monitor.name)));
+        node.set_description(selected.map_or_else(|| "No display selected.".into(), |(index, monitor)| format!("Display {}: {}. Space selects the next display. Arrow keys place it beside another display.", index+1, crate::monitors::display_name(&monitor.name, &monitor.id))));
     }
 
     fn children_ids(&self) -> ChildrenIds {

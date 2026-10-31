@@ -112,6 +112,7 @@ impl App {
         let id = self.windows.insert_new(|id| ManagedWindow {
             id,
             surface: ManagedSurface::X11(Box::new(window.clone())),
+            identity: Default::default(),
             position,
             kind: ManagedWindowKind::Normal,
             shell_output_name: None,
