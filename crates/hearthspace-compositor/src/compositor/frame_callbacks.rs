@@ -187,6 +187,8 @@ pub(in crate::compositor) fn send_frames_surface_tree(surface: &WlSurface, time:
 #[cfg(test)]
 mod geometry_tests;
 #[cfg(test)]
+mod identity_tests;
+#[cfg(test)]
 pub(in crate::compositor) mod test_support;
 #[cfg(test)]
 mod tests;

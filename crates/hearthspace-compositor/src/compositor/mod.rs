@@ -116,6 +116,7 @@ use wayland_server::{DisplayHandle, protocol::wl_surface::WlSurface};
 struct ManagedWindow {
     id: u64,
     surface: ManagedSurface,
+    identity: windows::identity::Cache,
     position: CanvasPoint,
     kind: ManagedWindowKind,
     shell_output_name: Option<String>,

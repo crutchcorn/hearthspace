@@ -19,6 +19,8 @@ mod group_members;
 mod guards;
 #[path = "frame_layout/guide_layers.rs"]
 mod guide_layers;
+#[path = "frame_layout/identity_cache.rs"]
+mod identity_cache;
 #[path = "frame_layout/input.rs"]
 mod input;
 #[path = "frame_layout/member_hit.rs"]

@@ -1,6 +1,7 @@
 //! Real App geometry and callback dispatch over the existing Wayland fixture.
-//! The managed mapping/placement is fixture input; callbacks and committed xdg
-//! geometry are real protocol state. No App lifecycle/IPC or renderer is run.
+//! Managed mapping/placement starts as fixture input; callbacks and committed xdg
+//! metadata are real protocol state. Tests can exercise App identity/lifetime
+//! paths without session startup, service workers or a renderer.
 use smithay::{
     reexports::calloop::{EventLoop, LoopHandle},
     utils::{Logical, Rectangle},
@@ -68,6 +69,7 @@ impl AppFixture {
         self.app.windows.insert_new(|id| ManagedWindow {
             id,
             surface: ManagedSurface::Xdg(toplevel),
+            identity: Default::default(),
             position: CanvasPoint { x: 0, y: 0 },
             kind,
             shell_output_name: output.map(str::to_owned),
@@ -87,6 +89,36 @@ impl AppFixture {
 
     pub(in crate::compositor::frame_callbacks) fn request_frame(&mut self, surface: usize) {
         self.wire.request_frame(surface);
+    }
+
+    pub(in crate::compositor::frame_callbacks) fn set_app_id(&mut self, surface: usize, id: &str) {
+        self.wire.surfaces[surface]
+            .toplevel
+            .as_ref()
+            .unwrap()
+            .set_app_id(id.into());
+        self.wire.sync();
+    }
+
+    pub(in crate::compositor::frame_callbacks) fn commit_buffer(&mut self, surface: usize) {
+        let toplevel = self
+            .wire
+            .server
+            .toplevel(&self.wire.surfaces[surface].server);
+        if !toplevel.is_initial_configure_sent() {
+            // The small wire server does not run App's initial-configure
+            // handler. Complete that handshake after Smithay resets the role.
+            toplevel.send_configure();
+            self.wire.sync();
+            self.wire.sync();
+        }
+        self.wire.make_ready(surface);
+    }
+
+    pub(in crate::compositor::frame_callbacks) fn unmap_buffer(&mut self, surface: usize) {
+        self.wire.surfaces[surface].client.attach(None, 0, 0);
+        self.wire.surfaces[surface].client.commit();
+        self.wire.sync();
     }
 
     pub(in crate::compositor::frame_callbacks) fn send_output(

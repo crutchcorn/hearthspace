@@ -1,9 +1,7 @@
 //! Canvas-local shell surfaces: the client paints; the compositor owns placement and input.
-use super::{App, ManagedWindowKind, windows::window_app_id};
+use super::{App, ManagedWindowKind};
 use crate::geometry::CanvasPoint;
-use hearthspace_common::{
-    DESKTOP_ITEM_HEIGHT, DESKTOP_ITEM_WIDTH, MAX_DESKTOP_ITEMS, desktop_item_id_from_app_id,
-};
+use hearthspace_common::{DESKTOP_ITEM_HEIGHT, DESKTOP_ITEM_WIDTH, MAX_DESKTOP_ITEMS};
 use smithay::utils::{Logical, Point, Rectangle};
 use std::{
     collections::{BTreeMap, BTreeSet, VecDeque},
@@ -106,9 +104,8 @@ impl App {
     }
     pub(in crate::compositor) fn desktop_id(&self, index: usize) -> Option<String> {
         (self.windows[index].kind == ManagedWindowKind::DesktopItem)
-            .then(|| window_app_id(&self.windows[index].surface))
+            .then(|| self.windows[index].desktop_item_id())
             .flatten()
-            .and_then(|id| desktop_item_id_from_app_id(&id))
     }
 
     fn desktop_index(&self, id: &str) -> Option<usize> {

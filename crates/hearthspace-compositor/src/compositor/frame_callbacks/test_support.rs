@@ -10,7 +10,7 @@ use wayland_client::{
 };
 use wayland_protocols::{
     ext::session_lock::v1::client::{ext_session_lock_surface_v1, ext_session_lock_v1},
-    xdg::shell::client::xdg_surface,
+    xdg::shell::client::{xdg_surface, xdg_toplevel},
 };
 use wayland_server::{Display, protocol::wl_surface::WlSurface};
 
@@ -26,6 +26,7 @@ struct Surface {
     client: wl_surface::WlSurface,
     server: WlSurface,
     xdg: Option<xdg_surface::XdgSurface>,
+    toplevel: Option<xdg_toplevel::XdgToplevel>,
     lock: Option<ext_session_lock_surface_v1::ExtSessionLockSurfaceV1>,
 }
 
@@ -113,6 +114,7 @@ impl Fixture {
             client,
             server: self.server.surfaces[first].clone(),
             xdg: None,
+            toplevel: None,
             lock: None,
         });
         index
@@ -142,8 +144,9 @@ impl Fixture {
                 .as_ref()
                 .unwrap()
                 .get_xdg_surface(surface, &self.queue.handle(), ());
-        xdg.get_toplevel(&self.queue.handle(), ());
+        let toplevel = xdg.get_toplevel(&self.queue.handle(), ());
         surface.commit();
+        self.surfaces[index].toplevel = Some(toplevel);
         self.surfaces[index].xdg = Some(xdg);
         self.windows.push(Window {
             surface: index,

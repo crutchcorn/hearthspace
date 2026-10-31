@@ -119,6 +119,7 @@ impl XdgShellHandler for App {
         let id = self.windows.insert_new(|id| ManagedWindow {
             id,
             surface: ManagedSurface::Xdg(surface.clone()),
+            identity: Default::default(),
             position,
             kind,
             shell_output_name: shell_output_name.clone(),
