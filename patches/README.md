@@ -114,6 +114,56 @@ basis, regression boundary, installation, and removal conditions.
   Preserve the separate adapter-order patch until its own removal condition is
   met.
 
+## AccessKit AT-SPI context-menu actions
+
+- **Dependency:** the same vendored `accesskit_atspi_common` 0.18.1, published
+  from upstream revision
+  [`f40dfc01a0c0e76de535969f82fb35e19513737d`](https://github.com/AccessKit/accesskit/tree/f40dfc01a0c0e76de535969f82fb35e19513737d/platforms/atspi-common).
+- **Patch:** [expose and dispatch context-menu actions](accesskit-atspi-context-menu.patch),
+  a local fix in `src/node.rs` with inherited-action registration refresh in
+  `src/adapter.rs` and `src/adapter/filter_updates.rs`. Apply it after the
+  clipped-node patch. Paths are relative to the repository root; existing
+  vendored formatting and repairs are preserved.
+- **Reason:** shell app controls advertise and handle AccessKit's
+  `ShowContextMenu`, but the AT-SPI adapter lists only `click`, exposes the Action
+  interface only for clickable nodes, and always dispatches `Click` for index
+  zero. Assistive technology therefore cannot request these context menus.
+  Also, changing only a parent's advertised child actions does not update the
+  unchanged children's registered interfaces, leaving the Action interface
+  absent after addition or stale after the last inherited action is removed.
+- **Behavior:** one supported-action mapping drives interface exposure, action
+  count, names, and dispatch. `click` keeps index zero when present;
+  `showContextMenu` follows it, or takes index zero on context-menu-only nodes.
+  Preserve the consumer's parent-advertised child actions. Resolve the current
+  action and original tree/node target under one tree read, releasing the read
+  before calling the action handler. Unsupported, negative, and out-of-range
+  indices return false without sending a request. Changes to parent-advertised
+  Click or ShowContextMenu refresh direct children in the old and new filtered
+  trees, including children below transparent containers. Reuse the existing
+  update deduplication and clipping rules; unrelated parent changes do not
+  trigger this refresh, and clipped subtrees remain excluded.
+- **Upstream:** checked on 2026-10-30 against current main
+  [`f3026222559c7f5f46d8f25cb7404de68eb149f0`](https://github.com/AccessKit/accesskit/blob/f3026222559c7f5f46d8f25cb7404de68eb149f0/adapters/atspi-common/src/node.rs).
+  Its action enumeration, interface test, and dispatch retain the same
+  click-only limitation. Searches of upstream issues and pull requests for
+  `ShowContextMenu` and context menus found no matching AT-SPI fix; no upstream
+  report has been published for this repair.
+- **Verification:**
+  `cargo test --locked -p hearthspace-shell --test accesskit_context_menu --test accesskit_adapter_order --test accesskit_clipped_nodes`
+  exercises the real adapter action API and `ActionHandler`, including click
+  plus context menu, either action alone, no mapped actions, invalid indices,
+  removal/reindexing/re-registration, parent-only child-action changes,
+  transparent containers, inherited actions entering a clip, and request
+  targets in a grafted tree. The new regression crosses action
+  enumeration and dispatch; it does not inject widget action requests or
+  establish D-Bus/native acceptance. On the real private AT-SPI bus, enumerate
+  the shell app control's actions, invoke `showContextMenu` by its enumerated
+  index, and verify that its menu opens. Also verify default click behavior.
+- **Removal:** remove this patch after a compatible upstream release passes
+  the action regressions and real private-bus context-menu acceptance without
+  it. Preserve the adapter-order and clipped-node repairs until their separate
+  removal conditions are met.
+
 See [vendored provenance and refresh steps](../vendor/accesskit_atspi_common/PROVENANCE.md).
 
 ## Xilem initial window properties

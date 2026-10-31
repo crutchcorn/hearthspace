@@ -3,6 +3,8 @@
 // the LICENSE-APACHE file) or the MIT license (found in
 // the LICENSE-MIT file), at your option.
 
+use accesskit::Action;
+
 use super::{AdapterChangeHandler, FilterResult, Node, TreeChangeHandler, filter};
 
 // A transparent generic container returns ExcludeNode before checking its
@@ -24,6 +26,30 @@ pub(super) fn effective_filter(node: &Node<'_>) -> FilterResult {
 }
 
 impl AdapterChangeHandler<'_> {
+    pub(super) fn refresh_child_actions(&mut self, old: &Node<'_>, new: &Node<'_>) {
+        if [Action::Click, Action::ShowContextMenu].into_iter().all(|action| {
+            old.data().child_supports_action(action) == new.data().child_supports_action(action)
+        }) {
+            return;
+        }
+
+        // Child actions belong to direct children in the exposed tree, which
+        // can sit below transparent containers. Keep clipped subtrees excluded.
+        for parent in [old, new] {
+            if effective_filter(parent) != FilterResult::Include {
+                continue;
+            }
+            for child in parent.filtered_children(&effective_filter) {
+                if let (Some(old_child), Some(new_child)) = (
+                    old.tree_state.node_by_id(child.id()),
+                    new.tree_state.node_by_id(child.id()),
+                ) {
+                    self.node_updated(&old_child, &new_child);
+                }
+            }
+        }
+    }
+
     pub(super) fn refresh_filter_scopes(&mut self, old: &Node<'_>, new: &Node<'_>) {
         if old.raw_bounds() == new.raw_bounds()
             && old.direct_transform() == new.direct_transform()

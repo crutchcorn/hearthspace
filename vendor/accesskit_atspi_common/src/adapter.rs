@@ -297,6 +297,7 @@ impl TreeChangeHandler for AdapterChangeHandler<'_> {
         if !self.updated_nodes.insert(new_node.id()) {
             return;
         }
+        self.refresh_child_actions(old_node, new_node);
         self.emit_text_change_if_needed(old_node, new_node);
         let filter_old = effective_filter(old_node);
         let filter_new = effective_filter(new_node);
