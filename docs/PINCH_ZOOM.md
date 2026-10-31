@@ -7,7 +7,11 @@ and do not zoom application content.
 
 For a mouse without a trackpad, hold **❖** and left-drag empty canvas, or choose
 [Pan canvas](WINDOW_MANAGEMENT.md#pan-canvas-with-a-mouse) for repeated dragging
-without a modifier. Hold **❖** while scrolling to zoom.
+without a modifier. Hold **❖** while scrolling to zoom around the mouse pointer.
+The canvas point beneath the pointer stays anchored throughout the zoom animation,
+including on secondary monitors, subject to integer canvas-coordinate rounding.
+Scrolling cannot zoom the canvas during a held window move or resize, including
+while additional mouse buttons are still draining after the operation ends.
 
 This guide covers touch controls and input ownership. See
 [window management](WINDOW_MANAGEMENT.md#window-switcher) for the switcher's window

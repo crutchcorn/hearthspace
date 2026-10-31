@@ -8,7 +8,13 @@ impl App {
     /// steps have been converted into logical scroll pixels.
     pub(super) fn zoom_from_scroll_amount(&mut self, vertical: Option<f64>) -> bool {
         self.shortcuts.cancel_meta_tap();
-        if self.canvas_pan_captured() {
+        if self.canvas_pan_captured()
+            || self.drag.is_some()
+            || self.resize.is_some()
+            || self.has_window_pointer_grab()
+        {
+            // A move/resize owns its baseline transform until every button
+            // drains. Zooming under it would move the window without motion.
             return true;
         }
         if self.canvas_search_active() || self.modal_confirmation_active() {
@@ -32,9 +38,8 @@ impl App {
             return false;
         };
         if factor != 1.0 {
-            self.advance_viewport_animation();
             debug!(?vertical, "zooming viewport from scroll input");
-            self.animate_zoom_around_viewport_center(factor);
+            self.animate_zoom_around_pointer(factor);
         }
         true
     }
