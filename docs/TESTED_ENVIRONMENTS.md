@@ -77,6 +77,28 @@ Two DRM previous-state restoration errors remain in the teardown log despite
 completed recovery. The workload never began, so neither startup attempt is full
 native acceptance of the new transfer or application-preference UI.
 
+The per-window identity syntax cache at `928e919b` passed 25 focused regressions
+covering identity changes, XDG unmap/remap, X11 fallbacks, live output resolution,
+and authorization. The matching `full-6` source snapshot passed formatting,
+linting, the all-targets debug build, 2,465 Rust tests and 721 Python tests.
+Rust reported 26 ignored cases, including the 22 DRM-identity transfer-cache
+fixtures whose separate passing run is recorded above. Dependency checks passed
+with 74 categorized warnings, unchanged from `full-5`. The headless renderer
+reported NVIDIA OpenGL ES despite requested software-rendering environment
+variables; these results are not software-only coverage. No native latency
+improvement has been measured for the identity cache.
+
+The bounded application-preference runner passed 64 isolated fixtures covering
+its input cleanup, accessibility errors, receipt ordering, selector provenance,
+and thermal monitor. Those fixtures do not establish native UI acceptance.
+Two subsequent guarded optimized-build attempts stopped at the unchanged 85°C
+operational cutoff, with sampled peaks of 86.375°C and 85.25°C. The second began
+at 57.25°C. Both stopped their owned units and verified removed cgroups; neither
+produced a completed compositor executable or started a native session. Evidence
+is retained as `optimized-compositor-1` and `optimized-compositor-2` in the same
+persistent investigation directory. Optimized native transfer and app-preference
+acceptance remain pending; these stops do not identify the reboot's cause.
+
 ## Release-build interruption, 2026-10-31
 
 The GPD system rebooted automatically during a release build of the compositor
