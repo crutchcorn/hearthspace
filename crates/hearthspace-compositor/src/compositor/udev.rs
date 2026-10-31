@@ -2,6 +2,7 @@ use std::collections::BTreeMap;
 
 mod bridge_poll;
 mod connector_policy;
+mod cursor;
 mod device;
 mod event_cutoff;
 mod gpu;
@@ -30,7 +31,7 @@ use smithay::{
         session::{Session, libseat::LibSeatSession},
     },
     reexports::calloop::{LoopHandle, RegistrationToken},
-    utils::{Rectangle, Transform},
+    utils::Transform,
 };
 use tracing::{info, warn};
 
@@ -42,6 +43,7 @@ pub(super) struct UdevBackendState {
     input_source: Option<RegistrationToken>,
     recovery_source: Option<RegistrationToken>,
     bridge_poll_source: Option<RegistrationToken>,
+    cursor_retry_source: Option<RegistrationToken>,
     bridge_poll_failed: bool,
     recovery_progress_at: Option<std::time::Instant>,
     recovery_needed: bool,
@@ -113,41 +115,6 @@ impl UdevBackendState {
             })
     }
 
-    pub(in crate::compositor) fn update_hardware_cursor(&mut self, state: &mut super::App) {
-        if self.drm_commits_paused {
-            return;
-        }
-        let owner = self.opened_devices.iter().find_map(|(id, device)| {
-            device
-                .active
-                .then(|| {
-                    device.output_surfaces.iter().any(|output| {
-                        state
-                            .output_render_view(output.target.connector_name())
-                            .is_some_and(|view| {
-                                Rectangle::new(view.location, view.size)
-                                    .contains(state.pointer_location.to_i32_floor())
-                            })
-                    })
-                })
-                .filter(|owns| *owns)
-                .map(|_| *id)
-        });
-        // Only the pointer's device may decide software fallback. Clearing a
-        // non-owner must never overwrite the owner's decision.
-        state.software_cursor_visible = state.cursor_visible;
-        for (id, device) in &mut self.opened_devices {
-            if !device.active {
-                continue;
-            }
-            if Some(*id) == owner {
-                device.update_hardware_cursor(state);
-            } else {
-                device.clear_hardware_cursor();
-            }
-        }
-    }
-
     /// Acquire once before consuming any client import requests. A recovered
     /// seat may still have no usable canonical renderer; secondary readiness
     /// does not prevent imports once this renderer is available.
@@ -177,6 +144,7 @@ impl UdevBackendState {
 
 impl Drop for UdevBackendState {
     fn drop(&mut self) {
+        self.cancel_cursor_retry();
         self.gpus.bridges.stop();
         self.gpus.bridges.poll();
         if let Some(token) = self.bridge_poll_source.take() {

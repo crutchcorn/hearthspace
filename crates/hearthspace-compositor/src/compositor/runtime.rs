@@ -330,6 +330,7 @@ impl CalloopData {
                 let super::rendering::RenderedFrame {
                     damage,
                     sync: _sync,
+                    ..
                 } = {
                     let (renderer, mut framebuffer) = backend.bind()?;
                     self.state.render_frame(
@@ -356,6 +357,7 @@ impl CalloopData {
                 let super::rendering::RenderedFrame {
                     sync: _sync,
                     damage: _damage,
+                    ..
                 } = self.state.render_frame(
                     &mut backend.renderer,
                     &mut framebuffer,

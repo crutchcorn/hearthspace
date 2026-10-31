@@ -27,27 +27,45 @@ It still depends on input processing and driver behavior; it is not a guarantee
 of responsiveness when the event loop stalls.
 
 The hardware path must respect the driver's buffer dimensions and pixel format.
-It selects the output under the pointer, converts logical coordinates to that
-output's local pixels, and clears the previous CRTC's cursor when crossing outputs.
-Output density also affects the image size and hotspot.
+It selects the output under the pointer and converts logical coordinates to that
+output's local pixels. Output density also affects the image size and hotspot.
+When crossing outputs, the previous hardware image remains owned until the new
+output has established a replacement.
 
 If hardware cursor creation fails, Hearthspace keeps software presentation
-available. A failed cursor assignment or movement clears the active hardware
-cursor and falls back to software for that update. Cursor failure should remain a
-recoverable presentation failure rather than a reason to stop the desktop.
+available. A failed image upload, assignment, or movement requests a software
+frame and retains any known hardware image until its replacement presents.
+That failed output/image/scale combination stays on software until an explicit
+cursor or output lifecycle change permits a retry. Ordinary motion does not
+repeatedly alternate between failed hardware attempts and software fallback.
+Cursor failure remains a recoverable presentation failure rather than a reason
+to stop the desktop.
+Failed clear operations receive bounded timer retries even while the desktop is
+idle. Exhausting those retries retains ownership of the uncleared plane until
+a device or seat lifecycle reset; it does not certify that the image disappeared.
+
+Native handoff follows each output's submitted and verified displayed cursor
+pixels. Hardware is retired after the matching software frame presents; returning
+to hardware waits for a frame that removes the software cursor. Stale events and
+another output's completion cannot finish that handoff. An untimed modeset needs
+a subsequent verified presentation. Legacy cursor operations and the primary
+page flip are separate operations, so this is not an atomic hardware update.
 
 ## Software cursor and client images
 
 A software cursor is a render element in the compositor's framebuffer. It needs a
 redraw when it moves, and the renderer must account for the old and new locations.
-Its motion therefore follows frame presentation. Headless rendering always uses
-this path because it has no separate host or KMS cursor.
+Its motion therefore follows frame presentation. Cursor motion uses the existing
+damage tracker rather than forcing every output to redraw fully. Visibility and
+stacking changes can still conservatively damage a whole output. Headless
+rendering always uses this path because it has no separate host or KMS cursor.
 
 Focused Wayland clients can supply cursor surfaces through
 `wl_pointer.set_cursor`. Hearthspace renders the surface tree using its committed
-hotspot and hides the hardware or host cursor to avoid drawing two cursors. This
+hotspot, using the native handoff above or hiding the nested host cursor. This
 also supports client artwork that is outside the compositor's packaged shape set.
-A destroyed client cursor surface falls back to the named shape.
+A live cursor surface without a committed root buffer requests a hidden image;
+a destroyed client cursor surface falls back to the named shape.
 
 In nested mode, named shapes use the host window system's cursor. Client surfaces
 are the exception: they are composed into Hearthspace's window. Keep that
@@ -91,6 +109,9 @@ See [size units](SIZE_UNITS.md) for the surrounding coordinate conventions.
 Native capture can add the hardware cursor to the captured frame, since the main
 framebuffer alone does not contain it. Software cursors are already part of the
 scene. Capture code must distinguish these paths so the cursor appears once.
+Native cursorless captures use a temporary damage tracker. Their extra render
+pass must not advance scanout history, because GBM buffer ages count submitted
+frames, not capture passes.
 
 ## Cursor assets
 

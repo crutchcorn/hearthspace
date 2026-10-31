@@ -1,5 +1,6 @@
 use super::{
     UdevBackendState,
+    device::cursor::policy::CursorFrame,
     event_cutoff::{SurfaceEvent, SurfaceEventCutoff},
     identity::DeviceToken,
 };
@@ -23,6 +24,7 @@ pub(super) struct OutputPresentation {
     pub(super) dirty: bool,
     pub(super) presented_once: bool,
     lock_generation: Option<u64>,
+    pub(super) cursor: CursorFrame,
 }
 
 impl OutputPresentation {
@@ -41,11 +43,13 @@ impl OutputPresentation {
             dirty: true,
             presented_once: false,
             lock_generation: None,
+            cursor: CursorFrame::default(),
         }
     }
 
-    pub(super) fn queued(&mut self, lock_generation: Option<u64>) {
+    pub(super) fn queued(&mut self, lock_generation: Option<u64>, software_cursor: bool) {
         self.lock_generation = lock_generation;
+        self.cursor.queued(software_cursor);
         self.pending = true;
         self.dirty = false;
     }
@@ -98,6 +102,7 @@ fn complete_frame<'a, Buffer: 'a>(
             {
                 output.pending = false;
                 let generation = output.lock_generation.take();
+                output.cursor.completed(event == SurfaceEvent::Current);
                 if event == SurfaceEvent::Untimed {
                     output.dirty = true;
                     result = Submission::Untimed(output.name.clone());
@@ -170,6 +175,10 @@ impl UdevBackendState {
                 completion,
                 lock_generation,
             } => {
+                // Cursor ioctls and primary flips are separate legacy actions.
+                // Reconcile only after the matching output's pixels are known;
+                // this avoids switching a whole pending frame too early.
+                self.update_hardware_cursor(state);
                 if state.session_locked() {
                     captures.invalidate("session is locked");
                     state.remote_capture.stop();
@@ -203,3 +212,7 @@ impl UdevBackendState {
 #[cfg(test)]
 #[path = "presentation_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "presentation_cursor_tests.rs"]
+mod cursor_tests;

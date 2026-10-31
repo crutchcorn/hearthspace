@@ -95,5 +95,10 @@ pub(super) fn copy(
         .then(|| read_pixels(renderer, &framebuffer, work.size, false))
         .transpose()
         .map_err(|error| error.to_string());
-    Ok(OutputPass { sync, pixels })
+    // The caller supplies the canonical scene's cursor metadata after copying.
+    Ok(OutputPass {
+        sync,
+        pixels,
+        software_cursor: false,
+    })
 }

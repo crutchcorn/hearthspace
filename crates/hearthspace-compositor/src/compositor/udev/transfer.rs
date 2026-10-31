@@ -6,20 +6,22 @@ use super::{
     device::KmsOutputSurface,
     gpu::{GpuApi, GpuState},
 };
-use crate::compositor::{App, capture::read_pixels, output::OutputRenderView};
+use crate::compositor::{
+    App, capture::read_pixels, output::OutputRenderView, rendering::RenderedFrame,
+};
 use smithay::{
     backend::{
         allocator::{Fourcc, dmabuf::Dmabuf},
         drm::DrmNode,
         renderer::{
-            Bind, Color32F, ContextId, Frame, Offscreen, Renderer, Texture,
+            Bind, Color32F, ContextId, Frame, Offscreen, Renderer, RendererSuper, Texture,
             damage::OutputDamageTracker,
             gles::{GlesRenderer, GlesTexture},
             multigpu::MultiTexture,
             sync::SyncPoint,
         },
     },
-    utils::{Buffer, Physical, Rectangle, Size, Transform},
+    utils::{Buffer, Logical, Physical, Rectangle, Size, Transform},
 };
 use std::time::Instant;
 use tracing::{info, trace, warn};
@@ -43,6 +45,7 @@ impl SceneBuffer {
 
 pub(super) struct OutputPass {
     pub(super) sync: SyncPoint,
+    pub(super) software_cursor: bool,
     pub(super) pixels: Result<Option<Vec<u8>>, String>,
 }
 
@@ -57,6 +60,7 @@ pub(super) fn render_pass(
     age: usize,
     force: bool,
     capture: bool,
+    cursorless: bool,
 ) -> Result<OutputPass, Box<dyn std::error::Error>> {
     let source = gpus.scene_node.ok_or("native scene renderer unavailable")?;
     let started = Instant::now();
@@ -74,20 +78,31 @@ pub(super) fn render_pass(
         let mut renderer = gpus.manager.single_renderer(&source)?;
         let renderer = renderer.as_mut();
         let mut framebuffer = renderer.bind(dmabuf)?;
-        let rendered = state.render_frame_at(
-            renderer,
-            &mut framebuffer,
-            &mut output.damage_tracker,
-            if force { 0 } else { age },
-            rect,
-            view.scale,
-        )?;
+        let rendered = if cursorless {
+            state.render_cursorless_frame_at(
+                renderer,
+                &mut framebuffer,
+                &output.damage_tracker,
+                rect,
+                view.scale,
+            )
+        } else {
+            state.render_frame_at(
+                renderer,
+                &mut framebuffer,
+                &mut output.damage_tracker,
+                if force { 0 } else { age },
+                rect,
+                view.scale,
+            )
+        }?;
         let pixels = capture
             .then(|| read_pixels(renderer, &framebuffer, size, false))
             .transpose()
             .map_err(|error| error.to_string());
         return Ok(OutputPass {
             sync: rendered.sync,
+            software_cursor: rendered.software_cursor,
             pixels,
         });
     }
@@ -101,7 +116,7 @@ pub(super) fn render_pass(
         output.gbm_surface.format(),
     )?;
     let target_context = gpus.manager.single_renderer(&target)?.as_ref().context_id();
-    let (image, native_image, scene_sync, copy_format) = {
+    let (image, native_image, scene_sync, software_cursor, copy_format) = {
         let mut renderer = gpus.manager.single_renderer(&source)?;
         let renderer = renderer.as_mut();
         let context = renderer.context_id();
@@ -148,14 +163,24 @@ pub(super) fn render_pass(
         scene.valid = false;
         let rendered = {
             let mut framebuffer = renderer.bind(&mut scene.texture)?;
-            state.render_frame_at(
-                renderer,
-                &mut framebuffer,
-                &mut output.damage_tracker,
-                scene_age,
-                rect,
-                view.scale,
-            )?
+            if cursorless {
+                state.render_cursorless_frame_at(
+                    renderer,
+                    &mut framebuffer,
+                    &output.damage_tracker,
+                    rect,
+                    view.scale,
+                )
+            } else {
+                state.render_frame_at(
+                    renderer,
+                    &mut framebuffer,
+                    &mut output.damage_tracker,
+                    scene_age,
+                    rect,
+                    view.scale,
+                )
+            }?
         }; // Release the texture write lock before cloning/sampling it.
         scene.valid = true;
         let image = MultiTexture::from_native_texture::<GpuApi>(&context, scene.texture.clone())
@@ -164,6 +189,7 @@ pub(super) fn render_pass(
             image,
             scene.texture.clone(),
             rendered.sync,
+            rendered.software_cursor,
             direct.unwrap_or(scene.copy_format),
         )
     };
@@ -171,7 +197,7 @@ pub(super) fn render_pass(
     let transfer_started = Instant::now();
 
     if direct.is_none()
-        && let Some(pass) = vulkan::render(
+        && let Some(mut pass) = vulkan::render(
             gpus,
             vulkan::Request {
                 source,
@@ -186,6 +212,7 @@ pub(super) fn render_pass(
             },
         )?
     {
+        pass.software_cursor = software_cursor;
         trace!(scene_node = ?source, target_node = ?target, name = output.target.connector_name(),
                 scene_us = scene_duration.as_micros() as u64,
                 transfer_us = transfer_started.elapsed().as_micros() as u64,
@@ -256,7 +283,41 @@ pub(super) fn render_pass(
         scene_us = scene_duration.as_micros() as u64,
         transfer_us = transfer_started.elapsed().as_micros() as u64,
         "completed native cross-GPU image transfer");
-    Ok(OutputPass { sync, pixels })
+    Ok(OutputPass {
+        sync,
+        pixels,
+        software_cursor,
+    })
+}
+
+impl App {
+    /// A temporary capture must not advance the presented scene's damage
+    /// history: two renders into one acquired GBM buffer still age it once.
+    /// The caller must fully restore the visible scene before queueing it.
+    pub(in crate::compositor) fn render_cursorless_frame_at(
+        &mut self,
+        renderer: &mut GlesRenderer,
+        framebuffer: &mut <GlesRenderer as RendererSuper>::Framebuffer<'_>,
+        presented_damage: &OutputDamageTracker,
+        output_rect: Rectangle<i32, Logical>,
+        output_scale: i32,
+    ) -> Result<RenderedFrame, Box<dyn std::error::Error>> {
+        // Retain the exact physical mode: a rounded logical size multiplied by
+        // scale need not equal the scanout buffer's pixel dimensions.
+        let mut temporary_damage =
+            OutputDamageTracker::from_mode_source(presented_damage.mode().clone());
+        let visible = std::mem::replace(&mut self.software_cursor_visible, false);
+        let result = self.render_frame_at(
+            renderer,
+            framebuffer,
+            &mut temporary_damage,
+            0,
+            output_rect,
+            output_scale,
+        );
+        self.software_cursor_visible = visible;
+        result
+    }
 }
 
 fn persistent_scene_age(valid: bool, force: bool) -> usize {

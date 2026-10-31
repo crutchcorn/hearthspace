@@ -3,7 +3,7 @@ use smithay::{
         Color32F, RendererSuper,
         damage::{OutputDamageTracker, RenderOutputResult},
         element::{
-            Kind,
+            Element, Kind,
             memory::MemoryRenderBufferRenderElement,
             render_elements,
             solid::SolidColorRenderElement,
@@ -70,6 +70,8 @@ render_elements! {
 /// `sync` even when KMS damage clips are disabled.
 pub(super) struct RenderedFrame {
     pub(super) sync: SyncPoint,
+    /// Actual cursor elements in this composition, including unchanged pixels.
+    pub(super) software_cursor: bool,
     /// `None` when nothing changed and the backend can skip presentation.
     pub(super) damage: Option<Vec<Rectangle<i32, Physical>>>,
 }
@@ -78,6 +80,7 @@ impl From<RenderOutputResult<'_>> for RenderedFrame {
     fn from(result: RenderOutputResult<'_>) -> Self {
         Self {
             sync: result.sync,
+            software_cursor: false,
             damage: result.damage.cloned(),
         }
     }
@@ -88,6 +91,10 @@ type RenderFrameResult = Result<RenderedFrame, Box<dyn std::error::Error>>;
 #[cfg(test)]
 #[path = "rendering/frame_result_tests.rs"]
 mod frame_result_tests;
+
+#[cfg(test)]
+#[path = "rendering/cursor_damage_tests.rs"]
+mod cursor_damage_tests;
 
 struct RenderScene {
     elements: Vec<HearthspaceRenderElement>,
@@ -232,7 +239,13 @@ impl App {
             // The repeated background image is opaque and covers the output.
             Color32F::new(0.0, 0.0, 0.0, 1.0),
         )?;
-        Ok(result.into())
+        let software_cursor = elements.iter().any(|element| {
+            element.kind() == Kind::Cursor
+                && result.states.element_was_presented(element.id().clone())
+        });
+        let mut frame = RenderedFrame::from(result);
+        frame.software_cursor = software_cursor;
+        Ok(frame)
     }
 
     /// Collect every render element for the current frame in front-to-back

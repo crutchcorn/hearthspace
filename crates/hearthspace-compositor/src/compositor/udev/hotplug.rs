@@ -27,6 +27,7 @@ impl UdevBackendState {
     }
 
     pub(super) fn pause_session(&mut self) {
+        self.cancel_cursor_retry();
         self.gpus.bridges.retire_all();
         self.session_active = false;
         self.drm_commits_paused = true;
@@ -36,6 +37,7 @@ impl UdevBackendState {
             self.loop_handle.remove(token);
         }
         for device in self.opened_devices.values_mut() {
+            device.reset_cursor();
             device.scanout_node.drm_device.pause();
             self.published_outputs.invalidate(
                 device

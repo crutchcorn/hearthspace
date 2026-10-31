@@ -65,8 +65,8 @@ fn alternating_gpu_completions_service_clients_while_redraw_waits_for_all_output
     let mut outputs = outputs();
     fixture.request_frame(a);
     fixture.request_frame(b);
-    outputs[0].0.queued(None);
-    outputs[1].0.queued(None);
+    outputs[0].0.queued(None, false);
+    outputs[1].0.queued(None, false);
 
     let result = complete(&mut outputs, A, &current_event());
     assert_eq!(dispatch(&mut fixture, result, 16), None);
@@ -77,7 +77,7 @@ fn alternating_gpu_completions_service_clients_while_redraw_waits_for_all_output
     // A's callback permits a new commit/queue before B completes. B's done
     // must arrive without consuming A's new callback or opening the redraw gate.
     fixture.request_frame(a);
-    outputs[0].0.queued(None);
+    outputs[0].0.queued(None, false);
     let result = complete(&mut outputs, B, &current_event());
     assert_eq!(dispatch(&mut fixture, result, 32), None);
     assert!(outputs[0].0.pending);
@@ -85,13 +85,13 @@ fn alternating_gpu_completions_service_clients_while_redraw_waits_for_all_output
     fixture.assert_done(&[(b, 32)]);
 
     fixture.request_frame(b);
-    outputs[1].0.queued(None);
+    outputs[1].0.queued(None, false);
     let result = complete(&mut outputs, A, &current_event());
     assert_eq!(dispatch(&mut fixture, result, 48), None);
     fixture.assert_done(&[(a, 48)]);
 
     fixture.request_frame(a);
-    outputs[0].0.queued(None);
+    outputs[0].0.queued(None, false);
     outputs[0].0.dirty = true; // A redraw request arrived while this flip waited.
     let result = complete(&mut outputs, B, &current_event());
     assert_eq!(dispatch(&mut fixture, result, 64), None);
@@ -114,7 +114,7 @@ fn idle_clean_completion_sends_callback_without_requesting_redraw() {
     let a = fixture.window("A");
     fixture.request_frame(a);
     let mut outputs = outputs();
-    outputs[0].0.queued(None);
+    outputs[0].0.queued(None, false);
     outputs[1].0.dirty = false;
     let result = complete(&mut outputs, A, &current_event());
     assert_eq!(dispatch(&mut fixture, result, 16), Some(false));
@@ -124,7 +124,7 @@ fn idle_clean_completion_sends_callback_without_requesting_redraw() {
 #[test]
 fn recycled_device_id_and_old_surface_event_cannot_acknowledge_new_buffer() {
     let mut outputs = outputs();
-    outputs[0].0.queued(Some(12));
+    outputs[0].0.queued(Some(12), false);
     let old = DeviceToken {
         incarnation: 0,
         ..A
@@ -152,7 +152,7 @@ fn recycled_device_id_and_old_surface_event_cannot_acknowledge_new_buffer() {
 #[test]
 fn untimed_modeset_releases_queue_without_lock_or_client_completion() {
     let mut outputs = outputs();
-    outputs[0].0.queued(Some(12));
+    outputs[0].0.queued(Some(12), false);
     let untimed = DrmEventMetadata {
         time: DrmEventTime::Monotonic(Duration::ZERO),
         sequence: 0,
@@ -164,7 +164,7 @@ fn untimed_modeset_releases_queue_without_lock_or_client_completion() {
     assert!(outputs[0].0.dirty);
     assert!(!outputs[0].0.presented_once);
     assert_eq!(outputs[0].0.lock_generation, None);
-    outputs[0].0.queued(Some(12));
+    outputs[0].0.queued(Some(12), false);
     assert!(matches!(
         complete(&mut outputs, A, &current_event()),
         Submission::Verified {
@@ -177,7 +177,7 @@ fn untimed_modeset_releases_queue_without_lock_or_client_completion() {
 #[test]
 fn missing_gbm_submission_keeps_pending_frame_and_lock_marker() {
     let mut outputs = outputs();
-    outputs[0].0.queued(Some(12));
+    outputs[0].0.queued(Some(12), false);
     let result = complete_frame(
         outputs.iter_mut().map(|(state, buffer)| (state, buffer)),
         A,

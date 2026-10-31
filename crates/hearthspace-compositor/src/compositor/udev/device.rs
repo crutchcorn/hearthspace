@@ -17,7 +17,7 @@ use smithay::{
 };
 use tracing::{debug, error, info, warn};
 
-mod cursor;
+pub(super) mod cursor;
 mod open;
 mod session_fd;
 
@@ -45,9 +45,7 @@ pub(super) struct UdevDevice {
     pub(super) output_targets: Vec<KmsOutputTarget>,
     pub(super) output_surfaces: Vec<KmsOutputSurface>,
     hardware_cursor: Option<HardwareCursor>,
-    hardware_cursor_initialized: bool,
-    hardware_cursor_crtc: Option<crtc::Handle>,
-    hardware_cursor_position: Option<(i32, i32)>,
+    pub(super) cursor_plane: cursor::policy::CursorPlane,
     pub(super) gbm_device: GbmDevice<DrmDeviceFd>,
     pub(super) renderer_formats: Vec<Format>,
     pub(super) scanout_node: ScanoutNode,
@@ -242,9 +240,7 @@ impl UdevDevice {
         // Dropping active surfaces completes their blocking DRM reset, but their
         // flip events can remain queued until the next event-loop dispatch.
         let event_cutoff = SurfaceEventCutoff::now();
-        self.hardware_cursor_initialized = false;
-        self.hardware_cursor_crtc = None;
-        self.hardware_cursor_position = None;
+        self.reset_cursor();
 
         if targets.is_empty() {
             warn!(path = %self.path.display(), "no KMS output target selected; native scanout disabled");

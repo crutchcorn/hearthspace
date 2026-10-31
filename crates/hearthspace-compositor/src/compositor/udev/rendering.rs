@@ -123,9 +123,18 @@ fn render_output(
     let wants_clean =
         state.software_cursor_visible && state.remote_capture.wants_cursorless(&view.name);
     let clean = if wants_clean {
-        let visible = std::mem::replace(&mut state.software_cursor_visible, false);
-        let result = render_pass(gpus, node, output, &mut dmabuf, state, &view, 0, true, true);
-        state.software_cursor_visible = visible;
+        let result = render_pass(
+            gpus,
+            node,
+            output,
+            &mut dmabuf,
+            state,
+            &view,
+            0,
+            true,
+            true,
+            true,
+        );
         // A transfer/render failure can leave submitted work with uncertain
         // completion. Do not restore into the same scanout via another route.
         // Readback alone remains recoverable after a successful render pass.
@@ -142,7 +151,7 @@ fn render_output(
     };
     // Always restore the full scene after a temporary cursorless pass, even if
     // its readback failed. The final fence belongs to the restored image.
-    let force = force_full_redraw || state.software_cursor_visible || wants_clean;
+    let force = force_full_redraw || wants_clean;
     let wanted = captures.wanted(&view.name) || state.remote_capture.wanted(&view.name);
     let rendered = render_pass(
         gpus,
@@ -154,6 +163,7 @@ fn render_output(
         usize::from(buffer_age),
         force,
         wanted,
+        false,
     )?;
     // Keep renderer-side damage, but do not send FB_DAMAGE_CLIPS to KMS. The
     // final fence is source GLES on same-GPU, target completion on a transfer.
@@ -174,7 +184,8 @@ fn render_output(
         let size = output.target.output_size();
         let plain = clean.unwrap_or_else(|| pixels.clone());
         let mut cursor_source = "framebuffer";
-        if let Some((crtc, cursor)) = cursor
+        if !rendered.software_cursor
+            && let Some((crtc, cursor)) = cursor
             && *crtc == output.gbm_surface.crtc()
         {
             cursor.paint(&mut pixels, size);
@@ -199,7 +210,9 @@ fn render_output(
             }
         }
     }
-    output.presentation.queued(state.lock_frame_generation());
+    output
+        .presentation
+        .queued(state.lock_frame_generation(), rendered.software_cursor);
     trace!(device = ?node, scene_node = ?gpus.scene_node, target_node = ?node,
         crtc = ?output.target.crtc, name = view.name, age = if force { 0 } else { buffer_age },
         submit_us = submit_duration.as_micros() as u64, render_us = started.elapsed().as_micros() as u64,
