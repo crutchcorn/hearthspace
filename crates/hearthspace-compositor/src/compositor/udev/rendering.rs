@@ -34,6 +34,7 @@ impl UdevBackendState {
         force_full_redraw: bool,
         captures: &mut CaptureState,
     ) -> Result<bool, Box<dyn std::error::Error>> {
+        self.schedule_bridge_poll();
         if state.session_locked() {
             captures.invalidate("session is locked");
             state.remote_capture.stop();
@@ -70,6 +71,7 @@ impl UdevBackendState {
                     Ok(queued) => submitted |= queued,
                     Err(error) => {
                         let name = output.target.connector_name();
+                        self.gpus.bridges.retire_output(name);
                         captures.fail(name, &format!("native presentation failed: {error}"));
                         state.remote_capture.fail_output(name);
                         output.scene = None;
@@ -82,6 +84,9 @@ impl UdevBackendState {
                 }
             }
         }
+        // This frame may have created the first pending bridge work. Arm its
+        // retirement timer now, even if no later redraw is requested.
+        self.schedule_bridge_poll();
         self.refresh_backend_state();
         state.set_native_lock_outputs_available(self.native_outputs_ready());
         if failed {
@@ -116,7 +121,10 @@ fn render_output(
         let visible = std::mem::replace(&mut state.software_cursor_visible, false);
         let result = render_pass(gpus, node, output, &mut dmabuf, state, &view, 0, true, true);
         state.software_cursor_visible = visible;
-        match result.and_then(|pass| pass.pixels.map_err(Into::into)) {
+        // A transfer/render failure can leave submitted work with uncertain
+        // completion. Do not restore into the same scanout via another route.
+        // Readback alone remains recoverable after a successful render pass.
+        match result?.pixels {
             Ok(pixels) => pixels,
             Err(error) => {
                 warn!(%error, "cursor-free remote readback failed");

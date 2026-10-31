@@ -1,5 +1,6 @@
 //! Compose every scene on the canonical GLES context, transferring only the
 //! completed image. Target-local GBM buffers remain owned by their KMS device.
+pub(super) mod vulkan;
 use super::{
     device::KmsOutputSurface,
     gpu::{GpuApi, GpuState},
@@ -52,6 +53,12 @@ pub(super) fn render_pass(
     let started = Instant::now();
     let size = output.target.output_size();
     let rect = Rectangle::new(view.location, view.size);
+    if gpus.bridges.scanout_blocked(dmabuf) {
+        // A later frame must not turn a submitted failure into an immediate
+        // fallback overwrite. Recovery may allocate a different scanout while
+        // the retired slot retains this exact DMA-BUF until completion.
+        return Err("scanout still belongs to an unresolved Vulkan transfer".into());
+    }
     if source == target {
         // Preserve the single-GPU path: no intermediate allocation or blit.
         let mut renderer = gpus.manager.single_renderer(&source)?;
@@ -75,7 +82,15 @@ pub(super) fn render_pass(
         });
     }
 
-    let (image, scene_sync, copy_format) = {
+    // Preserve direct sharing in either GPU direction, even when its usable
+    // copy Fourcc differs from scanout. Vulkan only fills an empty intersection.
+    let direct = vulkan::direct_copy_format(
+        &mut gpus.manager,
+        source,
+        target,
+        output.gbm_surface.format(),
+    )?;
+    let (image, native_image, scene_sync, copy_format) = {
         let mut renderer = gpus.manager.single_renderer(&source)?;
         let renderer = renderer.as_mut();
         if let Some(previous) = gpus.transfers.get(&(source, target)) {
@@ -91,7 +106,8 @@ pub(super) fn render_pass(
                 .into_iter()
                 .map(|format| format.code)
                 .collect::<Vec<_>>();
-            let copy_format = transfer_format(output.gbm_surface.format(), &formats)
+            let copy_format = direct
+                .or_else(|| transfer_format(output.gbm_surface.format(), &formats))
                 .ok_or("canonical GPU has no supported image-transfer framebuffer format")?;
             info!(scene_node = ?source, target_node = ?target, name = output.target.connector_name(),
                 ?size, ?copy_format, "created canonical scene for secondary GPU output");
@@ -128,11 +144,44 @@ pub(super) fn render_pass(
         scene.valid = true;
         let image = MultiTexture::from_native_texture::<GpuApi>(&context, scene.texture.clone())
             .ok_or("native scene texture has no transferable format")?;
-        (image, rendered.sync, scene.copy_format)
+        (
+            image,
+            scene.texture.clone(),
+            rendered.sync,
+            direct.unwrap_or(scene.copy_format),
+        )
     };
     let scene_duration = started.elapsed();
     let transfer_started = Instant::now();
 
+    if direct.is_none()
+        && let Some(pass) = vulkan::render(
+            gpus,
+            vulkan::Request {
+                source,
+                target,
+                output: output.target.connector_name(),
+                size,
+                copy_format,
+                scene: &native_image,
+                scene_sync: &scene_sync,
+                dmabuf,
+                capture,
+            },
+        )?
+    {
+        trace!(scene_node = ?source, target_node = ?target, name = output.target.connector_name(),
+                scene_us = scene_duration.as_micros() as u64,
+                transfer_us = transfer_started.elapsed().as_micros() as u64,
+                "completed native Vulkan image transfer");
+        return Ok(pass);
+    }
+
+    // A readiness poll can retire earlier work without submitting this frame.
+    // Recheck its scanout ownership before accepting the setup fallback.
+    if gpus.bridges.scanout_blocked(dmabuf) {
+        return Err("fallback scanout still belongs to a retired Vulkan transfer".into());
+    }
     let mut renderer = gpus.manager.renderer(&source, &target, copy_format)?;
     let mut framebuffer = renderer.bind(dmabuf)?;
     let full = Rectangle::<i32, Physical>::from_size(size);

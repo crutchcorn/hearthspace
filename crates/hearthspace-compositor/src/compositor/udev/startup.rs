@@ -101,6 +101,8 @@ pub fn run_udev(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> {
         loop_handle: handle.clone(),
         input_source: None,
         recovery_source: None,
+        bridge_poll_source: None,
+        bridge_poll_failed: false,
         recovery_progress_at: None,
         recovery_needed: true,
         recovery_exhausted: false,
