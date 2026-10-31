@@ -54,7 +54,8 @@ impl App {
                     let origin = bounds
                         .map(|bounds| bounds.loc + Point::from((0, chrome)))
                         .unwrap_or_else(|| (window.position.x, window.position.y + chrome).into());
-                    if let Err(error) = surface.configure(Some(Rectangle::new(origin, size))) {
+                    let geometry = self.x11_root_geometry(surface, Rectangle::new(origin, size));
+                    if let Err(error) = surface.configure(Some(geometry)) {
                         tracing::warn!(%error, "failed to configure X11 window state");
                     }
                 }

@@ -107,14 +107,10 @@ fn cancel_before_buffer_commit(direction: u32, expected: [i32; 4]) {
     let initial = geometry(&compositor, client.id);
     let point = press(&compositor, &mut client);
     let deferred = DeferredResize::begin(&client);
-    client.request(&compositor, direction, 1, point);
+    client.request(&compositor, direction, 1, point.root);
     client.wait_crossing(Crossing::Leave);
     client.clear_events();
-    motion(
-        &compositor,
-        i32::from(point.0) - 40,
-        i32::from(point.1) - 30,
-    );
+    motion(&compositor, point.screen.0 - 40, point.screen.1 - 30);
     // Observe actual WM resize requests, keeping their geometry unapplied.
     let size = [expected[2], expected[3]];
     deferred.wait_requested(&mut client, size);

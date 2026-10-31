@@ -12,6 +12,15 @@ It adds no X11 round trip or public API. The
 [move/resize cancellation patch](../../patches/smithay-xwm-moveresize-cancel.patch)
 adds a default XwmHandler callback and forwards EWMH cancellation (direction 11)
 to the compositor; existing handlers retain their behavior. The
+[X11 raise cache patch](../../patches/smithay-xwm-raise-cache.patch) keeps the
+last requested top root sibling separate from the managed EWMH stacking list,
+invalidates it on external stack/lifecycle changes, and recognizes its latest
+configure acknowledgment without suppressing geometry callbacks. It uses bounded
+private state, keeps override-redirect windows out of the managed list, and adds
+no round trip or public API. It does not synchronize XWM requests with queued
+Wayland input. Upstream
+[`f581531d`](https://github.com/Smithay/smithay/blob/f581531d479cf2e3307bafb913c5d2bb12860bb3/src/xwayland/xwm/mod.rs#L1084)
+still has the managed-list cache shortcut as of 2026-10-31. The
 [touch cancellation patch](../../patches/smithay-touch-cancel.patch) cancels all
 active and pending-up targets even after their last events were framed, retains
 per-client cancellation deduplication, and retires cancelled slot/frame state.
@@ -68,3 +77,8 @@ To refresh:
    substitutes at the GPU-device boundary; it does not establish GPU compatibility
    or performance. See the [test guidance](../../docs/E2E_TESTING.md#smithay-transfer-cache-regressions)
    for the command and the ledger for the removal condition.
+6. For the raise cache patch, run the real-client foreign popup map/remap/restack
+   regression linked in the ledger, check stable hover and geometry callbacks,
+   and verify raised popups remain absent from `_NET_CLIENT_LIST_STACKING`.
+   Run the separate batched-input regression and native pointer/touch acceptance;
+   cache validity alone does not establish cross-connection event ordering.

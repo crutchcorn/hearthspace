@@ -116,14 +116,18 @@ impl App {
         self.cancel_group_window_motion(id);
         self.cancel_canvas_peek_motion(id);
         self.interrupt_pinch_zoom();
-        let window = &mut self.windows[index];
+        let window = &self.windows[index];
         #[cfg(feature = "xwayland")]
         if let ManagedSurface::X11(surface) = &window.surface {
-            let size = surface.geometry().size;
-            surface
-                .configure(Some(Rectangle::new((x, y).into(), size)))
-                .map_err(|error| format!("X11 move failed: {error}"))?;
+            let previous = surface.last_configure();
+            let geometry = self.x11_root_geometry(surface, previous);
+            if geometry != previous {
+                surface
+                    .configure(Some(geometry))
+                    .map_err(|error| format!("X11 move failed: {error}"))?;
+            }
         }
+        let window = &mut self.windows[index];
         window.pending_resize = None;
         window.position = CanvasPoint { x, y };
         self.request_redraw();
@@ -148,9 +152,9 @@ impl App {
             #[cfg(feature = "xwayland")]
             ManagedSurface::X11(surface) => {
                 surface
-                    .configure(Some(Rectangle::new(
-                        (window.position.x, window.position.y).into(),
-                        size,
+                    .configure(Some(self.x11_root_geometry(
+                        surface,
+                        Rectangle::new((window.position.x, window.position.y).into(), size),
                     )))
                     .map_err(|error| format!("X11 resize failed: {error}"))?;
             }

@@ -76,6 +76,10 @@ impl App {
         frame = add_synthetic_axis_to_frame(frame, Axis::Horizontal, horizontal);
         frame = add_synthetic_axis_to_frame(frame, Axis::Vertical, vertical);
 
+        #[cfg(feature = "xwayland")]
+        if let Some(surface) = self.pointer.current_focus() {
+            self.prepare_x11_pointer_target(&surface);
+        }
         let pointer = self.pointer.clone();
         pointer.axis(self, frame);
         pointer.frame(self);
@@ -200,6 +204,8 @@ impl App {
                 surface,
                 surface_location,
             }) => {
+                #[cfg(feature = "xwayland")]
+                self.prepare_x11_pointer_target(&surface);
                 self.record_client_activity_for_window_index(
                     window_index,
                     ActivityReason::ClientInput,
@@ -258,7 +264,11 @@ impl App {
                 surface,
                 surface_location,
                 ..
-            }) => Some((surface, surface_location)),
+            }) => {
+                #[cfg(feature = "xwayland")]
+                self.prepare_x11_pointer_target(&surface);
+                Some((surface, surface_location))
+            }
             _ => None,
         };
         let pointer = self.pointer.clone();

@@ -27,6 +27,9 @@ rustup. `Cargo.lock` records dependencies. The
 removed. Cargo fetches Rust dependencies or uses the sources vendored here;
 separate Rust dependency clones are unnecessary. Native screen sharing also
 requires the separately built, patched [portal backend](docs/SCREEN_SHARING.md#runtime-requirements).
+Building an isolated Xwayland input-debugging candidate needs the additional
+[development headers](docs/DEPENDENCIES.md#test-and-recording-tools); this does
+not replace the system Xwayland executable.
 
 ## Run it
 

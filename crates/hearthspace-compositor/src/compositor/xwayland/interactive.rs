@@ -1,4 +1,4 @@
-//! Keep X11's root coordinates in step with compositor-owned interactions.
+//! Keep X11 client coordinates valid during compositor-owned interactions.
 use tracing::warn;
 
 use crate::compositor::{App, ManagedSurface};
@@ -32,15 +32,15 @@ impl App {
         if surface.is_override_redirect() {
             return;
         }
-        // Preserve the last requested size, including a resize the client has
-        // not painted yet. Changing only ManagedWindow.position leaves X11
-        // TranslateCoordinates and root-relative client events behind the image.
-        let mut geometry = surface.last_configure();
-        let position = (window.position.x, window.position.y).into();
-        if geometry.loc == position {
+        // Preserve the last requested size, including an unpainted resize.
+        // The backing stays fixed while canvas placement changes independently.
+        let previous = surface.last_configure();
+        let mut geometry = previous;
+        geometry.loc = (window.position.x, window.position.y).into();
+        let geometry = self.x11_root_geometry(surface, geometry);
+        if geometry == previous {
             return;
         }
-        geometry.loc = position;
         if let Err(error) = surface.configure(Some(geometry)) {
             warn!(%error, window_id = id, "failed to synchronize X11 window position");
         }

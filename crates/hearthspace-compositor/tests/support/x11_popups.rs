@@ -115,26 +115,26 @@ fn override_redirect_menu_follows_parent_content_through_pan_zoom_and_maximize()
     let id = initial[0]["id"].as_u64().unwrap();
     action(&compositor, format!("move-window {id} 300 200"));
     let deadline = Instant::now() + Duration::from_secs(5);
-    loop {
+    let origin = loop {
         let point = connection
             .translate_coordinates(parent, screen.root, 0, 0)
             .unwrap()
             .reply()
             .unwrap();
-        if (point.dst_x, point.dst_y) == (300, 200) {
-            break;
+        if (point.dst_x, point.dst_y) == (0, 0) {
+            break point;
         }
         assert!(Instant::now() < deadline);
         thread::sleep(Duration::from_millis(20));
-    }
+    };
     let popup = connection.generate_id().unwrap();
     connection
         .create_window(
             screen.root_depth,
             popup,
             screen.root,
-            310,
-            224,
+            origin.dst_x + 10,
+            origin.dst_y + 24,
             160,
             100,
             0,
@@ -235,10 +235,10 @@ fn override_redirect_menu_follows_parent_content_through_pan_zoom_and_maximize()
         .clone();
     assert_eq!(max["x"], 24);
     assert_eq!(max["y"], 96);
-    // At 0.5x and viewport (100,80), the bounded screen origin (24,96)
-    // corresponds to canvas (148,272). X11 receives native client coordinates,
-    // including the unscaled 44px header, while menu pixels follow canvas zoom.
-    let expected_origin = (148, 316);
+    // Maximization changes the displayed content origin and size, while the
+    // managed X backing stays at (0,0). Menu offsets remain client-local and
+    // their displayed pixels still include the scaled compositor titlebar.
+    let expected_origin = (0, 0);
     let deadline = Instant::now() + Duration::from_secs(5);
     let origin = loop {
         let origin = connection

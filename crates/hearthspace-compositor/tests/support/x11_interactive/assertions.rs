@@ -1,4 +1,5 @@
 use super::*;
+use smithay::reexports::x11rb::protocol::xproto::ConnectionExt;
 
 pub(super) fn geometry(compositor: &HeadlessCompositor, id: u64) -> [i32; 4] {
     let windows = query(compositor, "windows");
@@ -50,9 +51,26 @@ pub(super) fn wait_geometry(
         client.pump();
         let actual = geometry(compositor, client.id);
         let origin = client.origin();
+        let backing = client
+            .connection
+            .get_geometry(client.window)
+            .unwrap()
+            .reply()
+            .unwrap();
+        let root = client
+            .connection
+            .get_geometry(client.root)
+            .unwrap()
+            .reply()
+            .unwrap();
+        let backing_inside_root = origin.0 >= 0
+            && origin.1 >= 0
+            && origin.0 + i32::from(backing.width) <= i32::from(root.width)
+            && origin.1 + i32::from(backing.height) <= i32::from(root.height);
         let pixels = colored_bounds(compositor, color);
         if actual == expected
-            && origin == (expected[0], expected[1])
+            && [i32::from(backing.width), i32::from(backing.height)] == [expected[2], expected[3]]
+            && backing_inside_root
             && pixels.is_some_and(|pixels| {
                 pixels
                     .into_iter()
@@ -64,7 +82,7 @@ pub(super) fn wait_geometry(
         }
         assert!(
             Instant::now() < deadline,
-            "expected displayed/X11 geometry {expected:?}, managed={actual:?}, TranslateCoordinates={origin:?}, pixels={pixels:?}, ConfigureNotify={:?}",
+            "expected displayed/managed geometry {expected:?}, managed={actual:?}, TranslateCoordinates={origin:?}, backing={backing:?}, root={root:?}, pixels={pixels:?}, ConfigureNotify={:?}",
             client.configures
         );
         thread::sleep(Duration::from_millis(20));
@@ -75,9 +93,15 @@ pub(super) fn motion(compositor: &HeadlessCompositor, x: i32, y: i32) {
     action(compositor, format!("pointer-motion-abs {x} {y}"));
 }
 
-pub(super) fn press(compositor: &HeadlessCompositor, client: &mut Client) -> (i16, i16) {
+pub(super) struct PressCoordinates {
+    pub root: (i16, i16),
+    pub screen: (i32, i32),
+}
+
+pub(super) fn press(compositor: &HeadlessCompositor, client: &mut Client) -> PressCoordinates {
     let [x, y, _, _] = geometry(compositor, client.id);
-    motion(compositor, x + 60, y + 20);
+    let screen = (x + 60, y + 20);
+    motion(compositor, screen.0, screen.1);
     client.clear_events();
     action(compositor, "pointer-button-down 272");
     let event = client.wait_press();
@@ -87,11 +111,15 @@ pub(super) fn press(compositor: &HeadlessCompositor, client: &mut Client) -> (i1
         (60, 20),
         "fresh click must use current local coordinates"
     );
+    let origin = client.origin();
     assert_eq!(
         (i32::from(event.root_x), i32::from(event.root_y)),
-        (x + 60, y + 20)
+        (origin.0 + 60, origin.1 + 20)
     );
-    (event.root_x, event.root_y)
+    PressCoordinates {
+        root: (event.root_x, event.root_y),
+        screen,
+    }
 }
 
 pub(super) fn responsive_click(compositor: &HeadlessCompositor, client: &mut Client) {

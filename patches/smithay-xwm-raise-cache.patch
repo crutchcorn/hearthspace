@@ -1,0 +1,121 @@
+--- a/src/xwayland/xwm/mod.rs
++++ b/src/xwayland/xwm/mod.rs
+@@ -622,6 +622,10 @@ pub struct X11Wm {
+     client_list: Vec<X11Window>,
+     // bottom -> top
+     client_list_stacking: Vec<X11Window>,
++    // Actual root sibling raised most recently, including override-redirect windows.
++    // The managed-client EWMH list cannot establish this after a popup maps.
++    known_top_window: Option<X11Window>,
++    last_raise_sequence: Option<u16>,
+ 
+     is_showing_desktop: bool,
+ 
+@@ -1051,6 +1055,8 @@ impl X11Wm {
+             windows: Vec::new(),
+             client_list: Vec::new(),
+             client_list_stacking: Vec::new(),
++            known_top_window: None,
++            last_raise_sequence: None,
+             is_showing_desktop: false,
+             focus_release,
+             span,
+@@ -1091,28 +1097,37 @@ impl X11Wm {
+     /// in sync with the compositor to avoid erroneous behavior.
+     pub fn raise_window<'a, W: X11Relatable + 'a>(&mut self, window: &'a W) -> Result<(), ConnectionError> {
+         if let Some(elem) = self.windows.iter().find(|s| window.is_window(s)) {
+-            if self.client_list_stacking.last() == Some(&elem.window_id()) {
++            let root_window = elem.mapped_window_id().unwrap_or_else(|| elem.window_id());
++            if self.known_top_window == Some(root_window) {
+                 return Ok(());
+             }
+ 
++            self.known_top_window = None;
++            self.last_raise_sequence = None;
+             let _guard = scopeguard::guard((), |_| {
+                 let _ = self.conn.ungrab_server();
+                 let _ = self.conn.flush();
+             });
+             self.conn.grab_server()?;
+-            self.conn.configure_window(
+-                elem.mapped_window_id().unwrap_or_else(|| elem.window_id()),
+-                &ConfigureWindowAux::new().stack_mode(StackMode::ABOVE),
+-            )?;
+-            self.client_list_stacking.retain(|e| *e != elem.window_id());
+-            self.client_list_stacking.push(elem.window_id());
+-            self.conn.change_property32(
+-                PropMode::REPLACE,
+-                self.screen.root,
+-                self.atoms._NET_CLIENT_LIST_STACKING,
+-                AtomEnum::WINDOW,
+-                &self.client_list_stacking,
+-            )?;
++            let sequence = self
++                .conn
++                .configure_window(root_window, &ConfigureWindowAux::new().stack_mode(StackMode::ABOVE))?
++                .sequence_number() as u16;
++            if !elem.is_override_redirect() {
++                self.client_list_stacking.retain(|e| *e != elem.window_id());
++                self.client_list_stacking.push(elem.window_id());
++                self.conn.change_property32(
++                    PropMode::REPLACE,
++                    self.screen.root,
++                    self.atoms._NET_CLIENT_LIST_STACKING,
++                    AtomEnum::WINDOW,
++                    &self.client_list_stacking,
++                )?;
++            }
++            // UngrabServer advances the sequence before external clients can
++            // restack, distinguishing their ConfigureNotify from this raise.
++            self.known_top_window = Some(root_window);
++            self.last_raise_sequence = Some(sequence);
+         }
+         Ok(())
+     }
+@@ -1140,6 +1155,8 @@ impl X11Wm {
+             let pos = stacking_ordered_elems.iter().position(|w| relatable.is_window(w));
+             if let (Some(pos), Some(last_pos)) = (pos, last_pos) {
+                 if direction.pos_comparator(pos, last_pos) {
++                    self.known_top_window = None;
++                    self.last_raise_sequence = None;
+                     let sibling = stacking_ordered_elems[last_pos];
+                     let sibling_id = self.client_list_stacking[last_pos];
+                     let elem = stacking_ordered_elems[pos];
+@@ -1544,6 +1561,37 @@ where
+     let _guard = xwm.span.enter();
+     let conn = xwm.conn.clone();
+ 
++    // Keep root-stack knowledge separate from the managed-client EWMH list.
++    // Even events otherwise ignored below can change the actual root stack.
++    let invalidates_top = match &event {
++        Event::MapNotify(_)
++        | Event::UnmapNotify(_)
++        | Event::DestroyNotify(_)
++        | Event::ReparentNotify(_)
++        | Event::CirculateNotify(_) => true,
++        Event::ConfigureNotify(n) => {
++            // Retain only the latest raise acknowledgment. An older one may
++            // conservatively invalidate the cache, but must never restore it.
++            let own_raise = n.response_type & 0x80 == 0
++                && xwm.known_top_window == Some(n.window)
++                && xwm.last_raise_sequence.take() == Some(n.sequence);
++            !own_raise
++        }
++        _ => false,
++    };
++    if invalidates_top {
++        xwm.known_top_window = None;
++        xwm.last_raise_sequence = None;
++    }
++    if let (Some(raised), Some(received)) = (xwm.last_raise_sequence, event.wire_sequence_number()) {
++        // A no-op raise need not produce ConfigureNotify. Retire its marker
++        // once later server events arrive, before a wire sequence can wrap.
++        let advanced = received.wrapping_sub(raised);
++        if advanced != 0 && advanced <= u16::MAX / 2 {
++            xwm.last_raise_sequence = None;
++        }
++    }
++
+     let mut should_ignore = false;
+     if let Some(seqno) = event.wire_sequence_number() {
+         // Check sequences_to_ignore and remove entries with old (=smaller) numbers.

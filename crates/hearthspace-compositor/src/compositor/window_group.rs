@@ -291,10 +291,11 @@ impl App {
             if self.canvas_maximized_rect(index).is_some() {
                 self.configure_window_presentation(index);
             } else {
-                let _ = surface.configure(Some(Rectangle::new(
-                    (position.x, position.y).into(),
-                    surface.geometry().size,
-                )));
+                let previous = surface.last_configure();
+                let geometry = self.x11_root_geometry(surface, previous);
+                if geometry != previous {
+                    let _ = surface.configure(Some(geometry));
+                }
             }
         }
     }

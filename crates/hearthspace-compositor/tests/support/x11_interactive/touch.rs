@@ -43,12 +43,8 @@ fn x11_csd_touch_drag_keeps_x_coordinates_and_recovers_after_touch_cancel() {
     wait_geometry(&compositor, &mut client, [190, 200, 320, 240], GREEN);
     responsive_click(&compositor, &mut client);
     let point = super::press(&compositor, &mut client);
-    client.request(&compositor, 8, 1, point);
-    motion(
-        &compositor,
-        i32::from(point.0) + 20,
-        i32::from(point.1) + 10,
-    );
+    client.request(&compositor, 8, 1, point.root);
+    motion(&compositor, point.screen.0 + 20, point.screen.1 + 10);
     action(&compositor, "pointer-button-up 272");
     wait_geometry(&compositor, &mut client, [210, 210, 320, 240], GREEN);
 }

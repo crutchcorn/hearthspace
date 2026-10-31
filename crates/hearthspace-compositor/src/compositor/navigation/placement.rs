@@ -37,10 +37,10 @@ impl App {
         );
         #[cfg(feature = "xwayland")]
         if let super::super::ManagedSurface::X11(surface) = &self.windows[index].surface
-            && let Err(error) = surface.configure(Some(Rectangle::new(
-                (point.x, point.y).into(),
-                surface.geometry().size,
-            )))
+            && self.x11_root_geometry(surface, surface.last_configure()) != surface.last_configure()
+            && let Err(error) = surface.configure(Some(
+                self.x11_root_geometry(surface, surface.last_configure()),
+            ))
         {
             tracing::warn!(%error, "could not center new X11 window");
             return;

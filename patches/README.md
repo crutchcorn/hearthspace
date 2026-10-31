@@ -300,6 +300,49 @@ See [vendored provenance and refresh steps](../vendor/accesskit_atspi_common/PRO
   regressions without this patch. Keep the vendored dependency and Cargo patch
   while the separate XSettings fix still requires them.
 
+## Smithay X11 raise cache
+
+- **Dependency:** the same vendored Smithay 0.7.0 at revision
+  [`5c2ba413`](https://github.com/Smithay/smithay/tree/5c2ba4132556a08abc70ae1771d275ec2cfc031f).
+- **Patch:** [invalidate stale X11 raise targets](smithay-xwm-raise-cache.patch).
+  Changes only `src/xwayland/xwm/mod.rs`; public APIs are unchanged.
+- **Reason:** `raise_window` treats the final `_NET_CLIENT_LIST_STACKING` entry
+  as the actual top X window. Override-redirect windows are intentionally absent
+  from that managed-client list, so mapping or externally restacking a popup can
+  make a later raise incorrectly return early. With overlapping X-root backings,
+  input intended for a spatially separate canvas window can reach the popup.
+- **Behavior:** cache the actual root sibling requested by the most recent
+  raise separately from the EWMH list. Map, unmap, destruction, reparenting,
+  circulation, and external configure notifications invalidate that knowledge, including events
+  the existing dispatcher otherwise ignores. Relative stacking changes also
+  invalidate it. One configure-sequence marker recognizes the latest raise's
+  own acknowledgment without suppressing geometry callbacks; the existing
+  server grab and subsequent ungrab distinguish it from external restacks.
+  Older acknowledgments conservatively invalidate rather than restore the
+  cache. Stable hover needs no additional raise request. Raising an
+  override-redirect window does not insert it into the managed EWMH list.
+  There is no new round trip, public force-raise API, or unbounded event history.
+- **Upstream:** checked on 2026-10-31 against
+  [master `f581531d`](https://github.com/Smithay/smithay/blob/f581531d479cf2e3307bafb913c5d2bb12860bb3/src/xwayland/xwm/mod.rs#L1084),
+  which retains the cached-list shortcut. Searches for `raise_window`,
+  `client_list_stacking`, and override-redirect stacking found the historical
+  [stacking repair #1024](https://github.com/Smithay/smithay/pull/1024) and
+  [managed-list exclusion #1094](https://github.com/Smithay/smithay/pull/1094),
+  but no repair for this cache. No upstream report has been published.
+- **Verification:** run
+  `cargo test --locked -p hearthspace-compositor --features e2e,test-apps --test headless_control x11_foreign_popup_map_remap_and_restack_cannot_steal_cached_top_client_click`.
+  The real-client regression separates canvas placement from overlapping X-root
+  coordinates and checks foreign popup map, remap, and external restack while
+  the intended client remains the cached target. Also verify stable repeated
+  hover, geometry callbacks after raises, and managed-list exclusion for raised
+  popups. This patch does not establish ordering between XWM requests and queued
+  Wayland input: the separate `x11_batched_clicks_route_to_each_visible_window_despite_overlapping_roots`
+  regression and native pointer/touch acceptance remain required.
+- **Removal:** adopt a compatible upstream revision that invalidates stale
+  actual-top knowledge and preserves managed-list semantics, then pass the
+  cache and input regressions without this patch. Retain other Smithay patches
+  and the Cargo vendor override while their removal conditions remain unmet.
+
 ## Smithay touch cancellation after a frame
 
 - **Dependency:** the same vendored Smithay 0.7.0 at revision

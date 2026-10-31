@@ -187,6 +187,10 @@ pub(in crate::compositor) fn handle_input_event<B: InputBackend>(
             }
 
             let time = event.time();
+            #[cfg(feature = "xwayland")]
+            if let Some(surface) = state.pointer.current_focus() {
+                state.prepare_x11_pointer_target(&surface);
+            }
             let pointer = state.pointer.clone();
             pointer.axis(state, axis_frame_from_event(&event, time));
             pointer.frame(state);

@@ -1,4 +1,4 @@
-//! Pixel evidence distinguishes X root placement from the local backing buffer.
+//! Pixel evidence distinguishes canvas placement from the local X backing buffer.
 use super::super::navigation::wait_windows;
 use super::*;
 use smithay::reexports::x11rb::{
@@ -30,7 +30,7 @@ fn wait_pixels(client: &mut Client, session: &client::Session, expected: impl Fn
 }
 
 #[test]
-fn x11_window_capture_at_nonzero_root_position_has_exact_local_pixels_and_owned_menu() {
+fn x11_window_capture_at_nonzero_canvas_position_has_exact_local_pixels_and_owned_menu() {
     let _guard = headless_test_guard();
     let compositor = compositor();
     let deadline = Instant::now() + Duration::from_secs(10);
@@ -65,7 +65,7 @@ fn x11_window_capture_at_nonzero_root_position_has_exact_local_pixels_and_owned_
             window,
             AtomEnum::WM_NAME,
             AtomEnum::STRING,
-            b"X11 capture at a nonzero origin",
+            b"X11 capture at a nonzero canvas origin",
         )
         .unwrap();
     connection
@@ -82,6 +82,9 @@ fn x11_window_capture_at_nonzero_root_position_has_exact_local_pixels_and_owned_
     let windows = wait_windows(&compositor, |w| w.len() == 1 && w[0]["mapped"] == true);
     let id = windows[0]["id"].as_u64().unwrap();
     action(&compositor, format!("move-window {id} 300 200"));
+    wait_windows(&compositor, |w| {
+        w.len() == 1 && w[0]["canvas_x"] == 300 && w[0]["canvas_y"] == 200
+    });
     let deadline = Instant::now() + Duration::from_secs(5);
     let origin = loop {
         let origin = connection
@@ -89,12 +92,12 @@ fn x11_window_capture_at_nonzero_root_position_has_exact_local_pixels_and_owned_
             .unwrap()
             .reply()
             .unwrap();
-        if origin.dst_x == 300 && origin.dst_y == 200 {
+        if origin.dst_x == 0 && origin.dst_y == 0 {
             break origin;
         }
         assert!(
             Instant::now() < deadline,
-            "nonzero root placement never applied"
+            "stable backing origin never applied"
         );
         thread::sleep(Duration::from_millis(20));
     };

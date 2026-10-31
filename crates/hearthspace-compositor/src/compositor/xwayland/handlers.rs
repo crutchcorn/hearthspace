@@ -67,6 +67,10 @@ impl XwmHandler for App {
 
     fn new_window(&mut self, _xwm: XwmId, window: X11Surface) {
         debug!(x11_window = window.window_id(), "new unmapped X11 window");
+        let geometry = self.x11_root_geometry(&window, window.last_configure());
+        if let Err(error) = window.configure(Some(geometry)) {
+            warn!(%error, x11_window = window.window_id(), "failed to place new X11 backing");
+        }
     }
 
     fn new_override_redirect_window(&mut self, _xwm: XwmId, window: X11Surface) {
@@ -77,6 +81,13 @@ impl XwmHandler for App {
     }
 
     fn map_window_request(&mut self, _xwm: XwmId, window: X11Surface) {
+        // Reassert the stable origin before mapping the frame, including
+        // windows that changed override-redirect since their creation.
+        let geometry = self.x11_root_geometry(&window, window.last_configure());
+        if let Err(error) = window.configure(Some(geometry)) {
+            warn!(%error, x11_window = window.window_id(), "failed to place X11 backing");
+            return;
+        }
         if let Err(error) = window.set_mapped(true) {
             warn!(%error, x11_window = window.window_id(), "failed to map X11 window");
             return;
@@ -130,6 +141,7 @@ impl XwmHandler for App {
         if let Some(h) = h {
             geometry.size.h = h as i32;
         }
+        let geometry = self.x11_root_geometry(&window, geometry);
         if let Err(error) = window.configure(Some(geometry)) {
             warn!(%error, x11_window = window.window_id(), "failed to configure X11 window");
         }

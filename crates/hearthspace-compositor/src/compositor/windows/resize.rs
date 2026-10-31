@@ -158,9 +158,12 @@ impl App {
                     size.h.saturating_add(padding.h),
                 )
                     .into();
-                let rect = Rectangle::new(
-                    Point::from((window.position.x, window.position.y)),
-                    full_size,
+                let rect = self.x11_root_geometry(
+                    surface,
+                    Rectangle::new(
+                        Point::from((window.position.x, window.position.y)),
+                        full_size,
+                    ),
                 );
                 if surface.last_configure() == rect {
                     return;

@@ -92,6 +92,22 @@ backlight permissions, or disabling application sandboxes.
 
 ## Test and recording tools
 
+For Xwayland input debugging that builds a separate Xwayland executable, the
+Ubuntu build prerequisites additionally include:
+
+```sh
+sudo apt-get install -y --no-install-recommends \
+  meson ninja-build libxfont-dev libxcvt-dev libxkbfile-dev \
+  libxshmfence-dev libmd-dev mesa-common-dev libtirpc-dev
+```
+
+`libxfont-dev` also installs `libfontenc-dev`. These are development tools and
+headers; installing them does not replace the running Xwayland server. Build and
+test a candidate in an owned directory before changing any runtime selection.
+If these packages were installed only for that investigation, they can be
+removed afterward with `apt-get remove` and the same package names; include
+`libfontenc-dev` only if it was also newly installed and is no longer needed.
+
 ```sh
 sudo apt-get install -y \
   at-spi2-core libayatana-appindicator3-1 libgtk-3-0t64 \
