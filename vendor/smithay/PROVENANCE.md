@@ -23,6 +23,15 @@ still reach the compositor's import handler; new legacy bindings receive only
 current main-tranche formats. It changes `src/wayland/dmabuf/mod.rs` and
 `src/wayland/dmabuf/dispatch.rs` without adding public APIs. Hearthspace keeps
 surface feedback current through the existing `SurfaceDmabufFeedbackState` API.
+The independent [multi-GPU transfer cache patch](../../patches/smithay-multigpu-transfer-cache.patch)
+adds an opaque caller-owned `TransferCache` and a `MultiRenderer` builder that
+selects its borrowed intermediate slot. Device/context identity binds that slot;
+existing size/Fourcc validation, allocation, negotiation, direct sharing, and
+CPU copying are unchanged. Existing callers retain the manager's pair cache.
+Caller-owned caches require their own completion synchronization and explicit
+invalidation. The upstream basis is the pinned source above; the latest inspected
+multigpu file commit, [`347b2b30225b0425f0b44dc4c590e768f7dbe73e`](https://github.com/Smithay/smithay/blob/347b2b30225b0425f0b44dc4c590e768f7dbe73e/src/backend/renderer/multigpu/mod.rs),
+still retains one intermediate per device pair.
 
 `Cargo.toml.orig` is the exact upstream manifest. The standalone `Cargo.toml`
 omits upstream workspace members, examples, benchmarks, development-only
@@ -47,3 +56,15 @@ To refresh:
    pinned revision. Touch regressions live in
    `crates/hearthspace-compositor/tests/smithay_touch_cancel.rs` and its dedicated
    support module; they use the workspace's existing Wayland client dependency.
+5. For the transfer cache patch, a separate run of the compositor's
+   `smithay_transfer_cache` integration target with `--features udev` and test
+   flags `--ignored --test-threads=1` is required on a host with two validated
+   DRM sysfs node identities. These cases are ignored by default so software-only
+   workspace/CI runs remain usable. Record the explicit run's executed/passed/
+   failed counts separately from the default ignored count. The fixture opens
+   no GPU devices and retains strict prerequisite failure when explicitly run.
+   Then repeat native mixed-size cross-GPU output validation and measurement.
+   The integration target uses the real manager/render/finish path with
+   substitutes at the GPU-device boundary; it does not establish GPU compatibility
+   or performance. See the [test guidance](../../docs/E2E_TESTING.md#smithay-transfer-cache-regressions)
+   for the command and the ledger for the removal condition.

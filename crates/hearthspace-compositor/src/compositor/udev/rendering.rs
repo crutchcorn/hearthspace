@@ -74,7 +74,12 @@ impl UdevBackendState {
                         self.gpus.bridges.retire_output(name);
                         captures.fail(name, &format!("native presentation failed: {error}"));
                         state.remote_capture.fail_output(name);
-                        output.scene = None;
+                        // Preserve the transfer's completion even when drawing
+                        // or KMS submission fails. Recovery drops the owner;
+                        // a retry must wait before rewriting its storage.
+                        if let Some(scene) = output.scene.as_mut() {
+                            scene.invalidate();
+                        }
                         output.presentation.dirty = true;
                         device.recovery_needed = true;
                         failed = true;

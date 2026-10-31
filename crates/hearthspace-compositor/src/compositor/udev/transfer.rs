@@ -1,5 +1,6 @@
 //! Compose every scene on the canonical GLES context, transferring only the
 //! completed image. Target-local GBM buffers remain owned by their KMS device.
+pub(super) mod cache;
 pub(super) mod vulkan;
 use super::{
     device::KmsOutputSurface,
@@ -26,10 +27,18 @@ use tracing::{info, trace, warn};
 pub(super) struct SceneBuffer {
     texture: GlesTexture,
     context: ContextId<GlesTexture>,
+    target_context: ContextId<GlesTexture>,
+    nodes: (DrmNode, DrmNode),
     size: Size<i32, Physical>,
     scale: i32,
     copy_format: Fourcc,
     valid: bool,
+}
+
+impl SceneBuffer {
+    pub(super) fn invalidate(&mut self) {
+        self.valid = false;
+    }
 }
 
 pub(super) struct OutputPass {
@@ -60,6 +69,7 @@ pub(super) fn render_pass(
         return Err("scanout still belongs to an unresolved Vulkan transfer".into());
     }
     if source == target {
+        output.reset_scene();
         // Preserve the single-GPU path: no intermediate allocation or blit.
         let mut renderer = gpus.manager.single_renderer(&source)?;
         let renderer = renderer.as_mut();
@@ -90,17 +100,20 @@ pub(super) fn render_pass(
         target,
         output.gbm_surface.format(),
     )?;
+    let target_context = gpus.manager.single_renderer(&target)?.as_ref().context_id();
     let (image, native_image, scene_sync, copy_format) = {
         let mut renderer = gpus.manager.single_renderer(&source)?;
         let renderer = renderer.as_mut();
-        if let Some(previous) = gpus.transfers.get(&(source, target)) {
-            renderer.wait(previous)?;
-        }
         let context = renderer.context_id();
         let recreate = output.scene.as_ref().is_none_or(|scene| {
-            scene.context != context || scene.size != size || scene.scale != view.scale
+            scene.context != context
+                || scene.target_context != target_context
+                || scene.nodes != (source, target)
+                || scene.size != size
+                || scene.scale != view.scale
         });
         if recreate {
+            output.reset_scene();
             let formats = <GlesRenderer as Bind<Dmabuf>>::supported_formats(renderer)
                 .unwrap_or_default()
                 .into_iter()
@@ -118,6 +131,8 @@ pub(super) fn render_pass(
             output.scene = Some(SceneBuffer {
                 texture,
                 context: context.clone(),
+                target_context,
+                nodes: (source, target),
                 size,
                 scale: view.scale,
                 copy_format,
@@ -125,6 +140,7 @@ pub(super) fn render_pass(
             });
             output.damage_tracker = OutputDamageTracker::new(size, 1.0, Transform::Normal);
         }
+        output.transfer.prepare(renderer)?;
         let scene = output.scene.as_mut().expect("scene buffer initialized");
         // Source contents have age one after success, regardless of which
         // target swapchain slot is acquired. Failure invalidates those contents.
@@ -182,12 +198,15 @@ pub(super) fn render_pass(
     if gpus.bridges.scanout_blocked(dmabuf) {
         return Err("fallback scanout still belongs to a retired Vulkan transfer".into());
     }
-    let mut renderer = gpus.manager.renderer(&source, &target, copy_format)?;
+    let mut renderer = gpus
+        .manager
+        .renderer(&source, &target, copy_format)?
+        .with_transfer_cache(&mut output.transfer.cache);
     let mut framebuffer = renderer.bind(dmabuf)?;
     let full = Rectangle::<i32, Physical>::from_size(size);
-    let (draw_result, finish_result) = {
-        let mut frame = renderer.render(&mut framebuffer, size, Transform::Normal)?;
-        let draw_result = (|| {
+    let completed = (|| {
+        let frame = renderer.render(&mut framebuffer, size, Transform::Normal)?;
+        output.transfer.completion.finish(frame, |frame| {
             frame.wait(&scene_sync)?;
             // Public MultiFrame operations record transfer damage. Drawing through
             // its GLES escape hatch bypasses copy damage and completion.
@@ -201,26 +220,23 @@ pub(super) fn render_pass(
                 Transform::Normal,
                 1.0,
             )
-        })();
-        // Always finish explicitly, even on a draw error, to retain the fence
-        // for work that may already have reached the transfer queue.
-        (draw_result, frame.finish())
-    };
-    let sync = match finish_result {
-        Ok(sync) => sync,
+        })
+    })();
+    let (draw_result, sync) = match completed {
+        Ok(completed) => completed,
         Err(error) => {
-            // No trustworthy completion fence exists. Retire the cached pair
-            // buffer instead of overwriting storage a target might still read.
+            // No trustworthy completion fence exists. Drop this output's
+            // storage instead of overwriting an intermediate still in use.
             drop(framebuffer);
             if let Err(cleanup) = renderer.invalidate_caches() {
                 warn!(%cleanup, "failed to retire interrupted transfer cache");
             }
+            drop(renderer);
+            output.transfer.reset();
             return Err(error.into());
         }
     };
-    // Retain the target fence even if readback or the later KMS queue fails.
-    // The pair's cached intermediate may still be read by the target GPU.
-    gpus.transfers.insert((source, target), sync.clone());
+    // Completion is retained even if drawing, readback, or KMS queueing fails.
     draw_result?;
     let pixels = if capture {
         read_pixels(

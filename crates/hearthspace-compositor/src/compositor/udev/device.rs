@@ -25,7 +25,7 @@ use super::event_cutoff::SurfaceEventCutoff;
 use super::{
     identity::{ConnectorNames, DeviceToken},
     presentation::OutputPresentation,
-    transfer::SceneBuffer,
+    transfer::{SceneBuffer, cache::OutputTransfer},
 };
 use cursor::HardwareCursor;
 pub(super) use open::create_udev_device;
@@ -66,6 +66,14 @@ pub(super) struct KmsOutputSurface {
     pub(super) damage_tracker: OutputDamageTracker,
     pub(super) presentation: OutputPresentation,
     pub(super) scene: Option<SceneBuffer>,
+    pub(super) transfer: OutputTransfer,
+}
+
+impl KmsOutputSurface {
+    pub(super) fn reset_scene(&mut self) {
+        self.scene = None;
+        self.transfer.reset();
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -325,6 +333,7 @@ fn create_output_surface(
             event_cutoff,
         ),
         scene: None,
+        transfer: OutputTransfer::default(),
         target,
         gbm_surface,
     })

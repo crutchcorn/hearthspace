@@ -47,8 +47,7 @@ impl UdevBackendState {
             device.active = false;
             device.recovery_needed = true;
         }
-        // The manager retains pair intermediates across VT switches. Keep their
-        // last target fences too, including transfers that never reached KMS.
+        // Dropping each output releases its intermediate and completion together.
         self.schedule_bridge_poll();
         info!("native session paused; DRM commits disabled and Wayland clients remain connected");
     }
@@ -166,10 +165,15 @@ impl UdevBackendState {
                 .map(|output| output.target.connector_name()),
         );
         device.output_surfaces.clear();
-        self.gpus
-            .transfers
-            .retain(|(source, target), _| *source != device.node && *target != device.node);
-        // Invalidate pair buffers while both contexts still exist. Then remove
+        // Caller-owned intermediates are outside the manager's invalidation.
+        // Reset them with their scenes/fences while both contexts still exist.
+        for remaining in self.opened_devices.values_mut() {
+            for output in &mut remaining.output_surfaces {
+                output.reset_scene();
+                output.presentation.dirty = true;
+            }
+        }
+        // Invalidate renderer caches while both contexts still exist. Then remove
         // the renderer before the last seat descriptor owner is destroyed.
         if let Err(error) = self.gpus.manager.invalidate_caches() {
             warn!(%error, device_id, "failed to invalidate removed GPU caches");
@@ -330,7 +334,7 @@ impl UdevBackendState {
         self.gpus.select_scene(selected);
         for device in self.opened_devices.values_mut() {
             for output in &mut device.output_surfaces {
-                output.scene = None;
+                output.reset_scene();
                 output.damage_tracker =
                     smithay::backend::renderer::damage::OutputDamageTracker::new(
                         output.target.output_size(),

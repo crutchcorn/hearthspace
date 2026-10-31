@@ -387,6 +387,63 @@ See [vendored provenance and refresh steps](../vendor/accesskit_atspi_common/PRO
   Keep the other Smithay repairs and vendoring until their separate removal
   conditions are met. Retain Hearthspace's surface-feedback refresh adapter.
 
+## Smithay caller-owned multi-GPU intermediates
+
+- **Dependency:** the same vendored Smithay 0.7.0 at revision
+  [`5c2ba413`](https://github.com/Smithay/smithay/tree/5c2ba4132556a08abc70ae1771d275ec2cfc031f).
+- **Patch:** [caller-owned transfer cache](smithay-multigpu-transfer-cache.patch),
+  an independent local repair confined to `src/backend/renderer/multigpu/`.
+  Paths in the patch are relative to `vendor/smithay`; existing patches and
+  notices remain intact.
+- **Reason:** one manager cache slot per GPU pair alternates allocation sizes
+  when two differently sized outputs share that pair. The measured baseline at
+  Hearthspace `aba99007` recreated the intermediate on 1,598 output-switch
+  transfers, while 111 consecutive transfers to one output reused it. The
+  repair retains one intermediate per live output, without a retirement list.
+  Those baseline observations are not a measurement of this repair.
+- **Behavior:** opaque, non-Clone `TransferCache` owns the intermediate and its
+  direct/CPU-copy choice, bound to both DRM nodes and renderer context IDs.
+  `MultiRenderer::with_transfer_cache` selects that cache's borrowed slot.
+  Existing callers keep the manager pair cache; both paths use the existing
+  size/Fourcc invalidation and the same allocation, negotiation, drawing, and
+  fallback implementation. Clearing the manager does not clear caller caches.
+  Hearthspace's output owner retains target completion across draw/readback/KMS
+  errors, waits before storage reuse, and resets storage and completion together
+  on lifecycle changes or missing completion. Vulkan integration is unchanged.
+- **Upstream:** the latest inspected multigpu file commit
+  [`347b2b30225b0425f0b44dc4c590e768f7dbe73e`](https://github.com/Smithay/smithay/blob/347b2b30225b0425f0b44dc4c590e768f7dbe73e/src/backend/renderer/multigpu/mod.rs)
+  still has the pair-keyed `dmabuf_cache`. This is a local ownership extension,
+  not an upstream backport; no upstream report is published by this repair.
+- **Verification:** a separate run on a host meeting the fixture prerequisite
+  below is required:
+  `cargo test --locked -p hearthspace-compositor --features udev --test smithay_transfer_cache -- --ignored --test-threads=1`.
+  These cases are explicitly ignored in ordinary workspace/CI runs to preserve
+  software-only coverage. Report this invocation's executed/passed/failed counts
+  separately from the default run's ignored count; a default pass does not
+  establish transfer-cache regression coverage. See the
+  [test guidance](../docs/E2E_TESTING.md#smithay-transfer-cache-regressions).
+  The fixtures exercise real `GpuManager`, `MultiRenderer::render`, and
+  `MultiFrame::finish`, with a counting allocator and distinct DMA-BUF handles
+  at the device boundary. They cover alternating and same-size owners, the
+  unchanged default pair behavior, size/Fourcc/node/context changes, drop and
+  explicit invalidation, the real CPU fallback branch, failed waits, and
+  completion retention after errors. The production output completion helper
+  is included directly in this integration target. Smithay is excluded from
+  the workspace, so tests in the vendored package would not be sufficient.
+  Native mixed-size cross-GPU output acceptance and timing remain required; these
+  boundary substitutes do not validate hardware behavior or performance.
+  **Fixture prerequisite:** pinned drm-rs validates node construction through
+  sysfs and has no synthetic-node constructor. The fixture reads two distinct
+  validated `/sys/class/drm` identities (primary/render nodes of one GPU suffice),
+  without opening devices or issuing GPU commands. An explicit `--ignored` run
+  still fails with a prerequisite message if fewer than two exist; it does not
+  silently skip or bypass validation.
+- **Removal:** adopt a compatible upstream revision with caller-owned
+  intermediates that passes these regressions and native acceptance without
+  this patch. Adapt the per-output owner to that API and retain its completion
+  dependency. Remove only this patch and ledger entry; preserve the other
+  Smithay repairs and vendoring until their separate conditions are met.
+
 ## Masonry finite scrollbar geometry
 
 - **Dependency:** Masonry 0.4.0 at Xilem revision

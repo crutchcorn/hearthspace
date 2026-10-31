@@ -7,7 +7,6 @@ use smithay::backend::{
         ImportDma,
         gles::GlesRenderer,
         multigpu::{GpuManager, gbm::GbmGlesBackend},
-        sync::SyncPoint,
     },
 };
 use tracing::{info, warn};
@@ -21,9 +20,6 @@ pub(super) type GpuApi = GbmGlesBackend<GlesRenderer, DrmDeviceFd>;
 pub(super) struct GpuState {
     pub(super) manager: GpuManager<GpuApi>,
     pub(super) scene_node: Option<DrmNode>,
-    // Smithay caches one intermediate per GPU pair, shared by that pair's
-    // outputs. Wait for the last target read before rewriting it.
-    pub(super) transfers: HashMap<(DrmNode, DrmNode), SyncPoint>,
     pub(super) bridges: bridge::BridgeState,
     pub(super) incarnations: HashMap<DrmNode, (super::identity::DeviceToken, String)>,
     feedback_dirty: bool,
@@ -35,7 +31,6 @@ impl GpuState {
         Ok(Self {
             manager: GpuManager::new(GpuApi::default())?,
             scene_node: None,
-            transfers: HashMap::new(),
             bridges: bridge::BridgeState::default(),
             incarnations: HashMap::new(),
             feedback_dirty: false,
@@ -49,7 +44,6 @@ impl GpuState {
             info!(previous = ?self.scene_node, next = ?node, "canonical scene GPU changed");
             self.scene_node = node;
             self.feedback_dirty = true;
-            self.transfers.clear();
         }
     }
 
