@@ -246,6 +246,25 @@ content after resizing, panning, and zooming. Open Settings → Displays and che
 that every live connector is available there too. A connector discovered in
 sysfs without a corresponding live output is a failure, not successful hotplug.
 
+Record the transfer route as well as the displayed pixels. The native transfer
+module's TRACE events distinguish `completed native Vulkan image transfer` from
+`completed native cross-GPU image transfer`; the latter uses Smithay, whose logs
+identify CPU fallback. A created Vulkan slot alone does not prove a completed
+copy or KMS presentation. Correlate route events with that output's verified
+presentation and captures. Preserve a compatible reverse-direction sharing case
+when changing allocation or format negotiation. Test padded rows, channel order,
+changing contents and repeated buffer reuse before relying on a new copy route.
+
+To exercise a particular direction, use the
+[startup renderer preference](DRM.md#outputs-and-scaling). A retained compositor
+wrapper can set `HEARTHSPACE_DRM_RENDER_DEVICE` to the selected seat GPU's exact
+physical identity and `exec` the verified compositor with its original arguments.
+Pass that wrapper through `--compositor` with `--no-build --binary-dir`; do not
+assume the launcher's environment crosses the service boundary. Record the
+wrapper and underlying executable hashes separately. Confirm the actual selected
+renderer in the log: successful startup through fallback does not satisfy a test
+that requires the requested transfer direction.
+
 Keep a separate movement interval without captures or recordings for flashing
 and frame-pacing measurements. Capture readback can synchronize outstanding GPU
 work and hide a scanout race. This excludes harness readbacks, not internal
@@ -255,6 +274,22 @@ for comparisons; report added outputs or changed resolution as a changed workloa
 The [rendering guide](RENDERING.md#investigating-slow-frames) describes callback
 traces and the limits of screenshot evidence. A successful multi-GPU session
 does not establish unplug/replug, suspend, or compatibility with other drivers.
+
+For application graphics preferences, use an additive desktop-entry fixture and
+the harness's isolated data directory. Open the actual app menu from Apps List,
+the dock and a desktop shortcut; save, dismiss and reopen it. Verify that the
+installed entry stays unchanged and that only the intended application's next
+child receives the environment returned by switcheroo-control. Check both enabling
+and clearing the preference, plus an unrelated launch. Receipt timestamps must
+follow the intended launch action. An environment receipt does not establish the
+GPU an application actually selected or migrate an existing process.
+
+Exercise the private AT-SPI context-menu action while another application has
+keyboard focus, and verify focus restoration after dismissal. A direct widget
+action in a headless fixture does not establish that the Linux accessibility
+adapter exports it. Inspect native Light and Dark captures; record constrained
+widget-size coverage separately when it was rendered offscreen. Keep native
+input observations distinct from deterministic held-key and cancellation tests.
 
 The [gesture acceptance tests](PINCH_ZOOM.md)
 use temporary uinput touchpad and touchscreen devices to exercise libinput input

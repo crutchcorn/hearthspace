@@ -20,6 +20,83 @@ Keep detailed captures and logs with the issue or test artifact. Use this page
 as the single inventory of named test systems; feature guides describe how to
 repeat the checks.
 
+## Hybrid GPU responsiveness investigation, 2026-10-31
+
+After reboot, the same three-output GPD setup selected AMD as its scene GPU.
+Debug runs used Smithay's direct AMD-to-NVIDIA DMA sharing; they did not exercise
+the new NVIDIA-to-AMD Vulkan route. Harness-injected typing was visibly slow,
+and some runs repeated characters until their exact terminal receipts failed.
+
+The decoder change at `c5b6f791` approximately halved the first two matched
+command intervals in two diagnostic repeats. Those intervals include receipt
+checks, not individual key latency. The per-output transfer cache at `7f20b524`
+then reduced intermediate creation-path entries from 3,540 to two startup
+entries. In the common first-three-command window, median external-display
+transfer times fell from about 6.9 ms to 0.45–0.50 ms. The separate 22 cache
+fixtures and 70 native-backend unit tests passed. Typing stalls and receipt
+failures persisted, so these results do not establish an overall responsiveness
+or native acceptance pass.
+
+One later stall coincided with Tctl reaching 99.875°C and all CPU policies
+reporting approximately 600 MHz for about ten seconds. The compositor remained
+near one CPU's worth of execution, with little runqueue waiting; no quota
+throttling or new memory-pressure events were recorded. This supports thermal
+or power limiting as a contributor without identifying the limiter. An earlier
+stall preceded telemetry. Sampled CPU-frequency values are estimates, and this
+observation does not explain the historical reboot.
+
+Both cache runs restored the original VT and removed their owned processes and
+runtime directories after failure. Their logs, captures and timing records are
+retained in the persistent `20261031-vulkan-resume` investigation directory.
+Both runs stopped through normal failure cleanup; neither exercised a
+temperature-triggered stop. Physical input and full Vulkan presentation remain
+unvalidated by these runs.
+
+The input-redraw repair at `c75bd217` and startup-renderer preference at
+`c4d20c0a` passed 118 focused library cases and 18 headless interaction cases.
+A subsequent debug diagnostic used a reviewed 85°C operational cutoff and
+stopped during startup at 85.625°C, 8.5 seconds after monitoring began. The
+typing workload did not start, so this attempt establishes no responsiveness
+improvement. Both recovery layers completed, restored tty2, and removed the
+owned runtime and processes. The retained run is `native-input-8` under the
+same persistent investigation directory.
+
+A second bounded startup, `native-nvidia-9`, selected NVIDIA explicitly and
+logged Vulkan transfers to AMD's internal-display output. There were 88 transfer
+passes and 88 verified eDP presentations before the 85°C cutoff, reached nine
+seconds after monitoring began; nine more of each occurred during shutdown.
+No Smithay cross-GPU completion or CPU-fallback message appeared. The retained
+page-flip capture shows only background and cursor, without application content.
+Transfer traces, presentation counts, and that capture are separate evidence;
+they do not establish correct changing pixels or input responsiveness.
+
+The retained wrapper and declared executable match the build records, but startup
+was interrupted before live executable path/hash verification completed. Both
+recovery layers again restored tty2 and removed their owned processes and runtime.
+Two DRM previous-state restoration errors remain in the teardown log despite
+completed recovery. The workload never began, so neither startup attempt is full
+native acceptance of the new transfer or application-preference UI.
+
+## Release-build interruption, 2026-10-31
+
+The GPD system rebooted automatically during a release build of the compositor
+and shell at `aba99007`, on AC power with default BIOS/power settings according
+to the user. New native acceptance had not started. The retained
+journal ends without a shutdown sequence or a recorded OOM kill, GPU fault,
+thermal trip, or panic near the reset. The next boot reports a software-issued
+CF9 reset and unclean filesystem/journal recovery. This identifies the reset
+mechanism, not its initiator or cause; missing final logs do not exclude a fault.
+Crash capture was configured, but no crash dump was retained.
+
+The compositor release artifact was unusable after reboot. The last resource
+sample preceded the build, so it cannot establish peak memory or temperature.
+Earlier acceptance artifacts under `/tmp` were lost. Recorded historical results
+below remain bounded to their original runs; they do not validate this build.
+The [guarded build workflow](DEVELOPMENT.md#guarded-builds) adds resource
+containment and persistent monitoring as precautions. The reset's cause remains
+unconfirmed, and these precautions are not evidence of a repaired hardware or
+kernel fault.
+
 ## Hybrid GPU native acceptance, 2026-10-30
 
 The GPD system above was tested with its AMD Radeon 890M and an NVIDIA RTX

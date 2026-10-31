@@ -76,11 +76,23 @@ not establish that a connected display can present.
 
 One GPU owns the GLES scene renderer, application imports, and effect caches.
 Outputs attached to that GPU render directly into its scanout buffers. For an
-output on another GPU, Hearthspace renders into a persistent scene texture and
-uses Smithay's multi-GPU renderer to transfer the completed image into a buffer
-allocated by the display's own GPU. Smithay can fall back to CPU copying when
-the drivers cannot share a compatible GPU buffer. This provides a compatibility
-path; it does not guarantee equal performance across driver combinations.
+output on another GPU, Hearthspace renders into a persistent scene texture.
+Compatible explicit format/modifier pairs use Smithay's multi-GPU renderer,
+including when the sharing format differs from the target's scanout format.
+
+When that intersection is empty, an optional Vulkan adapter copies a source-local
+tiled image into a Linear buffer allocated by the target GPU. The destination is
+imported into Vulkan as a buffer, so it does not need to support rendering as a
+framebuffer attachment on the source GPU. The target's GLES renderer samples it
+into its own scanout buffer. The adapter copies complete frames and currently
+supports the four packed 8-bit RGB/RGBA formats. It validates the actual exported
+layout and device capabilities before use; Vulkan support alone does not
+establish compatibility between two drivers.
+
+Unsupported setup retains Smithay's CPU-copy fallback. A failure after GPU work
+begins retires the attempted transfer before a later frame uses fallback. Sharing
+and copying remain automatic backend decisions, separate from an application's
+[graphics preference](APPS.md#application-graphics-preference).
 
 DRM connector and CRTC handles are local to a device. Completion events therefore
 carry device identity and incarnation as well as the CRTC. Native output IDs
@@ -88,6 +100,23 @@ combine the connector with its physical GPU path, so discovery order cannot
 give one GPU another GPU's saved preferences. Settings shows a short display
 name; commands use the complete ID reported by `status`. Changing the primary
 display does not change which GPU renders the scene.
+
+For controlled startup diagnostics, `HEARTHSPACE_DRM_RENDER_DEVICE` prefers one
+scene GPU by its exact physical identity under `/sys/devices/`. Use the raw
+identity obtained by resolving `/sys/class/drm/<enumerated-card>/device` with
+`readlink -f`, where `<enumerated-card>` is the card name from the seat's device
+discovery log. Use that exact result, not a card number or an encoded output
+name. The backend matches it against the seat's enumerated GPUs and still opens
+the other devices for their outputs. An unset variable preserves automatic
+selection; an invalid or ambiguous identity rejects startup before DRM devices
+are acquired.
+
+The preference survives an initially inactive seat and is consumed when the
+first scene renderer is established. If the validated GPU disappears or fails
+to initialize, existing fallback remains available and the selection log records
+the requested identity, actual renderer, and reason. Subsequent recovery follows
+the normal device policy; a returning preferred GPU does not replace a healthy
+renderer. This startup diagnostic is separate from application launch preferences.
 
 Output records own client-visible mode, scale, and logical placement. KMS targets
 own physical scanout dimensions. The output view is logical, and rendering applies
@@ -192,6 +221,14 @@ and age zero when invalidated. The initial transfer path copies the full output,
 so it does not depend on the destination buffer's age. Rendering, image transfer,
 and KMS submission preserve their completion fences in that order.
 
+The Vulkan route has two independent reuse dependencies: the source allocation
+waits for the copy to finish, and the destination waits for the target GLES
+renderer to finish sampling it. The latter completion also protects KMS
+submission. Resizing, device replacement, and seat pause retire affected slots;
+a calloop timer continues checking pending work while presentation is idle.
+Active and retired slots share a bounded budget, so unresolved old work cannot
+be discarded to admit more allocations.
+
 ## Failure and diagnostics
 
 Initialization can fail when required seat, graphics, or output resources cannot
@@ -199,6 +236,14 @@ be created. During a running session, client import failures, hotplug changes, o
 individual submissions can be recoverable. Keep clients connected where possible,
 retain dirty work, and log the affected device or output. Remaining alive does not
 by itself prove that presentation recovered.
+
+The Vulkan adapter stops admitting work if a failed external-memory import leaves
+file-descriptor ownership uncertain. It does not close a descriptor number that
+the driver may already have closed and another thread reused. Imports are
+serialized around this boundary, limiting the uncertain allocation to one per
+process; previously submitted work continues retiring and subsequent frames use
+Smithay. This is containment for an observed driver/layer failure, not a change
+to Vulkan's successful-import ownership contract.
 
 Native captures use renderer readback and presentation acknowledgement. Lock,
 output reconfiguration, device removal, and inactive-session transitions invalidate
