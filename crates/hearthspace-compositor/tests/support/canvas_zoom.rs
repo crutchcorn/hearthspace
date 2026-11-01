@@ -331,3 +331,6 @@ fn zoom_keeps_a_focused_dialog_above_its_maximized_canvas_parent() {
 
 #[path = "canvas_zoom/shell_bar.rs"]
 mod shell_bar;
+
+#[path = "canvas_zoom/pointer.rs"]
+mod pointer;
