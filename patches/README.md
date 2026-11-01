@@ -409,7 +409,7 @@ See [vendored provenance and refresh steps](../vendor/accesskit_atspi_common/PRO
   fallback implementation. Clearing the manager does not clear caller caches.
   Hearthspace's output owner retains target completion across draw/readback/KMS
   errors, waits before storage reuse, and resets storage and completion together
-  on lifecycle changes or missing completion. Vulkan integration is unchanged.
+  on lifecycle changes or missing completion.
 - **Upstream:** the latest inspected multigpu file commit
   [`347b2b30225b0425f0b44dc4c590e768f7dbe73e`](https://github.com/Smithay/smithay/blob/347b2b30225b0425f0b44dc4c590e768f7dbe73e/src/backend/renderer/multigpu/mod.rs)
   still has the pair-keyed `dmabuf_cache`. This is a local ownership extension,

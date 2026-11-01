@@ -247,13 +247,13 @@ that every live connector is available there too. A connector discovered in
 sysfs without a corresponding live output is a failure, not successful hotplug.
 
 Record the transfer route as well as the displayed pixels. The native transfer
-module's TRACE events distinguish `completed native Vulkan image transfer` from
-`completed native cross-GPU image transfer`; the latter uses Smithay, whose logs
-identify CPU fallback. A created Vulkan slot alone does not prove a completed
-copy or KMS presentation. Correlate route events with that output's verified
-presentation and captures. Preserve a compatible reverse-direction sharing case
-when changing allocation or format negotiation. Test padded rows, channel order,
-changing contents and repeated buffer reuse before relying on a new copy route.
+module emits `completed native cross-GPU image transfer` at TRACE level;
+Smithay's logs identify direct DMA sharing or CPU fallback. A created transfer
+buffer alone does not prove a completed copy or KMS presentation. Correlate
+transfer completion with that output's verified presentation and captures.
+Preserve a compatible reverse-direction sharing case when changing allocation
+or format negotiation. Test padded rows, channel order, changing contents and
+repeated buffer reuse before relying on a transfer route.
 
 To exercise a particular direction, use the
 [startup renderer preference](DRM.md#outputs-and-scaling). A retained compositor

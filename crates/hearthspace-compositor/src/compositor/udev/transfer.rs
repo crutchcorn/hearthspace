@@ -1,7 +1,7 @@
 //! Compose every scene on the canonical GLES context, transferring only the
 //! completed image. Target-local GBM buffers remain owned by their KMS device.
 pub(super) mod cache;
-pub(super) mod vulkan;
+mod formats;
 use super::{
     device::KmsOutputSurface,
     gpu::{GpuApi, GpuState},
@@ -23,6 +23,8 @@ use smithay::{
 };
 use std::time::Instant;
 use tracing::{info, trace, warn};
+
+use formats::{direct_copy_format, transfer_format};
 
 pub(super) struct SceneBuffer {
     texture: GlesTexture,
@@ -62,12 +64,6 @@ pub(super) fn render_pass(
     let started = Instant::now();
     let size = output.target.output_size();
     let rect = Rectangle::new(view.location, view.size);
-    if gpus.bridges.scanout_blocked(dmabuf) {
-        // A later frame must not turn a submitted failure into an immediate
-        // fallback overwrite. Recovery may allocate a different scanout while
-        // the retired slot retains this exact DMA-BUF until completion.
-        return Err("scanout still belongs to an unresolved Vulkan transfer".into());
-    }
     if source == target {
         output.reset_scene();
         // Preserve the single-GPU path: no intermediate allocation or blit.
@@ -93,15 +89,15 @@ pub(super) fn render_pass(
     }
 
     // Preserve direct sharing in either GPU direction, even when its usable
-    // copy Fourcc differs from scanout. Vulkan only fills an empty intersection.
-    let direct = vulkan::direct_copy_format(
+    // copy Fourcc differs from scanout. Smithay owns allocation and CPU fallback.
+    let direct = direct_copy_format(
         &mut gpus.manager,
         source,
         target,
         output.gbm_surface.format(),
     )?;
     let target_context = gpus.manager.single_renderer(&target)?.as_ref().context_id();
-    let (image, native_image, scene_sync, copy_format) = {
+    let (image, scene_sync, copy_format) = {
         let mut renderer = gpus.manager.single_renderer(&source)?;
         let renderer = renderer.as_mut();
         let context = renderer.context_id();
@@ -160,44 +156,11 @@ pub(super) fn render_pass(
         scene.valid = true;
         let image = MultiTexture::from_native_texture::<GpuApi>(&context, scene.texture.clone())
             .ok_or("native scene texture has no transferable format")?;
-        (
-            image,
-            scene.texture.clone(),
-            rendered.sync,
-            direct.unwrap_or(scene.copy_format),
-        )
+        (image, rendered.sync, direct.unwrap_or(scene.copy_format))
     };
     let scene_duration = started.elapsed();
     let transfer_started = Instant::now();
 
-    if direct.is_none()
-        && let Some(pass) = vulkan::render(
-            gpus,
-            vulkan::Request {
-                source,
-                target,
-                output: output.target.connector_name(),
-                size,
-                copy_format,
-                scene: &native_image,
-                scene_sync: &scene_sync,
-                dmabuf,
-                capture,
-            },
-        )?
-    {
-        trace!(scene_node = ?source, target_node = ?target, name = output.target.connector_name(),
-                scene_us = scene_duration.as_micros() as u64,
-                transfer_us = transfer_started.elapsed().as_micros() as u64,
-                "completed native Vulkan image transfer");
-        return Ok(pass);
-    }
-
-    // A readiness poll can retire earlier work without submitting this frame.
-    // Recheck its scanout ownership before accepting the setup fallback.
-    if gpus.bridges.scanout_blocked(dmabuf) {
-        return Err("fallback scanout still belongs to a retired Vulkan transfer".into());
-    }
     let mut renderer = gpus
         .manager
         .renderer(&source, &target, copy_format)?
@@ -263,20 +226,6 @@ fn persistent_scene_age(valid: bool, force: bool) -> usize {
     usize::from(valid && !force)
 }
 
-fn transfer_format(scanout: Fourcc, source_formats: &[Fourcc]) -> Option<Fourcc> {
-    // The intermediate is allocated on the source GPU; it need not have the
-    // target's scanout format. Smithay negotiates DMA import or CPU fallback.
-    [
-        scanout,
-        Fourcc::Argb8888,
-        Fourcc::Xrgb8888,
-        Fourcc::Abgr8888,
-        Fourcc::Xbgr8888,
-    ]
-    .into_iter()
-    .find(|format| source_formats.contains(format))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -289,18 +238,5 @@ mod tests {
         assert_eq!(persistent_scene_age(true, false), 1);
         assert_eq!(persistent_scene_age(false, false), 0);
         assert_eq!(persistent_scene_age(true, true), 0);
-    }
-
-    #[test]
-    fn target_scanout_format_does_not_require_source_framebuffer_support() {
-        assert_eq!(
-            transfer_format(Fourcc::Xrgb8888, &[Fourcc::Argb8888]),
-            Some(Fourcc::Argb8888)
-        );
-        assert_eq!(
-            transfer_format(Fourcc::Xrgb8888, &[Fourcc::Argb8888, Fourcc::Xrgb8888]),
-            Some(Fourcc::Xrgb8888)
-        );
-        assert_eq!(transfer_format(Fourcc::Xrgb8888, &[]), None);
     }
 }

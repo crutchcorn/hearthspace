@@ -34,7 +34,6 @@ impl UdevBackendState {
         force_full_redraw: bool,
         captures: &mut CaptureState,
     ) -> Result<bool, Box<dyn std::error::Error>> {
-        self.schedule_bridge_poll();
         if state.session_locked() {
             captures.invalidate("session is locked");
             state.remote_capture.stop();
@@ -71,7 +70,6 @@ impl UdevBackendState {
                     Ok(queued) => submitted |= queued,
                     Err(error) => {
                         let name = output.target.connector_name();
-                        self.gpus.bridges.retire_output(name);
                         captures.fail(name, &format!("native presentation failed: {error}"));
                         state.remote_capture.fail_output(name);
                         // Preserve the transfer's completion even when drawing
@@ -89,9 +87,6 @@ impl UdevBackendState {
                 }
             }
         }
-        // This frame may have created the first pending bridge work. Arm its
-        // retirement timer now, even if no later redraw is requested.
-        self.schedule_bridge_poll();
         self.refresh_backend_state();
         state.set_native_lock_outputs_available(self.native_outputs_ready());
         if failed {

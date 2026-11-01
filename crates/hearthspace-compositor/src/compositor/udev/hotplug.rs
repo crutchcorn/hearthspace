@@ -27,7 +27,6 @@ impl UdevBackendState {
     }
 
     pub(super) fn pause_session(&mut self) {
-        self.gpus.bridges.retire_all();
         self.session_active = false;
         self.drm_commits_paused = true;
         self.kms_devices_active = false;
@@ -48,7 +47,6 @@ impl UdevBackendState {
             device.recovery_needed = true;
         }
         // Dropping each output releases its intermediate and completion together.
-        self.schedule_bridge_poll();
         info!("native session paused; DRM commits disabled and Wayland clients remain connected");
     }
 
@@ -149,9 +147,6 @@ impl UdevBackendState {
         let Some(mut device) = self.opened_devices.remove(&device_id) else {
             return;
         };
-        self.gpus.bridges.retire_node(device.node);
-        self.gpus.bridges.poll();
-        self.gpus.incarnations.remove(&device.node);
         if let Some(token) = device.source.take() {
             self.loop_handle.remove(token);
         }
@@ -226,9 +221,6 @@ impl UdevBackendState {
                             continue;
                         }
                     }
-                    self.gpus
-                        .incarnations
-                        .insert(device.node, (token, device.identity.clone()));
                     let scene_node = self.renderer_preference.scene_after_open(
                         self.gpus.scene_node,
                         device.node,
@@ -283,11 +275,6 @@ impl UdevBackendState {
             device.output_surfaces.len() == targets.len(),
             !was_active || retry_unpresented || device.recovery_needed,
             || {
-                for output in &device.output_surfaces {
-                    self.gpus
-                        .bridges
-                        .retire_output(output.target.connector_name());
-                }
                 self.published_outputs.invalidate(
                     device
                         .output_surfaces
@@ -325,7 +312,6 @@ impl UdevBackendState {
                     })
             });
         self.connector_rescan_pending = self.recovery_needed;
-        self.schedule_bridge_poll();
     }
 
     fn select_available_scene(&mut self) {

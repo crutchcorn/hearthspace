@@ -22,6 +22,10 @@ repeat the checks.
 
 ## Hybrid GPU responsiveness investigation, 2026-10-31
 
+The Vulkan-transfer observations below describe historical code. Current native
+transfers use [Smithay's DMA-sharing and CPU-copy routes](DRM.md#outputs-and-scaling);
+the historical runs do not validate that change.
+
 After reboot, the same three-output GPD setup selected AMD as its scene GPU.
 Debug runs used Smithay's direct AMD-to-NVIDIA DMA sharing; they did not exercise
 the new NVIDIA-to-AMD Vulkan route. Harness-injected typing was visibly slow,

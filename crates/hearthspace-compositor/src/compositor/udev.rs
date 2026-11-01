@@ -1,6 +1,5 @@
 use std::collections::BTreeMap;
 
-mod bridge_poll;
 mod connector_policy;
 mod device;
 mod event_cutoff;
@@ -16,7 +15,6 @@ mod renderer_preference;
 mod rendering;
 mod startup;
 mod transfer;
-mod vulkan_bridge;
 
 use device::{UdevDevice, UdevDeviceInfo};
 use input::insert_libinput_source;
@@ -41,8 +39,6 @@ pub(super) struct UdevBackendState {
     loop_handle: LoopHandle<'static, super::CalloopData>,
     input_source: Option<RegistrationToken>,
     recovery_source: Option<RegistrationToken>,
-    bridge_poll_source: Option<RegistrationToken>,
-    bridge_poll_failed: bool,
     recovery_progress_at: Option<std::time::Instant>,
     recovery_needed: bool,
     recovery_exhausted: bool,
@@ -177,11 +173,6 @@ impl UdevBackendState {
 
 impl Drop for UdevBackendState {
     fn drop(&mut self) {
-        self.gpus.bridges.stop();
-        self.gpus.bridges.poll();
-        if let Some(token) = self.bridge_poll_source.take() {
-            self.loop_handle.remove(token);
-        }
         if let Some(token) = self.input_source.take() {
             self.loop_handle.remove(token);
         }
