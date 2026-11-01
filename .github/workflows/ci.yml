@@ -28,13 +28,17 @@ jobs:
             libgtk4-session-lock-dev libgtk4-layer-shell-dev libpam0g-dev \
             libglib2.0-bin python3-gi gir1.2-gtk-3.0 gir1.2-gtk-4.0 \
             libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev python3 python3-venv dbus \
-            xdg-desktop-portal
+            xdg-desktop-portal curl patch x11-xkb-utils \
+            meson ninja-build libxfont-dev libxcvt-dev libxkbfile-dev \
+            libxshmfence-dev libmd-dev mesa-common-dev libtirpc-dev
 
       - name: Set up Rust
         uses: ./.github/actions/setup-rust
 
       - name: Check formatting
-        run: cargo fmt --all --check
+        run: |
+          cargo fmt --all --check
+          cargo fmt --manifest-path tests/xwayland-relative/Cargo.toml --check
 
       - name: Check Python formatting and lint
         run: |
@@ -44,17 +48,40 @@ jobs:
           "$RUNNER_TEMP/ruff/bin/ruff" format --check scripts
 
       - name: Clippy
-        run: cargo clippy --locked --workspace --all-targets --features udev,e2e,test-apps -- -D warnings
+        run: |
+          cargo clippy --locked --workspace --all-targets --features udev,e2e,test-apps -- -D warnings
+          cargo clippy --locked --manifest-path tests/xwayland-relative/Cargo.toml --all-targets -- -D warnings
 
       - name: Build all workspace targets
         run: cargo build --locked --workspace --all-targets --features udev,e2e,test-apps
+
+      - name: Prepare Xwayland
+        uses: ./.github/actions/prepare-xwayland
 
       # Rendering/accessibility integration tests run in the E2E workflow.
       - name: Test workspace
         run: cargo test --locked --workspace --all-targets --features udev,test-apps
 
+      - name: Test standalone Xwayland supervisor
+        run: cargo test --locked --manifest-path tests/xwayland-relative/Cargo.toml -- --test-threads=1
+
       - name: Test agent helpers
-        run: python3 -m unittest discover -s scripts/tests -v
+        run: |
+          python3 -m unittest discover -s scripts/tests -v
+          python3 -O -B -m unittest discover -s scripts/tests -p test_xwayland_input_check.py -v
+          python3 -O -B -m unittest discover -s scripts/tests -p test_xwayland_cancellation.py -v
+
+      - name: Upload Xwayland preparation evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ci-xwayland-preparation
+          retention-days: 7
+          path: |
+            ${{ runner.temp }}/hearthspace-xwayland-result.json
+            ${{ runner.temp }}/hearthspace-xwayland-build/*.log
+            ${{ runner.temp }}/hearthspace-xwayland-build/build-receipt.json
+            ${{ runner.temp }}/hearthspace-xwayland-build/build/meson-logs/*.txt
 
   deny:
     name: Dependency advisories and bans

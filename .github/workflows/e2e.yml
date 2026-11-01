@@ -50,6 +50,7 @@ jobs:
             at-spi2-core \
             build-essential \
             clang \
+            curl \
             dbus \
             foot \
             gir1.2-gtk-3.0 \
@@ -69,6 +70,7 @@ jobs:
             libgtk4-layer-shell-dev \
             libgtk4-session-lock-dev \
             libinput-dev \
+            libmd-dev \
             libpam0g-dev \
             libseat-dev \
             libsystemd-dev \
@@ -76,13 +78,23 @@ jobs:
             libwayland-dev \
             libxkbcommon-dev \
             libxkbcommon-x11-dev \
+            libxfont-dev \
+            libxcvt-dev \
+            libxkbfile-dev \
+            libxshmfence-dev \
+            libtirpc-dev \
+            mesa-common-dev \
             mesa-vulkan-drivers \
+            meson \
+            ninja-build \
+            patch \
             pkg-config \
             python3 \
             python3-gi \
             wayland-protocols \
             wayland-utils \
             wayvnc \
+            x11-xkb-utils \
             xdg-desktop-portal \
             xwayland
 
@@ -91,6 +103,29 @@ jobs:
 
       - name: Build workspace binaries and test targets
         run: cargo build --locked --workspace --all-targets --features udev,e2e,test-apps
+
+      - name: Prepare Xwayland
+        uses: ./.github/actions/prepare-xwayland
+
+      - name: Check Xwayland input routing
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          import subprocess
+
+          prepared = json.loads((Path(os.environ["RUNNER_TEMP"]) / "hearthspace-xwayland-result.json").read_text())
+          evidence = Path(os.environ["TMPDIR"]) / "evidence"
+          evidence.mkdir(exist_ok=True)
+          subprocess.run([
+              "scripts/check-xwayland-input",
+              "--xwayland", prepared["binary"],
+              "--source", prepared["source"],
+              "--compile-commands", prepared["compile_commands"],
+              "--output", str(evidence / "xwayland"),
+          ], check=True, timeout=1900)
+          PY
 
       # Keep GPU workloads sequential, including within each Rust test binary.
       - name: Run Rust workspace and headless E2E tests
@@ -113,3 +148,9 @@ jobs:
             /tmp/hearthspace-e2e/**/*.png
             /tmp/hearthspace-e2e/**/*.xml
             /tmp/hearthspace-e2e/**/*.txt
+            /tmp/hearthspace-e2e/**/*.stdout
+            /tmp/hearthspace-e2e/**/*.stderr
+            ${{ runner.temp }}/hearthspace-xwayland-result.json
+            ${{ runner.temp }}/hearthspace-xwayland-build/*.log
+            ${{ runner.temp }}/hearthspace-xwayland-build/build-receipt.json
+            ${{ runner.temp }}/hearthspace-xwayland-build/build/meson-logs/*.txt

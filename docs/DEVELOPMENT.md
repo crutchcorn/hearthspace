@@ -29,6 +29,12 @@ including the native backend. Keep `CARGO_TARGET_DIR` consistent when launching
 the session. Repeat the prebuild after dependency changes or clearing build
 artifacts; incremental startup builds still count toward the deadline.
 
+Before launching the compositor, [prepare its Xwayland companions](XWAYLAND.md)
+beside the actual executable produced by Cargo. This is a separate explicit
+build; session startup never downloads or compiles Xwayland. Repeat preparation
+after changing the dependency requirements or moving to another target/profile
+directory.
+
 The runtime binary/package inventory is
 [`scripts/runtime-artifacts.json`](../scripts/runtime-artifacts.json).
 Installer, harness, and development bootstrap consume it. If you add a required

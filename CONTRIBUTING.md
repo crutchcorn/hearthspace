@@ -27,9 +27,10 @@ rustup. `Cargo.lock` records dependencies. The
 removed. Cargo fetches Rust dependencies or uses the sources vendored here;
 separate Rust dependency clones are unnecessary. Native screen sharing also
 requires the separately built, patched [portal backend](docs/SCREEN_SHARING.md#runtime-requirements).
-Building an isolated Xwayland input-debugging candidate needs the additional
-[development headers](docs/DEPENDENCIES.md#test-and-recording-tools); this does
-not replace the system Xwayland executable.
+X11 support also requires the separately prepared
+[Xwayland dependency](docs/XWAYLAND.md), with the additional
+[development headers](docs/DEPENDENCIES.md#xwayland-build-tools). This does not
+replace the system Xwayland executable.
 
 ## Run it
 
@@ -100,14 +101,24 @@ Serial Cargo commands alone do not limit compiler or linker worker threads.
 
 ```sh
 cargo fmt --all --check
+cargo fmt --manifest-path tests/xwayland-relative/Cargo.toml --check
 ruff check scripts
 ruff format --check scripts
 cargo clippy --locked --workspace --all-targets --features udev,e2e,test-apps -- -D warnings
+cargo clippy --locked --manifest-path tests/xwayland-relative/Cargo.toml --all-targets -- -D warnings
 cargo build --locked --workspace --all-targets --features udev,e2e,test-apps
 cargo test --locked --workspace --all-targets --features udev,e2e,test-apps -- --test-threads=1
+cargo test --locked --manifest-path tests/xwayland-relative/Cargo.toml -- --test-threads=1
 python3 -m unittest discover -s scripts/tests -v
+python3 -O -B -m unittest discover -s scripts/tests -p test_xwayland_input_check.py -v
+python3 -O -B -m unittest discover -s scripts/tests -p test_xwayland_cancellation.py -v
 cargo deny check advisories bans sources --warn unmaintained
 ```
+
+After preparing or changing Xwayland, also run the
+[dependency input checks](docs/XWAYLAND.md#check-input-routing) against that
+prepared source and executable. They retain evidence outside the source tree
+and fail if either the relative-input or wheel portion is missing.
 
 The [E2E guide](docs/E2E_TESTING.md) supplies the environment and dependencies
 for required rendering, accessibility, tray, and cross-app tests. Without that

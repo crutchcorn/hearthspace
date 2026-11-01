@@ -38,6 +38,7 @@ maintained behavior. The [roadmap](ROADMAP.md) covers remaining work;
 
 - [Dependencies](DEPENDENCIES.md)
 - [Development workflows](DEVELOPMENT.md)
+- [Xwayland input and preparation](XWAYLAND.md)
 - [Architecture and ownership](ARCHITECTURE.md)
 - [UI components and accessibility](UI.md)
 - [Cursor presentation and assets](CURSOR.md)

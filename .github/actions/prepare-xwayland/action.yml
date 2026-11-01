@@ -1,0 +1,30 @@
+name: Prepare Hearthspace Xwayland
+description: Build the pinned dependency beside the prebuilt compositor
+runs:
+  using: composite
+  steps:
+    - name: Prepare verified Xwayland companions
+      shell: bash
+      run: |
+        python3 - <<'PY'
+        import json
+        import os
+        from pathlib import Path
+        import subprocess
+
+        repository = Path(os.environ["GITHUB_WORKSPACE"])
+        temporary = Path(os.environ["RUNNER_TEMP"])
+        requirements = json.loads((repository / "data/xwayland-requirements.json").read_text())
+        archive = temporary / "hearthspace-xwayland.tar.xz"
+        subprocess.run([
+            "curl", "--fail", "--location", "--output", str(archive),
+            requirements["source_archive_url"],
+        ], check=True, timeout=120)
+        with (temporary / "hearthspace-xwayland-result.json").open("x") as output:
+            subprocess.run([
+                str(repository / "scripts/prepare-xwayland"),
+                "--archive", str(archive),
+                "--build-dir", str(temporary / "hearthspace-xwayland-build"),
+                "--compositor", str(repository / "target/debug/hearthspace-compositor"),
+            ], check=True, stdout=output, timeout=1900)
+        PY

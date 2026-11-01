@@ -1,6 +1,8 @@
 # Graphical login
 
-Install the graphical session after [setting up dependencies](DEPENDENCIES.md).
+Install the graphical session after [setting up dependencies](DEPENDENCIES.md)
+and [preparing Xwayland companions](XWAYLAND.md) for the selected compositor
+profile or prebuilt binary directory.
 Run the installer from the repository root as your normal user:
 
 ```sh
