@@ -6,6 +6,7 @@ import shutil
 import subprocess
 import time
 
+from installlib.xwayland import verify_companions
 from runtime_artifacts import development_commands as artifact_development_commands
 from runtime_artifacts import runtime_build_command
 
@@ -58,6 +59,8 @@ def build(args, session):
     binaries = {}
     for name in required:
         path = args.binary_dir.resolve() / name
+        if name == "hearthspace-compositor" and getattr(args, "compositor", None):
+            path = args.compositor.resolve()
         if not path.is_file() or not os.access(path, os.X_OK):
             raise RuntimeError(f"missing executable {path}; build before switching VTs")
         # Retain exact binary provenance even when the caller explicitly skips building.
@@ -68,6 +71,7 @@ def build(args, session):
             "sha256": digest,
             "mtime": path.stat().st_mtime,
         }
+    binaries.update(verify_companions(binaries["hearthspace-compositor"]["path"]))
     # Cargo does not stage script helpers. The default checkout target is ours
     # to prepare, while a custom/installed release must already be complete.
     name = "hearthspace-share-picker"

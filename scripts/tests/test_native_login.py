@@ -12,6 +12,7 @@ from unittest.mock import Mock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from nativelib import cli, common, recovery, service
+from xwayland_fixture import companions
 
 
 def args(directory, login_session=False):
@@ -162,6 +163,7 @@ class NativeLoginTests(unittest.TestCase):
                 executable.write_text("#!/bin/sh\nexit 1\n")
                 executable.chmod(0o755)
             installed_data(directory)
+            companions(values.binary_dir)
             for enabled in (True, False):
                 values.login_session = enabled
                 cli.build(values, Path(directory))

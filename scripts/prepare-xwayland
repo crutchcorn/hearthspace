@@ -1,0 +1,7 @@
+#!/usr/bin/env python3
+"""Prepare and stage the pinned private Xwayland before desktop startup."""
+
+from prepare_xwayland import main
+
+if __name__ == "__main__":
+    main()

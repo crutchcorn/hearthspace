@@ -11,6 +11,7 @@ import tempfile
 from contextlib import contextmanager
 from pathlib import Path
 
+from . import xwayland
 from .filesystem import atomic_write, directories, no_symlinks
 from .layout import (
     BASE,
@@ -117,6 +118,7 @@ def verify_bundle(bundle, prefix):
         "share/icons/hicolor/scalable/apps/hearthspace-settings.svg",
         str(PAM_SOURCE),
     }
+    expected_names.update(xwayland.RELEASE_MODES)
     if set(spec["files"]) != expected_names:
         raise RuntimeError("bundle does not contain the complete runtime file set")
     if (
@@ -130,8 +132,12 @@ def verify_bundle(bundle, prefix):
         no_symlinks(path)
         if not path.is_file() or digest(path) != expected["sha256"]:
             raise RuntimeError(f"bundle file changed or missing: {path}")
-        if expected["mode"] not in (0o644, 0o755):
+        mode = xwayland.RELEASE_MODES.get(
+            name, 0o755 if name.startswith("bin/") else 0o644
+        )
+        if expected["mode"] != mode or stat.S_IMODE(path.stat().st_mode) != mode:
             raise RuntimeError(f"invalid file mode: {name}")
+    xwayland.verify_companions(bundle / "release/bin/hearthspace-compositor")
     return spec
 
 
@@ -173,6 +179,7 @@ def install(bundle, root, prefix, *, system_root):
                     path.chmod(expected["mode"])
                     if digest(path) != expected["sha256"]:
                         raise RuntimeError(f"bundle changed during copy: {name}")
+                xwayland.verify_companions(stage / "bin/hearthspace-compositor")
                 for directory in [
                     stage,
                     *(path for path in stage.rglob("*") if path.is_dir()),
