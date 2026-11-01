@@ -76,6 +76,9 @@ impl App {
         &mut self,
         text: &str,
     ) -> ControlReply {
+        if let Err(error) = self.require_application_launch_ready() {
+            return ControlReply::Err(error);
+        }
         let request = match serde_json::from_str::<Request>(text) {
             Ok(request) => request,
             Err(error) => {

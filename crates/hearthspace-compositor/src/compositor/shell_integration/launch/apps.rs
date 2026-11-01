@@ -190,6 +190,9 @@ impl App {
         existing: Option<u64>,
         drawing: Option<u64>,
     ) -> ControlReply {
+        if let Err(error) = self.require_application_launch_ready() {
+            return ControlReply::Err(error);
+        }
         let app_id = app_id.to_owned();
         let arguments = arguments
             .iter()
@@ -240,6 +243,7 @@ impl App {
 }
 
 pub(super) fn admit(data: &CalloopData, output: Option<&str>) -> Result<(), String> {
+    data.state.require_application_launch_ready()?;
     if !data.running || !data.capture_active() || data.state.session_locked() {
         return Err("session is inactive or locked".into());
     }

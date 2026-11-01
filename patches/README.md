@@ -8,6 +8,37 @@ windows. Its option is default-off and requires rootless operation. See the
 [patch record](xwayland-surface-input-targets.md) for the source pin, notices,
 regressions, compatibility boundaries, integration status and removal condition.
 
+## Smithay explicit Xwayland executable
+
+- **Dependency:** vendored Smithay 0.7.0 at
+  `5c2ba4132556a08abc70ae1771d275ec2cfc031f`.
+- **Patch:** [absolute-path Xwayland launch](smithay-xwayland-executable.patch)
+  adds `spawn_with_executable`, sharing the existing launch implementation.
+  The original `spawn` keeps its PATH lookup, public signature and asynchronous
+  reaping. The explicit-path variant owns synchronous termination and reaping
+  across disconnect, handle drop and the idempotent
+  `XWaylandClientData::terminate_and_wait` API. Socket, environment, descriptor
+  and readiness handling remain shared.
+- **Reason:** Hearthspace must launch the exact companion it verified, without
+  substituting a system executable. The compositor owns receipt validation,
+  the required routing flag and its startup deadline. Deadline failure must
+  also terminate and reap a server that has stopped answering its sockets.
+- **Upstream:** the [current launcher](https://github.com/Smithay/smithay/blob/master/src/xwayland/xserver.rs),
+  inspected on 2026-11-01, still constructs `Command::new("Xwayland")` and has
+  no executable-path parameter. No upstream report was published.
+- **Verification:** run the compositor's `xwayland_launch`, `xwayland_process`
+  and `xwayland_startup` integration targets, plus dependency-validator,
+  startup-launch-gate and session readiness tests. The process cases cover
+  explicit cleanup, disconnect, handle drop, concurrent cleanup and early exit.
+  Startup cases assert child cleanup before fixture teardown. They exercise
+  the workspace's patched Smithay; its vendor
+  package is outside the workspace. These checks do not replace native startup
+  and input acceptance.
+- **Removal:** adopt compatible upstream explicit-executable and owned-process
+  cleanup APIs that pass
+  those checks without this patch, then switch the adapter to that API. Keep
+  exact companion validation and the no-fallback launch policy.
+
 ## Portal-wlr session policy and capture lifecycle
 
 The pinned external ScreenCast backend has an opt-in patch for a dedicated

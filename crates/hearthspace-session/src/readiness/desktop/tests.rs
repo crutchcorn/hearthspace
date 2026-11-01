@@ -212,3 +212,52 @@ fn oversized_reply_is_rejected_without_allocating_its_claimed_payload() {
     worker.join().unwrap();
     fs::remove_file(path).unwrap();
 }
+
+#[test]
+fn compositor_readiness_requires_actual_xwm_and_an_explicit_wayland_only_opt_out() {
+    let mut status = serde_json::json!({
+        "xwayland_required": true, "xwayland_ready": false, "xwayland_display": null,
+    });
+    assert!(!xwayland_ready(&status, false));
+    assert!(!xwayland_ready(&status, true));
+    status["xwayland_ready"] = true.into();
+    assert!(!xwayland_ready(&status, false));
+    status["xwayland_display"] = ":9".into();
+    assert!(xwayland_ready(&status, false));
+    assert!(!xwayland_ready(&status, true));
+    status["xwayland_required"] = false.into();
+    status["xwayland_ready"] = false.into();
+    status["xwayland_display"] = Value::Null;
+    assert!(!xwayland_ready(&status, false));
+    assert!(xwayland_ready(&status, true));
+    assert!(!xwayland_ready(&serde_json::json!({}), false));
+    assert!(!xwayland_ready(&serde_json::json!({}), true));
+}
+
+#[test]
+fn live_control_socket_does_not_establish_readiness_without_xwm() {
+    let (path, listener) = listener();
+    let worker = thread::spawn(move || {
+        let (mut stream, _) = listener.accept().unwrap();
+        let mut command = [0; 7];
+        stream.read_exact(&mut command).unwrap();
+        assert_eq!(&command, b"status\n");
+        let payload =
+            br#"{"xwayland_required":true,"xwayland_ready":false,"xwayland_display":null}"#;
+        stream
+            .write_all(format!("ok {}\n", payload.len()).as_bytes())
+            .unwrap();
+        stream.write_all(payload).unwrap();
+    });
+    assert!(
+        !probe_compositor(
+            &path,
+            false,
+            Instant::now() + Duration::from_secs(1),
+            &AtomicBool::new(false)
+        )
+        .unwrap()
+    );
+    worker.join().unwrap();
+    fs::remove_file(path).unwrap();
+}

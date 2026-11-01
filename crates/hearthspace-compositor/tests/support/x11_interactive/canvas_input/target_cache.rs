@@ -180,11 +180,8 @@ fn assert_received(windows: &mut Windows, popup: Window, button: u8) {
     } else {
         // Continuous axis units may produce several core X wheel clicks.
         // Every delivered wheel event must form a balanced pair on A only.
-        let pairs = primary.chunks_exact(2);
-        assert!(
-            !primary.is_empty() && pairs.remainder().is_empty(),
-            "{primary:?}"
-        );
+        let (pairs, remainder) = primary.as_chunks::<2>();
+        assert!(!primary.is_empty() && remainder.is_empty(), "{primary:?}");
         for pair in pairs {
             assert!(pair[0].0 && !pair[1].0, "{pair:?}");
             for (_, event) in pair {

@@ -8,6 +8,9 @@ impl Supervisor {
             CompositorBackend::NestedWinit => "--winit",
         };
         let mut args = vec![hearthspace_common::NO_SHELL_FLAG, backend_flag];
+        if self.no_xwayland {
+            args.push("--no-xwayland");
+        }
         if self.screen_cast_enabled {
             args.push("--screen-cast");
         }

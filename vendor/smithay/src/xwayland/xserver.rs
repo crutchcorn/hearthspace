@@ -7,7 +7,8 @@ use std::{
         net::UnixStream,
         process::CommandExt,
     },
-    process::{Child, Command},
+    path::Path,
+    process::{Child, Command, ExitStatus},
     sync::{Arc, Mutex},
     thread,
 };
@@ -130,6 +131,88 @@ impl XWayland {
         A: AsRef<OsStr>,
         F: FnOnce(&UserDataMap),
     {
+        Self::spawn_command(
+            dh,
+            Command::new("Xwayland"),
+            false,
+            display,
+            envs,
+            extra_args,
+            open_abstract_socket,
+            stdout,
+            stderr,
+            user_data,
+        )
+    }
+
+    /// Spawns the selected absolute executable without searching `PATH`.
+    ///
+    /// Arguments and readiness handling are identical to [`Self::spawn`]. The
+    /// caller is responsible for validating the executable before launching it.
+    /// This instance owns process cleanup: disconnecting its Wayland client or
+    /// dropping the handle terminates and reaps the exact child. Explicit cleanup
+    /// is also available through [`XWaylandClientData::terminate_and_wait`].
+    #[allow(clippy::too_many_arguments)]
+    pub fn spawn_with_executable<K, V, I, A, AI, F>(
+        dh: &DisplayHandle,
+        executable: impl AsRef<Path>,
+        display: impl Into<Option<u32>>,
+        envs: I,
+        extra_args: AI,
+        open_abstract_socket: bool,
+        stdout: impl Into<std::process::Stdio>,
+        stderr: impl Into<std::process::Stdio>,
+        user_data: F,
+    ) -> std::io::Result<(Self, Client)>
+    where
+        I: IntoIterator<Item = (K, V)>,
+        K: AsRef<OsStr>,
+        V: AsRef<OsStr>,
+        AI: IntoIterator<Item = A>,
+        A: AsRef<OsStr>,
+        F: FnOnce(&UserDataMap),
+    {
+        if !executable.as_ref().is_absolute() {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "XWayland executable must be an absolute path",
+            ));
+        }
+        Self::spawn_command(
+            dh,
+            Command::new(executable.as_ref()),
+            true,
+            display,
+            envs,
+            extra_args,
+            open_abstract_socket,
+            stdout,
+            stderr,
+            user_data,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn spawn_command<K, V, I, A, AI, F>(
+        dh: &DisplayHandle,
+        mut command: Command,
+        owned_process: bool,
+        display: impl Into<Option<u32>>,
+        envs: I,
+        extra_args: AI,
+        open_abstract_socket: bool,
+        stdout: impl Into<std::process::Stdio>,
+        stderr: impl Into<std::process::Stdio>,
+        user_data: F,
+    ) -> std::io::Result<(Self, Client)>
+    where
+        I: IntoIterator<Item = (K, V)>,
+        K: AsRef<OsStr>,
+        V: AsRef<OsStr>,
+        AI: IntoIterator<Item = A>,
+        A: AsRef<OsStr>,
+        F: FnOnce(&UserDataMap),
+    {
         let (x_wm_x11, x_wm_me) = UnixStream::pair()?;
         let (wl_x11, wl_me) = UnixStream::pair()?;
 
@@ -139,8 +222,6 @@ impl XWayland {
         // XWayland writes the the display number and a newline to this pipe when it's ready.
         let (displayfd_recv, displayfd_send) =
             rustix::pipe::pipe_with(rustix::pipe::PipeFlags::NONBLOCK | rustix::pipe::PipeFlags::CLOEXEC)?;
-
-        let mut command = Command::new("Xwayland");
 
         command
             .stdout(stdout)
@@ -215,15 +296,25 @@ impl XWayland {
         // wayland.
         let inner = Arc::new(Mutex::new(inner));
         let mut dh = dh.clone();
-        let client = dh.insert_client(
-            wl_me,
-            Arc::new(XWaylandClientData {
-                #[cfg(feature = "wayland_frontend")]
-                compositor_state: CompositorClientState::default(),
-                data_map,
-                child: Mutex::new(Some(child)),
-            }),
-        )?;
+        let client_data = Arc::new(XWaylandClientData {
+            #[cfg(feature = "wayland_frontend")]
+            compositor_state: CompositorClientState::default(),
+            data_map,
+            child: Mutex::new(Some(child)),
+            owned_process,
+        });
+        let client = dh
+            .insert_client(wl_me, client_data.clone())
+            .map_err(|error| {
+                if owned_process {
+                    if let Err(cleanup) = client_data.terminate_and_wait() {
+                        return std::io::Error::other(format!(
+                            "{error}; XWayland cleanup failed: {cleanup}"
+                        ));
+                    }
+                }
+                error
+            })?;
 
         Ok((
             Self {
@@ -339,6 +430,9 @@ impl calloop::EventSource for XWayland {
 
 impl Drop for XWayland {
     fn drop(&mut self) {
+        if let Some(data) = self.client.get_data::<XWaylandClientData>() {
+            data.cleanup_owned_process();
+        }
         self.dh
             .backend_handle()
             .kill_client(self.client.id(), DisconnectReason::ConnectionClosed);
@@ -377,6 +471,7 @@ pub struct XWaylandClientData {
     pub compositor_state: CompositorClientState,
     data_map: UserDataMap,
     child: Mutex<Option<Child>>,
+    owned_process: bool,
 }
 
 impl ClientData for XWaylandClientData {
@@ -385,7 +480,13 @@ impl ClientData for XWaylandClientData {
             error!("Xwayland disconnected: {}", err);
         }
 
-        let mut child = self.child.lock().unwrap().take().unwrap();
+        if self.owned_process {
+            self.cleanup_owned_process();
+            return;
+        }
+        let Some(mut child) = self.child.lock().unwrap().take() else {
+            return;
+        };
         thread::spawn(move || {
             if let Ok(status) = child.wait() {
                 if !status.success() {
@@ -397,9 +498,60 @@ impl ClientData for XWaylandClientData {
 }
 
 impl XWaylandClientData {
+    /// Terminate and reap the exact child created by [`XWayland::spawn_with_executable`].
+    ///
+    /// Safe before or after client disconnection and handle drop. Cleanup shares
+    /// the same child lock with callbacks; a completed cleanup returns `None` on
+    /// subsequent calls. Errors retain ownership for a later cleanup attempt.
+    /// Instances created by [`XWayland::spawn`] retain their original asynchronous
+    /// reaping behavior and return `Unsupported` here.
+    pub fn terminate_and_wait(&self) -> std::io::Result<Option<ExitStatus>> {
+        if !self.owned_process {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::Unsupported,
+                "XWayland process is not explicitly owned",
+            ));
+        }
+        let mut slot = self.child.lock().unwrap();
+        let Some(child) = slot.as_mut() else {
+            return Ok(None);
+        };
+        let status = match child.try_wait()? {
+            Some(status) => status,
+            None => {
+                if let Err(error) = child.kill() {
+                    // It may have exited between try_wait and kill. Never lose
+                    // the owned handle or block waiting after a real kill error.
+                    if let Some(status) = child.try_wait()? {
+                        *slot = None;
+                        return Ok(Some(status));
+                    }
+                    return Err(error);
+                }
+                child.wait()?
+            }
+        };
+        *slot = None;
+        Ok(Some(status))
+    }
+
+    fn cleanup_owned_process(&self) {
+        if self.owned_process {
+            if let Err(error) = self.terminate_and_wait() {
+                error!(%error, "failed to terminate and reap owned XWayland child");
+            }
+        }
+    }
+
     /// Access user_data map for a xwayland client
     pub fn user_data(&self) -> &UserDataMap {
         &self.data_map
+    }
+}
+
+impl Drop for XWaylandClientData {
+    fn drop(&mut self) {
+        self.cleanup_owned_process();
     }
 }
 

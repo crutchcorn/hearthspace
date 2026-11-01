@@ -1,11 +1,5 @@
-use std::process::Stdio;
-
-use smithay::{
-    wayland::compositor::CompositorHandler,
-    xwayland::{X11Surface, XWayland, XWaylandEvent},
-};
-use tracing::{error, info, trace, warn};
-use wayland_server::DisplayHandle;
+use smithay::xwayland::X11Surface;
+use tracing::{info, trace, warn};
 
 use super::{
     App, ManagedSurface, ManagedWindow, ManagedWindowKind, WindowDecoration,
@@ -14,65 +8,15 @@ use super::{
 
 mod clipboard;
 mod coordinates;
+pub(super) mod dependency;
 mod dispatch;
 mod handlers;
 pub(super) mod identity;
 mod interactive;
 mod popups;
+pub(super) mod startup;
 
 impl App {
-    pub(super) fn start_xwayland(&mut self, dh: &DisplayHandle) {
-        let Ok((xwayland, client)) = XWayland::spawn(
-            dh,
-            None,
-            std::iter::empty::<(String, String)>(),
-            std::iter::empty::<String>(),
-            true,
-            Stdio::null(),
-            Stdio::null(),
-            |_| (),
-        ) else {
-            warn!("XWayland is unavailable; X11 applications will not be supported");
-            return;
-        };
-
-        let display_handle = dh.clone();
-        let ret = self
-            .loop_handle
-            .insert_source(xwayland, move |event, _, data| match event {
-                XWaylandEvent::Ready {
-                    x11_socket,
-                    display_number,
-                } => {
-                    data.state
-                        .client_compositor_state(&client)
-                        .set_client_scale(1.0);
-                    match data.state.start_xwm(
-                        &display_handle,
-                        x11_socket,
-                        client.clone(),
-                        display_number,
-                    ) {
-                        Ok(()) => {
-                            info!(
-                                display = format_args!(":{display_number}"),
-                                "XWayland is ready"
-                            );
-                        }
-                        Err(error) => {
-                            error!(%error, "failed to start XWayland window manager");
-                        }
-                    }
-                }
-                XWaylandEvent::Error => {
-                    warn!("XWayland exited during startup");
-                }
-            });
-        if let Err(error) = ret {
-            error!(%error, "failed to register XWayland event source");
-        }
-    }
-
     fn map_x11_window(&mut self, window: X11Surface) {
         if self
             .windows

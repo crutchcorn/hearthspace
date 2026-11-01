@@ -14,6 +14,31 @@ use super::{connect_until, remaining};
 const STATUS_LIMIT: usize = 256 * 1024;
 const CAPTURE_LIMIT: usize = 128 * 1024 * 1024;
 
+/// A live Wayland socket alone does not establish XWM readiness. This probe
+/// uses the compositor's real state; absence of the new fields fails closed.
+pub(crate) fn probe_compositor(
+    path: &Path,
+    no_xwayland: bool,
+    deadline: Instant,
+    cancelled: &AtomicBool,
+) -> io::Result<bool> {
+    let status: Value =
+        serde_json::from_slice(&request(path, "status", STATUS_LIMIT, deadline, cancelled)?)?;
+    Ok(xwayland_ready(&status, no_xwayland))
+}
+
+fn xwayland_ready(status: &Value, no_xwayland: bool) -> bool {
+    if no_xwayland {
+        status["xwayland_required"] == false && status["xwayland_ready"] == false
+    } else {
+        status["xwayland_required"] == true
+            && status["xwayland_ready"] == true
+            && status["xwayland_display"]
+                .as_str()
+                .is_some_and(|display| !display.is_empty())
+    }
+}
+
 pub(crate) fn probe(
     path: &Path,
     native: bool,

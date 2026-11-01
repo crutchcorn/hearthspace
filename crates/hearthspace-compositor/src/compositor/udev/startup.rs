@@ -26,6 +26,7 @@ use crate::{
 };
 
 pub fn run_udev(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> {
+    crate::compositor::startup::preflight(options)?;
     let termination_signals = crate::compositor::create_termination_signals()?;
     let (session, session_notifier) = LibSeatSession::new()?;
     let seat_name = session.seat();

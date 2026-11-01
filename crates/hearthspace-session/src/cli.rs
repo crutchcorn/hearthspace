@@ -73,6 +73,10 @@ pub(crate) struct Args {
     #[arg(long)]
     pub(crate) no_desktop_services: bool,
 
+    /// Run an explicitly Wayland-only session without X11 applications.
+    #[arg(long)]
+    pub(crate) no_xwayland: bool,
+
     /// Set log level for session and children.
     #[arg(long, default_value = "info")]
     pub(crate) log_level: String,

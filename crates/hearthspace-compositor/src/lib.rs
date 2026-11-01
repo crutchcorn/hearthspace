@@ -28,6 +28,8 @@ pub struct RunOptions {
     pub headless_output_size: Option<(i32, i32)>,
     pub headless_output_scale: Option<i32>,
     pub start_shell: bool,
+    /// Require Xwayland unless explicitly set false for Wayland-only mode.
+    pub start_xwayland: bool,
     pub exit_after: Option<Duration>,
 }
 
@@ -41,6 +43,7 @@ impl Default for RunOptions {
             headless_output_size: None,
             headless_output_scale: None,
             start_shell: true,
+            start_xwayland: true,
             exit_after: None,
         }
     }

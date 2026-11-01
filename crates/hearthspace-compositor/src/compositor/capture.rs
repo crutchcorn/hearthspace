@@ -331,6 +331,8 @@ impl CalloopData {
             "locked": false, "lock_confirmed": false,
             "recovery_ready": recovery_ready,
             "xwayland_display": xwayland_display,
+            "xwayland_required": self.state.xwayland_required,
+            "xwayland_ready": self.state.xwayland_is_ready(),
             "window_switcher": self.state.window_switcher_status(),
             "window_group": self.state.group_status(),
             "canvas_maps": self.state.canvas_maps_status(),

@@ -59,3 +59,11 @@ fn wayvnc_keeps_its_separate_remote_input_opt_in() {
     assert!(!spec.args.iter().any(|arg| arg == "--screen-cast"));
     assert!(spec.args.iter().any(|arg| arg == "--remote-desktop"));
 }
+
+#[test]
+fn wayland_only_requires_explicit_flag_and_is_forwarded_to_compositor() {
+    let default = specification(&["--backend", "nested"], false);
+    assert!(!default.args.iter().any(|arg| arg == "--no-xwayland"));
+    let explicit = specification(&["--backend", "nested", "--no-xwayland"], false);
+    assert!(explicit.args.iter().any(|arg| arg == "--no-xwayland"));
+}

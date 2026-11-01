@@ -14,6 +14,8 @@ mod display;
 mod files;
 pub(super) mod pending;
 mod snap_scope;
+#[cfg(test)]
+mod startup_tests;
 
 struct ApplicationEnvironment {
     wayland_display: String,
@@ -41,6 +43,7 @@ impl App {
     }
 
     pub(super) fn spawn_a11y_test(&mut self) -> Result<(), String> {
+        self.require_application_launch_ready()?;
         #[cfg(feature = "test-apps")]
         {
             self.prepare_spawn_output(None);
@@ -68,6 +71,7 @@ impl App {
     }
 
     pub(super) fn spawn_foot(&mut self) -> Result<(), String> {
+        self.require_application_launch_ready()?;
         self.prepare_spawn_output(None);
 
         let child = Command::new("foot")
@@ -85,6 +89,7 @@ impl App {
         snap_instance: Option<&str>,
         mut launch_env: Vec<(String, String)>,
     ) -> Result<ApplicationEnvironment, String> {
+        self.require_application_launch_ready()?;
         let wayland_display = if let Some(instance_name) = snap_instance {
             self.ensure_snap_wayland_listener(instance_name)
                 .map_err(|error| format!("failed to prepare Snap Wayland socket: {error}"))?

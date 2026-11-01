@@ -2658,6 +2658,7 @@ dependencies = [
  "rstest",
  "serde",
  "serde_json",
+ "sha2",
  "smithay",
  "tempfile",
  "tiny-skia 0.12.0",

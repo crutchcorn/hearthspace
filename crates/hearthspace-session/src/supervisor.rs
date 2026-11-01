@@ -33,6 +33,7 @@ pub(crate) struct Supervisor {
     backend: Option<Backend>,
     private_session_bus: bool,
     screen_cast_enabled: bool,
+    no_xwayland: bool,
     activation_environment: Option<crate::session_bus::ActivationEnvironment>,
     binary_dir: Option<PathBuf>,
     compositor_binary: Option<PathBuf>,
@@ -70,6 +71,7 @@ impl Supervisor {
             backend: args.backend,
             private_session_bus: args.private_session_bus,
             screen_cast_enabled: crate::desktop_services::enabled(args),
+            no_xwayland: args.no_xwayland,
             activation_environment: None,
             binary_dir: args.binary_dir.clone(),
             compositor_binary: args.compositor_binary.clone(),
@@ -253,6 +255,14 @@ impl Supervisor {
                 &self.shutdown_requested,
             )
             .is_ok()
+                && crate::readiness::desktop::probe_compositor(
+                    &self.paths.shell_command_socket,
+                    self.no_xwayland,
+                    self.startup_deadline
+                        .min(Instant::now() + Duration::from_millis(250)),
+                    &self.shutdown_requested,
+                )
+                .unwrap_or(false)
             {
                 info!("compositor ready");
                 return Ok(());

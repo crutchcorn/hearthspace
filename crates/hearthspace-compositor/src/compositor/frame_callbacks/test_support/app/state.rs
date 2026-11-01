@@ -98,5 +98,10 @@ pub(super) fn new(dh: &DisplayHandle, handle: LoopHandle<'static, CalloopData>) 
         xwm: None,
         #[cfg(feature = "xwayland")]
         xdisplay: None,
+        #[cfg(feature = "xwayland")]
+        xwayland_startup: None,
+        xwayland_required: false,
+        startup_shell: None,
+        application_launch_ready: true,
     }
 }

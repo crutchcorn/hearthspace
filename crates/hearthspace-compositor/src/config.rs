@@ -6,6 +6,7 @@ pub use hearthspace_common::{
     SHELL_OUTPUT_WATCHER_APP_ID, WAYLAND_DISPLAY_ENV, WAYLAND_DISPLAY_NAME, wayland_display_name,
 };
 pub const GTK_TEST_APP_FLAG: &str = "--gtk-test-app";
+pub const NO_XWAYLAND_FLAG: &str = "--no-xwayland";
 pub const SHELL_FLAG: &str = "--shell";
 pub const HEADLESS_FLAG: &str = "--headless";
 pub const TTY_FLAG: &str = "--tty";

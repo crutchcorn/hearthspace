@@ -19,6 +19,8 @@ impl App {
         client: Client,
         display_number: u32,
     ) -> Result<(), Box<dyn std::error::Error>> {
+        let _deadline =
+            super::startup::ConnectionDeadline::new(&socket, self.xwm_startup_deadline())?;
         // Smithay installs surface commit hooks parameterized by the XWM's
         // state. That must be App, just like CompositorState::new::<App>.
         // Forwarding from CalloopData is insufficient: its TypeId differs.
@@ -49,7 +51,6 @@ impl App {
         )?;
         self.xwm = Some(xwm);
         self.xdisplay = Some(display_number);
-        self.publish_xwayland_display();
         self.publish_xsettings();
         Ok(())
     }

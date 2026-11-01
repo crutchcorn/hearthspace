@@ -116,9 +116,8 @@ impl App {
         self.cancel_group_window_motion(id);
         self.cancel_canvas_peek_motion(id);
         self.interrupt_pinch_zoom();
-        let window = &self.windows[index];
         #[cfg(feature = "xwayland")]
-        if let ManagedSurface::X11(surface) = &window.surface {
+        if let ManagedSurface::X11(surface) = &self.windows[index].surface {
             let previous = surface.last_configure();
             let geometry = self.x11_root_geometry(surface, previous);
             if geometry != previous {

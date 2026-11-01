@@ -1,10 +1,6 @@
 #[cfg(feature = "winit")]
 use std::time::Instant;
-use std::{
-    collections::HashSet,
-    os::unix::{fs::MetadataExt, net::UnixListener as CommandListener},
-    sync::Arc,
-};
+use std::{collections::HashSet, os::unix::fs::MetadataExt};
 
 use crate::{RunOptions, config::*, geometry::CanvasPoint};
 use hearthspace_desktop::app_catalog::AppCatalog;
@@ -37,6 +33,7 @@ mod selection;
 mod session_lock;
 mod settings_watch;
 mod shell_integration;
+mod startup;
 mod switcher;
 #[cfg(feature = "udev")]
 mod udev;
@@ -100,7 +97,6 @@ use smithay::{
         selection::{data_device::DataDeviceState, primary_selection::PrimarySelectionState},
         shell::xdg::{ToplevelSurface, XdgShellState, decoration::XdgDecorationState},
         shm::ShmState,
-        socket::ListeningSocketSource,
         viewporter::ViewporterState,
     },
 };
@@ -366,6 +362,12 @@ struct App {
     xwm: Option<X11Wm>,
     #[cfg(feature = "xwayland")]
     xdisplay: Option<u32>,
+    #[cfg(feature = "xwayland")]
+    xwayland_startup: Option<xwayland::startup::Startup>,
+    xwayland_required: bool,
+    startup_shell: Option<std::path::PathBuf>,
+    // Lifted after startup; later Xwayland loss must not disable Wayland apps.
+    application_launch_ready: bool,
 }
 
 #[derive(Debug, Default)]
@@ -438,6 +440,7 @@ pub(in crate::compositor) fn create_termination_signals()
 
 #[cfg(feature = "winit")]
 pub fn run_winit(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> {
+    startup::preflight(options)?;
     info!(?options, "initializing winit compositor backend");
     let termination_signals = create_termination_signals()?;
     let display: Display<App> = Display::new()?;
@@ -523,6 +526,7 @@ pub fn run_winit(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> 
 }
 
 pub fn run_headless(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> {
+    startup::preflight(options)?;
     info!(?options, "initializing headless compositor backend");
     let termination_signals = create_termination_signals()?;
     let display: Display<App> = Display::new()?;
@@ -759,16 +763,18 @@ pub(in crate::compositor) fn initialize_app(
         xwm: None,
         #[cfg(feature = "xwayland")]
         xdisplay: None,
+        #[cfg(feature = "xwayland")]
+        xwayland_startup: None,
+        xwayland_required: options.start_xwayland,
+        startup_shell: options.start_shell.then_some(command_socket_path),
+        application_launch_ready: false,
     };
 
     #[cfg(feature = "xwayland")]
     let mut app = app;
     #[cfg(feature = "xwayland")]
-    app.start_xwayland(&dh);
-
-    if options.start_shell {
-        info!(path = %command_socket_path.display(), "spawning shell client");
-        spawn_shell(&command_socket_path);
+    if options.start_xwayland {
+        app.start_xwayland(&dh)?;
     }
 
     Ok(AppInit {
@@ -789,27 +795,6 @@ fn register_common_event_sources(
         data.running = false;
     })?;
 
-    let command_socket_path = command_socket_path();
-    remove_stale_socket(&command_socket_path)?;
-    let command_listener = CommandListener::bind(&command_socket_path)?;
-    command_listener.set_nonblocking(true)?;
-    info!(path = %command_socket_path.display(), "listening for shell commands");
-
-    // Accept new Wayland clients (epoll-driven instead of polled).
-    let wayland_display = crate::config::wayland_display_name();
-    let socket_source = ListeningSocketSource::with_name(&wayland_display)?;
-    handle.insert_source(socket_source, |stream, _, data| {
-        match data
-            .display
-            .handle()
-            .insert_client(stream, Arc::new(ClientState::default()))
-        {
-            Ok(client_id) => debug!(?client_id, "accepted Wayland client"),
-            Err(error) => error!(%error, "failed to insert Wayland client"),
-        }
-        data.state.request_redraw();
-    })?;
-
     // Dispatch client requests when the Wayland display fd becomes readable.
     let display_fd = display.backend().poll_fd().try_clone_to_owned()?;
     handle.insert_source(
@@ -825,19 +810,7 @@ fn register_common_event_sources(
         },
     )?;
 
-    // Accept shell command connections. Each connection is then read
-    // incrementally on its own non-blocking source, so a slow or stuck client
-    // can never stall the compositor's event loop.
-    let command_loop_handle = handle.clone();
-    handle.insert_source(
-        Generic::new(command_listener, Interest::READ, CalloopMode::Level),
-        move |_, listener, _| {
-            accept_command_connections(listener, &command_loop_handle)?;
-            Ok(PostAction::Continue)
-        },
-    )?;
-
-    Ok(command_socket_path)
+    Ok(command_socket_path())
 }
 
 fn log_idle_transition(transition: IdleTransition) {

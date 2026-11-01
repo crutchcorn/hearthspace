@@ -110,6 +110,9 @@ pub(in crate::compositor) fn run_event_loop(
     mut event_loop: EventLoop<CalloopData>,
     data: &mut CalloopData,
 ) -> Result<(), Box<dyn std::error::Error>> {
+    #[cfg(feature = "xwayland")]
+    super::xwayland::startup::wait(&mut event_loop, data)?;
+    super::startup::start_clients(data)?;
     info!("entering compositor event loop");
     data.update_native_hardware_cursor();
     if let Err(error) = data.render() {

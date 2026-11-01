@@ -60,6 +60,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             headless_output_size,
             headless_output_scale,
             exit_after,
+            start_xwayland: !args
+                .iter()
+                .any(|arg| arg == hearthspace_compositor::config::NO_XWAYLAND_FLAG),
             start_shell: !args
                 .iter()
                 .any(|arg| arg == hearthspace_compositor::config::NO_SHELL_FLAG),

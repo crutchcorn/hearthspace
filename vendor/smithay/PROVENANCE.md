@@ -33,6 +33,18 @@ invalidation. The upstream basis is the pinned source above; the latest inspecte
 multigpu file commit, [`347b2b30225b0425f0b44dc4c590e768f7dbe73e`](https://github.com/Smithay/smithay/blob/347b2b30225b0425f0b44dc4c590e768f7dbe73e/src/backend/renderer/multigpu/mod.rs),
 still retains one intermediate per device pair.
 
+The [explicit Xwayland executable patch](../../patches/smithay-xwayland-executable.patch)
+adds `XWayland::spawn_with_executable` for an absolute, caller-verified executable.
+It shares socket, environment and readiness handling with the original `spawn`,
+whose PATH-based behavior and asynchronous reaping remain unchanged. The new
+variant synchronously terminates and reaps its owned child on disconnect or
+handle drop, and exposes idempotent `XWaylandClientData::terminate_and_wait` for
+deadline cleanup. Shared ownership serializes those paths around the exact
+`Child`. Hearthspace owns the dependency receipt checks and startup deadline.
+Workspace integration targets `xwayland_launch`, `xwayland_process` and
+`xwayland_startup` cover these boundaries; repeat them and native startup/input
+acceptance when refreshing this repair.
+
 `Cargo.toml.orig` is the exact upstream manifest. The standalone `Cargo.toml`
 omits upstream workspace members, examples, benchmarks, development-only
 dependencies, and the custom release profile; target autodiscovery is disabled.

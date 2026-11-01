@@ -176,6 +176,9 @@ impl App {
         for window in windows {
             self.retire_x11_window(&window, super::RetirementCause::Destroyed);
         }
-        warn!(?xwm, "XWayland disconnected");
+        warn!(
+            ?xwm,
+            "Xwayland disconnected; X11 windows retired, Wayland applications preserved; no system Xwayland fallback or restart will be attempted"
+        );
     }
 }

@@ -49,6 +49,18 @@ impl Supervisor {
                 &self.shutdown_requested,
             ) {
                 Ok(true) => {
+                    if !crate::readiness::desktop::probe_compositor(
+                        &self.paths.shell_command_socket,
+                        self.no_xwayland,
+                        deadline,
+                        &self.shutdown_requested,
+                    )
+                    .unwrap_or(false)
+                    {
+                        last_error = Some("Xwayland window manager is not ready".to_owned());
+                        thread::sleep(Duration::from_millis(25));
+                        continue;
+                    }
                     info!("desktop ready: shell mapped and every output presented");
                     return Ok(());
                 }
