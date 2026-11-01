@@ -78,6 +78,22 @@ offscreen framebuffer.
 
 ## Shape policy
 
+### X11 application defaults
+
+Before advertising its Xwayland display, Hearthspace seeds `Xcursor.size: 24`
+in the server's X resource database when no database or legacy user resource
+file exists. This keeps libXcursor from estimating the cursor size from the
+combined dimensions of the monitor layout. The default applies to clients connecting
+to that Xwayland instance, including activated applications.
+
+An existing `RESOURCE_MANAGER` property, `~/.Xdefaults`, or `~/.Xresources` is
+preserved. Users with those resource databases retain control of their cursor
+settings. A client's explicit `XCURSOR_SIZE` takes precedence over the server
+default. Hearthspace does not change the cursor theme or application DPI, and
+does not resize arbitrary client-provided cursor artwork to enforce this default.
+
+### Compositor shapes
+
 Window-management hit testing selects the desired shape. Resize borders and active
 resize operations use horizontal, vertical, or diagonal resize cursors. Other
 interactions can request semantic shapes such as grab or crosshair.
