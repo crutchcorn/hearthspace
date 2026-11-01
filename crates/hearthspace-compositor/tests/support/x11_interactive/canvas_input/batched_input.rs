@@ -4,6 +4,8 @@ use smithay::reexports::x11rb::protocol::xproto::{ConfigureWindowAux, StackMode}
 
 #[path = "deferred_grabs.rs"]
 mod deferred_grabs;
+#[path = "review_regressions.rs"]
+mod review_regressions;
 #[path = "target_cache.rs"]
 mod target_cache;
 #[path = "xwm_barrier.rs"]
