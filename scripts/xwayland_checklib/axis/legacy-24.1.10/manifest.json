@@ -1,0 +1,32 @@
+{
+  "format_version": 1,
+  "version": "24.1.10",
+  "capture": "revision4-extended-legacy-1",
+  "description": "Recorded candidate-1 legacy ingress, including historical loss; never generated from the expected oracle or rebaselined to the repaired candidate.",
+  "suite": "extended",
+  "expectation": "legacy-capture",
+  "source_sha256": {
+    "hw/xwayland/xwayland-input.c": "d5744ce94d276deefd050267176c1d874a5d0974abc990c87b8717a843545e61",
+    "hw/xwayland/xwayland-input.h": "cc93fc4245a93e47d2944ba01f5824dd1a25f832e902e01da2a1026529ab841d",
+    "hw/xwayland/xwayland-input-target.c": "524d05cc86749c6fcab0c599b3e08f917ad17cad9be8b8426d1d8c2992b377c5",
+    "hw/xwayland/xwayland-input-target.h": "9f09a522a06dc85be2710bfcbfb2ff932e8ffb4890e5e6ba44dd70a8594da28d",
+    "dix/inpututils.c": "9eb171939e85abb19f6b85dc5177f6a267bcfec90ae1fa2675e6c52d80bd6449",
+    "include/inpututils.h": "c09c6f4c7eb272dd66993196c30fcdeed54749db92a8e19bad9d13385a4119a0"
+  },
+  "original_manifest_sha256": "39a9f502d707228b782c4b224ac57a7639842b04d1f97a0d3a5728bba1f4f892",
+  "original_result_sha256": "edaa34be6c480b919b0e7369d4739ba1cae0d4e6900fc81806bbef9467dfbe74",
+  "fixture_sha256": {
+    "check-results.py": "c174342d185bde5ff472dcee43d3dc04c9df49f801a61c53e3ce6f71d563e732",
+    "extended-results.py": "0750364bcc4c036e754e4990977fe66ae9d92f51a52003a86287ea4fad92d7a1",
+    "fixture-extended.h": "49341078f1498066587d628e8ceb850180fd1d9a3cf1a4572a6ed8eaa558c862",
+    "fixture.c": "3b5b969887a666cb60715d63bb429d9f62d47712944b479530a081bb26c03e8a",
+    "run.py": "01bf4a0fe09a1ecbf39ad321c0eb72b60ce5425c066e6c0567140a99a2a89c93",
+    "fixture-support.h": "03fb2a550b86e2321a3388f8e1469aeafe65c2596469e716bb1e8da23bcbfd00",
+    "fixture-support.c": "131584e67ac38900e199de830c58e2f72062b3f0b2656ad9deafb13232d04edb"
+  },
+  "files_sha256": {
+    "initial.stdout": "363fcf580848c7621b0bd2290c7b225da6b0150f79e7c9aecced3931820c2f32",
+    "run.stdout": "c51d853bb58025b08b08ef2947ebda4c96f413981e05083471ee506c2c588c77",
+    "result.json": "9b91a881753f9abeb5431dae4f02f4a94f256109c3a3f0a0295dd4d2b522c118"
+  }
+}

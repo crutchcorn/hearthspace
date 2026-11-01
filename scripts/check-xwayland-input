@@ -1,0 +1,7 @@
+#!/usr/bin/env python3
+"""Check the prepared private Xwayland's relative and axis input regressions."""
+
+from xwayland_checklib.runner import main
+
+if __name__ == "__main__":
+    raise SystemExit(main())
