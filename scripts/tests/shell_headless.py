@@ -15,7 +15,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from agentlib.control import Control, ControlError, Deadline
 from agentlib.daily_checks import a11y
 from agentlib.smoke import Smoke
-from test_clipboard_headless import private_bus_command, stop_process_group
+from headless_process import owned_process
+from test_clipboard_headless import private_bus_command
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -128,14 +129,14 @@ def run_shell_session(
     )
     with contextlib.ExitStack() as cleanup:
         bus_log = cleanup.enter_context((evidence / "dbus.log").open("w"))
-        bus = subprocess.Popen(
-            shell_bus_command(directory, address),
-            env=env,
-            stdout=bus_log,
-            stderr=subprocess.STDOUT,
-            start_new_session=True,
+        bus = cleanup.enter_context(
+            owned_process(
+                shell_bus_command(directory, address),
+                env=env,
+                stdout=bus_log,
+                stderr=subprocess.STDOUT,
+            )
         )
-        cleanup.callback(stop_process_group, bus)
         deadline = Deadline(timeout)
         while not (directory / "bus").exists():
             test.assertIsNone(bus.poll(), "private bus exited")
@@ -146,22 +147,22 @@ def run_shell_session(
             else None
         )
         log = cleanup.enter_context((evidence / "compositor.log").open("w"))
-        compositor = subprocess.Popen(
-            [
-                str(binary),
-                "--headless",
-                "--no-shell",
-                "--headless-size",
-                f"{size[0]}x{size[1]}",
-                "--headless-scale",
-                str(scale),
-            ],
-            env=env,
-            stdout=log,
-            stderr=log,
-            start_new_session=True,
+        compositor = cleanup.enter_context(
+            owned_process(
+                [
+                    str(binary),
+                    "--headless",
+                    "--no-shell",
+                    "--headless-size",
+                    f"{size[0]}x{size[1]}",
+                    "--headless-scale",
+                    str(scale),
+                ],
+                env=env,
+                stdout=log,
+                stderr=log,
+            )
         )
-        cleanup.callback(stop_process_group, compositor)
         smoke = Smoke(
             SimpleNamespace(session=evidence, timeout=timeout), presentation="offscreen"
         )
@@ -180,28 +181,28 @@ def run_shell_session(
         notifications_log = cleanup.enter_context(
             (evidence / "notifications.log").open("w")
         )
-        notifications = subprocess.Popen(
-            [str(binary.with_name("hearthspace-notifications"))],
-            env=env,
-            stdout=notifications_log,
-            stderr=notifications_log,
-            start_new_session=True,
+        notifications = cleanup.enter_context(
+            owned_process(
+                [str(binary.with_name("hearthspace-notifications"))],
+                env=env,
+                stdout=notifications_log,
+                stderr=notifications_log,
+            )
         )
-        cleanup.callback(stop_process_group, notifications)
         while not (directory / "hearthspace-notifications.sock").exists():
             test.assertIsNone(
                 notifications.poll(), "private notification service exited"
             )
             time.sleep(min(0.02, deadline.remaining()))
         shell_log = cleanup.enter_context((evidence / "shell.log").open("w"))
-        shell = subprocess.Popen(
-            [str(binary.with_name("hearthspace-shell"))],
-            env=env,
-            stdout=shell_log,
-            stderr=shell_log,
-            start_new_session=True,
+        shell = cleanup.enter_context(
+            owned_process(
+                [str(binary.with_name("hearthspace-shell"))],
+                env=env,
+                stdout=shell_log,
+                stderr=shell_log,
+            )
         )
-        cleanup.callback(stop_process_group, shell)
         while True:
             try:
                 if smoke.control.status().get("shell_ready"):
