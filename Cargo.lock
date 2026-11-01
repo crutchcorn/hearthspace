@@ -7162,6 +7162,7 @@ dependencies = [
  "async-trait",
  "atspi 0.30.0",
  "quick-xml",
+ "rustix 1.1.5",
  "serde_json",
  "tempfile",
  "tokio",
