@@ -398,9 +398,11 @@ The recovered live window instead uses valid X-root coordinates.
 
 Negative/far-positive canvas move and close cases have passed, but the latest
 stationary-axis fixtures fail their stacking preconditions before input delivery.
-The new synchronous-grab/replay and destroyed-target regressions have only been
-formatted; compilation and execution remain pending. Full validation and native
-acceptance of the permanent repair are also pending.
+The four synchronous-grab/replay and popup-lifetime regressions compile and fail
+against this candidate with system Xwayland 24.1.10. They cover ordered replay,
+explicit-grab ownership, a surviving frozen popup, and destruction followed by
+reuse of the same XID. These are failure reproductions, not acceptance of the
+proposed repair. Full validation and native acceptance remain pending.
 
 X11 applications have a finite root desktop even though Hearthspace's canvas
 extends beyond it. This candidate keeps managed X11 backings at root `(0,0)`;

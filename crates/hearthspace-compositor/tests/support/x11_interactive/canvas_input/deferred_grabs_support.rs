@@ -1,8 +1,10 @@
 //! Raw event capture and an unfrozen-keyboard marker for deferred pointer input.
 use super::*;
 use smithay::reexports::x11rb::protocol::xproto::{
-    CreateWindowAux, EventMask, KeyButMask, KeyPressEvent, MapState, WindowClass,
+    ChangeWindowAttributesAux, CreateWindowAux, EventMask, KeyButMask, KeyPressEvent, MapState,
+    WindowClass,
 };
+use std::fmt;
 
 pub(super) const AB_WITH_KEY_MARKER: &str = concat!(
     "pointer-motion-abs 260 220\n",
@@ -25,10 +27,43 @@ pub(super) const A_WITH_KEY_MARKER: &str = concat!(
 
 type ExpectedButton = (bool, Window, [i16; 2], [i16; 2]);
 
-#[derive(Debug, Default)]
+#[derive(Default)]
 pub(super) struct RawEvents {
     pub buttons: Vec<(bool, ButtonPressEvent)>,
     keys: Vec<(bool, KeyPressEvent)>,
+}
+
+struct ButtonDebug<'a>(bool, &'a ButtonPressEvent);
+
+impl fmt::Debug for ButtonDebug<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let Self(pressed, event) = self;
+        f.debug_struct("Button")
+            .field("pressed", pressed)
+            .field("event", &event.event)
+            .field("root", &event.root)
+            .field("local", &[event.event_x, event.event_y])
+            .field("root_coordinates", &[event.root_x, event.root_y])
+            .field("detail", &event.detail)
+            .field("state", &u16::from(event.state))
+            .field("time", &event.time)
+            .field("synthetic", &(event.response_type & 0x80 != 0))
+            .finish()
+    }
+}
+
+impl fmt::Debug for RawEvents {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let buttons: Vec<_> = self
+            .buttons
+            .iter()
+            .map(|(pressed, event)| ButtonDebug(*pressed, event))
+            .collect();
+        f.debug_struct("RawEvents")
+            .field("buttons", &buttons)
+            .field("keys", &self.keys)
+            .finish()
+    }
 }
 
 impl RawEvents {
@@ -45,23 +80,44 @@ impl RawEvents {
         }
     }
 
-    fn assert_buttons(&self, root: Window, expected: &[ExpectedButton]) {
-        assert_eq!(self.buttons.len(), expected.len(), "{self:?}");
+    #[track_caller]
+    fn assert_buttons(&self, client: &str, root: Window, expected: &[ExpectedButton]) {
+        assert_eq!(
+            self.buttons.len(),
+            expected.len(),
+            "{client}: expected={expected:?}; actual={self:?}"
+        );
         for ((pressed, event), (want_press, recipient, local, root_point)) in
             self.buttons.iter().zip(expected)
         {
-            assert_eq!(pressed, want_press, "{event:?}");
-            assert_eq!(event.event, *recipient, "wrong recipient: {event:?}");
-            assert_eq!([event.event_x, event.event_y], *local, "{event:?}");
-            assert_eq!([event.root_x, event.root_y], *root_point, "{event:?}");
-            assert_eq!(event.root, root, "{event:?}");
-            assert_eq!(event.detail, 1, "{event:?}");
-            assert!(event.same_screen, "{event:?}");
-            assert_eq!(event.response_type & 0x80, 0, "synthetic input: {event:?}");
+            let observed = ButtonDebug(*pressed, event);
+            assert_eq!(pressed, want_press, "{client}: {observed:?}");
+            assert_eq!(
+                event.event, *recipient,
+                "{client}: wrong recipient: {observed:?}"
+            );
+            assert_eq!(
+                [event.event_x, event.event_y],
+                *local,
+                "{client}: {observed:?}"
+            );
+            assert_eq!(
+                [event.root_x, event.root_y],
+                *root_point,
+                "{client}: {observed:?}"
+            );
+            assert_eq!(event.root, root, "{client}: {observed:?}");
+            assert_eq!(event.detail, 1, "{client}: {observed:?}");
+            assert!(event.same_screen, "{client}: {observed:?}");
+            assert_eq!(
+                event.response_type & 0x80,
+                0,
+                "{client}: synthetic input: {observed:?}"
+            );
             assert_eq!(
                 u16::from(event.state) & u16::from(KeyButMask::BUTTON1) != 0,
                 !*pressed,
-                "button state before the event: {event:?}"
+                "{client}: button state before the event: {observed:?}"
             );
         }
     }
@@ -125,14 +181,17 @@ impl Observed {
         }
     }
 
+    #[track_caller]
     pub fn assert_buttons(
         &self,
         windows: &Windows,
         primary: &[ExpectedButton],
         observer: &[ExpectedButton],
     ) {
-        self.primary.assert_buttons(windows.client.root, primary);
-        self.observer.assert_buttons(windows.client.root, observer);
+        self.primary
+            .assert_buttons("CA", windows.client.root, primary);
+        self.observer
+            .assert_buttons("CB", windows.client.root, observer);
     }
 }
 
@@ -187,9 +246,19 @@ pub(super) fn mapped_child(windows: &Windows) -> Window {
             0,
             WindowClass::INPUT_OUTPUT,
             screen.root_visual,
-            &CreateWindowAux::new()
-                .background_pixel(0x20c060)
-                .event_mask(button_mask()),
+            &CreateWindowAux::new().background_pixel(0x20c060),
+        )
+        .unwrap()
+        .check()
+        .unwrap();
+    // CA owns A and C, but leaves C's event selection empty. Only CB selects
+    // C's buttons, keeping the intercepted, replayed, and B events in order
+    // on one connection; CA still captures any input leaking to A.
+    windows
+        .observer
+        .change_window_attributes(
+            child,
+            &ChangeWindowAttributesAux::new().event_mask(button_mask()),
         )
         .unwrap()
         .check()

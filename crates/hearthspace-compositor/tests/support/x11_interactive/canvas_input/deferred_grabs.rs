@@ -53,19 +53,20 @@ fn x11_sync_passive_replay_preserves_child_and_queued_neighbor_targets() {
         .check()
         .unwrap();
     events.synchronize(&windows);
+    // CB observes every recipient in one stream, so this also checks that
+    // replay and the queued child release precede the neighbor's click.
     events.assert_buttons(
         &windows,
-        &[
-            (true, child, [20, 20], [60, 20]),
-            (false, child, [20, 20], [60, 20]),
-        ],
+        &[],
         &[
             intercepted,
+            (true, child, [20, 20], [60, 20]),
+            (false, child, [20, 20], [60, 20]),
             (true, b, [80, 40], [80, 40]),
             (false, b, [80, 40], [80, 40]),
         ],
     );
-    assert_eq!(events.primary.buttons[0].1.time, intercepted_time);
+    assert_eq!(events.observer.buttons[1].1.time, intercepted_time);
     assert_scene(&windows);
     windows
         .observer
@@ -138,6 +139,52 @@ fn x11_sync_explicit_async_pointer_preserves_foreign_grab_ownership() {
     );
     assert_scene(&windows);
     release_grabs(&windows);
+}
+
+#[test]
+fn x11_frozen_live_popup_preserves_queued_popup_and_neighbor_targets() {
+    let _guard = headless_test_guard();
+    let windows = fixture();
+    let b = windows.other;
+    let popup = windows.client.connection.generate_id().unwrap();
+    map_popup(&windows, popup);
+    grab_keyboard(&windows, GrabMode::SYNC);
+    let mut events = Observed::default();
+    events.synchronize(&windows);
+    events.assert_buttons(&windows, &[], &[]);
+
+    // The same frozen P/B sequence must survive when P remains alive. A
+    // blanket drop of queued popup input must not satisfy the lifetime case.
+    batch(&windows.compositor, AB_WITH_KEY_MARKER);
+    events.wait_for_ingress(&windows, 1);
+    events.assert_buttons(&windows, &[], &[]);
+    windows
+        .observer
+        .allow_events(Allow::ASYNC_POINTER, x11rb::CURRENT_TIME)
+        .unwrap()
+        .check()
+        .unwrap();
+    events.synchronize(&windows);
+    events.assert_buttons(
+        &windows,
+        &[
+            (true, popup, [60, 20], [60, 20]),
+            (false, popup, [60, 20], [60, 20]),
+        ],
+        &[
+            (true, b, [80, 40], [80, 40]),
+            (false, b, [80, 40], [80, 40]),
+        ],
+    );
+    assert_scene(&windows);
+    release_grabs(&windows);
+    windows
+        .client
+        .connection
+        .destroy_window(popup)
+        .unwrap()
+        .check()
+        .unwrap();
 }
 
 #[test]
