@@ -152,7 +152,7 @@ async fn properties_report_a_missing_service_instead_of_using_the_host_file_mana
 #[test]
 fn properties_in_isolated_environment() {
     let Some(root) = child_root() else { return };
-    let result = properties(&selection(&root));
+    let result = properties(&selection(&root), &AppCatalog::load());
     if let Ok(expected) = std::env::var("HEARTHSPACE_TEST_PROPERTIES_ERROR") {
         let error = result.unwrap_err();
         assert!(error.contains(&expected), "{error}");
@@ -164,14 +164,37 @@ fn properties_in_isolated_environment() {
 #[test]
 fn properties_require_a_selection_and_an_explicit_private_bus() {
     assert!(
-        show_properties(&[], None)
+        show_properties(&[], &AppCatalog::default(), None)
             .unwrap_err()
             .contains("Select an item")
     );
     let fixture = fixture();
     assert!(
-        show_properties(&selection(fixture.path())[..1], None)
+        show_properties(
+            &selection(fixture.path())[..1],
+            &AppCatalog::default(),
+            None
+        )
+        .unwrap_err()
+        .contains("desktop session bus is unavailable")
+    );
+}
+
+#[test]
+fn application_properties_use_the_authoritative_catalog_path_without_a_tile_or_gio_lookup() {
+    let fixture = fixture();
+    let catalog = AppCatalog::load_from_data_dirs(vec![fixture.path().join("share")]);
+    let selected = selection(fixture.path());
+    let app = std::slice::from_ref(&selected[3]);
+    let uris = property_uris(app, &catalog).unwrap();
+    assert_eq!(uris.len(), 1);
+    assert_eq!(
+        hearthspace_common::desktop_files::local_path(&uris[0]).unwrap(),
+        fixture.path().join("share/applications/player.desktop")
+    );
+    assert!(
+        property_uris(app, &AppCatalog::default())
             .unwrap_err()
-            .contains("desktop session bus is unavailable")
+            .contains("no longer available")
     );
 }

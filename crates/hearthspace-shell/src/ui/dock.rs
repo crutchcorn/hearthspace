@@ -6,7 +6,7 @@ use xilem::{
     AnyWidgetView, WidgetView,
     masonry::{layout::AsUnit, peniko::ImageBrush},
     style::Style,
-    view::{button, flex_row, sized_box},
+    view::{flex_row, sized_box},
 };
 
 use super::{
@@ -143,6 +143,7 @@ pub(super) fn frame_view(
                         format!("Next app: {}", app.label()),
                         false,
                         available_width.min(BUTTON_WIDTH),
+                        context_target(state, output, &app.key),
                         move |state| {
                             // This remains the same control as its next-app label
                             // changes, preserving focus for repeated keyboard use.
@@ -200,6 +201,7 @@ pub(super) fn frame_view(
                     app.label(),
                     focused,
                     BUTTON_WIDTH,
+                    context_target(state, output, &app.key),
                     move |state| activate(state, &output_key, &key),
                 ),
                 chain,
@@ -216,6 +218,7 @@ pub(super) fn frame_view(
                 format!("Next apps (page {} of {pages})", page + 1),
                 false,
                 (available_width - BUTTON_WIDTH - GAP).min(BUTTON_WIDTH),
+                None,
                 move |state| {
                     if let Some(output) = state.outputs.iter_mut().find(|o| o.key() == output_key) {
                         output.dock_page = (page + 1) % pages;
@@ -251,26 +254,45 @@ fn dock_button(
     name: String,
     focused: bool,
     width: f64,
+    context: Option<super::app_context::Target>,
     action: impl Fn(&mut ShellState) + Send + Sync + 'static,
 ) -> impl WidgetView<ShellState> {
     let padding = ((width - 2.0) / 2.0).clamp(0.0, 3.0);
     let content_width = (width - 2.0 - 2.0 * padding).max(0.0);
-    components::button_surface(
-        button(
-            sized_box(icons::IconView {
-                glyph,
-                name,
-                width: content_width,
-            })
-            .fixed_width(content_width.px())
-            .fixed_height(36.0.px()),
-            action,
-        )
-        .padding(padding.px())
-        .corner_radius(10.0.px()),
-        components::ButtonSurface::Raised,
+    super::search_result::app_control(
+        name.clone(),
         focused,
+        context,
+        sized_box(icons::IconView {
+            glyph,
+            name,
+            width: content_width,
+        })
+        .fixed_width(content_width.px())
+        .fixed_height(36.0.px()),
+        action,
     )
+    .padding(padding.px())
+    .corner_radius(10.0.px())
+}
+
+fn context_target(
+    state: &ShellState,
+    output: &ShellOutputInstance,
+    key: &Key,
+) -> Option<super::app_context::Target> {
+    let Key::App(id) = key else {
+        return None;
+    };
+    let app = state.catalog.app_by_id(id)?;
+    Some(super::app_context::Target {
+        app_id: app.id.clone(),
+        output_name: output.output_name.clone(),
+        source_app_id: hearthspace_common::frame_layout::frame_widget_app_id(
+            output.output_name.as_deref(),
+            "apps",
+        ),
+    })
 }
 
 fn activate(state: &mut ShellState, output_key: &str, key: &Key) {

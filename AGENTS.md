@@ -32,6 +32,10 @@ testing; preserve application work, focus, input ownership, and session recovery
   native acceptance. Report skipped or unavailable checks explicitly.
 - Run heavyweight builds/tests serially. Never overlap a GPU-backed headless
   suite with native presentation validation.
+- Use the [guarded build workflow](docs/DEVELOPMENT.md#guarded-builds) for local
+  release builds on a shared desktop. Never bypass a failed resource-limit
+  preflight or automatically raise its limits. Retain incident and native
+  acceptance evidence on persistent storage; `/tmp` may disappear on reboot.
 - Keep the compositor responsible for placement, presentation, protocol roles,
   and input isolation. Rich shell and Settings UI remain ordinary Wayland
   clients. Reuse the shared domain, IPC, desktop-service, and UI crates.

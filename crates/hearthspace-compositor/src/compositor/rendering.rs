@@ -1,7 +1,7 @@
 use smithay::{
     backend::renderer::{
         Color32F, RendererSuper,
-        damage::OutputDamageTracker,
+        damage::{OutputDamageTracker, RenderOutputResult},
         element::{
             Kind,
             memory::MemoryRenderBufferRenderElement,
@@ -12,14 +12,12 @@ use smithay::{
             utils::{CropRenderElement, Relocate, RelocateRenderElement, RescaleRenderElement},
         },
         gles::{GlesRenderer, element::PixelShaderElement},
+        sync::SyncPoint,
     },
     desktop::PopupManager,
     input::pointer::CursorImageAttributes,
     utils::{IsAlive, Logical, Physical, Point, Rectangle, Size},
-    wayland::{
-        compositor::{SurfaceAttributes, TraversalAction, with_states, with_surface_tree_downward},
-        shell::xdg::SurfaceCachedState,
-    },
+    wayland::{compositor::with_states, shell::xdg::SurfaceCachedState},
 };
 use std::sync::Mutex;
 use wayland_server::protocol::wl_surface;
@@ -68,9 +66,28 @@ render_elements! {
     Unscaled = RelocateRenderElement<HearthspaceRenderElement>,
 }
 
-/// Result of rendering one frame: the damaged output regions to submit, or
-/// `None` when nothing changed and the frame can be skipped.
-type RenderFrameResult = Result<Option<Vec<Rectangle<i32, Physical>>>, Box<dyn std::error::Error>>;
+/// Final composition and its completion dependency. Native scanout must receive
+/// `sync` even when KMS damage clips are disabled.
+pub(super) struct RenderedFrame {
+    pub(super) sync: SyncPoint,
+    /// `None` when nothing changed and the backend can skip presentation.
+    pub(super) damage: Option<Vec<Rectangle<i32, Physical>>>,
+}
+
+impl From<RenderOutputResult<'_>> for RenderedFrame {
+    fn from(result: RenderOutputResult<'_>) -> Self {
+        Self {
+            sync: result.sync,
+            damage: result.damage.cloned(),
+        }
+    }
+}
+
+type RenderFrameResult = Result<RenderedFrame, Box<dyn std::error::Error>>;
+
+#[cfg(test)]
+#[path = "rendering/frame_result_tests.rs"]
+mod frame_result_tests;
 
 struct RenderScene {
     elements: Vec<HearthspaceRenderElement>,
@@ -97,11 +114,11 @@ impl App {
     /// The damage tracker compares this frame's elements against the previous
     /// frame and only clears and redraws the regions that actually changed,
     /// rather than repainting the whole output every frame. The returned value
-    /// is the damaged region (in output coordinates) to hand to the backend's
-    /// buffer swap, or `None` when nothing changed and the frame can be skipped.
+    /// retains the render fence and output damage for the backend's submission.
+    /// Damage is `None` when nothing changed and the frame can be skipped.
     ///
     /// This is backend-agnostic: it only depends on a [`GlesRenderer`] and the
-    /// shared [`App`] state, so both the winit and (future) DRM backends share
+    /// shared [`App`] state, so both the winit and DRM backends share
     /// it. Backend-specific buffer binding, frame submission, and client frame
     /// callbacks live in the backend's own render path.
     pub(super) fn render_frame(
@@ -215,7 +232,7 @@ impl App {
             // The repeated background image is opaque and covers the output.
             Color32F::new(0.0, 0.0, 0.0, 1.0),
         )?;
-        Ok(result.damage.cloned())
+        Ok(result.into())
     }
 
     /// Collect every render element for the current frame in front-to-back
@@ -266,7 +283,7 @@ impl App {
         let mut window_backdrops = Vec::new();
         let hovered_window = self.hovered_normal_window_id();
         let mut ordered = order::render_order(self.windows.iter().map(|window| window.kind));
-        ordered.sort_by_key(|index| {
+        ordered.sort_by_cached_key(|index| {
             std::cmp::Reverse((
                 self.is_power_confirmation(*index),
                 self.layout_render_layer(*index).unwrap_or_else(|| {
@@ -817,26 +834,6 @@ pub(super) fn toplevel_geometry_size(
             .geometry
             .map(|geometry| geometry.size)
     })
-}
-
-pub(super) fn send_frames_surface_tree(surface: &wl_surface::WlSurface, time: u32) {
-    with_surface_tree_downward(
-        surface,
-        (),
-        |_, _, &()| TraversalAction::DoChildren(()),
-        |_surf, states, &()| {
-            for callback in states
-                .cached_state
-                .get::<SurfaceAttributes>()
-                .current()
-                .frame_callbacks
-                .drain(..)
-            {
-                callback.done(time);
-            }
-        },
-        |_, _, &()| true,
-    );
 }
 
 #[cfg(test)]

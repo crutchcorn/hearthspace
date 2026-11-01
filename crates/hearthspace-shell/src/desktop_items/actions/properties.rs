@@ -1,22 +1,28 @@
 //! Delegate file properties to the session's file manager using its standard API.
 use super::{DesktopItem, DesktopItemKind};
 use gio::prelude::*;
+use hearthspace_desktop::app_catalog::AppCatalog;
 use std::{fs, path::PathBuf};
 
 const FILE_MANAGER: &str = "org.freedesktop.FileManager1";
 const FILE_MANAGER_PATH: &str = "/org/freedesktop/FileManager1";
 
-pub fn properties(items: &[DesktopItem]) -> Result<(), String> {
+pub fn properties(items: &[DesktopItem], catalog: &AppCatalog) -> Result<(), String> {
     show_properties(
         items,
+        catalog,
         std::env::var("HEARTHSPACE_SESSION_BUS_ADDRESS")
             .ok()
             .as_deref(),
     )
 }
 
-fn show_properties(items: &[DesktopItem], address: Option<&str>) -> Result<(), String> {
-    let uris = property_uris(items)?;
+fn show_properties(
+    items: &[DesktopItem],
+    catalog: &AppCatalog,
+    address: Option<&str>,
+) -> Result<(), String> {
+    let uris = property_uris(items, catalog)?;
     // Never autolaunch a bus or use the inherited host desktop's file manager.
     // The supervisor already publishes our display to this bus for activation.
     let address = address
@@ -46,7 +52,7 @@ fn show_properties(items: &[DesktopItem], address: Option<&str>) -> Result<(), S
     Ok(())
 }
 
-fn property_uris(items: &[DesktopItem]) -> Result<Vec<String>, String> {
+fn property_uris(items: &[DesktopItem], catalog: &AppCatalog) -> Result<Vec<String>, String> {
     if items.is_empty() {
         return Err("Select an item to view its properties.".into());
     }
@@ -55,8 +61,9 @@ fn property_uris(items: &[DesktopItem]) -> Result<Vec<String>, String> {
         .map(|item| {
             let path: PathBuf = match &item.kind {
                 DesktopItemKind::File { path } | DesktopItemKind::Folder { path } => path.clone(),
-                DesktopItemKind::App { app_id, .. } => gio_unix::DesktopAppInfo::new(app_id)
-                    .and_then(|app| app.filename())
+                DesktopItemKind::App { app_id, .. } => catalog
+                    .app_by_id(app_id)
+                    .map(|app| app.path.clone())
                     .ok_or("This application's desktop entry is no longer available.")?,
             };
             // Properties describe the link itself, including a dangling link.

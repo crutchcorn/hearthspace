@@ -12,7 +12,7 @@ Open **Hearthspace Settings** from Apps List to adjust the desktop:
   whole image, and Cover fills it while cropping. The latter three stay still
   while the canvas moves. A photo does not change window positions or grid snapping.
 - **Gestures:** record [drawn app shortcuts](FAVORITE_APPS.md).
-- **Keyboard shortcuts:** look up the fixed canvas-tool bindings.
+- **Keyboard shortcuts:** look up the fixed canvas-tool bindings and pointer gestures.
 - **AI:** explicitly enable or remove the local model for
   [gathering similar windows](WINDOW_GROUPS.md#optional-local-model).
 - **System:** open [Change layout](SHELL.md#change-layout), allow Canvas tools
@@ -45,6 +45,19 @@ or an input operation can prevent switching tools; finish or cancel that
 interaction first. Bare H, V, and `/`, and Ctrl+K, remain available to apps.
 Fullscreen (❖ + F), maximize (❖ + M), and lock (❖ + L) keep their existing keys.
 If Hearthspace runs inside another desktop, that desktop may intercept Meta.
+
+The **Pointer shortcuts** section lists gestures that leave the selected tool
+unchanged:
+
+| Shortcut | Action |
+| --- | --- |
+| ❖ + Left-drag | Temporarily pan from empty canvas |
+| ❖ + Scroll | Zoom the canvas |
+
+Hold ❖ before pressing the left mouse button. Panning continues if you release
+❖ first and ends on mouse-button release. Application contents, titlebars,
+desktop icons, and shell controls retain their normal interactions. To start
+panning from a canvas desktop icon, select the [Pan canvas tool](WINDOW_MANAGEMENT.md#pan-canvas-with-a-mouse).
 
 ## Ownership
 

@@ -83,18 +83,20 @@ impl App {
     }
 
     fn panel_keeps_focus(&self, panel: usize, focus: usize) -> bool {
-        if focus == panel {
+        if focus == panel || self.app_context_keeps_source(panel, focus) {
             return true;
         }
         if let Some(identity) = window_app_id(&self.windows[panel].surface)
             .as_deref()
             .and_then(hearthspace_common::desktop_context::identity)
-            && window_app_id(&self.windows[focus].surface)
+        {
+            // App menus retain their exact live source above. Once closed, a
+            // still-mapped menu must not claim every bar on the same output:
+            // its later destruction would undo focus already restored to dock.
+            return window_app_id(&self.windows[focus].surface)
                 .as_deref()
                 .and_then(hearthspace_common::desktop_context::identity)
-                == Some(identity)
-        {
-            return true;
+                == Some(identity);
         }
         let target = &self.windows[focus];
         target.kind == ManagedWindowKind::ShellBar

@@ -16,6 +16,13 @@ struct Prepared {
 /// All probes of user-selected files, desktop directories and executable paths
 /// happen on the bounded worker, including profile and scope-record writes.
 fn prepare(request: Request) -> Result<Prepared, String> {
+    prepare_with_gpu(request, hearthspace_desktop::gpu::launch_environment)
+}
+
+fn prepare_with_gpu(
+    request: Request,
+    resolve_gpu: impl FnOnce(bool) -> Vec<(String, String)>,
+) -> Result<Prepared, String> {
     let paths = request.paths()?;
     let mut app = file_launch::installed_application(&request.app_id)?;
     let snap_instance = snap_scope::resolve(
@@ -28,8 +35,15 @@ fn prepare(request: Request) -> Result<Prepared, String> {
         .map(|instance| snap_scope::prefix(instance, &app.identity_argv))
         .transpose()?
         .unwrap_or_default();
-    let environment = launch_environment_for_app(&request.app_id)
+    let mut environment = launch_environment_for_app(&request.app_id)
         .map_err(|error| format!("failed to prepare app environment: {error}"))?;
+    let gpu_environment = if app.identity_argv.is_empty() {
+        Vec::new()
+    } else {
+        resolve_gpu(app.prefers_non_default_gpu)
+    };
+    let needs_gpu_environment = !gpu_environment.is_empty();
+    environment.extend(gpu_environment);
     let envs = environment
         .iter()
         .map(|(k, v)| (k.as_str(), v.as_str()))
@@ -37,6 +51,7 @@ fn prepare(request: Request) -> Result<Prepared, String> {
     let command = if app.dbus_activatable {
         let helper = std::env::current_exe().map_err(|error| error.to_string())?;
         if snap_instance.is_some()
+            || needs_gpu_environment
             || environment
                 .iter()
                 .any(|(key, _)| key == "GSETTINGS_BACKEND")

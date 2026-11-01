@@ -11,6 +11,7 @@ use xilem::{
     masonry::{
         core::WidgetMut,
         peniko::{ImageAlphaType, ImageBrush, ImageData, ImageFormat},
+        properties::LineBreaking,
         widgets::Label,
     },
 };
@@ -119,15 +120,27 @@ impl View<ShellState, (), ViewCtx> for ButtonView {
         mut element: Mut<'_, Self::Element>,
         _: &mut ShellState,
     ) {
-        if self.target != prev.target {
-            element.widget.cancelled_press = true;
+        if self.target != prev.target || self.appearance.name != prev.appearance.name {
+            element.widget.cancel_press();
             element.widget.target = self.target.clone();
         }
         if self.appearance != prev.appearance {
             let WidgetMut { widget, ctx, .. } = &mut element;
+            if self.appearance.enabled != prev.appearance.enabled
+                || self.appearance.toggle != prev.appearance.toggle
+            {
+                widget.cancel_press();
+            }
             if let Some(text) = &mut widget.text {
                 let mut text = ctx.get_mut(text);
                 Label::set_text(&mut text, self.appearance.name.clone());
+                if self.appearance.wrap_label != prev.appearance.wrap_label {
+                    text.insert_prop(if self.appearance.wrap_label {
+                        LineBreaking::WordWrap
+                    } else {
+                        LineBreaking::Clip
+                    });
+                }
                 if self.appearance.enabled != prev.appearance.enabled {
                     text.ctx.remove_class(if self.appearance.enabled {
                         "shell-muted-shell-ink"

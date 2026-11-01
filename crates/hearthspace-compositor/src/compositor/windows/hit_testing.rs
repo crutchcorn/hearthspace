@@ -20,7 +20,7 @@ impl App {
             return None;
         }
         let mut order: Vec<_> = (0..self.windows.len()).collect();
-        order.sort_by_key(|index| {
+        order.sort_by_cached_key(|index| {
             (
                 self.is_power_confirmation(*index),
                 self.layout_render_layer(*index).unwrap_or_else(|| {

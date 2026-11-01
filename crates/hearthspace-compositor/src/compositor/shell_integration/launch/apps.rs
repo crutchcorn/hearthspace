@@ -22,6 +22,18 @@ struct Prepared {
 }
 
 fn prepare(app_id: String, arguments: Vec<String>) -> Result<Prepared, String> {
+    prepare_with_gpu(
+        app_id,
+        arguments,
+        hearthspace_desktop::gpu::launch_environment,
+    )
+}
+
+fn prepare_with_gpu(
+    app_id: String,
+    arguments: Vec<String>,
+    resolve_gpu: impl FnOnce(bool) -> Vec<(String, String)>,
+) -> Result<Prepared, String> {
     let catalog = AppCatalog::load();
     let app = catalog
         .app_by_id(&app_id)
@@ -37,8 +49,17 @@ fn prepare(app_id: String, arguments: Vec<String>) -> Result<Prepared, String> {
         &mut argv,
         app.working_directory.as_deref(),
     )?;
-    let environment = launch_environment_for_app(&app_id)
+    let mut environment = launch_environment_for_app(&app_id)
         .map_err(|error| format!("failed to prepare app environment: {error}"))?;
+    // A D-Bus-only entry has no child command whose environment we can own.
+    // Keep its ordinary activation; the desktop preference is best effort.
+    let gpu_environment = if argv.is_empty() {
+        Vec::new()
+    } else {
+        resolve_gpu(app.prefers_non_default_gpu)
+    };
+    let needs_gpu_environment = !gpu_environment.is_empty();
+    environment.extend(gpu_environment);
     let envs = environment
         .iter()
         .map(|(k, v)| (k.as_str(), v.as_str()))
@@ -74,8 +95,12 @@ fn prepare(app_id: String, arguments: Vec<String>) -> Result<Prepared, String> {
         )?)
     } else {
         let helper = std::env::current_exe().map_err(|error| error.to_string())?;
-        let command = if let Some(instance) = &snap_instance {
-            let prefix = snap_scope::prefix(instance, &argv)?;
+        let command = if snap_instance.is_some() || needs_gpu_environment {
+            let prefix = snap_instance
+                .as_deref()
+                .map(|instance| snap_scope::prefix(instance, &argv))
+                .transpose()?
+                .unwrap_or_default();
             file_launch::scoped_gio_command(&app.path, &[], &prefix, "", &envs, &helper)?
         } else {
             file_launch::native_gio_command(&app.path, &[], "", &envs, &helper)?

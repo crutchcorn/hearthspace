@@ -28,6 +28,10 @@ mod lifecycle;
 mod shm;
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+#[path = "protocol/tests/client.rs"]
+pub(in crate::compositor) mod test_client;
 mod toplevel;
 mod window;
 mod window_scene;

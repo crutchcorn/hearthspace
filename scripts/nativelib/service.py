@@ -10,7 +10,7 @@ import uuid
 from contextlib import contextmanager
 from pathlib import Path
 
-from .common import ENTRY, ROOT, STATE_ROOT, active_vt, load, run, save, unit_info
+from .common import ENTRY, ROOT, STATE_ROOT, active_vt, load, run, save
 from .environment import validated_data_dirs
 from .profile import isolated_environment
 
@@ -114,75 +114,78 @@ def launch(args):
     session = Path(args.session).resolve()
     if session.stat().st_uid != uid or session.is_symlink():
         raise RuntimeError("artifact directory must belong to the desktop user")
-    with allocation_lock():
-        current = STATE_ROOT / "current.json"
-        if current.exists():
-            previous = load(current)
-            state = unit_info(previous["unit"]).get("ActiveState")
-            recently_submitted = (
-                previous.get("status") == "starting"
-                and time.time() - previous["started_at"] < 30
-            )
-            if state in ("active", "activating", "deactivating") or recently_submitted:
-                raise RuntimeError(
-                    f"a native harness already owns the seat: {previous['session_dir']}"
-                )
-            if not previous.get("cleanup", {}).get("complete"):
-                from .recovery import recover
-
-                recovered = recover(previous["state_file"], lock=False)
-                if not recovered.get("cleanup", {}).get("complete"):
+    owned_state = None
+    try:
+        with allocation_lock():
+            current = STATE_ROOT / "current.json"
+            if current.exists():
+                previous = load(current)
+                # A timed-out start or an in-flight stop still owns recovery.
+                # Only stop() can cancel submission and certify terminal state.
+                if not previous.get("cleanup", {}).get("complete"):
                     raise RuntimeError(
                         "previous native session recovery is incomplete; refusing to claim another VT"
                     )
-        identity = uuid.uuid4().hex[:12]
-        runtime = Path(f"/run/user/{uid}/hearthspace-native-{identity}")
-        runtime.mkdir(mode=0o700)
-        os.chown(runtime, uid, user.pw_gid)
-        state_file = STATE_ROOT / f"{identity}.json"
-        state = {
-            "version": 1,
-            "id": identity,
-            "status": "starting",
-            "uid": uid,
-            "home": user.pw_dir,
-            "unit": f"hearthspace-native-{identity}.service",
-            "session_dir": str(session),
-            "runtime_dir": str(runtime),
-            "command_socket": str(runtime / "shell-command.sock"),
-            "wayland_display": "wayland-99",
-            "settings_socket": str(runtime / "settings.sock"),
-            "state_file": str(state_file),
-            "original_vt": active_vt(),
-            "vt": choose_vt(),
-            "watchdog": args.watchdog,
-            "startup_timeout": args.timeout,
-            "log_level": args.log_level,
-            "binary_dir": str(Path(args.binary_dir).resolve()),
-            "login_session": getattr(args, "login_session", False),
-            "isolated_profile": getattr(args, "isolated_profile", False),
-            "dev": getattr(args, "dev", False),
-            "dev_path": getattr(args, "dev_path", None),
-            "xdg_data_dirs": data_dirs,
-            "vnc": getattr(args, "vnc", False),
-            "vnc_port": getattr(args, "vnc_port", None) or 5900,
-            "started_at": time.time(),
-            "compositor": str(args.compositor.resolve()) if args.compositor else None,
-        }
-        save(state_file, state)
-        # User wrapper needs only read access; privileged recovery always reads this copy.
-        state_file.chmod(0o644)
-        save(current, state)
-        save(session / "session.json", state, uid)
-        (session / "session.log").touch(mode=0o600)
-        os.chown(session / "session.log", uid, user.pw_gid)
-        try:
-            run(service_command(state))
-        except BaseException:
-            from .recovery import recover
+                from .recovery import unit_stopped
 
-            recover(state_file, lock=False)
-            raise
+                if not unit_stopped(previous["unit"]):
+                    raise RuntimeError(
+                        f"a native harness already owns the seat: {previous['session_dir']}"
+                    )
+            identity = uuid.uuid4().hex[:12]
+            runtime = Path(f"/run/user/{uid}/hearthspace-native-{identity}")
+            state_file = STATE_ROOT / f"{identity}.json"
+            state = {
+                "version": 1,
+                "id": identity,
+                "status": "starting",
+                "uid": uid,
+                "home": user.pw_dir,
+                "unit": f"hearthspace-native-{identity}.service",
+                "session_dir": str(session),
+                "runtime_dir": str(runtime),
+                "command_socket": str(runtime / "shell-command.sock"),
+                "wayland_display": "wayland-99",
+                "settings_socket": str(runtime / "settings.sock"),
+                "state_file": str(state_file),
+                "original_vt": active_vt(),
+                "vt": choose_vt(),
+                "watchdog": args.watchdog,
+                "startup_timeout": args.timeout,
+                "log_level": args.log_level,
+                "binary_dir": str(Path(args.binary_dir).resolve()),
+                "login_session": getattr(args, "login_session", False),
+                "isolated_profile": getattr(args, "isolated_profile", False),
+                "dev": getattr(args, "dev", False),
+                "dev_path": getattr(args, "dev_path", None),
+                "xdg_data_dirs": data_dirs,
+                "vnc": getattr(args, "vnc", False),
+                "vnc_port": getattr(args, "vnc_port", None) or 5900,
+                "started_at": time.time(),
+                "compositor": str(args.compositor.resolve())
+                if args.compositor
+                else None,
+            }
+            save(state_file, state)
+            owned_state = state_file
+            # Persist ownership before allocating anything recovery must remove.
+            # User wrappers read this copy; privileged recovery validates it.
+            state_file.chmod(0o644)
+            save(current, state)
+            save(session / "session.json", state, uid)
+            runtime.mkdir(mode=0o700)
+            os.chown(runtime, uid, user.pw_gid)
+            (session / "session.log").touch(mode=0o600)
+            os.chown(session / "session.log", uid, user.pw_gid)
+            run(service_command(state))
+    except BaseException:
+        if owned_state is not None:
+            from .recovery import stop
+
+            # Even a failed systemd-run may have submitted the service. Release
+            # the submission lock before stop waits for its ExecStopPost hook.
+            stop(owned_state)
+        raise
     return state
 
 

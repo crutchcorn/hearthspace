@@ -16,8 +16,16 @@ mod keyboard;
 mod lifecycle;
 #[path = "canvas_pan/map_shortcut.rs"]
 mod map_shortcut;
+#[path = "canvas_pan/meta.rs"]
+mod meta;
+#[path = "canvas_pan/meta_lifecycle.rs"]
+mod meta_lifecycle;
+#[path = "canvas_pan/meta_targets.rs"]
+mod meta_targets;
 #[path = "canvas_pan/presentation.rs"]
 mod presentation;
+#[path = "canvas_pan/remote_modifiers.rs"]
+mod remote_modifiers;
 #[path = "canvas_pan/sources.rs"]
 mod sources;
 

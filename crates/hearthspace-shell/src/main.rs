@@ -1,8 +1,11 @@
 use std::fs::OpenOptions;
 
+mod startup_resources;
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     initialize_tracing();
     tracing::info!("starting Hearthspace shell");
+    startup_resources::raise_file_descriptor_limit();
     hearthspace_shell::ui::run()
 }
 

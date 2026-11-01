@@ -37,6 +37,17 @@ pub(super) struct Subscription {
 }
 
 impl Subscription {
+    #[cfg(test)]
+    pub(in crate::compositor) fn disconnected() -> Self {
+        let (requests, _) = mpsc::sync_channel(1);
+        Self {
+            stop: Arc::new(AtomicBool::new(true)),
+            mailbox: Default::default(),
+            requests,
+            worker: thread::current(),
+        }
+    }
+
     pub fn refresh(&self) -> ControlReply {
         let (reply, receive) = mpsc::channel();
         let mut mailbox = self.mailbox.lock().unwrap();

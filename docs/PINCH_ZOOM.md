@@ -5,8 +5,9 @@ four/five on touchscreens, open or dismiss the window switcher with a pinch and
 switch windows with a horizontal swipe. These desktop gestures need no modifier
 and do not zoom application content.
 
-For a mouse without a trackpad, choose [Pan canvas](WINDOW_MANAGEMENT.md#pan-canvas-with-a-mouse)
-and drag the background.
+For a mouse without a trackpad, hold **❖** and left-drag empty canvas, or choose
+[Pan canvas](WINDOW_MANAGEMENT.md#pan-canvas-with-a-mouse) for repeated dragging
+without a modifier. Hold **❖** while scrolling to zoom.
 
 This guide covers touch controls and input ownership. See
 [window management](WINDOW_MANAGEMENT.md#window-switcher) for the switcher's window

@@ -18,7 +18,7 @@ hearthspace-wayland-client = { path = "../hearthspace-wayland-client" }
 hearthspace-ui-components = { path = "../ui-components" }
 image = { version = "0.25.10", default-features = false, features = ["png", "jpeg"] }
 lofty = "0.25.4"
-rustix = { version = "1.1.5", features = ["fs"] }
+rustix = { version = "1.1.5", features = ["fs", "process"] }
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.154"
 tempfile = "3.27.0"

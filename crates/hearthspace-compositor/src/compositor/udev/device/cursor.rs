@@ -29,6 +29,20 @@ pub(super) struct HardwareCursor {
 }
 
 impl UdevDevice {
+    pub(in crate::compositor::udev) fn clear_hardware_cursor(&mut self) {
+        if !self.hardware_cursor_initialized {
+            clear_all_drm_cursor_planes(&self.scanout_node);
+            for output in &self.output_surfaces {
+                clear_legacy_cursor(&self.scanout_node, output.target.crtc);
+            }
+            self.hardware_cursor_initialized = true;
+        }
+        if let Some(crtc) = self.hardware_cursor_crtc.take() {
+            clear_legacy_cursor(&self.scanout_node, crtc);
+        }
+        self.hardware_cursor_position = None;
+    }
+
     pub(in crate::compositor::udev) fn capture_cursor(
         &self,
         state: &App,
@@ -50,16 +64,16 @@ impl UdevDevice {
     }
 
     pub(in crate::compositor::udev) fn update_hardware_cursor(&mut self, state: &mut App) {
+        if !self.hardware_cursor_initialized {
+            self.clear_hardware_cursor();
+        }
         // Software presentation is required when a focused client is drawing its
         // own cursor surface, or when this device never obtained a usable
         // hardware cursor plane. In those cases the cursor is composited into the
         // scene by the render path, so any lingering hardware cursor is cleared.
         if state.cursor_surface.is_some() || self.hardware_cursor.is_none() {
             state.software_cursor_visible = true;
-            if let Some(active_crtc) = self.hardware_cursor_crtc.take() {
-                clear_legacy_cursor(&self.scanout_node, active_crtc);
-            }
-            self.hardware_cursor_position = None;
+            self.clear_hardware_cursor();
             return;
         }
 
@@ -118,14 +132,6 @@ impl UdevDevice {
             local.x.round() as i32 - cursor.hotspot.0,
             local.y.round() as i32 - cursor.hotspot.1,
         );
-
-        if !self.hardware_cursor_initialized {
-            clear_all_drm_cursor_planes(&self.scanout_node);
-            for output in &self.output_surfaces {
-                clear_legacy_cursor(&self.scanout_node, output.target.crtc);
-            }
-            self.hardware_cursor_initialized = true;
-        }
 
         if self.hardware_cursor_crtc != Some(crtc) {
             if let Some(active_crtc) = self.hardware_cursor_crtc {

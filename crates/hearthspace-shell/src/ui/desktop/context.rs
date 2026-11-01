@@ -25,6 +25,8 @@ pub(super) struct State {
     hover_blocked: bool,
     selected: usize,
     pub busy: bool,
+    saving_gpu: bool,
+    saved_gpu: bool,
     error: Option<String>,
     text: String,
     focus: crate::ui::search_focus::FocusTarget,
@@ -89,6 +91,8 @@ fn send(state: &mut ShellState, action: Action) {
     }
     let generation = context.generation;
     state.desktop.menu.busy = true;
+    state.desktop.menu.saving_gpu = matches!(action, Action::GpuPreference(_));
+    state.desktop.menu.saved_gpu = false;
     state.desktop.menu.error = None;
     task::submit(
         state,
@@ -107,6 +111,7 @@ pub(super) fn finished(state: &mut ShellState, generation: u64, result: Result<C
         return;
     }
     state.desktop.menu.busy = false;
+    state.desktop.menu.saving_gpu = false;
     match result {
         Ok(Completed::Closed(favorites)) => {
             if let Some(favorites) = favorites {
@@ -119,6 +124,7 @@ pub(super) fn finished(state: &mut ShellState, generation: u64, result: Result<C
                 submenu.apps = Some(apps);
             }
         }
+        Ok(Completed::GpuPreference(_)) => state.desktop.menu.saved_gpu = true,
         Err(error) => state.desktop.menu.error = Some(error),
     }
 }
@@ -189,6 +195,7 @@ pub(in crate::ui) fn button_event(
             let Some(row) = rows::rows(state, submenu).into_iter().nth(index) else {
                 return;
             };
+            *selection(state, submenu) = index;
             match row.action {
                 rows::Choice::Action(Action::OpenWithOptions) => {
                     state.desktop.menu.hover_blocked = false;

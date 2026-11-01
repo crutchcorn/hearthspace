@@ -81,10 +81,10 @@ capabilities. Keep Smithay responsible for the generic compositor mechanisms.
   fallback for unsupported buffers, transforms, cursors, capture, and locking.
   Rendering an application directly must preserve the same presentation and
   isolation contracts as composition.
-- **Multiple GPUs:** the current backend renders outputs on one selected DRM
-  device. Cross-device rendering needs explicit device selection, buffer and
-  allocator ownership, import/fallback behavior, and hotplug recovery. Discovering
-  additional DRM devices does not provide those capabilities.
+- **Multiple GPUs:** the backend owns outputs on each seat GPU and transfers
+  composition from one scene GPU. Expand physical acceptance across GPU pairs,
+  reconnects, and renderer failover, and measure the cost of transfer fallbacks.
+  See [DRM/KMS](DRM.md) for ownership and recovery boundaries.
 - **Input devices:** add tablet-tool and general libinput switch handling, which
   the native event path currently ignores. Existing logind lid handling is a
   separate integration. Validate capabilities and removal/cancellation semantics

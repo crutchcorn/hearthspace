@@ -87,7 +87,16 @@ where
 
     pub(super) fn dispatch(&mut self, build: &impl Fn(&ShellState) -> V) {
         while let Some((action, id)) = self.harness.pop_action_erased() {
-            let path = self.ctx.get_id_path(id).unwrap().clone();
+            let Some(path) = self.ctx.get_id_path(id).cloned() else {
+                // Like Xilem's driver, discard queued actions from a widget
+                // removed by an earlier action's rebuild. A live widget without
+                // a registered view path remains a fixture/implementation error.
+                assert!(
+                    !ids(&self.harness).contains(&id),
+                    "live action widget {id:?} has no view path"
+                );
+                continue;
+            };
             let mut message = MessageCtx::new(
                 std::mem::take(self.ctx.environment()),
                 path,

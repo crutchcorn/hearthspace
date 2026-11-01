@@ -53,8 +53,10 @@ fn accepted_desktop_activation_uses_the_existing_app_launch_command() {
             &socket,
             Request::Accept(7),
             &[app()],
+            &AppCatalog::default(),
             FavoriteStore::in_memory(),
-            false
+            false,
+            &mut AppRegistration::default(),
         )
         .unwrap(),
         Completed::Activated
@@ -77,9 +79,16 @@ fn favorite_drop_persists_without_losing_existing_shortcuts() {
             &payload(r#"{"action":"favorite","id":"app:editor.desktop"}"#),
         );
     });
-    let Completed::Favorite(updated) =
-        perform(&socket, Request::Accept(8), &[app()], favorites, false).unwrap()
-    else {
+    let Completed::Favorite(updated) = perform(
+        &socket,
+        Request::Accept(8),
+        &[app()],
+        &AppCatalog::default(),
+        favorites,
+        false,
+        &mut AppRegistration::default(),
+    )
+    .unwrap() else {
         panic!("favorite was not saved");
     };
     server.join().unwrap();
@@ -102,7 +111,16 @@ fn rejected_authorization_does_not_write_favorites() {
     let server = std::thread::spawn(move || {
         reply(&listener, "desktop-event-accept 9", b"err expired token\n")
     });
-    let failure = perform(&socket, Request::Accept(9), &[app()], favorites, false).unwrap_err();
+    let failure = perform(
+        &socket,
+        Request::Accept(9),
+        &[app()],
+        &AppCatalog::default(),
+        favorites,
+        false,
+        &mut AppRegistration::default(),
+    )
+    .unwrap_err();
     assert!(failure.message.contains("expired"));
     assert!(!failure.report);
     server.join().unwrap();
@@ -167,6 +185,11 @@ fn desktop_overflow_bounds_surfaces_and_keeps_the_complete_launcher_catalog() {
         format!("Item-{:04}.txt", MAX_DESKTOP_ITEMS - 1)
     );
     assert!(catalog.app_by_id("editor.desktop").is_some());
+    assert!(!items.iter().any(|item| item.id == "app:editor.desktop"));
+    assert_eq!(
+        super::super::context_items::resolve("app:editor.desktop", &catalog, &items).unwrap(),
+        app(),
+    );
     let error = error.unwrap();
     assert!(error.contains(&format!(
         "Showing {MAX_DESKTOP_ITEMS} of {}",
@@ -260,3 +283,12 @@ fn favorite_completion_updates_shared_state_without_reopening_an_inactive_menu()
 
 #[path = "launch_tests.rs"]
 mod launches;
+
+#[path = "gpu_tests.rs"]
+mod gpu;
+
+#[path = "app_context_tests.rs"]
+mod app_context;
+
+#[path = "context_catalog_tests.rs"]
+mod context_catalog;

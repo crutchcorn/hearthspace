@@ -271,6 +271,23 @@ fn drawing_tab_returns_focus_to_search_and_escape_dismisses_without_an_editor() 
     let mut ui = Ui::new(installed_apps(2), view, (650, 560));
     let draw = ui.button("Draw to launch");
     ui.harness.focus_on(Some(draw));
+    // A release inherited from another control cannot activate this tab.
+    ui.harness
+        .process_text_event(TextEvent::key_up(Key::Named(NamedKey::Enter)));
+    ui.dispatch(&view);
+    assert!(!ui.state.outputs[0].drawing.active());
+    assert_eq!(ui.harness.focused_widget_id(), Some(draw));
+    ui.harness
+        .process_text_event(TextEvent::key_down(Key::Named(NamedKey::Enter)));
+    ui.dispatch(&view);
+    let TextEvent::Keyboard(mut repeat) = TextEvent::key_down(Key::Named(NamedKey::Enter)) else {
+        unreachable!();
+    };
+    repeat.repeat = true;
+    ui.harness.process_text_event(TextEvent::Keyboard(repeat));
+    ui.dispatch(&view);
+    assert!(!ui.state.outputs[0].drawing.active());
+    assert_eq!(ui.harness.focused_widget_id(), Some(draw));
     ui.harness
         .process_text_event(TextEvent::key_up(Key::Named(NamedKey::Enter)));
     ui.dispatch(&view);

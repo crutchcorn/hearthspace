@@ -6,7 +6,7 @@ use smithay::utils::{Logical, Rectangle, Scale};
 impl App {
     /// An empty material backing tracks its group while the native resize commits.
     /// Client controls keep their own scale and are never stretched with it.
-    pub(super) fn layout_backing_scale(&self, index: usize) -> Option<Scale<f64>> {
+    pub(in crate::compositor) fn layout_backing_scale(&self, index: usize) -> Option<Scale<f64>> {
         self.frame_group_identity(index)?;
         let bounds = self
             .layout_motion_rect(index)
@@ -21,7 +21,7 @@ impl App {
     pub(super) fn layout_glass_rect(&self, index: usize) -> Option<Rectangle<i32, Logical>> {
         let id = window_app_id(&self.windows[index].surface)?;
         let glass = self.frame_group_has_material(index)
-            || layout::frame_group_grip_from_app_id(&id).is_some()
+            || self.windows[index].is_frame_grip()
             || layout::layout_editor_from_app_id(&id).is_some()
             || layout::layout_confirm_from_app_id(&id).is_some()
             || layout::layout_tooltip_from_app_id(&id).is_some()
@@ -48,8 +48,7 @@ impl App {
         let Some(id) = window_app_id(&self.windows[index].surface) else {
             return 20.;
         };
-        if layout::layout_tooltip_from_app_id(&id).is_some()
-            || layout::frame_group_grip_from_app_id(&id).is_some()
+        if layout::layout_tooltip_from_app_id(&id).is_some() || self.windows[index].is_frame_grip()
         {
             10.
         } else {

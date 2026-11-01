@@ -11,13 +11,15 @@ default = ["winit", "xwayland"]
 e2e = ["dep:waydriver", "dep:waydriver-hearthspace"]
 test-apps = ["dep:gtk"]
 udev = [
+    "dep:ash",
     "smithay/backend_drm",
     "smithay/backend_gbm",
     "smithay/backend_libinput",
     "smithay/backend_session_libseat",
     "smithay/backend_udev",
-    # Native mode still renders through one primary GPU, but Smithay's dmabuf
-    # import path needs renderer_multi available for client buffers.
+    "smithay/backend_vulkan",
+    # Keep scene rendering on one GPU; share through Smithay or copy into
+    # a target-owned linear buffer through the Vulkan transfer adapter.
     "smithay/renderer_multi",
 ]
 winit = ["smithay/backend_winit"]
@@ -39,6 +41,7 @@ required-features = ["test-apps"]
 
 [dependencies]
 hearthspace-desktop = { path = "../hearthspace-desktop" }
+ash = { version = "=0.38.0", optional = true }
 async-io = "2.6.0"
 atspi = { version = "0.30.0", features = ["zbus"] }
 calloop = { version = "0.14.5", features = ["signals"] }

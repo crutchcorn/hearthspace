@@ -101,6 +101,10 @@ impl State {
     }
 }
 impl App {
+    pub(in crate::compositor) fn shell_popup_epoch(&self) -> u64 {
+        self.layout_editor.popup_epoch
+    }
+
     /// Status retains invalidation even if the best-effort wakeup is dropped.
     pub(in crate::compositor) fn invalidate_shell_popups(&mut self) {
         self.publish_shell_popup_epoch(true);

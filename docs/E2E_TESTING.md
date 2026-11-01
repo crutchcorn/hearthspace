@@ -115,6 +115,30 @@ screenshots/accessibility snapshots, and retained Rust failure directories.
 Artifacts are limited to test-created log, JSON/JSONL, PNG, XML, and text files;
 ordinary session sockets and the host desktop are excluded.
 
+### Smithay transfer cache regressions
+
+The compositor's `smithay_transfer_cache` integration cases are ignored by
+default so software-only workspace and CI runs do not require DRM sysfs nodes.
+Pinned drm-rs validates every public `DrmNode` constructor against sysfs. The
+fixture needs two distinct validated `/sys/class/drm` identities; primary/render
+nodes of one GPU suffice. It reads those identities without opening GPU devices
+or issuing GPU commands, and substitutes devices and allocation while exercising
+Smithay's real manager/render/finish path.
+
+Changes to the transfer cache, its output ownership, or the Smithay pin require
+this separate invocation on a host meeting that prerequisite:
+
+```sh
+cargo test --locked -p hearthspace-compositor --features udev --test smithay_transfer_cache -- --ignored --test-threads=1
+```
+
+Report its executed/passed/failed counts separately from the ordinary run's
+ignored count. A default workspace pass with these cases ignored does not
+establish their coverage. Explicit execution still fails if the prerequisite is
+unavailable. The fixture does not establish GPU compatibility, native presentation,
+or performance; the corresponding native acceptance remains required. See the
+[patch ledger](../patches/README.md#smithay-caller-owned-multi-gpu-intermediates).
+
 ## Native Validation
 
 The native suite is opt-in because it temporarily takes an unused VT and a real

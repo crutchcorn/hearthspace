@@ -1,298 +1,208 @@
-use std::time::Instant;
-
-use super::{UdevBackendState, event_cutoff::SurfaceEvent};
-use crate::compositor::capture::{CaptureState, read_pixels};
-use smithay::{
-    backend::{
-        drm::{DrmEventMetadata, DrmEventTime},
-        renderer::{Bind, damage::OutputDamageTracker},
-    },
-    reexports::drm::control::crtc,
-    utils::{Clock, Monotonic, Rectangle, Transform},
+use super::{UdevBackendState, device::KmsOutputSurface, gpu::GpuState, transfer::render_pass};
+use crate::compositor::{
+    App,
+    capture::{CaptureState, CursorOverlay},
 };
-use tracing::{debug, trace, warn};
+use smithay::{backend::drm::DrmNode, reexports::drm::control::crtc};
+use std::time::Instant;
+use tracing::{trace, warn};
 
 impl UdevBackendState {
-    pub(in crate::compositor) fn capture_toplevels(&mut self, state: &mut crate::compositor::App) {
+    pub(in crate::compositor) fn capture_toplevels(&mut self, state: &mut App) {
         if !self.capture_active() || !state.capture_available() {
             state.remote_capture.stop();
             return;
         }
-        if let Some(device) = &mut self.primary_device {
-            state.render_window_captures(&mut device.render_node.renderer);
+        if let Some(node) = self.gpus.scene_node {
+            match self.gpus.manager.single_renderer(&node) {
+                Ok(mut renderer) => state.render_window_captures(renderer.as_mut()),
+                Err(error) => {
+                    warn!(%error, "native window capture renderer unavailable");
+                    state.remote_capture.stop();
+                }
+            }
         }
     }
 
     pub(in crate::compositor) fn capture_active(&self) -> bool {
-        self.session_active
-            && !self.drm_commits_paused
-            && self
-                .primary_device
-                .as_ref()
-                .is_some_and(|device| device.has_output_surfaces())
+        self.session_active && !self.drm_commits_paused && self.kms_devices_active
     }
 
     pub(in crate::compositor) fn render_frame(
         &mut self,
-        state: &mut crate::compositor::App,
+        state: &mut App,
         force_full_redraw: bool,
         captures: &mut CaptureState,
     ) -> Result<bool, Box<dyn std::error::Error>> {
+        self.schedule_bridge_poll();
         if state.session_locked() {
             captures.invalidate("session is locked");
             state.remote_capture.stop();
         }
         if self.drm_commits_paused {
+            state.set_native_lock_outputs_available(self.native_outputs_ready());
             state.remote_capture.stop();
-            debug!("skipping native render while DRM commits are paused");
-            self.frame_dirty = true;
-            if let Some(device) = &mut self.primary_device {
+            for device in self.opened_devices.values_mut() {
                 device.mark_all_surfaces_dirty();
             }
             return Ok(false);
         }
-
-        let Some(device) = self.primary_device.as_mut() else {
-            return Err("udev backend has no primary DRM device".into());
-        };
-        if device.output_surfaces.is_empty() {
-            debug!("skipping native render because no KMS output surface is initialized");
-            self.frame_dirty = true;
-            return Ok(false);
-        }
-
-        let cursor = device.capture_cursor(state);
-        let renderer = &mut device.render_node.renderer;
         let mut submitted = false;
-        for output in &mut device.output_surfaces {
-            if output.frame_pending {
-                output.frame_dirty = true;
-                debug!(crtc = ?output.gbm_surface.crtc(), "native redraw requested while output page flip is pending; deferring until vblank");
+        let mut failed = false;
+        for device in self.opened_devices.values_mut() {
+            if !device.active {
                 continue;
             }
-
-            let Some(view) = state.output_render_view(output.target.connector_name()) else {
-                output.frame_dirty = true;
-                warn!(
-                    connector = ?output.target.connector,
-                    name = output.target.connector_name(),
-                    "skipping native output render because no Wayland output view exists"
-                );
-                continue;
-            };
-
-            let (mut dmabuf, buffer_age) = output.gbm_surface.next_buffer()?;
-            let age = if force_full_redraw || state.software_cursor_visible {
-                0
-            } else {
-                usize::from(buffer_age)
-            };
-            let mut capture = None;
-            let damage = {
-                let mut framebuffer = renderer.bind(&mut dmabuf)?;
-                // When scanout contains a software cursor, obtain a cursor-free
-                // scene first for sessions that did not request PaintCursors.
-                // The real scanout render below is always restored in full.
-                let clean = if state.software_cursor_visible
-                    && state.remote_capture.wants_cursorless(&view.name)
-                {
-                    let size = output.target.output_size();
-                    let mut scratch =
-                        OutputDamageTracker::new(size, f64::from(view.scale), Transform::Normal);
-                    let visible = std::mem::replace(&mut state.software_cursor_visible, false);
-                    let rendered = state.render_frame_at(
-                        renderer,
-                        &mut framebuffer,
-                        &mut scratch,
-                        0,
-                        Rectangle::new(view.location, view.size),
-                        view.scale,
-                    );
-                    state.software_cursor_visible = visible;
-                    match rendered.and_then(|_| read_pixels(renderer, &framebuffer, size, false)) {
-                        Ok(pixels) => Some(pixels),
-                        Err(error) => {
-                            warn!(%error, "cursor-free remote readback failed");
-                            state.remote_capture.fail_output(&view.name);
-                            None
+            let cursor = device.capture_cursor(state);
+            for output in &mut device.output_surfaces {
+                if output.presentation.pending {
+                    output.presentation.dirty = true;
+                    continue;
+                }
+                match render_output(
+                    &mut self.gpus,
+                    device.node,
+                    output,
+                    state,
+                    force_full_redraw,
+                    captures,
+                    cursor.as_ref(),
+                ) {
+                    Ok(queued) => submitted |= queued,
+                    Err(error) => {
+                        let name = output.target.connector_name();
+                        self.gpus.bridges.retire_output(name);
+                        captures.fail(name, &format!("native presentation failed: {error}"));
+                        state.remote_capture.fail_output(name);
+                        // Preserve the transfer's completion even when drawing
+                        // or KMS submission fails. Recovery drops the owner;
+                        // a retry must wait before rewriting its storage.
+                        if let Some(scene) = output.scene.as_mut() {
+                            scene.invalidate();
                         }
-                    }
-                } else {
-                    None
-                };
-                let damage = state.render_frame_at(
-                    renderer,
-                    &mut framebuffer,
-                    &mut output.damage_tracker,
-                    if clean.is_some() { 0 } else { age },
-                    Rectangle::new(view.location, view.size),
-                    view.scale,
-                )?;
-                if captures.wanted(&view.name) || state.remote_capture.wanted(&view.name) {
-                    let result = (|| -> Result<_, Box<dyn std::error::Error>> {
-                        let size = output.target.output_size();
-                        // Native GBM rows already follow scanout's top-down order.
-                        // Nested EGL surfaces use Flipped180 and need a row reversal.
-                        let mut pixels = read_pixels(renderer, &framebuffer, size, false)?;
-                        let plain = clean.unwrap_or_else(|| pixels.clone());
-                        let mut cursor_source = "framebuffer";
-                        if let Some((crtc, cursor)) = &cursor
-                            && *crtc == output.gbm_surface.crtc()
-                        {
-                            cursor.paint(&mut pixels, size);
-                            cursor_source = "hardware-overlay";
-                        }
-                        let metadata = state
-                            .capture_outputs()
-                            .into_iter()
-                            .find(|o| o.name == view.name)
-                            .ok_or("capture output disappeared")?;
-                        Ok((metadata, size, plain, pixels, cursor_source))
-                    })();
-                    match result {
-                        Ok(frame) => capture = Some(frame),
-                        Err(error) => {
-                            captures.fail(&view.name, &format!("native readback failed: {error}"));
-                            state.remote_capture.fail_output(&view.name);
-                        }
+                        output.presentation.dirty = true;
+                        device.recovery_needed = true;
+                        failed = true;
+                        warn!(%error, device_id = device.token.id, incarnation = device.token.incarnation,
+                            crtc = ?output.target.crtc, output = name, "native output failed; continuing healthy outputs");
                     }
                 }
-                damage
-            };
-            // Keep damage tracking for renderer-side redraw minimization, but do not
-            // forward damage clips to KMS yet. Some virtual DRM stacks reject
-            // FB_DAMAGE_CLIPS on page flip with EINVAL under client redraw load.
-            let _damage = damage;
-            if let Err(error) = output.gbm_surface.queue_buffer(None, None, ()) {
-                captures.fail(&view.name, &format!("native presentation failed: {error}"));
-                state.remote_capture.fail_output(&view.name);
-                return Err(error.into());
             }
-            if let Some((metadata, size, plain, pixels, cursor_source)) = capture {
-                if state.remote_capture.wanted(&view.name) {
-                    state
-                        .remote_capture
-                        .stage(&view.name, size, plain, Some(pixels.clone()));
-                }
-                if captures.wanted(&view.name)
-                    && let Err(error) = captures.stage_pixels(metadata, size, pixels, cursor_source)
-                {
-                    captures.fail(&view.name, &format!("native encoding failed: {error}"));
-                }
-            }
-            output.lock_frame_generation = state.lock_frame_generation();
-            output.frame_pending = true;
-            output.frame_dirty = false;
-            submitted = true;
-            trace!(
-                crtc = ?output.gbm_surface.crtc(),
-                name = %view.name,
-                location = ?view.location,
-                age,
-                "queued native frame"
-            );
         }
-
-        self.frame_pending = device.any_frame_pending();
-        self.frame_dirty = device.any_frame_dirty();
-        self.repaint_pending = self.frame_pending;
+        // This frame may have created the first pending bridge work. Arm its
+        // retirement timer now, even if no later redraw is requested.
+        self.schedule_bridge_poll();
+        self.refresh_backend_state();
+        state.set_native_lock_outputs_available(self.native_outputs_ready());
+        if failed {
+            self.schedule_recovery_timer();
+        }
         Ok(submitted)
     }
+}
 
-    pub(in crate::compositor) fn frame_submitted(
-        &mut self,
-        crtc: crtc::Handle,
-        metadata: Option<&DrmEventMetadata>,
-        state: &mut crate::compositor::App,
-        captures: &mut CaptureState,
-    ) -> Result<Option<bool>, Box<dyn std::error::Error>> {
-        let Some(device) = self.primary_device.as_mut() else {
-            return Ok(None);
-        };
-        let Some(output) = device
-            .output_surfaces
-            .iter_mut()
-            .find(|output| output.gbm_surface.crtc() == crtc)
-        else {
-            return Ok(None);
-        };
-        if !output.frame_pending {
-            return Ok(None);
-        }
-        let event = output.event_cutoff.classify(metadata);
-        if event == SurfaceEvent::Stale {
-            trace!(
-                ?crtc,
-                ?metadata,
-                "ignoring DRM event predating the current surface"
-            );
-            return Ok(None);
-        }
-        if output.gbm_surface.frame_submitted()?.is_none() {
-            // A late event can outlive its surface after output reconfiguration.
-            // Only acknowledge a frame that this surface actually submitted.
-            return Ok(None);
-        }
-        if event == SurfaceEvent::Untimed {
-            state
-                .remote_capture
-                .fail_output(output.target.connector_name());
-            // A modeset completion without a timestamp can unblock the GBM
-            // queue, but cannot prove this generation reached the display.
-            // Discard its readback and lock marker; verify a fresh normal flip.
-            captures.fail(
-                output.target.connector_name(),
-                "native presentation timestamp unavailable; retry capture",
-            );
-            output.lock_frame_generation = None;
-            output.frame_pending = false;
-            output.frame_dirty = true;
-            self.frame_pending = device.any_frame_pending();
-            self.repaint_pending = self.frame_pending;
-            self.frame_dirty = device.any_frame_dirty();
-            self.recovery_progress_at = Some(Instant::now());
-            state.request_redraw();
-            debug!(
-                ?crtc,
-                "untimed native modeset completed; requesting a verified page flip"
-            );
-            return Ok(None);
-        }
-        output.presented_once = true;
-        if state.session_locked() {
-            captures.invalidate("session is locked");
-            state.remote_capture.stop();
-        } else {
-            captures.presented(output.target.connector_name(), "page-flip");
-            if self.session_active && !self.drm_commits_paused {
-                let timestamp = match metadata.map(|m| m.time) {
-                    Some(DrmEventTime::Monotonic(time)) => time,
-                    // The protocol requires CLOCK_MONOTONIC even on old DRM
-                    // drivers reporting CLOCK_REALTIME page-flip timestamps.
-                    _ => Clock::<Monotonic>::new().now().into(),
-                };
-                state
-                    .remote_capture
-                    .presented(output.target.connector_name(), timestamp);
-            } else {
-                state.remote_capture.stop();
+fn render_output(
+    gpus: &mut GpuState,
+    node: DrmNode,
+    output: &mut KmsOutputSurface,
+    state: &mut App,
+    force_full_redraw: bool,
+    captures: &mut CaptureState,
+    cursor: Option<&(crtc::Handle, CursorOverlay)>,
+) -> Result<bool, Box<dyn std::error::Error>> {
+    let started = Instant::now();
+    let Some(view) = state.output_render_view(output.target.connector_name()) else {
+        output.presentation.dirty = true;
+        warn!(
+            output = output.target.connector_name(),
+            "native output has no Wayland view"
+        );
+        return Ok(false);
+    };
+    let (mut dmabuf, buffer_age) = output.gbm_surface.next_buffer()?;
+    let wants_clean =
+        state.software_cursor_visible && state.remote_capture.wants_cursorless(&view.name);
+    let clean = if wants_clean {
+        let visible = std::mem::replace(&mut state.software_cursor_visible, false);
+        let result = render_pass(gpus, node, output, &mut dmabuf, state, &view, 0, true, true);
+        state.software_cursor_visible = visible;
+        // A transfer/render failure can leave submitted work with uncertain
+        // completion. Do not restore into the same scanout via another route.
+        // Readback alone remains recoverable after a successful render pass.
+        match result?.pixels {
+            Ok(pixels) => pixels,
+            Err(error) => {
+                warn!(%error, "cursor-free remote readback failed");
+                state.remote_capture.fail_output(&view.name);
+                None
             }
         }
-        if let Some(generation) = output.lock_frame_generation.take() {
-            state.lock_frame_presented(output.target.connector_name(), generation);
+    } else {
+        None
+    };
+    // Always restore the full scene after a temporary cursorless pass, even if
+    // its readback failed. The final fence belongs to the restored image.
+    let force = force_full_redraw || state.software_cursor_visible || wants_clean;
+    let wanted = captures.wanted(&view.name) || state.remote_capture.wanted(&view.name);
+    let rendered = render_pass(
+        gpus,
+        node,
+        output,
+        &mut dmabuf,
+        state,
+        &view,
+        usize::from(buffer_age),
+        force,
+        wanted,
+    )?;
+    // Keep renderer-side damage, but do not send FB_DAMAGE_CLIPS to KMS. The
+    // final fence is source GLES on same-GPU, target completion on a transfer.
+    let submit_started = Instant::now();
+    output
+        .gbm_surface
+        .queue_buffer(Some(rendered.sync), None, ())?;
+    let submit_duration = submit_started.elapsed();
+    let pixels = match rendered.pixels {
+        Ok(pixels) => pixels,
+        Err(error) => {
+            captures.fail(&view.name, &format!("native readback failed: {error}"));
+            state.remote_capture.fail_output(&view.name);
+            None
         }
-        output.frame_pending = false;
-        self.frame_pending = device.any_frame_pending();
-        self.repaint_pending = self.frame_pending;
-        self.frame_dirty = device.any_frame_dirty();
-        if self.frame_pending {
-            return Ok(None);
+    };
+    if let Some(mut pixels) = pixels {
+        let size = output.target.output_size();
+        let plain = clean.unwrap_or_else(|| pixels.clone());
+        let mut cursor_source = "framebuffer";
+        if let Some((crtc, cursor)) = cursor
+            && *crtc == output.gbm_surface.crtc()
+        {
+            cursor.paint(&mut pixels, size);
+            cursor_source = "hardware-overlay";
         }
-
-        let should_redraw = self.frame_dirty;
-        if should_redraw {
-            debug!("native page flip completed with dirty state; scheduling next frame");
+        if state.remote_capture.wanted(&view.name) {
+            state
+                .remote_capture
+                .stage(&view.name, size, plain, Some(pixels.clone()));
         }
-        Ok(Some(should_redraw))
+        if captures.wanted(&view.name) {
+            if let Some(metadata) = state
+                .capture_outputs()
+                .into_iter()
+                .find(|o| o.name == view.name)
+            {
+                if let Err(error) = captures.stage_pixels(metadata, size, pixels, cursor_source) {
+                    captures.fail(&view.name, &format!("native encoding failed: {error}"));
+                }
+            } else {
+                captures.fail(&view.name, "capture output disappeared");
+            }
+        }
     }
+    output.presentation.queued(state.lock_frame_generation());
+    trace!(device = ?node, scene_node = ?gpus.scene_node, target_node = ?node,
+        crtc = ?output.target.crtc, name = view.name, age = if force { 0 } else { buffer_age },
+        submit_us = submit_duration.as_micros() as u64, render_us = started.elapsed().as_micros() as u64,
+        "queued native frame");
+    Ok(true)
 }

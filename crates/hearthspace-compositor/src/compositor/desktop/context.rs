@@ -1,21 +1,25 @@
 //! Context menus use the same output-space palette policy as the shell popovers.
 use super::App;
-use crate::compositor::{
-    CalloopData, HitTarget, shell_integration::ControlReply, windows::window_app_id,
-};
+use crate::compositor::{HitTarget, windows::window_app_id};
 use hearthspace_common::desktop_context::{self, DesktopContext};
 use smithay::{
     backend::input::ButtonState,
     utils::{Logical, Point},
 };
 
+mod app;
+mod commands;
+
 #[derive(Default)]
 pub(super) struct State {
     pub(super) current: Option<DesktopContext>,
+    app_ids: std::collections::BTreeSet<String>,
     sequence: u64,
     anchor: Point<i32, Logical>,
     suppress_release: bool,
     return_focus: Option<String>,
+    source_window: Option<u64>,
+    root_window: Option<u64>,
 }
 
 impl App {
@@ -111,6 +115,8 @@ impl App {
         self.desktop.context.sequence = self.desktop.context.sequence.wrapping_add(1).max(1);
         self.desktop.context.anchor = anchor;
         self.desktop.context.return_focus = id;
+        self.desktop.context.source_window = None;
+        self.desktop.context.root_window = None;
         self.desktop.context.current = Some(DesktopContext {
             generation: self.desktop.context.sequence,
             ids: self.desktop.selected.iter().cloned().collect(),
@@ -131,11 +137,13 @@ impl App {
         else {
             return true;
         };
-        self.desktop
-            .context
-            .current
-            .as_ref()
-            .is_some_and(|context| context.generation == generation && context.output == output)
+        self.desktop_context_source_available()
+            && self
+                .desktop
+                .context
+                .current
+                .as_ref()
+                .is_some_and(|context| context.generation == generation && context.output == output)
             && self
                 .output_logical_rect_for_name(output.as_deref())
                 .is_some()
@@ -153,6 +161,21 @@ impl App {
             })
     }
 
+    pub(in crate::compositor) fn desktop_context_mapped(&mut self, index: usize) {
+        if window_app_id(&self.windows[index].surface).is_some_and(|id| {
+            desktop_context::submenu_offset(&id).is_none()
+                && desktop_context::identity(&id).is_some_and(|(generation, _)| {
+                    self.desktop
+                        .context
+                        .current
+                        .as_ref()
+                        .is_some_and(|c| c.generation == generation)
+                })
+        }) {
+            self.desktop.context.root_window = Some(self.windows[index].id);
+        }
+    }
+
     pub(in crate::compositor) fn cancel_pending_desktop_context(&mut self) {
         if let Some(context) = &self.desktop.context.current {
             self.close_desktop_context(context.generation);
@@ -162,6 +185,8 @@ impl App {
     pub(in crate::compositor) fn reset_desktop_context(&mut self) {
         self.desktop.context.current = None;
         self.desktop.context.return_focus = None;
+        self.desktop.context.source_window = None;
+        self.desktop.context.root_window = None;
         self.desktop.context.suppress_release = false;
     }
 
@@ -215,15 +240,23 @@ impl App {
         {
             self.desktop.context.current = None;
             let return_focus = self.desktop.context.return_focus.take();
+            let source_window = self.desktop.context.source_window.take();
+            let root_window = self.desktop.context.root_window.take();
             let menu_focused = self
                 .keyboard
                 .current_focus()
                 .and_then(|focus| self.window_index_for_surface(focus.surface()))
-                .and_then(|index| window_app_id(&self.windows[index].surface))
-                .as_deref()
-                .and_then(desktop_context::identity)
-                .is_some_and(|(id, _)| id == generation);
+                .is_some_and(|index| {
+                    root_window == Some(self.windows[index].id)
+                        || window_app_id(&self.windows[index].surface)
+                            .as_deref()
+                            .and_then(desktop_context::identity)
+                            .is_some_and(|(id, _)| id == generation)
+                });
+            let restored_source =
+                menu_focused && source_window.is_some_and(|id| self.restore_app_context_source(id));
             if menu_focused
+                && !restored_source
                 && return_focus
                     .as_deref()
                     .is_none_or(|id| self.focus_desktop(id, true).is_err())
@@ -242,24 +275,51 @@ impl App {
             self.desktop_changed();
         }
     }
-    /// Closing a child must not briefly clear focus and dismiss its parent.
+    /// Teardown can precede close IPC. Restore the live parent while the retiring
+    /// surface still owns focus, without transferring a later outside focus.
     pub(in crate::compositor) fn restore_desktop_context_parent(
         &mut self,
         surface: &wayland_server::protocol::wl_surface::WlSurface,
     ) -> bool {
-        let Some(id) = self
-            .window_index_for_surface(surface)
-            .and_then(|index| window_app_id(&self.windows[index].surface))
-        else {
-            return false;
-        };
-        if desktop_context::submenu_offset(&id).is_none() {
+        if self
+            .keyboard
+            .current_focus()
+            .is_none_or(|focus| focus.surface() != surface)
+        {
             return false;
         }
-        let Some((generation, _)) = desktop_context::identity(&id) else {
+        let Some(index) = self.window_index_for_surface(surface) else {
             return false;
         };
-        self.focus_desktop_context_menu(generation, false)
+        if let Some(id) = window_app_id(&self.windows[index].surface)
+            && desktop_context::submenu_offset(&id).is_some()
+            && let Some((generation, _)) = desktop_context::identity(&id)
+        {
+            return self.focus_desktop_context_menu(generation, false);
+        }
+        // Smithay clears role attributes on null-buffer unmap. The accepted
+        // mapping's live window ID still identifies this generation's root.
+        if self.desktop.context.root_window != Some(self.windows[index].id) {
+            return false;
+        }
+        let Some(source) = self.desktop.context.source_window.or_else(|| {
+            self.desktop
+                .context
+                .return_focus
+                .as_deref()
+                .and_then(|id| self.desktop_index(id))
+                .map(|index| self.windows[index].id)
+        }) else {
+            return false;
+        };
+        let Some(generation) = self.desktop.context.current.as_ref().map(|c| c.generation) else {
+            return false;
+        };
+        self.close_desktop_context(generation);
+        self.keyboard.current_focus().is_some_and(|focus| {
+            self.window_index_for_surface(focus.surface())
+                .is_some_and(|index| self.windows[index].id == source)
+        })
     }
 
     fn focus_desktop_context_menu(&mut self, generation: u64, child: bool) -> bool {
@@ -289,94 +349,5 @@ impl App {
             return true;
         }
         false
-    }
-}
-
-impl CalloopData {
-    pub(in crate::compositor) fn run_desktop_context_command(
-        &mut self,
-        text: &str,
-    ) -> Option<ControlReply> {
-        if !text.starts_with("desktop-context-") {
-            return None;
-        }
-        if !self.running || !self.capture_active() || self.state.session_locked() {
-            return Some(ControlReply::Err("Desktop is inactive".into()));
-        }
-        let Some((command, generation)) = text.split_once(' ') else {
-            return Some(ControlReply::Err("Invalid desktop menu command".into()));
-        };
-        let Some(generation) = generation.parse::<u64>().ok() else {
-            return Some(ControlReply::Err("Invalid desktop menu generation".into()));
-        };
-        let app = &mut self.state;
-        if command == "desktop-context-close" {
-            app.close_desktop_context(generation);
-            return Some(ControlReply::Ok);
-        }
-        let Some(context) = app
-            .desktop
-            .context
-            .current
-            .as_ref()
-            .filter(|c| c.generation == generation)
-            .cloned()
-        else {
-            return Some(ControlReply::Err(
-                "Desktop menu is no longer available".into(),
-            ));
-        };
-        if context.ids.iter().any(|id| app.desktop_index(id).is_none()) {
-            return Some(ControlReply::Err(
-                "Desktop menu item is no longer available".into(),
-            ));
-        }
-        if matches!(command, "desktop-context-parent" | "desktop-context-child") {
-            app.focus_desktop_context_menu(generation, command == "desktop-context-child");
-            return Some(ControlReply::Ok);
-        }
-        if matches!(command, "desktop-context-copy" | "desktop-context-cut") {
-            return Some(
-                app.copy_desktop_files(&context.ids, command == "desktop-context-cut")
-                    .map_or_else(ControlReply::Err, |_| ControlReply::Ok),
-            );
-        }
-        if command == "desktop-context-select-all" {
-            app.desktop.selected = app
-                .desktop
-                .order
-                .iter()
-                .filter(|id| app.desktop_index(id).is_some())
-                .cloned()
-                .collect();
-            app.desktop_changed();
-            return Some(ControlReply::Ok);
-        }
-        if command == "desktop-context-arrange" {
-            for (slot, id) in app.desktop.order.clone().iter().enumerate() {
-                let point = crate::geometry::CanvasPoint {
-                    x: 28 + 104 * (slot / 4) as i32,
-                    y: 112 + 104 * (slot % 4) as i32,
-                };
-                if let Some(index) = app.desktop_index(id) {
-                    app.windows[index].position = point;
-                }
-                app.layout_store.remember_desktop(id, point);
-            }
-            app.desktop_changed();
-            return Some(ControlReply::Ok);
-        }
-        if command == "desktop-context-background" {
-            return Some(app.open_background_settings_reply(context.output.as_deref()));
-        }
-        if command != "desktop-context-read" {
-            return Some(ControlReply::Err("Invalid desktop menu command".into()));
-        }
-        Some(ControlReply::Payload(
-            serde_json::to_vec(&serde_json::json!({
-                "context":context,"xwayland_display":app.xwayland_display_name(),
-            }))
-            .unwrap(),
-        ))
     }
 }

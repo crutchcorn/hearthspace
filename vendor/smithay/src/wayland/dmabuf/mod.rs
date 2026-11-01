@@ -564,6 +564,11 @@ impl SurfaceDmabufFeedbackState {
 struct DmabufGlobalState {
     id: GlobalId,
 
+    // Shared with bound globals and params, including params created before a
+    // feedback update. Previously advertised formats must remain valid here;
+    // whether a particular allocation still imports is the handler's decision.
+    formats: Arc<Mutex<IndexMap<Fourcc, IndexSet<Modifier>>>>,
+
     default_feedback: Option<Arc<Mutex<DmabufFeedback>>>,
     known_default_feedbacks:
         Arc<Mutex<Vec<wayland_server::Weak<zwp_linux_dmabuf_feedback_v1::ZwpLinuxDmabufFeedbackV1>>>>,
@@ -697,7 +702,7 @@ impl DmabufState {
         let id = global_id::next();
 
         let formats = formats
-            .or_else(|| default_feedback.map(|f| f.main_formats()))
+            .or_else(|| default_feedback.map(|f| f.0.format_table.formats.iter().copied().collect()))
             .unwrap()
             .into_iter()
             .fold(
@@ -712,7 +717,7 @@ impl DmabufState {
                 },
             );
 
-        let formats = Arc::new(formats);
+        let formats = Arc::new(Mutex::new(formats));
         let version = if default_feedback.is_some() { 6 } else { 3 };
 
         let known_default_feedbacks = Arc::new(Mutex::new(Vec::new()));
@@ -720,7 +725,7 @@ impl DmabufState {
 
         let data = DmabufGlobalData {
             filter: Box::new(filter),
-            formats,
+            formats: formats.clone(),
             default_feedback: default_feedback.clone(),
             known_default_feedbacks: known_default_feedbacks.clone(),
             id,
@@ -731,6 +736,7 @@ impl DmabufState {
             id,
             DmabufGlobalState {
                 id: global,
+                formats,
                 default_feedback,
                 known_default_feedbacks,
             },
@@ -741,6 +747,12 @@ impl DmabufState {
 
     /// Set the default [`DmabufFeedback`] for the specified global and send it to
     /// all known default feedbacks.
+    ///
+    /// Newly advertised formats are also accepted by existing bound globals and
+    /// params. Previously advertised formats remain valid protocol parameters:
+    /// the import handler decides whether older allocations are still usable.
+    /// This does not update per-surface feedback; use
+    /// [`SurfaceDmabufFeedbackState::set_feedback`] for those objects.
     ///
     /// Note: This will do nothing if the global is not found, the global has been
     /// initialized without feedback or the feedback equals the current default feedback.
@@ -756,6 +768,15 @@ impl DmabufState {
         // No need to update if the feedback did not change
         if &*current_feedback == default_feedback {
             return;
+        }
+
+        // Publish validation support before any client can act on the new
+        // feedback. Never remove formats used by outstanding allocations.
+        {
+            let mut formats = global.formats.lock().unwrap();
+            for format in &default_feedback.0.format_table.formats {
+                formats.entry(format.code).or_default().insert(format.modifier);
+            }
         }
 
         let known_default_feedbacks = global.known_default_feedbacks.lock().unwrap();
@@ -792,7 +813,7 @@ impl DmabufState {
 #[allow(missing_debug_implementations)]
 pub struct DmabufGlobalData {
     filter: Box<dyn for<'c> Fn(&'c Client) -> bool + Send + Sync>,
-    formats: Arc<IndexMap<Fourcc, IndexSet<Modifier>>>,
+    formats: Arc<Mutex<IndexMap<Fourcc, IndexSet<Modifier>>>>,
     default_feedback: Option<Arc<Mutex<DmabufFeedback>>>,
     known_default_feedbacks:
         Arc<Mutex<Vec<wayland_server::Weak<zwp_linux_dmabuf_feedback_v1::ZwpLinuxDmabufFeedbackV1>>>>,
@@ -802,7 +823,7 @@ pub struct DmabufGlobalData {
 /// Data associated with a dmabuf global protocol object.
 #[derive(Debug)]
 pub struct DmabufData {
-    formats: Arc<IndexMap<Fourcc, IndexSet<Modifier>>>,
+    formats: Arc<Mutex<IndexMap<Fourcc, IndexSet<Modifier>>>>,
     id: usize,
 
     default_feedback: Option<Arc<Mutex<DmabufFeedback>>>,
@@ -827,7 +848,7 @@ pub struct DmabufParamsData {
     /// Whether the params protocol object has been used before to create a wl_buffer.
     used: AtomicBool,
 
-    formats: Arc<IndexMap<Fourcc, IndexSet<Modifier>>>,
+    formats: Arc<Mutex<IndexMap<Fourcc, IndexSet<Modifier>>>>,
 
     /// Pending planes for the params.
     modifier: Mutex<Option<Modifier>>,
@@ -1079,7 +1100,7 @@ impl DmabufParamsData {
 
         // Validate buffer parameters:
         // 1. Must have known format
-        if !self.formats.contains_key(&format) {
+        if !self.formats.lock().unwrap().contains_key(&format) {
             params.post_error(
                 zwp_linux_buffer_params_v1::Error::InvalidFormat,
                 format!("Format {format:?}/{:x} is not supported.", format as u32),

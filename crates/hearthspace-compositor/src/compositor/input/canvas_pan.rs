@@ -5,15 +5,13 @@ use smithay::{
     utils::{Logical, Point, SERIAL_COUNTER},
 };
 
-use super::{
-    policy::{Action, Phase, Source},
-    remote::PointerSource,
-};
+use super::remote::PointerSource;
 use crate::{
-    compositor::{App, HitTarget, cursor::CursorIcon},
+    compositor::{App, cursor::CursorIcon},
     geometry::CanvasPoint,
 };
 
+mod admission;
 mod grab;
 #[cfg(test)]
 mod tests;
@@ -108,51 +106,26 @@ impl App {
         }
     }
 
-    fn canvas_pan_target(&self) -> bool {
-        if self.output_logical_rects().into_iter().any(|output| {
-            output.contains(self.pointer_location.to_i32_round())
-                && self.fullscreen_on_output(output)
-        }) {
-            return false;
-        }
-        match self.hit_test(self.pointer_location) {
-            None => true,
-            Some(HitTarget::Client { window_index, .. }) => {
-                self.desktop_id(window_index).is_some()
-                    && !self.layout_target_on_frame(window_index)
-            }
-            _ => false,
-        }
-    }
-
-    fn canvas_pan_available(&self) -> bool {
-        self.canvas_pan.selected
-            && !self.dispatching_touch
-            && !self.touch_input.has_contacts()
-            && self.ui_touch.is_none()
-            && !self.touch_pointer_pressed
-            && !self.desktop_gesture_active()
-            && !self.group_has_pointer_capture()
-            && self.interaction_allowed(Action::CanvasPan, Source::Local, Phase::Begin)
-    }
-
     pub(in crate::compositor::input) fn begin_canvas_pan(
         &mut self,
         source: PointerSource,
         button: u32,
         time: InputTime,
     ) -> bool {
+        let Some(admission) = self.canvas_pan_admission() else {
+            return false;
+        };
         if button != 0x110
             || source == PointerSource::Touch
-            || !self.canvas_pan_available()
-            || !self.canvas_pan_target()
+            || !self.canvas_pan_available(&source)
+            || !self.canvas_pan_target(admission)
         {
             return false;
         }
         self.interrupt_pinch_zoom();
         self.advance_viewport_animation();
         // Sampling may have moved an app over the previously eligible target.
-        if !self.canvas_pan_target() {
+        if !self.canvas_pan_target(admission) {
             return false;
         }
         self.viewport_animation = None;
@@ -172,7 +145,10 @@ impl App {
         // Restoring focus can activate a pending client maximize and revoke
         // Pan. Keep this outside press captured even then: it must not become
         // a click on the application that just appeared beneath the pointer.
-        let drag = (self.canvas_pan_available() && self.canvas_pan_target()).then_some(Drag {
+        let drag = (self.canvas_pan_admission() == Some(admission)
+            && self.canvas_pan_available(&source)
+            && self.canvas_pan_target(admission))
+        .then_some(Drag {
             pointer: self.pointer_location,
             offset: self.viewport_offset,
             scale: self.viewport_scale,
@@ -259,7 +235,15 @@ impl App {
     }
 
     pub(in crate::compositor::input) fn canvas_pan_hover(&mut self, time: InputTime) -> bool {
-        if !self.canvas_pan_available() || !self.canvas_pan_target() {
+        let Some(admission) = self.canvas_pan_admission() else {
+            return false;
+        };
+        // Some compositor-owned drags never establish a Smithay grab. A held
+        // press must keep its motion even when Meta is pressed afterwards.
+        if self.has_pressed_pointer_sources()
+            || !self.canvas_pan_available(&PointerSource::Local)
+            || !self.canvas_pan_target(admission)
+        {
             return false;
         }
         self.pointer.clone().motion(
@@ -272,20 +256,27 @@ impl App {
             },
         );
         self.pointer.clone().frame(self);
-        self.canvas_pan_cursor();
+        self.set_canvas_pan_cursor(CursorIcon::Grab);
         true
     }
 
     fn canvas_pan_cursor(&mut self) {
-        self.cursor_surface = None;
-        self.cursor_visible = true;
-        self.cursor_icon = if self.canvas_pan.drag.is_some() {
+        // Called under pointer and keyboard mutexes: never sample modifiers,
+        // hit-test, or dispatch input from here.
+        let icon = if self.canvas_pan.drag.is_some() {
             CursorIcon::Grabbing
         } else if self.canvas_pan.selected {
             CursorIcon::Grab
         } else {
             CursorIcon::Default
         };
+        self.set_canvas_pan_cursor(icon);
+    }
+
+    fn set_canvas_pan_cursor(&mut self, icon: CursorIcon) {
+        self.cursor_surface = None;
+        self.cursor_visible = true;
+        self.cursor_icon = icon;
     }
 
     pub(in crate::compositor::input) fn apply_pointer_motion_from_source(

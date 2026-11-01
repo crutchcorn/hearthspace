@@ -1,6 +1,41 @@
 use super::*;
 use std::{ffi::OsStr, path::Path};
 
+pub(in crate::compositor::shell_integration::launch) fn assert_gpu_routing(root: &Path) {
+    let file = root.join("GPU document.txt");
+    std::fs::write(&file, b"gpu").unwrap();
+    let preferred = |preference: bool| {
+        assert!(preference);
+        vec![("DRI_PRIME".into(), "fixture-discrete".into())]
+    };
+    for id in ["gpu.desktop", "gpu-hidden.desktop", "gpu-snap.desktop"] {
+        let request = Request::for_app(std::slice::from_ref(&file), id, None).unwrap();
+        let prepared = prepare_with_gpu(request, preferred).unwrap();
+        assert!(
+            prepared
+                .command
+                .get_args()
+                .any(|arg| arg == file_launch::SCOPED_GIO_FLAG)
+        );
+        assert_eq!(
+            prepared.environment,
+            [("DRI_PRIME".into(), "fixture-discrete".into())]
+        );
+    }
+    let request = Request::for_app(&[file], "gpu-only.desktop", None).unwrap();
+    let activation = prepare_with_gpu(request, |_| {
+        panic!("activation-only hint must remain best effort")
+    })
+    .unwrap();
+    assert!(
+        activation
+            .command
+            .get_args()
+            .any(|arg| arg == file_launch::NATIVE_GIO_FLAG)
+    );
+    assert!(activation.environment.is_empty());
+}
+
 /// Called by the real isolated nested-child fixture after clearing selected bus
 /// ownership while retaining its borrowed DBUS_SESSION_BUS_ADDRESS.
 pub(in crate::compositor::shell_integration::launch) fn assert_nested_routing(root: &Path) {

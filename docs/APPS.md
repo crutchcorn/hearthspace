@@ -15,6 +15,28 @@ Application-specific behavior, packaging, portals, and single-instance rules
 still affect compatibility; a successful launch does not establish that every
 workflow in an app works.
 
+## Application graphics preference
+
+Open an application's context menu in Apps List, the dock, or its desktop
+shortcut and select **Run using dedicated graphics card**. Right-click, or
+focus the control and press the Context Menu key or Shift+F10. Apps List and
+dock controls also support touch and hold. The checkmark changes after saving
+succeeds; a failed save leaves the previous preference in place and offers
+another attempt.
+
+This preference applies to future launches. It cannot change the GPU used by
+an already-running application. Clearing it restores ordinary launch behavior;
+it does not force integrated graphics. Applications and drivers ultimately
+decide which GPU to use.
+
+Hearthspace saves the standard `PrefersNonDefaultGPU` desktop-entry hint in a
+user-local override, preserving the entry's other fields and desktop actions.
+Launch preparation asks switcheroo-control for the dedicated GPU's environment
+and applies it only to that application's child process. If no suitable GPU
+is reported, launch retains its ordinary behavior. Entries that support only
+D-Bus activation retain activation; they cannot receive a new process
+environment through an existing service.
+
 ## Application configuration
 
 Normal sessions inherit the user's application configuration directories. An

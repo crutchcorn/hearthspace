@@ -5,7 +5,7 @@ import stat
 import sys
 import tempfile
 import unittest
-from contextlib import nullcontext
+from contextlib import contextmanager, nullcontext
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
@@ -13,7 +13,7 @@ from unittest.mock import Mock, patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from agentlib import cli as agent_cli
 from agentlib import native as agent_native
-from nativelib import cli, profile, service
+from nativelib import cli, common, profile, recovery, service
 
 
 def state(directory, enabled=True):
@@ -29,7 +29,77 @@ def state(directory, enabled=True):
     }
 
 
+@contextmanager
+def allocation_fixture():
+    """Keep state writes and allocation real, redirecting only host resources."""
+    with tempfile.TemporaryDirectory() as directory:
+        root = Path(directory)
+        session, states, runtimes = [
+            root / name for name in ("session", "states", "runtimes")
+        ]
+        for path in (session, states, runtimes):
+            path.mkdir()
+        uid = os.getuid()
+
+        def local_path(value):
+            path = Path(value)
+            if path.parent == Path(f"/run/user/{uid}"):
+                return runtimes / path.name
+            return path
+
+        args = cli.parser().parse_args(["_start", "--session", str(session)])
+        with (
+            patch.object(service, "STATE_ROOT", states),
+            patch.object(service, "allocation_lock", return_value=nullcontext()),
+            patch.object(service, "Path", side_effect=local_path),
+            patch.object(service.os, "geteuid", return_value=0),
+            patch.dict(os.environ, {"SUDO_UID": str(uid)}),
+            patch.object(service.os, "chown"),
+            patch.object(service, "active_vt", return_value=2),
+            patch.object(service, "run") as submit,
+        ):
+            yield args, states, runtimes, submit
+
+
 class NativeProfileTests(unittest.TestCase):
+    def test_choose_vt_failure_leaves_no_runtime_or_session_state(self):
+        with allocation_fixture() as (args, states, runtimes, submit):
+            with (
+                patch.object(
+                    service, "choose_vt", side_effect=RuntimeError("no spare VT")
+                ),
+                patch.object(recovery, "stop") as stop,
+                self.assertRaisesRegex(RuntimeError, "no spare VT"),
+            ):
+                service.launch(args)
+            self.assertEqual(list(runtimes.iterdir()), [])
+            self.assertEqual(list(states.iterdir()), [])
+            self.assertEqual(list(args.session.iterdir()), [])
+            submit.assert_not_called()
+            stop.assert_not_called()
+
+    def test_failure_after_runtime_allocation_recovers_persisted_owner(self):
+        with allocation_fixture() as (args, states, runtimes, submit):
+
+            def inspect_recovery(path):
+                saved = common.load(path)
+                self.assertEqual(saved, common.load(states / "current.json"))
+                self.assertEqual(saved, common.load(args.session / "session.json"))
+                self.assertEqual(Path(saved["runtime_dir"]).parent, runtimes)
+                self.assertTrue(Path(saved["runtime_dir"]).is_dir())
+                self.assertEqual(saved["session_dir"], str(args.session))
+                return saved
+
+            with (
+                patch.object(service, "choose_vt", return_value=7),
+                patch.object(Path, "touch", side_effect=OSError("session log failure")),
+                patch.object(recovery, "stop", side_effect=inspect_recovery) as stop,
+                self.assertRaisesRegex(OSError, "session log failure"),
+            ):
+                service.launch(args)
+            stop.assert_called_once()
+            submit.assert_not_called()
+
     def test_public_and_privileged_parsers_require_explicit_opt_in(self):
         for command in ("start", "_start"):
             base = [command, "--session", "/tmp/native-profile"]

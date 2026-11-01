@@ -1,7 +1,7 @@
 use super::*;
 use serde_json::json;
 
-fn place(compositor: &HeadlessCompositor, id: &str, placement: Value) {
+pub(super) fn place(compositor: &HeadlessCompositor, id: &str, placement: Value) {
     action(compositor, "canvas-tool layout");
     let status = query(compositor, "layout-status");
     action(

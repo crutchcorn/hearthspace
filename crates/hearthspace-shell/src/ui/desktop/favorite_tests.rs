@@ -64,8 +64,10 @@ fn change_favorite(state: &mut ShellState, generation: u64, add: bool) {
             action: context_actions::Action::Favorite(add),
         }),
         &[app()],
+        &state.catalog,
         state.favorites.store.clone(),
         false,
+        &mut AppRegistration::default(),
     )
     .unwrap();
     server.join().unwrap();

@@ -220,13 +220,11 @@ fn hex_decode(input: &str) -> Option<Vec<u8>> {
         return None;
     }
 
-    input
-        .as_bytes()
-        .as_chunks::<2>()
-        .0
-        .iter()
-        .map(|pair| Some(hex_value(pair[0])? << 4 | hex_value(pair[1])?))
-        .collect()
+    let mut bytes = Vec::with_capacity(input.len() / 2);
+    for pair in input.as_bytes().as_chunks::<2>().0 {
+        bytes.push(hex_value(pair[0])? << 4 | hex_value(pair[1])?);
+    }
+    Some(bytes)
 }
 
 fn hex_value(byte: u8) -> Option<u8> {

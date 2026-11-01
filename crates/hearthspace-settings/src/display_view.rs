@@ -13,7 +13,7 @@ use xilem::{
 use crate::{
     actions::save_monitor_scale,
     monitor_layout_view::monitor_layout_editor,
-    monitors::MONITOR_SCALE_OPTIONS,
+    monitors::{MONITOR_SCALE_OPTIONS, built_in_display, connector_label, display_name},
     page_components::{note, select},
     state::SettingsApp,
     typography::label,
@@ -61,12 +61,19 @@ fn monitor_details_view(state: &SettingsApp) -> Box<AnyWidgetView<SettingsApp>> 
     let live_output = state
         .live_outputs
         .iter()
-        .find(|output| output.id == monitor.id || output.name == monitor.name);
-    let connector = live_output.map_or(monitor.id.as_str(), |output| output.id.as_str());
-    let built_in = connector.starts_with("eDP")
-        || connector.starts_with("LVDS")
-        || monitor.name.to_lowercase().contains("built-in");
-    let name = display_name(&monitor.name, connector, built_in);
+        .find(|output| output.id == monitor.id)
+        .or_else(|| {
+            let mut matches = state
+                .live_outputs
+                .iter()
+                .filter(|output| output.name == monitor.name);
+            let output = matches.next()?;
+            matches.next().is_none().then_some(output)
+        });
+    let output_id = live_output.map_or(monitor.id.as_str(), |output| output.id.as_str());
+    let connector = connector_label(output_id);
+    let built_in = built_in_display(&monitor.name, output_id);
+    let name = display_name(&monitor.name, output_id);
     let monitor_id = monitor.id.clone();
     let selected_scale = MONITOR_SCALE_OPTIONS
         .iter()
@@ -165,30 +172,6 @@ fn read_only_field(palette: components::Palette, value: String) -> impl WidgetVi
         components::SettingsButton::Control,
         false,
     )
-}
-
-fn display_name(description: &str, connector: &str, built_in: bool) -> String {
-    if built_in {
-        return "Built-in display".into();
-    }
-    // Smithay descriptions combine make, model and connector. Our native
-    // backend uses "DRM - DP-1 - DP-1"; keep real product names when available,
-    // and show the connector once in the smaller identity line below.
-    let description = description
-        .trim()
-        .strip_suffix(&format!(" ({connector})"))
-        .unwrap_or(description.trim());
-    let name = description
-        .split(" - ")
-        .map(str::trim)
-        .filter(|part| !part.is_empty() && *part != connector && *part != "DRM")
-        .collect::<Vec<_>>()
-        .join(" ");
-    if name.is_empty() {
-        "External display".into()
-    } else {
-        name
-    }
 }
 
 #[cfg(test)]

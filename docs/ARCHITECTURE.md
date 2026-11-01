@@ -37,6 +37,14 @@ operation, preserves held-release bookkeeping, and restores focus without moving
 the viewport. Unrelated popup or shell teardown must not cancel another window's
 operation.
 
+Each managed window keeps at most one syntax-cache entry for its current optional
+raw application ID, recognizing frame widgets, groups, grips, and desktop items.
+Every lookup compares the complete current role-derived ID exactly, distinguishing
+missing and empty IDs and observing app-ID changes and XDG unmap resets.
+X11 identity follows current class, then instance, then remembered executable fallback.
+The cache stores parsed syntax only; output resolution, window classification,
+authorization, placement, and visibility remain live decisions.
+
 Frame preferences keep canonical application slots. Live bindings resolve them to
 managed windows for geometry, input, status, and deliberate canvas drops. An absent
 application has no visible frame geometry, but its preference survives. Confirmed
@@ -72,10 +80,11 @@ independent of temporary previews, frame attachment, and output presentation.
 See [rendering](RENDERING.md).
 
 Output records own client-visible geometry; the backend owns scanout resources.
-The native backend renders connected outputs on one selected DRM device, with
-per-output surfaces and pacing. Rendering across multiple DRM devices is not
-implemented. Desktop placement uses logical dimensions derived from the
-physical mode and output scale. See [DRM/KMS](DRM.md) and [size units](SIZE_UNITS.md).
+The native backend owns scanout resources on each seat GPU, with per-output
+surfaces and client pacing. One canonical GPU renders the scene; the backend
+transfers completed images to outputs attached to other GPUs. Desktop placement
+uses logical dimensions derived from the physical mode and output scale. See
+[DRM/KMS](DRM.md) for transfer and recovery boundaries and [size units](SIZE_UNITS.md).
 
 ## Settings and observations
 

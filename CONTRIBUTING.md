@@ -90,6 +90,11 @@ is trying to communicate.
 Run these from the repository root. Keep GPU-backed suites and native sessions
 separate, and run resource-heavy checks serially.
 
+For local release builds on a shared desktop, use the
+[guarded build workflow](docs/DEVELOPMENT.md#guarded-builds). It verifies resource
+limits before starting Cargo and retains evidence on persistent storage.
+Serial Cargo commands alone do not limit compiler or linker worker threads.
+
 ```sh
 cargo fmt --all --check
 ruff check scripts

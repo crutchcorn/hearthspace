@@ -97,20 +97,20 @@ pub struct Application {
     pub working_directory: Option<PathBuf>,
     pub snap_instance: Option<String>,
     pub dbus_activatable: bool,
+    pub prefers_non_default_gpu: bool,
 }
 
 pub fn installed_application(id: &str) -> Result<Application, String> {
     if id.is_empty() || id.contains(['/', '\0']) || !id.ends_with(".desktop") {
         return Err("Invalid installed desktop application ID.".into());
     }
-    // MIME handlers may intentionally have NoDisplay=true. The launcher catalog
-    // filters those entries, so use GIO's installed desktop-entry lookup here.
-    let app = gio_unix::DesktopAppInfo::new(id)
+    // Read current XDG precedence before GIO parses the selected file. A saved
+    // local override must take effect without waiting for a GIO monitor dispatch.
+    let desktop_file = crate::app_catalog::desktop_file_by_id(id)
+        .ok_or("This application is no longer available.")?;
+    let app = gio_unix::DesktopAppInfo::from_filename(&desktop_file)
         .filter(|app| !app.is_hidden())
         .ok_or("This application is no longer available.")?;
-    let desktop_file = app
-        .filename()
-        .ok_or("This application has no installed desktop entry.")?;
     let identity_argv = app
         .commandline()
         .map(|command| {
@@ -137,6 +137,13 @@ pub fn installed_application(id: &str) -> Result<Application, String> {
             .string("X-SnapInstanceName")
             .map(|value| value.to_string()),
         dbus_activatable: app.boolean("DBusActivatable"),
+        prefers_non_default_gpu: app.boolean(
+            if app.has_key(crate::app_catalog::gpu_preference::KEY) {
+                crate::app_catalog::gpu_preference::KEY
+            } else {
+                crate::app_catalog::gpu_preference::LEGACY_KEY
+            },
+        ),
     })
 }
 
@@ -165,4 +172,4 @@ mod cold_activation_tests;
 mod tests;
 
 #[cfg(test)]
-mod test_support;
+pub(crate) mod test_support;

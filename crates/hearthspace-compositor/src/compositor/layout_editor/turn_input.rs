@@ -108,7 +108,7 @@ impl App {
             }
         }
         let mut indices: Vec<_> = (0..self.windows.len()).collect();
-        indices.sort_by_key(|i| {
+        indices.sort_by_cached_key(|i| {
             (
                 self.layout_render_layer(*i)
                     .unwrap_or(if self.desktop_id(*i).is_some() { 1 } else { 10 }),

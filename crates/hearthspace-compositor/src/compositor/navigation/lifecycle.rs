@@ -73,6 +73,7 @@ impl App {
                 && self.desktop_context_mapping_allowed(index)
                 && self.search_mapping_allowed(index)
             {
+                self.desktop_context_mapped(index);
                 self.set_keyboard_focus_to_window(index, root.clone());
                 if let Some(index) = self.windows.index(id) {
                     self.finish_pending_search(index);

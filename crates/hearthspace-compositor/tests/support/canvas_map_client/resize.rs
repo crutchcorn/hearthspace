@@ -16,6 +16,11 @@ impl MapClient {
         // role properties before attaching to the same surface and toplevel.
         let window = &mut self.state.windows[number];
         window.toplevel.set_app_id(app_id.into());
+        self.remap_without_app_id(number);
+    }
+
+    pub(in super::super) fn remap_without_app_id(&mut self, number: usize) {
+        let window = &mut self.state.windows[number];
         window.toplevel.set_min_size(window.size.0, window.size.1);
         window.toplevel.set_max_size(window.size.0, window.size.1);
         window.defer_buffer = false;

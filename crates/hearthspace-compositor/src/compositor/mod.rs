@@ -20,6 +20,7 @@ mod cursor;
 mod desktop;
 mod focus;
 mod focused_shell_peek;
+mod frame_callbacks;
 mod gtk_shell;
 mod handlers;
 mod idle;
@@ -50,7 +51,7 @@ use idle::{IdleTransition, WindowIdleDaemon};
 #[cfg(feature = "udev")]
 pub(in crate::compositor) use input::handle_input_event;
 #[cfg(feature = "udev")]
-pub(in crate::compositor) use output::{OutputDescriptor, create_output_with_properties};
+pub(in crate::compositor) use output::OutputDescriptor;
 pub(in crate::compositor) use output::{OutputLayout, OutputRecord, OutputSet, create_output};
 #[cfg(any(feature = "winit", feature = "udev"))]
 pub(in crate::compositor) use runtime::Backend;
@@ -115,6 +116,7 @@ use wayland_server::{DisplayHandle, protocol::wl_surface::WlSurface};
 struct ManagedWindow {
     id: u64,
     surface: ManagedSurface,
+    identity: windows::identity::Cache,
     position: CanvasPoint,
     kind: ManagedWindowKind,
     shell_output_name: Option<String>,
@@ -339,6 +341,8 @@ struct App {
     needs_redraw: bool,
     dmabuf_state: DmabufState,
     _dmabuf_global: DmabufGlobal,
+    #[cfg(feature = "udev")]
+    dmabuf_feedback_surfaces: Vec<smithay::reexports::wayland_server::Weak<WlSurface>>,
     pending_dmabuf_imports: Vec<(Dmabuf, ImportNotifier)>,
     loop_handle: LoopHandle<'static, CalloopData>,
     popups: PopupManager,
@@ -734,6 +738,8 @@ pub(in crate::compositor) fn initialize_app(
         needs_redraw: true,
         dmabuf_state: dmabuf.state,
         _dmabuf_global: dmabuf.global,
+        #[cfg(feature = "udev")]
+        dmabuf_feedback_surfaces: Vec::new(),
         pending_dmabuf_imports: Vec::new(),
         loop_handle: handle.clone(),
         popups: PopupManager::default(),

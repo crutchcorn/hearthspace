@@ -34,6 +34,12 @@ The compositor and shell need working graphics drivers. For software-rendered
 headless tests, install `libgl1-mesa-dri` and `mesa-vulkan-drivers`, then follow
 [the E2E environment setup](E2E_TESTING.md).
 
+The optional native cross-GPU transfer path loads `libvulkan.so.1` from
+`libvulkan1` and uses the source GPU's Vulkan driver. It needs compatible external
+memory and synchronization support from the installed drivers; installing the
+loader alone does not establish compatibility. Unsupported pairs retain
+Smithay's transfer fallback. See [DRM/KMS](DRM.md).
+
 ## Desktop runtime
 
 A full native session uses logind/libseat and these runtime packages:
@@ -62,6 +68,14 @@ sudo apt-get install -y \
 - Installed GSettings schemas and `glib-compile-schemas` let the supervisor
   prepare private GTK window-control defaults. Existing user overrides remain
   authoritative; no host dconf settings are rewritten.
+
+On multi-GPU systems, the optional `switcheroo-control` package supplies the
+system-bus GPU information used by the per-application graphics preference.
+Hearthspace queries that service when preparing a requested offloaded launch;
+it does not change the host's GPU mode or publish those variables to the whole
+session. Without an eligible service result, the application launches normally.
+The saved preference remains available for a later launch. See
+[application graphics preferences](APPS.md#application-graphics-preference).
 
 The [installer](LOGIN_SESSION.md) provisions the dedicated `hearthspace-lock`
 PAM service through a checked transaction and preserves custom policies. A

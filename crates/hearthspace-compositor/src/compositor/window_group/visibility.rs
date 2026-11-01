@@ -20,6 +20,13 @@ impl App {
             .is_some_and(|output| self.group_visible_on_output(output))
     }
 
+    pub(in crate::compositor) fn group_action_under_pointer(&self) -> bool {
+        self.group_pointer_visible()
+            && !self.window_group.selecting
+            && !self.window_group.selected.is_empty()
+            && crate::geometry::rect_contains(self.group_action_rect(), self.pointer_location)
+    }
+
     /// Compute before Smithay takes its keyboard lock for shortcut filtering.
     pub(in crate::compositor) fn group_keyboard_visible(&self) -> bool {
         let output = self

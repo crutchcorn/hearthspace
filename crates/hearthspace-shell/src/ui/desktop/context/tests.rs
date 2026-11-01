@@ -137,6 +137,10 @@ fn canvas_context_menu_keyboard_scrolls_to_actions_in_a_small_output() {
     assert!(bounds.y0 >= 0.0 && bounds.y1 <= 180.0, "{bounds:?}");
     press(&mut ui, NamedKey::Enter);
     ui.dispatch(&panel);
+    assert!(requests.try_recv().is_err());
+    ui.harness
+        .process_text_event(TextEvent::key_up(Key::Named(NamedKey::Enter)));
+    ui.dispatch(&panel);
     assert!(matches!(
         requests.try_recv().unwrap(),
         task::Request::Context(context_actions::Request {
@@ -301,4 +305,5 @@ fn menu_label_is_vertically_centered_inside_its_interactive_row() {
     );
 }
 
+mod gpu;
 mod interaction;

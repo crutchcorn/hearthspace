@@ -23,6 +23,18 @@ Local source changes are:
   Revisit the affected clipping scopes, including neighboring nodes, so their
   platform interfaces and child-list events stay consistent. Transparent
   containers must not bypass an excluded ancestor.
+- Context-menu action exposure in `src/node.rs`. Enumerate supported `Click`
+  and `ShowContextMenu` actions in that order, expose the Action interface for
+  context-menu-only nodes, and dispatch the action at the current index with
+  its original tree and node IDs. Reject unsupported indices without dispatch.
+  `src/adapter.rs` and `src/adapter/filter_updates.rs` also refresh the affected
+  filtered children when a parent changes its advertised Click or
+  ShowContextMenu child actions. This keeps registration and removal aligned
+  with the action API while retaining transparent-container and clipping
+  behavior. Apply this repair after the clipped-node repair above.
+  This is a local repair; upstream main at
+  [`f3026222559c7f5f46d8f25cb7404de68eb149f0`](https://github.com/AccessKit/accesskit/blob/f3026222559c7f5f46d8f25cb7404de68eb149f0/adapters/atspi-common/src/node.rs)
+  still exposes only click (checked 2026-10-30).
 
 Exact deltas, upstream investigation, regressions, and removal conditions are
 tracked in the [patch ledger](../../patches/README.md).
@@ -32,6 +44,6 @@ Prefer removing the override when that release can pass the regression. If the
 override is still required, replace the imported files with the chosen published
 package, preserve the license files from its recorded upstream revision, reapply
 only the documented patches still needed, update this provenance and the ledger,
-and refresh `Cargo.lock`. Run the adapter-order and clipped-node regressions and the real shell
-acceptance with AT-SPI enabled. Do not reformat or refactor upstream files as part
-of the refresh.
+and refresh `Cargo.lock`. Run the adapter-order, clipped-node, and context-menu
+action regressions and the real shell acceptance with AT-SPI enabled. Do not
+reformat or refactor upstream files as part of the refresh.

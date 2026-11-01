@@ -8,8 +8,13 @@ use hearthspace_desktop::favorites::FavoriteStore;
 use serde::Deserialize;
 use std::{path::Path, time::Duration};
 
+#[path = "app_registration.rs"]
+mod app_registration;
+pub(super) use app_registration::AppRegistration;
+
 #[derive(Debug)]
 pub(super) enum Completed {
+    AppContext(crate::ui::app_context::Request, Result<(), String>),
     Command,
     Activated,
     Favorite(FavoriteStore),
@@ -127,14 +132,21 @@ pub(super) fn perform(
     socket: &Path,
     request: Request,
     items: &[DesktopItem],
+    catalog: &AppCatalog,
     mut favorites: FavoriteStore,
     runtime: bool,
+    apps: &mut AppRegistration,
 ) -> Result<Completed, Failure> {
     let token = match request {
+        Request::AppContext(request) => {
+            let result = apps.open(socket, catalog, &request);
+            return Ok(Completed::AppContext(request, result));
+        }
         Request::Context(request) => {
             let generation = request.generation;
-            let result =
-                super::super::context_actions::perform(socket, request, items, favorites, runtime);
+            let result = super::super::context_actions::perform(
+                socket, request, items, catalog, favorites, runtime,
+            );
             return Ok(Completed::Context(generation, result));
         }
         Request::Command(command) => {

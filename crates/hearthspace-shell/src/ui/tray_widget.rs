@@ -7,58 +7,21 @@ use xilem::masonry::{
         AccessCtx, AccessEvent, ActionCtx, ChildrenIds, ErasedAction, EventCtx, LayoutCtx,
         MeasureCtx, PaintCtx, PointerButton, PointerEvent, PropertiesMut, PropertiesRef,
         RegisterCtx, TextEvent, Update, UpdateCtx, Widget, WidgetId, WidgetPod,
-        keyboard::{Key, NamedKey},
+        keyboard::{Code, Key},
     },
     imaging::Painter,
     kurbo::{Axis, Point, Size},
     layout::{AsUnit, LenReq, Length, SizeDef},
-    peniko::ImageBrush,
     properties::LineBreaking,
     widgets::Label,
 };
 
+mod keyboard;
 mod touch;
 
-#[derive(Clone, PartialEq)]
-pub(super) struct Appearance {
-    pub name: String,
-    pub description: String,
-    pub image: Option<ImageBrush>,
-    pub icon: bool,
-    pub scroll_in_parent: bool,
-    pub attention: bool,
-    pub enabled: bool,
-    pub selected: bool,
-    pub autofocus: bool,
-    /// Finish the opening gesture before handing focus to another control.
-    pub activate_on_key_release: bool,
-    pub menu: bool,
-    pub separator: bool,
-    pub submenu: bool,
-    pub expanded: Option<bool>,
-    pub toggle: Option<TrayToggle>,
-}
-impl Default for Appearance {
-    fn default() -> Self {
-        Self {
-            name: String::new(),
-            description: String::new(),
-            image: None,
-            icon: false,
-            scroll_in_parent: false,
-            attention: false,
-            enabled: true,
-            selected: false,
-            autofocus: false,
-            activate_on_key_release: false,
-            menu: false,
-            separator: false,
-            submenu: false,
-            expanded: None,
-            toggle: None,
-        }
-    }
-}
+mod appearance;
+pub(super) use appearance::Appearance;
+
 #[derive(Debug)]
 pub(super) enum ButtonAction {
     Activate,
@@ -84,10 +47,18 @@ pub(super) struct TrayButton {
     pub cancelled_press: bool,
     pub target: super::tray_button::Target,
     pressed: Option<Option<PointerButton>>,
+    keyboard_press: Option<(Key, Code)>,
     touch_hold: Option<touch::Hold>,
     pub text: Option<WidgetPod<Label>>,
 }
 impl TrayButton {
+    pub(super) fn cancel_press(&mut self) {
+        self.cancelled_press = true;
+        self.pressed = None;
+        self.keyboard_press = None;
+        self.touch_hold = None;
+    }
+
     fn submit(&self, ctx: &mut EventCtx<'_>, action: ButtonAction) {
         if self.appearance.submenu && matches!(action, ButtonAction::Activate) {
             ctx.submit_action::<ButtonEvent>(ButtonEvent {
@@ -104,7 +75,11 @@ impl TrayButton {
         let text = (!appearance.icon && !appearance.separator).then(|| {
             Label::new(appearance.name.clone())
                 .prepare()
-                .with_props(LineBreaking::Clip)
+                .with_props(if appearance.wrap_label {
+                    LineBreaking::WordWrap
+                } else {
+                    LineBreaking::Clip
+                })
                 .with_class(if appearance.enabled {
                     "shell-text-shell-ink"
                 } else {
@@ -118,6 +93,7 @@ impl TrayButton {
             cancelled_press: false,
             target,
             pressed: None,
+            keyboard_press: None,
             touch_hold: None,
         }
     }
@@ -190,44 +166,7 @@ impl Widget for TrayButton {
         _: &mut PropertiesMut<'_>,
         event: &TextEvent,
     ) {
-        if matches!(event, TextEvent::WindowFocusChange(false)) {
-            self.touch_hold = None;
-            self.cancelled_press = true;
-        }
-        let TextEvent::Keyboard(event) = event else {
-            return;
-        };
-        if self.appearance.activate_on_key_release
-            && (event.key == Key::Named(NamedKey::Enter)
-                || matches!(&event.key, Key::Character(key) if key == " "))
-        {
-            if event.state.is_up() {
-                self.submit(ctx, ButtonAction::Activate);
-            }
-            ctx.set_handled();
-            return;
-        }
-        if !event.state.is_down() {
-            return;
-        }
-        let action = match &event.key {
-            Key::Named(NamedKey::ContextMenu) => Some(ButtonAction::Context),
-            Key::Named(NamedKey::F10) if event.modifiers.shift() => Some(ButtonAction::Context),
-            Key::Named(NamedKey::Escape) => Some(ButtonAction::Dismiss),
-            Key::Named(NamedKey::ArrowUp) if !self.appearance.icon => Some(ButtonAction::Step(-1)),
-            Key::Named(NamedKey::ArrowDown) if !self.appearance.icon => Some(ButtonAction::Step(1)),
-            Key::Named(NamedKey::ArrowLeft) if !self.appearance.icon => Some(ButtonAction::Back),
-            Key::Named(NamedKey::ArrowRight) if self.appearance.submenu => {
-                Some(ButtonAction::Activate)
-            }
-            Key::Named(NamedKey::Enter) => Some(ButtonAction::Activate),
-            Key::Character(key) if key == " " => Some(ButtonAction::Activate),
-            _ => None,
-        };
-        if let Some(action) = action {
-            self.submit(ctx, action);
-            ctx.set_handled();
-        }
+        self.keyboard_input(ctx, event);
     }
     fn on_access_event(
         &mut self,
@@ -242,6 +181,15 @@ impl Widget for TrayButton {
         }
     }
     fn update(&mut self, ctx: &mut UpdateCtx<'_>, _: &mut PropertiesMut<'_>, event: &Update) {
+        if matches!(event, Update::FocusChanged(false)) {
+            self.keyboard_press = None;
+        }
+        if matches!(
+            event,
+            Update::DisabledChanged(true) | Update::StashedChanged(true)
+        ) {
+            self.cancel_press();
+        }
         if let Update::HoveredChanged(hovered) = event {
             let hovered = *hovered;
             let target = self.target.clone();
@@ -306,6 +254,19 @@ impl Widget for TrayButton {
     ) -> Length {
         if self.appearance.separator {
             return 1.0.px();
+        }
+        if axis == Axis::Vertical
+            && self.appearance.wrap_label
+            && let Some(text) = &mut self.text
+        {
+            return ctx
+                .redirect_measurement(
+                    text,
+                    axis,
+                    cross.map(|width| width.saturating_sub(48.0.px())),
+                )
+                .saturating_add(12.0.px())
+                .max(34.0.px());
         }
         if self.appearance.icon || axis == Axis::Vertical {
             return 34.0.px();

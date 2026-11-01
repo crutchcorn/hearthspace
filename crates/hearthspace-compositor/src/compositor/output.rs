@@ -59,6 +59,34 @@ pub(in crate::compositor) struct OutputDescriptor {
 }
 
 impl OutputSet {
+    #[cfg(test)]
+    pub(in crate::compositor) fn for_callback_tests(dh: &DisplayHandle) -> Self {
+        let make = |name: &str, x| {
+            create_output_record(
+                dh,
+                OutputDescriptor {
+                    name: name.into(),
+                    properties: PhysicalProperties {
+                        size: (300, 200).into(),
+                        subpixel: Subpixel::Unknown,
+                        make: "Callback test".into(),
+                        model: name.into(),
+                        serial_number: name.into(),
+                    },
+                    size: (800, 600).into(),
+                    scale: 1,
+                    refresh: 60_000,
+                },
+                (x, 0).into(),
+            )
+        };
+        Self {
+            primary: make("A", 0),
+            secondary: vec![make("B", 800)],
+            layout: OutputLayout::default(),
+        }
+    }
+
     pub(in crate::compositor) fn new(primary: OutputRecord, layout: OutputLayout) -> Self {
         let mut outputs = Self {
             primary,
@@ -256,6 +284,14 @@ impl App {
         self.outputs.logical_rects()
     }
 
+    /// Active identities and geometry, with the primary first for stable pacing.
+    pub(super) fn callback_outputs(&self) -> Vec<(&str, Rectangle<i32, Logical>)> {
+        self.outputs
+            .active_outputs()
+            .map(|output| (output.name.as_str(), output.logical_rect()))
+            .collect()
+    }
+
     pub(super) fn primary_output_logical_rect(&self) -> Rectangle<i32, Logical> {
         self.outputs.primary.logical_rect()
     }
@@ -401,28 +437,6 @@ pub(in crate::compositor) fn create_output(
             size,
             scale,
             refresh: 60_000,
-        },
-        (0, 0).into(),
-    )
-}
-
-#[cfg_attr(not(feature = "udev"), allow(dead_code))]
-pub(in crate::compositor) fn create_output_with_properties(
-    dh: &DisplayHandle,
-    name: String,
-    properties: PhysicalProperties,
-    size: Size<i32, Physical>,
-    scale: i32,
-    refresh: i32,
-) -> OutputRecord {
-    create_output_record(
-        dh,
-        OutputDescriptor {
-            name,
-            properties,
-            size,
-            scale,
-            refresh,
         },
         (0, 0).into(),
     )

@@ -7,6 +7,7 @@ from pathlib import Path
 
 from . import canvas_pan_checks as checks
 from . import canvas_pan_fixture as fixture
+from . import canvas_pan_temporary as temporary
 from . import canvas_pan_ui as ui
 from .control import ControlError
 from .daily import DailySmoke
@@ -198,6 +199,7 @@ class CanvasPanSmoke(DailySmoke):
         try:
             self.step("ready", DailySmoke.ready)
             self.step("canvas-pan", run)
+            temporary.run(self)
         except BaseException:
             self.failure_evidence("canvas-pan-failed")
             raise
@@ -209,7 +211,7 @@ def main():
         "--session", type=Path, required=True, help="fresh evidence directory"
     )
     parser.add_argument("--timeout", type=float, default=180)
-    parser.add_argument("--total-timeout", type=float, default=300)
+    parser.add_argument("--total-timeout", type=float, default=600)
     parser.add_argument("--log-level", default="info")
     args = parser.parse_args()
     try:

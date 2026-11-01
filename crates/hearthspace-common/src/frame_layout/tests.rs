@@ -261,3 +261,121 @@ fn native_layout_surface_ids_round_trip_unusual_outputs_and_group_names() {
         None
     );
 }
+
+#[test]
+fn native_layout_surface_ids_keep_gpu_qualified_outputs_and_distinct_families() {
+    let output = Some("eDP-1@%2Fsys%2Fdevices%2Fpci0000:00%2F0000:00:08.1%2F0000:c6:00.0");
+    let targets = [
+        frame_widget_app_id(output, "wifi"),
+        frame_group_app_id(output, "wifi"),
+        frame_group_grip_app_id(output, "wifi"),
+    ];
+    type TargetIdentity = (Option<String>, String);
+    let target_parsers: [fn(&str) -> Option<TargetIdentity>; 3] = [
+        frame_widget_from_app_id,
+        frame_group_from_app_id,
+        frame_group_grip_from_app_id,
+    ];
+    for (family, parse) in target_parsers.into_iter().enumerate() {
+        for (candidate, id) in targets.iter().enumerate() {
+            assert_eq!(
+                parse(id),
+                (family == candidate).then(|| (output.map(str::to_owned), "wifi".into())),
+                "target family {family} parsing {id}"
+            );
+        }
+    }
+    let sessions = [
+        layout_editor_app_id(42, output),
+        layout_confirm_app_id(42, output),
+        layout_tooltip_app_id(42, output),
+    ];
+    type SessionIdentity = (u64, Option<String>);
+    let session_parsers: [fn(&str) -> Option<SessionIdentity>; 3] = [
+        layout_editor_from_app_id,
+        layout_confirm_from_app_id,
+        layout_tooltip_from_app_id,
+    ];
+    for (family, parse) in session_parsers.into_iter().enumerate() {
+        for (candidate, id) in sessions.iter().enumerate() {
+            assert_eq!(
+                parse(id),
+                (family == candidate).then(|| (42, output.map(str::to_owned))),
+                "session family {family} parsing {id}"
+            );
+        }
+    }
+}
+
+#[test]
+fn native_layout_surface_ids_reject_malformed_targets_and_outputs() {
+    // Empty, odd-length, non-hex, invalid UTF-8, newline, and NUL encodings.
+    for encoded in ["", "0", "gg", "ff", "610a", "6100"] {
+        let target = format!("dev.hearthspace.frame-group.target-{encoded}");
+        assert_eq!(frame_group_from_app_id(&target), None, "{target}");
+        let output = format!("dev.hearthspace.frame-group.output-{encoded}.target-61");
+        assert_eq!(frame_group_from_app_id(&output), None, "{output}");
+        let session = format!("dev.hearthspace.layout-editor.output-{encoded}.session-42");
+        assert_eq!(layout_editor_from_app_id(&session), None, "{session}");
+    }
+    // Uppercase hex remains valid, including a default-output target.
+    assert_eq!(
+        frame_group_from_app_id("dev.hearthspace.frame-group.target-5A"),
+        Some((None, "Z".into()))
+    );
+    assert_eq!(
+        layout_editor_from_app_id("dev.hearthspace.layout-editor.output-44502D31.session-42"),
+        Some((42, Some("DP-1".into())))
+    );
+    let output = "x".repeat(256);
+    assert_eq!(
+        frame_group_from_app_id(&frame_group_app_id(Some(&output), "group")),
+        Some((Some(output.clone()), "group".into()))
+    );
+    let too_long = format!("{output}x");
+    assert_eq!(
+        frame_group_from_app_id(&frame_group_app_id(Some(&too_long), "group")),
+        None
+    );
+    assert_eq!(
+        layout_editor_from_app_id(&layout_editor_app_id(42, Some(&too_long))),
+        None
+    );
+}
+
+#[test]
+fn native_layout_surface_ids_reject_zero_sessions_and_extended_family_names() {
+    for output in [
+        None,
+        Some("DP-8@%2Fsys%2Fdevices%2Fpci0000:00%2F0000:c4:00.0"),
+    ] {
+        assert_eq!(
+            layout_editor_from_app_id(&layout_editor_app_id(0, output)),
+            None
+        );
+        assert_eq!(
+            layout_confirm_from_app_id(&layout_confirm_app_id(0, output)),
+            None
+        );
+        assert_eq!(
+            layout_tooltip_from_app_id(&layout_tooltip_app_id(0, output)),
+            None
+        );
+    }
+    for suffix in ["", "-other", ".other"] {
+        let target = format!("dev.hearthspace.frame-group{suffix}");
+        assert_eq!(frame_group_from_app_id(&target), None);
+        if !suffix.is_empty() {
+            assert_eq!(
+                frame_group_from_app_id(&format!("{target}.target-61")),
+                None
+            );
+            let session = format!("dev.hearthspace.layout-editor{suffix}.session-42");
+            assert_eq!(layout_editor_from_app_id(&session), None, "{session}");
+        }
+    }
+    for session in ["", "-1", "NaN", "18446744073709551616"] {
+        let id = format!("dev.hearthspace.layout-editor.session-{session}");
+        assert_eq!(layout_editor_from_app_id(&id), None, "{id}");
+    }
+}

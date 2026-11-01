@@ -9,7 +9,9 @@ use smithay::{
 };
 use wayland_server::{Resource, protocol::wl_surface::WlSurface};
 
-use crate::compositor::{App, focus::KeyboardFocusTarget, rendering::send_frames_surface_tree};
+use crate::compositor::{
+    App, focus::KeyboardFocusTarget, frame_callbacks::send_frames_surface_tree,
+};
 
 pub(super) fn ready(surface: &LockSurface) -> bool {
     surface.alive()
@@ -119,11 +121,24 @@ impl App {
         }
     }
 
-    pub(in crate::compositor) fn send_lock_frame_callbacks(&self, time: u32) {
-        for (_, surface) in &self.session_lock.surfaces {
-            if ready(surface) {
-                send_frames_surface_tree(surface.wl_surface(), time);
-            }
-        }
+    pub(in crate::compositor) fn lock_frame_callback_surfaces(
+        &self,
+    ) -> Option<&[(String, LockSurface)]> {
+        // Some(empty) still suppresses ordinary clients while the lock client
+        // is starting, has disconnected, or has not created its surfaces yet.
+        self.session_locked()
+            .then_some(self.session_lock.surfaces.as_slice())
     }
+}
+
+pub(in crate::compositor) fn send_lock_frame_callbacks(
+    surfaces: &[(String, LockSurface)],
+    output: Option<&str>,
+    time: u32,
+) -> usize {
+    surfaces
+        .iter()
+        .filter(|(name, surface)| output.is_none_or(|output| name == output) && ready(surface))
+        .map(|(_, surface)| send_frames_surface_tree(surface.wl_surface(), time))
+        .sum()
 }

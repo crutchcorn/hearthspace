@@ -6,6 +6,9 @@ use std::{
 
 use super::{DesktopApp, paths::executable_in_path};
 
+mod reader;
+pub(super) use reader::{check_desktop_file_size, read_desktop_file};
+
 impl DesktopApp {
     pub(super) fn from_desktop_entry(id: String, path: PathBuf, contents: &str) -> Option<Self> {
         let fields = parse_desktop_entry_fields(contents);
@@ -44,6 +47,10 @@ impl DesktopApp {
                 .unwrap_or_default(),
             exec,
             dbus_activatable,
+            prefers_non_default_gpu: fields
+                .get(super::gpu_preference::KEY)
+                .or_else(|| fields.get(super::gpu_preference::LEGACY_KEY))
+                .is_some_and(|value| value.eq_ignore_ascii_case("true")),
             icon: fields.get("Icon").cloned(),
             terminal: bool_field(&fields, "Terminal"),
             path,

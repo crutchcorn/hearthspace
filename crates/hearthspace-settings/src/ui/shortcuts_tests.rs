@@ -14,6 +14,27 @@ use masonry::{
 };
 use xilem::WidgetView;
 
+const POINTER_SHORTCUTS: &[(&str, &str, &str)] = &[
+    (
+        "Temporarily pan canvas",
+        "❖ + Left-drag",
+        "Hold ❖ before left-dragging empty canvas to pan without changing the selected tool. Panning ends when you release the mouse button, even if you release ❖ first.",
+    ),
+    (
+        "Zoom canvas",
+        "❖ + Scroll",
+        "Hold ❖ and scroll to zoom the canvas.",
+    ),
+];
+
+fn shortcut_text() -> impl Iterator<Item = (&'static str, &'static str, &'static str)> {
+    CANVAS_SHORTCUTS
+        .iter()
+        .zip(["❖ + V", "❖ + H", "❖ + K", "❖ + G", "❖ + A", "❖ + O"])
+        .map(|(shortcut, chord)| (shortcut.label, chord, shortcut.description))
+        .chain(POINTER_SHORTCUTS.iter().copied())
+}
+
 fn text<V: WidgetView<SettingsApp>>(ui: &Ui<V>, value: &str) -> WidgetId
 where
     V::Widget: Sized,
@@ -48,9 +69,9 @@ where
 }
 
 #[test]
-fn keyboard_navigation_opens_read_only_shortcuts_and_scrolls_to_the_last_row() {
+fn keyboard_navigation_opens_read_only_shortcuts_and_scrolls_to_pointer_shortcuts() {
     for mode in [ColorMode::Light, ColorMode::Dark] {
-        for width in [400, 680] {
+        for width in [400, 420, 560, 760] {
             let (_dir, mut state) = state();
             state.settings.appearance.color_mode = mode;
             let mut ui = Ui::new(state, view, (width, 420));
@@ -80,13 +101,11 @@ fn keyboard_navigation_opens_read_only_shortcuts_and_scrolls_to_the_last_row() {
                     Some(AriaCurrent::Page)
                 );
             }
-            for (shortcut, chord) in CANVAS_SHORTCUTS
-                .iter()
-                .zip(["❖ + V", "❖ + H", "❖ + K", "❖ + G", "❖ + A", "❖ + O"])
-            {
-                for value in [shortcut.label, shortcut.description, chord] {
+            for (name, chord, description) in shortcut_text() {
+                for value in [name, chord, description] {
                     let node = ui.harness.access_node(text(&ui, value)).unwrap();
                     assert!(!node.data().supports_action(Action::Click));
+                    assert!(!node.data().supports_action(Action::Focus));
                     assert!(!node.is_disabled(), "shortcut text remains readable");
                 }
             }
@@ -95,14 +114,27 @@ fn keyboard_navigation_opens_read_only_shortcuts_and_scrolls_to_the_last_row() {
                 "❖ means Meta (Super, Windows, or Command). Hold it and press a key. You can release both keys after choosing a tool.",
             );
             text(&ui, "These shortcuts cannot be changed yet.");
+            text(&ui, "Keyboard");
+            text(&ui, "Pointer shortcuts");
+            text(
+                &ui,
+                "Hold ❖ for these pointer gestures; they do not select a tool.",
+            );
 
-            let last = text(&ui, CANVAS_SHORTCUTS.last().unwrap().description);
+            let last = text(&ui, POINTER_SHORTCUTS.last().unwrap().2);
             assert!(bounds(&ui, last).y1 > 420.0, "the page needs scrolling");
             tab_to_page_scroll(&mut ui);
             key(&mut ui, NamedKey::End);
             ui.dispatch(&view);
-            let visible = bounds(&ui, last);
-            assert!(visible.y0 >= 49.0 && visible.y1 <= 420.0, "{visible:?}");
+            for &(name, chord, description) in POINTER_SHORTCUTS {
+                for value in [name, chord, description] {
+                    let visible = bounds(&ui, text(&ui, value));
+                    assert!(
+                        visible.y0 >= 49.0 && visible.y1 <= 420.0,
+                        "{value} must be reachable by keyboard at width {width}: {visible:?}"
+                    );
+                }
+            }
             key(&mut ui, NamedKey::Home);
             ui.dispatch(&view);
             let first = text(&ui, &CANVAS_SHORTCUTS[0].chord());
@@ -114,26 +146,28 @@ fn keyboard_navigation_opens_read_only_shortcuts_and_scrolls_to_the_last_row() {
 #[test]
 fn shortcut_text_and_chords_fit_compact_and_sidebar_widths_in_both_color_modes() {
     for mode in [ColorMode::Light, ColorMode::Dark] {
-        for width in [400, 559, 560, 680] {
+        for width in [400, 420, 559, 560, 760] {
             let (_dir, mut state) = state();
             state.settings.appearance.color_mode = mode;
             state.selected_category = SettingsCategory::KeyboardShortcuts;
             let ui = Ui::new(state, view, (width, 420));
             let page_left = if width < 560 { 0.0 } else { 160.0 };
-            for shortcut in CANVAS_SHORTCUTS {
-                let name = bounds(&ui, text(&ui, shortcut.label));
-                let chord = bounds(&ui, text(&ui, &shortcut.chord()));
-                let description = bounds(&ui, text(&ui, shortcut.description));
+            for (label, chord, description) in shortcut_text() {
+                let name = bounds(&ui, text(&ui, label));
+                let chord = bounds(&ui, text(&ui, chord));
+                let description = bounds(&ui, text(&ui, description));
                 for rect in [name, chord, description] {
                     assert!(
                         rect.x0 >= page_left && rect.x1 <= f64::from(width),
-                        "{} is clipped at width {width}: {rect:?}",
-                        shortcut.label
+                        "{label} is clipped at width {width}: {rect:?}"
                     );
                     assert!(rect.width() > 0.0 && rect.height() > 0.0);
                 }
                 assert!(name.x1 < chord.x0, "name and chord must not overlap");
-                assert!(description.y0 >= name.y1, "description follows its action");
+                assert!(
+                    description.y0 >= name.y1.max(chord.y1),
+                    "description follows its action and chord"
+                );
             }
             if width >= 560 {
                 let category = bounds(&ui, ui.button("Keyboard shortcuts"));
@@ -168,10 +202,13 @@ fn live_appearance_changes_repaint_shortcuts_without_replacing_content_or_focus(
     let mut ui = Ui::new(state, view, (400, 420));
     let opener = ui.button("Settings categories");
     ui.harness.focus_on(Some(opener));
-    let content: Vec<_> = CANVAS_SHORTCUTS
-        .iter()
-        .map(|shortcut| (text(&ui, shortcut.label), text(&ui, &shortcut.chord())))
+    let content: Vec<_> = shortcut_text()
+        .map(|(name, chord, _)| (text(&ui, name), text(&ui, chord)))
         .collect();
+    tab_to_page_scroll(&mut ui);
+    key(&mut ui, NamedKey::End);
+    ui.dispatch(&view);
+    ui.harness.focus_on(Some(opener));
     let mut previous = ui.harness.render();
     for mode in [ColorMode::Dark, ColorMode::Light] {
         ui.state.settings.appearance.color_mode = mode;
@@ -184,9 +221,13 @@ fn live_appearance_changes_repaint_shortcuts_without_replacing_content_or_focus(
         );
         assert_eq!(ui.harness.focused_widget_id(), Some(opener));
         assert!(has_header_ring(&mut ui, opener));
-        for (shortcut, (name, chord)) in CANVAS_SHORTCUTS.iter().zip(&content) {
-            assert_eq!(text(&ui, shortcut.label), *name);
-            assert_eq!(text(&ui, &shortcut.chord()), *chord);
+        for ((label, binding, _), (name, chord)) in shortcut_text().zip(&content) {
+            assert_eq!(text(&ui, label), *name);
+            assert_eq!(text(&ui, binding), *chord);
+        }
+        for &(name, _, description) in POINTER_SHORTCUTS {
+            assert!(bounds(&ui, text(&ui, name)).y0 >= 49.0);
+            assert!(bounds(&ui, text(&ui, description)).y1 <= 420.0);
         }
         let painted = ui.harness.render();
         assert!(previous != painted, "live appearance must repaint the page");

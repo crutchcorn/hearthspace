@@ -1,271 +1,63 @@
-use std::time::Duration;
+use std::collections::BTreeMap;
 
+mod bridge_poll;
 mod connector_policy;
 mod device;
 mod event_cutoff;
+mod gpu;
 mod hotplug;
+mod identity;
 mod input;
 mod native_shortcuts;
+mod output_sync;
+mod presentation;
 mod recovery;
+mod renderer_preference;
 mod rendering;
+mod startup;
+mod transfer;
+mod vulkan_bridge;
 
-use device::{
-    KmsOutputTarget, UdevDevice, UdevDeviceInfo, create_udev_device, initial_device_list,
-    log_device_list,
-};
+use device::{UdevDevice, UdevDeviceInfo};
 use input::insert_libinput_source;
 use native_shortcuts::NativeShortcuts;
+use output_sync::{ConnectorSync, PublishedOutputs};
+pub use startup::run_udev;
 
 use smithay::{
     backend::{
-        allocator::Buffer,
-        allocator::dmabuf::Dmabuf,
-        renderer::{ImportDma, damage::OutputDamageTracker},
-        session::{Event as SessionEvent, Session, libseat::LibSeatSession},
-        udev::{UdevBackend, UdevEvent, primary_gpu},
+        renderer::{damage::OutputDamageTracker, gles::GlesRenderer},
+        session::{Session, libseat::LibSeatSession},
     },
-    reexports::{calloop::LoopHandle, calloop::RegistrationToken, wayland_server::Display},
-    utils::{Physical, Size, Transform},
+    reexports::calloop::{LoopHandle, RegistrationToken},
+    utils::{Rectangle, Transform},
 };
-use tracing::{debug, info, warn};
-
-use crate::{
-    RunOptions,
-    config::{HEADLESS_OUTPUT_HEIGHT, HEADLESS_OUTPUT_WIDTH},
-};
+use tracing::{info, warn};
 
 pub(super) struct UdevBackendState {
     session: LibSeatSession,
     seat_name: String,
     session_active: bool,
-    // The first native milestone opens and renders through exactly one DRM
-    // device. `devices` below is discovery state for hotplug logging only.
     loop_handle: LoopHandle<'static, super::CalloopData>,
     input_source: Option<RegistrationToken>,
-    drm_source: Option<RegistrationToken>,
     recovery_source: Option<RegistrationToken>,
+    bridge_poll_source: Option<RegistrationToken>,
+    bridge_poll_failed: bool,
     recovery_progress_at: Option<std::time::Instant>,
     recovery_needed: bool,
-    primary_device: Option<UdevDevice>,
+    recovery_exhausted: bool,
+    opened_devices: BTreeMap<u64, UdevDevice>,
     devices: Vec<UdevDeviceInfo>,
+    renderer_preference: renderer_preference::StartupRendererPreference,
+    gpus: gpu::GpuState,
+    connector_names: identity::ConnectorNames,
+    published_outputs: PublishedOutputs,
+    next_incarnation: u64,
     kms_devices_active: bool,
     drm_commits_paused: bool,
     connector_rescan_pending: bool,
-    repaint_pending: bool,
-    frame_pending: bool,
-    frame_dirty: bool,
     input_event_count: u64,
     native_shortcuts: NativeShortcuts,
-}
-
-#[derive(Default)]
-struct ConnectorSync {
-    // None means a deferred rescan, not that all outputs disappeared.
-    descriptors: Option<Vec<super::OutputDescriptor>>,
-}
-
-pub fn run_udev(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> {
-    info!(?options, "initializing native udev compositor backend");
-    let termination_signals = super::create_termination_signals()?;
-    let (mut session, session_notifier) = LibSeatSession::new()?;
-    let seat_name = session.seat();
-    info!(seat = seat_name, "native backend acquired seat");
-
-    let udev_backend = UdevBackend::new(&seat_name)?;
-    let devices = initial_device_list(&udev_backend);
-    log_device_list(&seat_name, &devices);
-
-    let primary_device = match primary_gpu(&seat_name)? {
-        Some(path) => {
-            info!(path = %path.display(), "selected primary DRM device");
-            for device in devices.iter().filter(|device| device.path != path) {
-                debug!(device_id = device.device_id, path = %device.path.display(), "ignoring secondary DRM device for now");
-            }
-            let active = session.is_active();
-            let (device, notifier) = create_udev_device(&mut session, path, active)?;
-            Some((device, notifier))
-        }
-        None => {
-            warn!(seat = seat_name, "no primary DRM device available for seat");
-            None
-        }
-    };
-
-    let (primary_device, drm_notifier) = match primary_device {
-        Some((device, notifier)) => (Some(device), Some(notifier)),
-        None => (None, None),
-    };
-
-    let session_active = session.is_active();
-    let display: Display<super::App> = Display::new()?;
-    let dh = display.handle();
-    let output_target = primary_device
-        .as_ref()
-        .and_then(|device| device.output_target.as_ref());
-    let output_size = output_target
-        .map(KmsOutputTarget::output_size)
-        .unwrap_or_else(|| {
-            Size::<i32, Physical>::from((HEADLESS_OUTPUT_WIDTH, HEADLESS_OUTPUT_HEIGHT))
-        });
-    let primary_output = if let Some(target) = output_target {
-        let descriptor = target.output_descriptor();
-        super::create_output_with_properties(
-            &dh,
-            descriptor.name,
-            descriptor.properties,
-            descriptor.size,
-            descriptor.scale,
-            descriptor.refresh,
-        )
-    } else {
-        super::create_output(&dh, output_size, 1)
-    };
-    let (dmabuf_formats, main_device) = primary_device
-        .as_ref()
-        .map(|device| {
-            let formats = device
-                .render_node
-                .renderer
-                .dmabuf_formats()
-                .into_iter()
-                .collect::<Vec<_>>();
-            let main_device = device.render_node.drm_fd.dev_id().ok();
-            if let Some(main_device) = main_device {
-                debug!(main_device, path = %device.path.display(), "native dmabuf feedback main device selected");
-            }
-            (formats, main_device)
-        })
-        .unwrap_or_default();
-    let dmabuf = super::create_dmabuf_global(&dh, dmabuf_formats, main_device)?;
-    let super::AppInit {
-        display,
-        mut event_loop,
-        handle,
-        mut app,
-    } = super::initialize_app(
-        display,
-        options,
-        primary_output,
-        dmabuf,
-        termination_signals,
-    )?;
-    let output_descriptors = primary_device
-        .as_ref()
-        .map(UdevDevice::output_descriptors)
-        .unwrap_or_default();
-    app.sync_connector_outputs(&dh, output_descriptors);
-    app.configure_shell_bars();
-    app.reconcile_pointer_after_output_geometry_change();
-    app.request_redraw();
-
-    handle.insert_source(session_notifier, |event, _, data| match event {
-        SessionEvent::PauseSession => {
-            data.state.set_remote_input_active(false);
-            data.state.remote_capture.stop();
-            data.state.reset_session_input();
-            data.state.invalidate_lock_presentation();
-            data.captures.invalidate("native session became inactive");
-            if let Some(backend) = udev_backend_mut(data) {
-                backend.pause_session();
-            }
-        }
-        SessionEvent::ActivateSession => {
-            recovery::activate_session(data);
-        }
-    })?;
-
-    handle.insert_source(udev_backend, |event, _, data| match event {
-        UdevEvent::Added { device_id, path } => {
-            data.state.remote_capture.stop();
-            info!(device_id, path = %path.display(), "DRM device added");
-            let output_descriptors = if let Some(backend) = udev_backend_mut(data) {
-                backend.add_or_update_device(device_id, path);
-                backend.output_descriptors()
-            } else {
-                Vec::new()
-            };
-            let dh = data.display.handle();
-            data.state.sync_connector_outputs(&dh, output_descriptors);
-            data.state.configure_shell_bars();
-            data.state.reconcile_pointer_after_output_geometry_change();
-            data.full_redraw = data.full_redraw.max(1);
-            data.state.request_redraw();
-        }
-        UdevEvent::Changed { device_id } => {
-            info!(device_id, "DRM device changed");
-            let connector_sync = udev_backend_mut(data)
-                .map(|backend| backend.handle_device_changed(device_id))
-                .unwrap_or_default();
-            apply_connector_sync(data, connector_sync);
-            data.state.request_redraw();
-        }
-        UdevEvent::Removed { device_id } => {
-            data.state.set_remote_input_active(false);
-            data.state.remote_capture.stop();
-            data.captures.invalidate("native display device removed");
-            info!(device_id, "DRM device removed");
-            let output_descriptors = if let Some(backend) = udev_backend_mut(data) {
-                backend.remove_device(device_id);
-                backend.output_descriptors()
-            } else {
-                Vec::new()
-            };
-            let dh = data.display.handle();
-            data.state.sync_connector_outputs(&dh, output_descriptors);
-            data.state.configure_shell_bars();
-            data.state.reconcile_pointer_after_output_geometry_change();
-            data.full_redraw = data.full_redraw.max(1);
-            data.state.request_redraw();
-        }
-    })?;
-
-    let input_source = Some(insert_libinput_source(
-        &handle,
-        session.clone(),
-        &seat_name,
-    )?);
-
-    let drm_source = drm_notifier
-        .map(|notifier| recovery::insert_drm_source(&handle, notifier))
-        .transpose()?;
-
-    let kms_devices_active = primary_device
-        .as_ref()
-        .is_some_and(|device| device.has_output_surfaces())
-        && session_active;
-    let backend = UdevBackendState {
-        session,
-        seat_name,
-        session_active,
-        loop_handle: handle.clone(),
-        input_source,
-        drm_source,
-        recovery_source: None,
-        recovery_progress_at: None,
-        recovery_needed: false,
-        kms_devices_active,
-        drm_commits_paused: !session_active || !kms_devices_active,
-        connector_rescan_pending: false,
-        repaint_pending: false,
-        frame_pending: false,
-        frame_dirty: false,
-        primary_device,
-        devices,
-        input_event_count: 0,
-        native_shortcuts: NativeShortcuts::default(),
-    };
-    backend.log_summary();
-    let mut data = super::create_calloop_data(
-        app,
-        display,
-        super::Backend::Udev(Box::new(backend)),
-        output_size,
-        options.exit_after,
-    );
-    event_loop.dispatch(Some(Duration::from_millis(0)), &mut data)?;
-
-    info!("native backend initialized; entering compositor event loop");
-    super::run_event_loop(event_loop, &mut data)
 }
 
 fn udev_backend_mut(data: &mut super::CalloopData) -> Option<&mut UdevBackendState> {
@@ -279,85 +71,129 @@ fn udev_backend_mut(data: &mut super::CalloopData) -> Option<&mut UdevBackendSta
 }
 
 fn apply_connector_sync(data: &mut super::CalloopData, connector_sync: ConnectorSync) {
-    let Some(descriptors) = connector_sync.descriptors else {
-        return;
-    };
-    data.state.remote_capture.stop();
-    data.captures
-        .invalidate("native output configuration changed");
+    if let super::Backend::Udev(backend) = &data.backend {
+        data.state
+            .set_native_lock_outputs_available(backend.native_outputs_ready());
+    }
+    if let super::Backend::Udev(backend) = &mut data.backend {
+        backend.gpus.refresh_app(&mut data.state);
+    }
     let dh = data.display.handle();
-    data.state.sync_connector_outputs(&dh, descriptors);
+    if !connector_sync.apply(&mut data.state, &mut data.captures, &dh) {
+        if let super::Backend::Udev(backend) = &data.backend
+            && backend.native_outputs_ready()
+        {
+            // Recovery can restore availability with an unchanged (even empty)
+            // advertised set. Reconcile it before considering lock confirmation.
+            data.state.reconfigure_lock_outputs();
+        }
+        return;
+    }
     data.damage_tracker =
         OutputDamageTracker::new(data.state.output_size(), 1.0, Transform::Normal);
-    data.state.configure_shell_bars();
-    data.state.reconcile_pointer_after_output_geometry_change();
     data.full_redraw = data.full_redraw.max(1);
 }
 
 impl UdevBackendState {
+    /// Discovery completeness is distinct from successful presentation. A failed
+    /// secondary device must not make the lock or recovery barrier vacuously ready.
+    pub(in crate::compositor) fn native_outputs_ready(&self) -> bool {
+        self.session_active
+            && self.session.is_active()
+            && !self.recovery_needed
+            && self.devices.iter().all(|info| {
+                self.opened_devices
+                    .get(&info.device_id)
+                    .is_some_and(|device| {
+                        device.active
+                            && device.discovery_complete
+                            && !device.recovery_needed
+                            && device.output_surfaces.len() == device.output_targets.len()
+                    })
+            })
+    }
+
     pub(in crate::compositor) fn update_hardware_cursor(&mut self, state: &mut super::App) {
         if self.drm_commits_paused {
             return;
         }
-        if let Some(device) = self.primary_device.as_mut() {
-            device.update_hardware_cursor(state);
-        } else {
-            // No native device owns a cursor plane, so the cursor can only be
-            // presented in software (composited into the scene).
-            state.software_cursor_visible = true;
+        let owner = self.opened_devices.iter().find_map(|(id, device)| {
+            device
+                .active
+                .then(|| {
+                    device.output_surfaces.iter().any(|output| {
+                        state
+                            .output_render_view(output.target.connector_name())
+                            .is_some_and(|view| {
+                                Rectangle::new(view.location, view.size)
+                                    .contains(state.pointer_location.to_i32_floor())
+                            })
+                    })
+                })
+                .filter(|owns| *owns)
+                .map(|_| *id)
+        });
+        // Only the pointer's device may decide software fallback. Clearing a
+        // non-owner must never overwrite the owner's decision.
+        state.software_cursor_visible = state.cursor_visible;
+        for (id, device) in &mut self.opened_devices {
+            if !device.active {
+                continue;
+            }
+            if Some(*id) == owner {
+                device.update_hardware_cursor(state);
+            } else {
+                device.clear_hardware_cursor();
+            }
         }
     }
 
-    pub(in crate::compositor) fn import_dmabuf(
+    /// Acquire once before consuming any client import requests. A recovered
+    /// seat may still have no usable canonical renderer; secondary readiness
+    /// does not prevent imports once this renderer is available.
+    pub(in crate::compositor) fn acquire_import_renderer(
         &mut self,
-        dmabuf: &Dmabuf,
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        let Some(renderer) = self
-            .primary_device
-            .as_mut()
-            .map(|device| &mut device.render_node.renderer)
-        else {
-            return Err("udev renderer is not initialized".into());
+    ) -> Result<Option<impl AsMut<GlesRenderer> + '_>, Box<dyn std::error::Error>> {
+        if !self.session_active || !self.session.is_active() {
+            return Ok(None);
+        }
+        let Some(node) = self.gpus.scene_node else {
+            return Ok(None);
         };
-        renderer.import_dmabuf(dmabuf, None).map_err(|error| {
-            format!(
-                "failed to import native dmabuf size={:?} format={:?} planes={} has_modifier={} node={:?}: {error}",
-                dmabuf.size(),
-                dmabuf.format(),
-                dmabuf.num_planes(),
-                dmabuf.has_modifier(),
-                dmabuf.node()
-            )
-        })?;
-        Ok(())
+        Ok(Some(self.gpus.manager.single_renderer(&node)?))
     }
 
     fn log_summary(&self) {
-        info!(
-            session_active = self.session_active,
-            kms_devices_active = self.kms_devices_active,
-            drm_commits_paused = self.drm_commits_paused,
+        info!(session_active = self.session_active, kms_devices_active = self.kms_devices_active,
+            drm_commits_paused = self.drm_commits_paused, devices = self.devices.len(),
+            opened_devices = self.opened_devices.len(), scene_node = ?self.gpus.scene_node,
             connector_rescan_pending = self.connector_rescan_pending,
-            repaint_pending = self.repaint_pending,
-            drm_device_count = self.devices.len(),
+            frame_pending = self.opened_devices.values().any(UdevDevice::any_frame_pending),
+            frame_dirty = self.opened_devices.values().any(UdevDevice::any_frame_dirty),
             input_event_count = self.input_event_count,
-            "native backend state"
-        );
-        if let Some(device) = &self.primary_device {
-            if device.output_surfaces.is_empty() {
-                info!(path = %device.path.display(), gbm_surfaces = 0, "primary DRM device opened through session");
-            } else {
-                for output in &device.output_surfaces {
-                    info!(
-                        path = %device.path.display(),
-                        connector = ?output.target.connector,
-                        crtc = ?output.target.crtc,
-                        mode = ?output.target.mode,
-                        gbm_surface = true,
-                        "primary DRM device opened through session"
-                    );
-                }
-            }
+            "native backend state");
+    }
+}
+
+impl Drop for UdevBackendState {
+    fn drop(&mut self) {
+        self.gpus.bridges.stop();
+        self.gpus.bridges.poll();
+        if let Some(token) = self.bridge_poll_source.take() {
+            self.loop_handle.remove(token);
+        }
+        if let Some(token) = self.input_source.take() {
+            self.loop_handle.remove(token);
+        }
+        if let Some(token) = self.recovery_source.take() {
+            self.loop_handle.remove(token);
+        }
+        let ids: Vec<_> = self.opened_devices.keys().copied().collect();
+        for id in ids {
+            self.close_device(id);
+        }
+        if let Err(error) = self.gpus.manager.invalidate_caches() {
+            warn!(%error, "native renderer cleanup failed");
         }
     }
 }

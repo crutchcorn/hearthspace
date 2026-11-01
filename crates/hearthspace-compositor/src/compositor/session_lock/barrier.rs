@@ -7,6 +7,7 @@ use std::collections::HashSet;
 pub(super) struct PresentationBarrier {
     generation: u64,
     active: bool,
+    outputs_unavailable: bool,
     outputs: HashSet<String>,
     presented: HashSet<String>,
 }
@@ -38,6 +39,16 @@ impl PresentationBarrier {
         self.presented.retain(|name| self.outputs.contains(name));
     }
 
+    /// Published outputs may omit a connected target whose GPU failed to open.
+    /// An incomplete backend inventory cannot certify a locked desktop.
+    #[cfg(any(feature = "udev", test))]
+    pub(super) fn set_outputs_available(&mut self, available: bool) {
+        if !available && !self.outputs_unavailable {
+            self.invalidate();
+        }
+        self.outputs_unavailable = !available;
+    }
+
     pub(super) fn presented(&mut self, name: &str, generation: u64) {
         if self.active && self.generation == generation && self.outputs.contains(name) {
             self.presented.insert(name.to_string());
@@ -45,7 +56,7 @@ impl PresentationBarrier {
     }
 
     pub(super) fn ready(&self) -> bool {
-        self.active && self.outputs.is_subset(&self.presented)
+        self.active && !self.outputs_unavailable && self.outputs.is_subset(&self.presented)
     }
 
     pub(super) fn unlock(&mut self) {
@@ -134,5 +145,44 @@ mod tests {
             !barrier.ready(),
             "a reconnected output has no retained presentation"
         );
+    }
+
+    #[test]
+    fn failed_gpu_cannot_acknowledge_a_subset_or_empty_output_inventory() {
+        let mut barrier = PresentationBarrier::default();
+        barrier.set_outputs_available(false);
+        let first = barrier.begin([]);
+        assert!(
+            !barrier.ready(),
+            "unknown outputs are not disconnected outputs"
+        );
+        barrier.update_outputs(["external".into()]);
+        barrier.presented("external", first);
+        assert!(
+            !barrier.ready(),
+            "a healthy GPU does not prove the other GPU is shielded"
+        );
+        barrier.update_outputs(["external".into(), "internal".into()]);
+        barrier.set_outputs_available(true);
+        assert!(
+            !barrier.ready(),
+            "recovered output must still present the shield"
+        );
+        barrier.presented("internal", first);
+        assert!(barrier.ready());
+
+        barrier.set_outputs_available(false);
+        let recovered = barrier.generation().unwrap();
+        assert_ne!(first, recovered);
+        barrier.set_outputs_available(true);
+        barrier.presented("internal", first);
+        barrier.presented("external", first);
+        assert!(
+            !barrier.ready(),
+            "pre-failure presentations cannot acknowledge recovery"
+        );
+        barrier.presented("internal", recovered);
+        barrier.presented("external", recovered);
+        assert!(barrier.ready());
     }
 }

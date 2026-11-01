@@ -21,7 +21,7 @@ use wayland_protocols::ext::{
 };
 
 #[derive(Default)]
-pub(super) struct Events {
+pub(in crate::compositor) struct Events {
     source:
         Option<ext_output_image_capture_source_manager_v1::ExtOutputImageCaptureSourceManagerV1>,
     pub manager: Option<manager::ExtImageCopyCaptureManagerV1>,
@@ -31,13 +31,13 @@ pub(super) struct Events {
     pub stopped: usize,
 }
 
-pub(super) struct Client {
+pub(in crate::compositor) struct Client {
     _connection: Connection,
     queue: EventQueue<Events>,
     pub events: Events,
 }
 
-pub(super) struct Buffer {
+pub(in crate::compositor) struct Buffer {
     pub object: wl_buffer::WlBuffer,
     file: File,
 }
