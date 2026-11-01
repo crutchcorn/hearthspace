@@ -1,0 +1,2320 @@
+diff --git a/Xi/exevents.c b/Xi/exevents.c
+--- a/Xi/exevents.c
++++ b/Xi/exevents.c
+@@ -107,6 +107,7 @@
+ #include "xiquerydevice.h"      /* For List*Info */
+ #include "eventstr.h"
+ #include "inpututils.h"
++#include "pointer-route.h"
+ #include "mi.h"
+ 
+ #include <X11/extensions/XKBproto.h>
+@@ -1844,6 +1845,7 @@
+             mouse = NULL;
+     }
+ 
++    PointerRoutePrepareLiveCorrection(device, event);
+     corestate = event_get_corestate(mouse, kbd);
+     event_set_state(mouse, kbd, event);
+ 
+@@ -1864,9 +1866,16 @@
+     case ET_KeyRelease:
+     case ET_ProximityIn:
+     case ET_ProximityOut:
+-        GetSpritePosition(device, &rootX, &rootY);
+-        event->root_x = rootX;
+-        event->root_y = rootY;
++        if (PointerRouteActive(device)) {
++            SpritePtr view = PointerDeliverySprite(device);
++            event->root_x = view->hot.x;
++            event->root_y = view->hot.y;
++        }
++        else {
++            GetSpritePosition(device, &rootX, &rootY);
++            event->root_x = rootX;
++            event->root_y = rootY;
++        }
+         NoticeEventTime((InternalEvent *) event, device);
+         event->corestate = corestate;
+         key = event->detail.key;
+@@ -1889,7 +1898,7 @@
+ 
+     if (DeviceEventCallback && !syncEvents.playingEvents) {
+         DeviceEventInfoRec eventinfo;
+-        SpritePtr pSprite = device->spriteInfo->sprite;
++        SpritePtr pSprite = PointerDeliverySprite(device);
+ 
+         /* see comment in EnqueueEvents regarding the next three lines */
+         if (ev->any.type == ET_Motion)
+@@ -1941,15 +1950,19 @@
+ 
+     /* Don't deliver focus events (e.g. from KeymapNotify when running
+      * nested) to clients. */
+-    if (event->source_type != EVENT_SOURCE_FOCUS) {
++    if (event->source_type != EVENT_SOURCE_FOCUS &&
++        !PointerRouteSuppressLiveCorrection(device, event)) {
++        /* A redundant live correction still updates state, CheckMotion and
++         * callbacks above. Only its ordinary motion delivery is omitted. */
+         if (grab)
+             DeliverGrabbedEvent((InternalEvent *) event, device,
+                                 deactivateDeviceGrab);
+         else if (device->focus && !IsPointerEvent(ev))
+             DeliverFocusedEvent(device, (InternalEvent *) event,
+                                 GetSpriteWindow(device));
+-        else
+-            DeliverDeviceEvents(GetSpriteWindow(device), (InternalEvent *) event,
++        else if (!PointerRouteMissing(device))
++            DeliverDeviceEvents(PointerDeliverySprite(device)->win,
++                                (InternalEvent *) event,
+                                 NullGrab, NullWindow, device);
+     }
+ 
+@@ -1983,7 +1996,10 @@
+ void
+ ProcessOtherEvent(InternalEvent *ev, DeviceIntPtr device)
+ {
++    PointerRouteScope route;
++
+     verify_internal_event(ev);
++    PointerRouteBegin(device, ev, &route);
+ 
+     switch (ev->any.type) {
+     case ET_RawKeyPress:
+@@ -2022,6 +2038,7 @@
+         ProcessDeviceEvent(ev, device);
+         break;
+     }
++    PointerRouteEnd(device, &route);
+ }
+ 
+ static int
+diff --git a/dix/events.c b/dix/events.c
+--- a/dix/events.c
++++ b/dix/events.c
+@@ -147,6 +147,7 @@
+ #include "geint.h"
+ 
+ #include "eventstr.h"
++#include "pointer-route.h"
+ #include "enterleave.h"
+ #include "mi.h"
+ 
+@@ -506,14 +507,29 @@
+ SyntheticMotion(DeviceIntPtr dev, int x, int y)
+ {
+     int screenno = 0;
++    PointerTarget target = { 0 };
++    enum PointerRouteOrigin origin = POINTER_ROUTE_LOGICAL_CORRECTION;
+ 
+ #ifdef PANORAMIX
+     if (!noPanoramiXExtension)
+         screenno = dev->spriteInfo->sprite->screen->myNum;
+ #endif
+-    PostSyntheticMotion(dev, x, y, screenno,
+-                        (syncEvents.playingEvents) ? syncEvents.time.
+-                        milliseconds : currentTime.milliseconds);
++
++    if (dev->pointerConfinement &&
++        (dev->pointerConfinement->origin == POINTER_ROUTE_PHYSICAL_CORRECTION ||
++         dev->pointerConfinement->origin == POINTER_ROUTE_LIVE_CORRECTION ||
++         !dev->pointerRoute || PointerRouteActive(dev))) {
++        target = dev->pointerConfinement->target;
++        origin = dev->pointerConfinement->origin;
++    }
++    else if (PointerRouteActive(dev))
++        target = dev->pointerRoute->target;
++    if (target.incarnation)
++        screenno = target.screen;
++    PostSyntheticMotionWithTarget(dev, x, y, screenno,
++                                  syncEvents.playingEvents ?
++                                  syncEvents.time.milliseconds :
++                                  currentTime.milliseconds, target, origin);
+ 
+ }
+ 
+@@ -722,12 +738,17 @@
+                 Bool confineToScreen, /* unused if PanoramiX on */
+                 ScreenPtr pScreen)    /* unused if PanoramiX on */
+ {
+-    HotSpot new;
++    HotSpot new, old;
+     SpritePtr pSprite = pDev->spriteInfo->sprite;
++    Bool logical = pDev->pointerConfinement ?
++        pDev->pointerConfinement->target.incarnation &&
++        pDev->pointerConfinement->origin == POINTER_ROUTE_LOGICAL_CORRECTION :
++        PointerRouteActive(pDev);
+ 
+     if (!cursor)
+         return;
+-    new = pSprite->hotPhys;
++    old = logical ? PointerDeliverySprite(pDev)->hot : pSprite->hotPhys;
++    new = old;
+ #ifdef PANORAMIX
+     if (!noPanoramiXExtension)
+         /* I don't care what the DDX has to say about it */
+@@ -756,6 +777,11 @@
+         new.y = pSprite->physLimits.y2 - 1;
+     if (pSprite->hotShape)
+         ConfineToShape(pDev, pSprite->hotShape, &new.x, &new.y);
++    if (logical) {
++        if (new.x != old.x || new.y != old.y || new.pScreen != old.pScreen)
++            SyntheticMotion(pDev, new.x, new.y);
++        return;
++    }
+     if ((
+ #ifdef PANORAMIX
+             noPanoramiXExtension &&
+@@ -785,9 +811,9 @@
+ }
+ 
+ static void
+-CheckVirtualMotion(DeviceIntPtr pDev, QdEventPtr qe, WindowPtr pWin)
+-{
+-    SpritePtr pSprite = pDev->spriteInfo->sprite;
++CheckVirtualMotionSprite(DeviceIntPtr pDev, QdEventPtr qe, WindowPtr pWin,
++                         SpritePtr pSprite)
++{
+     RegionPtr reg = NULL;
+     DeviceEvent *ev = NULL;
+ 
+@@ -816,7 +842,7 @@
+         BoxRec lims;
+ 
+ #ifdef PANORAMIX
+-        if (!noPanoramiXExtension) {
++        if (!noPanoramiXExtension && pSprite == pDev->spriteInfo->sprite) {
+             int x, y, off_x, off_y, i;
+ 
+             if (!XineramaSetWindowPntrs(pDev, pWin))
+@@ -862,7 +888,7 @@
+             pSprite->hot.y = lims.y2 - 1;
+ 
+ #ifdef PANORAMIX
+-        if (!noPanoramiXExtension) {
++        if (!noPanoramiXExtension && pSprite == pDev->spriteInfo->sprite) {
+             if (RegionNumRects(&pSprite->Reg2) > 1)
+                 reg = &pSprite->Reg2;
+ 
+@@ -884,14 +910,43 @@
+         }
+     }
+ #ifdef PANORAMIX
+-    if (noPanoramiXExtension)   /* No typo. Only set the root win if disabled */
++    if (noPanoramiXExtension || pSprite != pDev->spriteInfo->sprite)
+ #endif
+-        RootWindow(pDev->spriteInfo->sprite) = pSprite->hot.pScreen->root;
++        RootWindow(pSprite) = pSprite->hot.pScreen->root;
+ }
+ 
+ static void
+-ConfineCursorToWindow(DeviceIntPtr pDev, WindowPtr pWin, Bool generateEvents,
+-                      Bool confineToScreen)
++CheckVirtualMotion(DeviceIntPtr pDev, QdEventPtr qe, WindowPtr pWin)
++{
++    CheckVirtualMotionSprite(pDev, qe, pWin, pDev->spriteInfo->sprite);
++}
++
++void
++PointerRouteConstrain(DeviceIntPtr dev, SpritePtr view, DeviceEvent *event)
++{
++    GrabPtr grab = dev->deviceGrab.grab;
++    WindowPtr confine = grab && grab->confineTo ? grab->confineTo :
++                                                view->hot.pScreen->root;
++
++    /* During activation the new grab is not installed yet. A direct
++     * confinement correction must use the new bounds, not the old grab's. */
++    if (event->pointerOrigin == POINTER_ROUTE_LOGICAL_CORRECTION &&
++        dev->pointerConfinement && dev->pointerConfinement->window &&
++        dev->pointerConfinement->target.incarnation ==
++        event->pointerTarget.incarnation)
++        confine = dev->pointerConfinement->window;
++    CheckVirtualMotionSprite(dev, NULL, confine, view);
++    if (event->root_x != view->hot.x)
++        event->root_x_frac = 0;
++    if (event->root_y != view->hot.y)
++        event->root_y_frac = 0;
++    event->root_x = view->hot.x;
++    event->root_y = view->hot.y;
++}
++
++static void
++ConfineCursorToWindowInternal(DeviceIntPtr pDev, WindowPtr pWin,
++                             Bool generateEvents, Bool confineToScreen)
+ {
+     SpritePtr pSprite = pDev->spriteInfo->sprite;
+ 
+@@ -917,6 +972,52 @@
+         if (*pScreen->CursorConfinedTo)
+             (*pScreen->CursorConfinedTo) (pDev, pScreen, pWin);
+     }
++}
++
++static void
++ConfineCursorToWindowWithRoute(DeviceIntPtr dev, WindowPtr win,
++                              Bool generateEvents, Bool confineToScreen,
++                              enum PointerRouteOrigin origin)
++{
++    PointerConfinementScope scope;
++    SpritePtr sprite = dev->spriteInfo->sprite;
++    ScreenPtr screen = win->drawable.pScreen;
++
++    PointerConfinementBegin(dev, origin, &scope);
++    scope.window = win;
++    if (scope.target.incarnation && origin == POINTER_ROUTE_LOGICAL_CORRECTION) {
++        WindowPtr root = scope.position.pScreen->root;
++        SpriteRec view = { .hot = scope.position, .spriteTrace = &root };
++
++        /* Confinement can reenter dispatch. Never edit the outer delivery view
++         * or move the physical position back to a frozen logical position. */
++        CheckVirtualMotionSprite(dev, NULL, win, &view);
++        sprite->hotLimits = *RegionExtents(&win->borderSize);
++        sprite->hotShape = wBoundingShape(win) ? &win->borderSize : NullRegion;
++        sprite->confined = confineToScreen;
++        if (sprite->current) {
++            (*screen->CursorLimits)(dev, screen, sprite->current,
++                                   &sprite->hotLimits, &sprite->physLimits);
++            (*screen->ConstrainCursor)(dev, screen, &sprite->physLimits);
++        }
++        if (view.hot.x != scope.position.x || view.hot.y != scope.position.y ||
++            view.hot.pScreen != scope.position.pScreen)
++            SyntheticMotion(dev, view.hot.x, view.hot.y);
++        if (screen->CursorConfinedTo)
++            (*screen->CursorConfinedTo)(dev, screen, win);
++    }
++    else
++        ConfineCursorToWindowInternal(dev, win, generateEvents, confineToScreen);
++    PointerConfinementEnd(dev, &scope);
++}
++
++static void
++ConfineCursorToWindow(DeviceIntPtr dev, WindowPtr win, Bool generateEvents,
++                     Bool confineToScreen)
++{
++    /* Requests outside dispatch explicitly use L, never the latest seat focus. */
++    ConfineCursorToWindowWithRoute(dev, win, generateEvents, confineToScreen,
++                                  POINTER_ROUTE_LOGICAL_CORRECTION);
+ }
+ 
+ Bool
+@@ -1152,6 +1253,8 @@
+     SpritePtr pSprite = device->spriteInfo->sprite;
+     int eventlen;
+     DeviceEvent *event = &ev->device_event;
++    Bool targeted = PointerRouteTagged(ev);
++    ScreenPtr eventScreen = PointerRouteScreen(ev, pSprite->hotPhys.pScreen);
+ 
+     if (!xorg_list_is_empty(&syncEvents.pending))
+         tail = xorg_list_last_entry(&syncEvents.pending, QdEventRec, next);
+@@ -1176,7 +1279,7 @@
+          *  updated yet.
+          */
+         if (ev->any.type == ET_Motion)
+-            ev->device_event.root = pSprite->hotPhys.pScreen->root->drawable.id;
++            ev->device_event.root = eventScreen->root->drawable.id;
+ 
+         eventinfo.event = ev;
+         eventinfo.device = device;
+@@ -1185,23 +1288,30 @@
+ 
+     if (event->type == ET_Motion) {
+ #ifdef PANORAMIX
+-        if (!noPanoramiXExtension) {
++        if (!targeted && !noPanoramiXExtension) {
+             event->root_x += pSprite->screen->x - screenInfo.screens[0]->x;
+             event->root_y += pSprite->screen->y - screenInfo.screens[0]->y;
+         }
+ #endif
+-        pSprite->hotPhys.x = event->root_x;
+-        pSprite->hotPhys.y = event->root_y;
+-        /* do motion compression, but not if from different devices */
++        if (!targeted) {
++            pSprite->hotPhys.x = event->root_x;
++            pSprite->hotPhys.y = event->root_y;
++        }
++        /* Target changes and scroll deltas must survive both input queues. */
+         if (tail &&
+             (tail->event->any.type == ET_Motion) &&
+             (tail->device == device) &&
+-            (tail->pScreen == pSprite->hotPhys.pScreen)) {
++            (tail->pScreen == eventScreen) &&
++            PointerRouteCanCoalesce(&tail->event->device_event, event)) {
+             DeviceEvent *tailev = &tail->event->device_event;
+ 
+-            tailev->root_x = pSprite->hotPhys.x;
+-            tailev->root_y = pSprite->hotPhys.y;
+-            tailev->time = event->time;
++            if (targeted)
++                *tailev = *event;
++            else {
++                tailev->root_x = pSprite->hotPhys.x;
++                tailev->root_y = pSprite->hotPhys.y;
++                tailev->time = event->time;
++            }
+             tail->months = currentTime.months;
+             return;
+         }
+@@ -1214,7 +1324,7 @@
+         return;
+     xorg_list_init(&qe->next);
+     qe->device = device;
+-    qe->pScreen = pSprite->hotPhys.pScreen;
++    qe->pScreen = eventScreen;
+     qe->months = currentTime.months;
+     qe->event = (InternalEvent *) (qe + 1);
+     CopyPartialInternalEvent(qe->event, (InternalEvent *)event);
+@@ -1243,7 +1353,8 @@
+         if (!qe->device->deviceGrab.sync.frozen) {
+             xorg_list_del(&qe->next);
+             pDev = qe->device;
+-            if (qe->event->any.type == ET_Motion)
++            if (qe->event->any.type == ET_Motion &&
++                !PointerRouteTagged(qe->event))
+                 CheckVirtualMotion(pDev, qe, NullWindow);
+             syncEvents.time.months = qe->months;
+             syncEvents.time.milliseconds = qe->event->any.time;
+@@ -1251,7 +1362,7 @@
+             /* Translate back to the sprite screen since processInputProc
+                will translate from sprite screen to screen 0 upon reentry
+                to the DIX layer */
+-            if (!noPanoramiXExtension) {
++            if (!PointerRouteTagged(qe->event) && !noPanoramiXExtension) {
+                 DeviceEvent *ev = &qe->event->device_event;
+ 
+                 switch (ev->type) {
+@@ -1301,6 +1412,8 @@
+ static void
+ FreezeThaw(DeviceIntPtr dev, Bool frozen)
+ {
++    if (dev->deviceGrab.sync.frozen != frozen)
++        PointerRouteInvalidateCorrection(dev);
+     dev->deviceGrab.sync.frozen = frozen;
+     if (frozen)
+         dev->public.processInputProc = dev->public.enqueueInputProc;
+@@ -1308,6 +1421,48 @@
+         dev->public.processInputProc = dev->public.realInputProc;
+ }
+ 
++static void
++ReconcilePointerPosition(DeviceIntPtr dev, enum PointerRouteOrigin origin)
++{
++    PointerConfinementScope reconciliation;
++    SpritePtr sprite = dev->spriteInfo->sprite;
++    GrabPtr grab = dev->deviceGrab.grab;
++
++    /* Include cursor changes, and always start from latest P, never from a
++     * historical event's L/R. MI corrections update producer valuators too. */
++    PointerConfinementBegin(dev, origin, &reconciliation);
++    if (grab && grab->confineTo) {
++        if (grab->confineTo->drawable.pScreen != sprite->hotPhys.pScreen)
++            sprite->hotPhys.x = sprite->hotPhys.y = 0;
++        ConfineCursorToWindowWithRoute(dev, grab->confineTo, TRUE, TRUE, origin);
++    }
++    else
++        ConfineCursorToWindowWithRoute(dev, sprite->hotPhys.pScreen->root,
++                                      TRUE, FALSE, origin);
++    PostNewCursor(dev);
++    PointerConfinementEnd(dev, &reconciliation);
++}
++
++void
++PointerRouteReconcileInput(void)
++{
++    DeviceIntPtr dev;
++
++    if (syncEvents.playingEvents)
++        return;
++    /* MI calls this only after draining native input. P is then the latest
++     * ingress position, and no newer producer records can be overwritten by
++     * this correction. Never use an event's historical L/R to seed a warp. */
++    for (dev = inputInfo.devices; dev; dev = dev->next)
++        if (DevHasCursor(dev) && !dev->pointerRoute &&
++            !dev->deviceGrab.sync.frozen &&
++            dev->spriteInfo->sprite->physicalTarget.incarnation &&
++            dev->deviceGrab.grab && dev->deviceGrab.grab->confineTo)
++            /* Keep producer/ingress updates even when L already reached the
++             * constrained point. Only this live origin can omit redelivery. */
++            ReconcilePointerPosition(dev, POINTER_ROUTE_LIVE_CORRECTION);
++}
++
+ /**
+  * Unfreeze devices and replay all events to the respective clients.
+  *
+@@ -1320,19 +1475,32 @@
+ ComputeFreezes(void)
+ {
+     DeviceIntPtr replayDev = syncEvents.replayDev;
+-    GrabPtr grab;
+     DeviceIntPtr dev;
+ 
+     for (dev = inputInfo.devices; dev; dev = dev->next)
+         FreezeThaw(dev, dev->deviceGrab.sync.other ||
+                    (dev->deviceGrab.sync.state >= FROZEN));
+-    if (syncEvents.playingEvents ||
+-        (!replayDev && xorg_list_is_empty(&syncEvents.pending)))
++    if (syncEvents.playingEvents)
+         return;
++    if (!replayDev && xorg_list_is_empty(&syncEvents.pending)) {
++        /* An unfrozen explicit grab can confine L without any queued input.
++         * Reconcile P after the new grab is installed even on this fast path.
++         * Never do this inside a historical delivery or while frozen. */
++        for (dev = inputInfo.devices; dev; dev = dev->next)
++            if (DevHasCursor(dev) && !dev->pointerRoute &&
++                !dev->deviceGrab.sync.frozen &&
++                dev->spriteInfo->sprite->physicalTarget.incarnation)
++                ReconcilePointerPosition(dev, POINTER_ROUTE_PHYSICAL_CORRECTION);
++        return;
++    }
+     syncEvents.playingEvents = TRUE;
+     if (replayDev) {
+         InternalEvent *event = replayDev->deviceGrab.sync.event;
+-
++        PointerRouteScope route;
++
++        /* Saved passive activation bypasses ProcessOtherEvent. Resolve its
++         * ancestry before applying replayWin's passive-grab exclusion. */
++        PointerRouteBegin(replayDev, event, &route);
+         syncEvents.replayDev = (DeviceIntPtr) NULL;
+ 
+         if (!CheckDeviceGrabs(replayDev, event,
+@@ -1354,16 +1522,28 @@
+                 ProcessGestureEvent(event, replayDev);
+             }
+             else {
+-                WindowPtr w = XYToWindow(replayDev->spriteInfo->sprite,
+-                                         event->device_event.root_x,
+-                                         event->device_event.root_y);
++                SpritePtr sprite = replayDev->spriteInfo->sprite;
++                WindowPtr w;
++
++                if (PointerRouteActive(replayDev))
++                    w = PointerDeliverySprite(replayDev)->win;
++                else if (!IsPointerEvent(event) &&
++                         sprite->logicalTarget.incarnation)
++                    /* ReplayKeyboard is still untagged. Its PointerRoot
++                     * destination and passive ancestry come from L, not a
++                     * global hit test that would corrupt the shared trace. */
++                    w = sprite->win;
++                else
++                    w = XYToWindow(sprite, event->device_event.root_x,
++                                   event->device_event.root_y);
+                 if (replayDev->focus && !IsPointerEvent(event))
+                     DeliverFocusedEvent(replayDev, event, w);
+-                else
++                else if (!PointerRouteMissing(replayDev))
+                     DeliverDeviceEvents(w, event, NullGrab,
+                                         NullWindow, replayDev);
+             }
+         }
++        PointerRouteEnd(replayDev, &route);
+     }
+     for (dev = inputInfo.devices; dev; dev = dev->next) {
+         if (!dev->deviceGrab.sync.frozen) {
+@@ -1372,24 +1552,9 @@
+         }
+     }
+     syncEvents.playingEvents = FALSE;
+-    for (dev = inputInfo.devices; dev; dev = dev->next) {
+-        if (DevHasCursor(dev)) {
+-            /* the following may have been skipped during replay,
+-               so do it now */
+-            if ((grab = dev->deviceGrab.grab) && grab->confineTo) {
+-                if (grab->confineTo->drawable.pScreen !=
+-                    dev->spriteInfo->sprite->hotPhys.pScreen)
+-                    dev->spriteInfo->sprite->hotPhys.x =
+-                        dev->spriteInfo->sprite->hotPhys.y = 0;
+-                ConfineCursorToWindow(dev, grab->confineTo, TRUE, TRUE);
+-            }
+-            else
+-                ConfineCursorToWindow(dev,
+-                                      dev->spriteInfo->sprite->hotPhys.pScreen->
+-                                      root, TRUE, FALSE);
+-            PostNewCursor(dev);
+-        }
+-    }
++    for (dev = inputInfo.devices; dev; dev = dev->next)
++        if (DevHasCursor(dev))
++            ReconcilePointerPosition(dev, POINTER_ROUTE_PHYSICAL_CORRECTION);
+ }
+ 
+ #ifdef RANDR
+@@ -1406,7 +1571,8 @@
+         /* GrabDevice doesn't have a confineTo field, so we don't need to
+          * worry about it. */
+         if ((grab = pDev->deviceGrab.grab) && grab->confineTo) {
+-            if (grab->confineTo->drawable.pScreen
++            if (!pDev->spriteInfo->sprite->logicalTarget.incarnation &&
++                grab->confineTo->drawable.pScreen
+                 != pDev->spriteInfo->sprite->hotPhys.pScreen)
+                 pDev->spriteInfo->sprite->hotPhys.x =
+                     pDev->spriteInfo->sprite->hotPhys.y = 0;
+@@ -1616,17 +1782,41 @@
+ {
+     GrabInfoPtr grabinfo = &mouse->deviceGrab;
+     GrabPtr oldgrab = grabinfo->grab;
+-    WindowPtr oldWin = (grabinfo->grab) ?
+-        grabinfo->grab->window : mouse->spriteInfo->sprite->win;
+     Bool isPassive = autoGrab & ~ImplicitGrabMask;
++    WindowPtr oldWin;
++
++    PointerRouteInvalidateCorrection(mouse);
++    if (oldgrab)
++        oldWin = oldgrab->window;
++    else if (isPassive && grab->grabtype == XI2 && grab->type == XI_Enter &&
++             (IsMaster(mouse) || IsFloating(mouse)))
++        /* CheckMotion retains the old logical window through enter-grab
++         * activation. The delivery view already names the entered window;
++         * using it here would lose NotifyGrab crossings and PointerWindows. */
++        oldWin = mouse->spriteInfo->sprite->win;
++    else
++        /* Button grabs, including attached slaves, start at this event's
++         * window rather than the possibly frozen shared logical sprite. */
++        oldWin = PointerDeliverySprite(mouse)->win;
+ 
+     /* slave devices need to float for the duration of the grab. */
+     if (grab->grabtype == XI2 &&
+-        !(autoGrab & ImplicitGrabMask) && !IsMaster(mouse))
++        !(autoGrab & ImplicitGrabMask) && !IsMaster(mouse)) {
++        HotSpot physical = mouse->spriteInfo->sprite->hotPhys;
++        PointerTarget target = mouse->spriteInfo->sprite->physicalTarget;
++
+         DetachFromMaster(mouse);
++        if (PointerRouteActive(mouse)) {
++            mouse->spriteInfo->sprite->hotPhys = physical;
++            mouse->spriteInfo->sprite->physicalTarget = target;
++            PointerRoutePublish(mouse, TRUE);
++        }
++    }
+ 
+     if (grab->confineTo) {
+-        if (grab->confineTo->drawable.pScreen
++        if (!PointerRouteActive(mouse) &&
++            !mouse->spriteInfo->sprite->logicalTarget.incarnation &&
++            grab->confineTo->drawable.pScreen
+             != mouse->spriteInfo->sprite->hotPhys.pScreen)
+             mouse->spriteInfo->sprite->hotPhys.x =
+                 mouse->spriteInfo->sprite->hotPhys.y = 0;
+@@ -1668,6 +1858,7 @@
+     XID grab_resource = grab->resource;
+     int i;
+ 
++    PointerRouteInvalidateCorrection(mouse);
+     /* If an explicit grab was deactivated, we must remove it from the head of
+      * all the touches' listener lists. */
+     for (i = 0; !wasPassive && mouse->touch && i < mouse->touch->num_touches; i++) {
+@@ -1712,7 +1903,7 @@
+     }
+ 
+     DoEnterLeaveEvents(mouse, mouse->id, grab->window,
+-                       mouse->spriteInfo->sprite->win, NotifyUngrab);
++                       PointerDeliverySprite(mouse)->win, NotifyUngrab);
+     if (grab->confineTo)
+         ConfineCursorToWindow(mouse, GetCurrentRootWindow(mouse), FALSE, FALSE);
+     PostNewCursor(mouse);
+@@ -2818,7 +3009,7 @@
+ DeliverEvent(DeviceIntPtr dev, xEvent *xE, int count,
+              WindowPtr win, Window child, GrabPtr grab)
+ {
+-    SpritePtr pSprite = dev->spriteInfo->sprite;
++    SpritePtr pSprite = PointerDeliverySprite(dev);
+     Mask filter;
+     int deliveries = 0;
+ 
+@@ -3134,8 +3325,17 @@
+         .device_event.sourceid = dev->id,
+         .device_event.detail.button = 0
+     };
+-    rc = (CheckPassiveGrabsOnWindow(win, dev, &event, FALSE,
+-                                    TRUE) != NULL);
++    if (PointerRouteActive(dev)) {
++        SpritePtr view = PointerDeliverySprite(dev);
++
++        event.device_event.pointerTarget = dev->pointerRoute->target;
++        event.device_event.pointerOrigin = POINTER_ROUTE_LOGICAL_CORRECTION;
++        event.device_event.root_x = view->hot.x;
++        event.device_event.root_y = view->hot.y;
++        event.device_event.root = view->hot.pScreen->root->drawable.id;
++    }
++    rc = !PointerRouteMissing(dev) &&
++        (CheckPassiveGrabsOnWindow(win, dev, &event, FALSE, TRUE) != NULL);
+     if (rc)
+         DoEnterLeaveEvents(dev, dev->id, old, win, XINotifyPassiveGrab);
+     return rc;
+@@ -3152,6 +3352,33 @@
+  *
+  * @return TRUE if the sprite has moved or FALSE otherwise.
+  */
++static Bool
++CheckTargetMotion(DeviceEvent *event, DeviceIntPtr dev)
++{
++    SpritePtr sprite = dev->spriteInfo->sprite;
++    SpritePtr view = PointerDeliverySprite(dev);
++    WindowPtr old = sprite->win;
++    WindowPtr win = view->win;
++    uint64_t revision;
++    int sourceid = event ? event->sourceid : dev->id;
++
++    if (!event)
++        UpdateCurrentTimeIf();
++    /* Publish coordinates/ancestry now, but keep the old window through enter
++     * grab activation, just as the legacy CheckMotion path does. Nested
++     * confinement owns its own view and may publish a newer logical state. */
++    revision = PointerRoutePublish(dev, FALSE);
++    if (win != old) {
++        if (old && !ActivateEnterGrab(dev, old, win))
++            DoEnterLeaveEvents(dev, sourceid, old, win, NotifyNormal);
++        if (sprite->routeRevision == revision)
++            sprite->win = win;
++        PostNewCursor(dev);
++        return FALSE;
++    }
++    return TRUE;
++}
++
+ Bool
+ CheckMotion(DeviceEvent *ev, DeviceIntPtr pDev)
+ {
+@@ -3160,6 +3387,31 @@
+ 
+     verify_internal_event((InternalEvent *) ev);
+ 
++    if (!ev && pSprite->logicalTarget.incarnation) {
++        PointerRouteScope route;
++        Bool result;
++
++        /* Restructuring follows the logical target, even while P is elsewhere. */
++        PointerRouteBeginLogical(pDev, &route);
++        result = CheckTargetMotion(NULL, pDev);
++        PointerRouteEnd(pDev, &route);
++        return result;
++    }
++    if (ev && PointerRouteActive(pDev))
++        return CheckTargetMotion(ev, pDev);
++    /* A replayed key shares the pointer sprite but carries no pointer target.
++     * Do not global-hit-test its coordinates and silently replace tagged L's
++     * window/ancestry. Non-pointer input leaves the logical pointer intact. */
++    if (ev && pSprite->logicalTarget.incarnation &&
++        !IsPointerEvent((InternalEvent *) ev) &&
++        !IsTouchEvent((InternalEvent *) ev))
++        return FALSE;
++    if (!ev || ev->type == ET_Motion || ev->type == ET_ButtonPress ||
++        ev->type == ET_ButtonRelease || ev->type == ET_TouchBegin ||
++        ev->type == ET_TouchUpdate || ev->type == ET_TouchEnd) {
++        pSprite->logicalTarget = (PointerTarget) { 0 };
++        ++pSprite->routeRevision;
++    }
+     prevSpriteWin = pSprite->win;
+ 
+     if (ev && !syncEvents.playingEvents) {
+@@ -3323,6 +3575,9 @@
+     }
+ 
+     pSprite = pDev->spriteInfo->sprite;
++    pSprite->logicalTarget = (PointerTarget) { 0 };
++    pSprite->physicalTarget = (PointerTarget) { 0 };
++    pSprite->routeRevision = 0;
+     pDev->spriteInfo->spriteOwner = TRUE;
+ 
+     pScreen = (pWin) ? pWin->drawable.pScreen : (ScreenPtr) NULL;
+@@ -3781,7 +4036,7 @@
+ ActivatePassiveGrab(DeviceIntPtr device, GrabPtr grab, InternalEvent *event,
+                     InternalEvent *real_event)
+ {
+-    SpritePtr pSprite = device->spriteInfo->sprite;
++    SpritePtr pSprite = PointerDeliverySprite(device);
+     xEvent *xE = NULL;
+     int count;
+     int rc;
+@@ -4142,6 +4397,9 @@
+     Bool ret = FALSE;
+     DeviceEvent *event = &ievent->device_event;
+ 
++    if (PointerRouteMissing(device))
++        return FALSE;
++
+     if (event->type != ET_ButtonPress && event->type != ET_KeyPress)
+         return FALSE;
+ 
+@@ -4153,10 +4411,10 @@
+ 
+     i = 0;
+     if (ancestor) {
+-        while (i < device->spriteInfo->sprite->spriteTraceGood)
+-            if (device->spriteInfo->sprite->spriteTrace[i++] == ancestor)
++        while (i < PointerDeliverySprite(device)->spriteTraceGood)
++            if (PointerDeliverySprite(device)->spriteTrace[i++] == ancestor)
+                 break;
+-        if (i == device->spriteInfo->sprite->spriteTraceGood)
++        if (i == PointerDeliverySprite(device)->spriteTraceGood)
+             goto out;
+     }
+ 
+@@ -4171,13 +4429,13 @@
+         }
+ 
+         if ((focus->win == NoneWin) ||
+-            (i >= device->spriteInfo->sprite->spriteTraceGood) ||
+-            (pWin && pWin != device->spriteInfo->sprite->spriteTrace[i - 1]))
++            (i >= PointerDeliverySprite(device)->spriteTraceGood) ||
++            (pWin && pWin != PointerDeliverySprite(device)->spriteTrace[i - 1]))
+             goto out;
+     }
+ 
+-    for (; i < device->spriteInfo->sprite->spriteTraceGood; i++) {
+-        pWin = device->spriteInfo->sprite->spriteTrace[i];
++    for (; i < PointerDeliverySprite(device)->spriteTraceGood; i++) {
++        pWin = PointerDeliverySprite(device)->spriteTrace[i];
+         if (CheckPassiveGrabsOnWindow(pWin, device, ievent,
+                                       sendCore, TRUE)) {
+             ret = TRUE;
+@@ -4289,7 +4547,7 @@
+ DeliverOneGrabbedEvent(InternalEvent *event, DeviceIntPtr dev,
+                        enum InputLevel level)
+ {
+-    SpritePtr pSprite = dev->spriteInfo->sprite;
++    SpritePtr pSprite = PointerDeliverySprite(dev);
+     int rc;
+     xEvent *xE = NULL;
+     int count = 0;
+@@ -4370,13 +4628,13 @@
+     GrabPtr grab;
+     GrabInfoPtr grabinfo;
+     int deliveries = 0;
+-    SpritePtr pSprite = thisDev->spriteInfo->sprite;
++    SpritePtr pSprite = PointerDeliverySprite(thisDev);
+     BOOL sendCore = FALSE;
+ 
+     grabinfo = &thisDev->deviceGrab;
+     grab = grabinfo->grab;
+ 
+-    if (grab->ownerEvents) {
++    if (grab->ownerEvents && !PointerRouteMissing(thisDev)) {
+         WindowPtr focus;
+ 
+         /* Hack: Some pointer device have a focus class. So we need to check
+@@ -4703,10 +4961,10 @@
+     }
+ 
+     event.u.enterLeave.time = currentTime.milliseconds;
+-    event.u.enterLeave.rootX = mouse->spriteInfo->sprite->hot.x;
+-    event.u.enterLeave.rootY = mouse->spriteInfo->sprite->hot.y;
++    event.u.enterLeave.rootX = PointerDeliverySprite(mouse)->hot.x;
++    event.u.enterLeave.rootY = PointerDeliverySprite(mouse)->hot.y;
+     /* Counts on the same initial structure of crossing & button events! */
+-    FixUpEventFromWindow(mouse->spriteInfo->sprite, &event, pWin, None, FALSE);
++    FixUpEventFromWindow(PointerDeliverySprite(mouse), &event, pWin, None, FALSE);
+     /* Enter/Leave events always set child */
+     event.u.enterLeave.child = child;
+     event.u.enterLeave.flags = event.u.keyButtonPointer.sameScreen ?
+@@ -4785,8 +5043,8 @@
+     event->deviceid = mouse->id;
+     event->sourceid = sourceid;
+     event->mode = mode;
+-    event->root_x = double_to_fp1616(mouse->spriteInfo->sprite->hot.x);
+-    event->root_y = double_to_fp1616(mouse->spriteInfo->sprite->hot.y);
++    event->root_x = double_to_fp1616(PointerDeliverySprite(mouse)->hot.x);
++    event->root_y = double_to_fp1616(PointerDeliverySprite(mouse)->hot.y);
+ 
+     for (i = 0; mouse && mouse->button && i < mouse->button->numButtons; i++)
+         if (BitIsOn(mouse->button->down, i))
+@@ -4808,7 +5066,7 @@
+         ((pWin == focus) || (focus == PointerRootWin) || IsParent(focus, pWin)))
+         event->focus = TRUE;
+ 
+-    FixUpEventFromWindow(mouse->spriteInfo->sprite, (xEvent *) event, pWin,
++    FixUpEventFromWindow(PointerDeliverySprite(mouse), (xEvent *) event, pWin,
+                          None, FALSE);
+ 
+     filter = GetEventFilter(mouse, (xEvent *) event);
+@@ -5120,6 +5378,7 @@
+     if ((CompareTimeStamps(time, currentTime) == LATER) ||
+         (CompareTimeStamps(time, device->deviceGrab.grabTime) == EARLIER))
+         return Success;
++    PointerRouteInvalidateCorrection(device);
+     oldCursor = grab->cursor;
+     grab->cursor = RefCursor(newCursor);
+     PostNewCursor(device);
+diff --git a/dix/getevents.c b/dix/getevents.c
+--- a/dix/getevents.c
++++ b/dix/getevents.c
+@@ -47,6 +47,7 @@
+ #include "dixevents.h"
+ #include "mipointer.h"
+ #include "eventstr.h"
++#include "pointer-route.h"
+ #include "eventconvert.h"
+ #include "inpututils.h"
+ #include "mi.h"
+@@ -1284,10 +1285,29 @@
+ QueuePointerEvents(DeviceIntPtr device, int type,
+                    int buttons, int flags, const ValuatorMask *mask)
+ {
++    QueuePointerEventsWithTarget(device, type, buttons, flags, mask,
++                                 (PointerTarget) { 0 }, POINTER_ROUTE_NATIVE);
++}
++
++void
++QueuePointerEventsWithTarget(DeviceIntPtr device, int type, int buttons,
++                             int flags, const ValuatorMask *mask,
++                             PointerTarget target, enum PointerRouteOrigin origin)
++{
+     int nevents;
+-
+-    nevents =
+-        GetPointerEvents(InputEventList, device, type, buttons, flags, mask);
++    Bool generating = device->pointerGeneratingNative;
++
++    /* Grab bounds belong to the eventual delivery view. Applying them here
++     * loses native coordinates before a frozen event can retain them, and
++     * also poisons the producer position used by later buttons/scroll. This
++     * scope covers every generated record, including emulated wheel pairs. */
++    device->pointerGeneratingNative = target.incarnation &&
++                                      origin == POINTER_ROUTE_NATIVE;
++    nevents = GetPointerEvents(InputEventList, device, type, buttons, flags, mask);
++    device->pointerGeneratingNative = generating;
++    /* Includes scroll-emulated button pairs; raw/device-change records remain
++     * untagged and cannot inherit a surrounding delivery context. */
++    PointerRouteStamp(InputEventList, nevents, target, origin);
+     queueEventList(device, InputEventList, nevents);
+ }
+ 
+@@ -2137,13 +2157,22 @@
+ PostSyntheticMotion(DeviceIntPtr pDev,
+                     int x, int y, int screen, unsigned long time)
+ {
++    PostSyntheticMotionWithTarget(pDev, x, y, screen, time,
++                                  (PointerTarget) { 0 }, POINTER_ROUTE_NATIVE);
++}
++
++void
++PostSyntheticMotionWithTarget(DeviceIntPtr pDev, int x, int y, int screen,
++                               unsigned long time, PointerTarget target,
++                               enum PointerRouteOrigin origin)
++{
+     DeviceEvent ev;
+ 
+ #ifdef PANORAMIX
+     /* Translate back to the sprite screen since processInputProc
+        will translate from sprite screen to screen 0 upon reentry
+        to the DIX layer. */
+-    if (!noPanoramiXExtension) {
++    if (!target.incarnation && !noPanoramiXExtension) {
+         x += screenInfo.screens[0]->x - screenInfo.screens[screen]->x;
+         y += screenInfo.screens[0]->y - screenInfo.screens[screen]->y;
+     }
+@@ -2155,6 +2184,9 @@
+     ev.root_y = y;
+     ev.type = ET_Motion;
+     ev.time = time;
++    ev.pointerTarget = target;
++    ev.pointerOrigin = origin;
++    PointerRouteIngress(pDev, (InternalEvent *) &ev);
+ 
+     /* FIXME: MD/SD considerations? */
+     (*pDev->public.processInputProc) ((InternalEvent *) &ev, pDev);
+diff --git a/dix/meson.build b/dix/meson.build
+--- a/dix/meson.build
++++ b/dix/meson.build
+@@ -23,6 +23,7 @@
+     'privates.c',
+     'property.c',
+     'ptrveloc.c',
++    'pointer-route.c',
+     'region.c',
+     'registry.c',
+     'resource.c',
+diff --git a/dix/pointer-route.c b/dix/pointer-route.c
+new file mode 100644
+--- /dev/null
++++ b/dix/pointer-route.c
+@@ -0,0 +1,363 @@
++/* SPDX-License-Identifier: MIT */
++#ifdef HAVE_DIX_CONFIG_H
++#include <dix-config.h>
++#endif
++
++#include <stdlib.h>
++#include <string.h>
++#include "os.h"
++#include "pointer-route.h"
++#include "scrnintstr.h"
++#include "windowstr.h"
++#include "inpututils.h"
++
++static Bool
++pointer_record(const InternalEvent *event)
++{
++    if (!event)
++        return FALSE;
++    switch (event->any.type) {
++    case ET_Motion:
++    case ET_ButtonPress:
++    case ET_ButtonRelease:
++    case ET_Enter:
++        return event->any.length >= sizeof(DeviceEvent);
++    default:
++        return FALSE;
++    }
++}
++
++Bool
++PointerRouteTagged(const InternalEvent *event)
++{
++    return pointer_record(event) && event->device_event.pointerTarget.incarnation;
++}
++
++void
++PointerRouteStamp(InternalEvent *events, int count, PointerTarget target,
++                  enum PointerRouteOrigin origin)
++{
++    int i;
++
++    for (i = 0; i < count; i++) {
++        if (pointer_record(&events[i])) {
++            events[i].device_event.pointerTarget = target;
++            events[i].device_event.pointerOrigin = origin;
++        }
++    }
++}
++
++static Bool
++xy_only(const DeviceEvent *event)
++{
++    int i;
++
++    if (!BitIsOn(event->valuators.mask, 0) ||
++        !BitIsOn(event->valuators.mask, 1))
++        return FALSE;
++    for (i = 2; i < MAX_VALUATORS; i++)
++        if (BitIsOn(event->valuators.mask, i))
++            return FALSE;
++    return TRUE;
++}
++
++static Bool
++absolute_xy_only(const DeviceEvent *event)
++{
++    /* Scroll and relative valuators carry deltas, not replaceable positions. */
++    return BitIsOn(event->valuators.mode, 0) &&
++           BitIsOn(event->valuators.mode, 1) && xy_only(event);
++}
++
++Bool
++PointerRouteCanCoalesce(const DeviceEvent *a, const DeviceEvent *b)
++{
++    if (!a->pointerTarget.incarnation && !b->pointerTarget.incarnation)
++        return TRUE; /* retain legacy compression */
++    return a->pointerTarget.incarnation &&
++           a->pointerTarget.incarnation == b->pointerTarget.incarnation &&
++           a->pointerTarget.screen == b->pointerTarget.screen &&
++           a->pointerOrigin == b->pointerOrigin &&
++           a->deviceid == b->deviceid && a->sourceid == b->sourceid &&
++           a->source_type == b->source_type && a->flags == b->flags &&
++           absolute_xy_only(a) && absolute_xy_only(b);
++}
++
++ScreenPtr
++PointerRouteScreen(const InternalEvent *event, ScreenPtr fallback)
++{
++    if (PointerRouteTagged(event) &&
++        event->device_event.pointerTarget.screen < screenInfo.numScreens)
++        return screenInfo.screens[event->device_event.pointerTarget.screen];
++    return fallback;
++}
++
++void
++PointerRouteIngress(DeviceIntPtr dev, InternalEvent *event)
++{
++    SpritePtr sprite;
++    DeviceEvent *ev;
++
++    if (!dev)
++        return;
++    if ((event->any.type == ET_TouchBegin || event->any.type == ET_TouchUpdate ||
++         event->any.type == ET_TouchEnd) &&
++        (event->device_event.flags & TOUCH_POINTER_EMULATED)) {
++        dev->spriteInfo->sprite->physicalTarget = (PointerTarget) { 0 };
++        return;
++    }
++    if (!pointer_record(event) || event->any.type == ET_Enter)
++        return;
++    ev = &event->device_event;
++    sprite = dev->spriteInfo->sprite;
++    if (!ev->pointerTarget.incarnation) {
++        sprite->physicalTarget = (PointerTarget) { 0 };
++        return;
++    }
++    if (ev->pointerOrigin == POINTER_ROUTE_LOGICAL_CORRECTION)
++        return;
++    /* Once per MI record, before slave/master dispatch or DIX freezing. */
++    sprite->physicalTarget = ev->pointerTarget;
++    sprite->hotPhys.pScreen = PointerRouteScreen(event, sprite->hotPhys.pScreen);
++    sprite->hotPhys.x = ev->root_x;
++    sprite->hotPhys.y = ev->root_y;
++}
++
++Bool
++PointerRouteActive(DeviceIntPtr dev)
++{
++    return dev->pointerRoute && dev->pointerRoute->target.incarnation;
++}
++
++Bool
++PointerRouteMissing(DeviceIntPtr dev)
++{
++    return PointerRouteActive(dev) && dev->pointerRoute->missing;
++}
++
++SpritePtr
++PointerDeliverySprite(DeviceIntPtr dev)
++{
++    return PointerRouteActive(dev) ? &dev->pointerRoute->sprite :
++                                    dev->spriteInfo->sprite;
++}
++
++void
++PointerRouteInvalidateCorrection(DeviceIntPtr dev)
++{
++    PointerRouteScope *scope;
++
++    for (scope = dev->pointerRoute; scope; scope = scope->previous)
++        scope->repeatCorrection = FALSE;
++}
++
++static Bool
++same_logical_view(SpritePtr a, SpritePtr b)
++{
++    return a->hot.pScreen == b->hot.pScreen &&
++           a->hot.x == b->hot.x && a->hot.y == b->hot.y &&
++           a->win == b->win && a->spriteTraceGood == b->spriteTraceGood &&
++           !memcmp(a->spriteTrace, b->spriteTrace,
++                   a->spriteTraceGood * sizeof(WindowPtr));
++}
++
++static Bool
++live_correction_matches(DeviceIntPtr dev, DeviceEvent *event)
++{
++    PointerRouteScope *scope = dev->pointerRoute;
++    SpritePtr sprite = dev->spriteInfo->sprite;
++
++    return event->type == ET_Motion &&
++           event->pointerOrigin == POINTER_ROUTE_LIVE_CORRECTION &&
++           (IsMaster(dev) || IsFloating(dev)) && DevHasCursor(dev) &&
++           !syncEvents.playingEvents && !dev->deviceGrab.sync.frozen &&
++           dev->deviceGrab.grab && dev->deviceGrab.grab->confineTo &&
++           scope && !scope->missing && scope->target.incarnation >= 2 &&
++           scope->origin == POINTER_ROUTE_LIVE_CORRECTION &&
++           event->pointerTarget.incarnation == scope->target.incarnation &&
++           event->pointerTarget.screen == scope->target.screen &&
++           sprite->logicalTarget.incarnation == scope->target.incarnation &&
++           sprite->logicalTarget.screen == scope->target.screen &&
++           event->root_x == scope->sprite.hot.x &&
++           event->root_y == scope->sprite.hot.y &&
++           !event->root_x_frac && !event->root_y_frac &&
++           /* Live corrections are absolute MI warps even when the device's
++            * valuator modes (copied into the event) describe relative axes. */
++           xy_only(event) && same_logical_view(sprite, &scope->sprite);
++}
++
++void
++PointerRoutePrepareLiveCorrection(DeviceIntPtr dev, DeviceEvent *event)
++{
++    PointerRouteScope *scope = dev->pointerRoute;
++
++    if (!scope)
++        return;
++    /* Compare to L BEFORE CheckMotion publishes this correction. Comparing
++     * only afterwards would also suppress genuine routing/position changes. */
++    scope->repeatCorrection = live_correction_matches(dev, event);
++    scope->logicalSprite = dev->spriteInfo->sprite;
++    scope->logicalRevision = scope->logicalSprite->routeRevision;
++}
++
++Bool
++PointerRouteSuppressLiveCorrection(DeviceIntPtr dev, DeviceEvent *event)
++{
++    PointerRouteScope *scope = dev->pointerRoute;
++    SpritePtr sprite = dev->spriteInfo->sprite;
++    SpriteRec current;
++    DeviceEvent check;
++    ScreenPtr screen;
++    Bool same;
++
++    if (!scope || !scope->repeatCorrection || scope->logicalSprite != sprite ||
++        sprite->routeRevision != scope->logicalRevision + 1 ||
++        !live_correction_matches(dev, event))
++        return FALSE;
++    /* Only our one CheckMotion publication is allowed. Nested dispatch and
++     * grab changes invalidate the candidate; re-resolve lifetime/ancestry too
++     * in case a callback changed the target's mapping, shape or child stack. */
++    memset(&current, 0, sizeof(current));
++    check = *event;
++    current.hot = scope->sprite.hot;
++    current.spriteTrace = XNFalloc(sizeof(WindowPtr));
++    current.spriteTraceSize = current.spriteTraceGood = 1;
++    current.spriteTrace[0] = current.hot.pScreen->root;
++    PointerRouteConstrain(dev, &current, &check);
++    screen = current.hot.pScreen;
++    current.hotPhys = current.hot;
++#ifdef PANORAMIX
++    current.screen = screen;
++#endif
++    current.win = screen->root;
++    same = screen->ResolvePointerTarget &&
++           scope->target.screen == screen->myNum &&
++           screen->ResolvePointerTarget(screen, &scope->target, &current) &&
++           same_logical_view(&current, &scope->sprite);
++    free(current.spriteTrace);
++    return same && scope->repeatCorrection &&
++           sprite == dev->spriteInfo->sprite &&
++           sprite->routeRevision == scope->logicalRevision + 1 &&
++           live_correction_matches(dev, event);
++}
++
++void
++PointerRouteBegin(DeviceIntPtr dev, InternalEvent *event, PointerRouteScope *scope)
++{
++    SpritePtr view = &scope->sprite;
++    ScreenPtr screen;
++    DeviceEvent *ev;
++
++    PointerRouteInvalidateCorrection(dev);
++    memset(scope, 0, sizeof(*scope));
++    scope->previous = dev->pointerRoute;
++    /* Even an untagged nested dispatch installs an explicit legacy sentinel. */
++    dev->pointerRoute = scope;
++    if (!PointerRouteTagged(event))
++        return;
++    ev = &event->device_event;
++    scope->target = ev->pointerTarget;
++    scope->origin = ev->pointerOrigin;
++    screen = PointerRouteScreen(event, dev->spriteInfo->sprite->hot.pScreen);
++    view->hot.pScreen = screen;
++    view->hot.x = ev->root_x;
++    view->hot.y = ev->root_y;
++    view->spriteTrace = XNFalloc(sizeof(WindowPtr));
++    view->spriteTraceSize = view->spriteTraceGood = 1;
++    view->spriteTrace[0] = screen->root;
++    PointerRouteConstrain(dev, view, ev);
++    screen = view->hot.pScreen;
++    view->hotPhys = view->hot;
++#ifdef PANORAMIX
++    view->screen = screen;
++#endif
++    view->win = screen->root;
++    view->spriteTrace[0] = screen->root;
++    scope->missing = scope->target.incarnation == 1 ||
++                     scope->target.screen != screen->myNum ||
++                     !screen->ResolvePointerTarget ||
++                     !screen->ResolvePointerTarget(screen, &scope->target, view);
++    if (scope->missing) {
++        view->win = screen->root;
++        view->spriteTraceGood = 1;
++    }
++    ev->root = screen->root->drawable.id;
++}
++
++void
++PointerRouteBeginLogical(DeviceIntPtr dev, PointerRouteScope *scope)
++{
++    SpritePtr sprite = dev->spriteInfo->sprite;
++    InternalEvent event = { 0 };
++
++    init_device_event(&event.device_event, dev, 0, EVENT_SOURCE_NORMAL);
++    event.device_event.type = ET_Motion;
++    event.device_event.pointerTarget = sprite->logicalTarget;
++    event.device_event.pointerOrigin = POINTER_ROUTE_LOGICAL_CORRECTION;
++    event.device_event.root_x = sprite->hot.x;
++    event.device_event.root_y = sprite->hot.y;
++    PointerRouteBegin(dev, &event, scope);
++}
++
++void
++PointerRouteEnd(DeviceIntPtr dev, PointerRouteScope *scope)
++{
++    dev->pointerRoute = scope->previous;
++    free(scope->sprite.spriteTrace);
++}
++
++uint64_t
++PointerRoutePublish(DeviceIntPtr dev, Bool publishWindow)
++{
++    SpritePtr sprite = dev->spriteInfo->sprite;
++    SpritePtr view = PointerDeliverySprite(dev);
++    size_t size;
++
++    if (!PointerRouteActive(dev))
++        return sprite->routeRevision;
++    size = view->spriteTraceGood * sizeof(WindowPtr);
++    if (sprite->spriteTraceSize < view->spriteTraceGood) {
++        sprite->spriteTrace = XNFrealloc(sprite->spriteTrace, size);
++        sprite->spriteTraceSize = view->spriteTraceGood;
++    }
++    memcpy(sprite->spriteTrace, view->spriteTrace, size);
++    sprite->spriteTraceGood = view->spriteTraceGood;
++    sprite->hot = view->hot;
++    sprite->logicalTarget = dev->pointerRoute->target;
++    if (publishWindow)
++        sprite->win = view->win;
++    /* Never copy hotPhys or ownership-bearing Sprite fields from a view. */
++    return ++sprite->routeRevision;
++}
++
++void
++PointerConfinementBegin(DeviceIntPtr dev, enum PointerRouteOrigin origin,
++                        PointerConfinementScope *scope)
++{
++    SpritePtr sprite = dev->spriteInfo->sprite;
++
++    scope->previous = dev->pointerConfinement;
++    scope->origin = origin;
++    scope->window = NULL;
++    if (origin == POINTER_ROUTE_PHYSICAL_CORRECTION ||
++        origin == POINTER_ROUTE_LIVE_CORRECTION) {
++        scope->target = sprite->physicalTarget;
++        scope->position = sprite->hotPhys;
++    }
++    else if (dev->pointerRoute) {
++        /* A legacy dispatch is a boundary too: do not inherit stale L. */
++        scope->target = dev->pointerRoute->target;
++        scope->position = PointerDeliverySprite(dev)->hot;
++    }
++    else {
++        scope->target = sprite->logicalTarget;
++        scope->position = sprite->hot;
++    }
++    dev->pointerConfinement = scope;
++}
++
++void
++PointerConfinementEnd(DeviceIntPtr dev, PointerConfinementScope *scope)
++{
++    dev->pointerConfinement = scope->previous;
++}
+diff --git a/hw/xwayland/man/Xwayland.man b/hw/xwayland/man/Xwayland.man
+--- a/hw/xwayland/man/Xwayland.man
++++ b/hw/xwayland/man/Xwayland.man
+@@ -146,6 +146,14 @@
+ Wayland clients in a Wayland desktop. That requires the Wayland server
+ to be an X window manager as well.
+ .TP 8
++.B \-surface-input-targets
++Route native Wayland pointer records through the entered surface's X window
++subtree. Requires \-rootless and is disabled by default. Target identity is
++preserved across synchronous grabs and replay, including surface destruction.
++XTEST, client pointer warps, touch, tablet and keyboard input retain their
++ordinary routing semantics.
++
++.TP 8
+ .BI \-shm
+ Force the shared memory backend instead of glamor (if available) for passing
+ buffers to the Wayland server.
+diff --git a/hw/xwayland/meson.build b/hw/xwayland/meson.build
+--- a/hw/xwayland/meson.build
++++ b/hw/xwayland/meson.build
+@@ -1,6 +1,8 @@
+ srcs = [
+     'xwayland.c',
+     'xwayland-input.c',
++    'xwayland-input-target.c',
++    'xwayland-input-target.h',
+     'xwayland-input.h',
+     'xwayland-cursor.c',
+     'xwayland-cursor.h',
+@@ -174,6 +176,7 @@
+     'have_verbose=true',
+     'have_terminate_delay=true',
+     'have_no_touch_pointer_emulation=true',
++    'have_surface_input_targets=true',
+     'have_force_xrandr_emulation=true',
+     'have_geometry=true',
+     'have_fullscreen=true',
+diff --git a/hw/xwayland/xwayland-input-target.c b/hw/xwayland/xwayland-input-target.c
+new file mode 100644
+--- /dev/null
++++ b/hw/xwayland/xwayland-input-target.c
+@@ -0,0 +1,99 @@
++/* SPDX-License-Identifier: MIT */
++#include <xwayland-config.h>
++#include "xwayland-input-target.h"
++#include "xwayland-input.h"
++#include "xwayland-screen.h"
++#include "xwayland-window.h"
++#include "windowstr.h"
++#include "mi.h"
++#include "os.h"
++
++uint64_t
++xwl_input_target_allocate(struct xwl_screen *screen)
++{
++    if (!screen->next_input_target)
++        screen->next_input_target = 2;
++    if (screen->next_input_target == UINT64_MAX)
++        FatalError("Xwayland surface input target namespace exhausted\n");
++    return screen->next_input_target++;
++}
++
++static Bool
++contains_point(WindowPtr win, int x, int y)
++{
++    BoxRec box;
++
++    return win->mapped && win->realized && !win->unhittable &&
++        x >= win->drawable.x - wBorderWidth(win) &&
++        x < win->drawable.x + (int) win->drawable.width + wBorderWidth(win) &&
++        y >= win->drawable.y - wBorderWidth(win) &&
++        y < win->drawable.y + (int) win->drawable.height + wBorderWidth(win) &&
++        (!wBoundingShape(win) || PointInBorderSize(win, x, y)) &&
++        (!wInputShape(win) ||
++         RegionContainsPoint(wInputShape(win), x - win->drawable.x,
++                             y - win->drawable.y, &box));
++}
++
++static Bool
++resolve_target(ScreenPtr screen, const PointerTarget *target, SpritePtr view)
++{
++    struct xwl_screen *xwl_screen = xwl_screen_get(screen);
++    struct xwl_window *window;
++    WindowPtr top = NULL, ancestor;
++    int depth = 0, i;
++
++    xorg_list_for_each_entry(window, &xwl_screen->window_list, link_window) {
++        if (window->input_target == target->incarnation) {
++            top = window->toplevel;
++            break;
++        }
++    }
++    /* A retired surface never rebinds to an XID, another surface, or a parent. */
++    if (!top || top == screen->root)
++        return FALSE;
++    for (ancestor = top; ancestor; ancestor = ancestor->parent) {
++        if (ancestor != screen->root &&
++            !contains_point(ancestor, view->hot.x, view->hot.y))
++            return FALSE;
++        depth++;
++        if (!ancestor->parent && ancestor != screen->root)
++            return FALSE;
++    }
++    if (view->spriteTraceSize < depth) {
++        view->spriteTrace = XNFrealloc(view->spriteTrace,
++                                      depth * sizeof(WindowPtr));
++        view->spriteTraceSize = depth;
++    }
++    /* Retain the entire root/frame/target ancestry for ordinary DIX grabs.
++     * miSpriteTrace then descends only this surface's subtree, using current
++     * child stacking and shapes, without consulting overlapping root peers. */
++    for (ancestor = top, i = depth; ancestor; ancestor = ancestor->parent)
++        view->spriteTrace[--i] = ancestor;
++    view->spriteTraceGood = depth;
++    view->win = miSpriteTrace(view, view->hot.x, view->hot.y);
++    return TRUE;
++}
++
++void
++xwl_input_target_init(struct xwl_screen *screen)
++{
++    if (screen->surface_input_targets)
++        screen->screen->ResolvePointerTarget = resolve_target;
++}
++
++void
++xwl_queue_pointer_events(struct xwl_seat *seat, DeviceIntPtr dev, int type,
++                         int button, int flags, const ValuatorMask *mask)
++{
++    PointerTarget target = { 0 };
++
++    if (seat->xwl_screen->surface_input_targets) {
++        target.screen = seat->xwl_screen->screen->myNum;
++        target.incarnation = seat->focus_window && seat->focus_window->input_target ?
++                             seat->focus_window->input_target : 1;
++    }
++    /* Focus is sampled only at the producer boundary. Queued delivery and
++     * replay resolve the incarnation in the record, never this seat's focus. */
++    QueuePointerEventsWithTarget(dev, type, button, flags, mask, target,
++                                 POINTER_ROUTE_NATIVE);
++}
+diff --git a/hw/xwayland/xwayland-input-target.h b/hw/xwayland/xwayland-input-target.h
+new file mode 100644
+--- /dev/null
++++ b/hw/xwayland/xwayland-input-target.h
+@@ -0,0 +1,15 @@
++/* SPDX-License-Identifier: MIT */
++#ifndef XWAYLAND_INPUT_TARGET_H
++#define XWAYLAND_INPUT_TARGET_H
++
++#include "pointer-route.h"
++#include "xwayland-types.h"
++
++struct xwl_seat;
++
++void xwl_input_target_init(struct xwl_screen *screen);
++uint64_t xwl_input_target_allocate(struct xwl_screen *screen);
++void xwl_queue_pointer_events(struct xwl_seat *seat, DeviceIntPtr dev, int type,
++                              int button, int flags, const ValuatorMask *mask);
++void xwl_seat_flush_pointer_events(struct xwl_seat *seat);
++#endif
+diff --git a/hw/xwayland/xwayland-input.c b/hw/xwayland/xwayland-input.c
+--- a/hw/xwayland/xwayland-input.c
++++ b/hw/xwayland/xwayland-input.c
+@@ -25,6 +25,7 @@
+  */
+ 
+ #include <math.h>
++#include <stdint.h>
+ #include <xwayland-config.h>
+ 
+ #include <linux/input.h>
+@@ -42,6 +43,7 @@
+ 
+ #include "xwayland-cursor.h"
+ #include "xwayland-input.h"
++#include "xwayland-input-target.h"
+ #include "xwayland-window.h"
+ #include "xwayland-screen.h"
+ 
+@@ -72,6 +74,9 @@
+                                         double dy,
+                                         double dx_unaccel,
+                                         double dy_unaccel);
++static void
++xwl_pointer_warp_emulator_set_fake_pos(struct xwl_pointer_warp_emulator *warp_emulator,
++                                       int x, int y);
+ static void
+ xwl_pointer_warp_emulator_maybe_lock(struct xwl_pointer_warp_emulator *warp_emulator,
+                                      struct xwl_window *xwl_window,
+@@ -510,6 +515,24 @@
+ #undef NBUTTONS
+ }
+ 
++static void dispatch_pointer_motion_event(struct xwl_seat *xwl_seat);
++
++void
++xwl_seat_flush_pointer_events(struct xwl_seat *xwl_seat)
++{
++    dispatch_pointer_motion_event(xwl_seat);
++    mieqProcessInputEvents();
++    if (xwl_seat->pointer_warp_emulator) {
++        int x, y;
++
++        /* Live confinement may have corrected MI after relative production.
++         * Keep the eventual Wayland unlock position at that physical point. */
++        miPointerGetPosition(get_pointer_device(xwl_seat), &x, &y);
++        xwl_pointer_warp_emulator_set_fake_pos(xwl_seat->pointer_warp_emulator,
++                                               x, y);
++    }
++}
++
+ static void
+ pointer_handle_enter(void *data, struct wl_pointer *pointer,
+                      uint32_t serial, struct wl_surface *surface,
+@@ -545,6 +568,8 @@
+     xwl_seat->xwl_screen->serial = serial;
+     xwl_seat->pointer_enter_serial = serial;
+ 
++    if (xwl_screen->surface_input_targets)
++        xwl_seat_flush_pointer_events(xwl_seat);
+     xwl_seat->focus_window = wl_surface_get_user_data(surface);
+     dx = xwl_seat->focus_window->toplevel->drawable.x;
+     dy = xwl_seat->focus_window->toplevel->drawable.y;
+@@ -553,13 +578,25 @@
+     xwl_seat->last_focus_window = NULL;
+ 
+     master = GetMaster(dev, POINTER_OR_FLOAT);
+-    (*pScreen->SetCursorPosition) (dev, pScreen, dx + sx, dy + sy, TRUE);
+-
+-    miPointerInvalidateSprite(master);
+-    init_device_event(&enter, dev, currentTime.milliseconds, EVENT_SOURCE_FOCUS);
+-    enter.type = ET_Enter;
+-
+-    CheckMotion(&enter, master);
++    if (xwl_screen->surface_input_targets) {
++        sx *= xwl_seat->focus_window->viewport_scale_x;
++        sy *= xwl_seat->focus_window->viewport_scale_y;
++        (*pScreen->SetCursorPosition)(dev, pScreen, dx + sx, dy + sy, FALSE);
++        valuator_mask_zero(&mask);
++        valuator_mask_set(&mask, 0, dx + sx);
++        valuator_mask_set(&mask, 1, dy + sy);
++        xwl_queue_pointer_events(xwl_seat, dev, MotionNotify, 0,
++                                 POINTER_ABSOLUTE | POINTER_SCREEN |
++                                 POINTER_NORAW, &mask);
++        miPointerInvalidateSprite(master);
++    }
++    else {
++        (*pScreen->SetCursorPosition)(dev, pScreen, dx + sx, dy + sy, TRUE);
++        miPointerInvalidateSprite(master);
++        init_device_event(&enter, dev, currentTime.milliseconds, EVENT_SOURCE_FOCUS);
++        enter.type = ET_Enter;
++        CheckMotion(&enter, master);
++    }
+ 
+     /* Ideally, X clients shouldn't see these button releases.  When
+      * the pointer leaves a window with buttons down, it means that
+@@ -573,8 +610,11 @@
+      * any X window, but for now just send the events. */
+     valuator_mask_zero(&mask);
+     for (i = 0; i < dev->button->numButtons; i++)
+-        if (BitIsOn(dev->button->down, i))
+-            QueuePointerEvents(dev, ButtonRelease, i, 0, &mask);
++        /* down is processed state: a real release may already be frozen.
++         * Only producer postdown can establish that recovery is needed. */
++        if (BitIsOn(xwl_screen->surface_input_targets ?
++                    dev->button->postdown : dev->button->down, i))
++            xwl_queue_pointer_events(xwl_seat, dev, ButtonRelease, i, 0, &mask);
+ 
+     /* The last cursor frame we committed before the pointer left one
+      * of our surfaces might not have been shown. In that case we'll
+@@ -603,7 +643,7 @@
+     if (!dev)
+         return;
+ 
+-    if (focus_lost)
++    if (focus_lost && !xwl_seat->xwl_screen->surface_input_targets)
+         CheckMotion(NULL, GetMaster(dev, POINTER_OR_FLOAT));
+ 
+     maybe_fake_ungrab_devices(xwl_seat);
+@@ -617,6 +657,8 @@
+     struct xwl_screen *xwl_screen = xwl_seat->xwl_screen;
+     Bool focus_lost = FALSE;
+ 
++    if (xwl_screen->surface_input_targets)
++        xwl_seat_flush_pointer_events(xwl_seat);
+     xwl_screen->serial = serial;
+     BUG_WARN(xwl_seat->pointer_enter_count == 0);
+     if (xwl_seat->pointer_enter_count > 0)
+@@ -631,6 +673,20 @@
+         focus_lost = TRUE;
+     }
+ 
++    if (xwl_screen->surface_input_targets) {
++        DeviceIntPtr dev = get_pointer_device(xwl_seat);
++        ValuatorMask mask;
++        int x, y;
++
++        miPointerGetPosition(dev, &x, &y);
++        valuator_mask_zero(&mask);
++        valuator_mask_set(&mask, 0, x);
++        valuator_mask_set(&mask, 1, y);
++        /* This absence boundary crosses only when DIX processes it. */
++        xwl_queue_pointer_events(xwl_seat, dev, MotionNotify, 0,
++                                 POINTER_ABSOLUTE | POINTER_SCREEN |
++                                 POINTER_NORAW, &mask);
++    }
+     if (xwl_screen->rootless)
+         xwl_seat_leave_ptr(xwl_seat, focus_lost);
+ }
+@@ -697,7 +753,7 @@
+          device = xwl_seat->pointer;
+     }
+ 
+-    QueuePointerEvents(device, MotionNotify, 0, flags, &mask);
++    xwl_queue_pointer_events(xwl_seat, device, MotionNotify, 0, flags, &mask);
+ }
+ 
+ static void
+@@ -733,28 +789,42 @@
+ {
+     ValuatorMask mask;
+     const int divisor = 10;
+-    wl_fixed_t dy = xwl_seat->pending_pointer_event.scroll_dy;
+-    wl_fixed_t dx = xwl_seat->pending_pointer_event.scroll_dx;
+-    int32_t dy_v120 = xwl_seat->pending_pointer_event.scroll_dy_v120;
+-    int32_t dx_v120 = xwl_seat->pending_pointer_event.scroll_dx_v120;
++    int64_t dy = xwl_seat->pending_pointer_event.scroll_dy;
++    int64_t dx = xwl_seat->pending_pointer_event.scroll_dx;
++    int64_t dy_v120 = xwl_seat->pending_pointer_event.scroll_dy_v120;
++    int64_t dx_v120 = xwl_seat->pending_pointer_event.scroll_dx_v120;
++    /* wl_fixed_to_double takes int32_t: do not narrow an accumulated sum. */
++    double dy_continuous = xwl_seat->xwl_screen->surface_input_targets ?
++                           dy / 256.0 : wl_fixed_to_double(dy);
++    double dx_continuous = xwl_seat->xwl_screen->surface_input_targets ?
++                           dx / 256.0 : wl_fixed_to_double(dx);
+ 
+     valuator_mask_zero(&mask);
+     if (xwl_seat->pending_pointer_event.has_vertical_scroll_v120)
+         valuator_mask_set_double(&mask, SCROLL_AXIS_VERT, dy_v120 / 120.0);
+-    else if (xwl_seat->pending_pointer_event.has_vertical_scroll)
++    else if (xwl_seat->pending_pointer_event.has_vertical_scroll &&
++             !xwl_seat->pending_pointer_event.vertical_v120_in_frame) {
+         valuator_mask_set_double(&mask,
+                                  SCROLL_AXIS_VERT,
+-                                 wl_fixed_to_double(dy) / divisor);
++                                 dy_continuous / divisor);
++        if (xwl_seat->xwl_screen->surface_input_targets && dy != 0)
++            xwl_seat->pending_pointer_event.vertical_continuous_sent = TRUE;
++    }
+ 
+     if (xwl_seat->pending_pointer_event.has_horizontal_scroll_v120)
+         valuator_mask_set_double(&mask, SCROLL_AXIS_HORIZ, dx_v120 / 120.0);
+-    else if (xwl_seat->pending_pointer_event.has_horizontal_scroll)
++    else if (xwl_seat->pending_pointer_event.has_horizontal_scroll &&
++             !xwl_seat->pending_pointer_event.horizontal_v120_in_frame) {
+         valuator_mask_set_double(&mask,
+                                  SCROLL_AXIS_HORIZ,
+-                                 wl_fixed_to_double(dx) / divisor);
+-
+-    QueuePointerEvents(get_pointer_device(xwl_seat),
+-                       MotionNotify, 0, POINTER_RELATIVE, &mask);
++                                 dx_continuous / divisor);
++        if (xwl_seat->xwl_screen->surface_input_targets && dx != 0)
++            xwl_seat->pending_pointer_event.horizontal_continuous_sent = TRUE;
++    }
++
++    if (valuator_mask_num_valuators(&mask))
++        xwl_queue_pointer_events(xwl_seat, get_pointer_device(xwl_seat),
++                                 MotionNotify, 0, POINTER_RELATIVE, &mask);
+ }
+ 
+ 
+@@ -764,6 +834,8 @@
+     Bool has_relative = xwl_seat->pending_pointer_event.has_relative;
+     Bool has_absolute = xwl_seat->pending_pointer_event.has_absolute;
+ 
++    if (xwl_seat->xwl_screen->surface_input_targets && !xwl_seat->focus_window)
++        goto clear_pending;
+     if (xwl_seat->pointer_warp_emulator && has_relative) {
+         dispatch_relative_motion_with_warp(xwl_seat);
+     } else {
+@@ -780,6 +852,7 @@
+         xwl_seat->pending_pointer_event.has_horizontal_scroll_v120)
+         dispatch_scroll_motion(xwl_seat);
+ 
++ clear_pending:
+     xwl_seat->pending_pointer_event.has_absolute = FALSE;
+     xwl_seat->pending_pointer_event.has_relative = FALSE;
+     xwl_seat->pending_pointer_event.has_vertical_scroll = FALSE;
+@@ -832,9 +905,26 @@
+         break;
+     }
+ 
++    if (xwl_seat->xwl_screen->surface_input_targets)
++        dispatch_pointer_motion_event(xwl_seat);
+     valuator_mask_zero(&mask);
+-    QueuePointerEvents(get_pointer_device(xwl_seat),
+-                       state ? ButtonPress : ButtonRelease, index, 0, &mask);
++    xwl_queue_pointer_events(xwl_seat, get_pointer_device(xwl_seat),
++                             state ? ButtonPress : ButtonRelease, index, 0, &mask);
++}
++
++static int64_t
++accumulate_pending_scroll(Bool accumulate, int64_t previous, int32_t delta)
++{
++    /* Each callback supplies a relative distance. Flushes clear the pending
++     * flag, so the next segment starts fresh without clearing frame pairing.
++     * Bound even an unbounded frame without signed integer overflow. */
++    if (!accumulate)
++        return delta;
++    if (delta > 0 && previous > INT64_MAX - delta)
++        return INT64_MAX;
++    if (delta < 0 && previous < INT64_MIN - delta)
++        return INT64_MIN;
++    return previous + delta;
+ }
+ 
+ static void
+@@ -845,12 +935,26 @@
+ 
+     switch (axis) {
+     case WL_POINTER_AXIS_VERTICAL_SCROLL:
++        if (xwl_seat->pending_pointer_event.vertical_discrete_pending) {
++            xwl_seat->pending_pointer_event.vertical_discrete_pending = FALSE;
++            break; /* already represented by axis_discrete */
++        }
++        xwl_seat->pending_pointer_event.scroll_dy = accumulate_pending_scroll(
++            xwl_seat->xwl_screen->surface_input_targets &&
++            xwl_seat->pending_pointer_event.has_vertical_scroll,
++            xwl_seat->pending_pointer_event.scroll_dy, value);
+         xwl_seat->pending_pointer_event.has_vertical_scroll = TRUE;
+-        xwl_seat->pending_pointer_event.scroll_dy = value;
+         break;
+     case WL_POINTER_AXIS_HORIZONTAL_SCROLL:
++        if (xwl_seat->pending_pointer_event.horizontal_discrete_pending) {
++            xwl_seat->pending_pointer_event.horizontal_discrete_pending = FALSE;
++            break;
++        }
++        xwl_seat->pending_pointer_event.scroll_dx = accumulate_pending_scroll(
++            xwl_seat->xwl_screen->surface_input_targets &&
++            xwl_seat->pending_pointer_event.has_horizontal_scroll,
++            xwl_seat->pending_pointer_event.scroll_dx, value);
+         xwl_seat->pending_pointer_event.has_horizontal_scroll = TRUE;
+-        xwl_seat->pending_pointer_event.scroll_dx = value;
+         break;
+     }
+ }
+@@ -860,10 +964,18 @@
+ {
+     struct xwl_seat *xwl_seat = data;
+ 
+-    if (!xwl_seat->focus_window)
+-        return;
+-
+-    dispatch_pointer_motion_event(xwl_seat);
++    if (xwl_seat->xwl_screen->surface_input_targets)
++        xwl_seat_flush_pointer_events(xwl_seat);
++    else if (xwl_seat->focus_window)
++        dispatch_pointer_motion_event(xwl_seat);
++    /* A producer flush is not a protocol frame boundary. Keep pairing state
++     * until the matching axis arrives or this real frame completes. */
++    xwl_seat->pending_pointer_event.vertical_discrete_pending = FALSE;
++    xwl_seat->pending_pointer_event.horizontal_discrete_pending = FALSE;
++    xwl_seat->pending_pointer_event.vertical_v120_in_frame = FALSE;
++    xwl_seat->pending_pointer_event.horizontal_v120_in_frame = FALSE;
++    xwl_seat->pending_pointer_event.vertical_continuous_sent = FALSE;
++    xwl_seat->pending_pointer_event.horizontal_continuous_sent = FALSE;
+ }
+ 
+ static void
+@@ -877,14 +989,19 @@
+ {
+     struct xwl_seat *xwl_seat = data;
+ 
++    /* A stop adds no distance; it must not erase earlier pending motion. */
+     switch (axis) {
+     case WL_POINTER_AXIS_VERTICAL_SCROLL:
++        if (!xwl_seat->xwl_screen->surface_input_targets ||
++            !xwl_seat->pending_pointer_event.has_vertical_scroll)
++            xwl_seat->pending_pointer_event.scroll_dy = 0;
+         xwl_seat->pending_pointer_event.has_vertical_scroll = TRUE;
+-        xwl_seat->pending_pointer_event.scroll_dy = 0;
+         break;
+     case WL_POINTER_AXIS_HORIZONTAL_SCROLL:
++        if (!xwl_seat->xwl_screen->surface_input_targets ||
++            !xwl_seat->pending_pointer_event.has_horizontal_scroll)
++            xwl_seat->pending_pointer_event.scroll_dx = 0;
+         xwl_seat->pending_pointer_event.has_horizontal_scroll = TRUE;
+-        xwl_seat->pending_pointer_event.scroll_dx = 0;
+         break;
+     }
+ }
+@@ -898,11 +1015,19 @@
+     switch (axis) {
+     case WL_POINTER_AXIS_VERTICAL_SCROLL:
+         xwl_seat->pending_pointer_event.has_vertical_scroll_v120 = TRUE;
+-        xwl_seat->pending_pointer_event.scroll_dy_v120 = 120 * discrete;
++        xwl_seat->pending_pointer_event.scroll_dy_v120 =
++            xwl_seat->xwl_screen->surface_input_targets ?
++            (int64_t) discrete * 120 : 120 * discrete;
++        xwl_seat->pending_pointer_event.vertical_discrete_pending =
++            xwl_seat->xwl_screen->surface_input_targets;
+         break;
+     case WL_POINTER_AXIS_HORIZONTAL_SCROLL:
+         xwl_seat->pending_pointer_event.has_horizontal_scroll_v120 = TRUE;
+-        xwl_seat->pending_pointer_event.scroll_dx_v120 = 120 * discrete;
++        xwl_seat->pending_pointer_event.scroll_dx_v120 =
++            xwl_seat->xwl_screen->surface_input_targets ?
++            (int64_t) discrete * 120 : 120 * discrete;
++        xwl_seat->pending_pointer_event.horizontal_discrete_pending =
++            xwl_seat->xwl_screen->surface_input_targets;
+         break;
+     }
+ }
+@@ -914,13 +1039,33 @@
+     struct xwl_seat *xwl_seat = data;
+ 
+     switch (axis) {
++    /* wayland.xml gives v120 no discrete-style next-axis ordering promise.
++     * Prefer it when available before dispatch; after a continuous flush keep
++     * that representation for the frame rather than deliver a second encoding.
++     * Deferring already ordered input until frame would cross focus boundaries. */
+     case WL_POINTER_AXIS_VERTICAL_SCROLL:
++        if (xwl_seat->xwl_screen->surface_input_targets) {
++            if (xwl_seat->pending_pointer_event.vertical_continuous_sent)
++                break;
++            xwl_seat->pending_pointer_event.vertical_v120_in_frame = TRUE;
++        }
++        xwl_seat->pending_pointer_event.scroll_dy_v120 = accumulate_pending_scroll(
++            xwl_seat->xwl_screen->surface_input_targets &&
++            xwl_seat->pending_pointer_event.has_vertical_scroll_v120,
++            xwl_seat->pending_pointer_event.scroll_dy_v120, v120);
+         xwl_seat->pending_pointer_event.has_vertical_scroll_v120 = TRUE;
+-        xwl_seat->pending_pointer_event.scroll_dy_v120 = v120;
+         break;
+     case WL_POINTER_AXIS_HORIZONTAL_SCROLL:
++        if (xwl_seat->xwl_screen->surface_input_targets) {
++            if (xwl_seat->pending_pointer_event.horizontal_continuous_sent)
++                break;
++            xwl_seat->pending_pointer_event.horizontal_v120_in_frame = TRUE;
++        }
++        xwl_seat->pending_pointer_event.scroll_dx_v120 = accumulate_pending_scroll(
++            xwl_seat->xwl_screen->surface_input_targets &&
++            xwl_seat->pending_pointer_event.has_horizontal_scroll_v120,
++            xwl_seat->pending_pointer_event.scroll_dx_v120, v120);
+         xwl_seat->pending_pointer_event.has_horizontal_scroll_v120 = TRUE;
+-        xwl_seat->pending_pointer_event.scroll_dx_v120 = v120;
+         break;
+     }
+ }
+@@ -3411,8 +3556,8 @@
+     valuator_mask_set_unaccelerated(&mask, 0, dx, dx_unaccel);
+     valuator_mask_set_unaccelerated(&mask, 1, dy, dy_unaccel);
+ 
+-    QueuePointerEvents(xwl_seat->relative_pointer, MotionNotify, 0,
+-                       POINTER_RELATIVE, &mask);
++    xwl_queue_pointer_events(xwl_seat, xwl_seat->relative_pointer,
++                             MotionNotify, 0, POINTER_RELATIVE, &mask);
+ 
+     window = xwl_seat->focus_window->toplevel;
+     miPointerGetPosition(xwl_seat->pointer, &x, &y);
+@@ -3627,6 +3772,7 @@
+     }
+ 
+     mieqInit();
++    xwl_input_target_init(xwl_screen);
+ 
+     xwl_screen->input_registry = wl_display_get_registry(xwl_screen->display);
+     wl_registry_add_listener(xwl_screen->input_registry, &input_listener,
+diff --git a/hw/xwayland/xwayland-input.h b/hw/xwayland/xwayland-input.h
+--- a/hw/xwayland/xwayland-input.h
++++ b/hw/xwayland/xwayland-input.h
+@@ -113,14 +113,24 @@
+         double dx_unaccel;
+         double dy_unaccel;
+ 
+-        wl_fixed_t scroll_dy;
+-        wl_fixed_t scroll_dx;
+-        int32_t scroll_dy_v120;
+-        int32_t scroll_dx_v120;
++        /* Pending relative sums: continuous axes remain in wl_fixed units. */
++        int64_t scroll_dy;
++        int64_t scroll_dx;
++        int64_t scroll_dy_v120;
++        int64_t scroll_dx_v120;
+         Bool has_vertical_scroll;
+         Bool has_horizontal_scroll;
+         Bool has_vertical_scroll_v120;
+         Bool has_horizontal_scroll_v120;
++        /* axis_discrete's next matching axis can follow a button flush. */
++        Bool vertical_discrete_pending;
++        Bool horizontal_discrete_pending;
++        /* Unlike discrete pairs, v120 selects a representation for the frame.
++         * Retain it across flushes, including when continuous was sent first. */
++        Bool vertical_v120_in_frame;
++        Bool horizontal_v120_in_frame;
++        Bool vertical_continuous_sent;
++        Bool horizontal_continuous_sent;
+     } pending_pointer_event;
+ 
+     struct xorg_list tablets;
+diff --git a/hw/xwayland/xwayland-screen.c b/hw/xwayland/xwayland-screen.c
+--- a/hw/xwayland/xwayland-screen.c
++++ b/hw/xwayland/xwayland-screen.c
+@@ -913,6 +913,9 @@
+             defaultScreenSaverTime = 0;
+             defaultScreenSaverInterval = 0;
+         }
++        else if (strcmp(argv[i], "-surface-input-targets") == 0) {
++            xwl_screen->surface_input_targets = TRUE;
++        }
+         else if (strcmp(argv[i], "-shm") == 0) {
+             xwl_screen->glamor = XWL_GLAMOR_NONE;
+         }
+@@ -982,6 +985,11 @@
+         return FALSE;
+     }
+ 
++    if (xwl_screen->surface_input_targets && !xwl_screen->rootless) {
++        ErrorF("error, -surface-input-targets requires -rootless\n");
++        return FALSE;
++    }
++
+     xwl_screen->display = wl_display_connect(NULL);
+     if (xwl_screen->display == NULL) {
+         ErrorF("could not connect to wayland server\n");
+diff --git a/hw/xwayland/xwayland-screen.h b/hw/xwayland/xwayland-screen.h
+--- a/hw/xwayland/xwayland-screen.h
++++ b/hw/xwayland/xwayland-screen.h
+@@ -57,6 +57,8 @@
+ 
+     Bool active;
+     int rootless;
++    Bool surface_input_targets;
++    uint64_t next_input_target;
+     xwl_glamor_mode_flags glamor;
+     int present;
+     int force_xrandr_emulation;
+diff --git a/hw/xwayland/xwayland-window.c b/hw/xwayland/xwayland-window.c
+--- a/hw/xwayland/xwayland-window.c
++++ b/hw/xwayland/xwayland-window.c
+@@ -41,6 +41,7 @@
+ 
+ #include "xwayland-types.h"
+ #include "xwayland-input.h"
++#include "xwayland-input-target.h"
+ #include "xwayland-pixmap.h"
+ #include "xwayland-present.h"
+ #include "xwayland-screen.h"
+@@ -1482,6 +1483,8 @@
+         return NULL;
+ 
+     xwl_window->xwl_screen = xwl_screen;
++    if (xwl_screen->surface_input_targets)
++        xwl_window->input_target = xwl_input_target_allocate(xwl_screen);
+     xwl_window->toplevel = window;
+     xwl_window->surface_window = window;
+     xwl_window->fractional_scale_numerator = FRACTIONAL_SCALE_DENOMINATOR;
+@@ -1689,11 +1692,16 @@
+     WindowPtr window = xwl_window->toplevel;
+     ScreenPtr screen = xwl_screen->screen;
+ 
++    /* Invalidate before teardown can reenter dispatch or thaw a grab. */
++    xwl_window->input_target = 0;
+     compUnredirectWindow(serverClient, window, CompositeRedirectManual);
+ 
+     xorg_list_for_each_entry(xwl_seat, &xwl_screen->seat_list, link) {
+-        if (xwl_seat->focus_window == xwl_window)
++        if (xwl_seat->focus_window == xwl_window) {
++            if (xwl_screen->surface_input_targets)
++                xwl_seat_flush_pointer_events(xwl_seat);
+             xwl_seat->focus_window = NULL;
++        }
+         if (xwl_seat->tablet_focus_window == xwl_window)
+             xwl_seat->tablet_focus_window = NULL;
+         if (xwl_seat->last_focus_window == xwl_window)
+diff --git a/hw/xwayland/xwayland-window.h b/hw/xwayland/xwayland-window.h
+--- a/hw/xwayland/xwayland-window.h
++++ b/hw/xwayland/xwayland-window.h
+@@ -57,6 +57,7 @@
+ struct xwl_window {
+     struct xwl_screen *xwl_screen;
+     struct wl_surface *surface;
++    uint64_t input_target; /* retired before any surface teardown callbacks */
+     struct wp_viewport *viewport;
+     float viewport_scale_x, viewport_scale_y;
+     int surface_scale;
+diff --git a/hw/xwayland/xwayland.c b/hw/xwayland/xwayland.c
+--- a/hw/xwayland/xwayland.c
++++ b/hw/xwayland/xwayland.c
+@@ -95,6 +95,7 @@
+ ddxUseMsg(void)
+ {
+     ErrorF("-rootless              run rootless, requires wm support\n");
++    ErrorF("-surface-input-targets route native pointer input by surface (rootless only)\n");
+     ErrorF("-fullscreen            run fullscreen when rootful\n");
+     ErrorF("-geometry WxH          set Xwayland window size when rootful\n");
+     ErrorF("-hidpi                 adjust to output scale when rootful\n");
+@@ -179,7 +180,8 @@
+ int
+ ddxProcessArgument(int argc, char *argv[], int i)
+ {
+-    if (strcmp(argv[i], "-rootless") == 0) {
++    if (strcmp(argv[i], "-rootless") == 0 ||
++        strcmp(argv[i], "-surface-input-targets") == 0) {
+         return 1;
+     }
+     else if (strcmp(argv[i], "-listen") == 0) {
+diff --git a/include/eventstr.h b/include/eventstr.h
+--- a/include/eventstr.h
++++ b/include/eventstr.h
+@@ -140,6 +140,8 @@
+     uint32_t flags;   /**< Flags to be copied into the generated event */
+     uint32_t resource; /**< Touch event resource, only for TOUCH_REPLAYING */
+     enum DeviceEventSource source_type; /**< How this event was provoked */
++    PointerTarget pointerTarget;
++    enum PointerRouteOrigin pointerOrigin;
+ };
+ 
+ /**
+diff --git a/include/inputstr.h b/include/inputstr.h
+--- a/include/inputstr.h
++++ b/include/inputstr.h
+@@ -56,6 +56,7 @@
+ #include "cursorstr.h"
+ #include "geext.h"
+ #include "privates.h"
++#include "pointer-route-types.h"
+ 
+ extern _X_EXPORT void AssignTypeAndName(DeviceIntPtr dev,
+                                         Atom type,
+@@ -223,6 +224,8 @@
+     WindowPtr win;              /* window of logical position */
+     HotSpot hot;                /* logical pointer position */
+     HotSpot hotPhys;            /* physical pointer position */
++    PointerTarget logicalTarget, physicalTarget;
++    uint64_t routeRevision;     /* nested logical publication ordering */
+ #ifdef PANORAMIX
+     ScreenPtr screen;           /* all others are in Screen 0 coordinates */
+     RegionRec Reg1;             /* Region 1 for confining motion */
+@@ -594,6 +597,9 @@
+     PrivateRec *devPrivates;
+     DeviceUnwrapProc unwrapProc;
+     SpriteInfoPtr spriteInfo;
++    struct _PointerRouteScope *pointerRoute;
++    struct _PointerConfinementScope *pointerConfinement;
++    Bool pointerGeneratingNative; /* scoped to targeted producer generation */
+     DeviceIntPtr master;        /* master device */
+     DeviceIntPtr lastSlave;     /* last slave device used */
+ 
+diff --git a/include/pointer-route-types.h b/include/pointer-route-types.h
+new file mode 100644
+--- /dev/null
++++ b/include/pointer-route-types.h
+@@ -0,0 +1,22 @@
++/* SPDX-License-Identifier: MIT */
++#ifndef POINTER_ROUTE_TYPES_H
++#define POINTER_ROUTE_TYPES_H
++
++#include <stdint.h>
++
++/* Serialized in DeviceEvent: never retain an object or an XID here. */
++typedef struct _PointerTarget {
++    uint64_t incarnation; /* 0: legacy, 1: absent, >= 2: surface incarnation */
++    uint32_t screen;
++} PointerTarget;
++
++enum PointerRouteOrigin {
++    POINTER_ROUTE_NATIVE,
++    POINTER_ROUTE_LOGICAL_CORRECTION,
++    POINTER_ROUTE_PHYSICAL_CORRECTION,
++    POINTER_ROUTE_LIVE_CORRECTION, /* MI drain reconciliation only */
++};
++
++struct _PointerRouteScope;
++struct _PointerConfinementScope;
++#endif
+diff --git a/include/pointer-route.h b/include/pointer-route.h
+new file mode 100644
+--- /dev/null
++++ b/include/pointer-route.h
+@@ -0,0 +1,55 @@
++/* SPDX-License-Identifier: MIT */
++#ifndef POINTER_ROUTE_H
++#define POINTER_ROUTE_H
++
++#include "eventstr.h"
++
++typedef struct _PointerRouteScope {
++    struct _PointerRouteScope *previous;
++    PointerTarget target;
++    enum PointerRouteOrigin origin;
++    Bool missing;
++    Bool repeatCorrection;
++    SpritePtr logicalSprite;
++    uint64_t logicalRevision;
++    SpriteRec sprite; /* only hot, hotPhys, win, screen and owned trace */
++} PointerRouteScope;
++
++typedef struct _PointerConfinementScope {
++    struct _PointerConfinementScope *previous;
++    PointerTarget target;
++    enum PointerRouteOrigin origin;
++    HotSpot position;
++    WindowPtr window; /* scoped confinement, never serialized in input */
++} PointerConfinementScope;
++
++Bool PointerRouteTagged(const InternalEvent *event);
++void PointerRouteStamp(InternalEvent *events, int count, PointerTarget target,
++                       enum PointerRouteOrigin origin);
++Bool PointerRouteCanCoalesce(const DeviceEvent *a, const DeviceEvent *b);
++ScreenPtr PointerRouteScreen(const InternalEvent *event, ScreenPtr fallback);
++void PointerRouteIngress(DeviceIntPtr dev, InternalEvent *event);
++void PointerRouteReconcileInput(void);
++void PointerRoutePrepareLiveCorrection(DeviceIntPtr dev, DeviceEvent *event);
++Bool PointerRouteSuppressLiveCorrection(DeviceIntPtr dev, DeviceEvent *event);
++void PointerRouteInvalidateCorrection(DeviceIntPtr dev);
++void PointerRouteBegin(DeviceIntPtr dev, InternalEvent *event,
++                       PointerRouteScope *scope);
++void PointerRouteBeginLogical(DeviceIntPtr dev, PointerRouteScope *scope);
++void PointerRouteEnd(DeviceIntPtr dev, PointerRouteScope *scope);
++SpritePtr PointerDeliverySprite(DeviceIntPtr dev);
++Bool PointerRouteActive(DeviceIntPtr dev);
++Bool PointerRouteMissing(DeviceIntPtr dev);
++uint64_t PointerRoutePublish(DeviceIntPtr dev, Bool publishWindow);
++void PointerConfinementBegin(DeviceIntPtr dev, enum PointerRouteOrigin origin,
++                             PointerConfinementScope *scope);
++void PointerConfinementEnd(DeviceIntPtr dev, PointerConfinementScope *scope);
++void PointerRouteConstrain(DeviceIntPtr dev, SpritePtr view, DeviceEvent *event);
++void QueuePointerEventsWithTarget(DeviceIntPtr dev, int type, int buttons,
++                                  int flags, const ValuatorMask *mask,
++                                  PointerTarget target,
++                                  enum PointerRouteOrigin origin);
++void PostSyntheticMotionWithTarget(DeviceIntPtr dev, int x, int y, int screen,
++                                   unsigned long time, PointerTarget target,
++                                   enum PointerRouteOrigin origin);
++#endif
+diff --git a/include/scrnintstr.h b/include/scrnintstr.h
+--- a/include/scrnintstr.h
++++ b/include/scrnintstr.h
+@@ -48,6 +48,7 @@
+ #define SCREENINTSTRUCT_H
+ 
+ #include "screenint.h"
++#include "pointer-route-types.h"
+ #include "regionstr.h"
+ #include "colormap.h"
+ #include "cursor.h"
+@@ -657,6 +658,8 @@
+ 
+     ReplaceScanoutPixmapProcPtr ReplaceScanoutPixmap;
+     XYToWindowProcPtr XYToWindow;
++    /* Optional DDX resolver. The view owns its trace; FALSE means missing. */
++    Bool (*ResolvePointerTarget)(ScreenPtr, const PointerTarget *, SpritePtr);
+     DPMSProcPtr DPMS;
+ } ScreenRec;
+ 
+diff --git a/mi/mieq.c b/mi/mieq.c
+--- a/mi/mieq.c
++++ b/mi/mieq.c
+@@ -53,6 +53,7 @@
+ #include   "extinit.h"
+ #include   "exglobals.h"
+ #include   "eventstr.h"
++#include "pointer-route.h"
+ 
+ #ifdef DPMSExtension
+ #include "dpmsproc.h"
+@@ -214,7 +215,10 @@
+         isMotion = pDev->id;
+ 
+     if (isMotion && isMotion == miEventQueue.lastMotion &&
+-        oldtail != miEventQueue.head) {
++        oldtail != miEventQueue.head &&
++        PointerRouteCanCoalesce(
++            &miEventQueue.events[(oldtail - 1) % miEventQueue.nevents].events->device_event,
++            &e->device_event)) {
+         oldtail = (oldtail - 1) % miEventQueue.nevents;
+     }
+     else if (n_enqueued + 1 == miEventQueue.nevents) {
+@@ -260,7 +264,8 @@
+         e->any.time = miEventQueue.lastEventTime;
+ 
+     miEventQueue.lastEventTime = evt->any.time;
+-    miEventQueue.events[oldtail].pScreen = pDev ? EnqueueScreen(pDev) : NULL;
++    miEventQueue.events[oldtail].pScreen =
++        PointerRouteScreen(e, pDev ? EnqueueScreen(pDev) : NULL);
+     miEventQueue.events[oldtail].pDev = pDev;
+ 
+     miEventQueue.lastMotion = isMotion;
+@@ -469,7 +474,9 @@
+     case ET_KeyRelease:
+     case ET_ButtonPress:
+     case ET_ButtonRelease:
+-        if (!handler)
++        if (!handler &&
++            !(PointerRouteTagged(event) && event->device_event.pointerOrigin ==
++              POINTER_ROUTE_LOGICAL_CORRECTION))
+             mieqMoveToNewScreen(dev, screen, &event->device_event);
+         break;
+     case ET_TouchBegin:
+@@ -481,6 +488,7 @@
+     default:
+         break;
+     }
++    PointerRouteIngress(dev, event);
+     master = CopyGetMasterEvent(dev, event, &mevent);
+ 
+     if (master)
+@@ -517,6 +525,7 @@
+     ScreenPtr screen;
+     InternalEvent event;
+     DeviceIntPtr dev = NULL, master = NULL;
++    Bool reconcile_native = FALSE;
+     static Bool inProcessInputEvents = FALSE;
+ 
+     input_lock();
+@@ -560,6 +569,9 @@
+             DPMSSet(serverClient, DPMSModeOn);
+ #endif
+ 
++        if (PointerRouteTagged(&event) &&
++            event.device_event.pointerOrigin == POINTER_ROUTE_NATIVE)
++            reconcile_native = TRUE;
+         mieqProcessDeviceEvent(dev, &event, screen);
+ 
+         /* Update the sprite now. Next event may be from different device. */
+@@ -571,6 +583,15 @@
+             miPointerUpdateSprite(dev);
+ 
+         input_lock();
++        if (reconcile_native && miEventQueue.head == miEventQueue.tail) {
++            /* Production bypasses logical grab bounds so frozen input keeps
++             * its original position. Once live input is drained, constrain
++             * latest P and its producer valuators before the next relative
++             * delta. Drain any generated physical correction normally too. */
++            reconcile_native = FALSE;
++            /* Keep the recursive input lock across producer reconciliation. */
++            PointerRouteReconcileInput();
++        }
+     }
+ 
+     inProcessInputEvents = FALSE;
+diff --git a/mi/mipointer.c b/mi/mipointer.c
+--- a/mi/mipointer.c
++++ b/mi/mipointer.c
+@@ -64,6 +64,7 @@
+ #include   "inputstr.h"
+ #include   "inpututils.h"
+ #include   "eventstr.h"
++#include "pointer-route.h"
+ 
+ typedef struct {
+     ScreenPtr pScreen;          /* current screen */
+@@ -631,6 +632,8 @@
+     int x, y;
+     Bool switch_screen = FALSE;
+     Bool should_constrain_barriers = FALSE;
++    Bool native = pDev->pointerGeneratingNative;
++    BoxRec limits;
+     int i;
+ 
+     miPointerPtr pPointer;
+@@ -669,27 +672,33 @@
+ 
+     if (switch_screen) {
+         pScreenPriv = GetScreenPrivate(pScreen);
+-        if (!pPointer->confined) {
++        if (native || !pPointer->confined) {
+             newScreen = pScreen;
+             (*pScreenPriv->screenFuncs->CursorOffScreen) (&newScreen, &x, &y);
+             if (newScreen != pScreen) {
+                 pScreen = newScreen;
+                 mieqSwitchScreen(pDev, pScreen, FALSE);
+-                /* Smash the confine to the new screen */
+-                pPointer->limits.x2 = pScreen->width;
+-                pPointer->limits.y2 = pScreen->height;
++                /* Native production must not alter logical grab limits. */
++                if (!native) {
++                    pPointer->limits.x2 = pScreen->width;
++                    pPointer->limits.y2 = pScreen->height;
++                }
+             }
+         }
+     }
+-    /* Constrain the sprite to the current limits. */
+-    if (x < pPointer->limits.x1)
+-        x = pPointer->limits.x1;
+-    if (x >= pPointer->limits.x2)
+-        x = pPointer->limits.x2 - 1;
+-    if (y < pPointer->limits.y1)
+-        y = pPointer->limits.y1;
+-    if (y >= pPointer->limits.y2)
+-        y = pPointer->limits.y2 - 1;
++    /* Preserve native producer coordinates through an active/frozen grab.
++     * Keep screen bounds and barriers here; PointerRouteConstrain applies
++     * grab bounds independently when each event is processed or replayed. */
++    limits = native ? (BoxRec) { 0, 0, pScreen->width, pScreen->height } :
++                      pPointer->limits;
++    if (x < limits.x1)
++        x = limits.x1;
++    if (x >= limits.x2)
++        x = limits.x2 - 1;
++    if (y < limits.y1)
++        y = limits.y1;
++    if (y >= limits.y2)
++        y = limits.y2 - 1;
+ 
+     if (pScreen->ConstrainCursorHarder)
+         pScreen->ConstrainCursorHarder(pDev, pScreen, mode, &x, &y);
+@@ -781,6 +790,15 @@
+                                POINTER_SCREEN | POINTER_ABSOLUTE |
+                                POINTER_NORAW, &mask);
+ 
++    /* Only explicit DIX confinement propagates provenance. Client warps and
++     * XTEST continue to produce zero-context motion. */
++    if (pDev->pointerConfinement &&
++        (pDev->pointerConfinement->origin == POINTER_ROUTE_PHYSICAL_CORRECTION ||
++         pDev->pointerConfinement->origin == POINTER_ROUTE_LIVE_CORRECTION ||
++         !pDev->pointerRoute || PointerRouteActive(pDev)))
++        PointerRouteStamp(mipointermove_events, nevents,
++                          pDev->pointerConfinement->target,
++                          pDev->pointerConfinement->origin);
+     input_lock();
+     for (i = 0; i < nevents; i++)
+         mieqEnqueue(pDev, &mipointermove_events[i]);

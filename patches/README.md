@@ -1,5 +1,13 @@
 # Dependency patches
 
+## Xwayland surface input targets
+
+The external Xwayland 24.1.10 candidate preserves native pointer target identity
+through input queues and grab replay, independently of overlapping X backing
+windows. Its option is default-off and requires rootless operation. See the
+[patch record](xwayland-surface-input-targets.md) for the source pin, notices,
+regressions, compatibility boundaries, integration status and removal condition.
+
 ## Portal-wlr session policy and capture lifecycle
 
 The pinned external ScreenCast backend has an opt-in patch for a dedicated

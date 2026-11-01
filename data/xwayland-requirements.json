@@ -1,0 +1,7 @@
+{
+  "format_version": 1,
+  "version": "24.1.10",
+  "source_archive_url": "https://xorg.freedesktop.org/archive/individual/xserver/xwayland-24.1.10.tar.xz",
+  "source_archive_sha256": "459762be8ea046c94386687d77a87add6073868bee14f02913eafebb945b7aa0",
+  "surface_input_targets_sha256": "0554b2b1cf38507a8818df53d5b95b569dae313588ca51182debc5c005261641"
+}

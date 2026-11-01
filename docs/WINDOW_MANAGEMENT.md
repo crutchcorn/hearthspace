@@ -389,20 +389,11 @@ its artifact directory so tests do not alter the user's normal layout.
 
 ## XWayland coordinate boundary (experimental)
 
-**Development checkpoint: this repair is not release-ready.** The strict
-`x11_batched_clicks_route_to_each_visible_window_despite_overlapping_roots`
-regression currently delivers both rapid clicks to the second window. Raising
-an X window and delivering Wayland input use separate connections, so the later
-raise can overtake earlier input. The candidate below has not been installed.
-The recovered live window instead uses valid X-root coordinates.
-
-Negative/far-positive canvas move and close cases have passed, but the latest
-stationary-axis fixtures fail their stacking preconditions before input delivery.
-The four synchronous-grab/replay and popup-lifetime regressions compile and fail
-against this candidate with system Xwayland 24.1.10. They cover ordered replay,
-explicit-grab ownership, a surviving frozen popup, and destruction followed by
-reuse of the same XID. These are failure reproductions, not acceptance of the
-proposed repair. Full validation and native acceptance remain pending.
+**Development checkpoint: this repair is not release-ready.** The private
+patched Xwayland candidate passes the batched-input, grab/replay, popup-lifetime,
+confinement and wheel regressions. Supported dependency packaging and launch
+verification are being integrated. Full validation and native acceptance remain
+pending; the candidate has not been installed.
 
 X11 applications have a finite root desktop even though Hearthspace's canvas
 extends beyond it. This candidate keeps managed X11 backings at root `(0,0)`;
@@ -411,13 +402,13 @@ keeps moving an application to negative or distant canvas coordinates from
 clipping its titlebar input at the X root boundary. Client menus retain their
 own root positions relative to that stable parent origin.
 
-Before pointer input enters an X11 surface, the candidate raises that surface in
-the X server's stacking order. It attempts to align X input with canvas hit
-testing when several backings overlap, but the rapid-click failure above shows
-that this does not establish correct event ordering. Hover does not
-raise the visible canvas window or change keyboard focus, and an existing
-pointer grab keeps its original owner through release. X11 touchscreen input
-uses the same pointer route.
+The [Xwayland patch](../patches/xwayland-surface-input-targets.md) retains the
+Wayland-selected surface identity with each native pointer event, including
+deferred delivery and synchronous-grab replay. Input correctness does not depend
+on raising X windows before delivery. Existing grabs retain their normal X11
+arbitration, and X11 touchscreen input uses the same pointer route. Ordinary
+client warps and XTEST keep global X semantics rather than inheriting a native
+surface target.
 
 This mapping preserves the requested backing size. It does not enlarge X11's
 root desktop: content or menus extending beyond that root can still have
