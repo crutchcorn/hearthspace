@@ -161,10 +161,12 @@ def monitor(state, log):
                 raise
             sample["cgroup_unavailable_after_exit"] = True
         evidence.append_sample(directory / "telemetry.jsonl", sample, log)
-        evidence.check_temperature(sample)
+        if not state.get("temperature_observation_only", False):
+            evidence.check_temperature(sample)
         if done:
             return properties
-        # Only a complete, flushed, cool sample renews monitor liveness.
+        # Only a complete, flushed sample satisfying the selected policy renews
+        # monitor liveness. Observation mode still requires working telemetry.
         evidence.save(
             directory / "monitor-heartbeat.json",
             {
@@ -193,7 +195,7 @@ def interrupted(signum, _frame):
     raise RuntimeError(f"supervisor interrupted by signal {signum}")
 
 
-def supervise(arguments, evidence_path):
+def supervise(arguments, evidence_path, *, temperature_observation_only=False):
     policy.normal_user()
     for path in (
         str(Path.cwd()),
@@ -222,7 +224,8 @@ def supervise(arguments, evidence_path):
             sample = evidence.host_sample()
             evidence.append_sample(directory / "telemetry.jsonl", sample, log)
             evidence.sync_directory(directory)
-            evidence.check_temperature(sample)
+            if not temperature_observation_only:
+                evidence.check_temperature(sample)
             systemctl, systemd_run, git = (
                 executable(name) for name in ("systemctl", "systemd-run", "git")
             )
@@ -256,7 +259,12 @@ def supervise(arguments, evidence_path):
                 "cpu_affinity": allowed_cpus[0],
                 "compiler_wrapper_policy": "configured wrappers disabled; Clippy's local driver retained",
                 "source_sha256": evidence.file_hash(directory / "source.json"),
-                "temperature_policy": "k10temp Tctl >= 85 C: operational cutoff, not a hardware limit",
+                "temperature_observation_only": temperature_observation_only,
+                "temperature_policy": (
+                    "k10temp Tctl observation only; temperature cutoff disabled by explicit option"
+                    if temperature_observation_only
+                    else "k10temp Tctl >= 85 C: operational cutoff, not a hardware limit"
+                ),
                 "started_ns": time.time_ns(),
                 "boot_id": (policy.PROC / "sys/kernel/random/boot_id")
                 .read_text()
@@ -275,6 +283,11 @@ def supervise(arguments, evidence_path):
                 f"logical CPU {allowed_cpus[0]}, CPU quota 50%",
                 flush=True,
             )
+            if temperature_observation_only:
+                print(
+                    "guarded-cargo: temperature logging only; cutoff disabled",
+                    flush=True,
+                )
             attempted = True  # A lost launch reply can still mean the unit exists.
             policy.command(service_command(state, environment))
             properties = monitor(state, log)
@@ -317,6 +330,7 @@ def supervise(arguments, evidence_path):
             if (directory / "build.log").exists():
                 with (directory / "build.log").open("ab") as log:
                     os.fsync(log.fileno())
+            result["temperature_observation_only"] = temperature_observation_only
             evidence.finish(directory, result)
         finally:
             for sig, handler in previous_handlers.items():
@@ -339,12 +353,21 @@ def main(argv=None):
             help="fresh directory on persistent local storage, outside the checkout",
         )
         parser.add_argument(
+            "--temperature-observation-only",
+            action="store_true",
+            help="record temperatures without enforcing the 85 C cutoff; other guards remain enabled",
+        )
+        parser.add_argument(
             "cargo",
             nargs=argparse.REMAINDER,
             help="build/check/clippy; fixed -j1, one logical CPU, configured compiler wrappers disabled",
         )
         options = parser.parse_args(arguments)
-        return supervise(options.cargo, options.evidence)
+        return supervise(
+            options.cargo,
+            options.evidence,
+            temperature_observation_only=options.temperature_observation_only,
+        )
     except (OSError, ValueError, RuntimeError, KeyError, KeyboardInterrupt) as error:
         print(f"guarded-cargo: {error}", file=sys.stderr)
         return 1
