@@ -163,14 +163,18 @@ cursor policy, and presentation type. Images are upright; convert pixels with
 bounds do not change that scale. Frame IDs are per output and per compositor
 process; never compare IDs across sessions.
 
-Native captures include the software/client cursor or overlay the hardware cursor
-once. `cursor_source` identifies the path and `cursor_sample: render` identifies
-the hardware cursor sampling boundary, which is independent of KMS page flips.
+Native output captures reconstruct the exact submitted plane composition,
+including its cursor image and location, once. `cursor_source: submitted-planes`
+identifies this path; `cursor_sample: render` identifies the prepared frame's
+snapshot, not pointer position at the later page flip.
 Captures allow at most 16,777,216 pixels and four pending requests, with a
-five-second deadline. GPU readback stays on the compositor thread; PNG encoding
-uses one worker with two bounded jobs. Replies require both encoding and the
-captured frame's page flip. Locking, output loss, inactivity or failed presentation
-invalidates pending captures. See the [capture contract](E2E_TESTING.md#control-socket).
+five-second deadline. Output readback runs on the owning device's presenter;
+window capture remains on the scene-rendering thread. PNG encoding uses one
+worker with two bounded jobs. Replies require both encoding and the captured
+submission's verified page flip. A cursor-only completion cannot acknowledge a
+newer scene or a request accepted after that scene began rendering. Locking,
+output loss, inactivity or failed presentation invalidates pending captures.
+See the [capture contract](E2E_TESTING.md#control-socket).
 
 ## Stop and Recover
 
@@ -222,9 +226,10 @@ scripts/native-smoke --session "$smoke_runs/interrupted" --case agent-interrupti
 
 The success case launches `foot`, types a visible marker, tracks its pixel
 position after moving the window, and verifies that resizing reveals the
-previously captured background. It checks movement of the terminal's software
-cursor and the desktop cursor in targeted image regions, and captures available
-outputs. Recovery cases inject failed startup,
+previously captured background. It checks cursor inclusion and pixel motion over
+the terminal and desktop in targeted image regions, and captures available
+outputs. Client-surface identity and hardware-plane assignment require separate
+protocol and submission-trace association. Recovery cases inject failed startup,
 compositor death, a frozen compositor (`SIGSTOP`) recovered by the watchdog, and
 an owning agent killed with `SIGKILL` after readiness. Each run preserves commands, results,
 screenshots, and metadata under its artifact directory and checks VT/runtime

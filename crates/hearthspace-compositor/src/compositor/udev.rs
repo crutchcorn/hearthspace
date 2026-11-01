@@ -1,6 +1,8 @@
 use std::collections::BTreeMap;
 
 mod connector_policy;
+mod cursor_publication;
+mod cursor_snapshot;
 mod device;
 mod event_cutoff;
 mod gpu;
@@ -10,9 +12,12 @@ mod input;
 mod native_shortcuts;
 mod output_sync;
 mod presentation;
+mod presenter;
+mod presenter_events;
 mod recovery;
 mod renderer_preference;
 mod rendering;
+mod retirement;
 mod startup;
 mod transfer;
 
@@ -28,7 +33,7 @@ use smithay::{
         session::{Session, libseat::LibSeatSession},
     },
     reexports::calloop::{LoopHandle, RegistrationToken},
-    utils::{Rectangle, Transform},
+    utils::Transform,
 };
 use tracing::{info, warn};
 
@@ -39,10 +44,15 @@ pub(super) struct UdevBackendState {
     loop_handle: LoopHandle<'static, super::CalloopData>,
     input_source: Option<RegistrationToken>,
     recovery_source: Option<RegistrationToken>,
-    recovery_progress_at: Option<std::time::Instant>,
     recovery_needed: bool,
     recovery_exhausted: bool,
     opened_devices: BTreeMap<u64, UdevDevice>,
+    retired_devices: Vec<UdevDevice>,
+    retirement_source: Option<RegistrationToken>,
+    cursor_publication: cursor_publication::CursorPublication,
+    security_epoch: u64,
+    lock_generation: Option<u64>,
+    next_scene_sequence: u64,
     devices: Vec<UdevDeviceInfo>,
     renderer_preference: renderer_preference::StartupRendererPreference,
     gpus: gpu::GpuState,
@@ -109,41 +119,6 @@ impl UdevBackendState {
             })
     }
 
-    pub(in crate::compositor) fn update_hardware_cursor(&mut self, state: &mut super::App) {
-        if self.drm_commits_paused {
-            return;
-        }
-        let owner = self.opened_devices.iter().find_map(|(id, device)| {
-            device
-                .active
-                .then(|| {
-                    device.output_surfaces.iter().any(|output| {
-                        state
-                            .output_render_view(output.target.connector_name())
-                            .is_some_and(|view| {
-                                Rectangle::new(view.location, view.size)
-                                    .contains(state.pointer_location.to_i32_floor())
-                            })
-                    })
-                })
-                .filter(|owns| *owns)
-                .map(|_| *id)
-        });
-        // Only the pointer's device may decide software fallback. Clearing a
-        // non-owner must never overwrite the owner's decision.
-        state.software_cursor_visible = state.cursor_visible;
-        for (id, device) in &mut self.opened_devices {
-            if !device.active {
-                continue;
-            }
-            if Some(*id) == owner {
-                device.update_hardware_cursor(state);
-            } else {
-                device.clear_hardware_cursor();
-            }
-        }
-    }
-
     /// Acquire once before consuming any client import requests. A recovered
     /// seat may still have no usable canonical renderer; secondary readiness
     /// does not prevent imports once this renderer is available.
@@ -183,6 +158,11 @@ impl Drop for UdevBackendState {
         for id in ids {
             self.close_device(id);
         }
+        if let Some(token) = self.retirement_source.take() {
+            self.loop_handle.remove(token);
+        }
+        // Only final session teardown joins; event-loop removal is asynchronous.
+        self.retired_devices.clear();
         if let Err(error) = self.gpus.manager.invalidate_caches() {
             warn!(%error, "native renderer cleanup failed");
         }

@@ -1,0 +1,465 @@
+--- a/src/backend/renderer/utils/wayland.rs
++++ b/src/backend/renderer/utils/wayland.rs
+@@ -155,15 +155,7 @@
+         match attrs.buffer.take() {
+             Some(BufferAssignment::NewBuffer(buffer)) => {
+                 self.buffer_dimensions = buffer_dimensions(&buffer);
+-                if self.buffer_dimensions.is_none() {
+-                    // This results in us rendering nothing (can happen e.g. for failed egl-buffer-calls),
+-                    // but it is better than crashing the compositor for a bad buffer
+-                    self.reset();
+-                    return;
+-                }
+                 self.buffer_has_alpha = buffer_has_alpha(&buffer);
+-                self.buffer_scale = attrs.buffer_scale;
+-                self.buffer_transform = attrs.buffer_transform.into();
+ 
+                 if !self.buffer.as_ref().is_some_and(|b| b == buffer) {
+                     self.buffer = Some(Buffer {
+@@ -186,8 +178,22 @@
+             None => {}
+         };
+ 
++        // Scale and transform are surface state, not attachment state. A client
++        // can change either while retaining its current buffer.
++        let mapping_changed =
++            self.buffer_scale != attrs.buffer_scale || self.buffer_transform != attrs.buffer_transform.into();
++        self.buffer_scale = attrs.buffer_scale;
++        self.buffer_transform = attrs.buffer_transform.into();
++
+         let Some(buffer_dimensions) = self.buffer_dimensions else {
+-            // nothing to be done without a buffer
++            // Keep a non-null attachment even if its storage is unrecognized.
++            // Callers can distinguish this failure (buffer Some, view None)
++            // from a deliberately unmapped surface. A later attachment or null
++            // commit replaces/releases it through the usual Buffer lifetime.
++            self.surface_view = None;
++            self.opaque_regions.clear();
++            self.damage.reset();
++            attrs.damage.clear();
+             return;
+         };
+ 
+@@ -195,8 +201,16 @@
+         let surface_view = SurfaceView::from_states(states, surface_size, attrs.client_scale);
+         let surface_view_changed = self.surface_view.replace(surface_view) != Some(surface_view);
+ 
+-        // if we received a new buffer also process the attached damage
+-        if new_buffer {
++        // Damage applies even without another attach. Drop imported textures so
++        // the next import sees that damage, including SHM uploads. Mapping
++        // changes need full element damage even when raw pixels are unchanged.
++        if !attrs.damage.is_empty() {
++            self.textures.clear();
++        }
++        if mapping_changed || surface_view_changed {
++            attrs.damage.clear();
++            self.damage.add([Rectangle::from_size(buffer_dimensions)]);
++        } else {
+             let buffer_damage = attrs.damage.drain(..).flat_map(|dmg| {
+                 match dmg {
+                     Damage::Buffer(rect) => rect,
+@@ -313,6 +327,9 @@
+ 
+     /// Get the attached buffer.
+     /// Can be used to check if surface is mapped
++    ///
++    /// A non-null buffer with unrecognized dimensions is retained here, but has
++    /// no [`SurfaceView`]. This distinguishes recognition failure from unmapping.
+     pub fn buffer(&self) -> Option<&Buffer> {
+         self.buffer.as_ref()
+     }
+--- a/src/wayland/compositor/cache.rs
++++ b/src/wayland/compositor/cache.rs
+@@ -89,6 +89,16 @@
+     /// Access the pending state for `T`
+     pub fn pending(&mut self) -> &mut T {
+         &mut self.pending
++    }
++
++    /// Replace parent-owned metadata in every child snapshot. Otherwise a later
++    /// child transaction could restore a position superseded by its parent.
++    pub(crate) fn override_all(&mut self, mut update: impl FnMut(&mut T)) {
++        update(&mut self.pending);
++        for (_, state) in &mut self.cache {
++            update(state);
++        }
++        update(&mut self.current);
+     }
+ }
+ 
+--- a/src/wayland/compositor/tree.rs
++++ b/src/wayland/compositor/tree.rs
+@@ -21,6 +21,8 @@
+     DisplayHandle, Resource,
+     protocol::{wl_output::Transform, wl_surface::WlSurface},
+ };
++
++mod parent_state;
+ 
+ type CommitHook = dyn Fn(&mut dyn Any, &DisplayHandle, &WlSurface) + Send + Sync;
+ type DestructionHook = dyn Fn(&mut dyn Any, &WlSurface) + Send + Sync;
+@@ -130,7 +132,7 @@
+             // We had a parent, lets unregister ourselves from it
+             let old_parent_mutex = &old_parent.data::<SurfaceUserData>().unwrap().inner;
+             let mut old_parent_guard = old_parent_mutex.lock().unwrap();
+-            old_parent_guard.children.retain(|c| c.id() != surface.id());
++            old_parent_guard.remove_child(surface);
+         }
+ 
+         let my_data_mutex = &surface_data.inner;
+@@ -255,27 +257,19 @@
+         }
+     }
+ 
+-    fn commit_sync_surface_tree(
+-        surface: &WlSurface,
+-        parent_transaction: &PendingTransaction,
+-        dh: &DisplayHandle,
+-    ) {
++    fn take_sync_surface_tree(surface: &WlSurface, parent_transaction: &PendingTransaction) {
+         let children = PrivateSurfaceData::get_children(surface);
+         let mut my_data = Self::lock_user_data(surface);
+ 
+         for child in children {
+-            Self::commit_sync_surface_tree(&child, &my_data.pending_transaction, dh);
+-        }
+-
+-        let current_txid = my_data.current_txid;
+-        my_data.public_data.cached_state.commit(Some(current_txid), dh);
+-        my_data
+-            .pending_transaction
+-            .insert_state(surface.clone(), current_txid);
+-
++            Self::take_sync_surface_tree(&child, &my_data.pending_transaction);
++        }
++
++        // Parent application takes only states already cached by child commits.
++        // Calling MultiCache::commit here would consume uncommitted attachments,
++        // damage, callbacks and extension state from synchronized descendants.
+         let child_tx = std::mem::take(&mut my_data.pending_transaction);
+         child_tx.merge_into(parent_transaction);
+-        my_data.current_txid.0 = my_data.current_txid.0.wrapping_add(1);
+     }
+ 
+     pub fn commit<C: CompositorHandler + 'static>(surface: &WlSurface, dh: &DisplayHandle, state: &mut C) {
+@@ -297,14 +291,14 @@
+                 .map(|s| s.sync.load(Ordering::Acquire))
+                 .unwrap_or(false);
+ 
+-            // if we are not sync, but the child is we also have to commit the complete child surface tree
++            // Include committed state from the complete synchronized tree, even
++            // descendants that committed after their direct parent's last commit.
+             if !is_sync && is_child_sync {
+                 std::mem::drop(child_data);
+-                Self::commit_sync_surface_tree(&child, &my_data.pending_transaction, dh);
++                Self::take_sync_surface_tree(&child, &my_data.pending_transaction);
+             } else if is_sync || is_child_sync {
+                 let child_tx = std::mem::take(&mut child_data.pending_transaction);
+                 child_tx.merge_into(&my_data.pending_transaction);
+-                child_data.current_txid.0 = child_data.current_txid.0.wrapping_add(1);
+             }
+         }
+         my_data
+@@ -380,7 +374,7 @@
+             child_guard.parent = Some(parent.clone());
+         }
+         // register child to new parent
+-        Self::lock_user_data(parent).children.push(child.clone());
++        Self::lock_user_data(parent).add_child(child.clone());
+ 
+         Ok(())
+     }
+@@ -392,9 +386,7 @@
+         let old_parent = Self::lock_user_data(child).parent.take();
+         // unregister from our parent
+         if let Some(old_parent) = old_parent {
+-            Self::lock_user_data(&old_parent)
+-                .children
+-                .retain(|c| c.id() != child.id());
++            Self::lock_user_data(&old_parent).remove_child(child);
+         }
+     }
+ 
+@@ -411,40 +403,6 @@
+             .filter(|s| s.id() != parent.id())
+             .cloned()
+             .collect()
+-    }
+-
+-    /// Reorders a surface relative to one of its sibling
+-    ///
+-    /// Fails if `relative_to` is not a sibling or parent of `surface`.
+-    pub fn reorder(surface: &WlSurface, to: Location, relative_to: &WlSurface) -> Result<(), ()> {
+-        let parent = Self::get_parent(surface).ok_or(())?;
+-
+-        fn index_of(surface: &WlSurface, slice: &[WlSurface]) -> Option<usize> {
+-            for (i, s) in slice.iter().enumerate() {
+-                if s.id() == surface.id() {
+-                    return Some(i);
+-                }
+-            }
+-            None
+-        }
+-
+-        let mut parent_guard = Self::lock_user_data(&parent);
+-        let my_index = index_of(surface, &parent_guard.children).unwrap();
+-        let mut other_index = match index_of(relative_to, &parent_guard.children) {
+-            Some(idx) => idx,
+-            None => return Err(()),
+-        };
+-        let me = parent_guard.children.remove(my_index);
+-        if my_index < other_index {
+-            other_index -= 1;
+-        }
+-        let new_index = match to {
+-            Location::Before => other_index,
+-            Location::After => other_index + 1,
+-        };
+-        parent_guard.children.insert(new_index, me);
+-
+-        Ok(())
+     }
+ }
+ 
+--- /dev/null
++++ b/src/wayland/compositor/tree/parent_state.rs
+@@ -0,0 +1,160 @@
++//! wl_subsurface position and stacking belong to the parent's commit, while the
++//! child's buffer and extension state belong to its own wl_surface.commit.
++use wayland_server::{DisplayHandle, Resource, Weak, protocol::wl_subsurface::WlSubsurface};
++
++use crate::utils::{Logical, Point};
++
++use super::{Location, PrivateSurfaceData, WlSurface};
++use crate::wayland::compositor::{SubsurfaceCachedState, cache::Cacheable};
++
++#[derive(Default)]
++struct ParentState {
++    positions: Vec<Position>,
++    stacking: Option<Vec<Weak<WlSurface>>>,
++}
++
++struct Position {
++    subsurface: Weak<WlSubsurface>,
++    surface: Weak<WlSurface>,
++    location: Point<i32, Logical>,
++}
++
++impl Cacheable for ParentState {
++    fn commit(&mut self, _dh: &DisplayHandle) -> Self {
++        Self {
++            positions: std::mem::take(&mut self.positions),
++            // Subsequent requests resolve against the latest requested order,
++            // including when its earlier parent commit is still blocked.
++            stacking: self.stacking.clone(),
++        }
++    }
++
++    fn merge_into(self, into: &mut Self, _dh: &DisplayHandle) {
++        // Merging may coalesce cached commits before transaction application.
++        // Do not change the live tree here.
++        into.positions.extend(self.positions);
++        if self.stacking.is_some() {
++            into.stacking = self.stacking;
++        }
++    }
++}
++
++impl PrivateSurfaceData {
++    pub fn set_position(surface: &WlSurface, subsurface: &WlSubsurface, location: Point<i32, Logical>) {
++        let Some(parent) = Self::get_parent(surface) else {
++            return;
++        };
++        Self::with_states(&parent, |states| {
++            let mut cache = states.cached_state.get::<ParentState>();
++            let positions = &mut cache.pending().positions;
++            // Repeated position requests before one parent commit need only the
++            // final coordinates; ordering relative to stacking is independent.
++            if let Some(position) = positions
++                .iter_mut()
++                .find(|position| position.subsurface == *subsurface)
++            {
++                position.location = location;
++            } else {
++                positions.push(Position {
++                    subsurface: subsurface.downgrade(),
++                    surface: surface.downgrade(),
++                    location,
++                });
++            }
++        });
++    }
++
++    /// Validate immediately, but apply stacking only with the parent's state.
++    pub fn reorder(surface: &WlSurface, to: Location, relative_to: &WlSurface) -> Result<(), ()> {
++        let parent = Self::get_parent(surface).ok_or(())?;
++        let data = Self::lock_user_data(&parent);
++        if surface == relative_to || !data.children.contains(relative_to) {
++            return Err(());
++        }
++        let mut cache = data.public_data.cached_state.get::<ParentState>();
++        let stacking = cache
++            .pending()
++            .stacking
++            .get_or_insert_with(|| data.children.iter().map(Resource::downgrade).collect());
++        let index = stacking.iter().position(|child| child == surface).ok_or(())?;
++        let mut other = stacking.iter().position(|child| child == relative_to).ok_or(())?;
++        let surface = stacking.remove(index);
++        if index < other {
++            other -= 1;
++        }
++        let destination = match to {
++            Location::Before => other,
++            Location::After => other + 1,
++        };
++        stacking.insert(destination, surface);
++        Ok(())
++    }
++
++    pub(super) fn add_child(&mut self, child: WlSurface) {
++        if self.public_data.cached_state.has::<ParentState>() {
++            let mut cache = self.public_data.cached_state.get::<ParentState>();
++            if let Some(stacking) = &mut cache.pending().stacking {
++                stacking.push(child.downgrade());
++            }
++        }
++        self.children.push(child);
++    }
++
++    pub(super) fn remove_child(&mut self, child: &WlSurface) {
++        self.children.retain(|member| member != child);
++        if self.public_data.cached_state.has::<ParentState>() {
++            // Destroying a role removes only that member, not surviving moves
++            // which were resolved relative to it. Remove it from every cached
++            // order so recreating the role cannot revive an old placement.
++            self.public_data
++                .cached_state
++                .get::<ParentState>()
++                .override_all(|state| {
++                    if let Some(stacking) = &mut state.stacking {
++                        stacking.retain(|member| member != child);
++                    }
++                });
++        }
++    }
++
++    pub(crate) fn apply_parent_state(parent: &WlSurface) {
++        let applied = Self::with_states(parent, |states| {
++            if !states.cached_state.has::<ParentState>() {
++                return ParentState::default();
++            }
++            std::mem::take(states.cached_state.get::<ParentState>().current())
++        });
++        for position in applied.positions {
++            // A destroyed/recreated subsurface role must not inherit a queued
++            // operation, even when the underlying wl_surface is still alive.
++            if !position.subsurface.is_alive() {
++                continue;
++            }
++            let Ok(surface) = position.surface.upgrade() else {
++                continue;
++            };
++            if Self::get_parent(&surface).as_ref() != Some(parent) {
++                continue;
++            }
++            Self::with_states(&surface, |states| {
++                states
++                    .cached_state
++                    .get::<SubsurfaceCachedState>()
++                    .override_all(|state| state.location = position.location);
++            });
++        }
++        if let Some(stacking) = applied.stacking {
++            let mut data = Self::lock_user_data(parent);
++            let mut ordered = Vec::with_capacity(data.children.len());
++            for member in stacking {
++                if let Some(index) = data.children.iter().position(|child| member == *child) {
++                    ordered.push(data.children.remove(index));
++                }
++            }
++            // Roles created after this commit are absent from its snapshot and
++            // retain their initial placement above the older surviving members.
++            ordered.append(&mut data.children);
++            data.children = ordered;
++        }
++    }
++}
+--- a/src/wayland/compositor/handlers.rs
++++ b/src/wayland/compositor/handlers.rs
+@@ -577,16 +577,11 @@
+         match request {
+             wl_subsurface::Request::SetPosition { x, y } => {
+                 let client_scale = state.client_compositor_state(client).client_scale();
+-                PrivateSurfaceData::with_states(&self.surface, |state| {
+-                    state
+-                        .cached_state
+-                        .get::<SubsurfaceCachedState>()
+-                        .pending()
+-                        .location = Point::<i32, Client>::from((x, y))
+-                        .to_f64()
+-                        .to_logical(client_scale)
+-                        .to_i32_round();
+-                })
++                let location = Point::<i32, Client>::from((x, y))
++                    .to_f64()
++                    .to_logical(client_scale)
++                    .to_i32_round();
++                PrivateSurfaceData::set_position(&self.surface, subsurface, location);
+             }
+             wl_subsurface::Request::PlaceAbove { sibling } => {
+                 if let Err(()) = PrivateSurfaceData::reorder(&self.surface, Location::After, &sibling) {
+@@ -643,8 +638,7 @@
+                 .store(true, Ordering::Release);
+ 
+             let mut guard = state.cached_state.get::<SubsurfaceCachedState>();
+-            *guard.pending() = Default::default();
+-            *guard.current() = Default::default();
++            guard.override_all(|state| *state = Default::default());
+         });
+     }
+ }
+--- a/src/wayland/compositor/transaction.rs
++++ b/src/wayland/compositor/transaction.rs
+@@ -209,7 +209,9 @@
+         loop {
+             let inner = match Arc::try_unwrap(self.inner) {
+                 Ok(mutex) => mutex.into_inner().unwrap(),
+-                Err(_) => panic!("Attempting to finalize a transaction but handle is not the last."),
++                Err(_) => {
++                    panic!("Attempting to finalize a transaction but handle is not the last.")
++                }
+             };
+             match inner {
+                 TransactionInner::Data(TransactionState {
+@@ -259,15 +261,22 @@
+     }
+ 
+     pub(crate) fn apply<C: CompositorHandler + 'static>(self, dh: &DisplayHandle, state: &mut C) {
+-        for (surface, id) in self.surfaces {
+-            let Ok(surface) = surface.upgrade() else {
+-                continue;
+-            };
+-
+-            PrivateSurfaceData::with_states(&surface, |states| {
+-                states.cached_state.apply_state(id, dh);
++        let surfaces = self
++            .surfaces
++            .into_iter()
++            .filter_map(|(surface, id)| surface.upgrade().ok().map(|surface| (surface, id)))
++            .collect::<Vec<_>>();
++        // All committed surface and parent-owned tree state must be visible
++        // before any hook or compositor callback can traverse this transaction.
++        for (surface, id) in &surfaces {
++            PrivateSurfaceData::with_states(surface, |states| {
++                states.cached_state.apply_state(*id, dh);
+             });
+-
++        }
++        for (surface, _) in &surfaces {
++            PrivateSurfaceData::apply_parent_state(surface);
++        }
++        for (surface, _) in surfaces {
+             PrivateSurfaceData::invoke_post_commit_hooks::<C>(state, dh, &surface);
+ 
+             tracing::trace!("Calling user implementation for wl_surface.commit");

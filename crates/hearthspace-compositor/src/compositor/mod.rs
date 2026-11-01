@@ -361,6 +361,8 @@ struct App {
     /// new on each redraw.
     background_tile_ids: Vec<Id>,
     software_cursor_visible: bool,
+    /// Native presenters consume cursor artwork without rendering an App scene.
+    independent_cursor: bool,
     software_cursor: SoftwareCursor,
     #[cfg(feature = "xwayland")]
     xwm: Option<X11Wm>,
@@ -754,6 +756,7 @@ pub(in crate::compositor) fn initialize_app(
         window_frames: window_frame::WindowFrameCache::default(),
         background_tile_ids: Vec::new(),
         software_cursor_visible: false,
+        independent_cursor: false,
         software_cursor: cursor::standard_software_cursor(),
         #[cfg(feature = "xwayland")]
         xwm: None,

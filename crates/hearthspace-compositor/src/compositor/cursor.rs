@@ -7,6 +7,26 @@ use xcursor::parser::parse_xcursor;
 
 pub(crate) use cursor_icon::CursorIcon;
 
+impl super::App {
+    pub(super) fn cursor_commit_is_independent(
+        &self,
+        surface: &wayland_server::protocol::wl_surface::WlSurface,
+    ) -> bool {
+        use smithay::wayland::{
+            compositor::{get_parent, get_role},
+            seat::CURSOR_IMAGE_ROLE,
+        };
+        if !self.independent_cursor {
+            return false;
+        }
+        let mut root = surface.clone();
+        while let Some(parent) = get_parent(&root) {
+            root = parent;
+        }
+        get_role(&root) == Some(CURSOR_IMAGE_ROLE)
+    }
+}
+
 pub(super) struct SoftwareCursor {
     /// The named shape this buffer was rasterized for, so the render path can
     /// rebuild the buffer only when the desired shape changes.

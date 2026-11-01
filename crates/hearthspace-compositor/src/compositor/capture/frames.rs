@@ -64,16 +64,28 @@ impl CaptureState {
         png: Vec<u8>,
         cursor_source: &'static str,
     ) {
-        self.stage_frame(output, Png::Ready(png), cursor_source);
+        self.stage_frame(output, Png::Ready(png), cursor_source, Instant::now());
     }
 
-    #[cfg(any(feature = "udev", test))]
+    #[cfg(test)]
     pub(in crate::compositor) fn stage_pixels(
         &mut self,
         output: OutputMetadata,
         size: smithay::utils::Size<i32, smithay::utils::Physical>,
         pixels: Vec<u8>,
         cursor_source: &'static str,
+    ) -> Result<(), String> {
+        self.stage_pixels_before(output, size, pixels, cursor_source, Instant::now())
+    }
+
+    #[cfg(any(feature = "udev", test))]
+    pub(in crate::compositor) fn stage_pixels_before(
+        &mut self,
+        output: OutputMetadata,
+        size: smithay::utils::Size<i32, smithay::utils::Physical>,
+        pixels: Vec<u8>,
+        cursor_source: &'static str,
+        requested_before: Instant,
     ) -> Result<(), String> {
         if self.staged.contains_key(&output.name) {
             return Err("capture output already has a submitted frame".into());
@@ -84,14 +96,25 @@ impl CaptureState {
         let span = tracing::debug_span!("capture_encoding", output = %output.name,
             capture_id = self.pending.iter().find(|r| r.output == output.name).map(|r| r.id));
         let png = span.in_scope(|| self.encoder.as_ref().unwrap().submit(size, pixels))?;
-        self.stage_frame(output, Png::Encoding(png), cursor_source);
+        self.stage_frame(output, Png::Encoding(png), cursor_source, requested_before);
         Ok(())
     }
 
-    fn stage_frame(&mut self, output: OutputMetadata, png: Png, cursor_source: &'static str) {
+    fn stage_frame(
+        &mut self,
+        output: OutputMetadata,
+        png: Png,
+        cursor_source: &'static str,
+        requested_before: Instant,
+    ) {
         let mut requests = Vec::new();
         self.pending.retain_mut(|request| {
-            if request.output != output.name {
+            if request.output != output.name
+                || request
+                    .deadline
+                    .checked_sub(super::CAPTURE_TIMEOUT)
+                    .is_none_or(|at| at > requested_before)
+            {
                 return true;
             }
             requests.push(Request {

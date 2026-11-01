@@ -3,28 +3,21 @@
 use std::time::{Duration, Instant};
 
 use smithay::{
-    backend::{
-        drm::{DrmDeviceNotifier, DrmEvent},
-        session::Session,
-    },
-    reexports::calloop::{
-        LoopHandle, RegistrationToken,
-        timer::{TimeoutAction, Timer},
-    },
+    backend::session::Session,
+    reexports::calloop::timer::{TimeoutAction, Timer},
 };
-use tracing::{error, info, trace, warn};
+use tracing::{error, info};
 
-use super::{UdevBackendState, apply_connector_sync, identity::DeviceToken, udev_backend_mut};
+use super::{UdevBackendState, apply_connector_sync, udev_backend_mut};
 use crate::compositor::{CalloopData, shell_integration::ControlReply};
 
 const RECOVERY_INTERVAL: Duration = Duration::from_millis(250);
 const RECOVERY_ATTEMPTS: u8 = 20;
 const RECOVERY_BUDGET: Duration = Duration::from_secs(5);
-const CONFIRMATION_GRACE: Duration = Duration::from_millis(500);
+pub(super) const CONFIRMATION_GRACE: Duration = Duration::from_millis(500);
 
 #[derive(Debug, PartialEq, Eq)]
 enum RecoveryStep {
-    Wait,
     Rebuild,
     Exhausted,
 }
@@ -45,15 +38,9 @@ impl RecoveryBudget {
         }
     }
 
-    fn next_step(&mut self, now: Instant, progress: Option<Instant>) -> RecoveryStep {
+    fn next_step(&mut self, now: Instant) -> RecoveryStep {
         if now >= self.deadline || self.remaining == 0 {
             return RecoveryStep::Exhausted;
-        }
-        // A blocking modeset can make the timer overdue before its completion
-        // event arrives. Give the follow-up frame a fresh dispatch opportunity
-        // instead of immediately destroying the surface that just progressed.
-        if progress.is_some_and(|at| now.saturating_duration_since(at) < CONFIRMATION_GRACE) {
-            return RecoveryStep::Wait;
         }
         self.remaining -= 1;
         RecoveryStep::Rebuild
@@ -108,7 +95,6 @@ pub(super) fn activate_session(data: &mut CalloopData) {
     if let Some(token) = backend.recovery_source.take() {
         backend.loop_handle.remove(token);
     }
-    backend.recovery_progress_at = None;
     backend.recovery_exhausted = false;
     let connector_sync = backend.activate_session();
     apply_connector_sync(data, connector_sync);
@@ -154,8 +140,7 @@ impl UdevBackendState {
                     info!("native session recovery presented on every output");
                     return TimeoutAction::Drop;
                 }
-                match budget.next_step(Instant::now(), backend.recovery_progress_at) {
-                    RecoveryStep::Wait => return TimeoutAction::ToDuration(RECOVERY_INTERVAL),
+                match budget.next_step(Instant::now()) {
                     RecoveryStep::Exhausted => {
                         backend.recovery_source = None;
                         backend.recovery_exhausted = true;
@@ -183,77 +168,6 @@ impl UdevBackendState {
     }
 }
 
-pub(super) fn insert_drm_source(
-    handle: &LoopHandle<'static, CalloopData>,
-    token: DeviceToken,
-    notifier: DrmDeviceNotifier,
-) -> Result<RegistrationToken, Box<dyn std::error::Error>> {
-    Ok(
-        handle.insert_source(notifier, move |event, metadata, data| match event {
-            DrmEvent::VBlank(crtc) => {
-                trace!(
-                    device_id = token.id,
-                    incarnation = token.incarnation,
-                    ?crtc,
-                    ?metadata,
-                    "DRM vblank"
-                );
-                let submitted = if let super::super::Backend::Udev(backend) = &mut data.backend {
-                    match backend.frame_submitted(
-                        token,
-                        crtc,
-                        metadata.as_ref(),
-                        &mut data.state,
-                        &mut data.captures,
-                    ) {
-                        Ok(result) => result,
-                        Err(error) => {
-                            error!(%error, "failed to mark native frame submitted");
-                            backend.device_failed(token);
-                            data.state.set_native_lock_outputs_available(backend.native_outputs_ready());
-                            data.state.invalidate_lock_presentation();
-                            None
-                        }
-                    }
-                } else {
-                    None
-                };
-                if let Some(completion) = submitted {
-                    let redraw = match completion
-                        .dispatch(|output| data.send_output_frame_callbacks(output))
-                    {
-                        Ok(redraw) => redraw,
-                        Err(error) => {
-                            warn!(%error, "failed to send native frame callbacks");
-                            completion.redraw
-                        }
-                    };
-                    if let Some(should_redraw) = redraw
-                        && (should_redraw
-                            || data.state.viewport_animation.is_some()
-                            || data.state.group_animating()
-                            || data.state.canvas_preview_needs_animation_frame()
-                            || data.state.canvas_peek_needs_animation_frame()
-                            || data.state.layout_needs_animation_frame()
-                            || data.state.desktop_edge_panning())
-                    {
-                        data.state.request_redraw();
-                    }
-                }
-            }
-            DrmEvent::Error(error) => {
-                error!(%error, device_id = token.id, incarnation = token.incarnation, "DRM event error");
-                if let Some(backend) = udev_backend_mut(data) {
-                    backend.device_failed(token);
-                    let available = backend.native_outputs_ready();
-                    data.state.set_native_lock_outputs_available(available);
-                }
-                data.state.invalidate_lock_presentation();
-            }
-        })?,
-    )
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -263,11 +177,11 @@ mod tests {
         let started = Instant::now();
         let mut budget = RecoveryBudget::new(started);
         assert_eq!(
-            budget.next_step(started + Duration::from_millis(2_700), None),
+            budget.next_step(started + Duration::from_millis(2_700)),
             RecoveryStep::Rebuild
         );
         assert_eq!(
-            budget.next_step(started + Duration::from_millis(5_400), None),
+            budget.next_step(started + Duration::from_millis(5_400)),
             RecoveryStep::Exhausted
         );
     }
@@ -277,7 +191,7 @@ mod tests {
         let started = Instant::now();
         let mut budget = RecoveryBudget::new(started);
         assert_eq!(
-            budget.next_step(started + RECOVERY_BUDGET, None),
+            budget.next_step(started + RECOVERY_BUDGET),
             RecoveryStep::Exhausted
         );
     }
@@ -287,40 +201,8 @@ mod tests {
         let started = Instant::now();
         let mut budget = RecoveryBudget::new(started);
         for _ in 0..RECOVERY_ATTEMPTS {
-            assert_eq!(budget.next_step(started, None), RecoveryStep::Rebuild);
+            assert_eq!(budget.next_step(started), RecoveryStep::Rebuild);
         }
-        assert_eq!(budget.next_step(started, None), RecoveryStep::Exhausted);
-    }
-
-    #[test]
-    fn slow_modeset_completion_gives_its_confirmation_frame_time_to_present() {
-        let started = Instant::now();
-        let mut budget = RecoveryBudget::new(started);
-        let progress = started + Duration::from_millis(1_200);
-        assert_eq!(
-            budget.next_step(progress, Some(progress)),
-            RecoveryStep::Wait
-        );
-        assert_eq!(
-            budget.next_step(progress + RECOVERY_INTERVAL, Some(progress)),
-            RecoveryStep::Wait
-        );
-        assert_eq!(budget.remaining, RECOVERY_ATTEMPTS);
-        // A missing follow-up event must still lead to a rebuild.
-        assert_eq!(
-            budget.next_step(progress + CONFIRMATION_GRACE, Some(progress)),
-            RecoveryStep::Rebuild
-        );
-    }
-
-    #[test]
-    fn confirmation_progress_cannot_extend_the_absolute_budget() {
-        let started = Instant::now();
-        let mut budget = RecoveryBudget::new(started);
-        let deadline = started + RECOVERY_BUDGET;
-        assert_eq!(
-            budget.next_step(deadline, Some(deadline)),
-            RecoveryStep::Exhausted
-        );
+        assert_eq!(budget.next_step(started), RecoveryStep::Exhausted);
     }
 }

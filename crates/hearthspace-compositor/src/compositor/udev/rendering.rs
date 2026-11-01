@@ -1,13 +1,30 @@
-use super::{UdevBackendState, device::KmsOutputSurface, gpu::GpuState, transfer::render_pass};
-use crate::compositor::{
-    App,
-    capture::{CaptureState, CursorOverlay},
+//! Produce cursor-free scenes; presentation and cursor composition are worker-owned.
+use super::{
+    UdevBackendState,
+    device::KmsOutputSurface,
+    gpu::GpuState,
+    presenter::{Presenter, SceneFrame},
+    transfer::render_pass,
 };
-use smithay::{backend::drm::DrmNode, reexports::drm::control::crtc};
-use std::time::Instant;
+use crate::compositor::{App, capture::CaptureState};
+use smithay::backend::{allocator::dmabuf::AsDmabuf, drm::DrmNode};
+use std::{sync::Arc, time::Instant};
 use tracing::{trace, warn};
 
 impl UdevBackendState {
+    pub(in crate::compositor) fn scene_work_pending(&self) -> bool {
+        !self.drm_commits_paused
+            && self
+                .opened_devices
+                .values()
+                .filter(|d| d.active)
+                .any(|device| {
+                    device.output_surfaces.iter().any(|output| {
+                        output.failed_slot.is_none() && output.presentation.needs_scene()
+                    })
+                })
+    }
+
     pub(in crate::compositor) fn capture_toplevels(&mut self, state: &mut App) {
         if !self.capture_active() || !state.capture_available() {
             state.remote_capture.stop();
@@ -34,6 +51,8 @@ impl UdevBackendState {
         force_full_redraw: bool,
         captures: &mut CaptureState,
     ) -> Result<bool, Box<dyn std::error::Error>> {
+        self.sync_security(state);
+        state.software_cursor_visible = false;
         if state.session_locked() {
             captures.invalidate("session is locked");
             state.remote_capture.stop();
@@ -46,35 +65,34 @@ impl UdevBackendState {
             }
             return Ok(false);
         }
+        let changed = state.needs_redraw || force_full_redraw;
         let mut submitted = false;
         let mut failed = false;
-        for device in self.opened_devices.values_mut() {
-            if !device.active {
-                continue;
-            }
-            let cursor = device.capture_cursor(state);
+        for device in self.opened_devices.values_mut().filter(|d| d.active) {
             for output in &mut device.output_surfaces {
-                if output.presentation.pending {
-                    output.presentation.dirty = true;
+                if !output.presentation.request_scene(changed) || output.failed_slot.is_some() {
                     continue;
                 }
+                self.next_scene_sequence = self
+                    .next_scene_sequence
+                    .checked_add(1)
+                    .expect("scene sequence exhausted");
                 match render_output(
                     &mut self.gpus,
                     device.node,
+                    &device.presenter,
                     output,
                     state,
                     force_full_redraw,
                     captures,
-                    cursor.as_ref(),
+                    self.next_scene_sequence,
+                    self.security_epoch,
                 ) {
                     Ok(queued) => submitted |= queued,
                     Err(error) => {
                         let name = output.target.connector_name();
-                        captures.fail(name, &format!("native presentation failed: {error}"));
+                        captures.fail(name, &format!("native scene failed: {error}"));
                         state.remote_capture.fail_output(name);
-                        // Preserve the transfer's completion even when drawing
-                        // or KMS submission fails. Recovery drops the owner;
-                        // a retry must wait before rewriting its storage.
                         if let Some(scene) = output.scene.as_mut() {
                             scene.invalidate();
                         }
@@ -82,10 +100,24 @@ impl UdevBackendState {
                         device.recovery_needed = true;
                         failed = true;
                         warn!(%error, device_id = device.token.id, incarnation = device.token.incarnation,
-                            crtc = ?output.target.crtc, output = name, "native output failed; continuing healthy outputs");
+                            crtc = ?output.target.crtc, output = name, "native scene failed; continuing healthy outputs");
                     }
                 }
             }
+        }
+        let rejected_devices: Vec<_> = self
+            .opened_devices
+            .iter()
+            .filter(|(_, device)| {
+                device
+                    .output_surfaces
+                    .iter()
+                    .any(|o| o.rejected_scene.is_some())
+            })
+            .map(|(id, _)| *id)
+            .collect();
+        for id in rejected_devices {
+            self.close_device(id);
         }
         self.refresh_backend_state();
         state.set_native_lock_outputs_available(self.native_outputs_ready());
@@ -96,108 +128,73 @@ impl UdevBackendState {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn render_output(
     gpus: &mut GpuState,
     node: DrmNode,
+    presenter: &Presenter,
     output: &mut KmsOutputSurface,
     state: &mut App,
-    force_full_redraw: bool,
-    captures: &mut CaptureState,
-    cursor: Option<&(crtc::Handle, CursorOverlay)>,
+    force: bool,
+    captures: &CaptureState,
+    sequence: u64,
+    security_epoch: u64,
 ) -> Result<bool, Box<dyn std::error::Error>> {
     let started = Instant::now();
     let Some(view) = state.output_render_view(output.target.connector_name()) else {
         output.presentation.dirty = true;
-        warn!(
-            output = output.target.connector_name(),
-            "native output has no Wayland view"
-        );
         return Ok(false);
     };
-    let (mut dmabuf, buffer_age) = output.gbm_surface.next_buffer()?;
-    let wants_clean =
-        state.software_cursor_visible && state.remote_capture.wants_cursorless(&view.name);
-    let clean = if wants_clean {
-        let visible = std::mem::replace(&mut state.software_cursor_visible, false);
-        let result = render_pass(gpus, node, output, &mut dmabuf, state, &view, 0, true, true);
-        state.software_cursor_visible = visible;
-        // A transfer/render failure can leave submitted work with uncertain
-        // completion. Do not restore into the same scanout via another route.
-        // Readback alone remains recoverable after a successful render pass.
-        match result?.pixels {
-            Ok(pixels) => pixels,
-            Err(error) => {
-                warn!(%error, "cursor-free remote readback failed");
-                state.remote_capture.fail_output(&view.name);
-                None
-            }
-        }
-    } else {
-        None
+    let Some(slot) = output.pool.acquire()? else {
+        // Every slot is leased by the presenter. Its capacity event wakes scene
+        // production; input dispatch never waits for a KMS completion here.
+        output.presentation.dirty = true;
+        return Ok(false);
     };
-    // Always restore the full scene after a temporary cursorless pass, even if
-    // its readback failed. The final fence belongs to the restored image.
-    let force = force_full_redraw || state.software_cursor_visible || wants_clean;
-    let wanted = captures.wanted(&view.name) || state.remote_capture.wanted(&view.name);
-    let rendered = render_pass(
-        gpus,
-        node,
-        output,
-        &mut dmabuf,
-        state,
-        &view,
-        usize::from(buffer_age),
-        force,
-        wanted,
-    )?;
-    // Keep renderer-side damage, but do not send FB_DAMAGE_CLIPS to KMS. The
-    // final fence is source GLES on same-GPU, target completion on a transfer.
-    let submit_started = Instant::now();
-    output
-        .gbm_surface
-        .queue_buffer(Some(rendered.sync), None, ())?;
-    let submit_duration = submit_started.elapsed();
-    let pixels = match rendered.pixels {
-        Ok(pixels) => pixels,
+    let slot = Arc::new(slot);
+    let mut dmabuf = slot.export()?;
+    let age = usize::from(slot.age());
+    let rendered = match render_pass(gpus, node, output, &mut dmabuf, state, &view, age, force) {
+        Ok(rendered) => rendered,
         Err(error) => {
-            captures.fail(&view.name, &format!("native readback failed: {error}"));
-            state.remote_capture.fail_output(&view.name);
-            None
+            // No producer fence is guaranteed on error. Quarantine this slot
+            // until the entire pool is retired; it must never be overwritten.
+            output.failed_slot = Some(slot);
+            return Err(error);
         }
     };
-    if let Some(mut pixels) = pixels {
-        let size = output.target.output_size();
-        let plain = clean.unwrap_or_else(|| pixels.clone());
-        let mut cursor_source = "framebuffer";
-        if let Some((crtc, cursor)) = cursor
-            && *crtc == output.gbm_surface.crtc()
-        {
-            cursor.paint(&mut pixels, size);
-            cursor_source = "hardware-overlay";
-        }
-        if state.remote_capture.wanted(&view.name) {
+    output.pool.submitted(&slot);
+    let wanted = captures.wanted(&view.name) || state.remote_capture.wanted(&view.name);
+    let metadata = wanted
+        .then(|| {
             state
-                .remote_capture
-                .stage(&view.name, size, plain, Some(pixels.clone()));
-        }
-        if captures.wanted(&view.name) {
-            if let Some(metadata) = state
                 .capture_outputs()
                 .into_iter()
                 .find(|o| o.name == view.name)
-            {
-                if let Err(error) = captures.stage_pixels(metadata, size, pixels, cursor_source) {
-                    captures.fail(&view.name, &format!("native encoding failed: {error}"));
-                }
-            } else {
-                captures.fail(&view.name, "capture output disappeared");
-            }
-        }
+        })
+        .flatten();
+    let frame = SceneFrame {
+        output: output.key,
+        sequence,
+        security_epoch,
+        lock_generation: state.lock_frame_generation(),
+        slot,
+        dmabuf,
+        ready: rendered.sync,
+        capture: wanted,
+    };
+    if let Err(frame) = presenter.submit_scene(frame) {
+        // Retain the rejected producer lease and fence with this output until
+        // recovery. Its pool cannot be acquired again while quarantined.
+        output.failed_slot = Some(frame.slot.clone());
+        output.rejected_scene = Some(frame);
+        return Err("presenter rejected scene admission".into());
     }
-    output.presentation.queued(state.lock_frame_generation());
+    output.capture = metadata.map(|metadata| (sequence, metadata, started));
+    output.presentation.queued(sequence);
     trace!(device = ?node, scene_node = ?gpus.scene_node, target_node = ?node,
-        crtc = ?output.target.crtc, name = view.name, age = if force { 0 } else { buffer_age },
-        submit_us = submit_duration.as_micros() as u64, render_us = started.elapsed().as_micros() as u64,
-        "queued native frame");
+        crtc = ?output.target.crtc, name = view.name, scene_sequence = sequence,
+        age = if force { 0 } else { age }, render_us = started.elapsed().as_micros() as u64,
+        "published native scene");
     Ok(true)
 }

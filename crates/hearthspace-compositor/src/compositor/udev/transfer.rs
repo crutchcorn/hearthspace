@@ -6,7 +6,7 @@ use super::{
     device::KmsOutputSurface,
     gpu::{GpuApi, GpuState},
 };
-use crate::compositor::{App, capture::read_pixels, output::OutputRenderView};
+use crate::compositor::{App, output::OutputRenderView};
 use smithay::{
     backend::{
         allocator::{Fourcc, dmabuf::Dmabuf},
@@ -45,7 +45,6 @@ impl SceneBuffer {
 
 pub(super) struct OutputPass {
     pub(super) sync: SyncPoint,
-    pub(super) pixels: Result<Option<Vec<u8>>, String>,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -58,7 +57,6 @@ pub(super) fn render_pass(
     view: &OutputRenderView,
     age: usize,
     force: bool,
-    capture: bool,
 ) -> Result<OutputPass, Box<dyn std::error::Error>> {
     let source = gpus.scene_node.ok_or("native scene renderer unavailable")?;
     let started = Instant::now();
@@ -78,24 +76,14 @@ pub(super) fn render_pass(
             rect,
             view.scale,
         )?;
-        let pixels = capture
-            .then(|| read_pixels(renderer, &framebuffer, size, false))
-            .transpose()
-            .map_err(|error| error.to_string());
         return Ok(OutputPass {
             sync: rendered.sync,
-            pixels,
         });
     }
 
     // Preserve direct sharing in either GPU direction, even when its usable
     // copy Fourcc differs from scanout. Smithay owns allocation and CPU fallback.
-    let direct = direct_copy_format(
-        &mut gpus.manager,
-        source,
-        target,
-        output.gbm_surface.format(),
-    )?;
+    let direct = direct_copy_format(&mut gpus.manager, source, target, output.format)?;
     let target_context = gpus.manager.single_renderer(&target)?.as_ref().context_id();
     let (image, scene_sync, copy_format) = {
         let mut renderer = gpus.manager.single_renderer(&source)?;
@@ -116,7 +104,7 @@ pub(super) fn render_pass(
                 .map(|format| format.code)
                 .collect::<Vec<_>>();
             let copy_format = direct
-                .or_else(|| transfer_format(output.gbm_surface.format(), &formats))
+                .or_else(|| transfer_format(output.format, &formats))
                 .ok_or("canonical GPU has no supported image-transfer framebuffer format")?;
             info!(scene_node = ?source, target_node = ?target, name = output.target.connector_name(),
                 ?size, ?copy_format, "created canonical scene for secondary GPU output");
@@ -201,25 +189,11 @@ pub(super) fn render_pass(
     };
     // Completion is retained even if drawing, readback, or KMS queueing fails.
     draw_result?;
-    let pixels = if capture {
-        read_pixels(
-            renderer
-                .target_as_mut()
-                .ok_or("transfer target renderer missing")?,
-            framebuffer.as_ref(),
-            size,
-            false,
-        )
-        .map(Some)
-        .map_err(|error| error.to_string())
-    } else {
-        Ok(None)
-    };
     trace!(scene_node = ?source, target_node = ?target, name = output.target.connector_name(),
         scene_us = scene_duration.as_micros() as u64,
         transfer_us = transfer_started.elapsed().as_micros() as u64,
         "completed native cross-GPU image transfer");
-    Ok(OutputPass { sync, pixels })
+    Ok(OutputPass { sync })
 }
 
 fn persistent_scene_age(valid: bool, force: bool) -> usize {

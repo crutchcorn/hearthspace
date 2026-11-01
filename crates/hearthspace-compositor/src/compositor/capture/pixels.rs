@@ -71,43 +71,6 @@ pub(in crate::compositor) fn encode_png(
     Ok(bytes)
 }
 
-#[cfg(feature = "udev")]
-pub(in crate::compositor) struct CursorOverlay {
-    pub image: super::super::cursor::CursorImage,
-    pub plane_size: (u32, u32),
-    pub x: i32,
-    pub y: i32,
-}
-
-#[cfg(feature = "udev")]
-impl CursorOverlay {
-    // Xcursor pixels are premultiplied RGBA, matching the DRM plane blend mode.
-    pub(in crate::compositor) fn paint(&self, pixels: &mut [u8], size: Size<i32, Physical>) {
-        for row in 0..self.image.height.min(self.plane_size.1) as i32 {
-            let y = self.y + row;
-            if y < 0 || y >= size.h {
-                continue;
-            }
-            for column in 0..self.image.width.min(self.plane_size.0) as i32 {
-                let x = self.x + column;
-                if x < 0 || x >= size.w {
-                    continue;
-                }
-                let src = ((row as u32 * self.image.width + column as u32) * 4) as usize;
-                let dst = ((y * size.w + x) * 4) as usize;
-                let alpha = u16::from(self.image.pixels_rgba[src + 3]);
-                for channel in 0..3 {
-                    pixels[dst + channel] = (u16::from(self.image.pixels_rgba[src + channel])
-                        + (u16::from(pixels[dst + channel]) * (255 - alpha) + 127) / 255)
-                        .min(255) as u8;
-                }
-                pixels[dst + 3] =
-                    (alpha + (u16::from(pixels[dst + 3]) * (255 - alpha) + 127) / 255) as u8;
-            }
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -165,48 +128,5 @@ mod tests {
         let mut decoded = vec![0; reader.output_buffer_size().unwrap()];
         let frame = reader.next_frame(&mut decoded).unwrap();
         assert_eq!(&decoded[..frame.buffer_size()], pixels.as_slice());
-    }
-
-    #[cfg(feature = "udev")]
-    #[test]
-    fn hardware_cursor_clips_and_blends_once() {
-        let overlay = CursorOverlay {
-            plane_size: (2, 1),
-            x: -1,
-            y: 0,
-            image: super::super::super::cursor::CursorImage {
-                width: 2,
-                height: 1,
-                hotspot: (0, 0),
-                pixels_rgba: vec![255, 0, 0, 255, 0, 128, 0, 128],
-            },
-        };
-        let mut pixels = [0, 0, 255, 255, 255, 255, 255, 255];
-        overlay.paint(&mut pixels, (2, 1).into());
-        assert_eq!(pixels, [0, 128, 127, 255, 255, 255, 255, 255]);
-    }
-
-    #[cfg(feature = "udev")]
-    #[test]
-    fn hardware_cursor_respects_plane_size_and_source_stride() {
-        let overlay = CursorOverlay {
-            x: 0,
-            y: 0,
-            plane_size: (1, 2),
-            image: super::super::super::cursor::CursorImage {
-                width: 2,
-                height: 2,
-                hotspot: (0, 0),
-                pixels_rgba: vec![
-                    255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255, 0, 255, 0, 255,
-                ],
-            },
-        };
-        let mut pixels = [0; 16];
-        overlay.paint(&mut pixels, (2, 2).into());
-        assert_eq!(
-            pixels,
-            [255, 0, 0, 255, 0, 0, 0, 0, 0, 0, 255, 255, 0, 0, 0, 0]
-        );
     }
 }

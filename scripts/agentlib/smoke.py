@@ -16,7 +16,7 @@ from .control import Control, ControlError, Deadline, save_capture
 from .input import Input
 from .png import crop, green_pixels
 from .startup_failure import verify_startup_failure
-from .visual import move_resize, software_cursor
+from .visual import cursor_motion, move_resize
 
 LAUNCHER = Path(__file__).resolve().parents[1] / "hearthspace-native"
 
@@ -158,7 +158,7 @@ class Smoke:
         )
         window = self.window(window["id"])
         resized = move_resize(self, window, visible, initial)
-        software_cursor(self, resized, initial[0]["output"])
+        cursor_motion(self, resized, initial[0]["output"])
         self.cursor(initial[0])
 
     def mapped_terminal(self):

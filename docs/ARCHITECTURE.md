@@ -81,9 +81,13 @@ See [rendering](RENDERING.md).
 
 Output records own client-visible geometry; the backend owns scanout resources.
 The native backend owns scanout resources on each seat GPU, with per-output
-surfaces and client pacing. One canonical GPU renders the scene; the backend
-transfers completed images to outputs attached to other GPUs. Desktop placement
-uses logical dimensions derived from the physical mode and output scale. See
+surfaces and client pacing. One canonical GPU renders cursor-free scenes on the
+Wayland thread; the backend transfers completed images to outputs attached to
+other GPUs. A presenter thread per device owns Smithay's DRM compositors and
+reuses each completed scene for independently scheduled cursor updates. Immutable
+cursor snapshots and leased scene buffers cross that boundary; live Wayland
+surfaces and main-context textures do not. Desktop placement uses logical
+dimensions derived from the physical mode and output scale. See
 [DRM/KMS](DRM.md) for transfer and recovery boundaries and [size units](SIZE_UNITS.md).
 
 ## Settings and observations

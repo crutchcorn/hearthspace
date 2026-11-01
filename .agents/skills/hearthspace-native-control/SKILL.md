@@ -97,8 +97,9 @@ normal zoom rules, including Super and `--scroll-zooms`.
 - Native captures complete after a page flip. Retain metadata with each PNG:
   dimensions, scale, output identity, frame ID, presentation type, and cursor
   source. Frame IDs are meaningful only within the same output and compositor
-  process. A hardware cursor is sampled at render time; cursor inclusion alone
-  does not prove application state changed.
+  process. Native output captures use the cursor snapshot from the submitted
+  plane composition, sampled during frame preparation. Cursor inclusion alone
+  does not prove application state changed or identify a hardware-plane assignment.
 
 For semantic control, read the native guide's **External Automation and
 Accessibility** section and [E2E guide](../../../docs/E2E_TESTING.md).

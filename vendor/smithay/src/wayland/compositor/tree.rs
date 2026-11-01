@@ -22,6 +22,8 @@ use wayland_server::{
     protocol::{wl_output::Transform, wl_surface::WlSurface},
 };
 
+mod parent_state;
+
 type CommitHook = dyn Fn(&mut dyn Any, &DisplayHandle, &WlSurface) + Send + Sync;
 type DestructionHook = dyn Fn(&mut dyn Any, &WlSurface) + Send + Sync;
 
@@ -130,7 +132,7 @@ impl PrivateSurfaceData {
             // We had a parent, lets unregister ourselves from it
             let old_parent_mutex = &old_parent.data::<SurfaceUserData>().unwrap().inner;
             let mut old_parent_guard = old_parent_mutex.lock().unwrap();
-            old_parent_guard.children.retain(|c| c.id() != surface.id());
+            old_parent_guard.remove_child(surface);
         }
 
         let my_data_mutex = &surface_data.inner;
@@ -255,27 +257,19 @@ impl PrivateSurfaceData {
         }
     }
 
-    fn commit_sync_surface_tree(
-        surface: &WlSurface,
-        parent_transaction: &PendingTransaction,
-        dh: &DisplayHandle,
-    ) {
+    fn take_sync_surface_tree(surface: &WlSurface, parent_transaction: &PendingTransaction) {
         let children = PrivateSurfaceData::get_children(surface);
         let mut my_data = Self::lock_user_data(surface);
 
         for child in children {
-            Self::commit_sync_surface_tree(&child, &my_data.pending_transaction, dh);
+            Self::take_sync_surface_tree(&child, &my_data.pending_transaction);
         }
 
-        let current_txid = my_data.current_txid;
-        my_data.public_data.cached_state.commit(Some(current_txid), dh);
-        my_data
-            .pending_transaction
-            .insert_state(surface.clone(), current_txid);
-
+        // Parent application takes only states already cached by child commits.
+        // Calling MultiCache::commit here would consume uncommitted attachments,
+        // damage, callbacks and extension state from synchronized descendants.
         let child_tx = std::mem::take(&mut my_data.pending_transaction);
         child_tx.merge_into(parent_transaction);
-        my_data.current_txid.0 = my_data.current_txid.0.wrapping_add(1);
     }
 
     pub fn commit<C: CompositorHandler + 'static>(surface: &WlSurface, dh: &DisplayHandle, state: &mut C) {
@@ -297,14 +291,14 @@ impl PrivateSurfaceData {
                 .map(|s| s.sync.load(Ordering::Acquire))
                 .unwrap_or(false);
 
-            // if we are not sync, but the child is we also have to commit the complete child surface tree
+            // Include committed state from the complete synchronized tree, even
+            // descendants that committed after their direct parent's last commit.
             if !is_sync && is_child_sync {
                 std::mem::drop(child_data);
-                Self::commit_sync_surface_tree(&child, &my_data.pending_transaction, dh);
+                Self::take_sync_surface_tree(&child, &my_data.pending_transaction);
             } else if is_sync || is_child_sync {
                 let child_tx = std::mem::take(&mut child_data.pending_transaction);
                 child_tx.merge_into(&my_data.pending_transaction);
-                child_data.current_txid.0 = child_data.current_txid.0.wrapping_add(1);
             }
         }
         my_data
@@ -380,7 +374,7 @@ impl PrivateSurfaceData {
             child_guard.parent = Some(parent.clone());
         }
         // register child to new parent
-        Self::lock_user_data(parent).children.push(child.clone());
+        Self::lock_user_data(parent).add_child(child.clone());
 
         Ok(())
     }
@@ -392,9 +386,7 @@ impl PrivateSurfaceData {
         let old_parent = Self::lock_user_data(child).parent.take();
         // unregister from our parent
         if let Some(old_parent) = old_parent {
-            Self::lock_user_data(&old_parent)
-                .children
-                .retain(|c| c.id() != child.id());
+            Self::lock_user_data(&old_parent).remove_child(child);
         }
     }
 
@@ -411,40 +403,6 @@ impl PrivateSurfaceData {
             .filter(|s| s.id() != parent.id())
             .cloned()
             .collect()
-    }
-
-    /// Reorders a surface relative to one of its sibling
-    ///
-    /// Fails if `relative_to` is not a sibling or parent of `surface`.
-    pub fn reorder(surface: &WlSurface, to: Location, relative_to: &WlSurface) -> Result<(), ()> {
-        let parent = Self::get_parent(surface).ok_or(())?;
-
-        fn index_of(surface: &WlSurface, slice: &[WlSurface]) -> Option<usize> {
-            for (i, s) in slice.iter().enumerate() {
-                if s.id() == surface.id() {
-                    return Some(i);
-                }
-            }
-            None
-        }
-
-        let mut parent_guard = Self::lock_user_data(&parent);
-        let my_index = index_of(surface, &parent_guard.children).unwrap();
-        let mut other_index = match index_of(relative_to, &parent_guard.children) {
-            Some(idx) => idx,
-            None => return Err(()),
-        };
-        let me = parent_guard.children.remove(my_index);
-        if my_index < other_index {
-            other_index -= 1;
-        }
-        let new_index = match to {
-            Location::Before => other_index,
-            Location::After => other_index + 1,
-        };
-        parent_guard.children.insert(new_index, me);
-
-        Ok(())
     }
 }
 

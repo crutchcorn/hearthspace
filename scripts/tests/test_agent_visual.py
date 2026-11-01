@@ -1,10 +1,23 @@
+import contextlib
+import io
+import json
 import sys
+import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import Mock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from agentlib.control import ControlError
-from agentlib.visual import pixel_rect, verify_cursor_motion, verify_move, verify_resize
+from agentlib.smoke import Smoke
+from agentlib.visual import (
+    cursor_motion,
+    pixel_rect,
+    verify_cursor_motion,
+    verify_move,
+    verify_resize,
+)
 from test_agent_png import png
 
 
@@ -76,7 +89,7 @@ class VisualTests(unittest.TestCase):
         with self.assertRaisesRegex(ControlError, "background"):
             verify_resize(background, before, before, self.window, resized)
 
-    def test_software_cursor_must_change_old_and_new_regions(self):
+    def test_cursor_must_change_old_and_new_regions_for_each_backend(self):
         metadata = {
             "width": 320,
             "height": 240,
@@ -84,21 +97,108 @@ class VisualTests(unittest.TestCase):
             "logical_x": 0,
             "logical_y": 0,
             "cursor": "embedded",
-            "cursor_source": "framebuffer",
         }
-        before = capture(metadata, [((100, 100, 102, 110), (255, 255, 255))])
-        after = capture(metadata, [((170, 100, 172, 110), (255, 255, 255))])
-        verify_cursor_motion(before, after, 100, 100)
-        for missing in (before, capture(metadata, [])):
-            with self.assertRaises(ControlError):
-                verify_cursor_motion(before, missing, 100, 100)
-        with self.assertRaisesRegex(ControlError, "framebuffer"):
-            verify_cursor_motion(
-                before,
-                ({**metadata, "cursor_source": "hardware-overlay"}, after[1]),
-                100,
-                100,
-            )
+        for presentation, source in (
+            ("page-flip", "submitted-planes"),
+            ("offscreen", "framebuffer"),
+        ):
+            with self.subTest(presentation=presentation):
+                metadata.update(presentation=presentation, cursor_source=source)
+                before = capture(metadata, [((100, 100, 102, 110), (255, 255, 255))])
+                after = capture(metadata, [((170, 100, 172, 110), (255, 255, 255))])
+                verify_cursor_motion(before, after, 100, 100, presentation=presentation)
+                for missing in (before, capture(metadata, [])):
+                    with self.assertRaises(ControlError):
+                        verify_cursor_motion(
+                            before, missing, 100, 100, presentation=presentation
+                        )
+                for wrong in (
+                    {**metadata, "cursor_source": "hardware-overlay"},
+                    {**metadata, "presentation": "wrong-backend"},
+                ):
+                    with self.assertRaisesRegex(ControlError, "cursor source"):
+                        verify_cursor_motion(
+                            before,
+                            (wrong, after[1]),
+                            100,
+                            100,
+                            presentation=presentation,
+                        )
+
+    def test_terminal_and_desktop_cursor_checks_retain_distinct_evidence(self):
+        for presentation, source in (
+            ("page-flip", "submitted-planes"),
+            ("offscreen", "framebuffer"),
+        ):
+            with (
+                self.subTest(presentation=presentation),
+                tempfile.TemporaryDirectory() as directory,
+            ):
+                metadata = {
+                    "width": 320,
+                    "height": 240,
+                    "scale": 1,
+                    "logical_x": 0,
+                    "logical_y": 0,
+                    "output": "test-output",
+                    "cursor": "embedded",
+                    "cursor_source": source,
+                    "presentation": presentation,
+                }
+                captures = [
+                    capture(
+                        {**metadata, "frame_id": index},
+                        [((x, 100, x + 2, 110), (255, 255, 255))],
+                    )
+                    for index, x in enumerate((100, 170, 20, 90))
+                ]
+                smoke = Smoke(
+                    SimpleNamespace(session=Path(directory), timeout=1),
+                    presentation=presentation,
+                )
+                smoke.control = Mock()
+                smoke.control.capture.side_effect = captures
+                with (
+                    patch("agentlib.visual.Input"),
+                    patch("agentlib.smoke.Input"),
+                    contextlib.redirect_stdout(io.StringIO()),
+                ):
+                    cursor_motion(
+                        smoke,
+                        {"x": 0, "y": 0, "width": 200, "height": 180},
+                        "test-output",
+                    )
+                    smoke.cursor(metadata)
+                names = (
+                    "terminal-cursor-first",
+                    "terminal-cursor-second",
+                    "cursor-first",
+                    "cursor-second",
+                )
+                for name, (expected_metadata, expected_png) in zip(
+                    names, captures, strict=True
+                ):
+                    self.assertEqual(
+                        (smoke.artifacts / f"{name}.png").read_bytes(), expected_png
+                    )
+                    retained = json.loads(
+                        (smoke.artifacts / f"{name}.json").read_text()
+                    )
+                    self.assertEqual(
+                        retained["frame_id"], expected_metadata["frame_id"]
+                    )
+                self.assertEqual(
+                    [row["step"] for row in smoke.results],
+                    [
+                        "terminal-cursor-first",
+                        "terminal-cursor-second",
+                        "terminal-cursor-motion",
+                        "cursor-first",
+                        "cursor-second",
+                        "cursor-inclusion",
+                    ],
+                )
+                self.assertEqual(smoke.control.capture.call_count, 4)
 
 
 if __name__ == "__main__":

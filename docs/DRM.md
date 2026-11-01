@@ -42,11 +42,11 @@ it is more than replacing a nested window's framebuffer.
 | Concern | Nested winit | Native DRM/KMS |
 | --- | --- | --- |
 | Outputs | Host manages physical displays | Hearthspace manages connector/CRTC targets |
-| Rendering target | Host window surface | GBM buffers suitable for scanout |
+| Rendering target | Host window surface | Leased scene buffers and presenter-owned scanout buffers |
 | Input | Host-translated events | libinput through the active seat session |
 | Presentation pacing | Host/window events and buffer submission | Pending frames and DRM completion events |
-| Named cursor | Host window cursor | Hardware cursor with software fallback |
-| Capture | Renderer readback | Output readback associated with presentation, with cursor overlay when needed |
+| Cursor | Host cursor or composited client surface | Smithay cursor plane or cached-scene composition |
+| Capture | Renderer readback | Exact submitted plane composition associated with presentation |
 
 ## Native display concepts
 
@@ -69,20 +69,23 @@ when extending device support.
 ## Outputs and scaling
 
 The native backend opens the seat's DRM devices and keeps their scanout resources
-separate. Each target has its own GBM surface, damage history, and pending frame
-state. The compositor publishes outputs backed by successfully created surfaces
+separate. Each target has its own leased scene pool, scene damage history, and
+presenter-owned `DrmCompositor` with scanout buffers and pending frame state. The compositor publishes outputs backed by successfully created surfaces
 and renders the desktop rectangle belonging to each one. Discovery alone does
 not establish that a connected display can present.
 
 One GPU owns the GLES scene renderer, application imports, and effect caches.
-Outputs attached to that GPU render directly into its scanout buffers. For an
-output on another GPU, Hearthspace renders into a persistent scene texture.
+Outputs attached to that GPU render directly into leased, cursor-free scene
+buffers. For an output on another GPU, Hearthspace renders into a persistent
+scene texture.
 Compatible explicit format/modifier pairs use Smithay's multi-GPU renderer,
 including when the sharing format differs from the target's scanout format.
 
 When direct sharing is unavailable, Smithay copies the rendered image through
 CPU memory and uploads it to the target GPU. Both routes copy complete output
-images into target-owned scanout buffers. The source intermediate's format need
+images into target-local scene buffers. The presenter imports the completed
+image into its own GLES context and composites it into scanout. Unchanged scenes
+remain cached for cursor updates. The source intermediate's format need
 not match the target's scanout format. Sharing and copying remain automatic
 backend decisions, separate from an application's
 [graphics preference](APPS.md#application-graphics-preference).
@@ -155,33 +158,45 @@ Locking retains an opaque fallback while outputs are unavailable or being rebuil
 A fresh lock presentation must satisfy the current output barrier; a stale page
 flip cannot acknowledge it. See [session locking](SESSION_LOCK.md).
 
-## Event loop and pacing
+## Event loops and pacing
 
-All backends share the calloop-driven compositor loop. Native mode adds session,
-udev, libinput, and DRM event sources. The loop imports pending dmabufs, advances
-state, applies cursor policy, renders dirty work, and dispatches client events.
+The main calloop loop owns Wayland dispatch, libseat, udev discovery, libinput,
+application state, imports, and scene rendering. One presenter thread per DRM
+device owns that device's DRM notifier, KMS surfaces, GLES context, and Smithay
+`DrmCompositor` instances. KMS completion stays on that thread, including
+`frame_submitted`, which can itself perform submission work.
 
-For each native output:
+For each output, main publishes a cursor-free scene with a producer fence and an
+`Arc<Slot<GbmBuffer>>` lease. A DMA-BUF clone alone does not reserve a pool slot.
+The presenter adopts completed scenes without waiting on an unfinished scene
+before moving the cursor over the previous image. Producer and consumer fences
+keep leases unavailable until both users finish. A full pool leaves scene work
+dirty and resumes on a capacity notification; it does not wait for KMS on main.
 
-1. A state change marks work dirty.
-2. If no frame is pending, the backend acquires a scanout buffer.
-3. The shared renderer draws that output's logical view at its output scale.
-4. The backend queues the buffer and records a pending frame.
-5. A matching completion releases the pending frame and allows further work.
+Scene and cursor updates have separate revisions. With one flip pending per
+output, the presenter retains the newest desired state and submits it after that
+output completes. Cursor plane movement can reuse primary contents. Software
+cursor fallback also uses the cached scene, preserving the same ownership and
+presentation boundary.
 
-Dirty work arriving during a pending flip is retained. Input and window-management
-handlers request redraws; they do not submit KMS frames themselves. Completion
-handling rejects events from retired surfaces, and an untimed modeset event can
-unblock the buffer queue without proving capture or lock presentation. Those
-paths request a fresh, verifiable frame.
+Completions carry device incarnation, output generation, submission sequence,
+scene sequence, cursor identity, and security epoch. The worker rejects old DRM
+timestamps; one untimed modeset completion can retire a buffer and request a
+verified follow-up, but cannot prove capture or lock presentation. Main rejects
+stale or reordered notifications. A cursor-only completion cannot acknowledge a
+newer scene's capture or release its pending scene state.
 
-Every verified output completion services that output's application frame
-callbacks, even while another display has a frame pending. A window tree and its
-popups use one output's cadence, selected by projected overlap with deterministic
-primary-output ties. Hidden and offscreen managed windows retain a fallback
-cadence. While locked, only ready lock surfaces on the completed output receive
-callbacks. The compositor's aggregate redraw decision is separate from this
-client pacing.
+Scene completions service that output's application callbacks independently of
+other outputs. A window tree and its popups select one cadence by projected
+overlap with primary-output ties. Cursor callbacks use their image identity;
+callback-only opportunities are paced separately and do not claim presentation.
+
+Reconfiguration, pause, and removal revoke admission before asynchronous worker
+cleanup. The main record retains libseat ownership until the worker and its
+resources retire. A stuck worker prevents replacement for that device rather
+than accumulating threads and pools. Final session teardown can join workers;
+ordinary input and hotplug callbacks do not. Lock changes revoke old security
+epochs and require a current opaque shield or lock scene before acknowledgement.
 
 ## Dmabuf feedback
 
@@ -203,8 +218,9 @@ damage clips describe changed regions passed to the kernel for presentation.
 They serve different consumers and can be enabled independently.
 
 Hearthspace retains renderer-side damage tracking but submits native frames
-without KMS damage clips. This avoids relying on optional driver behavior for
-correct presentation. A future KMS-damage optimization needs device-appropriate
+without KMS damage clips. Each new `DrmCompositor` disables clip generation
+through the [local Smithay policy patch](../patches/README.md). This preserves the
+existing NVIDIA correctness policy while keeping renderer damage incremental. A future KMS-damage optimization needs device-appropriate
 validation and a fallback when the driver rejects it; it must not disable ordinary
 renderer damage as a side effect.
 

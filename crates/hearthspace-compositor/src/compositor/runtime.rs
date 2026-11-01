@@ -111,7 +111,7 @@ pub(in crate::compositor) fn run_event_loop(
     data: &mut CalloopData,
 ) -> Result<(), Box<dyn std::error::Error>> {
     info!("entering compositor event loop");
-    data.update_native_hardware_cursor();
+    data.publish_native_cursor();
     if let Err(error) = data.render() {
         warn!(%error, "initial compositor render failed");
     }
@@ -195,9 +195,9 @@ pub(in crate::compositor) fn run_event_loop(
         data.state.maintain_focused_shell_peek();
         data.state.refresh_pending_shell_click();
         data.apply_cursor_icon();
-        data.update_native_hardware_cursor();
+        data.publish_native_cursor();
 
-        if data.state.needs_redraw {
+        if data.state.needs_redraw || data.native_scene_work_pending() {
             if let Err(error) = data.render() {
                 warn!(%error, "compositor render failed; dropping this redraw");
                 data.full_redraw = data.full_redraw.max(1);
@@ -219,6 +219,14 @@ pub(in crate::compositor) fn run_event_loop(
 }
 
 impl CalloopData {
+    fn native_scene_work_pending(&self) -> bool {
+        #[cfg(feature = "udev")]
+        if let Backend::Udev(backend) = &self.backend {
+            return backend.scene_work_pending();
+        }
+        false
+    }
+
     fn uses_vblank_animation_pacing(&self) -> bool {
         match &self.backend {
             #[cfg(feature = "udev")]
@@ -230,11 +238,11 @@ impl CalloopData {
         }
     }
 
-    fn update_native_hardware_cursor(&mut self) {
+    fn publish_native_cursor(&mut self) {
         let CalloopData { state, backend, .. } = self;
         match backend {
             #[cfg(feature = "udev")]
-            Backend::Udev(device) => device.update_hardware_cursor(state),
+            Backend::Udev(device) => device.publish_cursor(state),
             #[cfg(feature = "winit")]
             Backend::Winit(_) => {
                 // The host window system draws the cursor for named shapes; only

@@ -190,3 +190,61 @@ fn expired_frame_cannot_write_client_memory() {
     assert_eq!(ready(&client), 0);
     assert_eq!(buffer.bytes(), [0x7e; 40]);
 }
+
+#[test]
+fn delayed_worker_pixels_use_submission_cutoff_for_real_protocol_requests() {
+    let (server, socket) = Server::new(true);
+    let mut client = Client::new(socket);
+    let older = client.session(false);
+    let (_older_frame, older_buffer) = client.capture(&older, 2);
+    let exact = client.session(true);
+    let (_exact_frame, exact_buffer) = client.capture(&exact, 2);
+    let newer = client.session(false);
+    let (_newer_frame, newer_buffer) = client.capture(&newer, 2);
+    let cutoff = Instant::now();
+    server.run(move |state| {
+        assert_eq!(state.remote.requests.len(), 3);
+        for (request, accepted) in state.remote.requests.iter_mut().zip([
+            cutoff - Duration::from_nanos(1),
+            cutoff,
+            cutoff + Duration::from_nanos(1),
+        ]) {
+            request.deadline = accepted + FRAME_TIMEOUT;
+        }
+        state.remote.stage_before(
+            "test-output",
+            (2, 2).into(),
+            RED_BLUE.to_vec(),
+            Some(vec![255; 16]),
+            cutoff,
+        );
+    });
+    client.sync();
+    assert_eq!(ready(&client), 0);
+    assert_eq!(older_buffer.bytes(), [0x7e; 40]);
+    assert_eq!(exact_buffer.bytes(), [0x7e; 40]);
+    presented(&server);
+    client.sync();
+    assert_eq!(ready(&client), 2);
+    assert_eq!(&older_buffer.bytes()[4..8], &0xffff0000_u32.to_ne_bytes());
+    assert_eq!(&exact_buffer.bytes()[4..12], &[255; 8]);
+    assert_eq!(newer_buffer.bytes(), [0x7e; 40]);
+    // A cursor-only presentation with no newer readback cannot release it.
+    presented(&server);
+    client.sync();
+    assert_eq!(ready(&client), 2);
+    assert_eq!(newer_buffer.bytes(), [0x7e; 40]);
+    server.run(move |state| {
+        state.remote.stage_before(
+            "test-output",
+            (2, 2).into(),
+            vec![255; 16],
+            None,
+            cutoff + Duration::from_nanos(1),
+        )
+    });
+    presented(&server);
+    client.sync();
+    assert_eq!(ready(&client), 3);
+    assert_eq!(&newer_buffer.bytes()[4..12], &[255; 8]);
+}

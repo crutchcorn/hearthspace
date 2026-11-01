@@ -68,3 +68,55 @@ To refresh:
    substitutes at the GPU-device boundary; it does not establish GPU compatibility
    or performance. See the [test guidance](../../docs/E2E_TESTING.md#smithay-transfer-cache-regressions)
    for the command and the ledger for the removal condition.
+
+## DRM compositor damage-clip policy
+
+The independent [damage-clip policy patch](../../patches/smithay-drm-damage-clips.patch)
+adds `DrmCompositor::set_damage_clips_enabled(bool)` to the pinned upstream
+compositor. The default remains enabled in both constructors. Disabling prevents
+both rendered-primary and direct-scanout damage blobs, clears clips from current,
+pending, queued, and prepared frames, and forces the next successful submission
+to clear the KMS property even when the scene is unchanged. It preserves renderer
+damage tracking, buffer ages, frame resources, and completion synchronization.
+The setting survives buffer/state resets and `clear()`; a newly constructed
+compositor starts enabled and its caller must opt out again.
+
+This local extension changes only `src/backend/drm/compositor/mod.rs` and adds
+`src/backend/drm/compositor/damage.rs`. No manifest, upstream notice, existing
+repair, or atomic surface code changes. The existing atomic request builder
+writes `FB_DAMAGE_CLIPS = 0` for a plane without clips. Reapply this independent
+patch during a refresh until compatible upstream code supplies the same opt-out
+and retained-frame behavior. The [patch ledger](../../patches/README.md#smithay-drm-compositor-damage-clip-policy)
+defines the required native property-inspection regression boundary and removal
+condition. No device-free behavioral fixture is supplied: the real compositor
+requires a DRM surface, and vendor tests are outside workspace test execution.
+## Applied surface state and subsurface transactions
+
+The independent [applied-state patch](../../patches/smithay-applied-surface-state.patch)
+repairs attachment-independent scale/transform/damage, synchronized descendant
+commit collection, parent-owned position/stacking application, and retention of
+unrecognized non-null buffers. It changes
+`src/backend/renderer/utils/wayland.rs` and
+`src/wayland/compositor/{cache.rs,handlers.rs,transaction.rs,tree.rs}`,
+adding the private `src/wayland/compositor/tree/parent_state.rs` helper.
+The upstream revision, package version, manifests, notices, and other repairs
+remain unchanged; no public API is added.
+
+[Smithay PR 2141](https://github.com/Smithay/smithay/pull/2141), open when inspected
+on 2026-11-01, informed parent-owned position handling, cache override, and
+applying transaction state before callbacks. This patch is a local adaptation,
+not a merged upstream backport. Attachment-independent renderer updates,
+avoiding implicit child commits, staged stacking with role lifetime validation,
+and preserving failed non-null attachments are independent local fixes.
+Layout is staged until transaction application rather than applied during
+cached-state merging. Resolved pending stacking orders are copied into parent
+transactions; destroying a member removes only that member from pending and
+cached orders, preserving surviving moves without affecting a recreated role.
+
+When refreshing, reapply this patch while needed and run the real App/Wayland
+cursor snapshot regressions with surfaceless EGL, using the command and coverage
+limits in the [patch ledger](../../patches/README.md#smithay-applied-surface-state-and-subsurface-transactions).
+The failure fixture substitutes only buffer storage recognition; no native DRM
+or driver-fault validation is implied. Remove this repair only after compatible
+upstream code passes the independent cases without it. Preserve the other
+patches until their separate removal conditions are satisfied.
