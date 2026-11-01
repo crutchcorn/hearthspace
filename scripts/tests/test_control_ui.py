@@ -12,6 +12,7 @@ from unittest.mock import Mock, patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from agentlib import control_ui, control_ui_fixture
 from agentlib.control import ControlError, Deadline
+from agentlib.smoke import Smoke
 
 
 def environment(directory):
@@ -191,8 +192,20 @@ class ControlFixtureTests(unittest.TestCase):
             "control_osds": geometry,
             "shell_panels": [],
         }
+        events = []
+
+        def receive_input(check_live):
+            self.assertEqual(check_live(), geometry)
+            events.append("input")
+
+        def capture(_name):
+            self.assertEqual(smoke.control.status()["control_osds"], geometry)
+            events.append("capture")
+
+        smoke.capture.side_effect = capture
 
         def snapshot(*_args):
+            events.append("text")
             smoke.control.status.return_value = {
                 "control_osds": [],
                 "shell_panels": [],
@@ -203,20 +216,104 @@ class ControlFixtureTests(unittest.TestCase):
             patch.object(control_ui, "a11y", side_effect=snapshot) as a11y,
             patch.object(control_ui, "focused", return_value=True) as focused,
         ):
-            control_ui.osd(smoke, "Volume muted", capture="muted-osd")
+            control_ui.osd(
+                smoke, "Volume muted", capture="muted-osd", while_visible=receive_input
+            )
+            self.assertEqual(events, ["input", "capture", "text"])
             a11y.assert_called_once_with(
                 smoke, "find", control_ui.selector("Volume muted")
             )
-            focused.assert_called_once_with(smoke, 17)
+            focused.assert_called_with(smoke, 17)
             smoke.capture.assert_called_once_with("muted-osd")
             smoke.record.assert_called_once_with(
                 "control-osd", text="Volume muted", focus=17, geometry=geometry
             )
+            focus_checks = focused.call_count
             control_ui.dismissed(smoke)
-            self.assertEqual(focused.call_count, 2)
+            self.assertEqual(focused.call_count, focus_checks + 1)
             self.assertEqual(
                 smoke.record.call_args.args, ("osd-automatically-dismissed",)
             )
+
+    def test_empty_osd_text_retries_only_while_still_visible(self):
+        for expired in (False, True):
+            with self.subTest(expired=expired):
+                smoke = Mock(target=17)
+                smoke.until.side_effect = lambda name, check, smoke=smoke: Smoke.until(
+                    smoke, name, check
+                )
+                smoke.control.status.return_value = {"control_osds": [{}]}
+                smoke.control.deadline.remaining.side_effect = [
+                    1,
+                    ControlError("unexpected extra retry"),
+                ]
+                snapshots = iter(([], [{"name": "Volume muted"}]))
+
+                def snapshot(*_args, expired=expired, smoke=smoke, snapshots=snapshots):
+                    if expired:
+                        smoke.control.status.return_value = {"control_osds": []}
+                    return {"elements": next(snapshots)}
+
+                with (
+                    patch.object(control_ui, "a11y", side_effect=snapshot) as a11y,
+                    patch.object(control_ui, "focused", return_value=True),
+                    patch("agentlib.smoke.time.sleep") as sleep,
+                ):
+                    if expired:
+                        with self.assertRaisesRegex(ControlError, "OSD disappeared"):
+                            control_ui.osd(smoke, "Volume muted")
+                        self.assertEqual(a11y.call_count, 1)
+                        sleep.assert_not_called()
+                        smoke.control.deadline.remaining.assert_not_called()
+                        smoke.record.assert_not_called()
+                    else:
+                        control_ui.osd(smoke, "Volume muted")
+                        self.assertEqual(a11y.call_count, 2)
+                        sleep.assert_called_once_with(0.05)
+                        smoke.record.assert_called_once_with(
+                            "control-osd", text="Volume muted", focus=17, geometry=[{}]
+                        )
+                    a11y.assert_called_with(
+                        smoke, "find", control_ui.selector("Volume muted")
+                    )
+
+    def test_osd_rechecks_live_state_after_input_and_capture(self):
+        for stage in ("input", "capture"):
+            for fault in ("disappeared", "focus", "panel", "geometry"):
+                with self.subTest(stage=stage, fault=fault):
+                    smoke = Mock(target=17)
+                    smoke.until.side_effect = lambda _name, check: check()
+                    smoke.control.status.return_value = {"control_osds": [{"x": 0}]}
+                    with (
+                        patch.object(control_ui, "a11y") as a11y,
+                        patch.object(control_ui, "focused", return_value=True) as focus,
+                    ):
+
+                        def disrupt(*_args, fault=fault, smoke=smoke, focus=focus):
+                            if fault == "focus":
+                                focus.return_value = False
+                            elif fault == "panel":
+                                smoke.control.status.return_value["shell_panels"] = [{}]
+                            else:
+                                smoke.control.status.return_value = {
+                                    "control_osds": []
+                                    if fault == "disappeared"
+                                    else [{"x": 1}]
+                                }
+
+                        if stage == "capture":
+                            smoke.capture.side_effect = disrupt
+                        with self.assertRaisesRegex(ControlError, fault):
+                            control_ui.osd(
+                                smoke,
+                                "Volume 45%",
+                                capture="volume-up-osd",
+                                while_visible=disrupt if stage == "input" else None,
+                            )
+                        a11y.assert_not_called()
+                        smoke.record.assert_not_called()
+                        if stage == "input":
+                            smoke.capture.assert_not_called()
 
     def test_osd_rejects_multiple_mapped_surfaces(self):
         smoke = Mock()
