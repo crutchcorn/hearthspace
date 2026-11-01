@@ -76,8 +76,21 @@ fn double_click_title(compositor: &HeadlessCompositor, window: &Value) {
         window["x"].as_f64().unwrap() + 40.0 * scale,
         window["y"].as_f64().unwrap() + 22.0 * scale,
     );
-    click(compositor, point);
-    click(compositor, point);
+    // Queue both clicks in one dispatch. Separate command round trips can
+    // render between the first release and second press and exceed 400 ms.
+    let commands = format!(
+        "pointer-motion-abs {} {}\npointer-button-down 272\npointer-button-up 272\n\
+         pointer-motion-abs {} {}\npointer-button-down 272\npointer-button-up 272\n",
+        point.0, point.1, point.0, point.1,
+    );
+    let mut stream = UnixStream::connect(&compositor.command_socket_path).unwrap();
+    stream
+        .set_read_timeout(Some(Duration::from_secs(5)))
+        .unwrap();
+    stream.write_all(commands.as_bytes()).unwrap();
+    for _ in commands.lines() {
+        assert_eq!(read_line(&mut stream), "ok\n");
+    }
 }
 
 fn assert_presentation(

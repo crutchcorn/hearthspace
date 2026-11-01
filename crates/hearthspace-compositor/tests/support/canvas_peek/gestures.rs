@@ -5,6 +5,7 @@ const ITEM: &str = "file:7065656b2d67657374757265";
 const HOME: [i64; 2] = [320, 300];
 const PEEK: [i64; 2] = [252, 300];
 const PRESS: [i64; 2] = [290, 340];
+const RETURN_PRESS: [i64; 2] = [336, 340];
 const MOVED: [i64; 2] = [120, 600];
 
 fn sliding_icon() -> (HeadlessCompositor, MapClient, u64, usize) {
@@ -50,20 +51,24 @@ fn grab_sliding_icon(
     // x=290 is outside the covering app (including its resize border), but
     // inside the icon as it emerges. Probe that strip with real button input:
     // desktop-status has canonical positions, not animated screen bounds.
+    // On return the covering app is gone: x=336 stays inside the icon through
+    // the entire slide, whereas x=290 leaves it early in the return animation.
     // A successful grab adopts the visible position, making the interruption
     // observable without a screenshot or a sleep guessed against 300 ms.
+    let press = if returning { RETURN_PRESS } else { PRESS };
     for _ in 0..4 {
         action(compositor, "canvas-search-motion false");
         action(compositor, format!("move-window {cover} 800 240"));
         wait_item(compositor, ITEM, HOME);
         action(
             compositor,
-            format!("pointer-motion-abs {} {}", PRESS[0], PRESS[1]),
+            format!("pointer-motion-abs {} {}", press[0], press[1]),
         );
         if returning {
             action(compositor, format!("move-window {cover} 300 240"));
             wait_item(compositor, ITEM, PEEK);
         }
+        let presses_before = client.presses().len();
         action(compositor, "canvas-search-motion true");
         let destination = if returning { 800 } else { 300 };
         action(compositor, format!("move-window {cover} {destination} 240"));
@@ -81,7 +86,9 @@ fn grab_sliding_icon(
             let grabbed = [item["x"].as_i64().unwrap(), item["y"].as_i64().unwrap()];
             if item["selected"] == true && grabbed[0] > PEEK[0] && grabbed[0] < HOME[0] {
                 assert_eq!(grabbed[1], HOME[1]);
-                assert_eq!(client.presses().last().map(|(index, _)| *index), Some(icon));
+                let presses = client.presses();
+                assert_eq!(presses.len(), presses_before + 1, "require a fresh press");
+                assert_eq!(presses.last().map(|(index, _)| *index), Some(icon));
                 // Motion is already cancelled by the press. Make the later
                 // restoration assertions independent of animation scheduling.
                 action(compositor, "canvas-search-motion false");
@@ -99,13 +106,13 @@ fn grab_sliding_icon(
     panic!("never grabbed the icon between its original home and peek destination");
 }
 
-fn move_held_icon(compositor: &HeadlessCompositor, grabbed: [i64; 2]) {
+fn move_held_icon(compositor: &HeadlessCompositor, grabbed: [i64; 2], press: [i64; 2]) {
     action(
         compositor,
         format!(
             "pointer-motion-abs {} {}",
-            PRESS[0] + MOVED[0] - grabbed[0],
-            PRESS[1] + MOVED[1] - grabbed[1],
+            press[0] + MOVED[0] - grabbed[0],
+            press[1] + MOVED[1] - grabbed[1],
         ),
     );
     wait_item(compositor, ITEM, MOVED);
@@ -128,7 +135,7 @@ fn canvas_peek_icon_escape_during_slide_preserves_original_home() {
     let _guard = headless_test_guard();
     let (compositor, mut client, cover, icon) = sliding_icon();
     let grabbed = grab_sliding_icon(&compositor, &mut client, cover, icon, false);
-    move_held_icon(&compositor, grabbed);
+    move_held_icon(&compositor, grabbed, PRESS);
     keys(&compositor, &[1]); // Escape cancels an actual move, not just a press.
     action(&compositor, "pointer-button-up 272");
 
@@ -142,7 +149,7 @@ fn canvas_peek_icon_committed_drag_during_slide_establishes_new_home() {
     let _guard = headless_test_guard();
     let (compositor, mut client, cover, icon) = sliding_icon();
     let grabbed = grab_sliding_icon(&compositor, &mut client, cover, icon, false);
-    move_held_icon(&compositor, grabbed);
+    move_held_icon(&compositor, grabbed, PRESS);
     action(&compositor, "pointer-button-up 272");
 
     action(&compositor, format!("move-window {cover} 800 240"));
@@ -163,7 +170,7 @@ fn canvas_peek_icon_click_or_cancel_during_return_finishes_original_home() {
     for cancel in [false, true] {
         let grabbed = grab_sliding_icon(&compositor, &mut client, cover, icon, true);
         if cancel {
-            move_held_icon(&compositor, grabbed);
+            move_held_icon(&compositor, grabbed, RETURN_PRESS);
             keys(&compositor, &[1]);
         }
         action(&compositor, "pointer-button-up 272");

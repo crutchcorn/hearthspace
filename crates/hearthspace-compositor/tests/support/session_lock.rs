@@ -14,6 +14,18 @@ fn compositor_without_locker(size: &str) -> HeadlessCompositor {
     std::fs::hard_link(env!("CARGO_BIN_EXE_hearthspace"), &executable)
         .or_else(|_| std::fs::copy(env!("CARGO_BIN_EXE_hearthspace"), &executable).map(|_| ()))
         .expect("isolate compositor executable without its sibling locker");
+    // Keep required Xwayland companions: this fixture isolates locker failure,
+    // not a missing compositor runtime dependency.
+    let build_dir = Path::new(env!("CARGO_BIN_EXE_hearthspace"))
+        .parent()
+        .unwrap();
+    for name in ["hearthspace-Xwayland", "hearthspace-Xwayland.json"] {
+        let source = build_dir.join(name);
+        let destination = executable_dir.path().join(name);
+        std::fs::hard_link(&source, &destination)
+            .or_else(|_| std::fs::copy(&source, &destination).map(|_| ()))
+            .expect("isolate required Xwayland companion beside compositor");
+    }
     let mut compositor = HeadlessCompositor::spawn_with_executable(
         size,
         None,
