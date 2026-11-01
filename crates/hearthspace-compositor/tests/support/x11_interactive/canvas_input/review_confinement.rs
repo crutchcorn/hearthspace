@@ -14,6 +14,8 @@ fn x11_live_child_confinement_updates_physical_position_before_relative_warp() {
     let mut seen = Observed::default();
     seen.key_fence(&w);
     assert_pointer(&w, w.client.root, frame(&w, w.client.window), [20, 20]);
+    raise_neighbor_backing(&w);
+    assert_pointer(&w, w.client.root, frame(&w, w.client.window), [20, 20]);
     let reply = w
         .client
         .connection
@@ -52,11 +54,40 @@ fn x11_live_child_confinement_updates_physical_position_before_relative_warp() {
             .iter()
             .any(|e| e.event == w.client.window && (e.root_x, e.root_y) == (110, 110))
     });
-    assert_pointer(&w, w.client.window, confined, [110, 110]);
+    let motion = seen
+        .primary
+        .motions
+        .iter()
+        .find(|e| e.event == w.client.window && (e.root_x, e.root_y) == (110, 110))
+        .unwrap();
+    assert_eq!([motion.event_x, motion.event_y], [110, 110]);
+    assert_eq!(
+        (motion.root, motion.response_type & 0x80),
+        (w.client.root, 0)
+    );
+    assert!(motion.same_screen);
+    assert!(seen.observer.motions.is_empty(), "{seen:?}");
+    // The source child is WarpPointer's condition, not its destination.
+    // Ordinary client warps deliberately retain global X hit testing, while
+    // ownerEvents=false still delivers motion to the active grab's window A.
+    assert_pointer(&w, w.client.window, x11rb::NONE, [110, 110]);
+    let other_frame = frame(&w, w.other);
+    assert_pointer(&w, w.client.root, other_frame, [110, 110]);
+    assert_pointer(&w, other_frame, w.other, [110, 110]);
     assert!(
         seen.primary.buttons.is_empty() && seen.observer.buttons.is_empty(),
         "{seen:?}"
     );
+    // Fresh native input carries A's identity again. It follows all warp
+    // assertions so it cannot repair the physical state under observation.
+    seen = Observed::default();
+    batch(
+        &w.compositor,
+        &format!("pointer-motion-abs 315 315\n{KEY_MARKER}"),
+    );
+    seen.key_fence(&w);
+    assert_pointer(&w, w.client.window, confined, [115, 115]);
+    assert!(seen.primary.buttons.is_empty() && seen.observer.buttons.is_empty());
     w.client
         .connection
         .ungrab_pointer(x11rb::CURRENT_TIME)

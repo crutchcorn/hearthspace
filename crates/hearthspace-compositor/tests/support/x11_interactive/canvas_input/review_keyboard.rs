@@ -39,59 +39,7 @@ fn assert_pointer_root(w: &Windows) {
 }
 
 fn raise_b(w: &Windows) {
-    // Finish the click's XWM work before changing the X stack. The delivered
-    // click, not this X roundtrip, already fenced the frozen key prefix.
-    xwm_barrier(&w.observer, w.other);
-    let a_frame = frame(w, w.client.window);
-    let b_frame = frame(w, w.other);
-    let attributes = w
-        .observer
-        .get_window_attributes(b_frame)
-        .unwrap()
-        .reply()
-        .unwrap();
-    // Foreign ConfigureWindow on a managed frame would be redirected to the
-    // XWM. Temporarily bypass redirection to change only this fixture's X
-    // stacking, then restore the frame's original attribute immediately.
-    w.observer
-        .change_window_attributes(
-            b_frame,
-            &ChangeWindowAttributesAux::new().override_redirect(1),
-        )
-        .unwrap()
-        .check()
-        .unwrap();
-    w.observer
-        .configure_window(
-            b_frame,
-            &ConfigureWindowAux::new()
-                .sibling(a_frame)
-                .stack_mode(StackMode::ABOVE),
-        )
-        .unwrap()
-        .check()
-        .unwrap();
-    w.observer
-        .change_window_attributes(
-            b_frame,
-            &ChangeWindowAttributesAux::new()
-                .override_redirect(u32::from(attributes.override_redirect)),
-        )
-        .unwrap()
-        .check()
-        .unwrap();
-    let stack = w
-        .observer
-        .query_tree(w.client.root)
-        .unwrap()
-        .reply()
-        .unwrap()
-        .children;
-    assert!(
-        stack.iter().position(|id| *id == b_frame).unwrap()
-            > stack.iter().position(|id| *id == a_frame).unwrap(),
-        "B must cover A's backing rectangle in X: {stack:?}"
-    );
+    raise_neighbor_backing(w);
     assert_pointer_root(w);
 }
 
