@@ -4,31 +4,9 @@ use smithay::{
     xwayland::X11Surface,
 };
 
-use crate::compositor::{App, ManagedSurface};
-use wayland_server::protocol::wl_surface::WlSurface;
+use crate::compositor::App;
 
 impl App {
-    pub(in crate::compositor) fn prepare_x11_pointer_target(&mut self, target: &WlSurface) {
-        // Canvas windows may share X root coordinates. XWayland still uses
-        // X stacking for delivery, so the compositor's hit target must be on
-        // top there before sending surface-local pointer input. An existing
-        // grab retains its original target until all buttons are released.
-        if self.pointer.is_grabbed() {
-            return;
-        }
-        let Some(index) = self.window_index_for_surface(target) else {
-            return;
-        };
-        let ManagedSurface::X11(surface) = &self.windows[index].surface else {
-            return;
-        };
-        if let Some(xwm) = &mut self.xwm
-            && let Err(error) = xwm.raise_window(surface.as_ref())
-        {
-            tracing::warn!(%error, "failed to raise X11 pointer target");
-        }
-    }
-
     pub(in crate::compositor) fn x11_root_geometry(
         &self,
         surface: &X11Surface,

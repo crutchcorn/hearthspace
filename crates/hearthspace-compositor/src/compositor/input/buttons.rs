@@ -232,8 +232,6 @@ impl App {
                 surface,
                 surface_location,
             }) => {
-                #[cfg(feature = "xwayland")]
-                self.prepare_x11_pointer_target(&surface);
                 self.record_client_activity_for_window_index(
                     window_index,
                     ActivityReason::ClientInput,
