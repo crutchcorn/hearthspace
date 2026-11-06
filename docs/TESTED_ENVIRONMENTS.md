@@ -20,6 +20,61 @@ Keep detailed captures and logs with the issue or test artifact. Use this page
 as the single inventory of named test systems; feature guides describe how to
 repeat the checks.
 
+## Satellite X11 migration, 2026-11-06
+
+The GPD system above ran the debug runtime from `a27420d8` with Satellite as
+the sole X11 backend and the bundled, privately patched Xwayland 24.1.14.
+Kernel `7.0.0-42-generic`, `amdgpu` and Mesa `26.0.8-1ubuntu0.3` drove the
+internal 2560×1600 panel at scale 1. No external GPU was connected. The system
+was not virtualized. The private Xwayland executable's SHA-256 begins
+`cb95f1a2630b`; the system Xwayland package and installed Hearthspace session
+were not changed.
+
+Three isolated native workflows passed using synthetic compositor input:
+
+- `native-routing-1` checked exact X11 button press/release recipients and local
+  coordinates for individual and batched clicks, with negative and distant
+  canvas homes and at 86.4% zoom. Cancelling an accepted X11 move drained its
+  held release over a neighboring window; a fresh click reached that neighbor.
+  Captures verified both clients' response colors and the resulting geometry.
+- `native-dnd-2` dragged two selected desktop files from Wayland artwork into a
+  real GTK/X11 file-drop target at 100% and 86.4% zoom. Both exact encoded URIs,
+  including spaces, `#` and Unicode, arrived in order, without an extra click,
+  source-item movement or file modification. The target's response color was
+  presented. This covers desktop-file Copy drops, not general bidirectional
+  application-to-application drag-and-drop.
+- `native-clipboard-1` checked real GTK Wayland↔X11 copy, cut, Unicode and
+  approximately 606 KiB transfers, replacement ownership, source-exit recovery,
+  primary-selection independence and agent paste. Exact client text and native
+  captures were retained.
+
+Each run restored the recorded original VT, stopped its owned services and
+application scopes, and removed its private runtime. `native-dnd-1` remains a
+failed fixture attempt: an incorrect Python GTK mapping getter prevented its
+readiness receipt before any drag. Correcting the fixture produced the subsequent
+pass without a runtime change. These checks establish neither physical input feel, touch,
+multi-GPU operation, sleep recovery nor a performance improvement.
+
+Evidence is retained under `20261105-satellite` in the persistent investigation
+directory. `sole-final-build-4` passed the locked workspace/all-targets build;
+`preparation-clippy-1` passed the corresponding Clippy check with warnings denied.
+The matching `sole-full-4` Rust phase passed 2,597 tests across 55 binaries,
+with 26 ignored. Its 461 headless-control cases include the routing, cancellation,
+popup, window geometry, clipboard and file-drop regressions. All 22 ignored
+transfer-cache cases passed separately in `sole-transfer-focused-1`, using
+substituted device operations rather than physical GPU imports.
+
+The full Python phase was not green: of 770 cases, 765 passed, three failed,
+one errored and one skipped. Controls lost a transient OSD during observation,
+favorites exhausted its accessibility deadline, and search changed geometry
+during capture. An unchanged isolated controls rerun reproduced the OSD failure.
+The error was a fake installed-runtime fixture missing the mandatory private
+Xwayland companion; `bf479695` repairs it, and all 13 native-login fixture tests
+passed afterward. The complete Python suite was not rerun after that fixture
+repair. The skipped guard case requires two permitted CPUs; tests used CPU 4.
+No assertions or deadlines were relaxed. `sole-deny-1` passed with dependency
+warnings. Full Rust formatting and Ruff lint/format checks also passed.
+
 ## Smithay cursor planes and pointer zoom, 2026-11-01
 
 The GPD Win Max 2 (2025) listed above was tested with its AMD Radeon 890M
