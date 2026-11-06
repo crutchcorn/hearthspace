@@ -263,3 +263,25 @@ fn empty_retry_cannot_acknowledge_or_consume_the_security_submission() {
     assert!(!device.scene.as_ref().unwrap().capture_taken);
     assert_retained_until_reads_finish(device, false);
 }
+
+#[test]
+fn rejected_primary_without_a_cursor_retries_and_preserves_the_source_through_reads() {
+    let mut device = DeviceOps::new([rejected(Reject::TestFailed), accepted()]);
+    device.primary_scanout = true;
+    let mut schedule = Schedule::default();
+    submit(&mut schedule, &mut device).unwrap();
+    assert_eq!(
+        device.attempts,
+        [super::scanout_flags(), FrameFlags::empty()]
+    );
+    let Completion::Presented(frame) = schedule
+        .complete(Some(&metadata()), || Ok(device.accepted.take()))
+        .unwrap()
+    else {
+        panic!("fallback was not presented")
+    };
+    assert!(!frame.diagnostics.cursor_plane);
+    assert!(!frame.diagnostics.primary_scanout);
+    assert_eq!(frame.capture.unwrap().unwrap().pixels, [2; 4]);
+    assert_retained_until_reads_finish(device, false);
+}

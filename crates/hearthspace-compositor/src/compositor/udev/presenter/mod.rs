@@ -7,8 +7,11 @@ mod mailbox;
 mod output;
 mod render;
 mod retirement;
+mod scene_element;
 mod worker;
 
+#[cfg(test)]
+mod buffer_tests;
 #[cfg(test)]
 mod tests;
 
@@ -22,7 +25,7 @@ use smithay::{
             gbm::{GbmBuffer, GbmDevice},
         },
         drm::{DrmDeviceFd, DrmEventMetadata},
-        renderer::{element::Id, sync::SyncPoint},
+        renderer::{element::Id, sync::SyncPoint, utils::Buffer},
     },
     reexports::{
         calloop::channel,
@@ -50,12 +53,28 @@ pub(super) struct OutputConfig {
     pub size: Size<i32, Physical>,
 }
 
+/// The client guard is also cloned by Smithay into pending/current plane state,
+/// preventing wl_buffer.release until KMS has replaced the scanned-out buffer.
+pub(super) enum SceneStorage {
+    Composed(Arc<Slot<GbmBuffer>>),
+    Client(Buffer),
+}
+
+impl SceneStorage {
+    pub fn slot(&self) -> Option<&Arc<Slot<GbmBuffer>>> {
+        match self {
+            Self::Composed(slot) => Some(slot),
+            Self::Client(_) => None,
+        }
+    }
+}
+
 pub(super) struct SceneFrame {
     pub output: OutputKey,
     pub sequence: u64,
     pub security_epoch: u64,
     pub lock_generation: Option<u64>,
-    pub slot: Arc<Slot<GbmBuffer>>,
+    pub storage: SceneStorage,
     pub dmabuf: Dmabuf,
     pub ready: SyncPoint,
     pub capture: bool,

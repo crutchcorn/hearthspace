@@ -32,6 +32,8 @@ mod layout_glass;
 mod layout_overlays;
 mod lock;
 mod order;
+#[cfg(feature = "udev")]
+mod scanout;
 mod titlebar;
 mod window_backdrop;
 mod window_backdrop_shader;

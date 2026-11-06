@@ -1,8 +1,9 @@
 use super::{
-    capture,
+    SceneStorage, capture,
     fallback::{self, AttemptError, AttemptOps},
     mailbox::{Control, Mailbox},
     output::{Output, RenderOutcome, Submission, SubmissionDiagnostics, SubmissionOps},
+    scene_element::SceneElement,
 };
 use smithay::{
     backend::{
@@ -13,7 +14,7 @@ use smithay::{
                 Kind, memory::MemoryRenderBufferRenderElement, render_elements,
                 texture::TextureRenderElement,
             },
-            gles::{GlesRenderer, GlesTexture},
+            gles::GlesRenderer,
         },
     },
     utils::{Rectangle, Transform},
@@ -22,7 +23,7 @@ use std::time::Instant;
 
 render_elements! {
     pub(super) PresenterElement<=GlesRenderer>;
-    Scene=TextureRenderElement<GlesTexture>,
+    Scene=SceneElement,
     Cursor=MemoryRenderBufferRenderElement<GlesRenderer>,
 }
 
@@ -154,20 +155,26 @@ fn prepare_and_queue(
         }
         let size = output.config.size;
         elements.push(
-            TextureRenderElement::from_texture_with_damage(
-                output.scene_id.clone(),
-                renderer.context_id(),
-                (0.0, 0.0),
-                scene.texture.as_ref().unwrap().clone(),
-                1,
-                Transform::Normal,
-                Some(1.0),
-                None,
-                None,
-                Some(vec![Rectangle::from_size((size.w, size.h).into())]),
-                output.scene_damage.snapshot(),
-                Kind::Unspecified,
-            )
+            SceneElement {
+                texture: TextureRenderElement::from_texture_with_damage(
+                    output.scene_id.clone(),
+                    renderer.context_id(),
+                    (0.0, 0.0),
+                    scene.texture.as_ref().unwrap().clone(),
+                    1,
+                    Transform::Normal,
+                    Some(1.0),
+                    None,
+                    None,
+                    Some(vec![Rectangle::from_size((size.w, size.h).into())]),
+                    output.scene_damage.snapshot(),
+                    Kind::Unspecified,
+                ),
+                client: match &scene.frame.storage {
+                    SceneStorage::Client(buffer) => Some(buffer.clone()),
+                    SceneStorage::Composed(_) => None,
+                },
+            }
             .into(),
         );
     }
@@ -264,7 +271,7 @@ fn prepare_and_queue(
     let sequence = output.next_submission;
     let span = tracing::trace_span!(target: "hearthspace::presenter", "native_queue",
         key = ?output.config.key, submission_sequence = sequence, scene_sequence,
-        cursor_sequence, cursor_image = ?cursor_image, cursor_plane,
+        cursor_sequence, cursor_image = ?cursor_image, cursor_plane, primary_scanout,
         security_epoch = control.security_epoch, lock_generation = ?control.lock_generation,
         primary_buffer = ?primary.map(|(buffer, _)| buffer),
         primary_damage_commit = ?primary.map(|(_, commit)| commit), primary_reused, render_us);
@@ -280,6 +287,7 @@ fn prepare_and_queue(
         capture,
         diagnostics: SubmissionDiagnostics {
             cursor_plane,
+            primary_scanout,
             primary,
             primary_reused,
             render_us,

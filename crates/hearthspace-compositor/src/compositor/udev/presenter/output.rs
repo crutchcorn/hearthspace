@@ -44,6 +44,7 @@ pub(super) struct Submission {
 
 pub(super) struct SubmissionDiagnostics {
     pub cursor_plane: bool,
+    pub primary_scanout: bool,
     pub primary: Option<(u32, CommitCounter)>,
     pub primary_reused: bool,
     pub render_us: u64,

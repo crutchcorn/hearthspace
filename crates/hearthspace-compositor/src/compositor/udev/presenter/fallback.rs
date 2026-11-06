@@ -61,7 +61,7 @@ pub(super) trait AttemptOps {
 /// Overlay planes stay disabled: only the eligible fullscreen client and the
 /// independent cursor can supply storage across the presenter boundary.
 pub(super) fn scanout_flags() -> FrameFlags {
-    FrameFlags::ALLOW_PRIMARY_PLANE_SCANOUT | FrameFlags::ALLOW_CURSOR_PLANE_SCANOUT
+    FrameFlags::ALLOW_PRIMARY_PLANE_SCANOUT_ANY | FrameFlags::ALLOW_CURSOR_PLANE_SCANOUT
 }
 
 pub(super) fn render_and_queue(ops: &mut impl AttemptOps) -> Result<RenderOutcome, String> {

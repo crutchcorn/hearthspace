@@ -3,7 +3,7 @@ use super::{
     UdevBackendState,
     device::KmsOutputSurface,
     gpu::GpuState,
-    presenter::{Presenter, SceneFrame},
+    presenter::{Presenter, SceneFrame, SceneStorage},
     transfer::render_pass,
 };
 use crate::compositor::{App, capture::CaptureState};
@@ -145,26 +145,52 @@ fn render_output(
         output.presentation.dirty = true;
         return Ok(false);
     };
-    let Some(slot) = output.pool.acquire()? else {
-        // Every slot is leased by the presenter. Its capacity event wakes scene
-        // production; input dispatch never waits for a KMS completion here.
-        output.presentation.dirty = true;
-        return Ok(false);
-    };
-    let slot = Arc::new(slot);
-    let mut dmabuf = slot.export()?;
-    let age = usize::from(slot.age());
-    let rendered = match render_pass(gpus, node, output, &mut dmabuf, state, &view, age, force) {
-        Ok(rendered) => rendered,
-        Err(error) => {
-            // No producer fence is guaranteed on error. Quarantine this slot
-            // until the entire pool is retired; it must never be overwritten.
-            output.failed_slot = Some(slot);
-            return Err(error);
-        }
-    };
-    output.pool.submitted(&slot);
     let wanted = captures.wanted(&view.name) || state.remote_capture.wanted(&view.name);
+    // Cross-GPU buffers retain the established transfer path; capture composes
+    // the canonical scene so clean/cursor-inclusive readback keeps its contract.
+    let client = if !wanted && gpus.scene_node == Some(node) {
+        let mut renderer = gpus.manager.single_renderer(&node)?;
+        state.fullscreen_scanout(
+            renderer.as_mut(),
+            smithay::utils::Rectangle::new(view.location, view.size),
+            view.scale,
+            output.target.output_size(),
+        )
+    } else {
+        None
+    };
+    let (storage, dmabuf, ready, age) = if let Some((buffer, dmabuf)) = client {
+        // Committed DMA-BUFs pass the existing asynchronous READ blocker before
+        // reaching scene construction. KMS additionally observes implicit fences.
+        (
+            SceneStorage::Client(buffer),
+            dmabuf,
+            smithay::backend::renderer::sync::SyncPoint::signaled(),
+            0,
+        )
+    } else {
+        let Some(slot) = output.pool.acquire()? else {
+            // Every slot is leased by the presenter. Its capacity event wakes scene
+            // production; input dispatch never waits for a KMS completion here.
+            output.presentation.dirty = true;
+            return Ok(false);
+        };
+        let slot = Arc::new(slot);
+        let mut dmabuf = slot.export()?;
+        let age = usize::from(slot.age());
+        let rendered = match render_pass(gpus, node, output, &mut dmabuf, state, &view, age, force)
+        {
+            Ok(rendered) => rendered,
+            Err(error) => {
+                // No producer fence is guaranteed on error. Quarantine this slot
+                // until the entire pool is retired; it must never be overwritten.
+                output.failed_slot = Some(slot);
+                return Err(error);
+            }
+        };
+        output.pool.submitted(&slot);
+        (SceneStorage::Composed(slot), dmabuf, rendered.sync, age)
+    };
     let metadata = wanted
         .then(|| {
             state
@@ -173,27 +199,28 @@ fn render_output(
                 .find(|o| o.name == view.name)
         })
         .flatten();
+    let scanout_candidate = matches!(storage, SceneStorage::Client(_));
     let frame = SceneFrame {
         output: output.key,
         sequence,
         security_epoch,
         lock_generation: state.lock_frame_generation(),
-        slot,
+        storage,
         dmabuf,
-        ready: rendered.sync,
+        ready,
         capture: wanted,
     };
     if let Err(frame) = presenter.submit_scene(frame) {
         // Retain the rejected producer lease and fence with this output until
         // recovery. Its pool cannot be acquired again while quarantined.
-        output.failed_slot = Some(frame.slot.clone());
+        output.failed_slot = frame.storage.slot().cloned();
         output.rejected_scene = Some(frame);
         return Err("presenter rejected scene admission".into());
     }
     output.capture = metadata.map(|metadata| (sequence, metadata, started));
     output.presentation.queued(sequence);
     trace!(device = ?node, scene_node = ?gpus.scene_node, target_node = ?node,
-        crtc = ?output.target.crtc, name = view.name, scene_sequence = sequence,
+        crtc = ?output.target.crtc, name = view.name, scene_sequence = sequence, scanout_candidate,
         age = if force { 0 } else { age }, render_us = started.elapsed().as_micros() as u64,
         "published native scene");
     Ok(true)
