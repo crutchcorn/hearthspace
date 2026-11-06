@@ -46,6 +46,7 @@ struct State {
     manager: Option<XwaylandSatelliteInteractionV1>,
     synced: bool,
     has_settings: bool,
+    has_data_control: bool,
 }
 
 impl Dispatch<wl_registry::WlRegistry, ()> for State {
@@ -70,6 +71,7 @@ impl Dispatch<wl_registry::WlRegistry, ()> for State {
                 "xdg_wm_base" => state.xdg = Some(registry.bind(name, version.min(6), qh, ())),
                 "wl_seat" => state.seats.push(registry.bind(name, 1, qh, ())),
                 "xwayland_satellite_settings_v1" => state.has_settings = true,
+                "ext_data_control_manager_v1" => state.has_data_control = true,
                 "xwayland_satellite_interaction_v1" => {
                     state.manager = Some(registry.bind(name, 1, qh, ()))
                 }
@@ -151,7 +153,8 @@ impl Fixture {
         let server_client = dh
             .insert_client(server, Arc::new(ServerClientState::default()))
             .unwrap();
-        app.satellite_interaction.advertise(&dh, server_client.id());
+        app.satellite_interaction
+            .advertise(&dh, server_client.id(), &app.primary_selection_state);
         let connection = Connection::from_socket(peer).unwrap();
         let mut queue = connection.new_event_queue();
         let mut client = State::default();
@@ -296,6 +299,7 @@ impl Fixture {
         );
         assert!(client.manager.is_none());
         assert!(!client.has_settings);
+        assert!(!client.has_data_control);
         assert!(
             client.xdg.is_some(),
             "ordinary globals must still be visible"

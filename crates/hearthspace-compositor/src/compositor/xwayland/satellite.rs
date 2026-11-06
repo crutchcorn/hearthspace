@@ -19,6 +19,7 @@ use wayland_server::DisplayHandle;
 
 use crate::compositor::{App, client::ClientState};
 
+mod clipboard;
 pub(in crate::compositor) mod interaction;
 mod process;
 mod settings;
@@ -34,7 +35,8 @@ impl App {
             .clone()
             .insert_client(server, Arc::new(ClientState::default()))
             .map_err(io::Error::other)?;
-        self.satellite_interaction.advertise(dh, client.id());
+        self.satellite_interaction
+            .advertise(dh, client.id(), &self.primary_selection_state);
         let mut command = Command::new(binary);
         command
             .arg("--embedded")

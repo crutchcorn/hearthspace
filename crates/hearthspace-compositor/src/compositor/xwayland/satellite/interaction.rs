@@ -34,6 +34,8 @@ mod protocol {
 #[derive(Default)]
 pub(in crate::compositor) struct State {
     client: Option<ClientId>,
+    pub(super) data_control:
+        Option<smithay::wayland::selection::ext_data_control::DataControlState>,
     active: Option<Interaction>,
     pub(super) settings: Vec<Weak<super::settings::XwaylandSatelliteSettingsV1>>,
 }
@@ -46,9 +48,22 @@ struct Interaction {
 }
 
 impl State {
-    pub(super) fn advertise(&mut self, dh: &DisplayHandle, client: ClientId) {
+    pub(super) fn advertise(
+        &mut self,
+        dh: &DisplayHandle,
+        client: ClientId,
+        primary: &smithay::wayland::selection::primary_selection::PrimarySelectionState,
+    ) {
         dh.create_global::<App, XwaylandSatelliteInteractionV1, _>(1, client.clone());
         dh.create_global::<App, super::settings::XwaylandSatelliteSettingsV1, _>(1, client.clone());
+        let authorized = client.clone();
+        self.data_control = Some(
+            smithay::wayland::selection::ext_data_control::DataControlState::new::<App, _>(
+                dh,
+                Some(primary),
+                move |client| client.id() == authorized,
+            ),
+        );
         self.client = Some(client);
     }
 

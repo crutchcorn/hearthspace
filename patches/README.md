@@ -755,3 +755,34 @@ See [vendored provenance and refresh steps](../vendor/accesskit_atspi_common/PRO
   preference and startup-order cases, including legacy-resource preservation;
   then remove only this patch and matching host binding. Preserve the input,
   cancellation, executable and stdio repairs until their own conditions hold.
+
+## Satellite selection control and ownership transitions
+
+- **Dependency:** Satellite 0.8.3, pin `7bf5e0dcb0d4250860b24b04a6cb3ddeada515d0`.
+- **Patch:** [selection control](satellite-selection-control.patch), relative to
+  the vendor root and applied after host-settings. This local repair retains
+  the MPL notices and adds only Rustix's already-pinned `rand` feature.
+- **Reason:** an X11 selection owner with no previous focused window was never
+  exported through Satellite's serial-dependent ordinary data source. Use the
+  standard ext-data-control protocol for X11 export. Smithay owns host protocol
+  validation; only the authenticated bridge client sees its global. Host data
+  is still received through ordinary data-device/primary offers; privileged
+  control offers are discarded. A per-instance MIME marker prevents echo loops.
+- **Ownership:** weak references identify each exported X selection; cancelled
+  or destroyed generations cannot serve later owners. Ordinary offer adoption
+  waits until the matching export retires. A queued X clear/destroy is checked
+  against actual ownership before invalidating state. Fresh claims after a
+  genuine unowned transition use current X time, rather than a former owner's
+  obsolete timestamp. Clipboard and primary retirement remain independent.
+- **Regression:** the pre-repair unfocused URI-list owner fails; it passes with
+  the repair. The real GTK headless workflow exercises Unicode/cut/bulk transfer
+  both ways, primary middle-click both ways, clipboard independence, old and
+  active X-owner exit, and subsequent recovery. Its primary assertion failed
+  before the timestamp/queued-clear repair and passes afterward. Separate real
+  Wayland clients verify that cancellation, settings and data control are hidden
+  from ordinary clients. These are headless protocol/application results, not
+  native display or performance acceptance.
+- **Removal:** adopt upstream equivalent source export and generation handling
+  that passes those focus, loop, owner-exit and primary regressions without this
+  patch; remove only this patch and the private manager registration. Keep the
+  other Satellite/server repairs until their independent conditions are met.

@@ -113,6 +113,7 @@ impl<T> Default for SelectionEvents<T> {
 
 pub(super) struct MyWorld {
     pub theme_name: Option<String>,
+    pub control_events: super::selection::control::Events,
     pub world: World,
     pub global_list: GlobalList,
     pub new_globals: Vec<Global>,
@@ -129,6 +130,7 @@ impl MyWorld {
         Self {
             world: World::new(),
             theme_name: None,
+            control_events: Default::default(),
             global_list,
             new_globals: Vec::new(),
             removed_globals: Vec::new(),

@@ -1,3 +1,4 @@
+pub(super) mod control;
 use super::clientside::SelectionEvents;
 use super::{InnerServerState, MyWorld, ServerState};
 use crate::{X11Selection, XConnection};
@@ -19,6 +20,7 @@ use std::io::Read;
 use std::rc::{Rc, Weak};
 
 pub(super) struct SelectionStates<S: X11Selection> {
+    control: Option<control::Control<S>>,
     clipboard: Option<SelectionState<S, Clipboard>>,
     primary: Option<SelectionState<S, Primary>>,
 }
@@ -26,6 +28,7 @@ pub(super) struct SelectionStates<S: X11Selection> {
 impl<S: X11Selection> SelectionStates<S> {
     pub fn new(global_list: &GlobalList, qh: &QueueHandle<MyWorld>) -> Self {
         Self {
+            control: control::Control::bind(global_list, qh),
             clipboard: DataDeviceManagerState::bind(global_list, qh)
                 .inspect_err(|e| {
                     warn!("Could not bind data device manager ({e:?}). Clipboard will not work.")
@@ -40,6 +43,9 @@ impl<S: X11Selection> SelectionStates<S> {
     }
 
     pub fn seat_created(&mut self, qh: &QueueHandle<MyWorld>, seat: &WlSeat) {
+        if let Some(control) = &mut self.control {
+            control.seat_created(qh, seat);
+        }
         if let Some(c) = &mut self.clipboard {
             c.device = Some(c.manager.get_data_device(qh, seat));
         }
@@ -51,7 +57,10 @@ impl<S: X11Selection> SelectionStates<S> {
 }
 
 enum SelectionData<S: X11Selection, T: SelectionType> {
-    X11 { inner: T::Source, data: Weak<S> },
+    X11 {
+        inner: Option<T::Source>,
+        data: Weak<S>,
+    },
     Foreign(ForeignSelection<T>),
 }
 
@@ -78,6 +87,11 @@ impl<S: X11Selection> InnerServerState<S> {
     }
 
     fn handle_impl<T: SelectionType>(&mut self) {
+        let echo_marker = self
+            .selection_states
+            .control
+            .as_ref()
+            .map(|control| control.marker.clone());
         let Some(state) = T::selection_state(&mut self.selection_states) else {
             return;
         };
@@ -101,6 +115,12 @@ impl<S: X11Selection> InnerServerState<S> {
         if state.source.is_none() {
             if let Some(offer) = T::take_offer(&mut events.offer) {
                 let mime_types = T::get_mimes(&offer);
+                if echo_marker
+                    .as_ref()
+                    .is_some_and(|marker| mime_types.contains(marker))
+                {
+                    return;
+                }
                 let foreign = ForeignSelection {
                     mime_types,
                     inner: offer,
@@ -111,10 +131,20 @@ impl<S: X11Selection> InnerServerState<S> {
     }
 
     pub(crate) fn set_selection_source<T: SelectionType>(&mut self, selection: &Rc<S>) {
+        if let Some(control) = &mut self.selection_states.control {
+            control.set::<T>(&self.qh, selection);
+            if let Some(state) = T::selection_state(&mut self.selection_states) {
+                state.source = Some(SelectionData::X11 {
+                    inner: None,
+                    data: Rc::downgrade(selection),
+                });
+            }
+            return;
+        }
         if let Some(state) = T::selection_state(&mut self.selection_states) {
             let src = T::create_source(&state.manager, &self.qh, selection.mime_types());
             let data = SelectionData::X11 {
-                inner: src,
+                inner: Some(src),
                 data: Rc::downgrade(selection),
             };
             let SelectionData::X11 { inner, .. } = state.source.insert(data) else {
@@ -126,7 +156,9 @@ impl<S: X11Selection> InnerServerState<S> {
                 .map(|(_seat, serial)| serial)
                 .copied()
             {
-                T::set_selection(inner, state.device.as_ref().unwrap(), serial);
+                if let Some(inner) = inner.as_ref() {
+                    T::set_selection(inner, state.device.as_ref().unwrap(), serial);
+                }
             }
         }
     }
@@ -168,6 +200,7 @@ impl<T: SelectionType> ForeignSelection<T> {
 
 #[allow(private_bounds, private_interfaces)]
 pub trait SelectionType: Sized {
+    const PRIMARY: bool;
     type Source;
     type Offer;
     type Manager;
@@ -203,6 +236,7 @@ pub enum Primary {}
 
 #[allow(private_bounds, private_interfaces)]
 impl SelectionType for Clipboard {
+    const PRIMARY: bool = false;
     type Source = CopyPasteSource;
     type Offer = WlSelectionOffer;
     type Manager = DataDeviceManagerState;
@@ -251,6 +285,7 @@ impl SelectionType for Clipboard {
 
 #[allow(private_bounds, private_interfaces)]
 impl SelectionType for Primary {
+    const PRIMARY: bool = true;
     type Source = PrimarySelectionSource;
     type Offer = PrimarySelectionOffer;
     type Manager = PrimarySelectionManagerState;
@@ -284,5 +319,45 @@ impl SelectionType for Primary {
 
     fn get_mimes(offer: &Self::Offer) -> Box<[String]> {
         offer.with_mime_types(|mimes| mimes.into())
+    }
+}
+
+impl<S: X11Selection> InnerServerState<S> {
+    pub(crate) fn clear_control_selection<T: SelectionType>(&mut self) {
+        if let Some(control) = &mut self.selection_states.control {
+            control.clear::<T>();
+            if let Some(state) = T::selection_state(&mut self.selection_states) {
+                if matches!(state.source, Some(SelectionData::X11 { .. })) {
+                    state.source = None;
+                }
+            }
+        }
+    }
+    fn control_export_cancelled<T: SelectionType>(&mut self, source: &Weak<S>) {
+        if let Some(state) = T::selection_state(&mut self.selection_states) {
+            if matches!(&state.source, Some(SelectionData::X11 { data, .. }) if Weak::ptr_eq(data, source))
+            {
+                state.source = None;
+            }
+        }
+    }
+    pub(crate) fn control_cancelled(&mut self) -> Vec<(bool, Weak<S>)> {
+        let cancelled = self
+            .selection_states
+            .control
+            .as_mut()
+            .map(|c| c.dispatch(&mut self.world.control_events))
+            .unwrap_or_default();
+        for (primary, source) in &cancelled {
+            if *primary {
+                self.control_export_cancelled::<Primary>(source);
+            } else {
+                self.control_export_cancelled::<Clipboard>(source);
+            }
+        }
+        self.queue
+            .flush()
+            .expect("flush selection control lifecycle");
+        cancelled
     }
 }

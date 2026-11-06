@@ -33,6 +33,7 @@ pub struct Selection {
     pending: RefCell<VecDeque<PendingSelectionData>>,
     selection: x::Atom,
     selection_time: u32,
+    source_owner: x::Window,
     incr: x::Atom,
 }
 
@@ -294,6 +295,7 @@ struct SelectionData<T: SelectionType> {
     last_selection_timestamp: u32,
     atom: x::Atom,
     targets_atom: x::Atom,
+    owner: x::Window,
     current_selection: Option<CurrentSelection<T>>,
 }
 
@@ -334,6 +336,7 @@ impl<T: SelectionType> SelectionData<T> {
     fn new(atom: x::Atom, targets_atom: x::Atom) -> Self {
         Self {
             last_selection_timestamp: x::CURRENT_TIME,
+            owner: x::WINDOW_NONE,
             atom,
             targets_atom,
             current_selection: None,
@@ -398,6 +401,7 @@ impl<T: SelectionType> SelectionDataImpl for SelectionData<T> {
         owner: x::Window,
         timestamp: u32,
     ) {
+        self.owner = owner;
         // Grab targets
         match connection.send_and_check_request(&x::ConvertSelection {
             requestor: wm_window,
@@ -506,6 +510,7 @@ impl<T: SelectionType> SelectionDataImpl for SelectionData<T> {
             pending: RefCell::default(),
             selection: self.atom,
             selection_time: self.last_selection_timestamp,
+            source_owner: self.owner,
             incr: atoms.incr,
         });
 
@@ -907,6 +912,28 @@ impl XState {
                             return true;
                         }
 
+                        if e.owner() == x::WINDOW_NONE {
+                            // Another claim may already have superseded this queued clear.
+                            let current = self.connection.wait_for_reply(
+                                self.connection
+                                    .send_request(&x::GetSelectionOwner { selection: x }),
+                            );
+                            if !current.is_ok_and(|owner| owner.owner() == x::WINDOW_NONE) {
+                                return true;
+                            }
+                            if x == self.atoms.clipboard {
+                                self.selection_state.clipboard.last_selection_timestamp =
+                                    x::CURRENT_TIME;
+                                self.selection_state.clipboard.current_selection = None;
+                                server_state.clear_control_selection::<Clipboard>();
+                            } else {
+                                self.selection_state.primary.last_selection_timestamp =
+                                    x::CURRENT_TIME;
+                                self.selection_state.primary.current_selection = None;
+                                server_state.clear_control_selection::<Primary>();
+                            }
+                            return true;
+                        }
                         let data = get_selection_data!(x);
 
                         data.handle_new_owner(
@@ -919,8 +946,24 @@ impl XState {
                     }
                     xcb::xfixes::SelectionEvent::SelectionClientClose
                     | xcb::xfixes::SelectionEvent::SelectionWindowDestroy => {
+                        let current = self.connection.wait_for_reply(
+                            self.connection
+                                .send_request(&x::GetSelectionOwner { selection: x }),
+                        );
+                        if !current.is_ok_and(|owner| owner.owner() == x::WINDOW_NONE) {
+                            return true;
+                        }
                         debug!("Selection owner destroyed, selection will be unset");
-                        self.selection_state.clipboard.current_selection = None;
+                        if x == self.atoms.clipboard {
+                            self.selection_state.clipboard.last_selection_timestamp =
+                                x::CURRENT_TIME;
+                            self.selection_state.clipboard.current_selection = None;
+                            server_state.clear_control_selection::<Clipboard>();
+                        } else {
+                            self.selection_state.primary.last_selection_timestamp = x::CURRENT_TIME;
+                            self.selection_state.primary.current_selection = None;
+                            server_state.clear_control_selection::<Primary>();
+                        }
                     }
                 },
                 x if x == self.atoms.xsettings => match e.subtype() {
@@ -969,5 +1012,56 @@ impl XState {
         }
         inner(&self.connection, event, &mut self.selection_state.primary)
             || inner(&self.connection, event, &mut self.selection_state.clipboard)
+    }
+}
+
+impl XState {
+    pub(crate) fn release_control_owner(
+        &mut self,
+        primary: bool,
+        source: std::rc::Weak<Selection>,
+    ) {
+        fn release<T: SelectionType>(
+            connection: &xcb::Connection,
+            data: &mut SelectionData<T>,
+            source: std::rc::Weak<Selection>,
+        ) {
+            let Some(CurrentSelection::X11(current)) = &data.current_selection else {
+                return;
+            };
+            if !std::rc::Weak::ptr_eq(&Rc::downgrade(current), &source) {
+                return;
+            }
+            let owner = connection.wait_for_reply(connection.send_request(&x::GetSelectionOwner {
+                selection: data.atom,
+            }));
+            if owner.is_ok_and(|owner| owner.owner() == current.source_owner) {
+                // X's timestamp guard rejects a clear older than a later claim.
+                if let Err(error) = connection.send_and_check_request(&x::SetSelectionOwner {
+                    owner: x::WINDOW_NONE,
+                    selection: data.atom,
+                    time: current.selection_time,
+                }) {
+                    warn!("Could not release cancelled X11 selection: {error:?}");
+                }
+            }
+            let unowned =
+                connection.wait_for_reply(connection.send_request(&x::GetSelectionOwner {
+                    selection: data.atom,
+                }));
+            if unowned.is_ok_and(|owner| owner.owner() == x::WINDOW_NONE) {
+                data.last_selection_timestamp = x::CURRENT_TIME;
+            }
+            data.current_selection = None;
+        }
+        if primary {
+            release(&self.connection, &mut self.selection_state.primary, source);
+        } else {
+            release(
+                &self.connection,
+                &mut self.selection_state.clipboard,
+                source,
+            );
+        }
     }
 }

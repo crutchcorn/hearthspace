@@ -244,6 +244,9 @@ pub fn main(mut data: impl RunData) -> Option<()> {
 
         display.dispatch_clients(&mut *server_state).unwrap();
         server_state.run();
+        for (primary, source) in server_state.control_cancelled() {
+            xstate.release_control_owner(primary, source);
+        }
         display.flush_clients().unwrap();
 
         if let Some(sel) = server_state.new_selection::<Clipboard>() {

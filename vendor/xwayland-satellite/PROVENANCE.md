@@ -63,3 +63,20 @@ creating RESOURCE_MANAGER over legacy fallback files (or unknown HOME).
 Hearthspace's helper seeds its shared cursor size before publishing DISPLAY.
 This is a local adaptation, not an upstream backport; version, pin and notices
 remain unchanged. Verification/removal are in the patch ledger.
+
+## Focus-independent X11 selection export
+
+The [selection-control patch](../../patches/satellite-selection-control.patch)
+uses the standard `ext-data-control-v1` protocol to export X11 owners without
+requiring a previous keyboard-focus serial. Hearthspace exposes Smithay's
+manager only to its private bridge. Satellite does not consume data-control
+host offers; host reads retain the ordinary data-device/primary-selection path.
+An instance-specific random MIME marker suppresses self-export loops; it grants
+no authority. Weak source references preserve each selection generation.
+
+The patch also validates live X ownership before applying queued clear/destroy
+events, retires the matching export, and permits a fresh host claim when the
+selection is genuinely unowned. This prevents stale clears and obsolete X
+timestamps from breaking primary selection. Existing notices, pin and package
+version remain unchanged. This is a local repair, not an upstream backport;
+see the ledger for exercised boundaries and removal requirements.

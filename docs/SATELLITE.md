@@ -78,6 +78,17 @@ The shared cursor default is seeded before DISPLAY publication. Explicit
 XCURSOR_SIZE, existing resource properties, and legacy Xdefaults/Xresources
 remain authoritative; no host resources or environment are rewritten.
 
+## Clipboard and primary selection
+
+X11 clipboard owners can publish before any X11 window has keyboard focus.
+The standard data-control manager is visible only to the private Satellite
+connection. Satellite uses it for X11 export and ignores its host offers;
+reads from the host continue through ordinary clipboard/primary offers.
+Selection identity survives replacement and destruction, and clipboard and
+primary ownership remain independent. The real GTK workflow covers both
+transfer directions, large text, primary middle-click and owner-exit recovery.
+These checks do not establish native presentation behavior.
+
 ## Migration in progress
 
 Stock Xwayland has two demonstrated input problems:
