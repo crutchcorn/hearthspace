@@ -51,6 +51,7 @@ pub(super) struct SubmissionDiagnostics {
 }
 
 pub(super) enum RenderOutcome {
+    Primed,
     Queued,
     Empty,
     Revoked,
@@ -113,6 +114,12 @@ impl Schedule {
             ops.reset_state()?;
         }
         match ops.render_and_queue()? {
+            RenderOutcome::Primed => {
+                // A synchronous modeset is not timestamped presentation evidence.
+                // Force an event-producing flip and run again without new input.
+                self.invalidate_security();
+                self.opportunity_at = Some(now);
+            }
             RenderOutcome::Queued => {
                 self.pending = true;
                 self.dirty = false;

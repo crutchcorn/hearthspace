@@ -328,6 +328,8 @@ impl Worker {
         else {
             return;
         };
+        tracing::trace!(target: "hearthspace::presenter", key = ?output.config.key,
+            pending = output.schedule.pending, ?metadata, "received native page flip");
         let completed = output.schedule.complete(metadata, || {
             output
                 .compositor

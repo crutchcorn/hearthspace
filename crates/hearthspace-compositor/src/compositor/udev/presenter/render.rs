@@ -171,6 +171,7 @@ fn prepare_and_queue(
             .into(),
         );
     }
+    let modeset = output.compositor.surface().commit_pending();
     let render_started = Instant::now();
     let result = output
         .compositor
@@ -213,6 +214,25 @@ fn prepare_and_queue(
     }
     if result.is_empty {
         return Ok(RenderOutcome::Empty);
+    }
+
+    if modeset {
+        // Virtio can timestamp a modeset event with the preceding vblank, before
+        // this output's cutoff. Commit synchronously without an event instead;
+        // the scheduler then requires a normal, freshly timestamped page flip.
+        // No capture, lock barrier, or client callback is acknowledged here.
+        drop(result);
+        if !mailbox.permits(control) {
+            return Ok(RenderOutcome::Revoked);
+        }
+        output
+            .compositor
+            .commit_frame()
+            .map_err(|error| match error {
+                FrameError::DrmError(error) => AttemptError::queue(cursor_plane, error),
+                error => AttemptError::from(error.to_string()),
+            })?;
+        return Ok(RenderOutcome::Primed);
     }
 
     let capture = output

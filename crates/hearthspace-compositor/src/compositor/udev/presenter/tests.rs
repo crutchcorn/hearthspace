@@ -354,3 +354,51 @@ fn device_event_owner_submits_latest_motion_without_main_dispatch() {
     drop(device_tx);
     worker.join().unwrap();
 }
+
+#[test]
+fn synchronous_modeset_requires_a_fresh_flip_without_new_input() {
+    struct Modeset {
+        primed: bool,
+        resets: usize,
+    }
+    impl SubmissionOps for Modeset {
+        fn reset_state(&mut self) -> Result<(), String> {
+            self.resets += 1;
+            Ok(())
+        }
+        fn render_and_queue(&mut self) -> Result<RenderOutcome, String> {
+            Ok(if std::mem::replace(&mut self.primed, true) {
+                RenderOutcome::Queued
+            } else {
+                RenderOutcome::Primed
+            })
+        }
+    }
+    let now = Instant::now();
+    let refresh = Duration::from_millis(16);
+    let mut schedule = Schedule::default();
+    let mut device = Modeset {
+        primed: false,
+        resets: 0,
+    };
+    schedule.submit(now, refresh, &mut device).unwrap();
+    assert!(!schedule.pending, "modeset must not await a vblank event");
+    assert!(schedule.dirty);
+    assert_eq!(schedule.opportunity_at, Some(now));
+    assert!(matches!(
+        schedule
+            .complete::<()>(None, || panic!("no event was queued"))
+            .unwrap(),
+        Completion::Ignored
+    ));
+    schedule.submit(now, refresh, &mut device).unwrap();
+    assert!(
+        schedule.pending,
+        "fresh flip must await verified completion"
+    );
+    assert!(!schedule.dirty);
+    assert_eq!(
+        device.resets, 1,
+        "unchanged pixels must still produce a flip"
+    );
+}
