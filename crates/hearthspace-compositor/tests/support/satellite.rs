@@ -89,6 +89,10 @@ impl WindowClient {
         });
         let managed = windows.iter().find(|w| w["title"] == title).unwrap();
         assert_eq!(
+            managed["client_type"], "x11",
+            "bridge identity must not look like a native application"
+        );
+        assert_eq!(
             managed["titlebar_height"], 0,
             "fixture must retain its CSD geometry"
         );

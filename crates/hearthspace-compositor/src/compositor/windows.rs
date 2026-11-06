@@ -74,6 +74,11 @@ fn configure_client_side_decoration(toplevel: &ToplevelSurface) {
 }
 
 pub(super) fn window_kind_for_toplevel(surface: &ToplevelSurface) -> ManagedWindowKind {
+    // X11 class names remain application metadata, even when they resemble
+    // a shell role. Satellite exposes all of them through its private client.
+    if super::client::is_x11_surface(surface.wl_surface()) {
+        return ManagedWindowKind::Normal;
+    }
     let app_id = toplevel_app_id(surface);
     if app_id.as_deref().is_some_and(is_frame_shell_app_id) {
         return ManagedWindowKind::ShellBar;
@@ -127,6 +132,9 @@ pub(super) fn window_kind_for_toplevel(surface: &ToplevelSurface) -> ManagedWind
 }
 
 pub(super) fn shell_output_name_for_toplevel(surface: &ToplevelSurface) -> Option<String> {
+    if super::client::is_x11_surface(surface.wl_surface()) {
+        return None;
+    }
     let app_id = toplevel_app_id(surface)?;
     hearthspace_common::frame_layout::frame_widget_from_app_id(&app_id)
         .map(|(output, _)| output)

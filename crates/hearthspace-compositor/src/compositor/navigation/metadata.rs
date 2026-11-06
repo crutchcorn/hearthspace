@@ -2,7 +2,7 @@ use hearthspace_ipc::windows::{Bounds, Window, WindowList};
 use smithay::utils::Rectangle;
 
 use super::super::{
-    App, ManagedSurface,
+    App,
     windows::{window_app_id, window_title},
 };
 
@@ -37,10 +37,10 @@ impl App {
                     .map(|output| output.name.clone())
                     .collect();
                 let content = self.window_geometry_size(index);
-                let client_type = match &window.surface {
-                    ManagedSurface::Xdg(_) => "wayland",
-                    #[cfg(feature = "xwayland")]
-                    ManagedSurface::X11(_) => "x11",
+                let client_type = if window.surface.is_x11() {
+                    "x11"
+                } else {
+                    "wayland"
                 };
                 Some(Window {
                     id: window.id,

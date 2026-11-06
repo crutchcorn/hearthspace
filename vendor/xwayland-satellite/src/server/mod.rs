@@ -134,6 +134,7 @@ struct WindowData {
     attrs: WindowAttributes,
     output_offset: WindowOutputOffset,
     activation_token: Option<String>,
+    process_name: Option<String>,
 }
 
 impl WindowData {
@@ -148,6 +149,7 @@ impl WindowData {
             },
             output_offset: WindowOutputOffset::default(),
             activation_token,
+            process_name: None,
         }
     }
 
@@ -908,10 +910,13 @@ impl<S: X11Selection + 'static> InnerServerState<S> {
                     .and_then(|token| String::from_utf8(token.to_vec()).ok())
             });
 
-        let id = self.world.spawn((
-            window,
-            WindowData::new(override_redirect, dims, activation_token),
-        ));
+        // The XRes PID comes from the server's client credentials, not WM_PID.
+        // Read once per window; explicit class/instance values remain preferred.
+        let mut data = WindowData::new(override_redirect, dims, activation_token);
+        data.process_name = pid
+            .and_then(|pid| std::fs::read_link(format!("/proc/{pid}/exe")).ok())
+            .and_then(|path| path.file_name()?.to_str().map(str::to_owned));
+        let id = self.world.spawn((window, data));
 
         self.windows.insert(window, id);
     }
@@ -996,10 +1001,17 @@ impl<S: X11Selection + 'static> InnerServerState<S> {
 
         let mut win = data.get::<&mut WindowData>().unwrap();
 
-        let class = win.attrs.class.insert(class);
+        win.attrs.class = Some(class);
+        let identity = win
+            .attrs
+            .class
+            .as_deref()
+            .filter(|class| !class.trim().is_empty())
+            .or(win.process_name.as_deref())
+            .unwrap_or_default();
         if let Some(role) = data.get::<&SurfaceRole>() {
             if let SurfaceRole::Toplevel(Some(data)) = &*role {
-                data.toplevel.set_app_id(class.to_string());
+                data.toplevel.set_app_id(identity.to_owned());
             }
         }
     }
@@ -1474,10 +1486,15 @@ impl<S: X11Selection + 'static> InnerServerState<S> {
         if let Some(class) = window
             .attrs
             .class
-            .as_ref()
-            .or(group.as_ref().and_then(|g| g.attrs.class.as_ref()))
+            .as_deref()
+            .filter(|class| !class.trim().is_empty())
+            .or(group
+                .as_ref()
+                .and_then(|g| g.attrs.class.as_deref())
+                .filter(|class| !class.trim().is_empty()))
+            .or(window.process_name.as_deref())
         {
-            toplevel.set_app_id(class.to_string());
+            toplevel.set_app_id(class.to_owned());
         }
         if let Some(title) = window
             .attrs

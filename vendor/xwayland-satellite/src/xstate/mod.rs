@@ -720,12 +720,21 @@ impl XState {
         let resolver = move |reply: x::GetPropertyReply| {
             let data: &[u8] = reply.value();
             trace!("wm class data: {data:?}");
-            // wm class (normally) is instance + class - ignore instance
-            let mut fields = data.split(|b| *b == 0u8).filter(|s| !s.is_empty());
-            let instance = fields.next();
-            let class = fields.next().or(instance).unwrap_or(&[]);
+            // WM_CLASS is instance + class. Prefer a nonblank class, then
+            // instance; extra fields cannot stand in for an absent class.
+            let mut fields = data.split(|b| *b == 0u8);
+            let instance = fields
+                .next()
+                .map(String::from_utf8_lossy)
+                .filter(|s| !s.trim().is_empty());
+            let class = fields
+                .next()
+                .map(String::from_utf8_lossy)
+                .filter(|s| !s.trim().is_empty())
+                .or(instance)
+                .unwrap_or_default();
             trace!("{window:?} class: {class:?}");
-            String::from_utf8_lossy(class).to_string()
+            class.into_owned()
         };
         PropertyCookieWrapper::new(&self.connection, cookie).resolve(resolver)
     }
@@ -879,7 +888,8 @@ impl XState {
                 server_state.set_win_title(window, name);
             }
             x if x == x::ATOM_WM_CLASS => {
-                let class = unwrap_or_skip_bad_window_ret!(self.get_wm_class(window)).unwrap();
+                let class =
+                    unwrap_or_skip_bad_window_ret!(self.get_wm_class(window)).unwrap_or_default();
                 server_state.set_win_class(window, class);
             }
             x if x == self.atoms.motif_wm_hints => {

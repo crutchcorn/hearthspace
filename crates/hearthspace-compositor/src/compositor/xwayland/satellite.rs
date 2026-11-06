@@ -33,7 +33,7 @@ impl App {
         let (server, peer) = UnixStream::pair()?;
         let client = dh
             .clone()
-            .insert_client(server, Arc::new(ClientState::default()))
+            .insert_client(server, Arc::new(ClientState::satellite()))
             .map_err(io::Error::other)?;
         self.satellite_interaction
             .advertise(dh, client.id(), &self.primary_selection_state);

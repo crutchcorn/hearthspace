@@ -80,3 +80,11 @@ selection is genuinely unowned. This prevents stale clears and obsolete X
 timestamps from breaking primary selection. Existing notices, pin and package
 version remain unchanged. This is a local repair, not an upstream backport;
 see the ledger for exercised boundaries and removal requirements.
+
+## Window metadata fallback
+
+The [identity patch](../../patches/satellite-window-identity.patch), applied after
+selection-control, preserves XRes-credential process identity when WM_CLASS is
+absent or blank, follows subsequent class/instance changes, and handles property
+deletion. It is a local repair, not an upstream backport. Upstream pin, package
+version and notices remain unchanged; regression/removal details are in the ledger.

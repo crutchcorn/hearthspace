@@ -89,6 +89,13 @@ primary ownership remain independent. The real GTK workflow covers both
 transfer directions, large text, primary middle-click and owner-exit recovery.
 These checks do not establish native presentation behavior.
 
+## Window identity
+
+Satellite reports a nonblank X11 class, then instance, then the executable
+basename from the XRes client credential. Changes and property deletion update
+the same managed window. The host reports these windows as X11 using private
+connection provenance; a shell-like class does not change their application role.
+
 ## Migration in progress
 
 Stock Xwayland has two demonstrated input problems:

@@ -147,6 +147,19 @@ enum ManagedSurface {
 }
 
 impl ManagedSurface {
+    fn is_x11(&self) -> bool {
+        #[cfg(feature = "xwayland")]
+        {
+            if matches!(self, Self::X11(_)) {
+                return true;
+            }
+            self.wl_surface()
+                .is_some_and(|surface| client::is_x11_surface(&surface))
+        }
+        #[cfg(not(feature = "xwayland"))]
+        false
+    }
+
     fn wl_surface(&self) -> Option<WlSurface> {
         match self {
             Self::Xdg(surface) => Some(surface.wl_surface().clone()),

@@ -786,3 +786,22 @@ See [vendored provenance and refresh steps](../vendor/accesskit_atspi_common/PRO
   that passes those focus, loop, owner-exit and primary regressions without this
   patch; remove only this patch and the private manager registration. Keep the
   other Satellite/server repairs until their independent conditions are met.
+
+## Satellite window identity
+
+- **Dependency:** Satellite 0.8.3, pin `7bf5e0dcb0d4250860b24b04a6cb3ddeada515d0`.
+- **Patch:** [window identity](satellite-window-identity.patch), relative to the
+  vendor root, after selection-control. Pin and MPL notices remain unchanged.
+- **Reason/behavior:** preserve executable identity for bootstrap clients without
+  WM_CLASS. Cache the process basename from the existing XRes credential PID;
+  prefer a nonblank class, then instance, then that basename. Deleted/empty
+  properties restore the fallback without panicking. Extra class fields are
+  ignored. The host identifies X11 windows by its private bridge connection,
+  rather than by spoofable class names; shell-like names retain application roles.
+- **Regression:** real X11 clients spoof WM_PID, replace/delete class properties,
+  and exercise cached frame syntax while preserving window identity and placement.
+  Separate Satellite input tests assert X11 metadata. These headless checks do
+  not establish native presentation or all toolkit metadata behavior.
+- **Removal:** adopt equivalent upstream credential/class fallback passing these
+  regressions; remove only this vendor repair. Keep host connection provenance
+  and other patches until their independent removal conditions are satisfied.
