@@ -21,6 +21,7 @@ sudo apt-get install -y \
   libsystemd-dev libglib2.0-dev libglib2.0-bin libgtk-4-dev \
   libgtk4-session-lock-dev libgtk4-layer-shell-dev libpam0g-dev \
   libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev \
+  libxcb-cursor-dev libxcb-composite0-dev libxcb-res0-dev \
   python3 python3-venv dbus xdg-utils fonts-liberation
 ```
 
@@ -29,6 +30,12 @@ use version 1.3 or newer for its lifecycle fixes. These are separate from the
 Rust bindings fetched by Cargo. The GStreamer development libraries support
 workspace test targets. `fonts-liberation` supplies the shell's intended font.
 The pkg-config name for xkbcommon is `xkbcommon`, not `libxkbcommon`.
+
+The XCB cursor, Composite, and X-Resource development packages build the pinned
+Satellite compatibility helper. They add headers and linker metadata, without
+changing the running X server. Remove these development packages with
+`sudo apt-get remove libxcb-cursor-dev libxcb-composite0-dev libxcb-res0-dev`
+when this checkout no longer needs to build the helper.
 
 The compositor and shell need working graphics drivers. For software-rendered
 headless tests, install `libgl1-mesa-dri` and `mesa-vulkan-drivers`, then follow
