@@ -387,9 +387,20 @@ impl SurfaceEvents {
 
                 let mut role = data.get::<&mut SurfaceRole>().unwrap();
                 if let SurfaceRole::Toplevel(Some(toplevel)) = &mut *role {
+                    let contains = |state: xdg_toplevel::State| {
+                        states.chunks_exact(4).any(|bytes| {
+                            u32::from_ne_bytes(bytes.try_into().unwrap()) == u32::from(state)
+                        })
+                    };
+                    let maximized = contains(xdg_toplevel::State::Maximized);
+                    if maximized != toplevel.maximized {
+                        toplevel.maximized = maximized;
+                        state
+                            .connection
+                            .set_maximized(*data.get::<&x::Window>().unwrap(), maximized);
+                    }
                     let prev_fs = toplevel.fullscreen;
-                    toplevel.fullscreen =
-                        states.contains(&(u32::from(xdg_toplevel::State::Fullscreen) as u8));
+                    toplevel.fullscreen = contains(xdg_toplevel::State::Fullscreen);
                     if toplevel.fullscreen != prev_fs {
                         state.connection.set_fullscreen(
                             *data.get::<&x::Window>().unwrap(),
@@ -854,10 +865,12 @@ impl Event for client::wl_keyboard::Event {
                 let mut query = surface.data().copied().and_then(|key| {
                     state
                         .world
-                        .query_one::<(&x::Window, &WlSurface, Option<&OnOutput>)>(key)
+                        .query_one::<(&x::Window, &WlSurface, &WindowData, Option<&OnOutput>)>(key)
                         .ok()
                 });
-                let Some((window, surface, output)) = query.as_mut().and_then(|q| q.get()) else {
+                let Some((window, surface, window_data, output)) =
+                    query.as_mut().and_then(|q| q.get())
+                else {
                     return;
                 };
                 state.last_kb_serial = Some((
@@ -868,8 +881,7 @@ impl Event for client::wl_keyboard::Event {
                     serial,
                 ));
                 let output_name = get_output_name(output, &state.world);
-                let window_data = data.get::<&WindowData>();
-                let has_take_focus = window_data.as_ref().is_some_and(|d| d.attrs.has_take_focus);
+                let has_take_focus = window_data.attrs.has_take_focus;
                 state.to_focus = Some(FocusData {
                     window: *window,
                     output_name,

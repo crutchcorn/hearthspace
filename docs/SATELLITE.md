@@ -96,6 +96,15 @@ basename from the XRes client credential. Changes and property deletion update
 the same managed window. The host reports these windows as X11 using private
 connection provenance; a shell-like class does not change their application role.
 
+## Focus and interaction compatibility
+
+Globally-active X11 clients receive WM_TAKE_FOCUS when host keyboard focus
+returns. Host and EWMH maximization update the same XDG window and preserve
+fullscreen state. Touch retains Hearthspace's established X11 pointer fallback;
+the bridge's XDG wrapper does not imply native-touch support in every X11 app.
+Canvas moves retain a bounded X backing origin. Popup offsets and EWMH input
+coordinates use that backing root, separately from displayed canvas positions.
+
 ## Migration in progress
 
 Stock Xwayland has two demonstrated input problems:

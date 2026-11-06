@@ -88,3 +88,12 @@ selection-control, preserves XRes-credential process identity when WM_CLASS is
 absent or blank, follows subsequent class/instance changes, and handles property
 deletion. It is a local repair, not an upstream backport. Upstream pin, package
 version and notices remain unchanged; regression/removal details are in the ledger.
+
+## Focus and maximization state
+
+The [window-state patch](../../patches/satellite-window-state.patch), after
+window-identity, reads target-window focus hints on keyboard enter and retains
+the last focused toplevel for globally-active clients. It propagates host and
+EWMH maximization, preserving unrelated state, and decodes full XDG state words.
+The XConnection hook is defaulted. This local repair changes no pin, package
+version or notices; coverage and removal conditions are in the patch ledger.

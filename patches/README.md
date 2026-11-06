@@ -805,3 +805,30 @@ See [vendored provenance and refresh steps](../vendor/accesskit_atspi_common/PRO
 - **Removal:** adopt equivalent upstream credential/class fallback passing these
   regressions; remove only this vendor repair. Keep host connection provenance
   and other patches until their independent removal conditions are satisfied.
+
+## Satellite focus and maximization state
+
+- **Dependency:** Satellite 0.8.3, pin `7bf5e0dcb0d4250860b24b04a6cb3ddeada515d0`.
+- **Patch:** [window state](satellite-window-state.patch), relative to the vendor
+  root and applied after window-identity. Existing MPL notices remain unchanged.
+- **Reason/behavior:** keyboard re-entry looked up focus hints on the seat, so
+  globally-active clients received no WM_TAKE_FOCUS. Read the target window's
+  hints and remember its toplevel for popup-focus restoration. Forward host
+  maximization to both EWMH state atoms, preserving fullscreen and other states;
+  decode the XDG state array as native-endian 32-bit values. A paired EWMH toggle
+  makes one XDG request. The new XConnection maximization hook defaults to no-op
+  for other library consumers. This is a local repair, not an upstream backport.
+- **Host policy:** retain Hearthspace's existing X11 pointer fallback for touch,
+  using private bridge provenance rather than its XDG wrapper's surface variant.
+  Native touch support cannot be inferred for every client behind Xwayland.
+- **Regression:** a real InputHint=false client reproduces missing TAKE_FOCUS
+  before the repair and receives it on repeated host re-entry afterward. Real
+  CSD/SSD tests check paired maximize toggles, restore geometry, and subsequent
+  input. Actual touch taps and cancelled drags retain exact local coordinates
+  and independent recipients. Late-resize fixtures hold every actual backing
+  window and distinguish immediate viewport adoption from deferred buffer resize.
+  Popup tests use backing-root coordinates with independently checked pixels.
+  These headless tests do not establish native input or display behavior.
+- **Removal:** use upstream focus/state handling passing those regressions;
+  remove only this vendor repair. Keep the host's X11 identity and touch policy,
+  and retain the other patches until their independent conditions are satisfied.

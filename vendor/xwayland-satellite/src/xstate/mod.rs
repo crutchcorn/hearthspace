@@ -559,6 +559,13 @@ impl XState {
 
                 trace!("_NET_WM_STATE ({action:?}) props: {prop1:?} {prop2:?}");
 
+                // EWMH commonly requests both maximize atoms in one message.
+                // Apply a toggle once, rather than toggling back for its pair.
+                if [prop1, prop2].iter().any(|prop| {
+                    [self.atoms.wm_maximized_horz, self.atoms.wm_maximized_vert].contains(prop)
+                }) {
+                    server_state.set_maximized(e.window(), action);
+                }
                 for prop in [prop1, prop2] {
                     match prop {
                         x if x == self.atoms.wm_fullscreen => {
@@ -929,6 +936,8 @@ xcb::atoms_struct! {
         wm_pid => b"_NET_WM_PID" only_if_exists = false,
         net_wm_state => b"_NET_WM_STATE" only_if_exists = false,
         wm_fullscreen => b"_NET_WM_STATE_FULLSCREEN" only_if_exists = false,
+        wm_maximized_horz => b"_NET_WM_STATE_MAXIMIZED_HORZ" only_if_exists = false,
+        wm_maximized_vert => b"_NET_WM_STATE_MAXIMIZED_VERT" only_if_exists = false,
         active_win => b"_NET_ACTIVE_WINDOW" only_if_exists = false,
         client_list => b"_NET_CLIENT_LIST" only_if_exists = false,
         supported => b"_NET_SUPPORTED" only_if_exists = false,
@@ -1304,6 +1313,44 @@ pub struct RealConnection {
 }
 
 impl RealConnection {
+    fn update_state_atoms(&self, window: x::Window, changed: &[x::Atom], enabled: bool) {
+        let Ok(reply) =
+            self.connection
+                .wait_for_reply(self.connection.send_request(&x::GetProperty {
+                    delete: false,
+                    window,
+                    property: self.atoms.net_wm_state,
+                    r#type: x::ATOM_ATOM,
+                    long_offset: 0,
+                    long_length: 1024,
+                }))
+        else {
+            return;
+        };
+        if reply.bytes_after() != 0 {
+            warn!("Refusing to truncate oversized window state on {window:?}");
+            return;
+        }
+        let mut states = if reply.format() == 32 {
+            reply.value::<x::Atom>().to_vec()
+        } else {
+            Vec::new()
+        };
+        states.retain(|atom| !changed.contains(atom));
+        if enabled {
+            states.extend_from_slice(changed);
+        }
+        if let Err(error) = self.connection.send_and_check_request(&x::ChangeProperty {
+            mode: x::PropMode::Replace,
+            window,
+            property: self.atoms.net_wm_state,
+            r#type: x::ATOM_ATOM,
+            data: &states,
+        }) {
+            warn!("Could not update window state on {window:?}: {error}");
+        }
+    }
+
     fn new(connection: Rc<xcb::Connection>, atoms: Atoms) -> Self {
         Self {
             atoms,
@@ -1382,24 +1429,15 @@ impl XConnection for RealConnection {
     }
 
     fn set_fullscreen(&mut self, window: x::Window, fullscreen: bool) {
-        let data = if fullscreen {
-            std::slice::from_ref(&self.atoms.wm_fullscreen)
-        } else {
-            &[]
-        };
+        self.update_state_atoms(window, &[self.atoms.wm_fullscreen], fullscreen);
+    }
 
-        if let Err(e) = self
-            .connection
-            .send_and_check_request(&x::ChangeProperty::<x::Atom> {
-                mode: x::PropMode::Replace,
-                window,
-                property: self.atoms.net_wm_state,
-                r#type: x::ATOM_ATOM,
-                data,
-            })
-        {
-            warn!("Failed to set fullscreen state on {window:?} ({e})");
-        }
+    fn set_maximized(&mut self, window: x::Window, maximized: bool) {
+        self.update_state_atoms(
+            window,
+            &[self.atoms.wm_maximized_horz, self.atoms.wm_maximized_vert],
+            maximized,
+        );
     }
 
     fn focus_window(&mut self, window: x::Window, output_name: Option<String>) {

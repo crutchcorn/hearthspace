@@ -1,0 +1,240 @@
+diff --git a/src/lib.rs b/src/lib.rs
+index ce532fad..a29863bc 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -19,6 +19,7 @@ pub trait XConnection: Sized + 'static {
+
+     fn set_window_dims(&mut self, window: x::Window, dims: PendingSurfaceState) -> bool;
+     fn set_fullscreen(&mut self, window: x::Window, fullscreen: bool);
++    fn set_maximized(&mut self, _window: x::Window, _maximized: bool) {}
+     fn focus_window(&mut self, window: x::Window, output_name: Option<String>);
+     fn send_take_focus(&mut self, window: x::Window);
+     fn close_window(&mut self, window: x::Window);
+diff --git a/src/server/event.rs b/src/server/event.rs
+index 8b7d7f36..95ed861f 100644
+--- a/src/server/event.rs
++++ b/src/server/event.rs
+@@ -387,9 +387,20 @@ impl SurfaceEvents {
+
+                 let mut role = data.get::<&mut SurfaceRole>().unwrap();
+                 if let SurfaceRole::Toplevel(Some(toplevel)) = &mut *role {
++                    let contains = |state: xdg_toplevel::State| {
++                        states.chunks_exact(4).any(|bytes| {
++                            u32::from_ne_bytes(bytes.try_into().unwrap()) == u32::from(state)
++                        })
++                    };
++                    let maximized = contains(xdg_toplevel::State::Maximized);
++                    if maximized != toplevel.maximized {
++                        toplevel.maximized = maximized;
++                        state
++                            .connection
++                            .set_maximized(*data.get::<&x::Window>().unwrap(), maximized);
++                    }
+                     let prev_fs = toplevel.fullscreen;
+-                    toplevel.fullscreen =
+-                        states.contains(&(u32::from(xdg_toplevel::State::Fullscreen) as u8));
++                    toplevel.fullscreen = contains(xdg_toplevel::State::Fullscreen);
+                     if toplevel.fullscreen != prev_fs {
+                         state.connection.set_fullscreen(
+                             *data.get::<&x::Window>().unwrap(),
+@@ -854,10 +865,12 @@ impl Event for client::wl_keyboard::Event {
+                 let mut query = surface.data().copied().and_then(|key| {
+                     state
+                         .world
+-                        .query_one::<(&x::Window, &WlSurface, Option<&OnOutput>)>(key)
++                        .query_one::<(&x::Window, &WlSurface, &WindowData, Option<&OnOutput>)>(key)
+                         .ok()
+                 });
+-                let Some((window, surface, output)) = query.as_mut().and_then(|q| q.get()) else {
++                let Some((window, surface, window_data, output)) =
++                    query.as_mut().and_then(|q| q.get())
++                else {
+                     return;
+                 };
+                 state.last_kb_serial = Some((
+@@ -868,8 +881,7 @@ impl Event for client::wl_keyboard::Event {
+                     serial,
+                 ));
+                 let output_name = get_output_name(output, &state.world);
+-                let window_data = data.get::<&WindowData>();
+-                let has_take_focus = window_data.as_ref().is_some_and(|d| d.attrs.has_take_focus);
++                let has_take_focus = window_data.attrs.has_take_focus;
+                 state.to_focus = Some(FocusData {
+                     window: *window,
+                     output_name,
+diff --git a/src/server/mod.rs b/src/server/mod.rs
+index 80c2ebb4..96f4cecf 100644
+--- a/src/server/mod.rs
++++ b/src/server/mod.rs
+@@ -244,6 +244,7 @@ struct ToplevelData {
+     toplevel: XdgToplevel,
+     xdg: XdgSurfaceData,
+     fullscreen: bool,
++    maximized: bool,
+     decoration: decoration::DecorationsData,
+ }
+
+@@ -774,13 +775,13 @@ impl<C: XConnection> ServerState<C> {
+                     "focusing (take_focus={has_take_focus:?}) {} {window:?}",
+                     if is_popup { "popup" } else { "window" }
+                 );
++                if !is_popup {
++                    self.last_focused_toplevel = Some(window);
++                }
+                 if has_take_focus {
+                     self.connection.send_take_focus(window);
+                 } else {
+                     self.connection.focus_window(window, output_name);
+-                    if !is_popup {
+-                        self.last_focused_toplevel = Some(window);
+-                    }
+                 }
+             } else if self.unfocus {
+                 self.connection.focus_window(x::WINDOW_NONE, None);
+@@ -1261,6 +1262,33 @@ impl<S: X11Selection + 'static> InnerServerState<S> {
+         }
+     }
+
++    pub fn set_maximized(&mut self, window: x::Window, state: super::xstate::SetState) {
++        let Some(data) = self
++            .windows
++            .get(&window)
++            .and_then(|id| self.world.entity(*id).ok())
++        else {
++            return;
++        };
++        let Some(role) = data.get::<&SurfaceRole>() else {
++            return;
++        };
++        let SurfaceRole::Toplevel(Some(toplevel)) = &*role else {
++            return;
++        };
++        use crate::xstate::SetState;
++        let maximize = match state {
++            SetState::Add => true,
++            SetState::Remove => false,
++            SetState::Toggle => !toplevel.maximized,
++        };
++        if maximize {
++            toplevel.toplevel.set_maximized();
++        } else {
++            toplevel.toplevel.unset_maximized();
++        }
++    }
++
+     pub fn set_transient_for(&mut self, window: x::Window, parent: x::Window) {
+         let Some(mut win) = self
+             .windows
+@@ -1585,6 +1613,7 @@ impl<S: X11Selection + 'static> InnerServerState<S> {
+             },
+             toplevel,
+             fullscreen: false,
++            maximized: false,
+             decoration: DecorationsData {
+                 wl: wl_decoration,
+                 satellite: sat_decoration,
+diff --git a/src/xstate/mod.rs b/src/xstate/mod.rs
+index 58cab339..02c53327 100644
+--- a/src/xstate/mod.rs
++++ b/src/xstate/mod.rs
+@@ -559,6 +559,13 @@ impl XState {
+
+                 trace!("_NET_WM_STATE ({action:?}) props: {prop1:?} {prop2:?}");
+
++                // EWMH commonly requests both maximize atoms in one message.
++                // Apply a toggle once, rather than toggling back for its pair.
++                if [prop1, prop2].iter().any(|prop| {
++                    [self.atoms.wm_maximized_horz, self.atoms.wm_maximized_vert].contains(prop)
++                }) {
++                    server_state.set_maximized(e.window(), action);
++                }
+                 for prop in [prop1, prop2] {
+                     match prop {
+                         x if x == self.atoms.wm_fullscreen => {
+@@ -929,6 +936,8 @@ xcb::atoms_struct! {
+         wm_pid => b"_NET_WM_PID" only_if_exists = false,
+         net_wm_state => b"_NET_WM_STATE" only_if_exists = false,
+         wm_fullscreen => b"_NET_WM_STATE_FULLSCREEN" only_if_exists = false,
++        wm_maximized_horz => b"_NET_WM_STATE_MAXIMIZED_HORZ" only_if_exists = false,
++        wm_maximized_vert => b"_NET_WM_STATE_MAXIMIZED_VERT" only_if_exists = false,
+         active_win => b"_NET_ACTIVE_WINDOW" only_if_exists = false,
+         client_list => b"_NET_CLIENT_LIST" only_if_exists = false,
+         supported => b"_NET_SUPPORTED" only_if_exists = false,
+@@ -1304,6 +1313,44 @@ pub struct RealConnection {
+ }
+
+ impl RealConnection {
++    fn update_state_atoms(&self, window: x::Window, changed: &[x::Atom], enabled: bool) {
++        let Ok(reply) =
++            self.connection
++                .wait_for_reply(self.connection.send_request(&x::GetProperty {
++                    delete: false,
++                    window,
++                    property: self.atoms.net_wm_state,
++                    r#type: x::ATOM_ATOM,
++                    long_offset: 0,
++                    long_length: 1024,
++                }))
++        else {
++            return;
++        };
++        if reply.bytes_after() != 0 {
++            warn!("Refusing to truncate oversized window state on {window:?}");
++            return;
++        }
++        let mut states = if reply.format() == 32 {
++            reply.value::<x::Atom>().to_vec()
++        } else {
++            Vec::new()
++        };
++        states.retain(|atom| !changed.contains(atom));
++        if enabled {
++            states.extend_from_slice(changed);
++        }
++        if let Err(error) = self.connection.send_and_check_request(&x::ChangeProperty {
++            mode: x::PropMode::Replace,
++            window,
++            property: self.atoms.net_wm_state,
++            r#type: x::ATOM_ATOM,
++            data: &states,
++        }) {
++            warn!("Could not update window state on {window:?}: {error}");
++        }
++    }
++
+     fn new(connection: Rc<xcb::Connection>, atoms: Atoms) -> Self {
+         Self {
+             atoms,
+@@ -1382,24 +1429,15 @@ impl XConnection for RealConnection {
+     }
+
+     fn set_fullscreen(&mut self, window: x::Window, fullscreen: bool) {
+-        let data = if fullscreen {
+-            std::slice::from_ref(&self.atoms.wm_fullscreen)
+-        } else {
+-            &[]
+-        };
++        self.update_state_atoms(window, &[self.atoms.wm_fullscreen], fullscreen);
++    }
+
+-        if let Err(e) = self
+-            .connection
+-            .send_and_check_request(&x::ChangeProperty::<x::Atom> {
+-                mode: x::PropMode::Replace,
+-                window,
+-                property: self.atoms.net_wm_state,
+-                r#type: x::ATOM_ATOM,
+-                data,
+-            })
+-        {
+-            warn!("Failed to set fullscreen state on {window:?} ({e})");
+-        }
++    fn set_maximized(&mut self, window: x::Window, maximized: bool) {
++        self.update_state_atoms(
++            window,
++            &[self.atoms.wm_maximized_horz, self.atoms.wm_maximized_vert],
++            maximized,
++        );
+     }
+
+     fn focus_window(&mut self, window: x::Window, output_name: Option<String>) {

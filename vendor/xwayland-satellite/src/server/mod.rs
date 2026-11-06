@@ -244,6 +244,7 @@ struct ToplevelData {
     toplevel: XdgToplevel,
     xdg: XdgSurfaceData,
     fullscreen: bool,
+    maximized: bool,
     decoration: decoration::DecorationsData,
 }
 
@@ -774,13 +775,13 @@ impl<C: XConnection> ServerState<C> {
                     "focusing (take_focus={has_take_focus:?}) {} {window:?}",
                     if is_popup { "popup" } else { "window" }
                 );
+                if !is_popup {
+                    self.last_focused_toplevel = Some(window);
+                }
                 if has_take_focus {
                     self.connection.send_take_focus(window);
                 } else {
                     self.connection.focus_window(window, output_name);
-                    if !is_popup {
-                        self.last_focused_toplevel = Some(window);
-                    }
                 }
             } else if self.unfocus {
                 self.connection.focus_window(x::WINDOW_NONE, None);
@@ -1261,6 +1262,33 @@ impl<S: X11Selection + 'static> InnerServerState<S> {
         }
     }
 
+    pub fn set_maximized(&mut self, window: x::Window, state: super::xstate::SetState) {
+        let Some(data) = self
+            .windows
+            .get(&window)
+            .and_then(|id| self.world.entity(*id).ok())
+        else {
+            return;
+        };
+        let Some(role) = data.get::<&SurfaceRole>() else {
+            return;
+        };
+        let SurfaceRole::Toplevel(Some(toplevel)) = &*role else {
+            return;
+        };
+        use crate::xstate::SetState;
+        let maximize = match state {
+            SetState::Add => true,
+            SetState::Remove => false,
+            SetState::Toggle => !toplevel.maximized,
+        };
+        if maximize {
+            toplevel.toplevel.set_maximized();
+        } else {
+            toplevel.toplevel.unset_maximized();
+        }
+    }
+
     pub fn set_transient_for(&mut self, window: x::Window, parent: x::Window) {
         let Some(mut win) = self
             .windows
@@ -1585,6 +1613,7 @@ impl<S: X11Selection + 'static> InnerServerState<S> {
             },
             toplevel,
             fullscreen: false,
+            maximized: false,
             decoration: DecorationsData {
                 wl: wl_decoration,
                 satellite: sat_decoration,

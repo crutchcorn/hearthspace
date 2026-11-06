@@ -30,7 +30,7 @@ fn fixture() -> (HeadlessCompositor, Client) {
 }
 
 #[test]
-fn x11_csd_move_synchronizes_root_coordinates_and_survives_unrelated_popups() {
+fn x11_csd_move_keeps_backing_origin_and_survives_unrelated_popups() {
     let _guard = headless_test_guard();
     let (compositor, mut client) = fixture();
     let unmapped_popup = client.overlay(&compositor);
@@ -40,12 +40,10 @@ fn x11_csd_move_synchronizes_root_coordinates_and_survives_unrelated_popups() {
     motion(&compositor, i32::from(point.0) + 20, i32::from(point.1) + 8);
     client.request(&compositor, 8, 1, point);
     wait_geometry(&compositor, &mut client, [120, 158, 320, 240], RED);
-    assert!(
-        client
-            .configures
-            .iter()
-            .any(|event| event.response_type & 0x80 != 0 && (event.x, event.y) == (120, 158)),
-        "move must advertise root coordinates through synthetic ConfigureNotify"
+    assert_eq!(
+        client.origin(),
+        (0, 0),
+        "canvas movement must not move the finite X backing root"
     );
     client.clear_events();
     client.unmap(&compositor, unmapped_popup);

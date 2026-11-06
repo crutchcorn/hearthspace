@@ -1,6 +1,10 @@
 //! Adoption gates use real Satellite, stock Xwayland, and independent X clients.
 #[path = "satellite/cancellation.rs"]
 mod cancellation;
+#[path = "satellite/focus.rs"]
+mod focus;
+#[path = "satellite/touch.rs"]
+mod touch;
 
 use super::{
     navigation::{action, query, wait_windows},
@@ -29,6 +33,16 @@ struct WindowClient {
 
 impl WindowClient {
     fn new(compositor: &HeadlessCompositor, display: &str, title: &str, color: u32) -> Self {
+        Self::new_with_focus(compositor, display, title, color, false)
+    }
+
+    fn new_with_focus(
+        compositor: &HeadlessCompositor,
+        display: &str,
+        title: &str,
+        color: u32,
+        take_focus: bool,
+    ) -> Self {
         let (connection, screen) = x11rb::connect(Some(display)).unwrap();
         let screen = &connection.setup().roots[screen];
         let root = screen.root;
@@ -81,6 +95,39 @@ impl WindowClient {
                 b"satellite-fixture\0SatelliteFixture\0",
             )
             .unwrap();
+        if take_focus {
+            let protocols = connection
+                .intern_atom(false, b"WM_PROTOCOLS")
+                .unwrap()
+                .reply()
+                .unwrap()
+                .atom;
+            let take = connection
+                .intern_atom(false, b"WM_TAKE_FOCUS")
+                .unwrap()
+                .reply()
+                .unwrap()
+                .atom;
+            connection
+                .change_property32(
+                    PropMode::REPLACE,
+                    window,
+                    protocols,
+                    AtomEnum::ATOM,
+                    &[take],
+                )
+                .unwrap();
+            // ICCCM globally-active client: it must receive WM_TAKE_FOCUS.
+            connection
+                .change_property32(
+                    PropMode::REPLACE,
+                    window,
+                    AtomEnum::WM_HINTS,
+                    AtomEnum::WM_HINTS,
+                    &[1, 0, 0, 0, 0, 0, 0, 0, 0],
+                )
+                .unwrap();
+        }
         connection.map_window(window).unwrap().check().unwrap();
         let windows = wait_windows(compositor, |windows| {
             windows
