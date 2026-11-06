@@ -20,38 +20,56 @@ Keep detailed captures and logs with the issue or test artifact. Use this page
 as the single inventory of named test systems; feature guides describe how to
 repeat the checks.
 
-## Parallels graphics distortion, 2026-11-05
+## Parallels graphics distortion and resizing, 2026-11-05
 
 The MacBook Pro guest above reported aarch64 kernel `7.0.0-38-generic`,
 Parallels virtualization, virtio-gpu PCI `1af4:1050`, Mesa `26.0.8-1ubuntu0.3`,
-and GLES renderer `virgl (Apple M4 Max (Compat))`. One Virtual-1 output ran at
-1728×957, scale 1. The host OS version, macOS 27, was user-reported.
+and GLES renderer `virgl (Apple M4 Max (Compat))`. One Virtual-1 output initially
+ran at 1728×957, scale 1. The host OS, macOS 27, was user-reported.
 
-The installed release `77cd3564a0f06bad56c275229e605e5f8f9b67bb1b468517cbb797ac4c69b797`
-and an original debug compositor produced whole-output corruption in native
-captures. A repeated debug run failed its desktop-pixel assertion after the
-first window drag: a background pixel at (10, 500) became RGB (2, 1, 0).
-Disabling GLES instancing did not eliminate a full-screen black capture.
-A complete-scene-repaint diagnostic avoided that failure. The resulting
-[Apple virgl fallback](DRM.md#apple-virgl-scene-repaint-fallback) passed
-12 captured desktop-corner assertions, 11 terminal drags, and four desktop
-selection gestures in an isolated native session. The final renderer matching
-was narrowed to Apple virgl after that run; the observed renderer still matches.
+The installed optimized release `77cd3564a0f06bad56c275229e605e5f8f9b67bb1b468517cbb797ac4c69b797`
+and an original debug compositor produced whole-output corruption in captures.
+The repeated original debug run failed a desktop-pixel assertion after its first
+drag. An initial full-repaint workaround passed a bounded drag test but did not
+survive subsequent host resizing; it is superseded by the ownership repair below.
 
-These checks establish a bounded workaround for captured corruption, not an
-exact driver defect, physical smoothness, or long-duration acceptance. Capture
-readbacks can change synchronization. The test used the installed companion
-executables with a debug compositor override; it did not replace the installed
-release or exercise graphical-login authentication. All owned test sessions
-restored tty2 and removed their runtimes. Two initial cleanup calls reported
-`Device or resource busy`; idempotent retries completed recovery.
+Host resizing delivered preferred modes including 1072×768, 1976×768,
+1728×783, 2232×768, 1328×768, and 1672×956. The initial backend exhausted
+recovery after rejecting modeset timestamps older than the new output record.
+A synchronous modeset followed by a verified ordinary flip restored completion.
+Preserving the Wayland output during buffer replacement stopped the launcher
+flicker observed by the local user. These changes alone still produced black
+scene buffers after repeated mode changes.
 
-Evidence is retained under
+Sharing the producer's GBM device with the presenter corrected the remaining
+failure. With ordinary incremental scene repainting restored, `shared-incremental`
+passed exact terminal input, 12 desktop-corner/content captures, 11 terminal
+drags, four desktop selection gestures, and transitions through 1024×768,
+1920×1080, 1280×800, and 1696×957 with the terminal retained. The mode exercise
+used an explicit, temporary diagnostic selector for modes already advertised by
+DRM, followed by udev change events; that selector and producer readback logging
+were removed from the final implementation. These runs establish bounded native
+pixels and client preservation, not physical smoothness or long-term reliability.
+
+The source-level full checks before the resize changes passed formatting, Ruff,
+Clippy, build, Python tests (746 run, 14 skipped), and dependency checks. The Rust
+headless integration target passed 410 cases and failed 12 X11 pixel cases. One
+failed X11 resize case also failed with the entire native backend excluded;
+those failures are separate from the native resize changes. The earlier Rust
+command stopped at the failing integration target, so it did not cover every
+remaining workspace target. Full logs retain the exact commands and outcomes. The corrected ownership path
+subsequently passed full formatting, Ruff, workspace Clippy and all-target build,
+plus all 132 native-backend library tests. Those focused checks do not replace a
+full workspace test result.
+
+Evidence remains under
 `~/.local/state/hearthspace-investigations/20261105-parallels-graphics/`, including
-failed baseline and diagnostic runs, binary hashes, PNG/metadata pairs, the
-exercise script, and cleanup manifests. Manifest paths record their original
-checkout artifact location; the directory moved to persistent user state only
-after every native session stopped.
+failed attempts, binary hashes, PNG/metadata pairs, diagnostic patches, exercise
+scripts, and cleanup manifests. Early manifests record their original checkout
+artifact location; those directories moved only after their sessions stopped.
+Several first stop attempts reported `Device or resource busy`; idempotent
+retries completed recovery and restored the original VT. The temporary debug
+installation retained the previous optimized release.
 
 ## Smithay cursor planes and pointer zoom, 2026-11-01
 

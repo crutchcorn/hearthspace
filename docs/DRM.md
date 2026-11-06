@@ -257,19 +257,31 @@ Use [native testing](NATIVE_TESTING.md) for safety exits and failure triage,
 [tested environments](TESTED_ENVIRONMENTS.md) for recorded environments. A nested
 or headless pass does not establish native device compatibility.
 
-## Apple virgl scene repaint fallback
+## Virtual display resizing
 
-Native single-GPU scenes rendered by `virgl (Apple …)` use buffer age zero.
-This repaints the entire scene into each acquired buffer, avoiding severe
-whole-output distortion observed while dragging windows and selecting desktop
-items. The policy is selected from `GL_RENDERER`, cached per EGL context, and
-logged as `selected native scene repaint policy`. Other renderers retain their
-ordinary scene buffer ages; KMS damage-clip policy is independent.
+Virtual displays can change their preferred DRM mode when the host window
+resizes. Hearthspace follows the normal udev connector-change path, selects the
+updated mode, and replaces its scene and scanout buffers. A connected monitor's
+Wayland output stays advertised during that replacement; its size updates when
+the replacement surface is ready. Actual unplug still removes the output.
+This preserves shell controls and client output identity through a resize.
 
-This is a compatibility workaround, not a proven diagnosis of a Mesa or host
-renderer defect. Complete scene repaints cost more GPU work. Cursor-only
-presentation still reuses the cached scene. Reconsider this fallback after
-an updated graphics stack passes repeated movement and selection on the
-previously affected renderer, including an interval without capture readbacks.
-See [tested environments](TESTED_ENVIRONMENTS.md) for the observed configuration
-and the limits of its acceptance evidence.
+A pending modeset uses Smithay's synchronous `commit_frame`, which generates no
+page-flip event. Hearthspace then forces an ordinary flip, even for unchanged
+pixels. Only that verified completion can acknowledge capture, locking, or
+client presentation. This avoids treating a virtual GPU's modeset timestamp
+from the preceding vblank as proof of a newly presented frame.
+
+The producer and presenter share clones of one GBM device for each seat-owned
+DRM file description. Their EGL contexts and renderers remain thread-owned.
+Creating independent GBM devices over cloned descriptors gives them independent
+buffer bookkeeping for the same kernel GEM-handle namespace. The
+[kernel's GEM-close contract](https://docs.kernel.org/gpu/drm-uapi.html#drm-ioctl-gem-close)
+requires userspace to close a duplicated handle only once. Sharing the GBM
+owner prevents one importer from retiring a handle another still uses.
+
+The initial Apple virgl full-repaint workaround was removed after correcting
+this ownership boundary and validating incremental repainting. See
+[tested environments](TESTED_ENVIRONMENTS.md) for the observed configurations
+and retained evidence. No vendor-specific compositor protocol is required for
+the observed Parallels preferred-mode updates.
