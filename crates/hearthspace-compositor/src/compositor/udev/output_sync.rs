@@ -40,15 +40,15 @@ impl PublishedOutputs {
                 }
             }
         }
-        if !pending.is_empty() {
-            if let Some(previous) = &self.descriptors {
-                descriptors.sort_by_key(|next| {
-                    previous
-                        .iter()
-                        .position(|old| old.name == next.name)
-                        .unwrap_or(usize::MAX)
-                });
-            }
+        if !pending.is_empty()
+            && let Some(previous) = &self.descriptors
+        {
+            descriptors.sort_by_key(|next| {
+                previous
+                    .iter()
+                    .position(|old| old.name == next.name)
+                    .unwrap_or(usize::MAX)
+            });
         }
         self.update(descriptors)
     }

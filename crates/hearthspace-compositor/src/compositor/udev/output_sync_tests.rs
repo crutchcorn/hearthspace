@@ -348,3 +348,23 @@ fn pending_resize_preserves_wayland_identity_but_unplug_still_removes_it() {
         "new targets need a usable surface"
     );
 }
+
+#[test]
+fn pending_primary_does_not_promote_a_healthy_secondary_output() {
+    let display = Display::<App>::new().unwrap();
+    let dh = display.handle();
+    let event_loop = EventLoop::<CalloopData>::try_new().unwrap();
+    let mut app = new_app(&dh, event_loop.handle());
+    let mut captures = CaptureState::default();
+    let mut published = PublishedOutputs::default();
+    published
+        .update(vec![descriptor("A"), descriptor("B")])
+        .apply(&mut app, &mut captures, &dh);
+    let original = app.capture_output_handles()[0].clone();
+    published
+        .update_pending(vec![descriptor("B")], &BTreeSet::from(["A".into()]))
+        .apply(&mut app, &mut captures, &dh);
+    assert_eq!(app.primary_output_name(), Some("A"));
+    assert_eq!(app.capture_output_handles()[0], original);
+    assert_eq!(app.capture_outputs().len(), 2);
+}
