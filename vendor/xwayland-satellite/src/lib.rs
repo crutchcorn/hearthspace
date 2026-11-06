@@ -73,11 +73,7 @@ pub const fn timespec_from_millis(millis: u64) -> Timespec {
 }
 
 pub fn version() -> &'static str {
-    let mut version = env!("VERGEN_GIT_DESCRIBE");
-    if version == "VERGEN_IDEMPOTENT_OUTPUT" {
-        version = env!("CARGO_PKG_VERSION");
-    }
-    version
+    concat!(env!("CARGO_PKG_VERSION"), "+hearthspace.7bf5e0d")
 }
 
 pub fn main(mut data: impl RunData) -> Option<()> {

@@ -29,12 +29,44 @@ including the native backend. Keep `CARGO_TARGET_DIR` consistent when launching
 the session. Repeat the prebuild after dependency changes or clearing build
 artifacts; incremental startup builds still count toward the deadline.
 
+After the Rust build, [prepare Satellite's private Xwayland](SATELLITE.md#prepare-the-private-server)
+beside the actual compositor executable. This explicit normal-user step stays
+outside the startup budget. Repeat it after the pinned server requirements change;
+missing or mismatched receipts are rejected, without using the system server.
+
 The runtime binary/package inventory is
 [`scripts/runtime-artifacts.json`](../scripts/runtime-artifacts.json).
 Installer, harness, and development bootstrap consume it. If you add a required
 helper, update that contract and its tests. Development launchers use Cargo's
 reported executable rather than assuming `target/debug`; installed releases use
 adjacent binaries and don't depend on a checkout.
+
+## Prepare an installable runtime
+
+Build the optimized runtime from the same inventory, under the local guard:
+
+```sh
+export CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$PWD/target}"
+PYTHONPATH=scripts python3 - <<'PYBUILD'
+import os
+import subprocess
+import time
+from pathlib import Path
+from runtime_artifacts import runtime_build_command
+
+parent = Path.home() / ".local/state/hearthspace-builds"
+parent.mkdir(parents=True, exist_ok=True)
+evidence = parent / f"runtime-{time.time_ns()}"
+command = runtime_build_command(os.environ["CARGO_TARGET_DIR"], release=True)
+subprocess.run(["scripts/guarded-cargo", "--evidence", str(evidence), *command[1:]], check=True)
+PYBUILD
+```
+
+Then [prepare the private server](SATELLITE.md#prepare-the-private-server) with
+`--compositor "$CARGO_TARGET_DIR/release/hearthspace-compositor"`. Install using
+`--no-build --binary-dir "$CARGO_TARGET_DIR/release"` as described in
+[graphical login](LOGIN_SESSION.md). Neither preparation nor these builds change
+the installed session; installation is an explicit separate operation.
 
 ## Guarded builds
 

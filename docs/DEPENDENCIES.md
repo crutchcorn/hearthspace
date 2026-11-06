@@ -110,7 +110,10 @@ header package only if it was newly installed and is no longer needed.
 The exact source archive and input patch hashes are recorded in
 [`data/xwayland-requirements.json`](../data/xwayland-requirements.json).
 Preparation is explicit and runs as the normal user, never during session
-startup. The migration's launch and packaging integration is still in progress.
+startup. [Preparation and packaging](SATELLITE.md#prepare-the-private-server)
+retain the build inputs and stage verified companions beside the compositor.
+The installer includes the private binary and notices; it never replaces the
+system Xwayland package.
 
 ## Test and recording tools
 

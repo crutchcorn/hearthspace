@@ -1,0 +1,44 @@
+diff --git a/Cargo.toml b/Cargo.toml
+index 88db52d9..bfe7f044 100644
+--- a/Cargo.toml
++++ b/Cargo.toml
+@@ -64,10 +64,6 @@ fontconfig = ["dep:fontconfig"]
+ rustix = { workspace = true, features = ["fs"] }
+ testwl = { path = "testwl" }
+
+-[build-dependencies]
+-anyhow = "1.0.98"
+-vergen-gitcl = "1.0.8"
+-
+ [profile.ci]
+ inherits = "dev"
+ # Shrink bloat in ./target which negatively affects build caching
+diff --git a/build.rs b/build.rs
+deleted file mode 100644
+index 940e12e5..00000000
+--- a/build.rs
++++ /dev/null
+@@ -1,6 +0,0 @@
+-use vergen_gitcl::{Emitter, GitclBuilder};
+-
+-fn main() -> Result<(), anyhow::Error> {
+-    let builder = GitclBuilder::default().describe(true, true, None).build()?;
+-    Emitter::default().add_instructions(&builder)?.emit()
+-}
+diff --git a/src/lib.rs b/src/lib.rs
+index a29863bc..d0d81915 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -73,11 +73,7 @@ pub const fn timespec_from_millis(millis: u64) -> Timespec {
+ }
+
+ pub fn version() -> &'static str {
+-    let mut version = env!("VERGEN_GIT_DESCRIBE");
+-    if version == "VERGEN_IDEMPOTENT_OUTPUT" {
+-        version = env!("CARGO_PKG_VERSION");
+-    }
+-    version
++    concat!(env!("CARGO_PKG_VERSION"), "+hearthspace.7bf5e0d")
+ }
+
+ pub fn main(mut data: impl RunData) -> Option<()> {

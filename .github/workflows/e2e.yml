@@ -84,13 +84,32 @@ jobs:
             wayland-utils \
             wayvnc \
             xdg-desktop-portal \
-            xwayland
+            xwayland \
+            curl \
+            patch \
+            x11-xkb-utils \
+            meson \
+            ninja-build \
+            libxfont-dev \
+            libfontenc-dev \
+            libxcvt-dev \
+            libxkbfile-dev \
+            libxshmfence-dev \
+            libmd-dev \
+            mesa-common-dev \
+            libtirpc-dev \
+            libxcb-cursor-dev \
+            libxcb-composite0-dev \
+            libxcb-res0-dev
 
       - name: Set up Rust
         uses: ./.github/actions/setup-rust
 
       - name: Build workspace binaries and test targets
         run: cargo build --locked --workspace --all-targets --features udev,e2e,test-apps
+
+      - name: Prepare private Xwayland
+        uses: ./.github/actions/prepare-xwayland
 
       # Keep GPU workloads sequential, including within each Rust test binary.
       - name: Run Rust workspace and headless E2E tests
@@ -113,3 +132,7 @@ jobs:
             /tmp/hearthspace-e2e/**/*.png
             /tmp/hearthspace-e2e/**/*.xml
             /tmp/hearthspace-e2e/**/*.txt
+            ${{ runner.temp }}/hearthspace-xwayland-result.json
+            ${{ runner.temp }}/hearthspace-xwayland-build/*.log
+            ${{ runner.temp }}/hearthspace-xwayland-build/build-receipt.json
+            ${{ runner.temp }}/hearthspace-xwayland-build/build/meson-logs/*.txt

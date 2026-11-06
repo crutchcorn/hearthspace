@@ -11,6 +11,7 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from installlib import layout, pam, transaction
+from xwayland_fixture import companions
 
 
 class InstallPamTests(unittest.TestCase):
@@ -27,6 +28,7 @@ class InstallPamTests(unittest.TestCase):
             binary = self.binaries / name
             binary.write_bytes(b"never executed")
             binary.chmod(0o755)
+        companions(self.binaries)
         self.bundle = self.directory / "bundle"
         self.bundle.mkdir()
         layout.bundle(self.bundle, self.binaries, self.prefix)

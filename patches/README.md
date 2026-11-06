@@ -832,3 +832,28 @@ See [vendored provenance and refresh steps](../vendor/accesskit_atspi_common/PRO
 - **Removal:** use upstream focus/state handling passing those regressions;
   remove only this vendor repair. Keep the host's X11 identity and touch policy,
   and retain the other patches until their independent conditions are satisfied.
+
+## Satellite reproducible build identity
+
+- **Dependency:** Satellite 0.8.3, pin `7bf5e0dcb0d4250860b24b04a6cb3ddeada515d0`.
+- **Patch:** [build identity](satellite-build-identity.patch), relative to the
+  vendor root, after window-state. The package pin and MPL notices are retained.
+- **Reason/behavior:** Git discovery from vendored source reported the enclosing
+  Hearthspace commit as Satellite's revision. Report a static package/local-base
+  identity instead and remove the Git build script and its unused dependencies.
+  The embedded helper's version output continues to give the complete base pin.
+  This is a local packaging repair, not an upstream backport.
+- **Distribution:** installed releases carry Satellite's MPL notice, provenance
+  and complete modified vendor source archive, alongside the private server and
+  its X.Org notices. The archive normalizes ownership/time metadata; build caches
+  and Git internals are excluded. Installation/native preflight validates the
+  private server's exact receipt and selected compositor companions before
+  activation or VT acquisition. No host Xwayland replacement is installed.
+- **Regression:** the workspace build and real-client Satellite gates use the
+  rebuilt helper; descriptor lifetime and dependency admission tests remain
+  active. Real staged bundles verify source contents, repeatable release identity,
+  receipt modes, corruption rejection and custom compositor paths. These checks
+  do not establish an installed login, a CI execution or native presentation.
+- **Removal:** use an upstream vendoring-safe build identity with no enclosing
+  repository discovery, then remove only this patch. Preserve required notices,
+  modified-source distribution and each other repair until its own condition holds.

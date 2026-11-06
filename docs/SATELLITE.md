@@ -4,8 +4,8 @@ Hearthspace can evaluate X11 applications through
 [xwayland-satellite](https://github.com/Supreeeme/xwayland-satellite), which
 exposes them as XDG toplevels. Canvas positions then stay in the compositor
 instead of becoming X11 root coordinates. The normal backend remains the direct
-Smithay Xwayland integration. Satellite is not ready for regular sessions or
-included in the installed runtime inventory.
+Smithay Xwayland integration. The runtime inventory now includes the helper and verified private server;
+remaining adoption gates are still being completed before switching defaults.
 
 The evaluation is pinned to revision
 `7bf5e0dcb0d4250860b24b04a6cb3ddeada515d0`, package 0.8.3. Build the
@@ -37,12 +37,26 @@ scripts/prepare-xwayland \
   --compositor /absolute/path/to/hearthspace-compositor
 ```
 
-The helper must be beside that compositor. Preparation validates the archive
+Choose the actual compositor's directory, including `target/release` or a custom
+Cargo target. The helper must be beside that compositor. Preparation validates the archive
 and patch hashes before compiling serially, retains its build evidence, and
 stages `hearthspace-Xwayland` and its JSON receipt beside both executables.
 Missing, modified or mismatched companions fail before Xwayland is launched.
 Install the [development headers](DEPENDENCIES.md#satellites-private-xwayland-build)
 first. This does not install or replace the distribution's Xwayland.
+
+## Runtime packaging
+
+The inventory builds `hearthspace-satellite` with the desktop. Preparation stages
+its private server and receipt into the same binary directory. Installation
+verifies/copies both companions, their exact file modes and X.Org notices;
+Satellite's MPL notice, provenance and complete modified source are included under
+`share/doc/hearthspace/`. Source ownership/time metadata is normalized so identical
+input trees produce identical source archives. No system Xwayland is replaced.
+The native harness validates companions beside the selected compositor, including
+an explicit compositor override, before acquiring a VT. It records their hashes.
+CI prepares the same pinned source before integration tests and retains build
+provenance. Normal startup never downloads or builds the C server.
 
 ## Optional cancellation bridge
 

@@ -1,0 +1,18 @@
+name: Prepare private Xwayland
+description: Build the pinned private server without changing the runner's system Xwayland.
+runs:
+  using: composite
+  steps:
+    - name: Download and prepare the exact server source
+      shell: bash
+      run: |
+        set -eu
+        archive="$RUNNER_TEMP/hearthspace-xwayland.tar.xz"
+        url=$(python3 -c 'import json; print(json.load(open("data/xwayland-requirements.json"))["source_archive_url"])')
+        curl --fail --location --proto '=https' --tlsv1.2 --retry 2 --max-time 120 --output "$archive" "$url"
+        target=$(cargo metadata --locked --no-deps --format-version 1 | python3 -c 'import json,sys; print(json.load(sys.stdin)["target_directory"])')
+        scripts/prepare-xwayland \
+          --archive "$archive" \
+          --build-dir "$RUNNER_TEMP/hearthspace-xwayland-build" \
+          --compositor "$target/debug/hearthspace-compositor" \
+          > "$RUNNER_TEMP/hearthspace-xwayland-result.json"

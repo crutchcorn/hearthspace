@@ -11,6 +11,7 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from nativelib import build, cli, common
+from xwayland_fixture import companions
 
 
 class NativeLockerTests(unittest.TestCase):
@@ -24,6 +25,7 @@ class NativeLockerTests(unittest.TestCase):
             binary = self.binary_dir / name
             binary.write_bytes(name.encode())
             binary.chmod(0o755)
+        companions(self.binary_dir)
         source = self.directory / "scripts/runtime/hearthspace-share-picker"
         source.parent.mkdir(parents=True)
         source.write_text("#!/usr/bin/python3\n")

@@ -97,3 +97,13 @@ the last focused toplevel for globally-active clients. It propagates host and
 EWMH maximization, preserving unrelated state, and decodes full XDG state words.
 The XConnection hook is defaulted. This local repair changes no pin, package
 version or notices; coverage and removal conditions are in the patch ledger.
+
+## Reproducible build identity and distribution
+
+The [build-identity patch](../../patches/satellite-build-identity.patch), after
+window-state, removes parent-repository Git discovery and unused build-time
+dependencies. The library reports its pinned package/local-base identity; the
+Hearthspace helper reports the complete upstream revision. Pin, package and MPL
+notices remain unchanged. Installed releases include this complete modified
+source tree in `share/doc/hearthspace/xwayland-satellite-source.tar.xz`, together
+with the MPL notice and provenance. See the patch ledger for refresh/removal.

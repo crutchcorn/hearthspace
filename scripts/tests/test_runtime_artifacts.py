@@ -15,6 +15,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import runtime_artifacts as artifacts
 from installlib import layout
 from nativelib import build, cli, common
+from xwayland_fixture import companions
 
 
 class RuntimeArtifactTests(unittest.TestCase):
@@ -89,6 +90,7 @@ class RuntimeArtifactTests(unittest.TestCase):
                 binary = binaries / name
                 binary.write_text("stale")
                 binary.chmod(0o700)
+            companions(binaries)
             commands = root / "commands"
             commands.mkdir()
             cargo = commands / "cargo"
