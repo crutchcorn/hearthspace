@@ -1867,7 +1867,7 @@ diff --git a/hw/xwayland/xwayland-input.c b/hw/xwayland/xwayland-input.c
          break;
      }
  }
-@@ -3411,8 +3581,8 @@
+@@ -3402,8 +3572,8 @@
      valuator_mask_set_unaccelerated(&mask, 0, dx, dx_unaccel);
      valuator_mask_set_unaccelerated(&mask, 1, dy, dy_unaccel);
 
@@ -1878,7 +1878,7 @@ diff --git a/hw/xwayland/xwayland-input.c b/hw/xwayland/xwayland-input.c
 
      window = xwl_seat->focus_window->toplevel;
      miPointerGetPosition(xwl_seat->pointer, &x, &y);
-@@ -3627,6 +3797,7 @@
+@@ -3618,6 +3788,7 @@
      }
 
      mieqInit();
@@ -1921,7 +1921,7 @@ diff --git a/hw/xwayland/xwayland-input.h b/hw/xwayland/xwayland-input.h
 diff --git a/hw/xwayland/xwayland-screen.c b/hw/xwayland/xwayland-screen.c
 --- a/hw/xwayland/xwayland-screen.c
 +++ b/hw/xwayland/xwayland-screen.c
-@@ -913,6 +913,9 @@
+@@ -916,6 +916,9 @@
              defaultScreenSaverTime = 0;
              defaultScreenSaverInterval = 0;
          }
@@ -1931,7 +1931,7 @@ diff --git a/hw/xwayland/xwayland-screen.c b/hw/xwayland/xwayland-screen.c
          else if (strcmp(argv[i], "-shm") == 0) {
              xwl_screen->glamor = XWL_GLAMOR_NONE;
          }
-@@ -982,6 +985,11 @@
+@@ -985,6 +988,11 @@
          return FALSE;
      }
 
@@ -1966,7 +1966,7 @@ diff --git a/hw/xwayland/xwayland-window.c b/hw/xwayland/xwayland-window.c
  #include "xwayland-pixmap.h"
  #include "xwayland-present.h"
  #include "xwayland-screen.h"
-@@ -1482,6 +1483,8 @@
+@@ -1484,6 +1485,8 @@
          return NULL;
 
      xwl_window->xwl_screen = xwl_screen;
@@ -1975,7 +1975,7 @@ diff --git a/hw/xwayland/xwayland-window.c b/hw/xwayland/xwayland-window.c
      xwl_window->toplevel = window;
      xwl_window->surface_window = window;
      xwl_window->fractional_scale_numerator = FRACTIONAL_SCALE_DENOMINATOR;
-@@ -1689,11 +1692,16 @@
+@@ -1693,11 +1696,16 @@
      WindowPtr window = xwl_window->toplevel;
      ScreenPtr screen = xwl_screen->screen;
 

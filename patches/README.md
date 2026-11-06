@@ -696,7 +696,7 @@ See [vendored provenance and refresh steps](../vendor/accesskit_atspi_common/PRO
 ## Satellite surface-target input and managed Xwayland
 
 - **Dependencies:** Satellite 0.8.3 at `7bf5e0dcb0d4250860b24b04a6cb3ddeada515d0`
-  and Xwayland 24.1.10, with exact archive/patch hashes in
+  and Xwayland 24.1.14, with exact archive/patch hashes in
   [requirements](../data/xwayland-requirements.json).
 - **Patches:** [surface-target input](xwayland-surface-input-targets.patch) and
   [managed executable](satellite-managed-xwayland.patch). The former reuses the

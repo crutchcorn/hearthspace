@@ -1,16 +1,22 @@
 # Xwayland surface input targets
 
 The [source patch](xwayland-surface-input-targets.patch) adds the default-off,
-rootless-only `-surface-input-targets` option to Xwayland 24.1.10. The exact
+rootless-only `-surface-input-targets` option to Xwayland 24.1.14. The exact
 archive and patch checksums are in
 [the dependency requirements](../data/xwayland-requirements.json). The upstream
-[24.1.10 archive](https://xorg.freedesktop.org/archive/individual/xserver/xwayland-24.1.10.tar.xz)
+[24.1.14 archive](https://xorg.freedesktop.org/archive/individual/xserver/xwayland-24.1.14.tar.xz)
 is the source identity; no Git revision is inferred from a release tarball.
 The upstream notices are retained in [Xwayland COPYING](xwayland-COPYING).
 
 **Historical integration checkpoint:** the private candidate passed the focused regressions
 below. Supported launch, packaging, full-suite validation and native acceptance
 are still being integrated. This record does not establish an installed fix.
+
+The source pin includes the upstream security fixes through 24.1.14; see the
+[X.Org security advisories](https://www.x.org/Development/Security/). The routing
+patch is regenerated against that archive, preserving its touch/gesture trace
+cleanup and Xwayland window-lifetime fixes. Hash validation identifies the
+downloaded archive; it does not claim verification of its detached signature.
 
 ## Why this is needed
 

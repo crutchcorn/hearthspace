@@ -32,7 +32,7 @@ storage. Then run, as your normal user:
 
 ```sh
 scripts/prepare-xwayland \
-  --archive /absolute/path/to/xwayland-24.1.10.tar.xz \
+  --archive /absolute/path/to/xwayland-24.1.14.tar.xz \
   --build-dir /absolute/path/to/a-fresh-build-directory \
   --compositor /absolute/path/to/hearthspace-compositor
 ```
