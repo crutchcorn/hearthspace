@@ -191,6 +191,7 @@ fn prepare_and_queue(
         )
         .map_err(|error| error.to_string())?;
     let render_us = render_started.elapsed().as_micros() as u64;
+    let scene_state = result.states.element_render_state(output.scene_id.clone());
     let cursor_plane = result.cursor_element.is_some();
     let primary_scanout = matches!(result.primary_element, PrimaryPlaneElement::Element(_));
     let primary = match &result.primary_element {
@@ -206,7 +207,7 @@ fn prepare_and_queue(
     tracing::trace!(target: "hearthspace::presenter", key = ?output.config.key,
         candidate_submission = output.next_submission + 1,
         scene_sequence, cursor_sequence, cursor_image = ?cursor_image,
-        cursor_plane, primary_scanout, primary_buffer = ?primary.map(|(buffer, _)| buffer),
+        cursor_plane, primary_scanout, scene_state = ?scene_state, primary_buffer = ?primary.map(|(buffer, _)| buffer),
         primary_damage_commit = ?primary.map(|(_, commit)| commit),
         primary_reused, render_us, flags = ?flags, empty = result.is_empty,
         "rendered native plane selection");

@@ -1,6 +1,10 @@
 //! Real GTK client for window-state, transient-dialog, popup and input tests.
 use gtk::{gdk, gio, glib, prelude::*};
-use std::{cell::RefCell, path::PathBuf, rc::Rc};
+use std::{
+    cell::{Cell, RefCell},
+    path::PathBuf,
+    rc::Rc,
+};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let path = PathBuf::from(std::env::args().nth(1).ok_or("snapshot path required")?);
@@ -132,6 +136,7 @@ fn build(app: &gtk::Application, path: PathBuf) {
         move |_| popover.popdown()
     ));
     let last_key = Rc::new(RefCell::new(String::new()));
+    let cursor_hidden = Rc::new(Cell::new(false));
     let keys = gtk::EventControllerKey::new();
     keys.set_propagation_phase(gtk::PropagationPhase::Capture);
     keys.connect_key_pressed(glib::clone!(
@@ -145,6 +150,8 @@ fn build(app: &gtk::Application, path: PathBuf) {
         dialog,
         #[strong]
         last_key,
+        #[strong]
+        cursor_hidden,
         #[upgrade_or]
         glib::Propagation::Proceed,
         move |_, key, _, _| {
@@ -156,6 +163,14 @@ fn build(app: &gtk::Application, path: PathBuf) {
                     } else {
                         window.fullscreen();
                     }
+                }
+                gdk::Key::F10 => {
+                    cursor_hidden.set(!cursor_hidden.get());
+                    editor.set_cursor_from_name(Some(if cursor_hidden.get() {
+                        "none"
+                    } else {
+                        "text"
+                    }));
                 }
                 gdk::Key::F9 => {
                     if window.is_maximized() {
@@ -224,6 +239,7 @@ fn build(app: &gtk::Application, path: PathBuf) {
                     "popup": popover.is_mapped(), "popup_visible": popover.is_visible(),
                     "popup_width": popover.width(), "popup_height": popover.height(),
                     "last_key": last_key.borrow().as_str(),
+                    "cursor_hidden": cursor_hidden.get(),
                     "dialog": dialog.borrow().as_ref().is_some_and(|window| window.is_mapped()),
                 });
                 let temporary = path.with_extension("json.tmp");

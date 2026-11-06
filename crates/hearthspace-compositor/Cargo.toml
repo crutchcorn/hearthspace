@@ -118,3 +118,7 @@ unsafe_op_in_unsafe_fn = "deny"
 
 [lints.clippy]
 all = { level = "deny", priority = -1 }
+
+[[example]]
+name = "scanout-fixture"
+required-features = ["udev"]

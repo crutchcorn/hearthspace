@@ -210,7 +210,9 @@ impl Output {
                 gbm.clone(),
                 GbmBufferFlags::SCANOUT | GbmBufferFlags::RENDERING,
             ),
-            GbmFramebufferExporter::new(gbm.clone(), NodeFilter::None),
+            // Only admitted fullscreen elements expose Wayland storage. Imported
+            // DMA-BUFs need not carry a node hint; Smithay/KMS must test them.
+            GbmFramebufferExporter::new(gbm.clone(), NodeFilter::All),
             [Fourcc::Argb8888, Fourcc::Xrgb8888],
             formats,
             cursor_caps,
