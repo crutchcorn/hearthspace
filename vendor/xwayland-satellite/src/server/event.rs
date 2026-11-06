@@ -323,6 +323,17 @@ impl SurfaceEvents {
             } else {
                 window_data.attrs.dims.height
             };
+            let (width, height) = match role {
+                SurfaceRole::Toplevel(Some(toplevel))
+                    if !toplevel.maximized && !toplevel.fullscreen =>
+                {
+                    window_data
+                        .attrs
+                        .size_hints
+                        .map_or((width, height), |hints| hints.constrain(width, height))
+                }
+                _ => (width, height),
+            };
             debug!(
                 "configuring {} ({window:?}): {x}x{y}, {width}x{height}",
                 data.get::<&WlSurface>().unwrap().id(),

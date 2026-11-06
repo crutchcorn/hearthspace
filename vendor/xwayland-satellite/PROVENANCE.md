@@ -129,3 +129,13 @@ This is a local adaptation informed by the standard XDND specification and
 upstream issue 133, not a merged backport or a general bidirectional bridge.
 Pin, package and MPL notices remain unchanged. Scope, regressions and removal
 requirements are in the patch ledger.
+
+## Terminal size increments
+
+The [size-increment patch](../../patches/satellite-size-increments.patch), after
+desktop-DND, preserves ICCCM base/increment hints in ordinary X buffer resizing.
+It bounds-checks property fields, rounds within client bounds and skips grid
+rounding for maximized/fullscreen states. Host XDG geometry remains responsible
+for canvas anchoring. This is an independent local repair, not an upstream
+backport; pin, package and notices are unchanged. See the ledger for regressions
+and removal conditions.

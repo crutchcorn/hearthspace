@@ -13,8 +13,6 @@ use crate::{
 pub(super) struct ResizeLimits {
     pub min: Size<i32, Logical>,
     pub max: Size<i32, Logical>,
-    base: Size<i32, Logical>,
-    increment: Size<i32, Logical>,
 }
 
 impl ResizeLimits {
@@ -24,61 +22,24 @@ impl ResizeLimits {
                 let state = with_states(surface.wl_surface(), |states| {
                     *states.cached_state.get::<SurfaceCachedState>().current()
                 });
-                Self::new(state.min_size, state.max_size, (0, 0).into(), (1, 1).into())
+                Self::new(state.min_size, state.max_size)
             }
         }
     }
 
-    #[cfg(test)]
-    fn from_raw_hints(
-        min: (i32, i32),
-        max: (i32, i32),
-        base: (i32, i32),
-        increment: (i32, i32),
-    ) -> Self {
-        let size = |(width, height): (i32, i32)| (width.max(0), height.max(0)).into();
-        Self::new(
-            size(min),
-            size(max),
-            size(base),
-            (increment.0.max(1), increment.1.max(1)).into(),
-        )
-    }
-
-    fn new(
-        min: Size<i32, Logical>,
-        max: Size<i32, Logical>,
-        base: Size<i32, Logical>,
-        increment: Size<i32, Logical>,
-    ) -> Self {
+    fn new(min: Size<i32, Logical>, max: Size<i32, Logical>) -> Self {
         let (min_w, max_w) = axis_limits(min.w, max.w, MIN_WINDOW_WIDTH);
         let (min_h, max_h) = axis_limits(min.h, max.h, MIN_WINDOW_HEIGHT);
         Self {
             min: (min_w, min_h).into(),
             max: (max_w, max_h).into(),
-            base: (base.w.max(0), base.h.max(0)).into(),
-            increment: (increment.w.max(1), increment.h.max(1)).into(),
         }
     }
 
-    /// Keep terminal cell increments even when the proposed canvas dot is not
-    /// a legal client size. Invalid or contradictory hints never escape bounds.
     pub(super) fn constrain(self, size: Size<i32, Logical>) -> Size<i32, Logical> {
         (
-            constrain_axis(
-                size.w,
-                self.min.w,
-                self.max.w,
-                self.base.w,
-                self.increment.w,
-            ),
-            constrain_axis(
-                size.h,
-                self.min.h,
-                self.max.h,
-                self.base.h,
-                self.increment.h,
-            ),
+            size.w.clamp(self.min.w, self.max.w),
+            size.h.clamp(self.min.h, self.max.h),
         )
             .into()
     }
@@ -92,30 +53,12 @@ fn axis_limits(min: i32, max: i32, fallback: i32) -> (i32, i32) {
     (min.min(max), max)
 }
 
-fn constrain_axis(value: i32, min: i32, max: i32, base: i32, increment: i32) -> i32 {
-    let value = i64::from(value.clamp(min, max));
-    let (min, max, base, step) = (
-        i64::from(min),
-        i64::from(max),
-        i64::from(base),
-        i64::from(increment),
-    );
-    let first = (min - base + step - 1).div_euclid(step).max(0);
-    let last = (max - base).div_euclid(step);
-    if first > last {
-        // No size satisfies both the increment and bounds; bounds win.
-        return value as i32;
-    }
-    let nearest = ((value - base).max(0) + step / 2) / step;
-    (base + nearest.clamp(first, last) * step) as i32
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     fn limits(min: (i32, i32), max: (i32, i32)) -> ResizeLimits {
-        ResizeLimits::new(min.into(), max.into(), (0, 0).into(), (1, 1).into())
+        ResizeLimits::new(min.into(), max.into())
     }
 
     #[test]
@@ -137,44 +80,5 @@ mod tests {
         let limits = limits((400, 0), (180, 1));
         assert_eq!(limits.constrain((0, 900).into()), (180, 1).into());
         assert_eq!(axis_limits(-12, -5, 120), (120, i32::MAX));
-    }
-
-    #[test]
-    fn terminal_cells_round_inside_bounds_using_the_base_size() {
-        let limits = ResizeLimits::new(
-            (260, 120).into(),
-            (400, 300).into(),
-            (4, 8).into(),
-            (9, 17).into(),
-        );
-        assert_eq!(limits.constrain((266, 151).into()), (265, 144).into());
-        assert_eq!(limits.constrain((0, 0).into()), (265, 127).into());
-        assert_eq!(limits.constrain((500, 500).into()), (400, 297).into());
-    }
-
-    #[test]
-    fn impossible_increment_interval_keeps_the_client_bounds() {
-        let limits = ResizeLimits::new(
-            (280, 120).into(),
-            (283, 150).into(),
-            (0, 0).into(),
-            (16, 10).into(),
-        );
-        assert_eq!(limits.constrain((300, 137).into()), (283, 140).into());
-    }
-
-    #[test]
-    fn large_or_invalid_increment_hints_do_not_overflow() {
-        let limits = ResizeLimits::from_raw_hints((0, 0), (0, 0), (0, -5), (i32::MAX, 0));
-        assert_eq!(
-            limits.constrain((i32::MAX, 321).into()),
-            (i32::MAX, 321).into()
-        );
-    }
-
-    #[test]
-    fn invalid_x11_hints_are_sanitized_before_creating_sizes() {
-        let limits = ResizeLimits::from_raw_hints((-12, 0), (180, -5), (-4, -5), (-9, 0));
-        assert_eq!(limits.constrain((400, 100).into()), (180, 120).into());
     }
 }

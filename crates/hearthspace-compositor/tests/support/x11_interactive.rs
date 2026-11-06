@@ -18,6 +18,8 @@ mod frame_persistence;
 mod identity;
 #[path = "x11_interactive/presentation.rs"]
 mod presentation;
+#[path = "x11_interactive/size_hints.rs"]
+mod size_hints;
 #[path = "x11_interactive/touch.rs"]
 mod touch;
 use assertions::*;

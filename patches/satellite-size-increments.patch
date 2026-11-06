@@ -1,0 +1,186 @@
+diff --git a/src/server/event.rs b/src/server/event.rs
+--- a/src/server/event.rs
++++ b/src/server/event.rs
+@@ -323,6 +323,17 @@
+             } else {
+                 window_data.attrs.dims.height
+             };
++            let (width, height) = match role {
++                SurfaceRole::Toplevel(Some(toplevel))
++                    if !toplevel.maximized && !toplevel.fullscreen =>
++                {
++                    window_data
++                        .attrs
++                        .size_hints
++                        .map_or((width, height), |hints| hints.constrain(width, height))
++                }
++                _ => (width, height),
++            };
+             debug!(
+                 "configuring {} ({window:?}): {x}x{y}, {width}x{height}",
+                 data.get::<&WlSurface>().unwrap().id(),
+diff --git a/src/server/tests.rs b/src/server/tests.rs
+--- a/src/server/tests.rs
++++ b/src/server/tests.rs
+@@ -2652,6 +2652,7 @@
+                 width: 100,
+                 height: 100,
+             }),
++            ..Default::default()
+         },
+     );
+
+@@ -2681,6 +2682,7 @@
+                 width: 200,
+                 height: 200,
+             }),
++            ..Default::default()
+         },
+     );
+     f.run();
+@@ -2709,6 +2711,7 @@
+                 height: 40,
+             }),
+             max_size: None,
++            ..Default::default()
+         },
+     );
+     f.run();
+@@ -2722,6 +2725,7 @@
+         super::WmNormalHints {
+             min_size: None,
+             max_size: None,
++            ..Default::default()
+         },
+     );
+     f.run();
+@@ -3344,6 +3348,7 @@
+                 width: i32::MAX,
+                 height: i32::MAX,
+             }),
++            ..Default::default()
+         },
+     );
+     f.run();
+diff --git a/src/xstate/mod.rs b/src/xstate/mod.rs
+--- a/src/xstate/mod.rs
++++ b/src/xstate/mod.rs
+@@ -1,6 +1,7 @@
+ mod settings;
+ use settings::Settings;
+ mod selection;
++mod size_hints;
+ use selection::{Selection, SelectionState};
+ #[cfg(test)]
+ mod tests;
+@@ -797,7 +798,7 @@
+
+     fn get_wm_size_hints(&self, window: x::Window) -> XResult<Option<WmNormalHints>> {
+         let cookie =
+-            self.get_property_cookie(window, x::ATOM_WM_NORMAL_HINTS, x::ATOM_WM_SIZE_HINTS, 9);
++            self.get_property_cookie(window, x::ATOM_WM_NORMAL_HINTS, x::ATOM_WM_SIZE_HINTS, 17);
+         let resolver = |reply: x::GetPropertyReply| {
+             let data: &[u32] = reply.value();
+             WmNormalHints::from(data)
+@@ -1023,29 +1024,8 @@
+ pub struct WmNormalHints {
+     pub min_size: Option<WinSize>,
+     pub max_size: Option<WinSize>,
+-}
+-
+-impl From<&[u32]> for WmNormalHints {
+-    fn from(value: &[u32]) -> Self {
+-        let mut ret = Self::default();
+-        let flags = WmSizeHintsFlags::from_bits_truncate(value[0]);
+-
+-        if flags.contains(WmSizeHintsFlags::ProgramMinSize) {
+-            ret.min_size = Some(WinSize {
+-                width: value[5] as _,
+-                height: value[6] as _,
+-            });
+-        }
+-
+-        if flags.contains(WmSizeHintsFlags::ProgramMaxSize) {
+-            ret.max_size = Some(WinSize {
+-                width: value[7] as _,
+-                height: value[8] as _,
+-            });
+-        }
+-
+-        ret
+-    }
++    pub base_size: Option<WinSize>,
++    pub resize_increment: Option<WinSize>,
+ }
+
+ #[derive(Copy, Clone, Default, Debug, PartialEq, Eq)]
+diff --git a/src/xstate/size_hints.rs b/src/xstate/size_hints.rs
+--- /dev/null
++++ b/src/xstate/size_hints.rs
+@@ -0,0 +1,66 @@
++//! ICCCM preferred buffer sizes, in X pixels rather than host logical units.
++use super::{WinSize, WmNormalHints, WmSizeHintsFlags};
++
++impl From<&[u32]> for WmNormalHints {
++    fn from(value: &[u32]) -> Self {
++        let flags = WmSizeHintsFlags::from_bits_truncate(value.first().copied().unwrap_or(0));
++        let pair = |flag, start| {
++            if !flags.contains(flag) {
++                return None;
++            }
++            let fields = value.get(start..start + 2)?;
++            Some(WinSize {
++                width: (fields[0] as i32).max(0),
++                height: (fields[1] as i32).max(0),
++            })
++        };
++        Self {
++            min_size: pair(WmSizeHintsFlags::ProgramMinSize, 5),
++            max_size: pair(WmSizeHintsFlags::ProgramMaxSize, 7),
++            resize_increment: pair(WmSizeHintsFlags::ResizeIncrement, 9),
++            base_size: pair(WmSizeHintsFlags::BaseSize, 15),
++        }
++    }
++}
++
++impl WmNormalHints {
++    pub(crate) fn constrain(self, width: u16, height: u16) -> (u16, u16) {
++        let min = self.min_size.or(self.base_size).unwrap_or(WinSize {
++            width: 0,
++            height: 0,
++        });
++        let base = self.base_size.unwrap_or(min);
++        let max = self.max_size.unwrap_or(WinSize {
++            width: 0,
++            height: 0,
++        });
++        let step = self.resize_increment.unwrap_or(WinSize {
++            width: 1,
++            height: 1,
++        });
++        (
++            axis(width, min.width, max.width, base.width, step.width),
++            axis(height, min.height, max.height, base.height, step.height),
++        )
++    }
++}
++
++fn axis(value: u16, min: i32, max: i32, base: i32, step: i32) -> u16 {
++    let max = if max > 0 {
++        max.min(u16::MAX.into())
++    } else {
++        u16::MAX.into()
++    };
++    let min = i64::from(min.clamp(1, max));
++    let max = i64::from(max);
++    let base = i64::from(base.max(0));
++    let step = i64::from(step.max(1));
++    let value = i64::from(value).clamp(min, max);
++    let first = (min - base + step - 1).div_euclid(step).max(0);
++    let last = (max - base).div_euclid(step);
++    if first > last {
++        return value as u16; // Contradictory hints: bounds take precedence.
++    }
++    let nearest = ((value - base).max(0) + step / 2) / step;
++    (base + nearest.clamp(first, last) * step) as u16
++}

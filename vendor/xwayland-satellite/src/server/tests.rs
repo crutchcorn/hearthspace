@@ -2652,6 +2652,7 @@ fn toplevel_size_limits_scaled() {
                 width: 100,
                 height: 100,
             }),
+            ..Default::default()
         },
     );
 
@@ -2681,6 +2682,7 @@ fn toplevel_size_limits_scaled() {
                 width: 200,
                 height: 200,
             }),
+            ..Default::default()
         },
     );
     f.run();
@@ -2709,6 +2711,7 @@ fn toplevel_size_limits_scaled() {
                 height: 40,
             }),
             max_size: None,
+            ..Default::default()
         },
     );
     f.run();
@@ -2722,6 +2725,7 @@ fn toplevel_size_limits_scaled() {
         super::WmNormalHints {
             min_size: None,
             max_size: None,
+            ..Default::default()
         },
     );
     f.run();
@@ -3344,6 +3348,7 @@ fn decorations_max_height_int_max() {
                 width: i32::MAX,
                 height: i32::MAX,
             }),
+            ..Default::default()
         },
     );
     f.run();

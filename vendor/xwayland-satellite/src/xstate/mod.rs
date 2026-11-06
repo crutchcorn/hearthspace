@@ -1,6 +1,7 @@
 mod settings;
 use settings::Settings;
 mod selection;
+mod size_hints;
 use selection::{Selection, SelectionState};
 #[cfg(test)]
 mod tests;
@@ -797,7 +798,7 @@ impl XState {
 
     fn get_wm_size_hints(&self, window: x::Window) -> XResult<Option<WmNormalHints>> {
         let cookie =
-            self.get_property_cookie(window, x::ATOM_WM_NORMAL_HINTS, x::ATOM_WM_SIZE_HINTS, 9);
+            self.get_property_cookie(window, x::ATOM_WM_NORMAL_HINTS, x::ATOM_WM_SIZE_HINTS, 17);
         let resolver = |reply: x::GetPropertyReply| {
             let data: &[u32] = reply.value();
             WmNormalHints::from(data)
@@ -1023,29 +1024,8 @@ pub struct WinSize {
 pub struct WmNormalHints {
     pub min_size: Option<WinSize>,
     pub max_size: Option<WinSize>,
-}
-
-impl From<&[u32]> for WmNormalHints {
-    fn from(value: &[u32]) -> Self {
-        let mut ret = Self::default();
-        let flags = WmSizeHintsFlags::from_bits_truncate(value[0]);
-
-        if flags.contains(WmSizeHintsFlags::ProgramMinSize) {
-            ret.min_size = Some(WinSize {
-                width: value[5] as _,
-                height: value[6] as _,
-            });
-        }
-
-        if flags.contains(WmSizeHintsFlags::ProgramMaxSize) {
-            ret.max_size = Some(WinSize {
-                width: value[7] as _,
-                height: value[8] as _,
-            });
-        }
-
-        ret
-    }
+    pub base_size: Option<WinSize>,
+    pub resize_increment: Option<WinSize>,
 }
 
 #[derive(Copy, Clone, Default, Debug, PartialEq, Eq)]

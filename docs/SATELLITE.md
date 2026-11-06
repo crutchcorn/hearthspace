@@ -91,6 +91,13 @@ The shared cursor default is seeded before DISPLAY publication. Explicit
 XCURSOR_SIZE, existing resource properties, and legacy Xdefaults/Xresources
 remain authoritative; no host resources or environment are rewritten.
 
+## Client resize hints
+
+Satellite applies X11 base sizes and cell increments to ordinary buffer resizes.
+Hearthspace retains canvas anchoring and XDG min/max constraints. Maximization
+and fullscreen use their assigned bounds without cell rounding; malformed hints
+cannot request negative or overflowing buffer sizes.
+
 ## Clipboard and primary selection
 
 X11 clipboard owners can publish before any X11 window has keyboard focus.

@@ -918,3 +918,29 @@ See [vendored provenance and refresh steps](../vendor/accesskit_atspi_common/PRO
 - **Removal:** adopt an upstream host-DND integration passing these copy, transfer,
   generation and cancellation cases, then remove this patch. Preserve the other
   compatibility repairs and source/notices until their independent conditions hold.
+
+## Satellite terminal size increments
+
+- **Dependency:** Satellite 0.8.3, pin `7bf5e0dcb0d4250860b24b04a6cb3ddeada515d0`.
+- **Patch:** [size increments](satellite-size-increments.patch), relative to the
+  vendor root, after desktop-DND. Pin, package and notices remain unchanged.
+- **Reason/basis:** the pin reads only nine WM_NORMAL_HINTS words and discards
+  resize increments and base size. The retired direct XWM honored these hints.
+  The [ICCCM size-hint contract](https://tronche.com/gui/x/icccm/sec-4.html#s-4.1.2.3)
+  defines base-plus-increment preferred sizes. This is a local compatibility
+  repair, not an upstream backport.
+- **Behavior:** read the complete base/increment fields with bounds-safe parsing;
+  missing/truncated/negative values receive safe defaults. Constrain ordinary
+  toplevel buffer sizes in X pixels before updating the host viewport. Bounds
+  take priority when no grid point is possible. Maximized/fullscreen sizes bypass
+  grid rounding. The host keeps XDG min/max and opposite-edge anchoring; the old
+  compositor-only X11 grid code is removed.
+- **Regression:** a real X client requests bottom-right and top-left resizing,
+  checks buffer dimensions, canvas position, visible pixels and opposite edges,
+  then checks work-area maximization and fullscreen. Another case applies
+  truncated and signed-invalid properties and verifies resizing and fresh input.
+  The original regression failed at 276 pixels instead of the required 274;
+  record successful execution separately. Headless tests do not establish native
+  presentation or the behavior of every toolkit.
+- **Removal:** adopt upstream hint parsing/constraining that passes these cases
+  without this patch. Preserve each other repair until its own removal condition.
