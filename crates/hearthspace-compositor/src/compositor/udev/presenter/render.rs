@@ -99,7 +99,7 @@ impl AttemptOps for NativeSubmission<'_> {
     fn reset_buffer_ages(&mut self) {
         tracing::trace!(target: "hearthspace::presenter", key = ?self.output.config.key,
             rejected_submission = self.output.next_submission,
-            "preparing one composited cursor retry");
+            "preparing one composited plane retry");
         self.output.compositor.reset_buffer_ages();
     }
 
@@ -179,13 +179,13 @@ fn prepare_and_queue(
             renderer,
             &elements,
             Color32F::new(0.0, 0.0, 0.0, 1.0),
-            // The scene is compositor-owned texture storage, not a client buffer.
-            // Keep primary composition; only the first attempt allows a cursor plane.
+            // Smithay tests plane suitability and draws unsupported storage.
             flags,
         )
         .map_err(|error| error.to_string())?;
     let render_us = render_started.elapsed().as_micros() as u64;
     let cursor_plane = result.cursor_element.is_some();
+    let primary_scanout = matches!(result.primary_element, PrimaryPlaneElement::Element(_));
     let primary = match &result.primary_element {
         PrimaryPlaneElement::Swapchain(primary) => Some((
             u32::from(smithay::reexports::drm::buffer::Buffer::handle(
@@ -199,7 +199,7 @@ fn prepare_and_queue(
     tracing::trace!(target: "hearthspace::presenter", key = ?output.config.key,
         candidate_submission = output.next_submission + 1,
         scene_sequence, cursor_sequence, cursor_image = ?cursor_image,
-        cursor_plane, primary_buffer = ?primary.map(|(buffer, _)| buffer),
+        cursor_plane, primary_scanout, primary_buffer = ?primary.map(|(buffer, _)| buffer),
         primary_damage_commit = ?primary.map(|(_, commit)| commit),
         primary_reused, render_us, flags = ?flags, empty = result.is_empty,
         "rendered native plane selection");
@@ -229,7 +229,9 @@ fn prepare_and_queue(
             .compositor
             .commit_frame()
             .map_err(|error| match error {
-                FrameError::DrmError(error) => AttemptError::queue(cursor_plane, error),
+                FrameError::DrmError(error) => {
+                    AttemptError::queue(cursor_plane || primary_scanout, error)
+                }
                 error => AttemptError::from(error.to_string()),
             })?;
         return Ok(RenderOutcome::Primed);
@@ -292,7 +294,7 @@ fn prepare_and_queue(
         accepted = queued.is_ok(), error = ?queued.as_ref().err(),
         "native queue result");
     queued.map_err(|error| match error {
-        FrameError::DrmError(error) => AttemptError::queue(cursor_plane, error),
+        FrameError::DrmError(error) => AttemptError::queue(cursor_plane || primary_scanout, error),
         error => AttemptError::from(error.to_string()),
     })?;
     output.last_primary = primary;

@@ -65,7 +65,7 @@ fn selected_queue_rejection_gets_one_fresh_capture_and_exact_accepted_completion
         submit(&mut schedule, &mut device).unwrap();
         assert_eq!(
             device.attempts,
-            [FrameFlags::ALLOW_CURSOR_PLANE_SCANOUT, FrameFlags::empty()]
+            [super::scanout_flags(), FrameFlags::empty()]
         );
         assert_eq!(device.resets, 1);
         assert_eq!(device.state_resets, 1);
@@ -126,7 +126,7 @@ fn nonselected_nonqueue_inactive_and_other_access_errors_never_retry() {
         let mut device = DeviceOps::new([step, accepted()]);
         let mut schedule = Schedule::default();
         assert!(submit(&mut schedule, &mut device).is_err());
-        assert_eq!(device.attempts, [FrameFlags::ALLOW_CURSOR_PLANE_SCANOUT]);
+        assert_eq!(device.attempts, [super::scanout_flags()]);
         assert_eq!(device.resets, 0);
         assert_eq!(device.steps.len(), 1);
         assert!(device.accepted.is_none());
