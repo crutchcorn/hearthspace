@@ -21,5 +21,10 @@ zeroize = "1.8.2"
 [dev-dependencies]
 tempfile = "3.27.0"
 
+[build-dependencies]
+# Satellite's bindgen enables clang-sys runtime loading across the workspace.
+# pam-sys disables bindgen's defaults, so explicitly enable its matching loader.
+bindgen = { version = "=0.69.5", default-features = false, features = ["runtime"] }
+
 [lints]
 workspace = true

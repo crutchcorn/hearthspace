@@ -2825,6 +2825,7 @@ dependencies = [
 name = "hearthspace-lock"
 version = "0.1.0"
 dependencies = [
+ "bindgen 0.69.5",
  "gtk4",
  "gtk4-session-lock",
  "hearthspace-common",
