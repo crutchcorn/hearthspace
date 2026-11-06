@@ -101,5 +101,7 @@ pub(super) fn new(dh: &DisplayHandle, handle: LoopHandle<'static, CalloopData>) 
         xdisplay: None,
         #[cfg(feature = "xwayland")]
         satellite: None,
+        #[cfg(feature = "xwayland")]
+        satellite_interaction: Default::default(),
     }
 }

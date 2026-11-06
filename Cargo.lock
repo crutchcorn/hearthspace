@@ -8706,6 +8706,7 @@ dependencies = [
  "vergen-gitcl",
  "wayland-client",
  "wayland-protocols",
+ "wayland-scanner",
  "wayland-server",
  "wl_drm",
  "xcb",

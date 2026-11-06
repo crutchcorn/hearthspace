@@ -370,6 +370,8 @@ struct App {
     xdisplay: Option<u32>,
     #[cfg(feature = "xwayland")]
     satellite: Option<xwayland::satellite::Satellite>,
+    #[cfg(feature = "xwayland")]
+    satellite_interaction: xwayland::satellite::interaction::State,
 }
 
 #[derive(Debug, Default)]
@@ -766,6 +768,8 @@ pub(in crate::compositor) fn initialize_app(
         xdisplay: None,
         #[cfg(feature = "xwayland")]
         satellite: None,
+        #[cfg(feature = "xwayland")]
+        satellite_interaction: Default::default(),
     };
 
     #[cfg(feature = "xwayland")]

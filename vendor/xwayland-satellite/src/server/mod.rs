@@ -2,6 +2,7 @@ mod clientside;
 mod decoration;
 mod dispatch;
 mod event;
+mod interaction;
 pub(crate) mod selection;
 #[cfg(test)]
 mod tests;
@@ -483,6 +484,9 @@ pub struct InnerServerState<S: X11Selection> {
     viewporter: WpViewporter,
     fractional_scale: Option<WpFractionalScaleManagerV1>,
     decoration_manager: Option<ZxdgDecorationManagerV1>,
+    interaction_manager: Option<
+        interaction::protocol::xwayland_satellite_interaction_v1::XwaylandSatelliteInteractionV1,
+    >,
     selection_states: selection::SelectionStates<S>,
     last_kb_serial: Option<(client::wl_seat::WlSeat, u32)>,
     activation_state: Option<ActivationState>,
@@ -507,6 +511,8 @@ impl<S: X11Selection> ServerState<NoConnection<S>> {
 
         let (global_list, queue) = registry_queue_init::<MyWorld>(&connection).unwrap();
         let qh = queue.handle();
+
+        let interaction_manager = global_list.bind(&qh, 1..=1, ()).ok();
 
         let xdg_wm_base = global_list
             .bind::<XdgWmBase, _, _>(&qh, 2..=6, ())
@@ -601,6 +607,7 @@ impl<S: X11Selection> ServerState<NoConnection<S>> {
             new_scale: None,
             current_scale: 1.0,
             decoration_manager,
+            interaction_manager,
             world,
         };
         Self {
@@ -1182,6 +1189,9 @@ impl<S: X11Selection + 'static> InnerServerState<S> {
             win.mapped = false;
         }
 
+        let _ = self
+            .world
+            .remove_one::<interaction::StartedInteraction>(entity.unwrap());
         if let Ok(mut role) = self.world.remove_one::<SurfaceRole>(entity.unwrap()) {
             role.destroy();
         }
@@ -1280,52 +1290,10 @@ impl<S: X11Selection + 'static> InnerServerState<S> {
     }
 
     pub fn move_window(&mut self, window: x::Window) {
-        let Some(data) = self
-            .windows
-            .get(&window)
-            .copied()
-            .and_then(|e| self.world.entity(e).ok())
-        else {
-            warn!("Requested move of unknown window {window:?}");
-            return;
-        };
-
-        let Some(last_click_data) = data.get::<&LastClickSerial>() else {
-            warn!("Requested move of window {window:?} but we don't have a click serial for it");
-            return;
-        };
-
-        let role = data.get::<&SurfaceRole>();
-        let Some(SurfaceRole::Toplevel(Some(data))) = role.as_deref() else {
-            warn!("Requested move of non toplevel {window:?} ({role:?})");
-            return;
-        };
-
-        data.toplevel._move(&last_click_data.0, last_click_data.1);
+        self.request_window_interaction(window, None);
     }
 
     pub fn resize_window(&mut self, window: x::Window, direction: MoveResizeDirection) {
-        let Some(data) = self
-            .windows
-            .get(&window)
-            .copied()
-            .and_then(|e| self.world.entity(e).ok())
-        else {
-            warn!("Requested resize of unknown window {window:?}");
-            return;
-        };
-
-        let Some(last_click_data) = data.get::<&LastClickSerial>() else {
-            warn!("Requested resize of window {window:?} but we don't have a click serial for it");
-            return;
-        };
-
-        let role = data.get::<&SurfaceRole>();
-        let Some(SurfaceRole::Toplevel(Some(data))) = role.as_deref() else {
-            warn!("Requested resize of non toplevel {window:?} ({role:?})");
-            return;
-        };
-
         let edge = match direction {
             MoveResizeDirection::SizeTopLeft => xdg_toplevel::ResizeEdge::TopLeft,
             MoveResizeDirection::SizeTop => xdg_toplevel::ResizeEdge::Top,
@@ -1341,12 +1309,12 @@ impl<S: X11Selection + 'static> InnerServerState<S> {
             | MoveResizeDirection::Cancel => unreachable!(),
         };
 
-        data.toplevel
-            .resize(&last_click_data.0, last_click_data.1, edge);
+        self.request_window_interaction(window, Some(edge));
     }
 
     pub fn destroy_window(&mut self, window: x::Window) {
         if let Some(id) = self.windows.remove(&window) {
+            let _ = self.world.remove_one::<interaction::StartedInteraction>(id);
             self.world.remove::<(x::Window, WindowData)>(id).unwrap();
             if self.world.entity(id).unwrap().is_empty() {
                 self.world.despawn(id).unwrap();

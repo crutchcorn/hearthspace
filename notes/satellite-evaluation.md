@@ -50,8 +50,12 @@ commit beyond the pin, `b424e5e`, changes Steam OSK role classification.
 
 ## Remaining work
 
-Continue the optional cancellation bridge while keeping this backend
-experimental. Cancellation cannot repair recipient routing. Before switching
+The optional cancellation bridge is implemented experimentally; see
+[its maintained contract and limits](../docs/SATELLITE.md). Five real App/Wayland
+scope/grab tests and the real X11 delayed-resize test pass. The neighboring-window
+test also exposes an unmatched X release during Xwayland's re-entry repair;
+its assertion remains enabled. Cancellation cannot repair recipient routing.
+Before switching
 defaults, resolve the failing batch and run popup, explicit/passive grab,
 frozen/replayed input, destruction, scroll and lifetime regressions. Preserve
 held-button ownership, delayed resize anchoring and per-interaction identity.

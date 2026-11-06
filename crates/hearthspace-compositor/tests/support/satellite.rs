@@ -1,4 +1,7 @@
 //! Adoption gates use real Satellite, stock Xwayland, and independent X clients.
+#[path = "satellite/cancellation.rs"]
+mod cancellation;
+
 use super::{
     navigation::{action, query, wait_windows},
     *,

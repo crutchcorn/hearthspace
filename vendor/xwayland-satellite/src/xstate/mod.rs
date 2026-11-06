@@ -582,6 +582,12 @@ impl XState {
                     return;
                 };
                 let button = data[3];
+                // EWMH cancellation commonly uses button zero. It refers to
+                // the previously forwarded operation, not a new button press.
+                if matches!(direction, MoveResizeDirection::Cancel) {
+                    server_state.cancel_window_interaction(e.window());
+                    return;
+                }
                 // XXX: This can technically be driven by keyboard events and other mouse buttons as well,
                 // but I haven't found an application that does this yet. We'll cross that bridge when we get to it.
                 if button != 1 {

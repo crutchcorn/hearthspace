@@ -636,3 +636,38 @@ See [vendored provenance and refresh steps](../vendor/accesskit_atspi_common/PRO
   fixes not covered by PR 2141. Retain snapshot error/absence handling and
   regressions. Remove only this patch and its ledger entry; preserve all other
   Smithay repairs and vendoring until their own removal conditions are met.
+
+## Satellite optional interaction cancellation
+
+- **Dependency:** vendored xwayland-satellite 0.8.3 at
+  [`7bf5e0dc`](https://github.com/Supreeeme/xwayland-satellite/tree/7bf5e0dcb0d4250860b24b04a6cb3ddeada515d0).
+  The version, upstream pin, MPL-2.0 notice and other repairs remain unchanged.
+- **Patch:** [optional cancellation bridge](satellite-interaction-cancel.patch),
+  with paths relative to `vendor/xwayland-satellite`. It adds a protocol XML and
+  focused client helper, changes move/resize dispatch, and adds the existing
+  workspace's wayland-scanner dependency. Hearthspace supplies the matching
+  compositor implementation separately.
+- **Reason:** upstream forwards XDG move/resize but explicitly does not implement
+  EWMH Cancel. XDG shell has no cancellation request. This local optional
+  extension carries the forwarded toplevel, seat and initiating serial; it is
+  not a merged upstream repair and has not been published upstream.
+- **Behavior:** consume the remembered operation on Cancel, accepting button-zero
+  cancel messages before the left-button start filter. Remove stale records on
+  unmap/destruction. Absence of the optional global preserves ordinary
+  move/resize and reports unsupported cancellation. Hearthspace restricts the
+  global to its private bridge and validates the accepted operation/grab before
+  retaining final geometry and retiring only that interaction.
+- **Verification:** the real App/Wayland filter
+  `compositor::xwayland::satellite::interaction::tests` checks visibility,
+  stale serials, wrong windows/seats, completed interactions and held-grab
+  retention. Mapping/buffer geometry and physical input are fixture inputs;
+  protocol dispatch and Smithay grabs are real. The real X11 filter
+  `satellite::cancellation::cancel_top_left_resize` exercises delayed X resize
+  and anchor retention through Satellite/Xwayland. The complete `satellite::`
+  filter still fails batched recipient isolation and neighbor release ownership.
+  Keep those assertions: this extension does not solve either defect. No native
+  acceptance is implied. See [Satellite](../docs/SATELLITE.md) for remaining gates.
+- **Removal:** replace this extension with a compatible upstream cancellation
+  mechanism and rerun the same scope, lifetime, delayed-buffer and held-input
+  regressions. Retain the adoption blockers until they are actually repaired;
+  switching backend defaults is a separate decision.

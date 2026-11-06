@@ -203,6 +203,8 @@ impl XdgShellHandler for App {
         } else {
             self.start_client_window_move(window_index);
         }
+        #[cfg(feature = "xwayland")]
+        self.track_satellite_interaction(&surface, seat, serial, touch_request);
     }
 
     fn resize_request(
@@ -250,6 +252,8 @@ impl XdgShellHandler for App {
         } else {
             self.start_resize(window_index, edges);
         }
+        #[cfg(feature = "xwayland")]
+        self.track_satellite_interaction(&surface, seat, serial, touch_request);
     }
 
     fn grab(&mut self, surface: PopupSurface, seat: wl_seat::WlSeat, serial: Serial) {

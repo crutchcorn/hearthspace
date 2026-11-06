@@ -19,6 +19,7 @@ use wayland_server::DisplayHandle;
 
 use crate::compositor::{App, client::ClientState};
 
+pub(in crate::compositor) mod interaction;
 mod process;
 pub(in crate::compositor) use process::Satellite;
 
@@ -28,9 +29,11 @@ impl App {
             .map(std::path::PathBuf::from)
             .unwrap_or(std::env::current_exe()?.with_file_name("hearthspace-satellite"));
         let (server, peer) = UnixStream::pair()?;
-        dh.clone()
+        let client = dh
+            .clone()
             .insert_client(server, Arc::new(ClientState::default()))
             .map_err(io::Error::other)?;
+        self.satellite_interaction.advertise(dh, client.id());
         let mut command = Command::new(binary);
         command
             .arg("--embedded")
@@ -51,6 +54,7 @@ impl App {
                         let mut bytes = [0u8; 128];
                         match rustix::io::read(source.as_fd(), &mut bytes) {
                             Ok(0) => {
+                                data.state.satellite_interaction.revoke();
                                 data.state.xdisplay = None;
                                 data.state.publish_xwayland_display();
                                 warn!("Satellite readiness pipe closed");

@@ -14,6 +14,8 @@ pub(super) struct WindowOperation {
     pub(super) active: bool,
     location: Position,
     buttons: HashSet<u32>,
+    #[cfg(feature = "xwayland")]
+    serial: Serial,
 }
 
 impl App {
@@ -84,10 +86,14 @@ impl App {
             return None;
         };
         let (origin, location) = (touch.origin, client.location);
+        #[cfg(feature = "xwayland")]
+        let serial = client.serial;
         touch.target = Target::WindowOperation(WindowOperation {
             active: true,
             location,
             buttons: HashSet::new(),
+            #[cfg(feature = "xwayland")]
+            serial,
         });
         self.gtk_shell.reset_input();
         // Revoke the client sequence once; the coordinator owns every remaining
@@ -125,6 +131,17 @@ impl App {
         self.ui_touch
             .as_ref()
             .is_some_and(|touch| matches!(touch.target, Target::WindowOperation(_)))
+    }
+
+    #[cfg(feature = "xwayland")]
+    pub(in crate::compositor) fn window_touch_operation_matches(
+        &self,
+        id: u64,
+        serial: Serial,
+    ) -> bool {
+        self.ui_touch.as_ref().is_some_and(|touch| touch.window == id && matches!(
+            &touch.target, Target::WindowOperation(operation) if operation.active && operation.serial == serial
+        ))
     }
 
     pub(in crate::compositor) fn window_touch_operation_position(&self) -> Option<Position> {
