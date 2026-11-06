@@ -20,6 +20,9 @@ group, waits for its display readiness record, and publishes that display to
 session clients. The helper owns Xwayland and the X11 compatibility state.
 Applications do not receive the private socket. The helper group is stopped
 and reaped during compositor teardown.
+The embedded helper gives nested Xwayland null stdin/stdout so it cannot retain
+the private host socket or readiness pipe after the helper exits. The library's
+default stdio behavior remains inherited for other consumers.
 
 ## Optional cancellation bridge
 
@@ -30,6 +33,9 @@ specific toplevel, seat and input serial it used for the request. EWMH Cancel,
 including a message with button zero, consumes that record and forwards it.
 Unmapping or destroying the X window removes the record. Without the optional
 global, ordinary move/resize remains available and cancellation is unsupported.
+EWMH itself carries no initiating serial: Satellite associates Cancel with that
+X window's latest forwarded request. The protocol checks protect the forwarded
+identity; they cannot recover intent missing from an old X11 message.
 
 Hearthspace advertises this interface only to its private Satellite client.
 It checks the currently accepted interaction and the still-owned input grab.

@@ -2860,6 +2860,8 @@ name = "hearthspace-satellite"
 version = "0.1.0"
 dependencies = [
  "pretty_env_logger",
+ "rustix 1.1.5",
+ "tempfile",
  "xwayland-satellite",
 ]
 

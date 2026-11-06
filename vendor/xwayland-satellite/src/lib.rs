@@ -49,6 +49,12 @@ pub trait RunData {
         None
     }
     fn xwayland_ready(&self, _display: String, _pid: u32) {}
+    fn xwayland_stdin(&self) -> Stdio {
+        Stdio::inherit()
+    }
+    fn xwayland_stdout(&self) -> Stdio {
+        Stdio::inherit()
+    }
     fn max_req_len_bytes(&self) -> Option<usize> {
         None
     }
@@ -105,6 +111,8 @@ pub fn main(mut data: impl RunData) -> Option<()> {
         ])
         .args(data.flags())
         .env("WAYLAND_DISPLAY", socket.socket_name().unwrap())
+        .stdin(data.xwayland_stdin())
+        .stdout(data.xwayland_stdout())
         .stderr(Stdio::piped())
         .spawn()
         .unwrap();

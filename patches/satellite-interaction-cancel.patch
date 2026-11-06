@@ -31,12 +31,12 @@ diff --git a/src/server/mod.rs b/src/server/mod.rs
      last_kb_serial: Option<(client::wl_seat::WlSeat, u32)>,
      activation_state: Option<ActivationState>,
 @@ -507,6 +511,8 @@
- 
+
          let (global_list, queue) = registry_queue_init::<MyWorld>(&connection).unwrap();
          let qh = queue.handle();
 +
 +        let interaction_manager = global_list.bind(&qh, 1..=1, ()).ok();
- 
+
          let xdg_wm_base = global_list
              .bind::<XdgWmBase, _, _>(&qh, 2..=6, ())
 @@ -601,6 +607,7 @@
@@ -50,7 +50,7 @@ diff --git a/src/server/mod.rs b/src/server/mod.rs
 @@ -1182,6 +1189,9 @@
              win.mapped = false;
          }
- 
+
 +        let _ = self
 +            .world
 +            .remove_one::<interaction::StartedInteraction>(entity.unwrap());
@@ -59,7 +59,7 @@ diff --git a/src/server/mod.rs b/src/server/mod.rs
          }
 @@ -1280,52 +1290,10 @@
      }
- 
+
      pub fn move_window(&mut self, window: x::Window) {
 -        let Some(data) = self
 -            .windows
@@ -85,7 +85,7 @@ diff --git a/src/server/mod.rs b/src/server/mod.rs
 -        data.toplevel._move(&last_click_data.0, last_click_data.1);
 +        self.request_window_interaction(window, None);
      }
- 
+
      pub fn resize_window(&mut self, window: x::Window, direction: MoveResizeDirection) {
 -        let Some(data) = self
 -            .windows
@@ -114,12 +114,12 @@ diff --git a/src/server/mod.rs b/src/server/mod.rs
 @@ -1341,12 +1309,12 @@
              | MoveResizeDirection::Cancel => unreachable!(),
          };
- 
+
 -        data.toplevel
 -            .resize(&last_click_data.0, last_click_data.1, edge);
 +        self.request_window_interaction(window, Some(edge));
      }
- 
+
      pub fn destroy_window(&mut self, window: x::Window) {
          if let Some(id) = self.windows.remove(&window) {
 +            let _ = self.world.remove_one::<interaction::StartedInteraction>(id);

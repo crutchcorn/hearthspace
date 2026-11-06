@@ -31,3 +31,13 @@ explicitly leaves Cancel unimplemented. It does not repair recipient routing
 or Xwayland button-state reconciliation. Keep the failing real-client adoption
 regressions. Refresh/removal requirements and coverage limits are recorded in
 the [patch ledger](../../patches/README.md#satellite-optional-interaction-cancellation).
+
+## Embedded child stdio ownership
+
+The independent [embedded-stdio patch](../../patches/satellite-embedded-stdio.patch)
+adds defaulted RunData hooks for Xwayland stdin/stdout. Defaults retain upstream
+inheritance. Hearthspace's embedded entry point supplies null descriptors so its
+private Wayland and readiness channels cannot be inherited by nested Xwayland.
+No source version, license or CLI default changes. See the
+[ledger](../../patches/README.md#satellite-embedded-child-stdio) for the regression
+and removal condition. This local API extension is not an upstream backport.

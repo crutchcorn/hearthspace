@@ -2,6 +2,7 @@
 use std::{
     io::{self, Write},
     os::{fd::AsFd, unix::net::UnixStream},
+    process::Stdio,
     sync::Mutex,
 };
 
@@ -27,6 +28,15 @@ impl xwayland_satellite::RunData for Embedded {
 
     fn server(&self) -> Option<UnixStream> {
         self.server.lock().unwrap().take()
+    }
+
+    // Only this helper owns the private host socket and readiness pipe. The
+    // nested Xwayland must not keep either connection alive after helper exit.
+    fn xwayland_stdin(&self) -> Stdio {
+        Stdio::null()
+    }
+    fn xwayland_stdout(&self) -> Stdio {
+        Stdio::null()
     }
 
     fn xwayland_ready(&self, display: String, pid: u32) {

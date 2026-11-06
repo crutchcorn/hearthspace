@@ -671,3 +671,24 @@ See [vendored provenance and refresh steps](../vendor/accesskit_atspi_common/PRO
   mechanism and rerun the same scope, lifetime, delayed-buffer and held-input
   regressions. Retain the adoption blockers until they are actually repaired;
   switching backend defaults is a separate decision.
+
+## Satellite embedded child stdio
+
+- **Dependency:** the same vendored xwayland-satellite 0.8.3 at `7bf5e0dc`.
+- **Patch:** [embedded stdio hooks](satellite-embedded-stdio.patch), relative to
+  `vendor/xwayland-satellite`. Adds defaulted RunData methods and uses them at
+  Xwayland spawn. Default behavior remains inherited stdin/stdout.
+- **Reason:** Hearthspace's embedding uses stdin for its private host connection
+  and stdout for readiness. Allowing Xwayland to inherit either keeps an obsolete
+  channel alive after helper death and can mix child output with readiness.
+- **Upstream basis:** local optional API extension, not a merged backport.
+  Hearthspace overrides only these two descriptors with null streams.
+- **Verification:** the real helper subprocess test
+  `nested_xwayland_cannot_keep_private_wayland_or_readiness_open` substitutes the
+  Xwayland executable with a bounded recording process. It checks the actual
+  inherited descriptors, kills only the helper, observes EOF on both private
+  channels while the nested process survives, then verifies pidfd completion
+  and reaps the owned leader. It does not exercise Xwayland protocol behavior.
+- **Removal:** adopt an upstream embedding API with equivalent child-descriptor
+  ownership, rerun this subprocess regression, and remove only this patch and
+  its hooks. Preserve the independent cancellation and routing work.
