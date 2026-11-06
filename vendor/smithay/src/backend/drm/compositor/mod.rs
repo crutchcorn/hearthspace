@@ -181,6 +181,7 @@ use super::{
     surface::VrrSupport,
 };
 
+mod damage;
 mod elements;
 mod frame_result;
 
@@ -1057,6 +1058,7 @@ where
     planes: Planes,
     overlay_plane_element_ids: OverlayPlaneElementIds,
     damage_tracker: OutputDamageTracker,
+    damage_clips_enabled: bool,
     primary_is_opaque: bool,
     primary_plane_element_id: Id,
     primary_plane_damage_bag: DamageBag<i32, BufferCoords>,
@@ -1259,6 +1261,7 @@ where
                         cursor_state,
                         surface,
                         damage_tracker,
+                        damage_clips_enabled: true,
                         output_mode_source,
                         planes,
                         overlay_plane_element_ids,
@@ -1441,6 +1444,7 @@ where
             cursor_state,
             surface,
             damage_tracker,
+            damage_clips_enabled: true,
             output_mode_source,
             planes,
             overlay_plane_element_ids,
@@ -2303,16 +2307,20 @@ where
                             // Here we need to apply the output_transform to the damage since we
                             // haven't rotated our framebuffer. dst is already in the same
                             // coordinate space src is, so no transform needed.
-                            config.damage_clips = PlaneDamageClips::from_damage(
-                                self.surface.device_fd(),
-                                config.properties.src,
-                                config.properties.dst,
-                                Transform::Normal,
-                                output_transform,
-                                render_damage.iter().copied(),
-                            )
-                            .ok()
-                            .flatten();
+                            config.damage_clips = if self.damage_clips_enabled {
+                                PlaneDamageClips::from_damage(
+                                    self.surface.device_fd(),
+                                    config.properties.src,
+                                    config.properties.dst,
+                                    Transform::Normal,
+                                    output_transform,
+                                    render_damage.iter().copied(),
+                                )
+                                .ok()
+                                .flatten()
+                            } else {
+                                None
+                            };
                             config.sync = Some((render_output_result.sync.clone(), None));
                         } else {
                             trace!("skipping primary plane, no damage");
@@ -3977,7 +3985,7 @@ where
         // back to buffer-coordinate. We'll apply the same transform to the element geometry for
         // scale computation as it's already in physical space.
         let transform = element.transform().invert();
-        let damage_clips = if has_element_damage {
+        let damage_clips = if self.damage_clips_enabled && has_element_damage {
             PlaneDamageClips::from_damage(
                 self.surface.device_fd(),
                 element_config.properties.src,

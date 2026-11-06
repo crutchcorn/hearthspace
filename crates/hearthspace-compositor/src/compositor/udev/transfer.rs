@@ -1,12 +1,12 @@
 //! Compose every scene on the canonical GLES context, transferring only the
 //! completed image. Target-local GBM buffers remain owned by their KMS device.
 pub(super) mod cache;
-pub(super) mod vulkan;
+mod formats;
 use super::{
     device::KmsOutputSurface,
     gpu::{GpuApi, GpuState},
 };
-use crate::compositor::{App, capture::read_pixels, output::OutputRenderView};
+use crate::compositor::{App, output::OutputRenderView};
 use smithay::{
     backend::{
         allocator::{Fourcc, dmabuf::Dmabuf},
@@ -23,6 +23,8 @@ use smithay::{
 };
 use std::time::Instant;
 use tracing::{info, trace, warn};
+
+use formats::{direct_copy_format, transfer_format};
 
 pub(super) struct SceneBuffer {
     texture: GlesTexture,
@@ -43,7 +45,6 @@ impl SceneBuffer {
 
 pub(super) struct OutputPass {
     pub(super) sync: SyncPoint,
-    pub(super) pixels: Result<Option<Vec<u8>>, String>,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -56,18 +57,11 @@ pub(super) fn render_pass(
     view: &OutputRenderView,
     age: usize,
     force: bool,
-    capture: bool,
 ) -> Result<OutputPass, Box<dyn std::error::Error>> {
     let source = gpus.scene_node.ok_or("native scene renderer unavailable")?;
     let started = Instant::now();
     let size = output.target.output_size();
     let rect = Rectangle::new(view.location, view.size);
-    if gpus.bridges.scanout_blocked(dmabuf) {
-        // A later frame must not turn a submitted failure into an immediate
-        // fallback overwrite. Recovery may allocate a different scanout while
-        // the retired slot retains this exact DMA-BUF until completion.
-        return Err("scanout still belongs to an unresolved Vulkan transfer".into());
-    }
     if source == target {
         output.reset_scene();
         // Preserve the single-GPU path: no intermediate allocation or blit.
@@ -82,26 +76,16 @@ pub(super) fn render_pass(
             rect,
             view.scale,
         )?;
-        let pixels = capture
-            .then(|| read_pixels(renderer, &framebuffer, size, false))
-            .transpose()
-            .map_err(|error| error.to_string());
         return Ok(OutputPass {
             sync: rendered.sync,
-            pixels,
         });
     }
 
     // Preserve direct sharing in either GPU direction, even when its usable
-    // copy Fourcc differs from scanout. Vulkan only fills an empty intersection.
-    let direct = vulkan::direct_copy_format(
-        &mut gpus.manager,
-        source,
-        target,
-        output.gbm_surface.format(),
-    )?;
+    // copy Fourcc differs from scanout. Smithay owns allocation and CPU fallback.
+    let direct = direct_copy_format(&mut gpus.manager, source, target, output.format)?;
     let target_context = gpus.manager.single_renderer(&target)?.as_ref().context_id();
-    let (image, native_image, scene_sync, copy_format) = {
+    let (image, scene_sync, copy_format) = {
         let mut renderer = gpus.manager.single_renderer(&source)?;
         let renderer = renderer.as_mut();
         let context = renderer.context_id();
@@ -120,7 +104,7 @@ pub(super) fn render_pass(
                 .map(|format| format.code)
                 .collect::<Vec<_>>();
             let copy_format = direct
-                .or_else(|| transfer_format(output.gbm_surface.format(), &formats))
+                .or_else(|| transfer_format(output.format, &formats))
                 .ok_or("canonical GPU has no supported image-transfer framebuffer format")?;
             info!(scene_node = ?source, target_node = ?target, name = output.target.connector_name(),
                 ?size, ?copy_format, "created canonical scene for secondary GPU output");
@@ -160,44 +144,11 @@ pub(super) fn render_pass(
         scene.valid = true;
         let image = MultiTexture::from_native_texture::<GpuApi>(&context, scene.texture.clone())
             .ok_or("native scene texture has no transferable format")?;
-        (
-            image,
-            scene.texture.clone(),
-            rendered.sync,
-            direct.unwrap_or(scene.copy_format),
-        )
+        (image, rendered.sync, direct.unwrap_or(scene.copy_format))
     };
     let scene_duration = started.elapsed();
     let transfer_started = Instant::now();
 
-    if direct.is_none()
-        && let Some(pass) = vulkan::render(
-            gpus,
-            vulkan::Request {
-                source,
-                target,
-                output: output.target.connector_name(),
-                size,
-                copy_format,
-                scene: &native_image,
-                scene_sync: &scene_sync,
-                dmabuf,
-                capture,
-            },
-        )?
-    {
-        trace!(scene_node = ?source, target_node = ?target, name = output.target.connector_name(),
-                scene_us = scene_duration.as_micros() as u64,
-                transfer_us = transfer_started.elapsed().as_micros() as u64,
-                "completed native Vulkan image transfer");
-        return Ok(pass);
-    }
-
-    // A readiness poll can retire earlier work without submitting this frame.
-    // Recheck its scanout ownership before accepting the setup fallback.
-    if gpus.bridges.scanout_blocked(dmabuf) {
-        return Err("fallback scanout still belongs to a retired Vulkan transfer".into());
-    }
     let mut renderer = gpus
         .manager
         .renderer(&source, &target, copy_format)?
@@ -238,43 +189,15 @@ pub(super) fn render_pass(
     };
     // Completion is retained even if drawing, readback, or KMS queueing fails.
     draw_result?;
-    let pixels = if capture {
-        read_pixels(
-            renderer
-                .target_as_mut()
-                .ok_or("transfer target renderer missing")?,
-            framebuffer.as_ref(),
-            size,
-            false,
-        )
-        .map(Some)
-        .map_err(|error| error.to_string())
-    } else {
-        Ok(None)
-    };
     trace!(scene_node = ?source, target_node = ?target, name = output.target.connector_name(),
         scene_us = scene_duration.as_micros() as u64,
         transfer_us = transfer_started.elapsed().as_micros() as u64,
         "completed native cross-GPU image transfer");
-    Ok(OutputPass { sync, pixels })
+    Ok(OutputPass { sync })
 }
 
 fn persistent_scene_age(valid: bool, force: bool) -> usize {
     usize::from(valid && !force)
-}
-
-fn transfer_format(scanout: Fourcc, source_formats: &[Fourcc]) -> Option<Fourcc> {
-    // The intermediate is allocated on the source GPU; it need not have the
-    // target's scanout format. Smithay negotiates DMA import or CPU fallback.
-    [
-        scanout,
-        Fourcc::Argb8888,
-        Fourcc::Xrgb8888,
-        Fourcc::Abgr8888,
-        Fourcc::Xbgr8888,
-    ]
-    .into_iter()
-    .find(|format| source_formats.contains(format))
 }
 
 #[cfg(test)]
@@ -289,18 +212,5 @@ mod tests {
         assert_eq!(persistent_scene_age(true, false), 1);
         assert_eq!(persistent_scene_age(false, false), 0);
         assert_eq!(persistent_scene_age(true, true), 0);
-    }
-
-    #[test]
-    fn target_scanout_format_does_not_require_source_framebuffer_support() {
-        assert_eq!(
-            transfer_format(Fourcc::Xrgb8888, &[Fourcc::Argb8888]),
-            Some(Fourcc::Argb8888)
-        );
-        assert_eq!(
-            transfer_format(Fourcc::Xrgb8888, &[Fourcc::Argb8888, Fourcc::Xrgb8888]),
-            Some(Fourcc::Xrgb8888)
-        );
-        assert_eq!(transfer_format(Fourcc::Xrgb8888, &[]), None);
     }
 }

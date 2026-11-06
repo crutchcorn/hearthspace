@@ -90,6 +90,16 @@ impl<T> CachedState<T> {
     pub fn pending(&mut self) -> &mut T {
         &mut self.pending
     }
+
+    /// Replace parent-owned metadata in every child snapshot. Otherwise a later
+    /// child transaction could restore a position superseded by its parent.
+    pub(crate) fn override_all(&mut self, mut update: impl FnMut(&mut T)) {
+        update(&mut self.pending);
+        for (_, state) in &mut self.cache {
+            update(state);
+        }
+        update(&mut self.current);
+    }
 }
 
 trait Cache: Downcast {

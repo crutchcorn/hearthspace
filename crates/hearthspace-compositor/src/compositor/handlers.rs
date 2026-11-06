@@ -484,6 +484,9 @@ impl CompositorHandler for App {
 
     fn commit(&mut self, surface: &WlSurface) {
         on_commit_buffer_handler::<Self>(surface);
+        if self.cursor_commit_is_independent(surface) {
+            return;
+        }
         self.configure_initial_toplevel(surface);
         self.popups.commit(surface);
         // Send the popup's initial configure on its first commit. xdg requires
@@ -558,17 +561,16 @@ impl SeatHandler for App {
                 self.cursor_icon = crate::compositor::cursor::cursor_icon_from_smithay(icon);
             }
             CursorImageStatus::Surface(surface) => {
-                // A focused client wants to draw its own cursor. Present the
-                // client surface (with its committed hotspot) as a software
-                // cursor; the backend cursor policy falls back to software
-                // presentation whenever a client surface is active.
+                // Native presenters snapshot this artwork for cursor-plane or
+                // cached-scene composition. Nested/headless backends draw it
+                // with the application scene.
                 self.cursor_visible = true;
                 self.cursor_surface = Some(surface);
             }
         }
-        // The cursor changed, so a frame is needed to update software cursor
-        // presentation (and to hand the new shape to the backend cursor policy).
-        self.request_redraw();
+        if !self.independent_cursor {
+            self.request_redraw();
+        }
     }
 }
 

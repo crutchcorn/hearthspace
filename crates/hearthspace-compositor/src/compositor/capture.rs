@@ -16,10 +16,10 @@ mod pixels;
 pub(in crate::compositor) mod protocol;
 mod remote_render;
 #[cfg(test)]
+mod submission_tests;
+#[cfg(test)]
 mod tests;
 
-#[cfg(feature = "udev")]
-pub(super) use pixels::CursorOverlay;
 pub(super) use pixels::{encode_png, read_pixels};
 
 use frames::Frame;

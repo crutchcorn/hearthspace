@@ -77,6 +77,14 @@ systemd's ten-second watchdog only after a fresh, successful monitoring sample.
 Loss of monitoring therefore stops the build even if the monitor cannot run its
 cleanup handler. Systemd also bounds the service lifetime independently.
 
+For an explicitly selected temperature-observation run, add
+`--temperature-observation-only` before the Cargo subcommand. This records CPU
+temperatures without applying the 85°C cutoff; the choice is retained in both
+`command.json` and `result.json`. CPU, memory, process, deadline, watchdog,
+telemetry-validity, and cleanup checks remain enabled. This changes no OS setting;
+omit the option to restore the default cutoff. Do not select it automatically
+after a rejected build.
+
 Evidence includes source hashes, command and boot identity, verified controls,
 build output, telemetry, and the terminal result. Failed attempts are retained;
 existing evidence directories and memory-backed filesystems such as `/tmp` are

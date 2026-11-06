@@ -39,6 +39,9 @@ mod canvas_search;
 #[cfg(feature = "test-apps")]
 #[path = "support/canvas_zoom.rs"]
 mod canvas_zoom;
+#[cfg(all(feature = "test-apps", feature = "xwayland"))]
+#[path = "support/cursor_defaults.rs"]
+mod cursor_defaults;
 #[cfg(feature = "test-apps")]
 #[path = "support/desktop_context.rs"]
 mod desktop_context;

@@ -17,6 +17,8 @@ mod favorite_drawing;
 mod keyboard_tests;
 mod launch;
 mod launch_environment;
+#[cfg(test)]
+mod pointer_motion_tests;
 pub(in crate::compositor) mod search;
 mod touch_control;
 
@@ -181,10 +183,18 @@ impl App {
                 return ControlReply::Ok;
             }
             ShellCommand::PointerMotionAbs { x, y } => {
-                self.synthesize_pointer_motion_abs(Point::from((x, y)))
+                self.synthesize_pointer_motion_abs(Point::from((x, y)));
+                // Native cursor publication is independent of scene redraws.
+                // Keep only the animation/input handlers' scene invalidations.
+                if self.independent_cursor {
+                    return ControlReply::Ok;
+                }
             }
             ShellCommand::PointerMotionRel { dx, dy } => {
-                self.synthesize_pointer_motion_rel(Point::from((dx, dy)))
+                self.synthesize_pointer_motion_rel(Point::from((dx, dy)));
+                if self.independent_cursor {
+                    return ControlReply::Ok;
+                }
             }
             ShellCommand::PointerButtonDown(button) => {
                 self.synthesize_pointer_button(button, ButtonState::Pressed)

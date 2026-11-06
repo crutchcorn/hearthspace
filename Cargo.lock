@@ -2636,7 +2636,6 @@ dependencies = [
 name = "hearthspace-compositor"
 version = "0.1.0"
 dependencies = [
- "ash",
  "async-io",
  "atspi 0.30.0",
  "calloop 0.14.5",
@@ -5911,7 +5910,6 @@ version = "0.7.0"
 dependencies = [
  "aliasable",
  "appendlist",
- "ash",
  "bitflags 2.13.2",
  "calloop 0.14.5",
  "cc",
@@ -7164,6 +7162,7 @@ dependencies = [
  "async-trait",
  "atspi 0.30.0",
  "quick-xml",
+ "rustix 1.1.5",
  "serde_json",
  "tempfile",
  "tokio",

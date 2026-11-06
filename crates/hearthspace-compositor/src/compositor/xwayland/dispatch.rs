@@ -1,6 +1,7 @@
 //! Keep XWM surface hooks on the same state type as the Wayland globals.
 use std::{
     os::{fd::AsFd, unix::net::UnixStream},
+    path::PathBuf,
     time::Duration,
 };
 
@@ -24,6 +25,14 @@ impl App {
         // Forwarding from CalloopData is insufficient: its TypeId differs.
         let mut events: EventLoop<'static, App> = EventLoop::try_new()?;
         let xwm = X11Wm::start_wm(events.handle(), display, socket, client)?;
+        let home = std::env::var_os("HOME").map(PathBuf::from);
+        if let Err(error) = super::cursor_defaults::initialize(
+            display_number,
+            home.as_deref(),
+            crate::compositor::cursor::DESIRED_CURSOR_SIZE,
+        ) {
+            warn!(%error, "failed to initialize the XWayland cursor-size default");
+        }
         let poll_fd = events.as_fd().try_clone_to_owned()?;
         self.loop_handle.insert_source(
             Generic::new(poll_fd, Interest::READ, Mode::Level),
@@ -49,8 +58,8 @@ impl App {
         )?;
         self.xwm = Some(xwm);
         self.xdisplay = Some(display_number);
-        self.publish_xwayland_display();
         self.publish_xsettings();
+        self.publish_xwayland_display();
         Ok(())
     }
 

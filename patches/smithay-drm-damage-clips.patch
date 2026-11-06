@@ -1,0 +1,143 @@
+--- a/src/backend/drm/compositor/mod.rs
++++ b/src/backend/drm/compositor/mod.rs
+@@ -181,6 +181,7 @@
+     surface::VrrSupport,
+ };
+ 
++mod damage;
+ mod elements;
+ mod frame_result;
+ 
+@@ -1057,6 +1058,7 @@
+     planes: Planes,
+     overlay_plane_element_ids: OverlayPlaneElementIds,
+     damage_tracker: OutputDamageTracker,
++    damage_clips_enabled: bool,
+     primary_is_opaque: bool,
+     primary_plane_element_id: Id,
+     primary_plane_damage_bag: DamageBag<i32, BufferCoords>,
+@@ -1259,6 +1261,7 @@
+                         cursor_state,
+                         surface,
+                         damage_tracker,
++                        damage_clips_enabled: true,
+                         output_mode_source,
+                         planes,
+                         overlay_plane_element_ids,
+@@ -1441,6 +1444,7 @@
+             cursor_state,
+             surface,
+             damage_tracker,
++            damage_clips_enabled: true,
+             output_mode_source,
+             planes,
+             overlay_plane_element_ids,
+@@ -2303,16 +2307,20 @@
+                             // Here we need to apply the output_transform to the damage since we
+                             // haven't rotated our framebuffer. dst is already in the same
+                             // coordinate space src is, so no transform needed.
+-                            config.damage_clips = PlaneDamageClips::from_damage(
+-                                self.surface.device_fd(),
+-                                config.properties.src,
+-                                config.properties.dst,
+-                                Transform::Normal,
+-                                output_transform,
+-                                render_damage.iter().copied(),
+-                            )
+-                            .ok()
+-                            .flatten();
++                            config.damage_clips = if self.damage_clips_enabled {
++                                PlaneDamageClips::from_damage(
++                                    self.surface.device_fd(),
++                                    config.properties.src,
++                                    config.properties.dst,
++                                    Transform::Normal,
++                                    output_transform,
++                                    render_damage.iter().copied(),
++                                )
++                                .ok()
++                                .flatten()
++                            } else {
++                                None
++                            };
+                             config.sync = Some((render_output_result.sync.clone(), None));
+                         } else {
+                             trace!("skipping primary plane, no damage");
+@@ -3977,7 +3985,7 @@
+         // back to buffer-coordinate. We'll apply the same transform to the element geometry for
+         // scale computation as it's already in physical space.
+         let transform = element.transform().invert();
+-        let damage_clips = if has_element_damage {
++        let damage_clips = if self.damage_clips_enabled && has_element_damage {
+             PlaneDamageClips::from_damage(
+                 self.surface.device_fd(),
+                 element_config.properties.src,
+--- /dev/null
++++ b/src/backend/drm/compositor/damage.rs
+@@ -0,0 +1,66 @@
++use std::os::unix::io::AsFd;
++
++use super::{
++    Allocator, Buffer, DrmCompositor, ExportFramebuffer, FrameState, Framebuffer, PreparedFrameKind,
++};
++
++impl<A, F, U, G> DrmCompositor<A, F, U, G>
++where
++    A: Allocator,
++    F: ExportFramebuffer<A::Buffer>,
++    F::Framebuffer: std::fmt::Debug + Send + Sync + 'static,
++    G: AsFd + 'static,
++{
++    /// Enable or disable KMS framebuffer damage clips. Enabled by default.
++    ///
++    /// This controls only `FB_DAMAGE_CLIPS`. Renderer damage tracking, buffer
++    /// ages, and rendering and scan-out synchronization are unchanged. The
++    /// setting persists across buffer resets, state resets, and [`Self::clear`].
++    ///
++    /// Disabling discards clips in all retained frames and requires a full plane
++    /// update on the next successful submission, even if the scene is unchanged.
++    /// The atomic backend explicitly clears `FB_DAMAGE_CLIPS` for planes without
++    /// clips. An already submitted frame cannot be changed; its retained state is
++    /// cleared so completing or reusing it cannot restore old clips.
++    ///
++    /// This method does not submit a frame. The caller must schedule rendering
++    /// and submission, or submit an already prepared frame. Re-enabling permits
++    /// future frames to generate clips; it does not recreate discarded clips.
++    pub fn set_damage_clips_enabled(&mut self, enabled: bool) {
++        if self.damage_clips_enabled == enabled {
++            return;
++        }
++        self.damage_clips_enabled = enabled;
++        if enabled {
++            return;
++        }
++
++        self.current_frame.clear_damage_clips();
++        if let Some(pending) = self.pending_frame.as_mut() {
++            pending.frame.clear_damage_clips();
++        }
++        if let Some(queued) = self.queued_frame.as_mut() {
++            queued.prepared_frame.frame.clear_damage_clips();
++            queued.prepared_frame.kind = PreparedFrameKind::Full;
++        }
++        if let Some(next) = self.next_frame.as_mut() {
++            next.frame.clear_damage_clips();
++            next.kind = PreparedFrameKind::Full;
++        }
++
++        // Force an unchanged scene through render_frame's existing full-update
++        // path. handle_flip clears this only after a successful full submission,
++        // so failures cannot consume the required KMS property reset.
++        self.reset_pending = true;
++    }
++}
++
++impl<B: Buffer, F: Framebuffer> FrameState<B, F> {
++    fn clear_damage_clips(&mut self) {
++        for (_, state) in &mut self.planes {
++            if let Some(config) = state.config.as_mut() {
++                config.damage_clips = None;
++            }
++        }
++    }
++}

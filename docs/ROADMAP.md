@@ -30,9 +30,10 @@ needs to establish how they behave together over sustained use:
   private bus remains a gap. Opening an app does not prove its file, clipboard,
   authentication, or media workflows.
 - Measure responsiveness with many live windows, application redraw load,
-  repeated input, and capture. Native GPU readback still runs on the compositor
-  thread, although PNG encoding is off-thread. Attribute stalls to the actual
-  phase before changing scheduling or capture behavior.
+  repeated input, and capture. Native output readback runs on the device presenter;
+  window readback remains on the scene-rendering thread. PNG encoding is
+  off-thread. Attribute stalls to the actual phase before changing scheduling
+  or capture behavior.
 
 Record the tested revision, prerequisites, assertions, failures, and cleanup.
 An input acknowledgment, screenshot, protocol fixture, and local password unlock
@@ -68,10 +69,11 @@ prove different things. Use [native testing](NATIVE_TESTING.md) for ownership an
 These changes need their own acceptance criteria before becoming supported
 capabilities. Keep Smithay responsible for the generic compositor mechanisms.
 
-- **Cursor planes:** move native cursor updates from legacy DRM calls to atomic
-  ownership, and investigate hardware upload of client cursor surfaces. Preserve
-  Xcursor artwork, hotspots, scale, and the existing software fallback when a
-  plane is unavailable or a cursor operation fails. See [cursors](CURSOR.md).
+- **Cursor acceptance:** broaden physical coverage of the device-local Smithay
+  presenters, client-provided images, software fallback, output transitions,
+  and lock/recovery boundaries. Measure input-to-presentation latency and scene
+  workload independently; cursor-plane assignment alone does not establish
+  smoothness. See [cursors](CURSOR.md).
 - **KMS damage hints:** renderer damage tracking is active, but KMS damage clips
   are disabled. Investigate per-device/output support detection, one retry of a
   rejected frame without clips after `EINVAL`, and disabling unsupported hints. Diagnostics

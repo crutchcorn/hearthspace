@@ -20,7 +20,94 @@ Keep detailed captures and logs with the issue or test artifact. Use this page
 as the single inventory of named test systems; feature guides describe how to
 repeat the checks.
 
+## Smithay cursor planes and pointer zoom, 2026-11-01
+
+The GPD Win Max 2 (2025) listed above was tested with its AMD Radeon 890M
+and an Oculink-connected NVIDIA RTX 3070 Ti, using the GLES/Smithay native
+backend after removal of the compositor Vulkan bridge. Kernel
+`7.0.0-42-generic` and NVIDIA `595.99.02` drove the internal 2560×1600 panel,
+3840×2160 DP-8 and 2560×3200 DP-9, all at scale 1. The tested optimized
+compositor SHA-256 begins `698fb72213c6`, built from `d691db41` plus the
+recorded migration edits. Its build and source snapshot are retained under
+`20261101-smithay-cursor-planes/presenter-release-3` and
+`presenter-release-frozen-3`. Companion executables were separately hash-checked
+historical debug binaries, not newly built release companions.
+
+`native-cursor-2` passed five synthetic pointer phases on every output: named
+canvas cursor, client artwork, content-boundary crossings, window dragging and
+desktop marquee dragging. Exact publication, plane-selection, accepted-queue,
+worker-completion and main-presentation records associate named and client
+artwork with hardware cursor planes on all three outputs. Across the six
+named/client phases, 206 completed submissions advanced the cursor while
+retaining the preceding scene and primary buffer/damage tuple. This establishes
+cursor progress without another scene composition for those submissions; it
+does not establish input processing during a blocked main loop.
+
+The release atomic requests explicitly set AMD primary plane 202's
+`FB_DAMAGE_CLIPS` property 22 to zero, followed by matching accepted queues and
+verified completions; live property observation agrees. NVIDIA's primary and
+cursor planes did not expose that property. Renderer damage remained active.
+`native-cursor-nvidia-2` also passed all fifteen phases with NVIDIA confirmed as
+the scene renderer, exercising Smithay's CPU-copy fallback from NVIDIA to
+the AMD panel with real Foot content and window movement. No Vulkan compositor
+transfer was selected.
+
+`native-zoom-1` passed six Super+wheel phases and three Ctrl controls across all
+outputs. Across 91 Super observations the maximum per-axis mouse-anchor drift
+was below 0.497 canvas units; every zoom-in/out pair returned to its original view.
+Captured green markers grew and returned with the projected window geometry.
+All six phases sampled animation, but status samples do not establish continuous
+physical presentation. Ctrl+wheel preserved the canvas view while Foot could
+resize its own content. Coordinates were harness requests, not observed physical
+mouse coordinates.
+
+All three runs restored the original VT, stopped their owned services/processes
+and removed private runtimes. Temperature enforcement was explicitly disabled
+at the user's request while telemetry and the 120-second total diagnostic
+budget remained active. The retained failed attempts are not passing evidence:
+`native-cursor-1` saw a late battery widget; `native-cursor-nvidia-1` saw the Apps
+widget finish expanding after Foot mapped. Subsequent diagnostics waited for
+sampled layout stability before measuring and retained strict phase checks.
+In the zoom run, the Apps widget widened from 54 to 102 logical units between
+setup and the first-wheel preflight; all 14 layout queries from that preflight
+onward were stable.
+
+The tests do not establish physical mouse smoothness, FPS, input-to-photon
+latency, GNOME/COSMIC parity, or a measured before/after performance improvement.
+Client cursor source tags identify client-provided artwork, not an exact Foot
+Wayland surface. Captures occur outside motion and do not show the held marquee.
+Lock, hotplug, sleep and long-duration behavior were not exercised by these runs.
+The installed session was not changed.
+
+The source files subsequently committed through `18d9b66a` passed full Rust
+formatting, Ruff lint/formatting, workspace/all-targets Clippy with warnings
+denied, and the all-targets debug build. The matching `presenter-full-2` run
+passed 2,539 Rust tests, with 26 ignored, and 745 Python tests, with one skipped.
+The skipped guard fixture requires two permitted CPUs; the runner used CPU 4
+alone. All 22 transfer-cache cases normally ignored by the workspace run passed
+separately in `presenter-transfer-cache-build6`; those use substituted device
+operations and do not establish physical GPU import. Dependency checks passed
+with 74 categorized warnings: seven unmaintained, one yanked, seven Git-source
+allowance and 59 duplicate-crate warnings, plus a missing-config/default-fallback
+warning. These runs requested software rendering but did not retain an actual
+renderer identity, so they are not evidence of software-only execution.
+
+Full-run source endpoints matched across 2,340 paths, and each phase verified
+empty, removed cgroups. The Rust attachment and Python shell fixtures now
+wait for inherited process-group cleanup; their assertions and cleanup both
+passed. The transient OSD workflow also passed after isolating its application
+catalog and checking input/capture before accessibility traversal. Earlier
+`presenter-full-1` and `presenter-python-1` failures remain retained failures.
+Four fresh libXcursor regressions verify the new X11 24-pixel default and
+environment/resource preference preservation. They measure requested size,
+not VLC's rendered artwork in an installed session. This later X11 default was
+not present in the frozen compositor used for the native runs above.
+
 ## Hybrid GPU responsiveness investigation, 2026-10-31
+
+The Vulkan-transfer observations below describe historical code. Current native
+transfers use [Smithay's DMA-sharing and CPU-copy routes](DRM.md#outputs-and-scaling);
+the historical runs do not validate that change.
 
 After reboot, the same three-output GPD setup selected AMD as its scene GPU.
 Debug runs used Smithay's direct AMD-to-NVIDIA DMA sharing; they did not exercise

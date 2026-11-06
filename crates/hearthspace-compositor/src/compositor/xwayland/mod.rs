@@ -13,6 +13,7 @@ use super::{
 };
 
 mod clipboard;
+mod cursor_defaults;
 mod dispatch;
 mod handlers;
 pub(super) mod identity;

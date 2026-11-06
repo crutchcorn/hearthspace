@@ -209,7 +209,9 @@ impl PendingTransaction {
         loop {
             let inner = match Arc::try_unwrap(self.inner) {
                 Ok(mutex) => mutex.into_inner().unwrap(),
-                Err(_) => panic!("Attempting to finalize a transaction but handle is not the last."),
+                Err(_) => {
+                    panic!("Attempting to finalize a transaction but handle is not the last.")
+                }
             };
             match inner {
                 TransactionInner::Data(TransactionState {
@@ -259,15 +261,22 @@ impl Transaction {
     }
 
     pub(crate) fn apply<C: CompositorHandler + 'static>(self, dh: &DisplayHandle, state: &mut C) {
-        for (surface, id) in self.surfaces {
-            let Ok(surface) = surface.upgrade() else {
-                continue;
-            };
-
-            PrivateSurfaceData::with_states(&surface, |states| {
-                states.cached_state.apply_state(id, dh);
+        let surfaces = self
+            .surfaces
+            .into_iter()
+            .filter_map(|(surface, id)| surface.upgrade().ok().map(|surface| (surface, id)))
+            .collect::<Vec<_>>();
+        // All committed surface and parent-owned tree state must be visible
+        // before any hook or compositor callback can traverse this transaction.
+        for (surface, id) in &surfaces {
+            PrivateSurfaceData::with_states(surface, |states| {
+                states.cached_state.apply_state(*id, dh);
             });
-
+        }
+        for (surface, _) in &surfaces {
+            PrivateSurfaceData::apply_parent_state(surface);
+        }
+        for (surface, _) in surfaces {
             PrivateSurfaceData::invoke_post_commit_hooks::<C>(state, dh, &surface);
 
             tracing::trace!("Calling user implementation for wl_surface.commit");

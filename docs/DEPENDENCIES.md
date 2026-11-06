@@ -34,12 +34,6 @@ The compositor and shell need working graphics drivers. For software-rendered
 headless tests, install `libgl1-mesa-dri` and `mesa-vulkan-drivers`, then follow
 [the E2E environment setup](E2E_TESTING.md).
 
-The optional native cross-GPU transfer path loads `libvulkan.so.1` from
-`libvulkan1` and uses the source GPU's Vulkan driver. It needs compatible external
-memory and synchronization support from the installed drivers; installing the
-loader alone does not establish compatibility. Unsupported pairs retain
-Smithay's transfer fallback. See [DRM/KMS](DRM.md).
-
 ## Desktop runtime
 
 A full native session uses logind/libseat and these runtime packages:

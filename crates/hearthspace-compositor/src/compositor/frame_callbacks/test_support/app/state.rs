@@ -93,6 +93,7 @@ pub(super) fn new(dh: &DisplayHandle, handle: LoopHandle<'static, CalloopData>) 
         window_frames: Default::default(),
         background_tile_ids: Vec::new(),
         software_cursor_visible: false,
+        independent_cursor: false,
         software_cursor: cursor::standard_software_cursor(),
         #[cfg(feature = "xwayland")]
         xwm: None,

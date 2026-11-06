@@ -17,12 +17,17 @@ use crate::{
 
 use super::App;
 
+#[cfg(test)]
+#[path = "viewport/scroll_tests.rs"]
+mod scroll_tests;
+
 pub(super) struct ViewportAnimation {
     pub(super) from_offset: CanvasPoint,
     pub(super) from_scale: f64,
     pub(super) to_offset: CanvasPoint,
     pub(super) to_scale: f64,
     pub(super) started_at: Instant,
+    zoom_anchor: Option<Point<f64, Logical>>,
 }
 
 impl ViewportAnimation {
@@ -31,11 +36,22 @@ impl ViewportAnimation {
             / VIEWPORT_ANIMATION_DURATION.as_secs_f64())
         .clamp(0.0, 1.0);
         let eased = ease_out_cubic(progress);
-        (
-            interpolate_canvas_point(self.from_offset, self.to_offset, eased),
-            interpolate_f64(self.from_scale, self.to_scale, eased),
-            progress >= 1.0,
-        )
+        let scale = interpolate_f64(self.from_scale, self.to_scale, eased);
+        // Interpolating offset and scale independently makes the zoom anchor
+        // drift between the endpoints. Recompute its transform at each sample.
+        let offset = match self.zoom_anchor {
+            Some(anchor) => {
+                zoom_around_screen_point(
+                    self.from_offset,
+                    self.from_scale,
+                    anchor,
+                    scale / self.from_scale,
+                )
+                .0
+            }
+            None => interpolate_canvas_point(self.from_offset, self.to_offset, eased),
+        };
+        (offset, scale, progress >= 1.0)
     }
 }
 
@@ -52,6 +68,15 @@ impl App {
     /// without cancelling the gesture that requested the new destination.
     pub(super) fn start_owned_viewport_animation(&mut self, to_offset: CanvasPoint, to_scale: f64) {
         self.advance_viewport_animation();
+        self.set_viewport_animation(to_offset, to_scale, None);
+    }
+
+    fn set_viewport_animation(
+        &mut self,
+        to_offset: CanvasPoint,
+        to_scale: f64,
+        zoom_anchor: Option<Point<f64, Logical>>,
+    ) {
         if self.viewport_offset == to_offset
             && (self.viewport_scale - to_scale).abs() < f64::EPSILON
         {
@@ -73,17 +98,22 @@ impl App {
             to_offset,
             to_scale,
             started_at: Instant::now(),
+            zoom_anchor,
         });
         self.request_redraw();
     }
 
     pub(super) fn advance_viewport_animation(&mut self) {
+        self.advance_viewport_animation_at(Instant::now());
+    }
+
+    fn advance_viewport_animation_at(&mut self, now: Instant) {
         let Some(animation) = &self.viewport_animation else {
             return;
         };
 
         let previous = (self.viewport_offset, self.viewport_scale);
-        let (offset, scale, finished) = animation.sample(Instant::now());
+        let (offset, scale, finished) = animation.sample(now);
         self.viewport_offset = offset;
         self.viewport_scale = scale;
 
@@ -175,6 +205,29 @@ impl App {
         self.animate_zoom_around_output_center(self.primary_output_logical_rect(), multiplier);
     }
 
+    pub(super) fn animate_zoom_around_pointer(&mut self, multiplier: f64) {
+        self.animate_zoom_around_pointer_at(multiplier, Instant::now());
+    }
+
+    fn animate_zoom_around_pointer_at(&mut self, multiplier: f64, now: Instant) {
+        if self.window_focus_view_active() {
+            return;
+        }
+        self.cancel_canvas_pan();
+        self.interrupt_pinch_zoom();
+        self.advance_viewport_animation_at(now);
+        // Pointer coordinates already occupy the complete output-logical space.
+        // Do not subtract an output origin or apply its pixel density again.
+        let anchor = self.pointer_location;
+        let (offset, scale) = zoom_around_screen_point(
+            self.viewport_offset,
+            self.viewport_scale,
+            anchor,
+            multiplier,
+        );
+        self.set_viewport_animation(offset, scale, Some(anchor));
+    }
+
     pub(super) fn zoom_viewport_on_output(
         &mut self,
         output_name: &str,
@@ -239,6 +292,7 @@ mod tests {
             from_scale: 0.75,
             to_scale: 0.75,
             started_at,
+            zoom_anchor: None,
         };
         assert_eq!(
             animation.sample(started_at),
@@ -264,6 +318,7 @@ mod tests {
             from_scale: 1.0,
             to_scale: 1.0,
             started_at,
+            zoom_anchor: None,
         };
         let now = started_at + Duration::from_millis(45);
         let (offset, scale, _) = first.sample(now);
@@ -273,6 +328,7 @@ mod tests {
             to_offset: CanvasPoint { x: -1000, y: 500 },
             to_scale: scale,
             started_at: now,
+            zoom_anchor: None,
         };
         assert_eq!(next.sample(now), (offset, scale, false));
         assert_ne!(offset, first.from_offset);

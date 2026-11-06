@@ -79,25 +79,49 @@ def popup_feedback(smoke, capture, *, focused_slider=None):
     )
 
 
-def osd(smoke, text, *, capture=None):
-    smoke.until(
-        "mapped passive control OSD", lambda: smoke.control.status().get("control_osds")
-    )
+def live_osd(smoke, expected=None):
     status = smoke.control.status()
-    if len(status["control_osds"]) != 1:
+    geometry = status.get("control_osds", [])
+    if not geometry:
+        raise ControlError("control OSD disappeared before observation completed")
+    if len(geometry) != 1:
         raise ControlError("one adjustment must show exactly one OSD")
     if status.get("shell_panels"):
         raise ControlError("OSD unexpectedly opened an interactive shell panel")
     if not focused(smoke, smoke.target):
         raise ControlError("volume OSD stole focus from the application")
-    # The accessibility snapshot can outlast the passive OSD. Check its live
-    # geometry and focus before that traversal, then verify the captured text.
-    smoke.until(f"OSD {text}", lambda: visible(smoke, text))
+    if expected is not None and geometry != expected:
+        raise ControlError("control OSD geometry changed during observation")
+    return geometry
+
+
+def osd(smoke, text, *, capture=None, while_visible=None):
+    smoke.until(
+        "mapped passive control OSD", lambda: smoke.control.status().get("control_osds")
+    )
+    geometry = live_osd(smoke)
+
+    def check_live():
+        return live_osd(smoke, geometry)
+
+    if while_visible:
+        while_visible(check_live)
+        check_live()
     if capture:
         smoke.capture(capture)
-    smoke.record(
-        "control-osd", text=text, focus=smoke.target, geometry=status["control_osds"]
-    )
+        check_live()
+
+    # The accessibility snapshot can outlast the passive OSD. Check its live
+    # input, capture and focus first, then retain any matching captured text.
+    def read_text():
+        matches = visible(smoke, text)
+        if matches:
+            return matches
+        check_live()
+        return None
+
+    smoke.until(f"OSD {text}", read_text)
+    smoke.record("control-osd", text=text, focus=smoke.target, geometry=geometry)
 
 
 def dismissed(smoke):
@@ -200,17 +224,25 @@ def run(smoke):
     close_dropdown(smoke)
     dismissed(smoke)
 
+    marker = Path(smoke.manifest["runtime_dir"]) / "osd-input"
+    with Input(smoke.control) as inputs:
+        inputs.type(f"printf focused > {shlex.quote(str(marker))}")
+
+    def receive_input(check_live):
+        check_live()
+        with Input(smoke.control) as inputs:
+            inputs.chord("enter")
+
+        def received():
+            check_live()
+            return marker.exists() and marker.read_text() == "focused"
+
+        smoke.until("terminal receives input while OSD visible", received)
+
     with Input(smoke.control) as inputs:
         inputs.chord("volume-up")
     balanced_channels(audio(smoke, volume=45, muted=False))
-    osd(smoke, "Volume 45%", capture="volume-up-osd")
-    marker = Path(smoke.manifest["runtime_dir"]) / "osd-input"
-    with Input(smoke.control) as inputs:
-        inputs.type(f"printf focused > {shlex.quote(str(marker))}\n")
-    smoke.until(
-        "terminal receives input while OSD visible",
-        lambda: marker.exists() and marker.read_text() == "focused",
-    )
+    osd(smoke, "Volume 45%", capture="volume-up-osd", while_visible=receive_input)
     dismissed(smoke)
     with Input(smoke.control) as inputs:
         inputs.chord("volume-down")

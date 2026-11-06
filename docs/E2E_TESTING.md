@@ -21,10 +21,12 @@ Hearthspace has three complementary E2E layers:
   WayDriver traits for compositor lifecycle, input, capture, app sessions, and
   accessibility/XPath lookup.
 - Native smoke tests: full sessions on a spare VT, covering presentation through
-  KMS, hardware/software cursor capture, output geometry, and recovery after
+  KMS, cursor inclusion and pixel motion, output geometry, and recovery after
   startup failure, compositor failure, watchdog expiry, or agent interruption.
   The [daily workflow](DAILY_SMOKE.md) adds keyboard launch/search, Unicode,
   window-state recovery, bounded settings I/O, and semantic notifications.
+  Client cursor identity and hardware-plane use require protocol and submission
+  traces in addition to capture metadata.
 
 Keep these layers distinct. The control-socket tests prove our direct test
 surface works. The WayDriver tests prove an external automation harness can drive
@@ -299,15 +301,16 @@ input coordinates with `logical_x + pixel_x / scale` and
 `logical_y + pixel_y / scale`; rounded logical bounds do not replace the scale.
 Frame IDs are scoped to one output in one compositor process.
 
-Native capture reads the normal output render target and replies after that
-frame's page flip and PNG completion, reporting `presentation: "page-flip"`.
-PNG encoding runs off the native event-loop thread with two bounded jobs;
-GPU readback remains on that thread. A late encoding result cannot release a
-capture invalidated by locking, output loss, or its deadline. Headless and nested
-captures report `presentation: "offscreen"`. Native capture includes the
-software/client cursor in the framebuffer or overlays the hardware cursor once;
-`cursor_source` identifies the path and `cursor_sample: "render"` identifies when
-the independently moving hardware cursor was sampled.
+Native capture reconstructs the submitted plane composition on the owning
+device's presenter and replies after its verified page flip and PNG completion,
+reporting `presentation: "page-flip"`. PNG encoding runs on a separate worker
+with two bounded jobs. A late encoding result cannot release a capture
+invalidated by locking, output loss, or its deadline. Headless and nested
+captures report `presentation: "offscreen"`. Native output capture includes the
+submitted cursor once, reporting `cursor_source: "submitted-planes"` and
+`cursor_sample: "render"`. These identify the prepared snapshot; they do not
+establish hardware-plane use or client cursor identity. A newer capture request
+cannot consume an older scene's readback or a cursor-only completion.
 
 `lock-session` acknowledges the locker request; tests must wait for both
 `locked` and `lock_confirmed` in status before claiming secure presentation.

@@ -105,12 +105,15 @@ pub fn run_udev(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> {
         loop_handle: handle.clone(),
         input_source: None,
         recovery_source: None,
-        bridge_poll_source: None,
-        bridge_poll_failed: false,
-        recovery_progress_at: None,
         recovery_needed: true,
         recovery_exhausted: false,
         opened_devices: BTreeMap::new(),
+        retired_devices: Vec::new(),
+        retirement_source: None,
+        cursor_publication: Default::default(),
+        security_epoch: 1,
+        lock_generation: None,
+        next_scene_sequence: 0,
         devices,
         renderer_preference,
         gpus: GpuState::new()?,
@@ -132,6 +135,7 @@ pub fn run_udev(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> {
         output_size,
         options.exit_after,
     );
+    data.state.independent_cursor = true;
     if session_active {
         recovery::activate_session(&mut data);
     } else {

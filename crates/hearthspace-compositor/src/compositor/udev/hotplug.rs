@@ -5,38 +5,30 @@ use tracing::{debug, error, info, warn};
 
 use super::{
     ConnectorSync, UdevBackendState,
-    connector_policy::refresh_targets,
+    connector_policy::refresh_after_configuration,
     device::{UdevDevice, UdevDeviceInfo, create_udev_device, current_device_list},
     identity::{DeviceToken, device_identity},
     insert_libinput_source,
-    recovery::insert_drm_source,
+    presenter_events::insert_presenter_source,
 };
 
 impl UdevBackendState {
-    pub(super) fn device_failed(&mut self, token: DeviceToken) {
-        if let Some(device) = self
-            .opened_devices
-            .get_mut(&token.id)
-            .filter(|device| device.token == token)
-        {
-            device.recovery_needed = true;
-            device.mark_all_surfaces_dirty();
-            self.refresh_backend_state();
-            self.schedule_recovery_timer();
-        }
-    }
-
     pub(super) fn pause_session(&mut self) {
-        self.gpus.bridges.retire_all();
         self.session_active = false;
         self.drm_commits_paused = true;
         self.kms_devices_active = false;
         self.native_shortcuts.clear();
+        self.cursor_publication.reset();
         if let Some(token) = self.input_source.take() {
             self.loop_handle.remove(token);
         }
         for device in self.opened_devices.values_mut() {
-            device.scanout_node.drm_device.pause();
+            device.control_generation = device.presenter.pause();
+            device.generation = device
+                .generation
+                .checked_add(1)
+                .expect("output generation exhausted");
+            device.configuration_pending = false;
             self.published_outputs.invalidate(
                 device
                     .output_surfaces
@@ -48,7 +40,6 @@ impl UdevBackendState {
             device.recovery_needed = true;
         }
         // Dropping each output releases its intermediate and completion together.
-        self.schedule_bridge_poll();
         info!("native session paused; DRM commits disabled and Wayland clients remain connected");
     }
 
@@ -149,22 +140,18 @@ impl UdevBackendState {
         let Some(mut device) = self.opened_devices.remove(&device_id) else {
             return;
         };
-        self.gpus.bridges.retire_node(device.node);
-        self.gpus.bridges.poll();
-        self.gpus.incarnations.remove(&device.node);
         if let Some(token) = device.source.take() {
             self.loop_handle.remove(token);
         }
-        if device.active && self.session.is_active() {
-            device.clear_hardware_cursor();
-        }
+        device.presenter.stop();
         self.published_outputs.invalidate(
             device
                 .output_surfaces
                 .iter()
                 .map(|output| output.target.connector_name()),
         );
-        device.output_surfaces.clear();
+        // Keep producer pools and rejected leases until the worker and producer
+        // fences have retired. This device is no longer advertised or rendered.
         // Caller-owned intermediates are outside the manager's invalidation.
         // Reset them with their scenes/fences while both contexts still exist.
         for remaining in self.opened_devices.values_mut() {
@@ -184,17 +171,26 @@ impl UdevBackendState {
             self.gpus.select_scene(None);
             self.select_available_scene();
         }
-        drop(device);
+        self.retired_devices.push(device);
+        self.schedule_retirement();
     }
 
     pub(super) fn open_missing_devices(&mut self) {
+        if !self.session_active || !self.session.is_active() {
+            return;
+        }
         let devices = self.renderer_preference.opening_order(
             &self.devices,
             self.session_active && self.session.is_active(),
             device_identity,
         );
         for info in devices {
-            if self.opened_devices.contains_key(&info.device_id) {
+            if self.opened_devices.contains_key(&info.device_id)
+                || self
+                    .retired_devices
+                    .iter()
+                    .any(|d| d.token.id == info.device_id)
+            {
                 continue;
             }
             self.next_incarnation = self.next_incarnation.wrapping_add(1);
@@ -211,8 +207,8 @@ impl UdevBackendState {
                 &mut self.connector_names,
             );
             match opened {
-                Ok((mut device, notifier)) => {
-                    match insert_drm_source(&self.loop_handle, token, notifier) {
+                Ok((mut device, events)) => {
+                    match insert_presenter_source(&self.loop_handle, token, events) {
                         Ok(source) => device.source = Some(source),
                         Err(error) => {
                             self.renderer_preference.open_failed(
@@ -223,12 +219,12 @@ impl UdevBackendState {
                             error!(%error, device_id = token.id, "failed to register DRM notifier");
                             self.gpus.manager.as_mut().remove_node(&device.node);
                             let _ = self.gpus.manager.devices_mut();
+                            device.presenter.stop();
+                            self.retired_devices.push(device);
+                            self.schedule_retirement();
                             continue;
                         }
                     }
-                    self.gpus
-                        .incarnations
-                        .insert(device.node, (token, device.identity.clone()));
                     let scene_node = self.renderer_preference.scene_after_open(
                         self.gpus.scene_node,
                         device.node,
@@ -238,6 +234,9 @@ impl UdevBackendState {
                     info!(device_id = token.id, incarnation = token.incarnation,
                         scene_node = ?self.gpus.scene_node, target_node = ?device.node,
                         outputs = device.output_targets.len(), "opened seat DRM device");
+                    device
+                        .presenter
+                        .set_security(self.security_epoch, self.lock_generation);
                     self.opened_devices.insert(token.id, device);
                 }
                 Err(error) => {
@@ -258,11 +257,7 @@ impl UdevBackendState {
         };
         let was_active = device.active;
         if !device.active {
-            if let Err(error) = device.scanout_node.drm_device.activate(true) {
-                error!(%error, device_id = id, "failed to reactivate DRM device");
-                device.recovery_needed = true;
-                return false;
-            }
+            device.control_generation = device.presenter.activate();
             device.active = true;
         }
         let targets = match device.connected_output_targets(&mut self.connector_names) {
@@ -277,33 +272,28 @@ impl UdevBackendState {
             }
         };
         let current = std::mem::replace(&mut device.output_targets, targets.clone());
-        let refreshed = refresh_targets(
+        // Configuration gets a bounded opportunity to produce its first flip.
+        // A stuck pending scene must not suppress recovery forever, and activity
+        // on another device must not extend this device's grace period.
+        let refreshed = refresh_after_configuration(
             &current,
             &targets,
             device.output_surfaces.len() == targets.len(),
             !was_active || retry_unpresented || device.recovery_needed,
+            std::time::Instant::now(),
+            was_active.then_some(device.recovery_not_before),
             || {
-                for output in &device.output_surfaces {
-                    self.gpus
-                        .bridges
-                        .retire_output(output.target.connector_name());
-                }
                 self.published_outputs.invalidate(
                     device
                         .output_surfaces
                         .iter()
                         .map(|output| output.target.connector_name()),
                 );
-                match device.rebuild_output_surfaces(targets.clone()) {
-                    Ok(()) => true,
-                    Err(error) => {
-                        error!(%error, device_id = id, "failed to rebuild some KMS output surfaces");
-                        false
-                    }
-                }
+                device.rebuild_output_surfaces(targets.clone());
+                true
             },
         );
-        device.recovery_needed = refreshed.recovery_needed;
+        device.recovery_needed = refreshed.recovery_needed || device.configuration_pending;
         refreshed.rebuilt
     }
 
@@ -325,7 +315,6 @@ impl UdevBackendState {
                     })
             });
         self.connector_rescan_pending = self.recovery_needed;
-        self.schedule_bridge_poll();
     }
 
     fn select_available_scene(&mut self) {
@@ -347,6 +336,7 @@ impl UdevBackendState {
             return;
         }
         self.gpus.select_scene(selected);
+        self.cursor_publication.reset();
         for device in self.opened_devices.values_mut() {
             for output in &mut device.output_surfaces {
                 output.reset_scene();

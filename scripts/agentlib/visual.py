@@ -91,50 +91,61 @@ def verify_resize(
     return {"marker_bounds": marker, "vacated_logical_region": bounds}
 
 
-def verify_cursor_motion(before, after, x, y, distance=70):
+def cursor_source(presentation):
+    sources = {"page-flip": "submitted-planes", "offscreen": "framebuffer"}
+    if presentation not in sources:
+        raise ControlError(f"unsupported cursor capture backend: {presentation}")
+    return sources[presentation]
+
+
+def verify_cursor_motion(before, after, x, y, distance=70, *, presentation="page-flip"):
+    expected_source = cursor_source(presentation)
     for metadata, _ in (before, after):
         if (
             metadata.get("cursor") != "embedded"
-            or metadata.get("cursor_source") != "framebuffer"
+            or metadata.get("cursor_source") != expected_source
+            or metadata.get("presentation") != presentation
         ):
-            raise ControlError("terminal cursor must be included in the framebuffer")
+            raise ControlError(
+                f"cursor source must be {expected_source} in a {presentation} capture"
+            )
     regions = []
     for position in (x, x + distance):
         bounds = (position - 12, y - 20, position + 20, y + 24)
         old = crop(before[1], pixel_rect(before[0], bounds))
         new = crop(after[1], pixel_rect(after[0], bounds))
         if not old or old == new:
-            raise ControlError(
-                "software cursor motion did not change both cursor regions"
-            )
+            raise ControlError("cursor motion did not change both cursor regions")
         regions.append(bounds)
     return regions
 
 
-def software_cursor(smoke, window, output):
+def cursor_motion(smoke, window, output):
+    expected_source = cursor_source(smoke.presentation)
     x = window["x"] + window["width"] / 2
     y = window["y"] + window["height"] - 80
     with Input(smoke.control) as inputs:
         inputs.motion(x, y)
 
-    def client_cursor():
+    def cursor_capture():
         capture = smoke.control.capture(output)
-        return capture if capture[0].get("cursor_source") == "framebuffer" else None
+        return capture if capture[0].get("cursor_source") == expected_source else None
 
-    first = smoke.until("terminal software cursor", client_cursor)
+    first = smoke.until("terminal cursor capture", cursor_capture)
     smoke.record(
-        "software-cursor-first",
-        **save_capture(first, smoke.artifacts / "software-cursor-first.png"),
+        "terminal-cursor-first",
+        **save_capture(first, smoke.artifacts / "terminal-cursor-first.png"),
     )
     with Input(smoke.control) as inputs:
         inputs.motion(x + 70, y)
-    second = smoke.capture("software-cursor-second", output)
-    regions = verify_cursor_motion(first, second, x, y)
+    second = smoke.capture("terminal-cursor-second", output)
+    regions = verify_cursor_motion(first, second, x, y, presentation=smoke.presentation)
     smoke.record(
-        "software-cursor-inclusion",
+        "terminal-cursor-motion",
         checked_logical_regions=regions,
         policy="embedded",
-        cursor_source="framebuffer",
+        cursor_source=expected_source,
+        client_surface_identity="requires separate protocol/trace evidence",
     )
 
 

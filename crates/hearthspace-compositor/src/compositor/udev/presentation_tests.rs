@@ -1,192 +1,250 @@
-use super::*;
-use crate::compositor::frame_callbacks::test_support::Fixture;
-use std::time::Duration;
+//! Main-side scene association after the worker has validated presentation.
+//! These tests do not exercise DRM timestamps, GBM acknowledgement, or KMS.
+use super::{OutputKey, OutputPresentation};
+use crate::compositor::udev::identity::DeviceToken;
+use std::num::NonZeroU32;
 
 const A: DeviceToken = DeviceToken {
     id: 226,
-    incarnation: 1,
+    incarnation: 2,
 };
 const B: DeviceToken = DeviceToken {
     id: 227,
     incarnation: 2,
 };
 
-fn outputs() -> [(OutputPresentation, usize); 2] {
-    let cutoff = SurfaceEventCutoff::now();
-    // Deliberately identical CRTC numbers on different GPUs.
-    [
-        (OutputPresentation::new(A, 1, "A".into(), cutoff), 0),
-        (OutputPresentation::new(B, 1, "B".into(), cutoff), 0),
-    ]
-}
-
-fn current_event() -> DrmEventMetadata {
-    DrmEventMetadata {
-        time: DrmEventTime::Monotonic(Clock::<Monotonic>::new().now().into()),
-        sequence: 7,
+fn key(device: DeviceToken, crtc: u32, generation: u64) -> OutputKey {
+    OutputKey {
+        device,
+        crtc: NonZeroU32::new(crtc).unwrap().into(),
+        generation,
     }
 }
 
-fn complete(
-    outputs: &mut [(OutputPresentation, usize)],
-    device: DeviceToken,
-    metadata: &DrmEventMetadata,
-) -> Submission {
-    complete_frame(
-        outputs.iter_mut().map(|(state, buffer)| (state, buffer)),
-        device,
-        1,
-        Some(metadata),
-        |buffer| {
-            *buffer += 1;
-            Ok(true)
-        },
-    )
-    .unwrap()
-}
+#[test]
+fn colliding_output_identities_cannot_complete_or_discard_the_current_scene() {
+    let current = key(A, 7, 3);
+    let collisions = [
+        ("retired surface generation", key(A, 7, 2)),
+        (
+            "recycled device id",
+            key(
+                DeviceToken {
+                    incarnation: 1,
+                    ..A
+                },
+                7,
+                3,
+            ),
+        ),
+        ("same CRTC on another GPU", key(B, 7, 3)),
+        ("another CRTC on the same GPU", key(A, 8, 3)),
+    ];
+    for (case, stale) in collisions {
+        let mut output = OutputPresentation::new(current);
+        output.queued(41);
 
-fn dispatch(fixture: &mut Fixture, result: Submission, time: u32) -> Option<bool> {
-    let Submission::Verified { completion, .. } = result else {
-        panic!("verified flip discarded");
-    };
-    completion
-        .dispatch(|output| {
-            assert_eq!(fixture.send_output(output, time), 1);
-            Ok::<_, ()>(())
-        })
-        .unwrap()
+        assert_eq!(output.presented(stale, 900, 41), None, "{case}");
+        assert!(!output.discarded(stale, 41), "{case}");
+        assert!(output.pending(), "{case}");
+        assert!(!output.presented_once, "{case}");
+        assert!(!output.dirty, "{case}");
+        // A rejected event must not advance the live output's submission order.
+        assert_eq!(output.presented(current, 1, 41), Some(true), "{case}");
+        assert!(!output.pending(), "{case}");
+        assert!(output.presented_once, "{case}");
+    }
 }
 
 #[test]
-fn alternating_gpu_completions_service_clients_while_redraw_waits_for_all_outputs() {
-    let mut fixture = Fixture::new();
-    let a = fixture.window("A");
-    let b = fixture.window("B");
-    let mut outputs = outputs();
-    fixture.request_frame(a);
-    fixture.request_frame(b);
-    outputs[0].0.queued(None);
-    outputs[1].0.queued(None);
+fn duplicate_and_reordered_submissions_do_not_consume_a_newer_pending_scene() {
+    let key = key(A, 7, 3);
+    let mut output = OutputPresentation::new(key);
+    output.queued(40);
+    assert_eq!(output.presented(key, 100, 40), Some(true));
+    output.queued(41);
+    output.dirty = true;
 
-    let result = complete(&mut outputs, A, &current_event());
-    assert_eq!(dispatch(&mut fixture, result, 16), None);
-    assert!(!outputs[0].0.pending);
-    assert!(outputs[1].0.pending);
-    fixture.assert_done(&[(a, 16)]);
-
-    // A's callback permits a new commit/queue before B completes. B's done
-    // must arrive without consuming A's new callback or opening the redraw gate.
-    fixture.request_frame(a);
-    outputs[0].0.queued(None);
-    let result = complete(&mut outputs, B, &current_event());
-    assert_eq!(dispatch(&mut fixture, result, 32), None);
-    assert!(outputs[0].0.pending);
-    assert!(!outputs[1].0.pending);
-    fixture.assert_done(&[(b, 32)]);
-
-    fixture.request_frame(b);
-    outputs[1].0.queued(None);
-    let result = complete(&mut outputs, A, &current_event());
-    assert_eq!(dispatch(&mut fixture, result, 48), None);
-    fixture.assert_done(&[(a, 48)]);
-
-    fixture.request_frame(a);
-    outputs[0].0.queued(None);
-    outputs[0].0.dirty = true; // A redraw request arrived while this flip waited.
-    let result = complete(&mut outputs, B, &current_event());
-    assert_eq!(dispatch(&mut fixture, result, 64), None);
-    fixture.assert_done(&[(b, 64)]);
-
-    let result = complete(&mut outputs, A, &current_event());
-    assert_eq!(dispatch(&mut fixture, result, 80), Some(true));
-    fixture.assert_done(&[(a, 80)]);
-    assert_eq!((outputs[0].1, outputs[1].1), (3, 2));
-    assert!(
-        outputs
-            .iter()
-            .all(|(state, _)| state.presented_once && !state.pending)
-    );
+    assert_eq!(output.presented(key, 99, 41), None);
+    assert_eq!(output.presented(key, 100, 41), None);
+    assert!(output.pending());
+    assert!(output.dirty);
+    assert_eq!(output.presented(key, 101, 41), Some(true));
+    assert!(!output.pending());
+    assert!(output.dirty);
+    assert_eq!(output.presented(key, 101, 41), None);
 }
 
 #[test]
-fn idle_clean_completion_sends_callback_without_requesting_redraw() {
-    let mut fixture = Fixture::new();
-    let a = fixture.window("A");
-    fixture.request_frame(a);
-    let mut outputs = outputs();
-    outputs[0].0.queued(None);
-    outputs[1].0.dirty = false;
-    let result = complete(&mut outputs, A, &current_event());
-    assert_eq!(dispatch(&mut fixture, result, 16), Some(false));
-    fixture.assert_done(&[(a, 16)]);
+fn unproduced_or_regressed_scenes_do_not_advance_submission_order() {
+    let key = key(A, 7, 3);
+    let mut output = OutputPresentation::new(key);
+    output.queued(40);
+    assert_eq!(output.presented(key, 100, 40), Some(true));
+    output.queued(41);
+
+    assert_eq!(output.presented(key, 103, 42), None);
+    assert_eq!(output.presented(key, 102, 39), None);
+    assert!(output.pending());
+    assert!(!output.dirty);
+    assert_eq!(output.presented(key, 101, 41), Some(true));
+    assert!(!output.pending());
+    // Even a newer submission cannot roll the acknowledged scene backwards.
+    assert_eq!(output.presented(key, 102, 40), None);
+    assert_eq!(output.presented(key, 102, 41), Some(false));
 }
 
 #[test]
-fn recycled_device_id_and_old_surface_event_cannot_acknowledge_new_buffer() {
-    let mut outputs = outputs();
-    outputs[0].0.queued(Some(12));
-    let old = DeviceToken {
-        incarnation: 0,
-        ..A
-    };
-    assert!(matches!(
-        complete(&mut outputs, old, &current_event()),
-        Submission::Ignored
-    ));
-    let stale = DrmEventMetadata {
-        time: DrmEventTime::Monotonic(Duration::ZERO),
-        sequence: 7,
-    };
-    assert!(matches!(
-        complete(&mut outputs, A, &stale),
-        Submission::Ignored
-    ));
-    assert!(outputs[0].0.pending);
-    assert_eq!(outputs[0].0.lock_generation, Some(12));
-    assert_eq!(
-        outputs[0].1, 0,
-        "stale events must not reach GBM acknowledgement"
-    );
+fn cursor_only_old_scene_completion_preserves_the_new_scene_and_its_redraw() {
+    let key = key(A, 7, 3);
+    let mut output = OutputPresentation::new(key);
+    output.queued(40);
+    assert_eq!(output.presented(key, 100, 40), Some(true));
+    output.queued(41);
+    output.dirty = true; // More scene work arrived while this submission waited.
+
+    assert_eq!(output.presented(key, 101, 40), Some(false));
+    assert!(output.pending());
+    assert!(output.dirty);
+    assert_eq!(output.presented(key, 102, 40), Some(false));
+    assert!(output.pending());
+    assert_eq!(output.presented(key, 103, 41), Some(true));
+    assert!(!output.pending());
+    assert!(output.dirty);
 }
 
 #[test]
-fn untimed_modeset_releases_queue_without_lock_or_client_completion() {
-    let mut outputs = outputs();
-    outputs[0].0.queued(Some(12));
-    let untimed = DrmEventMetadata {
-        time: DrmEventTime::Monotonic(Duration::ZERO),
-        sequence: 0,
-    };
-    assert!(
-        matches!(complete(&mut outputs, A, &untimed), Submission::Untimed(name) if name == "A")
-    );
-    assert!(!outputs[0].0.pending);
-    assert!(outputs[0].0.dirty);
-    assert!(!outputs[0].0.presented_once);
-    assert_eq!(outputs[0].0.lock_generation, None);
-    outputs[0].0.queued(Some(12));
-    assert!(matches!(
-        complete(&mut outputs, A, &current_event()),
-        Submission::Verified {
-            lock_generation: Some(12),
-            ..
-        }
-    ));
+fn only_the_exact_pending_scene_can_be_discarded_and_retried() {
+    let key = key(A, 7, 3);
+    let mut output = OutputPresentation::new(key);
+    output.queued(40);
+    assert_eq!(output.presented(key, 100, 40), Some(true));
+    output.queued(41);
+
+    assert!(!output.discarded(key, 40));
+    assert!(!output.discarded(key, 42));
+    assert!(output.pending());
+    assert!(!output.dirty);
+    assert!(output.discarded(key, 41));
+    assert!(!output.pending());
+    assert!(output.dirty);
+    assert!(output.presented_once);
+    assert!(!output.discarded(key, 41));
+
+    output.queued(42);
+    assert!(!output.discarded(key, 41));
+    assert!(output.pending());
+    assert!(!output.dirty);
+    assert_eq!(output.presented(key, 101, 42), Some(true));
+    assert!(!output.pending());
 }
 
 #[test]
-fn missing_gbm_submission_keeps_pending_frame_and_lock_marker() {
-    let mut outputs = outputs();
-    outputs[0].0.queued(Some(12));
-    let result = complete_frame(
-        outputs.iter_mut().map(|(state, buffer)| (state, buffer)),
-        A,
-        1,
-        Some(&current_event()),
-        |_| Ok(false),
-    )
-    .unwrap();
-    assert!(matches!(result, Submission::Ignored));
-    assert!(outputs[0].0.pending);
-    assert_eq!(outputs[0].0.lock_generation, Some(12));
+fn security_invalidation_allows_a_shield_without_completing_the_next_scene() {
+    let key = key(A, 7, 3);
+    let mut output = OutputPresentation::new(key);
+    output.queued(40);
+    assert_eq!(output.presented(key, 100, 40), Some(true));
+    output.queued(41);
+    output.invalidate();
+
+    assert!(!output.pending());
+    assert!(!output.presented_once);
+    assert!(output.dirty);
+    assert!(!output.discarded(key, 41));
+    // The caller validates the security epoch. Invalidation must still retain
+    // submission ordering, while allowing the worker's new scene-zero shield.
+    assert_eq!(output.presented(key, 100, 0), None);
+    assert!(!output.presented_once);
+    assert_eq!(output.presented(key, 101, 0), Some(false));
+    assert!(output.presented_once);
+    assert!(!output.pending());
+    assert!(output.dirty);
+
+    output.queued(42);
+    assert_eq!(output.presented(key, 102, 0), Some(false));
+    assert!(output.pending());
+    assert_eq!(output.presented(key, 103, 42), Some(true));
+    assert!(!output.pending());
+}
+
+#[test]
+fn clean_scene_completion_leaves_the_output_idle() {
+    let key = key(A, 7, 3);
+    let mut output = OutputPresentation::new(key);
+    assert!(output.dirty);
+    assert!(!output.pending());
+    assert!(!output.presented_once);
+
+    output.queued(1);
+    assert!(output.pending());
+    assert!(!output.dirty);
+    assert_eq!(output.presented(key, 1, 1), Some(true));
+    assert!(!output.pending());
+    assert!(!output.dirty);
+    assert!(output.presented_once);
+    assert_eq!(output.presented(key, 2, 1), Some(false));
+    assert!(!output.dirty);
+}
+
+#[test]
+fn outputs_with_identical_crtcs_and_sequences_progress_independently() {
+    let a_key = key(A, 7, 3);
+    let b_key = key(B, 7, 3);
+    let mut a = OutputPresentation::new(a_key);
+    let mut b = OutputPresentation::new(b_key);
+    a.queued(40);
+    b.queued(40);
+
+    assert_eq!(a.presented(a_key, 100, 40), Some(true));
+    assert!(!a.pending());
+    assert!(b.pending());
+    assert!(!b.presented_once);
+    a.queued(41);
+    assert_eq!(a.presented(a_key, 101, 41), Some(true));
+    assert!(b.pending());
+
+    a.queued(42);
+    a.dirty = true;
+    assert_eq!(b.presented(b_key, 100, 40), Some(true));
+    assert!(!b.pending());
+    assert!(a.pending());
+    assert!(a.dirty);
+    b.queued(41);
+    assert_eq!(a.presented(a_key, 102, 42), Some(true));
+    assert!(a.dirty);
+    assert!(b.pending());
+    assert_eq!(b.presented(b_key, 101, 41), Some(true));
+    assert!(!a.pending());
+    assert!(!b.pending());
+    assert!(!b.dirty);
+    assert!(a.presented_once && b.presented_once);
+}
+
+#[test]
+fn staggered_output_completions_drain_scene_work_without_redraw_ping_pong() {
+    let a_key = key(A, 7, 3);
+    let b_key = key(B, 7, 3);
+    let mut a = OutputPresentation::new(a_key);
+    let mut b = OutputPresentation::new(b_key);
+    a.queued(1);
+    b.queued(1);
+    // Real scene damage arrives while both outputs are busy.
+    assert!(!a.request_scene(true));
+    assert!(!b.request_scene(true));
+    assert_eq!(a.presented(a_key, 1, 1), Some(true));
+    assert!(a.request_scene(false));
+    assert!(!b.request_scene(false));
+    a.queued(2);
+    assert_eq!(b.presented(b_key, 1, 1), Some(true));
+    // Retrying B cannot dirty A's already submitted replacement.
+    assert!(!a.request_scene(false));
+    assert!(b.request_scene(false));
+    b.queued(2);
+    assert_eq!(a.presented(a_key, 2, 2), Some(true));
+    assert!(!a.request_scene(false));
+    assert!(!b.request_scene(false));
+    assert_eq!(b.presented(b_key, 2, 2), Some(true));
+    assert!(!a.needs_scene() && !b.needs_scene());
+    assert!(!a.dirty && !b.dirty);
 }

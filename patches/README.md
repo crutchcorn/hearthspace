@@ -409,7 +409,7 @@ See [vendored provenance and refresh steps](../vendor/accesskit_atspi_common/PRO
   fallback implementation. Clearing the manager does not clear caller caches.
   Hearthspace's output owner retains target completion across draw/readback/KMS
   errors, waits before storage reuse, and resets storage and completion together
-  on lifecycle changes or missing completion. Vulkan integration is unchanged.
+  on lifecycle changes or missing completion.
 - **Upstream:** the latest inspected multigpu file commit
   [`347b2b30225b0425f0b44dc4c590e768f7dbe73e`](https://github.com/Smithay/smithay/blob/347b2b30225b0425f0b44dc4c590e768f7dbe73e/src/backend/renderer/multigpu/mod.rs)
   still has the pair-keyed `dmabuf_cache`. This is a local ownership extension,
@@ -518,3 +518,121 @@ See [vendored provenance and refresh steps](../vendor/accesskit_atspi_common/PRO
   filters, then remove this patch file and ledger entry. Retain lifecycle update
   forwarding in `SemanticButton`. Keep Masonry vendoring and the Cargo override
   while the independent Portal progress repair still requires them.
+
+## Smithay DRM compositor damage-clip policy
+
+- **Dependency:** the vendored Smithay 0.7.0 at revision
+  [`5c2ba413`](https://github.com/Smithay/smithay/tree/5c2ba4132556a08abc70ae1771d275ec2cfc031f).
+- **Patch:** [persistent KMS damage-clip opt-out](smithay-drm-damage-clips.patch),
+  confined to `src/backend/drm/compositor/mod.rs` and the new `damage.rs` module.
+  Patch paths are relative to `vendor/smithay`; other repairs remain independent.
+- **Reason:** migrating native presentation to `DrmCompositor` must preserve
+  Hearthspace's [no-KMS-damage policy](../docs/DRM.md#damage-tracking-and-kms-damage).
+  The pin generates clips for both rendered primary frames and directly scanned
+  out elements. Renderer damage and completion synchronization must remain active
+  when optional KMS damage clips are disabled.
+- **Behavior:** `set_damage_clips_enabled(bool)` defaults to enabled in both
+  constructors. Call it with `false` before the first frame on each new native
+  compositor. Disabling removes clips from current, pending, queued, and prepared
+  frames, promotes queued/prepared frames to full plane updates, and retains the
+  existing reset-pending flag until a successful full submission. An unchanged
+  scene therefore still yields a frame that clears the property. The setter does
+  not submit or replace buffers, alter damage history, or remove fences. It cannot
+  change an already submitted atomic request. Buffer resets, state resets, and
+  `clear()` preserve the setting; re-enabling permits future clip generation.
+- **Upstream basis:** this is a local API extension of the pinned compositor,
+  not an upstream backport. No upstream report is published by this patch.
+  The existing atomic request builder explicitly writes a zero blob value when
+  a configured plane has no clips, and when a plane is disabled; it is unchanged.
+- **Regression boundary:** use the real `DrmCompositor` on a harness-owned DRM
+  device or lease with atomic KMS and a plane exposing `FB_DAMAGE_CLIPS`. Resolve
+  property IDs on that same device; record CRTC and plane handles, the submitted
+  property/value pairs, commit flags, result, and matching completion. Inspect
+  the built request passed to `atomic_commit` in
+  `src/backend/drm/surface/atomic.rs` (`commit` and `page_flip`), distinguishing
+  `TEST_ONLY` requests from actual submissions. For every configured or disabled
+  plane exposing the property, the first successful submission after disabling
+  must explicitly contain `FB_DAMAGE_CLIPS = 0`; omission is insufficient. Query
+  that plane's properties after completion to confirm the resulting zero value.
+  Later submissions while disabled must never restore a nonzero blob. Cover both
+  rendered-primary and direct-scanout generation paths, disabling before the
+  first frame, an unchanged scene after an enabled frame, and disabling while
+  pending, queued, and prepared frames coexist. Drain pending/queued frames with
+  real matching completions, then submit the prepared frame to detect stale
+  reintroduction. Repeat after buffer/state resets and `clear()`, and after a
+  failed submission followed by a successful retry. Confirm completion/user-data
+  delivery and rendering changes still work; native presentation and existing
+  transfer-completion regressions remain separate requirements. Default-enabled
+  and re-enable cases require a suitable controlled device on which nonzero
+  clip generation was actually observed. Do not change Hearthspace's native
+  opt-out merely to obtain that baseline.
+- **Coverage limits:** no new automated fixture accompanies this patch. The
+  public compositor requires a concrete DRM surface; a device-free imitation
+  or assertions about source spelling would not exercise KMS submission or the
+  retained-frame lifecycle. Smithay tests are excluded from workspace runs.
+  Workspace checks establish compilation and existing regression coverage, not
+  execution of the property-inspection cases above. Record native evidence and
+  any unexercised cases explicitly; an absent property is not a passing case.
+- **Removal:** adopt a compatible upstream opt-out that passes these lifecycle
+  and native property checks while retaining renderer damage and synchronization.
+  Adapt the native caller and remove only this patch and ledger entry; preserve
+  the no-KMS-damage policy and all other Smithay repairs until their independent
+  removal conditions are met.
+## Smithay applied surface state and subsurface transactions
+
+- **Dependency:** the vendored Smithay 0.7.0 at revision
+  [`5c2ba413`](https://github.com/Smithay/smithay/tree/5c2ba4132556a08abc70ae1771d275ec2cfc031f).
+  The pin, manifests, and MIT notice remain unchanged.
+- **Patch:** [apply committed surface and parent-owned state](smithay-applied-surface-state.patch).
+  Paths are relative to `vendor/smithay`. The repair changes
+  `src/backend/renderer/utils/wayland.rs` and
+  `src/wayland/compositor/{cache.rs,handlers.rs,transaction.rs,tree.rs}`,
+  adding the private `tree/parent_state.rs` helper. No public API is added.
+- **Reason:** scale, transform, and damage commits without another attachment
+  left renderer state stale; a parent commit could consume a synchronized
+  child's uncommitted attachment; stacking requests changed the live tree before
+  the parent committed; and an unrecognized non-null buffer was reset as though
+  the client had deliberately detached it. These failures can display stale or
+  prematurely committed cursor pixels, or conceal snapshot failure as absence.
+- **Behavior:** apply buffer mapping and damage from committed surface state.
+  Mapping/view changes damage the full element, and damage-only commits invalidate
+  imported textures. Retain unrecognized non-null attachments with no surface view
+  until replacement or explicit null. Collect only descendants' already committed
+  transactions. Cache position and stacking on their parent, applying layout after
+  all transaction surface caches and before any post-commit hook or compositor
+  callback. Updating parent-owned positions also updates child cache snapshots so
+  later child commits cannot restore stale coordinates. Stacking uses a resolved
+  pending order copied into the parent transaction. Destruction removes only that
+  member from pending and cached orders, preserving surviving moves even while
+  blocked and preventing an old order from applying to a recreated role.
+  Position updates retain weak role references for the same lifetime boundary.
+- **Upstream basis:** this is a local adaptation of the pinned source, informed
+  by [PR 2141](https://github.com/Smithay/smithay/pull/2141), which was open when
+  inspected on 2026-11-01. Its parent-owned position handling, cache override,
+  and transaction callback ordering informed those portions of this repair.
+  This is not a merged upstream backport. The attachment-independent renderer
+  updates, removal of implicit descendant commits, staged stacking with role
+  lifetime checks, and preservation of unrecognized non-null buffers are
+  independent local fixes. The private helper stages layout until transaction
+  application rather than mutating the live tree while cached states merge.
+- **Verification:** run
+  `cargo test --locked -p hearthspace-compositor --features udev compositor::udev::cursor_snapshot::tests -- --test-threads=1`
+  in the configured headless EGL environment. The real App/Wayland fixture and
+  surfaceless GLES renderer exercise asymmetric scale and transform changes
+  without attachment, pending requests, damage propagation and texture
+  invalidation, pending child attachment versus child commit, parent-owned
+  position and stacking, blocked/desynchronized transactions, descendant
+  collection, callback visibility, role recreation, reference-role destruction
+  before commit and behind a blocker (above/below with three overlapping children),
+  and root/child failure
+  recovery. The storage-failure cases substitute only the live wl_buffer's
+  driver-recognition boundary; surface requests, commit application, renderer
+  state, and recovery remain real. They do not emulate an actual driver fault.
+  Tests never modify retained SHM pixels. These headless regressions do not
+  establish native cursor-plane, KMS, or cross-GPU behavior. Record executed
+  results separately; fixture source alone is not passing validation.
+- **Removal:** adopt a compatible upstream revision that passes these applied
+  state and protocol regressions without the patch, including the independent
+  fixes not covered by PR 2141. Retain snapshot error/absence handling and
+  regressions. Remove only this patch and its ledger entry; preserve all other
+  Smithay repairs and vendoring until their own removal conditions are met.

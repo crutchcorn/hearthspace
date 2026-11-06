@@ -155,15 +155,7 @@ impl RendererSurfaceState {
         match attrs.buffer.take() {
             Some(BufferAssignment::NewBuffer(buffer)) => {
                 self.buffer_dimensions = buffer_dimensions(&buffer);
-                if self.buffer_dimensions.is_none() {
-                    // This results in us rendering nothing (can happen e.g. for failed egl-buffer-calls),
-                    // but it is better than crashing the compositor for a bad buffer
-                    self.reset();
-                    return;
-                }
                 self.buffer_has_alpha = buffer_has_alpha(&buffer);
-                self.buffer_scale = attrs.buffer_scale;
-                self.buffer_transform = attrs.buffer_transform.into();
 
                 if !self.buffer.as_ref().is_some_and(|b| b == buffer) {
                     self.buffer = Some(Buffer {
@@ -186,8 +178,22 @@ impl RendererSurfaceState {
             None => {}
         };
 
+        // Scale and transform are surface state, not attachment state. A client
+        // can change either while retaining its current buffer.
+        let mapping_changed =
+            self.buffer_scale != attrs.buffer_scale || self.buffer_transform != attrs.buffer_transform.into();
+        self.buffer_scale = attrs.buffer_scale;
+        self.buffer_transform = attrs.buffer_transform.into();
+
         let Some(buffer_dimensions) = self.buffer_dimensions else {
-            // nothing to be done without a buffer
+            // Keep a non-null attachment even if its storage is unrecognized.
+            // Callers can distinguish this failure (buffer Some, view None)
+            // from a deliberately unmapped surface. A later attachment or null
+            // commit replaces/releases it through the usual Buffer lifetime.
+            self.surface_view = None;
+            self.opaque_regions.clear();
+            self.damage.reset();
+            attrs.damage.clear();
             return;
         };
 
@@ -195,8 +201,16 @@ impl RendererSurfaceState {
         let surface_view = SurfaceView::from_states(states, surface_size, attrs.client_scale);
         let surface_view_changed = self.surface_view.replace(surface_view) != Some(surface_view);
 
-        // if we received a new buffer also process the attached damage
-        if new_buffer {
+        // Damage applies even without another attach. Drop imported textures so
+        // the next import sees that damage, including SHM uploads. Mapping
+        // changes need full element damage even when raw pixels are unchanged.
+        if !attrs.damage.is_empty() {
+            self.textures.clear();
+        }
+        if mapping_changed || surface_view_changed {
+            attrs.damage.clear();
+            self.damage.add([Rectangle::from_size(buffer_dimensions)]);
+        } else {
             let buffer_damage = attrs.damage.drain(..).flat_map(|dmg| {
                 match dmg {
                     Damage::Buffer(rect) => rect,
@@ -313,6 +327,9 @@ impl RendererSurfaceState {
 
     /// Get the attached buffer.
     /// Can be used to check if surface is mapped
+    ///
+    /// A non-null buffer with unrecognized dimensions is retained here, but has
+    /// no [`SurfaceView`]. This distinguishes recognition failure from unmapping.
     pub fn buffer(&self) -> Option<&Buffer> {
         self.buffer.as_ref()
     }

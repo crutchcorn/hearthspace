@@ -1,10 +1,14 @@
 //! Opt-in integration against the built compositor, without changing host sessions.
 
-use std::{path::PathBuf, process::Stdio, time::Duration};
+use std::{
+    path::PathBuf,
+    process::{Command, Stdio},
+    time::Duration,
+};
 
 use tokio::{
     io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader},
-    process::Command,
+    process::ChildStdout,
     time::{Instant, sleep, timeout},
 };
 use waydriver::{CaptureBackend, CompositorRuntime};
@@ -12,6 +16,10 @@ use waydriver_hearthspace::{
     HearthspaceCapture, HearthspaceCompositor, SessionOwnership,
     accessibility::SessionAccessibility,
 };
+
+#[path = "attached_session/owned_process.rs"]
+mod owned_process;
+use owned_process::OwnedProcess;
 
 #[tokio::test]
 async fn attach_discovers_shell_on_private_bus_and_preserves_the_desktop() {
@@ -27,39 +35,40 @@ async fn attach_discovers_shell_on_private_bus_and_preserves_the_desktop() {
     let runtime = tempfile::tempdir().unwrap();
     let socket = runtime.path().join("attached.sock");
 
-    let mut bus = Command::new("dbus-daemon")
-        .args(["--session", "--nofork", "--print-address=1"])
-        .env("XDG_RUNTIME_DIR", runtime.path())
-        .env_remove("AT_SPI_BUS_ADDRESS")
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .kill_on_drop(true)
-        .spawn()
-        .unwrap();
-    let mut lines = BufReader::new(bus.stdout.take().unwrap()).lines();
+    let mut bus = OwnedProcess::spawn(
+        Command::new("dbus-daemon")
+            .args(["--session", "--nofork", "--print-address=1"])
+            .env("XDG_RUNTIME_DIR", runtime.path())
+            .env_remove("AT_SPI_BUS_ADDRESS")
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null()),
+    )
+    .unwrap();
+    let stdout = ChildStdout::from_std(bus.take_stdout().unwrap()).unwrap();
+    let mut lines = BufReader::new(stdout).lines();
     let address = timeout(Duration::from_secs(5), lines.next_line())
         .await
         .unwrap()
         .unwrap()
         .unwrap();
 
-    let mut desktop = Command::new(binary)
-        .args(["--headless", "--headless-size", "800x600"])
-        .env("XDG_RUNTIME_DIR", runtime.path())
-        .env("HEARTHSPACE_WAYLAND_DISPLAY", "wayland-attached")
-        .env("HEARTHSPACE_COMMAND_SOCKET", &socket)
-        .env("DBUS_SESSION_BUS_ADDRESS", &address)
-        .env("HEARTHSPACE_SESSION_BUS_ADDRESS", &address)
-        .env_remove("AT_SPI_BUS_ADDRESS")
-        .env_remove("DISPLAY")
-        .env_remove("WAYLAND_DISPLAY")
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .kill_on_drop(true)
-        .spawn()
-        .unwrap();
+    let mut desktop = OwnedProcess::spawn(
+        Command::new(binary)
+            .args(["--headless", "--headless-size", "800x600"])
+            .env("XDG_RUNTIME_DIR", runtime.path())
+            .env("HEARTHSPACE_WAYLAND_DISPLAY", "wayland-attached")
+            .env("HEARTHSPACE_COMMAND_SOCKET", &socket)
+            .env("DBUS_SESSION_BUS_ADDRESS", &address)
+            .env("HEARTHSPACE_SESSION_BUS_ADDRESS", &address)
+            .env_remove("AT_SPI_BUS_ADDRESS")
+            .env_remove("DISPLAY")
+            .env_remove("WAYLAND_DISPLAY")
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null()),
+    )
+    .unwrap();
 
     let mut adapter = HearthspaceCompositor::attach(runtime.path(), "wayland-attached", &socket);
     let deadline = Instant::now() + Duration::from_secs(30);
@@ -68,7 +77,7 @@ async fn attach_discovers_shell_on_private_bus_and_preserves_the_desktop() {
             break;
         }
         assert!(
-            desktop.try_wait().unwrap().is_none(),
+            desktop.is_running().unwrap(),
             "desktop exited during startup"
         );
         assert!(Instant::now() < deadline, "desktop startup timed out");
@@ -134,7 +143,7 @@ async fn attach_discovers_shell_on_private_bus_and_preserves_the_desktop() {
     adapter.stop().await.unwrap();
     drop(adapter);
     assert!(
-        desktop.try_wait().unwrap().is_none(),
+        desktop.is_running().unwrap(),
         "detach killed an external compositor"
     );
     assert!(socket.exists(), "detach removed external runtime files");
@@ -146,6 +155,6 @@ async fn attach_discovers_shell_on_private_bus_and_preserves_the_desktop() {
             .starts_with(b"\x89PNG")
     );
 
-    desktop.kill().await.unwrap();
-    bus.kill().await.unwrap();
+    desktop.stop().unwrap();
+    bus.stop().unwrap();
 }

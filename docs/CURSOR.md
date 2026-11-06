@@ -9,7 +9,7 @@ hit testing or the destination of a click.
 
 | Backend | Named compositor cursor | Client-provided cursor surface |
 | --- | --- | --- |
-| Native DRM/KMS | Hardware cursor when available; software fallback | Composited in software |
+| Native DRM/KMS | Smithay cursor plane when eligible; cached-scene fallback | Same plane eligibility and fallback |
 | Nested winit | Host window cursor | Host cursor hidden; surface composited in software |
 | Headless | Composited in software | Composited in software |
 
@@ -17,43 +17,82 @@ A client can also request a hidden cursor. Visibility and image changes flow
 through the same desired cursor state; they do not give the client control over
 the display backend.
 
-## Hardware cursor
+## Native presentation
 
-A hardware cursor is scanned out separately from the main scene. On the native
-backend, Hearthspace uses DRM cursor operations to assign a small buffer to a
-CRTC and move it. This can update the pointer image's position without
-recompositing the desktop, reducing scene damage and work during pointer motion.
-It still depends on input processing and driver behavior; it is not a guarantee
-of responsiveness when the event loop stalls.
+Each DRM device has a presenter thread owning its Smithay `DrmCompositor`
+instances, renderer, DRM event source, and submissions. The main loop owns
+libinput, Wayland protocols, hit testing, and scene construction. It publishes
+cursor updates independently of cursor-free scene images.
 
-The hardware path must respect the driver's buffer dimensions and pixel format.
-It selects the output under the pointer, converts logical coordinates to that
-output's local pixels, and clears the previous CRTC's cursor when crossing outputs.
-Output density also affects the image size and hotspot.
+The presenter combines the last completed scene with a separate `Kind::Cursor`
+image. Smithay can assign that image to a cursor plane when its dimensions,
+format, and KMS state are supported. Named shapes and client-provided artwork use
+the same mechanism. A rejected plane candidate is composited over the cached
+scene; this does not require another canvas render or cross-GPU scene transfer.
 
-If hardware cursor creation fails, Hearthspace keeps software presentation
-available. A failed cursor assignment or movement clears the active hardware
-cursor and falls back to software for that update. Cursor failure should remain a
-recoverable presentation failure rather than a reason to stop the desktop.
+If queueing a selected cursor plane returns an invalid-input or KMS-test rejection,
+the presenter resets buffer ages and retries once with cursor-plane assignment
+disabled. The retry renders and captures its own composition. Revocation and
+other errors do not enter this retry, and a rejected second attempt follows
+ordinary output recovery. Only an accepted submission can complete a capture.
 
-## Software cursor and client images
+Cursor movement reuses the image identity and buffer, changing only its output
+position. Dirty updates coalesce while an output has a pending flip. The output's
+completion permits its latest state to submit independently of other outputs.
+The presenter can reuse unchanged primary-plane contents, although swapchain
+buffer age can require a repaint from the cached scene during warm-up.
 
-A software cursor is a render element in the compositor's framebuffer. It needs a
-redraw when it moves, and the renderer must account for the old and new locations.
-Its motion therefore follows frame presentation. Headless rendering always uses
-this path because it has no separate host or KMS cursor.
+This separates KMS scheduling from the main loop. It does not move input ingestion
+to another thread: slow main-loop work can still delay newly arriving pointer
+samples. Driver calls can also delay work on other outputs of the same GPU.
+Hardware planes and nonblocking atomic commits alone do not guarantee smoothness.
 
-Focused Wayland clients can supply cursor surfaces through
-`wl_pointer.set_cursor`. Hearthspace renders the surface tree using its committed
-hotspot and hides the hardware or host cursor to avoid drawing two cursors. This
-also supports client artwork that is outside the compositor's packaged shape set.
-A destroyed client cursor surface falls back to the named shape.
+## Client images and callbacks
 
-In nested mode, named shapes use the host window system's cursor. Client surfaces
-are the exception: they are composed into Hearthspace's window. Keep that
-exception explicit when investigating cursor appearance or capture differences.
+Smithay authorizes `wl_pointer.set_cursor` and owns the cursor surface role.
+Hearthspace snapshots applied surface-tree state on the Wayland thread, including
+buffer mapping, density, hotspot, and subsurface bounds. No live Wayland surface
+or main-renderer texture crosses into the presenter.
+
+Simple committed SHM images are copied directly. Cropped, transformed, scaled,
+GPU-backed, or composite cursor trees use cursor-only rendering and readback when
+the effective artwork changes. Snapshots are immutable premultiplied ARGB8888,
+bounded to 16 megapixels. An image exceeding the hardware plane dimensions can
+still use software presentation. Motion, hotspot changes, and callback-only
+commits reuse existing pixels; they do not trigger readback. Cursor-plane padding
+is initialized to transparent pixels.
+
+A null cursor image is intentionally hidden. A destroyed cursor surface returns
+to the named shape. Import/readback errors are reported separately from intentional
+absence. The main loop retains the prior presentation if a new snapshot cannot
+be prepared.
+
+Cursor callbacks follow the submitted image identity and revision. A paced
+callback opportunity for unchanged artwork is separate from verified scanout:
+it cannot acknowledge a capture or lock frame. Scene callbacks remain associated
+with their output's scene completion.
+
+Nested mode keeps using the host cursor for named shapes and composites client
+surfaces into the host window. Headless rendering composites both kinds into its
+offscreen framebuffer.
 
 ## Shape policy
+
+### X11 application defaults
+
+Before advertising its Xwayland display, Hearthspace seeds `Xcursor.size: 24`
+in the server's X resource database when no database or legacy user resource
+file exists. This keeps libXcursor from estimating the cursor size from the
+combined dimensions of the monitor layout. The default applies to clients connecting
+to that Xwayland instance, including activated applications.
+
+An existing `RESOURCE_MANAGER` property, `~/.Xdefaults`, or `~/.Xresources` is
+preserved. Users with those resource databases retain control of their cursor
+settings. A client's explicit `XCURSOR_SIZE` takes precedence over the server
+default. Hearthspace does not change the cursor theme or application DPI, and
+does not resize arbitrary client-provided cursor artwork to enforce this default.
+
+### Compositor shapes
 
 Window-management hit testing selects the desired shape. Resize borders and active
 resize operations use horizontal, vertical, or diagonal resize cursors. Other
@@ -83,14 +122,17 @@ local_pixels = (pointer_logical - output_origin_logical) × output_scale
 cursor_top_left_pixels = round(local_pixels) - hotspot_pixels
 ```
 
-The software path places the cursor in logical scene coordinates and lets output
-rendering apply density. A client cursor uses the surface's hotspot and buffer
-mapping. Keep canvas zoom out of cursor density: the pointer is screen-space UI.
+Native software fallback uses the same physical snapshot and placement as the
+cursor plane. Nested and headless composition place the cursor in logical scene
+coordinates and let output rendering apply density. A client cursor uses the
+surface's hotspot and buffer mapping. Keep canvas zoom out of cursor density:
+the pointer is screen-space UI.
 See [size units](SIZE_UNITS.md) for the surrounding coordinate conventions.
 
-Native capture can add the hardware cursor to the captured frame, since the main
-framebuffer alone does not contain it. Software cursors are already part of the
-scene. Capture code must distinguish these paths so the cursor appears once.
+Native capture reconstructs the exact submitted plane composition, so the cursor
+appears once whether Smithay used a hardware plane or software composition. A
+cursor-free capture reads the retained cursor-free scene. Both are associated
+with the verified submission, rather than the pointer's latest position.
 
 ## Cursor assets
 

@@ -81,23 +81,27 @@ Buffer age describes how much history that particular target needs. Importing a
 dmabuf can change the current EGL surface; Hearthspace forces a full redraw after
 imports instead of trusting a back-buffer-age query for the wrong surface.
 
-Native outputs have separate scanout buffers and damage trackers. Each output
-renders its logical desktop rectangle at its own scale. A pending page flip holds
-additional work as dirty state until that output can submit again. Renderer damage
+Native outputs have separate leased scene buffers and presenter-owned scanout
+buffers. Main renders each logical desktop rectangle at its output scale, without
+cursor pixels. Device presenter threads combine completed scenes with independent
+cursor images. A pending scene retains dirty work until that output can accept
+another scene; cursor updates can proceed over its previous completed image. Renderer damage
 remains enabled, while KMS damage clips are omitted from native submissions.
 These are separate optimizations, as [the backend guide](DRM.md#damage-tracking-and-kms-damage)
 explains.
 
-The final composition also returns a GPU completion fence. Native submission
-passes that fence to Smithay, which supplies a KMS input fence when supported or
-waits for rendering before submitting. Finishing CPU-side scene construction
+Scene production returns a GPU completion fence. The presenter waits for readiness
+before sampling that leased image. Its final composition supplies a KMS input
+fence when supported; when Smithay reports `needs_sync`, the presenter waits for
+that completion before submitting. Finishing CPU-side scene construction
 does not mean the GPU has finished writing the buffer. This dependency is
 required even when KMS damage clips are disabled, and is separate from the
 client-buffer readiness checks above.
 
 When scanout belongs to another GPU, the scene texture and target buffer belong
 to different renderer contexts. Smithay transfers the completed scene through
-its multi-GPU drawing API and returns the target GPU's completion fence for KMS.
+its multi-GPU drawing API and returns the target GPU's completion fence for the
+presenter's scene import.
 The source texture has its own damage history; target swapchain age must not be
 used for that persistent texture. See [multi-GPU output ownership](DRM.md#outputs-and-scaling)
 for the transfer and fallback boundaries.
@@ -116,9 +120,10 @@ excluded. A missing or transparent lock surface therefore cannot reveal the
 desktop. Lock acknowledgement waits for the required output presentation barrier;
 constructing a frame is not proof that it reached the display.
 
-Native capture reads rendered output pixels and can add the hardware cursor,
-which is otherwise outside the framebuffer. A requested cursor-free remote frame
-uses the corresponding cursor-free scene. Capture requests are invalidated during
+Native capture reconstructs the submitted plane composition and reads the
+corresponding cursor-free scene separately. Pixels are released only with their
+verified submission; later requests must wait for a newer scene. A cursor-only
+completion cannot acknowledge pixels for a different pending scene. Capture requests are invalidated during
 lock and session loss. See [session locking](SESSION_LOCK.md) and
 [native testing](NATIVE_TESTING.md) for the security and capture contracts.
 

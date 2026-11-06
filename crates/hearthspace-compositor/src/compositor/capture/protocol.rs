@@ -103,13 +103,6 @@ impl RemoteCaptureState {
             .any(|r| r.name == name && r.pixels.is_none())
     }
 
-    #[cfg(feature = "udev")]
-    pub(in crate::compositor) fn wants_cursorless(&self, name: &str) -> bool {
-        self.requests
-            .iter()
-            .any(|r| r.name == name && r.pixels.is_none() && !r.session.draw_cursor())
-    }
-
     pub(in crate::compositor) fn stage(
         &mut self,
         name: &str,
@@ -117,10 +110,25 @@ impl RemoteCaptureState {
         plain: Vec<u8>,
         painted: Option<Vec<u8>>,
     ) {
+        self.stage_before(name, size, plain, painted, Instant::now());
+    }
+
+    pub(in crate::compositor) fn stage_before(
+        &mut self,
+        name: &str,
+        size: Size<i32, smithay::utils::Physical>,
+        plain: Vec<u8>,
+        painted: Option<Vec<u8>>,
+        requested_before: Instant,
+    ) {
         let plain: Arc<[u8]> = plain.into();
         let painted: Arc<[u8]> = painted.map(Into::into).unwrap_or_else(|| plain.clone());
         for request in &mut self.requests {
             if request.name == name
+                && request
+                    .deadline
+                    .checked_sub(FRAME_TIMEOUT)
+                    .is_some_and(|at| at <= requested_before)
                 && request.pixels.is_none()
                 && request.size.w == size.w
                 && request.size.h == size.h

@@ -79,7 +79,7 @@ fn qualified_component(value: &str) -> String {
         .collect()
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub(super) struct DeviceToken {
     pub(super) id: u64,
     pub(super) incarnation: u64,
