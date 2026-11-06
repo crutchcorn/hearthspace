@@ -256,3 +256,20 @@ Use [native testing](NATIVE_TESTING.md) for safety exits and failure triage,
 [cursor handling](CURSOR.md) for native cursor fallback, and
 [tested environments](TESTED_ENVIRONMENTS.md) for recorded environments. A nested
 or headless pass does not establish native device compatibility.
+
+## Apple virgl scene repaint fallback
+
+Native single-GPU scenes rendered by `virgl (Apple …)` use buffer age zero.
+This repaints the entire scene into each acquired buffer, avoiding severe
+whole-output distortion observed while dragging windows and selecting desktop
+items. The policy is selected from `GL_RENDERER`, cached per EGL context, and
+logged as `selected native scene repaint policy`. Other renderers retain their
+ordinary scene buffer ages; KMS damage-clip policy is independent.
+
+This is a compatibility workaround, not a proven diagnosis of a Mesa or host
+renderer defect. Complete scene repaints cost more GPU work. Cursor-only
+presentation still reuses the cached scene. Reconsider this fallback after
+an updated graphics stack passes repeated movement and selection on the
+previously affected renderer, including an interval without capture readbacks.
+See [tested environments](TESTED_ENVIRONMENTS.md) for the observed configuration
+and the limits of its acceptance evidence.

@@ -20,6 +20,39 @@ Keep detailed captures and logs with the issue or test artifact. Use this page
 as the single inventory of named test systems; feature guides describe how to
 repeat the checks.
 
+## Parallels graphics distortion, 2026-11-05
+
+The MacBook Pro guest above reported aarch64 kernel `7.0.0-38-generic`,
+Parallels virtualization, virtio-gpu PCI `1af4:1050`, Mesa `26.0.8-1ubuntu0.3`,
+and GLES renderer `virgl (Apple M4 Max (Compat))`. One Virtual-1 output ran at
+1728×957, scale 1. The host OS version, macOS 27, was user-reported.
+
+The installed release `77cd3564a0f06bad56c275229e605e5f8f9b67bb1b468517cbb797ac4c69b797`
+and an original debug compositor produced whole-output corruption in native
+captures. A repeated debug run failed its desktop-pixel assertion after the
+first window drag: a background pixel at (10, 500) became RGB (2, 1, 0).
+Disabling GLES instancing did not eliminate a full-screen black capture.
+A complete-scene-repaint diagnostic avoided that failure. The resulting
+[Apple virgl fallback](DRM.md#apple-virgl-scene-repaint-fallback) passed
+12 captured desktop-corner assertions, 11 terminal drags, and four desktop
+selection gestures in an isolated native session. The final renderer matching
+was narrowed to Apple virgl after that run; the observed renderer still matches.
+
+These checks establish a bounded workaround for captured corruption, not an
+exact driver defect, physical smoothness, or long-duration acceptance. Capture
+readbacks can change synchronization. The test used the installed companion
+executables with a debug compositor override; it did not replace the installed
+release or exercise graphical-login authentication. All owned test sessions
+restored tty2 and removed their runtimes. Two initial cleanup calls reported
+`Device or resource busy`; idempotent retries completed recovery.
+
+Evidence is retained under
+`~/.local/state/hearthspace-investigations/20261105-parallels-graphics/`, including
+failed baseline and diagnostic runs, binary hashes, PNG/metadata pairs, the
+exercise script, and cleanup manifests. Manifest paths record their original
+checkout artifact location; the directory moved to persistent user state only
+after every native session stopped.
+
 ## Smithay cursor planes and pointer zoom, 2026-11-01
 
 The GPD Win Max 2 (2025) listed above was tested with its AMD Radeon 890M
