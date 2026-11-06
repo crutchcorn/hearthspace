@@ -74,11 +74,12 @@ pub(super) fn prepare_active_output<F>(
 pub(super) fn run(
     device: DeviceToken,
     fd: DrmDeviceFd,
+    gbm: GbmDevice<DrmDeviceFd>,
     mailbox: Arc<Mailbox>,
     wakeup: PingSource,
     events: Sender<PresenterEvent>,
 ) {
-    if let Err(error) = run_inner(device, fd, mailbox.clone(), wakeup, events.clone()) {
+    if let Err(error) = run_inner(device, fd, gbm, mailbox.clone(), wakeup, events.clone()) {
         mailbox.stop();
         let _ = events.send(PresenterEvent::Failed {
             output: None,
@@ -91,15 +92,16 @@ pub(super) fn run(
 fn run_inner(
     device: DeviceToken,
     fd: DrmDeviceFd,
+    gbm: GbmDevice<DrmDeviceFd>,
     mailbox: Arc<Mailbox>,
     wakeup: PingSource,
     events: Sender<PresenterEvent>,
 ) -> Result<(), String> {
     let mut event_loop = EventLoop::<Worker>::try_new().map_err(|error| error.to_string())?;
     let (drm, notifier) = DrmDevice::new(fd.clone(), false).map_err(|error| error.to_string())?;
-    let gbm = GbmDevice::new(fd).map_err(|error| error.to_string())?;
-    // SAFETY: This GBM display and fresh EGL context are created and used only
-    // on this worker. No current context or renderer crosses a thread boundary.
+    // SAFETY: The fresh EGL context belongs solely to this worker. Sharing the
+    // GBM device preserves buffer bookkeeping; no current context or renderer
+    // crosses a thread boundary.
     let display = unsafe { EGLDisplay::new(gbm.clone()) }.map_err(|error| error.to_string())?;
     let context = EGLContext::new(&display).map_err(|error| error.to_string())?;
     let renderer = unsafe { GlesRenderer::new(context) }.map_err(|error| error.to_string())?;

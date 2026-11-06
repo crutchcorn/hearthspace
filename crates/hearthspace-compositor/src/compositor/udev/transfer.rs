@@ -1,6 +1,5 @@
 //! Compose every scene on the canonical GLES context, transferring only the
 //! completed image. Target-local GBM buffers remain owned by their KMS device.
-mod buffer_age;
 pub(super) mod cache;
 mod formats;
 use super::{
@@ -68,13 +67,12 @@ pub(super) fn render_pass(
         // Preserve the single-GPU path: no intermediate allocation or blit.
         let mut renderer = gpus.manager.single_renderer(&source)?;
         let renderer = renderer.as_mut();
-        let age = buffer_age::scene_age(renderer, age, force)?;
         let mut framebuffer = renderer.bind(dmabuf)?;
         let rendered = state.render_frame_at(
             renderer,
             &mut framebuffer,
             &mut output.damage_tracker,
-            age,
+            if force { 0 } else { age },
             rect,
             view.scale,
         )?;
