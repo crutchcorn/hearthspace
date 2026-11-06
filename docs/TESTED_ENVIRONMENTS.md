@@ -71,6 +71,15 @@ Several first stop attempts reported `Device or resource busy`; idempotent
 retries completed recovery and restored the original VT. The temporary debug
 installation retained the previous optimized release.
 
+The local user subsequently confirmed that repeated smaller/larger Parallels
+window resizes, terminal dragging, and icon selection worked with the clean
+installed debug release `f69e1b84a2ec` (ownership fix `2cc04bf`). This final
+`shared-host-confirmation` run used real host preferred-mode updates, without
+the diagnostic selector or forced full repaints. It preserved the desktop and
+launcher, then restored tty2 and removed the owned session/runtime. This is
+manual acceptance for the exercised workflow; suspend, locking and other GPU
+configurations remain outside its coverage.
+
 ## Smithay cursor planes and pointer zoom, 2026-11-01
 
 The GPD Win Max 2 (2025) listed above was tested with its AMD Radeon 890M
