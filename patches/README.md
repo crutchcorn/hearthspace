@@ -857,3 +857,64 @@ See [vendored provenance and refresh steps](../vendor/accesskit_atspi_common/PRO
 - **Removal:** use an upstream vendoring-safe build identity with no enclosing
   repository discovery, then remove only this patch. Preserve required notices,
   modified-source distribution and each other repair until its own condition holds.
+
+## Satellite explicit popup parents
+
+- **Dependency:** Satellite 0.8.3, pin `7bf5e0dcb0d4250860b24b04a6cb3ddeada515d0`.
+- **Patch:** [popup parent](satellite-popup-parent.patch), relative to the vendor
+  root, after build-identity. Pin, package and MPL notices remain unchanged.
+- **Reason/behavior:** the upstream property reader discards WM_TRANSIENT_FOR for
+  popup roles, and the hover/focus heuristic ignores their explicit parent. With independent canvas homes and overlapping
+  X roots, a popup can appear on an unrelated window. Prefer its declared parent
+  only while mapped with a live XDG role, excluding self-parenting. Otherwise
+  retain the existing hover/focus fallback, also validated for live role state.
+  Role classification is unchanged. This is a local repair, not a backport.
+- **Upstream basis:** the pinned create_role_window implementation and upstream
+  [positioning explanation](https://github.com/Supreeeme/xwayland-satellite/discussions/68)
+  describe the hover/focus heuristic. This repair does not claim to resolve the
+  separate dialog-role or orphaned-popup issues.
+- **Regression:** real X clients map transient popups while another window has
+  hover/focus, check visible parent-local pixels, then exercise frozen delivery,
+  destroyed/reused XIDs, stationary scroll and foreign restacks. Existing popup
+  movement tests retain their canvas-boundary and client-reposition assertions.
+  Record executed results separately; source coverage is not native acceptance.
+- **Removal:** use upstream parent selection passing those popup, lifetime and
+  replay cases without the patch. Preserve the independent routing, interaction,
+  selection and packaging repairs until their own removal conditions hold.
+
+## Satellite desktop-file XDND bridge
+
+- **Dependency:** Satellite 0.8.3, pin `7bf5e0dcb0d4250860b24b04a6cb3ddeada515d0`.
+- **Patch:** [desktop DND](satellite-desktop-dnd.patch), relative to the vendor
+  root, after popup-parent. Pin, package and MPL notices remain unchanged.
+- **Reason:** the pinned host data-device drag callbacks are empty. Retiring
+  Hearthspace's direct XWM would otherwise lose desktop-file drops into X11.
+  Upstream [issue 133](https://github.com/Supreeeme/xwayland-satellite/issues/133)
+  remains open; this local URI-copy bridge is not a general DND backport.
+- **Behavior:** standard Wayland data offers become XDND 2–5 URI-list Copy
+  offers. Resolve the actual X backing origin and density, never canvas homes;
+  round fractional positions to the nearest X pixel.
+  Each drag owns a fresh source window; match source, target and offer identity
+  through status, finish and conversion. Coalesce motion until status arrives,
+  and wait for final status before XdndDrop. Revocation never finishes a drop or
+  acknowledges a successor. Clipboard/primary ownership is untouched.
+- **Transfer/lifecycle:** reuse Satellite's foreign selection and INCR paths,
+  cap DND property chunks at 64 KiB, and match requestor plus property for INCR
+  deletion events. Foreign reads now return errors instead of panicking.
+  Undropped Wayland offers stay owned by SCTK through leave; retirement revokes
+  acceptance. Dropped offers finish only on matching X success. One current drag
+  is retained; replacing it rejects obsolete conversions rather than keeping an
+  unbounded history. Other MIME formats/actions, XDND proxies and the reverse
+  application-DND direction are not implemented by this repair.
+- **Regression:** real App/Wayland/Satellite/Xwayland/XDND receiver tests assert
+  exact encoded URI lists, actual INCR header/chunks/termination, unchanged icon
+  positions, repeated successful drops, Escape, rejection, stale status/finish
+  and conversion fields, lock/source removal, and no click/drop into a revealed
+  replacement, plus local coordinates on a zoomed and panned canvas.
+  Stale-message cases replay public X event fields through XSendEvent;
+  they do not claim kernel queue scheduling. Ordinary clipboard workflows remain
+  separate acceptance checks. Record execution results separately from fixture
+  source; none of these headless checks establishes physical native behavior.
+- **Removal:** adopt an upstream host-DND integration passing these copy, transfer,
+  generation and cancellation cases, then remove this patch. Preserve the other
+  compatibility repairs and source/notices until their independent conditions hold.

@@ -13,5 +13,5 @@ Current contracts live in the [maintained guides](../docs/README.md). The public
   association, and an optional MCP frontend, with privacy and ownership questions.
 - [Window activity and resource policy](window-idle-lifecycle.md): the existing
   observation-only tracker and constraints on any future freeze or close policy.
-- [Satellite evaluation](satellite-evaluation.md): experimental integration,
+- [Satellite evaluation](satellite-evaluation.md): retired stock-server investigation,
   the reproduced input-ordering blocker, and remaining adoption gates.

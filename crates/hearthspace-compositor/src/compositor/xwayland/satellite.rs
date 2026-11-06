@@ -1,4 +1,4 @@
-//! Opt-in Satellite runtime while the X11 recipient regressions gate adoption.
+//! Owned Satellite runtime for all X11 applications.
 use std::{
     io,
     os::{
@@ -27,9 +27,7 @@ pub(in crate::compositor) use process::Satellite;
 
 impl App {
     pub(super) fn start_satellite(&mut self, dh: &DisplayHandle) -> io::Result<()> {
-        let binary = std::env::var_os("HEARTHSPACE_SATELLITE_BINARY")
-            .map(std::path::PathBuf::from)
-            .unwrap_or(std::env::current_exe()?.with_file_name("hearthspace-satellite"));
+        let binary = std::env::current_exe()?.with_file_name("hearthspace-satellite");
         let (server, peer) = UnixStream::pair()?;
         let client = dh
             .clone()

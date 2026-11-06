@@ -84,7 +84,6 @@ jobs:
             wayland-utils \
             wayvnc \
             xdg-desktop-portal \
-            xwayland \
             curl \
             patch \
             x11-xkb-utils \

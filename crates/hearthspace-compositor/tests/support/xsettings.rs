@@ -245,7 +245,6 @@ fn xsettings_publishes_saved_startup_theme_and_idle_live_changes() {
     let mut compositor =
         HeadlessCompositor::spawn_with_command("800x600", None, None, 1, false, |command| {
             command
-                .env("HEARTHSPACE_X11_BACKEND", "satellite")
                 .env(hearthspace_common::SETTINGS_SOCKET_ENV, &settings.socket)
                 .env("XDG_CONFIG_HOME", settings.directory.path().join("config"));
         });

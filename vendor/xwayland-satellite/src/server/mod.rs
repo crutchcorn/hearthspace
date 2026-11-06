@@ -1,8 +1,10 @@
 mod clientside;
 mod decoration;
 mod dispatch;
+pub(crate) mod drag;
 mod event;
 mod interaction;
+mod popup;
 pub(crate) mod selection;
 mod settings;
 #[cfg(test)]
@@ -1433,7 +1435,7 @@ impl<S: X11Selection + 'static> InnerServerState<S> {
 
             let window_data = data.get::<&WindowData>().unwrap();
             if window_data.attrs.role.is_popup() {
-                popup_for = self.last_hovered.or(self.last_focused_toplevel);
+                popup_for = self.popup_parent(entity);
             }
             splash = window_data.attrs.role == WindowRole::Splash;
 

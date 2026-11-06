@@ -163,12 +163,6 @@ impl App {
         if self.windows[index].kind != ManagedWindowKind::Normal {
             return Err("shell surfaces cannot change window state".into());
         }
-        #[cfg(feature = "xwayland")]
-        if let ManagedSurface::X11(surface) = &self.windows[index].surface
-            && surface.is_override_redirect()
-        {
-            return Err("override-redirect windows cannot change window state".into());
-        }
         if self.drag.as_ref().is_some_and(|drag| drag.window_id == id)
             || self
                 .resize

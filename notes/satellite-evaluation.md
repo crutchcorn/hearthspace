@@ -1,14 +1,10 @@
-# Satellite evaluation
+# Satellite evaluation (historical)
 
-Status: experimental, 2026-11-05. This is provisional investigation material;
-verify it against current source and [issue 68](https://github.com/crutchcorn/hearthspace/issues/68).
-
-The normal X11 backend remains Smithay's direct Xwayland integration. The opt-in
-`HEARTHSPACE_X11_BACKEND=satellite` starts the managed `hearthspace-satellite`
-helper over a private Wayland socket. The helper must be built beside the
-compositor, or selected with an absolute `HEARTHSPACE_SATELLITE_BINARY` path.
-It is not yet included in the installed runtime inventory. Do not enable this
-experimental backend in the regular login session.
+Status: retired, 2026-11-05. The opt-in evaluation and its failing recipient
+gate have been superseded by [Satellite X11 compatibility](../docs/SATELLITE.md).
+Satellite is now the sole backend, with a privately bundled, repaired Xwayland.
+The historical observations below describe the original stock-server evaluation,
+not current behavior or launch instructions.
 
 ## Recipient gate blocks adoption
 
@@ -48,7 +44,7 @@ describes an older stacking/focus defect that was fixed; it is related context,
 not evidence that this batched case is already fixed. The sole upstream main
 commit beyond the pin, `b424e5e`, changes Steam OSK role classification.
 
-## Remaining work
+## Original adoption gates
 
 The optional cancellation bridge is implemented experimentally; see
 [its maintained contract and limits](../docs/SATELLITE.md). Five real App/Wayland

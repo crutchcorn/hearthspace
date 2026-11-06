@@ -241,6 +241,7 @@ pub fn main(mut data: impl RunData) -> Option<()> {
 
         display.dispatch_clients(&mut *server_state).unwrap();
         server_state.run();
+        xstate.handle_host_drag(&mut server_state);
         for (primary, source) in server_state.control_cancelled() {
             xstate.release_control_owner(primary, source);
         }

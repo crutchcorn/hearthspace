@@ -3,7 +3,7 @@ use super::clientside::SelectionEvents;
 use super::{InnerServerState, MyWorld, ServerState};
 use crate::{X11Selection, XConnection};
 use log::{info, warn};
-use smithay_client_toolkit::data_device_manager::ReadPipe;
+use smithay_client_toolkit::data_device_manager::{ReadPipe, data_offer::DragOffer};
 use wayland_client::globals::GlobalList;
 use wayland_client::protocol::wl_seat::WlSeat;
 use wayland_client::{Proxy, QueueHandle};
@@ -123,7 +123,7 @@ impl<S: X11Selection> InnerServerState<S> {
                 }
                 let foreign = ForeignSelection {
                     mime_types,
-                    inner: offer,
+                    inner: ForeignOffer::Selection(offer),
                 };
                 state.source = Some(SelectionData::Foreign(foreign));
             }
@@ -180,7 +180,21 @@ impl<S: X11Selection> InnerServerState<S> {
 
 pub struct ForeignSelection<T: SelectionType> {
     pub mime_types: Box<[String]>,
-    inner: T::Offer,
+    inner: ForeignOffer<T>,
+}
+
+enum ForeignOffer<T: SelectionType> {
+    Selection(T::Offer),
+    Drag(DragOffer),
+}
+
+impl ForeignSelection<Clipboard> {
+    pub(crate) fn from_drag(offer: DragOffer) -> Self {
+        Self {
+            mime_types: vec!["text/uri-list".into()].into(),
+            inner: ForeignOffer::Drag(offer),
+        }
+    }
 }
 
 #[allow(private_bounds)]
@@ -189,12 +203,15 @@ impl<T: SelectionType> ForeignSelection<T> {
         &self,
         mime_type: String,
         state: &ServerState<impl XConnection>,
-    ) -> Vec<u8> {
-        let mut pipe = T::receive_offer(&self.inner, mime_type).unwrap();
-        state.queue.flush().unwrap();
+    ) -> std::io::Result<Vec<u8>> {
+        let mut pipe = match &self.inner {
+            ForeignOffer::Selection(offer) => T::receive_offer(offer, mime_type)?,
+            ForeignOffer::Drag(offer) => offer.receive(mime_type)?,
+        };
+        state.queue.flush().map_err(std::io::Error::other)?;
         let mut data = Vec::new();
-        pipe.read_to_end(&mut data).unwrap();
-        data
+        pipe.read_to_end(&mut data)?;
+        Ok(data)
     }
 }
 

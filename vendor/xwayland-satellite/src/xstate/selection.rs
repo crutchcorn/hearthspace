@@ -1,3 +1,4 @@
+pub(super) mod dnd;
 use super::{XState, get_atom_name};
 use crate::server::selection::{Clipboard, ForeignSelection, Primary, SelectionType};
 use crate::{RealServerState, X11Selection};
@@ -248,7 +249,7 @@ impl<T: SelectionType> WaylandSelection<T> {
         let Some(incr_data) = self.incr_data.as_mut() else {
             return false;
         };
-        if incr_data.property != event.atom() {
+        if incr_data.property != event.atom() || incr_data.target_window != event.window() {
             return false;
         }
 
@@ -577,7 +578,13 @@ impl<T: SelectionType> SelectionDataImpl for SelectionData<T> {
                 .as_ref()
                 .cloned()
                 .unwrap_or_else(|| target.name.clone());
-            let data = inner.receive(mime_name, server_state);
+            let data = match inner.receive(mime_name, server_state) {
+                Ok(data) => data,
+                Err(error) => {
+                    warn!("Could not receive selection data: {error}");
+                    return false;
+                }
+            };
             if data.len() > max_req_bytes {
                 if let Err(e) = connection.send_and_check_request(&x::ChangeWindowAttributes {
                     window: request.requestor(),

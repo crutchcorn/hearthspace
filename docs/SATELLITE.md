@@ -1,19 +1,18 @@
-# Experimental Satellite integration
+# Satellite X11 compatibility
 
-Hearthspace can evaluate X11 applications through
+Hearthspace runs X11 applications through
 [xwayland-satellite](https://github.com/Supreeeme/xwayland-satellite), which
-exposes them as XDG toplevels. Canvas positions then stay in the compositor
-instead of becoming X11 root coordinates. The normal backend remains the direct
-Smithay Xwayland integration. The runtime inventory now includes the helper and verified private server;
-remaining adoption gates are still being completed before switching defaults.
+exposes them as XDG toplevels. Canvas positions stay in Hearthspace instead of
+becoming X11 root coordinates. Satellite is the only X11 backend; the direct
+Smithay XWM and backend selector have been removed.
 
-The evaluation is pinned to revision
+Satellite is pinned to revision
 `7bf5e0dcb0d4250860b24b04a6cb3ddeada515d0`, package 0.8.3. Build the
 `hearthspace-satellite` package alongside the compositor using the
-[guarded build workflow](DEVELOPMENT.md#guarded-builds). In an owned, private
-headless test, `HEARTHSPACE_X11_BACKEND=satellite` selects it. The helper is
-resolved beside the compositor executable; an absolute
-`HEARTHSPACE_SATELLITE_BINARY` path can select a separately built copy.
+[guarded build workflow](DEVELOPMENT.md#guarded-builds). The helper and its
+verified private Xwayland must be beside the compositor executable. There is no
+PATH fallback or helper-path override. Old `HEARTHSPACE_X11_BACKEND` and
+`HEARTHSPACE_SATELLITE_BINARY` settings have no effect.
 
 The compositor supplies a private Wayland socket, owns the helper process
 group, waits for its display readiness record, and publishes that display to
@@ -103,6 +102,23 @@ primary ownership remain independent. The real GTK workflow covers both
 transfer directions, large text, primary middle-click and owner-exit recovery.
 These checks do not establish native presentation behavior.
 
+## Desktop-file drag-and-drop
+
+Satellite translates host URI-list Copy offers into XDND versions 2–5. Target
+status, drop and finish remain associated with one source-window incarnation.
+Only the accepted target receives a drop; a stale conversion cannot retrieve a
+later drag's files. Motion is coalesced while a position acknowledgment is
+outstanding, and release waits for that final status before sending XdndDrop.
+Transfers reuse Satellite's selection and INCR code with bounded property
+chunks. Undropped offers remain owned by SCTK until host leave; cancellation
+revokes acceptance. A dropped offer finishes only after the matching X target
+reports success. Clipboard and primary ownership are independent.
+
+The real receiver regressions check exact URI bytes, INCR completion, repeated
+drops, rejection, Escape, lock, source removal and replacement-window isolation.
+Other formats/actions and X11-to-Wayland application drag-and-drop are not added
+by this desktop-file bridge. See [Clipboard](CLIPBOARD.md).
+
 ## Window identity
 
 Satellite reports a nonblank X11 class, then instance, then the executable
@@ -116,29 +132,30 @@ Globally-active X11 clients receive WM_TAKE_FOCUS when host keyboard focus
 returns. Host and EWMH maximization update the same XDG window and preserve
 fullscreen state. Touch retains Hearthspace's established X11 pointer fallback;
 the bridge's XDG wrapper does not imply native-touch support in every X11 app.
-Canvas moves retain a bounded X backing origin. Popup offsets and EWMH input
+Canvas moves retain a bounded X backing origin. Popups prefer an explicit mapped
+transient parent with a live XDG role, falling back to valid hover/focus history.
+Popup offsets and EWMH input
 coordinates use that backing root, separately from displayed canvas positions.
 
-## Migration in progress
+## Input routing and verification
 
-Stock Xwayland has two demonstrated input problems:
+The private server carries the
+[surface-target repair](../patches/xwayland-surface-input-targets.md).
+It retains the Wayland surface recipient through queued X input, rather than
+choosing a recipient from overlapping backing roots at delivery time. It also
+repairs button state on re-entry without delivering an unmatched release to a
+neighbor after a cancelled move. The optional cancellation extension handles
+compositor-owned interactions; it does not replace the server routing repair.
 
-- Batched clicks to overlapping X roots both reach the last window. The same
-  failure reproduces in Satellite's own upstream fixture without Hearthspace.
-- On re-entry after a cancelled move, Xwayland's button-state repair can deliver
-  an unmatched release to a neighbor, despite the compositor retaining and
-  draining the original Wayland sequence.
+Real-client regressions cover batched recipients, canvas positions beyond the
+finite X root, cancelled interactions, popup anchors, replayed/frozen grabs,
+window destruction, and scrolling. Other adoption checks cover clipboard,
+appearance, cursor defaults, identity, touch fallback, and packaging. Headless
+results do not establish native display or physical input behavior; native
+acceptance runs separately through the [owned harness](NATIVE_TESTING.md).
 
-The assertions remain enabled in `headless_control` under `satellite::`.
-The private surface-target server now passes these focused cases, including
-the additional non-delivering button-state repair. Hearthspace's helper
-requires its exact prepared sibling binary and receipt; it never silently
-uses stock Xwayland. Broader adoption gates remain pending. The [evaluation note](../notes/satellite-evaluation.md)
-links the standalone reproduction and retained results.
-
-[Issue 68](https://github.com/crutchcorn/hearthspace/issues/68) also requires
-popup, frozen/replayed grab, destruction and scroll regressions; clipboard;
-light/dark XSettings; cursor-size preferences; ordinary move/resize and touch;
-zoom; multiple outputs; metadata; packaging; and native acceptance. These gates
-must pass before switching defaults or retiring the custom Xwayland checkpoint.
-The optional cancellation extension does not solve Xwayland recipient routing.
+The private server does not make the X root infinite. X11 backing sizes and
+protocol coordinates retain their finite limits. Keyboard-initiated EWMH
+move/resize and general application-to-application cross-protocol drag-and-drop
+remain unsupported. See [Clipboard](CLIPBOARD.md) for the separately supported
+desktop-file workflow and selection ownership.

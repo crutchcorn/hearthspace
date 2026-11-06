@@ -1,6 +1,4 @@
 //! Shared interactive resize policy for server chrome and client requests.
-#[cfg(feature = "xwayland")]
-use smithay::utils::Rectangle;
 use smithay::utils::{Logical, Point, Serial, Size};
 use tracing::{debug, trace};
 use wayland_protocols::xdg::shell::server::xdg_toplevel;
@@ -12,8 +10,6 @@ use crate::compositor::{App, ManagedSurface, ResizeState};
 pub(in crate::compositor) struct PendingResize {
     anchor: ResizeState,
     final_serial: Option<Serial>,
-    #[cfg(feature = "xwayland")]
-    final_size: Size<i32, Logical>,
 }
 
 impl App {
@@ -91,29 +87,16 @@ impl App {
             return;
         };
         let limits = ResizeLimits::for_surface(&window.surface);
-        let padding = frame_padding(&window.surface);
-        let visible_limits = |size: Size<i32, Logical>| {
-            (
-                size.w.saturating_sub(padding.w).max(1),
-                size.h.saturating_sub(padding.h).max(1),
-            )
-                .into()
-        };
         let size = target_size(
             resize.initial_bounds,
             initial,
             edges,
             (delta.x / self.viewport_scale, delta.y / self.viewport_scale).into(),
-            visible_limits(limits.min),
-            visible_limits(limits.max),
+            limits.min,
+            limits.max,
             self.keyboard.modifier_state().alt,
         );
-        let full_size = (
-            size.w.saturating_add(padding.w),
-            size.h.saturating_add(padding.h),
-        )
-            .into();
-        let constrained: Size<i32, Logical> = visible_limits(limits.constrain(full_size));
+        let constrained = limits.constrain(size);
         // A one-axis resize must not change an untouched dimension.
         let size = (
             if edges.left || edges.right {
@@ -150,25 +133,6 @@ impl App {
                 // so identical samples need not enqueue another client frame.
                 crate::compositor::gtk_shell::send_pending_configure(surface);
             }
-            #[cfg(feature = "xwayland")]
-            ManagedSurface::X11(surface) => {
-                let padding = frame_padding(&window.surface);
-                let full_size = (
-                    size.w.saturating_add(padding.w),
-                    size.h.saturating_add(padding.h),
-                )
-                    .into();
-                let rect = Rectangle::new(
-                    Point::from((window.position.x, window.position.y)),
-                    full_size,
-                );
-                if surface.last_configure() == rect {
-                    return;
-                }
-                if let Err(error) = surface.configure(Some(rect)) {
-                    tracing::warn!(%error, "failed to configure X11 resize");
-                }
-            }
         }
     }
 
@@ -191,17 +155,9 @@ impl App {
                 crate::compositor::gtk_shell::send_configure(surface)
             });
             if resize.moved {
-                #[cfg(feature = "xwayland")]
-                let final_size = match &window.surface {
-                    ManagedSurface::Xdg(_) => Size::default(),
-                    #[cfg(feature = "xwayland")]
-                    ManagedSurface::X11(surface) => surface.last_configure().size,
-                };
                 window.pending_resize = Some(PendingResize {
                     anchor: resize,
                     final_serial,
-                    #[cfg(feature = "xwayland")]
-                    final_size,
                 });
             }
         }
@@ -258,35 +214,14 @@ impl App {
                                 .is_some_and(|configure| configure.serial >= serial)
                         })
                     }
-                    // X11 has no xdg configure serial; wait for the final geometry.
-                    #[cfg(feature = "xwayland")]
-                    (ManagedSurface::X11(surface), _) => surface.bbox().size == pending.final_size,
                     _ => false,
                 }
             });
         if self.windows[window_index].position != position {
             self.windows[window_index].position = position;
-            #[cfg(feature = "xwayland")]
-            self.sync_x11_window_position(self.windows[window_index].id);
         }
         if finished {
             self.windows[window_index].pending_resize = None;
-        }
-    }
-}
-
-fn frame_padding(surface: &ManagedSurface) -> Size<i32, Logical> {
-    match surface {
-        ManagedSurface::Xdg(_) => Size::default(),
-        #[cfg(feature = "xwayland")]
-        ManagedSurface::X11(surface) => {
-            let full = surface.bbox().size;
-            let visible = surface.geometry().size;
-            (
-                full.w.saturating_sub(visible.w).max(0),
-                full.h.saturating_sub(visible.h).max(0),
-            )
-                .into()
         }
     }
 }

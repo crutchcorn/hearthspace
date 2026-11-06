@@ -1576,7 +1576,9 @@ fn copy_from_wayland<T: SelectionTest>() {
                     f.testwl.dispatch();
                 }
             });
-            selection.receive(mime.mime_type.clone(), &f.satellite)
+            selection
+                .receive(mime.mime_type.clone(), &f.satellite)
+                .unwrap()
         });
         f.run();
         assert_eq!(data, mime.data);
@@ -1637,7 +1639,9 @@ fn selection_x11_then_wayland<T: SelectionTest>() {
                     f.testwl.dispatch();
                 }
             });
-            selection.receive(mime.mime_type.clone(), &f.satellite)
+            selection
+                .receive(mime.mime_type.clone(), &f.satellite)
+                .unwrap()
         });
         f.run();
         assert_eq!(data, mime.data);

@@ -27,7 +27,7 @@ impl App {
             hearthspace_ipc::ColorMode::Dark => "Adwaita-dark",
         }
     }
-    pub(in crate::compositor::xwayland) fn publish_satellite_settings(&mut self) {
+    pub(in crate::compositor) fn publish_xsettings(&mut self) {
         let theme = self.satellite_theme_name();
         self.satellite_interaction.settings.retain(|resource| {
             if let Ok(resource) = resource.upgrade() {

@@ -17,8 +17,6 @@ pub(super) fn new(dh: &DisplayHandle, handle: LoopHandle<'static, CalloopData>) 
         _output_manager_state: OutputManagerState::new_with_xdg_output::<App>(dh),
         _viewporter_state: ViewporterState::new::<App>(dh),
         _fractional_scale_manager_state: FractionalScaleManagerState::new::<App>(dh),
-        #[cfg(feature = "xwayland")]
-        _xwayland_shell_state: XWaylandShellState::new::<App>(dh),
         shm_state: ShmState::new::<App>(dh, []),
         seat_state,
         data_device_state: DataDeviceState::new::<App>(dh),
@@ -95,8 +93,6 @@ pub(super) fn new(dh: &DisplayHandle, handle: LoopHandle<'static, CalloopData>) 
         software_cursor_visible: false,
         independent_cursor: false,
         software_cursor: cursor::standard_software_cursor(),
-        #[cfg(feature = "xwayland")]
-        xwm: None,
         #[cfg(feature = "xwayland")]
         xdisplay: None,
         #[cfg(feature = "xwayland")]

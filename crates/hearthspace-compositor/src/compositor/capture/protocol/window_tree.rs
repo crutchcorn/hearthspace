@@ -46,16 +46,6 @@ impl App {
             .collect();
         // Only explicitly owned override-redirect menus join an X11 source.
         // Other normal toplevels, including same-app dialogs, remain separate.
-        #[cfg(feature = "xwayland")]
-        for popup_index in (0..self.windows.len()).rev() {
-            if let Some((parent, offset)) = self.x11_popup_anchor(popup_index)
-                && parent == index
-                && self.windows[popup_index].mapped
-                && let Some(surface) = self.windows[popup_index].surface.wl_surface()
-            {
-                trees.push((surface, offset));
-            }
-        }
         trees.push((root, (0, 0).into()));
         trees
     }

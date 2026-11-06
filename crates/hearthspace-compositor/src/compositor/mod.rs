@@ -104,11 +104,6 @@ use smithay::{
         viewporter::ViewporterState,
     },
 };
-#[cfg(feature = "xwayland")]
-use smithay::{
-    wayland::xwayland_shell::XWaylandShellState,
-    xwayland::{X11Surface, X11Wm},
-};
 use tracing::{debug, error, info};
 use wayland_protocols::xdg::shell::server::xdg_toplevel;
 use wayland_server::{DisplayHandle, protocol::wl_surface::WlSurface};
@@ -142,66 +137,28 @@ struct ManagedWindow {
 #[derive(Clone)]
 enum ManagedSurface {
     Xdg(ToplevelSurface),
-    #[cfg(feature = "xwayland")]
-    X11(Box<X11Surface>),
 }
 
 impl ManagedSurface {
     fn is_x11(&self) -> bool {
-        #[cfg(feature = "xwayland")]
-        {
-            if matches!(self, Self::X11(_)) {
-                return true;
-            }
-            self.wl_surface()
-                .is_some_and(|surface| client::is_x11_surface(&surface))
-        }
-        #[cfg(not(feature = "xwayland"))]
-        false
+        let Self::Xdg(surface) = self;
+        client::is_x11_surface(surface.wl_surface())
     }
-
     fn wl_surface(&self) -> Option<WlSurface> {
-        match self {
-            Self::Xdg(surface) => Some(surface.wl_surface().clone()),
-            #[cfg(feature = "xwayland")]
-            Self::X11(surface) => surface.wl_surface(),
-        }
+        let Self::Xdg(surface) = self;
+        Some(surface.wl_surface().clone())
     }
-
     fn xdg_toplevel(&self) -> Option<&ToplevelSurface> {
-        match self {
-            Self::Xdg(surface) => Some(surface),
-            #[cfg(feature = "xwayland")]
-            Self::X11(_) => None,
-        }
+        let Self::Xdg(surface) = self;
+        Some(surface)
     }
-
     fn send_close(&self) {
-        match self {
-            Self::Xdg(surface) => surface.send_close(),
-            #[cfg(feature = "xwayland")]
-            Self::X11(surface) => {
-                if let Err(error) = surface.close() {
-                    tracing::warn!(%error, "failed to close X11 window");
-                }
-            }
-        }
+        let Self::Xdg(surface) = self;
+        surface.send_close();
     }
-
     fn same_xdg(&self, other: &ToplevelSurface) -> bool {
-        match self {
-            Self::Xdg(surface) => surface == other,
-            #[cfg(feature = "xwayland")]
-            Self::X11(_) => false,
-        }
-    }
-
-    #[cfg(feature = "xwayland")]
-    fn same_x11(&self, other: &X11Surface) -> bool {
-        match self {
-            Self::Xdg(_) => false,
-            Self::X11(surface) => surface.as_ref() == other,
-        }
+        let Self::Xdg(surface) = self;
+        surface == other
     }
 }
 
@@ -287,8 +244,6 @@ struct App {
     /// they render buffers at the monitor scale instead of falling back to a
     /// mismatched integer buffer scale.
     _fractional_scale_manager_state: FractionalScaleManagerState,
-    #[cfg(feature = "xwayland")]
-    _xwayland_shell_state: XWaylandShellState,
     shm_state: ShmState,
     seat_state: SeatState<Self>,
     data_device_state: DataDeviceState,
@@ -377,8 +332,6 @@ struct App {
     /// Native presenters consume cursor artwork without rendering an App scene.
     independent_cursor: bool,
     software_cursor: SoftwareCursor,
-    #[cfg(feature = "xwayland")]
-    xwm: Option<X11Wm>,
     #[cfg(feature = "xwayland")]
     xdisplay: Option<u32>,
     #[cfg(feature = "xwayland")]
@@ -634,8 +587,6 @@ pub(in crate::compositor) fn initialize_app(
     let output_manager_state = OutputManagerState::new_with_xdg_output::<App>(&dh);
     let viewporter_state = ViewporterState::new::<App>(&dh);
     let fractional_scale_manager_state = FractionalScaleManagerState::new::<App>(&dh);
-    #[cfg(feature = "xwayland")]
-    let xwayland_shell_state = XWaylandShellState::new::<App>(&dh);
     let shm_state = ShmState::new::<App>(&dh, vec![]);
     let mut seat_state = SeatState::new();
     let mut seat = seat_state.new_wl_seat(&dh, "hearthspace");
@@ -688,8 +639,6 @@ pub(in crate::compositor) fn initialize_app(
         _output_manager_state: output_manager_state,
         _viewporter_state: viewporter_state,
         _fractional_scale_manager_state: fractional_scale_manager_state,
-        #[cfg(feature = "xwayland")]
-        _xwayland_shell_state: xwayland_shell_state,
         shm_state,
         seat_state,
         data_device_state: DataDeviceState::new::<App>(&dh),
@@ -775,8 +724,6 @@ pub(in crate::compositor) fn initialize_app(
         software_cursor_visible: false,
         independent_cursor: false,
         software_cursor: cursor::standard_software_cursor(),
-        #[cfg(feature = "xwayland")]
-        xwm: None,
         #[cfg(feature = "xwayland")]
         xdisplay: None,
         #[cfg(feature = "xwayland")]

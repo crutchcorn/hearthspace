@@ -26,22 +26,10 @@ impl ResizeLimits {
                 });
                 Self::new(state.min_size, state.max_size, (0, 0).into(), (1, 1).into())
             }
-            #[cfg(feature = "xwayland")]
-            ManagedSurface::X11(surface) => {
-                // XWM's client scale is fixed at 1.0, so raw ICCCM hints already
-                // use logical units. Sanitize before Size rejects negative axes.
-                let hints = surface.size_hints().unwrap_or_default();
-                Self::from_raw_hints(
-                    hints.min_size.unwrap_or_default(),
-                    hints.max_size.unwrap_or_default(),
-                    hints.base_size.or(hints.min_size).unwrap_or_default(),
-                    hints.size_increment.unwrap_or((1, 1)),
-                )
-            }
         }
     }
 
-    #[cfg(any(feature = "xwayland", test))]
+    #[cfg(test)]
     fn from_raw_hints(
         min: (i32, i32),
         max: (i32, i32),

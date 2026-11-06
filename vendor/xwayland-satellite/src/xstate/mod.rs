@@ -109,6 +109,7 @@ pub struct XState {
     root: x::Window,
     wm_window: x::Window,
     selection_state: SelectionState,
+    drag: selection::dnd::State,
     settings: Settings,
     max_req_bytes: usize,
 }
@@ -216,6 +217,7 @@ impl XState {
 
         let wm_window = connection.generate_id();
         let selection_state = SelectionState::new(&connection, root, &atoms);
+        let drag = selection::dnd::State::new(&connection);
         let window_atoms = WindowTypes::intern_all(&connection).unwrap();
         let settings = Settings::new(&connection, &atoms, root);
         // maximum-request-length is returned in units of 4 bytes.
@@ -229,6 +231,7 @@ impl XState {
             atoms,
             window_atoms,
             selection_state,
+            drag,
             settings,
             max_req_bytes,
         };
@@ -347,7 +350,9 @@ impl XState {
             handled = true;
             trace!("x11 event: {event:?}");
 
-            if self.handle_selection_event(&event, server_state) {
+            if self.handle_drag_event(&event, server_state)
+                || self.handle_selection_event(&event, server_state)
+            {
                 continue;
             }
 
@@ -698,7 +703,7 @@ impl XState {
             );
         }
         server_state.set_window_role(window, role);
-        if let Some(parent) = transient_for.and_then(|t| (!role.is_popup()).then_some(t)) {
+        if let Some(parent) = transient_for {
             server_state.set_transient_for(window, parent);
         }
 

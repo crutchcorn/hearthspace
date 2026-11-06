@@ -1,6 +1,8 @@
-//! Adoption gates use real Satellite, stock Xwayland, and independent X clients.
+//! Adoption gates use real Satellite, the private Xwayland, and independent X clients.
 #[path = "satellite/cancellation.rs"]
 mod cancellation;
+#[path = "satellite/dnd.rs"]
+mod dnd;
 #[path = "satellite/focus.rs"]
 mod focus;
 #[path = "satellite/touch.rs"]
@@ -174,10 +176,7 @@ impl WindowClient {
 }
 
 fn fixture() -> (HeadlessCompositor, String) {
-    let mut compositor =
-        HeadlessCompositor::spawn_with_command("1280x800", None, None, 1, false, |command| {
-            command.env("HEARTHSPACE_X11_BACKEND", "satellite");
-        });
+    let mut compositor = HeadlessCompositor::spawn_with_size("1280x800");
     drop(compositor.wait_for_socket());
     let deadline = Instant::now() + Duration::from_secs(10);
     let display = loop {

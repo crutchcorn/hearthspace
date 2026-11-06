@@ -120,6 +120,7 @@ pub(super) struct MyWorld {
     pub removed_globals: Vec<GlobalName>,
     events: Vec<(Entity, ObjectEvent)>,
     queued_events: Vec<mpsc::Receiver<(Entity, ObjectEvent)>>,
+    pub drag_events: Vec<super::drag::Event>,
     pub clipboard: SelectionEvents<SelectionOffer>,
     pub primary: SelectionEvents<PrimarySelectionOffer>,
     pub pending_activations: Vec<(xcb::x::Window, String)>,
@@ -136,6 +137,7 @@ impl MyWorld {
             removed_globals: Vec::new(),
             events: Vec::new(),
             queued_events: Vec::new(),
+            drag_events: Vec::new(),
             clipboard: Default::default(),
             primary: Default::default(),
             pending_activations: Vec::new(),
@@ -456,18 +458,26 @@ impl DataDeviceHandler for MyWorld {
         &mut self,
         _: &wayland_client::Connection,
         _: &wayland_client::QueueHandle<Self>,
-        _: &wayland_client::protocol::wl_data_device::WlDataDevice,
+        device: &wayland_client::protocol::wl_data_device::WlDataDevice,
     ) {
+        let data: &DataDeviceData = device.data().unwrap();
+        if let Some(offer) = data.drag_offer() {
+            self.drag_events.push(super::drag::Event::Drop(offer));
+        }
     }
 
     fn motion(
         &mut self,
         _: &wayland_client::Connection,
         _: &wayland_client::QueueHandle<Self>,
-        _: &wayland_client::protocol::wl_data_device::WlDataDevice,
+        device: &wayland_client::protocol::wl_data_device::WlDataDevice,
         _: f64,
         _: f64,
     ) {
+        let data: &DataDeviceData = device.data().unwrap();
+        if let Some(offer) = data.drag_offer() {
+            self.drag_events.push(super::drag::Event::Motion(offer));
+        }
     }
 
     fn leave(
@@ -476,17 +486,22 @@ impl DataDeviceHandler for MyWorld {
         _: &wayland_client::QueueHandle<Self>,
         _: &wayland_client::protocol::wl_data_device::WlDataDevice,
     ) {
+        self.drag_events.push(super::drag::Event::Leave);
     }
 
     fn enter(
         &mut self,
         _: &wayland_client::Connection,
         _: &wayland_client::QueueHandle<Self>,
-        _: &wayland_client::protocol::wl_data_device::WlDataDevice,
+        device: &wayland_client::protocol::wl_data_device::WlDataDevice,
         _: f64,
         _: f64,
         _: &wayland_client::protocol::wl_surface::WlSurface,
     ) {
+        let data: &DataDeviceData = device.data().unwrap();
+        if let Some(offer) = data.drag_offer() {
+            self.drag_events.push(super::drag::Event::Enter(offer));
+        }
     }
 }
 

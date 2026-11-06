@@ -1,5 +1,3 @@
-#[cfg(feature = "xwayland")]
-use smithay::xwayland::XWaylandClientData;
 use smithay::{
     backend::allocator::dmabuf::Dmabuf,
     backend::renderer::utils::on_commit_buffer_handler,
@@ -420,14 +418,10 @@ impl CompositorHandler for App {
     }
 
     fn client_compositor_state<'a>(&self, client: &'a Client) -> &'a CompositorClientState {
-        if let Some(state) = client.get_data::<ClientState>() {
-            return &state.compositor_state;
-        }
-        #[cfg(feature = "xwayland")]
-        if let Some(state) = client.get_data::<XWaylandClientData>() {
-            return &state.compositor_state;
-        }
-        panic!("unknown compositor client data type")
+        &client
+            .get_data::<ClientState>()
+            .expect("unknown compositor client data type")
+            .compositor_state
     }
 
     fn new_surface(&mut self, surface: &WlSurface) {

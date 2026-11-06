@@ -2716,6 +2716,7 @@ dependencies = [
  "wayland-protocols-wlr",
  "wayland-scanner",
  "wayland-server",
+ "x11rb",
  "xcursor",
  "xilem",
 ]
@@ -6080,7 +6081,6 @@ dependencies = [
  "drm-ffi",
  "drm-fourcc",
  "drm-sys",
- "encoding_rs",
  "errno",
  "gbm",
  "gl_generator",
@@ -6096,7 +6096,6 @@ dependencies = [
  "rand 0.10.3",
  "reis",
  "rustix 1.1.5",
- "scopeguard",
  "siphasher",
  "smallvec",
  "tempfile",

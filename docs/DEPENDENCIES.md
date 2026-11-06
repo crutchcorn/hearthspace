@@ -48,7 +48,8 @@ A full native session uses logind/libseat and these runtime packages:
 ```sh
 sudo apt-get install -y \
   mate-polkit xdg-desktop-portal xdg-desktop-portal-gtk fuse3 \
-  gsettings-desktop-schemas pulseaudio-utils upower xwayland foot zenity
+  gsettings-desktop-schemas pulseaudio-utils upower foot zenity \
+  x11-xkb-utils libxfont2 libxcvt0 libxshmfence1 libxcb-cursor0
 ```
 
 - MATE polkit supplies a Wayland-capable authentication agent. Don't substitute
@@ -63,7 +64,12 @@ sudo apt-get install -y \
   It works with PulseAudio or PipeWire's PulseAudio service; no second audio
   server is needed. See [sound and brightness](AUDIO_AND_BRIGHTNESS.md).
 - UPower supplies battery/UPS status. Systems without a battery need no fake
-  indicator. Xwayland enables X11 applications.
+  indicator. The bundled Satellite helper and private Xwayland enable X11 applications;
+  prepare them using the workflow below. `x11-xkb-utils` supplies `xkbcomp`,
+  which the private server uses to compile keyboard maps. The Xfont, xcvt,
+  xshmfence and XCB cursor libraries support that server and Satellite at runtime.
+  Removing these packages reverses this dependency installation; retain any
+  also used by other desktops.
 - Super+Return launches `foot` directly, so the terminal shortcut requires it.
   The same terminal is also used by integration tests.
 - Installed GSettings schemas and `glib-compile-schemas` let the supervisor
@@ -93,7 +99,7 @@ backlight permissions, or disabling application sandboxes.
 
 ## Satellite's private Xwayland build
 
-The Satellite migration uses a separately prepared Xwayland with surface-target
+Satellite uses a separately prepared Xwayland with surface-target
 input routing. Development additionally needs these tools and headers:
 
 ```sh

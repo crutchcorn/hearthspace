@@ -107,3 +107,25 @@ Hearthspace helper reports the complete upstream revision. Pin, package and MPL
 notices remain unchanged. Installed releases include this complete modified
 source tree in `share/doc/hearthspace/xwayland-satellite-source.tar.xz`, together
 with the MPL notice and provenance. See the patch ledger for refresh/removal.
+
+## Explicit popup parent
+
+The [popup-parent patch](../../patches/satellite-popup-parent.patch), after
+build-identity, prefers a mapped WM_TRANSIENT_FOR with a live XDG role over the
+last hover/focus heuristic. Unknown, unmapped, stale and self parents cannot be
+selected. Popup role classification is unchanged. This is a local repair, not
+an upstream backport; pin, package and notices remain unchanged. Regression
+and removal requirements are in the patch ledger.
+
+## Desktop-file XDND bridge
+
+The [desktop-DND patch](../../patches/satellite-desktop-dnd.patch), after
+popup-parent, translates host URI-list Copy offers into XDND 2–5. It reuses the
+selection/INCR transfer path, makes foreign reads fallible, caps DND chunks and
+matches each INCR requestor/property. Fresh source windows isolate generations;
+status/drop/finish retain target and offer ownership. SCTK retains undropped
+Wayland offers until leave; dropped offers finish only on matching X success.
+This is a local adaptation informed by the standard XDND specification and
+upstream issue 133, not a merged backport or a general bidirectional bridge.
+Pin, package and MPL notices remain unchanged. Scope, regressions and removal
+requirements are in the patch ledger.

@@ -8,6 +8,8 @@ use super::{
 mod assertions;
 #[path = "x11_interactive/cancellation.rs"]
 mod cancellation;
+#[path = "x11_interactive/canvas_input.rs"]
+mod canvas_input;
 #[path = "x11_interactive/client.rs"]
 mod client;
 #[path = "frame_layout/x11_persistence.rs"]

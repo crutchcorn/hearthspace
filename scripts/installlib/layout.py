@@ -151,11 +151,11 @@ def dependencies():
         "dbus-run-session",
         "systemctl",
         "loginctl",
-        "Xwayland",
         "readlink",
         "systemd-run",
         "fusermount3",
         "zenity",
+        "xkbcomp",
     ]
     absolute = [
         "/usr/libexec/xdg-permission-store",
