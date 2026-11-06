@@ -2764,6 +2764,7 @@ dependencies = [
  "png 0.18.1",
  "proptest",
  "rstest",
+ "rustix 1.1.5",
  "serde",
  "serde_json",
  "smithay",

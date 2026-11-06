@@ -99,5 +99,7 @@ pub(super) fn new(dh: &DisplayHandle, handle: LoopHandle<'static, CalloopData>) 
         xwm: None,
         #[cfg(feature = "xwayland")]
         xdisplay: None,
+        #[cfg(feature = "xwayland")]
+        satellite: None,
     }
 }

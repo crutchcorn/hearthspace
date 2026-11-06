@@ -19,9 +19,16 @@ mod handlers;
 pub(super) mod identity;
 mod interactive;
 mod popups;
+pub(super) mod satellite;
 
 impl App {
     pub(super) fn start_xwayland(&mut self, dh: &DisplayHandle) {
+        if std::env::var("HEARTHSPACE_X11_BACKEND").as_deref() == Ok("satellite") {
+            if let Err(error) = self.start_satellite(dh) {
+                error!(%error, "failed to start Satellite");
+            }
+            return;
+        }
         let Ok((xwayland, client)) = XWayland::spawn(
             dh,
             None,
