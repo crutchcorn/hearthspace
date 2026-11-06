@@ -1,5 +1,6 @@
 //! Copy-only host URI drags. Each drag owns a distinct X selection window.
 mod events;
+mod proxy;
 use super::{
     Clipboard, CurrentSelection, ForeignSelection, SelectionData, SelectionDataImpl,
     SelectionTargetId, WaylandSelection,
@@ -14,6 +15,7 @@ xcb::atoms_struct! {
     #[derive(Clone)]
     struct Atoms {
         aware => b"XdndAware" only_if_exists = false,
+        proxy => b"XdndProxy" only_if_exists = false,
         enter => b"XdndEnter" only_if_exists = false,
         position => b"XdndPosition" only_if_exists = false,
         status => b"XdndStatus" only_if_exists = false,
@@ -59,6 +61,7 @@ impl Position {
 struct Session {
     source: x::Window,
     target: x::Window,
+    delivery: x::Window,
     version: u32,
     offer: DragOffer,
     selection: SelectionData<Clipboard>,
@@ -73,6 +76,7 @@ struct Session {
 fn send(
     connection: &xcb::Connection,
     destination: x::Window,
+    target: x::Window,
     atom: x::Atom,
     data: [u32; 5],
 ) -> Result<(), xcb::Error> {
@@ -80,7 +84,7 @@ fn send(
         propagate: false,
         destination: x::SendEventDest::Window(destination),
         event_mask: x::EventMask::empty(),
-        event: &x::ClientMessageEvent::new(destination, atom, x::ClientMessageData::Data32(data)),
+        event: &x::ClientMessageEvent::new(target, atom, x::ClientMessageData::Data32(data)),
     })?)
 }
 
@@ -98,6 +102,7 @@ fn position(
     session.awaiting_status = true;
     send(
         connection,
+        session.delivery,
         session.target,
         atoms.position,
         [
@@ -124,6 +129,7 @@ fn drop_ready(
     }
     send(
         connection,
+        session.delivery,
         session.target,
         atoms.drop,
         [session.source.resource_id(), 0, session.position.time, 0, 0],
@@ -159,11 +165,12 @@ impl XState {
                     return Ok(());
                 }
                 let atoms = &self.drag.atoms;
+                let delivery = proxy::resolve(&self.connection, atoms, target);
                 let aware = self
                     .connection
                     .wait_for_reply(self.connection.send_request(&x::GetProperty {
                         delete: false,
-                        window: target,
+                        window: delivery,
                         property: atoms.aware,
                         r#type: x::ATOM_ATOM,
                         long_offset: 0,
@@ -208,6 +215,7 @@ impl XState {
                 self.drag.session = Some(Session {
                     source,
                     target,
+                    delivery,
                     version,
                     offer,
                     selection,
@@ -232,6 +240,7 @@ impl XState {
                 })?;
                 send(
                     &self.connection,
+                    delivery,
                     target,
                     atoms.enter,
                     [
@@ -299,6 +308,7 @@ impl XState {
         if leave && !session.dropped {
             let _ = send(
                 &self.connection,
+                session.delivery,
                 session.target,
                 self.drag.atoms.leave,
                 [session.source.resource_id(), 0, 0, 0, 0],

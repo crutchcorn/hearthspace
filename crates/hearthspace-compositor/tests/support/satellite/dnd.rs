@@ -4,6 +4,8 @@ use crate::{
     canvas_map_client::MapClient, desktop_files::position, navigation::keys, shell_panels::connect,
 };
 use serde_json::json;
+#[path = "dnd/proxy_tests.rs"]
+mod proxy_tests;
 #[path = "dnd/receiver.rs"]
 mod receiver;
 use receiver::Receiver;

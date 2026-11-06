@@ -121,6 +121,10 @@ chunks. Undropped offers remain owned by SCTK until host leave; cancellation
 revokes acceptance. A dropped offer finishes only after the matching X target
 reports success. Clipboard and primary ownership are independent.
 
+Validated XDND proxy windows retain the original destination identity. A proxy
+must point to itself; stale or invalid properties fall back to the real target.
+Destroying an active proxy revokes acceptance before the held release.
+
 The real receiver regressions check exact URI bytes, INCR completion, repeated
 drops, rejection, Escape, lock, source removal and replacement-window isolation.
 Other formats/actions and X11-to-Wayland application drag-and-drop are not added

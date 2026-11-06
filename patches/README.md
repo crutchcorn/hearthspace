@@ -904,8 +904,8 @@ See [vendored provenance and refresh steps](../vendor/accesskit_atspi_common/PRO
   Undropped Wayland offers stay owned by SCTK through leave; retirement revokes
   acceptance. Dropped offers finish only on matching X success. One current drag
   is retained; replacing it rejects obsolete conversions rather than keeping an
-  unbounded history. Other MIME formats/actions, XDND proxies and the reverse
-  application-DND direction are not implemented by this repair.
+  unbounded history. Other MIME formats/actions and the reverse application-DND
+  direction are not implemented. The later proxy patch preserves XDND proxies.
 - **Regression:** real App/Wayland/Satellite/Xwayland/XDND receiver tests assert
   exact encoded URI lists, actual INCR header/chunks/termination, unchanged icon
   positions, repeated successful drops, Escape, rejection, stale status/finish
@@ -944,3 +944,28 @@ See [vendored provenance and refresh steps](../vendor/accesskit_atspi_common/PRO
   presentation or the behavior of every toolkit.
 - **Removal:** adopt upstream hint parsing/constraining that passes these cases
   without this patch. Preserve each other repair until its own removal condition.
+
+## Satellite XDND proxy destinations
+
+- **Dependency:** Satellite 0.8.3, pin `7bf5e0dcb0d4250860b24b04a6cb3ddeada515d0`.
+- **Patch:** [DND proxies](satellite-dnd-proxy.patch), relative to the vendor root,
+  after size-increments. Package, pin and notices remain unchanged.
+- **Reason/basis:** the old Smithay `X11Surface` DndFocus resolved a self-verified
+  XdndProxy before querying XdndAware. Preserve that destination capability in
+  the host URI-copy bridge. This is a local adaptation of pinned Smithay's
+  proxy validation and the [XDND protocol](https://www.freedesktop.org/wiki/Specifications/XDND/),
+  not an upstream Satellite backport.
+- **Behavior:** validate WINDOW/32 proxy properties, including the proxy's
+  self-reference. Use its awareness and event destination while retaining the
+  actual target in message headers and status/finish matching. Observe child
+  proxy destruction without discarding existing event subscriptions; it revokes
+  the current offer. Invalid or vanished proxies fall back to the real target.
+- **Regression:** actual child InputOnly proxy windows receive messages whose
+  original target/header, coordinates and exact URI list remain asserted. Hide
+  the target's own awareness so ignoring the proxy fails. Invalid self-reference
+  falls back; destroying a valid proxy during a held drag produces no drop or
+  click, then a fresh offer to the original target succeeds. These are headless
+  protocol tests, not native presentation evidence.
+- **Removal:** use upstream host-DND proxy support passing these transfer and
+  lifecycle cases, then remove only this repair. Preserve other patches until
+  their independent removal conditions hold.

@@ -139,3 +139,13 @@ rounding for maximized/fullscreen states. Host XDG geometry remains responsible
 for canvas anchoring. This is an independent local repair, not an upstream
 backport; pin, package and notices are unchanged. See the ledger for regressions
 and removal conditions.
+
+## XDND proxy destinations
+
+The [DND-proxy patch](../../patches/satellite-dnd-proxy.patch), after
+size-increments, preserves self-verified XDND proxies from the direct XWM path.
+Delivery uses the proxy, while messages and replies retain the actual target;
+proxy destruction revokes the offer. This local adaptation follows pinned
+Smithay's validation and the XDND specification, not a merged Satellite backport.
+Pin, package and notices remain unchanged. See the ledger for scope, real-client
+regressions and removal conditions.

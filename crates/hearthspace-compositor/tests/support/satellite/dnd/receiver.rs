@@ -4,6 +4,9 @@ use smithay::reexports::x11rb::protocol::xproto::{
     ClientMessageEvent, Property, SelectionNotifyEvent,
 };
 
+#[path = "proxy.rs"]
+mod proxy;
+
 pub(super) struct Receiver {
     pub client: WindowClient,
     pub accept: bool,

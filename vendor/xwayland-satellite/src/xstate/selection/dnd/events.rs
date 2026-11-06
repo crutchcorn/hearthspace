@@ -138,7 +138,7 @@ impl XState {
                     .drag
                     .session
                     .as_ref()
-                    .is_some_and(|s| destroy.window() == s.target)
+                    .is_some_and(|s| destroy.window() == s.target || destroy.window() == s.delivery)
                 {
                     self.end_host_drag(false);
                 }
