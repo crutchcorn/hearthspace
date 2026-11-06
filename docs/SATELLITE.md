@@ -24,6 +24,26 @@ The embedded helper gives nested Xwayland null stdin/stdout so it cannot retain
 the private host socket or readiness pipe after the helper exits. The library's
 default stdio behavior remains inherited for other consumers.
 
+## Prepare the private server
+
+After building the helper and compositor, download the pinned source archive
+from the URL in [requirements](../data/xwayland-requirements.json) to persistent
+storage. Then run, as your normal user:
+
+```sh
+scripts/prepare-xwayland \
+  --archive /absolute/path/to/xwayland-24.1.10.tar.xz \
+  --build-dir /absolute/path/to/a-fresh-build-directory \
+  --compositor /absolute/path/to/hearthspace-compositor
+```
+
+The helper must be beside that compositor. Preparation validates the archive
+and patch hashes before compiling serially, retains its build evidence, and
+stages `hearthspace-Xwayland` and its JSON receipt beside both executables.
+Missing, modified or mismatched companions fail before Xwayland is launched.
+Install the [development headers](DEPENDENCIES.md#satellites-private-xwayland-build)
+first. This does not install or replace the distribution's Xwayland.
+
 ## Optional cancellation bridge
 
 The local [Satellite patch](../patches/satellite-interaction-cancel.patch)
@@ -49,9 +69,9 @@ necessarily resized. Regression tests distinguish those two states when
 checking a delayed buffer. These are headless protocol and client tests, not
 evidence of native input or presentation behavior.
 
-## Adoption remains blocked
+## Migration in progress
 
-Two input problems remain demonstrated by real-client tests:
+Stock Xwayland has two demonstrated input problems:
 
 - Batched clicks to overlapping X roots both reach the last window. The same
   failure reproduces in Satellite's own upstream fixture without Hearthspace.
@@ -59,9 +79,11 @@ Two input problems remain demonstrated by real-client tests:
   an unmatched release to a neighbor, despite the compositor retaining and
   draining the original Wayland sequence.
 
-The failing assertions remain enabled in `headless_control` under `satellite::`.
-Do not interpret the cancellation bridge's passing scope/geometry checks as
-passing recipient or release ownership. The [evaluation note](../notes/satellite-evaluation.md)
+The assertions remain enabled in `headless_control` under `satellite::`.
+The private surface-target server now passes these focused cases, including
+the additional non-delivering button-state repair. Hearthspace's helper
+requires its exact prepared sibling binary and receipt; it never silently
+uses stock Xwayland. Broader adoption gates remain pending. The [evaluation note](../notes/satellite-evaluation.md)
 links the standalone reproduction and retained results.
 
 [Issue 68](https://github.com/crutchcorn/hearthspace/issues/68) also requires

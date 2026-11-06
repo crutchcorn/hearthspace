@@ -41,3 +41,13 @@ private Wayland and readiness channels cannot be inherited by nested Xwayland.
 No source version, license or CLI default changes. See the
 [ledger](../../patches/README.md#satellite-embedded-child-stdio) for the regression
 and removal condition. This local API extension is not an upstream backport.
+
+## Explicit Xwayland executable
+
+The [managed-executable patch](../../patches/satellite-managed-xwayland.patch)
+adds a defaulted `RunData::xwayland_binary` method, retaining upstream's PATH
+lookup for other consumers. Hearthspace validates its sibling
+`hearthspace-Xwayland` and receipt, then supplies that absolute path and
+`-surface-input-targets`. It never substitutes a system server. This is a local
+API extension, not an upstream backport; pin, package and notices are unchanged.
+See the patch ledger for verification and removal requirements.

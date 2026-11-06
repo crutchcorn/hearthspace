@@ -91,6 +91,27 @@ before diagnosing bus, audio, or portal routing by changing global environment
 variables. Hearthspace doesn't require persistent logind configuration, new
 backlight permissions, or disabling application sandboxes.
 
+## Satellite's private Xwayland build
+
+The Satellite migration uses a separately prepared Xwayland with surface-target
+input routing. Development additionally needs these tools and headers:
+
+```sh
+sudo apt-get install -y --no-install-recommends \
+  curl patch x11-xkb-utils meson ninja-build libxfont-dev libxcvt-dev libxkbfile-dev \
+  libxshmfence-dev libmd-dev mesa-common-dev libtirpc-dev
+```
+
+These packages do not replace the running Xwayland executable or change host
+configuration. `libxfont-dev` also installs `libfontenc-dev`. Remove the same
+packages with `apt-get remove` when no longer needed; remove that transitive
+header package only if it was newly installed and is no longer needed.
+
+The exact source archive and input patch hashes are recorded in
+[`data/xwayland-requirements.json`](../data/xwayland-requirements.json).
+Preparation is explicit and runs as the normal user, never during session
+startup. The migration's launch and packaging integration is still in progress.
+
 ## Test and recording tools
 
 ```sh

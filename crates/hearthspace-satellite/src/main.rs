@@ -6,14 +6,20 @@ use std::{
     sync::Mutex,
 };
 
+mod dependency;
+
 const UPSTREAM_REVISION: &str = "7bf5e0dcb0d4250860b24b04a6cb3ddeada515d0";
 
 struct Embedded {
     server: Mutex<Option<UnixStream>>,
     flags: Vec<String>,
+    xwayland: std::path::PathBuf,
 }
 
 impl xwayland_satellite::RunData for Embedded {
+    fn xwayland_binary(&self) -> &std::path::Path {
+        &self.xwayland
+    }
     fn display(&self) -> Option<&str> {
         None
     }
@@ -56,10 +62,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Some("--embedded") if arguments.next().is_none() => {}
         _ => return Err("usage: hearthspace-satellite --embedded | --version".into()),
     }
+    let xwayland = dependency::Dependency::current()?;
+    xwayland.validate()?;
     let server = UnixStream::from(io::stdin().as_fd().try_clone_to_owned()?);
     let data = Embedded {
         server: Mutex::new(Some(server)),
-        flags: vec!["-nolisten".into(), "tcp".into()],
+        flags: vec![
+            "-nolisten".into(),
+            "tcp".into(),
+            "-surface-input-targets".into(),
+        ],
+        xwayland: xwayland.binary,
     };
     xwayland_satellite::main(data).ok_or("Satellite exited")?;
     Ok(())

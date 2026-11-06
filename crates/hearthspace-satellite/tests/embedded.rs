@@ -98,7 +98,7 @@ fn wait_exited(fd: &OwnedFd) -> std::io::Result<()> {
 #[test]
 fn nested_xwayland_cannot_keep_private_wayland_or_readiness_open() {
     let runtime = tempfile::tempdir().unwrap();
-    let executable = runtime.path().join("Xwayland");
+    let executable = runtime.path().join("hearthspace-Xwayland");
     let record = runtime.path().join("nested.txt");
     fs::write(&executable, r#"#!/usr/bin/python3 -I
 import os, time
@@ -107,8 +107,21 @@ with open(os.environ["SATELLITE_TEST_RECORD"], "w") as output:
 time.sleep(30)
 "#).unwrap();
     fs::set_permissions(&executable, fs::Permissions::from_mode(0o755)).unwrap();
+    // Copy the helper into a private runtime; its dependency is always resolved
+    // beside the selected executable, never from PATH.
+    let binary = runtime.path().join("hearthspace-satellite");
+    fs::copy(env!("CARGO_BIN_EXE_hearthspace-satellite"), &binary).unwrap();
+    let mut receipt: serde_json::Value =
+        serde_json::from_str(include_str!("../../../data/xwayland-requirements.json")).unwrap();
+    use sha2::{Digest, Sha256};
+    receipt["sha256"] = format!("{:x}", Sha256::digest(fs::read(&executable).unwrap())).into();
+    fs::write(
+        runtime.path().join("hearthspace-Xwayland.json"),
+        serde_json::to_vec(&receipt).unwrap(),
+    )
+    .unwrap();
     let (mut host, peer) = UnixStream::pair().unwrap();
-    let child = Command::new(env!("CARGO_BIN_EXE_hearthspace-satellite"))
+    let child = Command::new(binary)
         .arg("--embedded")
         .process_group(0)
         .env("PATH", runtime.path())

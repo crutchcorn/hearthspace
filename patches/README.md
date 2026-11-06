@@ -692,3 +692,41 @@ See [vendored provenance and refresh steps](../vendor/accesskit_atspi_common/PRO
 - **Removal:** adopt an upstream embedding API with equivalent child-descriptor
   ownership, rerun this subprocess regression, and remove only this patch and
   its hooks. Preserve the independent cancellation and routing work.
+
+## Satellite surface-target input and managed Xwayland
+
+- **Dependencies:** Satellite 0.8.3 at `7bf5e0dcb0d4250860b24b04a6cb3ddeada515d0`
+  and Xwayland 24.1.10, with exact archive/patch hashes in
+  [requirements](../data/xwayland-requirements.json).
+- **Patches:** [surface-target input](xwayland-surface-input-targets.patch) and
+  [managed executable](satellite-managed-xwayland.patch). The former reuses the
+  input-routing checkpoint from `e6a31626` and additionally distinguishes
+  internal button-state repair from application releases. The latter adds a
+  defaulted Satellite executable-path hook after the embedded-stdio patch.
+  Both are local repairs; no upstream backport is claimed.
+- **Reason:** Satellite's overlapping X roots and input-time restacking still
+  misroute a queued A/B batch. After compositor cancellation, Xwayland also
+  synthesizes a button release on re-entry, which can reach a neighbor that
+  never received the press. Carry surface incarnation through queued/replayed
+  input; perform re-entry button repair through the same device-state queue
+  without delivering invented core/XI button events or raw releases. Real
+  releases retain ordinary grab arbitration and delivery. Default-off server
+  operation remains unchanged.
+- **Ownership:** the normal-user preparation script validates the archive and
+  patch before compilation, records source/compiler inputs and stages a binary
+  plus hash receipt beside the runtime. The helper verifies those exact bytes
+  and requirements before launching; there is no stock-server fallback.
+  Xwayland's notices are retained in [COPYING](xwayland-COPYING).
+- **Regression:** real Satellite/Xwayland clients assert batched A/B press and
+  release recipients, no neighbor release after cancellation, a subsequent
+  working move, late resize anchoring, and negative/distant canvas input. The
+  previous server checkpoint fixes batching but fails the neighbor assertion;
+  the additional repair passes both. Helper tests cover receipt rejection and
+  private descriptor lifetime; Python tests cover build provenance. These
+  focused cases do not establish full compatibility or native acceptance.
+- **Removal:** adopt upstream routing that passes recipient, frozen/replayed
+  grabs, destruction, scroll, confinement and cancellation ownership gates;
+  remove the server patch, pin/receipt gate and preparation machinery together.
+  Remove the Satellite hook when upstream provides an equivalent explicit
+  executable interface. Preserve its stdio and cancellation repairs until
+  their independent removal conditions hold.

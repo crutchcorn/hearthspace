@@ -35,6 +35,9 @@ type EarlyServerState = ServerState<NoConnection<<RealConnection as XConnection>
 type RealServerState = ServerState<RealConnection>;
 
 pub trait RunData {
+    fn xwayland_binary(&self) -> &std::path::Path {
+        std::path::Path::new("Xwayland")
+    }
     fn display(&self) -> Option<&str>;
     fn listenfds(&mut self) -> Vec<OwnedFd>;
     fn flags(&self) -> &[String] {
@@ -90,7 +93,7 @@ pub fn main(mut data: impl RunData) -> Option<()> {
 
     let (ready_tx, ready_rx) = UnixStream::pair().unwrap();
     rustix::io::fcntl_setfd(&ready_tx, rustix::io::FdFlags::empty()).unwrap();
-    let mut xwayland = Command::new("Xwayland");
+    let mut xwayland = Command::new(data.xwayland_binary());
     if let Some(display) = data.display() {
         xwayland.arg(display);
     }
