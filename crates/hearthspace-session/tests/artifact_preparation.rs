@@ -1,5 +1,5 @@
 //! Run the actual supervisor through helper preparation with disposable Cargo
-//! and systemd command boundaries. No real compilation, bus, service or VT.
+//! and systemd command boundaries. No real compilation, system manager or VT.
 use std::{
     fs,
     os::unix::{
@@ -18,6 +18,7 @@ struct Fixture {
     artifact: PathBuf,
     locker_artifact: PathBuf,
     locker_mode: &'static str,
+    satellite_mode: &'static str,
     child: Option<Child>,
     _manager: UnixListener,
 }
@@ -63,6 +64,7 @@ impl Fixture {
             artifact: root.join("custom target/debug/hearthspace-app-scope-guard"),
             locker_artifact: root.join("custom target/debug/hearthspace-lock"),
             locker_mode: "fresh",
+            satellite_mode: "fresh",
             root,
             child: None,
             _manager: manager,
@@ -90,6 +92,7 @@ impl Fixture {
             .env("ARTIFACT_MODE", mode)
             .env("LOCKER_ARTIFACT_PATH", &self.locker_artifact)
             .env("LOCKER_ARTIFACT_MODE", self.locker_mode)
+            .env("SATELLITE_ARTIFACT_MODE", self.satellite_mode)
             .env("CARGO_TARGET_DIR", self.root.join("custom target"))
             .env("HEARTHSPACE_REPO_ROOT", "/nonexistent/installed-checkout")
             .env("HOME", self.root.join("home"))
@@ -113,7 +116,7 @@ impl Fixture {
                 "--no-desktop-services",
                 "--no-watch-apps",
                 "--startup-timeout",
-                if mode == "hang" || self.locker_mode == "hang" {
+                if mode == "hang" || self.locker_mode == "hang" || self.satellite_mode == "hang" {
                     "1"
                 } else {
                     "5"
@@ -196,6 +199,16 @@ fn clean_dev_start_prepares_locker_and_guard_at_cargos_custom_artifact_paths() {
     );
     assert!(fixture.root.join("build-called").exists());
     assert!(fixture.root.join("locker-build-called").exists());
+    assert!(fixture.root.join("satellite-build-called").exists());
+    assert!(
+        fs::read_to_string(
+            fixture
+                .root
+                .join("custom target/debug/hearthspace-satellite")
+        )
+        .unwrap()
+        .contains("fresh helper")
+    );
     assert!(
         fs::read_to_string(&fixture.locker_artifact)
             .unwrap()
@@ -231,7 +244,9 @@ fn failed_guard_build_never_launches_a_stale_sibling() {
     fixture.start(true, "fail");
     assert!(!fixture.wait().success());
     assert!(
-        fixture.output().contains("build failed"),
+        fixture
+            .output()
+            .contains("hearthspace-app-scope-guard build failed"),
         "{}",
         fixture.output()
     );
@@ -351,3 +366,6 @@ fn stalled_locker_build_cannot_outlive_startup_deadline() {
     assert!(!fixture.root.join("owner-submitted").exists());
     assert!(!fixture.root.join("session").exists());
 }
+
+#[path = "artifact_preparation/satellite.rs"]
+mod satellite;
