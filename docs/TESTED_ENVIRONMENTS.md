@@ -20,6 +20,70 @@ Keep detailed captures and logs with the issue or test artifact. Use this page
 as the single inventory of named test systems; feature guides describe how to
 repeat the checks.
 
+## Parallels graphics distortion and resizing, 2026-11-05
+
+The MacBook Pro guest above reported aarch64 kernel `7.0.0-38-generic`,
+Parallels virtualization, virtio-gpu PCI `1af4:1050`, Mesa `26.0.8-1ubuntu0.3`,
+and GLES renderer `virgl (Apple M4 Max (Compat))`. One Virtual-1 output initially
+ran at 1728×957, scale 1. The host OS, macOS 27, was user-reported.
+
+The installed optimized release `77cd3564a0f06bad56c275229e605e5f8f9b67bb1b468517cbb797ac4c69b797`
+and an original debug compositor produced whole-output corruption in captures.
+The repeated original debug run failed a desktop-pixel assertion after its first
+drag. An initial full-repaint workaround passed a bounded drag test but did not
+survive subsequent host resizing; it is superseded by the ownership repair below.
+
+Host resizing delivered preferred modes including 1072×768, 1976×768,
+1728×783, 2232×768, 1328×768, and 1672×956. The initial backend exhausted
+recovery after rejecting modeset timestamps older than the new output record.
+A synchronous modeset followed by a verified ordinary flip restored completion.
+Preserving the Wayland output during buffer replacement stopped the launcher
+flicker observed by the local user. These changes alone still produced black
+scene buffers after repeated mode changes.
+
+Sharing the producer's GBM device with the presenter corrected the remaining
+failure. With ordinary incremental scene repainting restored, `shared-incremental`
+passed exact terminal input, 12 desktop-corner/content captures, 11 terminal
+drags, four desktop selection gestures, and transitions through 1024×768,
+1920×1080, 1280×800, and 1696×957 with the terminal retained. The mode exercise
+used an explicit, temporary diagnostic selector for modes already advertised by
+DRM, followed by udev change events; that selector and producer readback logging
+were removed from the final implementation. These runs establish bounded native
+pixels and client preservation, not physical smoothness or long-term reliability.
+
+The final source through `2cc04bf` passed formatting, Ruff, workspace Clippy,
+the all-target build, and all 132 native-backend library tests. The full Rust
+workspace run used `--no-fail-fast`, so every target ran: its headless integration
+target passed 409 cases and failed 13 X11 pixel cases; three WayDriver fixtures
+also failed startup with an inherited empty `HEARTHSPACE_COMMAND_SOCKET`.
+All other Rust targets passed, with 26 tests ignored. After clearing the inherited
+socket/runtime overrides using the [headless setup](E2E_TESTING.md#headless-compositor),
+all three WayDriver fixtures passed. The X11 workspace-feature rerun passed ten
+cases and retained the same twelve persistent failures seen before the resize
+work. The additional fullscreen case passed both isolated and workspace-feature
+reruns. One persistent X11 case had also failed with the native backend entirely
+excluded. The full Python run passed (746 run, 14 skipped), and dependency checks
+passed with warnings. Failed attempts and clean-environment reruns are retained
+separately; these results do not claim a fully passing workspace suite.
+
+Evidence remains under
+`~/.local/state/hearthspace-investigations/20261105-parallels-graphics/`, including
+failed attempts, binary hashes, PNG/metadata pairs, diagnostic patches, exercise
+scripts, and cleanup manifests. Early manifests record their original checkout
+artifact location; those directories moved only after their sessions stopped.
+Several first stop attempts reported `Device or resource busy`; idempotent
+retries completed recovery and restored the original VT. The temporary debug
+installation retained the previous optimized release.
+
+The local user subsequently confirmed that repeated smaller/larger Parallels
+window resizes, terminal dragging, and icon selection worked with the clean
+installed debug release `f69e1b84a2ec` (ownership fix `2cc04bf`). This final
+`shared-host-confirmation` run used real host preferred-mode updates, without
+the diagnostic selector or forced full repaints. It preserved the desktop and
+launcher, then restored tty2 and removed the owned session/runtime. This is
+manual acceptance for the exercised workflow; suspend, locking and other GPU
+configurations remain outside its coverage.
+
 ## Smithay cursor planes and pointer zoom, 2026-11-01
 
 The GPD Win Max 2 (2025) listed above was tested with its AMD Radeon 890M
