@@ -969,3 +969,34 @@ See [vendored provenance and refresh steps](../vendor/accesskit_atspi_common/PRO
 - **Removal:** use upstream host-DND proxy support passing these transfer and
   lifecycle cases, then remove only this repair. Preserve other patches until
   their independent removal conditions hold.
+
+## Satellite window geometry and floating restore
+
+- **Dependency:** Satellite 0.8.3, pin `7bf5e0dcb0d4250860b24b04a6cb3ddeada515d0`.
+- **Patch:** [window geometry](satellite-window-geometry.patch), relative to the
+  vendor root, after DND-proxy. Pin, package and notices remain unchanged.
+- **Reason:** a zero-size restore retained the maximized buffer size, breaking
+  startup-maximized GTK applications' return to their original floating size.
+  The pin also ignored `_GTK_FRAME_EXTENTS`, losing the direct XWM's visible
+  geometry/capture crop. These are local compatibility repairs, not backports.
+- **Basis/behavior:** follow [XDG window geometry and configure semantics](https://wayland.app/protocols/xdg-shell)
+  and the pinned Smithay X11 frame-extent mapping. Remember floating X buffer
+  dimensions before entering maximization/fullscreen; use them only for
+  unspecified restore axes. Explicit host sizes win. Validate four CARDINAL
+  frame insets, including bounds, and publish visible XDG geometry through the
+  normal surface commit. Configure buffer sizes include insets; min/max hints
+  exclude them in host geometry units. Preserve Satellite's own caption bounds.
+  Deletion or invalid metadata restores full geometry instead of retaining a
+  stale crop. No new private protocol is introduced.
+- **Regression:** the existing real GTK startup-maximized test verifies restore,
+  zoom, pan, another maximized app and subsequent client input. The actual
+  selected-window capture test retains exact local pixels, owned popup inclusion,
+  distant/offscreen capture, valid CSD cropping and session termination, adding
+  deletion/malformed-property recovery. Its old X-root movement prerequisite,
+  and the popup test's equivalent assumptions, now assert the independent canvas
+  home and measured finite backing origin. Popup pan/zoom/maximize pixels and
+  transformed input assertions remain intact. The original tests failed before
+  these repairs; focused passing evidence is recorded separately. Headless
+  evidence does not establish native display or every toolkit's behavior.
+- **Removal:** adopt upstream geometry/restore handling passing these real-client
+  cases without this patch. Preserve other repairs and their removal conditions.

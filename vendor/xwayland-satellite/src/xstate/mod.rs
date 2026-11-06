@@ -660,6 +660,7 @@ impl XState {
             server_state.set_win_class(window, class);
         }
 
+        server_state.set_frame_extents(window, self.get_frame_extents(window)?);
         let size_hints = self.get_wm_size_hints(window)?;
         if let Some(hints) = size_hints {
             server_state.set_size_hints(window, hints);
@@ -796,6 +797,21 @@ impl XState {
         PropertyCookieWrapper::new(&self.connection, cookie).resolve(resolver)
     }
 
+    fn get_frame_extents(
+        &self,
+        window: x::Window,
+    ) -> XResult<Option<crate::server::frame_extents::Extents>> {
+        let reply = self.connection.wait_for_reply(self.get_property_cookie(
+            window,
+            self.atoms.gtk_frame_extents,
+            x::ATOM_CARDINAL,
+            4,
+        ))?;
+        Ok((reply.r#type() == x::ATOM_CARDINAL && reply.format() == 32)
+            .then(|| crate::server::frame_extents::Extents::parse(reply.value::<u32>()))
+            .flatten())
+    }
+
     fn get_wm_size_hints(&self, window: x::Window) -> XResult<Option<WmNormalHints>> {
         let cookie =
             self.get_property_cookie(window, x::ATOM_WM_NORMAL_HINTS, x::ATOM_WM_SIZE_HINTS, 17);
@@ -873,6 +889,11 @@ impl XState {
         if self.handle_selection_property_change(&event) {
             return;
         }
+        if event.atom() == self.atoms.gtk_frame_extents {
+            let extents = unwrap_or_skip_bad_window_ret!(self.get_frame_extents(event.window()));
+            server_state.set_frame_extents(event.window(), extents);
+            return;
+        }
         if event.state() == x::Property::Delete {
             debug!(
                 "ignoring delete for property {:?}",
@@ -941,6 +962,7 @@ xcb::atoms_struct! {
         net_wm_name => b"_NET_WM_NAME" only_if_exists = false,
         wm_pid => b"_NET_WM_PID" only_if_exists = false,
         net_wm_state => b"_NET_WM_STATE" only_if_exists = false,
+        gtk_frame_extents => b"_GTK_FRAME_EXTENTS" only_if_exists = false,
         wm_fullscreen => b"_NET_WM_STATE_FULLSCREEN" only_if_exists = false,
         wm_maximized_horz => b"_NET_WM_STATE_MAXIMIZED_HORZ" only_if_exists = false,
         wm_maximized_vert => b"_NET_WM_STATE_MAXIMIZED_VERT" only_if_exists = false,

@@ -30,7 +30,7 @@ fn wait_pixels(client: &mut Client, session: &client::Session, expected: impl Fn
 }
 
 #[test]
-fn x11_window_capture_at_nonzero_root_position_has_exact_local_pixels_and_owned_menu() {
+fn x11_window_capture_at_nonzero_canvas_home_has_exact_local_pixels_and_owned_menu() {
     let _guard = headless_test_guard();
     let compositor = compositor();
     let deadline = Instant::now() + Duration::from_secs(10);
@@ -82,22 +82,19 @@ fn x11_window_capture_at_nonzero_root_position_has_exact_local_pixels_and_owned_
     let windows = wait_windows(&compositor, |w| w.len() == 1 && w[0]["mapped"] == true);
     let id = windows[0]["id"].as_u64().unwrap();
     action(&compositor, format!("move-window {id} 300 200"));
-    let deadline = Instant::now() + Duration::from_secs(5);
-    let origin = loop {
-        let origin = connection
-            .translate_coordinates(window, screen.root, 0, 0)
-            .unwrap()
-            .reply()
-            .unwrap();
-        if origin.dst_x == 300 && origin.dst_y == 200 {
-            break origin;
-        }
-        assert!(
-            Instant::now() < deadline,
-            "nonzero root placement never applied"
-        );
-        thread::sleep(Duration::from_millis(20));
-    };
+    wait_windows(&compositor, |windows| {
+        windows[0]["canvas_x"] == 300 && windows[0]["canvas_y"] == 200
+    });
+    let origin = connection
+        .translate_coordinates(window, screen.root, 0, 0)
+        .unwrap()
+        .reply()
+        .unwrap();
+    assert_eq!(
+        (origin.dst_x, origin.dst_y),
+        (0, 0),
+        "canvas placement must not move the X backing root"
+    );
     let gc = connection.generate_id().unwrap();
     connection
         .create_gc(gc, window, &CreateGCAux::new().foreground(0x0000ff))
@@ -207,6 +204,69 @@ fn x11_window_capture_at_nonzero_root_position_has_exact_local_pixels_and_owned_
         thread::sleep(Duration::from_millis(20));
     }
     wait_pixels(&mut client, &session, |x, y| base(x + 4, y + 8));
+    connection
+        .delete_property(window, extents)
+        .unwrap()
+        .check()
+        .unwrap();
+    connection
+        .change_property8(
+            PropMode::REPLACE,
+            window,
+            AtomEnum::WM_NAME,
+            AtomEnum::STRING,
+            b"Capture geometry restored",
+        )
+        .unwrap()
+        .check()
+        .unwrap();
+    wait_windows(&compositor, |windows| {
+        windows
+            .iter()
+            .any(|w| w["id"] == id && w["title"] == "Capture geometry restored")
+    });
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        client.sync();
+        if client.state.sessions[&session.id].size == Some(SIZE) {
+            break;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "deleted extents did not restore capture geometry"
+        );
+        thread::sleep(Duration::from_millis(20));
+    }
+    wait_pixels(&mut client, &session, base);
+    connection
+        .change_property32(
+            PropMode::REPLACE,
+            window,
+            extents,
+            AtomEnum::CARDINAL,
+            &[u32::MAX, 6, 8, 10],
+        )
+        .unwrap()
+        .check()
+        .unwrap();
+    connection
+        .change_property8(
+            PropMode::REPLACE,
+            window,
+            AtomEnum::WM_NAME,
+            AtomEnum::STRING,
+            b"Capture invalid geometry ignored",
+        )
+        .unwrap()
+        .check()
+        .unwrap();
+    wait_windows(&compositor, |windows| {
+        windows
+            .iter()
+            .any(|w| w["id"] == id && w["title"] == "Capture invalid geometry ignored")
+    });
+    wait_pixels(&mut client, &session, base);
+    assert_eq!(client.state.sessions[&session.id].size, Some(SIZE));
     connection.destroy_window(window).unwrap();
     connection.flush().unwrap();
     let deadline = Instant::now() + Duration::from_secs(5);

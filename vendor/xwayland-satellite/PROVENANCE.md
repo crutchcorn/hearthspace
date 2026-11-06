@@ -149,3 +149,14 @@ proxy destruction revokes the offer. This local adaptation follows pinned
 Smithay's validation and the XDND specification, not a merged Satellite backport.
 Pin, package and notices remain unchanged. See the ledger for scope, real-client
 regressions and removal conditions.
+
+## Window geometry and floating restore
+
+The [window-geometry patch](../../patches/satellite-window-geometry.patch), after
+DND-proxy, remembers floating buffer dimensions for unspecified restore axes and
+translates validated GTK frame extents to committed XDG visible geometry. Buffer
+sizing includes those insets; host size hints exclude them. Deletion and invalid
+metadata clear the crop, and Satellite caption bounds remain represented.
+This is a local adaptation of XDG semantics and the pinned Smithay X11 mapping,
+not an upstream backport. Pin, package and notices remain unchanged. Regression
+boundaries and removal requirements are in the ledger.

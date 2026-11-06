@@ -98,6 +98,13 @@ Hearthspace retains canvas anchoring and XDG min/max constraints. Maximization
 and fullscreen use their assigned bounds without cell rounding; malformed hints
 cannot request negative or overflowing buffer sizes.
 
+GTK frame extents become XDG window geometry. Buffer sizing includes those
+insets, while placement, constraints and capture use the visible rectangle.
+Deleted or malformed insets restore the full geometry. When a host restore
+configure leaves a dimension unspecified, Satellite uses the remembered floating
+buffer size, including for applications launched maximized. Explicit host sizes
+remain authoritative.
+
 ## Clipboard and primary selection
 
 X11 clipboard owners can publish before any X11 window has keyboard focus.

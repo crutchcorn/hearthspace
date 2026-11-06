@@ -3,6 +3,7 @@ mod decoration;
 mod dispatch;
 pub(crate) mod drag;
 mod event;
+pub(crate) mod frame_extents;
 mod interaction;
 mod popup;
 pub(crate) mod selection;
@@ -111,6 +112,7 @@ struct WindowAttributes {
     override_redirect: bool,
     dims: WindowDims,
     size_hints: Option<WmNormalHints>,
+    frame_extents: Option<frame_extents::Extents>,
     title: Option<WmName>,
     class: Option<String>,
     group: Option<x::Window>,
@@ -247,6 +249,8 @@ struct ToplevelData {
     xdg: XdgSurfaceData,
     fullscreen: bool,
     maximized: bool,
+    floating_size: (u16, u16),
+    restore_pending: bool,
     decoration: decoration::DecorationsData,
 }
 
@@ -1057,7 +1061,12 @@ impl<S: X11Selection + 'static> InnerServerState<S> {
             debug!("setting {window:?} hints {hints:?}");
             let mut query = data.query::<(&SurfaceRole, &SurfaceScaleFactor)>();
             if let Some((SurfaceRole::Toplevel(Some(data)), scale_factor)) = query.get() {
-                event::update_size_hints(data, &hints, scale_factor.0);
+                event::update_size_hints(
+                    data,
+                    &hints,
+                    scale_factor.0,
+                    frame_extents::padding(&win.attrs),
+                );
             }
             win.attrs.size_hints = Some(hints);
         }
@@ -1600,6 +1609,7 @@ impl<S: X11Selection + 'static> InnerServerState<S> {
             }
         }
 
+        let floating_size = (window.attrs.dims.width, window.attrs.dims.height);
         drop(window);
         drop(group);
         drop(surface);
@@ -1616,6 +1626,8 @@ impl<S: X11Selection + 'static> InnerServerState<S> {
             toplevel,
             fullscreen: false,
             maximized: false,
+            floating_size,
+            restore_pending: false,
             decoration: DecorationsData {
                 wl: wl_decoration,
                 satellite: sat_decoration,

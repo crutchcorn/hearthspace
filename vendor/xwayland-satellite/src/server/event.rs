@@ -295,21 +295,29 @@ impl SurfaceEvents {
                 &SurfaceScaleFactor,
                 &x::Window,
                 &mut WindowData,
-                &SurfaceRole,
+                &mut SurfaceRole,
             )>();
             let (scale_factor, window, window_data, role) = query.get().unwrap();
 
             let window = *window;
+            let restore = match &mut *role {
+                SurfaceRole::Toplevel(Some(toplevel)) if toplevel.restore_pending => {
+                    toplevel.restore_pending = false;
+                    Some(toplevel.floating_size)
+                }
+                _ => None,
+            };
             let x = (pending.x.max(0) as f64 * scale_factor.0) as i32 + window_data.output_offset.x;
             let y = (pending.y.max(0) as f64 * scale_factor.0) as i32 + window_data.output_offset.y;
+            let padding = frame_extents::padding(&window_data.attrs);
             let width = if pending.width > 0 {
-                (pending.width as f64 * scale_factor.0) as u16
+                ((pending.width as f64 * scale_factor.0) as u16).saturating_add(padding.0)
             } else {
-                window_data.attrs.dims.width
+                restore.map_or(window_data.attrs.dims.width, |size| size.0)
             };
             let height = if pending.height > 0 {
                 let mut logical_height = pending.height;
-                if let SurfaceRole::Toplevel(Some(toplevel)) = role {
+                if let SurfaceRole::Toplevel(Some(toplevel)) = &*role {
                     if let Some(d) = &toplevel.decoration.satellite {
                         let surface_width = (width as f64 / scale_factor.0).ceil() as i32;
                         if d.will_draw_decorations(surface_width) {
@@ -319,11 +327,11 @@ impl SurfaceEvents {
                         }
                     }
                 }
-                (logical_height as f64 * scale_factor.0) as u16
+                ((logical_height as f64 * scale_factor.0) as u16).saturating_add(padding.1)
             } else {
-                window_data.attrs.dims.height
+                restore.map_or(window_data.attrs.dims.height, |size| size.1)
             };
-            let (width, height) = match role {
+            let (width, height) = match &*role {
                 SurfaceRole::Toplevel(Some(toplevel))
                     if !toplevel.maximized && !toplevel.fullscreen =>
                 {
@@ -404,6 +412,13 @@ impl SurfaceEvents {
                         })
                     };
                     let maximized = contains(xdg_toplevel::State::Maximized);
+                    let fullscreen = contains(xdg_toplevel::State::Fullscreen);
+                    let was_pinned = toplevel.maximized || toplevel.fullscreen;
+                    if !was_pinned && (maximized || fullscreen) {
+                        let dims = data.get::<&WindowData>().unwrap().attrs.dims;
+                        toplevel.floating_size = (dims.width, dims.height);
+                    }
+                    toplevel.restore_pending = was_pinned && !maximized && !fullscreen;
                     if maximized != toplevel.maximized {
                         toplevel.maximized = maximized;
                         state
@@ -512,6 +527,29 @@ pub(super) fn update_surface_viewport(
         viewport.set_destination(width, height);
     }
 
+    if width > 0 && height > 0 {
+        if let Some(xdg) = role.as_deref().and_then(SurfaceRole::xdg) {
+            let mut geometry = frame_extents::geometry(&window_data.attrs, scale_factor.0);
+            if let Some(SurfaceRole::Toplevel(Some(toplevel))) = role.as_deref() {
+                if toplevel
+                    .decoration
+                    .satellite
+                    .as_deref()
+                    .is_some_and(|d| d.will_draw_decorations(width))
+                {
+                    geometry = (
+                        0,
+                        -DecorationsDataSatellite::TITLEBAR_HEIGHT,
+                        width,
+                        height + DecorationsDataSatellite::TITLEBAR_HEIGHT,
+                    );
+                }
+            }
+            xdg.surface
+                .set_window_geometry(geometry.0, geometry.1, geometry.2, geometry.3);
+        }
+    }
+
     let mut toplevel_data = match &mut role {
         Some(SurfaceRole::Toplevel(Some(data))) => Some(data),
         _ => None,
@@ -526,12 +564,22 @@ pub(super) fn update_surface_viewport(
 
     if let Some(hints) = size_hints {
         if let Some(data) = toplevel_data {
-            update_size_hints(data, hints, scale_factor.0);
+            update_size_hints(
+                data,
+                hints,
+                scale_factor.0,
+                frame_extents::padding(&window_data.attrs),
+            );
         };
     }
 }
 
-pub(super) fn update_size_hints(data: &ToplevelData, hints: &WmNormalHints, scale: f64) {
+pub(super) fn update_size_hints(
+    data: &ToplevelData,
+    hints: &WmNormalHints,
+    scale: f64,
+    padding: (u16, u16),
+) {
     let decorations_height = if data.decoration.satellite.is_some() {
         DecorationsDataSatellite::TITLEBAR_HEIGHT
     } else {
@@ -539,16 +587,18 @@ pub(super) fn update_size_hints(data: &ToplevelData, hints: &WmNormalHints, scal
     };
     if let Some(min_size) = &hints.min_size {
         data.toplevel.set_min_size(
-            (min_size.width as f64 / scale) as i32,
-            ((min_size.height as f64 / scale) as i32).saturating_add(decorations_height),
+            (min_size.width.saturating_sub(i32::from(padding.0)).max(0) as f64 / scale) as i32,
+            ((min_size.height.saturating_sub(i32::from(padding.1)).max(0) as f64 / scale) as i32)
+                .saturating_add(decorations_height),
         );
     } else {
         data.toplevel.set_min_size(0, 0);
     }
     if let Some(max_size) = &hints.max_size {
         data.toplevel.set_max_size(
-            (max_size.width as f64 / scale) as i32,
-            ((max_size.height as f64 / scale) as i32).saturating_add(decorations_height),
+            (max_size.width.saturating_sub(i32::from(padding.0)).max(0) as f64 / scale) as i32,
+            ((max_size.height.saturating_sub(i32::from(padding.1)).max(0) as f64 / scale) as i32)
+                .saturating_add(decorations_height),
         );
     } else {
         data.toplevel.set_max_size(0, 0);

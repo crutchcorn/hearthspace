@@ -1,0 +1,325 @@
+diff --git a/src/server/mod.rs b/src/server/mod.rs
+--- a/src/server/mod.rs
++++ b/src/server/mod.rs
+@@ -3,6 +3,7 @@
+ mod dispatch;
+ pub(crate) mod drag;
+ mod event;
++pub(crate) mod frame_extents;
+ mod interaction;
+ mod popup;
+ pub(crate) mod selection;
+@@ -111,6 +112,7 @@
+     override_redirect: bool,
+     dims: WindowDims,
+     size_hints: Option<WmNormalHints>,
++    frame_extents: Option<frame_extents::Extents>,
+     title: Option<WmName>,
+     class: Option<String>,
+     group: Option<x::Window>,
+@@ -247,6 +249,8 @@
+     xdg: XdgSurfaceData,
+     fullscreen: bool,
+     maximized: bool,
++    floating_size: (u16, u16),
++    restore_pending: bool,
+     decoration: decoration::DecorationsData,
+ }
+
+@@ -1057,7 +1061,12 @@
+             debug!("setting {window:?} hints {hints:?}");
+             let mut query = data.query::<(&SurfaceRole, &SurfaceScaleFactor)>();
+             if let Some((SurfaceRole::Toplevel(Some(data)), scale_factor)) = query.get() {
+-                event::update_size_hints(data, &hints, scale_factor.0);
++                event::update_size_hints(
++                    data,
++                    &hints,
++                    scale_factor.0,
++                    frame_extents::padding(&win.attrs),
++                );
+             }
+             win.attrs.size_hints = Some(hints);
+         }
+@@ -1600,6 +1609,7 @@
+             }
+         }
+
++        let floating_size = (window.attrs.dims.width, window.attrs.dims.height);
+         drop(window);
+         drop(group);
+         drop(surface);
+@@ -1616,6 +1626,8 @@
+             toplevel,
+             fullscreen: false,
+             maximized: false,
++            floating_size,
++            restore_pending: false,
+             decoration: DecorationsData {
+                 wl: wl_decoration,
+                 satellite: sat_decoration,
+diff --git a/src/server/event.rs b/src/server/event.rs
+--- a/src/server/event.rs
++++ b/src/server/event.rs
+@@ -295,21 +295,29 @@
+                 &SurfaceScaleFactor,
+                 &x::Window,
+                 &mut WindowData,
+-                &SurfaceRole,
++                &mut SurfaceRole,
+             )>();
+             let (scale_factor, window, window_data, role) = query.get().unwrap();
+
+             let window = *window;
++            let restore = match &mut *role {
++                SurfaceRole::Toplevel(Some(toplevel)) if toplevel.restore_pending => {
++                    toplevel.restore_pending = false;
++                    Some(toplevel.floating_size)
++                }
++                _ => None,
++            };
+             let x = (pending.x.max(0) as f64 * scale_factor.0) as i32 + window_data.output_offset.x;
+             let y = (pending.y.max(0) as f64 * scale_factor.0) as i32 + window_data.output_offset.y;
++            let padding = frame_extents::padding(&window_data.attrs);
+             let width = if pending.width > 0 {
+-                (pending.width as f64 * scale_factor.0) as u16
++                ((pending.width as f64 * scale_factor.0) as u16).saturating_add(padding.0)
+             } else {
+-                window_data.attrs.dims.width
++                restore.map_or(window_data.attrs.dims.width, |size| size.0)
+             };
+             let height = if pending.height > 0 {
+                 let mut logical_height = pending.height;
+-                if let SurfaceRole::Toplevel(Some(toplevel)) = role {
++                if let SurfaceRole::Toplevel(Some(toplevel)) = &*role {
+                     if let Some(d) = &toplevel.decoration.satellite {
+                         let surface_width = (width as f64 / scale_factor.0).ceil() as i32;
+                         if d.will_draw_decorations(surface_width) {
+@@ -319,11 +327,11 @@
+                         }
+                     }
+                 }
+-                (logical_height as f64 * scale_factor.0) as u16
++                ((logical_height as f64 * scale_factor.0) as u16).saturating_add(padding.1)
+             } else {
+-                window_data.attrs.dims.height
++                restore.map_or(window_data.attrs.dims.height, |size| size.1)
+             };
+-            let (width, height) = match role {
++            let (width, height) = match &*role {
+                 SurfaceRole::Toplevel(Some(toplevel))
+                     if !toplevel.maximized && !toplevel.fullscreen =>
+                 {
+@@ -404,6 +412,13 @@
+                         })
+                     };
+                     let maximized = contains(xdg_toplevel::State::Maximized);
++                    let fullscreen = contains(xdg_toplevel::State::Fullscreen);
++                    let was_pinned = toplevel.maximized || toplevel.fullscreen;
++                    if !was_pinned && (maximized || fullscreen) {
++                        let dims = data.get::<&WindowData>().unwrap().attrs.dims;
++                        toplevel.floating_size = (dims.width, dims.height);
++                    }
++                    toplevel.restore_pending = was_pinned && !maximized && !fullscreen;
+                     if maximized != toplevel.maximized {
+                         toplevel.maximized = maximized;
+                         state
+@@ -512,6 +527,29 @@
+         viewport.set_destination(width, height);
+     }
+
++    if width > 0 && height > 0 {
++        if let Some(xdg) = role.as_deref().and_then(SurfaceRole::xdg) {
++            let mut geometry = frame_extents::geometry(&window_data.attrs, scale_factor.0);
++            if let Some(SurfaceRole::Toplevel(Some(toplevel))) = role.as_deref() {
++                if toplevel
++                    .decoration
++                    .satellite
++                    .as_deref()
++                    .is_some_and(|d| d.will_draw_decorations(width))
++                {
++                    geometry = (
++                        0,
++                        -DecorationsDataSatellite::TITLEBAR_HEIGHT,
++                        width,
++                        height + DecorationsDataSatellite::TITLEBAR_HEIGHT,
++                    );
++                }
++            }
++            xdg.surface
++                .set_window_geometry(geometry.0, geometry.1, geometry.2, geometry.3);
++        }
++    }
++
+     let mut toplevel_data = match &mut role {
+         Some(SurfaceRole::Toplevel(Some(data))) => Some(data),
+         _ => None,
+@@ -526,12 +564,22 @@
+
+     if let Some(hints) = size_hints {
+         if let Some(data) = toplevel_data {
+-            update_size_hints(data, hints, scale_factor.0);
++            update_size_hints(
++                data,
++                hints,
++                scale_factor.0,
++                frame_extents::padding(&window_data.attrs),
++            );
+         };
+     }
+ }
+
+-pub(super) fn update_size_hints(data: &ToplevelData, hints: &WmNormalHints, scale: f64) {
++pub(super) fn update_size_hints(
++    data: &ToplevelData,
++    hints: &WmNormalHints,
++    scale: f64,
++    padding: (u16, u16),
++) {
+     let decorations_height = if data.decoration.satellite.is_some() {
+         DecorationsDataSatellite::TITLEBAR_HEIGHT
+     } else {
+@@ -539,16 +587,18 @@
+     };
+     if let Some(min_size) = &hints.min_size {
+         data.toplevel.set_min_size(
+-            (min_size.width as f64 / scale) as i32,
+-            ((min_size.height as f64 / scale) as i32).saturating_add(decorations_height),
++            (min_size.width.saturating_sub(i32::from(padding.0)).max(0) as f64 / scale) as i32,
++            ((min_size.height.saturating_sub(i32::from(padding.1)).max(0) as f64 / scale) as i32)
++                .saturating_add(decorations_height),
+         );
+     } else {
+         data.toplevel.set_min_size(0, 0);
+     }
+     if let Some(max_size) = &hints.max_size {
+         data.toplevel.set_max_size(
+-            (max_size.width as f64 / scale) as i32,
+-            ((max_size.height as f64 / scale) as i32).saturating_add(decorations_height),
++            (max_size.width.saturating_sub(i32::from(padding.0)).max(0) as f64 / scale) as i32,
++            ((max_size.height.saturating_sub(i32::from(padding.1)).max(0) as f64 / scale) as i32)
++                .saturating_add(decorations_height),
+         );
+     } else {
+         data.toplevel.set_max_size(0, 0);
+diff --git a/src/server/frame_extents.rs b/src/server/frame_extents.rs
+--- /dev/null
++++ b/src/server/frame_extents.rs
+@@ -0,0 +1,65 @@
++//! GTK's X pixel insets become host XDG geometry, not canvas coordinates.
++use super::*;
++use wayland_protocols::wp::viewporter::client::wp_viewport::WpViewport;
++
++#[derive(Clone, Copy, Debug, PartialEq, Eq)]
++pub(crate) struct Extents([u16; 4]);
++
++impl Extents {
++    pub(crate) fn parse(values: &[u32]) -> Option<Self> {
++        Some(Self([
++            u16::try_from(*values.first()?).ok()?,
++            u16::try_from(*values.get(1)?).ok()?,
++            u16::try_from(*values.get(2)?).ok()?,
++            u16::try_from(*values.get(3)?).ok()?,
++        ]))
++    }
++}
++
++fn effective(attrs: &WindowAttributes) -> [u16; 4] {
++    attrs.frame_extents.map_or([0; 4], |Extents(v)| {
++        if u32::from(v[0]) + u32::from(v[1]) < u32::from(attrs.dims.width)
++            && u32::from(v[2]) + u32::from(v[3]) < u32::from(attrs.dims.height)
++        {
++            v
++        } else {
++            [0; 4]
++        }
++    })
++}
++
++pub(super) fn padding(attrs: &WindowAttributes) -> (u16, u16) {
++    let [left, right, top, bottom] = effective(attrs);
++    (left + right, top + bottom)
++}
++
++pub(super) fn geometry(attrs: &WindowAttributes, scale: f64) -> (i32, i32, i32, i32) {
++    let [left, right, top, bottom] = effective(attrs);
++    let x = (f64::from(left) / scale).round() as i32;
++    let y = (f64::from(top) / scale).round() as i32;
++    let end_x = (f64::from(attrs.dims.width - right) / scale).ceil() as i32;
++    let end_y = (f64::from(attrs.dims.height - bottom) / scale).ceil() as i32;
++    (x, y, (end_x - x).max(1), (end_y - y).max(1))
++}
++
++impl<S: X11Selection + 'static> InnerServerState<S> {
++    pub(crate) fn set_frame_extents(&mut self, window: x::Window, extents: Option<Extents>) {
++        let Some(&entity) = self.windows.get(&window) else {
++            return;
++        };
++        {
++            let mut data = self.world.get::<&mut WindowData>(entity).unwrap();
++            if data.attrs.frame_extents == extents {
++                return;
++            }
++            data.attrs.frame_extents = extents;
++        }
++        if self.world.get::<&WpViewport>(entity).is_ok() {
++            event::update_surface_viewport(&self.world, self.world.query_one(entity).unwrap());
++            self.world
++                .get::<&client::wl_surface::WlSurface>(entity)
++                .unwrap()
++                .commit();
++        }
++    }
++}
+diff --git a/src/xstate/mod.rs b/src/xstate/mod.rs
+--- a/src/xstate/mod.rs
++++ b/src/xstate/mod.rs
+@@ -660,6 +660,7 @@
+             server_state.set_win_class(window, class);
+         }
+
++        server_state.set_frame_extents(window, self.get_frame_extents(window)?);
+         let size_hints = self.get_wm_size_hints(window)?;
+         if let Some(hints) = size_hints {
+             server_state.set_size_hints(window, hints);
+@@ -796,6 +797,21 @@
+         PropertyCookieWrapper::new(&self.connection, cookie).resolve(resolver)
+     }
+
++    fn get_frame_extents(
++        &self,
++        window: x::Window,
++    ) -> XResult<Option<crate::server::frame_extents::Extents>> {
++        let reply = self.connection.wait_for_reply(self.get_property_cookie(
++            window,
++            self.atoms.gtk_frame_extents,
++            x::ATOM_CARDINAL,
++            4,
++        ))?;
++        Ok((reply.r#type() == x::ATOM_CARDINAL && reply.format() == 32)
++            .then(|| crate::server::frame_extents::Extents::parse(reply.value::<u32>()))
++            .flatten())
++    }
++
+     fn get_wm_size_hints(&self, window: x::Window) -> XResult<Option<WmNormalHints>> {
+         let cookie =
+             self.get_property_cookie(window, x::ATOM_WM_NORMAL_HINTS, x::ATOM_WM_SIZE_HINTS, 17);
+@@ -873,6 +889,11 @@
+         if self.handle_selection_property_change(&event) {
+             return;
+         }
++        if event.atom() == self.atoms.gtk_frame_extents {
++            let extents = unwrap_or_skip_bad_window_ret!(self.get_frame_extents(event.window()));
++            server_state.set_frame_extents(event.window(), extents);
++            return;
++        }
+         if event.state() == x::Property::Delete {
+             debug!(
+                 "ignoring delete for property {:?}",
+@@ -941,6 +962,7 @@
+         net_wm_name => b"_NET_WM_NAME" only_if_exists = false,
+         wm_pid => b"_NET_WM_PID" only_if_exists = false,
+         net_wm_state => b"_NET_WM_STATE" only_if_exists = false,
++        gtk_frame_extents => b"_GTK_FRAME_EXTENTS" only_if_exists = false,
+         wm_fullscreen => b"_NET_WM_STATE_FULLSCREEN" only_if_exists = false,
+         wm_maximized_horz => b"_NET_WM_STATE_MAXIMIZED_HORZ" only_if_exists = false,
+         wm_maximized_vert => b"_NET_WM_STATE_MAXIMIZED_VERT" only_if_exists = false,
