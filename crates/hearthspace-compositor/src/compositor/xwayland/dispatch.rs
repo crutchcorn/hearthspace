@@ -64,6 +64,7 @@ impl App {
     }
 
     pub(in crate::compositor) fn publish_xsettings(&mut self) {
+        self.publish_satellite_settings();
         let Some(xwm) = self.xwm.as_mut() else { return };
         let theme = match self.appearance.color_mode {
             hearthspace_ipc::ColorMode::Light => "Adwaita",

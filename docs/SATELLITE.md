@@ -69,6 +69,15 @@ necessarily resized. Regression tests distinguish those two states when
 checking a delayed buffer. These are headless protocol and client tests, not
 evidence of native input or presentation behavior.
 
+## Appearance and cursor preferences
+
+Satellite remains the XSettings manager. Hearthspace sends its saved and live
+light/dark theme through a private, client-restricted settings interface; scale
+changes retain that theme and theme changes retain Satellite's DPI entries.
+The shared cursor default is seeded before DISPLAY publication. Explicit
+XCURSOR_SIZE, existing resource properties, and legacy Xdefaults/Xresources
+remain authoritative; no host resources or environment are rewritten.
+
 ## Migration in progress
 
 Stock Xwayland has two demonstrated input problems:

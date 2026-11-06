@@ -35,6 +35,7 @@ mod protocol {
 pub(in crate::compositor) struct State {
     client: Option<ClientId>,
     active: Option<Interaction>,
+    pub(super) settings: Vec<Weak<super::settings::XwaylandSatelliteSettingsV1>>,
 }
 
 struct Interaction {
@@ -47,12 +48,14 @@ struct Interaction {
 impl State {
     pub(super) fn advertise(&mut self, dh: &DisplayHandle, client: ClientId) {
         dh.create_global::<App, XwaylandSatelliteInteractionV1, _>(1, client.clone());
+        dh.create_global::<App, super::settings::XwaylandSatelliteSettingsV1, _>(1, client.clone());
         self.client = Some(client);
     }
 
     pub(super) fn revoke(&mut self) {
         self.client = None;
         self.active = None;
+        self.settings.clear();
     }
 }
 

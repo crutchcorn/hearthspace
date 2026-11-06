@@ -210,6 +210,9 @@ pub fn main(mut data: impl RunData) -> Option<()> {
     }
 
     let mut xstate = XState::new(xsock_wl.as_fd());
+    if let Some(theme) = server_state.new_theme_name() {
+        xstate.update_theme_name(theme);
+    }
     if let Some(bytes) = data.max_req_len_bytes() {
         xstate.set_max_req_bytes(bytes);
     }
@@ -249,6 +252,10 @@ pub fn main(mut data: impl RunData) -> Option<()> {
 
         if let Some(sel) = server_state.new_selection::<Primary>() {
             xstate.set_primary_selection(sel);
+        }
+
+        if let Some(theme) = server_state.new_theme_name() {
+            xstate.update_theme_name(theme);
         }
 
         if let Some(scale) = server_state.new_global_scale() {

@@ -197,6 +197,8 @@ fn theme_name(bytes: &[u8]) -> String {
         }
     };
     let mut offset = 12;
+    let mut theme = None;
+    let mut dpi = std::collections::BTreeMap::new();
     for _ in 0..word(8) {
         let kind = bytes[offset];
         let length = bytes[offset + 2..offset + 4].try_into().unwrap();
@@ -209,13 +211,16 @@ fn theme_name(bytes: &[u8]) -> String {
         let name = &bytes[offset..offset + length];
         offset = (offset + length).next_multiple_of(4) + 4; // name padding + change serial
         match kind {
-            0 => offset += 4,
+            0 => {
+                dpi.insert(String::from_utf8(name.to_vec()).unwrap(), word(offset));
+                offset += 4;
+            }
             1 => {
                 let length = word(offset) as usize;
                 offset += 4;
                 let value = &bytes[offset..offset + length];
                 if name == b"Net/ThemeName" {
-                    return String::from_utf8(value.to_vec()).unwrap();
+                    theme = Some(String::from_utf8(value.to_vec()).unwrap());
                 }
                 offset = (offset + length).next_multiple_of(4);
             }
@@ -223,7 +228,10 @@ fn theme_name(bytes: &[u8]) -> String {
             _ => panic!("unknown XSettings value type {kind}"),
         }
     }
-    panic!("Net/ThemeName missing from XSettings property");
+    assert_eq!(dpi.get("Xft/DPI"), Some(&(96 * 1024)));
+    assert_eq!(dpi.get("Gdk/WindowScalingFactor"), Some(&1));
+    assert_eq!(dpi.get("Gdk/UnscaledDPI"), Some(&(96 * 1024)));
+    theme.expect("Net/ThemeName missing from XSettings property")
 }
 
 #[test]
@@ -237,6 +245,7 @@ fn xsettings_publishes_saved_startup_theme_and_idle_live_changes() {
     let mut compositor =
         HeadlessCompositor::spawn_with_command("800x600", None, None, 1, false, |command| {
             command
+                .env("HEARTHSPACE_X11_BACKEND", "satellite")
                 .env(hearthspace_common::SETTINGS_SOCKET_ENV, &settings.socket)
                 .env("XDG_CONFIG_HOME", settings.directory.path().join("config"));
         });

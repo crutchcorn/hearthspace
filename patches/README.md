@@ -730,3 +730,28 @@ See [vendored provenance and refresh steps](../vendor/accesskit_atspi_common/PRO
   Remove the Satellite hook when upstream provides an equivalent explicit
   executable interface. Preserve its stdio and cancellation repairs until
   their independent removal conditions hold.
+
+## Satellite host appearance and cursor preferences
+
+- **Dependency:** Satellite 0.8.3, pin `7bf5e0dcb0d4250860b24b04a6cb3ddeada515d0`.
+- **Patch:** [host settings](satellite-host-settings.patch), relative to the
+  vendor root and applied after the cancellation/stdio/managed-path repairs.
+  The optional interface retains its MIT notice and upstream MPL notices.
+- **Reason/behavior:** Satellite owns DPI XSettings, so replacing its manager
+  to publish Hearthspace's light/dark theme would lose scale settings. An
+  authenticated host global sends theme changes to Satellite's existing
+  serializer. Initial host preferences are received before DISPLAY publication;
+  updates flush without unrelated X11 traffic. Ordinary clients cannot bind.
+  The helper supplies the shared 24-pixel absent-only cursor seed. Satellite
+  does not subsequently mask legacy resource files with an Xft-only database.
+  Existing resource properties and per-client XCURSOR_SIZE keep precedence.
+- **Regression:** real settingsd/App/Satellite/Xwayland tests check saved dark
+  startup and idle light/dark changes while retaining all three DPI integers.
+  Actual libXcursor subprocesses check default, environment override, existing
+  wildcard/empty properties, and legacy Xdefaults/Xresources behavior. Private
+  global visibility is tested with a separate real Wayland client. Native
+  appearance and toolkit artwork remain separate acceptance boundaries.
+- **Removal:** use an upstream host-settings integration that passes those
+  preference and startup-order cases, including legacy-resource preservation;
+  then remove only this patch and matching host binding. Preserve the input,
+  cancellation, executable and stdio repairs until their own conditions hold.

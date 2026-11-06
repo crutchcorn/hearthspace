@@ -21,6 +21,7 @@ use crate::compositor::{App, client::ClientState};
 
 pub(in crate::compositor) mod interaction;
 mod process;
+mod settings;
 pub(in crate::compositor) use process::Satellite;
 
 impl App {

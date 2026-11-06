@@ -27,6 +27,9 @@ pub use shell_corners::{
     SHELL_CORNER_RADIUS, ShellCorner, shell_corner_app_id, shell_corner_from_app_id,
 };
 
+/// Logical cursor size shared by packaged artwork and the fresh X11 default.
+pub const DEFAULT_CURSOR_SIZE: u32 = 24;
+
 pub const WAYLAND_DISPLAY_NAME: &str = "wayland-99";
 pub const WAYLAND_DISPLAY_ENV: &str = "WAYLAND_DISPLAY";
 pub const HEARTHSPACE_WAYLAND_DISPLAY_ENV: &str = "HEARTHSPACE_WAYLAND_DISPLAY";

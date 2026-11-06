@@ -6,6 +6,7 @@ use std::{
     sync::Mutex,
 };
 
+mod cursor_defaults;
 mod dependency;
 
 const UPSTREAM_REVISION: &str = "7bf5e0dcb0d4250860b24b04a6cb3ddeada515d0";
@@ -46,6 +47,16 @@ impl xwayland_satellite::RunData for Embedded {
     }
 
     fn xwayland_ready(&self, display: String, pid: u32) {
+        if let Some(number) = display.strip_prefix(':').and_then(|n| n.parse().ok()) {
+            let home = std::env::var_os("HOME").map(std::path::PathBuf::from);
+            if let Err(error) = cursor_defaults::initialize(
+                number,
+                home.as_deref(),
+                hearthspace_common::DEFAULT_CURSOR_SIZE,
+            ) {
+                eprintln!("Satellite cursor default initialization failed: {error}");
+            }
+        }
         // stdout is exclusively the bounded readiness record; logs use stderr.
         writeln!(io::stdout().lock(), "{display} {pid}").expect("publish Satellite readiness");
     }

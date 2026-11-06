@@ -4,6 +4,7 @@ mod dispatch;
 mod event;
 mod interaction;
 pub(crate) mod selection;
+mod settings;
 #[cfg(test)]
 mod tests;
 
@@ -484,6 +485,8 @@ pub struct InnerServerState<S: X11Selection> {
     viewporter: WpViewporter,
     fractional_scale: Option<WpFractionalScaleManagerV1>,
     decoration_manager: Option<ZxdgDecorationManagerV1>,
+    settings_manager:
+        Option<settings::protocol::xwayland_satellite_settings_v1::XwaylandSatelliteSettingsV1>,
     interaction_manager: Option<
         interaction::protocol::xwayland_satellite_interaction_v1::XwaylandSatelliteInteractionV1,
     >,
@@ -513,6 +516,7 @@ impl<S: X11Selection> ServerState<NoConnection<S>> {
         let qh = queue.handle();
 
         let interaction_manager = global_list.bind(&qh, 1..=1, ()).ok();
+        let settings_manager = global_list.bind(&qh, 1..=1, ()).ok();
 
         let xdg_wm_base = global_list
             .bind::<XdgWmBase, _, _>(&qh, 2..=6, ())
@@ -571,7 +575,7 @@ impl<S: X11Selection> ServerState<NoConnection<S>> {
         let world = MyWorld::new(global_list);
         let client = dh.insert_client(client, std::sync::Arc::new(())).unwrap();
 
-        let inner = InnerServerState {
+        let mut inner = InnerServerState {
             windows: HashMap::new(),
             pids: HashSet::new(),
             client,
@@ -608,8 +612,15 @@ impl<S: X11Selection> ServerState<NoConnection<S>> {
             current_scale: 1.0,
             decoration_manager,
             interaction_manager,
+            settings_manager,
             world,
         };
+        if inner.settings_manager.is_some() {
+            inner
+                .queue
+                .roundtrip(&mut inner.world)
+                .expect("initial host XSettings");
+        }
         Self {
             inner,
             connection: NoConnection {

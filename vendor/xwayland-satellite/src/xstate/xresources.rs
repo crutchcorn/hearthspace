@@ -17,6 +17,11 @@ impl XState {
             }))
             .unwrap();
 
+        // Do not introduce a server database that masks Xlib/XCB legacy files.
+        // XSettings still carries DPI; an existing resource writer stays owned.
+        if reply.r#type() == x::ATOM_NONE && legacy_resources_may_exist() {
+            return;
+        }
         let resources = match reply.r#type() {
             x::ATOM_NONE => &[],
             x::ATOM_STRING => reply.value::<u8>(),
@@ -67,4 +72,16 @@ impl XState {
             })
             .unwrap();
     }
+}
+
+fn legacy_resources_may_exist() -> bool {
+    let Some(home) = std::env::var_os("HOME").filter(|s| !s.is_empty()) else {
+        return true;
+    };
+    [".Xdefaults", ".Xresources"].iter().any(|name| {
+        match std::fs::symlink_metadata(std::path::Path::new(&home).join(name)) {
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => false,
+            _ => true,
+        }
+    })
 }

@@ -51,3 +51,15 @@ lookup for other consumers. Hearthspace validates its sibling
 `-surface-input-targets`. It never substitutes a system server. This is a local
 API extension, not an upstream backport; pin, package and notices are unchanged.
 See the patch ledger for verification and removal requirements.
+
+## Host appearance and legacy resources
+
+The [host-settings patch](../../patches/satellite-host-settings.patch) adds an
+optional, private `xwayland_satellite_settings_v1` global. Satellite receives
+the host's theme before readiness and publishes `Net/ThemeName` alongside its
+existing DPI entries, retaining later scale and theme updates. Absent the
+extension, upstream behavior remains available. A resource update also avoids
+creating RESOURCE_MANAGER over legacy fallback files (or unknown HOME).
+Hearthspace's helper seeds its shared cursor size before publishing DISPLAY.
+This is a local adaptation, not an upstream backport; version, pin and notices
+remain unchanged. Verification/removal are in the patch ledger.

@@ -45,6 +45,7 @@ struct State {
     seats: Vec<wl_seat::WlSeat>,
     manager: Option<XwaylandSatelliteInteractionV1>,
     synced: bool,
+    has_settings: bool,
 }
 
 impl Dispatch<wl_registry::WlRegistry, ()> for State {
@@ -68,6 +69,7 @@ impl Dispatch<wl_registry::WlRegistry, ()> for State {
                 }
                 "xdg_wm_base" => state.xdg = Some(registry.bind(name, version.min(6), qh, ())),
                 "wl_seat" => state.seats.push(registry.bind(name, 1, qh, ())),
+                "xwayland_satellite_settings_v1" => state.has_settings = true,
                 "xwayland_satellite_interaction_v1" => {
                     state.manager = Some(registry.bind(name, 1, qh, ()))
                 }
@@ -293,6 +295,7 @@ impl Fixture {
             &mut self.app,
         );
         assert!(client.manager.is_none());
+        assert!(!client.has_settings);
         assert!(
             client.xdg.is_some(),
             "ordinary globals must still be visible"

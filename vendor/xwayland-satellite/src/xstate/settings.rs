@@ -29,6 +29,17 @@ impl XState {
 
     pub(crate) fn update_global_scale(&mut self, scale: f64) {
         self.settings.set_scale(scale);
+        self.publish_settings();
+        self.update_xft_dpi_resource(self.settings.xft_dpi());
+    }
+
+    pub(crate) fn update_theme_name(&mut self, name: String) {
+        self.settings.serial += 1;
+        self.settings.theme = Some((name, self.settings.serial));
+        self.publish_settings();
+    }
+
+    fn publish_settings(&self) {
         self.connection
             .send_and_check_request(&x::ChangeProperty {
                 window: self.settings.window,
@@ -38,7 +49,6 @@ impl XState {
                 data: &self.settings.as_data(),
             })
             .unwrap();
-        self.update_xft_dpi_resource(self.settings.xft_dpi());
     }
 }
 
@@ -56,6 +66,7 @@ pub(super) struct Settings {
     window: x::Window,
     serial: u32,
     settings: HashMap<&'static str, IntSetting>,
+    theme: Option<(String, u32)>,
 }
 
 #[derive(Copy, Clone)]
@@ -90,6 +101,7 @@ impl Settings {
         let s = Settings {
             window,
             serial: 0,
+            theme: None,
             settings: HashMap::from([
                 (
                     XFT_DPI,
@@ -142,7 +154,9 @@ impl Settings {
         ];
 
         data.extend_from_slice(&self.serial.to_le_bytes());
-        data.extend_from_slice(&(self.settings.len() as u32).to_le_bytes());
+        data.extend_from_slice(
+            &(self.settings.len() as u32 + u32::from(self.theme.is_some())).to_le_bytes(),
+        );
 
         fn insert_with_padding(data: &[u8], out: &mut Vec<u8>) {
             out.extend_from_slice(data);
@@ -159,6 +173,15 @@ impl Settings {
             data.extend_from_slice(&setting.value.to_le_bytes());
         }
 
+        if let Some((theme, serial)) = &self.theme {
+            let name = "Net/ThemeName";
+            data.extend_from_slice(&[1, 0]); // XSettings string
+            data.extend_from_slice(&(name.len() as u16).to_le_bytes());
+            insert_with_padding(name.as_bytes(), &mut data);
+            data.extend_from_slice(&serial.to_le_bytes());
+            data.extend_from_slice(&(theme.len() as u32).to_le_bytes());
+            insert_with_padding(theme.as_bytes(), &mut data);
+        }
         data
     }
 

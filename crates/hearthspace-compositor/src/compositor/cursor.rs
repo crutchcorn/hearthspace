@@ -50,7 +50,7 @@ const NWSE_RESIZE_CURSOR: &[u8] = include_bytes!("../../../../assets/cursors/nws
 const NESW_RESIZE_CURSOR: &[u8] = include_bytes!("../../../../assets/cursors/nesw-resize");
 const GRAB_CURSOR: &[u8] = include_bytes!("../../../../assets/cursors/grab");
 const GRABBING_CURSOR: &[u8] = include_bytes!("../../../../assets/cursors/grabbing");
-pub(in crate::compositor) const DESIRED_CURSOR_SIZE: u32 = 24;
+pub(in crate::compositor) const DESIRED_CURSOR_SIZE: u32 = hearthspace_common::DEFAULT_CURSOR_SIZE;
 
 pub(super) fn cursor_icon_from_smithay(icon: SmithayCursorIcon) -> CursorIcon {
     match icon {

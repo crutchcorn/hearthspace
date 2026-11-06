@@ -2859,12 +2859,14 @@ dependencies = [
 name = "hearthspace-satellite"
 version = "0.1.0"
 dependencies = [
+ "hearthspace-common",
  "pretty_env_logger",
  "rustix 1.1.5",
  "serde",
  "serde_json",
  "sha2",
  "tempfile",
+ "x11rb",
  "xwayland-satellite",
 ]
 
