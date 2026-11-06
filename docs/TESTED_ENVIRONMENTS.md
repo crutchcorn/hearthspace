@@ -51,16 +51,20 @@ DRM, followed by udev change events; that selector and producer readback logging
 were removed from the final implementation. These runs establish bounded native
 pixels and client preservation, not physical smoothness or long-term reliability.
 
-The source-level full checks before the resize changes passed formatting, Ruff,
-Clippy, build, Python tests (746 run, 14 skipped), and dependency checks. The Rust
-headless integration target passed 410 cases and failed 12 X11 pixel cases. One
-failed X11 resize case also failed with the entire native backend excluded;
-those failures are separate from the native resize changes. The earlier Rust
-command stopped at the failing integration target, so it did not cover every
-remaining workspace target. Full logs retain the exact commands and outcomes. The corrected ownership path
-subsequently passed full formatting, Ruff, workspace Clippy and all-target build,
-plus all 132 native-backend library tests. Those focused checks do not replace a
-full workspace test result.
+The final source through `2cc04bf` passed formatting, Ruff, workspace Clippy,
+the all-target build, and all 132 native-backend library tests. The full Rust
+workspace run used `--no-fail-fast`, so every target ran: its headless integration
+target passed 409 cases and failed 13 X11 pixel cases; three WayDriver fixtures
+also failed startup with an inherited empty `HEARTHSPACE_COMMAND_SOCKET`.
+All other Rust targets passed, with 26 tests ignored. After clearing the inherited
+socket/runtime overrides using the [headless setup](E2E_TESTING.md#headless-compositor),
+all three WayDriver fixtures passed. The X11 workspace-feature rerun passed ten
+cases and retained the same twelve persistent failures seen before the resize
+work. The additional fullscreen case passed both isolated and workspace-feature
+reruns. One persistent X11 case had also failed with the native backend entirely
+excluded. The full Python run passed (746 run, 14 skipped), and dependency checks
+passed with warnings. Failed attempts and clean-environment reruns are retained
+separately; these results do not claim a fully passing workspace suite.
 
 Evidence remains under
 `~/.local/state/hearthspace-investigations/20261105-parallels-graphics/`, including
