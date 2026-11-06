@@ -78,6 +78,7 @@ impl App {
         }
     }
 
+    #[cfg(feature = "udev")]
     pub(in crate::compositor) fn layout_requires_composition(&self) -> bool {
         self.layout_editing() || !self.layout_editor.turn.turns.is_empty()
     }
