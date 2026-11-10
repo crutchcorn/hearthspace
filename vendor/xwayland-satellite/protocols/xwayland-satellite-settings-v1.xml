@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<protocol name="xwayland_satellite_settings_v1">
+  <copyright>
+    Copyright 2026 Hearthspace contributors
+
+    Permission is hereby granted, free of charge, to any person obtaining a
+    copy of this software and associated documentation files (the "Software"),
+    to deal in the Software without restriction, including without limitation
+    the rights to use, copy, modify, merge, publish, distribute, sublicense,
+    and/or sell copies of the Software, and to permit persons to whom the
+    Software is furnished to do so, subject to the following conditions:
+
+    The above copyright notice and this permission notice shall be included
+    in all copies or substantial portions of the Software.
+
+    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
+    OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+    FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
+    THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+    LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+    FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+    DEALINGS IN THE SOFTWARE.
+  </copyright>
+  <interface name="xwayland_satellite_settings_v1" version="1">
+    <description summary="host appearance for its private X11 compatibility bridge">
+      Optional host preference delivery. Only the compositor's authenticated
+      compatibility client may bind. Satellite retains XSettings ownership and
+      its DPI entries; the host supplies the toolkit theme name. The initial
+      event is sent at bind, with later events on preference changes.
+    </description>
+    <request name="destroy" type="destructor"/>
+    <event name="theme_name">
+      <arg name="name" type="string" summary="XSettings Net/ThemeName value"/>
+    </event>
+  </interface>
+</protocol>

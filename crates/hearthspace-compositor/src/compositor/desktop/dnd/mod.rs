@@ -1,7 +1,5 @@
 //! File drags keep the desktop's existing move gesture and use Smithay offers.
 use super::App;
-#[cfg(feature = "xwayland")]
-use crate::compositor::ManagedSurface;
 use crate::compositor::{HitTarget, ManagedWindowKind};
 use hearthspace_common::desktop_files::{FileClipboard, local_path};
 use smithay::{
@@ -97,11 +95,7 @@ impl App {
             return None;
         }
         let point = self.pointer_location - surface_location;
-        #[cfg(feature = "xwayland")]
-        if let ManagedSurface::X11(x11) = &self.windows[window_index].surface {
-            return Some((Target::X11(x11.clone()), point));
-        }
-        Some((Target::Wayland(surface), point))
+        Some((Target(surface), point))
     }
 
     pub(super) fn update_desktop_drop(&mut self, ids: &[String]) {
@@ -141,7 +135,7 @@ impl App {
         };
         let on_app = drag.target.is_some();
         let accepted = drag.offer.as_ref().is_some_and(Offer::validated);
-        if let Some(target) = drag.target.as_ref().filter(|target| target.alive(self)) {
+        if let Some(target) = drag.target.as_ref().filter(|target| target.alive()) {
             target.drop(self, drag.offer.as_mut());
         }
         if accepted {

@@ -136,6 +136,9 @@ class Input:
             self.up("key", code)
             if shift:
                 self.up("key", 42)
+            # A command acknowledgment means compositor acceptance, not client
+            # consumption. Pace text to avoid flooding a busy Wayland client.
+            time.sleep(min(0.01, self.control.deadline.remaining()))
 
     def click(self, x, y, button="left"):
         self.motion(x, y)

@@ -1,0 +1,276 @@
+diff --git a/src/lib.rs b/src/lib.rs
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -210,6 +210,9 @@
+     }
+
+     let mut xstate = XState::new(xsock_wl.as_fd());
++    if let Some(theme) = server_state.new_theme_name() {
++        xstate.update_theme_name(theme);
++    }
+     if let Some(bytes) = data.max_req_len_bytes() {
+         xstate.set_max_req_bytes(bytes);
+     }
+@@ -249,6 +252,10 @@
+
+         if let Some(sel) = server_state.new_selection::<Primary>() {
+             xstate.set_primary_selection(sel);
++        }
++
++        if let Some(theme) = server_state.new_theme_name() {
++            xstate.update_theme_name(theme);
+         }
+
+         if let Some(scale) = server_state.new_global_scale() {
+diff --git a/src/server/mod.rs b/src/server/mod.rs
+--- a/src/server/mod.rs
++++ b/src/server/mod.rs
+@@ -4,6 +4,7 @@
+ mod event;
+ mod interaction;
+ pub(crate) mod selection;
++mod settings;
+ #[cfg(test)]
+ mod tests;
+
+@@ -484,6 +485,8 @@
+     viewporter: WpViewporter,
+     fractional_scale: Option<WpFractionalScaleManagerV1>,
+     decoration_manager: Option<ZxdgDecorationManagerV1>,
++    settings_manager:
++        Option<settings::protocol::xwayland_satellite_settings_v1::XwaylandSatelliteSettingsV1>,
+     interaction_manager: Option<
+         interaction::protocol::xwayland_satellite_interaction_v1::XwaylandSatelliteInteractionV1,
+     >,
+@@ -513,6 +516,7 @@
+         let qh = queue.handle();
+
+         let interaction_manager = global_list.bind(&qh, 1..=1, ()).ok();
++        let settings_manager = global_list.bind(&qh, 1..=1, ()).ok();
+
+         let xdg_wm_base = global_list
+             .bind::<XdgWmBase, _, _>(&qh, 2..=6, ())
+@@ -571,7 +575,7 @@
+         let world = MyWorld::new(global_list);
+         let client = dh.insert_client(client, std::sync::Arc::new(())).unwrap();
+
+-        let inner = InnerServerState {
++        let mut inner = InnerServerState {
+             windows: HashMap::new(),
+             pids: HashSet::new(),
+             client,
+@@ -608,8 +612,15 @@
+             current_scale: 1.0,
+             decoration_manager,
+             interaction_manager,
++            settings_manager,
+             world,
+         };
++        if inner.settings_manager.is_some() {
++            inner
++                .queue
++                .roundtrip(&mut inner.world)
++                .expect("initial host XSettings");
++        }
+         Self {
+             inner,
+             connection: NoConnection {
+diff --git a/src/server/clientside.rs b/src/server/clientside.rs
+--- a/src/server/clientside.rs
++++ b/src/server/clientside.rs
+@@ -112,6 +112,7 @@
+ }
+
+ pub(super) struct MyWorld {
++    pub theme_name: Option<String>,
+     pub world: World,
+     pub global_list: GlobalList,
+     pub new_globals: Vec<Global>,
+@@ -127,6 +128,7 @@
+     pub fn new(global_list: GlobalList) -> Self {
+         Self {
+             world: World::new(),
++            theme_name: None,
+             global_list,
+             new_globals: Vec::new(),
+             removed_globals: Vec::new(),
+diff --git a/src/server/settings.rs b/src/server/settings.rs
+--- a/src/server/settings.rs
++++ b/src/server/settings.rs
+@@ -0,0 +1,33 @@
++//! The host supplies appearance; Satellite remains the XSettings manager.
++use super::clientside::MyWorld;
++use wayland_client::{Connection, Dispatch, QueueHandle};
++pub(super) mod protocol {
++    #![allow(non_camel_case_types, non_upper_case_globals, unused_imports)]
++    use wayland_client::{self, protocol::*};
++    mod __interfaces {
++        use wayland_client::backend as wayland_backend;
++        use wayland_client::protocol::__interfaces::*;
++        wayland_scanner::generate_interfaces!("protocols/xwayland-satellite-settings-v1.xml");
++    }
++    use self::__interfaces::*;
++    wayland_scanner::generate_client_code!("protocols/xwayland-satellite-settings-v1.xml");
++}
++use protocol::xwayland_satellite_settings_v1::{self, XwaylandSatelliteSettingsV1};
++impl Dispatch<XwaylandSatelliteSettingsV1, ()> for MyWorld {
++    fn event(
++        state: &mut Self,
++        _: &XwaylandSatelliteSettingsV1,
++        event: xwayland_satellite_settings_v1::Event,
++        _: &(),
++        _: &Connection,
++        _: &QueueHandle<Self>,
++    ) {
++        let xwayland_satellite_settings_v1::Event::ThemeName { name } = event;
++        state.theme_name = Some(name);
++    }
++}
++impl<S: crate::X11Selection> super::InnerServerState<S> {
++    pub(crate) fn new_theme_name(&mut self) -> Option<String> {
++        self.world.theme_name.take()
++    }
++}
+diff --git a/src/xstate/settings.rs b/src/xstate/settings.rs
+--- a/src/xstate/settings.rs
++++ b/src/xstate/settings.rs
+@@ -29,6 +29,17 @@
+
+     pub(crate) fn update_global_scale(&mut self, scale: f64) {
+         self.settings.set_scale(scale);
++        self.publish_settings();
++        self.update_xft_dpi_resource(self.settings.xft_dpi());
++    }
++
++    pub(crate) fn update_theme_name(&mut self, name: String) {
++        self.settings.serial += 1;
++        self.settings.theme = Some((name, self.settings.serial));
++        self.publish_settings();
++    }
++
++    fn publish_settings(&self) {
+         self.connection
+             .send_and_check_request(&x::ChangeProperty {
+                 window: self.settings.window,
+@@ -38,7 +49,6 @@
+                 data: &self.settings.as_data(),
+             })
+             .unwrap();
+-        self.update_xft_dpi_resource(self.settings.xft_dpi());
+     }
+ }
+
+@@ -56,6 +66,7 @@
+     window: x::Window,
+     serial: u32,
+     settings: HashMap<&'static str, IntSetting>,
++    theme: Option<(String, u32)>,
+ }
+
+ #[derive(Copy, Clone)]
+@@ -90,6 +101,7 @@
+         let s = Settings {
+             window,
+             serial: 0,
++            theme: None,
+             settings: HashMap::from([
+                 (
+                     XFT_DPI,
+@@ -142,7 +154,9 @@
+         ];
+
+         data.extend_from_slice(&self.serial.to_le_bytes());
+-        data.extend_from_slice(&(self.settings.len() as u32).to_le_bytes());
++        data.extend_from_slice(
++            &(self.settings.len() as u32 + u32::from(self.theme.is_some())).to_le_bytes(),
++        );
+
+         fn insert_with_padding(data: &[u8], out: &mut Vec<u8>) {
+             out.extend_from_slice(data);
+@@ -159,6 +173,15 @@
+             data.extend_from_slice(&setting.value.to_le_bytes());
+         }
+
++        if let Some((theme, serial)) = &self.theme {
++            let name = "Net/ThemeName";
++            data.extend_from_slice(&[1, 0]); // XSettings string
++            data.extend_from_slice(&(name.len() as u16).to_le_bytes());
++            insert_with_padding(name.as_bytes(), &mut data);
++            data.extend_from_slice(&serial.to_le_bytes());
++            data.extend_from_slice(&(theme.len() as u32).to_le_bytes());
++            insert_with_padding(theme.as_bytes(), &mut data);
++        }
+         data
+     }
+
+diff --git a/src/xstate/xresources.rs b/src/xstate/xresources.rs
+--- a/src/xstate/xresources.rs
++++ b/src/xstate/xresources.rs
+@@ -17,6 +17,11 @@
+             }))
+             .unwrap();
+
++        // Do not introduce a server database that masks Xlib/XCB legacy files.
++        // XSettings still carries DPI; an existing resource writer stays owned.
++        if reply.r#type() == x::ATOM_NONE && legacy_resources_may_exist() {
++            return;
++        }
+         let resources = match reply.r#type() {
+             x::ATOM_NONE => &[],
+             x::ATOM_STRING => reply.value::<u8>(),
+@@ -68,3 +73,15 @@
+             .unwrap();
+     }
+ }
++
++fn legacy_resources_may_exist() -> bool {
++    let Some(home) = std::env::var_os("HOME").filter(|s| !s.is_empty()) else {
++        return true;
++    };
++    [".Xdefaults", ".Xresources"].iter().any(|name| {
++        match std::fs::symlink_metadata(std::path::Path::new(&home).join(name)) {
++            Err(error) if error.kind() == std::io::ErrorKind::NotFound => false,
++            _ => true,
++        }
++    })
++}
+diff --git a/protocols/xwayland-satellite-settings-v1.xml b/protocols/xwayland-satellite-settings-v1.xml
+--- a/protocols/xwayland-satellite-settings-v1.xml
++++ b/protocols/xwayland-satellite-settings-v1.xml
+@@ -0,0 +1,36 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<protocol name="xwayland_satellite_settings_v1">
++  <copyright>
++    Copyright 2026 Hearthspace contributors
++
++    Permission is hereby granted, free of charge, to any person obtaining a
++    copy of this software and associated documentation files (the "Software"),
++    to deal in the Software without restriction, including without limitation
++    the rights to use, copy, modify, merge, publish, distribute, sublicense,
++    and/or sell copies of the Software, and to permit persons to whom the
++    Software is furnished to do so, subject to the following conditions:
++
++    The above copyright notice and this permission notice shall be included
++    in all copies or substantial portions of the Software.
++
++    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
++    OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
++    FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
++    THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
++    LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
++    FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
++    DEALINGS IN THE SOFTWARE.
++  </copyright>
++  <interface name="xwayland_satellite_settings_v1" version="1">
++    <description summary="host appearance for its private X11 compatibility bridge">
++      Optional host preference delivery. Only the compositor's authenticated
++      compatibility client may bind. Satellite retains XSettings ownership and
++      its DPI entries; the host supplies the toolkit theme name. The initial
++      event is sent at bind, with later events on preference changes.
++    </description>
++    <request name="destroy" type="destructor"/>
++    <event name="theme_name">
++      <arg name="name" type="string" summary="XSettings Net/ThemeName value"/>
++    </event>
++  </interface>
++</protocol>

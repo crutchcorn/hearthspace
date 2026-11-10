@@ -12,6 +12,7 @@ from unittest.mock import Mock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from nativelib import cli, common, recovery, service
+from xwayland_fixture import companions
 
 
 def args(directory, login_session=False):
@@ -161,6 +162,7 @@ class NativeLoginTests(unittest.TestCase):
                 executable = values.binary_dir / name
                 executable.write_text("#!/bin/sh\nexit 1\n")
                 executable.chmod(0o755)
+            private_server = companions(values.binary_dir)
             installed_data(directory)
             for enabled in (True, False):
                 values.login_session = enabled
@@ -173,6 +175,10 @@ class NativeLoginTests(unittest.TestCase):
                     str(values.binary_dir / "hearthspace-session-bus"),
                 )
                 self.assertEqual(len(bus_helper["sha256"]), 64)
+                self.assertEqual(
+                    record[private_server.name]["path"], str(private_server)
+                )
+                self.assertEqual(len(record[private_server.name]["sha256"]), 64)
                 if enabled:
                     self.assertEqual(
                         record["hearthspace-login-guard"]["path"],

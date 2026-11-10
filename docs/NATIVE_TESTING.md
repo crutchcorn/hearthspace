@@ -489,6 +489,6 @@ the client recovered. The sign-in window can cover this without submitting
 credentials, but does not establish behavior in signed-in or game windows.
 
 Preserve app stderr, input traces, screenshots, geometry, hardware/output scale,
-and session cleanup evidence. XWM tracing can distinguish `_NET_WM_MOVERESIZE`
+and session cleanup evidence. Satellite tracing can distinguish `_NET_WM_MOVERESIZE`
 from client-directed configure requests; do not assume every CSD toolkit uses
 the same path. Keep run-specific results with the session artifacts.

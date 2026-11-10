@@ -246,7 +246,13 @@ impl Client {
         button: u32,
         point: (i16, i16),
     ) {
-        self.request_for(compositor, self.window, direction, button, point);
+        let [x, y, _, _] = geometry(compositor, self.id);
+        let origin = self.origin();
+        let root = (
+            (i32::from(point.0) - x + origin.0) as i16,
+            (i32::from(point.1) - y + origin.1) as i16,
+        );
+        self.request_for(compositor, self.window, direction, button, root);
     }
 
     pub fn request_for(
@@ -310,13 +316,19 @@ impl Client {
     pub fn overlay(&mut self, compositor: &HeadlessCompositor) -> Window {
         let window = self.connection.generate_id().unwrap();
         let x = 950 + (self.sequence % 2) as i16 * 50;
+        let [canvas_x, canvas_y, _, _] = geometry(compositor, self.id);
+        let backing = self.origin();
+        // Toolkit popups use backing-root coordinates. The host projects their
+        // parent-local offset back onto the canvas exactly once.
+        let root_x = backing.0 + i32::from(x) - canvas_x;
+        let root_y = backing.1 + 600 - canvas_y;
         self.connection
             .create_window(
                 x11rb::COPY_DEPTH_FROM_PARENT,
                 window,
                 self.root,
-                x,
-                600,
+                root_x as i16,
+                root_y as i16,
                 30,
                 30,
                 0,

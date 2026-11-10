@@ -7,7 +7,7 @@ from pathlib import Path
 from .control import ControlError
 
 
-def run_accessibility(args, control, deadline):
+def run_accessibility(args, control, deadline, *, capture=True):
     if args.session is None:
         raise ControlError("a11y requires --session with its private D-Bus manifest")
     manifest = json.loads((args.session / "session.json").read_text())
@@ -45,6 +45,6 @@ def run_accessibility(args, control, deadline):
     payload = json.loads(result.stdout if result.returncode == 0 else result.stderr)
     if result.returncode:
         raise ControlError(payload.get("error", "accessibility command failed"))
-    if args.a11y_action == "activate":
+    if args.a11y_action == "activate" and capture:
         payload["capture"] = control.capture(args.output)[0]
     return payload

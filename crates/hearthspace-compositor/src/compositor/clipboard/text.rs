@@ -38,28 +38,7 @@ impl App {
             mime_types,
             SelectionData::Text(bytes),
         );
-        #[cfg(feature = "xwayland")]
-        if let Some(xwm) = self.xwm.as_mut().filter(|_| self.xdisplay.is_some())
-            && let Err(error) = xwm.new_selection(
-                smithay::wayland::selection::SelectionTarget::Clipboard,
-                Some(MIME_TYPES.iter().map(|mime| (*mime).to_owned()).collect()),
-            )
-        {
-            return ControlReply::Err(format!(
-                "clipboard set, but XWayland advertisement failed: {error}"
-            ));
-        }
         ControlReply::Ok
-    }
-
-    #[cfg(feature = "xwayland")]
-    pub(in crate::compositor) fn send_selection_text(
-        &self,
-        bytes: Arc<[u8]>,
-        mime: &str,
-        fd: OwnedFd,
-    ) {
-        send_text(bytes, mime, fd);
     }
 }
 

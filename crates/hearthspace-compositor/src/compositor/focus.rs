@@ -1,8 +1,6 @@
-//! Preserve the native keyboard target when switching between Wayland and X11.
+//! Keyboard focus is an ordinary Wayland surface, including Satellite clients.
 use std::borrow::Cow;
 
-#[cfg(feature = "xwayland")]
-use smithay::xwayland::X11Surface;
 use smithay::{
     backend::input::{InputTime, KeyState},
     desktop::{PopupKind, find_popup_root_surface},
@@ -15,45 +13,23 @@ use smithay::{
 };
 use wayland_server::protocol::wl_surface::WlSurface;
 
-use super::{App, ManagedSurface};
+use super::App;
 
 #[derive(Debug, Clone, PartialEq)]
 pub(super) enum KeyboardFocusTarget {
     Wayland(WlSurface),
-    #[cfg(feature = "xwayland")]
-    X11 {
-        x11: Box<X11Surface>,
-        // Only mapped X11 windows receive focus. Retain that association so
-        // popup-grab pointer conversions stay valid during window teardown.
-        surface: WlSurface,
-    },
 }
 
 impl KeyboardFocusTarget {
-    pub(super) fn for_window(window: &ManagedSurface, surface: WlSurface) -> Self {
-        match window {
-            ManagedSurface::Xdg(_) => Self::Wayland(surface),
-            #[cfg(feature = "xwayland")]
-            ManagedSurface::X11(x11) => Self::X11 {
-                x11: x11.clone(),
-                surface,
-            },
-        }
-    }
-
     pub(super) fn surface(&self) -> &WlSurface {
         match self {
             Self::Wayland(surface) => surface,
-            #[cfg(feature = "xwayland")]
-            Self::X11 { surface, .. } => surface,
         }
     }
 
     fn target(&self) -> &dyn KeyboardTarget<App> {
         match self {
             Self::Wayland(surface) => surface,
-            #[cfg(feature = "xwayland")]
-            Self::X11 { x11, .. } => x11.as_ref(),
         }
     }
 }
@@ -86,16 +62,12 @@ impl From<KeyboardFocusTarget> for WlSurface {
     fn from(focus: KeyboardFocusTarget) -> Self {
         match focus {
             KeyboardFocusTarget::Wayland(surface) => surface,
-            #[cfg(feature = "xwayland")]
-            KeyboardFocusTarget::X11 { surface, .. } => surface,
         }
     }
 }
 
 impl KeyboardTarget<App> for KeyboardFocusTarget {
     fn enter(&self, seat: &Seat<App>, data: &mut App, keys: Vec<KeysymHandle<'_>>, serial: Serial) {
-        // X11Surface performs XSetInputFocus/WM_TAKE_FOCUS in addition to
-        // Wayland keyboard delivery. Using only its wl_surface skips that.
         self.target().enter(seat, data, keys, serial);
     }
 

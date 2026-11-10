@@ -30,17 +30,9 @@ impl App {
         set_data_device_selection(
             &self.display_handle,
             &self._seat,
-            mime_types.clone(),
+            mime_types,
             SelectionData::Files(Arc::new(files)),
         );
-        #[cfg(feature = "xwayland")]
-        if let Some(xwm) = self.xwm.as_mut().filter(|_| self.xdisplay.is_some()) {
-            xwm.new_selection(
-                smithay::wayland::selection::SelectionTarget::Clipboard,
-                Some(mime_types),
-            )
-            .map_err(|error| format!("Could not share file clipboard with XWayland: {error}"))?;
-        }
         Ok(())
     }
 
@@ -54,13 +46,6 @@ impl App {
             return;
         }
         clear_data_device_selection(&self.display_handle, &self._seat);
-        #[cfg(feature = "xwayland")]
-        if let Some(xwm) = self.xwm.as_mut().filter(|_| self.xdisplay.is_some()) {
-            let _ = xwm.new_selection(
-                smithay::wayland::selection::SelectionTarget::Clipboard,
-                None,
-            );
-        }
     }
 
     pub(in crate::compositor) fn read_file_clipboard(&mut self) -> ControlReply {
@@ -96,24 +81,6 @@ impl App {
                 Ok(())
             }
             Some(SelectionData::Text(_)) => Err("clipboard contains text".into()),
-            #[cfg(feature = "xwayland")]
-            Some(SelectionData::X11(source))
-                if !source.mime_types.iter().any(|value| value == mime) =>
-            {
-                Err("clipboard does not offer this file format".into())
-            }
-            #[cfg(feature = "xwayland")]
-            Some(SelectionData::X11(source)) => self
-                .xwm
-                .as_mut()
-                .filter(|xwm| xwm.id() == source.xwm)
-                .ok_or("XWayland clipboard owner disappeared".to_string())?
-                .send_selection(
-                    smithay::wayland::selection::SelectionTarget::Clipboard,
-                    mime.into(),
-                    fd,
-                )
-                .map_err(|error| error.to_string()),
             None => request_data_device_client_selection(&self._seat, mime.into(), fd)
                 .map_err(|error| error.to_string()),
         }

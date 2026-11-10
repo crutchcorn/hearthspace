@@ -27,11 +27,9 @@ impl App {
 
     pub(in crate::compositor) fn transient_parent_index(&self, index: usize) -> Option<usize> {
         let parent = match &self.windows[index].surface {
-            ManagedSurface::Xdg(surface) => surface.parent().and_then(|root| self.window_index_for_surface(&root)),
-            #[cfg(feature = "xwayland")]
-            ManagedSurface::X11(surface) => surface.is_transient_for().and_then(|parent| {
-                self.windows.iter().position(|window| matches!(&window.surface, ManagedSurface::X11(surface) if surface.window_id() == parent))
-            }),
+            ManagedSurface::Xdg(surface) => surface
+                .parent()
+                .and_then(|root| self.window_index_for_surface(&root)),
         };
         parent.filter(|parent| *parent != index)
     }
@@ -49,10 +47,6 @@ impl App {
     }
 
     pub(in crate::compositor) fn window_uses_output_coordinates(&self, index: usize) -> bool {
-        #[cfg(feature = "xwayland")]
-        if let Some((parent, _)) = self.x11_popup_anchor(index) {
-            return self.window_uses_output_coordinates(parent);
-        }
         self.presentation_anchor(index).is_some() || self.frame_window_attached(index)
     }
 
@@ -60,10 +54,6 @@ impl App {
         &self,
         index: usize,
     ) -> Option<Rectangle<i32, Logical>> {
-        #[cfg(feature = "xwayland")]
-        if let Some((parent, _)) = self.x11_popup_anchor(index) {
-            return self.window_presentation_output(parent);
-        }
         self.presentation_anchor(index)
             .and_then(|anchor| self.presentation_output_rect(anchor))
     }

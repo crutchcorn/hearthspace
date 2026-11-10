@@ -32,7 +32,8 @@ a window's classification cannot change its identity.
 
 Buffer suspension and retirement are different events. A null-buffer unmap
 suspends presentation and input ownership while retaining the window record.
-XWM withdrawal and destruction remove it. Retirement cancels that owner's geometry
+Satellite withdraws an X11 window by destroying its XDG role; that retirement
+removes its live binding. Retirement cancels that owner's geometry
 operation, preserves held-release bookkeeping, and restores focus without moving
 the viewport. Unrelated popup or shell teardown must not cancel another window's
 operation.

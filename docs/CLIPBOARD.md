@@ -7,20 +7,29 @@ closing the application that owns copied data can make that data unavailable.
 
 ## Selection ownership
 
-Hearthspace uses Smithay's `wl_data_device` selection handling for ordinary
-Wayland copy/paste and its XWM selection bridge for XWayland interoperability.
-Keyboard focus controls which Wayland client receives the clipboard offer;
-X11 requests for the Wayland clipboard require an XWayland window to have focus.
-X11 applications share the same X server, so this is an XWM-level access check.
+Hearthspace uses Smithay's `wl_data_device` handling for ordinary Wayland
+copy/paste. [Satellite](SATELLITE.md) owns the X11 selection bridge. Keyboard
+focus controls which Wayland client receives clipboard and primary offers, so
+reading a host selection through X11 requires an X11 window to have focus.
+Applications in that X server share its trust boundary.
 
-The bridge forwards advertised MIME types and transfers data through Smithay's
-file-descriptor APIs. Hearthspace does not read application clipboard contents
-into its window metadata. The owning application supplies the data.
-Primary selection uses Smithay's primary-selection protocol and the XWM bridge,
-including transfers between Wayland and XWayland apps.
-Both selection offers follow keyboard focus. General application-to-application
-cross-protocol drag-and-drop is not implemented. Hearthspace separately supports
-dragging its own [desktop files](DESKTOP_ITEMS.md) into Wayland or X11 applications.
+X11 owners can publish clipboard or primary data before any X11 window has
+keyboard focus. A client-restricted standard data-control manager permits that
+export. Satellite ignores the manager's host offers and reads host selections
+through ordinary clipboard/primary offers. Each transfer retains its source
+identity; a cancelled or destroyed source cannot serve a newer owner's data.
+Hearthspace keeps no clipboard history or application clipboard contents in
+window metadata.
+
+Desktop-file drags use Smithay's host offers. Satellite translates URI-list Copy
+offers into XDND for X11 destinations, using the X backing origin rather than
+the window's canvas home. Only a matching target response accepts a drop. A new
+drag gets a distinct selection-owner window, so delayed status, finish and
+selection requests cannot act on its successor. Escape, lock, source removal and
+target destruction cancel the operation; releasing the held pointer must not
+click a replacement window. The original desktop icons are not moved by an
+application drop, including rejection. Other formats/actions and general
+application-to-application cross-protocol drag-and-drop remain unsupported.
 
 Agents can explicitly replace the clipboard with `hearthspace-agent clipboard-set`
 or replace it and send a paste shortcut with `hearthspace-agent paste`. These
@@ -31,9 +40,10 @@ that explicit payload until replaced, and serves it through bounded asynchronous
 transfers so a stalled paste recipient cannot freeze the desktop. The `type`
 command retains its keyboard-event behavior and US ASCII mapping.
 
-Large X11 transfers use Smithay's INCR protocol support. The vendored Smithay base
-includes the upstream INCR header fix. Its local changes and refresh conditions
-are recorded in the [dependency patch ledger](../patches/README.md).
+Large X11 transfers use Satellite's INCR implementation. Desktop-file transfers
+use at most 64 KiB per X property chunk and verify both requestor window and
+property when consuming an acknowledgment. The compatibility repairs and
+refresh conditions are in the [dependency patch ledger](../patches/README.md).
 
 ## Regression workflow
 
@@ -67,8 +77,7 @@ HEARTHSPACE_E2E=1 python3 -m unittest discover -s scripts/tests -p test_clipboar
 ```
 
 Set `HEARTHSPACE_CLIPBOARD_EVIDENCE` to a fresh directory to retain headless
-artifacts. Without it, the test uses a temporary directory. Both the fixture
-binary and Xwayland must be installed/built; missing prerequisites fail an
+artifacts. Without it, the test uses a temporary directory. The fixture binary, Satellite and its verified private Xwayland must be built; missing prerequisites fail an
 enabled test. The headless bus has no service activation directories, and fixture
 clients disable portals and GVfs so clipboard tests cannot create unrelated
 desktop services or document-portal mounts in their temporary runtime.

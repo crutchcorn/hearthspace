@@ -123,6 +123,14 @@ root and uploads `headless-e2e-evidence` for seven days on both success and fail
 screenshots/accessibility snapshots, and retained Rust failure directories.
 Artifacts are limited to test-created log, JSON/JSONL, PNG, XML, and text files;
 ordinary session sockets and the host desktop are excluded.
+The Python terminal smoke copies its compositor log and artifacts into
+`terminal-smoke` under `HEARTHSPACE_SHELL_EVIDENCE`, including status and capture
+diagnostics when a control operation fails. Its recorded paths describe the
+original temporary runtime, which is removed during teardown. Synthetic text
+input yields for up to 10 milliseconds after each released character, within
+the action deadline; command acceptance is not a client-consumption barrier.
+Accessibility activation can defer its automatic capture when opening a panel
+requires asynchronous compositor IPC. Wait for the mapped panel before readback.
 
 ### Smithay transfer cache regressions
 

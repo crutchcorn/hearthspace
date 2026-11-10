@@ -1,0 +1,22 @@
+[package]
+name = "hearthspace-satellite"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.99.0"
+license = "Apache-2.0"
+
+[dependencies]
+hearthspace-common = { path = "../hearthspace-common" }
+x11rb = "=0.13.2"
+pretty_env_logger = "=0.5.0"
+rustix = { version = "=1.1.5", features = ["process", "event", "fs"] }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+sha2 = "0.10"
+xwayland-satellite = { version = "=0.8.3", path = "../../vendor/xwayland-satellite" }
+
+[dev-dependencies]
+tempfile = "=3.27.0"
+
+[lints]
+workspace = true

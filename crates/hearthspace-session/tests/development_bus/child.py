@@ -20,8 +20,9 @@ signal.alarm(30)
 assert "--locked" in sys.argv
 binary = sys.argv[sys.argv.index("--bin") + 1]
 if sys.argv[1] == "build":
-    assert binary == "hearthspace-lock"
-    artifact = root / "locker-fixture"
+    assert binary in ("hearthspace-lock", "hearthspace-satellite")
+    assert sys.argv[sys.argv.index("-p") + 1] == binary
+    artifact = root / ("locker-fixture" if binary == "hearthspace-lock" else "satellite-fixture")
     artifact.write_text("#!/bin/sh\nexit 0\n")
     artifact.chmod(0o700)
     print(json.dumps({

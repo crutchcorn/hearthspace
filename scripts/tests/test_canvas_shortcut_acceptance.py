@@ -110,6 +110,7 @@ class SearchOpeningTests(unittest.TestCase):
     def test_cold_search_uses_meta_k_and_types_before_any_readiness_query(self):
         smoke = Mock(marker="HV")
         smoke.control.path = "/owned-search-control"
+        smoke.control.deadline.remaining.return_value = 5
         smoke.control.query.side_effect = [
             {"query": "HV", "scene": [], "active": True},
             {"active": False},

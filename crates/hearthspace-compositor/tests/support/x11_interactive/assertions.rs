@@ -52,7 +52,7 @@ pub(super) fn wait_geometry(
         let origin = client.origin();
         let pixels = colored_bounds(compositor, color);
         if actual == expected
-            && origin == (expected[0], expected[1])
+            && origin == (0, 0)
             && pixels.is_some_and(|pixels| {
                 pixels
                     .into_iter()
@@ -64,7 +64,7 @@ pub(super) fn wait_geometry(
         }
         assert!(
             Instant::now() < deadline,
-            "expected displayed/X11 geometry {expected:?}, managed={actual:?}, TranslateCoordinates={origin:?}, pixels={pixels:?}, ConfigureNotify={:?}",
+            "expected displayed canvas geometry with a stable X backing origin {expected:?}, managed={actual:?}, TranslateCoordinates={origin:?}, pixels={pixels:?}, ConfigureNotify={:?}",
             client.configures
         );
         thread::sleep(Duration::from_millis(20));
@@ -75,6 +75,8 @@ pub(super) fn motion(compositor: &HeadlessCompositor, x: i32, y: i32) {
     action(compositor, format!("pointer-motion-abs {x} {y}"));
 }
 
+// Returns the canvas-screen pointer point for subsequent synthetic motion.
+// X event coordinates are independently checked against the private backing root.
 pub(super) fn press(compositor: &HeadlessCompositor, client: &mut Client) -> (i16, i16) {
     let [x, y, _, _] = geometry(compositor, client.id);
     motion(compositor, x + 60, y + 20);
@@ -89,9 +91,9 @@ pub(super) fn press(compositor: &HeadlessCompositor, client: &mut Client) -> (i1
     );
     assert_eq!(
         (i32::from(event.root_x), i32::from(event.root_y)),
-        (x + 60, y + 20)
+        (client.origin().0 + 60, client.origin().1 + 20)
     );
-    (event.root_x, event.root_y)
+    ((x + 60) as i16, (y + 20) as i16)
 }
 
 pub(super) fn responsive_click(compositor: &HeadlessCompositor, client: &mut Client) {

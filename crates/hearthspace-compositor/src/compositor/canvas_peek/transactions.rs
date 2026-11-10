@@ -43,13 +43,8 @@ impl App {
                                                 .contains(xdg_toplevel::State::Maximized)
                                     }))
                         })
-                    }
-                    // X11 has no configure serial. This is the same committed
-                    // buffer geometry used to retire its final resize anchor.
-                    #[cfg(feature = "xwayland")]
-                    ManagedSurface::X11(surface) => {
-                        surface.bbox().size != surface.last_configure().size
-                    }
+                    } // X11 has no configure serial. This is the same committed
+                      // buffer geometry used to retire its final resize anchor.
                 }
             })
     }

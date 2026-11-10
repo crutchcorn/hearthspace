@@ -3,16 +3,14 @@ use super::{App, ManagedWindowKind, WindowDecoration, position_for_new_window};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(in crate::compositor) enum RetirementCause {
-    /// A null-buffer commit suspends either backend's record until remapping.
+    /// A null-buffer commit suspends an XDG record until remapping.
     Unmapped,
-    #[cfg(feature = "xwayland")]
-    X11Unmapped,
     Destroyed,
 }
 
 impl App {
     /// Buffer unmap retires presentation/input ownership while retaining the
-    /// record. XWM withdrawal and destruction also retire storage and bindings.
+    /// record. Role destruction also retires storage and bindings.
     pub(in crate::compositor) fn retire_window(&mut self, id: u64, cause: RetirementCause) {
         let Some(index) = self.windows.index(id) else {
             return;

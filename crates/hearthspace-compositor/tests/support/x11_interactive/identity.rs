@@ -1,7 +1,7 @@
 //! XRes credentials supply identity when bootstrap clients omit WM_CLASS.
 use super::*;
 use smithay::reexports::x11rb::{
-    protocol::xproto::{AtomEnum, PropMode},
+    protocol::xproto::{AtomEnum, ConnectionExt, PropMode},
     wrapper::ConnectionExt as _,
 };
 
@@ -22,6 +22,10 @@ fn x11_bootstrap_identity_uses_client_process_then_follows_wm_class() {
     for (class, expected) in [
         (b"bootstrap-instance\0\0".as_slice(), "bootstrap-instance"),
         (
+            b"bootstrap-instance\0 \t\0".as_slice(),
+            "bootstrap-instance",
+        ),
+        (
             b"bootstrap-instance\0ExplicitClass\0".as_slice(),
             "ExplicitClass",
         ),
@@ -40,6 +44,12 @@ fn x11_bootstrap_identity_uses_client_process_then_follows_wm_class() {
         client.barrier(&compositor);
         wait_windows(&compositor, |windows| windows[0]["app_id"] == expected);
     }
+    client
+        .connection
+        .delete_property(client.window, AtomEnum::WM_CLASS.into())
+        .unwrap();
+    client.barrier(&compositor);
+    wait_windows(&compositor, |windows| windows[0]["app_id"] == executable);
 }
 
 #[test]

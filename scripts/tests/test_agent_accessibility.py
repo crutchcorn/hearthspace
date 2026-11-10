@@ -86,6 +86,11 @@ class AccessibilityTests(unittest.TestCase):
             self.assertEqual(result["capture"]["frame_id"], 12)
             control.status.assert_called_once()
             control.capture.reset_mock()
+            with patch("agentlib.accessibility.subprocess.run", return_value=success):
+                result = run_accessibility(args, control, Deadline(5), capture=False)
+            self.assertTrue(result["accepted"])
+            self.assertNotIn("capture", result)
+            control.capture.assert_not_called()
             rejected = subprocess.CompletedProcess(
                 [], 1, "", '{"ok":false,"error":"matched 2"}'
             )

@@ -10,7 +10,7 @@ use wayland_server::{Resource, protocol::wl_surface::WlSurface};
 
 use super::touch_tracker::TouchAction;
 use crate::compositor::{
-    App, HitTarget, ManagedSurface, ManagedWindowKind, idle::ActivityReason, windows::window_app_id,
+    App, HitTarget, ManagedWindowKind, idle::ActivityReason, windows::window_app_id,
 };
 
 mod client;
@@ -173,7 +173,7 @@ impl App {
             .is_some_and(|client| self.touch.client_touch(&client).next().is_some());
         // XWayland's binding cannot identify which X11 clients support native
         // touch. Keep their established pointer fallback, including core clients.
-        if !matches!(self.windows[window_index].surface, ManagedSurface::Xdg(_))
+        if self.windows[window_index].surface.is_x11()
             || (!supported
                 && !(bound && self.windows[window_index].kind == ManagedWindowKind::Normal))
         {

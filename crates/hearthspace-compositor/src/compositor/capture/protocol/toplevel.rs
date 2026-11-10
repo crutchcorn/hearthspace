@@ -138,11 +138,6 @@ impl App {
         let root = self.windows[index].surface.wl_surface()?;
         let rect = match &self.windows[index].surface {
             ManagedSurface::Xdg(_) => super::window_tree::effective_geometry(&root),
-            #[cfg(feature = "xwayland")]
-            // Smithay's bbox is surface-local (Rectangle::from_size), and
-            // geometry subtracts CSD frame extents. X root position belongs
-            // to last_configure(), which must never offset this capture.
-            ManagedSurface::X11(surface) => surface.geometry(),
         };
         let scale =
             super::window_tree::backing_scale(&self.capture_window_trees(index, rect.loc), rect);

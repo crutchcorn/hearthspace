@@ -89,8 +89,6 @@ impl App {
             .and_then(|popup| find_popup_root_surface(&popup).ok())
             .and_then(|root| self.window_index_for_surface(&root))
             .or_else(|| self.window_index_for_surface(&surface));
-        #[cfg(feature = "xwayland")]
-        let owner = owner.map(|i| self.x11_popup_anchor(i).map_or(i, |(parent, _)| parent));
         if owner != Some(index) {
             return Vec::new();
         }

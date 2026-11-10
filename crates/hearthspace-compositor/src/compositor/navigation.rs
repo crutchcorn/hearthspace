@@ -22,8 +22,6 @@ impl App {
             && window.mapped
             && match &window.surface {
                 ManagedSurface::Xdg(_) => true,
-                #[cfg(feature = "xwayland")]
-                ManagedSurface::X11(surface) => !surface.is_override_redirect(),
             }
     }
 
@@ -117,13 +115,6 @@ impl App {
         self.cancel_canvas_peek_motion(id);
         self.interrupt_pinch_zoom();
         let window = &mut self.windows[index];
-        #[cfg(feature = "xwayland")]
-        if let ManagedSurface::X11(surface) = &window.surface {
-            let size = surface.geometry().size;
-            surface
-                .configure(Some(Rectangle::new((x, y).into(), size)))
-                .map_err(|error| format!("X11 move failed: {error}"))?;
-        }
         window.pending_resize = None;
         window.position = CanvasPoint { x, y };
         self.request_redraw();
@@ -145,15 +136,6 @@ impl App {
         let window = &self.windows[index];
         match &window.surface {
             ManagedSurface::Xdg(surface) => configure_size(surface, size),
-            #[cfg(feature = "xwayland")]
-            ManagedSurface::X11(surface) => {
-                surface
-                    .configure(Some(Rectangle::new(
-                        (window.position.x, window.position.y).into(),
-                        size,
-                    )))
-                    .map_err(|error| format!("X11 resize failed: {error}"))?;
-            }
         }
         self.windows[index].pending_resize = None;
         self.request_redraw();

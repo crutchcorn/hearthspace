@@ -114,27 +114,23 @@ fn override_redirect_menu_follows_parent_content_through_pan_zoom_and_maximize()
     let initial = wait_windows(&compositor, |w| w.len() == 1 && w[0]["mapped"] == true);
     let id = initial[0]["id"].as_u64().unwrap();
     action(&compositor, format!("move-window {id} 300 200"));
-    let deadline = Instant::now() + Duration::from_secs(5);
-    loop {
-        let point = connection
-            .translate_coordinates(parent, screen.root, 0, 0)
-            .unwrap()
-            .reply()
-            .unwrap();
-        if (point.dst_x, point.dst_y) == (300, 200) {
-            break;
-        }
-        assert!(Instant::now() < deadline);
-        thread::sleep(Duration::from_millis(20));
-    }
+    wait_windows(&compositor, |windows| {
+        windows[0]["canvas_x"] == 300 && windows[0]["canvas_y"] == 200
+    });
+    let origin = connection
+        .translate_coordinates(parent, screen.root, 0, 0)
+        .unwrap()
+        .reply()
+        .unwrap();
+    assert_eq!((origin.dst_x, origin.dst_y), (0, 0));
     let popup = connection.generate_id().unwrap();
     connection
         .create_window(
             screen.root_depth,
             popup,
             screen.root,
-            310,
-            224,
+            origin.dst_x + 10,
+            origin.dst_y + 24,
             160,
             100,
             0,
@@ -235,26 +231,14 @@ fn override_redirect_menu_follows_parent_content_through_pan_zoom_and_maximize()
         .clone();
     assert_eq!(max["x"], 24);
     assert_eq!(max["y"], 96);
-    // At 0.5x and viewport (100,80), the bounded screen origin (24,96)
-    // corresponds to canvas (148,272). X11 receives native client coordinates,
-    // including the unscaled 44px header, while menu pixels follow canvas zoom.
-    let expected_origin = (148, 316);
-    let deadline = Instant::now() + Duration::from_secs(5);
-    let origin = loop {
-        let origin = connection
-            .translate_coordinates(parent, screen.root, 0, 0)
-            .unwrap()
-            .reply()
-            .unwrap();
-        if (origin.dst_x, origin.dst_y) == expected_origin {
-            break origin;
-        }
-        assert!(
-            Instant::now() < deadline,
-            "X11 parent must receive its maximized configure"
-        );
-        thread::sleep(Duration::from_millis(20));
-    };
+    // The displayed maximized canvas home is independent of the finite X root.
+    // Client menus are placed relative to the actual backing origin.
+    let origin = connection
+        .translate_coordinates(parent, screen.root, 0, 0)
+        .unwrap()
+        .reply()
+        .unwrap();
+    assert_eq!((origin.dst_x, origin.dst_y), (0, 0));
     connection
         .configure_window(
             popup,

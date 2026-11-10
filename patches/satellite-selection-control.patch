@@ -1,0 +1,563 @@
+diff --git a/Cargo.toml b/Cargo.toml
+--- a/Cargo.toml
++++ b/Cargo.toml
+@@ -32,7 +32,7 @@
+
+ [dependencies]
+ bitflags = "2.5.0"
+-rustix = { workspace = true, features = ["event"] }
++rustix = { workspace = true, features = ["event", "rand"] }
+ wayland-client.workspace = true
+ wayland-scanner.workspace = true
+ wayland-protocols = { workspace = true, features = ["client", "server", "staging", "unstable"] }
+diff --git a/src/lib.rs b/src/lib.rs
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -244,6 +244,9 @@
+
+         display.dispatch_clients(&mut *server_state).unwrap();
+         server_state.run();
++        for (primary, source) in server_state.control_cancelled() {
++            xstate.release_control_owner(primary, source);
++        }
+         display.flush_clients().unwrap();
+
+         if let Some(sel) = server_state.new_selection::<Clipboard>() {
+diff --git a/src/server/clientside.rs b/src/server/clientside.rs
+--- a/src/server/clientside.rs
++++ b/src/server/clientside.rs
+@@ -113,6 +113,7 @@
+
+ pub(super) struct MyWorld {
+     pub theme_name: Option<String>,
++    pub control_events: super::selection::control::Events,
+     pub world: World,
+     pub global_list: GlobalList,
+     pub new_globals: Vec<Global>,
+@@ -129,6 +130,7 @@
+         Self {
+             world: World::new(),
+             theme_name: None,
++            control_events: Default::default(),
+             global_list,
+             new_globals: Vec::new(),
+             removed_globals: Vec::new(),
+diff --git a/src/server/selection.rs b/src/server/selection.rs
+--- a/src/server/selection.rs
++++ b/src/server/selection.rs
+@@ -1,3 +1,4 @@
++pub(super) mod control;
+ use super::clientside::SelectionEvents;
+ use super::{InnerServerState, MyWorld, ServerState};
+ use crate::{X11Selection, XConnection};
+@@ -19,6 +20,7 @@
+ use std::rc::{Rc, Weak};
+
+ pub(super) struct SelectionStates<S: X11Selection> {
++    control: Option<control::Control<S>>,
+     clipboard: Option<SelectionState<S, Clipboard>>,
+     primary: Option<SelectionState<S, Primary>>,
+ }
+@@ -26,6 +28,7 @@
+ impl<S: X11Selection> SelectionStates<S> {
+     pub fn new(global_list: &GlobalList, qh: &QueueHandle<MyWorld>) -> Self {
+         Self {
++            control: control::Control::bind(global_list, qh),
+             clipboard: DataDeviceManagerState::bind(global_list, qh)
+                 .inspect_err(|e| {
+                     warn!("Could not bind data device manager ({e:?}). Clipboard will not work.")
+@@ -40,6 +43,9 @@
+     }
+
+     pub fn seat_created(&mut self, qh: &QueueHandle<MyWorld>, seat: &WlSeat) {
++        if let Some(control) = &mut self.control {
++            control.seat_created(qh, seat);
++        }
+         if let Some(c) = &mut self.clipboard {
+             c.device = Some(c.manager.get_data_device(qh, seat));
+         }
+@@ -51,7 +57,10 @@
+ }
+
+ enum SelectionData<S: X11Selection, T: SelectionType> {
+-    X11 { inner: T::Source, data: Weak<S> },
++    X11 {
++        inner: Option<T::Source>,
++        data: Weak<S>,
++    },
+     Foreign(ForeignSelection<T>),
+ }
+
+@@ -78,6 +87,11 @@
+     }
+
+     fn handle_impl<T: SelectionType>(&mut self) {
++        let echo_marker = self
++            .selection_states
++            .control
++            .as_ref()
++            .map(|control| control.marker.clone());
+         let Some(state) = T::selection_state(&mut self.selection_states) else {
+             return;
+         };
+@@ -101,6 +115,12 @@
+         if state.source.is_none() {
+             if let Some(offer) = T::take_offer(&mut events.offer) {
+                 let mime_types = T::get_mimes(&offer);
++                if echo_marker
++                    .as_ref()
++                    .is_some_and(|marker| mime_types.contains(marker))
++                {
++                    return;
++                }
+                 let foreign = ForeignSelection {
+                     mime_types,
+                     inner: offer,
+@@ -111,10 +131,20 @@
+     }
+
+     pub(crate) fn set_selection_source<T: SelectionType>(&mut self, selection: &Rc<S>) {
++        if let Some(control) = &mut self.selection_states.control {
++            control.set::<T>(&self.qh, selection);
++            if let Some(state) = T::selection_state(&mut self.selection_states) {
++                state.source = Some(SelectionData::X11 {
++                    inner: None,
++                    data: Rc::downgrade(selection),
++                });
++            }
++            return;
++        }
+         if let Some(state) = T::selection_state(&mut self.selection_states) {
+             let src = T::create_source(&state.manager, &self.qh, selection.mime_types());
+             let data = SelectionData::X11 {
+-                inner: src,
++                inner: Some(src),
+                 data: Rc::downgrade(selection),
+             };
+             let SelectionData::X11 { inner, .. } = state.source.insert(data) else {
+@@ -126,7 +156,9 @@
+                 .map(|(_seat, serial)| serial)
+                 .copied()
+             {
+-                T::set_selection(inner, state.device.as_ref().unwrap(), serial);
++                if let Some(inner) = inner.as_ref() {
++                    T::set_selection(inner, state.device.as_ref().unwrap(), serial);
++                }
+             }
+         }
+     }
+@@ -168,6 +200,7 @@
+
+ #[allow(private_bounds, private_interfaces)]
+ pub trait SelectionType: Sized {
++    const PRIMARY: bool;
+     type Source;
+     type Offer;
+     type Manager;
+@@ -203,6 +236,7 @@
+
+ #[allow(private_bounds, private_interfaces)]
+ impl SelectionType for Clipboard {
++    const PRIMARY: bool = false;
+     type Source = CopyPasteSource;
+     type Offer = WlSelectionOffer;
+     type Manager = DataDeviceManagerState;
+@@ -251,6 +285,7 @@
+
+ #[allow(private_bounds, private_interfaces)]
+ impl SelectionType for Primary {
++    const PRIMARY: bool = true;
+     type Source = PrimarySelectionSource;
+     type Offer = PrimarySelectionOffer;
+     type Manager = PrimarySelectionManagerState;
+@@ -286,3 +321,43 @@
+         offer.with_mime_types(|mimes| mimes.into())
+     }
+ }
++
++impl<S: X11Selection> InnerServerState<S> {
++    pub(crate) fn clear_control_selection<T: SelectionType>(&mut self) {
++        if let Some(control) = &mut self.selection_states.control {
++            control.clear::<T>();
++            if let Some(state) = T::selection_state(&mut self.selection_states) {
++                if matches!(state.source, Some(SelectionData::X11 { .. })) {
++                    state.source = None;
++                }
++            }
++        }
++    }
++    fn control_export_cancelled<T: SelectionType>(&mut self, source: &Weak<S>) {
++        if let Some(state) = T::selection_state(&mut self.selection_states) {
++            if matches!(&state.source, Some(SelectionData::X11 { data, .. }) if Weak::ptr_eq(data, source))
++            {
++                state.source = None;
++            }
++        }
++    }
++    pub(crate) fn control_cancelled(&mut self) -> Vec<(bool, Weak<S>)> {
++        let cancelled = self
++            .selection_states
++            .control
++            .as_mut()
++            .map(|c| c.dispatch(&mut self.world.control_events))
++            .unwrap_or_default();
++        for (primary, source) in &cancelled {
++            if *primary {
++                self.control_export_cancelled::<Primary>(source);
++            } else {
++                self.control_export_cancelled::<Clipboard>(source);
++            }
++        }
++        self.queue
++            .flush()
++            .expect("flush selection control lifecycle");
++        cancelled
++    }
++}
+diff --git a/src/server/selection/control.rs b/src/server/selection/control.rs
+--- a/src/server/selection/control.rs
++++ b/src/server/selection/control.rs
+@@ -0,0 +1,126 @@
++//! Export X11 selections without borrowing a focused application's serial.
++//! Reading host selections still uses the ordinary focused data-device path.
++use super::{MyWorld, SelectionType};
++use crate::X11Selection;
++use std::{
++    collections::HashMap,
++    rc::{Rc, Weak},
++};
++use wayland_client::{Proxy, QueueHandle, globals::GlobalList};
++use wayland_protocols::ext::data_control::v1::client::{
++    ext_data_control_device_v1::ExtDataControlDeviceV1 as Device,
++    ext_data_control_manager_v1::ExtDataControlManagerV1 as Manager,
++    ext_data_control_source_v1::ExtDataControlSourceV1 as Source,
++};
++mod events;
++pub(crate) use events::Events;
++
++pub(super) struct Control<S> {
++    manager: Manager,
++    device: Option<Device>,
++    sources: HashMap<Source, (bool, Weak<S>)>,
++    current: [Option<Source>; 2],
++    pub(super) marker: String,
++}
++impl<S: X11Selection> Control<S> {
++    pub(super) fn bind(globals: &GlobalList, qh: &QueueHandle<MyWorld>) -> Option<Self> {
++        let manager = globals.bind(qh, 1..=1, ()).ok()?;
++        let mut nonce = [0u8; 16];
++        let mut filled = 0;
++        while filled < nonce.len() {
++            match rustix::rand::getrandom(
++                &mut nonce[filled..],
++                rustix::rand::GetRandomFlags::empty(),
++            ) {
++                Ok(n) if n > 0 => filled += n,
++                Err(rustix::io::Errno::INTR) => continue,
++                other => panic!("selection marker randomness failed: {other:?}"),
++            }
++        }
++        let marker = format!(
++            "application/x-satellite-selection-{}",
++            nonce.iter().map(|b| format!("{b:02x}")).collect::<String>()
++        );
++        Some(Self {
++            manager,
++            device: None,
++            sources: HashMap::new(),
++            current: [None, None],
++            marker,
++        })
++    }
++    pub(super) fn seat_created(
++        &mut self,
++        qh: &QueueHandle<MyWorld>,
++        seat: &wayland_client::protocol::wl_seat::WlSeat,
++    ) {
++        // Hearthspace has one seat. Never silently replace an existing device.
++        if self.device.is_some() {
++            return;
++        }
++        let device = self.manager.get_data_device(seat, qh, ());
++        for (primary, source) in self.current.iter().enumerate() {
++            if let Some(source) = source {
++                if primary == 1 {
++                    device.set_primary_selection(Some(source));
++                } else {
++                    device.set_selection(Some(source));
++                }
++            }
++        }
++        self.device = Some(device);
++    }
++    pub(super) fn set<T: SelectionType>(&mut self, qh: &QueueHandle<MyWorld>, selection: &Rc<S>) {
++        let source = self.manager.create_data_source(qh, ());
++        for mime in selection.mime_types() {
++            source.offer(mime.to_owned());
++        }
++        // An echo marker prevents our own export becoming an X11 foreign owner.
++        // It carries no data and is not an authorization token.
++        source.offer(self.marker.clone());
++        self.sources
++            .insert(source.clone(), (T::PRIMARY, Rc::downgrade(selection)));
++        if let Some(previous) = self.current[usize::from(T::PRIMARY)].replace(source.clone()) {
++            self.sources.remove(&previous);
++            previous.destroy();
++        }
++        if let Some(device) = &self.device {
++            if T::PRIMARY {
++                device.set_primary_selection(Some(&source));
++            } else {
++                device.set_selection(Some(&source));
++            }
++        }
++    }
++    pub(super) fn clear<T: SelectionType>(&mut self) {
++        if let Some(source) = self.current[usize::from(T::PRIMARY)].take() {
++            self.sources.remove(&source);
++            // Source destruction only clears this generation, never a newer host copy.
++            source.destroy();
++        }
++    }
++    pub(super) fn dispatch(&mut self, events: &mut Events) -> Vec<(bool, Weak<S>)> {
++        for (source, mime, fd) in std::mem::take(&mut events.requests) {
++            if let Some((_, selection)) = self.sources.get(&source) {
++                if mime != self.marker {
++                    if let Some(selection) = selection.upgrade() {
++                        selection.write_to(&mime, fd.into());
++                    }
++                }
++            }
++        }
++        let mut retired = Vec::new();
++        for source in std::mem::take(&mut events.cancelled) {
++            if let Some((primary, selection)) = self.sources.remove(&source) {
++                if self.current[usize::from(primary)].as_ref() == Some(&source) {
++                    self.current[usize::from(primary)] = None;
++                }
++                retired.push((primary, selection));
++                if source.is_alive() {
++                    source.destroy();
++                }
++            }
++        }
++        retired
++    }
++}
+diff --git a/src/server/selection/control/events.rs b/src/server/selection/control/events.rs
+--- a/src/server/selection/control/events.rs
++++ b/src/server/selection/control/events.rs
+@@ -0,0 +1,60 @@
++//! Only source events are consumed here; host offers are deliberately unread.
++use super::MyWorld;
++use std::os::fd::OwnedFd;
++use wayland_client::{Connection, Dispatch, QueueHandle, event_created_child};
++use wayland_protocols::ext::data_control::v1::client::{
++    ext_data_control_device_v1::{self, ExtDataControlDeviceV1 as Device},
++    ext_data_control_manager_v1::ExtDataControlManagerV1 as Manager,
++    ext_data_control_offer_v1::ExtDataControlOfferV1 as Offer,
++    ext_data_control_source_v1::{self, ExtDataControlSourceV1 as Source},
++};
++#[derive(Default)]
++pub(crate) struct Events {
++    pub requests: Vec<(Source, String, OwnedFd)>,
++    pub cancelled: Vec<Source>,
++}
++wayland_client::delegate_noop!(MyWorld: Manager);
++wayland_client::delegate_noop!(MyWorld: ignore Offer);
++impl Dispatch<Device, ()> for MyWorld {
++    fn event(
++        _: &mut Self,
++        device: &Device,
++        event: ext_data_control_device_v1::Event,
++        _: &(),
++        _: &Connection,
++        _: &QueueHandle<Self>,
++    ) {
++        match event {
++            ext_data_control_device_v1::Event::Selection { id }
++            | ext_data_control_device_v1::Event::PrimarySelection { id } => {
++                if let Some(offer) = id {
++                    offer.destroy();
++                }
++            }
++            ext_data_control_device_v1::Event::Finished => device.destroy(),
++            _ => {}
++        }
++    }
++    event_created_child!(MyWorld, Device, [ext_data_control_device_v1::EVT_DATA_OFFER_OPCODE => (Offer, ())]);
++}
++impl Dispatch<Source, ()> for MyWorld {
++    fn event(
++        state: &mut Self,
++        source: &Source,
++        event: ext_data_control_source_v1::Event,
++        _: &(),
++        _: &Connection,
++        _: &QueueHandle<Self>,
++    ) {
++        match event {
++            ext_data_control_source_v1::Event::Send { mime_type, fd } => state
++                .control_events
++                .requests
++                .push((source.clone(), mime_type, fd)),
++            ext_data_control_source_v1::Event::Cancelled => {
++                state.control_events.cancelled.push(source.clone())
++            }
++            _ => {}
++        }
++    }
++}
+diff --git a/src/xstate/selection.rs b/src/xstate/selection.rs
+--- a/src/xstate/selection.rs
++++ b/src/xstate/selection.rs
+@@ -33,6 +33,7 @@
+     pending: RefCell<VecDeque<PendingSelectionData>>,
+     selection: x::Atom,
+     selection_time: u32,
++    source_owner: x::Window,
+     incr: x::Atom,
+ }
+
+@@ -294,6 +295,7 @@
+     last_selection_timestamp: u32,
+     atom: x::Atom,
+     targets_atom: x::Atom,
++    owner: x::Window,
+     current_selection: Option<CurrentSelection<T>>,
+ }
+
+@@ -334,6 +336,7 @@
+     fn new(atom: x::Atom, targets_atom: x::Atom) -> Self {
+         Self {
+             last_selection_timestamp: x::CURRENT_TIME,
++            owner: x::WINDOW_NONE,
+             atom,
+             targets_atom,
+             current_selection: None,
+@@ -398,6 +401,7 @@
+         owner: x::Window,
+         timestamp: u32,
+     ) {
++        self.owner = owner;
+         // Grab targets
+         match connection.send_and_check_request(&x::ConvertSelection {
+             requestor: wm_window,
+@@ -506,6 +510,7 @@
+             pending: RefCell::default(),
+             selection: self.atom,
+             selection_time: self.last_selection_timestamp,
++            source_owner: self.owner,
+             incr: atoms.incr,
+         });
+
+@@ -907,6 +912,28 @@
+                             return true;
+                         }
+
++                        if e.owner() == x::WINDOW_NONE {
++                            // Another claim may already have superseded this queued clear.
++                            let current = self.connection.wait_for_reply(
++                                self.connection
++                                    .send_request(&x::GetSelectionOwner { selection: x }),
++                            );
++                            if !current.is_ok_and(|owner| owner.owner() == x::WINDOW_NONE) {
++                                return true;
++                            }
++                            if x == self.atoms.clipboard {
++                                self.selection_state.clipboard.last_selection_timestamp =
++                                    x::CURRENT_TIME;
++                                self.selection_state.clipboard.current_selection = None;
++                                server_state.clear_control_selection::<Clipboard>();
++                            } else {
++                                self.selection_state.primary.last_selection_timestamp =
++                                    x::CURRENT_TIME;
++                                self.selection_state.primary.current_selection = None;
++                                server_state.clear_control_selection::<Primary>();
++                            }
++                            return true;
++                        }
+                         let data = get_selection_data!(x);
+
+                         data.handle_new_owner(
+@@ -919,8 +946,24 @@
+                     }
+                     xcb::xfixes::SelectionEvent::SelectionClientClose
+                     | xcb::xfixes::SelectionEvent::SelectionWindowDestroy => {
++                        let current = self.connection.wait_for_reply(
++                            self.connection
++                                .send_request(&x::GetSelectionOwner { selection: x }),
++                        );
++                        if !current.is_ok_and(|owner| owner.owner() == x::WINDOW_NONE) {
++                            return true;
++                        }
+                         debug!("Selection owner destroyed, selection will be unset");
+-                        self.selection_state.clipboard.current_selection = None;
++                        if x == self.atoms.clipboard {
++                            self.selection_state.clipboard.last_selection_timestamp =
++                                x::CURRENT_TIME;
++                            self.selection_state.clipboard.current_selection = None;
++                            server_state.clear_control_selection::<Clipboard>();
++                        } else {
++                            self.selection_state.primary.last_selection_timestamp = x::CURRENT_TIME;
++                            self.selection_state.primary.current_selection = None;
++                            server_state.clear_control_selection::<Primary>();
++                        }
+                     }
+                 },
+                 x if x == self.atoms.xsettings => match e.subtype() {
+@@ -971,3 +1014,54 @@
+             || inner(&self.connection, event, &mut self.selection_state.clipboard)
+     }
+ }
++
++impl XState {
++    pub(crate) fn release_control_owner(
++        &mut self,
++        primary: bool,
++        source: std::rc::Weak<Selection>,
++    ) {
++        fn release<T: SelectionType>(
++            connection: &xcb::Connection,
++            data: &mut SelectionData<T>,
++            source: std::rc::Weak<Selection>,
++        ) {
++            let Some(CurrentSelection::X11(current)) = &data.current_selection else {
++                return;
++            };
++            if !std::rc::Weak::ptr_eq(&Rc::downgrade(current), &source) {
++                return;
++            }
++            let owner = connection.wait_for_reply(connection.send_request(&x::GetSelectionOwner {
++                selection: data.atom,
++            }));
++            if owner.is_ok_and(|owner| owner.owner() == current.source_owner) {
++                // X's timestamp guard rejects a clear older than a later claim.
++                if let Err(error) = connection.send_and_check_request(&x::SetSelectionOwner {
++                    owner: x::WINDOW_NONE,
++                    selection: data.atom,
++                    time: current.selection_time,
++                }) {
++                    warn!("Could not release cancelled X11 selection: {error:?}");
++                }
++            }
++            let unowned =
++                connection.wait_for_reply(connection.send_request(&x::GetSelectionOwner {
++                    selection: data.atom,
++                }));
++            if unowned.is_ok_and(|owner| owner.owner() == x::WINDOW_NONE) {
++                data.last_selection_timestamp = x::CURRENT_TIME;
++            }
++            data.current_selection = None;
++        }
++        if primary {
++            release(&self.connection, &mut self.selection_state.primary, source);
++        } else {
++            release(
++                &self.connection,
++                &mut self.selection_state.clipboard,
++                source,
++            );
++        }
++    }
++}

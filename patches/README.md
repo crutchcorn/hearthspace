@@ -636,3 +636,367 @@ See [vendored provenance and refresh steps](../vendor/accesskit_atspi_common/PRO
   fixes not covered by PR 2141. Retain snapshot error/absence handling and
   regressions. Remove only this patch and its ledger entry; preserve all other
   Smithay repairs and vendoring until their own removal conditions are met.
+
+## Satellite optional interaction cancellation
+
+- **Dependency:** vendored xwayland-satellite 0.8.3 at
+  [`7bf5e0dc`](https://github.com/Supreeeme/xwayland-satellite/tree/7bf5e0dcb0d4250860b24b04a6cb3ddeada515d0).
+  The version, upstream pin, MPL-2.0 notice and other repairs remain unchanged.
+- **Patch:** [optional cancellation bridge](satellite-interaction-cancel.patch),
+  with paths relative to `vendor/xwayland-satellite`. It adds a protocol XML and
+  focused client helper, changes move/resize dispatch, and adds the existing
+  workspace's wayland-scanner dependency. Hearthspace supplies the matching
+  compositor implementation separately.
+- **Reason:** upstream forwards XDG move/resize but explicitly does not implement
+  EWMH Cancel. XDG shell has no cancellation request. This local optional
+  extension carries the forwarded toplevel, seat and initiating serial; it is
+  not a merged upstream repair and has not been published upstream.
+- **Behavior:** consume the remembered operation on Cancel, accepting button-zero
+  cancel messages before the left-button start filter. Remove stale records on
+  unmap/destruction. Absence of the optional global preserves ordinary
+  move/resize and reports unsupported cancellation. Hearthspace restricts the
+  global to its private bridge and validates the accepted operation/grab before
+  retaining final geometry and retiring only that interaction.
+- **Verification:** the real App/Wayland filter
+  `compositor::xwayland::satellite::interaction::tests` checks visibility,
+  stale serials, wrong windows/seats, completed interactions and held-grab
+  retention. Mapping/buffer geometry and physical input are fixture inputs;
+  protocol dispatch and Smithay grabs are real. The real X11 filter
+  `satellite::cancellation::cancel_top_left_resize` exercises delayed X resize
+  and anchor retention through Satellite/Xwayland. The complete `satellite::`
+  filter still fails batched recipient isolation and neighbor release ownership.
+  Keep those assertions: this extension does not solve either defect. No native
+  acceptance is implied. See [Satellite](../docs/SATELLITE.md) for remaining gates.
+- **Removal:** replace this extension with a compatible upstream cancellation
+  mechanism and rerun the same scope, lifetime, delayed-buffer and held-input
+  regressions. Retain the adoption blockers until they are actually repaired;
+  switching backend defaults is a separate decision.
+
+## Satellite embedded child stdio
+
+- **Dependency:** the same vendored xwayland-satellite 0.8.3 at `7bf5e0dc`.
+- **Patch:** [embedded stdio hooks](satellite-embedded-stdio.patch), relative to
+  `vendor/xwayland-satellite`. Adds defaulted RunData methods and uses them at
+  Xwayland spawn. Default behavior remains inherited stdin/stdout.
+- **Reason:** Hearthspace's embedding uses stdin for its private host connection
+  and stdout for readiness. Allowing Xwayland to inherit either keeps an obsolete
+  channel alive after helper death and can mix child output with readiness.
+- **Upstream basis:** local optional API extension, not a merged backport.
+  Hearthspace overrides only these two descriptors with null streams.
+- **Verification:** the real helper subprocess test
+  `nested_xwayland_cannot_keep_private_wayland_or_readiness_open` substitutes the
+  Xwayland executable with a bounded recording process. It checks the actual
+  inherited descriptors, kills only the helper, observes EOF on both private
+  channels while the nested process survives, then verifies pidfd completion
+  and reaps the owned leader. It does not exercise Xwayland protocol behavior.
+- **Removal:** adopt an upstream embedding API with equivalent child-descriptor
+  ownership, rerun this subprocess regression, and remove only this patch and
+  its hooks. Preserve the independent cancellation and routing work.
+
+## Satellite surface-target input and managed Xwayland
+
+- **Dependencies:** Satellite 0.8.3 at `7bf5e0dcb0d4250860b24b04a6cb3ddeada515d0`
+  and Xwayland 24.1.14, with exact archive/patch hashes in
+  [requirements](../data/xwayland-requirements.json).
+- **Patches:** [surface-target input](xwayland-surface-input-targets.patch) and
+  [managed executable](satellite-managed-xwayland.patch). The former reuses the
+  input-routing checkpoint from `e6a31626` and additionally distinguishes
+  internal button-state repair from application releases. The latter adds a
+  defaulted Satellite executable-path hook after the embedded-stdio patch.
+  Both are local repairs; no upstream backport is claimed.
+- **Reason:** Satellite's overlapping X roots and input-time restacking still
+  misroute a queued A/B batch. After compositor cancellation, Xwayland also
+  synthesizes a button release on re-entry, which can reach a neighbor that
+  never received the press. Carry surface incarnation through queued/replayed
+  input; perform re-entry button repair through the same device-state queue
+  without delivering invented core/XI button events or raw releases. Real
+  releases retain ordinary grab arbitration and delivery. Default-off server
+  operation remains unchanged.
+- **Ownership:** the normal-user preparation script validates the archive and
+  patch before compilation, records source/compiler inputs and stages a binary
+  plus hash receipt beside the runtime. The helper verifies those exact bytes
+  and requirements before launching; there is no stock-server fallback.
+  Xwayland's notices are retained in [COPYING](xwayland-COPYING).
+- **Regression:** real Satellite/Xwayland clients assert batched A/B press and
+  release recipients, no neighbor release after cancellation, a subsequent
+  working move, late resize anchoring, and negative/distant canvas input. The
+  previous server checkpoint fixes batching but fails the neighbor assertion;
+  the additional repair passes both. Helper tests cover receipt rejection and
+  private descriptor lifetime; Python tests cover build provenance. These
+  focused cases do not establish full compatibility or native acceptance.
+- **Removal:** adopt upstream routing that passes recipient, frozen/replayed
+  grabs, destruction, scroll, confinement and cancellation ownership gates;
+  remove the server patch, pin/receipt gate and preparation machinery together.
+  Remove the Satellite hook when upstream provides an equivalent explicit
+  executable interface. Preserve its stdio and cancellation repairs until
+  their independent removal conditions hold.
+
+## Satellite host appearance and cursor preferences
+
+- **Dependency:** Satellite 0.8.3, pin `7bf5e0dcb0d4250860b24b04a6cb3ddeada515d0`.
+- **Patch:** [host settings](satellite-host-settings.patch), relative to the
+  vendor root and applied after the cancellation/stdio/managed-path repairs.
+  The optional interface retains its MIT notice and upstream MPL notices.
+- **Reason/behavior:** Satellite owns DPI XSettings, so replacing its manager
+  to publish Hearthspace's light/dark theme would lose scale settings. An
+  authenticated host global sends theme changes to Satellite's existing
+  serializer. Initial host preferences are received before DISPLAY publication;
+  updates flush without unrelated X11 traffic. Ordinary clients cannot bind.
+  The helper supplies the shared 24-pixel absent-only cursor seed. Satellite
+  does not subsequently mask legacy resource files with an Xft-only database.
+  Existing resource properties and per-client XCURSOR_SIZE keep precedence.
+- **Regression:** real settingsd/App/Satellite/Xwayland tests check saved dark
+  startup and idle light/dark changes while retaining all three DPI integers.
+  Actual libXcursor subprocesses check default, environment override, existing
+  wildcard/empty properties, and legacy Xdefaults/Xresources behavior. Private
+  global visibility is tested with a separate real Wayland client. Native
+  appearance and toolkit artwork remain separate acceptance boundaries.
+- **Removal:** use an upstream host-settings integration that passes those
+  preference and startup-order cases, including legacy-resource preservation;
+  then remove only this patch and matching host binding. Preserve the input,
+  cancellation, executable and stdio repairs until their own conditions hold.
+
+## Satellite selection control and ownership transitions
+
+- **Dependency:** Satellite 0.8.3, pin `7bf5e0dcb0d4250860b24b04a6cb3ddeada515d0`.
+- **Patch:** [selection control](satellite-selection-control.patch), relative to
+  the vendor root and applied after host-settings. This local repair retains
+  the MPL notices and adds only Rustix's already-pinned `rand` feature.
+- **Reason:** an X11 selection owner with no previous focused window was never
+  exported through Satellite's serial-dependent ordinary data source. Use the
+  standard ext-data-control protocol for X11 export. Smithay owns host protocol
+  validation; only the authenticated bridge client sees its global. Host data
+  is still received through ordinary data-device/primary offers; privileged
+  control offers are discarded. A per-instance MIME marker prevents echo loops.
+- **Ownership:** weak references identify each exported X selection; cancelled
+  or destroyed generations cannot serve later owners. Ordinary offer adoption
+  waits until the matching export retires. A queued X clear/destroy is checked
+  against actual ownership before invalidating state. Fresh claims after a
+  genuine unowned transition use current X time, rather than a former owner's
+  obsolete timestamp. Clipboard and primary retirement remain independent.
+- **Regression:** the pre-repair unfocused URI-list owner fails; it passes with
+  the repair. The real GTK headless workflow exercises Unicode/cut/bulk transfer
+  both ways, primary middle-click both ways, clipboard independence, old and
+  active X-owner exit, and subsequent recovery. Its primary assertion failed
+  before the timestamp/queued-clear repair and passes afterward. Separate real
+  Wayland clients verify that cancellation, settings and data control are hidden
+  from ordinary clients. These are headless protocol/application results, not
+  native display or performance acceptance.
+- **Removal:** adopt upstream equivalent source export and generation handling
+  that passes those focus, loop, owner-exit and primary regressions without this
+  patch; remove only this patch and the private manager registration. Keep the
+  other Satellite/server repairs until their independent conditions are met.
+
+## Satellite window identity
+
+- **Dependency:** Satellite 0.8.3, pin `7bf5e0dcb0d4250860b24b04a6cb3ddeada515d0`.
+- **Patch:** [window identity](satellite-window-identity.patch), relative to the
+  vendor root, after selection-control. Pin and MPL notices remain unchanged.
+- **Reason/behavior:** preserve executable identity for bootstrap clients without
+  WM_CLASS. Cache the process basename from the existing XRes credential PID;
+  prefer a nonblank class, then instance, then that basename. Deleted/empty
+  properties restore the fallback without panicking. Extra class fields are
+  ignored. The host identifies X11 windows by its private bridge connection,
+  rather than by spoofable class names; shell-like names retain application roles.
+- **Regression:** real X11 clients spoof WM_PID, replace/delete class properties,
+  and exercise cached frame syntax while preserving window identity and placement.
+  Separate Satellite input tests assert X11 metadata. These headless checks do
+  not establish native presentation or all toolkit metadata behavior.
+- **Removal:** adopt equivalent upstream credential/class fallback passing these
+  regressions; remove only this vendor repair. Keep host connection provenance
+  and other patches until their independent removal conditions are satisfied.
+
+## Satellite focus and maximization state
+
+- **Dependency:** Satellite 0.8.3, pin `7bf5e0dcb0d4250860b24b04a6cb3ddeada515d0`.
+- **Patch:** [window state](satellite-window-state.patch), relative to the vendor
+  root and applied after window-identity. Existing MPL notices remain unchanged.
+- **Reason/behavior:** keyboard re-entry looked up focus hints on the seat, so
+  globally-active clients received no WM_TAKE_FOCUS. Read the target window's
+  hints and remember its toplevel for popup-focus restoration. Forward host
+  maximization to both EWMH state atoms, preserving fullscreen and other states;
+  decode the XDG state array as native-endian 32-bit values. A paired EWMH toggle
+  makes one XDG request. The new XConnection maximization hook defaults to no-op
+  for other library consumers. This is a local repair, not an upstream backport.
+- **Host policy:** retain Hearthspace's existing X11 pointer fallback for touch,
+  using private bridge provenance rather than its XDG wrapper's surface variant.
+  Native touch support cannot be inferred for every client behind Xwayland.
+- **Regression:** a real InputHint=false client reproduces missing TAKE_FOCUS
+  before the repair and receives it on repeated host re-entry afterward. Real
+  CSD/SSD tests check paired maximize toggles, restore geometry, and subsequent
+  input. Actual touch taps and cancelled drags retain exact local coordinates
+  and independent recipients. Late-resize fixtures hold every actual backing
+  window and distinguish immediate viewport adoption from deferred buffer resize.
+  Popup tests use backing-root coordinates with independently checked pixels.
+  These headless tests do not establish native input or display behavior.
+- **Removal:** use upstream focus/state handling passing those regressions;
+  remove only this vendor repair. Keep the host's X11 identity and touch policy,
+  and retain the other patches until their independent conditions are satisfied.
+
+## Satellite reproducible build identity
+
+- **Dependency:** Satellite 0.8.3, pin `7bf5e0dcb0d4250860b24b04a6cb3ddeada515d0`.
+- **Patch:** [build identity](satellite-build-identity.patch), relative to the
+  vendor root, after window-state. The package pin and MPL notices are retained.
+- **Reason/behavior:** Git discovery from vendored source reported the enclosing
+  Hearthspace commit as Satellite's revision. Report a static package/local-base
+  identity instead and remove the Git build script and its unused dependencies.
+  The embedded helper's version output continues to give the complete base pin.
+  This is a local packaging repair, not an upstream backport.
+- **Distribution:** installed releases carry Satellite's MPL notice, provenance
+  and complete modified vendor source archive, alongside the private server and
+  its X.Org notices. The archive normalizes ownership/time metadata; build caches
+  and Git internals are excluded. Installation/native preflight validates the
+  private server's exact receipt and selected compositor companions before
+  activation or VT acquisition. No host Xwayland replacement is installed.
+- **Regression:** the workspace build and real-client Satellite gates use the
+  rebuilt helper; descriptor lifetime and dependency admission tests remain
+  active. Real staged bundles verify source contents, repeatable release identity,
+  receipt modes, corruption rejection and custom compositor paths. These checks
+  do not establish an installed login, a CI execution or native presentation.
+- **Removal:** use an upstream vendoring-safe build identity with no enclosing
+  repository discovery, then remove only this patch. Preserve required notices,
+  modified-source distribution and each other repair until its own condition holds.
+
+## Satellite explicit popup parents
+
+- **Dependency:** Satellite 0.8.3, pin `7bf5e0dcb0d4250860b24b04a6cb3ddeada515d0`.
+- **Patch:** [popup parent](satellite-popup-parent.patch), relative to the vendor
+  root, after build-identity. Pin, package and MPL notices remain unchanged.
+- **Reason/behavior:** the upstream property reader discards WM_TRANSIENT_FOR for
+  popup roles, and the hover/focus heuristic ignores their explicit parent. With independent canvas homes and overlapping
+  X roots, a popup can appear on an unrelated window. Prefer its declared parent
+  only while mapped with a live XDG role, excluding self-parenting. Otherwise
+  retain the existing hover/focus fallback, also validated for live role state.
+  Role classification is unchanged. This is a local repair, not a backport.
+- **Upstream basis:** the pinned create_role_window implementation and upstream
+  [positioning explanation](https://github.com/Supreeeme/xwayland-satellite/discussions/68)
+  describe the hover/focus heuristic. This repair does not claim to resolve the
+  separate dialog-role or orphaned-popup issues.
+- **Regression:** real X clients map transient popups while another window has
+  hover/focus, check visible parent-local pixels, then exercise frozen delivery,
+  destroyed/reused XIDs, stationary scroll and foreign restacks. Existing popup
+  movement tests retain their canvas-boundary and client-reposition assertions.
+  Record executed results separately; source coverage is not native acceptance.
+- **Removal:** use upstream parent selection passing those popup, lifetime and
+  replay cases without the patch. Preserve the independent routing, interaction,
+  selection and packaging repairs until their own removal conditions hold.
+
+## Satellite desktop-file XDND bridge
+
+- **Dependency:** Satellite 0.8.3, pin `7bf5e0dcb0d4250860b24b04a6cb3ddeada515d0`.
+- **Patch:** [desktop DND](satellite-desktop-dnd.patch), relative to the vendor
+  root, after popup-parent. Pin, package and MPL notices remain unchanged.
+- **Reason:** the pinned host data-device drag callbacks are empty. Retiring
+  Hearthspace's direct XWM would otherwise lose desktop-file drops into X11.
+  Upstream [issue 133](https://github.com/Supreeeme/xwayland-satellite/issues/133)
+  remains open; this local URI-copy bridge is not a general DND backport.
+- **Behavior:** standard Wayland data offers become XDND 2–5 URI-list Copy
+  offers. Resolve the actual X backing origin and density, never canvas homes;
+  round fractional positions to the nearest X pixel.
+  Each drag owns a fresh source window; match source, target and offer identity
+  through status, finish and conversion. Coalesce motion until status arrives,
+  and wait for final status before XdndDrop. Revocation never finishes a drop or
+  acknowledges a successor. Clipboard/primary ownership is untouched.
+- **Transfer/lifecycle:** reuse Satellite's foreign selection and INCR paths,
+  cap DND property chunks at 64 KiB, and match requestor plus property for INCR
+  deletion events. Foreign reads now return errors instead of panicking.
+  Undropped Wayland offers stay owned by SCTK through leave; retirement revokes
+  acceptance. Dropped offers finish only on matching X success. One current drag
+  is retained; replacing it rejects obsolete conversions rather than keeping an
+  unbounded history. Other MIME formats/actions and the reverse application-DND
+  direction are not implemented. The later proxy patch preserves XDND proxies.
+- **Regression:** real App/Wayland/Satellite/Xwayland/XDND receiver tests assert
+  exact encoded URI lists, actual INCR header/chunks/termination, unchanged icon
+  positions, repeated successful drops, Escape, rejection, stale status/finish
+  and conversion fields, lock/source removal, and no click/drop into a revealed
+  replacement, plus local coordinates on a zoomed and panned canvas.
+  Stale-message cases replay public X event fields through XSendEvent;
+  they do not claim kernel queue scheduling. Ordinary clipboard workflows remain
+  separate acceptance checks. Record execution results separately from fixture
+  source; none of these headless checks establishes physical native behavior.
+- **Removal:** adopt an upstream host-DND integration passing these copy, transfer,
+  generation and cancellation cases, then remove this patch. Preserve the other
+  compatibility repairs and source/notices until their independent conditions hold.
+
+## Satellite terminal size increments
+
+- **Dependency:** Satellite 0.8.3, pin `7bf5e0dcb0d4250860b24b04a6cb3ddeada515d0`.
+- **Patch:** [size increments](satellite-size-increments.patch), relative to the
+  vendor root, after desktop-DND. Pin, package and notices remain unchanged.
+- **Reason/basis:** the pin reads only nine WM_NORMAL_HINTS words and discards
+  resize increments and base size. The retired direct XWM honored these hints.
+  The [ICCCM size-hint contract](https://tronche.com/gui/x/icccm/sec-4.html#s-4.1.2.3)
+  defines base-plus-increment preferred sizes. This is a local compatibility
+  repair, not an upstream backport.
+- **Behavior:** read the complete base/increment fields with bounds-safe parsing;
+  missing/truncated/negative values receive safe defaults. Constrain ordinary
+  toplevel buffer sizes in X pixels before updating the host viewport. Bounds
+  take priority when no grid point is possible. Maximized/fullscreen sizes bypass
+  grid rounding. The host keeps XDG min/max and opposite-edge anchoring; the old
+  compositor-only X11 grid code is removed.
+- **Regression:** a real X client requests bottom-right and top-left resizing,
+  checks buffer dimensions, canvas position, visible pixels and opposite edges,
+  then checks work-area maximization and fullscreen. Another case applies
+  truncated and signed-invalid properties and verifies resizing and fresh input.
+  The original regression failed at 276 pixels instead of the required 274;
+  record successful execution separately. Headless tests do not establish native
+  presentation or the behavior of every toolkit.
+- **Removal:** adopt upstream hint parsing/constraining that passes these cases
+  without this patch. Preserve each other repair until its own removal condition.
+
+## Satellite XDND proxy destinations
+
+- **Dependency:** Satellite 0.8.3, pin `7bf5e0dcb0d4250860b24b04a6cb3ddeada515d0`.
+- **Patch:** [DND proxies](satellite-dnd-proxy.patch), relative to the vendor root,
+  after size-increments. Package, pin and notices remain unchanged.
+- **Reason/basis:** the old Smithay `X11Surface` DndFocus resolved a self-verified
+  XdndProxy before querying XdndAware. Preserve that destination capability in
+  the host URI-copy bridge. This is a local adaptation of pinned Smithay's
+  proxy validation and the [XDND protocol](https://www.freedesktop.org/wiki/Specifications/XDND/),
+  not an upstream Satellite backport.
+- **Behavior:** validate WINDOW/32 proxy properties, including the proxy's
+  self-reference. Use its awareness and event destination while retaining the
+  actual target in message headers and status/finish matching. Observe child
+  proxy destruction without discarding existing event subscriptions; it revokes
+  the current offer. Invalid or vanished proxies fall back to the real target.
+- **Regression:** actual child InputOnly proxy windows receive messages whose
+  original target/header, coordinates and exact URI list remain asserted. Hide
+  the target's own awareness so ignoring the proxy fails. Invalid self-reference
+  falls back; destroying a valid proxy during a held drag produces no drop or
+  click, then a fresh offer to the original target succeeds. These are headless
+  protocol tests, not native presentation evidence.
+- **Removal:** use upstream host-DND proxy support passing these transfer and
+  lifecycle cases, then remove only this repair. Preserve other patches until
+  their independent removal conditions hold.
+
+## Satellite window geometry and floating restore
+
+- **Dependency:** Satellite 0.8.3, pin `7bf5e0dcb0d4250860b24b04a6cb3ddeada515d0`.
+- **Patch:** [window geometry](satellite-window-geometry.patch), relative to the
+  vendor root, after DND-proxy. Pin, package and notices remain unchanged.
+- **Reason:** a zero-size restore retained the maximized buffer size, breaking
+  startup-maximized GTK applications' return to their original floating size.
+  The pin also ignored `_GTK_FRAME_EXTENTS`, losing the direct XWM's visible
+  geometry/capture crop. These are local compatibility repairs, not backports.
+- **Basis/behavior:** follow [XDG window geometry and configure semantics](https://wayland.app/protocols/xdg-shell)
+  and the pinned Smithay X11 frame-extent mapping. Remember floating X buffer
+  dimensions before entering maximization/fullscreen; use them only for
+  unspecified restore axes. Explicit host sizes win. Validate four CARDINAL
+  frame insets, including bounds, and publish visible XDG geometry through the
+  normal surface commit. Configure buffer sizes include insets; min/max hints
+  exclude them in host geometry units. Preserve Satellite's own caption bounds.
+  Deletion or invalid metadata restores full geometry instead of retaining a
+  stale crop. No new private protocol is introduced.
+- **Regression:** the existing real GTK startup-maximized test verifies restore,
+  zoom, pan, another maximized app and subsequent client input. The actual
+  selected-window capture test retains exact local pixels, owned popup inclusion,
+  distant/offscreen capture, valid CSD cropping and session termination, adding
+  deletion/malformed-property recovery. Its old X-root movement prerequisite,
+  and the popup test's equivalent assumptions, now assert the independent canvas
+  home and measured finite backing origin. Popup pan/zoom/maximize pixels and
+  transformed input assertions remain intact. The original tests failed before
+  these repairs; focused passing evidence is recorded separately. Headless
+  evidence does not establish native display or every toolkit's behavior.
+- **Removal:** adopt upstream geometry/restore handling passing these real-client
+  cases without this patch. Preserve other repairs and their removal conditions.

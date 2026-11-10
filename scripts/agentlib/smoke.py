@@ -137,6 +137,11 @@ class Smoke:
             inputs.click(
                 window["x"] + window["width"] / 2, window["y"] + window["height"] / 2
             )
+            self.until(
+                "clicked terminal focus",
+                lambda: (self.window(window["id"]) or {}).get("focused"),
+            )
+            self.record("terminal-input-focus", window_id=window["id"])
             inputs.type(text)
         self.record("type", text=text)
         self.until(

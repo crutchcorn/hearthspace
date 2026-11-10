@@ -5,7 +5,7 @@ use smithay::reexports::x11rb::protocol::xproto::{
 };
 
 struct DeferredResize {
-    windows: [(Window, EventMask); 2],
+    windows: Vec<(Window, EventMask)>,
 }
 
 impl DeferredResize {
@@ -17,30 +17,39 @@ impl DeferredResize {
             .reply()
             .unwrap()
             .parent;
-        assert_ne!(frame, client.root, "fixture must have a managed X11 frame");
         // ResizeRedirect is public X11: ConfigureWindow emits ResizeRequest
         // instead of changing size when another connection selects this mask.
-        // Hold both windows so XWayland cannot produce a resized buffer yet.
+        // Hold all actual backings so XWayland cannot produce a resized buffer yet.
         // Unlike _XWAYLAND_ALLOW_COMMITS, this needs no privileged WM access.
-        let windows = [frame, client.window].map(|window| {
-            let mask = client
-                .connection
-                .get_window_attributes(window)
-                .unwrap()
-                .reply()
-                .unwrap()
-                .your_event_mask;
-            client
-                .connection
-                .change_window_attributes(
-                    window,
-                    &ChangeWindowAttributesAux::new().event_mask(mask | EventMask::RESIZE_REDIRECT),
-                )
-                .unwrap()
-                .check()
-                .unwrap();
-            (window, mask)
-        });
+        let mut backings = vec![client.window];
+        // Satellite does not reparent CSD clients into an XWM frame. Hold
+        // every actual backing window, without treating the X root as one.
+        if frame != client.root {
+            backings.push(frame);
+        }
+        let windows = backings
+            .into_iter()
+            .map(|window| {
+                let mask = client
+                    .connection
+                    .get_window_attributes(window)
+                    .unwrap()
+                    .reply()
+                    .unwrap()
+                    .your_event_mask;
+                client
+                    .connection
+                    .change_window_attributes(
+                        window,
+                        &ChangeWindowAttributesAux::new()
+                            .event_mask(mask | EventMask::RESIZE_REDIRECT),
+                    )
+                    .unwrap()
+                    .check()
+                    .unwrap();
+                (window, mask)
+            })
+            .collect();
         Self { windows }
     }
 
@@ -58,7 +67,7 @@ impl DeferredResize {
             }
             assert!(
                 Instant::now() < deadline,
-                "X11 resize was not requested for both windows: expected={expected:?}, events={:?}",
+                "X11 resize was not requested for all backing windows: expected={expected:?}, events={:?}",
                 client.resize_requests
             );
             thread::sleep(Duration::from_millis(10));
@@ -119,12 +128,10 @@ fn cancel_before_buffer_commit(direction: u32, expected: [i32; 4]) {
     let size = [expected[2], expected[3]];
     deferred.wait_requested(&mut client, size);
     client.request(&compositor, 11, 0, (0, 0));
-    assert_eq!(
-        geometry(&compositor, client.id),
-        initial,
-        "cancellation must precede the resized buffer commit"
-    );
-    for (window, _) in deferred.windows {
+    // The requested viewport is visible before the actual X buffer resizes.
+    // Verify both states, rather than confusing viewport adoption with a commit.
+    wait_geometry(&compositor, &mut client, expected, RED);
+    for &(window, _) in &deferred.windows {
         assert_eq!(x11_size(&client, window), [initial[2], initial[3]]);
     }
     let requests_before_motion = client.resize_requests.len();
@@ -158,9 +165,13 @@ fn cancel_before_buffer_commit(direction: u32, expected: [i32; 4]) {
     );
     motion(&compositor, expected[0] + 60, expected[1] + 20);
     client.wait_crossing(Crossing::Enter);
-    // XWayland repairs its held-button state on re-entry, not on Wayland leave.
-    // Drain that release before checking the next independent click.
-    client.wait_release();
+    // Internal button repair must not invent an application release.
+    client.barrier(&compositor);
+    client.pump();
+    assert!(
+        client.releases.is_empty(),
+        "re-entry leaked a repaired release"
+    );
     responsive_click(&compositor, &mut client);
     wait_geometry(&compositor, &mut client, expected, GREEN);
 }

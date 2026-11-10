@@ -15,7 +15,7 @@ use std::fs;
 
 // Exercise the actual initializer against an already populated owned server as
 // well as through App startup. No test-only control command or XWM API is needed.
-#[path = "../../src/compositor/xwayland/cursor_defaults.rs"]
+#[path = "../../../hearthspace-satellite/src/cursor_defaults.rs"]
 mod initialization;
 
 struct Fixture {

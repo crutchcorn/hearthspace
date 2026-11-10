@@ -25,6 +25,7 @@ impl Projection {
             .into()
     }
 
+    #[cfg(test)]
     pub fn surface_to_screen(self, surface: Point<f64, Logical>) -> Point<f64, Logical> {
         (
             self.origin.x + surface.x * self.scale,
@@ -74,23 +75,6 @@ impl App {
     }
 
     pub(super) fn base_window_projection(&self, index: usize) -> Projection {
-        #[cfg(feature = "xwayland")]
-        if let Some((parent, offset)) = self.x11_popup_anchor(index) {
-            let parent = self.window_projection(parent);
-            let origin = parent.surface_to_screen(offset.to_f64());
-            let inset = self.window_surface_geometry_loc(index);
-            let size = self.window_geometry_size(index);
-            return Projection {
-                origin,
-                bounds: Rectangle::new(
-                    (origin + inset.to_f64().upscale(parent.scale)).to_i32_round(),
-                    size.to_f64().upscale(parent.scale).to_i32_round(),
-                ),
-                scale: parent.scale,
-                opacity: 1.,
-                preview: None,
-            };
-        }
         let window = &self.windows[index];
         let inset = self.window_surface_geometry_loc(index);
         let chrome = if self.has_compositor_chrome(index) {

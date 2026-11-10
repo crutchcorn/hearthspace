@@ -1,7 +1,7 @@
 use super::*;
 
 #[test]
-fn x11_csd_touch_drag_keeps_x_coordinates_and_recovers_after_touch_cancel() {
+fn x11_csd_touch_drag_keeps_canvas_coordinates_and_recovers_after_touch_cancel() {
     let _guard = headless_test_guard();
     let (compositor, mut client) = fixture();
     client.clear_events();
@@ -15,7 +15,13 @@ fn x11_csd_touch_drag_keeps_x_coordinates_and_recovers_after_touch_cancel() {
         "touch must reach XWayland as a primary press"
     );
     assert_eq!((press.event_x, press.event_y), (60, 20));
-    client.request(&compositor, 8, 1, (press.root_x, press.root_y));
+    client.request_for(
+        &compositor,
+        client.window,
+        8,
+        1,
+        (press.root_x, press.root_y),
+    );
     action(&compositor, "touch-motion 71 0 220 200");
     action(&compositor, "touch-frame 71");
     wait_geometry(&compositor, &mut client, [160, 180, 320, 240], RED);
@@ -32,7 +38,13 @@ fn x11_csd_touch_drag_keeps_x_coordinates_and_recovers_after_touch_cancel() {
     action(&compositor, "touch-motion 71 1 236 208");
     action(&compositor, "touch-frame 71");
     let press = client.wait_press();
-    client.request(&compositor, 8, 1, (press.root_x, press.root_y));
+    client.request_for(
+        &compositor,
+        client.window,
+        8,
+        1,
+        (press.root_x, press.root_y),
+    );
     action(&compositor, "touch-motion 71 1 250 220");
     action(&compositor, "touch-frame 71");
     wait_geometry(&compositor, &mut client, [190, 200, 320, 240], GREEN);

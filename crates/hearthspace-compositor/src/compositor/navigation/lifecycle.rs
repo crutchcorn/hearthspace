@@ -159,12 +159,6 @@ impl App {
                         crate::compositor::gtk_shell::send_configure(surface);
                     }
                 }
-                #[cfg(feature = "xwayland")]
-                ManagedSurface::X11(surface) => {
-                    if let Err(error) = surface.set_activated(active) {
-                        tracing::warn!(%error, "failed to update X11 window activation");
-                    }
-                }
             }
         }
         self.request_redraw();

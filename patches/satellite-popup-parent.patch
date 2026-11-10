@@ -1,0 +1,71 @@
+diff --git a/src/server/mod.rs b/src/server/mod.rs
+index 96f4cecf..ac46f6cd 100644
+--- a/src/server/mod.rs
++++ b/src/server/mod.rs
+@@ -3,6 +3,7 @@ mod decoration;
+ mod dispatch;
+ mod event;
+ mod interaction;
++mod popup;
+ pub(crate) mod selection;
+ mod settings;
+ #[cfg(test)]
+@@ -1433,7 +1434,7 @@ impl<S: X11Selection + 'static> InnerServerState<S> {
+
+             let window_data = data.get::<&WindowData>().unwrap();
+             if window_data.attrs.role.is_popup() {
+-                popup_for = self.last_hovered.or(self.last_focused_toplevel);
++                popup_for = self.popup_parent(entity);
+             }
+             splash = window_data.attrs.role == WindowRole::Splash;
+
+diff --git a/src/xstate/mod.rs b/src/xstate/mod.rs
+index 02c53327..c350d635 100644
+--- a/src/xstate/mod.rs
++++ b/src/xstate/mod.rs
+@@ -698,7 +698,7 @@ impl XState {
+             );
+         }
+         server_state.set_window_role(window, role);
+-        if let Some(parent) = transient_for.and_then(|t| (!role.is_popup()).then_some(t)) {
++        if let Some(parent) = transient_for {
+             server_state.set_transient_for(window, parent);
+         }
+
+diff --git a/src/server/popup.rs b/src/server/popup.rs
+new file mode 100644
+--- /dev/null
++++ b/src/server/popup.rs
+@@ -0,0 +1,32 @@
++//! Prefer an explicit, live transient parent over unrelated hover history.
++use super::{InnerServerState, SurfaceRole, WindowData, X11Selection};
++use hecs::Entity;
++use xcb::x;
++
++impl<S: X11Selection> InnerServerState<S> {
++    pub(super) fn popup_parent(&self, popup: Entity) -> Option<x::Window> {
++        let transient = self
++            .world
++            .get::<&WindowData>(popup)
++            .ok()?
++            .attrs
++            .transient_for;
++        let live = |window: &x::Window| {
++            self.windows.get(window).is_some_and(|entity| {
++                *entity != popup
++                    && self
++                        .world
++                        .get::<&WindowData>(*entity)
++                        .is_ok_and(|data| data.mapped)
++                    && self
++                        .world
++                        .get::<&SurfaceRole>(*entity)
++                        .is_ok_and(|role| role.xdg().is_some())
++            })
++        };
++        transient
++            .filter(live)
++            .or_else(|| self.last_hovered.filter(live))
++            .or_else(|| self.last_focused_toplevel.filter(live))
++    }
++}

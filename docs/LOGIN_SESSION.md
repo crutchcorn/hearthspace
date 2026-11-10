@@ -1,14 +1,19 @@
 # Graphical login
 
 Install the graphical session after [setting up dependencies](DEPENDENCIES.md).
-Run the installer from the repository root as your normal user:
+Build the optimized runtime with the [runtime build workflow](DEVELOPMENT.md#prepare-an-installable-runtime)
+and [prepare the private Xwayland](SATELLITE.md#prepare-the-private-server) beside
+its compositor first. Then install that complete binary directory from the
+repository root as your normal user:
 
 ```sh
-scripts/install-session install
+scripts/install-session install --no-build --binary-dir "$PWD/target/release"
 ```
 
-The installer builds an optimized native desktop as the current user, then uses
-sudo to install a complete release. Starting an installed session requires neither
+Adjust the binary directory for a custom Cargo target. The installer verifies the
+private server receipt before using sudo to install a complete release. Without
+`--no-build`, it builds Rust binaries as the current user; server preparation is
+still a separate prerequisite. Starting an installed session requires neither
 Cargo nor the source checkout. Re-run the command after code updates; a running
 session remains on its original release until logout. To remove the installation,
 log out of Hearthspace first, then run `scripts/install-session uninstall` from

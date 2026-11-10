@@ -1,8 +1,6 @@
 //! Client protocol geometry for canvas and output presentations.
 use super::{App, ManagedSurface, set_state};
 use crate::config::TITLE_BAR_HEIGHT;
-#[cfg(feature = "xwayland")]
-use smithay::utils::{Point, Rectangle};
 use wayland_protocols::xdg::shell::server::xdg_toplevel;
 
 impl App {
@@ -40,23 +38,6 @@ impl App {
                 });
                 if surface.is_initial_configure_sent() {
                     crate::compositor::gtk_shell::send_configure(surface);
-                }
-            }
-            #[cfg(feature = "xwayland")]
-            ManagedSurface::X11(surface) => {
-                if let Err(error) = surface
-                    .set_fullscreen(state.fullscreen)
-                    .and_then(|()| surface.set_maximized(state.maximized))
-                {
-                    tracing::warn!(%error, "failed to update X11 window state");
-                }
-                if let Some(size) = size {
-                    let origin = bounds
-                        .map(|bounds| bounds.loc + Point::from((0, chrome)))
-                        .unwrap_or_else(|| (window.position.x, window.position.y + chrome).into());
-                    if let Err(error) = surface.configure(Some(Rectangle::new(origin, size))) {
-                        tracing::warn!(%error, "failed to configure X11 window state");
-                    }
                 }
             }
         }

@@ -248,10 +248,12 @@ def run(smoke):
         inputs.chord("volume-down")
     audio(smoke, volume=40)
     osd(smoke, "Volume 40%", capture="volume-down-osd")
+    dismissed(smoke)
     with Input(smoke.control) as inputs:
         inputs.chord("volume-mute")
     audio(smoke, muted=True)
     osd(smoke, "Volume muted", capture="volume-muted-osd")
+    dismissed(smoke)
     with Input(smoke.control) as inputs:
         inputs.chord("volume-up")
     audio(smoke, volume=45, muted=False)

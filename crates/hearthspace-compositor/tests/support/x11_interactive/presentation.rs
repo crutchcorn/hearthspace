@@ -175,3 +175,61 @@ fn x11_ssd_maximize_button_restores_floating_geometry_and_drag() {
         "server chrome release reached X11 content"
     );
 }
+
+#[test]
+fn x11_csd_ewmh_maximize_toggle_applies_both_atoms_once_and_restores() {
+    use smithay::reexports::x11rb::protocol::xproto::{ClientMessageEvent, EventMask};
+    let _guard = headless_test_guard();
+    let (compositor, mut client) = fixture();
+    let atom = |name: &[u8]| {
+        client
+            .connection
+            .intern_atom(false, name)
+            .unwrap()
+            .reply()
+            .unwrap()
+            .atom
+    };
+    let state = atom(b"_NET_WM_STATE");
+    let horizontal = atom(b"_NET_WM_STATE_MAXIMIZED_HORZ");
+    let vertical = atom(b"_NET_WM_STATE_MAXIMIZED_VERT");
+    for expected in [true, false] {
+        client
+            .connection
+            .send_event(
+                false,
+                client.root,
+                EventMask::SUBSTRUCTURE_REDIRECT | EventMask::SUBSTRUCTURE_NOTIFY,
+                ClientMessageEvent::new(32, client.window, state, [2, horizontal, vertical, 1, 0]),
+            )
+            .unwrap();
+        client.barrier(&compositor);
+        wait_windows(&compositor, |windows| {
+            windows
+                .iter()
+                .any(|w| w["id"] == client.id && w["maximized"] == expected)
+        });
+        let until = Instant::now() + Duration::from_secs(5);
+        loop {
+            let properties = client
+                .connection
+                .get_property(false, client.window, state, AtomEnum::ATOM, 0, u32::MAX)
+                .unwrap()
+                .reply()
+                .unwrap();
+            let values: Vec<_> = properties.value32().unwrap().collect();
+            if values.contains(&horizontal) == expected && values.contains(&vertical) == expected {
+                break;
+            }
+            assert!(
+                Instant::now() < until,
+                "maximize state did not reach X11: {values:?}"
+            );
+            thread::sleep(Duration::from_millis(10));
+        }
+    }
+    let restored = wait_size(&compositor, &client, [320, 240]);
+    assert_eq!(restored["canvas_x"], 100);
+    assert_eq!(restored["canvas_y"], 150);
+    responsive_click(&compositor, &mut client);
+}

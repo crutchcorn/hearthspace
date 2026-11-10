@@ -24,8 +24,6 @@ impl App {
                         && !state.states.contains(xdg_toplevel::State::Maximized)
                 })
             }),
-            #[cfg(feature = "xwayland")]
-            ManagedSurface::X11(_) => self.windows[index].presentation.restore_size == Some(size),
         };
         if ready && size.w > 0 && size.h > 0 {
             self.windows[index].presentation.restoring = false;
