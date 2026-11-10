@@ -49,7 +49,7 @@ fn fixture() -> (HeadlessCompositor, MapClient, usize) {
     );
     (compositor, client, target)
 }
-fn position(compositor: &HeadlessCompositor, id: &str) -> Value {
+pub(super) fn position(compositor: &HeadlessCompositor, id: &str) -> Value {
     let status = query(compositor, "desktop-status");
     let item = status["items"]
         .as_array()
@@ -59,7 +59,7 @@ fn position(compositor: &HeadlessCompositor, id: &str) -> Value {
         .unwrap();
     json!([item["x"], item["y"]])
 }
-fn press(compositor: &HeadlessCompositor, id: &str) {
+pub(super) fn press(compositor: &HeadlessCompositor, id: &str) {
     let point = position(compositor, id);
     action(
         compositor,

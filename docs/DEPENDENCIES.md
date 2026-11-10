@@ -21,6 +21,7 @@ sudo apt-get install -y \
   libsystemd-dev libglib2.0-dev libglib2.0-bin libgtk-4-dev \
   libgtk4-session-lock-dev libgtk4-layer-shell-dev libpam0g-dev \
   libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev \
+  libxcb-cursor-dev libxcb-composite0-dev libxcb-res0-dev \
   python3 python3-venv dbus xdg-utils fonts-liberation
 ```
 
@@ -29,6 +30,12 @@ use version 1.3 or newer for its lifecycle fixes. These are separate from the
 Rust bindings fetched by Cargo. The GStreamer development libraries support
 workspace test targets. `fonts-liberation` supplies the shell's intended font.
 The pkg-config name for xkbcommon is `xkbcommon`, not `libxkbcommon`.
+
+The XCB cursor, Composite, and X-Resource development packages build the pinned
+Satellite compatibility helper. They add headers and linker metadata, without
+changing the running X server. Remove these development packages with
+`sudo apt-get remove libxcb-cursor-dev libxcb-composite0-dev libxcb-res0-dev`
+when this checkout no longer needs to build the helper.
 
 The compositor and shell need working graphics drivers. For software-rendered
 headless tests, install `libgl1-mesa-dri` and `mesa-vulkan-drivers`, then follow
@@ -41,7 +48,8 @@ A full native session uses logind/libseat and these runtime packages:
 ```sh
 sudo apt-get install -y \
   mate-polkit xdg-desktop-portal xdg-desktop-portal-gtk fuse3 \
-  gsettings-desktop-schemas pulseaudio-utils upower xwayland foot zenity
+  gsettings-desktop-schemas pulseaudio-utils upower foot zenity \
+  x11-xkb-utils libxfont2 libxcvt0 libxshmfence1 libxcb-cursor0
 ```
 
 - MATE polkit supplies a Wayland-capable authentication agent. Don't substitute
@@ -56,7 +64,12 @@ sudo apt-get install -y \
   It works with PulseAudio or PipeWire's PulseAudio service; no second audio
   server is needed. See [sound and brightness](AUDIO_AND_BRIGHTNESS.md).
 - UPower supplies battery/UPS status. Systems without a battery need no fake
-  indicator. Xwayland enables X11 applications.
+  indicator. The bundled Satellite helper and private Xwayland enable X11 applications;
+  prepare them using the workflow below. `x11-xkb-utils` supplies `xkbcomp`,
+  which the private server uses to compile keyboard maps. The Xfont, xcvt,
+  xshmfence and XCB cursor libraries support that server and Satellite at runtime.
+  Removing these packages reverses this dependency installation; retain any
+  also used by other desktops.
 - Super+Return launches `foot` directly, so the terminal shortcut requires it.
   The same terminal is also used by integration tests.
 - Installed GSettings schemas and `glib-compile-schemas` let the supervisor
@@ -83,6 +96,30 @@ own their separate helpers and profiles. Read [application integration](APPS.md)
 before diagnosing bus, audio, or portal routing by changing global environment
 variables. Hearthspace doesn't require persistent logind configuration, new
 backlight permissions, or disabling application sandboxes.
+
+## Satellite's private Xwayland build
+
+Satellite uses a separately prepared Xwayland with surface-target
+input routing. Development additionally needs these tools and headers:
+
+```sh
+sudo apt-get install -y --no-install-recommends \
+  curl patch x11-xkb-utils meson ninja-build libxfont-dev libxcvt-dev libxkbfile-dev \
+  libxshmfence-dev libmd-dev mesa-common-dev libtirpc-dev
+```
+
+These packages do not replace the running Xwayland executable or change host
+configuration. `libxfont-dev` also installs `libfontenc-dev`. Remove the same
+packages with `apt-get remove` when no longer needed; remove that transitive
+header package only if it was newly installed and is no longer needed.
+
+The exact source archive and input patch hashes are recorded in
+[`data/xwayland-requirements.json`](../data/xwayland-requirements.json).
+Preparation is explicit and runs as the normal user, never during session
+startup. [Preparation and packaging](SATELLITE.md#prepare-the-private-server)
+retain the build inputs and stage verified companions beside the compositor.
+The installer includes the private binary and notices; it never replaces the
+system Xwayland package.
 
 ## Test and recording tools
 

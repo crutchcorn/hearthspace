@@ -1,0 +1,277 @@
+diff --git a/Cargo.toml b/Cargo.toml
+--- a/Cargo.toml
++++ b/Cargo.toml
+@@ -34,6 +34,7 @@
+ bitflags = "2.5.0"
+ rustix = { workspace = true, features = ["event"] }
+ wayland-client.workspace = true
++wayland-scanner.workspace = true
+ wayland-protocols = { workspace = true, features = ["client", "server", "staging", "unstable"] }
+ wayland-server.workspace = true
+ xcb = { version = "1.7.0", features = ["composite", "randr", "res"] }
+diff --git a/src/server/mod.rs b/src/server/mod.rs
+--- a/src/server/mod.rs
++++ b/src/server/mod.rs
+@@ -2,6 +2,7 @@
+ mod decoration;
+ mod dispatch;
+ mod event;
++mod interaction;
+ pub(crate) mod selection;
+ #[cfg(test)]
+ mod tests;
+@@ -483,6 +484,9 @@
+     viewporter: WpViewporter,
+     fractional_scale: Option<WpFractionalScaleManagerV1>,
+     decoration_manager: Option<ZxdgDecorationManagerV1>,
++    interaction_manager: Option<
++        interaction::protocol::xwayland_satellite_interaction_v1::XwaylandSatelliteInteractionV1,
++    >,
+     selection_states: selection::SelectionStates<S>,
+     last_kb_serial: Option<(client::wl_seat::WlSeat, u32)>,
+     activation_state: Option<ActivationState>,
+@@ -507,6 +511,8 @@
+
+         let (global_list, queue) = registry_queue_init::<MyWorld>(&connection).unwrap();
+         let qh = queue.handle();
++
++        let interaction_manager = global_list.bind(&qh, 1..=1, ()).ok();
+
+         let xdg_wm_base = global_list
+             .bind::<XdgWmBase, _, _>(&qh, 2..=6, ())
+@@ -601,6 +607,7 @@
+             new_scale: None,
+             current_scale: 1.0,
+             decoration_manager,
++            interaction_manager,
+             world,
+         };
+         Self {
+@@ -1182,6 +1189,9 @@
+             win.mapped = false;
+         }
+
++        let _ = self
++            .world
++            .remove_one::<interaction::StartedInteraction>(entity.unwrap());
+         if let Ok(mut role) = self.world.remove_one::<SurfaceRole>(entity.unwrap()) {
+             role.destroy();
+         }
+@@ -1280,52 +1290,10 @@
+     }
+
+     pub fn move_window(&mut self, window: x::Window) {
+-        let Some(data) = self
+-            .windows
+-            .get(&window)
+-            .copied()
+-            .and_then(|e| self.world.entity(e).ok())
+-        else {
+-            warn!("Requested move of unknown window {window:?}");
+-            return;
+-        };
+-
+-        let Some(last_click_data) = data.get::<&LastClickSerial>() else {
+-            warn!("Requested move of window {window:?} but we don't have a click serial for it");
+-            return;
+-        };
+-
+-        let role = data.get::<&SurfaceRole>();
+-        let Some(SurfaceRole::Toplevel(Some(data))) = role.as_deref() else {
+-            warn!("Requested move of non toplevel {window:?} ({role:?})");
+-            return;
+-        };
+-
+-        data.toplevel._move(&last_click_data.0, last_click_data.1);
++        self.request_window_interaction(window, None);
+     }
+
+     pub fn resize_window(&mut self, window: x::Window, direction: MoveResizeDirection) {
+-        let Some(data) = self
+-            .windows
+-            .get(&window)
+-            .copied()
+-            .and_then(|e| self.world.entity(e).ok())
+-        else {
+-            warn!("Requested resize of unknown window {window:?}");
+-            return;
+-        };
+-
+-        let Some(last_click_data) = data.get::<&LastClickSerial>() else {
+-            warn!("Requested resize of window {window:?} but we don't have a click serial for it");
+-            return;
+-        };
+-
+-        let role = data.get::<&SurfaceRole>();
+-        let Some(SurfaceRole::Toplevel(Some(data))) = role.as_deref() else {
+-            warn!("Requested resize of non toplevel {window:?} ({role:?})");
+-            return;
+-        };
+-
+         let edge = match direction {
+             MoveResizeDirection::SizeTopLeft => xdg_toplevel::ResizeEdge::TopLeft,
+             MoveResizeDirection::SizeTop => xdg_toplevel::ResizeEdge::Top,
+@@ -1341,12 +1309,12 @@
+             | MoveResizeDirection::Cancel => unreachable!(),
+         };
+
+-        data.toplevel
+-            .resize(&last_click_data.0, last_click_data.1, edge);
++        self.request_window_interaction(window, Some(edge));
+     }
+
+     pub fn destroy_window(&mut self, window: x::Window) {
+         if let Some(id) = self.windows.remove(&window) {
++            let _ = self.world.remove_one::<interaction::StartedInteraction>(id);
+             self.world.remove::<(x::Window, WindowData)>(id).unwrap();
+             if self.world.entity(id).unwrap().is_empty() {
+                 self.world.despawn(id).unwrap();
+diff --git a/src/server/interaction.rs b/src/server/interaction.rs
+new file mode 100644
+--- /dev/null
++++ b/src/server/interaction.rs
+@@ -0,0 +1,77 @@
++//! Optional, interaction-scoped cancellation. No authority to start operations.
++use super::*;
++use protocol::xwayland_satellite_interaction_v1::XwaylandSatelliteInteractionV1;
++
++pub(super) mod protocol {
++    #![allow(non_camel_case_types, non_upper_case_globals, unused_imports)]
++    use wayland_client::{self, protocol::*};
++    use wayland_protocols::xdg::shell::client::*;
++    mod __interfaces {
++        use wayland_client::backend as wayland_backend;
++        use wayland_client::protocol::__interfaces::*;
++        use wayland_protocols::xdg::shell::client::__interfaces::*;
++        wayland_scanner::generate_interfaces!("protocols/xwayland-satellite-interaction-v1.xml");
++    }
++    use self::__interfaces::*;
++    wayland_scanner::generate_client_code!("protocols/xwayland-satellite-interaction-v1.xml");
++}
++
++wayland_client::delegate_noop!(MyWorld: XwaylandSatelliteInteractionV1);
++
++pub(super) struct StartedInteraction {
++    seat: client::wl_seat::WlSeat,
++    serial: u32,
++    toplevel: XdgToplevel,
++}
++
++impl<S: X11Selection> InnerServerState<S> {
++    pub(super) fn request_window_interaction(
++        &mut self,
++        window: x::Window,
++        edge: Option<xdg_toplevel::ResizeEdge>,
++    ) {
++        let Some(&entity) = self.windows.get(&window) else {
++            return;
++        };
++        let started = {
++            let Ok(data) = self.world.entity(entity) else {
++                return;
++            };
++            let Some(click) = data.get::<&LastClickSerial>() else {
++                warn!("Requested interaction without a click serial: {window:?}");
++                return;
++            };
++            let role = data.get::<&SurfaceRole>();
++            let Some(SurfaceRole::Toplevel(Some(toplevel))) = role.as_deref() else {
++                return;
++            };
++            StartedInteraction {
++                seat: click.0.clone(),
++                serial: click.1,
++                toplevel: toplevel.toplevel.clone(),
++            }
++        };
++        match edge {
++            Some(edge) => started.toplevel.resize(&started.seat, started.serial, edge),
++            None => started.toplevel._move(&started.seat, started.serial),
++        }
++        self.world.insert_one(entity, started).unwrap();
++    }
++
++    pub fn cancel_window_interaction(&mut self, window: x::Window) {
++        let Some(&entity) = self.windows.get(&window) else {
++            return;
++        };
++        let Ok(started) = self.world.remove_one::<StartedInteraction>(entity) else {
++            return;
++        };
++        if !started.toplevel.is_alive() || !started.seat.is_alive() {
++            return;
++        }
++        if let Some(manager) = &self.interaction_manager {
++            manager.cancel(&started.toplevel, &started.seat, started.serial);
++        } else {
++            warn!("Compositor does not support cancelling window interactions");
++        }
++    }
++}
+diff --git a/src/xstate/mod.rs b/src/xstate/mod.rs
+--- a/src/xstate/mod.rs
++++ b/src/xstate/mod.rs
+@@ -582,6 +582,12 @@
+                     return;
+                 };
+                 let button = data[3];
++                // EWMH cancellation commonly uses button zero. It refers to
++                // the previously forwarded operation, not a new button press.
++                if matches!(direction, MoveResizeDirection::Cancel) {
++                    server_state.cancel_window_interaction(e.window());
++                    return;
++                }
+                 // XXX: This can technically be driven by keyboard events and other mouse buttons as well,
+                 // but I haven't found an application that does this yet. We'll cross that bridge when we get to it.
+                 if button != 1 {
+diff --git a/protocols/xwayland-satellite-interaction-v1.xml b/protocols/xwayland-satellite-interaction-v1.xml
+new file mode 100644
+--- /dev/null
++++ b/protocols/xwayland-satellite-interaction-v1.xml
+@@ -0,0 +1,46 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<protocol name="xwayland_satellite_interaction_v1">
++  <copyright>
++    Copyright 2026 Hearthspace contributors
++
++    Permission is hereby granted, free of charge, to any person obtaining a
++    copy of this software and associated documentation files (the "Software"),
++    to deal in the Software without restriction, including without limitation
++    the rights to use, copy, modify, merge, publish, distribute, sublicense,
++    and/or sell copies of the Software, and to permit persons to whom the
++    Software is furnished to do so, subject to the following conditions:
++
++    The above copyright notice and this permission notice shall be included
++    in all copies or substantial portions of the Software.
++
++    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
++    OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
++    FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
++    THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
++    LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
++    FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
++    DEALINGS IN THE SOFTWARE.
++  </copyright>
++  <interface name="xwayland_satellite_interaction_v1" version="1">
++    <description summary="optional cancellation of an accepted interactive operation">
++      Experimental, private extension for an X11 compatibility bridge. Absence
++      leaves xdg-shell move/resize available, without cancellation forwarding.
++      The compositor may restrict this global to its authenticated bridge.
++      This extension does not grant authority to start an interaction.
++    </description>
++    <request name="destroy" type="destructor"/>
++    <request name="cancel">
++      <description summary="stop geometry changes for this exact interaction">
++        Cancel only a currently active move or resize previously accepted from
++        this toplevel, seat and initiating input serial. Unknown, stale, rejected
++        or completed operations are ignored. Retain the geometry reached so far,
++        including anchoring of outstanding resize buffers. Remaining buttons or
++        touch contacts stay owned by the cancelled sequence until they drain;
++        cancellation must not deliver an unmatched release to another surface.
++      </description>
++      <arg name="toplevel" type="object" interface="xdg_toplevel"/>
++      <arg name="seat" type="object" interface="wl_seat"/>
++      <arg name="serial" type="uint" summary="serial used for the accepted xdg-shell move or resize"/>
++    </request>
++  </interface>
++</protocol>

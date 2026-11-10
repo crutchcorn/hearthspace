@@ -6,15 +6,18 @@ impl Supervisor {
         if self.mode != RunMode::DevCargo {
             return Ok(());
         }
-        // Locking must never compile code while an opaque shield is already up.
-        // Build the sibling binary before starting even a development desktop.
-        crate::dev_cargo::prepare_helper(
-            "hearthspace-lock",
-            &crate::session_env::repo_root(),
-            &self.paths.session_dir,
-            self.startup_deadline,
-            &self.shutdown_requested,
-        )?;
+        // Neither locking nor starting the private X11 bridge may trigger an
+        // unprepared build after the compositor has acquired native resources.
+        // The C server is prepared explicitly outside the startup deadline.
+        for binary in ["hearthspace-lock", "hearthspace-satellite"] {
+            crate::dev_cargo::prepare_helper(
+                binary,
+                &crate::session_env::repo_root(),
+                &self.paths.session_dir,
+                self.startup_deadline,
+                &self.shutdown_requested,
+            )?;
+        }
         Ok(())
     }
 

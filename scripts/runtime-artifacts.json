@@ -10,6 +10,11 @@
     "native_features": ["udev"]
   },
   {
+    "package": "hearthspace-satellite",
+    "binaries": ["hearthspace-satellite"],
+    "native_features": []
+  },
+  {
     "package": "hearthspace-shell",
     "binaries": ["hearthspace-shell"],
     "native_features": []

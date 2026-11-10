@@ -10,6 +10,7 @@ from pathlib import Path
 
 from runtime_artifacts import BINARIES, runtime_build_command
 
+from . import satellite, xwayland
 from .portal import validate_backend
 
 REPOSITORY = Path(__file__).resolve().parents[2]
@@ -86,9 +87,18 @@ def build(profile):
 
 def bundle(directory, binary_dir, prefix):
     """Copy user-built artifacts into an immutable, hashed installation input."""
+    companions = xwayland.verify_companions(binary_dir / "hearthspace-compositor")
     release = directory / "release"
     files = {}
     sources = {Path("bin") / name: binary_dir / name for name in BINARIES}
+    sources.update(
+        {Path("bin") / name: Path(info["path"]) for name, info in companions.items()}
+    )
+    sources[xwayland.NOTICE] = REPOSITORY / "patches/xwayland-COPYING"
+    sources[satellite.NOTICE] = REPOSITORY / "vendor/xwayland-satellite/LICENSE"
+    sources[satellite.PROVENANCE] = (
+        REPOSITORY / "vendor/xwayland-satellite/PROVENANCE.md"
+    )
     sources[PAM_SOURCE] = REPOSITORY / "data/pam.d/hearthspace-lock"
     sources[Path("bin/hearthspace-login-guard")] = (
         REPOSITORY / "scripts/runtime/hearthspace-login-guard"
@@ -110,7 +120,9 @@ def bundle(directory, binary_dir, prefix):
             raise RuntimeError(
                 f"required runtime file is missing or a symlink: {source}"
             )
-        mode = 0o755 if relative.parts[0] == "bin" else 0o644
+        mode = xwayland.RELEASE_MODES.get(
+            str(relative), 0o755 if relative.parts[0] == "bin" else 0o644
+        )
         if mode == 0o755 and not os.access(source, os.X_OK):
             raise RuntimeError(f"runtime file is not executable: {source}")
         target = release / relative
@@ -118,6 +130,9 @@ def bundle(directory, binary_dir, prefix):
         shutil.copyfile(source, target)
         target.chmod(mode)
         files[str(relative)] = metadata(target, mode)
+    xwayland.verify_companions(release / "bin/hearthspace-compositor")
+    source_archive = satellite.source_archive(REPOSITORY, release)
+    files[str(satellite.SOURCE)] = metadata(source_archive, 0o644)
     release_id = hashlib.sha256(json.dumps(files, sort_keys=True).encode()).hexdigest()
     stable = {str(LAUNCHER): launcher(prefix), str(SESSION): session_entry(prefix)}
     for relative, content in stable.items():
@@ -136,11 +151,11 @@ def dependencies():
         "dbus-run-session",
         "systemctl",
         "loginctl",
-        "Xwayland",
         "readlink",
         "systemd-run",
         "fusermount3",
         "zenity",
+        "xkbcomp",
     ]
     absolute = [
         "/usr/libexec/xdg-permission-store",

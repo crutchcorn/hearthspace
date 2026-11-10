@@ -11,6 +11,7 @@ import tempfile
 from contextlib import contextmanager
 from pathlib import Path
 
+from . import satellite, xwayland
 from .filesystem import atomic_write, directories, no_symlinks
 from .layout import (
     BASE,
@@ -117,6 +118,8 @@ def verify_bundle(bundle, prefix):
         "share/icons/hicolor/scalable/apps/hearthspace-settings.svg",
         str(PAM_SOURCE),
     }
+    expected_names.update(xwayland.RELEASE_MODES)
+    expected_names.update(satellite.RELEASE_MODES)
     if set(spec["files"]) != expected_names:
         raise RuntimeError("bundle does not contain the complete runtime file set")
     if (
@@ -132,6 +135,10 @@ def verify_bundle(bundle, prefix):
             raise RuntimeError(f"bundle file changed or missing: {path}")
         if expected["mode"] not in (0o644, 0o755):
             raise RuntimeError(f"invalid file mode: {name}")
+    for name, mode in {**xwayland.RELEASE_MODES, **satellite.RELEASE_MODES}.items():
+        if spec["files"][name]["mode"] != mode:
+            raise RuntimeError(f"invalid companion mode: {name}")
+    xwayland.verify_companions(bundle / "release/bin/hearthspace-compositor")
     return spec
 
 

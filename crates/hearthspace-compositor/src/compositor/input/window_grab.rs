@@ -16,6 +16,22 @@ use wayland_server::protocol::wl_surface::WlSurface;
 use crate::compositor::App;
 
 impl App {
+    #[cfg(feature = "xwayland")]
+    pub(in crate::compositor) fn window_pointer_operation_matches(
+        &self,
+        id: u64,
+        serial: Serial,
+    ) -> bool {
+        self.pointer
+            .with_grab(|current, grab| {
+                current == serial
+                    && grab
+                        .downcast_ref::<WindowGrab>()
+                        .is_some_and(|grab| grab.window_id == id)
+            })
+            .unwrap_or(false)
+    }
+
     pub(in crate::compositor) fn has_window_pointer_grab(&self) -> bool {
         self.pointer
             .with_grab(|_, grab| grab.is::<WindowGrab>())

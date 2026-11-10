@@ -161,8 +161,6 @@ impl App {
                 && window.position != position
             {
                 window.position = position;
-                #[cfg(feature = "xwayland")]
-                self.sync_x11_window_position(id);
                 self.request_redraw();
             }
             return true;

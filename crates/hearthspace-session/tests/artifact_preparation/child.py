@@ -26,6 +26,11 @@ if role == "cargo":
             prefix = "locker-"
             artifact = Path(os.environ["LOCKER_ARTIFACT_PATH"])
             mode = os.environ["LOCKER_ARTIFACT_MODE"]
+        elif binary == "hearthspace-satellite":
+            package = "hearthspace-satellite"
+            prefix = "satellite-"
+            artifact = root / "custom target/debug/hearthspace-satellite"
+            mode = os.environ["SATELLITE_ARTIFACT_MODE"]
         else:
             assert binary == "hearthspace-app-scope-guard"
             package = "hearthspace-session"

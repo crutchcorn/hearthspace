@@ -35,16 +35,6 @@ impl App {
             self.viewport_offset,
             self.viewport_scale,
         );
-        #[cfg(feature = "xwayland")]
-        if let super::super::ManagedSurface::X11(surface) = &self.windows[index].surface
-            && let Err(error) = surface.configure(Some(Rectangle::new(
-                (point.x, point.y).into(),
-                surface.geometry().size,
-            )))
-        {
-            tracing::warn!(%error, "could not center new X11 window");
-            return;
-        }
         self.windows[index].pending_resize = None;
         self.windows[index].position = point;
         self.request_redraw();

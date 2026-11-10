@@ -286,16 +286,5 @@ impl App {
         }
         self.windows[index].pending_resize = None;
         self.windows[index].position = position;
-        #[cfg(feature = "xwayland")]
-        if let super::ManagedSurface::X11(surface) = &self.windows[index].surface {
-            if self.canvas_maximized_rect(index).is_some() {
-                self.configure_window_presentation(index);
-            } else {
-                let _ = surface.configure(Some(Rectangle::new(
-                    (position.x, position.y).into(),
-                    surface.geometry().size,
-                )));
-            }
-        }
     }
 }

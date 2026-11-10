@@ -145,6 +145,10 @@ mod csd_lifecycle;
 #[path = "support/x11_interactive.rs"]
 mod x11_interactive;
 
+#[cfg(all(feature = "test-apps", feature = "xwayland"))]
+#[path = "support/satellite.rs"]
+mod satellite;
+
 #[cfg(feature = "test-apps")]
 #[path = "support/touch_cancel.rs"]
 mod touch_cancel;

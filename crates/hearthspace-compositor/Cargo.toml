@@ -21,7 +21,7 @@ udev = [
     "smithay/renderer_multi",
 ]
 winit = ["smithay/backend_winit"]
-xwayland = ["smithay/xwayland", "smithay/x11rb_event_source"]
+xwayland = []
 
 [[bin]]
 name = "hearthspace"
@@ -70,6 +70,7 @@ image = { version = "0.25.10", default-features = false }
 png = "0.18.1"
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.154"
+rustix = { version = "1.1.5", features = ["process", "fs"] }
 smithay = { git = "https://github.com/Smithay/smithay", rev = "5c2ba4132556a08abc70ae1771d275ec2cfc031f", default-features = false, features = ["desktop", "renderer_gl", "wayland_frontend"] }
 tiny-skia = "0.12.0"
 tracing = "0.1.44"
@@ -82,6 +83,9 @@ waydriver-hearthspace = { path = "../waydriver-hearthspace", optional = true }
 xcursor = "0.3.11"
 
 [dev-dependencies]
+# X protocol fixtures use Smithay's re-export; no direct XWM is compiled.
+smithay = { git = "https://github.com/Smithay/smithay", rev = "5c2ba4132556a08abc70ae1771d275ec2cfc031f", default-features = false, features = ["x11rb_event_source"] }
+x11rb = "=0.13.2"
 # Exercise the shell runtime's real window lifecycle against the headless server.
 masonry_winit = { git = "https://github.com/linebender/xilem", rev = "271a27a6d4a930f7878d404f9014e3c50a3a9b88" }
 wayland-client = "0.31.15"

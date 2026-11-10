@@ -74,6 +74,11 @@ fn configure_client_side_decoration(toplevel: &ToplevelSurface) {
 }
 
 pub(super) fn window_kind_for_toplevel(surface: &ToplevelSurface) -> ManagedWindowKind {
+    // X11 class names remain application metadata, even when they resemble
+    // a shell role. Satellite exposes all of them through its private client.
+    if super::client::is_x11_surface(surface.wl_surface()) {
+        return ManagedWindowKind::Normal;
+    }
     let app_id = toplevel_app_id(surface);
     if app_id.as_deref().is_some_and(is_frame_shell_app_id) {
         return ManagedWindowKind::ShellBar;
@@ -127,6 +132,9 @@ pub(super) fn window_kind_for_toplevel(surface: &ToplevelSurface) -> ManagedWind
 }
 
 pub(super) fn shell_output_name_for_toplevel(surface: &ToplevelSurface) -> Option<String> {
+    if super::client::is_x11_surface(surface.wl_surface()) {
+        return None;
+    }
     let app_id = toplevel_app_id(surface)?;
     hearthspace_common::frame_layout::frame_widget_from_app_id(&app_id)
         .map(|(output, _)| output)
@@ -188,11 +196,6 @@ pub(super) fn toplevel_title(surface: &ToplevelSurface) -> Option<String> {
 pub(super) fn window_title(surface: &ManagedSurface) -> Option<String> {
     match surface {
         ManagedSurface::Xdg(surface) => toplevel_title(surface),
-        #[cfg(feature = "xwayland")]
-        ManagedSurface::X11(surface) => {
-            let title = surface.title();
-            (!title.trim().is_empty()).then_some(title)
-        }
     }
 }
 
@@ -240,7 +243,7 @@ impl App {
             return;
         }
         debug!(window_id = self.windows[window_index].id, kind = ?self.windows[window_index].kind, "setting keyboard focus to window");
-        let focus = KeyboardFocusTarget::for_window(&self.windows[window_index].surface, surface);
+        let focus = KeyboardFocusTarget::from(surface);
         let keyboard = self.keyboard.clone();
         let previous = keyboard.current_focus();
         keyboard.set_focus(self, Some(focus), SERIAL_COUNTER.next_serial());
@@ -736,18 +739,12 @@ impl App {
     pub(super) fn window_surface_geometry_loc(&self, window_index: usize) -> Point<i32, Logical> {
         match &self.windows[window_index].surface {
             ManagedSurface::Xdg(surface) => toplevel_geometry_loc(surface.wl_surface()),
-            #[cfg(feature = "xwayland")]
-            // Smithay's geometry is the local committed bbox minus frame
-            // extents, so CSD shadows are excluded just as for xdg geometry.
-            ManagedSurface::X11(surface) => surface.geometry().loc,
         }
     }
 
     fn window_surface_geometry_size(&self, window_index: usize) -> Option<Size<i32, Logical>> {
         match &self.windows[window_index].surface {
             ManagedSurface::Xdg(surface) => toplevel_geometry_size(surface.wl_surface()),
-            #[cfg(feature = "xwayland")]
-            ManagedSurface::X11(surface) => Some(surface.geometry().size),
         }
     }
 }
@@ -755,8 +752,6 @@ impl App {
 pub(super) fn window_app_id(surface: &ManagedSurface) -> Option<String> {
     match surface {
         ManagedSurface::Xdg(surface) => toplevel_app_id(surface),
-        #[cfg(feature = "xwayland")]
-        ManagedSurface::X11(surface) => super::xwayland::identity::app_id(surface),
     }
 }
 

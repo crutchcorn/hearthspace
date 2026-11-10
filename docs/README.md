@@ -39,6 +39,7 @@ maintained behavior. The [roadmap](ROADMAP.md) covers remaining work;
 - [Dependencies](DEPENDENCIES.md)
 - [Development workflows](DEVELOPMENT.md)
 - [Architecture and ownership](ARCHITECTURE.md)
+- [Satellite X11 compatibility](SATELLITE.md)
 - [UI components and accessibility](UI.md)
 - [Cursor presentation and assets](CURSOR.md)
 - [Rendering](RENDERING.md)

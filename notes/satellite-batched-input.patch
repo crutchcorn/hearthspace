@@ -1,0 +1,92 @@
+diff --git a/tests/integration.rs b/tests/integration.rs
+index e385f03..0d64656 100644
+--- a/tests/integration.rs
++++ b/tests/integration.rs
+@@ -2574,3 +2574,87 @@ fn client_init_resize() {
+         data.resizing
+     );
+ }
++
++
++// Downstream adoption gate: this test uses upstream's actual Xwayland fixture,
++// with no Hearthspace compositor, canvas, or input code participating.
++#[test]
++fn downstream_batched_pointer_recipient_isolation() {
++    fn drain(c: &Connection, events: &mut Vec<(bool, u32, i16, i16)>) {
++        while let Some(event) = c.poll_for_event().unwrap() {
++            match event {
++                xcb::Event::X(x::Event::ButtonPress(e)) =>
++                    events.push((true, e.event().resource_id(), e.event_x(), e.event_y())),
++                xcb::Event::X(x::Event::ButtonRelease(e)) =>
++                    events.push((false, e.event().resource_id(), e.event_x(), e.event_y())),
++                _ => {}
++            }
++        }
++    }
++    fn click(pointer: &wayland_server::protocol::wl_pointer::WlPointer,
++             surface: &wayland_server::protocol::wl_surface::WlSurface,
++             serial: u32, point: (f64, f64)) {
++        pointer.enter(serial, surface, point.0, point.1);
++        pointer.motion(serial, point.0, point.1);
++        pointer.frame();
++        pointer.button(serial + 1, serial + 1, BTN_LEFT, wl_pointer::ButtonState::Pressed);
++        pointer.frame();
++        pointer.button(serial + 2, serial + 2, BTN_LEFT, wl_pointer::ButtonState::Released);
++        pointer.frame();
++    }
++    let mut f = Fixture::new();
++    let output = f.create_output(0, 0);
++    let mut a = Connection::new(&f.display);
++    let mut b = Connection::new(&f.display);
++    let wa = a.new_window(a.root, 0, 0, 100, 100, false);
++    let sa = f.map_as_toplevel(&mut a, wa);
++    let wb = b.new_window(b.root, 0, 0, 100, 100, false);
++    let sb = f.map_as_toplevel(&mut b, wb);
++    f.testwl.move_surface_to_output(sa, &output);
++    f.testwl.move_surface_to_output(sb, &output);
++    f.wait_and_dispatch();
++    for (connection, window) in [(&a, wa), (&b, wb)] {
++        connection.send_and_check_request(&x::ChangeWindowAttributes {
++            window,
++            value_list: &[x::Cw::EventMask(x::EventMask::BUTTON_PRESS | x::EventMask::BUTTON_RELEASE)],
++        }).unwrap();
++    }
++    let sa = f.testwl.get_surface_data(sa).unwrap().surface.clone();
++    let sb = f.testwl.get_surface_data(sb).unwrap().surface.clone();
++    let mut ae = Vec::new();
++    let mut be = Vec::new();
++    // Independently delivered controls establish that both recipients work.
++    click(f.testwl.pointer(), &sa, 100, (10., 20.));
++    f.testwl.dispatch();
++    let until = Instant::now() + Duration::from_secs(5);
++    while ae.len() < 2 && Instant::now() < until {
++        f.testwl.dispatch(); drain(&a, &mut ae);
++        std::thread::sleep(Duration::from_millis(5));
++    }
++    assert_eq!(ae, vec![(true, wa.resource_id(), 10, 20), (false, wa.resource_id(), 10, 20)]);
++    f.testwl.pointer().leave(110, &sa);
++    click(f.testwl.pointer(), &sb, 111, (30., 40.));
++    f.testwl.dispatch();
++    let until = Instant::now() + Duration::from_secs(5);
++    while be.len() < 2 && Instant::now() < until {
++        f.testwl.dispatch(); drain(&b, &mut be);
++        std::thread::sleep(Duration::from_millis(5));
++    }
++    assert_eq!(be, vec![(true, wb.resource_id(), 30, 40), (false, wb.resource_id(), 30, 40)]);
++    ae.clear(); be.clear();
++    // Queue both recipient sequences before the sole Wayland flush.
++    f.testwl.pointer().leave(120, &sb);
++    click(f.testwl.pointer(), &sa, 121, (10., 20.));
++    f.testwl.pointer().leave(124, &sa);
++    click(f.testwl.pointer(), &sb, 125, (30., 40.));
++    f.testwl.dispatch();
++    let until = Instant::now() + Duration::from_secs(2);
++    while Instant::now() < until {
++        f.testwl.dispatch(); drain(&a, &mut ae); drain(&b, &mut be);
++        if ae.len() >= 2 && be.len() >= 2 { break; }
++        std::thread::sleep(Duration::from_millis(5));
++    }
++    eprintln!("Standalone upstream recipients: A={ae:?}, B={be:?}");
++    assert_eq!(ae, vec![(true, wa.resource_id(), 10, 20), (false, wa.resource_id(), 10, 20)]);
++    assert_eq!(be, vec![(true, wb.resource_id(), 30, 40), (false, wb.resource_id(), 30, 40)]);
++}

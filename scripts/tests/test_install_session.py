@@ -12,6 +12,7 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from installlib import cli, layout, transaction
+from xwayland_fixture import companions
 
 
 class InstallSessionTests(unittest.TestCase):
@@ -23,6 +24,7 @@ class InstallSessionTests(unittest.TestCase):
         self.prefix = self.directory / "prefix with spaces"
         self.binaries = self.directory / "build"
         self.binaries.mkdir()
+        companions(self.binaries)
         self.counter = 0
         for name in layout.BINARIES:
             path = self.binaries / name

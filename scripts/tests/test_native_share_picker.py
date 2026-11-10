@@ -11,6 +11,7 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from nativelib import build, common
+from xwayland_fixture import companions
 
 
 class NativeSharePickerTests(unittest.TestCase):
@@ -30,6 +31,7 @@ class NativeSharePickerTests(unittest.TestCase):
             path = binaries / name
             path.write_bytes(b"fixture")
             path.chmod(0o755)
+        companions(binaries)
         return SimpleNamespace(binary_dir=binaries, dev=dev, no_build=True)
 
     def test_default_prebuilt_target_stages_and_records_current_picker(self):
