@@ -91,18 +91,36 @@ impl Scene {
 
     fn begin(&mut self, index: usize) {
         crate::canvas_zoom::wait_scale(&self.compositor, self.scale);
+        let viewport = query(&self.compositor, "status")["viewport"].clone();
+        // Overlapping receivers can trigger canvas-settlement motion during
+        // setup. Viewport animation being finished does not retire that motion.
+        // Require the displayed receiver to reach its canonical projection
+        // before sampling the exact client-local point used by the wire check.
+        let window = wait_windows(&self.compositor, |windows| {
+            windows.iter().any(|window| {
+                window["id"] == self.receiver.client.id
+                    && [("x", "canvas_x"), ("y", "canvas_y")]
+                        .into_iter()
+                        .all(|(axis, canvas)| {
+                            window[axis].as_f64().unwrap()
+                                == ((window[canvas].as_f64().unwrap()
+                                    - viewport[axis].as_f64().unwrap())
+                                    * self.scale)
+                                    .round()
+                        })
+            })
+        })
+        .into_iter()
+        .find(|w| w["id"] == self.receiver.client.id)
+        .unwrap();
+        assert_eq!(window["titlebar_height"], 0);
         let count = self.receiver.positions;
         self.press_file(index);
-        let window = query(&self.compositor, "windows")["windows"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .find(|w| w["id"] == self.receiver.client.id)
-            .unwrap()
-            .clone();
-        assert_eq!(window["titlebar_height"], 0);
-        let x = window["x"].as_f64().unwrap() + 60.0 * self.scale;
-        let y = window["y"].as_f64().unwrap() + 40.0 * self.scale;
+        // Apply the transform once; rounded window metadata is not an input origin.
+        let x = (window["canvas_x"].as_f64().unwrap() - viewport["x"].as_f64().unwrap() + 60.0)
+            * self.scale;
+        let y = (window["canvas_y"].as_f64().unwrap() - viewport["y"].as_f64().unwrap() + 40.0)
+            * self.scale;
         action(&self.compositor, format!("pointer-motion-abs {x} {y}"));
         self.receiver.wait(|r| r.positions > count);
         self.receiver.barrier(&self.compositor);
