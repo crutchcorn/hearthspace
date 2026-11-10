@@ -411,6 +411,7 @@ struct FocusData {
     output_name: Option<String>,
     is_popup: bool,
     has_take_focus: bool,
+    accepts_input: bool,
 }
 
 #[derive(Copy, Clone, Default)]
@@ -775,6 +776,7 @@ impl<C: XConnection> ServerState<C> {
                 output_name,
                 is_popup,
                 has_take_focus,
+                accepts_input,
             }) = self.to_focus.take()
             {
                 debug!(
@@ -784,10 +786,13 @@ impl<C: XConnection> ServerState<C> {
                 if !is_popup {
                     self.last_focused_toplevel = Some(window);
                 }
+                // Locally-active clients require WM assistance as well as the
+                // protocol message. Only globally-active clients are message-only.
+                if accepts_input || !has_take_focus {
+                    self.connection.focus_window(window, output_name);
+                }
                 if has_take_focus {
                     self.connection.send_take_focus(window);
-                } else {
-                    self.connection.focus_window(window, output_name);
                 }
             } else if self.unfocus {
                 self.connection.focus_window(x::WINDOW_NONE, None);

@@ -492,6 +492,7 @@ impl SurfaceEvents {
                             output_name: None,
                             is_popup: true,
                             has_take_focus: window_data.attrs.has_take_focus,
+                            accepts_input: window_data.attrs.accepts_input,
                         });
                     }
                 }
@@ -948,6 +949,7 @@ impl Event for client::wl_keyboard::Event {
                     output_name,
                     is_popup: false,
                     has_take_focus,
+                    accepts_input: window_data.attrs.accepts_input,
                 });
                 keyboard.enter(serial, surface, keys);
             }
