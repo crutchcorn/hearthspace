@@ -126,7 +126,11 @@ ordinary session sockets and the host desktop are excluded.
 The Python terminal smoke copies its compositor log and artifacts into
 `terminal-smoke` under `HEARTHSPACE_SHELL_EVIDENCE`, including status and capture
 diagnostics when a control operation fails. Its recorded paths describe the
-original temporary runtime, which is removed during teardown.
+original temporary runtime, which is removed during teardown. Synthetic text
+input yields for up to 10 milliseconds after each released character, within
+the action deadline; command acceptance is not a client-consumption barrier.
+Accessibility activation can defer its automatic capture when opening a panel
+requires asynchronous compositor IPC. Wait for the mapped panel before readback.
 
 ### Smithay transfer cache regressions
 

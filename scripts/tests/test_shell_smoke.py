@@ -12,7 +12,7 @@ from types import SimpleNamespace
 from unittest.mock import Mock, call, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from agentlib import daily_checks, shell_checks, shell_smoke
+from agentlib import daily_checks, notification_checks, shell_checks, shell_smoke
 from agentlib.control import ControlError
 from agentlib.smoke import Smoke
 from agentlib.viewport_fixture import set_viewport
@@ -81,14 +81,17 @@ class ShellEvidenceTests(unittest.TestCase):
                         "dbus_session_bus_address": "unix:path=/private-test-bus",
                     },
                 )
+                smoke.control.status.return_value = {
+                    "shell_panels": [{"kind": "notifications"}]
+                }
                 smoke.until.side_effect = lambda _name, condition: condition()
                 process = Mock()
                 process.poll.return_value = 1
                 with (
                     patch.object(
-                        daily_checks.subprocess, "Popen", return_value=process
+                        notification_checks.subprocess, "Popen", return_value=process
                     ) as launch,
-                    patch.object(daily_checks, "read_line") as inbox,
+                    patch.object(notification_checks, "read_line") as inbox,
                     self.assertRaisesRegex(
                         ControlError, "notification client exited 1 before delivery"
                     ),
@@ -114,6 +117,9 @@ class ShellEvidenceTests(unittest.TestCase):
                     "dbus_session_bus_address": "unix:path=/private-test-bus",
                 },
             )
+            smoke.control.status.return_value = {
+                "shell_panels": [{"kind": "notifications"}]
+            }
             smoke.until.side_effect = lambda _name, condition: condition()
             process = Mock()
             process.poll.side_effect = [None, 1]
@@ -125,9 +131,13 @@ class ShellEvidenceTests(unittest.TestCase):
                 for item in (active, active, closed)
             ]
             with (
-                patch.object(daily_checks.subprocess, "Popen", return_value=process),
-                patch.object(daily_checks, "read_line", side_effect=replies),
-                patch.object(daily_checks, "a11y", return_value={"elements": [{}]}),
+                patch.object(
+                    notification_checks.subprocess, "Popen", return_value=process
+                ),
+                patch.object(notification_checks, "read_line", side_effect=replies),
+                patch.object(
+                    notification_checks, "a11y", return_value={"elements": [{}]}
+                ),
                 self.assertRaisesRegex(ControlError, "client failed after dismissal"),
             ):
                 daily_checks.notifications(smoke)

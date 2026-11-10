@@ -1,7 +1,7 @@
 import sys
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from agentlib.control import ControlError, Deadline
@@ -10,9 +10,9 @@ from agentlib.input import Input, text_keys
 
 class RecordingControl:
     path = "unused"
-    deadline = Deadline(60)
 
     def __init__(self, fail=None):
+        self.deadline = Deadline(60)
         self.commands = []
         self.fail = fail
 
@@ -92,6 +92,35 @@ class InputTests(unittest.TestCase):
         self.assertEqual(control.commands, [])
         self.assertEqual(
             text_keys("A!a\n"), [(30, True), (2, True), (30, False), (28, False)]
+        )
+
+    def test_typing_yields_only_after_releasing_character_and_shift(self):
+        control = RecordingControl()
+        pauses = []
+        with (
+            patch(
+                "agentlib.input.time.sleep",
+                side_effect=lambda _: pauses.append(list(control.commands)),
+            ),
+            Input(control) as inputs,
+        ):
+            inputs.type("Aa")
+        self.assertEqual(
+            pauses[0], ["key-down 42", "key-down 30", "key-up 30", "key-up 42"]
+        )
+        self.assertEqual(pauses[1][-2:], ["key-down 30", "key-up 30"])
+
+    def test_typing_deadline_stops_before_the_next_character_without_held_keys(self):
+        control = RecordingControl()
+        control.deadline = Mock()
+        control.deadline.remaining.side_effect = ControlError("typing expired")
+        with (
+            self.assertRaisesRegex(ControlError, "typing expired"),
+            Input(control) as inputs,
+        ):
+            inputs.type("Ab")
+        self.assertEqual(
+            control.commands, ["key-down 42", "key-down 30", "key-up 30", "key-up 42"]
         )
 
     def test_click_orders_motion_press_release(self):

@@ -169,6 +169,7 @@ class HeadlessIntegrationTests(unittest.TestCase):
                 "XDG_RUNTIME_DIR": str(directory),
                 "HEARTHSPACE_COMMAND_SOCKET": str(socket),
                 "HEARTHSPACE_WAYLAND_DISPLAY": "wayland-foot-e2e",
+                "RUST_LOG": "info,hearthspace_compositor::compositor::client=debug",
             }
             with (directory / "compositor.log").open("w") as log:
                 process = subprocess.Popen(
