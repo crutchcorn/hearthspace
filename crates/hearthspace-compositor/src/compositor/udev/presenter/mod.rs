@@ -16,7 +16,11 @@ use std::{io, sync::Arc, thread::JoinHandle};
 
 use smithay::{
     backend::{
-        allocator::{Fourcc, Modifier, Slot, dmabuf::Dmabuf, gbm::GbmBuffer},
+        allocator::{
+            Fourcc, Modifier, Slot,
+            dmabuf::Dmabuf,
+            gbm::{GbmBuffer, GbmDevice},
+        },
         drm::{DrmDeviceFd, DrmEventMetadata},
         renderer::{element::Id, sync::SyncPoint},
     },
@@ -119,9 +123,13 @@ pub(super) struct Presenter {
 }
 
 impl Presenter {
+    // Both threads must share the GBM device's GEM-handle bookkeeping for this
+    // DRM file description. A second gbm_create_device over a cloned fd can
+    // close handles still owned by the other device when old buffers retire.
     pub fn spawn(
         device: DeviceToken,
         drm_fd: DrmDeviceFd,
+        gbm: GbmDevice<DrmDeviceFd>,
     ) -> io::Result<(Self, channel::Channel<PresenterEvent>)> {
         let (sender, receiver) = channel::channel();
         let (ping, wakeup) = smithay::reexports::calloop::ping::make_ping()?;
@@ -129,7 +137,7 @@ impl Presenter {
         let worker_mailbox = mailbox.clone();
         let thread = std::thread::Builder::new()
             .name(format!("present-{}-{}", device.id, device.incarnation))
-            .spawn(move || worker::run(device, drm_fd, worker_mailbox, wakeup, sender))?;
+            .spawn(move || worker::run(device, drm_fd, gbm, worker_mailbox, wakeup, sender))?;
         Ok((
             Self {
                 mailbox,

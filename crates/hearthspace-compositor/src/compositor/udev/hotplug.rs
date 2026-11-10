@@ -115,7 +115,15 @@ impl UdevBackendState {
     }
 
     pub(super) fn connector_sync(&mut self) -> ConnectorSync {
-        self.published_outputs.update(self.output_descriptors())
+        let pending = self
+            .opened_devices
+            .values()
+            .filter(|device| device.configuration_pending)
+            .flat_map(|device| device.output_targets.iter())
+            .map(|target| target.connector_name().to_owned())
+            .collect();
+        self.published_outputs
+            .update_pending(self.output_descriptors(), &pending)
     }
 
     pub(super) fn handle_device_changed(&mut self, device_id: u64) -> ConnectorSync {

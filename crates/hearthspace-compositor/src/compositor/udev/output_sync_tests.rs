@@ -309,3 +309,62 @@ fn same_name_source_rebuild_discards_staged_pixels_before_late_completion() {
     );
     assert_eq!(buffer.bytes(), [0x7e; 40]);
 }
+
+#[test]
+fn pending_resize_preserves_wayland_identity_but_unplug_still_removes_it() {
+    let display = Display::<App>::new().unwrap();
+    let dh = display.handle();
+    let event_loop = EventLoop::<CalloopData>::try_new().unwrap();
+    let mut app = new_app(&dh, event_loop.handle());
+    let mut captures = CaptureState::default();
+    let mut published = PublishedOutputs::default();
+    published
+        .update(vec![descriptor("A")])
+        .apply(&mut app, &mut captures, &dh);
+    let original = app.capture_output_handles()[0].clone();
+    published.invalidate(["A"]);
+    published
+        .update_pending(vec![], &BTreeSet::from(["A".into()]))
+        .apply(&mut app, &mut captures, &dh);
+    assert_eq!(app.capture_outputs().len(), 1);
+    assert_eq!(app.capture_output_handles()[0], original);
+    let mut resized = descriptor("A");
+    resized.size = (4, 3).into();
+    published
+        .update_pending(vec![resized], &BTreeSet::new())
+        .apply(&mut app, &mut captures, &dh);
+    assert_eq!(app.capture_output_handles()[0], original);
+    assert_eq!(app.capture_outputs()[0].width, 4);
+    assert_eq!(app.capture_outputs()[0].height, 3);
+    published
+        .update_pending(vec![], &BTreeSet::new())
+        .apply(&mut app, &mut captures, &dh);
+    assert!(app.capture_outputs().is_empty());
+    published
+        .update_pending(vec![], &BTreeSet::from(["B".into()]))
+        .apply(&mut app, &mut captures, &dh);
+    assert!(
+        app.capture_outputs().is_empty(),
+        "new targets need a usable surface"
+    );
+}
+
+#[test]
+fn pending_primary_does_not_promote_a_healthy_secondary_output() {
+    let display = Display::<App>::new().unwrap();
+    let dh = display.handle();
+    let event_loop = EventLoop::<CalloopData>::try_new().unwrap();
+    let mut app = new_app(&dh, event_loop.handle());
+    let mut captures = CaptureState::default();
+    let mut published = PublishedOutputs::default();
+    published
+        .update(vec![descriptor("A"), descriptor("B")])
+        .apply(&mut app, &mut captures, &dh);
+    let original = app.capture_output_handles()[0].clone();
+    published
+        .update_pending(vec![descriptor("B")], &BTreeSet::from(["A".into()]))
+        .apply(&mut app, &mut captures, &dh);
+    assert_eq!(app.primary_output_name(), Some("A"));
+    assert_eq!(app.capture_output_handles()[0], original);
+    assert_eq!(app.capture_outputs().len(), 2);
+}

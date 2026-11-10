@@ -56,6 +56,7 @@ software renderer variables do not carry into a later native session. Set
 Run headless regressions with the `e2e` feature:
 
 ```sh
+unset HEARTHSPACE_COMMAND_SOCKET HEARTHSPACE_HOST_XDG_RUNTIME_DIR
 export TMPDIR="$(mktemp -d -t hs-e2e.XXXXXX)"
 export LIBGL_ALWAYS_SOFTWARE=1 GSK_RENDERER=cairo
 export VK_DRIVER_FILES=/usr/share/vulkan/icd.d/lvp_icd.json
@@ -67,6 +68,12 @@ Keep `TMPDIR` short: fixtures append private runtime and socket names, which mus
 fit Linux's Unix-socket path limit. A long artifact-directory name can make a
 child exit before accessibility registration. Store descriptive run logs outside
 that short temporary root if needed.
+
+Clear the inherited Hearthspace socket and host-runtime overrides before running
+owned headless fixtures. A retired desktop's D-Bus activation environment can
+retain an empty override; an empty `HEARTHSPACE_COMMAND_SOCKET` still overrides
+the fixture's private runtime default and prevents its control socket from
+appearing. These `unset` commands affect only the dedicated test shell.
 
 Add `test-apps` when exercising the optional GTK client. Pure transport,
 coordinate mapping, input cleanup, and timeout tests belong below the native

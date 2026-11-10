@@ -48,7 +48,7 @@ pub(in crate::compositor::udev) fn create_udev_device(
             return Err(error);
         }
     };
-    let (presenter, events) = match Presenter::spawn(token, drm_fd.clone()) {
+    let (presenter, events) = match Presenter::spawn(token, drm_fd.clone(), gbm_device.clone()) {
         Ok(value) => value,
         Err(error) => {
             gpus.manager.as_mut().remove_node(&node);

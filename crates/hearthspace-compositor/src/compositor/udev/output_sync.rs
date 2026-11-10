@@ -23,6 +23,36 @@ impl PublishedOutputs {
             .extend(names.into_iter().map(str::to_owned));
     }
 
+    pub(super) fn update_pending(
+        &mut self,
+        mut descriptors: Vec<OutputDescriptor>,
+        pending: &BTreeSet<String>,
+    ) -> ConnectorSync {
+        // Replacing a scanout surface is not unplugging its Wayland output.
+        // Keep only previously published, still-connected identities until their
+        // replacements are usable. Never publish a newly discovered target early.
+        if let Some(previous) = &self.descriptors {
+            for old in previous {
+                if pending.contains(&old.name)
+                    && !descriptors.iter().any(|next| next.name == old.name)
+                {
+                    descriptors.push(old.clone());
+                }
+            }
+        }
+        if !pending.is_empty()
+            && let Some(previous) = &self.descriptors
+        {
+            descriptors.sort_by_key(|next| {
+                previous
+                    .iter()
+                    .position(|old| old.name == next.name)
+                    .unwrap_or(usize::MAX)
+            });
+        }
+        self.update(descriptors)
+    }
+
     pub(super) fn update(&mut self, descriptors: Vec<OutputDescriptor>) -> ConnectorSync {
         let changed = self.descriptors.as_ref().is_none_or(|previous| {
             previous.len() != descriptors.len()
