@@ -4,6 +4,7 @@ import contextlib
 import io
 import json
 import os
+import shutil
 import signal
 import subprocess
 import sys
@@ -185,6 +186,7 @@ class HeadlessIntegrationTests(unittest.TestCase):
                     stderr=log,
                     start_new_session=True,
                 )
+                smoke = None
                 try:
                     control = Control(socket, Deadline(60))
                     while not socket.exists():
@@ -204,9 +206,34 @@ class HeadlessIntegrationTests(unittest.TestCase):
                     self.assertIn(
                         "cursor-inclusion", [step["step"] for step in smoke.results]
                     )
+                except ControlError:
+                    if smoke is not None:
+                        smoke.control = Control(socket, Deadline(5))
+                        try:
+                            smoke.record(
+                                "failure-status", status=smoke.control.status()
+                            )
+                            smoke.capture("terminal-failed")
+                        except (ControlError, OSError) as error:
+                            smoke.record(
+                                "failure-evidence-unavailable", error=str(error)
+                            )
+                    raise
                 finally:
                     os.killpg(process.pid, signal.SIGTERM)
                     process.wait(timeout=5)
+                    root = os.environ.get("HEARTHSPACE_SHELL_EVIDENCE")
+                    if root:
+                        evidence = Path(root) / "terminal-smoke"
+                        evidence.mkdir(parents=True, exist_ok=True)
+                        log.flush()
+                        shutil.copy2(directory / "compositor.log", evidence)
+                        if smoke is not None:
+                            shutil.copytree(
+                                smoke.artifacts,
+                                evidence / "artifacts",
+                                dirs_exist_ok=True,
+                            )
 
 
 if __name__ == "__main__":
