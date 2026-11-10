@@ -78,6 +78,7 @@ fn assert_locked(compositor: &HeadlessCompositor) {
     assert_eq!(status["lock_confirmed"], true);
     assert_eq!(status["recovery_ready"], true);
     assert!(status["windows"].as_array().unwrap().is_empty());
+    assert!(status["scanout"].as_array().unwrap().is_empty());
     assert!(!status.to_string().contains("Private lock editor"));
     for command in [
         "windows",

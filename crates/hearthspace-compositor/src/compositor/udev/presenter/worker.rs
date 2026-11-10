@@ -387,6 +387,11 @@ impl Worker {
             lock_generation: submission.lock_generation,
             metadata: *metadata.unwrap(),
             scene_changed: submission.scene_changed,
+            planes: super::super::scanout_status::PresentedPlanes::new(
+                submission.diagnostics.primary_scanout,
+                submission.diagnostics.window_id,
+                submission.diagnostics.cursor_plane,
+            ),
             capture: submission.capture,
         });
     }

@@ -289,6 +289,11 @@ fn prepare_and_queue(
         diagnostics: SubmissionDiagnostics {
             cursor_plane,
             primary_scanout,
+            window_id: output
+                .scene
+                .as_ref()
+                .and_then(|scene| scene.frame.window_id)
+                .map(std::num::NonZeroU64::get),
             primary,
             primary_reused,
             render_us,

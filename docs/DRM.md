@@ -261,6 +261,31 @@ clean and cursor-inclusive image contract. Lock/security barriers, modeset
 verification, output generations, and pause/removal admission checks apply to
 both storage kinds. No setting or new Wayland protocol is needed.
 
+The agent's read-only status query reports the last verified page flip per output:
+
+```sh
+scripts/hearthspace-agent --session /absolute/path/to/owned-session status
+# For an explicitly selected compositor outside the harness:
+scripts/hearthspace-agent --socket /absolute/path/to/command.sock status
+```
+
+Inspect the top-level `scanout` array. Each entry names its `output` and reports
+`state` (`direct-scanout`, `composited`, or `unknown`), `primary_scanout`,
+`window_id`, `cursor_plane`, `submission_sequence`, `scene_sequence`, and
+`completion_age_ms`. Match `window_id` against the same response's `windows`
+array to identify the app. Composition clears that ID, including when an admitted
+fullscreen buffer falls back to composition. `unknown` has null evidence fields;
+it is not a negative scanout result.
+
+This describes completed presentation, so a queued replacement does not change
+it until its page flip completes. A static frame can remain valid with an old
+completion age; age measures time since the main loop received that completion.
+Output recreation and security changes invalidate evidence. Inactive, locked,
+headless, and nested sessions return an empty array. Recovery can report unknown.
+The query does not capture pixels or request redraw, so polling it does not
+force composition. Avoid screenshots or the agent action commands' default
+frame wait while measuring scanout; use `--wait none` for those actions.
+
 Enable `hearthspace::presenter=trace` to inspect `primary_scanout` on plane
 selection and verified completion records. A successful buffer import or
 fullscreen configure alone does not establish direct scanout. Retain the

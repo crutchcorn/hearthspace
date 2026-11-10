@@ -313,6 +313,7 @@ impl AttemptOps for DeviceOps {
             diagnostics: SubmissionDiagnostics {
                 cursor_plane: selected && !self.primary_scanout,
                 primary_scanout: selected && self.primary_scanout,
+                window_id: Some(42),
                 primary: None,
                 primary_reused: false,
                 render_us: 1,

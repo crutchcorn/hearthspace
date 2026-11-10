@@ -159,7 +159,11 @@ fn render_output(
     } else {
         None
     };
-    let (storage, dmabuf, ready, age) = if let Some((buffer, dmabuf)) = client {
+    let window_id = client
+        .as_ref()
+        .and_then(|(_, _, id)| *id)
+        .and_then(std::num::NonZeroU64::new);
+    let (storage, dmabuf, ready, age) = if let Some((buffer, dmabuf, _)) = client {
         // Committed DMA-BUFs pass the existing asynchronous READ blocker before
         // reaching scene construction. KMS additionally observes implicit fences.
         (
@@ -206,6 +210,7 @@ fn render_output(
         security_epoch,
         lock_generation: state.lock_frame_generation(),
         storage,
+        window_id,
         dmabuf,
         ready,
         capture: wanted,

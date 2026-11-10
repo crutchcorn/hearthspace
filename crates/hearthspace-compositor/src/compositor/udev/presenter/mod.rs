@@ -74,6 +74,8 @@ pub(super) struct SceneFrame {
     pub sequence: u64,
     pub security_epoch: u64,
     pub lock_generation: Option<u64>,
+    // Managed window IDs start at one; keep the optional identity compact.
+    pub window_id: Option<std::num::NonZeroU64>,
     pub storage: SceneStorage,
     pub dmabuf: Dmabuf,
     pub ready: SyncPoint,
@@ -112,6 +114,7 @@ pub(super) enum PresenterEvent {
         lock_generation: Option<u64>,
         metadata: DrmEventMetadata,
         scene_changed: bool,
+        planes: super::scanout_status::PresentedPlanes,
         capture: Option<Result<CapturedFrame, String>>,
     },
     FrameOpportunity {

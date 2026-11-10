@@ -4,13 +4,16 @@ use smithay::{
     backend::{
         allocator::{Buffer as _, dmabuf::Dmabuf},
         renderer::{
-            element::{Element, RenderElement, UnderlyingStorage},
+            element::{Element, Id, RenderElement, UnderlyingStorage},
             gles::GlesRenderer,
             utils::Buffer,
         },
     },
     utils::{Logical, Physical, Rectangle, Size, Transform},
-    wayland::dmabuf::get_dmabuf,
+    wayland::{
+        compositor::{TraversalAction, with_surface_tree_downward},
+        dmabuf::get_dmabuf,
+    },
 };
 
 impl App {
@@ -21,7 +24,7 @@ impl App {
         output: Rectangle<i32, Logical>,
         scale: i32,
         size: Size<i32, Physical>,
-    ) -> Option<(Buffer, Dmabuf)> {
+    ) -> Option<(Buffer, Dmabuf, Option<u64>)> {
         if self.session_locked()
             || !self.fullscreen_on_output(output)
             || self.canvas_preview_presenting()
@@ -55,7 +58,28 @@ impl App {
         if !native_opaque_surface(element, geometry, expected, dmabuf.size()) {
             return None;
         }
-        Some((buffer.clone(), dmabuf.clone()))
+        // Preserve the selected surface's owner with this buffer, rather than
+        // guessing from whichever app is focused when its page flip completes.
+        let window_id = self.windows.iter().find_map(|window| {
+            let root = window.surface.wl_surface()?;
+            let mut matched = false;
+            with_surface_tree_downward(
+                &root,
+                (),
+                |surface, _, &()| {
+                    if Id::from_wayland_resource(surface) == *element.id() {
+                        matched = true;
+                        TraversalAction::Break
+                    } else {
+                        TraversalAction::DoChildren(())
+                    }
+                },
+                |_, _, &()| {},
+                |_, _, &()| true,
+            );
+            matched.then_some(window.id)
+        });
+        Some((buffer.clone(), dmabuf.clone(), window_id))
     }
 }
 

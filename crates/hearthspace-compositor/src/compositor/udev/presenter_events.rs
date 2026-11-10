@@ -74,6 +74,7 @@ fn handle_event(data: &mut CalloopData, token: DeviceToken, event: PresenterEven
             lock_generation,
             metadata,
             scene_changed,
+            planes,
             capture,
         } => {
             let crate::compositor::Backend::Udev(backend) = &mut data.backend else {
@@ -93,11 +94,12 @@ fn handle_event(data: &mut CalloopData, token: DeviceToken, event: PresenterEven
                 .iter_mut()
                 .find(|output| output.key == key)
                 .unwrap();
-            let Some(scene_completed) =
-                output
-                    .presentation
-                    .presented(key, submission_sequence, scene_sequence)
-            else {
+            let Some(scene_completed) = output.presentation.presented_with_planes(
+                key,
+                submission_sequence,
+                scene_sequence,
+                planes,
+            ) else {
                 return;
             };
             let name = output.target.connector_name().to_owned();
