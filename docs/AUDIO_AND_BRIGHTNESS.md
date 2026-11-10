@@ -72,6 +72,10 @@ The strict Python E2E suite includes `test_control_ui_headless.py`. It runs the
 real shell and compositor with a private fake audio endpoint, then exercises the
 individual Sound and Brightness dropdowns, pointer/keyboard sliders, media keys,
 mute, OSD dismissal, preserved application input, unavailable devices and recovery.
+This workflow uses a 1280×800 output at scale 1 so software capture and live-input
+checks fit inside the production OSD lifetime. It waits for dismissal between
+adjustments rather than mistaking the preceding OSD for new feedback. Scaled
+OSD placement has a separate compositor regression.
 Evidence is saved under `audio-and-brightness` within the configured shell evidence
 directory. It never changes host audio or
 brightness. Compositor E2E separately checks OSD placement, pointer/touch

@@ -37,6 +37,10 @@ class ControlUiHeadlessTests(unittest.TestCase):
                 run,
                 "HEARTHSPACE_CONTROL_FIXTURE",
                 services=isolated_services,
+                # Keep the same logical layout without four times the software
+                # capture work inside the production OSD's 1.6-second lifetime.
+                size=(1280, 800),
+                scale=1,
             )
 
 
