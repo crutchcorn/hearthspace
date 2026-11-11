@@ -1,9 +1,9 @@
 # Wallpapers
 
-Settings → Background uses one wallpaper picker for PNG images and `.glsl` or
-`.frag` shaders. Photo fit controls appear for images. Cancelling keeps the
-current wallpaper. Selection is
-saved by settingsd and restored on the next session.
+Settings → Background uses one wallpaper picker for PNG (`.png`) and JPEG
+(`.jpg`, `.jpeg`) images, plus `.glsl` or `.frag` shaders. Photo fit controls
+appear for images. Cancelling keeps the current wallpaper. Your selection is
+restored on the next session.
 
 The desktop renders Canvas dots using a bundled fragment shader too. It retains
 the 28-unit canvas grid and the light/dark theme colors. Panning and zooming move
