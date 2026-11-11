@@ -1,6 +1,7 @@
 use hearthspace_ui_components as components;
+use state::AppState as StorybookState;
 use xilem::{
-    AnyWidgetView, EventLoop, WidgetView, WindowOptions, Xilem,
+    AnyWidgetView, EventLoop, WidgetView, Xilem,
     dpi::LogicalSize,
     masonry::{layout::AsUnit, parley::fontique::GenericFamily},
     style::Style,
@@ -9,116 +10,41 @@ use xilem::{
         text_input,
     },
 };
-use xilem_storybook::{Control, Story, StorybookState};
+use xilem_storybook::Control;
+mod catalog;
+mod legacy;
+#[cfg(test)]
+mod preview_tests;
+mod shared;
+mod state;
 
 const PREVIEW_HEIGHT: f64 = 260.0;
 
 mod settings_materials;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let app = Xilem::new_simple(
-        initial_state(),
-        app_logic,
-        WindowOptions::new("Hearthspace UI Storybook")
-            .with_initial_inner_size(LogicalSize::new(1100.0, 760.0))
-            .with_min_inner_size(LogicalSize::new(820.0, 600.0)),
-    )
-    .with_default_properties(components::hearthspace_light_properties())
-    .with_default_base_color(components::APP_BACKGROUND);
-
+    let state = StorybookState::new();
+    let defaults =
+        components::hearthspace_properties(state.palette(), components::PropertyStyle::Opaque);
+    let id = xilem::WindowId::next();
+    let app = Xilem::new(state, move |state: &mut StorybookState| {
+        state.update_theme();
+        [
+            xilem::window(id, "Hearthspace UI Storybook", app_logic(state))
+                .with_default_properties(state.properties.clone())
+                .with_base_color(state.palette().app_background)
+                .with_options(|options| {
+                    options
+                        .with_initial_inner_size(LogicalSize::new(1100.0, 760.0))
+                        .with_min_inner_size(LogicalSize::new(760.0, 600.0))
+                        .on_close(|s: &mut StorybookState| s.running = false)
+                }),
+        ]
+        .into_iter()
+    })
+    .with_default_properties(defaults);
     app.run_in(EventLoop::with_user_event())?;
     Ok(())
-}
-
-fn initial_state() -> StorybookState {
-    StorybookState::new(vec![
-        Story::new(
-            "settings-materials",
-            "Settings Materials",
-            "Reference glass highlights, orange glow, and native button interaction states.",
-            vec![
-                Control::bool("selected", "Selected", false),
-                Control::bool("disabled", "Disabled", false),
-            ],
-        ),
-        Story::new(
-            "page-title",
-            "Page Title",
-            "Large section heading used at the top of settings-style surfaces.",
-            vec![Control::text("text", "Text", "Appearance")],
-        ),
-        Story::new(
-            "section-title",
-            "Section Title",
-            "Compact heading for grouped controls inside a section.",
-            vec![Control::text("text", "Text", "Canvas Background")],
-        ),
-        Story::new(
-            "muted-text",
-            "Muted Text",
-            "Secondary text for descriptions, metadata, and status details.",
-            vec![Control::text(
-                "text",
-                "Text",
-                "Connected to hearthspace-settingsd",
-            )],
-        ),
-        Story::new(
-            "action-button",
-            "Action Button",
-            "Default command button for settings actions.",
-            vec![Control::text("text", "Text", "Select background image")],
-        ),
-        Story::new(
-            "compact-action-button",
-            "Compact Action Button",
-            "Small command button used by dense shell surfaces.",
-            vec![Control::text("text", "Text", "Zoom In")],
-        ),
-        Story::new(
-            "segmented-option",
-            "Segmented Option",
-            "Option button for mutually exclusive setting choices.",
-            vec![
-                Control::text("text", "Text", "Cover"),
-                Control::bool("selected", "Selected", true),
-            ],
-        ),
-        Story::new(
-            "sidebar-item",
-            "Sidebar Item",
-            "Navigation row for category sidebars.",
-            vec![
-                Control::text("text", "Text", "Appearance"),
-                Control::bool("selected", "Selected", true),
-            ],
-        ),
-        Story::new(
-            "settings-section",
-            "Settings Section",
-            "Framed settings group with a title and body content.",
-            vec![
-                Control::text("title", "Title", "Canvas Background"),
-                Control::text(
-                    "body",
-                    "Body",
-                    "Background fit controls and image selection.",
-                ),
-            ],
-        ),
-        Story::new(
-            "sidebar-panel",
-            "Sidebar Panel",
-            "Surface used to contain settings navigation.",
-            vec![Control::text("label", "Selected label", "Display")],
-        ),
-        Story::new(
-            "launcher-item",
-            "Launcher Item",
-            "Search result row for the Hearthspace shell launcher.",
-            vec![Control::text("text", "Text", "Hearthspace Settings")],
-        ),
-    ])
 }
 
 fn app_logic(state: &mut StorybookState) -> impl WidgetView<StorybookState> + use<> {
@@ -165,6 +91,7 @@ fn main_area(state: &StorybookState) -> impl WidgetView<StorybookState> + use<> 
     let story = state.selected_story();
     components::scroll_area(
         flex_col((
+            shared::theme_controls(state),
             components::page_title(story.name().to_string()),
             components::muted_text(story.description().to_string()),
             components::settings_section("Preview", preview(state)),
@@ -176,84 +103,10 @@ fn main_area(state: &StorybookState) -> impl WidgetView<StorybookState> + use<> 
 }
 
 fn preview(state: &StorybookState) -> Box<AnyWidgetView<StorybookState>> {
-    let story = state.selected_story();
-    let content = match story.id() {
-        "settings-materials" => settings_materials::preview(state).boxed(),
-        "page-title" => components::page_title(text(state, "text")).boxed(),
-        "section-title" => components::section_title(text(state, "text")).boxed(),
-        "muted-text" => components::muted_text(text(state, "text")).boxed(),
-        "action-button" => {
-            components::action_button(text(state, "text"), |state: &mut StorybookState| {
-                state.set_selected_text("text", "Clicked action button".to_string());
-            })
-            .boxed()
-        }
-        "compact-action-button" => {
-            components::compact_action_button(text(state, "text"), |state: &mut StorybookState| {
-                state.set_selected_text("text", "Clicked compact button".to_string());
-            })
-            .boxed()
-        }
-        "segmented-option" => components::segmented_option(
-            text(state, "text"),
-            bool_value(state, "selected"),
-            |state: &mut StorybookState| {
-                let selected = state.selected_bool("selected").unwrap_or(false);
-                state.set_selected_bool("selected", !selected);
-            },
-        )
-        .boxed(),
-        "sidebar-item" => components::sidebar_item(
-            text(state, "text"),
-            bool_value(state, "selected"),
-            |state: &mut StorybookState| {
-                let selected = state.selected_bool("selected").unwrap_or(false);
-                state.set_selected_bool("selected", !selected);
-            },
-        )
-        .boxed(),
-        "settings-section" => components::settings_section(
-            text(state, "title"),
-            flex_col((
-                components::muted_text(text(state, "body")),
-                components::action_button("Example action", |_| {}),
-            ))
-            .cross_axis_alignment(CrossAxisAlignment::Start)
-            .gap(10.0.px()),
-        )
-        .boxed(),
-        "sidebar-panel" => components::sidebar_panel(
-            flex_col((
-                components::page_title("Settings"),
-                components::sidebar_item(text(state, "label"), true, |_| {}),
-                components::sidebar_item("Appearance", false, |_| {}),
-            ))
-            .cross_axis_alignment(CrossAxisAlignment::Stretch)
-            .gap(8.0.px()),
-        )
-        .boxed(),
-        "launcher-item" => {
-            components::launcher_item(text(state, "text"), 320.0, |state: &mut StorybookState| {
-                state.set_selected_text("text", "Clicked launcher item".to_string());
-            })
-            .boxed()
-        }
-        _ => components::muted_text("Unknown story").boxed(),
-    };
-
-    sized_box(
-        flex_col((
-            FlexSpacer::Flex(1.0),
-            flex_row((FlexSpacer::Flex(1.0), content, FlexSpacer::Flex(1.0))),
-            FlexSpacer::Flex(1.0),
-        ))
-        .cross_axis_alignment(CrossAxisAlignment::Stretch),
-    )
-    .fixed_height(PREVIEW_HEIGHT.px())
-    .background_color(components::SURFACE_SUBTLE)
-    .corner_radius(8.0.px())
-    .padding(24.0.px())
-    .boxed()
+    if state.selected_story().id().starts_with("shared-controls-") {
+        return shared::preview(state);
+    }
+    legacy::preview(state)
 }
 
 fn controls(state: &StorybookState) -> Box<AnyWidgetView<StorybookState>> {

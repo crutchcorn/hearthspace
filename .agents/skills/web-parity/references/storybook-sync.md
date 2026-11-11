@@ -114,12 +114,15 @@ React code and Storybook's JS manager do not belong in that Rust state model.
 
 Record a focused mapping in task evidence: web component/story ID, source
 revision, args/globals, native story ID and component owner, matching states,
-and missing states. Names and API shapes differ: web Button variants may map
-to Action Button, Compact Action Button, or Settings Materials examples rather
-than one identically named native story. The native gallery currently starts
-with `hearthspace_light_properties()`; do not claim dark/accent parity merely
-because the web toolbar supports it. Record missing native controls/themes as
-gaps and add support only within the requested UI change.
+and missing states. The native Shared Controls entries use the web story IDs
+unchanged, including
+`shared-controls-button--primary`. They cover seven families and 23 named states;
+older Action Button and Settings Materials stories remain available separately.
+The native gallery has live Light/Dark and six-accent controls. Record the
+selected theme on both sides rather than inferring it from defaults. Password
+and Invalid text-input entries are explicitly masked visual samples because the
+pinned native editor has no password-masking mode; do not claim editable password
+parity. Record other missing states and behavior as gaps.
 
 Compare the relevant enabled/disabled, hover/pressed/focused, selected, empty,
 error, open-menu, and narrow states. Use the same text and fixtures on both

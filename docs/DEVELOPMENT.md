@@ -156,6 +156,13 @@ cargo run --locked -p hearthspace-ui-storybook
 cargo check --locked -p hearthspace-ui-components -p hearthspace-ui-storybook
 ```
 
+The Shared Controls entries cover buttons, text fields, switches, checkboxes,
+select menus, level bars, and sliders. Use the Light/Dark button and Accent menu
+to inspect the same values in each theme. Preview interactions update the
+Controls panel; changing stories retains edits. The Password and Invalid entries
+are explicitly marked masked visual samples: the current Masonry editor has no
+password-masking mode, so these samples do not accept text.
+
 Put reusable primitives and theme properties in `crates/ui-components`, keep
 feature state in its consumer, and add a story for new shared controls.
 `xilem-storybook` remains independent of Hearthspace's theme. See [UI](UI.md)

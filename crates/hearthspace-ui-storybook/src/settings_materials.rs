@@ -1,3 +1,4 @@
+use crate::state::AppState as StorybookState;
 use hearthspace_ui_components::{self as components, SettingsButton};
 use xilem::{
     WidgetView,
@@ -5,7 +6,6 @@ use xilem::{
     style::Style,
     view::{CrossAxisAlignment, button, flex_col, flex_row, label, sized_box},
 };
-use xilem_storybook::StorybookState;
 
 pub(super) fn preview(state: &StorybookState) -> impl WidgetView<StorybookState> + use<> {
     let selected = state.selected_bool("selected").unwrap_or(false);

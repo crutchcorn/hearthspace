@@ -66,6 +66,14 @@ changes, preserving focus, open controls, and unfinished text. Custom painters
 must invalidate paint when the palette property changes. Shell glass uses
 `Palette::for_glass()` to adjust foreground contrast and dark hover treatment.
 
+The native UI Storybook previews shared form buttons, 42-unit text fields,
+40×24 switches, 20×20 checkboxes, select menus, level bars, and sliders. Their
+implementations live in `ui-components::controls`; Settings reuses the select
+implementation with compact sizing. Switches and sliders retain Masonry input
+and accessibility behavior, while the shared painter supplies their appearance.
+The gallery offers live Light/Dark and six accent choices. Its masked password
+examples are visual samples, not an available password editor.
+
 Color should identify action, selection, activity, or focus. Keep destructive
 actions distinct across accents. A quieter palette must not make status or
 keyboard focus depend on color alone. The default dotted field provides a visual

@@ -2907,6 +2907,7 @@ dependencies = [
 name = "hearthspace-ui-storybook"
 version = "0.1.0"
 dependencies = [
+ "hearthspace-common",
  "hearthspace-ui-components",
  "xilem",
  "xilem-storybook",
