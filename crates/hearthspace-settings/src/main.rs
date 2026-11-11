@@ -6,6 +6,7 @@ mod ai_worker;
 mod appearance;
 mod appearance_view;
 mod background_preview;
+mod background_shader_status;
 mod background_thumbnail;
 mod background_view;
 mod cli;
@@ -60,7 +61,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let app = Xilem::new(state, move |state: &mut state::SettingsApp| {
         let properties = state.appearance_theme.properties(
             state.settings.appearance,
-            state.settings.background_image_path.is_some(),
+            state.settings.has_custom_background(),
         );
         [window(id, "Hearthspace Settings", app_logic(state))
             .with_default_properties(properties)

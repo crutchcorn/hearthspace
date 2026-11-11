@@ -5,7 +5,7 @@ mod view;
 mod worker;
 
 pub(crate) use view::view;
-pub(crate) use worker::task;
+pub(crate) use worker::{blocking_load, task};
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 struct Request {

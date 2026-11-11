@@ -97,9 +97,11 @@ pub(crate) fn apply_refresh(
     state.settings.test = settings.test;
     state.settings.background_mode = settings.background_mode;
     if !state.background_picker_pending
-        && state.settings.background_image_path != settings.background_image_path
+        && (state.settings.background_image_path != settings.background_image_path
+            || state.settings.background_shader_path != settings.background_shader_path)
     {
         state.settings.background_image_path = settings.background_image_path.clone();
+        state.settings.background_shader_path = settings.background_shader_path.clone();
         state
             .background_preview
             .refresh(state.settings.background_image_path.as_deref());

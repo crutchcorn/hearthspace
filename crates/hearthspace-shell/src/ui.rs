@@ -95,7 +95,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     if let Ok(settings) = hearthspace_ipc::client_get_settings() {
         state.appearance.update(
             hearthspace_ui_components::Palette::new(settings.appearance)
-                .with_photo(settings.background_image_path.is_some()),
+                .with_photo(settings.has_custom_background()),
         );
     }
 

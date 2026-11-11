@@ -44,9 +44,9 @@ where
     ids(&ui.harness)
         .into_iter()
         .find(|&id| {
-            ui.harness
-                .access_node(id)
-                .is_some_and(|node| node.role() == Role::ComboBox)
+            ui.harness.access_node(id).is_some_and(|node| {
+                node.role() == Role::ComboBox && node.label().as_deref() == Some("Photo fit")
+            })
         })
         .expect("Photo fit combobox")
 }
@@ -170,6 +170,7 @@ fn photo_fit_selection_and_reset_keep_keyboard_focus() {
         selected_category: SettingsCategory::Background,
         selected_monitor_id: None,
         background_preview: Default::default(),
+        background_shader_status: Default::default(),
         background_picker_request_sender: None,
         background_picker_pending: false,
         status: String::new(),
@@ -311,6 +312,7 @@ fn popup_flips_and_clamps_to_the_window_and_cleans_up_when_disabled_or_page_chan
         selected_category: SettingsCategory::Background,
         selected_monitor_id: None,
         background_preview: Default::default(),
+        background_shader_status: Default::default(),
         background_picker_request_sender: None,
         background_picker_pending: false,
         status: String::new(),

@@ -2,6 +2,7 @@ use std::path::PathBuf;
 
 use hearthspace_ipc::{
     BackgroundMode, MonitorConfig, client_set_background_image_path, client_set_background_mode,
+    client_set_background_shader_path,
 };
 
 use crate::{
@@ -76,7 +77,18 @@ pub(crate) fn save_monitor_scale(state: &mut SettingsApp, id: &str, scale: i32) 
 }
 
 pub(crate) fn save_background_image_path(state: &mut SettingsApp, path: Option<PathBuf>) {
-    let previous = state.settings.background_image_path.clone();
+    save_background(state, path, false);
+}
+
+pub(crate) fn save_background_shader_path(state: &mut SettingsApp, path: Option<PathBuf>) {
+    save_background(state, path, true);
+}
+
+fn save_background(state: &mut SettingsApp, path: Option<PathBuf>, shader: bool) {
+    let previous = (
+        state.settings.background_image_path.clone(),
+        state.settings.background_shader_path.clone(),
+    );
     let path = match path {
         Some(path) => match path.into_os_string().into_string() {
             Ok(path) => Some(path),
@@ -87,19 +99,34 @@ pub(crate) fn save_background_image_path(state: &mut SettingsApp, path: Option<P
         },
         None => None,
     };
-    state.settings.background_image_path = path.clone();
-
-    match client_set_background_image_path(path.as_deref()) {
+    if shader {
+        state.settings.background_shader_path = path.clone();
+        state.settings.background_image_path = None;
+    } else {
+        state.settings.background_image_path = path.clone();
+        state.settings.background_shader_path = None;
+    }
+    let saved = if shader {
+        client_set_background_shader_path(path.as_deref())
+    } else {
+        client_set_background_image_path(path.as_deref())
+    };
+    match saved {
         Ok(settings) => {
             crate::settings_refresh::local_save_finished(state);
             state.settings.background_image_path = settings.background_image_path;
+            state.settings.background_shader_path = settings.background_shader_path;
+            if shader {
+                state.background_shader_status.reload();
+            }
             state
                 .background_preview
                 .refresh(state.settings.background_image_path.as_deref());
             state.status.clear();
         }
         Err(error) => {
-            state.settings.background_image_path = previous;
+            state.settings.background_image_path = previous.0;
+            state.settings.background_shader_path = previous.1;
             state.status = format!("Failed to save background image: {error}");
         }
     }

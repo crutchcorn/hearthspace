@@ -76,6 +76,12 @@ pub struct MonitorConfig {
     pub y: i32,
 }
 
+impl Settings {
+    pub fn has_custom_background(&self) -> bool {
+        self.background_image_path.is_some() || self.background_shader_path.is_some()
+    }
+}
+
 impl Default for Settings {
     fn default() -> Self {
         Self {

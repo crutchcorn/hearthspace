@@ -14,7 +14,7 @@ use masonry::{
 };
 use xilem::{WidgetView, tokio::sync::mpsc::unbounded_channel, view::sized_box};
 
-pub(super) fn state() -> (tempfile::TempDir, SettingsApp) {
+pub(crate) fn state() -> (tempfile::TempDir, SettingsApp) {
     let (dir, favorites) = fixture();
     (
         dir,
@@ -34,6 +34,7 @@ pub(super) fn state() -> (tempfile::TempDir, SettingsApp) {
             selected_category: SettingsCategory::Appearance,
             selected_monitor_id: None,
             background_preview: Default::default(),
+            background_shader_status: Default::default(),
             background_picker_request_sender: None,
             background_picker_pending: false,
             activation_listener: None,
@@ -172,7 +173,7 @@ fn sidebar_routes_to_existing_background_gestures_ai_and_system_controls() {
         picker_requests.try_recv(),
         Ok(BackgroundPickerRequest::PickFile)
     ));
-    ui.button("Loading photo…");
+    ui.button("Opening file…");
 
     ui.activate(ui.button("Gestures"));
     ui.dispatch(&view);

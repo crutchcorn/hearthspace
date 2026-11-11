@@ -18,21 +18,25 @@ use xilem::{
 
 use crate::{
     actions::save_background_image_path,
-    page_components::{photo_fit, restore_focus_after_close, section},
+    page_components::{photo_fit, restore_focus_after_close, section, select},
     state::{BackgroundPickerRequest, SettingsApp},
     typography::label,
 };
 
 pub(crate) fn view(state: &SettingsApp) -> Box<AnyWidgetView<SettingsApp>> {
     let palette = state.palette();
-    let path = state.settings.background_image_path.as_deref();
+    let shader = state.settings.background_shader_path.is_some();
+    let photo = state.settings.background_image_path.as_deref();
+    let path = state.settings.background_shader_path.as_deref().or(photo);
     let name = path
         .and_then(|path| std::path::Path::new(path).file_name())
         .and_then(|name| name.to_str())
         .unwrap_or("Canvas dots")
         .to_string();
     let picker_label = if state.background_picker_pending {
-        "Loading photo…"
+        "Opening file…"
+    } else if shader {
+        "Change GLSL file"
     } else if path.is_some() {
         "Change photo"
     } else {
@@ -41,6 +45,19 @@ pub(crate) fn view(state: &SettingsApp) -> Box<AnyWidgetView<SettingsApp>> {
     section(
         "Background",
         flex_col((
+            flex_row((
+                flex_item(label("Wallpaper type").text_size(11.0), 1.0),
+                sized_box(select(
+                    palette, "Wallpaper type", vec!["Canvas dots".into(), "Photo".into(), "GLSL".into()],
+                    if shader { 2 } else if photo.is_some() { 1 } else { 0 },
+                    state.background_picker_pending,
+                    |state, index| match index {
+                        0 => save_background_image_path(state, None),
+                        1 => request_background(state, false),
+                        _ => request_background(state, true),
+                    },
+                )).fixed_width(134.0.px()).fixed_height(34.0.px()),
+            )),
             flex_row((
                 crate::background_preview::view(state),
                 flex_item(
@@ -78,7 +95,12 @@ pub(crate) fn view(state: &SettingsApp) -> Box<AnyWidgetView<SettingsApp>> {
             .gap(14.0.px()),
             path.map(|_| {
                 flex_col((
-                    flex_row((
+                    shader.then(|| components::settings_button(
+                        button(label("Reload GLSL file").text_size(11.0), |state: &mut SettingsApp| state.background_shader_status.reload()),
+                        components::SettingsButton::Control, false,
+                    )),
+                    shader.then(|| label(state.background_shader_status.message.clone()).text_size(10.0).line_break_mode(LineBreaking::WordWrap).color(if state.background_shader_status.failed { palette.text } else { palette.muted })),
+                    (!shader).then(|| flex_row((
                         flex_item(label("Photo fit").text_size(11.0), 1.0),
                         photo_fit(
                             palette,
@@ -86,10 +108,12 @@ pub(crate) fn view(state: &SettingsApp) -> Box<AnyWidgetView<SettingsApp>> {
                             state.background_picker_pending,
                         ),
                     ))
-                    .gap(12.0.px()),
+                    .gap(12.0.px())),
                     sized_box(
                         label(
-                            if state.settings.background_mode == BackgroundMode::RepeatWithCanvas {
+                            if shader {
+                                "GLSL wallpaper runs on the desktop. Invalid shaders fall back to Canvas dots."
+                            } else if state.settings.background_mode == BackgroundMode::RepeatWithCanvas {
                                 "Moves with the canvas."
                             } else {
                                 "Stays in place as the canvas moves."
@@ -134,18 +158,26 @@ pub(crate) fn view(state: &SettingsApp) -> Box<AnyWidgetView<SettingsApp>> {
 }
 
 fn pick_background(state: &mut SettingsApp) {
+    request_background(state, state.settings.background_shader_path.is_some());
+}
+
+fn request_background(state: &mut SettingsApp, shader: bool) {
     if state.background_picker_pending {
-        state.status = "Background image picker is already open".to_string();
+        state.status = "Background picker is already open".to_string();
         return;
     }
     let Some(sender) = &state.background_picker_request_sender else {
-        state.status = "Background image picker is not ready".to_string();
+        state.status = "Background picker is not ready".to_string();
         return;
     };
-    match sender.send(BackgroundPickerRequest::PickFile) {
+    match sender.send(if shader {
+        BackgroundPickerRequest::PickShader
+    } else {
+        BackgroundPickerRequest::PickFile
+    }) {
         Ok(()) => {
             state.background_picker_pending = true;
-            state.status = "Opening background image picker".to_string();
+            state.status = "Opening background file picker".to_string();
         }
         Err(error) => state.status = format!("Failed to open background image picker: {error}"),
     }
@@ -153,3 +185,6 @@ fn pick_background(state: &mut SettingsApp) {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod shader_tests;
