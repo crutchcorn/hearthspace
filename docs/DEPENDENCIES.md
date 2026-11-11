@@ -126,11 +126,14 @@ system Xwayland package.
 ```sh
 sudo apt-get install -y \
   at-spi2-core libayatana-appindicator3-1 libgtk-3-0t64 \
-  libinput-tools python3-evdev ffmpeg
+  libinput-tools python3-evdev ffmpeg wayvnc
 ```
 
 AT-SPI and AppIndicator support are needed for the corresponding required
-integration tests. `python3-evdev` and `libinput-tools` are for native input
+integration tests. The full E2E profile also requires WayVNC 0.9 or newer for
+real capture and remote-input checks. Installing `wayvnc` adds the command without
+starting a server; remove it with `sudo apt-get remove wayvnc` when those tests
+are no longer needed. `python3-evdev` and `libinput-tools` are for native input
 fixtures; these use temporary owned
 uinput devices, without persistent udev rules. FFmpeg supplies `ffmpeg` and
 `ffprobe` for [recordings](NATIVE_RECORDING.md).

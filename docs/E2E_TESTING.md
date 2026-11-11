@@ -48,18 +48,48 @@ Headless mode is the right E2E default because it is:
 - Close enough to production compositor behavior to exercise Wayland clients,
   input routing, rendering, and screenshots.
 
-Run these commands from the repository root in a dedicated test shell, so the
-software renderer variables do not carry into a later native session. Set
-`VK_DRIVER_FILES` to the installed Lavapipe ICD; the path below is the Ubuntu
-26.04 package layout. Build the intended checkout before running Python fixtures.
+After preparing the [development runtime](DEVELOPMENT.md#prebuild-the-development-runtime)
+and [private Xwayland](SATELLITE.md#prepare-the-private-server), run the required
+profile from the repository root:
 
-Run headless regressions with the `e2e` feature:
+```sh
+scripts/test-e2e
+```
+
+This is the same entry point used by CI. It builds the workspace and companion
+executables from the current checkout, verifies the private server receipt, and
+runs both Rust and Python with required accessibility, tray, and cross-app tests
+enabled. Rust and Python failures are reported together. A failed build stops
+before either suite can run stale executables.
+
+Each run has fresh desktop settings, caches and state, a short private temporary
+root, software GLES/GTK/Xwayland, and Mesa Lavapipe for Vulkan. Inherited desktop
+sockets, buses and graphics overrides are removed. The caller's environment and
+live desktop are unchanged. `CARGO_TARGET_DIR` is honored, and Python fixtures
+use the selected build's executable and adjacent companions.
+
+Evidence defaults to a fresh directory under
+`~/.local/state/hearthspace-e2e/`. `--evidence /absolute/fresh/directory` selects
+another destination. The result records the source revision, binary hashes,
+renderer configuration and each command's exit status. Fixture files are archived
+before their temporary root is removed; interruption stops the owned process
+group and retains its result. An existing evidence directory is never reused.
+CI uses `--no-build` only after its workspace build and private-server preparation.
+
+On distributions with different Mesa paths, use `--vulkan-icd` and `--egl-vendor`.
+The defaults are Ubuntu 26.04's Lavapipe ICD and GLVND Mesa vendor JSON. Keeping
+both explicit prevents another GPU vendor from silently selecting a different
+renderer. These selections apply only to the test processes.
+
+For a focused Rust run in a dedicated test shell, prebuild the workspace first
+so companion executables also match the checkout, then enable `e2e`:
 
 ```sh
 unset HEARTHSPACE_COMMAND_SOCKET HEARTHSPACE_HOST_XDG_RUNTIME_DIR
 export TMPDIR="$(mktemp -d -t hs-e2e.XXXXXX)"
 export LIBGL_ALWAYS_SOFTWARE=1 GSK_RENDERER=cairo XWAYLAND_NO_GLAMOR=1
 export VK_DRIVER_FILES=/usr/share/vulkan/icd.d/lvp_icd.json
+export __EGL_VENDOR_LIBRARY_FILENAMES=/usr/share/glvnd/egl_vendor.d/50_mesa.json
 cargo test --locked -p hearthspace-compositor --features e2e --test headless_control -- --test-threads=1
 cargo test --locked -p hearthspace-compositor --features e2e --test waydriver_hearthspace -- --test-threads=1
 ```
@@ -69,11 +99,9 @@ fit Linux's Unix-socket path limit. A long artifact-directory name can make a
 child exit before accessibility registration. Store descriptive run logs outside
 that short temporary root if needed.
 
-Clear the inherited Hearthspace socket and host-runtime overrides before running
-owned headless fixtures. A retired desktop's D-Bus activation environment can
-retain an empty override; an empty `HEARTHSPACE_COMMAND_SOCKET` still overrides
-the fixture's private runtime default and prevents its control socket from
-appearing. These `unset` commands affect only the dedicated test shell.
+Owned fixtures supply their own sockets and settings paths, including when the
+parent desktop has empty socket overrides. The dedicated shell's `unset`
+commands also protect helpers that run outside those fixtures.
 
 Add `test-apps` when exercising the optional GTK client. Pure transport,
 coordinate mapping, input cleanup, and timeout tests belong below the native
@@ -95,12 +123,12 @@ both Rust and Python. Required accessibility or deployed
 Ayatana libraries cannot silently skip their coverage. Native VT/device tests
 remain a separate hardware workflow.
 
-Build and test the intended checkout. The adapter
-[attachment tests](../crates/waydriver-hearthspace/tests/attached_session.rs) and
-several Python fixtures accept `HEARTHSPACE_BINARY` as an explicit executable
-path. Set it to the built binary when using those fixtures with a shared target
-directory. This is not a workspace-wide override: other Rust tests use Cargo
-executable paths, and some Python fixtures require `target/debug/hearthspace`.
+The runner resolves the build directory through Cargo metadata. Python fixtures
+and the adapter's
+[attachment tests](../crates/waydriver-hearthspace/tests/attached_session.rs) use
+the selected `HEARTHSPACE_BINARY`; other Rust tests use Cargo executable paths.
+For focused Python runs outside the runner, set `HEARTHSPACE_BINARY` explicitly
+when the build is outside `target/debug`.
 
 `GSK_RENDERER=cairo` keeps GTK fixtures on software-rendered shared-memory
 buffers while the compositor uses Mesa's software GLES renderer. Setting only
@@ -121,10 +149,11 @@ app ID with the host bus removed. Render checks wait for visible client pixels;
 mapped/maximized state alone does not establish that a buffer has been painted.
 
 The [E2E job](../.github/workflows/e2e.yml) uses a dedicated temporary artifact
-root and uploads `headless-e2e-evidence` for seven days on both success and failure. It includes test logs, Python workflow
-screenshots/accessibility snapshots, and retained Rust failure directories.
-Artifacts are limited to test-created log, JSON/JSONL, PNG, XML, and text files;
-ordinary session sockets and the host desktop are excluded.
+root and uploads `headless-e2e-evidence` for seven days on both success and failure.
+It includes test logs, Python workflow screenshots/accessibility snapshots, and
+an archive of owned fixture files. Retained Rust failures include the last frame
+observed by the test and recent control replies. Session sockets and the host
+desktop are excluded.
 The Python terminal smoke copies its compositor log and artifacts into
 `terminal-smoke` under `HEARTHSPACE_SHELL_EVIDENCE`, including status and capture
 diagnostics when a control operation fails. Its recorded paths describe the
@@ -310,6 +339,10 @@ Payloads depend on the request:
 | `apps` | Versioned JSON catalog of launchable desktop entries. |
 | `layout-status` | Version 1 frame layout, measured widget/group bounds, pinned-window state, editor session/selection, confirmation, and animation state. Redacted while locked or inactive. |
 | `frame-settings-status` | Version 1 Canvas tools hiding preference. |
+
+Failed control-socket fixtures retain the last observed frame and a bounded
+command/reply history beside their compositor log. The frame is the one read by
+the assertion, rather than a new capture after clients have been torn down.
 
 Capture metadata includes a version, output name, pixel dimensions, integer
 scale, logical origin and bounds, transform, frame ID, cursor policy/source, and

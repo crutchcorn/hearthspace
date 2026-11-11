@@ -22,22 +22,6 @@ jobs:
 
     env:
       CARGO_TERM_COLOR: always
-      HEARTHSPACE_E2E: "1"
-      HEARTHSPACE_REQUIRE_ATSPI: "1"
-      HEARTHSPACE_REQUIRE_TRAY_LIBRARY: "1"
-      LIBGL_ALWAYS_SOFTWARE: "1"
-      # Keep the Vulkan shell on the same software device as compositor GLES.
-      VK_DRIVER_FILES: /usr/share/vulkan/icd.d/lvp_icd.json
-      # Keep GTK fixtures on SHM when the compositor uses software GLES.
-      GSK_RENDERER: cairo
-      # Xwayland itself needs SHM too, including raw X11 fixtures.
-      XWAYLAND_NO_GLAMOR: "1"
-      TMPDIR: /tmp/hearthspace-e2e
-      HEARTHSPACE_SHELL_EVIDENCE: /tmp/hearthspace-e2e/evidence/shell
-      HEARTHSPACE_MAP_EVIDENCE: /tmp/hearthspace-e2e/evidence/map
-      HEARTHSPACE_TRAY_EVIDENCE: /tmp/hearthspace-e2e/evidence/tray
-      HEARTHSPACE_CLIPBOARD_EVIDENCE: /tmp/hearthspace-e2e/evidence/clipboard
-      HEARTHSPACE_VNC_EVIDENCE: /tmp/hearthspace-e2e/evidence/vnc
 
     steps:
       - name: Checkout
@@ -45,7 +29,6 @@ jobs:
 
       - name: Install native dependencies
         run: |
-          mkdir -p "$TMPDIR"
           sudo apt-get update
           sudo apt-get install -y \
             adwaita-icon-theme \
@@ -112,12 +95,8 @@ jobs:
       - name: Prepare private Xwayland
         uses: ./.github/actions/prepare-xwayland
 
-      # Keep GPU workloads sequential, including within each Rust test binary.
-      - name: Run Rust workspace and headless E2E tests
-        run: cargo test --locked --workspace --all-targets --features udev,e2e,test-apps -- --test-threads=1 2>&1 | tee "$TMPDIR/rust-tests.log"
-
-      - name: Run Python agent and cross-app clipboard regressions
-        run: python3 -m unittest discover -s scripts/tests -v 2>&1 | tee "$TMPDIR/python-tests.log"
+      - name: Run the required E2E profile
+        run: scripts/test-e2e --no-build --evidence "$RUNNER_TEMP/hearthspace-e2e"
 
       - name: Upload E2E evidence
         if: always()
@@ -127,12 +106,7 @@ jobs:
           retention-days: 7
           include-hidden-files: true
           path: |
-            /tmp/hearthspace-e2e/**/*.log
-            /tmp/hearthspace-e2e/**/*.json
-            /tmp/hearthspace-e2e/**/*.jsonl
-            /tmp/hearthspace-e2e/**/*.png
-            /tmp/hearthspace-e2e/**/*.xml
-            /tmp/hearthspace-e2e/**/*.txt
+            ${{ runner.temp }}/hearthspace-e2e/
             ${{ runner.temp }}/hearthspace-xwayland-result.json
             ${{ runner.temp }}/hearthspace-xwayland-build/*.log
             ${{ runner.temp }}/hearthspace-xwayland-build/build-receipt.json
