@@ -4,8 +4,9 @@ use smithay::backend::renderer::Color32F;
 
 impl super::App {
     pub(super) fn palette(&self) -> Palette {
-        self.palette
-            .with_photo(self.background_image_path.is_some())
+        self.palette.with_photo(
+            self.background_image_path.is_some() || self.background_shader_path.is_some(),
+        )
     }
 }
 

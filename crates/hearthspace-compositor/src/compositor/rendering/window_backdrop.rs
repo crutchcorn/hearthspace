@@ -119,7 +119,7 @@ impl App {
                 renderer,
                 output,
                 scale,
-                if self.background_image_path.is_some() {
+                if self.background_image_path.is_some() || self.background_shader_path.is_some() {
                     1.15
                 } else {
                     1.35

@@ -346,6 +346,7 @@ impl CalloopData {
             "shell_corners": self.state.shell_corners_status(),
             "control_osds": self.state.control_osds_status(),
             "favorite_gesture": self.state.favorite_drawing.status(),
+            "background_shader": self.state.background_shader.status(&self.state.background_shader_path),
             "viewport": {
                 "x": self.state.viewport_offset.x,
                 "y": self.state.viewport_offset.y,

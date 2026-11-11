@@ -319,6 +319,8 @@ struct App {
     appearance: hearthspace_ipc::Appearance,
     palette: hearthspace_ui_components::Palette,
     background_image_path: Option<String>,
+    background_shader_path: Option<String>,
+    background_shader: rendering::BackgroundShader,
     /// Cached texture for the repeated background image tile.
     background_image_tile: Option<rendering::BackgroundImageTile>,
     corner_blur: rendering::CornerBlurCache,
@@ -360,6 +362,17 @@ impl App {
             self.refresh_fractional_scales();
         }
 
+        if refresh.output_layout_changed {
+            self.background_shader.invalidate_views();
+        }
+        // Explicit settings refresh also reloads an edited shader at the same path.
+        if self.background_shader_path != settings.background_shader_path
+            || settings.background_shader_path.is_some()
+        {
+            self.background_shader_path = settings.background_shader_path;
+            self.background_shader.reset();
+            refresh.background_changed = true;
+        }
         if self.background_mode != settings.background_mode {
             self.background_mode = settings.background_mode;
             refresh.background_changed = true;
@@ -386,6 +399,10 @@ impl App {
             self.background_tile_ids.clear();
         }
 
+        if refresh.background_changed || refresh.appearance_changed || refresh.output_layout_changed
+        {
+            self.request_redraw();
+        }
         refresh
     }
 }
@@ -716,6 +733,8 @@ pub(in crate::compositor) fn initialize_app(
         appearance: settings.appearance,
         palette: hearthspace_ui_components::Palette::new(settings.appearance),
         background_image_path: settings.background_image_path,
+        background_shader_path: settings.background_shader_path,
+        background_shader: Default::default(),
         background_image_tile: None,
         corner_blur: rendering::CornerBlurCache::default(),
         window_backdrop: rendering::WindowBackdropCache::default(),

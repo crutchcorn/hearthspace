@@ -53,7 +53,7 @@ impl App {
             maximized: window.presentation.focused_view || self.frame_window_attached(index),
             hovered,
             pressed,
-            photo: self.background_image_path.is_some(),
+            photo: (self.background_image_path.is_some() || self.background_shader_path.is_some()),
         };
         // Rasterize for physical pixels instead of stretching a 1× text image
         // on high-density outputs. Zoom is still applied by the scene transform.

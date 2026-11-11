@@ -139,6 +139,14 @@ pub(in crate::compositor) fn run_event_loop(
             (None, Some(exit)) => Some(exit),
             (None, None) => None,
         };
+        let background_timeout = data
+            .capture_active()
+            .then(|| data.state.background_animation_timeout())
+            .flatten();
+        let timeout = match (timeout, background_timeout) {
+            (Some(a), Some(b)) => Some(a.min(b)),
+            (a, b) => a.or(b),
+        };
         let timeout = match (timeout, data.captures.timeout()) {
             (Some(a), Some(b)) => Some(a.min(b)),
             (a, b) => a.or(b),
@@ -186,6 +194,7 @@ pub(in crate::compositor) fn run_event_loop(
         data.state.maintain_session_lock();
         data.state.handle_idle_transitions();
         data.state.advance_viewport_animation();
+        data.state.advance_background_animation();
         data.state.advance_canvas_search();
         data.state.maintain_window_group();
         data.state.reconcile_window_switcher();
