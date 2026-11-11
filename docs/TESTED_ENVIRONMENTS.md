@@ -20,6 +20,44 @@ Keep detailed captures and logs with the issue or test artifact. Use this page
 as the single inventory of named test systems; feature guides describe how to
 repeat the checks.
 
+## Parallels virtual cursor, 2026-11-11
+
+The MacBook guest above used aarch64 kernel `7.0.0-38-generic`, virtio-gpu PCI
+`1af4:1050`, and one 1720×949 Virtual-1 output at scale 1. Cursor repair
+`5b25123` enables the kernel's virtual cursor hotspot capability and publishes
+hotspots in atomic cursor-plane commits. Before opt-in, the device exposed
+primary planes only. The debug run recorded cursor-plane presentations and
+kernel `HOTSPOT_X=3`, `HOTSPOT_Y=1` matching Hearthspace's cursor snapshot.
+The local user confirmed one correctly aligned cursor over the canvas, Foot's
+text area, and resize edges. Guest captures alone cannot establish whether a
+host cursor overlay is visible.
+
+The optimized runtime built from `c7bb3c6` passed the isolated native smoke:
+exact terminal input and visible marker pixels, window dragging, resizing with
+matching pixels in the vacated region, and cursor movement on canvas and client
+content. Its trace records 367 completed page flips using the hardware cursor
+plane. Both native runs restored the recorded original VT and removed their
+owned processes and private runtime. The installed optimized release is
+`763227964214`; its files match the tested staged bundle, and the preceding
+optimized release remains available. This does not extend earlier sleep or
+host-resize coverage to this source revision.
+
+Rust formatting, Ruff lint/format, workspace Clippy, the all-target debug build,
+and optimized runtime build passed. The Python rerun after build-guard removal
+ran 729 cases successfully, with 15 skipped. The full Rust run completed every
+target but failed 37 X11 cases in `headless_control` (426 passed in that target).
+Dependency checks failed on pinned `rustix 1.1.5`, advisory `RUSTSEC-2026-0486`;
+bans and sources passed. These unresolved results prevent a fully green suite.
+
+Evidence is retained in
+`~/.local/state/hearthspace-investigations/20261111-virtual-cursor/`, including
+binary hashes, native captures and traces, cleanup records, and installation
+verification. An initial release preflight stopped before acquiring a VT because
+the custom binary directory lacked a script helper; testing used a complete
+staged bundle afterward. An optional property-probe invocation after the passing
+optimized smoke omitted its device argument and exited before opening DRM;
+its error is retained separately from the verified page-flip and smoke results.
+
 ## Satellite X11 migration, 2026-11-06
 
 The GPD system above ran the debug runtime from `a27420d8` with Satellite as
