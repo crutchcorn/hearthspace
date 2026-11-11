@@ -5,7 +5,7 @@ use smithay::{
     backend::{
         allocator::Fourcc,
         renderer::{
-            ContextId, ImportMem, Renderer, RendererSuper,
+            ContextId, ImportMem, Renderer,
             element::{Id, Kind, texture::TextureRenderElement},
             gles::GlesRenderer,
         },
@@ -20,37 +20,23 @@ use super::GlesTexture;
 use crate::compositor::App;
 
 const MAX_BACKGROUND_TILE_ELEMENTS: usize = 512;
-#[path = "default_background.rs"]
-mod default;
 
 pub(in crate::compositor) struct BackgroundImageTile {
     context_id: ContextId<GlesTexture>,
-    texture: GlesTexture,
+    texture: Option<GlesTexture>,
     size: Size<i32, Logical>,
-    logical_grid: bool,
 }
 
 struct BackgroundImageData {
     pixels: Vec<u8>,
     format: Fourcc,
     size: Size<i32, Logical>,
-    logical_grid: bool,
 }
 
 impl App {
-    /// Changing mode replaces only the generated dot field. A user wallpaper
-    /// keeps its decoded texture, including when accents change.
+    /// Theme changes damage shader dots, while user photos keep their texture.
     pub(in crate::compositor) fn invalidate_default_background(&mut self) -> bool {
-        if self
-            .background_image_tile
-            .as_ref()
-            .is_some_and(|tile| tile.logical_grid)
-        {
-            self.background_image_tile = None;
-            true
-        } else {
-            false
-        }
+        self.background_image_path.is_none()
     }
 
     /// Build repeated background image render elements for the current viewport.
@@ -65,31 +51,21 @@ impl App {
         output_rect: Rectangle<i32, Logical>,
         output_scale: i32,
     ) -> Vec<TextureRenderElement<GlesTexture>> {
-        if self.viewport_scale <= 0.0 || !self.viewport_scale.is_finite() {
+        if self.background_image_path.is_none()
+            || self.viewport_scale <= 0.0
+            || !self.viewport_scale.is_finite()
+        {
             return Vec::new();
         }
-        let (context_id, texture, tile_size, logical_grid) =
-            match self.background_image_tile(renderer) {
-                Ok(tile) => (
-                    tile.context_id.clone(),
-                    tile.texture.clone(),
-                    tile.size,
-                    tile.logical_grid,
-                ),
-                Err(_) => return Vec::new(),
-            };
+        let (context_id, texture, tile_size) = match self.background_image_tile(renderer) {
+            Ok(tile) => match tile.texture.clone() {
+                Some(texture) => (tile.context_id.clone(), texture, tile.size),
+                None => return Vec::new(),
+            },
+            Err(_) => return Vec::new(),
+        };
 
-        let grid_scale = if logical_grid && self.background_mode == BackgroundMode::RepeatWithCanvas
-        {
-            output_scale.max(1)
-        } else {
-            1
-        };
-        let output_rect = if grid_scale == 1 {
-            wallpaper_presentation_rect(output_rect, output_scale)
-        } else {
-            output_rect
-        };
+        let output_rect = wallpaper_presentation_rect(output_rect, output_scale);
         if self.background_mode != BackgroundMode::RepeatWithCanvas {
             return self.fixed_background_image_element(
                 context_id,
@@ -126,18 +102,18 @@ impl App {
         let src = Rectangle::from_size(tile_size.to_f64());
         for gy in first_y..=last_y {
             for gx in first_x..=last_x {
-                let tile_origin = Point::from((
+                let tile_origin = Point::<f64, Logical>::from((
                     gx as f64 * f64::from(tile_size.w),
                     gy as f64 * f64::from(tile_size.h),
                 ));
-                let next_tile_origin = Point::from((
+                let next_tile_origin = Point::<f64, Logical>::from((
                     (gx + 1) as f64 * f64::from(tile_size.w),
                     (gy + 1) as f64 * f64::from(tile_size.h),
                 ));
                 let screen = self.canvas_to_screen(tile_origin);
                 let next_screen = self.canvas_to_screen(next_tile_origin);
-                let screen = grid_physical_point(screen, output_rect.loc, grid_scale);
-                let next_screen = grid_physical_point(next_screen, output_rect.loc, grid_scale);
+                let screen: Point<i32, Logical> = screen.to_i32_round();
+                let next_screen: Point<i32, Logical> = next_screen.to_i32_round();
                 let left = screen.x;
                 let top = screen.y;
                 let right = next_screen.x;
@@ -197,7 +173,7 @@ impl App {
     fn background_image_tile(
         &mut self,
         renderer: &mut GlesRenderer,
-    ) -> Result<&BackgroundImageTile, <GlesRenderer as RendererSuper>::Error> {
+    ) -> Result<&BackgroundImageTile, Box<dyn std::error::Error>> {
         let context_id = renderer.context_id();
         let needs_rebuild = self
             .background_image_tile
@@ -206,7 +182,17 @@ impl App {
             .unwrap_or(true);
 
         if needs_rebuild {
-            let data = self.background_image_data();
+            let data = match self.background_image_data() {
+                Ok(data) => data,
+                Err(_) => {
+                    self.background_image_tile = Some(BackgroundImageTile {
+                        context_id,
+                        texture: None,
+                        size: (0, 0).into(),
+                    });
+                    return Ok(self.background_image_tile.as_ref().unwrap());
+                }
+            };
             let texture = renderer.import_memory(
                 &data.pixels,
                 data.format,
@@ -215,43 +201,27 @@ impl App {
             )?;
             self.background_image_tile = Some(BackgroundImageTile {
                 context_id,
-                texture,
+                texture: Some(texture),
                 size: data.size,
-                logical_grid: data.logical_grid,
             });
         }
 
         Ok(self.background_image_tile.as_ref().unwrap())
     }
 
-    fn background_image_data(&self) -> BackgroundImageData {
-        if let Some(path) = &self.background_image_path {
-            match fs::read(path) {
-                Ok(contents) => match decode_background_png(&contents) {
-                    Ok(image) => return image,
-                    Err(error) => {
-                        warn!(path, %error, "failed to decode background image; using default")
-                    }
-                },
-                Err(error) => warn!(path, %error, "failed to read background image; using default"),
-            }
+    fn background_image_data(&self) -> Result<BackgroundImageData, String> {
+        let path = self
+            .background_image_path
+            .as_ref()
+            .ok_or("No photo selected")?;
+        let result = fs::read(path)
+            .map_err(|error| error.to_string())
+            .and_then(|contents| decode_background_png(&contents));
+        if let Err(error) = &result {
+            warn!(path, %error, "failed to load background image; using GLSL dots");
         }
-
-        default::image(self.appearance.color_mode)
+        result
     }
-}
-
-// Wallpaper elements are translated by the output origin after this step.
-// Scale the default grid about that origin so dots retain their logical size.
-fn grid_physical_point(
-    point: Point<f64, Logical>,
-    origin: Point<i32, Logical>,
-    scale: i32,
-) -> Point<i32, Physical> {
-    let project = |value: f64, origin: i32| {
-        ((value - f64::from(origin)) * f64::from(scale)).round() as i32 + origin
-    };
-    (project(point.x, origin.x), project(point.y, origin.y)).into()
 }
 
 fn wallpaper_presentation_rect(
@@ -353,11 +323,6 @@ fn fixed_background_rects(
     }
 }
 
-#[cfg(test)]
-fn default_background_image_data() -> BackgroundImageData {
-    default::image(hearthspace_ipc::ColorMode::Light)
-}
-
 fn decode_background_png(contents: &[u8]) -> Result<BackgroundImageData, String> {
     let mut decoder = png::Decoder::new(Cursor::new(contents));
     decoder.set_transformations(png::Transformations::ALPHA | png::Transformations::STRIP_16);
@@ -379,7 +344,6 @@ fn decode_background_png(contents: &[u8]) -> Result<BackgroundImageData, String>
         pixels,
         format: Fourcc::Abgr8888,
         size: Size::<i32, Logical>::from((output.width as i32, output.height as i32)),
-        logical_grid: false,
     })
 }
 

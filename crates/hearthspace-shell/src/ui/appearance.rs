@@ -94,7 +94,7 @@ pub(super) fn task() -> impl View<ShellState, (), xilem::ViewCtx, Element = NoEl
                         cursor = Some(snapshot.cursor());
                         let settings = snapshot.settings;
                         let palette = Palette::new(settings.appearance)
-                            .with_photo(settings.background_image_path.is_some());
+                            .with_photo(settings.has_custom_background());
                         if previous != Some(palette) {
                             previous = Some(palette);
                             if proxy.message(palette).is_err() {

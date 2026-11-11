@@ -14,7 +14,7 @@ use masonry::{
 };
 use xilem::{WidgetView, tokio::sync::mpsc::unbounded_channel, view::sized_box};
 
-pub(super) fn state() -> (tempfile::TempDir, SettingsApp) {
+pub(crate) fn state() -> (tempfile::TempDir, SettingsApp) {
     let (dir, favorites) = fixture();
     (
         dir,
@@ -34,6 +34,7 @@ pub(super) fn state() -> (tempfile::TempDir, SettingsApp) {
             selected_category: SettingsCategory::Appearance,
             selected_monitor_id: None,
             background_preview: Default::default(),
+            background_shader_status: Default::default(),
             background_picker_request_sender: None,
             background_picker_pending: false,
             activation_listener: None,
@@ -162,17 +163,17 @@ fn sidebar_routes_to_existing_background_gestures_ai_and_system_controls() {
     controls_fit_width(&ui, 620.0);
     let upload = ui
         .harness
-        .get_widget_with_id(ui.button("Upload photo"))
+        .get_widget_with_id(ui.button("Choose wallpaper"))
         .ctx()
         .bounding_box();
     assert!(upload.width() < 180.0, "photo action stretches: {upload:?}");
-    ui.activate(ui.button("Upload photo"));
+    ui.activate(ui.button("Choose wallpaper"));
     ui.dispatch(&view);
     assert!(matches!(
         picker_requests.try_recv(),
         Ok(BackgroundPickerRequest::PickFile)
     ));
-    ui.button("Loading photo…");
+    ui.button("Opening file…");
 
     ui.activate(ui.button("Gestures"));
     ui.dispatch(&view);
@@ -229,7 +230,7 @@ fn keyboard_navigation_reaches_categories_and_every_appearance_option() {
     ui.harness
         .process_text_event(TextEvent::key_up(Key::Named(NamedKey::Enter)));
     ui.dispatch(&view);
-    ui.button("Upload photo");
+    ui.button("Choose wallpaper");
 
     ui.activate(ui.button("Appearance"));
     ui.dispatch(&view);

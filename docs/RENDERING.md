@@ -74,6 +74,22 @@ framebuffer. Shell surfaces attached to the frame stay in screen space. See
 [size units](SIZE_UNITS.md) for the conversion rules and
 [window management](WINDOW_MANAGEMENT.md) for presentation states.
 
+## Wallpaper shaders
+
+Canvas dots and custom GLSL wallpapers use Smithay `PixelShaderElement`s in the
+main scene renderer. Per-output elements retain identity and update their commits
+only when geometry or uniforms change. The built-in grid reduces its camera phase
+in CPU double precision before passing it to GLSL, preserving distant-canvas
+spacing. Photo backgrounds keep their existing texture path.
+
+Shader source is loaded and compiled on selection, explicit settings reload, or
+renderer-context replacement, with a bounded file size. Failed custom compilation
+retains the last successfully compiled source, using bundled dots only when no
+previous shader exists. Settings validates candidates before committing them. Static shaders do not add an event-loop timer;
+shaders using `u_time` request scene redraws at approximately 30 Hz while visible.
+Device presenters continue consuming cursor-free leased scenes and own no user
+shader compilation. See [Wallpapers](WALLPAPERS.md) for the GLSL contract.
+
 ## Damage and presentation
 
 Smithay's damage tracker identifies which parts of a render target need updating.

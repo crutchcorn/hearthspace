@@ -124,6 +124,7 @@ fn category_navigation_works_while_loading_and_reentry_keeps_the_cached_preview(
         selected_category: SettingsCategory::Background,
         selected_monitor_id: None,
         background_preview: Default::default(),
+        background_shader_status: Default::default(),
         background_picker_request_sender: None,
         background_picker_pending: false,
         status: String::new(),

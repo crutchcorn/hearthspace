@@ -23,6 +23,7 @@ pub(crate) struct SettingsApp {
     pub(crate) live_outputs: Vec<LiveOutput>,
     pub(crate) selected_category: SettingsCategory,
     pub(crate) selected_monitor_id: Option<String>,
+    pub(crate) background_shader_status: crate::background_shader_status::ShaderStatus,
     pub(crate) background_preview: crate::background_preview::BackgroundPreview,
     pub(crate) background_picker_request_sender: Option<UnboundedSender<BackgroundPickerRequest>>,
     pub(crate) background_picker_pending: bool,
@@ -74,6 +75,7 @@ pub(crate) enum BackgroundPickerRequest {
 #[derive(Debug)]
 pub(crate) enum BackgroundPickerResponse {
     Selected(PathBuf),
+    ShaderSelected(PathBuf, xilem::masonry::peniko::ImageBrush),
     Cancelled,
     Failed(String),
 }
@@ -106,6 +108,7 @@ pub(crate) fn initial_state(selected_category: SettingsCategory) -> SettingsApp 
         selected_category,
         selected_monitor_id,
         background_preview: Default::default(),
+        background_shader_status: Default::default(),
         background_picker_request_sender: None,
         background_picker_pending: false,
         status,
@@ -116,7 +119,7 @@ impl SettingsApp {
     pub(crate) fn palette(&self) -> hearthspace_ui_components::Palette {
         self.appearance_theme.palette(
             self.settings.appearance,
-            self.settings.background_image_path.is_some(),
+            self.settings.has_custom_background(),
         )
     }
 

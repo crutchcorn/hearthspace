@@ -56,7 +56,7 @@ where
         let (root, view_state) = view.build(&mut ctx, &mut state);
         let properties = state.appearance_theme.properties(
             state.settings.appearance,
-            state.settings.background_image_path.is_some(),
+            state.settings.has_custom_background(),
         );
         let mut harness = TestHarness::create_with(
             crate::appearance::properties(state.palette()),
@@ -81,7 +81,7 @@ where
     pub(crate) fn rebuild(&mut self, build: &impl Fn(&SettingsApp) -> V) {
         let properties = self.state.appearance_theme.properties(
             self.state.settings.appearance,
-            self.state.settings.background_image_path.is_some(),
+            self.state.settings.has_custom_background(),
         );
         if !Arc::ptr_eq(&properties, &self.properties) {
             self.harness.set_default_properties(properties.clone());

@@ -93,13 +93,19 @@ pub(crate) fn apply_refresh(
     state.preferences.observation_generation =
         state.preferences.observation_generation.wrapping_add(1);
     let settings = &snapshot.settings;
+    let appearance_changed = state.settings.appearance != settings.appearance;
     state.settings.appearance = settings.appearance;
+    if appearance_changed && state.settings.background_shader_path.is_some() {
+        state.background_shader_status.reload();
+    }
     state.settings.test = settings.test;
     state.settings.background_mode = settings.background_mode;
     if !state.background_picker_pending
-        && state.settings.background_image_path != settings.background_image_path
+        && (state.settings.background_image_path != settings.background_image_path
+            || state.settings.background_shader_path != settings.background_shader_path)
     {
         state.settings.background_image_path = settings.background_image_path.clone();
+        state.settings.background_shader_path = settings.background_shader_path.clone();
         state
             .background_preview
             .refresh(state.settings.background_image_path.as_deref());

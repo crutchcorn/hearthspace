@@ -1,6 +1,6 @@
 use hearthspace_ui_components as components;
 use xilem::{
-    WidgetView,
+    AnyWidgetView, WidgetView,
     masonry::{
         imaging::Painter,
         kurbo::{Affine, Rect, Stroke},
@@ -14,11 +14,15 @@ use crate::{
     state::SettingsApp,
 };
 
-pub(crate) fn view(state: &SettingsApp) -> impl WidgetView<SettingsApp> + use<> {
+pub(crate) fn view(state: &SettingsApp) -> Box<AnyWidgetView<SettingsApp>> {
     let palette = state.palette();
-    let image = state
-        .background_preview
-        .image_for(state.settings.background_image_path.as_deref());
+    let image = if state.settings.background_shader_path.is_some() {
+        state.background_shader_status.image.clone()
+    } else {
+        state
+            .background_preview
+            .image_for(state.settings.background_image_path.as_deref())
+    };
     sized_box(
         canvas(move |_: &mut SettingsApp, _, scene, size| {
             let mut painter: Painter<'_> = Painter::new(scene);
@@ -60,4 +64,5 @@ pub(crate) fn view(state: &SettingsApp) -> impl WidgetView<SettingsApp> + use<> 
     )
     .fixed_width(84.0.px())
     .fixed_height(64.0.px())
+    .boxed()
 }

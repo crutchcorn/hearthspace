@@ -33,6 +33,9 @@ fn saved(state: &mut SettingsApp, result: std::io::Result<Settings>) {
             // pending local edit with a separately read settings snapshot.
             crate::settings_refresh::local_save_finished(state);
             state.settings.appearance = settings.appearance;
+            if state.settings.background_shader_path.is_some() {
+                state.background_shader_status.reload();
+            }
             state.status.clear();
         }
         Err(error) => state.status = format!("Failed to save appearance: {error}"),

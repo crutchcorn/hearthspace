@@ -85,6 +85,8 @@ pub(super) fn new(dh: &DisplayHandle, handle: LoopHandle<'static, CalloopData>) 
         appearance: settings.appearance,
         palette: hearthspace_ui_components::Palette::new(settings.appearance),
         background_image_path: None,
+        background_shader_path: None,
+        background_shader: Default::default(),
         background_image_tile: None,
         corner_blur: Default::default(),
         window_backdrop: Default::default(),

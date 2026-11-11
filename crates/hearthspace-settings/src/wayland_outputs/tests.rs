@@ -45,6 +45,7 @@ fn state() -> (tempfile::TempDir, SettingsApp) {
         selected_category: SettingsCategory::Displays,
         selected_monitor_id: None,
         background_preview: Default::default(),
+        background_shader_status: Default::default(),
         background_picker_request_sender: None,
         background_picker_pending: false,
         status: String::new(),

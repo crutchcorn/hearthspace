@@ -20,4 +20,4 @@ waydriver = "0.3.10"
 zbus = { version = "5.19.0", default-features = false, features = ["async-io"] }
 
 [dev-dependencies]
-rustix = { version = "1.1.5", features = ["process"] }
+rustix = { version = "1.1.6", features = ["process"] }

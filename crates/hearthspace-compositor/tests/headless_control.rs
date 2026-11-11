@@ -17,6 +17,9 @@ mod serialization;
 mod shell_window_lifecycle;
 #[path = "support/startup.rs"]
 mod startup;
+#[cfg(feature = "test-apps")]
+#[path = "support/wallpaper.rs"]
+mod wallpaper;
 
 #[cfg(feature = "test-apps")]
 #[path = "support/accessibility.rs"]

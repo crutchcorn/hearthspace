@@ -25,6 +25,7 @@ use wayland_server::protocol::wl_surface;
 use super::{App, ManagedWindowKind, window_frame};
 
 mod background;
+pub(in crate::compositor) mod background_shader;
 mod blur;
 mod blur_shader;
 mod layout_clip;
@@ -39,6 +40,7 @@ mod window_backdrop;
 mod window_backdrop_shader;
 
 pub(in crate::compositor) use background::BackgroundImageTile;
+pub(in crate::compositor) use background_shader::BackgroundShader;
 pub(in crate::compositor) use blur::CornerBlurCache;
 pub(in crate::compositor) use window_backdrop::WindowBackdropCache;
 
@@ -169,8 +171,8 @@ impl App {
             .collect::<Vec<_>>();
 
         // Background tiles already carry their physical presentation size.
-        // Custom wallpapers preserve pixel sizing; the default grid accounts
-        // for monitor DPI before this output-local translation.
+        // Photo wallpapers preserve pixel sizing. Shader elements below also
+        // account for output density before this output-local translation.
         let tiles = if self.session_locked()
             || (!self.canvas_preview_presenting() && self.fullscreen_on_output(output_rect))
         {
@@ -178,6 +180,20 @@ impl App {
         } else {
             self.background_image_elements(renderer, output_rect, output_scale)
         };
+        if tiles.is_empty()
+            && !self.session_locked()
+            && (self.canvas_preview_presenting() || !self.fullscreen_on_output(output_rect))
+            && let Some(shader) =
+                self.background_shader_element(renderer, output_rect, output_scale)
+        {
+            elements.push(TranslatedHearthspaceRenderElement::from(
+                RelocateRenderElement::from_element(
+                    HearthspaceRenderElement::from(shader),
+                    output_offset,
+                    Relocate::Relative,
+                ),
+            ));
+        }
         for tile in tiles {
             elements.push(TranslatedHearthspaceRenderElement::from(
                 RelocateRenderElement::from_element(
@@ -380,7 +396,8 @@ impl App {
                         active,
                         !self.canvas_preview_active() && hovered_window == Some(id),
                         kind,
-                        self.background_image_path.is_some(),
+                        self.background_image_path.is_some()
+                            || self.background_shader_path.is_some(),
                         self.windows[index].presentation.focused_view,
                         projection.opacity,
                     )

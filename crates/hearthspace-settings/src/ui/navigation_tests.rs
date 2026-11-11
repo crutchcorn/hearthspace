@@ -189,7 +189,7 @@ fn keyboard_category_order_and_boundaries_remain_native_without_a_focus_trap() {
     assert_eq!(ui.state.selected_category, SettingsCategory::Background);
     assert!(!ui.state.navigation.open);
     assert_eq!(ui.harness.focused_widget_id(), Some(toggle));
-    assert_eq!(next_button(&mut ui, false), ui.button("Upload photo"));
+    assert_eq!(next_button(&mut ui, false), ui.button("Choose wallpaper"));
 }
 
 #[test]

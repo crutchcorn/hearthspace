@@ -54,6 +54,7 @@ fn parses_ipc_response() {
                 appearance: Appearance::default(),
                 background_mode: BackgroundMode::Contains,
                 background_image_path: Some("/tmp/wallpaper.png".to_string()),
+                background_shader_path: None,
                 monitors: vec![
                     MonitorConfig {
                         id: "primary".to_string(),
@@ -148,4 +149,24 @@ fn appearance_choices_round_trip_without_losing_other_settings() {
     ] {
         assert!(parse_settings_response(invalid).is_err());
     }
+}
+
+#[test]
+fn shader_background_round_trip_preserves_paths_and_old_defaults() {
+    let path = "/tmp/虹 #1/background.glsl";
+    let encoded = encode_background_path(path);
+    assert_eq!(
+        parse_settings_request(&format!("set background-shader-path {encoded}")),
+        Ok(SettingsRequest::SetBackgroundShaderPath(Some(path.into())))
+    );
+    let settings = Settings {
+        background_shader_path: Some(path.into()),
+        ..Settings::default()
+    };
+    assert_eq!(
+        parse_settings_response(&settings_response(settings.clone())).unwrap(),
+        settings
+    );
+    let legacy = parse_settings_response("ok test false").unwrap();
+    assert!(legacy.background_shader_path.is_none());
 }

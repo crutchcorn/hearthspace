@@ -170,6 +170,7 @@ Settings
 - appearance: Appearance (color_mode: Light | Dark, accent_color: Orange | Rose | Violet | Blue | Teal | Olive)
 - background_mode: BackgroundMode
 - background_image_path: Option<String>
+- background_shader_path: Option<String>
 - monitors: Vec<MonitorConfig>
 
 BackgroundMode
@@ -194,6 +195,7 @@ Default monitor rows provide placeholders before live outputs are resolved:
 test = false
 background_mode = repeat-with-canvas
 background_image_path = default
+background_shader_path = default
 color_mode = light
 accent_color = orange
 primary: 1920x1080 scale 1 at 0,0
@@ -202,7 +204,13 @@ secondary: 1920x1080 scale 1 at 1920,0
 
 Monitor `x` and `y` are logical desktop positions. `scale` must be positive. Legacy per-monitor setters reject empty IDs or whitespace. Complete display-layout transactions accept whitespace within IDs but reject blank IDs and NUL bytes.
 
-Monitor layout and background settings are active compositor consumers today. `background_mode` and `background_image_path` are persisted, returned through IPC, exposed by the settings app, and reloaded by the compositor when settings change. Legacy config files with `background_moves_with_canvas = true` load as `repeat-with-canvas`; `false` loads as `cover`.
+Monitor layout and background settings are active compositor consumers today. `background_mode`, `background_image_path`, and `background_shader_path` are persisted, returned through IPC, exposed by the settings app, and reloaded by the compositor when settings change. Legacy config files with `background_moves_with_canvas = true` load as `repeat-with-canvas`; `false` loads as `cover`.
+
+Photo and GLSL sources are mutually exclusive through daemon setters. With neither
+path selected, the compositor uses its bundled GLSL dots. An unset shader path is
+omitted from both TOML and legacy wire responses, preserving existing default
+payloads. See [Wallpapers](WALLPAPERS.md) for shader inputs, animation, reloads,
+and error fallback.
 
 ## IPC Protocol
 
@@ -226,6 +234,7 @@ set color-mode <light|dark>
 set accent-color <orange|rose|violet|blue|teal|olive>
 set background-mode <repeat-with-canvas|stretch|contains|cover>
 set background-image-path <default|percent-encoded-path>
+set background-shader-path <default|percent-encoded-path>
 set monitor <id> <x> <y>
 set monitor-scale <id> <scale>
 set display-layout {"version":1,"monitors":[...]}
@@ -275,6 +284,7 @@ client_set_accent_color(accent)
 client_set_test(test)
 client_set_background_mode(mode)
 client_set_background_image_path(path)
+client_set_background_shader_path(path)
 client_set_monitor_position(id, x, y)
 client_set_monitor_scale(id, scale)
 client_set_display_layout(monitors)
@@ -311,7 +321,7 @@ The app never writes `config.toml` directly. User actions update local UI state 
 
 - Appearance mode and accent choices call `client_set_color_mode()` and `client_set_accent_color()`.
 - The background fit dropdown calls `client_set_background_mode()`.
-- The background image controls call `client_set_background_image_path()`.
+- Background photo controls call `client_set_background_image_path()`; GLSL controls call `client_set_background_shader_path()`. Either setter clears the other source atomically.
 - Dragging a monitor or changing scale queues one complete display-layout transaction.
 - Live hotplug/mode observations update the open Displays page while retaining disconnected preferences and pending edits.
 

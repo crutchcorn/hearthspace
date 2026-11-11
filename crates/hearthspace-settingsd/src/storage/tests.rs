@@ -104,3 +104,21 @@ fn invalid_save_does_not_replace_existing_preferences() {
     assert_eq!(fs::read(&path).unwrap(), original);
     assert_eq!(fs::read_dir(directory.path()).unwrap().count(), 1);
 }
+
+#[test]
+fn shader_source_survives_persistence_and_old_documents_default_to_dots() {
+    let settings = Settings {
+        background_shader_path: Some("/tmp/虹 #1/dots.glsl".into()),
+        ..Settings::default()
+    };
+    let snapshot =
+        hearthspace_ipc::settings_snapshot::SettingsSnapshot::new(3, settings.clone()).unwrap();
+    let text = super::document::format(snapshot).unwrap();
+    assert_eq!(super::document::parse(&text).unwrap(), settings);
+    assert!(
+        super::document::parse("version = 1")
+            .unwrap()
+            .background_shader_path
+            .is_none()
+    );
+}

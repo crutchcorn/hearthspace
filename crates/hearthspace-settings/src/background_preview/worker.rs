@@ -45,7 +45,9 @@ async fn run(mut receiver: watch::Receiver<Request>, mut publish: impl FnMut(Res
     }
 }
 
-async fn blocking_load<T: Send + 'static>(load: impl FnOnce() -> T + Send + 'static) -> Option<T> {
+pub(crate) async fn blocking_load<T: Send + 'static>(
+    load: impl FnOnce() -> T + Send + 'static,
+) -> Option<T> {
     let (sender, receiver) = oneshot::channel();
     // Tokio waits for spawn_blocking work during runtime shutdown. A separate
     // thread lets Settings close immediately during a slow read/decode. The

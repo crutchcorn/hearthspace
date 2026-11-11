@@ -16,9 +16,9 @@ use xilem::{
 };
 
 use crate::{
-    actions::save_background_image_path,
+    actions::{save_background_image_path, save_background_shader_path},
     page_components::note,
-    state::{BackgroundPickerRequest, BackgroundPickerResponse, SettingsApp, SettingsCategory},
+    state::{BackgroundPickerResponse, SettingsApp, SettingsCategory},
     typography::label,
 };
 
@@ -26,7 +26,11 @@ pub(crate) fn app_logic(state: &mut SettingsApp) -> impl WidgetView<SettingsApp>
     state
         .background_preview
         .synchronize_path(state.settings.background_image_path.as_deref());
+    state
+        .background_shader_status
+        .synchronize_path(state.settings.background_shader_path.as_deref());
     let content = settings_view(state);
+    let content = fork(content, crate::background_shader_status::task());
     let content = fork(content, crate::frame_settings::task());
     let content = fork(content, crate::settings_backend::task());
     let content = fork(content, crate::wayland_outputs::task());
@@ -44,17 +48,40 @@ pub(crate) fn app_logic(state: &mut SettingsApp) -> impl WidgetView<SettingsApp>
         ),
         worker(
             |proxy, mut rx| async move {
-                while let Some(BackgroundPickerRequest::PickFile) = rx.recv().await {
-                    let response = match xilem::tokio::task::spawn_blocking(|| {
-                        FileDialog::new()
-                            .add_filter("PNG image", &["png"])
+                while let Some(request) = rx.recv().await {
+                    let _ = request;
+                    let response = match xilem::tokio::task::spawn_blocking(move || {
+                        let Some(path) = FileDialog::new()
+                            .add_filter("Wallpaper", &["png", "glsl", "frag"])
                             .pick_file()
+                        else {
+                            return BackgroundPickerResponse::Cancelled;
+                        };
+                        let shader = path.extension().and_then(|v| v.to_str()).is_some_and(|v| {
+                            v.eq_ignore_ascii_case("glsl") || v.eq_ignore_ascii_case("frag")
+                        });
+                        if shader {
+                            match crate::background_shader_status::load_preview(&path) {
+                                Ok(image) => BackgroundPickerResponse::ShaderSelected(path, image),
+                                Err(_) => BackgroundPickerResponse::Failed(
+                                    "Wallpaper failed to load".into(),
+                                ),
+                            }
+                        } else {
+                            let mut cache = crate::background_thumbnail::ThumbnailCache::new();
+                            if cache.load(&path).is_some() {
+                                BackgroundPickerResponse::Selected(path)
+                            } else {
+                                BackgroundPickerResponse::Failed("Wallpaper failed to load".into())
+                            }
+                        }
                     })
                     .await
                     {
-                        Ok(Some(path)) => BackgroundPickerResponse::Selected(path),
-                        Ok(None) => BackgroundPickerResponse::Cancelled,
-                        Err(error) => BackgroundPickerResponse::Failed(error.to_string()),
+                        Ok(response) => response,
+                        Err(_) => {
+                            BackgroundPickerResponse::Failed("Wallpaper failed to load".into())
+                        }
                     };
 
                     drop(proxy.message(response));
@@ -63,23 +90,35 @@ pub(crate) fn app_logic(state: &mut SettingsApp) -> impl WidgetView<SettingsApp>
             |state: &mut SettingsApp, sender| {
                 state.background_picker_request_sender = Some(sender);
             },
-            |state: &mut SettingsApp, response| {
-                state.background_picker_pending = false;
-                crate::settings_refresh::local_save_finished(state);
-                match response {
-                    BackgroundPickerResponse::Selected(path) => {
-                        save_background_image_path(state, Some(path));
-                    }
-                    BackgroundPickerResponse::Cancelled => {
-                        state.status = "Background image selection cancelled".to_string();
-                    }
-                    BackgroundPickerResponse::Failed(error) => {
-                        state.status = format!("Background image picker failed: {error}");
-                    }
-                }
-            },
+            background_picker_response,
         ),
     )
+}
+
+pub(crate) fn background_picker_response(
+    state: &mut SettingsApp,
+    response: BackgroundPickerResponse,
+) {
+    state.background_picker_pending = false;
+    crate::settings_refresh::local_save_finished(state);
+    match response {
+        BackgroundPickerResponse::ShaderSelected(path, image) => {
+            let selected = path.to_str().map(str::to_owned);
+            save_background_shader_path(state, Some(path));
+            if state.settings.background_shader_path == selected {
+                state
+                    .background_shader_status
+                    .synchronize_path(selected.as_deref());
+                state.background_shader_status.image = Some(image);
+            }
+        }
+        BackgroundPickerResponse::Selected(path) => save_background_image_path(state, Some(path)),
+        BackgroundPickerResponse::Cancelled => state.status.clear(),
+        BackgroundPickerResponse::Failed(error) => {
+            let _ = error;
+            state.status = "Wallpaper failed to load".into()
+        }
+    }
 }
 
 pub(crate) mod navigation;
@@ -94,7 +133,7 @@ pub(crate) fn settings_view(state: &SettingsApp) -> impl WidgetView<SettingsApp>
                 sidebar_view(state),
                 state,
             ),
-            state.settings.background_image_path.is_some(),
+            state.settings.has_custom_background(),
         ),
     )
 }
@@ -232,7 +271,7 @@ fn status_footer(state: &SettingsApp) -> Option<impl WidgetView<SettingsApp> + u
 }
 
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;
 
 #[cfg(test)]
 mod navigation_tests;

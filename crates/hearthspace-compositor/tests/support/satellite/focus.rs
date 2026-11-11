@@ -33,6 +33,30 @@ fn wait_take_focus(client: &WindowClient) {
     }
 }
 
+// Compositor acknowledgments and a queued WM_TAKE_FOCUS message do not
+// establish that the current asynchronous Wayland -> X11 transfer has finished.
+fn wait_input_focus(client: &WindowClient) {
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        let focus = client
+            .connection
+            .get_input_focus()
+            .unwrap()
+            .reply()
+            .unwrap()
+            .focus;
+        if focus == client.window {
+            return;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "X keyboard focus did not reach {:?}; still on {focus:?}",
+            client.window
+        );
+        thread::sleep(Duration::from_millis(10));
+    }
+}
+
 #[test]
 fn satellite_take_focus_is_sent_when_keyboard_returns_to_an_existing_window() {
     let _guard = headless_test_guard();
@@ -64,28 +88,14 @@ fn satellite_locally_active_fullscreen_client_receives_keys_after_focus_returns(
     action(&compositor, format!("fullscreen-window {} true", game.id));
     for _ in 0..2 {
         action(&compositor, format!("focus-window {}", other.id));
-        let deadline = Instant::now() + Duration::from_secs(5);
-        while other
-            .connection
-            .get_input_focus()
-            .unwrap()
-            .reply()
-            .unwrap()
-            .focus
-            != other.window
-        {
-            assert!(
-                Instant::now() < deadline,
-                "other app never acquired X keyboard focus"
-            );
-            thread::sleep(Duration::from_millis(10));
-        }
+        wait_input_focus(&other);
         game.drain(&mut Vec::new());
         other.drain(&mut Vec::new());
         action(&compositor, format!("focus-window {}", game.id));
         // This client intentionally does not set X focus in response: like a
         // locally-active game, it asks the WM for direct focus as well.
         wait_take_focus(&game);
+        wait_input_focus(&game);
         assert_eq!(
             game.connection
                 .get_input_focus()
