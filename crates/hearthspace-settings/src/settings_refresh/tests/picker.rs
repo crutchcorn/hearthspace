@@ -26,6 +26,7 @@ impl RawProxy for NoBackgroundMessages {
 fn picker_completion(response: BackgroundPickerResponse, expected_status: &str) {
     let (_directory, mut state) = state();
     state.background_picker_pending = true;
+    state.status = "Opening background file picker".into();
     state.settings.background_image_path = Some("existing.png".into());
     let snapshot = SettingsSnapshot::new(
         5,
@@ -84,10 +85,7 @@ fn picker_completion(response: BackgroundPickerResponse, expected_status: &str) 
 
 #[test]
 fn cancelled_picker_refetches_the_external_path_deferred_while_open() {
-    picker_completion(
-        BackgroundPickerResponse::Cancelled,
-        "Background selection cancelled",
-    );
+    picker_completion(BackgroundPickerResponse::Cancelled, "");
 }
 
 #[test]

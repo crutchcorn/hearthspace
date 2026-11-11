@@ -113,9 +113,7 @@ pub(crate) fn background_picker_response(
             }
         }
         BackgroundPickerResponse::Selected(path) => save_background_image_path(state, Some(path)),
-        BackgroundPickerResponse::Cancelled => {
-            state.status = "Background selection cancelled".into()
-        }
+        BackgroundPickerResponse::Cancelled => state.status.clear(),
         BackgroundPickerResponse::Failed(error) => {
             let _ = error;
             state.status = "Wallpaper failed to load".into()
