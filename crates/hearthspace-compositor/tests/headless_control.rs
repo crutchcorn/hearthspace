@@ -521,3 +521,7 @@ fn wait_for_exit(child: &mut Child) {
     }
     panic!("headless Hearthspace did not exit after quit command");
 }
+
+#[cfg(feature = "test-apps")]
+#[path = "support/subsurface_input.rs"]
+mod subsurface_input;

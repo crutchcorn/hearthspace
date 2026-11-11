@@ -26,6 +26,9 @@ impl Dispatch<wl_registry::WlRegistry, ()> for State {
                 "wl_compositor" => {
                     state.compositor = Some(registry.bind(name, version.min(4), handle, ()))
                 }
+                "wl_subcompositor" => {
+                    state.subcompositor = Some(registry.bind(name, 1, handle, ()));
+                }
                 "wl_shm" => state.shm = Some(registry.bind(name, 1, handle, ())),
                 "gtk_shell1" => state.gtk.bind(registry, name, version, handle),
                 "zxdg_decoration_manager_v1" => {

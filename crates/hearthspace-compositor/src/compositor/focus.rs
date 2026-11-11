@@ -48,6 +48,13 @@ impl WaylandFocus for KeyboardFocusTarget {
 
 impl From<WlSurface> for KeyboardFocusTarget {
     fn from(surface: WlSurface) -> Self {
+        // Pointer hits may name a dropdown/content subsurface. Keyboard focus
+        // belongs to its surface-tree root; entering a child makes toolkits
+        // treat the owning window as unfocused and dismiss its controls.
+        let mut surface = surface;
+        while let Some(parent) = get_parent(&surface) {
+            surface = parent;
+        }
         Self::Wayland(surface)
     }
 }

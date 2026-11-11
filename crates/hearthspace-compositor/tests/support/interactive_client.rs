@@ -20,6 +20,8 @@ mod frame_persistence;
 pub(crate) mod gtk;
 #[path = "client_maximize.rs"]
 mod maximize;
+#[path = "subsurface_client.rs"]
+pub(crate) mod subsurface;
 #[path = "client_touch.rs"]
 mod touch;
 
@@ -38,7 +40,9 @@ struct Window {
 struct State {
     gtk: gtk::State,
     touch: touch::State,
+    subsurface: Option<subsurface::Subsurface>,
     compositor: Option<wl_compositor::WlCompositor>,
+    subcompositor: Option<wayland_client::protocol::wl_subcompositor::WlSubcompositor>,
     shm: Option<wl_shm::WlShm>,
     wm_base: Option<xdg_wm_base::XdgWmBase>,
     decoration_manager: Option<zxdg_decoration_manager_v1::ZxdgDecorationManagerV1>,
