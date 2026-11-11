@@ -47,6 +47,27 @@ to another thread: slow main-loop work can still delay newly arriving pointer
 samples. Driver calls can also delay work on other outputs of the same GPU.
 Hardware planes and nonblocking atomic commits alone do not guarantee smoothness.
 
+### Virtual GPUs
+
+The native presenter explicitly opts into the kernel's virtual cursor-plane
+hotspot contract when atomic modesetting is available. This exposes cursor
+planes that virtual drivers otherwise hide. Unsupported drivers keep ordinary
+plane discovery; the legacy path does not opt in.
+
+Each cursor snapshot retains its hotspot in final image pixels, including
+output density and the surface tree's bounding origin. Smithay sends that
+hotspot with the cursor framebuffer and position in the same atomic update.
+Hotspot changes update plane state even when artwork and geometry are unchanged.
+This lets the virtual display replace the host-integrated cursor with the
+compositor's image, without drawing a second cursor into the primary plane.
+
+Oversized images, hotspots outside the allocated cursor buffer, and transformed
+outputs use composition. Hidden cursors and composition fallback disable the
+previous cursor plane. Hit testing and click coordinates remain unchanged.
+The [local Smithay patch](../patches/README.md#virtual-cursor-planes-and-hotspots)
+records this dependency repair. Host-visible cursor integration needs a native
+VM check; a guest screenshot alone cannot detect an extra host cursor.
+
 ## Client images and callbacks
 
 Smithay authorizes `wl_pointer.set_cursor` and owns the cursor surface role.

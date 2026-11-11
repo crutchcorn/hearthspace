@@ -1024,3 +1024,34 @@ See [vendored provenance and refresh steps](../vendor/accesskit_atspi_common/PRO
   Headless protocol coverage does not establish every game's input behavior.
 - **Removal:** adopt upstream input-model handling passing these recipient and
   globally-active regressions, then remove only this repair.
+
+## Virtual cursor planes and hotspots
+
+- **Dependency:** pinned Smithay `5c2ba4132556a08abc70ae1771d275ec2cfc031f`
+  (0.7.0), repaired in `vendor/smithay`.
+- **Patch:** [virtual cursor hotspot support](smithay-virtual-cursor-hotspot.patch).
+- **Reason:** Linux hides virtual GPU cursor planes unless the DRM client opts
+  into `DRM_CLIENT_CAP_CURSOR_PLANE_HOTSPOT`. A compositor which only draws its
+  software cursor cannot replace a host-integrated cursor inherited from another
+  desktop. Enabling the capability without supplying the hotspot misaligns the
+  host cursor with input.
+- **Behavior:** a new opt-in device constructor enables the capability only after
+  atomic modesetting succeeds and before property/plane discovery. Unsupported
+  kernels/drivers and legacy modes retain ordinary behavior. The existing device
+  constructor remains opt-out. `PlaneConfig` gains an optional `cursor_hotspot`
+  field; other initializers use `None`. `DrmCompositor::set_cursor_hotspot` carries
+  the supplied buffer-pixel hotspot through prepared and pending plane state and
+  atomic `HOTSPOT_X/Y` properties. Hotspot-only updates cannot reuse stale plane
+  state. Invalid hotspots and transformed outputs retain composition fallback.
+- **Upstream basis:** the pinned revision above and inspected upstream
+  [`8fd9fe0c74e5c13a1fc9b6797d3960c8381bda55`](https://github.com/Smithay/smithay/tree/8fd9fe0c74e5c13a1fc9b6797d3960c8381bda55)
+  lack this support. The [kernel capability contract](https://docs.kernel.org/gpu/drm-uapi.html#c.DRM_CLIENT_CAP_CURSOR_PLANE_HOTSPOT)
+  defines the required opt-in and hotspot semantics.
+- **Regression:** real Wayland cursor commits check hotspot changes without image
+  reupload, scaled negative surface-tree bounds, and out-of-buffer software
+  placement. Native acceptance must additionally verify cursor-plane completions,
+  the active plane's hotspot values, host-visible single-cursor behavior, shape
+  changes, and restoration of the original VT.
+- **Removal:** adopt upstream support only after preserving those tests and
+  replacing the opt-in constructor, setter, and added surface configuration field.
+  Remove this patch and its provenance entry together.

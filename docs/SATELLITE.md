@@ -9,9 +9,9 @@ Smithay XWM and backend selector have been removed.
 Satellite is pinned to revision
 `7bf5e0dcb0d4250860b24b04a6cb3ddeada515d0`, package 0.8.3. Build the
 `hearthspace-satellite` package alongside the compositor using the
-[guarded build workflow](DEVELOPMENT.md#guarded-builds). The helper and its
-verified private Xwayland must be beside the compositor executable. There is no
-PATH fallback or helper-path override. Old `HEARTHSPACE_X11_BACKEND` and
+[runtime build workflow](DEVELOPMENT.md#prepare-an-installable-runtime). The
+helper and its verified private Xwayland must be beside the compositor executable.
+There is no PATH fallback or helper-path override. Old `HEARTHSPACE_X11_BACKEND` and
 `HEARTHSPACE_SATELLITE_BINARY` settings have no effect.
 
 The compositor supplies a private Wayland socket, owns the helper process

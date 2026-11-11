@@ -34,6 +34,8 @@ pub(super) struct CursorSnapshot {
     pub(super) image: MemoryBuffer,
     /// Final output-local physical top-left, including hotspot and tree bounds.
     pub(super) location: Point<i32, Physical>,
+    /// Mouse position within the final image, including surface-tree bounds.
+    pub(super) hotspot: Point<i32, smithay::utils::Buffer>,
 }
 
 #[derive(PartialEq)]
@@ -137,11 +139,17 @@ impl SnapshotBuilder {
             hotspot.to_f64().to_physical(f64::from(view.scale)),
             cached.offset,
         )?;
+        let hotspot = pixels::position(
+            (0.0, 0.0).into(),
+            cached.offset.to_f64(),
+            hotspot.to_physical(view.scale),
+        )?;
         Ok(Some(CursorSnapshot {
             image_id: self.image_id.clone(),
             revision: self.revision,
             image: cached.image.clone(),
             location,
+            hotspot: (hotspot.x, hotspot.y).into(),
         }))
     }
 

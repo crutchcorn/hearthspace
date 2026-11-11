@@ -343,6 +343,7 @@ impl AtomicDrmSurface {
             let plane_state = PlaneState {
                 handle: self.plane,
                 config: Some(PlaneConfig {
+                cursor_hotspot: None,
                     src: Rectangle::from_size(pending.mode.size().into()).to_f64(),
                     dst: Rectangle::from_size(
                         (pending.mode.size().0 as i32, pending.mode.size().1 as i32).into(),
@@ -402,6 +403,7 @@ impl AtomicDrmSurface {
         let plane_state = PlaneState {
             handle: self.plane,
             config: Some(PlaneConfig {
+                cursor_hotspot: None,
                 src: Rectangle::from_size(pending.mode.size().into()).to_f64(),
                 dst: Rectangle::from_size(
                     (pending.mode.size().0 as i32, pending.mode.size().1 as i32).into(),
@@ -462,6 +464,7 @@ impl AtomicDrmSurface {
         let plane_state = PlaneState {
             handle: self.plane,
             config: Some(PlaneConfig {
+                cursor_hotspot: None,
                 src: Rectangle::from_size(pending.mode.size().into()).to_f64(),
                 dst: Rectangle::from_size(
                     (pending.mode.size().0 as i32, pending.mode.size().1 as i32).into(),
@@ -518,6 +521,7 @@ impl AtomicDrmSurface {
         let plane_state = PlaneState {
             handle: self.plane,
             config: Some(PlaneConfig {
+                cursor_hotspot: None,
                 src: Rectangle::from_size(mode.size().into()).to_f64(),
                 dst: Rectangle::from_size((mode.size().0 as i32, mode.size().1 as i32).into()),
                 transform: Transform::Normal,
@@ -638,6 +642,7 @@ impl AtomicDrmSurface {
         let plane_config = PlaneState {
             handle: self.plane,
             config: Some(PlaneConfig {
+                cursor_hotspot: None,
                 src: Rectangle::from_size(pending.mode.size().into()).to_f64(),
                 dst: Rectangle::from_size(
                     (pending.mode.size().0 as i32, pending.mode.size().1 as i32).into(),
@@ -1248,6 +1253,13 @@ impl<'a> AtomicRequest<'a> {
             plane_props.insert("CRTC_W", property::Value::UnsignedRange(config.dst.size.w as u64));
             plane_props.insert("CRTC_H", property::Value::UnsignedRange(config.dst.size.h as u64));
 
+            if let Some(hotspot) = config.cursor_hotspot {
+                for (name, value) in [("HOTSPOT_X", hotspot.x), ("HOTSPOT_Y", hotspot.y)] {
+                    if self.mapping.plane_prop_handle(handle, name).is_ok() {
+                        plane_props.insert(name, property::Value::UnsignedRange(value as u64));
+                    }
+                }
+            }
             if self.mapping.plane_prop_handle(handle, "rotation").is_ok() {
                 plane_props.insert(
                     "rotation",
