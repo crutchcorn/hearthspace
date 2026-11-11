@@ -12,6 +12,7 @@ use xilem::{
     view::{CrossAxisAlignment, button, flex_col, label, sized_box},
 };
 
+pub mod controls;
 pub mod gesture_pad;
 pub use gesture_pad::GesturePad;
 mod touch_scroll;

@@ -1,5 +1,5 @@
 use super::{button::SettingsSelectButton, option::SelectOption};
-use hearthspace_ui_components as components;
+use crate as components;
 use xilem::masonry::{
     accesskit::{Node, Role},
     core::{
@@ -31,6 +31,7 @@ impl SettingsSelectLayer {
         name: String,
         labels: &[String],
         selected: usize,
+        font_size: f32,
     ) -> Self {
         let options: Vec<_> = labels
             .iter()
@@ -41,6 +42,7 @@ impl SettingsSelectLayer {
                     index,
                     label.clone(),
                     selected == index,
+                    font_size,
                 ))
             })
             .collect();
@@ -248,7 +250,7 @@ impl Widget for SelectMenu {
 
 pub(crate) fn theme_properties(
     properties: &mut xilem::masonry::core::DefaultProperties,
-    palette: hearthspace_ui_components::Palette,
+    palette: crate::Palette,
 ) {
     properties.insert::<SelectMenu, _>(palette);
 }

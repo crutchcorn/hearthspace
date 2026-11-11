@@ -1,5 +1,5 @@
 use super::layer::SettingsSelectLayer;
-use hearthspace_ui_components as components;
+use crate as components;
 use xilem::masonry::{
     accesskit::{Action, Node, Role},
     core::{
@@ -24,6 +24,7 @@ pub(super) struct SettingsSelectButton {
     pub name: String,
     pub options: Vec<String>,
     pub selected: usize,
+    font_size: f32,
     child: WidgetPod<dyn Widget>,
     popup: Option<Popup>,
     focus: components::settings_material::FocusIndicator,
@@ -34,12 +35,14 @@ impl SettingsSelectButton {
         name: String,
         options: Vec<String>,
         selected: usize,
+        font_size: f32,
         child: NewWidget<impl Widget + ?Sized>,
     ) -> Self {
         Self {
             name,
             options,
             selected,
+            font_size,
             child: child.erased().to_pod(),
             popup: None,
             focus: components::settings_material::FocusIndicator::default(),
@@ -96,6 +99,7 @@ impl SettingsSelectButton {
             self.name.clone(),
             &self.options,
             self.selected,
+            self.font_size,
         );
         let options = layer.option_ids();
         let layer = NewWidget::new(layer);
@@ -256,7 +260,10 @@ impl Widget for SettingsSelectButton {
         }
         if matches!(
             event,
-            Update::FocusChanged(_) | Update::HoveredChanged(_) | Update::ActiveChanged(_)
+            Update::FocusChanged(_)
+                | Update::HoveredChanged(_)
+                | Update::ActiveChanged(_)
+                | Update::DisabledChanged(_)
         ) {
             ctx.request_paint_only();
         }
@@ -306,7 +313,13 @@ impl Widget for SettingsSelectButton {
         props: &PropertiesRef<'_>,
         painter: &mut Painter<'_>,
     ) {
-        let palette = *props.get::<components::Palette>(ctx.property_cache());
+        let mut palette = *props.get::<components::Palette>(ctx.property_cache());
+        if ctx.is_disabled() {
+            palette.surface_control = palette.surface_control.multiply_alpha(0.5);
+            palette.border = palette.border.multiply_alpha(0.5);
+            palette.glass_edge_top = palette.glass_edge_top.multiply_alpha(0.5);
+            palette.glass_edge_bottom = palette.glass_edge_bottom.multiply_alpha(0.5);
+        }
         components::settings_material::paint_button_with_palette(
             painter,
             ctx.border_box(),

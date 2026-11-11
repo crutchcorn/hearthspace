@@ -60,5 +60,4 @@ pub(crate) fn theme_properties(
     properties.insert::<disclosure::DisclosureButton, _>(palette);
     properties.insert::<toggle::NamedSwitch, _>(palette);
     properties.insert::<progress::ProgressWidget, _>(palette);
-    select::theme_properties(properties, palette);
 }

@@ -82,6 +82,15 @@ pub struct Palette {
 }
 
 impl Palette {
+    /// Reference checkbox outline remains visible over the canvas field.
+    pub(crate) fn checkbox_border(&self) -> Color {
+        mix(self.muted, 0.45, self.chrome_border)
+    }
+
+    /// Solid checked fill in dark mode, also the dark slider's lower stop.
+    pub(crate) fn dark_control_fill(&self) -> Color {
+        mix(self.accent_base, 0.72, self.surface)
+    }
     pub fn new(appearance: Appearance) -> Self {
         let dark = appearance.color_mode == ColorMode::Dark;
         let [r, g, b] = appearance.accent_color.rgb();
