@@ -288,9 +288,11 @@ frame wait while measuring scanout; use `--wait none` for those actions.
 
 Enable `hearthspace::presenter=trace` to inspect `primary_scanout` on plane
 selection and verified completion records. A successful buffer import or
-fullscreen configure alone does not establish direct scanout. Retain the
-verified completion, output configuration, and binary provenance with native
-acceptance evidence; see [native testing](NATIVE_TESTING.md).
+fullscreen configure alone does not establish direct scanout. Canvas zoom behind
+an output-coordinate fullscreen window does not disqualify it; the selected
+surface must still match the output's native geometry and buffer dimensions.
+Retain the verified completion, output configuration, and binary provenance with
+native acceptance evidence; see [native testing](NATIVE_TESTING.md).
 
 The `scanout-fixture` example supplies a fullscreen, opaque DMA-BUF with a known
 linear layout and hides its pointer through the normal client cursor request.

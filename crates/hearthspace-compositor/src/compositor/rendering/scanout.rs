@@ -28,12 +28,14 @@ impl App {
         if self.session_locked()
             || !self.fullscreen_on_output(output)
             || self.canvas_preview_presenting()
-            || self.viewport_scale != 1.0
             || self.viewport_animation.is_some()
             || self.layout_requires_composition()
         {
             return None;
         }
+        // Fullscreen windows use output coordinates regardless of canvas zoom.
+        // Check their actual element geometry/source below rather than rejecting
+        // an unrelated zoom on the canvas behind them.
         // Use the same stack as composition so shell, OSD, popup, selection,
         // subsurface, and other overlays cannot be silently discarded.
         let scene = self.collect_render_elements(renderer, output);
