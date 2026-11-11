@@ -40,6 +40,24 @@ pub(super) struct TargetRefresh {
     pub(super) recovery_needed: bool,
 }
 
+impl TargetRefresh {
+    pub(super) fn recovery_needed_after(
+        &self,
+        previous_failure: bool,
+        configuration_pending: bool,
+    ) -> bool {
+        // A deferred request may only be waiting for the first flip. Do not
+        // persist that transient readiness condition as an actual scanout fault.
+        // Real faults survive deferral; a successful rebuild clears them.
+        configuration_pending
+            || if self.rebuilt {
+                self.recovery_needed
+            } else {
+                previous_failure
+            }
+    }
+}
+
 /// Reconcile usable targets and scanout failures only. Discovery completeness
 /// independently controls backend recovery/readiness, never surface replacement.
 /// The callback is the external KMS surface rebuild and source invalidation.
@@ -178,6 +196,75 @@ mod asynchronous_recovery_tests {
             assert!(!healthy_result.rebuilt);
         }
         assert_eq!(rebuilds, 1);
+    }
+
+    #[test]
+    fn grace_poll_does_not_latch_waiting_for_first_flip_as_a_scanout_failure() {
+        let started = Instant::now();
+        let key = OutputKey {
+            device: DeviceToken {
+                id: 1,
+                incarnation: 1,
+            },
+            crtc: NonZeroU32::new(7).unwrap().into(),
+            generation: 1,
+        };
+        let mut presentation = OutputPresentation::new(key);
+        presentation.queued(1);
+        let targets = ["eDP-1"];
+        let mut failed = false;
+        // The timer polls before the first valid frame completes. This is a
+        // readiness wait, not evidence that the new physical source failed.
+        let poll = refresh_after_configuration(
+            &targets,
+            &targets,
+            true,
+            failed || !presentation.presented_once,
+            started + Duration::from_millis(100),
+            Some(started + CONFIRMATION_GRACE),
+            || panic!("configuration is still in its confirmation grace period"),
+        );
+        failed = poll.recovery_needed_after(failed, false);
+        assert_eq!(presentation.presented(key, 1, 1), Some(true));
+        let healthy = refresh_after_configuration(
+            &targets,
+            &targets,
+            true,
+            failed || !presentation.presented_once,
+            started + CONFIRMATION_GRACE,
+            Some(started + CONFIRMATION_GRACE),
+            || panic!("a verified resumed output was rebuilt after its grace poll"),
+        );
+        assert!(!healthy.rebuilt);
+        assert!(!healthy.recovery_needed_after(failed, false));
+    }
+
+    #[test]
+    fn grace_poll_preserves_a_real_failure_until_rebuild_and_pending_configuration() {
+        let started = Instant::now();
+        let targets = ["eDP-1"];
+        let deferred = refresh_after_configuration(
+            &targets,
+            &targets,
+            true,
+            true,
+            started,
+            Some(started + CONFIRMATION_GRACE),
+            || panic!("grace must defer rebuild"),
+        );
+        assert!(deferred.recovery_needed_after(true, false));
+        assert!(deferred.recovery_needed_after(false, true));
+        let repaired = refresh_after_configuration(
+            &targets,
+            &targets,
+            true,
+            true,
+            started + CONFIRMATION_GRACE,
+            Some(started + CONFIRMATION_GRACE),
+            || true,
+        );
+        assert!(repaired.rebuilt);
+        assert!(!repaired.recovery_needed_after(true, false));
     }
 
     #[test]

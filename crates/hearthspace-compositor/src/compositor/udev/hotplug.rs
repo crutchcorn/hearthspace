@@ -301,7 +301,8 @@ impl UdevBackendState {
                 true
             },
         );
-        device.recovery_needed = refreshed.recovery_needed || device.configuration_pending;
+        device.recovery_needed =
+            refreshed.recovery_needed_after(device.recovery_needed, device.configuration_pending);
         refreshed.rebuilt
     }
 
