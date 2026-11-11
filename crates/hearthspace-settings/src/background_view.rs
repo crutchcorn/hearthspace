@@ -1,4 +1,3 @@
-use hearthspace_ipc::BackgroundMode;
 use hearthspace_ui_components::{
     self as components,
     icons::{Icon, icon},
@@ -90,17 +89,6 @@ pub(crate) fn view(state: &SettingsApp) -> Box<AnyWidgetView<SettingsApp>> {
                             ),
                         ))
                         .gap(12.0.px())
-                    }),
-                    (!shader).then(|| {
-                        label(
-                            if state.settings.background_mode == BackgroundMode::RepeatWithCanvas {
-                                "Moves with the canvas."
-                            } else {
-                                "Stays in place as the canvas moves."
-                            },
-                        )
-                        .text_size(10.)
-                        .color(palette.muted)
                     }),
                     sized_box(
                         components::settings_button(
