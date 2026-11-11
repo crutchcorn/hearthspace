@@ -370,10 +370,7 @@ The compositor release artifact was unusable after reboot. The last resource
 sample preceded the build, so it cannot establish peak memory or temperature.
 Earlier acceptance artifacts under `/tmp` were lost. Recorded historical results
 below remain bounded to their original runs; they do not validate this build.
-The [guarded build workflow](DEVELOPMENT.md#guarded-builds) adds resource
-containment and persistent monitoring as precautions. The reset's cause remains
-unconfirmed, and these precautions are not evidence of a repaired hardware or
-kernel fault.
+The reset's cause remains unconfirmed.
 
 ## Hybrid GPU native acceptance, 2026-10-30
 
