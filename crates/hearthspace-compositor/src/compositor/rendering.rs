@@ -25,7 +25,7 @@ use wayland_server::protocol::wl_surface;
 use super::{App, ManagedWindowKind, window_frame};
 
 mod background;
-mod background_shader;
+pub(in crate::compositor) mod background_shader;
 mod blur;
 mod blur_shader;
 mod layout_clip;

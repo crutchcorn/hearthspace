@@ -42,6 +42,7 @@ pub(in crate::compositor) struct BackgroundShader {
     started: Instant,
     context: Option<ContextId<GlesTexture>>,
     program: Option<GlesPixelProgram>,
+    last_source: Option<String>,
     views: HashMap<ViewKey, CachedElement>,
     animated: bool,
     animation_enabled: bool,
@@ -55,6 +56,7 @@ impl Default for BackgroundShader {
             started: Instant::now(),
             context: None,
             program: None,
+            last_source: None,
             views: HashMap::new(),
             animated: false,
             animation_enabled: true,
@@ -92,15 +94,18 @@ impl BackgroundShader {
         let result = source.and_then(|source| {
             let source = source.as_deref().unwrap_or(DOTS);
             self.animated = path.is_some() && uses_time(source);
-            compile(renderer, source).map_err(|error| error.to_string())
+            let program = compile(renderer, source).map_err(|error| error.to_string())?;
+            self.last_source = Some(source.to_owned());
+            Ok(program)
         });
         match result {
             Ok(program) => self.program = Some(program),
             Err(error) => {
-                self.animated = false;
-                self.error = Some(error.chars().take(2048).collect());
-                tracing::warn!(path, error = ?self.error, "GLSL background rejected; using canvas dots");
-                self.program = compile(renderer, DOTS).ok();
+                self.error = Some("Wallpaper failed to load".into());
+                tracing::warn!(path, %error, "wallpaper rejected; retaining the previous shader");
+                let previous = self.last_source.as_deref().unwrap_or(DOTS);
+                self.animated = uses_time(previous);
+                self.program = compile(renderer, previous).ok();
             }
         }
     }
@@ -344,3 +349,5 @@ impl App {
 #[cfg(test)]
 #[path = "background_shader_tests.rs"]
 mod tests;
+
+pub(in crate::compositor) mod preview;

@@ -110,6 +110,12 @@ impl CalloopData {
         {
             return ControlReply::Err("session is locked".into());
         }
+        if let Some(path) = text.strip_prefix("wallpaper-preview ") {
+            let Ok(path) = serde_json::from_str::<String>(path) else {
+                return ControlReply::Err("Wallpaper failed to load".into());
+            };
+            return self.wallpaper_preview(&path);
+        }
         if text == "session-resume" {
             return self.resume_session();
         }

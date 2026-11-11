@@ -84,7 +84,8 @@ spacing. Photo backgrounds keep their existing texture path.
 
 Shader source is loaded and compiled on selection, explicit settings reload, or
 renderer-context replacement, with a bounded file size. Failed custom compilation
-falls back to the bundled dots. Static shaders do not add an event-loop timer;
+retains the last successfully compiled source, using bundled dots only when no
+previous shader exists. Settings validates candidates before committing them. Static shaders do not add an event-loop timer;
 shaders using `u_time` request scene redraws at approximately 30 Hz while visible.
 Device presenters continue consuming cursor-free leased scenes and own no user
 shader compilation. See [Wallpapers](WALLPAPERS.md) for the GLSL contract.

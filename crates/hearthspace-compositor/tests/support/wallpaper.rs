@@ -74,12 +74,50 @@ fn saved_glsl_renders_and_same_path_reload_recovers_from_errors_without_restart(
     assert!(active["error"].is_null());
     assert_eq!(active["animated"], false);
 
+    let invalid = directory.path().join("invalid.glsl");
+    std::fs::write(&invalid, "invalid GLSL").unwrap();
+    let rejected = compositor.send_text_command(&format!(
+        "wallpaper-preview {}",
+        serde_json::to_string(&invalid).unwrap()
+    ));
+    assert!(rejected.starts_with("err Wallpaper failed to load"));
+    assert_color(&compositor, [255, 0, 0, 255]);
+    assert_eq!(
+        hearthspace_ipc::client_get_settings_at(&socket)
+            .unwrap()
+            .background_shader_path
+            .as_deref(),
+        file.to_str()
+    );
+    let candidate = directory.path().join("blue.glsl");
+    std::fs::write(&candidate, source("0.,0.,1.")).unwrap();
+    let preview = hearthspace_ipc::transport::request_payload(
+        &compositor.command_socket_path,
+        &format!(
+            "wallpaper-preview {}",
+            serde_json::to_string(&candidate).unwrap()
+        ),
+        Duration::from_secs(3),
+        2 * 1024 * 1024,
+    )
+    .unwrap();
+    let mut reader = png::Decoder::new(std::io::Cursor::new(preview))
+        .read_info()
+        .unwrap();
+    let mut bytes = vec![0; reader.output_buffer_size().unwrap()];
+    let info = reader.next_frame(&mut bytes).unwrap();
+    assert_eq!((info.width, info.height), (336, 256));
+    assert_eq!(&bytes[..4], &[0, 0, 255, 255]);
+    assert_color(&compositor, [255, 0, 0, 255]);
     std::fs::write(&file, "invalid GLSL").unwrap();
     action(&compositor, "reload-settings");
     // A real capture waits for the newly rendered frame, rather than accepting
     // the reload acknowledgment as evidence of completed compilation.
-    assert_color(&compositor, [229, 233, 227, 255]);
-    assert!(query(&compositor, "status")["background_shader"]["error"].is_string());
+    assert_color(&compositor, [255, 0, 0, 255]);
+    assert_eq!(
+        query(&compositor, "status")["background_shader"]["error"],
+        "Wallpaper failed to load"
+    );
     assert_eq!(
         hearthspace_ipc::client_get_settings_at(&socket)
             .unwrap()
