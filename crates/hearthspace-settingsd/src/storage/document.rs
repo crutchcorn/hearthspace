@@ -20,6 +20,8 @@ struct Document {
     background_mode: BackgroundMode,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     background_image_path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    background_shader_path: Option<String>,
     #[serde(default = "default_color")]
     color_mode: String,
     #[serde(default = "default_accent")]
@@ -53,6 +55,7 @@ pub(super) fn parse_snapshot(
                 },
                 background_mode: document.background_mode,
                 background_image_path: document.background_image_path,
+                background_shader_path: document.background_shader_path,
                 monitors: document.monitors,
             };
             validate_monitor_configs(&settings.monitors).map_err(invalid)?;
@@ -77,6 +80,7 @@ pub(super) fn format(
         test: settings.test,
         background_mode: settings.background_mode,
         background_image_path: settings.background_image_path,
+        background_shader_path: settings.background_shader_path,
         color_mode: settings.appearance.color_mode.to_string(),
         accent_color: settings.appearance.accent_color.to_string(),
         monitors: settings.monitors,

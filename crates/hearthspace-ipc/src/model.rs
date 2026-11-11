@@ -10,6 +10,8 @@ pub struct Settings {
     pub appearance: Appearance,
     pub background_mode: BackgroundMode,
     pub background_image_path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub background_shader_path: Option<String>,
     pub monitors: Vec<MonitorConfig>,
 }
 
@@ -81,6 +83,7 @@ impl Default for Settings {
             appearance: Appearance::default(),
             background_mode: BackgroundMode::default(),
             background_image_path: None,
+            background_shader_path: None,
             monitors: vec![
                 MonitorConfig {
                     id: "primary".to_string(),
@@ -113,6 +116,7 @@ pub enum SettingsRequest {
     SetAccentColor(AccentColor),
     SetBackgroundMode(BackgroundMode),
     SetBackgroundImagePath(Option<String>),
+    SetBackgroundShaderPath(Option<String>),
     /// One complete connected layout; disconnected preferences remain saved.
     SetDisplayLayout(Vec<MonitorConfig>),
     SetMonitorPosition {

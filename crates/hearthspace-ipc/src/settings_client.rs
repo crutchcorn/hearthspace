@@ -54,6 +54,13 @@ pub fn client_set_background_image_path(path: Option<&str>) -> io::Result<Settin
     send_settings_request(&format!("set background-image-path {path}\n"))
 }
 
+pub fn client_set_background_shader_path(path: Option<&str>) -> io::Result<Settings> {
+    let path = path
+        .map(encode_background_path)
+        .unwrap_or_else(|| "default".to_string());
+    send_settings_request(&format!("set background-shader-path {path}\n"))
+}
+
 pub fn client_set_monitor_position(id: &str, x: i32, y: i32) -> io::Result<Settings> {
     validate_monitor_id(id)?;
     send_settings_request(&format!("set monitor {id} {x} {y}\n"))

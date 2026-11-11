@@ -20,6 +20,9 @@ pub fn parse_settings_request(line: &str) -> Result<SettingsRequest, String> {
         ["set", "background-image-path", value] => Ok(SettingsRequest::SetBackgroundImagePath(
             parse_background_image_path(value).map_err(|error| error.to_string())?,
         )),
+        ["set", "background-shader-path", value] => Ok(SettingsRequest::SetBackgroundShaderPath(
+            parse_background_image_path(value).map_err(|error| error.to_string())?,
+        )),
         ["set", "monitor", id, x, y] => Ok(SettingsRequest::SetMonitorPosition {
             id: (*id).to_string(),
             x: parse_i32(x, "monitor x")?,
@@ -45,6 +48,12 @@ pub fn settings_response(settings: Settings) -> String {
             .map(encode_background_path)
             .unwrap_or_else(|| "default".to_string())
     );
+    if let Some(path) = settings.background_shader_path.as_deref() {
+        response.push_str(&format!(
+            " background-shader-path {}",
+            encode_background_path(path)
+        ));
+    }
     for monitor in settings.monitors {
         response.push_str(&format!(
             " monitor {} {} {} {} {} {} {}",
@@ -157,11 +166,16 @@ fn parse_settings_response_parts(
         test: parse_bool(test).map_err(io::Error::other)?,
         background_mode,
         background_image_path,
+        background_shader_path: None,
         monitors: Vec::new(),
         appearance: Appearance::default(),
     };
     while !rest.is_empty() {
         rest = match rest {
+            ["background-shader-path", value, rest @ ..] => {
+                settings.background_shader_path = parse_background_image_path(value)?;
+                rest
+            }
             ["color-mode", value, rest @ ..] => {
                 settings.appearance.color_mode = value.parse().map_err(io::Error::other)?;
                 rest
