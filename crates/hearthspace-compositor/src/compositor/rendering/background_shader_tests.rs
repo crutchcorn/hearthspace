@@ -71,11 +71,13 @@ fn glsl_dots_keep_theme_pixels_and_logical_spacing_at_both_densities() {
                 .element(
                     &mut renderer,
                     None,
-                    view((0, 0)),
-                    density,
-                    CanvasPoint { x: 0, y: 0 },
-                    1.,
-                    mode,
+                    ShaderView {
+                        output: view((0, 0)),
+                        density,
+                        camera: CanvasPoint { x: 0, y: 0 },
+                        zoom: 1.,
+                        mode,
+                    },
                 )
                 .unwrap();
             assert!(shader.error.is_none());
@@ -116,11 +118,13 @@ fn dots_remain_canvas_anchored_on_offset_outputs_and_large_negative_pans() {
         .element(
             &mut renderer,
             None,
-            view(origin),
-            2,
-            camera,
-            1.,
-            ColorMode::Light,
+            ShaderView {
+                output: view(origin),
+                density: 2,
+                camera,
+                zoom: 1.,
+                mode: ColorMode::Light,
+            },
         )
         .unwrap();
     let image = pixels(&mut renderer, element, origin, 2);
@@ -131,14 +135,16 @@ fn dots_remain_canvas_anchored_on_offset_outputs_and_large_negative_pans() {
         .element(
             &mut renderer,
             None,
-            view(origin),
-            2,
-            CanvasPoint {
-                x: camera.x + 1,
-                y: camera.y,
+            ShaderView {
+                output: view(origin),
+                density: 2,
+                camera: CanvasPoint {
+                    x: camera.x + 1,
+                    y: camera.y,
+                },
+                zoom: 1.,
+                mode: ColorMode::Light,
             },
-            1.,
-            ColorMode::Light,
         )
         .unwrap();
     assert_ne!(
@@ -150,11 +156,13 @@ fn dots_remain_canvas_anchored_on_offset_outputs_and_large_negative_pans() {
         .element(
             &mut renderer,
             None,
-            view((0, 0)),
-            1,
-            CanvasPoint { x: 0, y: 0 },
-            2.,
-            ColorMode::Light,
+            ShaderView {
+                output: view((0, 0)),
+                density: 1,
+                camera: CanvasPoint { x: 0, y: 0 },
+                zoom: 2.,
+                mode: ColorMode::Light,
+            },
         )
         .unwrap();
     assert_eq!(
@@ -171,22 +179,26 @@ fn a_static_shader_reuses_identity_and_commit_until_its_view_or_theme_changes() 
         .element(
             &mut renderer,
             None,
-            view((0, 0)),
-            1,
-            CanvasPoint { x: 0, y: 0 },
-            1.,
-            ColorMode::Light,
+            ShaderView {
+                output: view((0, 0)),
+                density: 1,
+                camera: CanvasPoint { x: 0, y: 0 },
+                zoom: 1.,
+                mode: ColorMode::Light,
+            },
         )
         .unwrap();
     let second = shader
         .element(
             &mut renderer,
             None,
-            view((0, 0)),
-            1,
-            CanvasPoint { x: 0, y: 0 },
-            1.,
-            ColorMode::Light,
+            ShaderView {
+                output: view((0, 0)),
+                density: 1,
+                camera: CanvasPoint { x: 0, y: 0 },
+                zoom: 1.,
+                mode: ColorMode::Light,
+            },
         )
         .unwrap();
     assert_eq!(first.id(), second.id());
@@ -195,11 +207,13 @@ fn a_static_shader_reuses_identity_and_commit_until_its_view_or_theme_changes() 
         .element(
             &mut renderer,
             None,
-            view((0, 0)),
-            1,
-            CanvasPoint { x: 1, y: 0 },
-            1.,
-            ColorMode::Light,
+            ShaderView {
+                output: view((0, 0)),
+                density: 1,
+                camera: CanvasPoint { x: 1, y: 0 },
+                zoom: 1.,
+                mode: ColorMode::Light,
+            },
         )
         .unwrap();
     assert_eq!(first.id(), changed.id());
@@ -263,11 +277,13 @@ fn invalid_glsl_falls_back_to_dots_then_a_reload_recovers_and_enforces_opacity()
         .element(
             &mut renderer,
             Some(file.to_str().unwrap()),
-            view((0, 0)),
-            1,
-            CanvasPoint { x: 0, y: 0 },
-            1.,
-            ColorMode::Light,
+            ShaderView {
+                output: view((0, 0)),
+                density: 1,
+                camera: CanvasPoint { x: 0, y: 0 },
+                zoom: 1.,
+                mode: ColorMode::Light,
+            },
         )
         .unwrap();
     assert!(shader.error.is_some());
@@ -285,11 +301,13 @@ fn invalid_glsl_falls_back_to_dots_then_a_reload_recovers_and_enforces_opacity()
         .element(
             &mut renderer,
             Some(file.to_str().unwrap()),
-            view((0, 0)),
-            1,
-            CanvasPoint { x: 0, y: 0 },
-            1.,
-            ColorMode::Light,
+            ShaderView {
+                output: view((0, 0)),
+                density: 1,
+                camera: CanvasPoint { x: 0, y: 0 },
+                zoom: 1.,
+                mode: ColorMode::Light,
+            },
         )
         .unwrap();
     assert!(shader.error.is_none());
@@ -310,11 +328,13 @@ fn time_uniform_changes_real_shader_pixels_and_context_replacement_recompiles() 
         .element(
             &mut renderer_a,
             Some(file.to_str().unwrap()),
-            view((0, 0)),
-            1,
-            CanvasPoint { x: 0, y: 0 },
-            1.,
-            ColorMode::Light,
+            ShaderView {
+                output: view((0, 0)),
+                density: 1,
+                camera: CanvasPoint { x: 0, y: 0 },
+                zoom: 1.,
+                mode: ColorMode::Light,
+            },
         )
         .unwrap();
     let first_pixels = pixels(&mut renderer_a, first, (0, 0), 1);
@@ -324,11 +344,13 @@ fn time_uniform_changes_real_shader_pixels_and_context_replacement_recompiles() 
         .element(
             &mut renderer_a,
             Some(file.to_str().unwrap()),
-            view((0, 0)),
-            1,
-            CanvasPoint { x: 0, y: 0 },
-            1.,
-            ColorMode::Light,
+            ShaderView {
+                output: view((0, 0)),
+                density: 1,
+                camera: CanvasPoint { x: 0, y: 0 },
+                zoom: 1.,
+                mode: ColorMode::Light,
+            },
         )
         .unwrap();
     assert_ne!(first_pixels, pixels(&mut renderer_a, next, (0, 0), 1));
@@ -337,11 +359,13 @@ fn time_uniform_changes_real_shader_pixels_and_context_replacement_recompiles() 
         .element(
             &mut renderer_b,
             Some(file.to_str().unwrap()),
-            view((0, 0)),
-            1,
-            CanvasPoint { x: 0, y: 0 },
-            1.,
-            ColorMode::Light,
+            ShaderView {
+                output: view((0, 0)),
+                density: 1,
+                camera: CanvasPoint { x: 0, y: 0 },
+                zoom: 1.,
+                mode: ColorMode::Light,
+            },
         )
         .unwrap();
     assert!(shader.error.is_none());
@@ -351,11 +375,5 @@ fn time_uniform_changes_real_shader_pixels_and_context_replacement_recompiles() 
     );
 }
 
-#[test]
-fn time_in_comments_or_an_unused_declaration_does_not_schedule_animation() {
-    assert!(!uses_time("// u_time u_time\n void main(){}"));
-    assert!(!uses_time("/* u_time */ uniform float u_time;"));
-    assert!(uses_time(
-        "uniform float u_time; void main(){float t=u_time;}"
-    ));
-}
+#[path = "background_shader_edge_tests.rs"]
+mod edge;

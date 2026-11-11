@@ -30,6 +30,14 @@ struct CachedElement {
     parameters: Vec<u32>,
 }
 
+struct ShaderView {
+    output: Rectangle<i32, Logical>,
+    density: i32,
+    camera: CanvasPoint,
+    zoom: f64,
+    mode: ColorMode,
+}
+
 pub(in crate::compositor) struct BackgroundShader {
     started: Instant,
     context: Option<ContextId<GlesTexture>>,
@@ -99,12 +107,15 @@ impl BackgroundShader {
         &mut self,
         renderer: &mut GlesRenderer,
         path: Option<&str>,
-        output: Rectangle<i32, Logical>,
-        density: i32,
-        camera: CanvasPoint,
-        zoom: f64,
-        mode: ColorMode,
+        view: ShaderView,
     ) -> Option<PixelShaderElement> {
+        let ShaderView {
+            output,
+            density,
+            camera,
+            zoom,
+            mode,
+        } = view;
         if !zoom.is_finite() || zoom <= 0.0 {
             return None;
         }
@@ -180,16 +191,19 @@ impl BackgroundShader {
                 element: PixelShaderElement::new(
                     program,
                     area,
-                    Some(vec![Rectangle::from_size(area.size)]),
+                    path.is_none()
+                        .then(|| vec![Rectangle::from_size(area.size)]),
                     1.,
                     uniforms.clone(),
                     Kind::Unspecified,
                 ),
                 parameters: Vec::new(),
             });
-        cached
-            .element
-            .resize(area, Some(vec![Rectangle::from_size(area.size)]));
+        cached.element.resize(
+            area,
+            path.is_none()
+                .then(|| vec![Rectangle::from_size(area.size)]),
+        );
         if cached.parameters != parameters {
             cached.element.update_uniforms(uniforms);
             cached.parameters = parameters;
@@ -280,11 +294,13 @@ impl App {
         self.background_shader.element(
             renderer,
             self.background_shader_path.as_deref(),
-            output,
-            density,
-            self.viewport_offset,
-            self.viewport_scale,
-            self.appearance.color_mode,
+            ShaderView {
+                output,
+                density,
+                camera: self.viewport_offset,
+                zoom: self.viewport_scale,
+                mode: self.appearance.color_mode,
+            },
         )
     }
 

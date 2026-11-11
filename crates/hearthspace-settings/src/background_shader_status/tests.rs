@@ -69,7 +69,7 @@ fn reload_precedes_bounded_status_and_compile_failure_does_not_change_selection(
             BufReader::new(&stream).read_line(&mut command).unwrap();
             assert_eq!(command.trim(), expected);
             if expected == "status" {
-                write!(stream, "ok {}\n", reply.len()).unwrap();
+                writeln!(stream, "ok {}", reply.len()).unwrap();
             }
             stream.write_all(reply.as_bytes()).unwrap();
         }
