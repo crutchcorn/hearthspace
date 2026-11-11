@@ -26,6 +26,7 @@ fn cursor(sequence: u64, epoch: u64, image_id: &Id) -> CursorUpdate {
         security_epoch: epoch,
         output: None,
         snapshot: Some(CursorSnapshot {
+            hotspot: (0, 0).into(),
             image_id: image_id.clone(),
             revision: 7,
             image: MemoryBuffer::from_slice(&[0, 0, 255, 255], Fourcc::Argb8888, (1, 1)),

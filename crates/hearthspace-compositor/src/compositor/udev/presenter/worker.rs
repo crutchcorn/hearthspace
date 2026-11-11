@@ -98,7 +98,8 @@ fn run_inner(
     events: Sender<PresenterEvent>,
 ) -> Result<(), String> {
     let mut event_loop = EventLoop::<Worker>::try_new().map_err(|error| error.to_string())?;
-    let (drm, notifier) = DrmDevice::new(fd.clone(), false).map_err(|error| error.to_string())?;
+    let (drm, notifier) = DrmDevice::new_with_cursor_plane_hotspots(fd.clone(), false)
+        .map_err(|error| error.to_string())?;
     // SAFETY: The fresh EGL context belongs solely to this worker. Sharing the
     // GBM device preserves buffer bookkeeping; no current context or renderer
     // crosses a thread boundary.

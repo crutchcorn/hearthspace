@@ -1,0 +1,273 @@
+--- a/src/backend/drm/compositor/mod.rs
++++ b/src/backend/drm/compositor/mod.rs
+@@ -460,12 +460,14 @@ struct PlaneProperties {
+     pub transform: Transform,
+     pub alpha: f32,
+     pub format: DrmFormat,
++    pub cursor_hotspot: Option<Point<i32, BufferCoords>>,
+ }
+
+ impl PlaneProperties {
+     #[inline]
+     fn is_compatible(&self, other: &PlaneProperties) -> bool {
+-        self.src == other.src
++        self.cursor_hotspot == other.cursor_hotspot
++            && self.src == other.src
+             && self.dst == other.dst
+             && self.transform == other.transform
+             && self.alpha == other.alpha
+@@ -810,6 +812,7 @@ impl<B: Buffer, F: Framebuffer> FrameState<B, F> {
+             .map(move |(handle, state)| super::surface::PlaneState {
+                 handle: *handle,
+                 config: state.config.as_mut().map(|config| super::PlaneConfig {
++                    cursor_hotspot: config.properties.cursor_hotspot,
+                     src: config.properties.src,
+                     dst: config.properties.dst,
+                     alpha: config.properties.alpha,
+@@ -1075,6 +1078,7 @@ where
+
+     swapchain: Swapchain<A>,
+
++    cursor_hotspot: Option<Point<i32, BufferCoords>>,
+     cursor_size: Size<i32, Physical>,
+     cursor_state: Option<CursorState<G>>,
+
+@@ -1258,6 +1262,7 @@ where
+                         swapchain,
+                         framebuffer_exporter,
+                         cursor_size,
++                        cursor_hotspot: None,
+                         cursor_state,
+                         surface,
+                         damage_tracker,
+@@ -1441,6 +1446,7 @@ where
+             swapchain,
+             framebuffer_exporter,
+             cursor_size,
++            cursor_hotspot: None,
+             cursor_state,
+             surface,
+             damage_tracker,
+@@ -1560,6 +1566,7 @@ where
+             element_state: None,
+             config: Some(PlaneConfig {
+                 properties: PlaneProperties {
++                    cursor_hotspot: None,
+                     src: Rectangle::from_size(dmabuf.size()).to_f64(),
+                     dst: Rectangle::from_size(mode_size),
+                     transform: Transform::Normal,
+@@ -1825,6 +1832,7 @@ where
+             element_state: None,
+             config: Some(PlaneConfig {
+                 properties: PlaneProperties {
++                    cursor_hotspot: None,
+                     src: Rectangle::from_size(dmabuf.size()).to_f64(),
+                     dst: Rectangle::from_size(current_size),
+                     // NOTE: We do not apply the transform to the primary plane as this is handled by the dtr/renderer
+@@ -3027,6 +3035,12 @@ where
+     #[allow(clippy::too_many_arguments)]
+     #[instrument(level = "trace", skip_all)]
+     #[profiling::function]
++    /// Hotspot for the cursor element in the final, untransformed cursor buffer.
++    /// Non-normal output transforms and out-of-buffer hotspots use composition.
++    pub fn set_cursor_hotspot(&mut self, hotspot: Option<Point<i32, BufferCoords>>) {
++        self.cursor_hotspot = hotspot;
++    }
++
+     fn try_assign_cursor_plane<R, E>(
+         &mut self,
+         renderer: &mut R,
+@@ -3139,6 +3153,15 @@ where
+             self.cursor_size
+         };
+
++        if let Some(hotspot) = self.cursor_hotspot {
++            if output_transform != Transform::Normal
++                || hotspot.x < 0 || hotspot.y < 0
++                || hotspot.x >= cursor_plane_size.w || hotspot.y >= cursor_plane_size.h
++            {
++                return None;
++            }
++        }
++
+         // this calculates the location of the cursor plane taking the simulated transform
+         // into consideration
+         let cursor_plane_location = output_transform
+@@ -3189,7 +3212,10 @@ where
+                 state
+                     .config
+                     .as_ref()
+-                    .map(|config| config.properties.dst.loc != cursor_plane_location)
++                    .map(|config| {
++                        config.properties.dst.loc != cursor_plane_location
++                            || config.properties.cursor_hotspot != self.cursor_hotspot
++                    })
+             })
+             .unwrap_or(true);
+
+@@ -3216,6 +3242,7 @@ where
+             plane_state.needs_test = false;
+             let config = plane_state.config.as_mut().unwrap();
+             config.properties.dst.loc = cursor_plane_location;
++            config.properties.cursor_hotspot = self.cursor_hotspot;
+             frame_state.set_state(plane_info.handle, plane_state);
+             return Some(plane_info.into());
+         }
+@@ -3383,6 +3410,7 @@ where
+
+         let config = PlaneConfig {
+             properties: PlaneProperties {
++                    cursor_hotspot: self.cursor_hotspot,
+                 src,
+                 dst,
+                 alpha: 1.0,
+@@ -3576,6 +3604,7 @@ where
+         );
+         let alpha = element.alpha();
+         let properties = PlaneProperties {
++            cursor_hotspot: None,
+             src,
+             dst,
+             alpha,
+--- a/src/backend/drm/device/mod.rs
++++ b/src/backend/drm/device/mod.rs
+@@ -179,6 +179,24 @@ impl DrmDevice {
+     ///
+     /// Returns an error if the file is no valid drm node or the device is not accessible.
+     pub fn new(fd: DrmDeviceFd, disable_connectors: bool) -> Result<(Self, DrmDeviceNotifier), Error> {
++        Self::new_internal(fd, disable_connectors, false)
++    }
++
++    /// Opt into virtual cursor planes. Callers must supply accurate cursor
++    /// hotspots in every cursor plane configuration. Unsupported drivers retain
++    /// ordinary plane discovery; legacy modesetting never enables the capability.
++    pub fn new_with_cursor_plane_hotspots(
++        fd: DrmDeviceFd,
++        disable_connectors: bool,
++    ) -> Result<(Self, DrmDeviceNotifier), Error> {
++        Self::new_internal(fd, disable_connectors, true)
++    }
++
++    fn new_internal(
++        fd: DrmDeviceFd,
++        disable_connectors: bool,
++        cursor_hotspots: bool,
++    ) -> Result<(Self, DrmDeviceNotifier), Error> {
+         // setup parent span for internal device types
+         let span = debug_span!(
+             "drm_device",
+@@ -213,7 +231,7 @@ impl DrmDevice {
+             })
+         })?;
+
+-        let internal = Arc::new(DrmDevice::create_internal(fd, active, disable_connectors)?);
++        let internal = Arc::new(DrmDevice::create_internal(fd, active, disable_connectors, cursor_hotspots)?);
+
+         Ok((
+             DrmDevice {
+@@ -237,6 +255,7 @@ impl DrmDevice {
+         fd: DrmDeviceFd,
+         active: Arc<AtomicBool>,
+         disable_connectors: bool,
++        cursor_hotspots: bool,
+     ) -> Result<DrmDeviceInternal, Error> {
+         let force_legacy = std::env::var("SMITHAY_USE_LEGACY")
+             .map(|x| {
+@@ -250,6 +269,12 @@ impl DrmDevice {
+
+         Ok(
+             if !force_legacy && fd.set_client_capability(ClientCapability::Atomic, true).is_ok() {
++                if cursor_hotspots {
++                    let supported = fd
++                        .set_client_capability(ClientCapability::CursorPlaneHotspot, true)
++                        .is_ok();
++                    tracing::debug!(supported, "virtual cursor hotspot capability");
++                }
+                 DrmDeviceInternal::Atomic(AtomicDrmDevice::new(fd, active, disable_connectors)?)
+             } else {
+                 info!("Falling back to LegacyDrmDevice");
+--- a/src/backend/drm/surface/atomic.rs
++++ b/src/backend/drm/surface/atomic.rs
+@@ -343,6 +343,7 @@ impl AtomicDrmSurface {
+             let plane_state = PlaneState {
+                 handle: self.plane,
+                 config: Some(PlaneConfig {
++                cursor_hotspot: None,
+                     src: Rectangle::from_size(pending.mode.size().into()).to_f64(),
+                     dst: Rectangle::from_size(
+                         (pending.mode.size().0 as i32, pending.mode.size().1 as i32).into(),
+@@ -402,6 +403,7 @@ impl AtomicDrmSurface {
+         let plane_state = PlaneState {
+             handle: self.plane,
+             config: Some(PlaneConfig {
++                cursor_hotspot: None,
+                 src: Rectangle::from_size(pending.mode.size().into()).to_f64(),
+                 dst: Rectangle::from_size(
+                     (pending.mode.size().0 as i32, pending.mode.size().1 as i32).into(),
+@@ -462,6 +464,7 @@ impl AtomicDrmSurface {
+         let plane_state = PlaneState {
+             handle: self.plane,
+             config: Some(PlaneConfig {
++                cursor_hotspot: None,
+                 src: Rectangle::from_size(pending.mode.size().into()).to_f64(),
+                 dst: Rectangle::from_size(
+                     (pending.mode.size().0 as i32, pending.mode.size().1 as i32).into(),
+@@ -518,6 +521,7 @@ impl AtomicDrmSurface {
+         let plane_state = PlaneState {
+             handle: self.plane,
+             config: Some(PlaneConfig {
++                cursor_hotspot: None,
+                 src: Rectangle::from_size(mode.size().into()).to_f64(),
+                 dst: Rectangle::from_size((mode.size().0 as i32, mode.size().1 as i32).into()),
+                 transform: Transform::Normal,
+@@ -638,6 +642,7 @@ impl AtomicDrmSurface {
+         let plane_config = PlaneState {
+             handle: self.plane,
+             config: Some(PlaneConfig {
++                cursor_hotspot: None,
+                 src: Rectangle::from_size(pending.mode.size().into()).to_f64(),
+                 dst: Rectangle::from_size(
+                     (pending.mode.size().0 as i32, pending.mode.size().1 as i32).into(),
+@@ -1248,6 +1253,13 @@ impl<'a> AtomicRequest<'a> {
+             plane_props.insert("CRTC_W", property::Value::UnsignedRange(config.dst.size.w as u64));
+             plane_props.insert("CRTC_H", property::Value::UnsignedRange(config.dst.size.h as u64));
+
++            if let Some(hotspot) = config.cursor_hotspot {
++                for (name, value) in [("HOTSPOT_X", hotspot.x), ("HOTSPOT_Y", hotspot.y)] {
++                    if self.mapping.plane_prop_handle(handle, name).is_ok() {
++                        plane_props.insert(name, property::Value::UnsignedRange(value as u64));
++                    }
++                }
++            }
+             if self.mapping.plane_prop_handle(handle, "rotation").is_ok() {
+                 plane_props.insert(
+                     "rotation",
+--- a/src/backend/drm/surface/gbm.rs
++++ b/src/backend/drm/surface/gbm.rs
+@@ -219,6 +219,7 @@ where
+         let plane_state = PlaneState {
+             handle: drm.plane(),
+             config: Some(PlaneConfig {
++                cursor_hotspot: None,
+                 src: Rectangle::from_size((mode.size().0 as i32, mode.size().1 as i32).into()).to_f64(),
+                 dst: Rectangle::from_size((mode.size().0 as i32, mode.size().1 as i32).into()),
+                 alpha: 1.0,
+@@ -385,6 +386,7 @@ where
+         let plane_state = PlaneState {
+             handle: self.plane(),
+             config: Some(PlaneConfig {
++                cursor_hotspot: None,
+                 src,
+                 dst,
+                 transform: Transform::Normal,
+--- a/src/backend/drm/surface/mod.rs
++++ b/src/backend/drm/surface/mod.rs
+@@ -143,6 +143,8 @@ pub struct PlaneState<'a> {
+ /// Configuration for a single plane
+ #[derive(Debug, Clone)]
+ pub struct PlaneConfig<'a> {
++    /// Cursor hotspot in final framebuffer pixels, for virtual cursor planes.
++    pub cursor_hotspot: Option<Point<i32, Buffer>>,
+     /// Source [`Rectangle`] of the attached framebuffer
+     pub src: Rectangle<f64, Buffer>,
+     /// Destination [`Rectangle`] on the CRTC

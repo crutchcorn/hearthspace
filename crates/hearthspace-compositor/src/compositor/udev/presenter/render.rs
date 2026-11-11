@@ -131,6 +131,9 @@ fn prepare_and_queue(
     });
     let cursor_sequence = cursor.map_or(0, |cursor| cursor.sequence);
     let snapshot = cursor.and_then(|cursor| cursor.snapshot.as_ref());
+    output
+        .compositor
+        .set_cursor_hotspot(snapshot.map(|snapshot| snapshot.hotspot));
     let cursor_image = snapshot.map(|snapshot| (snapshot.image_id.clone(), snapshot.revision));
     if let Some(snapshot) = snapshot {
         elements.push(
@@ -207,7 +210,7 @@ fn prepare_and_queue(
     tracing::trace!(target: "hearthspace::presenter", key = ?output.config.key,
         candidate_submission = output.next_submission + 1,
         scene_sequence, cursor_sequence, cursor_image = ?cursor_image,
-        cursor_plane, primary_scanout, scene_state = ?scene_state, primary_buffer = ?primary.map(|(buffer, _)| buffer),
+        cursor_hotspot = ?snapshot.map(|s| s.hotspot), cursor_plane, primary_scanout, scene_state = ?scene_state, primary_buffer = ?primary.map(|(buffer, _)| buffer),
         primary_damage_commit = ?primary.map(|(_, commit)| commit),
         primary_reused, render_us, flags = ?flags, empty = result.is_empty,
         "rendered native plane selection");

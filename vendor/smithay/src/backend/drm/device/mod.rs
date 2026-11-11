@@ -179,6 +179,24 @@ impl DrmDevice {
     ///
     /// Returns an error if the file is no valid drm node or the device is not accessible.
     pub fn new(fd: DrmDeviceFd, disable_connectors: bool) -> Result<(Self, DrmDeviceNotifier), Error> {
+        Self::new_internal(fd, disable_connectors, false)
+    }
+
+    /// Opt into virtual cursor planes. Callers must supply accurate cursor
+    /// hotspots in every cursor plane configuration. Unsupported drivers retain
+    /// ordinary plane discovery; legacy modesetting never enables the capability.
+    pub fn new_with_cursor_plane_hotspots(
+        fd: DrmDeviceFd,
+        disable_connectors: bool,
+    ) -> Result<(Self, DrmDeviceNotifier), Error> {
+        Self::new_internal(fd, disable_connectors, true)
+    }
+
+    fn new_internal(
+        fd: DrmDeviceFd,
+        disable_connectors: bool,
+        cursor_hotspots: bool,
+    ) -> Result<(Self, DrmDeviceNotifier), Error> {
         // setup parent span for internal device types
         let span = debug_span!(
             "drm_device",
@@ -213,7 +231,7 @@ impl DrmDevice {
             })
         })?;
 
-        let internal = Arc::new(DrmDevice::create_internal(fd, active, disable_connectors)?);
+        let internal = Arc::new(DrmDevice::create_internal(fd, active, disable_connectors, cursor_hotspots)?);
 
         Ok((
             DrmDevice {
@@ -237,6 +255,7 @@ impl DrmDevice {
         fd: DrmDeviceFd,
         active: Arc<AtomicBool>,
         disable_connectors: bool,
+        cursor_hotspots: bool,
     ) -> Result<DrmDeviceInternal, Error> {
         let force_legacy = std::env::var("SMITHAY_USE_LEGACY")
             .map(|x| {
@@ -250,6 +269,12 @@ impl DrmDevice {
 
         Ok(
             if !force_legacy && fd.set_client_capability(ClientCapability::Atomic, true).is_ok() {
+                if cursor_hotspots {
+                    let supported = fd
+                        .set_client_capability(ClientCapability::CursorPlaneHotspot, true)
+                        .is_ok();
+                    tracing::debug!(supported, "virtual cursor hotspot capability");
+                }
                 DrmDeviceInternal::Atomic(AtomicDrmDevice::new(fd, active, disable_connectors)?)
             } else {
                 info!("Falling back to LegacyDrmDevice");

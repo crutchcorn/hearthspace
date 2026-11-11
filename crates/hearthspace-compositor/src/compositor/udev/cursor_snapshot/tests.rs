@@ -53,6 +53,7 @@ fn committed_shm_respects_stride_alpha_hotspot_and_image_lifetime() {
     let first = snapshot(&mut builder, &mut fixture, &view);
     assert_eq!(words(&first), pixels);
     assert_eq!(first.location, (9, 19).into());
+    assert_eq!(first.hotspot, (1, 2).into());
     assert_eq!(first.image.stride(), 8);
     assert_eq!(
         first.image.format(),
@@ -62,6 +63,7 @@ fn committed_shm_respects_stride_alpha_hotspot_and_image_lifetime() {
     fixture.app.viewport_scale = 0.25;
     let moved = snapshot(&mut builder, &mut fixture, &view);
     assert_eq!(moved.location, (12, 21).into());
+    assert_eq!(moved.hotspot, first.hotspot);
     assert_eq!(
         (moved.image_id.clone(), moved.revision),
         (first.image_id.clone(), first.revision)
@@ -70,6 +72,7 @@ fn committed_shm_respects_stride_alpha_hotspot_and_image_lifetime() {
     fixture.cursor(Some(&surface), (0, 0));
     let hotspot = snapshot(&mut builder, &mut fixture, &view);
     assert_eq!(hotspot.location, (13, 23).into());
+    assert_eq!(hotspot.hotspot, (0, 0).into());
     assert_eq!(hotspot.image.as_ptr(), first.image.as_ptr());
     assert_eq!(hotspot.revision, first.revision);
     surface.attach(None, 0, 0);
@@ -191,4 +194,45 @@ fn oversized_software_cursor_and_retriable_bounds_error_are_distinct_from_hidden
             .unwrap()
             .is_none()
     );
+}
+
+#[test]
+fn hardware_hotspot_includes_scaled_surface_tree_origin() {
+    let mut fixture = Fixture::new();
+    let root = fixture.surface();
+    let child = fixture.surface();
+    let sub = fixture.subsurface(&child, &root);
+    sub.set_position(-3, -2);
+    let red = fixture.image((2, 2), &[RED; 4], (0, 0), wl_shm::Format::Argb8888);
+    let blue = fixture.image((1, 1), &[BLUE], (0, 0), wl_shm::Format::Argb8888);
+    fixture.attach(&child, &blue);
+    fixture.attach(&root, &red);
+    fixture.cursor(Some(&root), (1, 1));
+    fixture.app.pointer_location = (10.0, 10.0).into();
+    let image = snapshot(
+        &mut SnapshotBuilder::default(),
+        &mut fixture,
+        &view((0, 0), 2),
+    );
+    assert_eq!(image.image.size(), (10, 8).into());
+    assert_eq!(image.hotspot, (8, 6).into());
+    assert_eq!(image.location, (12, 14).into());
+}
+
+#[test]
+fn out_of_buffer_hotspot_preserves_software_cursor_placement() {
+    let mut fixture = Fixture::new();
+    let root = fixture.surface();
+    let red = fixture.image((2, 2), &[RED; 4], (0, 0), wl_shm::Format::Argb8888);
+    fixture.attach(&root, &red);
+    fixture.cursor(Some(&root), (-2, 99));
+    fixture.app.pointer_location = (10.0, 10.0).into();
+    let image = snapshot(
+        &mut SnapshotBuilder::default(),
+        &mut fixture,
+        &view((0, 0), 1),
+    );
+    assert_eq!(image.hotspot, (-2, 99).into());
+    assert_eq!(image.location, (12, -89).into());
+    assert_eq!(words(&image), vec![RED; 4]);
 }

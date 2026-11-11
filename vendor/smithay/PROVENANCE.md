@@ -40,6 +40,14 @@ Runtime/build dependencies, features, and package identity remain unchanged.
 Hearthspace's dependency stays pinned to the original Git revision, with the
 workspace Cargo patch selecting this copy.
 
+The [virtual cursor hotspot patch](../../patches/smithay-virtual-cursor-hotspot.patch)
+adds explicit opt-in to virtual cursor planes and optional atomic hotspot
+metadata. The default device constructor stays opt-out. The compositor setter
+and `PlaneConfig.cursor_hotspot` carry buffer-pixel hotspots through queueing;
+invalid hotspots and transformed outputs retain composition fallback. See the
+[patch ledger](../../patches/README.md#virtual-cursor-planes-and-hotspots) for
+upstream basis, regression coverage, and removal criteria.
+
 To refresh:
 
 1. Copy these same files from a compatible upstream revision and retain its

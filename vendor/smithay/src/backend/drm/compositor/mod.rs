@@ -460,12 +460,14 @@ struct PlaneProperties {
     pub transform: Transform,
     pub alpha: f32,
     pub format: DrmFormat,
+    pub cursor_hotspot: Option<Point<i32, BufferCoords>>,
 }
 
 impl PlaneProperties {
     #[inline]
     fn is_compatible(&self, other: &PlaneProperties) -> bool {
-        self.src == other.src
+        self.cursor_hotspot == other.cursor_hotspot
+            && self.src == other.src
             && self.dst == other.dst
             && self.transform == other.transform
             && self.alpha == other.alpha
@@ -810,6 +812,7 @@ impl<B: Buffer, F: Framebuffer> FrameState<B, F> {
             .map(move |(handle, state)| super::surface::PlaneState {
                 handle: *handle,
                 config: state.config.as_mut().map(|config| super::PlaneConfig {
+                    cursor_hotspot: config.properties.cursor_hotspot,
                     src: config.properties.src,
                     dst: config.properties.dst,
                     alpha: config.properties.alpha,
@@ -1075,6 +1078,7 @@ where
 
     swapchain: Swapchain<A>,
 
+    cursor_hotspot: Option<Point<i32, BufferCoords>>,
     cursor_size: Size<i32, Physical>,
     cursor_state: Option<CursorState<G>>,
 
@@ -1258,6 +1262,7 @@ where
                         swapchain,
                         framebuffer_exporter,
                         cursor_size,
+                        cursor_hotspot: None,
                         cursor_state,
                         surface,
                         damage_tracker,
@@ -1441,6 +1446,7 @@ where
             swapchain,
             framebuffer_exporter,
             cursor_size,
+            cursor_hotspot: None,
             cursor_state,
             surface,
             damage_tracker,
@@ -1560,6 +1566,7 @@ where
             element_state: None,
             config: Some(PlaneConfig {
                 properties: PlaneProperties {
+                    cursor_hotspot: None,
                     src: Rectangle::from_size(dmabuf.size()).to_f64(),
                     dst: Rectangle::from_size(mode_size),
                     transform: Transform::Normal,
@@ -1825,6 +1832,7 @@ where
             element_state: None,
             config: Some(PlaneConfig {
                 properties: PlaneProperties {
+                    cursor_hotspot: None,
                     src: Rectangle::from_size(dmabuf.size()).to_f64(),
                     dst: Rectangle::from_size(current_size),
                     // NOTE: We do not apply the transform to the primary plane as this is handled by the dtr/renderer
@@ -3027,6 +3035,12 @@ where
     #[allow(clippy::too_many_arguments)]
     #[instrument(level = "trace", skip_all)]
     #[profiling::function]
+    /// Hotspot for the cursor element in the final, untransformed cursor buffer.
+    /// Non-normal output transforms and out-of-buffer hotspots use composition.
+    pub fn set_cursor_hotspot(&mut self, hotspot: Option<Point<i32, BufferCoords>>) {
+        self.cursor_hotspot = hotspot;
+    }
+
     fn try_assign_cursor_plane<R, E>(
         &mut self,
         renderer: &mut R,
@@ -3139,6 +3153,15 @@ where
             self.cursor_size
         };
 
+        if let Some(hotspot) = self.cursor_hotspot {
+            if output_transform != Transform::Normal
+                || hotspot.x < 0 || hotspot.y < 0
+                || hotspot.x >= cursor_plane_size.w || hotspot.y >= cursor_plane_size.h
+            {
+                return None;
+            }
+        }
+
         // this calculates the location of the cursor plane taking the simulated transform
         // into consideration
         let cursor_plane_location = output_transform
@@ -3189,7 +3212,10 @@ where
                 state
                     .config
                     .as_ref()
-                    .map(|config| config.properties.dst.loc != cursor_plane_location)
+                    .map(|config| {
+                        config.properties.dst.loc != cursor_plane_location
+                            || config.properties.cursor_hotspot != self.cursor_hotspot
+                    })
             })
             .unwrap_or(true);
 
@@ -3216,6 +3242,7 @@ where
             plane_state.needs_test = false;
             let config = plane_state.config.as_mut().unwrap();
             config.properties.dst.loc = cursor_plane_location;
+            config.properties.cursor_hotspot = self.cursor_hotspot;
             frame_state.set_state(plane_info.handle, plane_state);
             return Some(plane_info.into());
         }
@@ -3383,6 +3410,7 @@ where
 
         let config = PlaneConfig {
             properties: PlaneProperties {
+                    cursor_hotspot: self.cursor_hotspot,
                 src,
                 dst,
                 alpha: 1.0,
@@ -3576,6 +3604,7 @@ where
         );
         let alpha = element.alpha();
         let properties = PlaneProperties {
+            cursor_hotspot: None,
             src,
             dst,
             alpha,

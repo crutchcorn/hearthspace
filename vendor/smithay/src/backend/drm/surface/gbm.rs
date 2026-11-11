@@ -219,6 +219,7 @@ where
         let plane_state = PlaneState {
             handle: drm.plane(),
             config: Some(PlaneConfig {
+                cursor_hotspot: None,
                 src: Rectangle::from_size((mode.size().0 as i32, mode.size().1 as i32).into()).to_f64(),
                 dst: Rectangle::from_size((mode.size().0 as i32, mode.size().1 as i32).into()),
                 alpha: 1.0,
@@ -385,6 +386,7 @@ where
         let plane_state = PlaneState {
             handle: self.plane(),
             config: Some(PlaneConfig {
+                cursor_hotspot: None,
                 src,
                 dst,
                 transform: Transform::Normal,

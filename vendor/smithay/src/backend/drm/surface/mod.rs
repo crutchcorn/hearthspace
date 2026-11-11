@@ -143,6 +143,8 @@ pub struct PlaneState<'a> {
 /// Configuration for a single plane
 #[derive(Debug, Clone)]
 pub struct PlaneConfig<'a> {
+    /// Cursor hotspot in final framebuffer pixels, for virtual cursor planes.
+    pub cursor_hotspot: Option<Point<i32, Buffer>>,
     /// Source [`Rectangle`] of the attached framebuffer
     pub src: Rectangle<f64, Buffer>,
     /// Destination [`Rectangle`] on the CRTC
