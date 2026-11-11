@@ -107,7 +107,6 @@ def boundaries(root, worker=False):
 
     policy.CGROUP = root / "cgroup"
     policy.PROC = root / ("proc-worker" if worker else "proc")
-    policy.HWMON = root / "hwmon"
     policy.RUNTIME = root / "runtime"
     if worker:
         # External kernel syscall boundary; no host priority is changed.
@@ -176,8 +175,6 @@ def systemd_run(root):
         if time.monotonic() >= deadline:
             raise RuntimeError("fixture worker did not start")
         time.sleep(0.01)
-    if (root / "heat-on-launch").exists():
-        (root / "hwmon/cpu/temp1_input").write_text("85000\n")
     if (root / "interrupt-on-launch").exists():
         os.kill(os.getppid(), signal.SIGINT)
 
@@ -324,11 +321,7 @@ def cargo(root):
         if (root / "post-exec").exists()
         else ""
     )
-    if action == "heat":
-        (root / "hwmon/cpu/temp1_input").write_text("85000\n")
-    elif action == "sensor":
-        (root / "hwmon/cpu/temp1_input").unlink()
-    elif action == "telemetry":
+    if action == "telemetry":
         (directory / "telemetry.jsonl").rename(
             directory / "telemetry-before-failure.jsonl"
         )

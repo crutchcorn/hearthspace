@@ -130,30 +130,6 @@ def source_record(git, cwd):
     return {"root": str(root), "head": head, "files": files}
 
 
-def temperatures():
-    values = {}
-    for name in sorted(policy.HWMON.glob("*/name")):
-        if name.read_text().strip() != "k10temp":
-            continue
-        for label in sorted(name.parent.glob("temp*_label")):
-            if label.read_text().strip() == "Tctl":
-                sensor = label.with_name(label.name.replace("_label", "_input"))
-                values[str(sensor)] = int(sensor.read_text().strip())
-    if not values or any(value <= 0 or value > 150000 for value in values.values()):
-        raise RuntimeError("readable k10temp Tctl CPU sensors are required")
-    return values
-
-
-def check_temperature(sample):
-    if any(
-        value >= policy.TEMPERATURE_CUTOFF
-        for value in sample["cpu_tctl_millidegrees"].values()
-    ):
-        raise RuntimeError(
-            "CPU Tctl reached the operational 85 C cutoff (not a hardware limit)"
-        )
-
-
 def host_sample():
     started_ns = time.monotonic_ns()
     meminfo = {}
@@ -181,7 +157,6 @@ def host_sample():
         "monotonic_ns": started_ns,
         "host_bytes": meminfo,
         "host_psi": psi,
-        "cpu_tctl_millidegrees": temperatures(),
     }
 
 

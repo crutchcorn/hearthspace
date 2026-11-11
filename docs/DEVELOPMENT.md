@@ -95,27 +95,17 @@ scripts/guarded-cargo \
 Build additional binaries in separate, serial invocations. The wrapper supports
 `build`, `check`, and `clippy`; it is not a native-session or test launcher. It
 requires a running user systemd manager with delegated cgroup v2 CPU, memory,
-and process controllers. The current temperature monitor requires a readable
-`k10temp` sensor labeled `Tctl`. Unsupported prerequisites fail before Cargo
-starts; do not bypass the guard or automatically increase its limits.
+and process controllers. Temperature sensors are not required or read.
+Unsupported prerequisites fail before Cargo starts; do not bypass the guard or
+automatically increase its limits.
 
 The service checks the actual kernel controls before execution and waits for
-the external monitor to acknowledge readiness. The monitor records CPU
-temperature, host memory/pressure, and service resource usage every second.
-An 85°C Tctl reading stops the owned build. This is a conservative operational
-cutoff, not a documented hardware limit or a guarantee against firmware resets.
-The monitor runs outside the build's memory limit. An in-service relay renews
+the external monitor to acknowledge readiness. The monitor records host
+memory/pressure and service resource usage every second. It runs outside the
+build's memory limit. An in-service relay renews
 systemd's ten-second watchdog only after a fresh, successful monitoring sample.
 Loss of monitoring therefore stops the build even if the monitor cannot run its
 cleanup handler. Systemd also bounds the service lifetime independently.
-
-For an explicitly selected temperature-observation run, add
-`--temperature-observation-only` before the Cargo subcommand. This records CPU
-temperatures without applying the 85°C cutoff; the choice is retained in both
-`command.json` and `result.json`. CPU, memory, process, deadline, watchdog,
-telemetry-validity, and cleanup checks remain enabled. This changes no OS setting;
-omit the option to restore the default cutoff. Do not select it automatically
-after a rejected build.
 
 Evidence includes source hashes, command and boot identity, verified controls,
 build output, telemetry, and the terminal result. Failed attempts are retained;

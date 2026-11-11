@@ -11,10 +11,8 @@ from pathlib import Path
 
 CGROUP = Path("/sys/fs/cgroup")
 PROC = Path("/proc")
-HWMON = Path("/sys/class/hwmon")
 RUNTIME = Path("/run/user")
 INTERVAL = 1.0
-TEMPERATURE_CUTOFF = 85000  # Operational Tctl policy, not a hardware limit.
 PROPERTIES = {
     "Type": "exec",
     # Keep the runtime timer active until descendants have exited too.

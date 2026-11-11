@@ -40,8 +40,6 @@ class GuardedCargoFixture(unittest.TestCase):
             "proc/sys/kernel/random",
             "proc-worker/self",
             "cgroup/app.slice",
-            "hwmon/cpu",
-            "hwmon/gpu",
         ):
             (self.root / name).mkdir(parents=True, exist_ok=True)
         runtime = self.root / "runtime" / str(os.getuid())
@@ -64,12 +62,6 @@ class GuardedCargoFixture(unittest.TestCase):
         (self.root / "cgroup/app.slice/cgroup.controllers").write_text(
             "cpu memory pids\n"
         )
-        (self.root / "hwmon/cpu/name").write_text("k10temp\n")
-        (self.root / "hwmon/cpu/temp1_label").write_text("Tctl\n")
-        (self.root / "hwmon/cpu/temp1_input").write_text("45000\n")
-        (self.root / "hwmon/gpu/name").write_text("amdgpu\n")
-        (self.root / "hwmon/gpu/temp1_label").write_text("edge\n")
-        (self.root / "hwmon/gpu/temp1_input").write_text("99000\n")
         for name in ("cargo", "systemctl", "systemd-run", "git"):
             path = self.root / "bin" / name
             path.write_text(
@@ -78,7 +70,6 @@ class GuardedCargoFixture(unittest.TestCase):
             path.chmod(0o700)
         self.enterContext(patch.object(policy, "CGROUP", self.root / "cgroup"))
         self.enterContext(patch.object(policy, "PROC", self.root / "proc"))
-        self.enterContext(patch.object(policy, "HWMON", self.root / "hwmon"))
         self.enterContext(patch.object(policy, "RUNTIME", self.root / "runtime"))
         self.environment = {
             "HOME": str(self.root),
@@ -102,9 +93,10 @@ class GuardedCargoFixture(unittest.TestCase):
 
 
 class GuardedCargoSmokeTests(GuardedCargoFixture):
-    def test_success_executes_only_after_durable_monitor_ack_and_preserves_build_inputs(
+    def test_sensorless_build_waits_for_durable_monitor_ack_and_preserves_build_inputs(
         self,
     ):
+        self.assertFalse((self.root / "hwmon").exists())
         synced = []
         real_sync, real_link = os.fsync, os.link
 
@@ -169,7 +161,15 @@ class GuardedCargoSmokeTests(GuardedCargoFixture):
         self.assertEqual(command["argv"][0], str(self.root / "bin/cargo"))
         launch = json.loads((self.root / "launch.json").read_text())
         self.assertIn("--user", launch)
-        self.assertIn("--property=RuntimeMaxSec=45min", launch)
+        for key in (
+            "CPUQuota",
+            "MemoryMax",
+            "MemorySwapMax",
+            "TasksMax",
+            "WatchdogSec",
+            "RuntimeMaxSec",
+        ):
+            self.assertIn(f"--property={key}={policy.PROPERTIES[key]}", launch)
         self.assertIn(f"--property=CPUAffinity={command['cpu_affinity']}", launch)
         self.assertNotIn("--scope", launch)
         self.assertNotIn("--slice-inherit", launch)
@@ -216,12 +216,6 @@ class GuardedCargoSmokeTests(GuardedCargoFixture):
         )
         self.assertIn(error_text, self.result()["error"])
         self.assertEqual(self.result()["cleanup"], "owned unit stopped")
-
-    def test_postexec_heat_stops_running_workload(self):
-        self.assert_postexec_stop("heat", "operational")
-
-    def test_postexec_sensor_loss_stops_running_workload(self):
-        self.assert_postexec_stop("sensor", "temp1_input")
 
     def test_postexec_telemetry_write_failure_stops_running_workload(self):
         self.assert_postexec_stop("telemetry", "telemetry.jsonl")
@@ -300,26 +294,6 @@ class GuardedCargoSmokeTests(GuardedCargoFixture):
         self.assertEqual(self.run_guard("check"), 1)
         self.assertFalse((self.root / "cargo.json").exists())
         self.assertIn("CPU quota", (self.directory / "worker-error.json").read_text())
-
-    def test_hot_cpu_rejects_preflight_without_submitting_service(self):
-        (self.root / "hwmon/cpu/temp1_input").write_text("85000\n")
-        self.assertEqual(self.run_guard("build"), 1)
-        self.assertFalse((self.root / "launch.json").exists())
-        self.assertIn("operational", self.result()["error"])
-
-    def test_temperature_crossing_stops_only_owned_unit_before_ack(self):
-        (self.root / "heat-on-launch").touch()
-        self.assertEqual(self.run_guard("build"), 1)
-        self.assertFalse((self.root / "cargo.json").exists())
-        self.assertFalse((self.directory / "monitor-ready.json").exists())
-        unit = json.loads((self.root / "state.json").read_text())["unit"]
-        calls = [
-            json.loads(line)
-            for line in (self.root / "control.log").read_text().splitlines()
-        ]
-        stops = [call for call in calls if "stop" in call]
-        self.assertEqual(stops, [["--user", "stop", unit]])
-        self.assertEqual(self.result()["cleanup"], "owned unit stopped")
 
     def test_remaining_tasks_prevent_cleanup_success(self):
         (self.root / "keep-tasks").touch()
