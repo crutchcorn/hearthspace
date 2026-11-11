@@ -52,7 +52,10 @@ pub(crate) fn app_logic(state: &mut SettingsApp) -> impl WidgetView<SettingsApp>
                     let _ = request;
                     let response = match xilem::tokio::task::spawn_blocking(move || {
                         let Some(path) = FileDialog::new()
-                            .add_filter("Wallpaper", &["png", "glsl", "frag"])
+                            .add_filter(
+                                "Wallpaper",
+                                &["png", "jpg", "jpeg", "PNG", "JPG", "JPEG", "glsl", "frag"],
+                            )
                             .pick_file()
                         else {
                             return BackgroundPickerResponse::Cancelled;

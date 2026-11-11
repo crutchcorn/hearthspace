@@ -185,3 +185,41 @@ fn extremely_tall_png_is_cropped_before_upscaling() {
     let mut cache = ThumbnailCache::with_directory(directory.path().join("cache"));
     assert_image(&cache.load(&source).unwrap(), BLUE);
 }
+
+#[test]
+fn jpeg_photos_have_opaque_previews_and_reuse_the_persisted_png_cache() {
+    let directory = tempfile::tempdir().unwrap();
+    for extension in ["jpg", "jpeg", "JPG", "JPEG"] {
+        let source = directory.path().join(format!("photo.{extension}"));
+        let cache_directory = directory.path().join(format!("cache-{extension}"));
+        image::RgbImage::from_pixel(48, 32, image::Rgb([30, 100, 200]))
+            .save(&source)
+            .unwrap();
+        let mut cache = ThumbnailCache::with_directory(cache_directory.clone());
+        let preview = cache.load(&source).expect("JPEG wallpaper must load");
+        assert_eq!((preview.image.width, preview.image.height), (WIDTH, HEIGHT));
+        assert_eq!(preview.image.data.as_ref().len(), PIXEL_BYTES);
+        for pixel in preview.image.data.as_ref().as_chunks::<4>().0 {
+            for (actual, expected) in pixel[..3].iter().zip([30u8, 100, 200]) {
+                assert!(actual.abs_diff(expected) <= 3, "JPEG preview: {pixel:?}");
+            }
+            assert_eq!(pixel[3], 255);
+        }
+        let cache_path = cache_directory.join(CACHE_FILE);
+        let written = fs::metadata(&cache_path).unwrap();
+        assert_eq!(
+            image::guess_format(&fs::read(&cache_path).unwrap()).unwrap(),
+            image::ImageFormat::Png
+        );
+        let mut restarted = ThumbnailCache::with_directory(cache_directory);
+        let restored = restarted.load(&source).unwrap();
+        assert_eq!(preview.image.data.as_ref(), restored.image.data.as_ref());
+        assert_eq!(written.ino(), fs::metadata(&cache_path).unwrap().ino());
+
+        fs::write(&source, b"\xff\xd8\xffnot a JPEG").unwrap();
+        assert!(
+            restarted.load(&source).is_none(),
+            "corrupt source must not reuse the cached photo"
+        );
+    }
+}

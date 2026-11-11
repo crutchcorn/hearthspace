@@ -181,7 +181,11 @@ fn decode_source(key: &Key) -> Option<ImageBrush> {
     {
         return None;
     }
-    let mut reader = image::ImageReader::with_format(Cursor::new(bytes), image::ImageFormat::Png);
+    let format = image::guess_format(&bytes).ok()?;
+    if !matches!(format, image::ImageFormat::Png | image::ImageFormat::Jpeg) {
+        return None;
+    }
+    let mut reader = image::ImageReader::with_format(Cursor::new(bytes), format);
     let mut limits = image::Limits::default();
     limits.max_image_width = Some(MAX_DIMENSION);
     limits.max_image_height = Some(MAX_DIMENSION);
@@ -189,10 +193,11 @@ fn decode_source(key: &Key) -> Option<ImageBrush> {
     reader.limits(limits);
     let image = reader.decode().ok()?;
     let (width, height) = image.dimensions();
-    if width == 0 || height == 0 {
+    // Selection must fit the compositor's final RGBA pixel budget too.
+    if width == 0 || height == 0 || u64::from(width) * u64::from(height) > 32 * 1024 * 1024 {
         return None;
     }
-    // Crop before resizing: cover-resize can allocate gigabytes for a thin PNG.
+    // Crop before resizing: cover-resize can allocate gigabytes for a thin image.
     // Borrow the crop so even a large source does not need a second full copy.
     let (crop_width, crop_height) =
         if u64::from(width) * u64::from(HEIGHT) > u64::from(height) * u64::from(WIDTH) {

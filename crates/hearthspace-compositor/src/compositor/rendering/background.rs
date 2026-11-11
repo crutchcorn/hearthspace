@@ -1,6 +1,7 @@
 use std::{fs, io::Cursor};
 
 use hearthspace_ipc::BackgroundMode;
+use image::ImageDecoder as _;
 use smithay::{
     backend::{
         allocator::Fourcc,
@@ -216,7 +217,7 @@ impl App {
             .ok_or("No photo selected")?;
         let result = fs::read(path)
             .map_err(|error| error.to_string())
-            .and_then(|contents| decode_background_png(&contents));
+            .and_then(|contents| decode_background_image(&contents));
         if let Err(error) = &result {
             warn!(path, %error, "failed to load background image; using GLSL dots");
         }
@@ -321,6 +322,39 @@ fn fixed_background_rects(
             Some((src, output_rect))
         }
     }
+}
+
+fn decode_background_image(contents: &[u8]) -> Result<BackgroundImageData, String> {
+    match image::guess_format(contents) {
+        Ok(image::ImageFormat::Png) => decode_background_png(contents),
+        Ok(image::ImageFormat::Jpeg) => decode_background_jpeg(contents),
+        _ => Err("expected a PNG or JPEG wallpaper".into()),
+    }
+}
+
+fn decode_background_jpeg(contents: &[u8]) -> Result<BackgroundImageData, String> {
+    let mut reader =
+        image::ImageReader::with_format(Cursor::new(contents), image::ImageFormat::Jpeg);
+    let mut limits = image::Limits::default();
+    limits.max_image_width = Some(16_384);
+    limits.max_image_height = Some(16_384);
+    limits.max_alloc = Some(128 * 1024 * 1024);
+    reader.limits(limits);
+    let decoder = reader.into_decoder().map_err(|error| error.to_string())?;
+    let (width, height) = decoder.dimensions();
+    // Bound the final RGBA allocation as well as the decoder's RGB buffer.
+    if u64::from(width) * u64::from(height) > 32 * 1024 * 1024 {
+        return Err("JPEG wallpaper exceeds the decoded pixel limit".into());
+    }
+    let pixels = image::DynamicImage::from_decoder(decoder)
+        .map_err(|error| error.to_string())?
+        .into_rgba8()
+        .into_raw();
+    Ok(BackgroundImageData {
+        pixels,
+        format: Fourcc::Abgr8888,
+        size: Size::<i32, Logical>::from((width as i32, height as i32)),
+    })
 }
 
 fn decode_background_png(contents: &[u8]) -> Result<BackgroundImageData, String> {
