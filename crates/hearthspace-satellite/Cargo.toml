@@ -9,7 +9,7 @@ license = "Apache-2.0"
 hearthspace-common = { path = "../hearthspace-common" }
 x11rb = "=0.13.2"
 pretty_env_logger = "=0.5.0"
-rustix = { version = "=1.1.5", features = ["process", "event", "fs"] }
+rustix = { version = "=1.1.6", features = ["process", "event", "fs"] }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.154"
 sha2 = "0.10"
