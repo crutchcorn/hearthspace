@@ -284,7 +284,7 @@ fn prepare_and_queue(
         cursor_image,
         security_epoch: control.security_epoch,
         lock_generation: control.lock_generation,
-        scene_changed: output.last_presented_scene != Some(scene_sequence),
+        scene_changed: output.presented.differs_from(scene_sequence),
         capture,
         diagnostics: SubmissionDiagnostics {
             cursor_plane,

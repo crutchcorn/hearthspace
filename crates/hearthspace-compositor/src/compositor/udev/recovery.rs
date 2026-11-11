@@ -64,6 +64,7 @@ impl UdevBackendState {
 
 impl CalloopData {
     pub(in crate::compositor) fn resume_native_session(&mut self) -> ControlReply {
+        let lock_presented = self.state.lock_confirmed();
         let Some(backend) = udev_backend_mut(self) else {
             return ControlReply::Err("session-resume requires the native backend".into());
         };
@@ -75,7 +76,16 @@ impl CalloopData {
             self.state.invalidate_lock_presentation();
             return ControlReply::Ok;
         }
-        backend.pause_session();
+        if lock_presented && backend.recovery_complete() {
+            // A same-seat wake can keep the already presented opaque lock frame.
+            // Forcing a pause would discard its surfaces and disable connectors
+            // before replacement content exists. Reconcile topology and require
+            // a fresh security-tagged flip without blanking the retained frame.
+            backend.reset_native_input();
+            info!("resuming confirmed lock without pausing native scanout");
+        } else {
+            backend.pause_session();
+        }
         activate_session(self);
         ControlReply::Ok
     }
