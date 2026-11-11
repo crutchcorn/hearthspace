@@ -24,6 +24,7 @@ from agentlib.control import (
 )
 from agentlib.input import Input
 from agentlib.smoke import Smoke
+from e2e_environment import headless_binary, headless_environment
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -43,15 +44,14 @@ class HeadlessIntegrationTests(unittest.TestCase):
         )
         cls.log = (cls.runtime / "compositor.log").open("w+")
         env = {
-            **os.environ,
+            **headless_environment(cls.runtime),
             "XDG_RUNTIME_DIR": str(cls.runtime),
             "WAYLAND_DISPLAY": "wayland-test",
+            "HEARTHSPACE_WAYLAND_DISPLAY": "wayland-test",
             "HEARTHSPACE_COMMAND_SOCKET": str(cls.socket),
             "XDG_DATA_DIRS": str(cls.runtime / "share"),
         }
-        binary = os.environ.get(
-            "HEARTHSPACE_BINARY", str(ROOT / "target/debug/hearthspace")
-        )
+        binary = str(headless_binary())
         cls.process = subprocess.Popen(
             [
                 binary,
@@ -165,7 +165,7 @@ class HeadlessIntegrationTests(unittest.TestCase):
             directory = Path(temporary)
             socket = directory / "control.sock"
             env = {
-                **os.environ,
+                **headless_environment(directory),
                 "XDG_RUNTIME_DIR": str(directory),
                 "HEARTHSPACE_COMMAND_SOCKET": str(socket),
                 "HEARTHSPACE_WAYLAND_DISPLAY": "wayland-foot-e2e",
@@ -174,7 +174,7 @@ class HeadlessIntegrationTests(unittest.TestCase):
             with (directory / "compositor.log").open("w") as log:
                 process = subprocess.Popen(
                     [
-                        str(ROOT / "target/debug/hearthspace"),
+                        str(headless_binary()),
                         "--headless",
                         "--no-shell",
                         "--headless-size",

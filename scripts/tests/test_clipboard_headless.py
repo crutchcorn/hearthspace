@@ -17,6 +17,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from agentlib.clipboard import run_clipboard
 from agentlib.control import Control, ControlError, Deadline
 from agentlib.smoke import Smoke
+from e2e_environment import headless_binary, headless_environment
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -110,9 +111,7 @@ class ClipboardBusIsolationTests(unittest.TestCase):
 class ClipboardIntegrationTests(unittest.TestCase):
     def test_wayland_x11_clipboard_roundtrip(self):
         """Exact text/ownership/focus/source-lifetime assertions live in the workflow."""
-        binary = Path(
-            os.environ.get("HEARTHSPACE_BINARY", ROOT / "target/debug/hearthspace")
-        )
+        binary = headless_binary()
         fixture = binary.with_name("hearthspace-clipboard-test")
         self.assertTrue(fixture.is_file(), "build with --features test-apps,xwayland")
         with tempfile.TemporaryDirectory(prefix="hs-clipboard-e2e-") as temporary:
@@ -125,7 +124,7 @@ class ClipboardIntegrationTests(unittest.TestCase):
         socket = directory / "control.sock"
         address = f"unix:path={directory / 'bus'}"
         env = {
-            **os.environ,
+            **headless_environment(directory),
             "XDG_RUNTIME_DIR": str(directory),
             "HEARTHSPACE_COMMAND_SOCKET": str(socket),
             "HEARTHSPACE_WAYLAND_DISPLAY": "wayland-clipboard",

@@ -15,6 +15,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from agentlib.control import Control, ControlError, Deadline
 from agentlib.daily_checks import a11y
 from agentlib.smoke import Smoke
+from e2e_environment import headless_binary, headless_environment
 from headless_process import owned_process
 from test_clipboard_headless import private_bus_command
 
@@ -83,15 +84,13 @@ def run_shell_session(
     test.assertFalse(
         (evidence / "session.json").exists(), "use fresh evidence directory"
     )
-    binary = Path(
-        os.environ.get("HEARTHSPACE_BINARY", ROOT / "target/debug/hearthspace")
-    )
+    binary = headless_binary()
     socket = directory / "control.sock"
     address = f"unix:path={directory / 'bus'}"
     config = directory / "shell-config"
     config.mkdir(exist_ok=True)
     env = {
-        **os.environ,
+        **headless_environment(directory),
         "XDG_RUNTIME_DIR": str(directory),
         "XDG_CONFIG_HOME": str(config),
         "XDG_DATA_HOME": str(directory / "shell-data"),
@@ -106,7 +105,6 @@ def run_shell_session(
         "HEARTHSPACE_SESSION_BUS_ADDRESS": address,
         "GSETTINGS_BACKEND": "memory",
         "XDG_CURRENT_DESKTOP": "Hearthspace",
-        "XDG_DATA_DIRS": f"{ROOT / 'data'}:{os.environ.get('XDG_DATA_DIRS', '/usr/local/share:/usr/share')}",
         "PATH": f"{binary.parent}:{os.environ.get('PATH', '/usr/bin:/bin')}",
     }
     for key in (

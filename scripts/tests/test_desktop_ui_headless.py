@@ -12,6 +12,7 @@ from types import SimpleNamespace
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from agentlib.desktop_checks import desktop as desktop_status
 from agentlib.desktop_checks import require, run
+from e2e_environment import headless_binary
 from shell_headless import run_shell_session
 
 
@@ -33,12 +34,7 @@ def services(directory, _evidence, env, _deadline):
     )
     opened_paths = directory / "opened-paths.jsonl"
     x11_state = directory / "x11-opener.json"
-    binary = Path(
-        os.environ.get(
-            "HEARTHSPACE_BINARY",
-            Path(__file__).resolve().parents[2] / "target/debug/hearthspace",
-        )
-    ).with_name("hearthspace-clipboard-test")
+    binary = headless_binary("hearthspace-clipboard-test")
     handler = directory / "open-handler"
     handler.write_text(
         "#!/usr/bin/python3\nimport json, os, sys\n"

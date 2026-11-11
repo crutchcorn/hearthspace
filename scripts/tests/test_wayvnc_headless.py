@@ -14,10 +14,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from agentlib.control import Control, ControlError, Deadline
+from e2e_environment import headless_binary, headless_environment
 from test_clipboard_headless import stop_process_group
 from wayvnc_client import VncClient
-
-ROOT = Path(__file__).resolve().parents[2]
 
 
 def until(check, seconds=15):
@@ -39,7 +38,7 @@ class WayVncHeadlessTests(unittest.TestCase):
             evidence = Path(os.environ.get("HEARTHSPACE_VNC_EVIDENCE", root))
             evidence.mkdir(parents=True, exist_ok=True)
             env = {
-                **os.environ,
+                **headless_environment(root),
                 "XDG_RUNTIME_DIR": directory,
                 "WAYLAND_DISPLAY": "wayland-vnc-test",
                 "HEARTHSPACE_WAYLAND_DISPLAY": "wayland-vnc-test",
@@ -52,7 +51,7 @@ class WayVncHeadlessTests(unittest.TestCase):
                 log = cleanup.enter_context((evidence / "compositor.log").open("w"))
                 compositor = subprocess.Popen(
                     [
-                        str(ROOT / "target/debug/hearthspace"),
+                        str(headless_binary()),
                         "--headless",
                         "--no-shell",
                         "--remote-desktop",

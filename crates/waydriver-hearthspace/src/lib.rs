@@ -16,6 +16,7 @@ use waydriver::{
 
 mod config;
 mod keymap;
+mod owned_environment;
 mod transport;
 
 pub mod accessibility;
@@ -165,10 +166,14 @@ impl CompositorRuntime for HearthspaceCompositor {
         let scale = scale_to_integer(scale)?;
 
         let mut command = Command::new(&self.binary);
+        owned_environment::configure(
+            &mut command,
+            &self.runtime_dir,
+            &self.command_socket,
+            &self.wayland_display,
+        );
         command
             .args(["--headless", "--headless-size", resolution])
-            .env("XDG_RUNTIME_DIR", &self.runtime_dir)
-            .env("WAYLAND_DISPLAY", &self.wayland_display)
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::null())
