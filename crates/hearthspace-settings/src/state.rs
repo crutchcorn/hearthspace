@@ -70,13 +70,12 @@ impl SettingsCategory {
 #[derive(Debug)]
 pub(crate) enum BackgroundPickerRequest {
     PickFile,
-    PickShader,
 }
 
 #[derive(Debug)]
 pub(crate) enum BackgroundPickerResponse {
     Selected(PathBuf),
-    ShaderSelected(PathBuf),
+    ShaderSelected(PathBuf, xilem::masonry::peniko::ImageBrush),
     Cancelled,
     Failed(String),
 }

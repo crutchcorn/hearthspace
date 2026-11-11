@@ -93,7 +93,8 @@ fn save_background(state: &mut SettingsApp, path: Option<PathBuf>, shader: bool)
         Some(path) => match path.into_os_string().into_string() {
             Ok(path) => Some(path),
             Err(path) => {
-                state.status = format!("Background path is not valid UTF-8: {path:?}");
+                let _ = path;
+                state.status = "Wallpaper failed to load".into();
                 return;
             }
         },
@@ -127,7 +128,8 @@ fn save_background(state: &mut SettingsApp, path: Option<PathBuf>, shader: bool)
         Err(error) => {
             state.settings.background_image_path = previous.0;
             state.settings.background_shader_path = previous.1;
-            state.status = format!("Failed to save background image: {error}");
+            let _ = error;
+            state.status = "Wallpaper failed to load".into();
         }
     }
 }

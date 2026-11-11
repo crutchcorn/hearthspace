@@ -176,7 +176,7 @@ fn photo_fit_selection_and_reset_keep_keyboard_focus() {
         status: String::new(),
     };
     let mut ui = Ui::new(state, view, (440, 420));
-    let upload = ui.button("Change photo");
+    let upload = ui.button("Change wallpaper");
     assert_ne!(
         ui.harness.focused_widget_id(),
         Some(upload),
@@ -278,7 +278,7 @@ fn photo_fit_selection_and_reset_keep_keyboard_focus() {
     key(&mut ui, NamedKey::Enter);
     ui.dispatch(&view);
     assert_eq!(
-        ui.button("Upload photo"),
+        ui.button("Choose wallpaper"),
         upload,
         "picker identity stays stable"
     );

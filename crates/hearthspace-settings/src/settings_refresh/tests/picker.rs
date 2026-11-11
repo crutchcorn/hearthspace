@@ -94,6 +94,6 @@ fn cancelled_picker_refetches_the_external_path_deferred_while_open() {
 fn failed_picker_refetches_the_external_path_without_erasing_failure_status() {
     picker_completion(
         BackgroundPickerResponse::Failed("portal unavailable".into()),
-        "Background picker failed: portal unavailable",
+        "Wallpaper failed to load",
     );
 }

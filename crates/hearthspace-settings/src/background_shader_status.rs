@@ -1,9 +1,10 @@
-//! Bounded compositor feedback and explicit reloads, off the UI thread.
+//! Render wallpaper thumbnails through the desktop's shader renderer.
 use crate::state::SettingsApp;
-use std::time::Duration;
+use std::{path::Path, time::Duration};
 use xilem::{
     ViewCtx,
     core::{NoElement, View},
+    masonry::peniko::{ImageAlphaType, ImageBrush, ImageData, ImageFormat},
     tokio::sync::watch,
     view::task_raw,
 };
@@ -12,43 +13,67 @@ use xilem::{
 struct Request {
     path: Option<String>,
     generation: u64,
+    reload: bool,
 }
-#[derive(Debug)]
-struct Response {
-    request: Request,
-    result: Result<String, String>,
-}
-
 #[derive(Default)]
 pub(crate) struct ShaderStatus {
     request: Request,
     sender: Option<watch::Sender<Request>>,
-    pub(crate) message: String,
-    pub(crate) failed: bool,
+    pub(crate) image: Option<ImageBrush>,
 }
-
 impl ShaderStatus {
     pub(crate) fn synchronize_path(&mut self, path: Option<&str>) {
         if self.request.path.as_deref() != path {
             self.request.path = path.map(str::to_owned);
-            self.reload();
+            self.image = None;
+            self.request.generation = self.request.generation.wrapping_add(1);
+            self.request.reload = false;
+            if let Some(sender) = &self.sender {
+                sender.send_replace(self.request.clone());
+            }
+        }
+    }
+    fn receive(&mut self, request: Request, image: Option<ImageBrush>) {
+        if self.request == request && image.is_some() {
+            self.image = image;
         }
     }
     pub(crate) fn reload(&mut self) {
+        self.request.reload = true;
         self.request.generation = self.request.generation.wrapping_add(1);
-        self.message = "Applying GLSL wallpaper…".into();
-        self.failed = false;
         if let Some(sender) = &self.sender {
             sender.send_replace(self.request.clone());
         }
     }
-    fn receive(&mut self, response: Response) {
-        if response.request != self.request {
-            return;
-        }
-        self.failed = response.result.is_err();
-        self.message = response.result.unwrap_or_else(|error| error);
+}
+
+pub(crate) fn load_preview(path: &Path) -> Result<ImageBrush, String> {
+    let socket =
+        crate::settings_backend::command_socket_path().map_err(|_| "Wallpaper failed to load")?;
+    let path = path.to_str().ok_or("Wallpaper failed to load")?;
+    let command = format!(
+        "wallpaper-preview {}",
+        serde_json::to_string(path).map_err(|_| "Wallpaper failed to load")?
+    );
+    let png = hearthspace_ipc::transport::request_payload(
+        &socket,
+        &command,
+        Duration::from_secs(3),
+        2 * 1024 * 1024,
+    )
+    .map_err(|_| "Wallpaper failed to load")?;
+    let pixels = image::load_from_memory(&png)
+        .map_err(|_| "Wallpaper failed to load")?
+        .into_rgba8();
+    let (width, height) = pixels.dimensions();
+    Ok(ImageData {
+        data: pixels.into_raw().into(),
+        format: ImageFormat::Rgba8,
+        alpha_type: ImageAlphaType::Alpha,
+        width,
+        height,
     }
+    .into())
 }
 
 pub(crate) fn task() -> impl View<SettingsApp, (), ViewCtx, Element = NoElement> + use<> {
@@ -58,74 +83,78 @@ pub(crate) fn task() -> impl View<SettingsApp, (), ViewCtx, Element = NoElement>
                 watch::channel(state.background_shader_status.request.clone());
             state.background_shader_status.sender = Some(sender);
             async move {
-                let mut previous = None;
                 loop {
                     let request = receiver.borrow_and_update().clone();
-                    if request.path.is_some() {
-                        let reload = previous.as_ref() != Some(&request);
-                        previous = Some(request.clone());
-                        let work = request.clone();
+                    if let Some(path) = request.path.clone() {
+                        let reload = request.reload;
                         let result = crate::background_preview::blocking_load(move || {
-                            observe(&work, reload)
+                            if reload {
+                                let socket = crate::settings_backend::command_socket_path()
+                                    .map_err(|_| "Wallpaper failed to load".to_string())?;
+                                hearthspace_ipc::transport::request_line(
+                                    &socket,
+                                    "reload-settings\n",
+                                    Duration::from_secs(3),
+                                )
+                                .map_err(|_| "Wallpaper failed to load".to_string())?;
+                            }
+                            load_preview(Path::new(&path))
                         })
-                        .await
-                        .unwrap_or_else(|| Err("Could not read GLSL wallpaper status".into()));
-                        if proxy.message(Response { request, result }).is_err() {
+                        .await;
+                        if proxy
+                            .message((request, result.and_then(Result::ok)))
+                            .is_err()
+                        {
                             break;
                         }
-                        xilem::tokio::select! {
-                            changed = receiver.changed() => { if changed.is_err() { break; } },
-                            _ = xilem::tokio::time::sleep(Duration::from_secs(1)) => {},
-                        }
-                    } else if receiver.changed().await.is_err() {
+                    }
+                    if receiver.changed().await.is_err() {
                         break;
                     }
                 }
             }
         },
-        |state: &mut SettingsApp, response| state.background_shader_status.receive(response),
+        |state: &mut SettingsApp, (request, image)| {
+            if state.background_shader_status.request == request && image.is_none() {
+                state.status = "Wallpaper failed to load".into();
+            }
+            state.background_shader_status.receive(request, image);
+        },
     )
-}
-
-fn observe(request: &Request, reload: bool) -> Result<String, String> {
-    let socket =
-        crate::settings_backend::command_socket_path().map_err(|error| error.to_string())?;
-    observe_at(&socket, request, reload)
-}
-
-fn observe_at(socket: &std::path::Path, request: &Request, reload: bool) -> Result<String, String> {
-    if reload {
-        let reply = hearthspace_ipc::transport::request_line(
-            socket,
-            "reload-settings\n",
-            Duration::from_millis(1500),
-        )
-        .map_err(|error| error.to_string())?;
-        if reply.trim() != "ok" {
-            return Err(reply.trim().trim_start_matches("err ").into());
-        }
-    }
-    let bytes = hearthspace_ipc::transport::request_payload(
-        socket,
-        "status",
-        Duration::from_millis(500),
-        1024 * 1024,
-    )
-    .map_err(|error| error.to_string())?;
-    let status: serde_json::Value =
-        serde_json::from_slice(&bytes).map_err(|error| error.to_string())?;
-    let shader = &status["background_shader"];
-    if shader["path"].as_str() != request.path.as_deref() {
-        return Ok("Waiting for the desktop to apply GLSL…".into());
-    }
-    if let Some(error) = shader["error"].as_str() {
-        return Err(format!("{error}\nShowing Canvas dots instead."));
-    }
-    if shader["ready"] != true {
-        return Ok("Waiting for the desktop to apply GLSL…".into());
-    }
-    Ok("GLSL wallpaper is active on the desktop.".into())
 }
 
 #[cfg(test)]
-mod tests;
+mod tests {
+    use super::*;
+    #[test]
+    fn late_shader_preview_cannot_replace_a_new_selection_or_reset() {
+        let mut status = ShaderStatus::default();
+        status.synchronize_path(Some("first.glsl"));
+        let first = status.request.clone();
+        status.synchronize_path(Some("second.glsl"));
+        let image: ImageBrush = ImageData {
+            data: vec![0, 0, 255, 255].into(),
+            format: ImageFormat::Rgba8,
+            alpha_type: ImageAlphaType::Alpha,
+            width: 1,
+            height: 1,
+        }
+        .into();
+        status.receive(first, Some(image.clone()));
+        assert!(status.image.is_none());
+        let second = status.request.clone();
+        status.receive(second.clone(), Some(image.clone()));
+        assert_eq!(
+            status.image.as_ref().unwrap().image.data.as_ref(),
+            &[0, 0, 255, 255]
+        );
+        status.receive(second.clone(), None);
+        assert!(
+            status.image.is_some(),
+            "failed refresh retains the last rendered thumbnail"
+        );
+        status.synchronize_path(None);
+        status.receive(second, Some(image));
+        assert!(status.image.is_none());
+    }
+}

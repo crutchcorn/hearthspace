@@ -163,11 +163,11 @@ fn sidebar_routes_to_existing_background_gestures_ai_and_system_controls() {
     controls_fit_width(&ui, 620.0);
     let upload = ui
         .harness
-        .get_widget_with_id(ui.button("Upload photo"))
+        .get_widget_with_id(ui.button("Choose wallpaper"))
         .ctx()
         .bounding_box();
     assert!(upload.width() < 180.0, "photo action stretches: {upload:?}");
-    ui.activate(ui.button("Upload photo"));
+    ui.activate(ui.button("Choose wallpaper"));
     ui.dispatch(&view);
     assert!(matches!(
         picker_requests.try_recv(),
@@ -230,7 +230,7 @@ fn keyboard_navigation_reaches_categories_and_every_appearance_option() {
     ui.harness
         .process_text_event(TextEvent::key_up(Key::Named(NamedKey::Enter)));
     ui.dispatch(&view);
-    ui.button("Upload photo");
+    ui.button("Choose wallpaper");
 
     ui.activate(ui.button("Appearance"));
     ui.dispatch(&view);

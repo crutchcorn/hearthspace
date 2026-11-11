@@ -18,7 +18,7 @@ use xilem::{
 use crate::{
     actions::{save_background_image_path, save_background_shader_path},
     page_components::note,
-    state::{BackgroundPickerRequest, BackgroundPickerResponse, SettingsApp, SettingsCategory},
+    state::{BackgroundPickerResponse, SettingsApp, SettingsCategory},
     typography::label,
 };
 
@@ -49,24 +49,39 @@ pub(crate) fn app_logic(state: &mut SettingsApp) -> impl WidgetView<SettingsApp>
         worker(
             |proxy, mut rx| async move {
                 while let Some(request) = rx.recv().await {
-                    let shader = matches!(request, BackgroundPickerRequest::PickShader);
+                    let _ = request;
                     let response = match xilem::tokio::task::spawn_blocking(move || {
+                        let Some(path) = FileDialog::new()
+                            .add_filter("Wallpaper", &["png", "glsl", "frag"])
+                            .pick_file()
+                        else {
+                            return BackgroundPickerResponse::Cancelled;
+                        };
+                        let shader = path.extension().and_then(|v| v.to_str()).is_some_and(|v| {
+                            v.eq_ignore_ascii_case("glsl") || v.eq_ignore_ascii_case("frag")
+                        });
                         if shader {
-                            FileDialog::new()
-                                .add_filter("GLSL fragment shader", &["glsl", "frag"])
-                                .pick_file()
+                            match crate::background_shader_status::load_preview(&path) {
+                                Ok(image) => BackgroundPickerResponse::ShaderSelected(path, image),
+                                Err(_) => BackgroundPickerResponse::Failed(
+                                    "Wallpaper failed to load".into(),
+                                ),
+                            }
                         } else {
-                            FileDialog::new()
-                                .add_filter("PNG image", &["png"])
-                                .pick_file()
+                            let mut cache = crate::background_thumbnail::ThumbnailCache::new();
+                            if cache.load(&path).is_some() {
+                                BackgroundPickerResponse::Selected(path)
+                            } else {
+                                BackgroundPickerResponse::Failed("Wallpaper failed to load".into())
+                            }
                         }
                     })
                     .await
                     {
-                        Ok(Some(path)) if shader => BackgroundPickerResponse::ShaderSelected(path),
-                        Ok(Some(path)) => BackgroundPickerResponse::Selected(path),
-                        Ok(None) => BackgroundPickerResponse::Cancelled,
-                        Err(error) => BackgroundPickerResponse::Failed(error.to_string()),
+                        Ok(response) => response,
+                        Err(_) => {
+                            BackgroundPickerResponse::Failed("Wallpaper failed to load".into())
+                        }
                     };
 
                     drop(proxy.message(response));
@@ -87,15 +102,23 @@ pub(crate) fn background_picker_response(
     state.background_picker_pending = false;
     crate::settings_refresh::local_save_finished(state);
     match response {
-        BackgroundPickerResponse::ShaderSelected(path) => {
-            save_background_shader_path(state, Some(path))
+        BackgroundPickerResponse::ShaderSelected(path, image) => {
+            let selected = path.to_str().map(str::to_owned);
+            save_background_shader_path(state, Some(path));
+            if state.settings.background_shader_path == selected {
+                state
+                    .background_shader_status
+                    .synchronize_path(selected.as_deref());
+                state.background_shader_status.image = Some(image);
+            }
         }
         BackgroundPickerResponse::Selected(path) => save_background_image_path(state, Some(path)),
         BackgroundPickerResponse::Cancelled => {
             state.status = "Background selection cancelled".into()
         }
         BackgroundPickerResponse::Failed(error) => {
-            state.status = format!("Background picker failed: {error}")
+            let _ = error;
+            state.status = "Wallpaper failed to load".into()
         }
     }
 }

@@ -1,8 +1,8 @@
 # Wallpapers
 
-Settings → Background offers **Canvas dots**, **Photo**, and **GLSL**. Photo
-wallpapers keep their existing PNG fit controls. Choosing GLSL opens a file picker
-for `.glsl` or `.frag` files; cancelling keeps the current wallpaper. Selection is
+Settings → Background uses one wallpaper picker for PNG images and `.glsl` or
+`.frag` shaders. Photo fit controls appear for images. Cancelling keeps the
+current wallpaper. Selection is
 saved by settingsd and restored on the next session.
 
 The desktop renders Canvas dots using a bundled fragment shader too. It retains
@@ -11,7 +11,7 @@ this grid with the canvas; output density remains separate from canvas zoom.
 
 ## A first shader
 
-Save this as `gradient.glsl`, choose GLSL in Settings, and select the file:
+Save this as `gradient.glsl`, choose the wallpaper file in Settings:
 
 ```glsl
 precision highp float;
@@ -94,12 +94,11 @@ require the background. Animation redraws the desktop scene; its cost depends on
 shader complexity, output resolution, and GPU/transfer behavior. This cadence is
 a scheduling target, not a physical frame-rate guarantee.
 
-After editing a file, choose **Reload GLSL file**. There is no automatic source-file
-watcher. Settings reports compilation or file errors and the desktop falls back
-to Canvas dots, retaining the chosen path so it can be repaired and reloaded.
-Sources must be regular UTF-8 files no larger than 1 MiB. Changing to another
-wallpaper or choosing **Use default background** clears the custom selection.
+After editing a file, choose it again in the wallpaper picker. There is no automatic
+source-file watcher. The candidate is rendered before saving the selection. If it
+cannot load, the current wallpaper stays selected and Settings shows
+“Wallpaper failed to load”. Sources must be regular UTF-8 files no larger than
+1 MiB. **Use default background** returns to Canvas dots.
 
-The Settings thumbnail labels GLSL; it does not run the shader as a preview.
-Custom GLSL runs only in the unlocked desktop scene. The lock client uses its
-theme background rather than executing the desktop shader.
+The thumbnail contains an actual rendered shader frame. Custom GLSL runs only in
+the unlocked desktop scene. The lock client uses its theme background instead.

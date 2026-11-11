@@ -6,7 +6,6 @@ use xilem::{
         kurbo::{Affine, Rect, Stroke},
         layout::AsUnit,
     },
-    style::Style,
     view::{canvas, sized_box},
 };
 
@@ -17,20 +16,13 @@ use crate::{
 
 pub(crate) fn view(state: &SettingsApp) -> Box<AnyWidgetView<SettingsApp>> {
     let palette = state.palette();
-    if state.settings.background_shader_path.is_some() {
-        return sized_box(
-            crate::typography::label("GLSL")
-                .text_size(16.0)
-                .color(palette.muted),
-        )
-        .fixed_width(84.0.px())
-        .fixed_height(64.0.px())
-        .background_color(palette.app_background)
-        .boxed();
-    }
-    let image = state
-        .background_preview
-        .image_for(state.settings.background_image_path.as_deref());
+    let image = if state.settings.background_shader_path.is_some() {
+        state.background_shader_status.image.clone()
+    } else {
+        state
+            .background_preview
+            .image_for(state.settings.background_image_path.as_deref())
+    };
     sized_box(
         canvas(move |_: &mut SettingsApp, _, scene, size| {
             let mut painter: Painter<'_> = Painter::new(scene);

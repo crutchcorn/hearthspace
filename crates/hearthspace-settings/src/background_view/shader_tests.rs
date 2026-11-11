@@ -2,121 +2,51 @@ use crate::{
     state::{BackgroundPickerRequest, BackgroundPickerResponse, SettingsCategory},
     test_support::{Ui, ids},
 };
-use hearthspace_ipc::ColorMode;
-use xilem::{
-    masonry::{
-        accesskit::Role,
-        core::{
-            TextEvent,
-            keyboard::{Key, NamedKey},
-        },
-    },
-    tokio::sync::mpsc::unbounded_channel,
-};
+use xilem::{masonry::accesskit::Role, tokio::sync::mpsc::unbounded_channel};
 
 #[test]
-fn glsl_type_uses_shader_picker_and_cancellation_preserves_the_photo() {
+fn one_picker_keeps_the_previous_wallpaper_when_loading_fails() {
     let (_dir, mut state) = crate::ui::tests::state();
     state.selected_category = SettingsCategory::Background;
-    state.settings.background_image_path = Some("original.png".into());
+    state.settings.background_shader_path = Some("working.glsl".into());
     let (sender, mut receiver) = unbounded_channel();
     state.background_picker_request_sender = Some(sender);
-    let mut ui = Ui::new(state, super::view, (340, 460));
-    let selector = ids(&ui.harness)
-        .into_iter()
-        .find(|&id| {
-            ui.harness.access_node(id).is_some_and(|node| {
-                node.role() == Role::ComboBox && node.label().as_deref() == Some("Wallpaper type")
-            })
-        })
-        .expect("Wallpaper type selector");
-    ui.harness.focus_on(Some(selector));
-    for key in [NamedKey::Enter, NamedKey::End, NamedKey::Enter] {
-        ui.harness
-            .process_text_event(TextEvent::key_down(Key::Named(key)));
-        ui.harness
-            .process_text_event(TextEvent::key_up(Key::Named(key)));
-        ui.dispatch(&super::view);
-    }
+    let mut ui = Ui::new(state, super::view, (400, 540));
+    ui.activate(ui.button("Change wallpaper"));
+    ui.dispatch(&super::view);
     assert!(matches!(
         receiver.try_recv().unwrap(),
-        BackgroundPickerRequest::PickShader
+        BackgroundPickerRequest::PickFile
     ));
     assert!(ui.state.background_picker_pending);
-    assert!(ui.harness.access_node(selector).unwrap().is_disabled());
-    assert_eq!(
-        ui.state.settings.background_image_path.as_deref(),
-        Some("original.png")
-    );
-    assert!(ui.state.settings.background_shader_path.is_none());
-    crate::ui::background_picker_response(&mut ui.state, BackgroundPickerResponse::Cancelled);
-    ui.rebuild(&super::view);
-    ui.dispatch(&super::view);
-    assert!(!ui.state.background_picker_pending);
-    assert_eq!(
-        ui.state.settings.background_image_path.as_deref(),
-        Some("original.png")
+    crate::ui::background_picker_response(
+        &mut ui.state,
+        BackgroundPickerResponse::Failed("compiler details must stay hidden".into()),
     );
     assert_eq!(
-        ui.harness.access_node(selector).unwrap().value().as_deref(),
-        Some("Photo")
+        ui.state.settings.background_shader_path.as_deref(),
+        Some("working.glsl")
     );
-    assert!(!ui.harness.access_node(selector).unwrap().is_disabled());
+    assert!(ui.state.settings.background_image_path.is_none());
+    assert_eq!(ui.state.status, "Wallpaper failed to load");
 }
 
 #[test]
-fn glsl_controls_expose_reload_and_errors_without_photo_fit_in_both_themes() {
-    for mode in [ColorMode::Light, ColorMode::Dark] {
-        for width in [320, 680] {
-            let (_dir, mut state) = crate::ui::tests::state();
-            state.selected_category = SettingsCategory::Background;
-            state.settings.appearance.color_mode = mode;
-            state.settings.background_shader_path = Some("/wallpapers/aurora.glsl".into());
-            state
-                .background_shader_status
-                .synchronize_path(Some("/wallpapers/aurora.glsl"));
-            state.background_shader_status.message =
-                "Syntax error: showing Canvas dots instead.".into();
-            state.background_shader_status.failed = true;
-            let mut ui = Ui::new(state, super::view, (width, 540));
+fn shader_page_has_no_type_selector_reload_or_developer_status() {
+    let (_dir, mut state) = crate::ui::tests::state();
+    state.selected_category = SettingsCategory::Background;
+    state.settings.background_shader_path = Some("working.glsl".into());
+    let ui = Ui::new(state, super::view, (400, 540));
+    ui.button("Change wallpaper");
+    ui.button("Use default background");
+    for id in ids(&ui.harness) {
+        if let Some(node) = ui.harness.access_node(id) {
+            assert_ne!(node.role(), Role::ComboBox);
+            let text = node.label().or_else(|| node.value()).unwrap_or_default();
             assert!(
-                ids(&ui.harness)
-                    .into_iter()
-                    .any(|id| ui.harness.access_node(id).is_some_and(|node| node
-                        .label()
-                        .or_else(|| node.value())
-                        .is_some_and(|label| label.contains("Syntax error"))))
-            );
-            assert!(!ids(&ui.harness).into_iter().any(|id| {
-                ui.harness.access_node(id).is_some_and(|node| {
-                    node.role() == Role::ComboBox && node.label().as_deref() == Some("Photo fit")
-                })
-            }));
-            for name in [
-                "Change GLSL file",
-                "Reload GLSL file",
-                "Use default background",
-            ] {
-                let id = ui.button(name);
-                let widget = ui.harness.get_widget_with_id(id);
-                let bounds = widget
-                    .ctx()
-                    .window_transform()
-                    .transform_rect_bbox(widget.ctx().border_box());
-                assert!(
-                    bounds.x0 >= 0. && bounds.x1 <= f64::from(width),
-                    "{name}: {bounds:?}"
-                );
-            }
-            let reload = ui.button("Reload GLSL file");
-            ui.harness.focus_on(Some(reload));
-            ui.activate(reload);
-            ui.dispatch(&super::view);
-            assert_eq!(ui.harness.focused_widget_id(), Some(reload));
-            assert!(!ui.state.background_shader_status.failed);
-            assert_eq!(
-                ui.state.background_shader_status.message,
-                "Applying GLSL wallpaper…"
+                !text.contains("Reload GLSL")
+                    && !text.contains("active on the desktop")
+                    && !text.contains("Invalid shaders")
             );
         }
     }
