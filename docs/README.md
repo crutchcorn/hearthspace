@@ -14,6 +14,7 @@ maintained behavior. The [roadmap](ROADMAP.md) covers remaining work;
 - [Applications and launch ownership](APPS.md)
 - [Snap applications](SNAP_APPLICATIONS.md)
 - [Settings](SETTINGS.md)
+- [Wallpapers and GLSL](WALLPAPERS.md)
 - [Session locking](SESSION_LOCK.md)
 - [Power, battery, and wake recovery](POWER.md)
 - [Audio and brightness](AUDIO_AND_BRIGHTNESS.md)
