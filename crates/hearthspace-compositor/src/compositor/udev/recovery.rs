@@ -151,14 +151,11 @@ impl UdevBackendState {
                 }
                 // Setup success alone is insufficient: a failed first render or a
                 // missing page flip must retry too, without depending on new input.
-                data.state.set_native_lock_outputs_available(false);
                 let Some(backend) = udev_backend_mut(data) else {
                     return TimeoutAction::Drop;
                 };
                 let sync = backend.activate_session();
-                data.state.invalidate_lock_presentation();
-                apply_connector_sync(data, sync);
-                data.state.request_redraw();
+                apply_recovery_retry(data, sync);
                 TimeoutAction::ToDuration(RECOVERY_INTERVAL)
             },
         ) {
@@ -167,6 +164,18 @@ impl UdevBackendState {
         }
     }
 }
+
+fn apply_recovery_retry(data: &mut CalloopData, sync: super::ConnectorSync) {
+    // Connector reconciliation invalidates evidence for an actual source or
+    // availability change. A poll must not retire an unchanged in-flight lock
+    // generation: doing so can starve its first flip and force another modeset.
+    apply_connector_sync(data, sync);
+    data.state.request_redraw();
+}
+
+#[cfg(all(test, feature = "e2e"))]
+#[path = "recovery/presentation_tests.rs"]
+mod presentation_tests;
 
 #[cfg(test)]
 mod tests {
