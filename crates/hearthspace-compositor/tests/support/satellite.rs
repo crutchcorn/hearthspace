@@ -45,6 +45,17 @@ impl WindowClient {
         color: u32,
         take_focus: bool,
     ) -> Self {
+        Self::new_with_input_model(compositor, display, title, color, take_focus, !take_focus)
+    }
+
+    fn new_with_input_model(
+        compositor: &HeadlessCompositor,
+        display: &str,
+        title: &str,
+        color: u32,
+        take_focus: bool,
+        accepts_input: bool,
+    ) -> Self {
         let (connection, screen) = x11rb::connect(Some(display)).unwrap();
         let screen = &connection.setup().roots[screen];
         let root = screen.root;
@@ -64,7 +75,9 @@ impl WindowClient {
                 &CreateWindowAux::new().background_pixel(color).event_mask(
                     EventMask::BUTTON_PRESS
                         | EventMask::BUTTON_RELEASE
-                        | EventMask::STRUCTURE_NOTIFY,
+                        | EventMask::STRUCTURE_NOTIFY
+                        | EventMask::KEY_PRESS
+                        | EventMask::KEY_RELEASE,
                 ),
             )
             .unwrap()
@@ -119,14 +132,14 @@ impl WindowClient {
                     &[take],
                 )
                 .unwrap();
-            // ICCCM globally-active client: it must receive WM_TAKE_FOCUS.
+            // Preserve locally-active versus globally-active input models.
             connection
                 .change_property32(
                     PropMode::REPLACE,
                     window,
                     AtomEnum::WM_HINTS,
                     AtomEnum::WM_HINTS,
-                    &[1, 0, 0, 0, 0, 0, 0, 0, 0],
+                    &[1, u32::from(accepts_input), 0, 0, 0, 0, 0, 0, 0],
                 )
                 .unwrap();
         }

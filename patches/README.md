@@ -1000,3 +1000,27 @@ See [vendored provenance and refresh steps](../vendor/accesskit_atspi_common/PRO
   evidence does not establish native display or every toolkit's behavior.
 - **Removal:** adopt upstream geometry/restore handling passing these real-client
   cases without this patch. Preserve other repairs and their removal conditions.
+
+## Satellite locally-active keyboard focus
+
+- **Dependency:** Satellite 0.8.3, pin `7bf5e0dcb0d4250860b24b04a6cb3ddeada515d0`.
+- **Patch:** [locally-active focus](satellite-locally-active-focus.patch), relative
+  to the vendor root, after window-geometry. Pin and existing notices remain.
+- **Reason:** Pepper Grinder advertised InputHint=true and WM_TAKE_FOCUS while
+  fullscreen. Hearthspace focused its host surface, but Satellite sent only the
+  message, leaving X keyboard focus on a Steam child. Direct X focus restoration
+  recovered keyboard controls in the running game, confirmed by the user.
+- **Behavior:** preserve the window's InputHint through deferred focus handling.
+  Give accepting clients direct focus before sending WM_TAKE_FOCUS. Clients with
+  InputHint=false and WM_TAKE_FOCUS retain message-only focus. Both keyboard
+  entry and managed popup offers use the same input-model decision. This follows
+  [ICCCM input models](https://xorg.freedesktop.org/releases/current/doc/xorg-docs/icccm/icccm.html#input_focus).
+  The inspected upstream master retains the exclusive message/direct-focus
+  branch; no corresponding upstream fix or issue is known. This is a local
+  repair, not a backport. Timestamp generation is unchanged.
+- **Regression:** a real locally-active fullscreen X client receives actual
+  balanced keyboard events on repeated focus returns, with no delivery to the
+  other client. The existing globally-active message regression remains.
+  Headless protocol coverage does not establish every game's input behavior.
+- **Removal:** adopt upstream input-model handling passing these recipient and
+  globally-active regressions, then remove only this repair.

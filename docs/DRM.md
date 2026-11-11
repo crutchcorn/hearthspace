@@ -75,8 +75,9 @@ and renders the desktop rectangle belonging to each one. Discovery alone does
 not establish that a connected display can present.
 
 One GPU owns the GLES scene renderer, application imports, and effect caches.
-Outputs attached to that GPU render directly into leased, cursor-free scene
-buffers. For an output on another GPU, Hearthspace renders into a persistent
+Composed outputs attached to that GPU render directly into leased, cursor-free
+scene buffers. Eligible fullscreen clients can instead supply their original
+DMA-BUF as described below. For an output on another GPU, Hearthspace renders into a persistent
 scene texture.
 Compatible explicit format/modifier pairs use Smithay's multi-GPU renderer,
 including when the sharing format differs from the target's scanout format.
@@ -166,8 +167,8 @@ device owns that device's DRM notifier, KMS surfaces, GLES context, and Smithay
 `DrmCompositor` instances. KMS completion stays on that thread, including
 `frame_submitted`, which can itself perform submission work.
 
-For each output, main publishes a cursor-free scene with a producer fence and an
-`Arc<Slot<GbmBuffer>>` lease. A DMA-BUF clone alone does not reserve a pool slot.
+For each composed output, main publishes a cursor-free scene with a producer
+fence and an `Arc<Slot<GbmBuffer>>` lease. A DMA-BUF clone alone does not reserve a pool slot.
 The presenter adopts completed scenes without waiting on an unfinished scene
 before moving the cursor over the previous image. Producer and consumer fences
 keep leases unavailable until both users finish. A full pool leaves scene work
@@ -202,14 +203,123 @@ epochs and require a current opaque shield or lock scene before acknowledgement.
 
 GPU clients need device and format information for compatible allocation.
 Hearthspace advertises renderer-importable dmabuf formats and uses the native
-renderer device as the feedback main device. Imported buffers are then sampled
-by that renderer.
+renderer device as the feedback main device. Imported buffers can be sampled by that renderer; eligible fullscreen buffers
+can also be offered to the output presenter.
 
 Import failures are client/rendering compatibility failures, distinct from KMS
 mode-setting failures. Useful diagnostics include dimensions, format, planes,
 modifiers, and the selected device. An advertised format is not a promise that
 every allocation from every driver will import. See
 [rendering](RENDERING.md#client-buffers-and-readiness) for readiness and synchronization.
+
+## Fullscreen direct scanout
+
+An opaque fullscreen client on an output driven by the scene GPU can bypass
+scene rendering. The
+shared scene collector must produce exactly one plain Wayland surface, with no
+backdrop effect. Its geometry must cover the output, its buffer must match the
+output's physical dimensions, and its source must use the entire buffer with a
+normal transform and full opacity. Multiple opaque regions are allowed only
+when their union covers the entire surface. Integer output scale is accounted
+for before comparing physical dimensions.
+
+Canvas zoom or motion, canvas preview, layout editing or turns, and capture
+keep the composed path. Popups, subsurfaces, visible shell or notification
+controls, and other additional scene elements also require composition. Admission runs again for each new scene, so
+opening an overlay replaces scanout with composition. Cross-GPU outputs retain
+the existing transfer path. This initial policy deliberately leaves cropped,
+transformed, and differently sized buffers to composition even when a particular
+display plane could support them.
+
+The handoff carries the original DMA-BUF and Smithay's reference-counted Wayland
+`Buffer` guard. Committed client buffers use the existing asynchronous implicit
+readiness blocker; the driver also observes DMA-BUF implicit fences. There is
+no producer GLES pass for this handoff. This does not add explicit-sync protocol
+support. Live surfaces and scene-renderer textures stay on the main thread.
+
+Smithay requires an explicit modifier for client framebuffer export; buffers
+with an implicit/invalid modifier remain available for GPU composition. The
+presenter imports the same buffer for a GPU fallback element and exposes
+its original Wayland storage to `DrmCompositor`. Primary scanout accepts any
+hardware-supported format rather than requiring the scene swapchain's format.
+Smithay owns framebuffer export, format/modifier validation, plane testing, and
+fallback drawing. Overlay planes remain disabled. A hardware cursor can remain
+on its independent cursor plane; if it requires composition, Smithay can compose
+the fullscreen buffer with it.
+
+If a selected primary or cursor plane is rejected at queue time with an invalid
+configuration or failed atomic test, the presenter resets buffer ages and retries
+once with both planes composed. Permission, inactive-device, busy, and other
+errors follow device recovery without that retry. Each attempt retains the same
+source guard and records its own read fence; only the accepted submission can
+acknowledge capture or presentation. Smithay retains its own buffer guard in
+pending and current scanout state until a replacement is applied, so retiring a
+scene does not release a buffer still being displayed.
+
+Output capture requests use the canonical composed scene, including the existing
+clean and cursor-inclusive image contract. Lock/security barriers, modeset
+verification, output generations, and pause/removal admission checks apply to
+both storage kinds. No setting or new Wayland protocol is needed.
+
+The agent's read-only status query reports the last verified page flip per output:
+
+```sh
+scripts/hearthspace-agent --session /absolute/path/to/owned-session status
+# For an explicitly selected compositor outside the harness:
+scripts/hearthspace-agent --socket /absolute/path/to/command.sock status
+```
+
+Inspect the top-level `scanout` array. Each entry names its `output` and reports
+`state` (`direct-scanout`, `composited`, or `unknown`), `primary_scanout`,
+`window_id`, `cursor_plane`, `submission_sequence`, `scene_sequence`, and
+`completion_age_ms`. Match `window_id` against the same response's `windows`
+array to identify the app. Composition clears that ID, including when an admitted
+fullscreen buffer falls back to composition. `unknown` has null evidence fields;
+it is not a negative scanout result.
+
+This describes completed presentation, so a queued replacement does not change
+it until its page flip completes. A static frame can remain valid with an old
+completion age; age measures time since the main loop received that completion.
+Output recreation and security changes invalidate evidence. Inactive, locked,
+headless, and nested sessions return an empty array. Recovery can report unknown.
+The query does not capture pixels or request redraw, so polling it does not
+force composition. Avoid screenshots or the agent action commands' default
+frame wait while measuring scanout; use `--wait none` for those actions.
+
+Enable `hearthspace::presenter=trace` to inspect `primary_scanout` on plane
+selection and verified completion records. A successful buffer import or
+fullscreen configure alone does not establish direct scanout. Canvas zoom behind
+an output-coordinate fullscreen window does not disqualify it; the selected
+surface must still match the output's native geometry and buffer dimensions.
+Retain the verified completion, output configuration, and binary provenance with
+native acceptance evidence; see [native testing](NATIVE_TESTING.md).
+
+The `scanout-fixture` example supplies a fullscreen, opaque DMA-BUF with a known
+linear layout and hides its pointer through the normal client cursor request.
+Build it before taking a VT:
+
+```sh
+cargo build --locked -p hearthspace-compositor --features udev --example scanout-fixture
+```
+
+Inside the owned session's Foot terminal, run the example binary by its absolute
+checkout path, passing the inspected render node as its sole argument. Use a
+render node accessible to the normal user; don't run the client as root or guess
+a card number. The example uses GBM's `LINEAR` allocation guarantee and advertises
+that known layout explicitly through linux-dmabuf, even if the allocation export
+reports an implicit modifier. It retains immutable source allocations through
+resizes and logs generation changes and `wl_buffer.release` events. Its green
+image has a red rectangle in the upper-left quarter of each dimension.
+
+Check verified `primary_scanout=true` completions, open the launcher, request
+capture, change canvas zoom, restore/resize the window, and return to fullscreen.
+Each overlay or non-native geometry must compose; eligible frames should return
+to scanout when the hardware accepts them. Confirm the old buffer's release only
+after replacement. Finally lock, verify the current presentation barrier and
+capture denial, and stop through the harness. Preserve failed attempts as well
+as successful runs. The real GTK `hearthspace-window-test` client supplies popup
+coverage (F7) and a pointer-visibility toggle (F10); its renderer may choose
+buffers with implicit modifiers, so it is also useful for fallback validation.
 
 ## Damage tracking and KMS damage
 

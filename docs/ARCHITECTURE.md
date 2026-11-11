@@ -86,8 +86,9 @@ surfaces and client pacing. One canonical GPU renders cursor-free scenes on the
 Wayland thread; the backend transfers completed images to outputs attached to
 other GPUs. A presenter thread per device owns Smithay's DRM compositors and
 reuses each completed scene for independently scheduled cursor updates. Immutable
-cursor snapshots and leased scene buffers cross that boundary; live Wayland
-surfaces and main-context textures do not. Desktop placement uses logical
+cursor snapshots, leased scene buffers, and guarded fullscreen client buffers
+cross that boundary; live Wayland surfaces and main-context textures do not.
+Desktop placement uses logical
 dimensions derived from the physical mode and output scale. See
 [DRM/KMS](DRM.md) for transfer and recovery boundaries and [size units](SIZE_UNITS.md).
 

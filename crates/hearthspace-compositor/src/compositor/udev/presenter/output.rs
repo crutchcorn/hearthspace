@@ -44,6 +44,8 @@ pub(super) struct Submission {
 
 pub(super) struct SubmissionDiagnostics {
     pub cursor_plane: bool,
+    pub primary_scanout: bool,
+    pub window_id: Option<u64>,
     pub primary: Option<(u32, CommitCounter)>,
     pub primary_reused: bool,
     pub render_us: u64,
@@ -209,7 +211,9 @@ impl Output {
                 gbm.clone(),
                 GbmBufferFlags::SCANOUT | GbmBufferFlags::RENDERING,
             ),
-            GbmFramebufferExporter::new(gbm.clone(), NodeFilter::None),
+            // Only admitted fullscreen elements expose Wayland storage. Imported
+            // DMA-BUFs need not carry a node hint; Smithay/KMS must test them.
+            GbmFramebufferExporter::new(gbm.clone(), NodeFilter::All),
             [Fourcc::Argb8888, Fourcc::Xrgb8888],
             formats,
             cursor_caps,

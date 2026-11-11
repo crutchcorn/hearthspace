@@ -160,3 +160,13 @@ metadata clear the crop, and Satellite caption bounds remain represented.
 This is a local adaptation of XDG semantics and the pinned Smithay X11 mapping,
 not an upstream backport. Pin, package and notices remain unchanged. Regression
 boundaries and removal requirements are in the ledger.
+
+## Locally-active keyboard focus
+
+The [locally-active focus patch](../../patches/satellite-locally-active-focus.patch),
+after window-geometry, retains InputHint when deferring keyboard/popup focus.
+Accepting clients receive direct X focus even when they also request
+WM_TAKE_FOCUS; globally-active clients retain message-only delivery. This local
+ICCCM compatibility repair fixes games retaining another application's X focus.
+Version, pin, notices, and timestamp handling remain unchanged. See the ledger
+for reproduction, regression boundaries, and removal conditions.

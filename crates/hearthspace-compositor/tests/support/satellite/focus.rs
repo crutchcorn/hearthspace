@@ -47,3 +47,92 @@ fn satellite_take_focus_is_sent_when_keyboard_returns_to_an_existing_window() {
     action(&compositor, format!("focus-window {}", a.id));
     wait_take_focus(&a);
 }
+
+#[test]
+fn satellite_locally_active_fullscreen_client_receives_keys_after_focus_returns() {
+    let _guard = headless_test_guard();
+    let (compositor, display) = fixture();
+    let game = WindowClient::new_with_input_model(
+        &compositor,
+        &display,
+        "Locally active game",
+        0xdc143c,
+        true,
+        true,
+    );
+    let other = WindowClient::new(&compositor, &display, "Other app", 0x204080);
+    action(&compositor, format!("fullscreen-window {} true", game.id));
+    for _ in 0..2 {
+        action(&compositor, format!("focus-window {}", other.id));
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while other
+            .connection
+            .get_input_focus()
+            .unwrap()
+            .reply()
+            .unwrap()
+            .focus
+            != other.window
+        {
+            assert!(
+                Instant::now() < deadline,
+                "other app never acquired X keyboard focus"
+            );
+            thread::sleep(Duration::from_millis(10));
+        }
+        game.drain(&mut Vec::new());
+        other.drain(&mut Vec::new());
+        action(&compositor, format!("focus-window {}", game.id));
+        // This client intentionally does not set X focus in response: like a
+        // locally-active game, it asks the WM for direct focus as well.
+        wait_take_focus(&game);
+        assert_eq!(
+            game.connection
+                .get_input_focus()
+                .unwrap()
+                .reply()
+                .unwrap()
+                .focus,
+            game.window,
+            "fullscreen game retained another application's X keyboard focus"
+        );
+        batch(&compositor, "key-down 30\nkey-up 30\n");
+        let deadline = Instant::now() + Duration::from_secs(5);
+        let mut keys = Vec::new();
+        while keys.len() < 2 {
+            while let Some(event) = game.connection.poll_for_event().unwrap() {
+                match event {
+                    Event::KeyPress(event) => keys.push((true, event)),
+                    Event::KeyRelease(event) => keys.push((false, event)),
+                    Event::Error(error) => panic!("X11 error: {error:?}"),
+                    _ => {}
+                }
+            }
+            assert!(
+                Instant::now() < deadline,
+                "fullscreen game received no balanced key: {keys:?}"
+            );
+            thread::sleep(Duration::from_millis(10));
+        }
+        assert_eq!(keys.len(), 2);
+        assert!(keys[0].0 && !keys[1].0);
+        for (_, event) in keys {
+            assert_eq!(event.event, game.window);
+            assert_eq!(event.detail, 38);
+            assert_eq!(event.response_type & 0x80, 0);
+        }
+        while let Some(event) = other.connection.poll_for_event().unwrap() {
+            assert!(
+                !matches!(event, Event::KeyPress(_) | Event::KeyRelease(_)),
+                "game input leaked to the other application: {event:?}"
+            );
+        }
+        assert!(
+            query(&compositor, "status")["windows"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|window| window["id"] == game.id && window["fullscreen"] == true)
+        );
+    }
+}

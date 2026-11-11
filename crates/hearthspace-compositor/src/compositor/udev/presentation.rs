@@ -8,6 +8,7 @@ pub(super) struct OutputPresentation {
     newest_scene: u64,
     last_submission: u64,
     last_scene: u64,
+    pub(super) scanout: Option<super::scanout_status::CompletedScanout>,
     pub(super) dirty: bool,
     pub(super) presented_once: bool,
 }
@@ -20,6 +21,7 @@ impl OutputPresentation {
             newest_scene: 0,
             last_submission: 0,
             last_scene: 0,
+            scanout: None,
             dirty: true,
             presented_once: false,
         }
@@ -47,6 +49,7 @@ impl OutputPresentation {
     }
 
     pub(super) fn invalidate(&mut self) {
+        self.scanout = None;
         self.pending = None;
         self.last_scene = 0;
         self.dirty = true;
@@ -60,6 +63,20 @@ impl OutputPresentation {
         self.pending = None;
         self.dirty = true;
         true
+    }
+
+    pub(super) fn presented_with_planes(
+        &mut self,
+        key: OutputKey,
+        submission: u64,
+        scene: u64,
+        planes: super::scanout_status::PresentedPlanes,
+    ) -> Option<bool> {
+        let completed = self.presented(key, submission, scene)?;
+        self.scanout = Some(super::scanout_status::CompletedScanout::new(
+            submission, scene, planes,
+        ));
+        Some(completed)
     }
 
     /// A cursor-only completion may service cursor callbacks, but cannot retire

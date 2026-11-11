@@ -1,8 +1,9 @@
 use super::{
-    capture,
+    SceneStorage, capture,
     fallback::{self, AttemptError, AttemptOps},
     mailbox::{Control, Mailbox},
     output::{Output, RenderOutcome, Submission, SubmissionDiagnostics, SubmissionOps},
+    scene_element::SceneElement,
 };
 use smithay::{
     backend::{
@@ -13,7 +14,7 @@ use smithay::{
                 Kind, memory::MemoryRenderBufferRenderElement, render_elements,
                 texture::TextureRenderElement,
             },
-            gles::{GlesRenderer, GlesTexture},
+            gles::GlesRenderer,
         },
     },
     utils::{Rectangle, Transform},
@@ -22,7 +23,7 @@ use std::time::Instant;
 
 render_elements! {
     pub(super) PresenterElement<=GlesRenderer>;
-    Scene=TextureRenderElement<GlesTexture>,
+    Scene=SceneElement,
     Cursor=MemoryRenderBufferRenderElement<GlesRenderer>,
 }
 
@@ -99,7 +100,7 @@ impl AttemptOps for NativeSubmission<'_> {
     fn reset_buffer_ages(&mut self) {
         tracing::trace!(target: "hearthspace::presenter", key = ?self.output.config.key,
             rejected_submission = self.output.next_submission,
-            "preparing one composited cursor retry");
+            "preparing one composited plane retry");
         self.output.compositor.reset_buffer_ages();
     }
 
@@ -154,20 +155,26 @@ fn prepare_and_queue(
         }
         let size = output.config.size;
         elements.push(
-            TextureRenderElement::from_texture_with_damage(
-                output.scene_id.clone(),
-                renderer.context_id(),
-                (0.0, 0.0),
-                scene.texture.as_ref().unwrap().clone(),
-                1,
-                Transform::Normal,
-                Some(1.0),
-                None,
-                None,
-                Some(vec![Rectangle::from_size((size.w, size.h).into())]),
-                output.scene_damage.snapshot(),
-                Kind::Unspecified,
-            )
+            SceneElement {
+                texture: TextureRenderElement::from_texture_with_damage(
+                    output.scene_id.clone(),
+                    renderer.context_id(),
+                    (0.0, 0.0),
+                    scene.texture.as_ref().unwrap().clone(),
+                    1,
+                    Transform::Normal,
+                    Some(1.0),
+                    None,
+                    None,
+                    Some(vec![Rectangle::from_size((size.w, size.h).into())]),
+                    output.scene_damage.snapshot(),
+                    Kind::Unspecified,
+                ),
+                client: match &scene.frame.storage {
+                    SceneStorage::Client(buffer) => Some(buffer.clone()),
+                    SceneStorage::Composed(_) => None,
+                },
+            }
             .into(),
         );
     }
@@ -179,13 +186,14 @@ fn prepare_and_queue(
             renderer,
             &elements,
             Color32F::new(0.0, 0.0, 0.0, 1.0),
-            // The scene is compositor-owned texture storage, not a client buffer.
-            // Keep primary composition; only the first attempt allows a cursor plane.
+            // Smithay tests plane suitability and draws unsupported storage.
             flags,
         )
         .map_err(|error| error.to_string())?;
     let render_us = render_started.elapsed().as_micros() as u64;
+    let scene_state = result.states.element_render_state(output.scene_id.clone());
     let cursor_plane = result.cursor_element.is_some();
+    let primary_scanout = matches!(result.primary_element, PrimaryPlaneElement::Element(_));
     let primary = match &result.primary_element {
         PrimaryPlaneElement::Swapchain(primary) => Some((
             u32::from(smithay::reexports::drm::buffer::Buffer::handle(
@@ -199,7 +207,7 @@ fn prepare_and_queue(
     tracing::trace!(target: "hearthspace::presenter", key = ?output.config.key,
         candidate_submission = output.next_submission + 1,
         scene_sequence, cursor_sequence, cursor_image = ?cursor_image,
-        cursor_plane, primary_buffer = ?primary.map(|(buffer, _)| buffer),
+        cursor_plane, primary_scanout, scene_state = ?scene_state, primary_buffer = ?primary.map(|(buffer, _)| buffer),
         primary_damage_commit = ?primary.map(|(_, commit)| commit),
         primary_reused, render_us, flags = ?flags, empty = result.is_empty,
         "rendered native plane selection");
@@ -229,7 +237,9 @@ fn prepare_and_queue(
             .compositor
             .commit_frame()
             .map_err(|error| match error {
-                FrameError::DrmError(error) => AttemptError::queue(cursor_plane, error),
+                FrameError::DrmError(error) => {
+                    AttemptError::queue(cursor_plane || primary_scanout, error)
+                }
                 error => AttemptError::from(error.to_string()),
             })?;
         return Ok(RenderOutcome::Primed);
@@ -262,7 +272,7 @@ fn prepare_and_queue(
     let sequence = output.next_submission;
     let span = tracing::trace_span!(target: "hearthspace::presenter", "native_queue",
         key = ?output.config.key, submission_sequence = sequence, scene_sequence,
-        cursor_sequence, cursor_image = ?cursor_image, cursor_plane,
+        cursor_sequence, cursor_image = ?cursor_image, cursor_plane, primary_scanout,
         security_epoch = control.security_epoch, lock_generation = ?control.lock_generation,
         primary_buffer = ?primary.map(|(buffer, _)| buffer),
         primary_damage_commit = ?primary.map(|(_, commit)| commit), primary_reused, render_us);
@@ -278,6 +288,12 @@ fn prepare_and_queue(
         capture,
         diagnostics: SubmissionDiagnostics {
             cursor_plane,
+            primary_scanout,
+            window_id: output
+                .scene
+                .as_ref()
+                .and_then(|scene| scene.frame.window_id)
+                .map(std::num::NonZeroU64::get),
             primary,
             primary_reused,
             render_us,
@@ -292,7 +308,7 @@ fn prepare_and_queue(
         accepted = queued.is_ok(), error = ?queued.as_ref().err(),
         "native queue result");
     queued.map_err(|error| match error {
-        FrameError::DrmError(error) => AttemptError::queue(cursor_plane, error),
+        FrameError::DrmError(error) => AttemptError::queue(cursor_plane || primary_scanout, error),
         error => AttemptError::from(error.to_string()),
     })?;
     output.last_primary = primary;

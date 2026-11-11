@@ -81,8 +81,10 @@ Buffer age describes how much history that particular target needs. Importing a
 dmabuf can change the current EGL surface; Hearthspace forces a full redraw after
 imports instead of trusting a back-buffer-age query for the wrong surface.
 
-Native outputs have separate leased scene buffers and presenter-owned scanout
-buffers. Main renders each logical desktop rectangle at its output scale, without
+Composed native outputs have separate leased scene buffers and presenter-owned
+scanout buffers. Eligible opaque fullscreen clients can hand their original
+guarded DMA-BUF to Smithay for [direct scanout](DRM.md#fullscreen-direct-scanout).
+Main renders each logical desktop rectangle at its output scale, without
 cursor pixels. Device presenter threads combine completed scenes with independent
 cursor images. A pending scene retains dirty work until that output can accept
 another scene; cursor updates can proceed over its previous completed image. Renderer damage

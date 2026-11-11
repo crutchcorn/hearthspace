@@ -65,7 +65,7 @@ fn selected_queue_rejection_gets_one_fresh_capture_and_exact_accepted_completion
         submit(&mut schedule, &mut device).unwrap();
         assert_eq!(
             device.attempts,
-            [FrameFlags::ALLOW_CURSOR_PLANE_SCANOUT, FrameFlags::empty()]
+            [super::scanout_flags(), FrameFlags::empty()]
         );
         assert_eq!(device.resets, 1);
         assert_eq!(device.state_resets, 1);
@@ -126,7 +126,7 @@ fn nonselected_nonqueue_inactive_and_other_access_errors_never_retry() {
         let mut device = DeviceOps::new([step, accepted()]);
         let mut schedule = Schedule::default();
         assert!(submit(&mut schedule, &mut device).is_err());
-        assert_eq!(device.attempts, [FrameFlags::ALLOW_CURSOR_PLANE_SCANOUT]);
+        assert_eq!(device.attempts, [super::scanout_flags()]);
         assert_eq!(device.resets, 0);
         assert_eq!(device.steps.len(), 1);
         assert!(device.accepted.is_none());
@@ -261,5 +261,27 @@ fn empty_retry_cannot_acknowledge_or_consume_the_security_submission() {
     assert!(schedule.dirty);
     assert!(schedule.opportunity_at.is_none());
     assert!(!device.scene.as_ref().unwrap().capture_taken);
+    assert_retained_until_reads_finish(device, false);
+}
+
+#[test]
+fn rejected_primary_without_a_cursor_retries_and_preserves_the_source_through_reads() {
+    let mut device = DeviceOps::new([rejected(Reject::TestFailed), accepted()]);
+    device.primary_scanout = true;
+    let mut schedule = Schedule::default();
+    submit(&mut schedule, &mut device).unwrap();
+    assert_eq!(
+        device.attempts,
+        [super::scanout_flags(), FrameFlags::empty()]
+    );
+    let Completion::Presented(frame) = schedule
+        .complete(Some(&metadata()), || Ok(device.accepted.take()))
+        .unwrap()
+    else {
+        panic!("fallback was not presented")
+    };
+    assert!(!frame.diagnostics.cursor_plane);
+    assert!(!frame.diagnostics.primary_scanout);
+    assert_eq!(frame.capture.unwrap().unwrap().pixels, [2; 4]);
     assert_retained_until_reads_finish(device, false);
 }

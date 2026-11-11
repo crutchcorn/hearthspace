@@ -318,7 +318,7 @@ impl CalloopData {
                 "version": 1, "backend": backend, "active": self.capture_active(),
                 "locked": true, "lock_confirmed": self.state.lock_confirmed(),
                 "recovery_ready": recovery_ready,
-                "windows": [], "outputs": [], "canvas_maps": [], "shell_panels": [], "shell_corners": [], "control_osds": [],
+                "scanout": [], "windows": [], "outputs": [], "canvas_maps": [], "shell_panels": [], "shell_corners": [], "control_osds": [],
             }))
             .expect("serializable locked status");
         }
@@ -326,7 +326,15 @@ impl CalloopData {
         let xwayland_display = self.state.xdisplay.map(|number| format!(":{number}"));
         #[cfg(not(feature = "xwayland"))]
         let xwayland_display: Option<String> = None;
+        let scanout: Vec<serde_json::Value> = match &self.backend {
+            #[cfg(feature = "udev")]
+            Backend::Udev(backend) if backend.scanout_status_available(&self.state) => {
+                backend.scanout_status()
+            }
+            _ => Vec::new(),
+        };
         serde_json::to_vec(&serde_json::json!({
+            "scanout": scanout,
             "version": 1, "backend": backend, "active": self.capture_active(), "outputs": outputs,
             "locked": false, "lock_confirmed": false,
             "recovery_ready": recovery_ready,

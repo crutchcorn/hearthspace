@@ -370,6 +370,7 @@ impl Worker {
             cursor_sequence = submission.cursor_sequence, cursor_image = ?submission.cursor_image,
             security_epoch = submission.security_epoch, lock_generation = ?submission.lock_generation,
             cursor_plane = submission.diagnostics.cursor_plane,
+            primary_scanout = submission.diagnostics.primary_scanout,
             primary_buffer = ?submission.diagnostics.primary.map(|(buffer, _)| buffer),
             primary_damage_commit = ?submission.diagnostics.primary.map(|(_, commit)| commit),
             primary_reused = submission.diagnostics.primary_reused,
@@ -386,6 +387,11 @@ impl Worker {
             lock_generation: submission.lock_generation,
             metadata: *metadata.unwrap(),
             scene_changed: submission.scene_changed,
+            planes: super::super::scanout_status::PresentedPlanes::new(
+                submission.diagnostics.primary_scanout,
+                submission.diagnostics.window_id,
+                submission.diagnostics.cursor_plane,
+            ),
             capture: submission.capture,
         });
     }

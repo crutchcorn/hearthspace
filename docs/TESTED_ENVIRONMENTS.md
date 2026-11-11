@@ -139,6 +139,56 @@ launcher, then restored tty2 and removed the owned session/runtime. This is
 manual acceptance for the exercised workflow; suspend, locking and other GPU
 configurations remain outside its coverage.
 
+## Fullscreen direct scanout in Parallels, 2026-11-05
+
+The same guest, kernel, GPU, and scale-1 1728×957 Virtual-1 output above were
+used with debug compositor source `eb8e0d0`. The installed release was unchanged.
+Native binary hashes, manifests, logs, captures, test drivers, and failed attempts
+are retained under
+`~/.local/state/hearthspace-investigations/20261105-fullscreen-scanout/`.
+
+`native4` verified 45 completed submissions with `primary_scanout=true` using the
+fullscreen `scanout-fixture` client. Its XRGB8888 buffer was allocated with GBM's
+LINEAR guarantee and submitted with the explicit linear modifier. The run
+verified composition for the launcher, capture, and canvas zoom, followed by a
+return to direct scanout. Window restore/fullscreen transitions passed. Locking
+confirmed its presentation barrier and denied capture. Captures reconstructed
+the red/green fixture correctly through the composed capture path.
+
+`native7` verified a real buffer replacement from 1728×957 to 640×480, release of
+generation 0, replacement back to 1728×957, release of generation 1, resumed
+direct scanout, and confirmed locking. Earlier GTK runs exercised opaque
+fullscreen buffer handoff with Smithay declining framebuffer export for implicit
+modifiers, then presenting through GPU fallback. Launcher and popup captures
+remained visible. This VM reported no free cursor plane in the exercised
+configuration, so direct scanout was established with the client pointer hidden;
+simultaneous primary/cursor hardware scanout remains untested here.
+
+All seven owned sessions completed cleanup, removed their runtime, and restored
+the original tty2. Two first cleanup attempts reported a busy resource after
+restoring the VT; exact idempotent retries completed cleanup. `native3`'s driver
+used an invalid lock command before its cleanup; the corrected lock checks passed
+in `native4` and `native7`. `native5` expected notification arrival to produce a
+fullscreen overlay and timed out. `native6` captured shell composition but did
+not establish a visible Notifications panel or a return to scanout after its
+panel-toggle sequence. Neither attempt establishes notification acceptance.
+No host-window resize, suspend, multi-output, cross-GPU direct scanout, explicit
+synchronization protocol, or sustained game workload was validated by these runs.
+
+The full workspace run passed its compositor library tests and WayDriver tests,
+with 13 headless X11 failures matching the recorded pre-feature full-suite
+baseline (409 headless cases passed). No new failure name appeared. Twenty-six
+Rust tests remained ignored, including the two-DRM-node transfer tests unavailable
+on this guest. An initial run used a temporary directory path too long for Unix
+sockets and is retained separately; the corrected run used a short path, then
+copied its failure artifacts into persistent storage.
+
+Format, workspace Clippy, all-target build, Ruff, and cargo-deny checks passed;
+cargo-deny emitted warnings. A follow-up compiled-only gate for the native policy
+helper passed default-feature Clippy, native workspace Clippy/build, and all 653
+focused compositor library tests. All 746 Python checks passed with 14 opt-in E2E
+cases skipped. Logs and command exit codes are retained in the evidence root.
+
 ## Smithay cursor planes and pointer zoom, 2026-11-01
 
 The GPD Win Max 2 (2025) listed above was tested with its AMD Radeon 890M

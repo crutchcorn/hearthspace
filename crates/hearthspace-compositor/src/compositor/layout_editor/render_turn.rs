@@ -78,6 +78,11 @@ impl App {
         }
     }
 
+    #[cfg(feature = "udev")]
+    pub(in crate::compositor) fn layout_requires_composition(&self) -> bool {
+        self.layout_editing() || !self.layout_editor.turn.turns.is_empty()
+    }
+
     /// Compose after backdrop sampling so glass, shadows, and outlines rotate together.
     pub(in crate::compositor) fn apply_layout_turns(
         &mut self,

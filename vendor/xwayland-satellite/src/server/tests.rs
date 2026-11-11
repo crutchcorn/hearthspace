@@ -1737,7 +1737,14 @@ fn popup_send_take_focus_when_advertised() {
         let (mut f, comp) = TestFixture::new_with_compositor();
 
         let (win_toplevel, win_popup) = f.setup_popup_focus_case(&comp, false, accepts_input, true);
-        assert_eq!(f.connection().focused_window, Some(win_toplevel));
+        assert_eq!(
+            f.connection().focused_window,
+            Some(if accepts_input {
+                win_popup
+            } else {
+                win_toplevel
+            })
+        );
         assert_eq!(f.connection().send_take_focus_window, Some(win_popup));
     }
 }

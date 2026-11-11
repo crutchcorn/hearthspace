@@ -18,6 +18,7 @@ mod recovery;
 mod renderer_preference;
 mod rendering;
 mod retirement;
+mod scanout_status;
 mod startup;
 mod transfer;
 
