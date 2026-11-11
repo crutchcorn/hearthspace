@@ -272,6 +272,7 @@ impl Worker {
                 output.schedule.dirty = true;
             }
             if output.schedule.dirty
+                && !output.presented.waiting_for_scene(output.scene.is_some())
                 && self.mailbox.permits(&control)
                 && let Err(error) =
                     render::render(output, &mut self.renderer, &self.mailbox, &control)
@@ -364,7 +365,10 @@ impl Worker {
         {
             return;
         }
-        output.last_presented_scene = Some(submission.scene_sequence);
+        output.presented.completed(
+            submission.scene_sequence,
+            submission.lock_generation.is_some(),
+        );
         tracing::trace!(target: "hearthspace::presenter", key = ?output.config.key,
             submission_sequence = submission.sequence, scene_sequence = submission.scene_sequence,
             cursor_sequence = submission.cursor_sequence, cursor_image = ?submission.cursor_image,

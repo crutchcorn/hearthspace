@@ -143,8 +143,11 @@ Activation rebuilds or reactivates devices and output surfaces, reconciles outpu
 state, and requests a redraw. System-sleep recovery also has an explicit path:
 a wake signal alone is not proof that libseat paused and resumed the devices.
 Recovery uses bounded retries and requires presentation on the expected outputs
-before declaring success. Driver calls are synchronous, so a retry budget cannot
-guarantee a hard upper bound on a blocked driver call.
+before declaring success. An unchanged retry preserves the in-flight lock-frame
+generation; actual source replacement or output unavailability invalidates it.
+Waiting for a first flip within the grace period does not store a scanout failure.
+Driver calls are synchronous, so a retry budget cannot guarantee a hard upper
+bound on a blocked driver call.
 
 Device recovery retains healthy GPUs while retrying failed devices. Removing the
 scene GPU selects an available renderer and invalidates scene textures, effect

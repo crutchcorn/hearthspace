@@ -64,6 +64,7 @@ impl UdevBackendState {
 
 impl CalloopData {
     pub(in crate::compositor) fn resume_native_session(&mut self) -> ControlReply {
+        let lock_presented = self.state.lock_confirmed();
         let Some(backend) = udev_backend_mut(self) else {
             return ControlReply::Err("session-resume requires the native backend".into());
         };
@@ -75,7 +76,16 @@ impl CalloopData {
             self.state.invalidate_lock_presentation();
             return ControlReply::Ok;
         }
-        backend.pause_session();
+        if lock_presented && backend.recovery_complete() {
+            // A same-seat wake can keep the already presented opaque lock frame.
+            // Forcing a pause would discard its surfaces and disable connectors
+            // before replacement content exists. Reconcile topology and require
+            // a fresh security-tagged flip without blanking the retained frame.
+            backend.reset_native_input();
+            info!("resuming confirmed lock without pausing native scanout");
+        } else {
+            backend.pause_session();
+        }
         activate_session(self);
         ControlReply::Ok
     }
@@ -151,14 +161,11 @@ impl UdevBackendState {
                 }
                 // Setup success alone is insufficient: a failed first render or a
                 // missing page flip must retry too, without depending on new input.
-                data.state.set_native_lock_outputs_available(false);
                 let Some(backend) = udev_backend_mut(data) else {
                     return TimeoutAction::Drop;
                 };
                 let sync = backend.activate_session();
-                data.state.invalidate_lock_presentation();
-                apply_connector_sync(data, sync);
-                data.state.request_redraw();
+                apply_recovery_retry(data, sync);
                 TimeoutAction::ToDuration(RECOVERY_INTERVAL)
             },
         ) {
@@ -167,6 +174,18 @@ impl UdevBackendState {
         }
     }
 }
+
+fn apply_recovery_retry(data: &mut CalloopData, sync: super::ConnectorSync) {
+    // Connector reconciliation invalidates evidence for an actual source or
+    // availability change. A poll must not retire an unchanged in-flight lock
+    // generation: doing so can starve its first flip and force another modeset.
+    apply_connector_sync(data, sync);
+    data.state.request_redraw();
+}
+
+#[cfg(all(test, feature = "e2e"))]
+#[path = "recovery/presentation_tests.rs"]
+mod presentation_tests;
 
 #[cfg(test)]
 mod tests {

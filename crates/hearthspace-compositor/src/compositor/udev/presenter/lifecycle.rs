@@ -22,12 +22,15 @@ impl Worker {
             }
             output.cursor = None;
             output.cursor_cache = CursorCache::default();
-            output.last_presented_scene = None;
+            output
+                .presented
+                .security_changed(control.lock_generation.is_some());
             output.schedule.invalidate_security();
             // A pending old frame still needs its real vblank to release
             // Smithay's state. Its security tag prevents acknowledging it.
-            // The next render clears opaque black and explicitly forces a new
-            // physical submission, even when black has no pixel damage.
+            // New locks render opaque black immediately. An already verified
+            // lock may remain visible until its fresh scene arrives, but never
+            // acknowledges the new generation without a physical submission.
         }
     }
 
