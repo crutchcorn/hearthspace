@@ -58,7 +58,7 @@ Run headless regressions with the `e2e` feature:
 ```sh
 unset HEARTHSPACE_COMMAND_SOCKET HEARTHSPACE_HOST_XDG_RUNTIME_DIR
 export TMPDIR="$(mktemp -d -t hs-e2e.XXXXXX)"
-export LIBGL_ALWAYS_SOFTWARE=1 GSK_RENDERER=cairo
+export LIBGL_ALWAYS_SOFTWARE=1 GSK_RENDERER=cairo XWAYLAND_NO_GLAMOR=1
 export VK_DRIVER_FILES=/usr/share/vulkan/icd.d/lvp_icd.json
 cargo test --locked -p hearthspace-compositor --features e2e --test headless_control -- --test-threads=1
 cargo test --locked -p hearthspace-compositor --features e2e --test waydriver_hearthspace -- --test-threads=1
@@ -90,7 +90,7 @@ CI runs the ordinary workspace and Python tests separately from the full E2E
 configuration. The E2E job enables `udev,e2e,test-apps`, runs Rust tests one at a
 time, and sets `HEARTHSPACE_E2E=1`, `HEARTHSPACE_REQUIRE_ATSPI=1`,
 `HEARTHSPACE_REQUIRE_TRAY_LIBRARY=1`, `LIBGL_ALWAYS_SOFTWARE=1`,
-`GSK_RENDERER=cairo`, and `VK_DRIVER_FILES` pointing to Mesa's Lavapipe ICD for
+`GSK_RENDERER=cairo`, `XWAYLAND_NO_GLAMOR=1`, and `VK_DRIVER_FILES` pointing to Mesa's Lavapipe ICD for
 both Rust and Python. Required accessibility or deployed
 Ayatana libraries cannot silently skip their coverage. Native VT/device tests
 remain a separate hardware workflow.
@@ -105,7 +105,9 @@ executable paths, and some Python fixtures require `target/debug/hearthspace`.
 `GSK_RENDERER=cairo` keeps GTK fixtures on software-rendered shared-memory
 buffers while the compositor uses Mesa's software GLES renderer. Setting only
 `LIBGL_ALWAYS_SOFTWARE=1` can leave GTK using Vulkan and submitting DMA-BUFs that
-this software compositor cannot import reliably. The shell also uses Vulkan;
+this software compositor cannot import reliably. Raw X11 clients do not use GTK's renderer. `XWAYLAND_NO_GLAMOR=1` keeps Xwayland's
+own buffers in shared memory too; otherwise a machine with a render node can
+produce black X11 surfaces despite software GLES. The shell also uses Vulkan;
 `VK_DRIVER_FILES` keeps it on the software device. The path above is provided
 by Ubuntu 26.04's `mesa-vulkan-drivers`; adjust it to your installed Lavapipe ICD
 on other distributions. Use these settings for local headless suites, including

@@ -30,6 +30,8 @@ jobs:
       VK_DRIVER_FILES: /usr/share/vulkan/icd.d/lvp_icd.json
       # Keep GTK fixtures on SHM when the compositor uses software GLES.
       GSK_RENDERER: cairo
+      # Xwayland itself needs SHM too, including raw X11 fixtures.
+      XWAYLAND_NO_GLAMOR: "1"
       TMPDIR: /tmp/hearthspace-e2e
       HEARTHSPACE_SHELL_EVIDENCE: /tmp/hearthspace-e2e/evidence/shell
       HEARTHSPACE_MAP_EVIDENCE: /tmp/hearthspace-e2e/evidence/map

@@ -259,6 +259,8 @@ impl HeadlessCompositor {
             // Model operations use a process-independent cache lock. A mock
             // decision server must never contend with the user's live session.
             .env("XDG_CACHE_HOME", runtime_dir.path().join("cache"))
+            // Xwayland must not export hardware DMA-BUFs into software GLES.
+            .env("XWAYLAND_NO_GLAMOR", "1")
             .env_remove("HEARTHSPACE_LAYOUT_PATH");
         if remote_desktop {
             command.arg("--remote-desktop");
