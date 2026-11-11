@@ -1,6 +1,6 @@
 ---
 name: web-parity
-description: Compare Hearthspace with its live web design reference and bring native visuals and interactions as close to 1:1 as the real desktop permits. Use for visual parity work, porting a reference interaction, reviewing shell or Settings changes, or checking responsive and animated states against the reference.
+description: Compare Hearthspace with its live web design reference and bring native visuals and interactions as close to 1:1 as the real desktop permits. Use for visual parity work, porting a reference interaction, reviewing shell or Settings changes, checking responsive and animated states against the reference, or synchronizing the native UI Storybook with the web component catalog.
 ---
 
 # Web Parity
@@ -15,9 +15,20 @@ design rationale is needed, read the relevant files through the public repositor
 at https://github.com/crutchcorn/hearthspace-ui-experiments using its web UI or
 remote API. Record the revision used in task evidence.
 
-Do not clone the reference project, search for an existing local checkout, or
-record a local reference-project path in this repository. Browser observations,
-remote source reads, and temporary comparison captures are sufficient.
+Prefer the live reference and remote source reads. Do not clone or search for a
+local reference checkout unless the user requests local exploration or Storybook
+work. When authorized, use the supplied checkout, read its `AGENTS.md`, and keep
+machine-specific checkout paths out of this repository. Do not change the web
+project or install agent integrations merely to inspect its catalog.
+
+## Compare shared components with Storybook
+
+For component discovery or native/web gallery synchronization, read
+[Storybook sync](references/storybook-sync.md). It covers the web catalog's
+built-in agent skills, component documentation tools, Canvas/Docs navigation,
+controls, themes, preview wrappers, and mapping to native stories. Use the web
+Storybook for isolated states and the live prototype for placement and complete
+workflows; neither replaces validation in the real desktop.
 
 ## Establish the comparison
 

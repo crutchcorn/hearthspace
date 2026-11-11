@@ -61,6 +61,20 @@ See [development workflows](docs/DEVELOPMENT.md) for individual apps, headless
 runs, tracing, and the shared UI storybook. To use Hearthspace from your login
 screen, follow [graphical installation](docs/LOGIN_SESSION.md).
 
+### Browser automation setup
+
+T3 browser automation on Ubuntu may need its sandbox profile prepared once:
+
+```sh
+sudo env "PATH=$PATH" t3 browser setup --base-dir "$HOME/.t3"
+```
+
+On the ThinkPad, this installed `/etc/apparmor.d/t3-chrome-headless-shell`
+and loaded the profile permitting user namespaces for T3's bundled headless
+Chrome. It left Chrome's sandbox enabled; no global AppArmor or user-namespace
+restriction was disabled. The command reported no additional library installs.
+This is optional agent tooling, not a Hearthspace build or runtime dependency.
+
 ## Make a change
 
 1. Start a focused branch and reproduce the behavior you want to change.
