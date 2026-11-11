@@ -105,7 +105,9 @@ The [E2E guide](docs/E2E_TESTING.md) supplies the environment and dependencies
 for required rendering, accessibility, tray, and cross-app tests. Without that
 setup, an optional skipped test isn't evidence that its workflow works. Use a
 fresh evidence directory for each run and retain failed attempts as well as
-successful reruns.
+successful reruns. After preparing the development runtime and private Xwayland,
+`scripts/test-e2e` runs the build and both complete test suites above with the
+same isolated software-rendering profile used by E2E CI.
 
 For a targeted Rust test, select its package and filter first, for example
 `cargo test --locked -p hearthspace-settings settings_backend::tests`.
