@@ -85,7 +85,9 @@ void main() {
 }
 ```
 
-Static shaders and Canvas dots do not schedule animation. Wallpaper animation
+Static shaders and Canvas dots do not schedule animation. Reduced motion fixes
+`u_time` at zero and disables the wallpaper timer; enabling motion resumes the
+compositor clock. Wallpaper animation
 pauses while the session is locked, the native backend is inactive, or every
 output is covered by fullscreen content. A visible canvas preview can still
 require the background. Animation redraws the desktop scene; its cost depends on

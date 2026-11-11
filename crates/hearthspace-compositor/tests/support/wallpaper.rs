@@ -92,6 +92,28 @@ fn saved_glsl_renders_and_same_path_reload_recovers_from_errors_without_restart(
     action(&compositor, "reload-settings");
     assert_color(&compositor, [0, 0, 255, 255]);
     assert!(query(&compositor, "status")["background_shader"]["error"].is_null());
+    std::fs::write(&file, "precision mediump float; uniform float u_time; void main(){gl_FragColor=vec4(mod(u_time,1.),0.,1.,1.);}").unwrap();
+    action(&compositor, "reload-settings");
+    drop(compositor.take_screenshot());
+    assert_eq!(
+        query(&compositor, "status")["background_shader"]["animated"],
+        true
+    );
+    action(&compositor, "canvas-search-motion false");
+    assert_color(&compositor, [0, 0, 255, 255]);
+    assert_eq!(
+        query(&compositor, "status")["background_shader"]["animated"],
+        false
+    );
+    action(&compositor, "pan-to 20 30");
+    assert_color(&compositor, [0, 0, 255, 255]);
+    action(&compositor, "canvas-search-motion true");
+    drop(compositor.take_screenshot());
+    assert_eq!(
+        query(&compositor, "status")["background_shader"]["animated"],
+        true
+    );
+    action(&compositor, "pan-to 0 0");
     let reply = request_line(
         &socket,
         "set background-image-path default\n",

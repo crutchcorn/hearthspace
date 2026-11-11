@@ -44,6 +44,7 @@ pub(in crate::compositor) struct BackgroundShader {
     program: Option<GlesPixelProgram>,
     views: HashMap<ViewKey, CachedElement>,
     animated: bool,
+    animation_enabled: bool,
     next_frame: Instant,
     pub error: Option<String>,
 }
@@ -56,6 +57,7 @@ impl Default for BackgroundShader {
             program: None,
             views: HashMap::new(),
             animated: false,
+            animation_enabled: true,
             next_frame: Instant::now(),
             error: None,
         }
@@ -72,7 +74,7 @@ impl BackgroundShader {
     }
 
     pub fn status(&self, path: &Option<String>) -> serde_json::Value {
-        serde_json::json!({"path": path, "error": self.error, "ready": self.program.is_some(), "animated": self.animated})
+        serde_json::json!({"path": path, "error": self.error, "ready": self.program.is_some(), "animated": self.animated && self.animation_enabled})
     }
 
     pub fn invalidate_views(&mut self) {
@@ -134,7 +136,7 @@ impl BackgroundShader {
             camera.x as f64 + f64::from(output.loc.x) / zoom,
             camera.y as f64 + f64::from(output.loc.y) / zoom,
         );
-        let time = if self.animated {
+        let time = if self.animated && self.animation_enabled {
             (self.started.elapsed().as_secs_f64() * 30.0).floor() as f32 / 30.0
         } else {
             0.0
@@ -291,6 +293,7 @@ impl App {
         output: Rectangle<i32, Logical>,
         density: i32,
     ) -> Option<PixelShaderElement> {
+        self.background_shader.animation_enabled = !self.layout_reduced_motion();
         self.background_shader.element(
             renderer,
             self.background_shader_path.as_deref(),
@@ -306,6 +309,7 @@ impl App {
 
     pub(in crate::compositor) fn background_animation_timeout(&self) -> Option<Duration> {
         if !self.background_shader.animated
+            || self.layout_reduced_motion()
             || self.session_locked()
             || (!self.canvas_preview_presenting()
                 && self
@@ -323,6 +327,13 @@ impl App {
     }
 
     pub(in crate::compositor) fn advance_background_animation(&mut self) {
+        let enabled = !self.layout_reduced_motion();
+        if self.background_shader.animation_enabled != enabled {
+            self.background_shader.animation_enabled = enabled;
+            if self.background_shader.animated {
+                self.request_redraw();
+            }
+        }
         if self.background_animation_timeout() == Some(Duration::ZERO) {
             self.background_shader.next_frame = Instant::now() + FRAME_INTERVAL;
             self.request_redraw();
