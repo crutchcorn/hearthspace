@@ -96,6 +96,14 @@ For visual and password-widget checks, the `lock-preview` and
 display. They never acquire or unlock a session lock. The latter exercises
 masking after clearing, submission, retries, and empty/busy rejection.
 
+`caps-lock-regression /absolute/owned/run/caps.txt` also uses the production
+widgets in an ordinary window. Start it with Caps Lock already on in the owned
+test display, then toggle Caps Lock three times after its report contains a
+`ready` line. Create `caps.finish` beside that report to finish. It checks the
+warning text and GTK indicator against keyboard-device state at each change;
+it never reads a password, authenticates, or acquires a session lock. Its
+60-second deadline fails an incomplete run.
+
 For an owned native test session, build the same client as a standalone probe:
 
 ```sh
