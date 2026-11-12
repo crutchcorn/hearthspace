@@ -4,6 +4,7 @@ use crate::{
     state::SettingsCategory,
     test_support::{Ui, ids},
 };
+use hearthspace_ui_components as components;
 use xilem::{
     WidgetView,
     masonry::{

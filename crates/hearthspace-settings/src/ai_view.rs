@@ -10,7 +10,7 @@ use xilem::{
         properties::{LineBreaking, Padding},
     },
     style::Style,
-    view::{CrossAxisAlignment, button, flex_col, flex_item, flex_row, sized_box},
+    view::{CrossAxisAlignment, flex_col, flex_item, flex_row, sized_box},
 };
 
 use crate::{
@@ -62,7 +62,7 @@ pub(crate) fn view(state: &SettingsApp) -> Box<AnyWidgetView<SettingsApp>> {
                 }),
             ),
             (!busy && !ai.confirm_off && ai.needs_retry()).then(|| {
-                action(palette, "Try again", components::SettingsButton::Control, |state| {
+                action(palette, "Try again", components::controls::ButtonVariant::Neutral, |state| {
                     state.ai.retry();
                 })
             }),
@@ -76,7 +76,7 @@ pub(crate) fn view(state: &SettingsApp) -> Box<AnyWidgetView<SettingsApp>> {
                     } else {
                         "Remove incomplete download"
                     },
-                    components::SettingsButton::Bare,
+                    components::controls::ButtonVariant::Quiet,
                     |state| state.ai.confirm_off = true,
                 )
             }),
@@ -116,25 +116,10 @@ pub(crate) fn view(state: &SettingsApp) -> Box<AnyWidgetView<SettingsApp>> {
 fn action(
     palette: components::Palette,
     name: &'static str,
-    surface: components::SettingsButton,
+    variant: components::controls::ButtonVariant,
     callback: impl Fn(&mut SettingsApp) + Send + Sync + 'static,
 ) -> impl WidgetView<SettingsApp> {
-    components::settings_button(
-        button(
-            label(name)
-                .text_size(11.0)
-                .color(if surface == components::SettingsButton::Primary {
-                    palette.accent_ink
-                } else {
-                    palette.text
-                }),
-            callback,
-        )
-        .height(40.0.px())
-        .padding(Padding::from_vh(7.0.px(), 12.0.px())),
-        surface,
-        false,
-    )
+    components::controls::form_button(palette, name, variant, false, callback)
 }
 
 fn detail(palette: components::Palette, text: impl Into<String>) -> impl WidgetView<SettingsApp> {

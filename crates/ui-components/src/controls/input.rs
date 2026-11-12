@@ -33,7 +33,21 @@ pub(super) fn button<State: 'static, F: Fn(&mut State) + Send + Sync + 'static>(
         }
         .multiply_alpha(if disabled { 0.5 } else { 1. }),
     );
-    let inner = native_button(text, callback)
+    button_content(palette, text, variant, disabled, callback)
+}
+
+pub(super) fn button_content<
+    State: 'static,
+    V: WidgetView<State>,
+    F: Fn(&mut State) + Send + Sync + 'static,
+>(
+    palette: Palette,
+    content: V,
+    variant: ButtonVariant,
+    disabled: bool,
+    callback: F,
+) -> impl WidgetView<State> {
+    let inner = native_button(content, callback)
         .disabled(disabled)
         .height(36.0.px())
         .corner_radius(10.0.px())

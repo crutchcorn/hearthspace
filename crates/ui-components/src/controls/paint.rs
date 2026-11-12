@@ -7,7 +7,7 @@ use crate::{
 use xilem::masonry::{
     core::PaintCtx,
     imaging::Painter,
-    kurbo::{Circle, Rect, Stroke},
+    kurbo::{Rect, Stroke},
     peniko::Gradient,
 };
 
@@ -20,6 +20,18 @@ pub(super) fn control<A>(
     let r = ctx.content_box();
     let alpha = if ctx.is_disabled() { 0.5 } else { 1. };
     let focused = w.focus.visible() && ctx.is_focus_target();
+    if w.kind == ControlKind::Switch {
+        super::toggle::paint::paint(
+            p,
+            paint,
+            r.x0,
+            r.y0,
+            w.value != 0.,
+            ctx.is_disabled(),
+            focused,
+        );
+        return;
+    }
     let fill = if p.dark {
         Gradient::new_linear((0., r.y0), (0., r.y1)).with_stops([
             p.dark_control_fill().multiply_alpha(alpha),
@@ -32,26 +44,14 @@ pub(super) fn control<A>(
         ])
     };
     match w.kind {
-        ControlKind::Switch | ControlKind::Checkbox => {
-            let radius = if w.kind == ControlKind::Switch {
-                12.
-            } else {
-                5.
-            };
-            let shape = r.inset(-0.5).to_rounded_rect(radius);
+        ControlKind::Switch => unreachable!("switch track is painted above"),
+        ControlKind::Checkbox => {
+            let shape = r.inset(-0.5).to_rounded_rect(5.);
             if w.value != 0. {
                 paint.fill(shape, &fill).draw();
             } else {
                 paint
-                    .fill(
-                        shape,
-                        if w.kind == ControlKind::Switch {
-                            p.control_track
-                        } else {
-                            p.surface_control
-                        }
-                        .multiply_alpha(alpha),
-                    )
+                    .fill(shape, p.surface_control.multiply_alpha(alpha))
                     .draw();
             }
             paint
@@ -60,29 +60,13 @@ pub(super) fn control<A>(
                     &Stroke::new(1.),
                     if w.value != 0. || (ctx.is_hovered() && !ctx.is_disabled()) {
                         p.accent_border
-                    } else if w.kind == ControlKind::Checkbox {
-                        p.checkbox_border()
                     } else {
-                        p.chrome_border
+                        p.checkbox_border()
                     }
                     .multiply_alpha(alpha),
                 )
                 .draw();
-            if w.kind == ControlKind::Switch {
-                let c = (r.x0 + if w.value != 0. { 28. } else { 12. }, r.y0 + 12.);
-                shadow(
-                    paint,
-                    Rect::new(c.0 - 8., c.1 - 8., c.0 + 8., c.1 + 8.),
-                    8.,
-                    p.border.multiply_alpha(alpha),
-                    (0., 1.),
-                    3.,
-                    0.,
-                );
-                paint
-                    .fill(Circle::new(c, 8.), p.control_thumb.multiply_alpha(alpha))
-                    .draw();
-            } else if w.value != 0. {
+            if w.value != 0. {
                 IconGlyph::new(Icon::Check, false).paint(
                     paint,
                     Rect::new(r.x0 + 2., r.y0 + 2., r.x0 + 18., r.y0 + 18.),

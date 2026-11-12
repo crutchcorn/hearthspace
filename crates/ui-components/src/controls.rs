@@ -6,10 +6,14 @@ use xilem::{
     view::{label, text_input},
 };
 
+pub mod compact_slider;
 mod field;
 mod input;
 mod paint;
+pub mod progress;
 pub mod select;
+mod switch_row;
+pub mod toggle;
 mod view;
 mod widget;
 pub use view::control;
@@ -32,6 +36,22 @@ pub fn form_button<State: 'static, F: Fn(&mut State) + Send + Sync + 'static>(
     callback: F,
 ) -> impl WidgetView<State> {
     input::button(palette, text.into(), variant, disabled, callback)
+}
+
+/// Form-button sizing and materials around a consumer-supplied icon/label view.
+/// The content must provide an accessible name (normally its text label).
+pub fn form_button_content<
+    State: 'static,
+    V: WidgetView<State>,
+    F: Fn(&mut State) + Send + Sync + 'static,
+>(
+    palette: crate::Palette,
+    content: V,
+    variant: ButtonVariant,
+    disabled: bool,
+    callback: F,
+) -> impl WidgetView<State> {
+    input::button_content(palette, content, variant, disabled, callback)
 }
 
 pub fn text_field<State: 'static, F: Fn(&mut State, String) + Send + Sync + 'static>(
@@ -70,6 +90,8 @@ pub(crate) fn theme_properties(
 ) {
     p.insert::<widget::ControlWidget, _>(palette);
     p.insert::<widget::ControlWidget<xilem::masonry::widgets::SliderMoved>, _>(palette);
+    p.insert::<toggle::NamedSwitch, _>(palette);
+    p.insert::<progress::ProgressWidget, _>(palette);
     select::theme_properties(p, palette);
 }
 

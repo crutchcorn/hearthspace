@@ -4,13 +4,9 @@ use hearthspace_ui_components::{
 };
 use xilem::{
     AnyWidgetView, WidgetView,
-    masonry::{
-        layout::AsUnit,
-        parley::style::LineHeight,
-        properties::{LineBreaking, Padding},
-    },
+    masonry::{layout::AsUnit, parley::style::LineHeight, properties::LineBreaking},
     style::Style,
-    view::{CrossAxisAlignment, button, flex_col, flex_row},
+    view::{CrossAxisAlignment, flex_col, flex_row},
 };
 
 use crate::{
@@ -65,19 +61,15 @@ fn action(
     operation: Operation,
 ) -> impl WidgetView<SettingsApp> + use<> {
     let palette = state.palette();
-    components::settings_button(
-        button(
-            flex_row((
-                icon(glyph, size).color(palette.muted),
-                label(name).text_size(10.0).color(palette.muted),
-            ))
-            .gap(7.0.px()),
-            move |state: &mut SettingsApp| state.frame_settings.request(operation),
-        )
-        .height(36.0.px())
-        .padding(Padding::from_vh(8.0.px(), 10.0.px())),
-        components::SettingsButton::Bare,
-        false,
+    components::controls::form_button_content(
+        palette,
+        flex_row((
+            icon(glyph, size).color(palette.muted),
+            label(name).text_size(11.0).color(palette.muted),
+        ))
+        .gap(7.0.px()),
+        components::controls::ButtonVariant::Quiet,
+        !state.frame_settings.enabled(),
+        move |state: &mut SettingsApp| state.frame_settings.request(operation),
     )
-    .disabled(!state.frame_settings.enabled())
 }

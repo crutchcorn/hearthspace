@@ -68,9 +68,10 @@ must invalidate paint when the palette property changes. Shell glass uses
 
 The native UI Storybook previews shared form buttons, 42-unit text fields,
 40×24 switches, 20×20 checkboxes, select menus, level bars, and sliders. Their
-implementations live in `ui-components::controls`; Settings reuses the select
-implementation with compact sizing. Switches and sliders retain Masonry input
-and accessibility behavior, while the shared painter supplies their appearance.
+implementations live in `ui-components::controls`. Settings uses the compact
+select, shared action buttons, whole-card switches and indeterminate progress;
+the shell uses compact level sliders. Switches and sliders retain Masonry input
+and accessibility behavior, while shared painters supply their appearance.
 The gallery offers live Light/Dark and six accent choices. Its masked password
 examples are visual samples, not an available password editor.
 
@@ -252,3 +253,31 @@ for state and input ownership, and [native acceptance](NATIVE_TESTING.md) for re
 presentation and device routing. A visual adjustment does not need a new test that
 merely repeats its color constant; it still needs inspection in the running UI.
 Follow [development](DEVELOPMENT.md) for the authorized verification workflow.
+
+## Shared form controls in applications
+
+`hearthspace_ui_components::controls` owns the form controls used by Settings
+and the UI storybook. `form_button` supplies text actions; `form_button_content`
+uses the same sizing, variants and disabled behavior for icon-and-label content.
+Keep an accessible text label in custom content. Settings uses these for AI and
+frame-layout actions; operation callbacks and confirmation remain in Settings.
+
+`toggle::toggle(...).with_row(description)` makes the whole preference card one
+native switch, with one focus stop. AI and canvas-tool preferences use this
+extension. The compact and form switches share their track painter. Do not wrap
+the card in a second button or move confirmation state into the component.
+
+`compact_slider::NamedSlider` retains native slider input, a configurable lower
+percentage bound, one-percent steps and a keyboard-only focus ring inside the
+popup. The shell binds it to volume and brightness; `set_level` updates backend
+snapshots without resetting input modality. Device identity and requests stay
+in the shell. The larger form slider remains available for form layouts.
+
+`progress::progress(name, fraction)` accepts a fraction from zero to one, or
+`None` for unknown progress. Unknown progress omits an accessible numeric value;
+nonfinite values are treated as unknown. Settings uses it for local model
+operations. The storybook's determinate level bars use percentages instead.
+
+Search and autocomplete editors retain their native selection, IME, list
+navigation and focus adapters. A plain form text field does not replace those
+behaviors.
