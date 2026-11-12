@@ -166,3 +166,31 @@ mod ranged_slider {
         );
     }
 }
+
+#[test]
+fn labelled_checkbox_caption_click_has_one_native_action_and_one_focus_stop() {
+    let mut widget = ControlWidget::<SwitchToggled>::new(ControlKind::Checkbox, "Include icon", 0.);
+    widget.add_checkbox_label();
+    let mut h = TestHarness::create_with_size(
+        crate::hearthspace_opaque_properties(),
+        NewWidget::new(widget),
+        (220, 32),
+    );
+    let id = h.root_id();
+    h.mouse_move((100., 16.));
+    h.mouse_button_press(Some(xilem::masonry::core::PointerButton::Primary));
+    h.mouse_button_release(Some(xilem::masonry::core::PointerButton::Primary));
+    assert_eq!(
+        h.pop_action::<SwitchToggled>(),
+        Some((SwitchToggled(true), id))
+    );
+    assert!(h.pop_action_erased().is_none());
+    h.press_tab_key(false);
+    assert_eq!(h.focused_widget_id(), Some(id));
+    assert_eq!(h.access_node(id).unwrap().role(), Role::CheckBox);
+    h.edit_root_widget(|mut w| w.ctx.set_disabled(true));
+    h.mouse_move((100., 16.));
+    h.mouse_button_press(Some(xilem::masonry::core::PointerButton::Primary));
+    h.mouse_button_release(Some(xilem::masonry::core::PointerButton::Primary));
+    assert!(h.pop_action_erased().is_none());
+}

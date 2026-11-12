@@ -147,7 +147,7 @@ fn backdrop_dismisses_without_activating_page_and_modal_is_removed_with_category
     assert!(!outline(&mut ui, "Keep AI", [0xe9, 0x64, 0x2a]));
     ui.harness
         .process_text_event(TextEvent::key_down(Key::Named(NamedKey::Tab)));
-    assert!(outline(&mut ui, "Turn off and delete", [0xbc, 0x3b, 0x39]));
+    assert!(outline(&mut ui, "Turn off and delete", [0xe9, 0x64, 0x2a]));
     ui.harness.mouse_move((4.0, 4.0));
     ui.harness.mouse_button_press(Some(PointerButton::Primary));
     ui.harness

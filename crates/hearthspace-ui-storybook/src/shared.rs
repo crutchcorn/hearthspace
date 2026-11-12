@@ -41,17 +41,32 @@ pub(super) fn stories() -> Vec<Story> {
                 *variant == "disabled",
             )];
             match family {
-                "button" => controls.push(Control::text(
-                    "text",
-                    "Label",
-                    match *variant {
-                        "neutral" => "Cancel",
-                        "destructive" => "Forget device",
-                        "quiet" => "Refresh networks",
-                        "icon-only" => "Close dialog",
-                        _ => "Connect",
-                    },
-                )),
+                "button" => {
+                    controls.push(Control::text(
+                        "text",
+                        "Label",
+                        match *variant {
+                            "neutral" => "Cancel",
+                            "destructive" => "Forget device",
+                            "quiet" => "Refresh networks",
+                            "icon-only" => "Close dialog",
+                            _ => "Connect",
+                        },
+                    ));
+                    controls.push(Control::bool(
+                        if *variant == "icon-only" {
+                            "touch-target"
+                        } else {
+                            "with-icon"
+                        },
+                        if *variant == "icon-only" {
+                            "44-unit touch target"
+                        } else {
+                            "Include icon"
+                        },
+                        false,
+                    ));
+                }
                 "text-input" if matches!(*variant, "password" | "invalid") => {}
                 "text-input" => controls.push(Control::text(
                     "value",
@@ -67,6 +82,10 @@ pub(super) fn stories() -> Vec<Story> {
                     "Checked",
                     matches!(*variant, "on" | "checked"),
                 )),
+                "level-bar" if *variant == "progress" => {
+                    controls.push(Control::text("value", "Value (0–100)", "38"));
+                    controls.push(Control::bool("unknown", "Unknown progress", false));
+                }
                 "select" => controls.push(Control::bool("manual", "Manual configuration", false)),
                 _ => controls.push(Control::text(
                     "value",
@@ -140,22 +159,38 @@ pub(super) fn preview(state: &AppState) -> Box<AnyWidgetView<AppState>> {
             ButtonVariant::Neutral
         };
         if id.ends_with("icon-only") {
-            components::settings_button(
-                components::semantic_button(
-                    components::icons::icon(components::icons::Icon::X, 18.),
-                    state
-                        .selected_text("text")
-                        .unwrap_or("Close dialog")
-                        .to_string(),
-                    None,
+            let name = state
+                .selected_text("text")
+                .unwrap_or("Close dialog")
+                .to_string();
+            if state.selected_bool("touch-target").unwrap_or(false) {
+                controls::touch_icon_button(
+                    p,
+                    components::icons::Icon::X,
+                    name,
+                    disabled,
                     |s: &mut AppState| s.clicks += 1,
                 )
-                .height(36.0.px())
-                .padding(8.0.px()),
-                components::SettingsButton::Bare,
-                false,
+                .boxed()
+            } else {
+                controls::form_icon_button(
+                    p,
+                    components::icons::Icon::X,
+                    name,
+                    disabled,
+                    |s: &mut AppState| s.clicks += 1,
+                )
+                .boxed()
+            }
+        } else if state.selected_bool("with-icon").unwrap_or(false) {
+            controls::form_button_with_icon(
+                p,
+                components::icons::Icon::Check,
+                state.selected_text("text").unwrap_or("Connect").to_string(),
+                variant,
+                disabled,
+                |s: &mut AppState| s.clicks += 1,
             )
-            .disabled(disabled)
             .boxed()
         } else {
             controls::form_button(
@@ -173,24 +208,20 @@ pub(super) fn preview(state: &AppState) -> Box<AnyWidgetView<AppState>> {
         let field: Box<AnyWidgetView<AppState>> = if password {
             // Masonry currently lacks a masked editor. The gallery must not present a
             // plaintext field as password-safe. This is an explicit visual sample.
-            sized_box(
-                controls::form_label(if invalid {
-                    "•••••••"
-                } else {
-                    "••••••••••"
-                })
-                .color(p.text),
+            controls::field_container(
+                sized_box(
+                    controls::form_label(if invalid {
+                        "•••••••"
+                    } else {
+                        "••••••••••"
+                    })
+                    .color(p.text),
+                )
+                .height(42.0.px())
+                .padding(14.0.px()),
+                invalid,
             )
-            .height(42.0.px())
-            .padding(14.0.px())
-            .border_width(1.0.px())
-            .border_color(if invalid {
-                xilem::Color::from_rgb8(197, 72, 65)
-            } else {
-                p.chrome_border
-            })
-            .corner_radius(10.0.px())
-            .background_color(p.surface_control)
+            .disabled(disabled)
             .boxed()
         } else {
             controls::text_field(
@@ -271,28 +302,36 @@ pub(super) fn preview(state: &AppState) -> Box<AnyWidgetView<AppState>> {
             .unwrap_or("0")
             .parse()
             .unwrap_or(0.);
-        sized_box(controls::control(
-            kind,
-            match kind {
-                ControlKind::Slider => "Sound",
-                ControlKind::Progress => "Model download",
-                _ => "Battery charge",
-            },
-            value,
-            disabled,
-            |s: &mut AppState, v| s.set_selected_text("value", format!("{v:.0}")),
-        ))
-        .fixed_width(256.0.px())
-        .padding(xilem::masonry::properties::Padding::from_vh(
-            0.0.px(),
-            if kind == ControlKind::Slider {
-                10.0
+        let level =
+            if kind == ControlKind::Progress && state.selected_bool("unknown").unwrap_or(false) {
+                controls::progress::progress("Model download", None)
+                    .disabled(disabled)
+                    .boxed()
             } else {
-                0.0
-            }
-            .px(),
-        ))
-        .boxed()
+                controls::control(
+                    kind,
+                    match kind {
+                        ControlKind::Slider => "Sound",
+                        ControlKind::Progress => "Model download",
+                        _ => "Battery charge",
+                    },
+                    value,
+                    disabled,
+                    |s: &mut AppState, v| s.set_selected_text("value", format!("{v:.0}")),
+                )
+            };
+        sized_box(level)
+            .fixed_width(256.0.px())
+            .padding(xilem::masonry::properties::Padding::from_vh(
+                0.0.px(),
+                if kind == ControlKind::Slider {
+                    10.0
+                } else {
+                    0.0
+                }
+                .px(),
+            ))
+            .boxed()
     };
     flex_col((
         sized_box(

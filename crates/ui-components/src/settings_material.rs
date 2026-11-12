@@ -48,13 +48,15 @@ pub struct Interaction {
 pub(crate) enum Material {
     Button(SettingsButton, bool),
     Surface(SettingsSurface),
+    FormButton(crate::controls::ButtonVariant),
+    FormField(bool),
 }
 
 impl Material {
     pub(crate) fn radius(self) -> f64 {
         match self {
             Self::Button(SettingsButton::Card, _) | Self::Surface(_) => crate::RADIUS_TILE,
-            Self::Button(_, _) => crate::RADIUS_CONTROL,
+            Self::Button(_, _) | Self::FormButton(_) | Self::FormField(_) => crate::RADIUS_CONTROL,
         }
     }
 }
@@ -88,3 +90,25 @@ pub fn settings_surface<State: 'static, Action: 'static, V: WidgetView<State, Ac
 
 #[cfg(test)]
 mod tests;
+
+pub(crate) fn form_button<State: 'static, Action: 'static, V: WidgetView<State, Action>>(
+    inner: V,
+    variant: crate::controls::ButtonVariant,
+    disabled: bool,
+) -> MaterialView<V> {
+    MaterialView {
+        inner,
+        material: Material::FormButton(variant),
+        disabled,
+    }
+}
+pub(crate) fn form_field<State: 'static, V: WidgetView<State>>(
+    inner: V,
+    invalid: bool,
+) -> MaterialView<V> {
+    MaterialView {
+        inner,
+        material: Material::FormField(invalid),
+        disabled: false,
+    }
+}

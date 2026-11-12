@@ -58,6 +58,7 @@ fn browsing(state: &SettingsApp) -> Box<AnyWidgetView<SettingsApp>> {
     .cross_axis_alignment(CrossAxisAlignment::Start)
     .gap(8.0.px());
     let add = controls::text(
+        palette,
         Icon::Plus,
         "Add gesture",
         favorites.store.is_none(),

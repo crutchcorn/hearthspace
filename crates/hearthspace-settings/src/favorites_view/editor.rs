@@ -76,7 +76,7 @@ pub(super) fn view(state: &SettingsApp) -> Box<AnyWidgetView<SettingsApp>> {
         )
         .alignment(UnitPoint::TOP_LEFT),
         sized_box(flex_col(((!record.points.is_empty()).then(|| {
-            controls::text(Icon::RotateCcw, "Retry", false, |state| {
+            controls::text(palette, Icon::RotateCcw, "Retry", false, |state| {
                 state.favorites.retry()
             })
         }),)))

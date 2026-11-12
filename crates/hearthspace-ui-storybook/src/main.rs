@@ -3,12 +3,9 @@ use state::AppState as StorybookState;
 use xilem::{
     AnyWidgetView, EventLoop, WidgetView, Xilem,
     dpi::LogicalSize,
-    masonry::{layout::AsUnit, parley::fontique::GenericFamily},
+    masonry::layout::AsUnit,
     style::Style,
-    view::{
-        CrossAxisAlignment, FlexSpacer, checkbox, flex_col, flex_item, flex_row, sized_box,
-        text_input,
-    },
+    view::{CrossAxisAlignment, FlexSpacer, flex_col, flex_item, flex_row, sized_box},
 };
 use xilem_storybook::Control;
 mod catalog;
@@ -131,13 +128,15 @@ fn control_row(control: &Control) -> Box<AnyWidgetView<StorybookState>> {
     match control {
         Control::Text(text_control) => {
             let id = control.id().to_string();
-            let input = text_input(
+            let input = components::controls::text_field(
                 text_control.value().to_string(),
+                "",
+                false,
+                false,
                 move |state: &mut StorybookState, value| {
                     state.set_selected_text(&id, value);
                 },
-            )
-            .font(GenericFamily::SystemUi);
+            );
 
             flex_col((
                 components::field_label(control.label().to_string()),
@@ -149,14 +148,12 @@ fn control_row(control: &Control) -> Box<AnyWidgetView<StorybookState>> {
         }
         Control::Bool(bool_control) => {
             let id = control.id().to_string();
-            checkbox(
+            components::controls::labelled_checkbox(
                 control.label().to_string(),
                 bool_control.value(),
-                move |state: &mut StorybookState, checked| {
-                    state.set_selected_bool(&id, checked);
-                },
+                false,
+                move |state: &mut StorybookState, checked| state.set_selected_bool(&id, checked),
             )
-            .boxed()
         }
     }
 }

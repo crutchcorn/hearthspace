@@ -2,14 +2,14 @@ use crate::{Palette, settings_material::FocusIndicator};
 use xilem::masonry::{
     accesskit::{Node, Role, Toggled},
     core::{
-        AccessCtx, AccessEvent, ChildrenIds, EventCtx, LayoutCtx, MeasureCtx, PaintCtx,
+        AccessCtx, AccessEvent, ChildrenIds, EventCtx, LayoutCtx, MeasureCtx, NewWidget, PaintCtx,
         PointerEvent, PropertiesMut, PropertiesRef, RegisterCtx, TextEvent, Update, UpdateCtx,
-        Widget,
+        Widget, WidgetPod,
     },
     imaging::Painter,
-    kurbo::{Axis, Size},
-    layout::{AsUnit, LenReq, Length},
-    widgets::{Slider, Switch, SwitchToggled},
+    kurbo::{Axis, Point, Size},
+    layout::{AsUnit, LayoutSize, LenReq, Length, SizeDef},
+    widgets::{Label, Slider, Switch, SwitchToggled},
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -30,6 +30,7 @@ pub struct ControlWidget<A = SwitchToggled> {
     switch: Switch,
     slider: Slider,
     pub(super) focus: FocusIndicator,
+    pub(super) label: Option<WidgetPod<Label>>,
 }
 impl<A> ControlWidget<A> {
     pub fn new(kind: ControlKind, name: &str, value: f64) -> Self {
@@ -43,6 +44,7 @@ impl<A> ControlWidget<A> {
             switch: Switch::new(value != 0.),
             slider: Slider::new(0., 100., value).with_step(1.),
             focus: FocusIndicator::default(),
+            label: None,
         }
     }
     pub(super) fn set_value(&mut self, kind: ControlKind, name: &str, value: f64) {
@@ -67,6 +69,18 @@ impl<A> ControlWidget<A> {
         self.value = super::view::normalized(value).max(self.minimum);
         self.slider = Slider::new(self.minimum, 100., self.value).with_step(1.);
     }
+    pub(super) fn add_checkbox_label(&mut self) {
+        self.label = Some(
+            NewWidget::new(
+                Label::new(self.name.clone())
+                    .with_style(xilem::masonry::parley::StyleProperty::FontSize(12.))
+                    .with_style(xilem::masonry::parley::FontFamily::Single(
+                        xilem::masonry::parley::FontFamilyName::Named(super::FORM_FONT.into()),
+                    )),
+            )
+            .to_pod(),
+        );
+    }
     fn interactive(&self) -> bool {
         matches!(
             self.kind,
@@ -82,7 +96,11 @@ impl<A: std::fmt::Debug + Send + 'static> Widget for ControlWidget<A> {
     fn propagates_pointer_interaction(&self) -> bool {
         false
     }
-    fn register_children(&mut self, _: &mut RegisterCtx<'_>) {}
+    fn register_children(&mut self, ctx: &mut RegisterCtx<'_>) {
+        if let Some(label) = &mut self.label {
+            ctx.register_child(label);
+        }
+    }
     fn on_pointer_event(
         &mut self,
         ctx: &mut EventCtx<'_>,
@@ -149,12 +167,39 @@ impl<A: std::fmt::Debug + Send + 'static> Widget for ControlWidget<A> {
     }
     fn measure(
         &mut self,
-        _: &mut MeasureCtx<'_>,
+        ctx: &mut MeasureCtx<'_>,
         _: &PropertiesRef<'_>,
         axis: Axis,
         r: LenReq,
-        _: Option<Length>,
+        cross: Option<Length>,
     ) -> Length {
+        if let Some(label) = &mut self.label {
+            let label_request = match (axis, r) {
+                (Axis::Horizontal, LenReq::FitContent(space)) => {
+                    LenReq::FitContent(space.saturating_sub(28.0.px()))
+                }
+                _ => r,
+            };
+            let label_cross = cross.map(|v| {
+                if axis == Axis::Vertical {
+                    v.saturating_sub(28.0.px())
+                } else {
+                    v
+                }
+            });
+            let size = ctx.compute_length(
+                label,
+                label_request.into(),
+                LayoutSize::NONE,
+                axis,
+                label_cross,
+            );
+            return if axis == Axis::Horizontal {
+                size.saturating_add(28.0.px())
+            } else {
+                size.max(20.0.px())
+            };
+        }
         match (self.kind, axis) {
             (ControlKind::Switch, Axis::Horizontal) => 40.0.px(),
             (ControlKind::Switch, _) => 24.0.px(),
@@ -168,8 +213,14 @@ impl<A: std::fmt::Debug + Send + 'static> Widget for ControlWidget<A> {
             _ => 8.0.px(),
         }
     }
-    fn layout(&mut self, ctx: &mut LayoutCtx<'_>, _: &PropertiesRef<'_>, _: Size) {
+    fn layout(&mut self, ctx: &mut LayoutCtx<'_>, _: &PropertiesRef<'_>, size: Size) {
         ctx.set_paint_insets(16.);
+        if let Some(label) = &mut self.label {
+            let available = Size::new((size.width - 28.).max(0.), size.height);
+            let measured = ctx.compute_size(label, SizeDef::fit(available), available.into());
+            ctx.run_layout(label, Size::new(available.width, measured.height));
+            ctx.place_child(label, Point::new(28., (size.height - measured.height) / 2.));
+        }
     }
     fn property_changed(&mut self, ctx: &mut UpdateCtx<'_>, ty: std::any::TypeId) {
         Palette::prop_changed(ctx, ty);
@@ -215,6 +266,8 @@ impl<A: std::fmt::Debug + Send + 'static> Widget for ControlWidget<A> {
         }
     }
     fn children_ids(&self) -> ChildrenIds {
-        ChildrenIds::new()
+        self.label.as_ref().map_or_else(ChildrenIds::new, |label| {
+            ChildrenIds::from_slice(&[label.id()])
+        })
     }
 }

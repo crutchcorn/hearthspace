@@ -121,7 +121,19 @@ impl Widget for MaterialWidget {
         painter: &mut Painter<'_>,
     ) {
         let palette = *props.get::<crate::Palette>(ctx.property_cache());
+        let state = Interaction {
+            hovered: ctx.has_hovered(),
+            active: ctx.has_active(),
+            focused: ctx.has_focus_target() && self.focus.visible(),
+            disabled: ctx.is_disabled() || self.child_disabled,
+        };
         match self.material {
+            Material::FormButton(variant) => {
+                crate::controls::style::button(painter, ctx.border_box(), variant, state, &palette)
+            }
+            Material::FormField(invalid) => {
+                crate::controls::style::field(painter, ctx.border_box(), invalid, state, &palette)
+            }
             Material::Button(kind, selected) => paint_button_with_palette(
                 painter,
                 ctx.border_box(),

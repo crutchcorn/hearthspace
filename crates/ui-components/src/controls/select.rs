@@ -6,10 +6,7 @@ use crate::{
 use xilem::{
     Pod, ViewCtx, WidgetView,
     core::{MessageCtx, MessageResult, Mut, View, ViewId, ViewMarker, ViewPathTracker},
-    masonry::{
-        layout::{AsUnit, Dim},
-        properties::Padding,
-    },
+    masonry::{layout::AsUnit, properties::Padding},
     style::Style,
     view::{MainAxisAlignment, flex_row},
 };
@@ -21,14 +18,13 @@ mod layer;
 mod option;
 use button::SettingsSelectButton;
 
-fn select_inner<State: 'static, F>(
+pub fn select<State: 'static, F>(
     palette: components::Palette,
     name: &'static str,
     options: Vec<String>,
     selected: usize,
     disabled: bool,
     callback: F,
-    compact: bool,
 ) -> impl WidgetView<State, Widget: Sized>
 where
     F: Fn(&mut State, usize) + Send + Sync + 'static,
@@ -36,21 +32,21 @@ where
     assert!(!options.is_empty() && selected < options.len());
     SettingsSelect {
         name,
-        font_size: if compact { 11.0 } else { 12.0 },
+        font_size: 12.0,
         child: flex_row((
             label(options[selected].clone())
                 .font("Liberation Sans")
-                .text_size(if compact { 11.0 } else { 12.0 })
+                .text_size(12.0)
                 .color(
                     palette
                         .text
                         .multiply_alpha(if disabled { 0.5 } else { 1.0 }),
                 ),
-            icon(Icon::ChevronDown, if compact { 12.0 } else { 16.0 }).color(
-                palette
-                    .muted
-                    .multiply_alpha(if disabled { 0.5 } else { 1.0 }),
-            ),
+            icon(Icon::ChevronDown, 16.0).color(palette.muted.multiply_alpha(if disabled {
+                0.5
+            } else {
+                1.0
+            })),
         ))
         .main_axis_alignment(MainAxisAlignment::SpaceBetween)
         .gap(8.0.px()),
@@ -59,11 +55,8 @@ where
         disabled,
         callback,
     }
-    .height(if compact { Dim::Auto } else { 42.0.px().into() })
-    .padding(Padding::from_vh(
-        if compact { 6.0 } else { 10.0 }.px(),
-        if compact { 8.0 } else { 14.0 }.px(),
-    ))
+    .height(super::style::FIELD_HEIGHT.px())
+    .padding(Padding::from_vh(10.0.px(), 14.0.px()))
 }
 
 struct SettingsSelect<V, F> {
@@ -192,25 +185,4 @@ pub(crate) fn theme_properties(
     properties.insert::<button::SettingsSelectButton, _>(palette);
     properties.insert::<option::SelectOption, _>(palette);
     layer::theme_properties(properties, palette);
-}
-
-pub fn select<State: 'static, F: Fn(&mut State, usize) + Send + Sync + 'static>(
-    palette: components::Palette,
-    name: &'static str,
-    options: Vec<String>,
-    selected: usize,
-    disabled: bool,
-    callback: F,
-) -> impl WidgetView<State, Widget: Sized> {
-    select_inner(palette, name, options, selected, disabled, callback, false)
-}
-pub fn compact_select<State: 'static, F: Fn(&mut State, usize) + Send + Sync + 'static>(
-    palette: components::Palette,
-    name: &'static str,
-    options: Vec<String>,
-    selected: usize,
-    disabled: bool,
-    callback: F,
-) -> impl WidgetView<State, Widget: Sized> {
-    select_inner(palette, name, options, selected, disabled, callback, true)
 }

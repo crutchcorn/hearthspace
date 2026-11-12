@@ -8,7 +8,7 @@ use xilem::{
     view::Label,
 };
 
-pub(crate) const FONT: &str = "Liberation Sans";
+pub(crate) const FONT: &str = hearthspace_ui_components::controls::FORM_FONT;
 
 // Preserve existing text metrics, then use the system UI families for missing
 // symbols such as ❖. Parley's script fallback alone does not cover that symbol.

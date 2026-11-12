@@ -1,18 +1,10 @@
 use crate::{state::SettingsApp, typography::label};
 use hearthspace_ui_components::{
     self as components,
-    icons::{Icon, icon},
+    controls::{self, ButtonVariant},
+    icons::Icon,
 };
-use xilem::{
-    WidgetView,
-    masonry::{
-        layout::AsUnit,
-        properties::{Dimensions, LineBreaking, Padding},
-    },
-    style::Style,
-    view::{MainAxisAlignment, button, flex_row},
-};
-
+use xilem::{WidgetView, masonry::properties::LineBreaking, style::Style};
 pub(super) fn note(
     palette: components::Palette,
     text: impl Into<String>,
@@ -30,63 +22,35 @@ pub(super) fn icon_button(
     disabled: bool,
     action: impl Fn(&mut SettingsApp) + Send + Sync + 'static,
 ) -> impl WidgetView<SettingsApp, Widget: Sized> {
-    components::settings_button(
-        button(icon(glyph, 16.0).color(palette.muted).label(name), action)
-            .dims(Dimensions::fixed(44.0.px(), 44.0.px()))
-            .padding(0.0.px())
-            .corner_radius(10.0.px()),
-        components::SettingsButton::Bare,
-        false,
-    )
-    .disabled(disabled)
+    controls::touch_icon_button(palette, glyph, name, disabled, action)
 }
-
 pub(super) fn text(
+    palette: components::Palette,
     glyph: Icon,
     name: &'static str,
     disabled: bool,
     action: impl Fn(&mut SettingsApp) + Send + Sync + 'static,
 ) -> impl WidgetView<SettingsApp, Widget: Sized> {
-    components::settings_button(
-        button(
-            flex_row((icon(glyph, 16.0), label(name).text_size(11.0))).gap(7.0.px()),
-            action,
-        )
-        .height(44.0.px())
-        .padding(Padding::from_vh(0.0.px(), 12.0.px()))
-        .border_width(1.0.px())
-        .corner_radius(10.0.px()),
-        components::SettingsButton::Control,
-        false,
+    controls::form_button_with_icon(
+        palette,
+        glyph,
+        name,
+        ButtonVariant::Neutral,
+        disabled,
+        action,
     )
-    .disabled(disabled)
 }
 
 pub(super) fn save(
     palette: components::Palette,
     disabled: bool,
 ) -> impl WidgetView<SettingsApp, Widget: Sized> {
-    let color = if disabled {
-        palette.muted
-    } else {
-        palette.accent_ink
-    };
-    components::settings_button(
-        button(
-            flex_row((
-                icon(Icon::Check, 15.0).color(color),
-                label("Save shortcut").text_size(12.0).color(color),
-            ))
-            .main_axis_alignment(MainAxisAlignment::Center)
-            .gap(8.0.px()),
-            |state: &mut SettingsApp| state.favorites.save(),
-        )
-        .height(44.0.px())
-        .padding(Padding::from_vh(0.0.px(), 13.0.px()))
-        .border_width(1.0.px())
-        .corner_radius(10.0.px()),
-        components::SettingsButton::Primary,
-        false,
+    controls::form_button_with_icon(
+        palette,
+        Icon::Check,
+        "Save shortcut",
+        ButtonVariant::Primary,
+        disabled,
+        |state: &mut SettingsApp| state.favorites.save(),
     )
-    .disabled(disabled)
 }

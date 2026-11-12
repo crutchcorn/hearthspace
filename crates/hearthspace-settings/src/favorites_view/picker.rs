@@ -62,7 +62,9 @@ pub(super) fn view(state: &SettingsApp) -> Box<AnyWidgetView<SettingsApp>> {
     };
     flex_col((
         label("Open this app").text_size(11.0).color(palette.muted),
-        picker.height(46.0.px()).width(Dim::Stretch),
+        picker
+            .height(hearthspace_ui_components::controls::style::FIELD_HEIGHT.px())
+            .width(Dim::Stretch),
     ))
     .cross_axis_alignment(CrossAxisAlignment::Stretch)
     .gap(6.0.px())

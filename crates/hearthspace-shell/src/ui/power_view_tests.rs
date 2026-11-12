@@ -216,14 +216,8 @@ fn pointer_opens_a_named_dialog_and_enter_on_initial_cancel_keeps_session_open()
             node.role() == Role::Dialog && node.label().as_deref() == Some("Log off?")
         })
     }));
-    assert_eq!(
-        ui.harness
-            .get_widget_with_id(cancel)
-            .get_prop::<BorderColor>()
-            .color,
-        components::FOCUS_RING_ON_GLASS,
-        "Cancel must have a visible keyboard focus indicator",
-    );
+    let focus_color = ui.state.appearance.palette.focus_ring;
+    assert_form_focus(&mut ui, cancel, focus_color);
     key(&mut ui, NamedKey::Enter, &view);
     assert!(!ui.state.outputs[0].show_power);
     assert!(ui.state.outputs[0].power_confirmation.is_none());
@@ -322,13 +316,7 @@ fn changing_to_dark_mode_keeps_focus_and_uses_dark_menu_and_dialog_ink() {
     key(&mut ui, NamedKey::Enter, &view);
     let cancel = ui.button("Cancel");
     assert_eq!(ui.harness.focused_widget_id(), Some(cancel));
-    assert_eq!(
-        ui.harness
-            .get_widget_with_id(cancel)
-            .get_prop::<BorderColor>()
-            .color,
-        palette.focus_ring_on_glass
-    );
+    assert_form_focus(&mut ui, cancel, palette.focus_ring);
 }
 
 #[test]
@@ -360,4 +348,25 @@ fn touch_scroll_does_not_activate_lock_and_touch_confirmation_can_be_cancelled()
     assert!(!ui.state.outputs[0].show_power);
     assert!(ui.state.outputs[0].power_confirmation.is_none());
     assert!(ui.state.outputs[0].launch_error.is_none());
+}
+
+fn assert_form_focus<V: WidgetView<ShellState, Widget: Sized>>(
+    ui: &mut Ui<V>,
+    id: masonry::core::WidgetId,
+    color: xilem::Color,
+) {
+    let bounds = ui
+        .harness
+        .get_widget_with_id(id)
+        .ctx()
+        .bounding_box()
+        .inflate(6., 6.);
+    let rgb = color.to_rgba8().to_u8_array();
+    let image = ui.harness.render();
+    assert!(
+        image
+            .enumerate_pixels()
+            .any(|(x, y, p)| bounds.contains((f64::from(x), f64::from(y))) && p.0[..3] == rgb[..3]),
+        "Cancel must paint the shared form focus ring"
+    );
 }

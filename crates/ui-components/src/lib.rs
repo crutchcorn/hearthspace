@@ -6,7 +6,6 @@ use xilem::{
         core::ArcStr,
         layout::AsUnit,
         parley::{fontique::GenericFamily, style::FontWeight},
-        properties::Padding,
     },
     style::Style,
     view::{CrossAxisAlignment, button, flex_col, label, sized_box},
@@ -142,16 +141,12 @@ where
     T: Into<ArcStr>,
     F: Fn(&mut State) -> Action + Send + Sync + 'static,
 {
-    button_surface(
-        button(
-            label(text)
-                .font(GenericFamily::SystemUi)
-                .text_size(13.0)
-                .text_alignment(TextAlign::Center),
-            callback,
-        )
-        .corner_radius(RADIUS_CONTROL.px()),
-        ButtonSurface::Control,
+    controls::button_frame(
+        controls::button_layout(
+            button(controls::form_label(text), callback),
+            controls::ButtonVariant::Neutral,
+        ),
+        controls::ButtonVariant::Neutral,
         false,
     )
 }
@@ -164,17 +159,15 @@ where
     T: Into<ArcStr>,
     F: Fn(&mut State) -> Action + Send + Sync + 'static,
 {
-    button_surface(
-        button(
-            label(text)
-                .font(GenericFamily::SystemUi)
-                .text_alignment(TextAlign::Center)
-                .text_size(13.0),
-            callback,
-        )
-        .corner_radius(RADIUS_CONTROL.px())
-        .padding(Padding::from_vh(5.0.px(), 9.0.px())),
-        ButtonSurface::Subtle,
+    controls::button_frame(
+        controls::button_layout(
+            button(
+                class(controls::form_label(text).text_size(11.0), "settings-muted"),
+                callback,
+            ),
+            controls::ButtonVariant::Quiet,
+        ),
+        controls::ButtonVariant::Quiet,
         false,
     )
 }

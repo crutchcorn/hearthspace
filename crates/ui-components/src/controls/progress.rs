@@ -1,4 +1,4 @@
-//! Compact progress retains the backend's numeric value and indeterminate state.
+//! Shared progress retains the backend's numeric value and indeterminate state.
 
 use crate as components;
 use xilem::{
@@ -7,13 +7,12 @@ use xilem::{
     masonry::{
         accesskit::{Node, Role},
         core::{
-            AccessCtx, ChildrenIds, LayoutCtx, MeasureCtx, NoAction, PaintCtx, PropertiesRef,
-            RegisterCtx, Widget,
+            AccessCtx, ChildrenIds, LayoutCtx, MeasureCtx, NoAction, PaintCtx, PropertiesMut,
+            PropertiesRef, RegisterCtx, Update, UpdateCtx, Widget,
         },
         imaging::Painter,
-        kurbo::{Axis, Rect, Size},
+        kurbo::{Axis, Size},
         layout::{AsUnit, LenReq, Length},
-        peniko::Gradient,
     },
 };
 
@@ -23,16 +22,25 @@ pub fn progress(name: impl Into<String>, value: Option<f64>) -> Progress {
         value
             .filter(|value| value.is_finite())
             .map(|value| value.clamp(0.0, 1.0)),
+        false,
     )
 }
 
-pub struct Progress(String, Option<f64>);
+pub struct Progress(String, Option<f64>, bool);
+impl Progress {
+    pub fn disabled(mut self, disabled: bool) -> Self {
+        self.2 = disabled;
+        self
+    }
+}
 impl ViewMarker for Progress {}
 impl<State: 'static> View<State, (), ViewCtx> for Progress {
     type Element = Pod<ProgressWidget>;
     type ViewState = ();
     fn build(&self, ctx: &mut ViewCtx, _: &mut State) -> (Self::Element, ()) {
-        (ctx.create_pod(ProgressWidget(self.0.clone(), self.1)), ())
+        let mut element = ctx.create_pod(ProgressWidget(self.0.clone(), self.1));
+        element.new_widget.options.disabled = self.2;
+        (element, ())
     }
     fn rebuild(
         &self,
@@ -42,6 +50,9 @@ impl<State: 'static> View<State, (), ViewCtx> for Progress {
         mut element: Mut<'_, Self::Element>,
         _: &mut State,
     ) {
+        if self.2 != previous.2 {
+            element.ctx.set_disabled(self.2);
+        }
         if self.0 != previous.0 || self.1 != previous.1 {
             element.widget.0 = self.0.clone();
             element.widget.1 = self.1;
@@ -65,6 +76,11 @@ pub struct ProgressWidget(String, Option<f64>);
 impl Widget for ProgressWidget {
     type Action = NoAction;
     fn register_children(&mut self, _: &mut RegisterCtx<'_>) {}
+    fn update(&mut self, ctx: &mut UpdateCtx<'_>, _: &mut PropertiesMut<'_>, event: &Update) {
+        if matches!(event, Update::DisabledChanged(_)) {
+            ctx.request_paint_only();
+        }
+    }
     fn measure(
         &mut self,
         _: &mut MeasureCtx<'_>,
@@ -74,7 +90,7 @@ impl Widget for ProgressWidget {
         _: Option<Length>,
     ) -> Length {
         match axis {
-            Axis::Vertical => 5.0.px(),
+            Axis::Vertical => super::style::BAR_HEIGHT.px(),
             Axis::Horizontal => match request {
                 LenReq::MinContent => Length::ZERO,
                 LenReq::MaxContent => 400.0.px(),
@@ -98,20 +114,15 @@ impl Widget for ProgressWidget {
         painter: &mut Painter<'_>,
     ) {
         let palette = *props.get::<components::Palette>(ctx.property_cache());
-        let bounds = ctx.border_box();
-        let track = bounds.to_rounded_rect(2.5);
-        painter.fill(track, palette.control_track).draw();
-        let width = bounds.width() * self.1.unwrap_or(1.0);
-        if width > 0.0 {
-            let fill =
-                Rect::new(bounds.x0, bounds.y0, bounds.x0 + width, bounds.y1).to_rounded_rect(2.5);
-            let gradient = Gradient::new_linear((bounds.x0, 0.0), (bounds.x0 + width, 0.0))
-                .with_stops([palette.accent, palette.accent_bright]);
-            painter.with_fill_clip(track, |painter| {
-                painter.fill(fill, &gradient).draw();
-            });
-        }
+        super::style::level_bar(
+            painter,
+            ctx.border_box(),
+            self.1,
+            ctx.is_disabled(),
+            &palette,
+        );
     }
+
     fn accessibility_role(&self) -> Role {
         Role::ProgressIndicator
     }
@@ -133,11 +144,11 @@ mod tests {
     use super::*;
     use xilem::masonry::{core::NewWidget, testing::TestHarness};
     #[test]
-    fn compact_progress_exposes_actual_fraction_without_inventing_indeterminate_progress() {
+    fn progress_exposes_actual_fraction_without_inventing_indeterminate_progress() {
         let determinate = TestHarness::create_with_size(
             components::hearthspace_opaque_properties(),
             NewWidget::new(ProgressWidget("Download".into(), Some(0.35))),
-            (200, 5),
+            (200, 8),
         );
         let node = determinate.access_node(determinate.root_id()).unwrap();
         assert_eq!(node.role(), Role::ProgressIndicator);
@@ -145,7 +156,7 @@ mod tests {
         let pending = TestHarness::create_with_size(
             components::hearthspace_opaque_properties(),
             NewWidget::new(ProgressWidget("Download".into(), None)),
-            (200, 5),
+            (200, 8),
         );
         assert_eq!(
             pending
@@ -160,7 +171,7 @@ mod tests {
         let mut h = TestHarness::create_with_size(
             components::hearthspace_opaque_properties(),
             NewWidget::new(ProgressWidget("Download".into(), Some(0.6))),
-            (200, 5),
+            (200, 8),
         );
         let id = h.root_id();
         assert_eq!(h.access_node(id).unwrap().numeric_value(), Some(0.6));

@@ -57,8 +57,10 @@ impl SearchEditor {
 
     /// Reuse the native editor without launcher-only arrow navigation.
     pub(super) fn text_input(text: &str, label: &'static str) -> Self {
-        let mut input = Self::configured(text, label, label, 14.0);
+        let mut input = Self::configured(text, label, label, 12.0);
         input.navigation = false;
+        input.text = input.text.with_style(form_font());
+        input.placeholder = input.placeholder.with_style(form_font());
         input
     }
 
@@ -66,11 +68,16 @@ impl SearchEditor {
         // TextArea stores focus in Masonry's context, not in the editor. Keep
         // this widget's identity and placeholder while clearing external text
         // and any composition, matching TextArea::reset_text's semantics.
-        self.text = TextArea::new_editable(text)
+        let text = TextArea::new_editable(text)
             .with_word_wrap(true)
             .with_style(xilem::masonry::parley::StyleProperty::FontSize(
                 self.font_size,
             ));
+        self.text = if self.navigation {
+            text
+        } else {
+            text.with_style(form_font())
+        };
         self.composing = false;
     }
 }
@@ -216,4 +223,10 @@ impl Widget for SearchEditor {
     fn make_trace_span(&self, id: WidgetId) -> tracing::Span {
         tracing::trace_span!("SearchEditor", id = id.trace())
     }
+}
+
+fn form_font() -> xilem::masonry::parley::FontFamily<'static> {
+    xilem::masonry::parley::FontFamily::Single(xilem::masonry::parley::FontFamilyName::Named(
+        hearthspace_ui_components::controls::FORM_FONT.into(),
+    ))
 }

@@ -17,6 +17,7 @@ pub fn control<State: 'static, F: Fn(&mut State, f64) + Send + Sync + 'static>(
     if kind == ControlKind::Slider {
         ControlView::<F, SliderMoved> {
             kind,
+            labelled: false,
             name,
             value: normalized(value),
             disabled,
@@ -27,6 +28,7 @@ pub fn control<State: 'static, F: Fn(&mut State, f64) + Send + Sync + 'static>(
     } else {
         ControlView::<F, SwitchToggled> {
             kind,
+            labelled: false,
             name,
             value: normalized(value),
             disabled,
@@ -35,6 +37,24 @@ pub fn control<State: 'static, F: Fn(&mut State, f64) + Send + Sync + 'static>(
         }
         .boxed()
     }
+}
+/// One focus stop and one native action for the checkbox and its caption.
+pub fn labelled_checkbox<State: 'static, F: Fn(&mut State, bool) + Send + Sync + 'static>(
+    name: impl Into<String>,
+    checked: bool,
+    disabled: bool,
+    callback: F,
+) -> Box<AnyWidgetView<State>> {
+    ControlView::<_, SwitchToggled> {
+        kind: ControlKind::Checkbox,
+        labelled: true,
+        name: name.into(),
+        value: f64::from(checked),
+        disabled,
+        callback: move |state: &mut State, value| callback(state, value != 0.),
+        action: std::marker::PhantomData,
+    }
+    .boxed()
 }
 pub(super) fn normalized(value: f64) -> f64 {
     if value.is_finite() {
@@ -46,6 +66,7 @@ pub(super) fn normalized(value: f64) -> f64 {
 struct ControlView<F, A = SwitchToggled> {
     action: std::marker::PhantomData<A>,
     kind: ControlKind,
+    labelled: bool,
     name: String,
     value: f64,
     disabled: bool,
@@ -63,8 +84,11 @@ impl<
     fn build(&self, ctx: &mut ViewCtx, _: &mut State) -> (Self::Element, ()) {
         (
             ctx.with_action_widget(|ctx| {
-                let mut p =
-                    ctx.create_pod(ControlWidget::<A>::new(self.kind, &self.name, self.value));
+                let mut widget = ControlWidget::<A>::new(self.kind, &self.name, self.value);
+                if self.labelled {
+                    widget.add_checkbox_label();
+                }
+                let mut p = ctx.create_pod(widget);
                 p.new_widget.options.disabled = self.disabled;
                 p
             }),
@@ -81,6 +105,13 @@ impl<
     ) {
         if self.value != old.value || self.kind != old.kind || self.name != old.name {
             el.widget.set_value(self.kind, &self.name, self.value);
+            let xilem::masonry::core::WidgetMut { widget, ctx, .. } = &mut el;
+            if let Some(label) = &mut widget.label {
+                xilem::masonry::widgets::Label::set_text(
+                    &mut ctx.get_mut(label),
+                    self.name.clone(),
+                );
+            }
             if self.kind != old.kind {
                 el.ctx.request_layout();
             }

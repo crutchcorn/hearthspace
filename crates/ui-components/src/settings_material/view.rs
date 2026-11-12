@@ -28,7 +28,10 @@ impl<State: 'static, Action: 'static, V: WidgetView<State, Action>> View<State, 
 
     fn build(&self, ctx: &mut ViewCtx, state: &mut State) -> (Self::Element, Self::ViewState) {
         let (mut child, view_state) = ctx.with_id(CONTENT, |ctx| self.inner.build(ctx, state));
-        if matches!(self.material, Material::Button(..)) {
+        if matches!(
+            self.material,
+            Material::Button(..) | Material::FormButton(..)
+        ) {
             child.new_widget = child.new_widget.with_props((
                 Background::Color(xilem::Color::TRANSPARENT),
                 BorderColor {
@@ -63,7 +66,10 @@ impl<State: 'static, Action: 'static, V: WidgetView<State, Action>> View<State, 
                 state,
             );
         });
-        if matches!(self.material, Material::Button(..)) {
+        if matches!(
+            self.material,
+            Material::Button(..) | Material::FormButton(..)
+        ) {
             let mut child = MaterialWidget::child_mut(&mut element);
             child.insert_prop(Background::Color(xilem::Color::TRANSPARENT));
             child.insert_prop(BorderColor {

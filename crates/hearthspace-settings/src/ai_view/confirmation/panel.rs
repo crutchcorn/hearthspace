@@ -17,7 +17,7 @@ use xilem::masonry::{
 };
 
 const INSET: f64 = 25.0;
-const BUTTON_HEIGHT: f64 = 40.0;
+const BUTTON_HEIGHT: f64 = components::controls::style::BUTTON_HEIGHT;
 const ACTION_GAP: f64 = 8.0;
 const DESCRIPTION: &str = "Turning off AI deletes the local model and its download. You’ll need to download it again to turn AI back on.";
 
