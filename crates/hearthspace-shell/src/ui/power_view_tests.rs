@@ -370,3 +370,6 @@ fn assert_form_focus<V: WidgetView<ShellState, Widget: Sized>>(
         "Cancel must paint the shared form focus ring"
     );
 }
+
+#[path = "power_view_tests/focus_ring.rs"]
+mod focus_ring;

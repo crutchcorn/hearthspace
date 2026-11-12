@@ -119,11 +119,18 @@ fn long_names_keep_layout_controls_and_all_columns_inside_the_popup() {
 }
 
 #[test]
-fn long_catalog_keeps_footer_and_layout_controls_visible_while_results_scroll() {
+fn long_catalog_uses_the_results_height_without_a_footer_and_keeps_layout_controls_visible() {
     let mut ui = Ui::new(long_catalog(), view, (650, 560));
-    let footer = bounds(&ui, "Enter to open");
+    assert!(
+        !crate::ui::test_support::ids(&ui.harness)
+            .into_iter()
+            .any(|id| {
+                ui.harness
+                    .access_node(id)
+                    .is_some_and(|n| n.label().as_deref() == Some("Enter to open"))
+            })
+    );
     let toggle = bounds(&ui, "Show app list");
-    assert!(footer.y0 > 480.0 && footer.y1 <= 560.0, "{footer:?}");
     let last = launcher::results(&ui.state, &ui.state.outputs[0])
         .last()
         .unwrap()
@@ -136,10 +143,9 @@ fn long_catalog_keeps_footer_and_layout_controls_visible_while_results_scroll() 
     assert_eq!(selected(&ui), std::slice::from_ref(&last));
     let selected = bounds(&ui, &last);
     assert!(
-        selected.y0 >= toggle.y1 && selected.y1 <= footer.y0,
+        selected.y0 >= toggle.y1 && selected.y1 <= 560.0 && selected.y1 > 500.0,
         "{selected:?}"
     );
-    assert_eq!(bounds(&ui, "Enter to open"), footer);
     assert_eq!(bounds(&ui, "Show app list"), toggle);
 }
 

@@ -235,27 +235,6 @@ pub(super) fn launcher_view(
             ..Padding::horizontal(horizontal_padding)
         })
     });
-    let footer = (!output.drawing.active()).then(|| {
-        sized_box(
-            sized_box(
-                flex_row((
-                    components::icons::icon(components::icons::Icon::CornerDownLeft, 14.0)
-                        .theme_color(Tone::Muted),
-                    label("Enter to open")
-                        .text_size(10.0)
-                        .theme_color(Tone::Muted),
-                ))
-                .gap(6.0.px()),
-            )
-            .height(42.0.px())
-            .theme_border(Tone::Border)
-            .border_width(1.0.px()),
-        )
-        .padding(Padding {
-            bottom: 12.0.px(),
-            ..Padding::horizontal(horizontal_padding)
-        })
-    });
     let panel = super::popup::launcher_panel(
         output,
         flex_col((controls::header(output, focus_target.clone()), collection))
@@ -271,7 +250,7 @@ pub(super) fn launcher_view(
             bottom: if output.drawing.active() { 12.0 } else { 4.0 }.px(),
             ..Padding::horizontal(horizontal_padding)
         }),
-        footer,
+        None::<xilem::view::Label>,
     );
     focus_on_activation(
         xilem::view::resize_observer(

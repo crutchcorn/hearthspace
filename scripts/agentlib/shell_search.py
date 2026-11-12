@@ -93,10 +93,13 @@ def run(smoke):
     empty, gap = fitted(
         smoke,
         "search",
-        "Enter to open",
+        "No matching apps or windows",
         output,
-        max_bottom_gap=32,
+        # The empty-state text is centered in its existing 204px card.
+        max_bottom_gap=120,
     )
+    if checks.elements(smoke, "Enter to open", role=None):
+        raise ControlError("Apps List still exposes its removed footer hint")
     if a11y(smoke, "find", RESULTS)["elements"]:
         raise ControlError("an unmatched search still exposes application results")
     search_width(empty, output)

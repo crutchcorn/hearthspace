@@ -256,7 +256,7 @@ def panels(smoke, output):
         (
             "search",
             "Apps List",
-            "Enter to open",
+            "Open: Hearthspace Settings",
         ),
         ("notifications", "Notifications", "No notifications yet"),
         # Capability feedback precedes the rows; the final action stays visible
@@ -271,17 +271,19 @@ def panels(smoke, output):
             # Use a specific result to verify content-driven popup sizing.
             with Input(smoke.control) as inputs:
                 inputs.type("Hearthspace Settings")
-        # The notification empty state reserves a 200px card. Search centers
-        # its final label inside a 42px footer above 12px of bottom padding.
+        # Notifications reserve an empty-state card. Search now fits its last
+        # result directly above the bottom padding, without a footer.
         surface, gap = fitted(
             smoke,
             kind,
             last_name,
             output,
-            max_bottom_gap={"notifications": 120, "search": 32}.get(kind, 24),
+            max_bottom_gap=120 if kind == "notifications" else 24,
         )
         if kind == "search":
             search_width(surface, output)
+            if checks.elements(smoke, "Enter to open", role=None):
+                raise ControlError("Apps List still exposes its removed footer hint")
         park_pointer(smoke, output)
         visible = Frame(smoke.capture(f"shell-popup-{kind}", output["name"]))
         if checks.panel(smoke, kind) != surface:

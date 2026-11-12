@@ -92,7 +92,9 @@ pub(super) fn view(
         )
         .padding(Padding {
             top: 12.0.px(),
-            ..Default::default()
+            left: controls::style::FOCUS_RING_OUTSET.px(),
+            right: controls::style::FOCUS_RING_OUTSET.px(),
+            bottom: controls::style::FOCUS_RING_OUTSET.px(),
         }),
     ))
     .cross_axis_alignment(CrossAxisAlignment::Stretch)

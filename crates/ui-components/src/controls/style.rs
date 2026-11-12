@@ -13,6 +13,8 @@ use xilem::{
     },
 };
 
+/// Space needed for the two-unit focus stroke at a three-unit offset.
+pub const FOCUS_RING_OUTSET: f64 = 4.;
 pub const BUTTON_HEIGHT: f64 = 36.;
 pub const FIELD_HEIGHT: f64 = 42.;
 pub const BAR_HEIGHT: f64 = 8.;
