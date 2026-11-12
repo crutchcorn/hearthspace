@@ -136,12 +136,25 @@ fn monitor_details_view(state: &SettingsApp) -> Box<AnyWidgetView<SettingsApp>> 
                 flex_col((
                     row(
                         "Resolution",
-                        read_only_field(palette, format!("{} × {}", monitor.width, monitor.height)),
+                        current_option(
+                            palette,
+                            "Resolution",
+                            format!("{} × {}", monitor.width, monitor.height),
+                            true,
+                        ),
                     ),
                     divider(palette),
                     row("Scale", scale),
                     divider(palette),
-                    row("Refresh rate", read_only_field(palette, refresh)),
+                    row(
+                        "Refresh rate",
+                        current_option(
+                            palette,
+                            "Refresh rate",
+                            refresh,
+                            live_output.and_then(|o| o.refresh_millihertz).is_some(),
+                        ),
+                    ),
                 ))
                 .cross_axis_alignment(CrossAxisAlignment::Stretch)
                 .gap(0.0.px()),
@@ -155,19 +168,15 @@ fn monitor_details_view(state: &SettingsApp) -> Box<AnyWidgetView<SettingsApp>> 
     .boxed()
 }
 
-fn read_only_field(palette: components::Palette, value: String) -> impl WidgetView<SettingsApp> {
-    components::controls::form_button_content(
-        palette,
-        flex_row((
-            label(value).text_size(12.0),
-            icon(Icon::ChevronDown, 16.0).color(palette.muted),
-        ))
-        .gap(8.0.px()),
-        components::controls::ButtonVariant::Neutral,
-        true,
-        |_: &mut SettingsApp| {},
-    )
-    .height(components::controls::style::FIELD_HEIGHT.px())
+// The backend currently reports one active mode, not a list of switchable modes.
+// Keep that real option inspectable without inventing display-mode changes.
+fn current_option(
+    palette: components::Palette,
+    name: &'static str,
+    value: String,
+    available: bool,
+) -> impl WidgetView<SettingsApp> {
+    select(palette, name, vec![value], 0, !available, |_, _| {})
 }
 
 #[cfg(test)]
