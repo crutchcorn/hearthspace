@@ -10,7 +10,7 @@ use xilem::{
         properties::{LineBreaking, Padding},
     },
     style::Style,
-    view::{CrossAxisAlignment, button, flex_col, flex_row, label, portal, sized_box},
+    view::{CrossAxisAlignment, flex_col, flex_row, label, portal, sized_box},
 };
 
 mod name_input;
@@ -245,32 +245,29 @@ fn name_form(
         target: target.clone(),
         folder,
     }
-    .height(38.0.px())
-    .padding(8.0.px());
+    .height(42.0.px())
+    .padding(Padding::from_vh(10.0.px(), 14.0.px()));
     let palette = state.appearance.palette;
-    let cancel = hearthspace_ui_components::button_surface(
-        button(label("Cancel"), move |state: &mut ShellState| {
-            super::dismiss(state, generation)
-        })
-        .padding(Padding::from_vh(8.0.px(), 12.0.px())),
-        hearthspace_ui_components::ButtonSurface::Control,
+    let cancel = hearthspace_ui_components::controls::form_button(
+        palette,
+        "Cancel",
+        hearthspace_ui_components::controls::ButtonVariant::Neutral,
         false,
+        move |state: &mut ShellState| super::dismiss(state, generation),
     );
-    let submit = hearthspace_ui_components::button_surface(
-        button(
-            label(if folder { "Create Folder" } else { "Rename" }),
-            move |state: &mut ShellState| name_input::submit(state, folder),
-        )
-        .padding(Padding::from_vh(8.0.px(), 12.0.px())),
-        hearthspace_ui_components::ButtonSurface::Control,
-        true,
+    let submit = hearthspace_ui_components::controls::form_button(
+        palette,
+        if folder { "Create Folder" } else { "Rename" },
+        hearthspace_ui_components::controls::ButtonVariant::Primary,
+        false,
+        move |state: &mut ShellState| name_input::submit(state, folder),
     );
     let form = popup_group::group(
         if folder { "New Folder" } else { "Rename" },
         sized_box(
             flex_col((
                 label(if folder { "New Folder" } else { "Rename" }).text_size(14.0),
-                material::panel(input, false, palette),
+                hearthspace_ui_components::controls::field_container(input, false),
                 flex_row((cancel, submit)).gap(8.0.px()),
             ))
             .cross_axis_alignment(CrossAxisAlignment::Stretch)

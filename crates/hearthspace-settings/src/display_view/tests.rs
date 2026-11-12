@@ -97,11 +97,10 @@ fn display_identity_keeps_product_names_and_shows_each_connector_once_without_po
             "the connector should appear once: {labels:?}"
         );
         let refresh = ["60 Hz", "59.94 Hz", "120 Hz", "Not reported"][index];
-        let refresh_node = ui.harness.access_node(ui.button(refresh)).unwrap();
-        assert!(
-            refresh_node.is_disabled(),
-            "refresh is reported, not editable"
-        );
+        let refresh_id = combo(&ui, "Refresh rate");
+        let refresh_node = ui.harness.access_node(refresh_id).unwrap();
+        assert_eq!(refresh_node.is_disabled(), index == 3);
+        assert_eq!(refresh_node.value().as_deref(), Some(refresh));
         assert!(
             labels.iter().all(|label| !label.starts_with("Position:")),
             "desktop coordinates should not be a visible settings row"
@@ -127,6 +126,29 @@ fn display_identity_keeps_product_names_and_shows_each_connector_once_without_po
             !canvas.contains('@'),
             "GPU routing IDs are not accessible labels"
         );
+        for (name, value) in [("Resolution", "1920 × 1080"), ("Refresh rate", refresh)] {
+            if name == "Refresh rate" && index == 3 {
+                continue;
+            }
+            ui.harness.mouse_click_on(combo(&ui, name), None);
+            ui.dispatch(&view);
+            let mut nodes = vec![ui.harness.access_tree().state().root()];
+            let mut options = vec![];
+            while let Some(node) = nodes.pop() {
+                nodes.extend(node.children());
+                if node.role() == Role::ListBoxOption {
+                    options.push(node.label().unwrap());
+                }
+            }
+            assert_eq!(options, [value], "{name}");
+            let escape =
+                masonry::core::keyboard::Key::Named(masonry::core::keyboard::NamedKey::Escape);
+            ui.harness
+                .process_text_event(masonry::core::TextEvent::key_down(escape.clone()));
+            ui.harness
+                .process_text_event(masonry::core::TextEvent::key_up(escape));
+            ui.dispatch(&view);
+        }
     }
 }
 
@@ -170,7 +192,7 @@ fn scale_popup_keeps_page_geometry_and_queues_the_keyboard_choice() {
             })
         })
         .unwrap();
-    let refresh = ui.button("Not reported");
+    let refresh = combo(&ui, "Refresh rate");
     let before = ui.harness.get_widget_with_id(refresh).ctx().bounding_box();
     ui.harness.focus_on(Some(select));
     ui.harness
@@ -263,4 +285,18 @@ fn monitor_preview_keeps_its_reference_aspect_when_settings_content_narrows() {
             "{preview:?}"
         );
     }
+}
+
+fn combo<V: WidgetView<SettingsApp, Widget: Sized>>(
+    ui: &Ui<V>,
+    name: &str,
+) -> masonry::core::WidgetId {
+    ids(&ui.harness)
+        .into_iter()
+        .find(|id| {
+            ui.harness.access_node(*id).is_some_and(|node| {
+                node.role() == Role::ComboBox && node.label().as_deref() == Some(name)
+            })
+        })
+        .unwrap_or_else(|| panic!("missing combobox: {name}"))
 }

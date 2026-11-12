@@ -1,6 +1,6 @@
 ---
 name: web-parity
-description: Compare Hearthspace with its live web design reference and bring native visuals and interactions as close to 1:1 as the real desktop permits. Use for visual parity work, porting a reference interaction, reviewing shell or Settings changes, or checking responsive and animated states against the reference.
+description: Compare Hearthspace with its live web design reference and bring native visuals and interactions as close to 1:1 as the real desktop permits. Use for visual parity work, porting a reference interaction, reviewing shell or Settings changes, checking responsive and animated states against the reference, or synchronizing the native UI Storybook with the web component catalog.
 ---
 
 # Web Parity
@@ -15,9 +15,41 @@ design rationale is needed, read the relevant files through the public repositor
 at https://github.com/crutchcorn/hearthspace-ui-experiments using its web UI or
 remote API. Record the revision used in task evidence.
 
-Do not clone the reference project, search for an existing local checkout, or
-record a local reference-project path in this repository. Browser observations,
-remote source reads, and temporary comparison captures are sufficient.
+Prefer the live reference and remote source reads. Do not clone or search for a
+local reference checkout unless the user requests local exploration or Storybook
+work. When authorized, use the supplied checkout, read its `AGENTS.md`, and keep
+machine-specific checkout paths out of this repository. Do not change the web
+project or install agent integrations merely to inspect its catalog.
+
+## Compare shared components with Storybook
+
+For component discovery or native/web gallery synchronization, read
+[Storybook sync](references/storybook-sync.md). It covers the web catalog's
+built-in agent skills, component documentation tools, Canvas/Docs navigation,
+controls, themes, preview wrappers, and mapping to native stories. Use the web
+Storybook for isolated states and the live prototype for placement and complete
+workflows; neither replaces validation in the real desktop.
+
+## Keep shared controls shared
+
+Treat the native Shared Controls catalog as the production styling contract.
+Use its actual component or shared painter for equivalent shell and Settings
+controls, including hover, focus, disabled, validation and loading states.
+Putting an older renderer in `ui-components` does not make it Storybook-styled.
+
+Keep feature callbacks, device bindings, IME/autocomplete, confirmation and input
+ownership adapters in their existing owners. Reuse the shared visual treatment
+around those behaviors instead of copying or extensively overriding its colors,
+fonts, dimensions, borders, gradients, shadows or focus rings at each callsite.
+Change a common style at its shared owner and check the catalog and consumers.
+
+Allow a contextual variant when the actual component role requires it: menu
+rows, toolbar touch targets, a genuinely constrained overlay, or a secure toolkit
+password editor are not ordinary form fields/buttons. Keep the difference small
+and explicit. Prefer a named shared variant; document its reason and show new
+variants in Storybook. A native-only behavior requirement is not by itself a
+reason for different styling. Audit the renderer and overrides, then inspect
+production surfaces; catalog screenshots alone do not establish adoption.
 
 ## Establish the comparison
 

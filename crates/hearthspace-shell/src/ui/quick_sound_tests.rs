@@ -67,10 +67,10 @@ fn sound_slider_accepts_keyboard_and_accessibility_changes_and_mute_is_separate(
     assert_eq!(
         ui.harness
             .get_widget_with_id(volume)
-            .get_prop::<masonry::properties::BorderColor>()
-            .color,
-        components::FOCUS_RING_ON_GLASS,
-        "the slider focus ring must contrast with translucent panels"
+            .get_prop::<components::Palette>()
+            .focus_ring,
+        ui.state.appearance.palette.focus_ring,
+        "the shell slider must use the Storybook palette focus ring"
     );
     ui.harness
         .process_text_event(TextEvent::key_down(Key::Named(NamedKey::ArrowRight)));

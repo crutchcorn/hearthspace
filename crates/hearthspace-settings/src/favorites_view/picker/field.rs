@@ -13,7 +13,7 @@ use xilem::masonry::{
         keyboard::{Key, NamedKey},
     },
     imaging::Painter,
-    kurbo::{Axis, Point, Rect, Size, Stroke},
+    kurbo::{Axis, Point, Rect, Size},
     layout::{AsUnit, LenReq, Length},
     properties::{Background, BorderColor, BorderWidth, Padding},
     widgets::{Button, ButtonPress, TextAction},

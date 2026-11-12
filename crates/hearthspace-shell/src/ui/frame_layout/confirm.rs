@@ -1,14 +1,14 @@
 //! A session-bound native dialog; only its explicit affirmative action mutates.
 use crate::ui::{search_focus::Record, state::ShellState};
 use hearthspace_ipc::frame_layout::{Action, Confirmation};
-use hearthspace_ui_components as components;
+use hearthspace_ui_components::controls::{self, ButtonVariant};
 use xilem::{
     WidgetView, WindowView,
     dpi::LogicalSize,
     masonry::{
         layout::AsUnit,
         parley::style::{FontWeight, LineHeight},
-        properties::{LineBreaking, Padding},
+        properties::LineBreaking,
     },
     style::Style,
     view::{
@@ -71,44 +71,29 @@ pub(super) fn view(
         )
     };
     let target = state.frame_layout.confirm_target.clone();
-    let cancel = Record {
-        inner: components::button_surface(
-            button(
-                label("Cancel")
-                    .font("Liberation Sans")
-                    .text_size(13.0)
-                    .color(state.appearance.palette.text),
-                |state: &mut ShellState| super::command(state, Action::Cancel),
-            )
-            .padding(Padding::from_vh(10.0.px(), 14.0.px()))
-            .border_width(0.0.px())
-            .corner_radius(10.0.px()),
-            components::ButtonSurface::Control,
-            false,
-        ),
-        target: target.clone(),
-    };
-    let affirmative = components::button_surface(
-        button(
-            label(affirm)
-                .font("Liberation Sans")
-                .text_size(13.0)
-                .color(if tools {
-                    state.appearance.palette.text
-                } else {
-                    xilem::Color::WHITE
+    let cancel = controls::button_frame(
+        Record {
+            inner: controls::button_layout(
+                button(controls::form_label("Cancel"), |state: &mut ShellState| {
+                    super::command(state, Action::Cancel)
                 }),
-            |state: &mut ShellState| super::command(state, Action::Confirm),
-        )
-        .padding(Padding::from_vh(10.0.px(), 14.0.px()))
-        .border_width(0.0.px())
-        .corner_radius(10.0.px()),
+                ButtonVariant::Neutral,
+            ),
+            target: target.clone(),
+        },
+        ButtonVariant::Neutral,
+        false,
+    );
+    let affirmative = controls::form_button(
+        state.appearance.palette,
+        affirm,
         if tools {
-            components::ButtonSurface::Control
+            ButtonVariant::Neutral
         } else {
-            components::ButtonSurface::Danger
+            ButtonVariant::Danger
         },
         false,
+        |state: &mut ShellState| super::command(state, Action::Confirm),
     );
     let content = flex_col((
         label(title)
@@ -130,7 +115,9 @@ pub(super) fn view(
         )
         .padding(xilem::masonry::properties::Padding {
             top: 12.0.px(),
-            ..Default::default()
+            left: controls::style::FOCUS_RING_OUTSET.px(),
+            right: controls::style::FOCUS_RING_OUTSET.px(),
+            bottom: controls::style::FOCUS_RING_OUTSET.px(),
         }),
     ))
     .cross_axis_alignment(CrossAxisAlignment::Stretch)

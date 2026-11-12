@@ -186,46 +186,19 @@ impl Widget for PickerField {
         // The reference moves its visual focus into the open menu. Retain the
         // editor's native text focus, but show its field outline only when closed.
         let focused = ctx.has_focus_target() && self.popup.is_none();
-        if focused {
-            components::settings_material::shadow(
-                painter,
-                rect,
-                10.0,
-                palette.control_shadow,
-                (0.0, 6.0),
-                22.0,
-                -5.0,
-            );
-        }
-        let shape = rect.inset(-0.5).to_rounded_rect(9.5);
-        painter.fill(shape, palette.surface_control).draw();
-        if focused {
-            let wash = xilem::masonry::peniko::Gradient::new_radial(
-                rect.center(),
-                (rect.width().max(rect.height()) / 2.0) as f32,
-            )
-            .with_stops([
-                (0.0, xilem::Color::TRANSPARENT),
-                (1.0, palette.control_inset_glow),
-            ]);
-            painter.fill(shape, &wash).draw();
-        }
-        painter
-            .stroke(shape, &Stroke::new(1.0), palette.chrome_border)
-            .draw();
-        components::settings_material::glass_edge_with_palette(
-            painter, rect, 10.0, focused, &palette,
+        components::controls::style::field(
+            painter,
+            rect,
+            false,
+            components::settings_material::Interaction {
+                focused,
+                disabled: ctx.is_disabled(),
+                ..Default::default()
+            },
+            &palette,
         );
-        if focused {
-            painter
-                .stroke(
-                    rect.inset(-1.0).to_rounded_rect(9.0),
-                    &Stroke::new(2.0),
-                    palette.accent,
-                )
-                .draw();
-        }
     }
+
     fn accessibility_role(&self) -> Role {
         Role::GenericContainer
     }

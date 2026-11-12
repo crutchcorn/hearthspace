@@ -200,7 +200,11 @@ pub fn paint_button_with_palette(
     palette: &Palette,
 ) {
     let emphasized = !interaction.disabled && (interaction.hovered || interaction.active);
-    let glow = emphasized || selected || (kind == SettingsButton::Primary && !interaction.disabled);
+    let light_card = kind == SettingsButton::Card && !palette.dark && !interaction.disabled;
+    let glow = light_card
+        || emphasized
+        || selected
+        || (kind == SettingsButton::Primary && !interaction.disabled);
     if glow {
         shadow(
             painter,
@@ -218,6 +222,8 @@ pub fn paint_button_with_palette(
     };
     let mut border = match kind {
         SettingsButton::Bare => Color::TRANSPARENT,
+        // Use the same subtle neutral edge as ordinary controls in light mode.
+        SettingsButton::Card if light_card => palette.border,
         SettingsButton::Card => palette.chrome_border,
         _ => palette.border,
     };

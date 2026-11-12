@@ -1,12 +1,12 @@
 //! The compact switch and full-card row share the same track material.
-use hearthspace_ui_components as components;
+use crate as components;
 use xilem::masonry::{
     imaging::Painter,
     kurbo::{Circle, Rect, Stroke},
     properties::types::Gradient,
 };
 
-pub(super) fn paint(
+pub(in crate::controls) fn paint(
     palette: components::Palette,
     painter: &mut Painter<'_>,
     x: f64,

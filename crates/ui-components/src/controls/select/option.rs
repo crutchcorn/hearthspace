@@ -1,5 +1,5 @@
 use super::button::SettingsSelectButton;
-use hearthspace_ui_components as components;
+use crate as components;
 use xilem::masonry::{
     accesskit::{Action, Node, Role},
     core::{
@@ -27,7 +27,13 @@ pub(super) struct SelectOption {
 }
 
 impl SelectOption {
-    pub fn new(creator: WidgetId, index: usize, name: String, selected: bool) -> Self {
+    pub fn new(
+        creator: WidgetId,
+        index: usize,
+        name: String,
+        selected: bool,
+        font_size: f32,
+    ) -> Self {
         Self {
             creator,
             index,
@@ -36,9 +42,9 @@ impl SelectOption {
             highlighted: selected,
             label: WidgetPod::new(
                 Label::new(name)
-                    .with_style(StyleProperty::FontSize(11.0))
+                    .with_style(StyleProperty::FontSize(font_size))
                     .with_style(StyleProperty::FontFamily(FontFamily::Single(
-                        FontFamilyName::Named(crate::typography::FONT.into()),
+                        FontFamilyName::Named("Liberation Sans".into()),
                     ))),
             ),
         }

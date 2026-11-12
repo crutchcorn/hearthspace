@@ -217,7 +217,11 @@ fn sound(state: &ShellState, output: &ShellOutputInstance) -> impl WidgetView<Sh
                 value: value.unwrap_or(0),
                 enabled: value.is_some() && state.controls.sender.is_some(),
             })
-            .height(28.0.px())
+            .height(32.0.px())
+            .padding(xilem::masonry::properties::Padding::from_vh(
+                0.0.px(),
+                16.0.px(),
+            ))
             .flex(1.0),
             glyph(Icon::Volume { muted: false }, "Sound output".into()),
         ))
@@ -269,7 +273,11 @@ fn brightness(
                 value: value.unwrap_or(1),
                 enabled: available,
             })
-            .height(28.0.px())
+            .height(32.0.px())
+            .padding(xilem::masonry::properties::Padding::from_vh(
+                0.0.px(),
+                16.0.px(),
+            ))
             .flex(1.0),
             components::icons::icon(components::icons::Icon::Sun, 22.0),
         ))

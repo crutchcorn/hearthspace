@@ -9,7 +9,10 @@ use crate::ui::{
     search_focus::{Record, focus_on_activation},
     state::{ShellOutputInstance, ShellState},
 };
-use hearthspace_ui_components as components;
+use hearthspace_ui_components::{
+    self as components,
+    controls::{self, ButtonVariant},
+};
 use xilem::{
     WidgetView,
     masonry::{
@@ -30,52 +33,38 @@ pub(super) fn view(
     let target = output.power_ui.cancel.clone();
     let cancel_key = output.key().to_owned();
     let confirm_key = cancel_key.clone();
-    let cancel = Record {
-        inner: components::button_surface(
-            button(
-                label(if action.pending(state) {
-                    "Close"
-                } else {
-                    "Cancel"
-                })
-                .font("Liberation Sans")
-                .text_size(13.0)
-                .line_height(LineHeight::FontSizeRelative(1.0))
-                .color(palette.text),
-                move |state: &mut ShellState| state.dismiss_power(&cancel_key),
-            )
-            // Include the focus border in the reference's 10px / 14px padding.
-            .padding(Padding::from_vh(9.0.px(), 13.0.px()))
-            .height(33.0.px())
-            .corner_radius(10.0.px()),
-            components::ButtonSurface::Control,
-            false,
-        ),
-        target: target.clone(),
-    };
-    let confirm = components::button_surface(
-        button(
-            label(if action.pending(state) {
-                match action {
-                    Confirmation::Reboot => "Rebooting…",
-                    Confirmation::PowerOff => "Turning off…",
-                    Confirmation::LogOff => action.label(),
-                }
-            } else {
-                action.label()
-            })
-            .font("Liberation Sans")
-            .text_size(13.0)
-            .line_height(LineHeight::FontSizeRelative(1.0))
-            .color(xilem::Color::WHITE),
-            move |state: &mut ShellState| power_confirmation::confirm(state, &confirm_key, action),
-        )
-        .disabled(!action.enabled(state))
-        .padding(Padding::from_vh(9.0.px(), 13.0.px()))
-        .height(33.0.px())
-        .corner_radius(10.0.px()),
-        components::ButtonSurface::Danger,
+    let cancel = controls::button_frame(
+        Record {
+            inner: controls::button_layout(
+                button(
+                    controls::form_label(if action.pending(state) {
+                        "Close"
+                    } else {
+                        "Cancel"
+                    }),
+                    move |state: &mut ShellState| state.dismiss_power(&cancel_key),
+                ),
+                ButtonVariant::Neutral,
+            ),
+            target: target.clone(),
+        },
+        ButtonVariant::Neutral,
         false,
+    );
+    let confirm = controls::form_button(
+        palette,
+        if action.pending(state) {
+            match action {
+                Confirmation::Reboot => "Rebooting…",
+                Confirmation::PowerOff => "Turning off…",
+                Confirmation::LogOff => action.label(),
+            }
+        } else {
+            action.label()
+        },
+        ButtonVariant::Danger,
+        !action.enabled(state),
+        move |state: &mut ShellState| power_confirmation::confirm(state, &confirm_key, action),
     );
     let error = output
         .launch_error
@@ -103,7 +92,9 @@ pub(super) fn view(
         )
         .padding(Padding {
             top: 12.0.px(),
-            ..Default::default()
+            left: controls::style::FOCUS_RING_OUTSET.px(),
+            right: controls::style::FOCUS_RING_OUTSET.px(),
+            bottom: controls::style::FOCUS_RING_OUTSET.px(),
         }),
     ))
     .cross_axis_alignment(CrossAxisAlignment::Stretch)

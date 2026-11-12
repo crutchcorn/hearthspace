@@ -11,7 +11,7 @@ use xilem::{
             UpdateCtx, Widget,
         },
         imaging::Painter,
-        kurbo::{Axis, Size, Stroke},
+        kurbo::{Axis, Size},
         layout::{AsUnit, LenReq, Length},
         properties::{BorderColor, BorderWidth, ContentColor, Padding},
         widgets::{Button, ButtonPress},
@@ -26,7 +26,7 @@ pub(super) struct ConfirmationButton {
 
 impl ConfirmationButton {
     pub fn new(name: &'static str, destructive: bool, keyboard: Rc<Cell<bool>>) -> NewWidget<Self> {
-        let label = NewWidget::new(super::panel::label(name, 11.0));
+        let label = NewWidget::new(super::panel::label(name, 12.0));
         let label = if destructive {
             label.with_props(ContentColor::new(Color::WHITE))
         } else {
@@ -38,7 +38,7 @@ impl ConfirmationButton {
             keyboard,
         })
         .with_props((
-            Padding::from_vh(7.0.px(), 12.0.px()),
+            Padding::from_vh(8.0.px(), 12.0.px()),
             BorderWidth { width: 1.0.px() },
             BorderColor {
                 color: Color::TRANSPARENT,
@@ -113,49 +113,24 @@ impl Widget for ConfirmationButton {
         let palette = *props.get::<components::Palette>(ctx.property_cache());
         let rect = ctx.border_box();
         let focused = ctx.is_focus_target() && self.keyboard.get();
-        if self.destructive {
-            let color = if ctx.is_hovered() {
-                Color::from_rgb8(0xa6, 0x30, 0x2e)
+        components::controls::style::button(
+            painter,
+            rect,
+            if self.destructive {
+                components::controls::ButtonVariant::Danger
             } else {
-                Color::from_rgb8(0xbc, 0x3b, 0x39)
-            };
-            painter
-                .fill(rect.to_rounded_rect(components::RADIUS_CONTROL), color)
-                .draw();
-            material::glass_edge_with_palette(
-                painter,
-                rect,
-                components::RADIUS_CONTROL,
-                ctx.is_hovered(),
-                &palette,
-            );
-            if focused {
-                painter
-                    .stroke(
-                        rect.inflate(3.0, 3.0)
-                            .to_rounded_rect(components::RADIUS_CONTROL + 3.0),
-                        &Stroke::new(2.0),
-                        Color::from_rgb8(0xbc, 0x3b, 0x39),
-                    )
-                    .draw();
-            }
-        } else {
-            material::paint_button_with_palette(
-                painter,
-                rect,
-                components::RADIUS_CONTROL,
-                components::SettingsButton::Control,
-                false,
-                material::Interaction {
-                    hovered: ctx.is_hovered(),
-                    active: ctx.is_active(),
-                    focused,
-                    disabled: ctx.is_disabled(),
-                },
-                &palette,
-            );
-        }
+                components::controls::ButtonVariant::Neutral
+            },
+            material::Interaction {
+                hovered: ctx.is_hovered(),
+                active: ctx.is_active(),
+                focused,
+                disabled: ctx.is_disabled(),
+            },
+            &palette,
+        );
     }
+
     fn accessibility_role(&self) -> Role {
         self.inner.accessibility_role()
     }

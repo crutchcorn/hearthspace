@@ -143,6 +143,18 @@ pub fn hearthspace_properties(palette: Palette, style: PropertyStyle) -> Default
     {
         let mut stack = PropertyStack::new();
         stack.push_layer(
+            Selector::classes(&["hearthspace-form-field"]),
+            BorderColor {
+                color: palette.chrome_border,
+            },
+        );
+        stack.push_layer(
+            Selector::classes(&["hearthspace-invalid-field"]),
+            BorderColor {
+                color: Color::from_rgb8(197, 72, 65),
+            },
+        );
+        stack.push_layer(
             Selector::new().with_focused(true),
             BorderColor { color: focus_ring },
         );
@@ -162,5 +174,6 @@ pub fn hearthspace_properties(palette: Palette, style: PropertyStyle) -> Default
         properties.insert_stack::<Slider>(stack);
     }
 
+    crate::controls::theme_properties(&mut properties, palette);
     properties
 }

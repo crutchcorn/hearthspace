@@ -1,18 +1,13 @@
-use hearthspace_ui_components::{
-    self as components,
-    icons::{Icon, icon},
-};
+use hearthspace_ui_components::{self as components, icons::Icon};
 use xilem::{
     AnyWidgetView, WidgetView,
     masonry::{
         layout::{AsUnit, Dim},
         parley::style::FontWeight,
-        properties::{LineBreaking, Padding},
+        properties::LineBreaking,
     },
     style::Style,
-    view::{
-        CrossAxisAlignment, MainAxisAlignment, button, flex_col, flex_item, flex_row, sized_box,
-    },
+    view::{CrossAxisAlignment, MainAxisAlignment, flex_col, flex_item, flex_row, sized_box},
 };
 
 use crate::{
@@ -51,21 +46,14 @@ pub(crate) fn view(state: &SettingsApp) -> Box<AnyWidgetView<SettingsApp>> {
                             .weight(FontWeight::MEDIUM)
                             .line_break_mode(LineBreaking::WordWrap),
                         sized_box(restore_focus_after_close(
-                            components::settings_button(
-                                button(
-                                    flex_row((
-                                        icon(Icon::ImagePlus, 14.0).color(palette.text),
-                                        label(picker_label).text_size(11.0),
-                                    ))
-                                    .gap(7.0.px()),
-                                    pick_background,
-                                )
-                                .height(34.0.px())
-                                .padding(Padding::from_vh(7.0.px(), 10.0.px())),
-                                components::SettingsButton::Control,
-                                false,
-                            )
-                            .disabled(state.background_picker_pending),
+                            components::controls::form_button_with_icon(
+                                palette,
+                                Icon::ImagePlus,
+                                picker_label,
+                                components::controls::ButtonVariant::Neutral,
+                                state.background_picker_pending,
+                                pick_background,
+                            ),
                             path.is_some(),
                         ))
                         .width(Dim::MaxContent),
@@ -90,27 +78,14 @@ pub(crate) fn view(state: &SettingsApp) -> Box<AnyWidgetView<SettingsApp>> {
                         ))
                         .gap(12.0.px())
                     }),
-                    sized_box(
-                        components::settings_button(
-                            button(
-                                flex_row((
-                                    icon(Icon::RotateCcw, 12.0).color(palette.text),
-                                    label("Use default background")
-                                        .text_size(10.0)
-                                        .color(palette.text),
-                                ))
-                                .gap(7.0.px()),
-                                |state: &mut SettingsApp| {
-                                    save_background_image_path(state, None);
-                                },
-                            )
-                            .height(32.0.px())
-                            .padding(Padding::from_vh(7.0.px(), 10.0.px())),
-                            components::SettingsButton::Outline,
-                            false,
-                        )
-                        .disabled(state.background_picker_pending),
-                    )
+                    sized_box(components::controls::form_button_with_icon(
+                        palette,
+                        Icon::RotateCcw,
+                        "Use default background",
+                        components::controls::ButtonVariant::Quiet,
+                        state.background_picker_pending,
+                        |state: &mut SettingsApp| save_background_image_path(state, None),
+                    ))
                     .width(Dim::MaxContent),
                 ))
                 .cross_axis_alignment(CrossAxisAlignment::Stretch)

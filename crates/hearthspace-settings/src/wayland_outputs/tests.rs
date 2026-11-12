@@ -81,7 +81,7 @@ fn open_displays_page_updates_mode_frequency_and_selection_after_hotplug() {
     let (_directory, mut state) = state();
     apply_snapshot(&mut state, snapshot(vec![output("eDP-1")]));
     let mut ui = Ui::new(state, view, (470, 490));
-    assert!(ui.harness.access_node(ui.button("60 Hz")).is_some());
+    assert_refresh(&ui, "60 Hz");
     let mut dock = output("DP-1");
     dock.width = 2560;
     dock.height = 1440;
@@ -90,7 +90,7 @@ fn open_displays_page_updates_mode_frequency_and_selection_after_hotplug() {
     ui.state.selected_monitor_id = Some("DP-1".into());
     ui.rebuild(&view);
     ui.dispatch(&view);
-    assert!(ui.harness.access_node(ui.button("75 Hz")).is_some());
+    assert_refresh(&ui, "75 Hz");
     assert_eq!(ui.state.settings.monitors[1].width, 2560);
     dock.width = 3840;
     dock.height = 2160;
@@ -98,14 +98,14 @@ fn open_displays_page_updates_mode_frequency_and_selection_after_hotplug() {
     apply_snapshot(&mut ui.state, snapshot(vec![output("eDP-1"), dock]));
     ui.rebuild(&view);
     ui.dispatch(&view);
-    assert!(ui.harness.access_node(ui.button("59.94 Hz")).is_some());
+    assert_refresh(&ui, "59.94 Hz");
     assert_eq!(ui.state.settings.monitors[1].width, 3840);
     apply_snapshot(&mut ui.state, snapshot(vec![output("eDP-1")]));
     ui.rebuild(&view);
     ui.dispatch(&view);
     assert_eq!(ui.state.selected_monitor_id.as_deref(), Some("eDP-1"));
     assert_eq!(ui.state.settings.monitors.len(), 1);
-    assert!(ui.harness.access_node(ui.button("60 Hz")).is_some());
+    assert_refresh(&ui, "60 Hz");
 }
 
 #[test]
@@ -190,4 +190,18 @@ fn unavailable_primary_metadata_does_not_assign_roles_using_registry_order() {
     assert!(state.settings.monitors.iter().all(|row| row.scale == 1));
     assert_eq!(state.settings.monitors[0].id, "DP-1");
     assert_eq!(state.saved_monitors[0].scale, 3);
+}
+
+fn assert_refresh<V: WidgetView<SettingsApp, Widget: Sized>>(ui: &Ui<V>, expected: &str) {
+    let value = crate::test_support::ids(&ui.harness)
+        .into_iter()
+        .find_map(|id| {
+            let node = ui.harness.access_node(id)?;
+            (node.role() == masonry::accesskit::Role::ComboBox
+                && node.label().as_deref() == Some("Refresh rate"))
+            .then(|| node.value())
+            .flatten()
+        })
+        .expect("Refresh rate combobox");
+    assert_eq!(value, expected);
 }

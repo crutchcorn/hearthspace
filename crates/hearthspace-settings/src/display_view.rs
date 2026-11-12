@@ -7,7 +7,7 @@ use xilem::{
     AnyWidgetView, WidgetView,
     masonry::{layout::AsUnit, parley::style::FontWeight, properties::Padding},
     style::Style,
-    view::{CrossAxisAlignment, FlexExt, FlexSpacer, button, flex_col, flex_row, sized_box},
+    view::{CrossAxisAlignment, FlexExt, FlexSpacer, flex_col, flex_row, sized_box},
 };
 
 use crate::{
@@ -36,7 +36,7 @@ pub(crate) fn view(state: &SettingsApp) -> Box<AnyWidgetView<SettingsApp>> {
 
 fn row<V: WidgetView<SettingsApp>>(name: &'static str, value: V) -> impl WidgetView<SettingsApp> {
     sized_box(flex_row((label(name).text_size(11.0).flex(1.0), value)).gap(12.0.px()))
-        .height(56.0.px())
+        .height(60.0.px())
         .padding(Padding::from_vh(8.0.px(), 12.0.px()))
 }
 
@@ -88,8 +88,7 @@ fn monitor_details_view(state: &SettingsApp) -> Box<AnyWidgetView<SettingsApp>> 
         selected_scale,
         false,
         move |state, index| save_monitor_scale(state, &monitor_id, MONITOR_SCALE_OPTIONS[index]),
-    )
-    .height(36.0.px());
+    );
     let refresh = live_output
         .and_then(|output| output.refresh_millihertz)
         .map_or_else(
@@ -137,12 +136,25 @@ fn monitor_details_view(state: &SettingsApp) -> Box<AnyWidgetView<SettingsApp>> 
                 flex_col((
                     row(
                         "Resolution",
-                        read_only_field(palette, format!("{} × {}", monitor.width, monitor.height)),
+                        current_option(
+                            palette,
+                            "Resolution",
+                            format!("{} × {}", monitor.width, monitor.height),
+                            true,
+                        ),
                     ),
                     divider(palette),
                     row("Scale", scale),
                     divider(palette),
-                    row("Refresh rate", read_only_field(palette, refresh)),
+                    row(
+                        "Refresh rate",
+                        current_option(
+                            palette,
+                            "Refresh rate",
+                            refresh,
+                            live_output.and_then(|o| o.refresh_millihertz).is_some(),
+                        ),
+                    ),
                 ))
                 .cross_axis_alignment(CrossAxisAlignment::Stretch)
                 .gap(0.0.px()),
@@ -156,22 +168,15 @@ fn monitor_details_view(state: &SettingsApp) -> Box<AnyWidgetView<SettingsApp>> 
     .boxed()
 }
 
-fn read_only_field(palette: components::Palette, value: String) -> impl WidgetView<SettingsApp> {
-    components::settings_button(
-        button(
-            flex_row((
-                label(value).text_size(11.0),
-                icon(Icon::ChevronDown, 12.0).color(palette.muted),
-            ))
-            .gap(8.0.px()),
-            |_: &mut SettingsApp| {},
-        )
-        .disabled(true)
-        .height(36.0.px())
-        .padding(Padding::from_vh(6.0.px(), 8.0.px())),
-        components::SettingsButton::Control,
-        false,
-    )
+// The backend currently reports one active mode, not a list of switchable modes.
+// Keep that real option inspectable without inventing display-mode changes.
+fn current_option(
+    palette: components::Palette,
+    name: &'static str,
+    value: String,
+    available: bool,
+) -> impl WidgetView<SettingsApp> {
+    select(palette, name, vec![value], 0, !available, |_, _| {})
 }
 
 #[cfg(test)]

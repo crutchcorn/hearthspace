@@ -126,30 +126,6 @@ pub(super) fn caps_feedback(active: bool) -> &'static str {
     if active { "Caps Lock is on." } else { "\u{a0}" }
 }
 
-pub(super) fn caps_lock(
-    window: &gtk::Window,
-    feedback: &gtk::Label,
-    row: &gtk::Box,
-    caps: std::rc::Rc<std::cell::Cell<bool>>,
-    busy: std::rc::Rc<std::cell::Cell<bool>>,
-) {
-    let key = gtk::EventControllerKey::new();
-    key.set_propagation_phase(gtk::PropagationPhase::Capture);
-    let feedback = feedback.downgrade();
-    let row = row.downgrade();
-    key.connect_modifiers(move |_, modifiers| {
-        caps.set(modifiers.contains(gdk::ModifierType::LOCK_MASK));
-        if let (Some(label), Some(row)) = (feedback.upgrade(), row.upgrade())
-            && !busy.get()
-            && !row.has_css_class("error")
-        {
-            label.set_label(caps_feedback(caps.get()));
-        }
-        glib::Propagation::Proceed
-    });
-    window.add_controller(key);
-}
-
 pub(super) fn fade_in(window: &gtk::Window, duration: Duration) {
     let start = CellStart::default();
     window.set_opacity(0.0);

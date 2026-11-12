@@ -6,6 +6,8 @@ use hearthspace_ui_components::{Palette, icons::Icon};
 use zeroize::Zeroizing;
 
 use crate::config::Config;
+#[path = "ui/caps.rs"]
+mod caps;
 #[path = "ui/elements.rs"]
 mod elements;
 #[path = "ui/secret.rs"]
@@ -158,7 +160,7 @@ impl Screen {
                 )]);
             }
         });
-        elements::caps_lock(&window, &feedback, &row, caps.clone(), busy.clone());
+        caps::bind(&entry, &feedback, &row, caps.clone(), busy.clone());
         let size = monitor.geometry();
         elements::resize(
             &window,

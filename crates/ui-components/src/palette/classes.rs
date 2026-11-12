@@ -21,6 +21,11 @@ pub(crate) fn properties(properties: &mut DefaultProperties, palette: &Palette) 
         Selector::classes(&[MUTED]),
         ContentColor::new(palette.text_muted),
     );
+    // Shared preference rows also work outside Settings' application theme.
+    labels.push_layer(
+        Selector::classes(&["settings-muted"]),
+        ContentColor::new(palette.muted),
+    );
     properties.insert_stack::<Label>(labels);
     let mut panels = PropertyStack::new();
     panels.push_layer(
