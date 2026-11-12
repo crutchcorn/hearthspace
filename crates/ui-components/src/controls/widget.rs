@@ -21,11 +21,12 @@ pub enum ControlKind {
     Progress,
 }
 
-pub(super) struct ControlWidget<A = SwitchToggled> {
+pub struct ControlWidget<A = SwitchToggled> {
     action: std::marker::PhantomData<A>,
     pub(super) kind: ControlKind,
     pub(super) name: String,
     pub(super) value: f64,
+    pub(super) minimum: f64,
     switch: Switch,
     slider: Slider,
     pub(super) focus: FocusIndicator,
@@ -38,6 +39,7 @@ impl<A> ControlWidget<A> {
             kind,
             name: name.into(),
             value,
+            minimum: 0.,
             switch: Switch::new(value != 0.),
             slider: Slider::new(0., 100., value).with_step(1.),
             focus: FocusIndicator::default(),
@@ -49,6 +51,21 @@ impl<A> ControlWidget<A> {
         self.value = value;
         self.switch = Switch::new(value != 0.);
         self.slider = Slider::new(0., 100., value).with_step(1.);
+    }
+    /// Storybook slider styling with a percentage lower bound and native steps.
+    pub fn new_slider(name: &str, minimum: f64, value: f64) -> Self {
+        let mut widget = Self::new(ControlKind::Slider, name, value);
+        widget.set_level(minimum, value);
+        widget
+    }
+    pub fn set_level(&mut self, minimum: f64, value: f64) {
+        self.minimum = if minimum.is_finite() {
+            minimum.clamp(0., 99.)
+        } else {
+            0.
+        };
+        self.value = super::view::normalized(value).max(self.minimum);
+        self.slider = Slider::new(self.minimum, 100., self.value).with_step(1.);
     }
     fn interactive(&self) -> bool {
         matches!(
@@ -143,6 +160,7 @@ impl<A: std::fmt::Debug + Send + 'static> Widget for ControlWidget<A> {
             (ControlKind::Switch, _) => 24.0.px(),
             (ControlKind::Checkbox, _) => 20.0.px(),
             (_, Axis::Horizontal) => match r {
+                LenReq::MinContent => Length::ZERO,
                 LenReq::FitContent(v) => v,
                 _ => 256.0.px(),
             },
@@ -185,7 +203,7 @@ impl<A: std::fmt::Debug + Send + 'static> Widget for ControlWidget<A> {
             node.add_action(xilem::masonry::accesskit::Action::Click);
         } else {
             node.set_numeric_value(self.value);
-            node.set_min_numeric_value(0.);
+            node.set_min_numeric_value(self.minimum);
             node.set_max_numeric_value(100.);
             if self.kind == ControlKind::Slider {
                 use xilem::masonry::accesskit::Action;

@@ -19,7 +19,7 @@ pub(super) fn control<A>(
 ) {
     let r = ctx.content_box();
     let alpha = if ctx.is_disabled() { 0.5 } else { 1. };
-    let focused = w.focus.visible() && ctx.is_focus_target();
+    let focused = w.focus.visible() && ctx.is_focus_target() && ctx.is_window_focused();
     if w.kind == ControlKind::Switch {
         super::toggle::paint::paint(
             p,
@@ -90,7 +90,8 @@ pub(super) fn control<A>(
             paint
                 .fill(rail, p.control_track.multiply_alpha(alpha))
                 .draw();
-            let end = left + (right - left) * w.value / 100.;
+            let fraction = (w.value - w.minimum) / (100. - w.minimum);
+            let end = left + (right - left) * fraction;
             if end > left {
                 let fill_shape =
                     Rect::new(left, y - h / 2., end, y + h / 2.).to_rounded_rect(h / 2.);
@@ -142,7 +143,7 @@ pub(super) fn control<A>(
     }
     if focused && !ctx.is_disabled() {
         let (bounds, radius) = if w.kind == ControlKind::Slider {
-            let x = r.x0 + r.width() * w.value / 100.;
+            let x = r.x0 + r.width() * (w.value - w.minimum) / (100. - w.minimum);
             (
                 Rect::new(x - 15., r.center().y - 15., x + 15., r.center().y + 15.),
                 15.,

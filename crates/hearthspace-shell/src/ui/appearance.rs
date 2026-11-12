@@ -37,9 +37,7 @@ impl Theme {
 pub(super) fn properties(palette: Palette) -> DefaultProperties {
     let palette = palette.for_glass();
     use xilem::masonry::{
-        properties::{
-            BorderColor, CaretColor, ContentColor, SelectionColor, ThumbColor, TrackColor,
-        },
+        properties::{CaretColor, ContentColor, SelectionColor},
         widgets::{Label, SizedBox},
     };
     let mut properties =
@@ -63,14 +61,6 @@ pub(super) fn properties(palette: Palette) -> DefaultProperties {
         color: palette.accent_soft,
     });
     properties.insert_stack::<super::search_editor::SearchEditor>(classes::properties(&palette));
-    properties.insert::<super::control_slider::NamedSlider, _>(TrackColor {
-        active: palette.accent,
-        inactive: palette.border,
-    });
-    properties.insert::<super::control_slider::NamedSlider, _>(ThumbColor(palette.surface));
-    properties.insert::<super::control_slider::NamedSlider, _>(BorderColor {
-        color: palette.focus_ring_on_glass,
-    });
     properties
 }
 

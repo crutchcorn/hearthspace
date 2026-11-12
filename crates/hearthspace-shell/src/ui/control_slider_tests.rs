@@ -49,16 +49,21 @@ fn fixture_at_scale(
     let size = ((220.0 * scale) as u32, (32.0 * scale) as u32);
     let mut ui = Ui::new(state, view, size);
     ui.harness.process_window_event(WindowEvent::Rescale(scale));
-    // Distinguish the focus decoration from the unchanged upstream thumb/track.
+    // Isolate the Storybook thumb focus ring from its track and shadow.
     ui.harness.edit_root_widget(|mut widget| {
-        widget.insert_prop(BorderColor {
-            color: Color::from_rgb8(255, 0, 255),
+        widget.insert_prop(hearthspace_ui_components::Palette {
+            focus_ring: Color::from_rgb8(255, 0, 255),
+            ..ui_palette()
         });
         // TestHarness renders logical scenes without the window renderer's
         // scale transform. Apply it here to check the physical pixels too.
         widget.set_transform(Affine::scale(scale));
     });
     (ui, commands)
+}
+
+fn ui_palette() -> hearthspace_ui_components::Palette {
+    hearthspace_ui_components::Palette::default()
 }
 
 fn ring_pixels(image: &RgbaImage) -> Vec<(u32, u32)> {
@@ -128,7 +133,7 @@ fn keyboard_shows_an_outline_after_pointer_focus_and_preserves_it_across_rebuild
 }
 
 #[test]
-fn tab_focus_outline_is_fully_inside_all_four_edges_at_fractional_scales() {
+fn tab_focus_ring_surrounds_the_thumb_inside_the_popup_at_fractional_scales() {
     for scale in [1.0, 1.25, 1.5, 2.0, 3.0] {
         let (mut ui, _commands) = fixture_at_scale(scale);
         let width = (220.0 * scale) as u32;
@@ -141,23 +146,20 @@ fn tab_focus_outline_is_fully_inside_all_four_edges_at_fractional_scales() {
         let right = pixels.iter().map(|(x, _)| *x).max().unwrap();
         let top = pixels.iter().map(|(_, y)| *y).min().unwrap();
         let bottom = pixels.iter().map(|(_, y)| *y).max().unwrap();
-        let expected_inset = (scale * 2.0).ceil() as u32;
+        // Storybook focuses the thumb rather than outlining the whole field.
+        let center = 110.0 * scale;
         assert!(
-            left >= 1 && left <= expected_inset,
-            "left edge at {scale}x: {left}"
+            (left as f64 - (center - 16.0)).abs() <= 2.0,
+            "scale={scale} ring={left},{right},{top},{bottom}"
         );
-        assert!(
-            top >= 1 && top <= expected_inset,
-            "top edge at {scale}x: {top}"
-        );
-        assert!(
-            right < width - 1 && right >= width - expected_inset - 1,
-            "right edge at {scale}x: {right}"
-        );
-        assert!(
-            bottom < height - 1 && bottom >= height - expected_inset - 1,
-            "bottom edge at {scale}x: {bottom}"
-        );
+        assert!((right as f64 - (center + 16.0)).abs() <= 2.0);
+        assert!(left > 0 && right < width - 1);
+        // The harness rasterizes painter coordinates directly; native output
+        // scaling is applied by the window renderer, outside this harness.
+        let center_y = f64::from(height) / 2.0;
+        assert!((f64::from(top) - (center_y - 16.0)).abs() <= 2.0);
+        assert!((f64::from(bottom) - (center_y + 16.0)).abs() <= 2.0);
+        assert!(bottom < height);
         // Both vertical segments must reach the center, rather than being
         // clipped away while the horizontal segments remain visible.
         assert!(pixels.iter().any(|(x, y)| *x == left && *y == height / 2));

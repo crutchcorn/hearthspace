@@ -70,7 +70,7 @@ The native UI Storybook previews shared form buttons, 42-unit text fields,
 40×24 switches, 20×20 checkboxes, select menus, level bars, and sliders. Their
 implementations live in `ui-components::controls`. Settings uses the compact
 select, shared action buttons, whole-card switches and indeterminate progress;
-the shell uses compact level sliders. Switches and sliders retain Masonry input
+the shell uses the same Storybook level slider. Switches and sliders retain Masonry input
 and accessibility behavior, while shared painters supply their appearance.
 The gallery offers live Light/Dark and six accent choices. Its masked password
 examples are visual samples, not an available password editor.
@@ -267,11 +267,12 @@ native switch, with one focus stop. AI and canvas-tool preferences use this
 extension. The compact and form switches share their track painter. Do not wrap
 the card in a second button or move confirmation state into the component.
 
-`compact_slider::NamedSlider` retains native slider input, a configurable lower
-percentage bound, one-percent steps and a keyboard-only focus ring inside the
-popup. The shell binds it to volume and brightness; `set_level` updates backend
-snapshots without resetting input modality. Device identity and requests stay
-in the shell. The larger form slider remains available for form layouts.
+`LevelSlider` is the Storybook slider widget, including its gradient track,
+20-unit thumb and thumb focus ring. It retains native input, a configurable lower
+percentage bound and one-percent steps. The shell binds it to volume and
+brightness; `set_level` updates backend snapshots without resetting input
+modality. Device identity and requests stay in the shell. The shell reserves
+space around the track so endpoint thumbs and focus rings remain visible.
 
 `progress::progress(name, fraction)` accepts a fraction from zero to one, or
 `None` for unknown progress. Unknown progress omits an accessible numeric value;

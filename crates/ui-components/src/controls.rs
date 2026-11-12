@@ -6,7 +6,6 @@ use xilem::{
     view::{label, text_input},
 };
 
-pub mod compact_slider;
 mod field;
 mod input;
 mod paint;
@@ -19,6 +18,8 @@ mod widget;
 pub use view::control;
 pub use widget::ControlKind;
 use widget::ControlWidget;
+/// The same native slider widget and painter used by the Shared Controls catalog.
+pub type LevelSlider = widget::ControlWidget<xilem::masonry::widgets::SliderMoved>;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ButtonVariant {

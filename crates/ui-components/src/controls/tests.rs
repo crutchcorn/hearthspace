@@ -124,3 +124,45 @@ fn disabling_a_retained_slider_repaints_its_unchanged_value() {
     h.edit_root_widget(|mut w| w.ctx.set_disabled(false));
     assert_eq!(enabled, h.render());
 }
+
+mod ranged_slider {
+    use super::*;
+    use xilem::masonry::{core::TextEvent, widgets::SliderMoved};
+    use xilem::masonry::{
+        core::{
+            NewWidget,
+            keyboard::{Key, NamedKey},
+        },
+        testing::TestHarness,
+    };
+    #[test]
+    fn nonzero_minimum_survives_keyboard_and_accessible_value_updates() {
+        let mut h = TestHarness::create_with_size(
+            crate::hearthspace_opaque_properties(),
+            NewWidget::new(LevelSlider::new_slider("Brightness", 5., 40.)),
+            (220, 32),
+        );
+        let id = h.root_id();
+        h.press_tab_key(false);
+        h.process_text_event(TextEvent::key_down(Key::Named(NamedKey::Home)));
+        assert_eq!(
+            h.pop_action::<SliderMoved>(),
+            Some((SliderMoved { value: 5. }, id))
+        );
+        h.edit_root_widget(|mut w| {
+            w.widget.set_level(5., 70.);
+            w.ctx.request_render();
+            w.ctx.request_accessibility_update();
+        });
+        h.redraw();
+        let n = h.access_node(id).unwrap();
+        assert_eq!(n.label().as_deref(), Some("Brightness"));
+        assert_eq!(n.min_numeric_value(), Some(5.));
+        assert_eq!(n.numeric_value(), Some(70.));
+        h.process_text_event(TextEvent::key_down(Key::Named(NamedKey::ArrowRight)));
+        assert_eq!(
+            h.pop_action::<SliderMoved>(),
+            Some((SliderMoved { value: 71. }, id))
+        );
+    }
+}
