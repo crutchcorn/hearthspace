@@ -68,8 +68,8 @@ must invalidate paint when the palette property changes. Shell glass uses
 
 The native UI Storybook previews shared form buttons, 42-unit text fields,
 40×24 switches, 20×20 checkboxes, select menus, level bars, and sliders. Their
-implementations live in `ui-components::controls`. Settings uses the compact
-select, shared action buttons, whole-card switches and indeterminate progress;
+implementations live in `ui-components::controls`. Settings uses shared form
+selects and actions, whole-card switches and indeterminate progress;
 the shell uses the same Storybook level slider. Switches and sliders retain Masonry input
 and accessibility behavior, while shared painters supply their appearance.
 The gallery offers live Light/Dark and six accent choices. Its masked password
@@ -282,3 +282,35 @@ operations. The storybook's determinate level bars use percentages instead.
 Search and autocomplete editors retain their native selection, IME, list
 navigation and focus adapters. A plain form text field does not replace those
 behaviors.
+
+### Shared styling is the default
+
+Shared Controls in Storybook are the styling contract for equivalent production
+controls, not a separate demonstration theme. Use the same component or the
+`controls::style` painter. Layout and behavior adapters may surround that visual
+implementation; don't keep a second skin behind the same component name.
+
+Ordinary actions use the shared 36-unit button layout. `touch_icon_button`
+retains a 44-unit finger target with the same icon-button painter. Form fields and selects
+use 42 units; level bars use 8. Shared backdrops also cover custom app-picker and
+name editors, destructive confirmations and unknown download progress. Preserve
+IME, confirmation, pending-state guards and native focus targets when applying a
+shared frame. `button_layout` and `button_frame` let a focus recorder stay around
+the native button inside its decorative frame.
+
+Appropriate contextual components remain distinct:
+
+| Context | Why it differs |
+| --- | --- |
+| Menu rows and menu-item checkmarks | Menu semantics, selection and compact navigation differ from standalone form checkboxes. |
+| Frame/titlebar controls, sidebar navigation and appearance previews | These are chrome, navigation or selectable preview tiles, not ordinary form actions. Reuse their shared materials. |
+| Search headers | Preserve result navigation and the composed search surface; name-entry and picker fields use shared form backdrops. |
+| GTK lock-screen password row | Keeps toolkit-owned secure masking and the lock-screen component's reveal/submit controls; the Storybook password entry is only a visual sample. |
+
+Storybook exposes icon-and-label content, the touch icon target and unknown
+progress as controls on their existing stories.
+
+A new exception needs a concrete context, a small named shared variant where
+useful, and a preview of its relevant states. A new callback or backend alone is
+not a styling exception. See the repository's Web Parity skill for the sync
+workflow.

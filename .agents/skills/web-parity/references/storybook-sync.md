@@ -131,6 +131,21 @@ coverage cannot prove compositor clipping, backdrop blur, popup placement,
 keyboard restoration, touch cancellation, authentication, or real services.
 Fixtures and `fn()` callbacks demonstrate intent, not native capabilities.
 
+## Adopt the styles in production
+
+Syncing a story is only half the work: consumers of the equivalent control must
+use that implementation or painter. Use `controls::style` and the shared button,
+field, select, switch and level APIs in `crates/ui-components`. For behavior-heavy
+controls, compose the existing editor/focus/confirmation adapter with the shared
+frame or painter. Keep recorded focus targets on the native interactive child,
+not a decorative wrapper. Test default focus, cancellation and restoration after
+changing that composition.
+
+Do not preserve an old skin as an unrequested “compact” replacement. Use default
+catalog styling unless a concrete role requires a named contextual variant.
+Check consumers for local height, padding, font, palette and paint overrides;
+record appropriate differences in the UI guide rather than silently forking.
+
 ## Validate and report
 
 For a web edit, run its maintained checks and `pnpm build:storybook`; exercise

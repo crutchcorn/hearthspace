@@ -30,6 +30,27 @@ controls, themes, preview wrappers, and mapping to native stories. Use the web
 Storybook for isolated states and the live prototype for placement and complete
 workflows; neither replaces validation in the real desktop.
 
+## Keep shared controls shared
+
+Treat the native Shared Controls catalog as the production styling contract.
+Use its actual component or shared painter for equivalent shell and Settings
+controls, including hover, focus, disabled, validation and loading states.
+Putting an older renderer in `ui-components` does not make it Storybook-styled.
+
+Keep feature callbacks, device bindings, IME/autocomplete, confirmation and input
+ownership adapters in their existing owners. Reuse the shared visual treatment
+around those behaviors instead of copying or extensively overriding its colors,
+fonts, dimensions, borders, gradients, shadows or focus rings at each callsite.
+Change a common style at its shared owner and check the catalog and consumers.
+
+Allow a contextual variant when the actual component role requires it: menu
+rows, toolbar touch targets, a genuinely constrained overlay, or a secure toolkit
+password editor are not ordinary form fields/buttons. Keep the difference small
+and explicit. Prefer a named shared variant; document its reason and show new
+variants in Storybook. A native-only behavior requirement is not by itself a
+reason for different styling. Audit the renderer and overrides, then inspect
+production surfaces; catalog screenshots alone do not establish adoption.
+
 ## Establish the comparison
 
 Read Hearthspace's relevant maintained feature guide and implementation. Open
