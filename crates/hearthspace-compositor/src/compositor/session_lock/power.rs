@@ -38,7 +38,7 @@ impl App {
         Ok(())
     }
 
-    pub(super) fn arm_session_shield(&mut self) {
+    pub(in crate::compositor) fn arm_session_shield(&mut self) {
         self.remote_capture.stop();
         self.reset_session_input();
         self.session_lock.previous_focus = self.focused_normal_window_id;

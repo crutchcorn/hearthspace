@@ -20,6 +20,29 @@ Keep detailed captures and logs with the issue or test artifact. Use this page
 as the single inventory of named test systems; feature guides describe how to
 repeat the checks.
 
+## JPEG wallpapers in Parallels, 2026-11-11
+
+The debug runtime from `88bbe83` ran in the MacBook guest above on aarch64 kernel
+`7.0.0-38-generic`, virtio-gpu PCI `1af4:1050`, with one 1720×949 Virtual-1 output
+at scale 1. Synthetic input and the private accessibility bus drove the real GTK
+wallpaper chooser. It selected `.JPG`, `.jpeg`, and PNG fixtures with spaces in
+their filenames. Native captures matched each source's solid colors, allowing
+three levels of JPEG rounding. Settings showed the matching thumbnail and saved
+JPEG path; photo-fit controls remained available.
+
+Malformed JPEG selection and chooser cancellation preserved the selected photo.
+Light and dark Settings views were inspected at 400px and 680px widths, including
+keyboard file entry and visible focus. Closing and reopening Settings restored
+the JPEG preview. Separate headless integration checked all four photo-fit modes,
+live JPG-to-JPEG replacement, and persistence across settingsd/compositor restart.
+These checks add no monitor-resize, sleep, or physical-input claim.
+
+Cleanup restored tty2, preserved the original login sessions, stopped the owned
+scopes, and removed the private runtime. Evidence is retained under
+`~/.local/state/hearthspace-investigations/20261111-jpeg-wallpapers/`. Failed
+build attempts due to disk exhaustion and an early accessibility action before
+the reopened Settings tree was ready remain alongside the successful retries.
+
 ## Parallels virtual cursor, 2026-11-11
 
 The MacBook guest above used aarch64 kernel `7.0.0-38-generic`, virtio-gpu PCI

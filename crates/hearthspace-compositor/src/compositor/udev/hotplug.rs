@@ -17,11 +17,8 @@ impl UdevBackendState {
         self.session_active = false;
         self.drm_commits_paused = true;
         self.kms_devices_active = false;
-        self.native_shortcuts.clear();
+        self.reset_native_input();
         self.cursor_publication.reset();
-        if let Some(token) = self.input_source.take() {
-            self.loop_handle.remove(token);
-        }
         for device in self.opened_devices.values_mut() {
             device.control_generation = device.presenter.pause();
             device.generation = device
@@ -41,6 +38,13 @@ impl UdevBackendState {
         }
         // Dropping each output releases its intermediate and completion together.
         info!("native session paused; DRM commits disabled and Wayland clients remain connected");
+    }
+
+    pub(super) fn reset_native_input(&mut self) {
+        self.native_shortcuts.clear();
+        if let Some(token) = self.input_source.take() {
+            self.loop_handle.remove(token);
+        }
     }
 
     pub(super) fn activate_session(&mut self) -> ConnectorSync {
@@ -301,7 +305,8 @@ impl UdevBackendState {
                 true
             },
         );
-        device.recovery_needed = refreshed.recovery_needed || device.configuration_pending;
+        device.recovery_needed =
+            refreshed.recovery_needed_after(device.recovery_needed, device.configuration_pending);
         refreshed.rebuilt
     }
 

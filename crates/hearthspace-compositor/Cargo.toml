@@ -63,14 +63,12 @@ naga = { version = "28.0.0", default-features = false, features = ["termcolor"] 
 # `fontconfig-dlopen` code path makes it load libfontconfig at runtime instead
 # of link-time, which avoids needing fontconfig dev headers at build time.
 fontique = { version = "0.8.0", features = ["fontconfig-dlopen"] }
-# Masonry's CPU render harness returns an `image::RgbaImage`; name the type
-# directly so the title-text raster path is testable. Pulled in transitively
-# already, so this only fixes the version we link against.
-image = { version = "0.25.10", default-features = false }
+# Decode JPEG wallpapers and name the pixel type used by Masonry's CPU harness.
+image = { version = "0.25.10", default-features = false, features = ["jpeg"] }
 png = "0.18.1"
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.154"
-rustix = { version = "1.1.5", features = ["process", "fs"] }
+rustix = { version = "1.1.6", features = ["process", "fs"] }
 smithay = { git = "https://github.com/Smithay/smithay", rev = "5c2ba4132556a08abc70ae1771d275ec2cfc031f", default-features = false, features = ["desktop", "renderer_gl", "wayland_frontend"] }
 tiny-skia = "0.12.0"
 tracing = "0.1.44"

@@ -1,5 +1,12 @@
 # Vendored Smithay
 
+The independent [cursor-shape validation patch](../../patches/smithay-cursor-shape-validation.patch)
+reports `invalid_shape` for unknown cursor-shape enum values rather than silently
+ignoring them. It changes only `src/wayland/cursor_shape.rs`, without a public API
+or pin change. Real App protocol regressions cover the error and authorized
+requests; see the [ledger](../../patches/README.md#cursor-shape-invalid-values)
+for the upstream basis and removal condition. Other repairs remain unchanged.
+
 Source: [Smithay at `5c2ba4132556a08abc70ae1771d275ec2cfc031f`](https://github.com/Smithay/smithay/tree/5c2ba4132556a08abc70ae1771d275ec2cfc031f),
 package version 0.7.0, MIT. The upstream notice is preserved in `LICENSE.txt`.
 

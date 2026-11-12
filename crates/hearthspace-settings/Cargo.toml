@@ -12,7 +12,7 @@ hearthspace-common = { path = "../hearthspace-common" }
 hearthspace-ipc = { path = "../hearthspace-ipc" }
 hearthspace-wayland-client = { path = "../hearthspace-wayland-client" }
 hearthspace-ui-components = { path = "../ui-components" }
-image = { version = "0.25.10", default-features = false, features = ["png"] }
+image = { version = "0.25.10", default-features = false, features = ["png", "jpeg"] }
 png = "0.18.1"
 rfd = { version = "0.17.2", features = ["xdg-portal"] }
 serde_json = "1.0.154"

@@ -16,6 +16,7 @@ pub(super) fn new(dh: &DisplayHandle, handle: LoopHandle<'static, CalloopData>) 
         _xdg_decoration_state: XdgDecorationState::new::<App>(dh),
         _output_manager_state: OutputManagerState::new_with_xdg_output::<App>(dh),
         _viewporter_state: ViewporterState::new::<App>(dh),
+        _cursor_shape_state: CursorShapeManagerState::new::<App>(dh),
         _fractional_scale_manager_state: FractionalScaleManagerState::new::<App>(dh),
         shm_state: ShmState::new::<App>(dh, []),
         seat_state,

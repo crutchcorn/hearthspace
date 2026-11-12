@@ -1,0 +1,21 @@
+diff --git a/src/wayland/cursor_shape.rs b/src/wayland/cursor_shape.rs
+index 3ee29618..7d92d143 100644
+--- a/src/wayland/cursor_shape.rs
++++ b/src/wayland/cursor_shape.rs
+@@ -310,8 +310,14 @@ where
+                     }
+                 }
+             }
+-            ShapeRequest::SetShape { .. } => {
+-                // Ignore unknown shapes.
++            ShapeRequest::SetShape {
++                shape: WEnum::Unknown(shape),
++                ..
++            } => {
++                resource.post_error(
++                    wayland_protocols::wp::cursor_shape::v1::server::wp_cursor_shape_device_v1::Error::InvalidShape,
++                    format!("Invalid cursor shape: {shape}"),
++                );
+             }
+             ShapeRequest::Destroy => {}
+             _ => unreachable!(),

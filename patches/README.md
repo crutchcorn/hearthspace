@@ -1055,3 +1055,26 @@ See [vendored provenance and refresh steps](../vendor/accesskit_atspi_common/PRO
 - **Removal:** adopt upstream support only after preserving those tests and
   replacing the opt-in constructor, setter, and added surface configuration field.
   Remove this patch and its provenance entry together.
+
+## Cursor-shape invalid values
+
+- **Dependency:** Smithay 0.7.0 at pinned revision
+  `5c2ba4132556a08abc70ae1771d275ec2cfc031f`.
+- **Patch:** [cursor-shape validation](smithay-cursor-shape-validation.patch).
+- **Reason:** the cursor-shape dispatcher ignores unknown shape values, although
+  `wp_cursor_shape_device_v1.set_shape` requires an `invalid_shape` error.
+- **Behavior:** post that protocol error for an unknown enum value. Valid named
+  requests continue through Smithay's existing pointer/tablet authorization.
+  No public API or dependency pin changes.
+- **Upstream basis:** a local repair to the pinned dispatcher; the inspected
+  [upstream dispatcher](https://github.com/Smithay/smithay/blob/5c2ba4132556a08abc70ae1771d275ec2cfc031f/src/wayland/cursor_shape.rs)
+  has the same ignore branch. The
+  [protocol contract](https://wayland.app/protocols/cursor-shape-v1#wp_cursor_shape_device_v1:request:set_shape)
+  defines the error.
+- **Regression:** `compositor::cursor::protocol_tests::invalid_shape_reports_protocol_error`
+  sends an unknown value over a real private Wayland connection to App and
+  checks the returned error interface and code. It fails with the unpatched
+  dispatcher. Neighboring tests cover valid shapes, focus, stale serials,
+  cursor-surface interoperability, and pointer removal.
+- **Removal:** remove only this patch when a compatible Smithay version reports
+  the required error and passes those protocol regressions without it.

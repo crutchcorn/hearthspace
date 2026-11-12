@@ -1,5 +1,6 @@
 //! Device-local presentation. No caller-side method performs a DRM/GL operation.
 mod capture;
+mod continuity;
 mod cursor;
 mod fallback;
 mod lifecycle;

@@ -66,6 +66,10 @@ class InstallSessionTests(unittest.TestCase):
         self.assertEqual(apply.call_count, 1)
         self.assertTrue((release / "bin/hearthspace-session-bus").is_file())
         self.assertTrue((release / "bin/hearthspace-lock").is_file())
+        for notice in layout.CURSOR_NOTICES:
+            source = layout.REPOSITORY / "assets/cursors/adwaita" / notice.name
+            self.assertEqual((release / notice).read_bytes(), source.read_bytes())
+            self.assertEqual(stat.S_IMODE((release / notice).stat().st_mode), 0o644)
         policy = args.destdir / "etc/pam.d/hearthspace-lock"
         self.assertEqual(stat.S_IMODE(policy.stat().st_mode), 0o644)
         self.assertIn("auth include login\naccount include login\n", policy.read_text())

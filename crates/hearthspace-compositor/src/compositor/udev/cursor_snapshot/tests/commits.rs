@@ -106,3 +106,27 @@ fn named_fallback_output_ownership_and_reset_preserve_snapshot_independence() {
     assert_ne!(reset.image_id, dense.image_id);
     assert_eq!(words(&reset), words(&dense));
 }
+
+#[test]
+fn semantic_named_cursor_matches_canvas_density_and_ignores_canvas_zoom() {
+    let mut fixture = Fixture::new();
+    let mut builder = SnapshotBuilder::default();
+    fixture.app.cursor_icon = CursorIcon::Text;
+    fixture.app.pointer_location = (100., 100.).into();
+    let dense_view = fixture::view((0, 0), 2);
+    let text = snapshot(&mut builder, &mut fixture, &dense_view);
+    assert_eq!(text.image.size(), (48, 48).into());
+    fixture.app.viewport_scale = 1.75;
+    fixture.app.pointer_location = (110., 110.).into();
+    let moved = snapshot(&mut builder, &mut fixture, &dense_view);
+    assert_eq!(moved.image.as_ptr(), text.image.as_ptr());
+    assert_eq!(moved.revision, text.revision);
+    assert_eq!(moved.hotspot, text.hotspot);
+    fixture.app.cursor_icon = CursorIcon::Default;
+    let canvas = snapshot(&mut builder, &mut fixture, &dense_view);
+    assert_eq!(canvas.image.size(), text.image.size());
+    assert_ne!(canvas.revision, text.revision);
+    assert_ne!(words(&canvas), words(&text));
+    let small = snapshot(&mut builder, &mut fixture, &fixture::view((0, 0), 1));
+    assert_eq!(small.image.size(), (24, 24).into());
+}

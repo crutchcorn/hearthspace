@@ -79,6 +79,11 @@ resume work. The coordinator rearms the sleep inhibitor and requests explicit
 native recovery even if logind/libseat did not emit a VT deactivate/activate
 pair. Recovery clears held input, cancels gestures and window grabs, refreshes
 libinput and DRM/KMS, and retries transient failures for a bounded interval.
+A same-seat wake retains the last verified opaque lock frame while its replacement
+is prepared, avoiding an unnecessary connector reset or intervening black frame.
+This requires an already confirmed lock and healthy native outputs. Seat handoffs,
+changed topology, or failed display state still use full recovery. Normal desktop
+frames are never retained when beginning a lock.
 Previous lock frames cannot prove recovery: a new presentation generation must
 reach every output, and the native input source must be available. No new retry
 starts after a five-second recovery budget; an in-flight kernel/driver call
