@@ -20,7 +20,7 @@ serde_json = "1.0.154"
 tracing = "0.1.44"
 
 nix = { version = "0.31.3", features = ["fs", "user"] }
-tokio = { version = "1.53.3", features = ["macros", "rt", "time", "net"] }
+tokio = { version = "1.53.3", features = ["macros", "rt", "time", "net", "process", "sync"] }
 zbus = { version = "5.19.0", default-features = false, features = ["async-io"] }
 
 tempfile = "3.27.0"
