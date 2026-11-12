@@ -107,6 +107,17 @@ pub(super) fn stories() -> Vec<Story> {
             ));
         }
     }
+    for kind in ["wifi", "bluetooth"] {
+        stories.push(Story::new(
+            format!("shared-controls-radio--{kind}"),
+            format!("Radio / {kind}"),
+            "Production radio controls; sample devices, no system service access",
+            vec![
+                Control::bool("checked", "Enabled", true),
+                Control::bool("disabled", "Busy", false),
+            ],
+        ));
+    }
     stories
 }
 fn title(s: &str) -> String {
@@ -148,6 +159,33 @@ pub(super) fn preview(state: &AppState) -> Box<AnyWidgetView<AppState>> {
     let id = state.selected_story().id();
     let disabled = state.selected_bool("disabled").unwrap_or(false);
     let p = state.palette();
+    if id.starts_with("shared-controls-radio--") {
+        let title = if id.ends_with("bluetooth") {
+            "Bluetooth"
+        } else {
+            "Wi-Fi"
+        };
+        return components::radio_panel::view(
+            p,
+            components::radio_panel::Panel {
+                title,
+                enabled: Some(state.selected_bool("checked").unwrap_or(true)),
+                busy: disabled,
+                blocked: false,
+                message: None,
+                rows: vec![components::radio_panel::Row {
+                    id: "sample".into(),
+                    name: "Example device".into(),
+                    detail: "Available".into(),
+                    actions: vec![("Connect".into(), ())],
+                }],
+            },
+            |s: &mut AppState, on| s.set_selected_bool("checked", on),
+            |s: &mut AppState| s.clicks += 1,
+            |s: &mut AppState, ()| s.clicks += 1,
+        )
+        .boxed();
+    }
     let content: Box<AnyWidgetView<AppState>> = if id.starts_with("shared-controls-button") {
         let variant = if id.ends_with("primary") || id.ends_with("disabled") {
             ButtonVariant::Primary

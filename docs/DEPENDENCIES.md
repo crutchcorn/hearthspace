@@ -169,6 +169,17 @@ PATH. Install `cargo-deny` through its
 [upstream instructions](https://github.com/EmbarkStudios/cargo-deny#installation).
 Neither tool needs a system Python override or root-owned Cargo files.
 
+## Wireless services
+
+[Wi-Fi and Bluetooth controls](WIRELESS.md) use NetworkManager and BlueZ on the
+system D-Bus, plus Zenity for masked passwords and pairing dialogs. Install the
+distribution packages `network-manager`, `bluez`, and `zenity` if needed.
+Installing or enabling a network manager can affect an existing connection;
+prepare that locally using the distribution's network-service instructions.
+Hearthspace itself installs no service configuration or authorization overrides.
+Remove only packages you added when no longer needed, after restoring your
+previous network-management setup.
+
 ## Optional integrations
 
 - **Settings development watcher:** put either `cargo-watch` or `watchexec` on

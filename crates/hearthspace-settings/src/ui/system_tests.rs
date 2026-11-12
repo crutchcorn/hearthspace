@@ -109,3 +109,64 @@ fn system_controls_do_not_claim_availability_before_the_compositor_responds() {
     ui.dispatch(&view);
     assert!(ui.state.frame_settings.snapshot.is_none());
 }
+
+#[test]
+fn wireless_panels_use_keyboard_actions_and_render_in_settings_palettes() {
+    use hearthspace_common::ColorMode;
+    use hearthspace_desktop::wireless::{Command, Item, Radio};
+    use xilem::view::sized_box;
+    for bluetooth in [false, true] {
+        for (mode, theme) in [(ColorMode::Light, "light"), (ColorMode::Dark, "dark")] {
+            let (_dir, mut state) = state();
+            state.settings.appearance.color_mode = mode;
+            let (sender, mut commands) = xilem::tokio::sync::mpsc::channel(4);
+            state.wireless.sender = Some(sender);
+            let radio = Radio {
+                enabled: true,
+                blocked: false,
+                items: vec![Item {
+                    id: "private-owner|device".into(),
+                    name: "Studio device".into(),
+                    detail: "Available nearby".into(),
+                    paired: true,
+                    ..Default::default()
+                }],
+            };
+            if bluetooth {
+                state.wireless.snapshot.bluetooth = Ok(radio)
+            } else {
+                state.wireless.snapshot.wifi = Ok(radio)
+            }
+            let build = move |s: &crate::state::SettingsApp| {
+                sized_box(crate::wireless::panel(s, bluetooth))
+            };
+            let mut ui = Ui::new(state, build, (360, 400));
+            let button = ui.button("Connect");
+            ui.harness.focus_on(Some(button));
+            key(&mut ui, NamedKey::Enter);
+            ui.dispatch(&build);
+            let command = commands.try_recv().unwrap();
+            assert!(if bluetooth {
+                matches!(command,Command::ConnectBluetooth(id) if id=="private-owner|device")
+            } else {
+                matches!(command,Command::ConnectWifi(id) if id=="private-owner|device")
+            });
+            assert!(ui.state.wireless.busy);
+            assert!(ui.state.running);
+            ui.state.wireless.busy = false;
+            ui.rebuild(&build);
+            ui.dispatch(&build);
+            if let Some(base) = std::env::var_os("HEARTHSPACE_SHELL_EVIDENCE") {
+                let dir = std::path::PathBuf::from(base).join("wireless-settings");
+                std::fs::create_dir_all(&dir).unwrap();
+                ui.harness
+                    .render()
+                    .save(dir.join(format!(
+                        "{}-{theme}.png",
+                        if bluetooth { "bluetooth" } else { "wifi" }
+                    )))
+                    .unwrap();
+            }
+        }
+    }
+}

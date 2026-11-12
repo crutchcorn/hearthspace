@@ -24,6 +24,7 @@ pub(super) mod calendar;
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(super) enum Kind {
     Wifi,
+    Bluetooth,
     #[default]
     Sound,
     Brightness,
@@ -36,6 +37,7 @@ impl Kind {
     fn title(self) -> &'static str {
         match self {
             Self::Wifi => "Wi-Fi",
+            Self::Bluetooth => "Bluetooth",
             Self::Sound => "Sound",
             Self::Brightness => "Brightness",
             Self::Battery => "Battery",
@@ -112,7 +114,20 @@ pub(super) fn window(state: &ShellState, output: &ShellOutputInstance) -> Window
         } else if output.quick_panel == Kind::Clock {
             super::quick_clock::size(state, output)
         } else {
-            popup::size(output, PopupKind::Controls, 320.0, 200.0)
+            popup::size(
+                output,
+                PopupKind::Controls,
+                if matches!(output.quick_panel, Kind::Wifi | Kind::Bluetooth) {
+                    360.0
+                } else {
+                    320.0
+                },
+                if matches!(output.quick_panel, Kind::Wifi | Kind::Bluetooth) {
+                    440.0
+                } else {
+                    200.0
+                },
+            )
         },
         panel(state, output),
         move |state| state.dismiss_controls(&key),
@@ -130,7 +145,8 @@ pub(super) fn panel(
         return super::quick_clock::panel(state, output).boxed();
     }
     let content = match output.quick_panel {
-        Kind::Wifi => wifi().boxed(),
+        Kind::Wifi => super::wireless::panel(state, false).boxed(),
+        Kind::Bluetooth => super::wireless::panel(state, true).boxed(),
         Kind::Sound => sound(state, output).boxed(),
         Kind::Brightness => brightness(state, output).boxed(),
         Kind::Battery => battery(state).boxed(),
@@ -152,20 +168,6 @@ fn heading(title: &'static str, detail: String) -> impl WidgetView<ShellState> +
         label(detail).text_size(30.0),
     ))
     .gap(12.0.px())
-}
-
-fn wifi() -> impl WidgetView<ShellState> + use<> {
-    flex_col((
-        heading("Wi-Fi", String::new()),
-        components::icons::icon(components::icons::Icon::Wifi, 24.0).theme_color(Tone::Muted),
-        label("Network controls").text_size(20.0),
-        label("Use your network tray application to manage connections.")
-            .text_size(13.0)
-            .line_break_mode(LineBreaking::WordWrap)
-            .theme_color(Tone::Muted),
-    ))
-    .cross_axis_alignment(CrossAxisAlignment::Start)
-    .gap(16.0.px())
 }
 
 fn sound(state: &ShellState, output: &ShellOutputInstance) -> impl WidgetView<ShellState> + use<> {
@@ -348,3 +350,7 @@ mod sound_tests;
 #[cfg(test)]
 #[path = "quick_size_tests.rs"]
 mod size_tests;
+
+#[cfg(test)]
+#[path = "quick_wireless_tests.rs"]
+mod wireless_tests;

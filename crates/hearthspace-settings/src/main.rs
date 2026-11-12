@@ -29,6 +29,7 @@ mod typography;
 mod ui;
 mod wayland_outputs;
 mod window_frame;
+mod wireless;
 
 #[cfg(test)]
 #[path = "favorites_view/test_support.rs"]

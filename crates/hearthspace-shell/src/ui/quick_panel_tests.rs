@@ -53,7 +53,7 @@ fn wifi_and_missing_battery_never_present_simulated_readings() {
             .collect::<Vec<_>>()
             .join(" ")
     };
-    assert!(text(&ui).contains("network tray"));
+    assert!(text(&ui).contains("Loading Wi-Fi"));
     assert!(!text(&ui).contains("Studio network"));
     assert!(group(&ui, "Wi-Fi"));
     ui.state.toggle_quick_panel("eDP-1", Kind::Battery);

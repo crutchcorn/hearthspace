@@ -13,6 +13,7 @@ pub(crate) struct SettingsApp {
     pub(crate) activation_listener: Option<std::os::unix::net::UnixListener>,
     pub(crate) ai: crate::ai::AiSettings,
     pub(crate) favorites: crate::favorites::FavoriteSettings,
+    pub(crate) wireless: crate::wireless::RadioState,
     pub(crate) frame_settings: crate::frame_settings::State,
     pub(crate) display_layout: crate::settings_backend::DisplayLayoutState,
     /// Non-display preferences plus the connected, editable display projection.
@@ -99,6 +100,7 @@ pub(crate) fn initial_state(selected_category: SettingsCategory) -> SettingsApp 
         activation_listener: None,
         ai: crate::ai::AiSettings::default(),
         favorites: crate::favorites::FavoriteSettings::load(),
+        wireless: Default::default(),
         frame_settings: Default::default(),
         display_layout: Default::default(),
         settings,

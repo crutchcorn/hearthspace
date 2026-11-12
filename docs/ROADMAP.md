@@ -52,8 +52,8 @@ prove different things. Use [native testing](NATIVE_TESTING.md) for ownership an
   transfers between Wayland and X11, including cancellation and lock boundaries.
   [Clipboard bridging](CLIPBOARD.md) and dragging Hearthspace's own
   [desktop files](DESKTOP_ITEMS.md) into Wayland or X11 apps already exist.
-- **Network controls:** replace the Wi-Fi panel's instruction to use a network
-  tray application with connection management and actionable status/errors.
+- **Advanced wireless setup:** add hidden-network and new enterprise-network
+  configuration to the existing [Wi-Fi and Bluetooth controls](WIRELESS.md).
 - **Canvas drawing and handwriting:** freeform drawing objects and handwriting
   recognition for canvas search are not implemented. Keep these separate from
   the implemented [drawn app shortcuts](FAVORITE_APPS.md), lasso selection, and

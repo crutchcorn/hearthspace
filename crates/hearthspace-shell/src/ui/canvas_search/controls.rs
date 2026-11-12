@@ -158,7 +158,8 @@ fn detail(state: &ShellState, entry: &Entry) -> (Icon, Option<String>) {
                 },
             )),
             "control:clock" => Some(state.clock.clone()),
-            "control:wifi" => Some("Network controls".into()),
+            "control:wifi" => Some("Wi-Fi".into()),
+            "control:bluetooth" => Some("Bluetooth".into()),
             id if tool(id)
                 .is_some_and(|tool| state.frame_layout.snapshot.canvas_tool == Some(tool)) =>
             {
@@ -196,6 +197,7 @@ pub(super) fn activate(state: &mut ShellState, id: &str, output: Option<&str>) {
         "control:apps" => state.toggle_search(&key),
         "control:power" => state.toggle_power(&key),
         "control:wifi" => state.toggle_quick_panel(&key, Kind::Wifi),
+        "control:bluetooth" => state.toggle_quick_panel(&key, Kind::Bluetooth),
         "control:volume" => state.toggle_quick_panel(&key, Kind::Sound),
         "control:brightness" => state.toggle_quick_panel(&key, Kind::Brightness),
         "control:battery" => state.toggle_quick_panel(&key, Kind::Battery),

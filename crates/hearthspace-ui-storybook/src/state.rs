@@ -86,7 +86,7 @@ mod tests {
                 .iter()
                 .filter(|s| s.id().starts_with("shared-controls-"))
                 .count(),
-            23
+            25
         );
         let i = state
             .stories()

@@ -223,3 +223,5 @@ where
 
 #[cfg(test)]
 mod window_theme_tests;
+
+pub mod radio_panel;

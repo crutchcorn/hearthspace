@@ -16,7 +16,8 @@ Open **Hearthspace Settings** from Apps List to adjust the desktop:
 - **AI:** explicitly enable or remove the local model for
   [gathering similar windows](WINDOW_GROUPS.md#optional-local-model).
 - **System:** open [Change layout](SHELL.md#change-layout), allow Canvas tools
-  to be hidden, or restore them.
+  to be hidden, or restore them. Manage [Wi-Fi and Bluetooth](WIRELESS.md) using
+  the same controls as the frame popovers.
 
 Changes to appearance, background, and display placement save through the session
 daemon and update connected consumers. Errors remain visible in Settings; a local

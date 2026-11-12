@@ -88,6 +88,7 @@ pub(in crate::ui) fn defer(state: &mut ShellState, key: &str, popup: Popup) -> b
         Popup::Quick(kind) => (
             match kind {
                 Kind::Wifi => "wifi",
+                Kind::Bluetooth => "bluetooth",
                 Kind::Sound => "volume",
                 Kind::Brightness => "brightness",
                 Kind::Battery => "battery",

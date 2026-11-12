@@ -24,6 +24,7 @@ pub(crate) fn state() -> (tempfile::TempDir, SettingsApp) {
             appearance_theme: Default::default(),
             navigation: Default::default(),
             frame_settings: Default::default(),
+            wireless: Default::default(),
             display_layout: Default::default(),
             ai: AiSettings::default(),
             favorites,

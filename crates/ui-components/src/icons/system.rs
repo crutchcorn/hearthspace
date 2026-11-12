@@ -27,6 +27,9 @@ pub(super) fn append(icon: Icon, _: bool, g: &mut Geometry) -> bool {
             g.path("M3 9h4l5-4v14l-5-4H3V9Z");
             g.path("m16 9 5 6m0-6-5 6");
         }
+        Icon::Bluetooth => {
+            g.path("M7 7l10 10-5 4V3l5 4L7 17");
+        }
         Icon::Wifi => {
             g.path("M3 8c5-4 13-4 18 0M6.5 11.5c3.1-2.5 7.9-2.5 11 0M10 14.5c1.1-.8 2.9-.8 4 0");
             g.circle(12.0, 20.0, 1.0, false);

@@ -20,6 +20,7 @@ fn state() -> (tempfile::TempDir, SettingsApp) {
         ai: Default::default(),
         favorites,
         frame_settings: Default::default(),
+        wireless: Default::default(),
         display_layout: Default::default(),
         saved_monitors: Settings::default().monitors,
         settings: Settings::default(),

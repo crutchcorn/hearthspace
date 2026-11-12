@@ -29,7 +29,7 @@ pub(crate) fn app_logic(state: &mut SettingsApp) -> impl WidgetView<SettingsApp>
     state
         .background_shader_status
         .synchronize_path(state.settings.background_shader_path.as_deref());
-    let content = settings_view(state);
+    let content = fork(settings_view(state), crate::wireless::task());
     let content = fork(content, crate::background_shader_status::task());
     let content = fork(content, crate::frame_settings::task());
     let content = fork(content, crate::settings_backend::task());
