@@ -33,8 +33,8 @@ five seconds. Hearthspace releases only its own discovery session. Choose
 Pairing uses BlueZ's standard authentication agent for PIN entry, displayed
 codes, confirmation, and authorization. The agent belongs only to the pairing
 initiated by Hearthspace; it does not take over as the system's default agent.
-Canceling a request closes its prompt. Credentials are never placed in process
-arguments or logs.
+Canceling a request closes its prompt. Entered passwords and PINs are not placed
+in process arguments or application logs.
 
 ## Services and ownership
 
