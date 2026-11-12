@@ -59,9 +59,10 @@ fn hide_tools_switch_waits_for_confirmation_and_live_refresh_preserves_focus() {
     let switch = ids(&ui.harness)
         .into_iter()
         .find(|id| {
-            ui.harness
-                .access_node(*id)
-                .is_some_and(|node| node.role() == Role::Switch)
+            ui.harness.access_node(*id).is_some_and(|node| {
+                node.role() == Role::Switch
+                    && node.label().as_deref() == Some("Make canvas tools hide-able")
+            })
         })
         .unwrap();
     let node = ui.harness.access_node(switch).unwrap();
