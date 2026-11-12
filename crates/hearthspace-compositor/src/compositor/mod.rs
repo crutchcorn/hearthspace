@@ -94,6 +94,7 @@ use smithay::{
     utils::{Buffer as BufferCoord, Logical, Physical, Point, Size},
     wayland::{
         compositor::CompositorState,
+        cursor_shape::CursorShapeManagerState,
         dmabuf::{DmabufFeedbackBuilder, DmabufGlobal, DmabufState, ImportNotifier},
         fractional_scale::FractionalScaleManagerState,
         output::OutputManagerState,
@@ -240,6 +241,7 @@ struct App {
     /// size independently of its buffer, which HiDPI toolkits (GTK/Firefox) use
     /// together with fractional scale to avoid rendering an oversized buffer.
     _viewporter_state: ViewporterState,
+    _cursor_shape_state: CursorShapeManagerState,
     /// `wp_fractional_scale_v1`: advertises the preferred scale to clients so
     /// they render buffers at the monitor scale instead of falling back to a
     /// mismatched integer buffer scale.
@@ -603,6 +605,7 @@ pub(in crate::compositor) fn initialize_app(
     let xdg_decoration_state = XdgDecorationState::new::<App>(&dh);
     let output_manager_state = OutputManagerState::new_with_xdg_output::<App>(&dh);
     let viewporter_state = ViewporterState::new::<App>(&dh);
+    let cursor_shape_state = CursorShapeManagerState::new::<App>(&dh);
     let fractional_scale_manager_state = FractionalScaleManagerState::new::<App>(&dh);
     let shm_state = ShmState::new::<App>(&dh, vec![]);
     let mut seat_state = SeatState::new();
@@ -655,6 +658,7 @@ pub(in crate::compositor) fn initialize_app(
         _xdg_decoration_state: xdg_decoration_state,
         _output_manager_state: output_manager_state,
         _viewporter_state: viewporter_state,
+        _cursor_shape_state: cursor_shape_state,
         _fractional_scale_manager_state: fractional_scale_manager_state,
         shm_state,
         seat_state,

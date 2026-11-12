@@ -17,6 +17,7 @@ from .layout import (
     BASE,
     BINARIES,
     CURRENT,
+    CURSOR_NOTICES,
     LAUNCHER,
     MANIFEST,
     PAM_SOURCE,
@@ -120,6 +121,7 @@ def verify_bundle(bundle, prefix):
     }
     expected_names.update(xwayland.RELEASE_MODES)
     expected_names.update(satellite.RELEASE_MODES)
+    expected_names.update(str(path) for path in CURSOR_NOTICES)
     if set(spec["files"]) != expected_names:
         raise RuntimeError("bundle does not contain the complete runtime file set")
     if (
@@ -138,6 +140,9 @@ def verify_bundle(bundle, prefix):
     for name, mode in {**xwayland.RELEASE_MODES, **satellite.RELEASE_MODES}.items():
         if spec["files"][name]["mode"] != mode:
             raise RuntimeError(f"invalid companion mode: {name}")
+    for notice in CURSOR_NOTICES:
+        if spec["files"][str(notice)]["mode"] != 0o644:
+            raise RuntimeError(f"invalid cursor notice mode: {notice}")
     xwayland.verify_companions(bundle / "release/bin/hearthspace-compositor")
     return spec
 

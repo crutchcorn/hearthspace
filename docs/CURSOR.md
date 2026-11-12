@@ -99,6 +99,22 @@ offscreen framebuffer.
 
 ## Shape policy
 
+### Wayland application shapes
+
+Hearthspace advertises `wp_cursor_shape_manager_v1` version 2. Applications can
+request any of its 36 named shapes instead of uploading a cursor surface.
+Smithay routes accepted requests through the existing seat cursor handler,
+checking pointer focus and the current enter serial. Clients can alternate
+named shapes, `wl_pointer.set_cursor` surfaces, and hidden cursors.
+
+Named shapes use the same 24-logical-pixel size policy as the canvas pointer,
+scaled by output density independently of canvas zoom. This also avoids toolkit
+fallback cursor sizing when the toolkit supports this protocol. Client-provided
+artwork remains supported and retains its own mapping and hotspot.
+
+The pointer protocol does not enable tablet input: Hearthspace does not currently
+advertise a tablet manager or tablet tools.
+
 ### X11 application defaults
 
 Before advertising its Xwayland display, Hearthspace seeds `Xcursor.size: 24`
@@ -119,17 +135,19 @@ Window-management hit testing selects the desired shape. Resize borders and acti
 resize operations use horizontal, vertical, or diagonal resize cursors. Other
 interactions can request semantic shapes such as grab or crosshair.
 
-The embedded native asset set contains the default pointer, `grab` and
-`grabbing` hands, and four resize shapes: `ns-resize`, `ew-resize`, `nwse-resize`,
-and `nesw-resize`. Pan canvas uses the open hand over an eligible canvas target
+The embedded asset set contains artwork for every protocol shape. The default
+pointer, canvas `grab`/`grabbing` hands, and four bidirectional resize shapes
+keep their existing assets. The remaining shapes use packaged
+[Adwaita artwork](../assets/cursors/adwaita/README.md), including text, links,
+busy indicators, drag actions, directional resize, and zoom. Wait/progress use a
+static first frame. Pan canvas uses the open hand over an eligible canvas target
 and the closed hand while dragging. Native and headless rendering share these
-assets. Smithay named-cursor events map to the same supported set; other named
-shapes fall back to the default pointer. The host cursor path can represent a
-broader set.
+assets; nested mode delegates named shapes to the host cursor theme.
 
-This means backend-neutral intent does not imply identical artwork on every
-backend. Extend the shared asset lookup when adding a native named shape; do not
-put pixel construction or DRM calls into input handlers.
+Extend the shared asset lookup when adding a native named shape; do not put
+pixel construction or DRM calls into input handlers. Preserve the client shape
+while motion remains inside its content; compositor chrome and canvas targets
+take over cursor selection outside client content.
 
 ## Coordinates and hotspots
 

@@ -1,11 +1,20 @@
 use smithay::{
     backend::{allocator::Fourcc, renderer::element::memory::MemoryRenderBuffer},
-    input::pointer::CursorIcon as SmithayCursorIcon,
     utils::Transform,
 };
 use xcursor::parser::parse_xcursor;
 
 pub(crate) use cursor_icon::CursorIcon;
+
+#[cfg(test)]
+mod protocol_tests;
+mod shapes;
+
+// Smithay's cursor-shape dispatcher also supports tablet tools. No tablet
+// manager/tools are advertised here; pointer shapes use the existing seat path.
+impl smithay::input::tablet::TabletSeatHandler for super::App {
+    type ToolFocus = wayland_server::protocol::wl_surface::WlSurface;
+}
 
 impl super::App {
     pub(super) fn cursor_commit_is_independent(
@@ -52,19 +61,6 @@ const GRAB_CURSOR: &[u8] = include_bytes!("../../../../assets/cursors/grab");
 const GRABBING_CURSOR: &[u8] = include_bytes!("../../../../assets/cursors/grabbing");
 pub(in crate::compositor) const DESIRED_CURSOR_SIZE: u32 = hearthspace_common::DEFAULT_CURSOR_SIZE;
 
-pub(super) fn cursor_icon_from_smithay(icon: SmithayCursorIcon) -> CursorIcon {
-    match icon {
-        SmithayCursorIcon::Default => CursorIcon::Default,
-        SmithayCursorIcon::NsResize => CursorIcon::NsResize,
-        SmithayCursorIcon::EwResize => CursorIcon::EwResize,
-        SmithayCursorIcon::NwseResize => CursorIcon::NwseResize,
-        SmithayCursorIcon::NeswResize => CursorIcon::NeswResize,
-        SmithayCursorIcon::Grab => CursorIcon::Grab,
-        SmithayCursorIcon::Grabbing => CursorIcon::Grabbing,
-        _ => CursorIcon::Default,
-    }
-}
-
 pub(super) fn standard_software_cursor() -> SoftwareCursor {
     software_cursor_for_icon(CursorIcon::Default)
 }
@@ -109,7 +105,7 @@ pub(in crate::compositor) fn cursor_image_for_icon_at_size(
         CursorIcon::NeswResize => cursor_image_from_xcursor(NESW_RESIZE_CURSOR, desired_size),
         CursorIcon::Grab => cursor_image_from_xcursor(GRAB_CURSOR, desired_size),
         CursorIcon::Grabbing => cursor_image_from_xcursor(GRABBING_CURSOR, desired_size),
-        _ => cursor_image_from_xcursor(DEFAULT_CURSOR, desired_size),
+        _ => cursor_image_from_xcursor(shapes::asset(icon).unwrap_or(DEFAULT_CURSOR), desired_size),
     }
 }
 
@@ -185,13 +181,5 @@ mod tests {
             assert!(pixels.iter().any(|p| p[3] == 255 && p[0] < 32));
             assert!(pixels.iter().any(|p| p[3] == 255 && p[0] > 223));
         }
-        assert_eq!(
-            cursor_icon_from_smithay(SmithayCursorIcon::Grab),
-            CursorIcon::Grab
-        );
-        assert_eq!(
-            cursor_icon_from_smithay(SmithayCursorIcon::Grabbing),
-            CursorIcon::Grabbing
-        );
     }
 }

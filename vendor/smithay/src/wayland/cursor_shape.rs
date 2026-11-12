@@ -310,8 +310,14 @@ where
                     }
                 }
             }
-            ShapeRequest::SetShape { .. } => {
-                // Ignore unknown shapes.
+            ShapeRequest::SetShape {
+                shape: WEnum::Unknown(shape),
+                ..
+            } => {
+                resource.post_error(
+                    wayland_protocols::wp::cursor_shape::v1::server::wp_cursor_shape_device_v1::Error::InvalidShape,
+                    format!("Invalid cursor shape: {shape}"),
+                );
             }
             ShapeRequest::Destroy => {}
             _ => unreachable!(),

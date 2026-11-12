@@ -556,7 +556,7 @@ impl SeatHandler for App {
             CursorImageStatus::Named(icon) => {
                 self.cursor_visible = true;
                 self.cursor_surface = None;
-                self.cursor_icon = crate::compositor::cursor::cursor_icon_from_smithay(icon);
+                self.cursor_icon = icon;
             }
             CursorImageStatus::Surface(surface) => {
                 // Native presenters snapshot this artwork for cursor-plane or

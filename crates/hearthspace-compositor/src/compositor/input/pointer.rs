@@ -191,6 +191,7 @@ impl App {
             self.cursor_surface = None;
         }
         self.cursor_icon = match &hit {
+            Some(HitTarget::Client { .. }) => self.cursor_icon,
             Some(HitTarget::ResizeBorder { edges, .. }) => resize_cursor_icon(*edges),
             _ => CursorIcon::Default,
         };
@@ -250,6 +251,7 @@ impl App {
             self.cursor_surface = None;
         }
         self.cursor_icon = match &hit {
+            Some(HitTarget::Client { .. }) => self.cursor_icon,
             Some(HitTarget::ResizeBorder { edges, .. }) => resize_cursor_icon(*edges),
             _ => CursorIcon::Default,
         };

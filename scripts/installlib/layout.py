@@ -20,6 +20,10 @@ CURRENT = BASE / "current"
 LAUNCHER = Path("bin/hearthspace-login")
 SESSION = Path("share/wayland-sessions/hearthspace.desktop")
 PAM_SOURCE = Path("share/pam.d/hearthspace-lock")
+CURSOR_NOTICES = tuple(
+    Path("share/doc/hearthspace/cursors") / name
+    for name in ("README.md", "COPYING", "LGPL-3.0", "GPL-3.0")
+)
 
 
 def prefix_path(value):
@@ -98,6 +102,10 @@ def bundle(directory, binary_dir, prefix):
     sources[satellite.NOTICE] = REPOSITORY / "vendor/xwayland-satellite/LICENSE"
     sources[satellite.PROVENANCE] = (
         REPOSITORY / "vendor/xwayland-satellite/PROVENANCE.md"
+    )
+    sources.update(
+        (notice, REPOSITORY / "assets/cursors/adwaita" / notice.name)
+        for notice in CURSOR_NOTICES
     )
     sources[PAM_SOURCE] = REPOSITORY / "data/pam.d/hearthspace-lock"
     sources[Path("bin/hearthspace-login-guard")] = (
