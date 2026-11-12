@@ -37,7 +37,9 @@ pub(super) fn button_content<
     callback: F,
 ) -> impl WidgetView<State, Widget: Sized> {
     super::button_frame(
-        super::button_layout(native_button(content, callback).disabled(disabled), variant),
+        // The frame owns disabled state and propagates it to the native button.
+        // Duplicating it on the child leaves the material with its initial state.
+        super::button_layout(native_button(content, callback), variant),
         variant,
         disabled,
     )

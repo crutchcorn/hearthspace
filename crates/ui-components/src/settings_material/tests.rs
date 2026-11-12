@@ -170,3 +170,59 @@ fn live_palette_repaints_material_and_keeps_native_focus_and_identity() {
     harness.process_text_event(TextEvent::key_up(Key::Named(NamedKey::Enter)));
     assert_eq!(harness.pop_action::<ButtonPress>().unwrap().1, button);
 }
+
+#[test]
+fn enabling_a_form_button_repaints_like_a_fresh_enabled_button() {
+    fn save(disabled: bool) -> impl WidgetView<bool, Widget: Sized> {
+        sized_box(crate::controls::form_button(
+            crate::Palette::default(),
+            "Save gesture",
+            crate::controls::ButtonVariant::Primary,
+            disabled,
+            |state: &mut bool| *state = true,
+        ))
+        .padding(8.0.px())
+        .background_color(crate::SURFACE)
+    }
+    let runtime = xilem::tokio::runtime::Builder::new_current_thread()
+        .build()
+        .unwrap();
+    let mut ctx = ViewCtx::new(Arc::new(NoMessages), Arc::new(runtime));
+    let mut state = false;
+    let disabled = save(true);
+    let (root, mut view_state) = disabled.build(&mut ctx, &mut state);
+    let mut retained = TestHarness::create_with_size(
+        crate::hearthspace_opaque_properties(),
+        root.new_widget,
+        (180, 58),
+    );
+    let disabled_image = retained.render();
+    let enabled = save(false);
+    retained.edit_root_widget(|root| {
+        enabled.rebuild(&disabled, &mut view_state, &mut ctx, root, &mut state);
+    });
+    retained.redraw();
+    retained.press_tab_key(false);
+    let button = retained
+        .focused_widget_id()
+        .expect("enabled button is focusable");
+    assert!(!retained.access_node(button).unwrap().is_disabled());
+    retained.focus_on(None);
+    let actual = retained.render();
+    let (root, _) = save(false).build(&mut ctx, &mut state);
+    let mut fresh = TestHarness::create_with_size(
+        crate::hearthspace_opaque_properties(),
+        root.new_widget,
+        (180, 58),
+    );
+    assert_ne!(
+        actual, disabled_image,
+        "enabling must restore the primary fill"
+    );
+    assert!(
+        actual == fresh.render(),
+        "enabled appearance must not depend on initial state"
+    );
+    retained.mouse_click_on(button, None);
+    assert_eq!(retained.pop_action::<ButtonPress>().unwrap().1, button);
+}
