@@ -131,3 +131,42 @@ fn navigating_all_stories_remeasures_retained_widgets_and_applies_live_themes() 
         h.render();
     }
 }
+
+#[test]
+fn adding_a_button_icon_keeps_content_width_when_the_preview_has_spare_room() {
+    for with_icon in [false, true] {
+        let mut state = AppState::new();
+        let index = state
+            .stories()
+            .iter()
+            .position(|s| s.id() == "shared-controls-button--primary")
+            .unwrap();
+        state.select_story(index);
+        state.set_selected_bool("with-icon", with_icon);
+        let runtime = xilem::tokio::runtime::Builder::new_current_thread()
+            .build()
+            .unwrap();
+        let mut ctx = ViewCtx::new(Arc::new(NoMessages), Arc::new(runtime));
+        let (root, _) = sized_box(shared::preview(&state)).build(&mut ctx, &mut state);
+        let mut h = TestHarness::create_with_size(
+            crate::components::hearthspace_opaque_properties(),
+            root.new_widget,
+            (800, 320),
+        );
+        let mut ids = Vec::new();
+        h.inspect_widgets(|w| ids.push(w.id()));
+        let bounds = ids
+            .into_iter()
+            .find_map(|id| {
+                h.access_node(id)
+                    .filter(|n| n.role() == Role::Button && n.label().as_deref() == Some("Connect"))
+                    .and_then(|n| n.bounding_box())
+            })
+            .unwrap();
+        assert!(
+            bounds.width() > 50. && bounds.width() < 200.,
+            "icon={with_icon}: {bounds:?}"
+        );
+        assert_eq!(bounds.height(), 36.);
+    }
+}

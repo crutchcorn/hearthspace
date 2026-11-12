@@ -153,7 +153,7 @@ pub fn form_button_with_icon<State: 'static, F: Fn(&mut State) + Send + Sync + '
                 .color(color),
         ))
         .gap(6.0.px())
-        .width(xilem::masonry::layout::Dim::FitContent),
+        .width(xilem::masonry::layout::Dim::MaxContent),
         variant,
         disabled,
         callback,
