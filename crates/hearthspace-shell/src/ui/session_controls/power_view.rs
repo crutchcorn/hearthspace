@@ -1,7 +1,7 @@
 //! Reference-sized power rows and confirmation, backed by real session actions.
 use super::{Confirmation, power_confirmation, power_dialog, send_command};
 use crate::ui::{
-    canvas_search::material,
+    popup::{self, PopupKind},
     popup_group,
     power_task::Action,
     search_focus::{FocusTarget, Record, focus_on_activation},
@@ -253,7 +253,7 @@ fn menu(state: &ShellState, output: &ShellOutputInstance) -> impl WidgetView<She
     let content = components::touch_portal(rows)
         .constrain_horizontal(true)
         .must_fill(false);
-    material::panel(sized_box(content).padding(7.0.px()), false, palette)
+    popup::frame(PopupKind::Power, content)
 }
 
 pub(in crate::ui) fn panel(

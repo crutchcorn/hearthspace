@@ -28,6 +28,44 @@ fn state() -> ShellState {
 }
 
 #[test]
+fn measured_menu_keeps_every_action_visible_after_output_scaling() {
+    use masonry::core::WindowEvent;
+    for scale in [1.0, 1.25, 2.0] {
+        let mut state = state();
+        let _commands = crate::ui::power_task::test_channel(&mut state);
+        state.power.status.available = true;
+        state.power.status.reboot_available = true;
+        state.power.status.power_off_available = true;
+        let mut ui = Ui::new(state, view, (224, 245));
+        ui.harness.process_window_event(WindowEvent::Rescale(scale));
+        let size = power_size(&ui.state, &ui.state.outputs[0]);
+        ui.harness.process_window_event(WindowEvent::Resize(
+            (
+                (size.width * scale).ceil() as u32,
+                (size.height * scale).ceil() as u32,
+            )
+                .into(),
+        ));
+        ui.dispatch(&view);
+        for name in ["Lock screen", "Suspend", "Log off", "Reboot", "Turn off"] {
+            let bounds = ui
+                .harness
+                .access_node(ui.button(name))
+                .unwrap()
+                .bounding_box()
+                .unwrap();
+            assert!(
+                bounds.x0 >= 0.0
+                    && bounds.y0 >= 0.0
+                    && bounds.x1 <= size.width * scale
+                    && bounds.y1 <= size.height * scale,
+                "{name} must fit the measured menu at {scale}x: {bounds:?} vs {size:?}"
+            );
+        }
+    }
+}
+
+#[test]
 fn compact_rows_keep_touch_targets_and_arrows_skip_unavailable_suspend() {
     let mut state = state();
     state.power.status.available = true;
