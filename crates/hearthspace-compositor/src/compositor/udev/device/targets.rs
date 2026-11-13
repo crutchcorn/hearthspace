@@ -12,6 +12,7 @@ pub(in crate::compositor::udev) struct KmsOutputTarget {
     pub(in crate::compositor::udev) connector: connector::Handle,
     pub(in crate::compositor::udev) crtc: crtc::Handle,
     pub(in crate::compositor::udev) mode: Mode,
+    pub(in crate::compositor::udev) modes: Vec<Mode>,
     connector_name: String,
     connector_label: String,
     physical_size_mm: (i32, i32),
@@ -46,11 +47,32 @@ impl KmsOutputTarget {
     }
 
     fn refresh_millihz(&self) -> i32 {
-        let refresh_hz = self.mode.vrefresh();
-        if refresh_hz == 0 {
-            return 60_000;
+        smithay::output::Mode::from(self.mode).refresh
+    }
+
+    pub(in crate::compositor::udev) fn describe_mode(
+        mode: Mode,
+    ) -> hearthspace_ipc::display_modes::Mode {
+        use sha2::{Digest, Sha256};
+        use std::hash::{Hash, Hasher};
+        struct TimingDigest(Sha256);
+        impl Hasher for TimingDigest {
+            fn write(&mut self, bytes: &[u8]) {
+                self.0.update(bytes);
+            }
+            fn finish(&self) -> u64 {
+                unreachable!("use the complete SHA-256 digest")
+            }
         }
-        i32::try_from(refresh_hz.saturating_mul(1000)).unwrap_or(60_000)
+        let mut digest = TimingDigest(Sha256::new());
+        mode.hash(&mut digest);
+        let timing = smithay::output::Mode::from(mode);
+        hearthspace_ipc::display_modes::Mode {
+            id: format!("{:x}", digest.0.finalize()),
+            width: timing.size.w,
+            height: timing.size.h,
+            refresh_millihertz: timing.refresh,
+        }
     }
 }
 
@@ -134,6 +156,7 @@ pub(in crate::compositor::udev) fn discover_outputs(
                     connector: *connector_handle,
                     crtc,
                     mode: *mode,
+                    modes: info.modes().to_vec(),
                     connector_name: names.assign(identity, &connector_label),
                     connector_label,
                     physical_size_mm,
@@ -151,3 +174,6 @@ pub(in crate::compositor::udev) fn discover_outputs(
     }
     Ok((targets, complete))
 }
+
+#[cfg(test)]
+mod tests;

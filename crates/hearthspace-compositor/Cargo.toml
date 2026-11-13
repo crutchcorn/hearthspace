@@ -38,6 +38,7 @@ path = "src/bin/hearthspace-window-test.rs"
 required-features = ["test-apps"]
 
 [dependencies]
+sha2 = "0.10"
 hearthspace-desktop = { path = "../hearthspace-desktop" }
 async-io = "2.6.0"
 atspi = { version = "0.30.0", features = ["zbus"] }
@@ -81,6 +82,8 @@ waydriver-hearthspace = { path = "../waydriver-hearthspace", optional = true }
 xcursor = "0.3.11"
 
 [dev-dependencies]
+# Construct DRM timing records for mode-selection regressions without a device.
+drm-ffi = "0.9.1"
 # X protocol fixtures use Smithay's re-export; no direct XWM is compiled.
 smithay = { git = "https://github.com/Smithay/smithay", rev = "5c2ba4132556a08abc70ae1771d275ec2cfc031f", default-features = false, features = ["x11rb_event_source"] }
 x11rb = "=0.13.2"
