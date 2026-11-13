@@ -1,7 +1,7 @@
 # Wi-Fi and Bluetooth
 
 Open **Wi-Fi settings** or **Bluetooth settings** in the frame, or find them in
-canvas search. The same controls are available in **Settings → System**. Add or
+canvas search. The same controls are available in the **Wi-Fi** and **Bluetooth** Settings pages. Add or
 move the Bluetooth frame item through **Change layout** if your saved layout
 predates it.
 
@@ -12,9 +12,10 @@ signal strength. **Refresh devices** requests a scan; merely opening a panel doe
 not scan or connect. The switch enables or disables Wi-Fi. A hardware block
 must be cleared with the machine's switch or airplane-mode controls.
 
-Choose **Connect** to use a saved connection or join an open, WPA/WPA2 personal,
+Choose a network row to use a saved connection or join an open, WPA/WPA2 personal,
 or WPA3 personal network. A new secured connection opens a masked password
-dialog. Canceling it leaves the connection unchanged. **Disconnect** targets the
+dialog. Canceling it leaves the connection unchanged. The chevron opens details
+with the connection actions; **Back** returns to the list. **Disconnect** targets the
 selected active connection; **Forget** removes matching saved profiles. Forget
 has no effect when the network has no saved profile.
 
@@ -27,7 +28,8 @@ connection preferences; Hearthspace does not write a separate wireless config.
 
 Enable Bluetooth, then choose **Refresh devices** to discover nearby devices for
 five seconds. Hearthspace releases only its own discovery session. Choose
-**Pair** for a new device, **Connect** or **Disconnect** for a paired device, or
+an unpaired device to pair, or a paired device to connect/disconnect. Open its
+chevron details to use
 **Forget** to remove its pairing. Put the device into pairing mode first.
 
 Pairing uses BlueZ's standard authentication agent for PIN entry, displayed

@@ -53,6 +53,7 @@ pub(super) async fn read(c: &Connection) -> Result<Radio> {
                 .into(),
                 connected,
                 paired,
+                secured: false,
             });
         }
     }

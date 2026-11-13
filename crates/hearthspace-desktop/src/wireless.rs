@@ -17,6 +17,7 @@ pub struct Item {
     pub detail: String,
     pub connected: bool,
     pub paired: bool,
+    pub secured: bool,
 }
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Radio {

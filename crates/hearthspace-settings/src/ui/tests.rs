@@ -360,6 +360,8 @@ fn every_settings_page_fits_the_compact_minimum_and_desktop_breakpoint() {
             "Appearance",
             "Displays",
             "Background",
+            "Wi-Fi",
+            "Bluetooth",
             "Gestures",
             "Keyboard shortcuts",
             "AI",

@@ -115,6 +115,7 @@ pub(super) fn stories() -> Vec<Story> {
             vec![
                 Control::bool("checked", "Enabled", true),
                 Control::bool("disabled", "Busy", false),
+                Control::text("details", "Selected device", ""),
             ],
         ));
     }
@@ -173,16 +174,24 @@ pub(super) fn preview(state: &AppState) -> Box<AnyWidgetView<AppState>> {
                 busy: disabled,
                 blocked: false,
                 message: None,
+                selected: state
+                    .selected_text("details")
+                    .filter(|id| !id.is_empty())
+                    .map(str::to_owned),
                 rows: vec![components::radio_panel::Row {
                     id: "sample".into(),
                     name: "Example device".into(),
                     detail: "Available".into(),
+                    connected: false,
+                    known: false,
+                    secured: false,
                     actions: vec![("Connect".into(), ())],
                 }],
             },
             |s: &mut AppState, on| s.set_selected_bool("checked", on),
             |s: &mut AppState| s.clicks += 1,
             |s: &mut AppState, ()| s.clicks += 1,
+            |s: &mut AppState, id| s.set_selected_text("details", id.unwrap_or_default()),
         )
         .boxed();
     }

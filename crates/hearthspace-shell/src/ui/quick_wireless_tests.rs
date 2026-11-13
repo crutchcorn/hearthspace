@@ -25,7 +25,7 @@ fn wifi_connect_uses_observed_identity_and_waits_for_service_result() {
     let (tx, mut rx) = tokio::sync::mpsc::channel(4);
     s.wireless.sender = Some(tx);
     let mut ui = Ui::new(s, view, (360, 440));
-    let connect = ui.button("Connect");
+    let connect = ui.button("Connect to Fixture network");
     ui.activate(connect);
     ui.dispatch(&view);
     assert!(matches!(rx.try_recv(),Ok(Command::ConnectWifi(id)) if id=="owner|ap"));
@@ -94,7 +94,7 @@ fn a_removed_network_cannot_transfer_its_held_press_to_a_replacement_row() {
     let (tx, mut rx) = tokio::sync::mpsc::channel(4);
     s.wireless.sender = Some(tx);
     let mut ui = Ui::new(s, view, (360, 440));
-    let first = ui.button("Connect");
+    let first = ui.button("Connect to First network");
     ui.harness.mouse_move_to(first);
     ui.harness.mouse_button_press(Some(PointerButton::Primary));
     ui.dispatch(&view);
@@ -112,7 +112,7 @@ fn a_removed_network_cannot_transfer_its_held_press_to_a_replacement_row() {
         rx.try_recv().is_err(),
         "release must not connect a replacement network"
     );
-    let current = ui.button("Connect");
+    let current = ui.button("Connect to Replacement network");
     ui.activate(current);
     ui.dispatch(&view);
     assert!(matches!(rx.try_recv(),Ok(Command::ConnectWifi(id)) if id=="replacement"));
@@ -141,6 +141,7 @@ fn radio_panels_render_in_both_palettes_at_narrow_widths_without_touching_servic
                             detail: "Connected".into(),
                             connected: true,
                             paired: true,
+                            secured: true,
                         },
                         Item {
                             id: "two".into(),
@@ -148,6 +149,7 @@ fn radio_panels_render_in_both_palettes_at_narrow_widths_without_touching_servic
                             detail: "Available nearby".into(),
                             connected: false,
                             paired: false,
+                            secured: false,
                         },
                     ],
                 };
@@ -159,9 +161,31 @@ fn radio_panels_render_in_both_palettes_at_narrow_widths_without_touching_servic
                 let (tx, _rx) = tokio::sync::mpsc::channel(4);
                 s.wireless.sender = Some(tx);
                 let mut ui = Ui::new(s, view, (width, 400));
-                let refresh = ui.button("Refresh devices");
+                let refresh = ui.button(if kind == Kind::Wifi {
+                    "Refresh networks"
+                } else {
+                    "Scan for devices"
+                });
                 ui.harness.focus_on(Some(refresh));
                 assert_eq!(ui.harness.focused_widget_id(), Some(refresh));
+                for id in ids(&ui.harness) {
+                    if ui
+                        .harness
+                        .access_node(id)
+                        .is_some_and(|n| matches!(n.role(), Role::Button | Role::Switch))
+                    {
+                        let w = ui.harness.get_widget_with_id(id);
+                        let rect = w
+                            .ctx()
+                            .window_transform()
+                            .transform_rect_bbox(w.ctx().border_box());
+                        assert!(
+                            rect.x0 >= 0.0 && rect.x1 <= f64::from(width),
+                            "control {:?} extends beyond panel: {rect:?}",
+                            ui.harness.access_node(id).unwrap().label()
+                        );
+                    }
+                }
                 let image = ui.harness.render();
                 assert_eq!(image.dimensions(), (width, 400));
                 if let Some(base) = std::env::var_os("HEARTHSPACE_SHELL_EVIDENCE") {
@@ -174,4 +198,81 @@ fn radio_panels_render_in_both_palettes_at_narrow_widths_without_touching_servic
             }
         }
     }
+}
+
+#[test]
+fn details_navigation_is_local_and_a_removed_network_cannot_rebind_the_inspector() {
+    let mut s = ShellState::new("/unused".into(), vec!["A".into()]);
+    s.toggle_quick_panel("A", Kind::Wifi);
+    s.wireless.snapshot.wifi = Ok(Radio {
+        enabled: true,
+        items: vec![Item {
+            id: "first".into(),
+            name: "Studio".into(),
+            detail: "Connected".into(),
+            connected: true,
+            ..Default::default()
+        }],
+        ..Default::default()
+    });
+    let (tx, mut rx) = tokio::sync::mpsc::channel(4);
+    s.wireless.sender = Some(tx);
+    let mut ui = Ui::new(s, view, (320, 400));
+    ui.activate(ui.button("Studio details"));
+    ui.dispatch(&view);
+    assert_eq!(ui.state.wireless.details.as_deref(), Some("first"));
+    assert!(
+        rx.try_recv().is_err(),
+        "opening details must not mutate radios"
+    );
+    let back = ui.button("Back");
+    ui.activate(back);
+    ui.dispatch(&view);
+    assert!(ui.state.wireless.details.is_none());
+    ui.activate(ui.button("Studio details"));
+    ui.dispatch(&view);
+    let mut snapshot = ui.state.wireless.snapshot.clone();
+    snapshot.wifi.as_mut().unwrap().items[0].id = "replacement".into();
+    ui.state.wireless.receive(Update {
+        snapshot,
+        finished: false,
+        error: None,
+    });
+    ui.rebuild(&view);
+    ui.dispatch(&view);
+    assert!(ui.state.wireless.details.is_none());
+    assert!(rx.try_recv().is_err());
+    ui.activate(ui.button("Disconnect from Studio"));
+    ui.dispatch(&view);
+    assert!(matches!(rx.try_recv(),Ok(Command::DisconnectWifi(id)) if id=="replacement"));
+}
+
+#[test]
+fn powered_off_radio_hides_device_actions_and_disables_discovery() {
+    let mut s = ShellState::new("/unused".into(), vec!["A".into()]);
+    s.toggle_quick_panel("A", Kind::Bluetooth);
+    s.wireless.snapshot.bluetooth = Ok(Radio {
+        enabled: false,
+        items: vec![Item {
+            id: "retained".into(),
+            name: "Keyboard".into(),
+            paired: true,
+            ..Default::default()
+        }],
+        ..Default::default()
+    });
+    let (tx, mut rx) = tokio::sync::mpsc::channel(4);
+    s.wireless.sender = Some(tx);
+    let ui = Ui::new(s, view, (320, 400));
+    let scan = ui.button("Scan for devices");
+    assert!(ui.harness.access_node(scan).unwrap().is_disabled());
+    assert!(
+        !ids(&ui.harness).into_iter().any(|id| ui
+            .harness
+            .access_node(id)
+            .is_some_and(
+                |n| n.role() == Role::Button && n.label().as_deref() == Some("Connect Keyboard")
+            ))
+    );
+    assert!(rx.try_recv().is_err());
 }

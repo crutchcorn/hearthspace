@@ -25,7 +25,7 @@ fn pointer_category_selection_restores_native_focus_without_a_keyboard_ring() {
     let toggle = ui.button("Settings categories");
     ui.harness.mouse_click_on(toggle, None);
     ui.dispatch(&view);
-    ui.harness.mouse_click_on(ui.button("System"), None);
+    ui.harness.mouse_click_on(ui.button("Wi-Fi"), None);
     ui.dispatch(&view);
     ui.harness.mouse_move((479.0, 489.0));
     assert_eq!(ui.harness.focused_widget_id(), Some(toggle));
@@ -69,7 +69,7 @@ fn touch_selection_is_pointer_origin_and_escape_is_keyboard_origin() {
     }
     ui.dispatch(&view);
     assert!(ui.state.navigation.open);
-    let point = bounds(&ui, ui.button("System")).center();
+    let point = bounds(&ui, ui.button("Wi-Fi")).center();
     for kind in ["down", "up"] {
         ui.harness
             .process_pointer_event(touch(kind, point.x, point.y));

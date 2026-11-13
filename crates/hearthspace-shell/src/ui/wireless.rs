@@ -78,6 +78,9 @@ pub(crate) fn panel(state: &ShellState, bluetooth: bool) -> impl WidgetView<Shel
                         id: item.id.clone(),
                         name: item.name.clone(),
                         detail: item.detail.clone(),
+                        connected: item.connected,
+                        known: item.paired,
+                        secured: item.secured,
                         actions,
                     }
                 })
@@ -101,6 +104,7 @@ pub(crate) fn panel(state: &ShellState, bluetooth: bool) -> impl WidgetView<Shel
             blocked: radio.as_ref().is_ok_and(|r| r.blocked),
             busy: *busy,
             rows,
+            selected: state.wireless.details.clone(),
             message: error.clone().or_else(|| radio.as_ref().err().cloned()),
         },
         move |s: &mut ShellState, on| {
@@ -118,5 +122,6 @@ pub(crate) fn panel(state: &ShellState, bluetooth: bool) -> impl WidgetView<Shel
             })
         },
         |s: &mut ShellState, c| s.wireless.request(c),
+        |s: &mut ShellState, id| s.wireless.details = id,
     )
 }

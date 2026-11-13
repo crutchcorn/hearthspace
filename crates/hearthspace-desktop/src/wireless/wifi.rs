@@ -79,6 +79,7 @@ pub(super) async fn read(c: &Connection) -> Result<Radio> {
                 ),
                 connected,
                 paired: false,
+                secured: secure,
             });
         }
     }

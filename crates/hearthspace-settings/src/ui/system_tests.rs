@@ -142,7 +142,11 @@ fn wireless_panels_use_keyboard_actions_and_render_in_settings_palettes() {
                 sized_box(crate::wireless::panel(s, bluetooth))
             };
             let mut ui = Ui::new(state, build, (360, 400));
-            let button = ui.button("Connect");
+            let button = ui.button(if bluetooth {
+                "Connect Studio device"
+            } else {
+                "Connect to Studio device"
+            });
             ui.harness.focus_on(Some(button));
             key(&mut ui, NamedKey::Enter);
             ui.dispatch(&build);

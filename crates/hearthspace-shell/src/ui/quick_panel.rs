@@ -113,21 +113,10 @@ pub(super) fn window(state: &ShellState, output: &ShellOutputInstance) -> Window
             super::frame_layout::tool_menu::size(state, output)
         } else if output.quick_panel == Kind::Clock {
             super::quick_clock::size(state, output)
+        } else if matches!(output.quick_panel, Kind::Wifi | Kind::Bluetooth) {
+            popup::radio_size(output)
         } else {
-            popup::size(
-                output,
-                PopupKind::Controls,
-                if matches!(output.quick_panel, Kind::Wifi | Kind::Bluetooth) {
-                    360.0
-                } else {
-                    320.0
-                },
-                if matches!(output.quick_panel, Kind::Wifi | Kind::Bluetooth) {
-                    440.0
-                } else {
-                    200.0
-                },
-            )
+            popup::size(output, PopupKind::Controls, 320.0, 200.0)
         },
         panel(state, output),
         move |state| state.dismiss_controls(&key),

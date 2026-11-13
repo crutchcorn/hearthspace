@@ -44,8 +44,6 @@ pub(crate) fn view(state: &SettingsApp) -> Box<AnyWidgetView<SettingsApp>> {
             .cross_axis_alignment(CrossAxisAlignment::Stretch)
             .gap(8.0.px()),
         ),
-        crate::wireless::panel(state, false),
-        crate::wireless::panel(state, true),
         state.frame_settings.message().map(|message| note(palette, message)),
     ))
     .cross_axis_alignment(CrossAxisAlignment::Stretch)

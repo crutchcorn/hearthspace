@@ -87,6 +87,20 @@ pub(super) fn size(
     width: f64,
     fallback_height: f64,
 ) -> LogicalSize<f64> {
+    measured_size(output, kind, width, fallback_height, kind.height_cap())
+}
+
+pub(super) fn radio_size(output: &ShellOutputInstance) -> LogicalSize<f64> {
+    measured_size(output, PopupKind::Controls, 320.0, 400.0, 640.0)
+}
+
+fn measured_size(
+    output: &ShellOutputInstance,
+    kind: PopupKind,
+    width: f64,
+    fallback_height: f64,
+    cap: f64,
+) -> LogicalSize<f64> {
     let measured = output.popup_measurements[kind.index()];
     let height = measured
         .body
@@ -98,7 +112,7 @@ pub(super) fn size(
                 + 2.0 * (kind.padding() + BORDER)
         })
         .unwrap_or(fallback_height);
-    LogicalSize::new(width, height.ceil().clamp(1.0, kind.height_cap()))
+    LogicalSize::new(width, height.ceil().clamp(1.0, cap))
 }
 
 pub(super) fn window<V, F>(

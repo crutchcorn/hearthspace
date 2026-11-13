@@ -5,6 +5,7 @@ use tokio::sync::mpsc;
 pub struct State {
     pub snapshot: Snapshot,
     pub busy: bool,
+    pub details: Option<String>,
     pub error: Option<String>,
     pub sender: Option<mpsc::Sender<Command>>,
 }
@@ -26,6 +27,16 @@ impl State {
     }
     pub fn receive(&mut self, update: Update) {
         self.snapshot = update.snapshot;
+        if self.details.as_ref().is_some_and(|id| {
+            ![&self.snapshot.wifi, &self.snapshot.bluetooth]
+                .into_iter()
+                .any(|r| {
+                    r.as_ref()
+                        .is_ok_and(|r| r.items.iter().any(|item| &item.id == id))
+                })
+        }) {
+            self.details = None;
+        }
         if update.finished {
             self.busy = false;
             self.error = update.error;
