@@ -92,25 +92,27 @@ class PopupPresentationTests(unittest.TestCase):
     def test_raised_tint_blends_with_actual_backdrop_and_rejects_opaque_or_missing_panel(
         self,
     ):
-        visible = self.frame([((0, 20, 100, 100), (221, 219, 214))])
-        result = presentation.material_tint(self.background, visible, self.surface)
-        self.assertEqual(result["background"], [90, 80, 70])
-        self.assertEqual(result["visible"], [221, 219, 214])
-        for wrong in ((250, 249, 246), (90, 80, 70), (20, 20, 20)):
-            with (
-                self.subTest(wrong=wrong),
-                self.assertRaisesRegex(ControlError, "tint"),
-            ):
-                presentation.material_tint(
-                    self.background,
-                    self.frame([((0, 20, 100, 100), wrong)]),
-                    self.surface,
-                )
+        for kind in ("search", "power"):
+            surface = self.surface | {"kind": kind}
+            visible = self.frame([((0, 20, 100, 100), (221, 219, 214))])
+            result = presentation.material_tint(self.background, visible, surface)
+            self.assertEqual(result["background"], [90, 80, 70])
+            self.assertEqual(result["visible"], [221, 219, 214])
+            for wrong in ((174, 169, 161), (250, 249, 246), (90, 80, 70), (20, 20, 20)):
+                with (
+                    self.subTest(wrong=wrong),
+                    self.assertRaisesRegex(ControlError, "tint"),
+                ):
+                    presentation.material_tint(
+                        self.background,
+                        self.frame([((0, 20, 100, 100), wrong)]),
+                        surface,
+                    )
 
-    def test_power_and_map_use_chrome_and_reject_raised_opaque_or_missing_fill(
+    def test_map_uses_chrome_and_rejects_raised_opaque_or_missing_fill(
         self,
     ):
-        for kind in ("power", "map"):
+        for kind in ("map",):
             surface = self.surface | {"kind": kind}
             visible = self.frame([((0, 20, 100, 100), (174, 169, 161))])
             result = presentation.material_tint(self.background, visible, surface)
